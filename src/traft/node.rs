@@ -890,7 +890,7 @@ impl NodeImpl {
         #[inline(always)]
         fn dml_is_governor_wakeup_worthy(op: &Dml) -> bool {
             matches!(
-                op.space(),
+                op.table_id(),
                 storage::Properties::TABLE_ID
                     | storage::Replicasets::TABLE_ID
                     | storage::Instances::TABLE_ID
@@ -918,7 +918,8 @@ impl NodeImpl {
     ///
     /// Returns Ok(_) if entry was applied successfully
     fn handle_dml_entry(&self, op: &Dml) -> Result<Option<AppliedDml>, ()> {
-        let space = op.space();
+        let table_id = op.table_id();
+        let initiator = op.initiator();
 
         // In order to implement the audit log events, we have to compare
         // tuples from certain system spaces before and after a DML operation.
@@ -932,7 +933,7 @@ impl NodeImpl {
         // own spaces, thus emitting unrestricted (and unsafe) DML records.
         //
         // TODO: merge this into `do_dml` once `box_tuple_extract_key` is fixed.
-        let old = match space {
+        let old = match table_id {
             s @ (storage::Properties::TABLE_ID
             | storage::Instances::TABLE_ID
             | storage::Replicasets::TABLE_ID
@@ -973,7 +974,7 @@ impl NodeImpl {
 
         // FIXME: all of this should be done only after the transaction is committed
         // See <https://git.picodata.io/core/picodata/-/issues/1149>
-        match space {
+        match table_id {
             storage::Instances::TABLE_ID => {
                 let old = old
                     .as_ref()
@@ -988,7 +989,6 @@ impl NodeImpl {
                     // Dml::Delete mandates that new tuple is None.
                     assert!(!matches!(op, Dml::Delete { .. }));
 
-                    let initiator = op.initiator();
                     let initiator_def = user_by_id(initiator).expect("user must exist");
 
                     do_audit_logging_for_instance_update(old.as_ref(), new, &initiator_def);
@@ -1776,6 +1776,7 @@ impl NodeImpl {
                                 acl::on_master_revoke_privilege(priv_def)
                                     .expect("revoking a privilege shouldn't fail");
                             }
+                            Acl::AuditPolicy { .. } => {}
                         }
                         set_local_schema_version(v_pending).expect("storage should not fail");
                     }
@@ -1830,6 +1831,22 @@ impl NodeImpl {
                     } => {
                         acl::global_revoke_privilege(&self.storage, priv_def, *initiator)
                             .expect("removing a privilege definition shouldn't fail");
+                    }
+                    Acl::AuditPolicy {
+                        user_id,
+                        policy_id,
+                        enable,
+                        initiator,
+                        ..
+                    } => {
+                        acl::global_audit_policy_by_user(
+                            &self.storage,
+                            *user_id,
+                            *policy_id,
+                            *enable,
+                            *initiator,
+                        )
+                        .expect("persisting audit policy settings should not fail");
                     }
                 }
 

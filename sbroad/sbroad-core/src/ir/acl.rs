@@ -192,6 +192,13 @@ pub enum AlterOption {
     },
 }
 
+/// Type of AUDIT POLICY command option.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub enum AuditPolicyOption {
+    On { user_name: SmolStr },
+    Off { user_name: SmolStr },
+}
+
 impl Plan {
     /// Get ACL node from the plan arena.
     ///

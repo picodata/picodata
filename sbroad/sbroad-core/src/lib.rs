@@ -29,6 +29,8 @@ pub mod utils;
 pub struct PreparedStatement {
     // This Rc shares the reference with the query cache
     plan: Rc<Plan>,
+    /// This is for audit logging of SQL statements.
+    query_for_audit: Option<String>,
 }
 
 impl PreparedStatement {
@@ -52,8 +54,14 @@ impl PreparedStatement {
         let cache_key = query_id(query_text, param_types);
 
         if let Some(cached_plan) = router.with_admin_su(|| cache.get(&cache_key))?? {
+            let query_for_audit = if router.is_audit_enabled(cached_plan)? {
+                Some(query_text.to_string())
+            } else {
+                None
+            };
             return Ok(PreparedStatement {
                 plan: cached_plan.clone(),
+                query_for_audit,
             });
         }
 
@@ -86,7 +94,16 @@ impl PreparedStatement {
             cache.put(cache_key, new_plan.clone())?;
         }
 
-        Ok(PreparedStatement { plan: new_plan })
+        let query_for_audit = if router.is_audit_enabled(&new_plan)? {
+            Some(query_text.to_string())
+        } else {
+            None
+        };
+
+        Ok(PreparedStatement {
+            plan: new_plan,
+            query_for_audit,
+        })
     }
 
     /// A shorthand method for [`Plan::collect_parameter_types`]
@@ -97,6 +114,10 @@ impl PreparedStatement {
     /// Retrieve the plan IR for this prepared statement.
     pub fn as_plan(&self) -> &Plan {
         &self.plan
+    }
+
+    pub fn query_for_audit(&self) -> Option<&str> {
+        self.query_for_audit.as_deref()
     }
 
     /// Provide concrete values for query parameters, creating a [`BoundStatement`] as a result.
@@ -119,7 +140,15 @@ impl PreparedStatement {
                 .fold_boolean_tree()?;
         }
 
-        Ok(BoundStatement { plan })
+        let params_for_audit = if self.query_for_audit.is_some() {
+            Some(params)
+        } else {
+            None
+        };
+        Ok(BoundStatement {
+            plan,
+            params_for_audit,
+        })
     }
 }
 
@@ -129,6 +158,8 @@ pub struct BoundStatement {
     // wrap the plan into a `Box` to reduce the size of `BoundStatement`
     // this is important for `pgproto`, which stores it in `PortalState`
     plan: Box<Plan>,
+    /// This is for audit logging of SQL statement params.
+    params_for_audit: Option<Vec<Value>>,
 }
 
 impl BoundStatement {
@@ -155,5 +186,9 @@ impl BoundStatement {
 
     pub fn as_plan(&self) -> &Plan {
         &self.plan
+    }
+
+    pub fn params_for_audit(&self) -> Option<&[Value]> {
+        self.params_for_audit.as_deref()
     }
 }

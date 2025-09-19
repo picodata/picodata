@@ -4,6 +4,8 @@ use once_cell::sync::OnceCell;
 use std::ffi::{CStr, CString};
 use tarantool::{error::TarantoolError, log::SayLevel};
 
+pub mod policy;
+
 /// Tarantool's low-level APIs.
 /// At some point we should probably move those to tarantool-module,
 /// but right now it's much more convenient to keep them here.

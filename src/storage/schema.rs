@@ -885,6 +885,7 @@ pub mod acl {
     use tarantool::clock;
 
     use crate::access_control::user_by_id;
+    use crate::audit::policy::{get_audit_policy_name_by_id, AuditPolicyId};
 
     use super::*;
 
@@ -1036,6 +1037,7 @@ pub mod acl {
         user_def.ensure_no_dependent_objects(storage)?;
 
         storage.privileges.delete_all_by_grantee_id(user_id)?;
+        storage.users_audit_policies.delete_by_user(user_id)?;
         storage.users.delete(user_id)?;
 
         let initiator_def = user_by_id(initiator)?;
@@ -1202,6 +1204,47 @@ pub mod acl {
                 );
             }
         }
+
+        Ok(())
+    }
+
+    /// Persists audit policy settings in the internal clusterwide storage.
+    pub fn global_audit_policy_by_user(
+        storage: &Catalog,
+        user_id: UserId,
+        policy_id: AuditPolicyId,
+        enable: bool,
+        initiator: UserId,
+    ) -> traft::Result<()> {
+        let Some(policy_name) = get_audit_policy_name_by_id(policy_id) else {
+            return Err(Error::other(format!(
+                "audit policy with id {policy_id} not found"
+            )));
+        };
+
+        if enable {
+            storage
+                .users_audit_policies
+                .enable_audit_policy_for_user(user_id, policy_id)?;
+        } else {
+            storage
+                .users_audit_policies
+                .disable_audit_policy_for_user(user_id, policy_id)?;
+        }
+
+        let user_name = storage
+            .users
+            .by_id(user_id)?
+            .expect("failed to get user")
+            .name;
+        let initiator_def = user_by_id(initiator)?;
+        let enable_message = if enable { "on" } else { "off" };
+        crate::audit!(
+            message: "audit policy `{policy_name}` for user `{user_name}` was turned {enable_message}",
+            title: "audit_policy",
+            severity: High,
+            initiator: initiator_def.name,
+        );
 
         Ok(())
     }

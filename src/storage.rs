@@ -15,6 +15,7 @@ use tarantool::tuple::{DecodeOwned, KeyDef, ToTupleBuffer};
 use tarantool::tuple::{RawBytes, Tuple};
 
 use crate::catalog::governor_queue::GovernorQueue;
+use crate::catalog::user_audit_policy::PicoUserAuditPolicy;
 use crate::config::{self, AlterSystemParameters};
 use crate::failure_domain::FailureDomain;
 use crate::governor::upgrade_operations;
@@ -132,7 +133,7 @@ pub fn storage_is_initialized() -> bool {
 /// 522 - _pico_governor_queue
 /// 523 - _pico_tier
 /// 524 - _pico_routine
-/// 525 - AVAILABLE_SPACE_ID
+/// 525 - _pico_user_audit_policy
 /// 526 - _pico_plugin
 /// 527 - _pico_service
 /// 528 - _pico_service_route
@@ -181,6 +182,7 @@ pub struct Catalog {
     pub plugin_config: PluginConfig,
     pub db_config: DbConfig,
     pub governor_queue: GovernorQueue,
+    pub users_audit_policies: PicoUserAuditPolicy,
 }
 
 /// Id of system table `_bucket`. Note that we don't add in to `Clusterwide`
@@ -222,6 +224,7 @@ impl Catalog {
             plugin_config: PluginConfig::new()?,
             db_config: DbConfig::new()?,
             governor_queue: GovernorQueue::new()?,
+            users_audit_policies: PicoUserAuditPolicy::new()?,
             snapshot_cache: Default::default(),
             login_attempts: Default::default(),
         })
@@ -246,6 +249,7 @@ impl Catalog {
             PluginConfig::TABLE_ID => Some(PluginConfig::TABLE_NAME),
             DbConfig::TABLE_ID => Some(DbConfig::TABLE_NAME),
             GovernorQueue::TABLE_ID => Some(GovernorQueue::TABLE_NAME),
+            PicoUserAuditPolicy::TABLE_ID => Some(PicoUserAuditPolicy::TABLE_NAME),
             _ => None,
         }
     }
@@ -306,6 +310,7 @@ impl Catalog {
     pub(crate) fn for_tests() -> Self {
         let storage = Self::try_get(true).unwrap();
         storage.governor_queue.create_space().unwrap();
+        storage.users_audit_policies.create_space().unwrap();
 
         if storage.pico_table.space.len().unwrap() != 0 {
             // Already initialized by other tests.
@@ -330,7 +335,7 @@ impl Catalog {
     ///   * `None` in case of delete (because the tuple is gone) and 'insert on conflict do nothing'.
     #[inline]
     pub fn do_dml(&self, dml: &Dml) -> tarantool::Result<Option<Tuple>> {
-        let space = space_by_id_unchecked(dml.space());
+        let space = space_by_id_unchecked(dml.table_id());
         use ConflictStrategy::*;
         match dml {
             Dml::Insert {
@@ -1812,7 +1817,7 @@ impl<T, const MP: MpImpl> std::fmt::Debug for EntryIter<T, MP> {
 // Users
 ////////////////////////////////////////////////////////////////////////////////
 
-/// The hard upper bound (32) for max users comes from tarantool BOX_USER_MAX
+/// The hard upper bound (128) for max users comes from tarantool BOX_USER_MAX
 const MAX_USERS: usize = 128;
 
 /// A struct for accessing info of all the picodata users.
@@ -3237,6 +3242,8 @@ impl DbConfig {
             .if_not_exists(true)
             .create()?;
 
+        // FIXME: we do not need this index really
+        // because "key" field are covered under primary index.
         let secondary = space
             .index_builder("_pico_db_config_key")
             .unique(false)

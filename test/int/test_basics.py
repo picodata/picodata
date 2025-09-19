@@ -466,7 +466,9 @@ Insert(_pico_table, [{_pico_db_config},"_pico_db_config",{{"Global":null}},[{{"f
 Insert(_pico_index, [{_pico_db_config},0,"_pico_db_config_pk","tree",[{{"unique":true}}],[["key","string",null,false,null],["scope","string",null,false,null]],true,0]),
 Insert(_pico_index, [{_pico_db_config},1,"_pico_db_config_key","tree",[{{"unique":false}}],[["key","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_governor_queue},"_pico_governor_queue",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"id"}},{{"field_type":"string","is_nullable":false,"name":"batch_id"}},{{"field_type":"string","is_nullable":false,"name":"op"}},{{"field_type":"string","is_nullable":false,"name":"op_format"}},{{"field_type":"string","is_nullable":false,"name":"status"}},{{"field_type":"string","is_nullable":false,"name":"status_description"}},{{"field_type":"string","is_nullable":false,"name":"kind"}},{{"field_type":"string","is_nullable":false,"name":"description"}}],0,true,"memtx",1,"Stores governor operations."]),
-Insert(_pico_index, [{_pico_governor_queue},0,"_pico_governor_queue_pkey","tree",[{{"unique":true}}],[["id","unsigned",null,false,null]],true,0])
+Insert(_pico_index, [{_pico_governor_queue},0,"_pico_governor_queue_pkey","tree",[{{"unique":true}}],[["id","unsigned",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_user_audit_policy},"_pico_user_audit_policy",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"user_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"policy_id"}}],0,true,"memtx",1,"Represents many-to-many relationship between users and audit policies."]),
+Insert(_pico_index, [{_pico_user_audit_policy},0,"_pico_user_audit_policy_pkey","tree",[{{"unique":true}}],[["user_id","unsigned",null,false,null],["policy_id","unsigned",null,false,null]],true,0])
 )|
 |69|1|GrantPrivilege(2, 1, 2, table, Some(515), read)|
 |69|1|GrantPrivilege(3, 1, 2, table, Some(514), read)|
@@ -510,6 +512,7 @@ Update(_pico_tier, ["default"], [["=","target_vshard_config_version",2]])
         _pico_plugin_config=space_id("_pico_plugin_config"),
         _pico_db_config=space_id("_pico_db_config"),
         _pico_governor_queue=space_id("_pico_governor_queue"),
+        _pico_user_audit_policy=space_id("_pico_user_audit_policy"),
     )
     try:
         assert preprocess(raft_log) == preprocess(expected)

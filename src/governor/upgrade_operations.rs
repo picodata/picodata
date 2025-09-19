@@ -35,6 +35,7 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
         &[
             ("proc_name", "proc_backup_abort_clear"),
             ("proc_name", "proc_apply_backup"),
+            ("sql", "CREATE TABLE _pico_user_audit_policy (user_id UNSIGNED NOT NULL, policy_id UNSIGNED NOT NULL, PRIMARY KEY (user_id, policy_id)) DISTRIBUTED GLOBALLY"),
             ("proc_name", "proc_internal_script"),
             ("exec_script", "alter_pico_tier_add_is_default"),
             ("sql", "UPDATE _pico_tier SET is_default = true WHERE 1 in (SELECT count(*) FROM _pico_tier)"),

@@ -1,7 +1,7 @@
 use crate::config::PicodataConfig;
 use crate::info as pd_info;
 use crate::traft::node;
-use crate::traft::op::{Acl, Ddl, Dml, Op};
+use crate::traft::op::{Acl, Ddl, Op};
 use prometheus::{
     Gauge, GaugeVec, Histogram, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, Opts,
     TextEncoder,
@@ -301,22 +301,12 @@ pub fn get_op_type_and_table(op: &Op) -> Vec<(&str, String)> {
 
     match op {
         Op::Dml(dml) => {
-            let op_type = match dml {
-                Dml::Insert { .. } => "insert",
-                Dml::Replace { .. } => "replace",
-                Dml::Update { .. } => "update",
-                Dml::Delete { .. } => "delete",
-            };
+            let op_type = dml.kind().as_str();
             operations.push((op_type, dml.table_id().to_string()));
         }
         Op::BatchDml { ops } => {
             for dml in ops {
-                let op_type = match dml {
-                    Dml::Insert { .. } => "insert",
-                    Dml::Replace { .. } => "replace",
-                    Dml::Update { .. } => "update",
-                    Dml::Delete { .. } => "delete",
-                };
+                let op_type = dml.kind().as_str();
                 operations.push((op_type, dml.table_id().to_string()));
             }
         }
@@ -387,6 +377,9 @@ pub fn get_op_type_and_table(op: &Op) -> Vec<(&str, String)> {
             }
             Acl::RevokePrivilege { priv_def, .. } => {
                 operations.push(("acl_revoke_privilege", priv_def.object_type().to_string()));
+            }
+            Acl::AuditPolicy { user_id, .. } => {
+                operations.push(("acl_audit_policy", user_id.to_string()));
             }
         },
         _ => {

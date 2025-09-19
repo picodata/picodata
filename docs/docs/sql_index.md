@@ -45,6 +45,7 @@ article.md-typeset.md-typeset ul {
 * [ALTER SYSTEM](reference/sql/alter_system.md)
 * [ALTER TABLE](reference/sql/alter_table.md)
 * [ALTER USER](reference/sql/alter_user.md)
+* [AUDIT POLICY](reference/sql/audit_policy.md)
 * [AVG](reference/sql/aggregate.md#functions)
 
 <b>B</b>

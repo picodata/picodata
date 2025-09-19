@@ -26,6 +26,11 @@ with the `YY.MINOR.MICRO` scheme.
 - SQL supports scalar function `abs()`.
 - Multiple `OPTIONS` specified in an SQL query no longer result in an error.
   Instead, the rightmost option takes precedence.
+- SQL now supports the `AUDIT POLICY` operation to enable or disable audit logging of DML operations for specific users.
+  - Use cases:
+    - `AUDIT POLICY dml_default BY dbuser` - enables audit logging of DML operations for user "dbuser"
+    - `AUDIT POLICY dml_default EXCEPT dbuser` - disables audit logging of DML operations for user "dbuser"
+  - Currently, only one policy named `dml_default` is supported.
 - Maximum value for `Integer` and `Unsigned` type is ***9223372036854775807***.
 
 ### Fixes

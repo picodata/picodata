@@ -877,3 +877,52 @@ def test_acl_try_drop_system_table(cluster: Cluster):
         match=f"Drop access to table '{sys_table}' is denied for all users",
     ):
         i1.sql(f"DROP TABLE {sys_table}", sudo=True)
+
+
+def test_acl_audit_policy_statement(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2)
+
+    with pytest.raises(
+        TarantoolError,
+        match="user my_user does not exist",
+    ):
+        i1.sql("AUDIT POLICY dml_default BY my_user")
+
+    with pytest.raises(
+        TarantoolError,
+        match="the statement works for users only, not for roles",
+    ):
+        i1.sql("AUDIT POLICY dml_default BY public")
+
+    res = i1.sql("AUDIT POLICY dml_default BY pico_service OPTION (timeout = 3)")
+    assert res == {"row_count": 1}
+    cluster.raft_wait_index(i1.raft_get_index())
+
+    res = i2.sql("SELECT policy_id FROM _pico_user_audit_policy WHERE user_id = 32")
+    assert res == [[0]]
+
+    res = i1.sql("AUDIT POLICY dml_default BY pico_service")
+    assert res == {"row_count": 0}
+
+    res = i1.sql("AUDIT POLICY dml_default EXCEPT pico_service")
+    assert res == {"row_count": 1}
+    cluster.raft_wait_index(i1.raft_get_index())
+
+    res = i2.sql("SELECT policy_id FROM _pico_user_audit_policy WHERE user_id = 32")
+    assert res == []
+
+    user = "test_user"
+    password = "P@ssw0rd"
+    res = i1.sql(f"CREATE USER {user} WITH PASSWORD '{password}' USING chap-sha1")
+    assert res == {"row_count": 1}
+    cluster.raft_wait_index(i1.raft_get_index())
+
+    res = i1.sql(f"AUDIT POLICY dml_default BY {user}")
+    assert res == {"row_count": 1}
+    cluster.raft_wait_index(i1.raft_get_index())
+
+    with pytest.raises(
+        TarantoolError,
+        match="Audit policy access is denied for user 'test_user'",
+    ):
+        i1.sql(f"AUDIT POLICY dml_default EXCEPT {user}", user=user, password=password)

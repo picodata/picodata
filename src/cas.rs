@@ -387,12 +387,12 @@ fn proc_cas_v2_local(req: &Request) -> Result<Response> {
 
     match &req.op {
         Op::Dml(dml) => {
-            check_table_operable(storage, dml.space())?;
+            check_table_operable(storage, dml.table_id())?;
             check_dml_prohibited(storage, dml)?;
         }
         Op::BatchDml { ops: dmls } => {
             for dml in dmls {
-                check_table_operable(storage, dml.space())?;
+                check_table_operable(storage, dml.table_id())?;
                 check_dml_prohibited(storage, dml)?;
             }
         }
@@ -777,14 +777,16 @@ pub fn check_predicate(
                 // TODO: remove O(n*n) complexity,
                 // use a hashtable for dml/range lookup?
                 for dml in ops {
-                    if dml.space() == range.table {
-                        check_dml(dml, dml.space(), range)?;
+                    let table_id = dml.table_id();
+                    if table_id == range.table {
+                        check_dml(dml, table_id, range)?;
                     }
                 }
             }
             Op::Dml(dml) => {
-                if dml.space() == range.table {
-                    check_dml(dml, dml.space(), range)?
+                let table_id = dml.table_id();
+                if table_id == range.table {
+                    check_dml(dml, table_id, range)?
                 }
             }
             Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort { .. } | Op::Acl { .. } => {

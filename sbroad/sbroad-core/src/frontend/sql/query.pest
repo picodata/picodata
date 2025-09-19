@@ -33,7 +33,7 @@ Plugin = _{ CreatePlugin | DropPlugin | AlterPlugin }
             ConfigKVs = _{ ConfigKV ~ (WO ~ "," ~ WO ~ ConfigKV)* }
             ConfigKV = { Identifier ~ ^"." ~ Identifier ~ WO ~ "=" ~ WO ~ SingleQuotedString }
 
-ACL = _{ DropRole | DropUser | CreateRole | CreateUser | AlterUser | GrantPrivilege | RevokePrivilege }
+ACL = _{ DropRole | DropUser | CreateRole | CreateUser | AlterUser | GrantPrivilege | RevokePrivilege | AuditPolicy }
     CreateUser = ${
         ^"create" ~ W ~ ^"user" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ W ~
         (
@@ -81,6 +81,10 @@ ACL = _{ DropRole | DropUser | CreateRole | CreateUser | AlterUser | GrantPrivil
             PrivilegeSession = { ^"session" }
             PrivilegeUsage = { ^"usage" }
             PrivilegeWrite = { ^"write" }
+    AuditPolicy = ${ ^"audit" ~ W ~ ^"policy" ~ W ~ Identifier ~ W ~ AuditPolicyOption ~ (W ~ TimeoutOption)? }
+        AuditPolicyOption = _{ AuditPolicyOptionOn | AuditPolicyOptionOff }
+            AuditPolicyOptionOn = { ^"by" ~ W ~ Identifier }
+            AuditPolicyOptionOff = { ^"except" ~ W ~ Identifier }
 
 DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable | CreateIndex | DropIndex | CreateSchema | DropSchema
          | CreateProc | DropProc | RenameProc | SetParam | SetTransaction | AlterSystem

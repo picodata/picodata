@@ -22,7 +22,7 @@ use super::{
     types::{CastType, DerivedType},
 };
 use crate::ir::{
-    acl::{AlterOption, GrantRevokeType},
+    acl::{AlterOption, AuditPolicyOption, GrantRevokeType},
     ddl::{ColumnDef, Language, ParamDef, SetParamScopeType, SetParamValue},
     distribution::Distribution,
     helpers::RepeatableState,
@@ -943,6 +943,19 @@ impl From<RevokePrivilege> for NodeAligned {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct AuditPolicy {
+    pub policy_name: SmolStr,
+    pub audit_option: AuditPolicyOption,
+    pub timeout: Decimal,
+}
+
+impl From<AuditPolicy> for NodeAligned {
+    fn from(value: AuditPolicy) -> Self {
+        Self::Node96(Node96::AuditPolicy(value))
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct CreateTable {
     pub name: SmolStr,
     pub format: Vec<ColumnDef>,
@@ -1446,6 +1459,7 @@ pub enum Node96 {
     EnablePlugin(EnablePlugin),
     DisablePlugin(DisablePlugin),
     DropPlugin(DropPlugin),
+    AuditPolicy(AuditPolicy),
 }
 
 impl Node96 {
@@ -1463,6 +1477,9 @@ impl Node96 {
             Node96::CreatePlugin(create) => NodeOwned::Plugin(PluginOwned::Create(create)),
             Node96::EnablePlugin(enable) => NodeOwned::Plugin(PluginOwned::Enable(enable)),
             Node96::DisablePlugin(disable) => NodeOwned::Plugin(PluginOwned::Disable(disable)),
+            Node96::AuditPolicy(audit_policy) => {
+                NodeOwned::Acl(AclOwned::AuditPolicy(audit_policy))
+            }
         }
     }
 }

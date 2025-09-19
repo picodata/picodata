@@ -1010,8 +1010,10 @@ fn bootstrap_storage_on_master() -> Result<(Catalog, RaftSpaceAccess)> {
     let system_catalog_version = storage::LATEST_SYSTEM_CATALOG_VERSION;
     tlog!(Info, "system catalog version: {system_catalog_version}");
 
-    // Create `_pico_governor_queue` space
+    // Create `_pico_governor_queue` space.
     storage.governor_queue.create_space()?;
+    // Create `_pico_user_audit_policy` space.
+    storage.users_audit_policies.create_space()?;
 
     Ok((storage.clone(), raft_storage))
 }

@@ -329,12 +329,12 @@ audit_keyspaces: "mykespace"
 Используем синтаксис Oracle со следующими ограничениями:
 
 - policy создавать/изменять/удалять не позволяем
-- policy будет одна, она захардкожена в коде (`all_dml_policy`), позволяет аудировать
+- policy будет одна, она захардкожена в коде (`dml_default`), позволяет аудировать
   все DML операции на все таблицы
 - поддерживаем синтаксис включения на юзеров:
-  `AUDIT POLICY all_dml_policy BY user1, user2;`
+  `AUDIT POLICY dml_default BY user1;`
 - поддерживаем синтаксис выключения на юзеров:
-  `AUDIT POLICY all_dml_policy EXCEPT user1, user2;`
+  `AUDIT POLICY dml_default EXCEPT user1;`
 - не поддерживаем (пока) синтаксис включения/выключения на роли юзеров
 
 Работа с аудитом DML:

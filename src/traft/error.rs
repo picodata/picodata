@@ -63,6 +63,8 @@ pub enum DoesNotExist {
     User(SmolStr),
     #[error("role {0} does not exist")]
     Role(SmolStr),
+    #[error("audit policy {0} does not exist")]
+    AuditPolicy(SmolStr),
 }
 
 #[derive(Debug, Error)]

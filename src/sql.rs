@@ -2,6 +2,7 @@
 
 use crate::access_control::access_check_plugin_system;
 use crate::access_control::{validate_password, UserMetadataKind};
+use crate::audit;
 use crate::cas::Predicate;
 use crate::catalog::governor_queue;
 use crate::column_name;
@@ -37,7 +38,7 @@ use sbroad::executor::engine::Router;
 use sbroad::executor::protocol::{EncodedRequiredData, RequiredData};
 use sbroad::executor::result::{ConsumerResult, MetadataColumn, ProducerResult};
 use sbroad::executor::ExecutingQuery;
-use sbroad::ir::acl::{AlterOption, GrantRevokeType, Privilege as SqlPrivilege};
+use sbroad::ir::acl::{AlterOption, AuditPolicyOption, GrantRevokeType, Privilege as SqlPrivilege};
 use sbroad::ir::ddl::{AlterSystemType, ParamDef};
 use sbroad::ir::node::acl::AclOwned;
 use sbroad::ir::node::block::Block;
@@ -45,10 +46,10 @@ use sbroad::ir::node::ddl::{Ddl, DdlOwned};
 use sbroad::ir::node::expression::ExprOwned;
 use sbroad::ir::node::relational::Relational;
 use sbroad::ir::node::{
-    AlterColumn, AlterSystem, AlterTableOp, AlterUser, Constant, CreateIndex, CreateProc,
-    CreateRole, CreateTable, CreateUser, Delete, DropIndex, DropProc, DropRole, DropTable,
-    DropUser, GrantPrivilege, Insert, Node as IrNode, NodeOwned, Procedure, RenameRoutine,
-    RevokePrivilege, ScanRelation, SetParam, Update,
+    AlterColumn, AlterSystem, AlterTableOp, AlterUser, AuditPolicy, Constant, CreateIndex,
+    CreateProc, CreateRole, CreateTable, CreateUser, Delete, DropIndex, DropProc, DropRole,
+    DropTable, DropUser, GrantPrivilege, Insert, Node as IrNode, NodeOwned, Procedure,
+    RenameRoutine, RevokePrivilege, ScanRelation, SetParam, Update,
 };
 use sbroad::ir::node::{NodeId, TruncateTable};
 use std::cmp::max;
@@ -478,8 +479,13 @@ fn dispatch_bound_statement_impl(
                     }
                     params.push(value);
                 }
+
                 let bound_statement =
                     BoundStatement::parse_and_bind(runtime, &pattern, params, options)?;
+                if bound_statement.params_for_audit().is_some() {
+                    audit::policy::log_dml_for_user(&pattern, bound_statement.params_for_audit());
+                }
+
                 dispatch_bound_statement_impl(runtime, bound_statement, override_deadline, None)
             }
         }
@@ -660,6 +666,9 @@ pub fn parse_and_dispatch(
         params,
         DYNAMIC_CONFIG.current_sql_options(),
     )?;
+    if bound_statement.params_for_audit().is_some() {
+        audit::policy::log_dml_for_user(query_text, bound_statement.params_for_audit());
+    }
 
     dispatch_bound_statement(&router, bound_statement, override_deadline, governor_op_id)
 }
@@ -1206,6 +1215,39 @@ fn acl_ir_node_to_op_or_result(
                 )
                 .map_err(Error::other)?,
                 initiator: current_user,
+            })))
+        }
+        AclOwned::AuditPolicy(AuditPolicy {
+            policy_name,
+            audit_option,
+            ..
+        }) => {
+            let Some(policy_id) = audit::policy::get_audit_policy_id_by_name(policy_name) else {
+                return Err(error::DoesNotExist::AuditPolicy(policy_name.clone()).into());
+            };
+            let (user_name, enable) = match audit_option {
+                AuditPolicyOption::On { user_name } => (user_name, true),
+                AuditPolicyOption::Off { user_name } => (user_name, false),
+            };
+            let Some(user_def) = storage.users.by_name(user_name)? else {
+                return Err(error::DoesNotExist::User(user_name.clone()).into());
+            };
+            if user_def.is_role() {
+                return Err(Error::Other(
+                    "the statement works for users only, not for roles".into(),
+                ));
+            }
+            let user_audit_policy = storage.users_audit_policies.get(user_def.id, policy_id)?;
+            if user_audit_policy.is_some() == enable {
+                // No op needed.
+                return Ok(Break(ConsumerResult { row_count: 0 }));
+            }
+            Ok(Continue(Op::Acl(OpAcl::AuditPolicy {
+                user_id: user_def.id,
+                policy_id,
+                enable,
+                initiator: current_user,
+                schema_version,
             })))
         }
     }

@@ -4,8 +4,8 @@ use smol_str::{format_smolstr, ToSmolStr};
 use crate::errors::{Entity, SbroadError};
 
 use super::{
-    AlterUser, CreateRole, CreateUser, DropRole, DropUser, GrantPrivilege, NodeAligned,
-    RevokePrivilege,
+    AlterUser, AuditPolicy, CreateRole, CreateUser, DropRole, DropUser, GrantPrivilege,
+    NodeAligned, RevokePrivilege,
 };
 
 #[allow(clippy::module_name_repetitions)]
@@ -18,6 +18,7 @@ pub enum AclOwned {
     AlterUser(AlterUser),
     GrantPrivilege(GrantPrivilege),
     RevokePrivilege(RevokePrivilege),
+    AuditPolicy(AuditPolicy),
 }
 
 impl AclOwned {
@@ -33,7 +34,8 @@ impl AclOwned {
             | AclOwned::AlterUser(AlterUser { ref timeout, .. })
             | AclOwned::CreateUser(CreateUser { ref timeout, .. })
             | AclOwned::RevokePrivilege(RevokePrivilege { ref timeout, .. })
-            | AclOwned::GrantPrivilege(GrantPrivilege { ref timeout, .. }) => timeout,
+            | AclOwned::GrantPrivilege(GrantPrivilege { ref timeout, .. })
+            | AclOwned::AuditPolicy(AuditPolicy { ref timeout, .. }) => timeout,
         }
         .to_smolstr()
         .parse()
@@ -56,6 +58,7 @@ impl From<AclOwned> for NodeAligned {
             AclOwned::DropUser(drop_user) => drop_user.into(),
             AclOwned::GrantPrivilege(grant_privilege) => grant_privilege.into(),
             AclOwned::RevokePrivilege(revoke_privilege) => revoke_privilege.into(),
+            AclOwned::AuditPolicy(audit_policy) => audit_policy.into(),
         }
     }
 }
@@ -70,6 +73,7 @@ pub enum MutAcl<'a> {
     AlterUser(&'a mut AlterUser),
     GrantPrivilege(&'a mut GrantPrivilege),
     RevokePrivilege(&'a mut RevokePrivilege),
+    AuditPolicy(&'a mut AuditPolicy),
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -82,6 +86,7 @@ pub enum Acl<'a> {
     AlterUser(&'a AlterUser),
     GrantPrivilege(&'a GrantPrivilege),
     RevokePrivilege(&'a RevokePrivilege),
+    AuditPolicy(&'a AuditPolicy),
 }
 
 impl Acl<'_> {
@@ -97,7 +102,8 @@ impl Acl<'_> {
             | Acl::AlterUser(AlterUser { ref timeout, .. })
             | Acl::CreateUser(CreateUser { ref timeout, .. })
             | Acl::RevokePrivilege(RevokePrivilege { ref timeout, .. })
-            | Acl::GrantPrivilege(GrantPrivilege { ref timeout, .. }) => timeout,
+            | Acl::GrantPrivilege(GrantPrivilege { ref timeout, .. })
+            | Acl::AuditPolicy(AuditPolicy { ref timeout, .. }) => timeout,
         }
         .to_smolstr()
         .parse()
@@ -123,6 +129,7 @@ impl Acl<'_> {
             Acl::RevokePrivilege(revoke_privelege) => {
                 AclOwned::RevokePrivilege((*revoke_privelege).clone())
             }
+            Acl::AuditPolicy(audit_policy) => AclOwned::AuditPolicy((*audit_policy).clone()),
         }
     }
 }

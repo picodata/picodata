@@ -29,6 +29,7 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use crate::audit;
 use crate::schema::{Distribution, ShardingFn, ADMIN_ID};
 use crate::storage::{self, Catalog};
 
@@ -169,10 +170,13 @@ pub fn get_table_version_by_id(id: SpaceId) -> Result<u64, SbroadError> {
     }
 }
 
+type IsAuditEnabledFunc = fn(&Plan) -> Result<bool, SbroadError>;
+
 #[allow(clippy::module_name_repetitions)]
 pub struct RouterRuntime {
     metadata: Mutex<RouterMetadata>,
     ir_cache: Rc<Mutex<PicoRouterCache>>,
+    is_audit_enabled_func: IsAuditEnabledFunc,
 }
 
 impl RouterRuntime {
@@ -186,6 +190,7 @@ impl RouterRuntime {
         let runtime = PLAN_CACHE.with(|cache| RouterRuntime {
             metadata: Mutex::new(metadata),
             ir_cache: cache.clone(),
+            is_audit_enabled_func: audit::policy::is_dml_audit_enabled_for_user,
         });
         runtime
     }
@@ -369,6 +374,10 @@ impl Router for RouterRuntime {
         values_id: NodeId,
     ) -> Result<VirtualTable, SbroadError> {
         materialize_values(self, exec_plan, values_id)
+    }
+
+    fn is_audit_enabled(&self, plan: &Plan) -> Result<bool, SbroadError> {
+        (self.is_audit_enabled_func)(plan)
     }
 }
 

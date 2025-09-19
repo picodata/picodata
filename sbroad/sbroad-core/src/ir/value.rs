@@ -250,6 +250,21 @@ impl Encode for Value {
     }
 }
 
+pub struct DisplayValues<'a>(pub &'a [Value]);
+impl Display for DisplayValues<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[")?;
+        let mut iter = self.0.iter();
+        if let Some(first) = iter.next() {
+            write!(f, "{first}")?;
+            for item in iter {
+                write!(f, ",{item}")?;
+            }
+        }
+        write!(f, "]")
+    }
+}
+
 /// Custom Ordering using Trivalent instead of simple Equal.
 /// We cannot even derive `PartialOrd` for Values because of Doubles.
 #[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]

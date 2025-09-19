@@ -64,7 +64,7 @@
 - [x] изменение конфигурации СУБД;
      * (join_instance, expel_instance)
 
-- [x] создание и удаление таблицы
+- [x] создание и удаление таблицы;
      * (create_table, drop_table)
 
 - [x] изменение правил разграничения доступа в СУБД;
@@ -79,8 +79,14 @@
 - [x] факты нарушения целостности объектов контроля;
      * (integrity_violation)
 
-- [x] создание и изменение процедур (программного кода), хранимых в БД, и представлений.
+- [x] создание и изменение хранимых в БД процедур (программного кода), а также представлений;
      * (create_procedure, drop_procedure, rename_procedure)
+
+- [x] вставка/обновление/удаление строк в таблице (DML-операции);
+     * (dml)
+
+- [x] изменение настроек записи журнала аудита для пользователя.
+     * (audit_policy)
 -->
 
 ### access_denied
@@ -105,6 +111,19 @@ new field: user == initiator
      "object_type": ...,
      "object": ...,
      ...
+}
+```
+
+### audit_policy
+
+Изменение настроек записи в журнал аудита для пользователя.
+
+```json
+{
+     "title": "audit_policy",
+     "message": "audit policy `dml_default` for user `<user>` was turned on",
+     "severity": "high",
+     ...,
 }
 ```
 
@@ -290,6 +309,21 @@ start_boot/start_join -> create_local_db + connect_local_db
      ...
 }
 ```
+
+
+### dml
+
+DML-операции — вставка/обновление/удаление строк в таблице.
+
+```json
+{
+     "title": "dml",
+     "message": "apply `<sql_statement>`",
+     "severity": "medium",
+}
+```
+
+`sql_statement` - это SQL-выражение операции `INSERT`/`UPDATE`/`DELETE`.
 
 ### drop_local_db
 

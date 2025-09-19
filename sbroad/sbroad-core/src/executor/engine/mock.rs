@@ -1781,6 +1781,10 @@ impl Router for RouterRuntimeMock {
     ) -> Result<Self::VshardImplementor, SbroadError> {
         Ok(self.clone())
     }
+
+    fn is_audit_enabled(&self, _plan: &Plan) -> Result<bool, SbroadError> {
+        Ok(false)
+    }
 }
 
 fn exec_on_some(bucket: u64, query: &str) -> ProducerResult {

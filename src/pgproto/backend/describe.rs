@@ -200,7 +200,7 @@ impl TryFrom<&Node<'_>> for CommandTag {
             Node::Acl(acl) => match acl {
                 Acl::DropRole { .. } | Acl::DropUser { .. } => Ok(CommandTag::DropRole),
                 Acl::CreateRole { .. } | Acl::CreateUser { .. } => Ok(CommandTag::CreateRole),
-                Acl::AlterUser { .. } => Ok(CommandTag::AlterRole),
+                Acl::AlterUser { .. } | Acl::AuditPolicy { .. } => Ok(CommandTag::AlterRole),
                 Acl::GrantPrivilege(GrantPrivilege { grant_type, .. }) => match grant_type {
                     GrantRevokeType::RolePass { .. } => Ok(CommandTag::GrantRole),
                     _ => Ok(CommandTag::Grant),

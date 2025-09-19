@@ -157,6 +157,7 @@ impl Nodes {
                 Node96::EnablePlugin(enable) => Node::Plugin(Plugin::Enable(enable)),
                 Node96::DisablePlugin(disable) => Node::Plugin(Plugin::Disable(disable)),
                 Node96::DropPlugin(drop) => Node::Plugin(Plugin::Drop(drop)),
+                Node96::AuditPolicy(audit_policy) => Node::Acl(Acl::AuditPolicy(audit_policy)),
             }),
             ArenaType::Arena136 => self
                 .arena136
@@ -322,6 +323,9 @@ impl Nodes {
                     Node96::EnablePlugin(enable) => MutNode::Plugin(MutPlugin::Enable(enable)),
                     Node96::DisablePlugin(disable) => MutNode::Plugin(MutPlugin::Disable(disable)),
                     Node96::DropPlugin(drop) => MutNode::Plugin(MutPlugin::Drop(drop)),
+                    Node96::AuditPolicy(audit_policy) => {
+                        MutNode::Acl(MutAcl::AuditPolicy(audit_policy))
+                    }
                 }),
             ArenaType::Arena136 => {
                 self.arena136
@@ -1184,6 +1188,18 @@ impl Plan {
             return Ok(false);
         }
         Ok(self.dml_node_table(top_id)?.is_global())
+    }
+
+    /// Checks that plan is a dml query.
+    ///
+    /// # Errors
+    /// - top node doesn't exist in the plan or is invalid.
+    pub fn is_dml(&self) -> Result<bool, SbroadError> {
+        if !self.is_dql_or_dml()? {
+            return Ok(false);
+        }
+        let top_id = self.get_top()?;
+        Ok(self.get_relation_node(top_id)?.is_dml())
     }
 
     /// Checks that plan is DDL query

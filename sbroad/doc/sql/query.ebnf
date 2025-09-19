@@ -133,7 +133,7 @@ insert      ::= 'INSERT' 'INTO' table ('(' column (',' column)* ')')? dql
 update      ::= 'UPDATE' table 'SET'
                 column '=' expression (',' column '=' expression)*
                 ('FROM' scan)? ('WHERE' expression)?
-acl         ::= (alter_user | create_role | create_user | drop_role | drop_user | grant | revoke)
+acl         ::= (alter_user | create_role | create_user | drop_role | drop_user | grant | revoke | audit_policy)
                 ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 revoke      ::= 'REVOKE' (
                     (('CREATE' | 'ALTER' | 'DROP') 'USER')
@@ -276,6 +276,7 @@ alter_plugin  ::= 'ALTER' 'PLUGIN' plugin (
                             (',' (('TIMEOUT' | 'ROLLBACK_TIMEOUT') '=' double))*')'
                           )?
                    )
+audit_policy     ::= 'AUDIT' 'POLICY' policy ('BY' | 'EXCEPT') user
 
 unrestricted_type ::= 'BOOL'
                     | 'BOOLEAN'

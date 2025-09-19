@@ -438,6 +438,12 @@ pub trait Router: QueryCache {
         exec_plan: &mut ExecutionPlan,
         values_id: NodeId,
     ) -> Result<VirtualTable, SbroadError>;
+
+    /// Determines whether audit logging should be performed for the given query plan.
+    ///
+    /// This function evaluates the query plan against configured audit policies
+    /// of current user to decide if the operation requires audit trail generation.
+    fn is_audit_enabled(&self, plan: &crate::ir::Plan) -> Result<bool, SbroadError>;
 }
 
 pub trait Vshard {

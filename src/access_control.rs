@@ -222,7 +222,7 @@ fn box_access_check_ddl_as_user(
 }
 
 fn access_check_dml(storage: &Catalog, dml: &Dml, as_user: UserId) -> tarantool::Result<()> {
-    let space_id = dml.space();
+    let space_id = dml.table_id();
     if space_id <= SPACE_ID_INTERNAL_MAX && !is_superuser(as_user) {
         let table_name = storage
             .pico_table
@@ -665,6 +665,19 @@ fn access_check_acl(storage: &Catalog, acl: &op::Acl, as_user: UserId) -> tarant
                 PrivType::Alter,
                 as_user,
             )
+        }
+        op::Acl::AuditPolicy { user_id, .. } => {
+            let sys_user = user_by_id(*user_id)?;
+            assert_eq!(sys_user.id, *user_id, "user metadata id mismatch");
+            if !is_superuser(as_user) {
+                let as_user_name = &user_by_id(as_user)?.name;
+                return Err(BoxError::new(
+                    AccessDenied,
+                    format!("Audit policy access is denied for user '{as_user_name}'"),
+                )
+                .into());
+            }
+            Ok(())
         }
         op::Acl::DropUser { user_id, .. } => {
             let Some(sys_user) = user_by_id_if_exists(*user_id)? else {
@@ -1284,6 +1297,39 @@ mod tests {
                     schema_version: 0,
                 },
                 actor_user_id,
+            )
+            .unwrap();
+        }
+
+        // audit policy
+        {
+            let e = access_check_acl(
+                &storage,
+                &Acl::AuditPolicy {
+                    enable: true,
+                    user_id: user_under_test_id,
+                    policy_id: 0,
+                    initiator: actor_user_id,
+                    schema_version: 0,
+                },
+                actor_user_id,
+            )
+            .unwrap_err();
+            assert_eq!(
+                e.to_string(),
+                format!("box error: AccessDenied: Audit policy access is denied for user '{actor_user_name}'"),
+            );
+
+            access_check_acl(
+                &storage,
+                &Acl::AuditPolicy {
+                    enable: true,
+                    user_id: user_under_test_id,
+                    policy_id: 0,
+                    initiator: ADMIN_ID,
+                    schema_version: 0,
+                },
+                ADMIN_ID,
             )
             .unwrap();
         }

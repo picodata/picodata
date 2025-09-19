@@ -163,6 +163,7 @@ pub fn system_table_definitions() -> Vec<(TableDef, Vec<IndexDef>)> {
     }
 
     use crate::catalog::governor_queue::GovernorQueue;
+    use crate::catalog::user_audit_policy::PicoUserAuditPolicy;
     use crate::storage::*;
     push_definitions!(
         result,
@@ -182,7 +183,8 @@ pub fn system_table_definitions() -> Vec<(TableDef, Vec<IndexDef>)> {
         PluginMigrations,
         PluginConfig,
         DbConfig,
-        GovernorQueue
+        GovernorQueue,
+        PicoUserAuditPolicy
     );
 
     // TODO: there's also "_raft_log" & "_raft_state" spaces, but we don't treat

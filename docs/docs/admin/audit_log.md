@@ -14,6 +14,7 @@
 
 - [Журнал аудита в защищенной ОС](../security/audit_log.md)
 - [Регистрируемые события безопасности](../reference/audit_events.md)
+- [Команда AUDIT POLICY](../reference/sql/audit_policy.md)
 
 ## Способы ведения журнала {: #audit_log_config }
 
@@ -191,6 +192,17 @@ journalctl -f | grep tarantool
 ```bash
 journalctl -f | grep AUDIT
 ```
+
+## Включение журнала для DML-операций {: #enable_dml_audit_log }
+
+По умолчанию, DML-операции (INSERT/UPDATE/DELETE) не записываются в журнал аудита.
+Эту функциональность можно включить через SQL-запрос для конкретных пользователей.
+См. [AUDIT POLICY](../reference/sql/audit_policy.md).
+
+!!! note "Примечание" 
+    Включение журнала для DML-операций влияет на
+    производительность системы (на число выполняемых запросов в единицу времени).
+    Согласно данным бенчмарка `pgbench`, снижение составляет ~5%.
 
 ## Оповещения о событиях безопасности {: #notifications }
 

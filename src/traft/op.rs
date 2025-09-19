@@ -1,3 +1,4 @@
+use crate::audit::policy::AuditPolicyId;
 use crate::plugin::PluginIdentifier;
 use crate::schema::{
     Distribution, IndexDef, IndexOption, PrivilegeDef, RoutineLanguage, RoutineParams,
@@ -303,6 +304,18 @@ impl std::fmt::Display for Op {
                     object_type = priv_def.object_type(),
                     privilege = priv_def.privilege(), )
             }
+            Self::Acl(Acl::AuditPolicy {
+                user_id,
+                policy_id,
+                enable,
+                schema_version,
+                initiator,
+            }) => {
+                write!(
+                    f,
+                    "AuditPolicy({schema_version}, {user_id}, {policy_id}, {enable}, {initiator})"
+                )
+            }
             Self::Plugin(PluginRaftOp::DisablePlugin { ident, cause }) => {
                 #[rustfmt::skip]
                 write!(f, "DisablePlugin({ident}{})", DisplayCause(cause))?;
@@ -534,21 +547,33 @@ pub enum Dml {
 }
 
 impl Dml {
+    #[inline(always)]
     pub fn table_id(&self) -> SpaceId {
-        match *self {
-            Dml::Insert { table, .. } => table,
-            Dml::Replace { table, .. } => table,
-            Dml::Update { table, .. } => table,
-            Dml::Delete { table, .. } => table,
+        match self {
+            Dml::Insert { table, .. } => *table,
+            Dml::Replace { table, .. } => *table,
+            Dml::Update { table, .. } => *table,
+            Dml::Delete { table, .. } => *table,
         }
     }
 
+    #[inline(always)]
     pub fn initiator(&self) -> UserId {
         match self {
             Dml::Insert { initiator, .. } => *initiator,
             Dml::Replace { initiator, .. } => *initiator,
             Dml::Update { initiator, .. } => *initiator,
             Dml::Delete { initiator, .. } => *initiator,
+        }
+    }
+
+    #[inline(always)]
+    pub fn kind(&self) -> DmlKind {
+        match self {
+            Dml::Insert { .. } => DmlKind::Insert,
+            Dml::Replace { .. } => DmlKind::Replace,
+            Dml::Update { .. } => DmlKind::Update,
+            Dml::Delete { .. } => DmlKind::Delete,
         }
     }
 }
@@ -661,16 +686,6 @@ impl Dml {
             initiator,
         };
         Ok(res)
-    }
-
-    #[rustfmt::skip]
-    pub fn space(&self) -> SpaceId {
-        match self {
-            Self::Insert { table, .. } => *table,
-            Self::Replace { table, .. } => *table,
-            Self::Update { table, .. } => *table,
-            Self::Delete { table, .. } => *table,
-        }
     }
 
     /// Parse lua arguments to an api function such as `pico.cas`.
@@ -1066,6 +1081,15 @@ pub enum Acl {
         priv_def: PrivilegeDef,
         initiator: UserId,
     },
+
+    /// Enable/disable audit logging for an user.
+    AuditPolicy {
+        user_id: UserId,
+        policy_id: AuditPolicyId,
+        enable: bool,
+        initiator: UserId,
+        schema_version: u64,
+    },
 }
 
 impl Acl {
@@ -1079,6 +1103,7 @@ impl Acl {
             Self::DropRole { schema_version, .. } => *schema_version,
             Self::GrantPrivilege { priv_def } => priv_def.schema_version(),
             Self::RevokePrivilege { priv_def, .. } => priv_def.schema_version(),
+            Self::AuditPolicy { schema_version, .. } => *schema_version,
         }
     }
 

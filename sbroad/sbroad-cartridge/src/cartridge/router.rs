@@ -308,6 +308,10 @@ impl Router for RouterRuntime {
     ) -> Result<Self::VshardImplementor, SbroadError> {
         SingleTier::new(self.metadata.lock().waiting_timeout())
     }
+
+    fn is_audit_enabled(&self, _plan: &Plan) -> Result<bool, SbroadError> {
+        Ok(false)
+    }
 }
 
 impl RouterRuntime {

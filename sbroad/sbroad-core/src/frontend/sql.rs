@@ -37,7 +37,7 @@ use crate::frontend::sql::ast::{
 use crate::frontend::sql::ir::SubtreeCloner;
 use crate::frontend::sql::ir::Translation;
 use crate::frontend::Ast;
-use crate::ir::acl::AlterOption;
+use crate::ir::acl::{AlterOption, AuditPolicyOption};
 use crate::ir::acl::{GrantRevokeType, Privilege};
 use crate::ir::aggregates::AggregateKind;
 use crate::ir::ddl::{AlterSystemType, ColumnDef, SetParamScopeType, SetParamValue};
@@ -55,10 +55,10 @@ use crate::ir::node::plugin::{
 };
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
-    AlterSystem, AlterUser, BoolExpr, Constant, CountAsterisk, CreateIndex, CreateProc, CreateRole,
-    CreateTable, CreateUser, DropIndex, DropProc, DropRole, DropTable, DropUser, GrantPrivilege,
-    Node, NodeId, Procedure, RenameRoutine, RevokePrivilege, ScanCte, ScanRelation, SetParam,
-    SetTransaction, Trim,
+    AlterSystem, AlterUser, AuditPolicy, BoolExpr, Constant, CountAsterisk, CreateIndex,
+    CreateProc, CreateRole, CreateTable, CreateUser, DropIndex, DropProc, DropRole, DropTable,
+    DropUser, GrantPrivilege, Node, NodeId, Procedure, RenameRoutine, RevokePrivilege, ScanCte,
+    ScanRelation, SetParam, SetTransaction, Trim,
 };
 use crate::ir::operator::{
     Arithmetic, Bool, ConflictStrategy, JoinKind, OrderByElement, OrderByEntity, OrderByType, Unary,
@@ -2143,6 +2143,60 @@ fn parse_param<M: Metadata>(
     let ty = param_types.get((index - 1) as usize);
     let ty = ty.cloned().unwrap_or(DerivedType::unknown());
     Ok(plan.add_param(index.try_into().expect("invalid parameter idnex"), ty))
+}
+
+fn parse_audit_policy(
+    ast: &AbstractSyntaxTree,
+    node: &ParseNode,
+) -> Result<AuditPolicy, SbroadError> {
+    let policy_name_node_id = node
+        .children
+        .first()
+        .expect("PolicyName expected as first child");
+    let policy_name = parse_identifier(ast, *policy_name_node_id)?;
+
+    let option_node_id = node
+        .children
+        .get(1)
+        .expect("AuditPolicyOption expected as second child");
+    let option_node = ast.nodes.get_node(*option_node_id)?;
+    let audit_option = match option_node.rule {
+        Rule::AuditPolicyOptionOn => {
+            let user_name_node_id = option_node
+                .children
+                .first()
+                .expect("UserName expected as first child");
+            let user_name = parse_identifier(ast, *user_name_node_id)?;
+            AuditPolicyOption::On { user_name }
+        }
+        Rule::AuditPolicyOptionOff => {
+            let user_name_node_id = option_node
+                .children
+                .first()
+                .expect("UserName expected as first child");
+            let user_name = parse_identifier(ast, *user_name_node_id)?;
+            AuditPolicyOption::Off { user_name }
+        }
+        _ => {
+            return Err(SbroadError::Invalid(
+                Entity::ParseNode,
+                Some(SmolStr::from(
+                    "Expected to see concrete audit policy option",
+                )),
+            ))
+        }
+    };
+
+    let mut timeout = get_default_timeout();
+    if let Some(timeout_node_id) = node.children.get(2) {
+        timeout = get_timeout(ast, *timeout_node_id)?;
+    }
+
+    Ok(AuditPolicy {
+        policy_name,
+        audit_option,
+        timeout,
+    })
 }
 
 // Helper structure used to resolve expression operators priority.
@@ -6588,6 +6642,11 @@ impl AbstractSyntaxTree {
                 Rule::Rollback => {
                     let rollback = Tcl::Rollback;
                     let plan_id = plan.nodes.push(rollback.into());
+                    map.add(id, plan_id);
+                }
+                Rule::AuditPolicy => {
+                    let audit_policy = parse_audit_policy(self, node)?;
+                    let plan_id = plan.nodes.push(audit_policy.into());
                     map.add(id, plan_id);
                 }
                 _ => {}

@@ -16,7 +16,7 @@ cargo build --release
 Run picodata with the `-i` for interactive mode:
 
 ```bash
-./target/release/picodata -i
+./target/release/picodata run -i
 ```
 
 #### 2. **Create a Test User**
@@ -25,6 +25,7 @@ Next, create a test user for the benchmark from interactive console by running
 the following SQL commands:
 
 ```sql
+\set language sql
 CREATE USER postgres WITH PASSWORD 'Passw0rd';
 GRANT CREATE TABLE TO postgres;
 GRANT READ TABLE TO postgres;

@@ -2,6 +2,8 @@ import signal
 import pytest
 import json
 import os
+import pg8000.dbapi as pg  # type: ignore
+import psycopg
 
 from typing import Generator
 
@@ -752,3 +754,159 @@ def test_rename_user(instance_with_audit_file: Instance):
     assert rename_user["severity"] == "high"
     assert rename_user["old_name"] == "ymir"
     assert rename_user["new_name"] == "TOM"
+
+
+@pytest.mark.parametrize(
+    "table_type",
+    [("global"), ("sharded")],
+)
+@pytest.mark.parametrize(
+    "protocol_type",
+    [("pgproto"), ("iproto")],
+)
+def test_audit_via_sql_simple(instance_with_audit_file: Instance, table_type: str, protocol_type: str):
+    instance = instance_with_audit_file
+    instance.start()
+
+    user = "pico_service"
+
+    if protocol_type == "pgproto":
+        password = "P@ssw0rd"
+        instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
+
+        os.environ["PGSSLMODE"] = "disable"
+        conn = pg.Connection(user, password=password, host=instance.pg_host, port=instance.pg_port)
+        conn.autocommit = True
+        cur = conn.cursor()
+        execute_func = cur.execute
+    else:
+        execute_func = instance.sql
+
+    execute_func(
+        f"""
+        AUDIT POLICY dml_default BY {user};
+        """
+    )
+    distributed_clause = "GLOBALLY" if table_type == "global" else "BY (id)"
+    execute_func(
+        f"""
+        CREATE TABLE test (id UNSIGNED NOT NULL, value TEXT NOT NULL, PRIMARY KEY (id))
+        DISTRIBUTED {distributed_clause}
+        """
+    )
+    execute_func(
+        """
+        SELECT * FROM test
+        """
+    )
+    execute_func("INSERT INTO test VALUES (42, 'my_value')")
+    execute_func("UPDATE test SET value = 'my_value2' WHERE id = 42")
+    execute_func("CREATE PROCEDURE test_proc() language sql AS $$ UPDATE test SET value = 'my_value3' WHERE id = 42 $$")
+    execute_func("CALL test_proc()")
+    execute_func("DELETE FROM test WHERE id = 42")
+    execute_func(
+        f"""
+        AUDIT POLICY dml_default EXCEPT {user}
+        """
+    )
+    execute_func("INSERT INTO test VALUES (42, 'my_value')")
+    instance.terminate()
+
+    events = AuditFile(instance.audit_flag_value).events()
+
+    audit_policy = take_until_title(events, "audit_policy")
+    assert audit_policy is not None
+    assert audit_policy["message"] == f"audit policy `dml_default` for user `{user}` was turned on"
+    assert audit_policy["severity"] == "high"
+    assert audit_policy["initiator"] == user
+
+    dml_insert = take_until_title(events, "dml")
+    assert dml_insert is not None
+    assert dml_insert["message"] == "apply `INSERT INTO test VALUES (42, 'my_value')`"
+    assert dml_insert["severity"] == "medium"
+    assert dml_insert["initiator"] == user
+
+    dml_update = take_until_title(events, "dml")
+    assert dml_update is not None
+    assert dml_update["message"] == "apply `UPDATE test SET value = 'my_value2' WHERE id = 42`"
+    assert dml_update["severity"] == "medium"
+    assert dml_update["initiator"] == user
+
+    dml_update = take_until_title(events, "create_procedure")
+    assert dml_update is not None
+    assert dml_update["message"] == "created procedure `test_proc`"
+    assert dml_update["severity"] == "medium"
+    assert dml_update["initiator"] == user
+
+    dml_update = take_until_title(events, "dml")
+    assert dml_update is not None
+    assert dml_update["message"] == "apply `UPDATE test SET value = 'my_value3' WHERE id = 42`"
+    assert dml_update["severity"] == "medium"
+    assert dml_update["initiator"] == user
+
+    dml_delete = take_until_title(events, "dml")
+    assert dml_delete is not None
+    assert dml_delete["message"] == "apply `DELETE FROM test WHERE id = 42`"
+    assert dml_delete["severity"] == "medium"
+    assert dml_delete["initiator"] == user
+
+    audit_policy = take_until_title(events, "audit_policy")
+    assert audit_policy is not None
+    assert audit_policy["message"] == f"audit policy `dml_default` for user `{user}` was turned off"
+    assert audit_policy["severity"] == "high"
+    assert audit_policy["initiator"] == user
+
+    dml_insert = take_until_title(events, "dml")
+    assert dml_insert is None
+
+
+@pytest.mark.parametrize(
+    "table_type",
+    [("global"), ("sharded")],
+)
+def test_audit_via_sql_pgproto_prepared(instance_with_audit_file: Instance, table_type: str):
+    instance = instance_with_audit_file
+    instance.start()
+
+    user = "admin"
+    password = "P@ssw0rd"
+    instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
+    host = instance.pg_host
+    port = instance.pg_port
+
+    conn = psycopg.connect(f"user = {user} password={password} host={host} port={port} sslmode=disable")
+    conn.autocommit = True
+
+    conn.execute(
+        """
+        AUDIT POLICY dml_default BY admin;
+        """
+    )
+    distributed_clause = "GLOBALLY" if table_type == "global" else "BY (id)"
+    conn.execute(
+        f"""
+        CREATE TABLE test (id UNSIGNED NOT NULL, value TEXT NOT NULL, PRIMARY KEY (id))
+        DISTRIBUTED {distributed_clause}
+        """
+    )
+    params = (42, "string")
+    conn.execute(
+        'INSERT INTO "test" VALUES (%t, %t::text);',
+        params,
+        binary=False,
+    )
+    instance.terminate()
+
+    events = AuditFile(instance.audit_flag_value).events()
+
+    audit_policy = take_until_title(events, "audit_policy")
+    assert audit_policy is not None
+    assert audit_policy["message"] == "audit policy `dml_default` for user `admin` was turned on"
+    assert audit_policy["severity"] == "high"
+    assert audit_policy["initiator"] == "admin"
+
+    dml = take_until_title(events, "dml")
+    assert dml is not None
+    assert dml["message"] == "apply `INSERT INTO \"test\" VALUES ($1, $2::text);` with params [42,'string']"
+    assert dml["severity"] == "medium"
+    assert dml["initiator"] == "admin"

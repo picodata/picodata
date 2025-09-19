@@ -12,3 +12,8 @@ class TestAlterTable(ClusterSingleInstance):
 @sql_test_file("public_schema.sql")
 class TestPublicSchema(ClusterSingleInstance):
     pass
+
+
+@sql_test_file("audit_policy_grammar.sql")
+class TestAuditPolicy(ClusterSingleInstance):
+    pass

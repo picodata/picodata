@@ -75,6 +75,14 @@ def test_catalog_upgrade_ok(compat_instance: Instance):
     res = compat_instance.sql("SELECT value FROM _pico_property WHERE key = 'system_catalog_version'")
     assert res == [["25.4.1"]]
 
+    compat_instance.sql("AUDIT POLICY dml_default BY pico_service")
+    res = compat_instance.sql("SELECT * FROM _pico_user_audit_policy")
+    assert res == [[32, 0]]
+
+    compat_instance.sql("AUDIT POLICY dml_default EXCEPT pico_service")
+    res = compat_instance.sql("SELECT * FROM _pico_user_audit_policy")
+    assert res == []
+
 
 @pytest.mark.xdist_group(name="compat")
 def test_catalog_upgrade_from_25_3_1_to_25_4_1_ok(compat_instance: Instance):
@@ -121,6 +129,16 @@ def test_catalog_upgrade_from_25_3_1_to_25_4_1_ok(compat_instance: Instance):
         [
             4,
             "25.4.1",
+            "CREATE TABLE _pico_user_audit_policy (user_id UNSIGNED NOT NULL, policy_id UNSIGNED NOT NULL, PRIMARY KEY (user_id, policy_id)) DISTRIBUTED GLOBALLY",
+            "sql",
+            "done",
+            "",
+            "upgrade",
+            "upgrade to catalog version 25.4.1",
+        ],
+        [
+            5,
+            "25.4.1",
             "proc_internal_script",
             "proc_name",
             "done",
@@ -129,7 +147,7 @@ def test_catalog_upgrade_from_25_3_1_to_25_4_1_ok(compat_instance: Instance):
             "upgrade to catalog version 25.4.1",
         ],
         [
-            5,
+            6,
             "25.4.1",
             "alter_pico_tier_add_is_default",
             "exec_script",
@@ -139,7 +157,7 @@ def test_catalog_upgrade_from_25_3_1_to_25_4_1_ok(compat_instance: Instance):
             "upgrade to catalog version 25.4.1",
         ],
         [
-            6,
+            7,
             "25.4.1",
             "UPDATE _pico_tier SET is_default = true WHERE 1 in (SELECT count(*) FROM _pico_tier)",
             "sql",
@@ -149,7 +167,7 @@ def test_catalog_upgrade_from_25_3_1_to_25_4_1_ok(compat_instance: Instance):
             "upgrade to catalog version 25.4.1",
         ],
         [
-            7,
+            8,
             "25.4.1",
             "UPDATE _pico_tier SET is_default = CASE WHEN name = 'default' THEN true ELSE false END",
             "sql",

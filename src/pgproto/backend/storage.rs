@@ -3,6 +3,7 @@ use super::{
     describe::{Describe, MetadataColumn, PortalDescribe, QueryType, StatementDescribe},
     result::{ExecuteResult, Rows},
 };
+use crate::audit;
 use crate::config::observer::AtomicObserver;
 use crate::sql::router::RouterRuntime;
 use crate::{
@@ -519,6 +520,12 @@ impl PortalInner {
         router: &RouterRuntime,
         statement: sbroad::BoundStatement,
     ) -> PgResult<PortalState> {
+        if let QueryType::Dml = self.describe.query_type() {
+            if let Some(query) = self.statement.prepared_statement().query_for_audit() {
+                audit::policy::log_dml_for_user(query, statement.params_for_audit());
+            }
+        }
+
         let tuple = crate::sql::dispatch_bound_statement(router, statement, None, None)?;
 
         let state = match self.describe.query_type() {

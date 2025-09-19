@@ -80,6 +80,7 @@ nav:
         - reference/sql/alter_system.md
         - reference/sql/alter_table.md
         - reference/sql/alter_user.md
+        - reference/sql/audit_policy.md
         - reference/sql/backup.md
         - reference/sql/call.md
         - reference/sql/create_index.md
