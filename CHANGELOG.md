@@ -45,6 +45,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed restarting the cluster without some of the voters
   (see also https://git.picodata.io/core/picodata/-/issues/2202).
 - Fixed potential undefined behavior in plugin RPC handler arguments.
+- Picodata now loads all certificates from `ca.crt`, not just the first one.
 
 ### CLI
 
