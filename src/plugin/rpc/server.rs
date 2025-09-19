@@ -11,6 +11,7 @@ use tarantool::error::BoxError;
 use tarantool::error::Error as TntError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
+use tarantool::tuple::RawByteBuf;
 use tarantool::tuple::RawBytes;
 use tarantool::unwrap_ok_or;
 
@@ -108,8 +109,8 @@ pub fn proc_rpc_dispatch_impl(
 }
 
 #[tarantool::proc(packed_args)]
-pub fn proc_rpc_dispatch(args: &RawBytes) -> Result<&'static RawBytes, TntError> {
-    let (path, input, context) = decode_rpc_args(args)?;
+pub fn proc_rpc_dispatch(args: RawByteBuf) -> Result<&'static RawBytes, TntError> {
+    let (path, input, context) = decode_rpc_args(&args)?;
     proc_rpc_dispatch_impl(path, input, context)
 }
 
