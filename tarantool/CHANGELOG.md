@@ -62,6 +62,7 @@
 ### Added (picodata)
 
 - `network::protocol::Config::cluster_uuid` optional field. When set, the client sends an `IPROTO_ID` message carrying this `cluster_uuid` immediately after greeting. This enables clients to ensure they connect only to an instance from the same cluster.
+- Added TLS support for iproto client (via new `TlsStream`).
 
 ### Changed (picodata)
 

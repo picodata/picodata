@@ -1,3 +1,4 @@
+use super::tls::TlsConnector;
 use super::AsClient;
 use crate::error::Error;
 use crate::fiber::r#async::Mutex;
@@ -24,6 +25,7 @@ pub struct Client {
     url: String,
     port: u16,
     protocol_config: protocol::Config,
+    tls_connector: Option<TlsConnector>,
 
     // Testing related code
     #[cfg(feature = "internal_test")]
@@ -52,9 +54,13 @@ impl Client {
             self.reconnect_count.fetch_add(1, Ordering::Relaxed);
         }
 
-        let res =
-            super::Client::connect_with_config(&self.url, self.port, self.protocol_config.clone())
-                .await;
+        let res = super::Client::connect_with_config_and_tls(
+            &self.url,
+            self.port,
+            self.protocol_config.clone(),
+            self.tls_connector.clone(),
+        )
+        .await;
         match res {
             Ok(new_client) => {
                 *client = Some(Ok(new_client.clone()));
@@ -119,6 +125,27 @@ impl Client {
             url,
             port,
             protocol_config: config,
+            tls_connector: None,
+
+            #[cfg(feature = "internal_test")]
+            inject_error: Default::default(),
+            #[cfg(feature = "internal_test")]
+            reconnect_count: Default::default(),
+        }
+    }
+
+    pub fn with_config_and_tls(
+        url: String,
+        port: u16,
+        config: protocol::Config,
+        tls_connector: Option<TlsConnector>,
+    ) -> Self {
+        Self {
+            client: Default::default(),
+            url,
+            port,
+            protocol_config: config,
+            tls_connector,
 
             #[cfg(feature = "internal_test")]
             inject_error: Default::default(),

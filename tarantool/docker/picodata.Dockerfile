@@ -4,7 +4,7 @@ ARG RUST_VERSION
 
 RUN set -e; \
     rm -f /etc/yum.repos.d/pg.repo && \
-    yum -y install gcc git && \
+    yum -y install gcc git openssl-devel && \
     yum clean all
 
 # Install rust + cargo

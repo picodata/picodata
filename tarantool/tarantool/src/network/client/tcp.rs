@@ -136,7 +136,7 @@ impl TcpInner {
     #[inline(always)]
     fn fd(&self) -> io::Result<RawFd> {
         let Some(fd) = self.fd.get() else {
-            let e = io::Error::new(io::ErrorKind::Other, "socket closed already");
+            let e = io::Error::other("socket closed already");
             return Err(e);
         };
         Ok(fd)
@@ -156,7 +156,7 @@ impl Drop for TcpInner {
 /// Use [timeout][t] on top of read or write operations on [`TcpStream`]
 /// to set the max time to wait for an operation.
 ///
-/// Atention should be payed that [`TcpStream`] is not [`futures::select`] friendly when awaiting multiple streams
+/// Attention should be payed that [`TcpStream`] is not [`futures::select`] friendly when awaiting multiple streams
 /// As there is no coio support to await multiple file descriptors yet.
 /// Though it can be used with [`futures::join`] without problems.
 ///
@@ -291,6 +291,11 @@ impl TcpStream {
     pub fn close(&self) -> io::Result<()> {
         self.inner.close()
     }
+
+    #[inline(always)]
+    pub fn fd(&self) -> io::Result<RawFd> {
+        self.inner.fd()
+    }
 }
 
 /// SAFETY: completely unsafe, but we are allowed to do this cause sending/sharing following stream to/from another thread
@@ -402,6 +407,42 @@ impl AsyncRead for TcpStream {
             }
             _ => Poll::Ready(Err(err)),
         }
+    }
+}
+
+/// This is needed for using `SslStream<TcpStream>` (see `tls.rs`).
+impl io::Write for TcpStream {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let fd = self.inner.fd()?;
+        let (result, err) = (
+            // `fd` must be nonblocking for this to work correctly
+            unsafe { libc::write(fd, buf.as_ptr() as *const libc::c_void, buf.len()) },
+            io::Error::last_os_error(),
+        );
+        if result >= 0 {
+            return Ok(result as usize);
+        }
+        Err(err)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.fd()?;
+        Ok(())
+    }
+}
+
+/// This is needed for using `SslStream<TcpStream>` (see `tls.rs`).
+impl io::Read for TcpStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let fd = self.inner.fd()?;
+        let (result, err) = (
+            // `fd` must be nonblocking for this to work correctly
+            unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) },
+            io::Error::last_os_error(),
+        );
+        if result >= 0 {
+            return Ok(result as usize);
+        }
+        Err(err)
     }
 }
 

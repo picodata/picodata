@@ -34,7 +34,9 @@
 //! use coio based [`TcpStream`] as the transport layer.
 
 pub mod reconnect;
+pub mod stream;
 pub mod tcp;
+pub mod tls;
 
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -42,7 +44,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
+use self::stream::Stream;
 use self::tcp::TcpStream;
+use self::tls::{TlsConnector, TlsStream};
 
 use super::protocol::api::{Call, Eval, Execute, Ping, Request};
 use super::protocol::{self, Protocol, SyncIndex};
@@ -130,14 +134,14 @@ struct ClientInner {
     state: State,
     /// The same tcp stream sender & receiver fibers a working with. Only stored
     /// here for closing.
-    stream: TcpStream,
+    stream: Stream,
     sender_fiber_id: Option<FiberId>,
     receiver_fiber_id: Option<FiberId>,
     clients_count: usize,
 }
 
 impl ClientInner {
-    pub fn new(config: protocol::Config, stream: TcpStream) -> Self {
+    pub fn new(config: protocol::Config, stream: Stream) -> Self {
         Self {
             protocol: Protocol::with_config(config),
             awaiting_response: HashMap::new(),
@@ -194,9 +198,30 @@ impl Client {
         port: u16,
         config: protocol::Config,
     ) -> Result<Self, ClientError> {
+        Self::connect_with_config_and_tls(url, port, config, None).await
+    }
+
+    pub async fn connect_with_config_and_tls(
+        url: &str,
+        port: u16,
+        config: protocol::Config,
+        tls_connector: Option<TlsConnector>,
+    ) -> Result<Self, ClientError> {
         let timeout = config.connect_timeout.unwrap_or(Duration::MAX);
-        let stream = TcpStream::connect_timeout(url, port, timeout)
+        let tcp_stream = TcpStream::connect_timeout_async(url, port, timeout)
+            .await
             .map_err(|e| ClientError::ConnectionClosed(Arc::new(e.into())))?;
+
+        let stream = match tls_connector {
+            Some(tls_connector) => {
+                let tls_stream = TlsStream::connect(&tls_connector, tcp_stream, url)
+                    .await
+                    .map_err(|e| ClientError::ConnectionClosed(Arc::new(e.into())))?;
+                Stream::Secure(tls_stream)
+            }
+            None => Stream::Plain(tcp_stream),
+        };
+
         let client = ClientInner::new(config, stream.clone());
         let client = Rc::new(NoYieldsRefCell::new(client));
 
@@ -325,6 +350,7 @@ impl AsClient for Client {
                 return Err(ClientError::ResponseDecode(e));
             }
         );
+
         Ok(response)
     }
 }
@@ -343,8 +369,8 @@ impl Drop for Client {
             // We need to close the stream here, because otherwise receiver will
             // never wake up, because our async runtime blocks forever until the
             // future is ready.
-            if let Err(e) = client.stream.close() {
-                crate::say_error!("Client::drop: failed closing tcp stream: {e}");
+            if let Err(e) = client.stream.shutdown() {
+                crate::say_error!("Client::drop: failed closing iproto stream: {e}");
             }
 
             // Drop ref before executing code that switches fibers.
@@ -393,7 +419,7 @@ macro_rules! handle_result {
 }
 
 /// Sender work loop. Yields on each iteration and during awaits.
-async fn sender(client: Rc<NoYieldsRefCell<ClientInner>>, mut writer: TcpStream) {
+async fn sender(client: Rc<NoYieldsRefCell<ClientInner>>, mut writer: impl AsyncWriteExt + Unpin) {
     loop {
         if client.borrow().state.is_closed() || fiber::is_cancelled() {
             return;
@@ -415,7 +441,10 @@ async fn sender(client: Rc<NoYieldsRefCell<ClientInner>>, mut writer: TcpStream)
 // `await`, even though we're explicitly dropping the reference right before
 // awaiting. Thank you clippy, very helpful!
 #[allow(clippy::await_holding_refcell_ref)]
-async fn receiver(client_cell: Rc<NoYieldsRefCell<ClientInner>>, mut reader: TcpStream) {
+async fn receiver(
+    client_cell: Rc<NoYieldsRefCell<ClientInner>>,
+    mut reader: impl AsyncReadExt + Unpin,
+) {
     let mut buf = vec![0_u8; 4096];
     loop {
         let client = client_cell.borrow();
@@ -656,7 +685,7 @@ mod tests {
     async fn client_count_regression() {
         let client = test_client().await;
         // Should close sender and receiver fibers
-        client.0.borrow_mut().stream.close().unwrap();
+        client.0.borrow_mut().stream.shutdown().unwrap();
         // Receiver wakes and closes
         fiber::reschedule();
 

@@ -10,6 +10,8 @@ RUN curl -L https://tarantool.io/release/2/installer.sh | bash;
 RUN apt install -y \
     gcc \
     git \
+    libssl-dev \
+    pkg-config \
     tarantool \
     tarantool-dev \
     ;
