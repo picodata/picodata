@@ -958,6 +958,7 @@ pub(super) fn action_plan<'i>(
         next_schema_version,
         &global_cluster_version,
         pending_catalog_version,
+        global_catalog_version,
         applied,
         replicasets,
         instances,

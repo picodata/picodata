@@ -6,6 +6,7 @@ from conftest import (
     Instance,
     TarantoolError,
 )
+from packaging.version import Version
 from typing import Any
 
 
@@ -57,6 +58,62 @@ def test_catalog_upgrade_ok(compat_instance: Instance):
         assert res[0][2] == f".{proc_name}"
 
     res = compat_instance.sql("SELECT value FROM _pico_property WHERE key = 'system_catalog_version'")
+    assert res == [["25.4.1"]]
+
+
+def test_catalog_upgrade_from_25_3_1_to_25_4_0_ok(compat_instance: Instance):
+    i = compat_instance
+    compat = Compatibility()
+    backup_dir = compat.version_to_dir_path(Version("25.3.1"))
+    copy_dir(backup_dir, i.instance_dir)
+
+    i.start_and_wait()
+    i.wait_governor_status("idle")
+
+    res = i.sql("SELECT * FROM _pico_governor_queue")
+    assert res == [
+        [
+            1,
+            "25.3.3",
+            "proc_runtime_info_v2",
+            "proc_name",
+            "done",
+            "",
+            "upgrade",
+            "upgrade to catalog version 25.3.3",
+        ],
+        [
+            2,
+            "25.4.1",
+            "proc_backup_abort_clear",
+            "proc_name",
+            "done",
+            "",
+            "upgrade",
+            "upgrade to catalog version 25.4.1",
+        ],
+        [
+            3,
+            "25.4.1",
+            "proc_apply_backup",
+            "proc_name",
+            "done",
+            "",
+            "upgrade",
+            "upgrade to catalog version 25.4.1",
+        ],
+    ]
+
+    tt_procs = [
+        "proc_runtime_info_v2",
+        "proc_backup_abort_clear",
+        "proc_apply_backup",
+    ]
+    for proc_name in tt_procs:
+        res = i.call("box.space._func.index.name:select", [f".{proc_name}"])
+        assert res[0][2] == f".{proc_name}"
+
+    res = i.sql("SELECT value FROM _pico_property WHERE key = 'system_catalog_version'")
     assert res == [["25.4.1"]]
 
 

@@ -217,8 +217,11 @@ impl GovernorQueue {
         let mut iter = self.all_operations()?.into_iter();
         let next_op;
         if let Some(batch_id) = batch_id {
-            next_op =
-                iter.find(|op| op.batch_id == batch_id && op.status == GovernorOpStatus::Pending);
+            next_op = iter.find(|op| {
+                op.kind == GovernorOpKind::Upgrade
+                    && op.status == GovernorOpStatus::Pending
+                    && op.batch_id <= batch_id
+            });
         } else {
             next_op = iter.find(|op| {
                 op.kind != GovernorOpKind::Upgrade && op.status == GovernorOpStatus::Pending

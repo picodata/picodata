@@ -33,6 +33,7 @@ pub(super) fn handle_governor_queue<'i>(
     next_schema_version: u64,
     global_cluster_version: &str,
     pending_catalog_version: Option<String>,
+    current_catalog_version: Option<String>,
     applied: RaftIndex,
     replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
     instances: &'i [Instance],
@@ -73,6 +74,7 @@ pub(super) fn handle_governor_queue<'i>(
             governor_operations,
             next_schema_version,
             pending_catalog_version,
+            current_catalog_version,
             applied,
             replicasets,
             instances,
@@ -97,6 +99,7 @@ fn handle_catalog_upgrade<'i>(
     governor_operations: &'i [GovernorOperationDef],
     next_schema_version: u64,
     pending_catalog_version: String,
+    current_catalog_version: Option<String>,
     applied: RaftIndex,
     replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
     instances: &'i [Instance],
@@ -114,12 +117,15 @@ fn handle_catalog_upgrade<'i>(
         return Ok(create_table_plan);
     }
 
+    let versions_for_upgrade =
+        get_versions_for_upgrade(current_catalog_version.as_deref(), &pending_catalog_version);
+
     // count system catalog upgrade operations
     let mut has_upgrade_operations = false;
     let mut pending_upgrade_operation = None;
     for operation in governor_operations
         .iter()
-        .filter(|op| op.batch_id == pending_catalog_version)
+        .filter(|op| versions_for_upgrade.contains(&op.batch_id.as_str()))
     {
         has_upgrade_operations = true;
         if operation.status == GovernorOpStatus::Pending {
@@ -134,6 +140,7 @@ fn handle_catalog_upgrade<'i>(
         let insert_ops_plan = insert_catalog_upgrade_operations(
             governor_operations,
             &pending_catalog_version,
+            versions_for_upgrade,
             applied,
         )?;
         if insert_ops_plan.is_some() {
@@ -249,6 +256,7 @@ fn create_governor_table_if_not_exists<'i>(
 fn insert_catalog_upgrade_operations<'i>(
     governor_operations: &'i [GovernorOperationDef],
     pending_catalog_version: &str,
+    versions_for_upgrade: Vec<&'static str>,
     applied: RaftIndex,
 ) -> Result<Option<Plan<'i>>> {
     tlog!(
@@ -256,17 +264,10 @@ fn insert_catalog_upgrade_operations<'i>(
         "insert governor operations for system catalog upgrade to version {}",
         pending_catalog_version
     );
-    let Some((_, ops)) = CATALOG_UPGRADE_LIST
+    let upgrade_operations: Vec<_> = CATALOG_UPGRADE_LIST
         .iter()
-        .find(|u| u.0 == pending_catalog_version)
-    else {
-        tlog!(
-            Warning,
-            "no governor operations to insert for the system catalog upgrade to version {}",
-            pending_catalog_version,
-        );
-        return Ok(None);
-    };
+        .filter(|u| versions_for_upgrade.contains(&u.0))
+        .collect();
 
     let last_operation_id;
     if let Some(last_operation) = governor_operations.iter().last() {
@@ -276,16 +277,27 @@ fn insert_catalog_upgrade_operations<'i>(
     }
 
     let mut dmls = vec![];
-    for (index, (op_format, op)) in ops.iter().enumerate() {
-        let insert_def = GovernorOperationDef::new_upgrade(
+    for (index0, (op_version, ops)) in upgrade_operations.iter().enumerate() {
+        for (index1, (op_format, op)) in ops.iter().enumerate() {
+            let insert_def = GovernorOperationDef::new_upgrade(
+                op_version,
+                index0 as u64 + index1 as u64 + last_operation_id + 1,
+                op,
+                GovernorOpFormat::from_str(op_format)
+                    .expect("got from constant, converting to GovernorOpFormat should never fail"),
+            );
+            let dml = Dml::replace(GovernorQueue::TABLE_ID, &insert_def, ADMIN_ID)?;
+            dmls.push(dml);
+        }
+    }
+
+    if dmls.is_empty() {
+        tlog!(
+            Warning,
+            "no governor operations to insert for the system catalog upgrade to version {}",
             pending_catalog_version,
-            index as u64 + last_operation_id + 1,
-            op,
-            GovernorOpFormat::from_str(op_format)
-                .expect("got from constant, converting to GovernorOpFormat should never fail"),
         );
-        let dml = Dml::replace(GovernorQueue::TABLE_ID, &insert_def, ADMIN_ID)?;
-        dmls.push(dml);
+        return Ok(None);
     }
 
     let op = Op::single_dml_or_batch(dmls);
@@ -293,6 +305,28 @@ fn insert_catalog_upgrade_operations<'i>(
     let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
 
     return Ok(Some(InsertUpgradeOperation { cas }.into()));
+}
+
+fn get_versions_for_upgrade(
+    current_version: Option<&str>,
+    target_version: &str,
+) -> Vec<&'static str> {
+    let start = 1 + if let Some(version) = current_version {
+        CATALOG_UPGRADE_LIST
+            .iter()
+            .position(|u| u.0 == version)
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    let end = CATALOG_UPGRADE_LIST
+        .iter()
+        .position(|u| u.0 == target_version)
+        .expect("target version should exist in CATALOG_UPGRADE_LIST");
+    CATALOG_UPGRADE_LIST[start..end + 1]
+        .iter()
+        .map(|u| u.0)
+        .collect()
 }
 
 /// Finishes system catalog upgrade:
