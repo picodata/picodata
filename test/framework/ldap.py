@@ -36,7 +36,7 @@ def configure_ldap_server(username: str, password: str, data_dir: str, port: int
         password_sha256 = hashlib.sha256(password.encode("utf8")).hexdigest()
         tls_value = "true" if tls else "false"
         ssl_dir = Path(os.path.realpath(__file__)).parent.parent / "ssl_certs"
-        client_cert_path = ssl_dir / "server-fullchain.crt"
+        client_cert_path = ssl_dir / "server.crt"
         client_key_path = ssl_dir / "server.key"
         f.write(
             f"""

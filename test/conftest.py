@@ -3030,7 +3030,7 @@ class Postgres:
         shutil.copyfile(ssl_dir / "server.key", instance_dir / "server.key")
 
         if self.ssl_verify:
-            shutil.copyfile(ssl_dir / "root.crt", instance_dir / "ca.crt")
+            shutil.copyfile(ssl_dir / "combined-ca.crt", instance_dir / "ca.crt")
 
         self.cluster.wait_online()
         return self
