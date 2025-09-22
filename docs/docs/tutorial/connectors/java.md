@@ -1,14 +1,13 @@
-# picodata-java
+# Java
 
-В данном разделе приведено описание [picodata-java] — Java-драйвера для
-работы с СУБД Picodata.
+В данном разделе приведено описание [Java-драйвера] для работы с СУБД Picodata.
 
 ## Общие сведения {: #intro }
 
 Драйвер предоставляет [Java API][java_api] для работы с низкоуровневым
 Picodata API и служит коннектором к СУБД Picodata из Java-приложений.
 
-[picodata-java]: https://git.picodata.io/picodata/picodata/picodata-java
+[Java-драйвера]: https://git.picodata.io/picodata/picodata/picodata-java
 [java_api]: https://docs.picodata.io/apidocs/java-api/latest/
 
 ## Подключение {: #enabling }
@@ -38,14 +37,14 @@ Picodata API и служит коннектором к СУБД Picodata из Ja
 ## Проверка работы {: #testing }
 
 Мы предоставляем [тестовое Java-приложение][example], которое создает и
-заполняет таблицу в Picodata посредством коннектора [picodata-java].
+заполняет таблицу в Picodata посредством [Java-драйвера].
 
 Для проверки работы тестового приложения потребуются JDK (например,
 [OpenJDK](https://openjdk.org)) версии 1.8 или новее, и Docker.
 
 !!! note "Примечание"
     Проверить наличие необходимой версии JDK можно командой `./mvnw
-    --version` (строка Java version) в директории проекта [picodata-java].
+    --version` (строка Java version) в директории проекта `picodata-java`.
 
 [example]:
     https://git.picodata.io/picodata/picodata/examples/-/tree/master/picodata-java-example

@@ -4,9 +4,9 @@
 
 Доступные коннекторы:
 
-- [picodata-java](tutorial/connectors/java.md)
-- [picodata-jdbc](tutorial/connectors/jdbc.md)
-- [picodata-go](tutorial/connectors/go.md)
+- [Java](tutorial/connectors/java.md)
+- [JDBC](tutorial/connectors/jdbc.md)
+- [Go](tutorial/connectors/go.md)
 
 См. также:
 
