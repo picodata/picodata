@@ -275,7 +275,7 @@ where
 }
 
 #[inline(always)]
-fn encoded_params(params: &[Value]) -> Vec<EncodedValue> {
+fn encoded_params(params: &[Value]) -> Vec<EncodedValue<'_>> {
     params.iter().map(EncodedValue::from).collect()
 }
 

@@ -4,7 +4,7 @@ use std::io::{Cursor, Error as IoError, Result as IoResult};
 use std::str::from_utf8;
 
 /// Decode a proc_sql_execute response.
-pub fn execute_read_response(stream: &[u8]) -> IoResult<SqlExecute> {
+pub fn execute_read_response(stream: &[u8]) -> IoResult<SqlExecute<'_>> {
     let mut stream = Cursor::new(stream);
     let map_len = read_map_len(&mut stream).map_err(IoError::other)?;
     if map_len != 1 {
