@@ -2747,3 +2747,58 @@ def test_create_table_with_conflicting_pk(cluster: Cluster):
 
     with pytest.raises(TarantoolError, match=f"primary key '{next_table_id}_pkey' already exists"):
         i1.sql("CREATE TABLE new_table2 (id int, text text, primary key (id)) DISTRIBUTED GLOBALLY")
+
+
+def test_master_switchover_during_ddl(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        default:
+            can_vote: true
+        storage:
+            can_vote: false
+            replication_factor: 2
+"""
+    )
+
+    leader = cluster.add_instance(tier="default", wait_online=False)
+    storage_1_1 = cluster.add_instance(tier="storage", wait_online=False)
+    storage_1_2 = cluster.add_instance(tier="storage", wait_online=False)
+    cluster.wait_online()
+
+    # Make it so a crashed instance is detected faster, this is used later
+    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 3")
+
+    # Make sure `storage_1_1` is the master
+    [[master_name]] = leader.sql("SELECT current_master_name FROM _pico_replicaset WHERE tier = 'storage'")
+    if storage_1_1.name != master_name:
+        storage_1_1, storage_1_2 = storage_1_2, storage_1_1
+
+    storage_1_1.call("pico._inject_error", "EXIT_AFTER_PROC_APPLY_SCHEMA_CHANGE", True)
+    storage_1_2.call("pico._inject_error", "BROKEN_REPLICATION", True)
+
+    leader.sql("UPDATE _pico_replicaset SET target_config_version = target_config_version + 1 WHERE tier = 'storage'")
+
+    storage_1_2.call("pico._inject_error", "BROKEN_REPLICATION", False)
+
+    # DDL succeeds because sentinel will detect that `storage_1_1` has crashed
+    # and change it's state to Offline, after which governor will promote
+    # `storage_1_2` to master who will in turn apply the DDL.
+    # NOTE: WAIT APPLIED LOCALLY is needed because there's a bug in WAIT APPLIED
+    # GLOBALLY logic which makes it so it's blocked by an offline master even
+    # after it switched over.
+    leader.sql("CREATE TABLE test (id INT PRIMARY KEY) WAIT APPLIED LOCALLY", timeout=30)
+
+    # Master crashes due to the injected error
+    storage_1_1.wait_process_stopped()
+
+    storage_1_1.start()
+    storage_1_1.wait_online()
+
+    for i in [storage_1_1, storage_1_2]:
+        i.eval("""
+            local info = box.info.replication
+            require'log'.info(require'yaml'.encode(info))
+        """)
