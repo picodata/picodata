@@ -1,7 +1,6 @@
-# picodata-jdbc
+# JDBC
 
-В данном разделе приведено описание [picodata-jdbc] — JDBC-драйвера для
-работы с СУБД Picodata.
+В данном разделе приведено описание [JDBC-драйвера] для работы с СУБД Picodata.
 
 ## Общие сведения {: #intro }
 
@@ -9,7 +8,7 @@
 Picodata и служит коннектором к СУБД Picodata из приложений,
 поддерживающих JDBC-подключения.
 
-[picodata-jdbc]: https://git.picodata.io/picodata/picodata/picodata-jdbc
+[JDBC-драйвера]: https://git.picodata.io/picodata/picodata/picodata-jdbc
 [jdbc_api]: https://docs.picodata.io/apidocs/jdbc/latest/
 
 ## Подключение {: #enabling }
@@ -212,14 +211,14 @@ public class PicoJdbc {
 ## Проверка работы {: #testing }
 
 Мы предоставляем [тестовое Java-приложение][example], которое создает и
-заполняет таблицу в Picodata посредством коннектора [picodata-jdbc].
+заполняет таблицу в Picodata посредством [JDBC-драйвера].
 
 Для проверки работы тестового приложения потребуется JDK (например,
 [OpenJDK](https://openjdk.org)) версии 11 или новее, и Docker.
 
 !!! note "Примечание"
     Проверить наличие необходимой версии JDK можно командой `./mvnw
-    --version` (строка Java version) в директории проекта [picodata-jdbc].
+    --version` (строка Java version) в директории проекта `picodata-jdbc`.
 
 [example]:
     https://git.picodata.io/picodata/picodata/examples/-/tree/master/picodata-jdbc-example

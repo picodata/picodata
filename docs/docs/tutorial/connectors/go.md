@@ -1,14 +1,14 @@
-# picodata-go
+# Go
 
-В данном разделе приведено описание [picodata-go] — Golang-драйвера для
-работы с СУБД Picodata.
+В данном разделе приведено описание [Golang-драйвера] для работы с СУБД
+Picodata.
 
 ## Общие сведения {: #intro }
 
 Драйвер использует библиотеку [pgxpool] и предоставляет публичный API для
 удобной работы с кластерной СУБД.
 
-[picodata-go]: https://github.com/picodata/picodata-go
+[Golang-драйвера]: https://github.com/picodata/picodata-go
 [pgxpool]: https://github.com/jackc/pgx/tree/master/pgxpool
 
 ## Подключение {: #enabling }

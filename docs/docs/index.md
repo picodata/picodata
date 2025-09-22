@@ -48,7 +48,7 @@ Picodata — это распределенная система промышле
 
 * [Создание плагина](tutorial/create_plugin.md)
 * [Управление плагинами](tutorial/plugins.md)
-* [Использование внешних коннекторов к Picodata](connectors_index.md)
+* [Внешние коннекторы](connectors_index.md)
 
 ### Администрирование кластера {: #administration }
 
