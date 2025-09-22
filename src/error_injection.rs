@@ -73,7 +73,7 @@ macro_rules! error_injection {
             $crate::tlog!(Info, "################################################################");
             $crate::tlog!(Info, "ERROR INJECTION '{}': EXITING", $error);
             $crate::tlog!(Info, "################################################################");
-            $crate::tarantool::exit(69);
+            ::std::process::exit(69);
         };
     };
     (block $error:expr) => {{

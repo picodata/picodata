@@ -95,7 +95,7 @@ crate::define_rpc_request! {
 
         let res = transaction(|| apply_schema_change(storage, &ddl, pending_schema_version, false, my_tier_name));
         match res {
-            Ok(()) => Ok(Response::Ok),
+            Ok(()) => {}
             Err(TransactionError::RolledBack(Error::Aborted(err))) => {
                 tlog!(Warning, "schema change aborted: {err}");
 
@@ -105,13 +105,17 @@ crate::define_rpc_request! {
                     message: err.to_string(),
                     instance_name,
                 };
-                Ok(Response::Abort { cause })
+                return Ok(Response::Abort { cause });
             }
             Err(err) => {
                 tlog!(Warning, "applying schema change failed: {err}");
-                Err(err.into())
+                return Err(err.into());
             }
         }
+
+        crate::error_injection!(exit "EXIT_AFTER_PROC_APPLY_SCHEMA_CHANGE");
+
+        Ok(Response::Ok)
     }
 
     pub struct Request {
