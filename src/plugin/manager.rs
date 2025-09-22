@@ -583,8 +583,6 @@ impl PluginManager {
 
                     #[rustfmt::skip]
                     tlog!(Debug, "calling {id}.on_leader_change");
-                    let is_master = ctx.is_master();
-                    tlog!(Error, "!!! {is_master}");
 
                     let mut guard = service.volatile_state.lock();
                     let result = guard.inner.on_leader_change(&ctx);
