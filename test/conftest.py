@@ -1139,8 +1139,10 @@ class Instance:
         shutil.rmtree(self.instance_dir)
 
     def remove_backup(self):
+        path = Path(self.backup_dir)
         log.info(f"removing backup_dir of {self}")
-        shutil.rmtree(self.backup_dir)
+        if path.exists():
+            shutil.rmtree(path)
 
     def raft_propose_nop(self):
         return self.call("pico.raft_propose_nop")
