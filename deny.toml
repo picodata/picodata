@@ -54,9 +54,7 @@ ignore = [
     { id = "RUSTSEC-2018-0015", reason = "`term`, transitive dependency from `tester` in `tarantool-module` (see <https://git.picodata.io/core/tarantool-module/issues/252>)" },
     { id = "RUSTSEC-2024-0014", reason = "`generational-arena`, transitive dependency from `abi_stable` in `picodata` (see <https://git.picodata.io/core/picodata/issues/2052>)" },
     { id = "RUSTSEC-2024-0436", reason = "`paste`, transitive dependency from `abi_stable` in `picodata` (see <https://git.picodata.io/core/picodata/issues/2052>)" },
-    { id = "RUSTSEC-2025-0047", reason = "`slab`, transitive dependency from `async_std` in `picodata`" },
-
-    { crate = "slab@0.4.10", reason = "`slab`, transitive dependency from `async_std` in `picodata`" },
+    { id = "RUSTSEC-2025-0057", reason = "`fxhash`, transitive dependency from `raft` in `picodata`" },
 ]
 
 # This section is considered when running `cargo deny check licenses`
