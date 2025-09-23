@@ -839,7 +839,7 @@ td.td3 ul {
         <tr>
             <td class="center"><span class="full">F051-06</span></td>
             <td>Функция CURRENT_DATE</td>
-            <td class="td3 center">[CURRENT_DATE](sql/current_date.md)</td>
+            <td class="td3 center">[CURRENT_DATE](sql/time_and_date.md#current_date)</td>
             <td></td>
         </tr>
         <tr>
@@ -851,7 +851,7 @@ td.td3 ul {
         <tr>
             <td class="center"><span class="full">F051-08</span></td>
             <td>LOCALTIMESTAMP</td>
-            <td class="td3 center">[LOCALTIMESTAMP](sql/localtimestamp.md)</td>
+            <td class="td3 center">[LOCALTIMESTAMP](sql/time_and_date.md#localtimestamp)</td>
             <td></td>
         </tr>
 <!-- F081 UNION and EXCEPT in views -->
@@ -1176,13 +1176,13 @@ td.td3 ul {
         <tr>
             <td class="center"><span class="full">—</span></td>
             <td>TO_CHAR</td>
-            <td class="td3 center">[TO_CHAR](sql/to_char.md)</td>
+            <td class="td3 center">[TO_CHAR](sql/time_and_date.md#to_char)</td>
             <td></td>
         </tr>
         <tr>
             <td class="center"><span class="full">—</span></td>
             <td>TO_DATE</td>
-            <td class="td3 center">[TO_DATE](sql/to_date.md)</td>
+            <td class="td3 center">[TO_DATE](sql/time_and_date.md#to_date)</td>
             <td></td>
         </tr>
         <tr>

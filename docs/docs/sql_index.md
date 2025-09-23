@@ -68,7 +68,8 @@ article.md-typeset.md-typeset ul {
 * [CREATE TABLE](reference/sql/create_table.md)
 * [CREATE USER](reference/sql/create_user.md)
 * [CTE](reference/sql/with.md)
-* [CURRENT_DATE](reference/sql/current_date.md)
+* [CURRENT_DATE](reference/sql/time_and_date.md#current_date)
+* [CURRENT_TIMESTAMP](reference/sql/time_and_date.md#current_timestamp)
 
 <b>D</b>
 
@@ -120,7 +121,7 @@ article.md-typeset.md-typeset ul {
 * [LIMIT](reference/sql/select.md#params)
 * [LIMIT ALL](reference/sql/select.md#params)
 * [LIMIT NULL](reference/sql/select.md#params)
-* [LOCALTIMESTAMP](reference/sql/localtimestamp.md)
+* [LOCALTIMESTAMP](reference/sql/time_and_date.md#localtimestamp)
 * [LOWER](reference/sql/lower.md)
 
 <b>M</b>
@@ -162,8 +163,8 @@ article.md-typeset.md-typeset ul {
 
 * [table](overview/glossary.md#table)
 * [TEXT](reference/sql_types.md#text)
-* [TO_CHAR](reference/sql/to_char.md)
-* [TO_DATE](reference/sql/to_date.md)
+* [TO_CHAR](reference/sql/time_and_date.md#to_char)
+* [TO_DATE](reference/sql/time_and_date.md#to_date)
 * [TOTAL](reference/sql/aggregate.md#functions)
 * [TRIM](reference/sql/trim.md)
 * [TRUNCATE TABLE](reference/sql/truncate_table.md)

@@ -122,11 +122,7 @@ nav:
         - reference/sql/upper.md
         - reference/sql/aggregate.md
         - reference/sql/window_builtin.md
-        - Дата и время:
-          - reference/sql/current_date.md
-          - reference/sql/localtimestamp.md
-          - reference/sql/to_char.md
-          - reference/sql/to_date.md
+        - reference/sql/time_and_date.md
         - Системные функции:
           - reference/sql/instance_uuid.md
           - reference/sql/pico_instance_uuid.md

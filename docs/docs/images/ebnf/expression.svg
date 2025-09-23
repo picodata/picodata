@@ -21,9 +21,9 @@
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
-     inkscape:zoom="0.57837983"
-     inkscape:cx="295.65346"
-     inkscape:cy="749.50746"
+     inkscape:zoom="1.6359052"
+     inkscape:cx="245.12423"
+     inkscape:cy="692.27728"
      inkscape:window-width="1858"
      inkscape:window-height="1014"
      inkscape:window-x="62"
@@ -233,7 +233,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
        id="text17">coalesce</text>
   </a>
   <a
-     xlink:href="../current_date"
+     xlink:href="../time_and_date/#current_date"
      xlink:title="current_date"
      id="a19">
     <rect
@@ -348,9 +348,10 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
        id="text27">literal</text>
   </a>
   <a
-     xlink:href="../localtimestamp"
+     xlink:href="../time_and_date/#localtimestamp"
      xlink:title="localtimestamp"
-     id="a29">
+     id="a29"
+     transform="translate(0.61128237,-1.8338471)">
     <rect
        x="179"
        y="509"
@@ -509,7 +510,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
        id="text41">substring</text>
   </a>
   <a
-     xlink:href="../to_char"
+     xlink:href="../time_and_date/#to_char"
      xlink:title="to_char"
      id="a43">
     <rect
@@ -532,7 +533,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
        id="text43">to_char</text>
   </a>
   <a
-     xlink:href="../to_date"
+     xlink:href="../time_and_date/#to_date"
      xlink:title="to_date"
      id="a45">
     <rect
