@@ -70,6 +70,12 @@ with the `YY.MINOR.MICRO` scheme.
 - `picodata plugin configure` now prints a message on success for better UX.
   See <https://git.picodata.io/core/picodata/-/issues/1904>.
 
+### Plugin API
+
+- `internal::authenticate` is now deprecated, and is a re-export of the
+  same auth function in a separate module `authentication::authenticate`.
+  See <https://git.picodata.io/core/picodata/-/issues/2007>.
+
 ## [25.3.3] - 2025-09-10
 
 ### CLI

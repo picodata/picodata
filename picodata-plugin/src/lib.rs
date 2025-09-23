@@ -2,6 +2,7 @@
 
 use abi_stable::{rstr, std_types::RStr};
 
+pub mod authentication;
 pub mod background;
 pub mod error_code;
 pub mod internal;
