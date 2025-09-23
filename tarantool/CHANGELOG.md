@@ -52,6 +52,13 @@
 - Unpinned the version of `time` crate from a two-year old `0.3.17`
 - `space::Space::bsize` now returns `box.space.<space_name>:bsize()` instead of `box.space.<space_name>.index[0]:bsize()`
 
+### Added (picodata)
+
+- `network::protocol::Config::cluster_uuid` optional field. When set, the client sends an `IPROTO_ID` message carrying this `cluster_uuid` immediately after greeting. This enables clients to ensure they connect only to an instance from the same cluster.
+
+### Changed (picodata)
+
+- Handshake may include an ID phase before auth when `cluster_uuid` is provided. If a vanilla Tarantool responds to `IPROTO_ID` with `ER_INVALID_MSGPACK`, the client ignores it for compatibility and proceeds with authentication/ready state.
 
 # [8.0.0] Jun 24 2025
 
