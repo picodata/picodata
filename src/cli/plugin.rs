@@ -153,16 +153,19 @@ fn main_impl(args: Plugin) -> cli::Result<()> {
 
             // run all update queries if they were created
             assert_eq!(updated_parameters.len(), update_queries.len());
+
+            // quite common situation, return correct code
             if update_queries.is_empty() {
-                Err("no values to update")?;
-            } else {
-                update_queries.iter().for_each(|query| {
-                    fiber::block_on(client.call(
-                        crate::proc_name!(proc_sql_dispatch),
-                        &(query, Vec::<()>::new()),
-                    ))
-                    .expect("updating existing and correct parameters of plugins should be fine");
-                })
+                println!("no values to update");
+                return Ok(());
+            }
+
+            for update_query in update_queries {
+                fiber::block_on(client.call(
+                    crate::proc_name!(proc_sql_dispatch),
+                    &(update_query, Vec::<()>::new()),
+                ))
+                .expect("updating existing and correct parameters of plugins should be fine");
             }
 
             // output success message for better ux

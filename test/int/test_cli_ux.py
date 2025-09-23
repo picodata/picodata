@@ -180,6 +180,7 @@ def assert_config_change(
     service_names: str,
     expected: list[object],
     err: bool = False,
+    same: bool = False,
 ):
     inst_addr = f"{username}@{instance.iproto_listen}"
     proc = subprocess.Popen(
@@ -207,8 +208,12 @@ def assert_config_change(
         assert proc.returncode != 0
         assert f"AccessDenied: Read access to space '_pico_plugin_config' is denied for user '{username}'" in stderr
     else:
-        assert f"new configuration for plugin '{_PLUGIN}' successfully applied" in stdout
+        assert proc.returncode == 0
         assert instance.sql("SELECT * FROM _pico_plugin_config") == expected
+        if same:
+            assert "no values to update" == stdout.strip()
+        else:
+            assert f"new configuration for plugin '{_PLUGIN}' successfully applied" in stdout
 
 
 def test_plugin_ux(cluster: Cluster):
@@ -274,6 +279,12 @@ testservice_1:
     baz: ["sindragosa"]
 """)
     assert_config_change(general_config, inst, "admin", "testservice_1", expected)
+
+    # test as `admin` priviliged user on
+    # list of services with a single element:
+    # testservice_1.baz = ["sindragosa"] -> ["sindragosa"]
+    # no change, essentially
+    assert_config_change(general_config, inst, "admin", "testservice_1", expected, same=True)
 
     # test as `somebody` un-/priviliged user on
     # list of services with multiple elements

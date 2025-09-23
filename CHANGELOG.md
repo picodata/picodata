@@ -72,6 +72,10 @@ with the `YY.MINOR.MICRO` scheme.
 - `picodata plugin configure` now prints a message on success for better UX.
   See <https://git.picodata.io/core/picodata/-/issues/1904>.
 
+- `picodata plugin configure` now returns a success code, instead of non-zero
+  when trying to change plugin service parameters with the same values.
+  See <https://git.picodata.io/core/picodata/-/issues/2222>.
+
 ### Plugin API
 
 - `internal::authenticate` is now deprecated, and is a re-export of the
