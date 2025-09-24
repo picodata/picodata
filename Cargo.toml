@@ -65,6 +65,7 @@ picodata-plugin = { path = "picodata-plugin", features = ["internal_test"] }
 sbroad-core = { path = "sbroad/sbroad-core" }
 tarantool = { path = "tarantool/tarantool", features = ["picodata", "test", "stored_procs_slice"] }
 regex = "1.11"
+ordered_hash_map = { version = "0.5.0", features = ["serde"] }
 
 [dev-dependencies]
 pretty_assertions = "1.4"

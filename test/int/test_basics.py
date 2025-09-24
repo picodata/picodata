@@ -362,7 +362,7 @@ Replace(_pico_peer_address, [1,"127.0.0.1:{p}","iproto"]),
 Replace(_pico_peer_address, [1,"127.0.0.1:{pg_port}","pgproto"]),
 Insert(_pico_instance, ["default_1_1","{i1_uuid}",1,"default_1","{r1_uuid}",["Offline",0],["Offline",0],{b},"default","{picodata_version}"]),
 Insert(_pico_replicaset, ["default_1","{r1_uuid}","default_1_1","default_1_1","default",0.0,"auto","not-ready",0,0,{{}}]))|
-|  0  | 1  |BatchDml(Insert(_pico_tier, ["default",1,true,0,0,false,3000,false]))|
+|  0  | 1  |BatchDml(Insert(_pico_tier, ["default",1,true,0,0,false,3000,true]))|
 |  0  | 1  |BatchDml(
 Insert(_pico_property, ["global_schema_version",0]),
 Insert(_pico_property, ["next_schema_version",1]),

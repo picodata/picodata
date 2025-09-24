@@ -436,7 +436,7 @@ cluster:
     i2 = cluster.add_instance(tier="nondefault", wait_online=False)
     cluster.wait_online()
     res = i1.sql("SELECT is_default FROM _pico_tier")
-    assert res == [[False]]
+    assert res == [[True]]
 
     index, _ = i1.cas(
         "insert",
@@ -459,7 +459,7 @@ cluster:
     assert res == [["done"]]
 
     res = i1.sql("SELECT is_default FROM _pico_tier")
-    assert res == [[False]]
+    assert res == [[True]]
 
 
 def test_alter_pico_tier_add_is_default_error(cluster: Cluster):

@@ -28,6 +28,7 @@ use crate::util::{cast_and_encode, edit_distance};
 use crate::{config_parameter_path, sql};
 use crate::{pgproto, traft};
 use observer::AtomicObserverProvider;
+use ordered_hash_map::OrderedHashMap;
 use sbroad::ir::options;
 use sbroad::ir::value::{EncodedValue, Value};
 use serde_yaml::Value as YamlValue;
@@ -244,15 +245,17 @@ Using configuration file '{args_path}'.");
 
         // This isn't set by set_defaults_explicitly, because we expect the
         // tiers to be specified explicitly when the config file is provided.
-        config.cluster.tier = Some(HashMap::from([(
-            DEFAULT_TIER.into(),
+        let mut tier = OrderedHashMap::new();
+        tier.insert(
+            DEFAULT_TIER.to_string(),
             TierConfig {
                 replication_factor: Some(1),
                 can_vote: true,
                 bucket_count: Some(sql::DEFAULT_BUCKET_COUNT),
                 ..Default::default()
             },
-        )]));
+        );
+        config.cluster.tier = Some(tier);
 
         // Same story as with `cluster.tier`, the cluster name must be provided
         // in the config file.
@@ -1137,7 +1140,7 @@ pub struct ClusterConfig {
         skip_serializing_if = "Option::is_none",
         default
     )]
-    pub tier: Option<HashMap<String, TierConfig>>,
+    pub tier: Option<OrderedHashMap<String, TierConfig>>,
 
     /// Replication factor which is used for tiers which didn't specify one
     /// explicitly. For default value see [`Self::default_replication_factor()`].
@@ -1170,12 +1173,14 @@ impl ClusterConfig {
                     replication_factor: self.default_replication_factor(),
                     bucket_count: self.default_bucket_count(),
                     can_vote: true,
+                    is_default: Some(true),
                     ..Default::default()
                 },
             )]);
         };
 
         let mut tier_defs = HashMap::with_capacity(tiers.len());
+        let mut is_first_tier = true;
         for (name, info) in tiers {
             let replication_factor = info
                 .replication_factor
@@ -1185,13 +1190,18 @@ impl ClusterConfig {
                 .bucket_count
                 .unwrap_or_else(|| self.default_bucket_count());
 
-            let tier_def = Tier {
+            let mut tier_def = Tier {
                 name: name.into(),
                 replication_factor,
                 can_vote: info.can_vote,
                 bucket_count,
+                is_default: Some(false),
                 ..Default::default()
             };
+            if is_first_tier {
+                tier_def.is_default = Some(true);
+                is_first_tier = false;
+            }
             tier_defs.insert(name.into(), tier_def);
         }
         tier_defs
@@ -2237,13 +2247,12 @@ pub fn apply_parameter(pico_db_config_tuple: Tuple, current_tier: &str) -> Resul
 
 pub fn deserialize_map_forbid_duplicate_keys<'de, D, K, V>(
     des: D,
-) -> Result<Option<HashMap<K, V>>, D::Error>
+) -> Result<Option<OrderedHashMap<K, V>>, D::Error>
 where
     D: serde::Deserializer<'de>,
     K: serde::Deserialize<'de> + std::hash::Hash + Eq + std::fmt::Display,
     V: serde::Deserialize<'de>,
 {
-    use std::collections::hash_map::Entry;
     use std::marker::PhantomData;
     struct Visitor<K, V>(PhantomData<(K, V)>);
 
@@ -2252,7 +2261,7 @@ where
         K: serde::Deserialize<'de> + std::hash::Hash + Eq + std::fmt::Display,
         V: serde::Deserialize<'de>,
     {
-        type Value = Option<HashMap<K, V>>;
+        type Value = Option<OrderedHashMap<K, V>>;
 
         fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
             formatter.write_str("a map with unique keys")
@@ -2262,19 +2271,14 @@ where
         where
             A: serde::de::MapAccess<'de>,
         {
-            let mut res = HashMap::with_capacity(map.size_hint().unwrap_or(16));
+            let mut res = OrderedHashMap::with_capacity(map.size_hint().unwrap_or(16));
             while let Some((key, value)) = map.next_entry::<K, V>()? {
-                match res.entry(key) {
-                    Entry::Occupied(e) => {
-                        return Err(serde::de::Error::custom(format!(
-                            "duplicate key `{}` found",
-                            e.key()
-                        )));
-                    }
-                    Entry::Vacant(e) => {
-                        e.insert(value);
-                    }
+                if res.contains_key(&key) {
+                    return Err(serde::de::Error::custom(format!(
+                        "duplicate key `{key}` found",
+                    )));
                 }
+                res.insert(key, value);
             }
 
             Ok(Some(res))
@@ -2546,19 +2550,20 @@ cluster:
         let tiers = config.cluster.tiers();
         assert_eq!(tiers.len(), 4);
 
-        let assert_tier = |name: &str, rf: u8, bc: u64| {
+        let assert_tier = |name: &str, rf: u8, bc: u64, is_default: bool| {
             let tier: &Tier = tiers
                 .get(name)
                 .expect("default replication factor should applied to default tier configuration");
 
             assert_eq!(tier.replication_factor, rf);
             assert_eq!(tier.bucket_count, bc);
+            assert_eq!(tier.is_default, Some(is_default));
         };
 
-        assert_tier("default", 3, 5000);
-        assert_tier("non-default", 2, 1000);
-        assert_tier("default-rf", 3, 10000);
-        assert_tier("default-bc", 4, 5000);
+        assert_tier("default", 3, 5000, false);
+        assert_tier("non-default", 2, 1000, true);
+        assert_tier("default-rf", 3, 10000, false);
+        assert_tier("default-bc", 4, 5000, false);
     }
 
     #[track_caller]
