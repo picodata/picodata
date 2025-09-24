@@ -122,15 +122,18 @@ def test_admin_ux(cluster: Cluster):
     cli.sendline("box.session.user()")
     cli.expect_exact("admin")
 
+    cli.expect_exact("(admin) lua> ")
     # Enter a command with the default delimiter
     cli.sendline("box.session.user();")
     cli.expect_exact("admin")
 
+    cli.expect_exact("(admin) lua> ")
     # Press the up arrow key to access the command history
     cli.sendline("\033[A")
     # Command is retrieved from the history with the delimiter
     cli.expect_exact("box.session.user();")
 
+    cli.expect_exact("(admin) lua> ")
     cli.sendline("\\sql")
     cli.expect_exact("Language switched to sql")
     cli.expect_exact("(admin) sql> ")
@@ -141,6 +144,7 @@ def test_admin_ux(cluster: Cluster):
     cli.sendline("\\scl")
     cli.expect_exact("Unknown special sequence")
 
+    cli.expect_exact("(admin) sql> ")
     # variations of `\s l sql/lua` is registred, but not in help
     cli.sendline("\\set language lua")
     cli.expect_exact("Language switched to lua")
@@ -159,9 +163,12 @@ def test_admin_ux(cluster: Cluster):
     cli.sendline("box.c\t\t;")
     cli.expect_exact("rule parsing error:")
 
+    cli.expect_exact("(admin) sql> ")
     # something happens on completion in Lua mode
     cli.sendline("\\lua")
     cli.expect_exact("Language switched to lua")
+
+    cli.expect_exact("(admin) lua> ")
     cli.sendline("hel\t")
     cli.expect_exact("(admin) lua> help")
 
