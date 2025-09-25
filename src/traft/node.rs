@@ -2385,6 +2385,7 @@ impl NodeImpl {
         if !new_snapshot.is_empty() {
             if let Some(old_snapshot) = &self.pending_raft_snapshot {
                 update_pending_snapshot = old_snapshot.is_out_of_date_with(new_snapshot.metadata());
+                crate::error_injection!("IGNORE_NEWER_SNAPSHOT" => { update_pending_snapshot = false; });
             } else {
                 update_pending_snapshot = true;
             }
@@ -2403,6 +2404,7 @@ impl NodeImpl {
             };
 
             crate::error_injection!(exit "EXIT_BEFORE_APPLYING_RAFT_SNAPSHOT");
+            crate::error_injection!(block "BLOCK_BEFORE_APPLYING_RAFT_SNAPSHOT");
 
             let pending_raft_snapshot = RaftSnapshot::new(new_snapshot.metadata().clone(), data);
             self.pending_raft_snapshot = Some(pending_raft_snapshot);
@@ -3104,6 +3106,8 @@ pub fn global() -> Result<&'static Node, BoxError> {
 #[proc(packed_args)]
 fn proc_raft_interact(data: RawByteBuf) -> traft::Result<()> {
     let node = global()?;
+
+    crate::error_injection!("IGNORE_ALL_RAFT_MESSAGES" => return Ok(()));
 
     let msg = RaftMessageExt::decode(&data)?;
 

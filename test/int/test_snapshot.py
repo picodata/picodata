@@ -2,7 +2,7 @@ import time
 
 import pytest
 
-from conftest import Cluster, Retriable, log_crawler
+from conftest import Cluster, Retriable, log_crawler, TarantoolError
 
 
 _3_SEC = 3
@@ -407,6 +407,74 @@ def test_crash_before_applying_raft_snapshot(cluster: Cluster):
 
     # Another instance also successfully joins (just checking)
     _ = cluster.add_instance(wait_online=True)
+
+
+def test_snapshot_with_stale_schema_version(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        default:
+        storage:
+            can_vote: false
+            replication_factor: 2
+"""
+    )
+    leader = cluster.add_instance(tier="default", wait_online=False)
+    storage_1_1 = cluster.add_instance(tier="storage", wait_online=False)
+    storage_1_2 = cluster.add_instance(tier="storage", wait_online=False)
+    cluster.wait_online()
+
+    # Make sure storage_1_1 is master
+    [[master_name]] = leader.sql("SELECT current_master_name FROM _pico_replicaset WHERE tier = 'storage'")
+    if storage_1_1.name != master_name:
+        storage_1_1, storage_1_2 = storage_1_2, storage_1_1
+
+    # Increase the threshold so that log compaction isn't triggered before we need it
+    leader.sql("ALTER SYSTEM SET raft_wal_count_max = 1024")
+
+    # Make it so `storage_1_2` stops handling raft messages (log and snapshot updates).
+    injected_error_1 = "IGNORE_ALL_RAFT_MESSAGES"
+    storage_1_2.call("pico._inject_error", injected_error_1, True)
+
+    injected_error_2 = "BLOCK_BEFORE_APPLYING_RAFT_SNAPSHOT"
+    lc = log_crawler(storage_1_2, injected_error_2)
+    storage_1_2.call("pico._inject_error", injected_error_2, True)
+
+    # This is a pretty tricky situation to reproduce as you may notice
+    injected_error_3 = "IGNORE_NEWER_SNAPSHOT"
+    storage_1_2.call("pico._inject_error", injected_error_3, True)
+
+    # Trigger log compaction now
+    leader.sql("ALTER SYSTEM SET raft_wal_count_max = 1")
+
+    # Fix raft message handling, now it will receive a raft snapshot instead of any raft log entries
+    storage_1_2.call("pico._inject_error", injected_error_1, False)
+
+    # Make sure the snapshot is received
+    lc.wait_matched()
+
+    # Make a schema change. WAIT APPLIED LOCALLY is needed because `storage_1_2`
+    # is blocked by the injection
+    leader.sql("CREATE TABLE life_is_good (i_like_life INTEGER PRIMARY KEY) WAIT APPLIED LOCALLY")
+
+    # Wait until storage_1_2 synchronizes via tarantool replication stream.
+    # This will make it so `_schema.local_schema_version` > `snapshot.schema_version` on it.
+    master_vclock = storage_1_1.call(".proc_get_vclock")
+    storage_1_2.call(".proc_wait_vclock", master_vclock, 10)
+
+    # Disable the error and make sure the instance successfully catches up eventually
+    storage_1_2.call("pico._inject_error", injected_error_2, False)
+
+    applied = leader.call(".proc_get_index")
+    try:
+        storage_1_2.call(".proc_wait_index", applied, 10)
+    except TarantoolError as e:
+        assert e.args[0] == 'ER_TIMEOUT'
+
+    storage_1_2.kill()
+    storage_1_2.fail_to_start()
 
 
 # TODO: test case which would show if we sent snapshot conf state inconsistent
