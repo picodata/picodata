@@ -2355,18 +2355,8 @@ impl NodeImpl {
         #[rustfmt::skip]
         debug_assert!(v_global <= v_snapshot, "global schema version updates are distributed via raft");
 
-        if v_local > v_snapshot {
-            tlog!(
-                Warning,
-                "skipping stale snapshot: local schema version: {}, snapshot schema version: {}",
-                v_local,
-                snapshot.data.schema_version,
-            );
-            return Ok(None);
-        }
-
         // Replicaset master applies the schema changes directly.
-        if self.is_readonly() && v_local != v_snapshot {
+        if self.is_readonly() && v_local < v_snapshot {
             // Replicaset follower must sync schema with the master,
             // before global space dumps could be handled.
             // NOTE: we would block here indefinitely in case
@@ -2595,18 +2585,6 @@ impl NodeImpl {
                         new_applied = Some(meta.index);
                         received_snapshot = true;
                     }
-
-                    // FIXME: this following statement is no longer true, so we
-                    // need to somehow notify the raft leader that the snapshot
-                    // was handled...
-                    // TODO: As long as the snapshot was sent to us in response to
-                    // a rejected MsgAppend (which is the only possible case
-                    // currently), we will send a MsgAppendResponse back which will
-                    // automatically reset our status from Snapshot to Replicate.
-                    // But when we implement support for manual snapshot requests,
-                    // we will have to also implement sending a MsgSnapStatus,
-                    // to reset out status explicitly to avoid leader ignoring us
-                    // indefinitely after that point.
                 }
 
                 Ok(())

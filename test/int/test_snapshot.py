@@ -2,7 +2,7 @@ import time
 
 import pytest
 
-from conftest import Cluster, Retriable, log_crawler, TarantoolError
+from conftest import Cluster, Retriable, log_crawler
 
 
 _3_SEC = 3
@@ -457,7 +457,7 @@ cluster:
 
     # Make a schema change. WAIT APPLIED LOCALLY is needed because `storage_1_2`
     # is blocked by the injection
-    leader.sql("CREATE TABLE life_is_good (i_like_life INTEGER PRIMARY KEY) WAIT APPLIED LOCALLY")
+    leader.sql("CREATE TABLE life_is_good (i_like_life INTEGER PRIMARY KEY) DISTRIBUTED GLOBALLY WAIT APPLIED LOCALLY")
 
     # Wait until storage_1_2 synchronizes via tarantool replication stream.
     # This will make it so `_schema.local_schema_version` > `snapshot.schema_version` on it.
@@ -468,13 +468,11 @@ cluster:
     storage_1_2.call("pico._inject_error", injected_error_2, False)
 
     applied = leader.call(".proc_get_index")
-    try:
-        storage_1_2.call(".proc_wait_index", applied, 10)
-    except TarantoolError as e:
-        assert e.args[0] == 'ER_TIMEOUT'
+    storage_1_2.call(".proc_wait_index", applied, 10)
 
-    storage_1_2.kill()
-    storage_1_2.fail_to_start()
+    leader.sql("INSERT INTO life_is_good VALUES (1), (2), (3)")
+    rows = storage_1_2.sql("SELECT * FROM life_is_good")
+    assert rows == [[1], [2], [3]]
 
 
 # TODO: test case which would show if we sent snapshot conf state inconsistent
