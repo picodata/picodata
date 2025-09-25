@@ -2,6 +2,7 @@
 
 use sbroad::executor::engine::helpers::vshard::{get_random_bucket, impl_exec_ir_on_buckets};
 use sbroad::executor::engine::{DispatchReturnFormat, Metadata, QueryCache, Vshard};
+use sbroad::executor::result::ExplainProducerResult;
 use sbroad::ir::node::NodeId;
 use sbroad::utils::MutexLike;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
@@ -270,8 +271,9 @@ impl Router for RouterRuntime {
         plan: &mut ExecutionPlan,
         motion_node_id: &NodeId,
         buckets: &Buckets,
+        explain_data: Option<&mut ExplainProducerResult>
     ) -> Result<VirtualTable, SbroadError> {
-        materialize_motion(self, plan, *motion_node_id, buckets)
+        materialize_motion(self, plan, *motion_node_id, buckets, explain_data)
     }
 
     fn materialize_values(

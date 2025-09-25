@@ -22,19 +22,20 @@
 //!    - builds a virtual table with query results that correspond to the original motion.
 //! 5. Repeats step 3 till we are done with motion layers.
 //! 6. Executes the final IR top subtree and returns the final result to the user.
-use crate::errors::{Entity, SbroadError};
+use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::bucket::Buckets;
 use crate::executor::engine::{Router, Vshard};
 use crate::executor::ir::ExecutionPlan;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Motion, NodeId};
 use crate::ir::transformation::redistribution::MotionPolicy;
-use crate::ir::{Plan, Slices};
+use crate::ir::{ExplainType, Plan, Slices};
 use crate::BoundStatement;
-use smol_str::SmolStr;
+use smol_str::{format_smolstr, SmolStr};
 use std::any::Any;
 use std::collections::HashMap;
 use std::rc::Rc;
+use tarantool::tuple::Tuple;
 
 pub mod bucket;
 pub mod engine;
@@ -133,10 +134,15 @@ where
         self.coordinator
     }
 
-    pub fn materialize_subtree(&mut self, slices: Slices) -> Result<(), SbroadError> {
+    pub fn materialize_subtree(
+        &mut self,
+        slices: Slices,
+        explain_data: Option<&mut Vec<String>>,
+    ) -> Result<(), SbroadError> {
         let tier = self.exec_plan.get_ir_plan().tier.as_ref();
         // all tables from one tier, so we can use corresponding vshard object
         let vshard = self.coordinator.get_vshard_object_by_tier(tier)?;
+        let mut explain_vec = Vec::new();
 
         for slice in slices.slices() {
             // TODO: make it work in parallel
@@ -186,16 +192,25 @@ where
                 }
 
                 let top_id = self.exec_plan.get_motion_subtree_root(*motion_id)?;
+                let mut explain_result = String::new();
 
                 let buckets = self.bucket_discovery(top_id)?;
                 let virtual_table = self.coordinator.materialize_motion(
                     &mut self.exec_plan,
                     motion_id,
                     &buckets,
+                    Some(&mut explain_result),
                 )?;
+
+                explain_vec.push(explain_result);
+
                 self.exec_plan
                     .set_motion_vtable(motion_id, virtual_table, &vshard)?;
             }
+        }
+
+        if let Some(explain_data) = explain_data {
+            *explain_data = explain_vec;
         }
 
         Ok(())
@@ -221,8 +236,9 @@ where
             return self.produce_explain();
         }
 
+        let mut explain_vec = Vec::new();
         let slices = self.exec_plan.get_ir_plan().clone_slices();
-        self.materialize_subtree(slices)?;
+        self.materialize_subtree(slices, Some(&mut explain_vec))?;
         let ir_plan = self.exec_plan.get_ir_plan();
         let top_id = ir_plan.get_top()?;
         if ir_plan.get_relation_node(top_id)?.is_motion() {
@@ -238,12 +254,40 @@ where
             return v.to_output(&motion_aliases);
         }
         let buckets = self.bucket_discovery(top_id)?;
-        self.coordinator.dispatch(
+        let res = self.coordinator.dispatch(
             &mut self.exec_plan,
             top_id,
             &buckets,
             engine::DispatchReturnFormat::Tuple,
-        )
+        )?;
+        if let ExplainType::ExplainQueryPlan = self.exec_plan.get_ir_plan().get_explain_type() {
+            let explain_res = res.downcast::<String>().map_err(|e| {
+                SbroadError::Invalid(
+                    Entity::MsgPack,
+                    Some(format_smolstr!("expected Tuple as result: {e:?}")),
+                )
+            })?;
+
+            let explain_res = vec![*explain_res];
+
+            explain_vec.extend_from_slice(&explain_res);
+            let mut explain_str = String::new();
+            for explain_res in explain_vec.iter() {
+                explain_str.push_str(&format!("{}", explain_res));
+            }
+            let e = explain_str.lines().collect::<Vec<&str>>();
+
+            return match Tuple::new(&[e]) {
+                Ok(t) => Ok(Box::new(t)),
+                Err(e) => Err(SbroadError::FailedTo(
+                    Action::Create,
+                    Some(Entity::Tuple),
+                    format_smolstr!("{e}"),
+                )),
+            };
+        }
+
+        Ok(res)
     }
 
     /// Query explain
@@ -256,7 +300,7 @@ where
 
     /// Checks that query is explain and have not to be executed
     pub fn is_explain(&self) -> bool {
-        self.exec_plan.get_ir_plan().is_explain()
+        self.exec_plan.get_ir_plan().is_plain_explain()
     }
 
     /// Checks that query is a statement block.

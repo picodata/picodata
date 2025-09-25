@@ -17,6 +17,7 @@ use crate::executor::engine::{
 use crate::executor::hash::bucket_id_by_tuple;
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::lru::{Cache as _, LRUCache, DEFAULT_CAPACITY};
+use crate::executor::result::ExplainProducerResult;
 use crate::executor::result::ProducerResult;
 use crate::executor::vtable::VirtualTable;
 use crate::frontend::sql::ast::AbstractSyntaxTree;
@@ -30,8 +31,6 @@ use crate::ir::Plan;
 use crate::utils::MutexLike;
 use rand::random;
 use std::rc::Rc;
-use tarantool::decimal;
-use tarantool::decimal::Decimal;
 use tarantool::space::SpaceId;
 
 use super::helpers::vshard::{prepare_rs_to_ir_map, GroupedBuckets};
@@ -1691,6 +1690,7 @@ impl Router for RouterRuntimeMock {
         plan: &mut ExecutionPlan,
         motion_node_id: &NodeId,
         _buckets: &Buckets,
+        _explain_data: Option<&mut ExplainProducerResult>,
     ) -> Result<VirtualTable, SbroadError> {
         plan.unlink_motion_subtree(*motion_node_id)?;
         Ok(self

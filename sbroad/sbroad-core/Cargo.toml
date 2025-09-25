@@ -33,6 +33,7 @@ chrono = "0.4"
 twox-hash = "2.1"
 
 sbroad-type-system = { path = "../sbroad-type-system" }
+comfy-table = "7.2.1"
 
 [dependencies.tarantool]
 git = "https://git.picodata.io/picodata/picodata/tarantool-module.git"

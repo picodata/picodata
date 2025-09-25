@@ -159,6 +159,26 @@ pub fn create_table(
     }
 }
 
+impl TableGuard {
+    pub fn drop_table(&self) -> Result<(), SbroadError> {
+        let cleanup = |space: Space, name: &str| match with_su(ADMIN_ID, || space.drop()) {
+            Ok(_) => {}
+            Err(e) => {
+                error!(
+                    Option::from("Temporary space"),
+                    &format!("Failed to drop {name}: {e}")
+                );
+            }
+        };
+
+        if let Some(space) = with_su(ADMIN_ID, || Space::find(self.name.as_str()))? {
+            cleanup(space, self.name.as_str());
+        }
+
+        Ok(())
+    }
+}
+
 impl Drop for TableGuard {
     fn drop(&mut self) {
         #[cfg(not(feature = "mock"))]

@@ -2505,7 +2505,7 @@ fn do_dml_on_global_tbl(
 
         let motion_id = ir.get_relational_child(top, 0)?;
         let slices = ir.calculate_slices(motion_id)?;
-        query.materialize_subtree(slices.into())?;
+        query.materialize_subtree(slices.into(), None)?;
 
         let exec_plan = query.get_mut_exec_plan();
         let vtable = exec_plan

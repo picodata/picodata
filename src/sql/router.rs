@@ -321,8 +321,9 @@ impl Router for RouterRuntime {
         plan: &mut sbroad::executor::ir::ExecutionPlan,
         motion_node_id: &NodeId,
         buckets: &sbroad::executor::bucket::Buckets,
+        explain_data: Option<&mut String>,
     ) -> Result<sbroad::executor::vtable::VirtualTable, SbroadError> {
-        materialize_motion(self, plan, *motion_node_id, buckets)
+        materialize_motion(self, plan, *motion_node_id, buckets, explain_data)
     }
 
     fn dispatch(

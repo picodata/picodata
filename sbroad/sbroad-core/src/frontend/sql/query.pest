@@ -258,8 +258,10 @@ Block = ${ CallProc ~ (W ~ DqlOption)? }
         ProcValues = !{ (ProcValue ~ ("," ~ ProcValue)*)? }
             ProcValue = _{ Literal | Parameter }
 
+ExplainQueryPlan = { ( "(" ~ WO ~ ^"query" ~ W ~ ^"plan" ~ WO ~ ")" ) }
+
 ExplainQuery = _{ Explain }
-    Explain = ${ ^"explain" ~ W ~ Query }
+    Explain = ${ ^"explain" ~ (W ~ ExplainQueryPlan)? ~ W ~ Query }
 
 Query = { (SelectFull | Values | Insert | Update | Delete) ~ WO ~ DqlOption? }
     SelectFull = ${ (^"with" ~ W ~ Ctes ~ W)? ~ SelectStatement }

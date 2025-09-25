@@ -398,6 +398,7 @@ pub trait Router: QueryCache {
         plan: &mut ExecutionPlan,
         motion_node_id: &NodeId,
         buckets: &Buckets,
+        explain_data: Option<&mut String>,
     ) -> Result<VirtualTable, SbroadError>;
 
     /// Get tier name to which the coordinator belongs

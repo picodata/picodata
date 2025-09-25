@@ -72,6 +72,7 @@ use crate::ir::tree::traversal::{
 use crate::ir::types::CastType;
 use crate::ir::types::DomainType;
 use crate::ir::value::Value;
+use crate::ir::ExplainType::{Explain, ExplainQueryPlan};
 use crate::ir::{node::plugin, Plan};
 use crate::warn;
 use sbroad_type_system::error::Error as TypeSystemError;
@@ -6230,10 +6231,17 @@ impl AbstractSyntaxTree {
                     map.add(id, insert_id);
                 }
                 Rule::Explain => {
-                    plan.mark_as_explain();
+                    let mut child_iter = node.children.iter();
+                    let mut explain_child_id = child_iter.next().expect("Explain has no children.");
+                    let explain_child = self.nodes.get_node(*explain_child_id)?;
+                    if let Rule::ExplainQueryPlan = explain_child.rule {
+                        plan.mark_as_explain(ExplainQueryPlan);
+                        explain_child_id = child_iter.next().expect("Explain has no children.");
+                    } else {
+                        plan.mark_as_explain(Explain);
+                    }
 
-                    let ast_child_id = node.children.first().expect("Explain has no children.");
-                    map.add(0, map.get(*ast_child_id)?);
+                    map.add(0, map.get(*explain_child_id)?);
                 }
                 Rule::Query => {
                     // Query may have two children:

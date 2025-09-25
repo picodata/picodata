@@ -9,6 +9,7 @@ use crate::{
             Update, Values, ValuesRow,
         },
         types::DerivedType,
+        ExplainType,
     },
     utils::MutexLike,
 };
@@ -877,6 +878,15 @@ pub fn dispatch_impl(
         }
     };
     let tier_runtime = coordinator.get_vshard_object_by_tier(tier.as_ref())?;
+    if let ExplainType::ExplainQueryPlan = sub_plan.get_ir_plan().get_explain_type() {
+        if sub_plan.get_ir_plan().is_dml()? {
+            return Err(SbroadError::Unsupported(
+                Entity::Plan,
+                Some("EXPLAIN QUERY PLAN is not supported for DML queries".into()),
+            ));
+        }
+        return tier_runtime.exec_ir_on_any_node(sub_plan, DispatchReturnFormat::Tuple);
+    }
 
     debug!(Option::from("dispatch"), &format!("sub plan: {sub_plan:?}"));
     if has_zero_limit_clause(&sub_plan)? {
@@ -1074,6 +1084,7 @@ pub fn materialize_motion(
     plan: &mut ExecutionPlan,
     motion_node_id: NodeId,
     buckets: &Buckets,
+    explain_data: Option<&mut String>,
 ) -> Result<VirtualTable, SbroadError> {
     let top_id = plan.get_motion_subtree_root(motion_node_id)?;
 
@@ -1091,17 +1102,28 @@ pub fn materialize_motion(
     } else {
         panic!("Expected motion node, got {motion_node:?}");
     };
+
     let columns = vtable_columns(plan.get_ir_plan(), top_id)?;
+
     // Dispatch the motion subtree (it will be replaced with invalid values).
-    let mut result = *runtime
-        .dispatch(plan, top_id, buckets, DispatchReturnFormat::Inner)?
-        .downcast::<ProducerResult>()
-        .expect("must've failed earlier");
+    let result = runtime.dispatch(plan, top_id, buckets, DispatchReturnFormat::Inner)?;
 
-    // Unlink motion node's child sub tree (it is already replaced with invalid values).
-    plan.unlink_motion_subtree(motion_node_id)?;
+    let mut vtable = if let ExplainType::ExplainQueryPlan = plan.get_ir_plan().get_explain_type() {
+        let explain_res = *result.downcast::<String>().expect("must've failed earlier");
 
-    let mut vtable = result.as_virtual_table(columns)?;
+        // Unlink motion node's child sub tree (it is already replaced with invalid values).
+        plan.unlink_motion_subtree(motion_node_id)?;
+
+        let explain_data = explain_data.unwrap();
+        *explain_data = explain_res;
+        VirtualTable::with_columns(columns)
+    } else {
+        let mut res = *result
+            .downcast::<ProducerResult>()
+            .expect("must've failed earlier");
+        res.as_virtual_table(columns)?
+    };
+
     if let Some(name) = alias {
         vtable.set_alias(name.as_str());
     }
@@ -1501,6 +1523,19 @@ where
     let (pattern_with_params, mut guards) = info.extract_query_and_table_guard()?;
     let plan_id = info.id();
     let (pattern, params) = pattern_with_params.into_parts();
+
+    if pattern.as_str().starts_with("EXPLAIN QUERY PLAN ") {
+        return read_bypassing_cache(
+            &pattern,
+            &params,
+            plan_id,
+            &mut vtables,
+            sql_vdbe_opcode_max,
+            max_rows,
+            return_format,
+        );
+    }
+
     match prepare(pattern.clone()) {
         Ok(stmt) => {
             let motion_ids: Vec<NodeId> = vtables.keys().copied().collect();

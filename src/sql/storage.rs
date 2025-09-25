@@ -9,15 +9,17 @@ use sbroad::executor::bucket::Buckets;
 use sbroad::executor::engine::helpers::storage::{unprepare, StorageReturnFormat};
 use sbroad::executor::engine::helpers::vshard::{get_random_bucket, CacheInfo};
 use sbroad::executor::engine::helpers::{
-    self, execute_first_cacheable_request, execute_second_cacheable_request, read_or_prepare,
-    EncodedQueryInfo, FullPlanInfo, OptionalBytes, RequiredPlanInfo,
+    self, execute_first_cacheable_request, execute_second_cacheable_request, prepare_and_read,
+    read_or_prepare, EncodedQueryInfo, FullPlanInfo, OptionalBytes, RequiredPlanInfo,
 };
 use sbroad::executor::engine::{DispatchReturnFormat, QueryCache, StorageCache, Vshard};
 use sbroad::executor::ir::{ExecutionPlan, QueryType};
 use sbroad::executor::lru::{Cache, EvictFn, LRUCache};
 use sbroad::executor::protocol::{EncodedVTables, RequiredData, SchemaInfo};
-use sbroad::executor::result::ProducerResult;
+use sbroad::executor::result::{ExplainProducerResult, ProducerResult};
 use sbroad::ir::value::Value;
+use sbroad::ir::ExplainType;
+use sbroad::utils::MutexLike;
 use tarantool::fiber::Mutex;
 use tarantool::sql::Statement;
 use tarantool::tuple::{Tuple, TupleBuffer};
@@ -232,6 +234,46 @@ impl FullPlanInfo for LocalExecutionQueryInfo<'_> {
     }
 }
 
+fn exec_explain_query_plan<R: QueryCache, M: MutexLike<R::Cache>>(
+    locked_cache: &mut M::Guard<'_>,
+    info: &mut impl FullPlanInfo,
+) -> Result<Box<dyn Any>, SbroadError>
+where
+    R::Cache: StorageCache,
+{
+    let (pattern_with_params, guards) = info.extract_query_and_table_guard()?;
+    let mut sql = pattern_with_params.pattern;
+
+    let boxed_bytes: Box<dyn Any> =
+        prepare_and_read::<R, M>(locked_cache, info, &StorageReturnFormat::DqlRaw)?;
+
+    let bytes = boxed_bytes.downcast::<Vec<u8>>().map_err(|e| {
+        SbroadError::Invalid(
+            Entity::MsgPack,
+            Some(format_smolstr!("expected Tuple as result: {e:?}")),
+        )
+    })?;
+    let producer_result: Vec<ProducerResult> = msgpack::decode(bytes.as_slice()).map_err(|e| {
+        SbroadError::Other(format_smolstr!("decode bytes into inner format: {e:?}"))
+    })?;
+
+    let producer_result = producer_result
+        .first()
+        .expect("storage returned empty result")
+        .clone();
+    sql.replace_range(.."EXPLAIN QUERY PLAN ".len(), "");
+
+    let explain_producer_res = ExplainProducerResult::from(sql, producer_result);
+
+    let explain_str = format!("{}\n\n", explain_producer_res);
+
+    for guard in guards {
+        guard.drop_table()?;
+    }
+
+    Ok(Box::new(explain_str))
+}
+
 impl Vshard for StorageRuntime {
     fn bucket_count(&self) -> u64 {
         self.bucket_count
@@ -267,6 +309,14 @@ impl Vshard for StorageRuntime {
             schema_info,
         };
         let mut locked_cache = self.cache().lock();
+
+        if let ExplainType::ExplainQueryPlan = info.exec_plan.get_ir_plan().get_explain_type() {
+            return exec_explain_query_plan::<Self, <Self as QueryCache>::Mutex>(
+                &mut locked_cache,
+                &mut info,
+            );
+        }
+
         let boxed_bytes: Box<dyn Any> = read_or_prepare::<Self, <Self as QueryCache>::Mutex>(
             &mut locked_cache,
             &mut info,
@@ -298,6 +348,7 @@ impl Vshard for StorageRuntime {
                 Box::new(inner_owned)
             }
         };
+
         Ok(res)
     }
 

@@ -9,6 +9,7 @@
 //! When executing DML (INSERT) we will get `ConsumerResult`, which fields are:
 //! * `row_count` (u64): the number of tuples inserted (that may be equal to 0)
 
+use comfy_table::{ContentArrangement, Table};
 use core::fmt::Debug;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use serde::{Deserialize, Deserializer};
@@ -34,6 +35,12 @@ pub type ExecutorTuple = Vec<Value>;
 pub struct MetadataColumn {
     name: String,
     r#type: String,
+}
+
+impl std::fmt::Display for MetadataColumn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.name)
+    }
 }
 
 impl MetadataColumn {
@@ -81,6 +88,50 @@ impl TryInto<Column> for &MetadataColumn {
             ColumnRole::User,
             true,
         ))
+    }
+}
+
+/// Results of query execution for `EXPLAIN QUERY PLAN ...`.
+/// Infromation returned to as from local Tarantool query execution.
+#[derive(Debug, Default, Deserialize, PartialEq, Clone, msgpack::Encode, msgpack::Decode)]
+pub struct ExplainProducerResult {
+    pub query: String,
+    pub producer_result: ProducerResult,
+}
+
+impl ExplainProducerResult {
+    pub fn from(query: String, producer_result: ProducerResult) -> Self {
+        ExplainProducerResult {
+            query,
+            producer_result,
+        }
+    }
+}
+
+impl std::fmt::Display for ExplainProducerResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}\n", self.query))?;
+        let mut table = Table::new();
+        table.set_content_arrangement(ContentArrangement::Dynamic);
+        table.set_header(self.producer_result.metadata.iter());
+
+        for row in &self.producer_result.rows {
+            let formatted_row: Vec<String> = row
+                .iter()
+                .map(|v| {
+                    // if cell is Utf8String, then we format it as plain string with no quotes
+                    if let Value::String(s) = v {
+                        s.as_str().to_string()
+                    } else {
+                        v.to_string()
+                    }
+                })
+                .collect();
+
+            table.add_row(formatted_row);
+        }
+
+        f.write_fmt(format_args!("{table}\n"))
     }
 }
 
