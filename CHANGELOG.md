@@ -52,6 +52,8 @@ with the `YY.MINOR.MICRO` scheme.
   (see also https://git.picodata.io/core/picodata/-/issues/2202).
 - Fixed potential undefined behavior in plugin RPC handler arguments.
 - Picodata now loads all certificates from `ca.crt`, not just the first one.
+- Fixed a possible state corruption in case picodata crashes after receiving a
+  raft snapshot with a stale schema version.
 
 ### CLI
 
