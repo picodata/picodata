@@ -1,3 +1,8 @@
 pub mod decode;
+pub mod dql;
 pub mod encode;
+pub mod error;
+pub mod message_type;
 pub mod msgpack;
+pub mod protocol_encoder;
+pub mod tuple_iterator;

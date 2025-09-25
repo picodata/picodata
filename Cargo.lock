@@ -4191,6 +4191,8 @@ name = "sql_protocol"
 version = "25.5.0"
 dependencies = [
  "rmp",
+ "smol_str",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
