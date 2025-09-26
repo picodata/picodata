@@ -1,5 +1,6 @@
 use crate::storage::Catalog;
 use crate::traft::RaftId;
+use crate::traft::RaftIndex;
 use crate::util::NoYieldsRefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -42,7 +43,14 @@ impl InstanceReachabilityManager {
     /// Is called from a connection pool worker loop to report results of raft
     /// messages sent to other instances. For example a timeout is considered
     /// a failure. Updates info for the given instance.
-    pub fn report_result(&mut self, raft_id: RaftId, success: bool) {
+    ///
+    /// `applied` is the index of the last applied raft log entry of that instance.
+    pub fn report_communication_result(
+        &mut self,
+        raft_id: RaftId,
+        success: bool,
+        applied: Option<RaftIndex>,
+    ) {
         let now = fiber::clock();
         let info = self.infos.entry(raft_id).or_default();
         info.last_attempt = Some(now);
@@ -64,15 +72,26 @@ impl InstanceReachabilityManager {
             }
             info.fail_streak += 1;
         }
+
+        if let Some(applied) = applied {
+            let (last_applied, time_changed) =
+                info.last_applied_index.get_or_insert((applied, now));
+            if *last_applied != applied {
+                *last_applied = applied;
+                *time_changed = now;
+            }
+        }
     }
 
     /// Is called at the beginning of the raft main loop to get information
     /// about which instances should be reported as unreachable to the raft node.
-    pub fn take_unreachables_to_report(&mut self) -> Vec<RaftId> {
+    ///
+    /// `applied` is the index of the last applied raft log entry of the current instance.
+    pub fn take_unreachables_to_report(&mut self, applied: RaftIndex) -> Vec<RaftId> {
         // This is how you turn off the borrow checker by the way.
         let this = self as *const Self;
 
-        let mut res = Vec::with_capacity(16);
+        let mut res = Vec::new();
         for (raft_id, info) in &mut self.infos {
             if info.is_reported {
                 // Don't report nodes repeatedly.
@@ -80,7 +99,7 @@ impl InstanceReachabilityManager {
             }
             // SAFETY: this is safe because we're not accessing `self.infos` in
             // this function.
-            if unsafe { &*this }.determine_reachability(info) == Unreachable {
+            if unsafe { &*this }.check_reachability(applied, info) == Unreachable {
                 res.push(*raft_id);
                 info.is_reported = true;
             }
@@ -90,10 +109,12 @@ impl InstanceReachabilityManager {
 
     /// Is called by sentinel to get information about which instances should be
     /// automatically assigned a different state.
-    pub fn get_unreachables(&self) -> HashSet<RaftId> {
-        let mut res = HashSet::with_capacity(self.infos.len() / 3);
+    ///
+    /// `applied` is the index of the last applied raft log entry of the current instance.
+    pub fn get_unreachables(&self, applied: RaftIndex) -> HashSet<RaftId> {
+        let mut res = HashSet::new();
         for (raft_id, info) in &self.infos {
-            let status = self.determine_reachability(info);
+            let status = self.check_reachability(applied, info);
             if status == Unreachable {
                 res.insert(*raft_id);
             }
@@ -101,9 +122,50 @@ impl InstanceReachabilityManager {
         return res;
     }
 
+    /// Make a decision on the given instance's reachability based on the `info`.
+    ///
+    /// `applied` is the index of the last applied raft log entry of the current instance.
+    ///
+    /// This is an internal function.
+    fn check_reachability(
+        &self,
+        our_applied: RaftIndex,
+        info: &InstanceReachabilityInfo,
+    ) -> ReachabilityState {
+        let reachability = self.check_reachability_via_rpc(info);
+        if reachability == Unreachable {
+            return Unreachable;
+        }
+
+        let Some((their_applied, applied_changed)) = info.last_applied_index else {
+            // Applied index not known yet, can't make a decision based on that info
+            return reachability;
+        };
+
+        if their_applied >= our_applied {
+            // Applied index is up to date with ours, all good
+            return reachability;
+        }
+
+        let now = fiber::clock();
+        if now.duration_since(applied_changed) > self.auto_offline_timeout() {
+            // Applied index is lagging and hasn't changed for too long, this
+            // means that the instance's raft_main_loop is probably stuck and
+            // can't progress for some reason. This could be caused by storage
+            // corruption because of an admin's mistake or a bug in our code.
+            // Anyway we want to mark such instances as 'Offline' so that it's
+            // easier to notice them and also so that they don't affect the
+            // cluster in a negative way.
+            return Unreachable;
+        }
+
+        reachability
+    }
+
     /// Make a decision on the given instance's reachability based on the
-    /// provided `info`. This is an internal function.
-    fn determine_reachability(&self, info: &InstanceReachabilityInfo) -> ReachabilityState {
+    /// `info` about recent RPC communication attempts.
+    /// This is an internal function.
+    fn check_reachability_via_rpc(&self, info: &InstanceReachabilityInfo) -> ReachabilityState {
         if let Some(last_success) = info.last_success {
             if info.fail_streak == 0 {
                 // Didn't fail once, so can't be unreachable.
@@ -207,7 +269,13 @@ use ReachabilityState::*;
 pub struct InstanceReachabilityInfo {
     pub last_success: Option<Instant>,
     pub last_attempt: Option<Instant>,
+
     pub fail_streak_start: Option<Instant>,
     pub fail_streak: u32,
+
+    /// A pair of index of last applied raft log entry and the instant when
+    /// this index changed.
+    pub last_applied_index: Option<(RaftIndex, Instant)>,
+
     pub is_reported: bool,
 }

@@ -326,3 +326,51 @@ def test_sentinel_backoff(cluster: Cluster):
     # And this is important, because it means that there was only this one
     # request to update target state (no spam)
     assert old_index_of_attempt == index_of_attempt
+
+
+def test_automatic_offline_due_to_global_dml_conflict(cluster: Cluster):
+    leader, follower, victim = cluster.deploy(instance_count=3)
+
+    # Create a global table
+    leader.sql("CREATE TABLE foo (bar INTEGER PRIMARY KEY, baz TEXT) DISTRIBUTED GLOBALLY")
+
+    # Reduce the timeout so that the test doesn't take too long
+    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 3")
+
+    # Do an illegal operation which will break victim's raft_main_loop
+    victim.eval("box.space.foo:put({1337, 'bad'})")
+
+    # Now do a legal operation
+    leader.sql("INSERT INTO foo VALUES (1337, 'good')")
+
+    latest_index = leader.call(".proc_get_index")
+    # This guy successfully receives the operation
+    follower.call(".proc_wait_index", latest_index, 10)
+
+    # But this guy is now broken
+    try:
+        victim.call(".proc_wait_index", latest_index, 1)
+    except TarantoolError as e:
+        assert e.args[0] == "ER_TIMEOUT"
+
+    # And it's state is eventually turned Offline automatically
+    cluster.wait_has_states(victim, "Offline", "Offline")
+
+    # Meanwhile the cluster keeps working fine
+    leader.sql("INSERT INTO foo VALUES (69105, 'better')")
+    latest_index = leader.call(".proc_get_index")
+    follower.call(".proc_wait_index", latest_index, 10)
+
+    # Now the admin comes along and fixes the error manually
+    victim.eval("box.space.foo:delete({1337})")
+
+    # And victim automatically comes back eventually
+    victim.wait_online()
+
+    # Sanity check
+    victim.call(".proc_wait_index", latest_index, 10)
+    rows = victim.call("box.space.foo:select")
+    assert rows == [
+        [1337, "good"],
+        [69105, "better"],
+    ]

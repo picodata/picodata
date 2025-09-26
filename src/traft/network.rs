@@ -277,7 +277,7 @@ impl PoolWorker {
                                 }
                                 instance_reachability
                                     .borrow_mut()
-                                    .report_result(raft_id, is_connected);
+                                    .report_communication_result(raft_id, is_connected, None);
                             }
                         }
                         has_ready = true;

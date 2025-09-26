@@ -16,6 +16,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Introduce the governor script to add `is_default` column to the `_pico_tier` table
 - Pgproto now reports more verbose TLS error messages
 - Validate cluster UUID during IPROTO handshake and propagate `cluster_uuid` via IPROTO_ID. Connections with a mismatching `cluster_uuid` are rejected, ensuring cross-cluster isolation.
+- Instance's which loose ability to apply raft log updates will automatically
+  become Offline. (See also https://git.picodata.io/core/picodata/-/issues/2238).
 
 ### Observability
 - `instance_name` is now the primary label for Prometheus metrics.
