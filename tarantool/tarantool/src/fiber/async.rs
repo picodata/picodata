@@ -36,8 +36,6 @@ pub mod watch;
 
 pub use mutex::Mutex;
 
-#[cfg(feature = "async-std")]
-pub use async_std;
 pub use futures;
 
 /// Error that happens on the receiver side of the channel.

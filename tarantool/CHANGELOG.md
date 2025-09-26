@@ -38,7 +38,7 @@
 
 # Change Log
 
-# [8.0.1] Unreleased
+# [9.0.0] Unreleased
 
 ### Changed
 
@@ -51,6 +51,13 @@
 ### Fixed
 - Unpinned the version of `time` crate from a two-year old `0.3.17`
 - `space::Space::bsize` now returns `box.space.<space_name>:bsize()` instead of `box.space.<space_name>.index[0]:bsize()`
+
+### Breaking
+
+- As of [RUSTSEC-2025-0052](https://rustsec.org/advisories/RUSTSEC-2025-0052.html),
+  [async-std](https://github.com/async-rs/async-std) is not supported or maintaned
+  anymore. We've removed this package as the dependency, it's re-exports, and the
+  same with the implicit feature flag it added to the workspace.
 
 ### Added (picodata)
 
