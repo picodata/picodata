@@ -10,6 +10,11 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## [25.3.5] - Unreleased
 
+### Features
+
+- Instance's which loose ability to apply raft log updates will automatically
+  become Offline. (See also https://git.picodata.io/core/picodata/-/issues/2238).
+
 ### Fixes
 
 - Fixed bizarre row order produced by ORDER BY <uuid>.

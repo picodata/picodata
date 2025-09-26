@@ -126,7 +126,8 @@ impl Loop {
         if raft_status.get().raft_state.is_leader() {
             let topology_ref = node.topology_cache.get();
             let instances = topology_ref.all_instances();
-            let unreachables = instance_reachability.borrow().get_unreachables();
+            let index = node.get_index();
+            let unreachables = instance_reachability.borrow().get_unreachables(index);
             let mut instance_to_downgrade = None;
             for instance in instances {
                 if has_states!(instance, * -> Online) && unreachables.contains(&instance.raft_id) {

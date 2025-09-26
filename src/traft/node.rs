@@ -2454,7 +2454,7 @@ impl NodeImpl {
         let unreachables = self
             .instance_reachability
             .borrow_mut()
-            .take_unreachables_to_report();
+            .take_unreachables_to_report(self.applied.get());
         for raft_id in unreachables {
             self.raw_node.report_unreachable(raft_id);
 
@@ -3020,7 +3020,7 @@ fn proc_raft_interact(data: RawByteBuf) -> traft::Result<()> {
 
     node.instance_reachability
         .borrow_mut()
-        .report_result(msg.inner.from, true);
+        .report_communication_result(msg.inner.from, true, Some(msg.applied));
 
     node.step_and_yield(msg);
 
