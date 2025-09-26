@@ -2564,6 +2564,11 @@ impl NodeImpl {
 
                     let meta = &snapshot.metadata;
                     let applied_index = self.raft_storage.applied()?;
+                    // If we receive a stale snapshot with snapshot_index less
+                    // then our commit_index, then raft-rs will skip it for us.
+                    // See code in raft::Raft::restore.
+                    debug_assert!(applied_index <= meta.index);
+
                     // Persist snapshot metadata and compact raft log if it wasn't empty.
                     self.raft_storage.handle_snapshot_metadata(meta)?;
 
