@@ -219,7 +219,7 @@ impl Node {
         };
         let mut pool = ConnectionPool::new(storage.clone(), opts);
         let instance_reachability = instance_reachability_manager(storage.clone());
-        pool.instance_reachability = instance_reachability.clone();
+        pool.instance_reachability = Some(instance_reachability.clone());
         let pool = Rc::new(pool);
         let plugin_manager = Rc::new(PluginManager::new(storage.clone()));
 
@@ -228,6 +228,7 @@ impl Node {
             storage.clone(),
             raft_storage.clone(),
             plugin_manager.clone(),
+            instance_reachability.clone(),
         )?;
         let topology_cache = node_impl.topology_cache.clone();
 
@@ -527,6 +528,7 @@ impl NodeImpl {
         storage: Catalog,
         raft_storage: RaftSpaceAccess,
         plugin_manager: Rc<PluginManager>,
+        instance_reachability: InstanceReachabilityManagerRef,
     ) -> traft::Result<Self> {
         let raft_id: RaftId = raft_storage
             .raft_id()?
@@ -575,7 +577,7 @@ impl NodeImpl {
             storage,
             topology_cache,
             raft_storage,
-            instance_reachability: pool.instance_reachability.clone(),
+            instance_reachability,
             pool,
             lc,
             status,

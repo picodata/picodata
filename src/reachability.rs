@@ -2,6 +2,7 @@ use crate::storage::Catalog;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::util::NoYieldsRefCell;
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -15,9 +16,12 @@ use tarantool::time::Instant;
 
 /// A struct holding information about reported attempts to communicate with
 /// all known instances.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct InstanceReachabilityManager {
-    storage: Option<Catalog>,
+    storage: Catalog,
+    // TODO: we should cache the whole db_config in a static variable and update
+    // it from raft_main_loop the same way we handle TopologyCache.
+    auto_offline_timeout: Cell<Duration>,
     infos: HashMap<RaftId, InstanceReachabilityInfo>,
 }
 
@@ -34,8 +38,13 @@ impl InstanceReachabilityManager {
     const MAX_HEARTBEAT_PERIOD: Duration = Duration::from_secs(5);
 
     pub fn new(storage: Catalog) -> Self {
+        let auto_offline_timeout = storage
+            .db_config
+            .governor_auto_offline_timeout()
+            .expect("storage aint gonna fail");
         Self {
-            storage: Some(storage),
+            storage,
+            auto_offline_timeout: Cell::new(auto_offline_timeout),
             infos: Default::default(),
         }
     }
@@ -88,6 +97,8 @@ impl InstanceReachabilityManager {
     ///
     /// `applied` is the index of the last applied raft log entry of the current instance.
     pub fn take_unreachables_to_report(&mut self, applied: RaftIndex) -> Vec<RaftId> {
+        self.update_auto_offline_timeout();
+
         // This is how you turn off the borrow checker by the way.
         let this = self as *const Self;
 
@@ -112,6 +123,8 @@ impl InstanceReachabilityManager {
     ///
     /// `applied` is the index of the last applied raft log entry of the current instance.
     pub fn get_unreachables(&self, applied: RaftIndex) -> HashSet<RaftId> {
+        self.update_auto_offline_timeout();
+
         let mut res = HashSet::new();
         for (raft_id, info) in &self.infos {
             let status = self.check_reachability(applied, info);
@@ -148,7 +161,7 @@ impl InstanceReachabilityManager {
         }
 
         let now = fiber::clock();
-        if now.duration_since(applied_changed) > self.auto_offline_timeout() {
+        if now.duration_since(applied_changed) > self.auto_offline_timeout.get() {
             // Applied index is lagging and hasn't changed for too long, this
             // means that the instance's raft_main_loop is probably stuck and
             // can't progress for some reason. This could be caused by storage
@@ -172,7 +185,7 @@ impl InstanceReachabilityManager {
                 return Reachable;
             }
             let now = fiber::clock();
-            if now.duration_since(last_success) > self.auto_offline_timeout() {
+            if now.duration_since(last_success) > self.auto_offline_timeout.get() {
                 return Unreachable;
             } else {
                 return Reachable;
@@ -181,7 +194,7 @@ impl InstanceReachabilityManager {
 
         if let Some(first_fail) = info.fail_streak_start {
             let now = fiber::clock();
-            if now.duration_since(first_fail) > self.auto_offline_timeout() {
+            if now.duration_since(first_fail) > self.auto_offline_timeout.get() {
                 return Unreachable;
             }
         }
@@ -239,20 +252,13 @@ impl InstanceReachabilityManager {
         return false;
     }
 
-    fn auto_offline_timeout(&self) -> Duration {
-        // TODO: it would be better for cache locality and overall performance
-        // if we don't look this value up in the storage every time. Instead we
-        // could store it in a field of this struct and only update it's value
-        // once per raft loop iteration by calling a method update_configuration
-        // or something like that.
-        let storage = self
+    fn update_auto_offline_timeout(&self) {
+        let new_value = self
             .storage
-            .as_ref()
-            .unwrap_or_else(|| Catalog::try_get(false).expect("should be initialized by now"));
-        storage
             .db_config
             .governor_auto_offline_timeout()
-            .expect("storage aint gonna fail")
+            .expect("storage aint gonna fail");
+        self.auto_offline_timeout.set(new_value);
     }
 }
 

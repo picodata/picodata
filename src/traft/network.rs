@@ -125,7 +125,7 @@ impl PoolWorker {
         instance_name: impl Into<Option<InstanceName>>,
         storage: PeerAddresses,
         opts: WorkerOptions,
-        instance_reachability: InstanceReachabilityManagerRef,
+        instance_reachability: Option<InstanceReachabilityManagerRef>,
     ) -> Result<PoolWorker> {
         let inbox = Mailbox::new();
         let (stop_sender, stop_receiver) = oneshot::channel();
@@ -186,7 +186,7 @@ impl PoolWorker {
         port: u16,
         call_timeout: Duration,
         max_concurrent_fut: usize,
-        instance_reachability: InstanceReachabilityManagerRef,
+        instance_reachability: Option<InstanceReachabilityManagerRef>,
     ) {
         let mut config = relay_connection_config();
         config.connect_timeout = Some(call_timeout);
@@ -275,9 +275,11 @@ impl PoolWorker {
                                     }
                                     Ok(_) => {}
                                 }
-                                instance_reachability
-                                    .borrow_mut()
-                                    .report_communication_result(raft_id, is_connected, None);
+                                if let Some(instance_reachability) = &instance_reachability {
+                                    instance_reachability
+                                        .borrow_mut()
+                                        .report_communication_result(raft_id, is_connected, None);
+                                }
                             }
                         }
                         has_ready = true;
@@ -404,7 +406,7 @@ pub struct ConnectionPool {
     raft_ids: UnsafeCell<HashMap<InstanceName, RaftId>>,
     peer_addresses: PeerAddresses,
     instances: Instances,
-    pub(crate) instance_reachability: InstanceReachabilityManagerRef,
+    pub(crate) instance_reachability: Option<InstanceReachabilityManagerRef>,
 }
 
 impl ConnectionPool {
@@ -416,7 +418,7 @@ impl ConnectionPool {
             raft_ids: Default::default(),
             peer_addresses: storage.peer_addresses,
             instances: storage.instances,
-            instance_reachability: Default::default(),
+            instance_reachability: None,
         }
     }
 
