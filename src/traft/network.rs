@@ -765,7 +765,7 @@ mod tests {
         // Wait for it
         on_disconnect_cond
             .wait_timeout(Duration::from_secs(1))
-            .then(|| (tlog!(Info, "TEST: on_disconnect triggered")))
+            .then(|| tlog!(Info, "TEST: on_disconnect triggered"))
             .or_else(|| panic!("on_disconnect timed out"));
 
         // Send the second request
