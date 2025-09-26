@@ -2,7 +2,6 @@
 
 use sbroad::executor::engine::helpers::vshard::{get_random_bucket, impl_exec_ir_on_buckets};
 use sbroad::executor::engine::{DispatchReturnFormat, Metadata, QueryCache, Vshard};
-use sbroad::executor::result::ExplainProducerResult;
 use sbroad::ir::node::NodeId;
 use sbroad::utils::MutexLike;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
@@ -70,6 +69,17 @@ impl Vshard for SingleTier {
             self.waiting_timeout,
             None,
         )
+    }
+
+    fn exec_explain_on_any_node(
+        &self,
+        _sub_plan: ExecutionPlan,
+        _buckets: &Buckets,
+    ) -> Result<Box<dyn Any>, SbroadError> {
+        Err(SbroadError::Unsupported(
+            Entity::Runtime,
+            Some("exec_explain_locally is not supported for the cartridge runtime".to_smolstr()),
+        ))
     }
 
     fn exec_ir_on_buckets(
@@ -271,7 +281,7 @@ impl Router for RouterRuntime {
         plan: &mut ExecutionPlan,
         motion_node_id: &NodeId,
         buckets: &Buckets,
-        explain_data: Option<&mut ExplainProducerResult>
+        explain_data: Option<&mut String>
     ) -> Result<VirtualTable, SbroadError> {
         materialize_motion(self, plan, *motion_node_id, buckets, explain_data)
     }

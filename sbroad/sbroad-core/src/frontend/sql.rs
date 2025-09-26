@@ -72,7 +72,7 @@ use crate::ir::tree::traversal::{
 use crate::ir::types::CastType;
 use crate::ir::types::DomainType;
 use crate::ir::value::Value;
-use crate::ir::ExplainType::{Explain, ExplainQueryPlan};
+use crate::ir::ExplainType::{Explain, ExplainQueryPlan, ExplainQueryPlanFmt};
 use crate::ir::{node::plugin, Plan};
 use crate::warn;
 use sbroad_type_system::error::Error as TypeSystemError;
@@ -6235,10 +6235,19 @@ impl AbstractSyntaxTree {
                     let mut explain_child_id = child_iter.next().expect("Explain has no children.");
                     let explain_child = self.nodes.get_node(*explain_child_id)?;
                     if let Rule::ExplainQueryPlan = explain_child.rule {
-                        plan.mark_as_explain(ExplainQueryPlan);
+                        if !explain_child.children.is_empty() {
+                            let explain_fmt_child =
+                                explain_child.children.first().expect("child must exist");
+                            let explain_fmt_node = self.nodes.get_node(*explain_fmt_child)?;
+                            if let Rule::ExplainQueryPlanFmt = explain_fmt_node.rule {
+                                plan.mark_as_explain(Some(ExplainQueryPlanFmt));
+                            }
+                        } else {
+                            plan.mark_as_explain(Some(ExplainQueryPlan));
+                        }
                         explain_child_id = child_iter.next().expect("Explain has no children.");
                     } else {
-                        plan.mark_as_explain(Explain);
+                        plan.mark_as_explain(Some(Explain));
                     }
 
                     map.add(0, map.get(*explain_child_id)?);

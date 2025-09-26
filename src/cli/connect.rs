@@ -70,13 +70,16 @@ impl Display for RowCount {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(transparent)]
 pub struct ExplainResult {
-    explain_result: Vec<String>,
+    explain_result: Vec<Option<String>>,
 }
 
 impl Display for ExplainResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for i in self.explain_result.iter() {
-            f.write_fmt(format_args!("{i}\n"))?
+            match i {
+                Some(line) => writeln!(f, "{}", line)?,
+                None => writeln!(f)?,
+            }
         }
 
         Ok(())

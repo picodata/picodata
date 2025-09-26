@@ -258,7 +258,9 @@ Block = ${ CallProc ~ (W ~ DqlOption)? }
         ProcValues = !{ (ProcValue ~ ("," ~ ProcValue)*)? }
             ProcValue = _{ Literal | Parameter }
 
-ExplainQueryPlan = { ( "(" ~ WO ~ ^"query" ~ W ~ ^"plan" ~ WO ~ ")" ) }
+
+ExplainQueryPlanFmt = { ( "," ~ WO ~ ^"fmt" ~ WO ) }
+ExplainQueryPlan    = { ( "(" ~ WO ~ ^"raw" ~ WO ~ (ExplainQueryPlanFmt)? ~ ")" ) }
 
 ExplainQuery = _{ Explain }
     Explain = ${ ^"explain" ~ (W ~ ExplainQueryPlan)? ~ W ~ Query }

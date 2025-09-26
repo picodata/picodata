@@ -30,7 +30,7 @@ mod prod_imports {
         plan_id: &str,
         motion_id: NodeId,
         vtables_meta: Option<&VTablesMeta>,
-    ) -> Result<SmolStr, SbroadError> {
+    ) -> Result<(SmolStr, bool), SbroadError> {
         let cleanup = |space: Space, name: &str| match with_su(ADMIN_ID, || space.drop()) {
             Ok(_) => {}
             Err(e) => {
@@ -41,11 +41,13 @@ mod prod_imports {
             }
         };
 
+        let mut already_created = false;
         let table_name = table_name(plan_id, motion_id);
 
         // If the space already exists, it is possible that admin has
         // populated it with data (by mistake?). Clean the space up.
         if let Some(space) = with_su(ADMIN_ID, || Space::find(table_name.as_str()))? {
+            already_created = true;
             cleanup(space, table_name.as_str());
         }
 
@@ -105,7 +107,7 @@ mod prod_imports {
                 ));
             }
         }
-        Ok(table_name)
+        Ok((table_name, already_created))
     }
 }
 
@@ -118,6 +120,7 @@ use smol_str::SmolStr;
 pub struct TableGuard {
     pub name: SmolStr,
     do_truncate: bool,
+    pub already_created: bool,
 }
 
 impl TableGuard {
@@ -140,10 +143,12 @@ pub fn create_table(
 ) -> Result<TableGuard, SbroadError> {
     #[cfg(not(feature = "mock"))]
     {
-        let name = create_tmp_space_impl(exec_plan, plan_id, motion_id, vtables_meta)?;
+        let (name, already_created) =
+            create_tmp_space_impl(exec_plan, plan_id, motion_id, vtables_meta)?;
         Ok(TableGuard {
             name,
             do_truncate: true,
+            already_created,
         })
     }
     #[cfg(feature = "mock")]
@@ -155,27 +160,8 @@ pub fn create_table(
         Ok(TableGuard {
             name,
             do_truncate: true,
+            already_created: false,
         })
-    }
-}
-
-impl TableGuard {
-    pub fn drop_table(&self) -> Result<(), SbroadError> {
-        let cleanup = |space: Space, name: &str| match with_su(ADMIN_ID, || space.drop()) {
-            Ok(_) => {}
-            Err(e) => {
-                error!(
-                    Option::from("Temporary space"),
-                    &format!("Failed to drop {name}: {e}")
-                );
-            }
-        };
-
-        if let Some(space) = with_su(ADMIN_ID, || Space::find(self.name.as_str()))? {
-            cleanup(space, self.name.as_str());
-        }
-
-        Ok(())
     }
 }
 
@@ -183,7 +169,7 @@ impl Drop for TableGuard {
     fn drop(&mut self) {
         #[cfg(not(feature = "mock"))]
         {
-            if !self.do_truncate {
+            if !self.do_truncate || self.already_created {
                 return;
             }
             let space_find_res = with_su(ADMIN_ID, || Space::find(&self.name));

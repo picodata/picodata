@@ -471,6 +471,18 @@ pub trait Vshard {
         return_format: DispatchReturnFormat,
     ) -> Result<Box<dyn Any>, SbroadError>;
 
+    /// Execute query on any node.
+    /// All the data needed to execute query
+    /// is already in the plan.
+    ///
+    /// # Errors
+    /// - Execution errors
+    fn exec_explain_on_any_node(
+        &self,
+        sub_plan: ExecutionPlan,
+        _buckets: &Buckets,
+    ) -> Result<Box<dyn Any>, SbroadError>;
+
     /// Get the amount of buckets in the cluster.
     fn bucket_count(&self) -> u64;
 

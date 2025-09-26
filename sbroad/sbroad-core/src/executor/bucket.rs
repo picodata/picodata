@@ -47,6 +47,14 @@ impl Buckets {
         Buckets::Filtered(buckets)
     }
 
+    pub fn determine_exec_location(&self) -> &str {
+        match self {
+            Buckets::Any => "ROUTER",
+            Buckets::All => "STORAGE",
+            Buckets::Filtered(_) => "FILTERED STORAGE",
+        }
+    }
+
     /// Conjuction of two sets of buckets.
     ///
     /// # Errors

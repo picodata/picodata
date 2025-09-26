@@ -22,20 +22,19 @@
 //!    - builds a virtual table with query results that correspond to the original motion.
 //! 5. Repeats step 3 till we are done with motion layers.
 //! 6. Executes the final IR top subtree and returns the final result to the user.
-use crate::errors::{Action, Entity, SbroadError};
+use crate::errors::{Entity, SbroadError};
 use crate::executor::bucket::Buckets;
 use crate::executor::engine::{Router, Vshard};
 use crate::executor::ir::ExecutionPlan;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Motion, NodeId};
 use crate::ir::transformation::redistribution::MotionPolicy;
-use crate::ir::{ExplainType, Plan, Slices};
+use crate::ir::{Plan, Slices};
 use crate::BoundStatement;
-use smol_str::{format_smolstr, SmolStr};
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::any::Any;
 use std::collections::HashMap;
 use std::rc::Rc;
-use tarantool::tuple::Tuple;
 
 pub mod bucket;
 pub mod engine;
@@ -260,7 +259,7 @@ where
             &buckets,
             engine::DispatchReturnFormat::Tuple,
         )?;
-        if let ExplainType::ExplainQueryPlan = self.exec_plan.get_ir_plan().get_explain_type() {
+        if self.exec_plan.get_ir_plan().is_raw_explain() {
             let explain_res = res.downcast::<String>().map_err(|e| {
                 SbroadError::Invalid(
                     Entity::MsgPack,
@@ -272,19 +271,11 @@ where
 
             explain_vec.extend_from_slice(&explain_res);
             let mut explain_str = String::new();
-            for explain_res in explain_vec.iter() {
-                explain_str.push_str(&format!("{}", explain_res));
+            for (idx, explain_res) in explain_vec.iter().enumerate() {
+                explain_str.push_str(&format!("{}. {}\n", idx + 1, explain_res));
             }
-            let e = explain_str.lines().collect::<Vec<&str>>();
 
-            return match Tuple::new(&[e]) {
-                Ok(t) => Ok(Box::new(t)),
-                Err(e) => Err(SbroadError::FailedTo(
-                    Action::Create,
-                    Some(Entity::Tuple),
-                    format_smolstr!("{e}"),
-                )),
-            };
+            return self.coordinator.explain_format(explain_str.to_smolstr());
         }
 
         Ok(res)

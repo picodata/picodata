@@ -4,6 +4,7 @@ use std::hash::{BuildHasher, Hash, RandomState};
 use std::io::{Result, Write};
 use std::ops::DerefMut;
 
+use regex::Regex;
 use rmp::encode::RmpWrite;
 use rmp::Marker;
 use tarantool::fiber::mutex::MutexGuard as TMutexGuard;
@@ -201,4 +202,23 @@ impl<V: Clone + Hash + Eq, S: BuildHasher> OrderedSet<V, S> {
             map_iterator: OrderedMapIterator::new(&self.map),
         }
     }
+}
+
+pub fn remove_quotes_except_capitals(text: &str) -> String {
+    let re = Regex::new(r#""([A-Z0-9_]+)""#).unwrap();
+    let mut result = String::new();
+    let mut last_end = 0;
+
+    for cap in re.captures_iter(text) {
+        let full_match = cap.get(0).unwrap();
+
+        result.push_str(&text[last_end..full_match.start()].replace('"', ""));
+        result.push_str(full_match.as_str());
+
+        last_end = full_match.end();
+    }
+
+    result.push_str(&text[last_end..].replace('"', ""));
+
+    result
 }

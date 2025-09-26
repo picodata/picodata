@@ -1,4 +1,4 @@
-use crate::ir::transformation::helpers::{check_transformation, sql_to_optimized_ir};
+use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use engine::mock::TEMPLATE;
 use itertools::Itertools;
 use pretty_assertions::assert_eq;

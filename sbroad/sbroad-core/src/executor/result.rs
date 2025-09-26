@@ -95,22 +95,55 @@ impl TryInto<Column> for &MetadataColumn {
 /// Infromation returned to as from local Tarantool query execution.
 #[derive(Debug, Default, Deserialize, PartialEq, Clone, msgpack::Encode, msgpack::Decode)]
 pub struct ExplainProducerResult {
+    pub formatted: bool,
     pub query: String,
+    pub params: Vec<String>,
+    pub location: String,
     pub producer_result: ProducerResult,
 }
 
 impl ExplainProducerResult {
-    pub fn from(query: String, producer_result: ProducerResult) -> Self {
+    pub fn from(
+        formatted: bool,
+        query: String,
+        params: Vec<String>,
+        location: String,
+        producer_result: ProducerResult,
+    ) -> Self {
         ExplainProducerResult {
+            formatted,
             query,
+            params,
+            location,
             producer_result,
         }
     }
 }
 
+fn format_sql(query: &str, params: Vec<String>, formatted: bool) -> String {
+    let mut fmt_options = sqlformat::FormatOptions::default();
+
+    if !formatted || query.len() < 80 {
+        fmt_options.joins_as_top_level = true;
+        fmt_options.inline = true;
+    }
+
+    sqlformat::format(
+        query,
+        &sqlformat::QueryParams::Indexed(params),
+        &fmt_options,
+    )
+}
+
 impl std::fmt::Display for ExplainProducerResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}\n", self.query))?;
+        writeln!(
+            f,
+            "Query ({}):\n{}",
+            self.location,
+            format_sql(&self.query, self.params.clone(), self.formatted)
+        )?;
+
         let mut table = Table::new();
         table.set_content_arrangement(ContentArrangement::Dynamic);
         table.set_header(self.producer_result.metadata.iter());
@@ -131,7 +164,7 @@ impl std::fmt::Display for ExplainProducerResult {
             table.add_row(formatted_row);
         }
 
-        f.write_fmt(format_args!("{table}\n"))
+        f.write_fmt(format_args!("{table\n}"))
     }
 }
 

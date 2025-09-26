@@ -9,8 +9,9 @@ use sbroad::executor::bucket::Buckets;
 use sbroad::executor::engine::helpers::storage::{unprepare, StorageReturnFormat};
 use sbroad::executor::engine::helpers::vshard::{get_random_bucket, CacheInfo};
 use sbroad::executor::engine::helpers::{
-    self, execute_first_cacheable_request, execute_second_cacheable_request, prepare_and_read,
-    read_or_prepare, EncodedQueryInfo, FullPlanInfo, OptionalBytes, RequiredPlanInfo,
+    self, drop_tables, execute_first_cacheable_request, execute_second_cacheable_request,
+    prepare_and_read, read_or_prepare, EncodedQueryInfo, FullPlanInfo, OptionalBytes,
+    RequiredPlanInfo,
 };
 use sbroad::executor::engine::{DispatchReturnFormat, QueryCache, StorageCache, Vshard};
 use sbroad::executor::ir::{ExecutionPlan, QueryType};
@@ -19,7 +20,7 @@ use sbroad::executor::protocol::{EncodedVTables, RequiredData, SchemaInfo};
 use sbroad::executor::result::{ExplainProducerResult, ProducerResult};
 use sbroad::ir::value::Value;
 use sbroad::ir::ExplainType;
-use sbroad::utils::MutexLike;
+use sbroad::utils::{remove_quotes_except_capitals, MutexLike};
 use tarantool::fiber::Mutex;
 use tarantool::sql::Statement;
 use tarantool::tuple::{Tuple, TupleBuffer};
@@ -237,12 +238,19 @@ impl FullPlanInfo for LocalExecutionQueryInfo<'_> {
 fn exec_explain_query_plan<R: QueryCache, M: MutexLike<R::Cache>>(
     locked_cache: &mut M::Guard<'_>,
     info: &mut impl FullPlanInfo,
+    buckets: &Buckets,
+    explain_type: ExplainType,
 ) -> Result<Box<dyn Any>, SbroadError>
 where
     R::Cache: StorageCache,
 {
     let (pattern_with_params, guards) = info.extract_query_and_table_guard()?;
     let mut sql = pattern_with_params.pattern;
+    let params = pattern_with_params
+        .params
+        .iter()
+        .map(|param| param.to_string())
+        .collect::<Vec<String>>();
 
     let boxed_bytes: Box<dyn Any> =
         prepare_and_read::<R, M>(locked_cache, info, &StorageReturnFormat::DqlRaw)?;
@@ -263,13 +271,23 @@ where
         .clone();
     sql.replace_range(.."EXPLAIN QUERY PLAN ".len(), "");
 
-    let explain_producer_res = ExplainProducerResult::from(sql, producer_result);
+    let sql = remove_quotes_except_capitals(&sql);
 
+    let location = buckets.determine_exec_location();
+    let explain_producer_res = ExplainProducerResult::from(
+        explain_type == ExplainType::ExplainQueryPlanFmt,
+        sql,
+        params,
+        location.to_string(),
+        producer_result,
+    );
     let explain_str = format!("{}\n\n", explain_producer_res);
 
-    for guard in guards {
-        guard.drop_table()?;
-    }
+    let tables: Vec<(SmolStr, bool)> = guards
+        .into_iter()
+        .map(|guard| (guard.name.clone(), guard.already_created))
+        .collect();
+    drop_tables(tables)?;
 
     Ok(Box::new(explain_str))
 }
@@ -285,6 +303,46 @@ impl Vshard for StorageRuntime {
 
     fn determine_bucket_id(&self, s: &[&Value]) -> Result<u64, SbroadError> {
         calculate_bucket_id(s, self.bucket_count())
+    }
+
+    fn exec_explain_on_any_node(
+        &self,
+        sub_plan: ExecutionPlan,
+        buckets: &Buckets,
+    ) -> Result<Box<dyn Any>, SbroadError> {
+        let plan = sub_plan.get_ir_plan();
+        let top_id = plan.get_top()?;
+        let explain_type = plan.get_explain_type().unwrap();
+        let plan_id = plan.pattern_id(top_id)?;
+        let sp = SyntaxPlan::new(&sub_plan, top_id, Snapshot::Oldest)?;
+        let ordered = OrderedSyntaxNodes::try_from(sp)?;
+        let nodes = ordered.to_syntax_data()?;
+        let params = sub_plan.to_params().to_vec();
+        let version_map = sub_plan.get_ir_plan().version_map.clone();
+        let schema_info = SchemaInfo::new(version_map);
+        let mut locked_cache = self.cache().lock();
+
+        let mut info = LocalExecutionQueryInfo {
+            exec_plan: sub_plan,
+            plan_id,
+            nodes,
+            params,
+            schema_info,
+        };
+
+        if info.exec_plan.get_ir_plan().is_raw_explain() {
+            exec_explain_query_plan::<Self, <Self as QueryCache>::Mutex>(
+                &mut locked_cache,
+                &mut info,
+                buckets,
+                explain_type,
+            )
+        } else {
+            Err(SbroadError::Invalid(
+                Entity::MsgPack,
+                Some(format_smolstr!("expected explain query")),
+            ))
+        }
     }
 
     fn exec_ir_on_any_node(
@@ -309,13 +367,6 @@ impl Vshard for StorageRuntime {
             schema_info,
         };
         let mut locked_cache = self.cache().lock();
-
-        if let ExplainType::ExplainQueryPlan = info.exec_plan.get_ir_plan().get_explain_type() {
-            return exec_explain_query_plan::<Self, <Self as QueryCache>::Mutex>(
-                &mut locked_cache,
-                &mut info,
-            );
-        }
 
         let boxed_bytes: Box<dyn Any> = read_or_prepare::<Self, <Self as QueryCache>::Mutex>(
             &mut locked_cache,

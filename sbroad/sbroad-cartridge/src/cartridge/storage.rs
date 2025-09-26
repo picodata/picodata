@@ -185,6 +185,17 @@ impl Vshard for StorageRuntime {
         Ok(bucket_id_by_tuple(s, self.bucket_count()))
     }
 
+    fn exec_explain_on_any_node(
+        &self,
+        _sub_plan: ExecutionPlan,
+        _buckets: &Buckets,
+    ) -> Result<Box<dyn Any>, SbroadError> {
+        Err(SbroadError::Unsupported(
+            Entity::Runtime,
+            Some("exec_explain_locally is not supported for the cartridge runtime".to_smolstr()),
+        ))
+    }
+
     fn exec_ir_on_buckets(
         &self,
         _sub_plan: ExecutionPlan,

@@ -31,9 +31,11 @@ smol_str = { version = "0.2", features = ["serde"] }
 time = { version = "0.3.37", features = ["parsing", "formatting", "macros"] }
 chrono = "0.4"
 twox-hash = "2.1"
+sqlformat = "0.4"
+comfy-table = "7.2.1"
+regex = "1.11.3"
 
 sbroad-type-system = { path = "../sbroad-type-system" }
-comfy-table = "7.2.1"
 
 [dependencies.tarantool]
 git = "https://git.picodata.io/picodata/picodata/tarantool-module.git"

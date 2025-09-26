@@ -7,7 +7,6 @@ use crate::ir::node::{
     ScalarFunction, ScanRelation, SubQueryReference,
 };
 use crate::ir::relation::Column;
-use crate::ir::ExplainType;
 use ahash::AHashSet;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr};
@@ -200,7 +199,7 @@ impl ExecutionPlan {
         let mut sql = String::new();
         let delim = " ";
 
-        if let ExplainType::ExplainQueryPlan = self.get_ir_plan().get_explain_type() {
+        if self.get_ir_plan().is_raw_explain() {
             sql.push_str("EXPLAIN QUERY PLAN ");
         }
 

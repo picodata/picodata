@@ -640,7 +640,7 @@ pub struct Plan {
     top: Option<NodeId>,
     /// The field indicates whether user wants to see query explain.
     /// Possible variants: None, Explain, ExplainPlanQuery
-    explain_type: ExplainType,
+    explain_type: Option<ExplainType>,
     /// The undo log keeps the history of the plan transformations. It can
     /// be used to revert the plan subtree to some previous snapshot if needed.
     pub(crate) undo: TransformationLog,
@@ -701,15 +701,9 @@ impl Default for Plan {
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum ExplainType {
-    None,
     Explain,
     ExplainQueryPlan,
-}
-
-impl Default for ExplainType {
-    fn default() -> Self {
-        ExplainType::None
-    }
+    ExplainQueryPlanFmt,
 }
 
 #[allow(dead_code)]
@@ -723,6 +717,10 @@ impl Plan {
             .as_ref()
             .expect("context always exists during plan build")
             .borrow_mut()
+    }
+
+    pub fn get_params(&self) -> &Vec<Value> {
+        self.constants.as_ref()
     }
 
     /// Add relation to the plan.
@@ -808,7 +806,7 @@ impl Plan {
             relations: Relations::new(),
             slices: Slices { slices: vec![] },
             top: None,
-            explain_type: ExplainType::default(),
+            explain_type: None,
             undo: TransformationLog::new(),
             constants: Vec::new(),
             raw_options: vec![],
@@ -1171,40 +1169,39 @@ impl Plan {
     }
 
     /// Marks plan as query explain
-    pub fn mark_as_explain(&mut self, explain_type: ExplainType) {
+    pub fn mark_as_explain(&mut self, explain_type: Option<ExplainType>) {
         self.explain_type = explain_type;
     }
 
     /// Checks that plan is explain query
     #[must_use]
     pub fn is_plain_explain(&self) -> bool {
-        self.explain_type == ExplainType::Explain
+        self.explain_type == Some(ExplainType::Explain)
+    }
+
+    /// Checks that plan is explain(raw, fmt) query
+    #[must_use]
+    pub fn is_formatted_explain(&self) -> bool {
+        self.explain_type == Some(ExplainType::ExplainQueryPlanFmt)
+    }
+
+    /// Checks that plan is explain(raw, fmt) query
+    #[must_use]
+    pub fn is_raw_explain(&self) -> bool {
+        self.explain_type == Some(ExplainType::ExplainQueryPlan)
+            || self.explain_type == Some(ExplainType::ExplainQueryPlanFmt)
     }
 
     /// Checks that plan is explain query
     #[must_use]
     pub fn is_explain(&self) -> bool {
-        self.explain_type == ExplainType::Explain
-            || self.explain_type == ExplainType::ExplainQueryPlan
+        self.explain_type.is_some()
     }
 
     /// Returns plan explain type
     #[must_use]
-    pub fn get_explain_type(&self) -> ExplainType {
+    pub fn get_explain_type(&self) -> Option<ExplainType> {
         self.explain_type
-    }
-
-    /// Checks that plan is a DML query.
-    ///
-    /// # Errors
-    /// - top node doesn't exist in the plan or is invalid.
-    pub fn is_dml(&self) -> Result<bool, SbroadError> {
-        let top_id = self.get_top()?;
-        let top = self.get_node(top_id)?;
-        Ok(matches!(
-            top,
-            Node::Relational(Relational::Delete(_) | Relational::Insert(_) | Relational::Update(_))
-        ))
     }
 
     /// Checks that plan is a block of queries.

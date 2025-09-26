@@ -9,7 +9,6 @@ use crate::{
             Update, Values, ValuesRow,
         },
         types::DerivedType,
-        ExplainType,
     },
     utils::MutexLike,
 };
@@ -878,14 +877,14 @@ pub fn dispatch_impl(
         }
     };
     let tier_runtime = coordinator.get_vshard_object_by_tier(tier.as_ref())?;
-    if let ExplainType::ExplainQueryPlan = sub_plan.get_ir_plan().get_explain_type() {
+    if sub_plan.get_ir_plan().is_raw_explain() {
         if sub_plan.get_ir_plan().is_dml()? {
             return Err(SbroadError::Unsupported(
                 Entity::Plan,
                 Some("EXPLAIN QUERY PLAN is not supported for DML queries".into()),
             ));
         }
-        return tier_runtime.exec_ir_on_any_node(sub_plan, DispatchReturnFormat::Tuple);
+        return tier_runtime.exec_explain_on_any_node(sub_plan, buckets);
     }
 
     debug!(Option::from("dispatch"), &format!("sub plan: {sub_plan:?}"));
@@ -1108,7 +1107,7 @@ pub fn materialize_motion(
     // Dispatch the motion subtree (it will be replaced with invalid values).
     let result = runtime.dispatch(plan, top_id, buckets, DispatchReturnFormat::Inner)?;
 
-    let mut vtable = if let ExplainType::ExplainQueryPlan = plan.get_ir_plan().get_explain_type() {
+    let mut vtable = if plan.get_ir_plan().is_raw_explain() {
         let explain_res = *result.downcast::<String>().expect("must've failed earlier");
 
         // Unlink motion node's child sub tree (it is already replaced with invalid values).
@@ -1264,6 +1263,30 @@ pub fn populate_table(
         }
         Ok(())
     })??;
+    Ok(())
+}
+
+pub fn drop_tables(tables: Vec<(SmolStr, bool)>) -> Result<(), SbroadError> {
+    for (name, already_created) in tables {
+        if already_created {
+            continue;
+        }
+
+        let cleanup = |space: Space| match with_su(ADMIN_ID, || space.drop()) {
+            Ok(_) => {}
+            Err(_err) => {
+                error!(
+                    Option::from("Temporary space"),
+                    &format!("Failed to drop {name}: {}", _err)
+                );
+            }
+        };
+
+        if let Some(space) = with_su(ADMIN_ID, || Space::find(name.as_str()))? {
+            cleanup(space);
+        }
+    }
+
     Ok(())
 }
 
