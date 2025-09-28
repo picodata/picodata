@@ -5,6 +5,16 @@ default:
     pull_policy: [if-not-present]
   tags:
     - docker-k8s
+  # for our "monorepo"
+  # if your job has own before_script section - this code will not be executed
+  # and you need to include this command in your job
+  # example:
+  #
+  # before_script:
+  #   - !reference [default, before_script]
+  before_script:
+    - cd tarantool
+
 
 stages:
   - build-base-image
@@ -12,6 +22,8 @@ stages:
 
 workflow:
   # See https://docs.gitlab.com/ee/ci/jobs/job_control.html#avoid-duplicate-pipelines
+  # https://docs.gitlab.com/ci/pipelines/downstream_pipelines/run-child-pipelines-with-merge-request-pipelines
+  # In child pipelines, $CI_PIPELINE_SOURCE always has a value of parent_pipeline
   rules:
     # To avoid duplicate pipelines we disable merge request events,
     # leaving only pushes and manual triggering.
@@ -20,6 +32,11 @@ workflow:
     - if: $CI_PIPELINE_SOURCE == "push"
     - if: $CI_PIPELINE_SOURCE == "web"
     - if: $CI_PIPELINE_SOURCE == "pipeline"
+    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
+
+
+
+
 
 variables:
   GIT_DEPTH: 1
@@ -30,8 +47,8 @@ variables:
   CARGO_INCREMENTAL: 0
   RUST_VERSION: "1.82"  # Note: without the quotes yaml thinks this is a float and removes the trailing 0
   CARGO_HOME: /shared-storage/tarantool-module/.cargo
-  BASE_IMAGE_VANILLA: docker-public.binary.picodata.io/tarantool-module-build-base-vanilla
-  BASE_IMAGE_FORK: docker-public.binary.picodata.io/tarantool-module-build-base-fork
+  BASE_IMAGE_VANILLA: ${CI_REGISTRY_IMAGE}/tarantool-module-build-base-vanilla
+  BASE_IMAGE_FORK: ${CI_REGISTRY_IMAGE}/tarantool-module-build-base-fork
 
 # job:rules explained:
 #
@@ -46,7 +63,7 @@ variables:
 #     * just test (on existing base-image:latest)
 #
 # A different workflow applies on trigger (when tarantool is tagged):
-#   * build-base-image-fork from specified TARANTOOL_TAG (with tag <SHA>-triggered)
+#   * build-base-image-fork from specified TARANTOOL_VERSION (with tag <SHA>-triggered)
 #   * test (on base-image-fork:<SHA>-triggered)
 #
 # Anchor syntax explained here:
@@ -72,11 +89,6 @@ variables:
 
   - &else {}
 
-.docker-login: &docker-login
-  before_script:
-    - mkdir -p /kaniko/.docker
-    - echo "$DOCKER_AUTH_RW" > /kaniko/.docker/config.json
-
 # Билд контейнера через kaniko
 .build-base-image:
   stage: build-base-image
@@ -91,10 +103,9 @@ variables:
         PUSH_DOCKER: ""
     - <<: *else
       when: never
-  <<: *docker-login
   script:
     - |
-      /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE} \
+      /kaniko/executor --context $CI_PROJECT_DIR/tarantool --dockerfile ${DOCKERFILE} \
         --build-arg "RUST_VERSION=${RUST_VERSION}" ${EXTRA_BUILD_ARGS} ${PUSH_DOCKER} \
         --cache=false --cache-run-layers=true --single-snapshot --compressed-caching=false --use-new-run --snapshot-mode=redo --cleanup \
         --destination ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
@@ -110,7 +121,7 @@ build-base-image-fork:
   variables:
     BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
     EXTRA_BUILD_ARGS: >
-      --build-arg TARANTOOL_TAG=latest
+      --build-arg TARANTOOL_VERSION=latest
     DOCKERFILE: ./docker/picodata.Dockerfile
 
 build-base-image-fork-on-trigger:
@@ -122,7 +133,7 @@ build-base-image-fork-on-trigger:
     BASE_IMAGE_TAG: ${CI_COMMIT_SHA}-triggered
     PUSH_DOCKER: ""
     EXTRA_BUILD_ARGS: >
-      --build-arg TARANTOOL_TAG=${TARANTOOL_TAG}
+      --build-arg TARANTOOL_VERSION=${TARANTOOL_VERSION}
     DOCKERFILE: ./docker/picodata.Dockerfile
 
 .test:
@@ -141,6 +152,7 @@ build-base-image-fork-on-trigger:
     name: ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
     pull_policy: [always]
   before_script:
+    - !reference [default, before_script]
     - |
       # Restore cache
       if [ -z "${CACHE_ARCHIVE}" ]; then

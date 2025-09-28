@@ -169,6 +169,23 @@ variables:
       --cache=false --cache-run-layers=true --single-snapshot --compressed-caching=false --use-new-run --snapshot-mode=redo --cleanup
       --destination ${DESTINATION}
 
+tarantool-module-trigger:
+  stage: test
+  # Without this inherit there were strange bugs in child pipeline,
+  # when jobs did not see job variables like $CARGO_HOME.
+  # Anyway this child pipeline always was independent, it does not need variables from this file.
+  inherit:
+    variables: false
+  trigger:
+    include: tarantool/.gitlab-ci.yml
+    strategy: depend
+  needs: []
+  rules:
+    - changes:
+        paths:
+          - tarantool/**/*
+    - when: manual
+
 build-base-image:
   stage: build-base-image
   <<: *kaniko_image

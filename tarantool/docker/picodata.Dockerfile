@@ -1,5 +1,5 @@
-ARG TARANTOOL_TAG
-FROM docker-public.binary.picodata.io/tarantool:${TARANTOOL_TAG}
+ARG TARANTOOL_VERSION
+FROM docker-public.binary.picodata.io/tarantool:${TARANTOOL_VERSION}
 ARG RUST_VERSION
 
 RUN set -e; \
