@@ -47,6 +47,8 @@ use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::tlog;
 use crate::topology_cache::TopologyCache;
 use crate::traft;
+use crate::traft::error::to_error_other;
+use crate::traft::error::with_modified_message;
 use crate::traft::error::Error;
 use crate::traft::network::WorkerOptions;
 use crate::traft::op::PluginRaftOp;
@@ -761,20 +763,23 @@ impl NodeImpl {
     }
 
     /// Returns `Err` if an unexpected error happens.
-    /// Returns `Ok(false)` if raft entry is blocked, this can happen when a
+    /// Returns `Ok(Some(err))` if raft entry is blocked, this can happen when a
     /// DdlCommit is being applied on the read-only replica for example.
-    /// Return `Ok(true)` when everything is fine.
+    /// Return `Ok(None)` when everything is fine.
     ///
     /// TODO: this function should just return `Result<()>` and `Err` should
     /// always cause a later retry of `NodeImpl::advance`, but we can't do this
     /// until <https://git.picodata.io/core/picodata/-/issues/1149> if fixed.
-    fn handle_committed_entries(&mut self, entries: &[raft::Entry]) -> traft::Result<bool> {
+    fn handle_committed_entries(
+        &mut self,
+        entries: &[raft::Entry],
+    ) -> traft::Result<Option<BoxError>> {
         let applied = self.applied.get();
         let commit = self.commit.get();
 
         if commit == applied {
             // Everything is applied
-            return Ok(true);
+            return Ok(None);
         }
 
         let next_applied = applied + 1;
@@ -801,12 +806,13 @@ impl NodeImpl {
         if traft_entries.is_empty() {
             // This is unlikely, but not a problem, any committed unhandled
             // entries will be handled on the next iteration of raft_main_loop
-            return Ok(true);
+            return Ok(None);
         }
 
         debug_assert_eq!(traft_entries[0].index, next_applied);
 
         let mut last_applied = None;
+        let mut last_error = None;
 
         for entry in traft_entries {
             let entry_index = entry.index;
@@ -841,7 +847,8 @@ impl NodeImpl {
 
             let dmls = match apply_entry_result {
                 EntryApplied(v) => v,
-                SleepAndRetry => {
+                SleepAndRetry(e) => {
+                    last_error = Some(e);
                     break;
                 }
             };
@@ -868,7 +875,11 @@ impl NodeImpl {
         }
 
         let Some(last_applied) = last_applied else {
-            return Ok(false);
+            // We can only get here if there was an error.
+            debug_assert!(last_error.is_some());
+            let error = last_error.unwrap_or_else(|| to_error_other("unknown error"));
+
+            return Ok(Some(error));
         };
 
         // Advance the applied index.
@@ -876,7 +887,7 @@ impl NodeImpl {
 
         crate::error_injection!(exit "EXIT_AFTER_RAFT_HANDLES_COMMITTED_ENTRIES");
 
-        Ok(true)
+        Ok(None)
     }
 
     fn wake_governor_if_needed(&self, op: &Op) {
@@ -917,7 +928,7 @@ impl NodeImpl {
     /// Actions needed when applying a DML entry.
     ///
     /// Returns Ok(_) if entry was applied successfully
-    fn handle_dml_entry(&self, op: &Dml) -> Result<Option<AppliedDml>, ()> {
+    fn handle_dml_entry(&self, op: &Dml) -> Result<Option<AppliedDml>, BoxError> {
         let space = op.space();
 
         // In order to implement the audit log events, we have to compare
@@ -966,8 +977,7 @@ impl NodeImpl {
         let (old, new) = match res {
             Ok(v) => v,
             Err(e) => {
-                tlog!(Error, "clusterwide dml failed: {e}");
-                return Err(());
+                return Err(storage_corrupted(format!("global DML failed: {e}")));
             }
         };
 
@@ -1061,7 +1071,7 @@ impl NodeImpl {
                 for op in ops.into_iter() {
                     match self.handle_dml_entry(&op) {
                         Ok(Some(applied_dml)) => applied_dmls.push(applied_dml),
-                        Err(()) => return SleepAndRetry,
+                        Err(e) => return SleepAndRetry(e),
                         _ => (),
                     }
                 }
@@ -1070,14 +1080,14 @@ impl NodeImpl {
             }
             Op::Dml(op) => match self.handle_dml_entry(&op) {
                 Ok(applied_dml) => res = EntryApplied(Vec::from_iter(applied_dml)),
-                Err(()) => return SleepAndRetry,
+                Err(e) => return SleepAndRetry(e),
             },
             Op::DdlPrepare {
                 ddl,
                 schema_version,
                 governor_op_id,
             } => {
-                crate::error_injection!("STALL_BEFORE_APPLYING_DDL_PREPARE" => return SleepAndRetry);
+                crate::error_injection!("STALL_BEFORE_APPLYING_DDL_PREPARE" => return SleepAndRetry(to_error_other("injected error")));
 
                 self.apply_op_ddl_prepare(ddl, schema_version, governor_op_id)
                     .expect("storage should not fail");
@@ -1105,7 +1115,9 @@ impl NodeImpl {
                         // tarantool local tables.
                         !ddl.is_truncate_on_global_table(&self.storage)
                     {
-                        return SleepAndRetry;
+                        return SleepAndRetry(read_only(
+                            "awaiting DDL results from master replica",
+                        ));
                     } else {
                         // Master applies schema change at this point.
                         // Note: Unlike RPC handler `proc_apply_schema_change`, there is no need
@@ -1126,10 +1138,12 @@ impl NodeImpl {
                                 panic!("storage should not fail, but failed with: {err}")
                             }
                             Err(rpc::ddl_apply::Error::Aborted(reason)) => {
-                                tlog!(Warning, "failed applying committed ddl operation: {reason}";
+                                tlog!(Error, "failed applying committed ddl operation: {reason}";
                                     "ddl" => ?ddl,
                                 );
-                                return SleepAndRetry;
+                                return SleepAndRetry(storage_corrupted(format!(
+                                    "DDL aborted while catching up: {reason}"
+                                )));
                             }
                             Ok(()) => {}
                         }
@@ -1390,7 +1404,9 @@ impl NodeImpl {
                 // even after an DdlAbort
                 if v_local == v_pending {
                     if self.is_readonly() {
-                        return SleepAndRetry;
+                        return SleepAndRetry(read_only(
+                            "awaiting DDL results from master replica",
+                        ));
                     } else {
                         let v_global = storage_properties
                             .global_schema_version()
@@ -1700,7 +1716,9 @@ impl NodeImpl {
                 if v_local < v_pending {
                     if self.is_readonly() {
                         // Wait for tarantool replication with master to progress.
-                        return SleepAndRetry;
+                        return SleepAndRetry(read_only(
+                            "awaiting DDL results from master replica",
+                        ));
                     } else {
                         match &acl {
                             Acl::CreateUser { user_def } => {
@@ -2681,7 +2699,7 @@ impl NodeImpl {
 
         // Apply committed entries.
         let res = self.handle_committed_entries(&committed_entries);
-        let all_entries_applied = match res {
+        let res = match res {
             Ok(v) => v,
             Err(e) => {
                 // FIXME don't panic <https://git.picodata.io/core/picodata/-/issues/1149>
@@ -2689,8 +2707,9 @@ impl NodeImpl {
             }
         };
 
-        if !all_entries_applied {
-            return Err(BoxError::new(ErrorCode::Other, "failed to apply raft entry").into());
+        if let Some(e) = res {
+            let message = format!("failed to apply raft entry: {}", e.message());
+            return Err(with_modified_message(e, message).into());
         }
 
         // Send new message ASAP. (Only on leader)
@@ -2728,7 +2747,7 @@ impl NodeImpl {
         // These are probably entries which we've just persisted.
         let committed_entries = light_rd.committed_entries();
         let res = self.handle_committed_entries(committed_entries);
-        let all_entries_applied = match res {
+        let res = match res {
             Ok(v) => v,
             Err(e) => {
                 // FIXME don't panic <https://git.picodata.io/core/picodata/-/issues/1149>
@@ -2736,8 +2755,9 @@ impl NodeImpl {
             }
         };
 
-        if !all_entries_applied {
-            return Err(BoxError::new(ErrorCode::Other, "failed to apply raft entry").into());
+        if let Some(e) = res {
+            let message = format!("failed to apply raft entry: {}", e.message());
+            return Err(with_modified_message(e, message).into());
         }
 
         self.main_loop_status("idle");
@@ -2888,14 +2908,26 @@ impl NodeImpl {
 
 /// Return value of [`NodeImpl::handle_committed_normal_entry`], explains what should be
 /// done as result of attempting to apply a given entry.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 enum ApplyEntryResult {
     /// This entry failed to apply for some reason, and must be retried later.
-    SleepAndRetry,
+    SleepAndRetry(BoxError),
 
     /// Entry applied to persistent storage successfully and should be
     /// applied to non-persistent outside of transaction, proceed to next entry.
     EntryApplied(Vec<AppliedDml>),
+}
+
+#[inline]
+#[track_caller]
+fn storage_corrupted(e: impl Into<String>) -> BoxError {
+    BoxError::new(ErrorCode::StorageCorrupted, e)
+}
+
+#[inline]
+#[track_caller]
+fn read_only(e: impl Into<String>) -> BoxError {
+    BoxError::new(TarantoolErrorCode::Readonly, e)
 }
 
 pub(crate) struct MainLoop {

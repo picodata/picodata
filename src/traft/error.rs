@@ -247,6 +247,15 @@ pub fn to_error_other(message: impl ToString) -> BoxError {
     BoxError::new(ErrorCode::Other, message.to_string())
 }
 
+#[track_caller]
+pub fn with_modified_message(e: BoxError, message: String) -> BoxError {
+    if let Some((file, line)) = e.file().zip(e.line()) {
+        BoxError::with_location(e.error_code(), message, file, line)
+    } else {
+        BoxError::new(e.error_code(), message)
+    }
+}
+
 impl From<std::io::Error> for Error {
     #[inline(always)]
     fn from(e: std::io::Error) -> Error {
