@@ -1,5 +1,6 @@
 use super::backend::describe::CommandTag;
 use super::stream::BeMessage;
+use bytes::Bytes;
 use pgwire::error::ErrorInfo;
 use pgwire::messages::data::{self, DataRow, ParameterDescription, RowDescription};
 use pgwire::messages::extendedquery::{
@@ -18,6 +19,26 @@ pub fn md5_auth_request(salt: &[u8; 4]) -> BeMessage {
 /// Can be used not only with open password auth but with LDAP too.
 pub fn cleartext_auth_request() -> BeMessage {
     BeMessage::Authentication(Authentication::CleartextPassword)
+}
+
+pub fn sasl_auth_request() -> BeMessage {
+    // TODO: use `crate::scram::METHODS` to enable channel binding.
+    BeMessage::Authentication(Authentication::SASL(
+        crate::scram::METHODS_WITHOUT_PLUS
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+    ))
+}
+
+pub fn sasl_continue(data: impl AsRef<[u8]>) -> BeMessage {
+    let bytes = Bytes::copy_from_slice(data.as_ref());
+    BeMessage::Authentication(Authentication::SASLContinue(bytes))
+}
+
+pub fn sasl_final(data: impl AsRef<[u8]>) -> BeMessage {
+    let bytes = Bytes::copy_from_slice(data.as_ref());
+    BeMessage::Authentication(Authentication::SASLFinal(bytes))
 }
 
 /// AuthOk informs the frontend that the authentication has been passed.

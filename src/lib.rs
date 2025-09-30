@@ -96,7 +96,9 @@ pub mod plugin;
 pub mod reachability;
 pub mod replicaset;
 pub mod rpc;
+mod sasl;
 pub mod schema;
+mod scram;
 pub mod sentinel;
 pub mod sql;
 pub mod storage;
@@ -882,6 +884,9 @@ fn init_common(
     cfg: &tarantool::Cfg,
     shredding: bool,
 ) -> Result<(), Error> {
+    // Note: we should do this *before* calling `box.cfg {}`.
+    crate::auth::register_tarantool_auth_methods();
+
     std::fs::create_dir_all(config.instance.instance_dir()).map_err(|err| {
         Error::other(format!(
             "failed creating instance directory {}: {}",

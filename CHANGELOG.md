@@ -28,6 +28,9 @@ with the `YY.MINOR.MICRO` scheme.
 - New ALTER SYSTEM parameter `plugin_check_migration_hash` (default: true)
   allows disabling plugin migration file checksum validation. This allows plugin
   authors to more easily fix mistakes in migration files.
+- It is now possible to use `scram-sha256` auth method for old and new users.
+  Currently, the method is only compatible with pgproto, which means it
+  won't be available for picodata plugins or iproto connections.
 
 ### Observability
 - `instance_name` is now the primary label for Prometheus metrics.

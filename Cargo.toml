@@ -12,6 +12,7 @@ license-file = "LICENSE"
 abi_stable = "0.11"
 ahash = "0.8"
 bitflags = "2.9.1"
+base64 = "0.22"
 bytes = "1.8"
 chrono = "0.4"
 clap = { version = "4.5", features = ["derive", "env"] }
@@ -20,7 +21,9 @@ diff = "0.1"
 either = "1.13"
 file_shred = "1.2"
 futures = "0.3"
+hmac = { version = "0.12", features = ["reset"] }
 indoc = "2.0"
+itoa = "1.0"
 libc = "0.2"
 libloading = "0.8"
 md5 = "0.7"
@@ -30,8 +33,8 @@ openssl = "0.10"
 pgwire = { version = "0.24", default-features = false, features = ["server-api"] }
 picodata-pike = "2.5.0"
 postgres-types = { version = "0.2", features = ["array-impls", "with-serde_json-1", "with-time-0_3", "with-uuid-0_8"] }
-protobuf = { version = "3", features = ["bytes", "with-bytes"] }
 prometheus = "0.14.0"
+protobuf = { version = "3", features = ["bytes", "with-bytes"] }
 raft = { version = "0.7", git = "https://git.picodata.io/core/raft-rs.git", branch = "picodata-master"}
 rand = "0.8"
 rmp = "*"
@@ -46,18 +49,22 @@ serde_bytes = "0.11"
 serde_json = "1.0"
 serde_repr = "0.1"
 serde_yaml = "0.9"
+sha2 = { version = "0.10", features = ["asm", "oid"] }
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_trace"] }
 smallvec = { version = "1.13", features = ["write"] }
 smol_str = "0.2"
 socket2 = "0.5"
-sqlparser = { version = "0.40", features = ["visitor"] }
 sql_protocol = { version = "25.4", path = "sql-protocol" }
+sqlparser = { version = "0.40", features = ["visitor"] }
+stringprep = "0.1"
+subtle = "2.5"
 tempfile = "3.8"
 thiserror = "1.0"
 time = { version = "0.3", features = ["parsing", "formatting", "macros"] }
 uuid = { version = "0.8", features = ["v4"] } # TODO: update to 1.0
 va_list = ">=0.1.4"
 replace_with = "0.1.8"
+zeroize = "1.8"
 
 # Bundled modules
 pico_proc_macro = { path = "pico_proc_macro" }
@@ -68,7 +75,9 @@ regex = "1.11"
 ordered_hash_map = { version = "0.5.0", features = ["serde"] }
 
 [dev-dependencies]
+anyhow = "1.0"
 pretty_assertions = "1.4"
+pbkdf2 = { version = "0.12.1", features = ["simple", "std"] }
 
 [build-dependencies]
 git-version = "0.3"

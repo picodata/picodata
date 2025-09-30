@@ -1,6 +1,6 @@
 import pytest
 import pg8000.dbapi as pg  # type: ignore
-from conftest import Postgres, Cluster, log_crawler
+from conftest import Postgres, Cluster, log_crawler, Instance
 from framework.ldap import LdapServer, is_glauth_available
 from framework.port_distributor import PortDistributor
 
@@ -294,3 +294,53 @@ def test_auth_ldap_starttls_bad_cert(
             host=i1.pg_host,
             port=i1.pg_port,
         )
+
+
+def test_same_error_from_different_auth_methods_pgproto(cluster: Cluster):
+    """
+    Check that auth methods fail with the same error
+    """
+    (i1,) = cluster.deploy(instance_count=1)
+    for idx, m in enumerate(["chap-sha1", "md5", "scram-sha256"]):
+        user = f"u{idx}"
+
+        i1.sql(f"CREATE USER {user} WITH PASSWORD 'Admin1234' USING {m}")
+
+        with pytest.raises(pg.DatabaseError, match="authentication failed for user") as e:
+            pg.Connection(
+                user,
+                password="not-the-correct-one",
+                host=i1.pg_host,
+                port=i1.pg_port,
+            )
+
+        assert e.value.args[0] == {"S": "ERROR", "C": "28P01", "M": f"authentication failed for user '{user}'"}
+
+
+def check_authenticated(i: Instance, user: str, password="Admin1234"):
+    conn = pg.Connection(
+        user,
+        password=password,
+        host=i.pg_host,
+        port=i.pg_port,
+    )
+    assert conn.execute_simple("SELECT pico_raft_leader_id()").rows == [[1]]
+
+
+def test_scram_sha256_cases(cluster: Cluster):
+    (i1,) = cluster.deploy(instance_count=1)
+
+    # new user
+    i1.sql("CREATE USER u1 WITH PASSWORD 'Admin1234' USING scram-sha256")
+    check_authenticated(i1, "u1")
+
+    # change password, recheck
+    i1.sql("ALTER USER u1 PASSWORD '1234Admin' USING scram-sha256")
+    check_authenticated(i1, "u1", "1234Admin")
+
+    # another user, start with md5, then alter to scram
+    i1.sql("CREATE USER u2 WITH PASSWORD 'Admin1234' USING md5")
+    check_authenticated(i1, "u2")
+
+    i1.sql("ALTER USER u2 PASSWORD 'Admin1234' USING scram-sha256")
+    check_authenticated(i1, "u2")

@@ -105,6 +105,7 @@ fn get_default_timeout() -> Decimal {
 #[inline(always)]
 fn auth_method_from_auth_rule(auth_rule: Rule) -> AuthMethod {
     match auth_rule {
+        Rule::ScramSha256 => AuthMethod::ScramSha256,
         Rule::ChapSha1 => AuthMethod::ChapSha1,
         Rule::Ldap => AuthMethod::Ldap,
         Rule::Md5 => AuthMethod::Md5,
@@ -6444,7 +6445,7 @@ impl AbstractSyntaxTree {
                                         let auth_method_node =
                                             self.nodes.get_node(*auth_method_node_id)?;
                                         auth_method = match auth_method_node.rule {
-                                            method @ (Rule::ChapSha1 | Rule::Md5) => auth_method_from_auth_rule(method),
+                                            method @ (Rule::ScramSha256 | Rule::ChapSha1 | Rule::Md5) => auth_method_from_auth_rule(method),
                                             _ => {
                                                 return Err(SbroadError::Invalid(
                                                     Entity::Node,
@@ -6521,7 +6522,10 @@ impl AbstractSyntaxTree {
                             Rule::Timeout => {
                                 timeout = get_timeout(self, *child_id)?;
                             }
-                            method @ (Rule::ChapSha1 | Rule::Md5 | Rule::Ldap) => {
+                            method @ (Rule::ScramSha256
+                            | Rule::ChapSha1
+                            | Rule::Md5
+                            | Rule::Ldap) => {
                                 auth_method = auth_method_from_auth_rule(method);
                             }
                             _ => {

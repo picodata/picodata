@@ -2879,7 +2879,7 @@ def test_sql_acl_password_length(cluster: Cluster):
 
     with pytest.raises(
         TarantoolError,
-        match="expected ChapSha1 or Md5",
+        match="expected ScramSha256, ChapSha1, or Md5",
     ):
         i1.sql(
             f"""

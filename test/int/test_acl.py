@@ -926,3 +926,21 @@ def test_acl_audit_policy_statement(cluster: Cluster):
         match="Audit policy access is denied for user 'test_user'",
     ):
         i1.sql(f"AUDIT POLICY dml_default EXCEPT {user}", user=user, password=password)
+
+
+def test_same_error_from_different_auth_methods(cluster: Cluster):
+    """
+    Check that auth methods fail with the same error
+    """
+    (i1,) = cluster.deploy(instance_count=1)
+    errors = []
+    for idx, m in enumerate(["chap-sha1", "md5", "scram-sha256"]):
+        i1.sql(f"CREATE USER u{idx} WITH PASSWORD 'Admin1234' USING {m}")
+
+        with pytest.raises(NetworkError) as e:
+            i1.sql("SELECT * FROM _pico_instance", user=f"u{idx}", password="not-the-correct-one")
+
+        # this is the error value: (47, 'User not found or supplied credentials are invalid')
+        errors.append(e.value.args[0].args)
+
+    assert set(errors) == set(((47, "User not found or supplied credentials are invalid"),))

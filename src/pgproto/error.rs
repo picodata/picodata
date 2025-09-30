@@ -3,6 +3,8 @@ use std::io;
 use tarantool::error::IntoBoxError;
 use thiserror::Error;
 
+use crate::sasl;
+
 /// See <https://www.postgresql.org/docs/current/errcodes-appendix.html>.
 #[derive(Debug, Clone, Copy)]
 pub enum PgErrorCode {
@@ -216,6 +218,12 @@ impl From<tarantool::error::BoxError> for PgError {
     #[inline(always)]
     fn from(e: tarantool::error::BoxError) -> Self {
         crate::traft::error::Error::from(e).into()
+    }
+}
+
+impl From<sasl::Error> for PgError {
+    fn from(e: sasl::Error) -> Self {
+        Self::IoError(io::Error::other(e))
     }
 }
 
