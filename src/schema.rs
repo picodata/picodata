@@ -238,6 +238,23 @@ pub enum Distribution {
     },
 }
 
+impl Distribution {
+    #[inline(always)]
+    pub fn is_global(&self) -> bool {
+        matches!(self, Distribution::Global)
+    }
+
+    /// For sharded distribution returns the name of the tier in which the data
+    /// is going to be stored. For global distribution returns `None`.
+    pub fn in_tier(&self) -> Option<&str> {
+        match self {
+            Distribution::Global => None,
+            Distribution::ShardedByField { tier, .. } => Some(tier),
+            Distribution::ShardedImplicitly { tier, .. } => Some(tier),
+        }
+    }
+}
+
 fn default_bucket_id_field() -> String {
     "bucket_id".into()
 }

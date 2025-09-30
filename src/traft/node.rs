@@ -1095,7 +1095,16 @@ impl NodeImpl {
 
                 // This instance is catching up to the cluster.
                 if v_local < v_pending {
-                    if self.is_readonly() {
+                    tlog!(
+                        Info,
+                        "Catching up from {v_local} to {v_pending} for {ddl:?}"
+                    );
+                    if self.is_readonly() &&
+                        // Truncate on global tables is applied on all replicas
+                        // directly, because global tables are implemented as
+                        // tarantool local tables.
+                        !ddl.is_truncate_on_global_table(&self.storage)
+                    {
                         return SleepAndRetry;
                     } else {
                         // Master applies schema change at this point.

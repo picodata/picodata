@@ -20,6 +20,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed bizarre row order produced by ORDER BY <uuid>.
 - Fixed a possible state corruption in case picodata crashes after receiving a
   raft snapshot with a stale schema version.
+- Fixed TRUNCATE operation for global tables.
 
 ## [25.3.4] - 2025-09-10
 

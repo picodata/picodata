@@ -657,6 +657,17 @@ impl Loop {
                 governor_substep! {
                     "applying pending schema change"
                     async {
+                        let Some(rpc) = rpc else {
+                            // This is a TRUNCATE on global table. RPC is not required, the
+                            // operation is applied locally on each instance of the cluster
+                            // when the corresponding DdlCommit is applied in raft_main_loop
+                            debug_assert!(ddl.is_truncate_on_global_table(storage));
+
+                            next_op = Op::DdlCommit;
+
+                            return Ok(());
+                        };
+
                         // TODO: 1.) Passed not by reference, because I don't know how to specify
                         //           returning type and fix problems with lifetimes.
                         //       2.) Async closure is unstable so I can't use common await part inside.
