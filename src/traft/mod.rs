@@ -292,6 +292,21 @@ impl Entry {
     }
 }
 
+impl std::fmt::Display for Entry {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "[index: {}, term: {}] ", self.index, self.term)?;
+        let payload = self.payload();
+        if matches!(
+            payload,
+            EntryPayload::ConfChange { .. } | EntryPayload::ConfChangeV2 { .. }
+        ) {
+            write!(f, "ConfChange")?;
+        }
+        write!(f, "{payload}")?;
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 pub enum EntryPayload<'a> {
     NormalEmpty,

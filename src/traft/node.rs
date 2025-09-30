@@ -49,6 +49,7 @@ use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::tlog;
 use crate::topology_cache::TopologyCache;
 use crate::traft;
+use crate::traft::error::box_error_eq;
 use crate::traft::error::to_error_other;
 use crate::traft::error::with_modified_message;
 use crate::traft::error::Error;
@@ -66,6 +67,7 @@ use crate::traft::RaftSpaceAccess;
 use crate::traft::RaftTerm;
 use crate::unwrap_ok_or;
 use crate::unwrap_some_or;
+use crate::util::NoYieldsRefCell;
 use crate::warn_or_panic;
 use ::raft::prelude as raft;
 use ::raft::storage::Storage as _;
@@ -96,6 +98,7 @@ use std::convert::TryFrom;
 use std::ops::ControlFlow;
 use std::rc::Rc;
 use std::time::Duration;
+use tarantool::error::IntoBoxError;
 use ApplyEntryResult::*;
 
 type RawNode = raft::RawNode<RaftSpaceAccess>;
@@ -176,6 +179,8 @@ pub struct Node {
     status: watch::Receiver<Status>,
     applied: watch::Receiver<RaftIndex>,
 
+    pub(crate) main_loop_info: Rc<NoYieldsRefCell<MainLoopInfo>>,
+
     /// Should be locked during join and update instance request
     /// to avoid costly cas conflicts during concurrent requests.
     pub instances_update: Mutex<()>,
@@ -225,12 +230,15 @@ impl Node {
         let pool = Rc::new(pool);
         let plugin_manager = Rc::new(PluginManager::new(storage.clone()));
 
+        let main_loop_info = Rc::new(NoYieldsRefCell::new(MainLoopInfo::default()));
+
         let node_impl = NodeImpl::new(
             pool.clone(),
             storage.clone(),
             raft_storage.clone(),
             plugin_manager.clone(),
             instance_reachability.clone(),
+            main_loop_info.clone(),
         )?;
         let topology_cache = node_impl.topology_cache.clone();
 
@@ -283,6 +291,7 @@ impl Node {
             storage,
             raft_storage,
             status,
+            main_loop_info,
             applied,
             instances_update: Mutex::new(()),
             plugin_manager,
@@ -507,6 +516,9 @@ pub(crate) struct NodeImpl {
     applied: watch::Sender<RaftIndex>,
     /// Index of the last committed raft log entry.
     commit: watch::Sender<RaftIndex>,
+
+    main_loop_info: Rc<NoYieldsRefCell<MainLoopInfo>>,
+
     instance_reachability: InstanceReachabilityManagerRef,
     plugin_manager: Rc<PluginManager>,
 
@@ -531,6 +543,7 @@ impl NodeImpl {
         raft_storage: RaftSpaceAccess,
         plugin_manager: Rc<PluginManager>,
         instance_reachability: InstanceReachabilityManagerRef,
+        main_loop_info: Rc<NoYieldsRefCell<MainLoopInfo>>,
     ) -> traft::Result<Self> {
         let raft_id: RaftId = raft_storage
             .raft_id()?
@@ -585,6 +598,7 @@ impl NodeImpl {
             status,
             applied,
             commit,
+            main_loop_info,
             plugin_manager,
             pending_raft_snapshot: None,
             report_snapshot_status_to: None,
@@ -819,6 +833,8 @@ impl NodeImpl {
         for entry in traft_entries {
             let entry_index = entry.index;
 
+            self.main_loop_info.borrow_mut().last_entry = Some(entry.clone());
+
             let mut apply_entry_result = EntryApplied(vec![]);
             transaction(|| -> tarantool::Result<()> {
                 self.main_loop_status("handling committed entries");
@@ -880,8 +896,13 @@ impl NodeImpl {
             // We can only get here if there was an error.
             debug_assert!(last_error.is_some());
             let error = last_error.unwrap_or_else(|| to_error_other("unknown error"));
-
-            return Ok(Some(error));
+            let stats = self.main_loop_info.borrow();
+            let last_entry = stats.last_entry.as_ref().expect("just assigned");
+            let message = format!(
+                "failed to apply raft entry {last_entry}: {}",
+                error.message()
+            );
+            return Ok(Some(with_modified_message(error, message)));
         };
 
         // Advance the applied index.
@@ -2794,8 +2815,7 @@ impl NodeImpl {
         };
 
         if let Some(e) = res {
-            let message = format!("failed to apply raft entry: {}", e.message());
-            return Err(with_modified_message(e, message).into());
+            return Err(e.into());
         }
 
         // Send new message ASAP. (Only on leader)
@@ -2842,8 +2862,7 @@ impl NodeImpl {
         };
 
         if let Some(e) = res {
-            let message = format!("failed to apply raft entry: {}", e.message());
-            return Err(with_modified_message(e, message).into());
+            return Err(e.into());
         }
 
         self.main_loop_status("idle");
@@ -3031,6 +3050,12 @@ struct MainLoopState {
 impl MainLoop {
     pub const TICK: Duration = Duration::from_millis(100);
 
+    /// A base timeout before logging a repeating error message.
+    const ERROR_LOG_BACKOFF_BASE_DURATION: Duration = Duration::from_secs(1);
+
+    /// When doing an exponential backoff this is the maximum value.
+    const ERROR_LOG_BACKOFF_MAX_DURATION: Duration = Duration::from_secs(10 * 60);
+
     fn start(node_impl: Rc<Mutex<NodeImpl>>) -> Self {
         let (loop_waker_tx, loop_waker_rx) = watch::channel(());
 
@@ -3086,7 +3111,10 @@ impl MainLoop {
 
         let res = node_impl.advance(); // yields
         if let Err(e) = res {
-            tlog!(Error, "error during raft main loop iteration: {e}");
+            node_impl
+                .main_loop_info
+                .borrow_mut()
+                .log_error_with_backoff(e.into_box_error());
         }
 
         if let Some(old_last_index) = old_last_index {
@@ -3107,6 +3135,104 @@ impl MainLoop {
         drop(node_impl);
 
         ControlFlow::Continue(())
+    }
+}
+
+/// A helper struct which contains info about raft_main_loop's inner workings
+/// mostly for the purposes of debugging.
+#[derive(Default, Debug)]
+pub struct MainLoopInfo {
+    /// Raft log entry which we tried applying last.
+    pub last_entry: Option<traft::Entry>,
+
+    /// Last error which happened during raft_main_loop iteration.
+    pub last_error: Option<MainLoopErrorInfo>,
+}
+
+impl MainLoopInfo {
+    /// Keeps track of the last error and logs it with the exponential backoff
+    /// strategy.
+    fn log_error_with_backoff(&mut self, error: BoxError) {
+        let last_error = self.on_error(error);
+
+        if last_error.ok_to_log_error() {
+            // NOTE: we're only doing exponential backoff for logging. We're
+            // still going to be trying to apply the entry with the same
+            // unchanged frequency. This is ok in this case because applying
+            // raft entries is a purely local operation, no RPC to other
+            // instances will be sent so there's no possibilty of DOS
+            // atacking someone by mistake. Beware and be warned!
+            tlog!(
+                Error,
+                "error during raft main loop iteration: {}{}",
+                picodata_plugin::util::DisplayErrorLocation(&last_error.error),
+                last_error.error,
+            );
+            last_error.on_log_error();
+        }
+    }
+
+    /// Update backoff machinery according to the error case.
+    ///
+    /// Returns info about the last error.
+    fn on_error(&mut self, e: BoxError) -> &mut MainLoopErrorInfo {
+        if self.last_error.is_none() {
+            return self.last_error.insert(MainLoopErrorInfo::start(e));
+        }
+
+        // XXX I tried writing a `let Some() else {};`, but borrow checker is
+        // hallucinating multiple mutable borrows, so that's why we don't have
+        // nice things...
+        let last_error = self.last_error.as_mut().expect("just checked");
+
+        if box_error_eq(&e, &last_error.error) {
+            last_error.count += 1;
+        } else {
+            *last_error = MainLoopErrorInfo::start(e);
+        }
+
+        last_error
+    }
+}
+
+/// A helper struct for keeping track of how often we log a given error message
+/// for the purposes of exponential backoff.
+#[derive(Debug)]
+pub struct MainLoopErrorInfo {
+    pub error: BoxError,
+    pub start: Instant,
+    pub count: u64,
+    /// Time when it's ok to log the repeated error message.
+    /// Used to implement exponential backoff.
+    pub ok_to_log_at: Instant,
+}
+
+impl MainLoopErrorInfo {
+    /// Creates a new error info with given error and current time.
+    fn start(error: BoxError) -> Self {
+        let start = fiber::clock();
+        let ok_to_log_at = start.saturating_add(MainLoop::ERROR_LOG_BACKOFF_BASE_DURATION);
+        Self {
+            error,
+            start,
+            count: 1,
+            ok_to_log_at,
+        }
+    }
+
+    /// Returns `true` if exponential backoff machinery thinks that it's time
+    /// to log the error again.
+    #[inline]
+    fn ok_to_log_error(&self) -> bool {
+        fiber::clock() >= self.ok_to_log_at
+    }
+
+    /// Update backoff machinery after the error was logged
+    #[inline]
+    fn on_log_error(&mut self) {
+        let since_start = self.ok_to_log_at.duration_since(self.start);
+        let delay = since_start.min(MainLoop::ERROR_LOG_BACKOFF_MAX_DURATION);
+        self.ok_to_log_at = self.ok_to_log_at.saturating_add(delay)
     }
 }
 

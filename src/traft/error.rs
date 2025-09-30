@@ -243,12 +243,30 @@ impl Error {
     }
 }
 
+/// Compare `BoxError` for equality.
+// TODO this should be in tarantool-module
+pub fn box_error_eq(lhs: &BoxError, rhs: &BoxError) -> bool {
+    if lhs.error_code() != rhs.error_code() {
+        return false;
+    }
+
+    if lhs.line().is_some() {
+        // If location is known it should be a unique enough identifier
+        return lhs.line() == rhs.line() && lhs.file() == rhs.file();
+    }
+
+    // If source location is unknown, compare the messages
+    lhs.message() == rhs.message()
+}
+
 #[inline(always)]
 #[track_caller]
 pub fn to_error_other(message: impl ToString) -> BoxError {
     BoxError::new(ErrorCode::Other, message.to_string())
 }
 
+/// Returns a new `BoxError` with all info same as in `e` except for the error
+/// `message`.
 #[track_caller]
 pub fn with_modified_message(e: BoxError, message: String) -> BoxError {
     if let Some((file, line)) = e.file().zip(e.line()) {

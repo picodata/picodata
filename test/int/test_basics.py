@@ -745,6 +745,8 @@ def test_proc_runtime_info(instance: Instance):
     # This field is super volatile, don't want to be updating it every time we
     # add a bootstrap entry.
     info["raft"]["applied"] = 69
+    # This one is also volatile
+    info["internal"]["main_loop_last_entry"]["index"] = 420
 
     version_info = instance.call(".proc_version_info")
     slab_info = instance.call("box.slab.info")
@@ -767,6 +769,11 @@ def test_proc_runtime_info(instance: Instance):
             # This is a counter which increases each time governor successfully performs a step.
             # This value may change in the future if we add or remove some of those steps.
             governor_step_counter=6,
+            main_loop_last_entry=dict(
+                index=420,
+                term=2,
+                payload='Update(_pico_instance, ["default_1_1"], [["=","current_state",["Online",1]]])',
+            ),
         ),
         http=dict(
             host=host,

@@ -298,6 +298,11 @@ pub fn proc_instance_uuid() -> Result<String, Error> {
 #[derive(Default, Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
 pub struct InternalInfo<'a> {
     pub main_loop_status: Cow<'a, str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub main_loop_last_entry: Option<RaftEntryInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub main_loop_last_error: Option<SerializableErrorInfo>,
+
     pub governor_loop_status: Cow<'a, str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub governor_loop_last_error: Option<SerializableErrorInfo>,
@@ -332,6 +337,14 @@ impl InternalInfo<'static> {
             governor_step_counter: governor.step_counter,
             ..Default::default()
         };
+
+        let main_loop_info = node.main_loop_info.borrow();
+        if let Some(last_entry) = &main_loop_info.last_entry {
+            info.main_loop_last_entry = Some(RaftEntryInfo::new(last_entry));
+        }
+        if let Some(last_error) = &main_loop_info.last_error {
+            info.main_loop_last_error = Some(SerializableErrorInfo::new(&last_error.error));
+        }
 
         if let Some(error) = &governor.last_error {
             info.governor_loop_last_error = Some(SerializableErrorInfo::new(error));
@@ -396,6 +409,23 @@ impl SerializableErrorInfo {
             message: e.message().into(),
             file: e.file().map(String::from),
             line: e.line(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
+pub struct RaftEntryInfo {
+    term: RaftTerm,
+    index: RaftIndex,
+    payload: String,
+}
+
+impl RaftEntryInfo {
+    fn new(entry: &crate::traft::Entry) -> Self {
+        Self {
+            term: entry.term,
+            index: entry.index,
+            payload: entry.payload().to_string(),
         }
     }
 }
