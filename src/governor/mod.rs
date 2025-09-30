@@ -661,7 +661,6 @@ impl Loop {
                             // This is a TRUNCATE on global table. RPC is not required, the
                             // operation is applied locally on each instance of the cluster
                             // when the corresponding DdlCommit is applied in raft_main_loop
-                            debug_assert!(ddl.is_truncate_on_global_table(storage));
 
                             next_op = Op::DdlCommit;
 

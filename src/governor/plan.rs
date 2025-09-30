@@ -673,7 +673,7 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // ddl
-    if let Some(ddl) = pending_schema_change {
+    if let Some(ddl) = &pending_schema_change {
         let mut tier = None;
 
         if let Ddl::TruncateTable { id, .. } = ddl {

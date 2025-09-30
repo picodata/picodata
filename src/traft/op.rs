@@ -828,7 +828,7 @@ impl Ddl {
         };
 
         let table_def = storage
-            .pico_table
+            .tables
             .get(*id)
             .expect("table definition should decode correctly")
             .expect("should be called with valid table ids");
