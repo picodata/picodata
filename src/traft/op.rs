@@ -846,6 +846,22 @@ pub enum Ddl {
     },
 }
 
+impl Ddl {
+    pub fn is_truncate_on_global_table(&self, storage: &Catalog) -> bool {
+        let Ddl::TruncateTable { id, .. } = self else {
+            return false;
+        };
+
+        let table_def = storage
+            .pico_table
+            .get(*id)
+            .expect("table definition should decode correctly")
+            .expect("should be called with valid table ids");
+
+        table_def.distribution.is_global()
+    }
+}
+
 /// Builds [`RenameMapping`] by adding renames one-by-one
 #[derive(Debug, Default)]
 pub struct RenameMappingBuilder {

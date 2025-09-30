@@ -606,26 +606,33 @@ pub(super) fn action_plan<'i>(
     ////////////////////////////////////////////////////////////////////////////
     // ddl
     if let Some(ddl) = pending_schema_change {
-        let targets: Vec<(&InstanceName, &String)> =
-            rpc::replicasets_masters(replicasets, instances);
+        let mut tier = None;
 
-        let tier = if let Ddl::TruncateTable { id, .. } = ddl {
-            let space = tables.get(id).expect("failed to get space");
-            match &space.distribution {
-                crate::schema::Distribution::Global => None,
-                crate::schema::Distribution::ShardedImplicitly { tier, .. }
-                | crate::schema::Distribution::ShardedByField { tier, .. } => Some(tier),
+        if let Ddl::TruncateTable { id, .. } = ddl {
+            let table_def = tables.get(id).expect("failed to get table_def");
+            tier = table_def.distribution.in_tier();
+
+            if tier.is_none() {
+                // This is a TRUNCATE on global table. RPC is not required, the
+                // operation is applied locally on each instance of the cluster
+                // when the corresponding DdlCommit is applied in raft_main_loop
+                return Ok(ApplySchemaChange {
+                    tier: None,
+                    rpc: None,
+                    targets: vec![],
+                }
+                .into());
             }
-        } else {
-            None
-        };
+        }
 
-        let rpc = rpc::ddl_apply::Request {
-            tier: tier.cloned(),
+        let targets = rpc::replicasets_masters(replicasets, instances);
+
+        let rpc = Some(rpc::ddl_apply::Request {
+            tier: tier.map(Into::into),
             term,
             applied,
             timeout: sync_timeout,
-        };
+        });
 
         return Ok(ApplySchemaChange { tier, rpc, targets }.into());
     }
@@ -1219,12 +1226,12 @@ pub mod stage {
             /// Tier name on which schema change should be applied.
             /// If specified, change application should be skipped
             /// for other tiers.
-            pub tier: Option<&'i String>,
+            pub tier: Option<&'i str>,
             /// These are masters of all the replicasets in the cluster
             /// (their instance names with corresponding tier names).
             pub targets: Vec<(&'i InstanceName, &'i String)>,
             /// Request to call [`rpc::ddl_apply::proc_apply_schema_change`] on `targets`.
-            pub rpc: rpc::ddl_apply::Request,
+            pub rpc: Option<rpc::ddl_apply::Request>,
         }
 
         pub struct CreatePlugin<'i> {

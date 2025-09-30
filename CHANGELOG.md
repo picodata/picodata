@@ -61,6 +61,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Picodata now loads all certificates from `ca.crt`, not just the first one.
 - Fixed a possible state corruption in case picodata crashes after receiving a
   raft snapshot with a stale schema version.
+- Fixed TRUNCATE operation for global tables.
 
 ### CLI
 

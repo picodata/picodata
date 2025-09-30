@@ -804,6 +804,17 @@ impl Loop {
                         let ddl = pending_schema_change.expect("pending schema should exist");
                         tlog!(Info, "handling ApplySchemaChange for {ddl:?}");
 
+                        let Some(rpc) = rpc else {
+                            // This is a TRUNCATE on global table. RPC is not required, the
+                            // operation is applied locally on each instance of the cluster
+                            // when the corresponding DdlCommit is applied in raft_main_loop
+                            debug_assert!(ddl.is_truncate_on_global_table(storage));
+
+                            next_op = Op::DdlCommit;
+
+                            return Ok(());
+                        };
+
                         if let Some(tier) = tier {
                             // DDL should be applied only on a specific tier
                             // (e.g. case of TRUNCATE on sharded tables).

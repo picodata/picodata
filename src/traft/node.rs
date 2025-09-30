@@ -1105,7 +1105,12 @@ impl NodeImpl {
                         Info,
                         "Catching up from {v_local} to {v_pending} for {ddl:?}"
                     );
-                    if self.is_readonly() {
+                    if self.is_readonly() &&
+                        // Truncate on global tables is applied on all replicas
+                        // directly, because global tables are implemented as
+                        // tarantool local tables.
+                        !ddl.is_truncate_on_global_table(&self.storage)
+                    {
                         return SleepAndRetry;
                     } else if matches!(ddl, Ddl::Backup { .. }) {
                         // TODO: See https://git.picodata.io/core/picodata/-/issues/2183.

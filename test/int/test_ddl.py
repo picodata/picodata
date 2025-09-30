@@ -2115,7 +2115,7 @@ def test_truncate_is_applied_during_node_wakeup_for_sharded_table(cluster: Clust
 def test_truncate_is_applied_during_node_wakeup_for_global_table(cluster: Cluster):
     i1, i2, *_ = cluster.deploy(instance_count=5)
 
-    i1.sql("CREATE TABLE gt(a int primary key) distributed globally")
+    i1.sql("CREATE TABLE gt(a INT PRIMARY KEY) DISTRIBUTED GLOBALLY")
 
     rows_to_insert_number = 10
     for i in range(rows_to_insert_number):
@@ -2126,15 +2126,12 @@ def test_truncate_is_applied_during_node_wakeup_for_global_table(cluster: Cluste
     # Put i2 to sleep.
     i2.terminate()
 
-    with pytest.raises(TimeoutError):
-        # TRUNCATE can't be executed because one of
-        # the replicasets masters is down.
-        i1.sql("TRUNCATE gt")
+    # TRUNCATE for global table is applied even though one of the masters is offline.
+    i1.sql("TRUNCATE gt WAIT APPLIED LOCALLY")
 
-    # Table should not be operable before schema change is completed (before TRUNCATE is applied
-    # on all replicasets' masters).
-    gt_is_opearable = i1.sql("select operable from _pico_table where name = 'gt'")
-    assert not gt_is_opearable[0][0]
+    # Schema change is completed therefore table is operable
+    [[gt_is_opearable]] = i1.sql("SELECT operable FROM _pico_table WHERE name = 'gt'")
+    assert gt_is_opearable
 
     # i2 wakes up.
     i2.start()
@@ -2146,6 +2143,10 @@ def test_truncate_is_applied_during_node_wakeup_for_global_table(cluster: Cluste
     # Check that data was erased by TRUNCATE.
     data = i1.sql("SELECT * FROM gt")
     assert data == []
+
+    for instance in cluster.instances:
+        rows = instance.call("box.space.gt:select")
+        assert rows == []
 
 
 def test_truncate_is_applied_from_snapshot_for_sharded_table(cluster: Cluster):
@@ -2187,10 +2188,44 @@ def test_truncate_is_applied_from_snapshot_for_sharded_table(cluster: Cluster):
     assert dql == []
 
 
+def test_truncate_global_table(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        raft:
+        storage:
+            can_vote: false
+            replication_factor: 2
+        """
+    )
+    leader = cluster.add_instance(tier="raft", wait_online=False)
+    storage_1_1 = cluster.add_instance(tier="storage", wait_online=False)
+    storage_1_2 = cluster.add_instance(tier="storage", wait_online=False)
+    cluster.wait_online()
+
+    leader.sql("CREATE TABLE glob (id INT PRIMARY KEY, value TEXT) DISTRIBUTED GLOBALLY")
+    leader.sql("INSERT INTO glob VALUES (1, 'foo'), (2, 'bar'), (3, 'kek')")
+
+    for i in [leader, storage_1_1, storage_1_2]:
+        rows = i.call("box.space.glob:select")
+        assert rows == [[1, "foo"], [2, "bar"], [3, "kek"]]
+
+    leader.sql("TRUNCATE TABLE glob")
+
+    latest_index = leader.raft_get_index()
+    cluster.raft_wait_index(latest_index)
+
+    for i in [leader, storage_1_1, storage_1_2]:
+        rows = i.call("box.space.glob:select")
+        assert rows == []
+
+
 def test_truncate_is_applied_from_snapshot_for_global_table(cluster: Cluster):
     i1, i2, i3 = cluster.deploy(instance_count=3)
 
-    ddl = i1.sql("CREATE TABLE gt(a int primary key) distributed globally")
+    ddl = i1.sql("CREATE TABLE gt(a INT PRIMARY KEY) DISTRIBUTED GLOBALLY")
     assert ddl["row_count"] == 1
 
     dml = i1.sql("INSERT INTO gt VALUES (1)")
@@ -2199,8 +2234,8 @@ def test_truncate_is_applied_from_snapshot_for_global_table(cluster: Cluster):
     # i2 goes sleeping.
     i2.terminate()
 
-    with pytest.raises(TimeoutError):
-        i1.sql("TRUNCATE gt")
+    # TRUNCATE for global table is applied even though one of the masters is offline.
+    i1.sql("TRUNCATE gt WAIT APPLIED LOCALLY")
 
     # Compact the log to trigger snapshot applying on the catching up instance.
     i1.raft_compact_log()
@@ -2212,11 +2247,15 @@ def test_truncate_is_applied_from_snapshot_for_global_table(cluster: Cluster):
 
     # Wait until the schema change is finalized.
     Retriable(timeout=5, rps=2).call(check_no_pending_schema_change, i2)
-    t_is_opearable = i1.sql("select operable from _pico_table where name = 'gt'")
-    assert t_is_opearable[0][0]
+    [[t_is_opearable]] = i1.sql("SELECT operable FROM _pico_table WHERE name = 'gt'")
+    assert t_is_opearable
 
     dql = i1.sql("SELECT * FROM gt")
     assert dql == []
+
+    for i in cluster.instances:
+        rows = i.call("box.space.gt:select")
+        assert rows == []
 
 
 def test_truncate_raises_local_schema_version_several_tiers(cluster: Cluster):
