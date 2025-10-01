@@ -348,4 +348,4 @@ scrape_configs:
 [Docker]: https://www.docker.com
 [Grafana]: https://grafana.com
 [Prometheus]: https://prometheus.io
-[Picodata.json]: https://git.picodata.io/core/picodata/-/tree/master/monitoring/dashboard
+[Picodata.json]: https://git.picodata.io/core/picodata/-/blob/25.3/monitoring/dashboard
