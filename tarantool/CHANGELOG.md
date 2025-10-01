@@ -38,7 +38,7 @@
 
 # Change Log
 
-# [9.0.0] Unreleased
+# [9.0.0] Oct 1 2025
 
 ### Changed
 
