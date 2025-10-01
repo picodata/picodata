@@ -1,6 +1,8 @@
 # CREATE INDEX
 
-[DDL](ddl.md)-команда `CREATE INDEX` используется для создания индекса.
+[DDL](ddl.md)-команда `CREATE INDEX` используется для создания [индекса].
+
+[индекса]: ../../overview/glossary.md#index
 
 ## Синтаксис {: #syntax }
 
