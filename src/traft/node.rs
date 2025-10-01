@@ -90,6 +90,7 @@ use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
 use ::tarantool::tuple::RawByteBuf;
 use ::tarantool::tuple::{Decode, Tuple};
+use picodata_plugin::util::DisplayErrorLocation;
 use protobuf::Message as _;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -3070,18 +3071,24 @@ impl MainLoopInfo {
         let last_error = self.on_error(error);
 
         if last_error.ok_to_log_error() {
+            let e = &last_error.error;
+            let loc = DisplayErrorLocation(&last_error.error);
+
             // NOTE: we're only doing exponential backoff for logging. We're
             // still going to be trying to apply the entry with the same
             // unchanged frequency. This is ok in this case because applying
             // raft entries is a purely local operation, no RPC to other
             // instances will be sent so there's no possibilty of DOS
             // atacking someone by mistake. Beware and be warned!
-            tlog!(
-                Error,
-                "error during raft main loop iteration: {}{}",
-                picodata_plugin::util::DisplayErrorLocation(&last_error.error),
-                last_error.error,
-            );
+            if last_error.error.error_code() == TarantoolErrorCode::Readonly as u32 {
+                // We return this type of error when readonly replicas are
+                // blocked expecting DDL results from masters via tarantool
+                // replication. This is a completely expected situation, so
+                // we log this as warnings so as to not scare admins too much.
+                tlog!(Warning, "error during raft main loop iteration: {loc}{e}");
+            } else {
+                tlog!(Error, "error during raft main loop iteration: {loc}{e}");
+            }
             last_error.on_log_error();
         }
     }
