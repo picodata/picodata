@@ -1,6 +1,7 @@
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::to_user;
 use crate::ir::aggregates::AggregateKind;
+use crate::ir::node::expression::Expression;
 use crate::ir::node::{NodeId, ScalarFunction};
 use crate::ir::Plan;
 use serde::{Deserialize, Serialize};
@@ -135,13 +136,25 @@ impl Plan {
                         )),
                     ));
                 }
-                if is_distinct && children.len() == 2 {
-                    return Err(SbroadError::Invalid(
-                        Entity::Query,
-                        Some(format_smolstr!(
-                            "distinct GROUP_CONCAT aggregate function has only one argument. Got: {} arguments", children.len()
-                        )),
-                    ));
+                match children.get(1) {
+                    Some(_) if is_distinct => {
+                        return Err(SbroadError::Invalid(
+                                Entity::Query,
+                                Some(format_smolstr!(
+                                    "distinct GROUP_CONCAT aggregate function has only one argument. Got: {} arguments", children.len()
+                                )),
+                            ));
+                    }
+                    Some(child) => {
+                        if !matches!(self.get_expression_node(*child)?, Expression::Constant(_)) {
+                            return Err(SbroadError::Invalid(
+                                    Entity::Query,
+                                    Some(format_smolstr!(
+                                        "GROUP_CONCAT aggregate function second argument must be a string literal.")),
+                                ));
+                        }
+                    }
+                    _ => {}
                 }
             }
             _ => {
