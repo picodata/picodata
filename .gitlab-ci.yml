@@ -877,6 +877,10 @@ publish-picodata-plugin:
 
 audit:
   stage: test
+  # TEMP(kbezuglyi): `tarantool` submodule major bump has broken dependencies resolution,
+  # so we cannot bump the version of it that contains fix for a failing advisory. See
+  # <https://git.picodata.io/core/picodata/-/merge_requests/2299>.
+  allow_failure: true
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
     CACHE_POLICY: pull
