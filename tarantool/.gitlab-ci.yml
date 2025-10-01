@@ -139,7 +139,7 @@ build-base-image-fork-on-trigger:
         BASE_IMAGE_TAG: latest
   image:
     name: ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
-    pull_policy: [if-not-present]
+    pull_policy: [always]
   before_script:
     - |
       # Restore cache
