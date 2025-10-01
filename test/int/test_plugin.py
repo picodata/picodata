@@ -1080,6 +1080,9 @@ def test_migration_for_changed_migration(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
     expected_state = PluginReflection.default(i1, i2)
 
+    # This table is needed a bit later
+    i1.sql("CREATE TABLE test_table (id INT PRIMARY KEY, value TEXT) DISTRIBUTED GLOBALLY")
+
     plugin = _PLUGIN_WITH_MIGRATION
 
     i1.sql(f"CREATE PLUGIN {plugin} 0.1.0", timeout=5)
@@ -1087,16 +1090,65 @@ def test_migration_for_changed_migration(cluster: Cluster):
     expected_state = expected_state.set_data(_DATA_V_0_1_0)
     expected_state.assert_data_synced()
 
-    # increase the version to v0.2.0_broken with changed file author.db
+    # increase the version to v0.2.0_changed with changed file author.db
     # FIXME: SQL commands don't allow arbitrary text in version...
-    i1.call("pico.install_plugin", plugin, "0.2.0_broken", timeout=5)
+    i1.call("pico.install_plugin", plugin, "0.2.0_changed", timeout=5)
 
+    # Control
+    [] = i1.sql("SELECT value FROM test_table")
+
+    old_checksum = "b91ba74abfe5288d3cbf127938e04443"
+    new_checksum = "9919e8fbe4471bb3124a020b0980e804"
+    filename = "book.db"
+
+    [[checksum]] = i1.sql("SELECT hash FROM _pico_plugin_migration WHERE migration_file = ?", filename)
+    assert checksum == old_checksum
+
+    # By default changing migration files is not allowed
     with pytest.raises(ReturnError) as e:
-        i1.call("pico.migration_up", plugin, "0.2.0_broken")
+        i1.call("pico.migration_up", plugin, "0.2.0_changed")
     assert (
         e.value.args[0]
-        == "PluginError: unknown migration files found in manifest migrations (mismatched hash checksum for book.db)"
+        == f"PluginError: unknown migration files found in manifest migrations (mismatched hash checksum for {filename}, was {old_checksum}, became {new_checksum})"
     )
+
+    # But we can disable the check
+    i1.sql("ALTER SYSTEM SET plugin_check_migration_hash = false")
+
+    lc = log_crawler(
+        i1, f"migration file hash checksum changed for {filename}: was {old_checksum}, became {new_checksum}"
+    )
+    i1.call("pico.migration_up", plugin, "0.2.0_changed")
+    # XXX if you change something in the migration file and this starts failing,
+    # the easiest way to fix the problem is to comment out this line and rerun
+    # the test. After this it will fail in the assert bellow and you'll see the
+    # exact new value for `new_checksum`.
+    lc.wait_matched()
+
+    # Plugin version got updated, but the new migration was not applied yet,
+    # because it was already applied before
+    [[checksum]] = i1.sql("SELECT hash FROM _pico_plugin_migration WHERE migration_file = ?", filename)
+    assert checksum == old_checksum
+
+    # Migrate back down, this will apply the statements from the changed file
+    # FIXME: there's no way to apply down migrations via SQL api without
+    # dropping the plugin
+    i1.call("pico.migration_down", plugin, "0.2.0_changed")
+
+    [[value]] = i1.sql("SELECT value FROM test_table")
+    assert value == "changed DOWN migration was applied"
+
+    # Clear the table for control
+    i1.sql("TRUNCATE TABLE test_table")
+
+    # And if we migrate UP now, the new migration is applied
+    i1.call("pico.migration_up", plugin, "0.2.0_changed")
+
+    [[checksum]] = i1.sql("SELECT hash FROM _pico_plugin_migration WHERE migration_file = ?", filename)
+    assert checksum == new_checksum
+
+    [[value]] = i1.sql("SELECT value FROM test_table")
+    assert value == "changed UP migration was applied"
 
 
 def test_migration_apply_err(cluster: Cluster):

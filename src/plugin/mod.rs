@@ -708,9 +708,18 @@ pub fn migration_up(
         let hash = migration::calculate_migration_hash_async(&migration)?;
         let hash_string = format!("{hash:x}");
 
-        if hash_string != already_applied_migrations[i].hash() {
-            let details = format!("mismatched hash checksum for {}", migration.shortname());
-            return Err(unknown_migration_file(details).into());
+        let old_hash_string = already_applied_migrations[i].hash();
+        if hash_string != old_hash_string {
+            let plugin_check_migration_hash =
+                node.storage.db_config.plugin_check_migration_hash()?;
+            let filename = migration.shortname();
+
+            if plugin_check_migration_hash {
+                let details = format!("mismatched hash checksum for {filename}, was {old_hash_string}, became {hash_string}");
+                return Err(unknown_migration_file(details).into());
+            } else {
+                tlog!(Warning, "migration file hash checksum changed for {filename}: was {old_hash_string}, became {hash_string}");
+            }
         }
     }
 

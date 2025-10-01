@@ -1,0 +1,20 @@
+-- pico.UP
+
+CREATE TABLE book (id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY (id))
+USING memtx
+DISTRIBUTED BY (id);
+
+INSERT INTO book (id, name) VALUES
+    (1, 'Ruslan and Ludmila'),
+    (2, 'The Tale of Tsar Saltan'),
+    (3, 'The Twelve');
+
+INSERT INTO test_table VALUES (1, 'changed UP migration was applied');
+
+-- pico.DOWN
+DROP TABLE book;
+
+-- This table is created explicitly in the test for the purposes of the test.
+-- Real migrations should not in general depend on entities defined outside of them.
+-- And leaving behind artifacts after DOWN migrations is also not a good idea.
+INSERT INTO test_table VALUES (2, 'changed DOWN migration was applied');

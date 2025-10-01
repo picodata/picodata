@@ -2660,7 +2660,7 @@ def binary_path() -> str:
         f"{test_dir}/testplug/testplug_w_migration/0.1.0",
         f"{test_dir}/testplug/testplug_w_migration_2/0.1.0",
         f"{test_dir}/testplug/testplug_w_migration/0.2.0",
-        f"{test_dir}/testplug/testplug_w_migration/0.2.0_broken",
+        f"{test_dir}/testplug/testplug_w_migration/0.2.0_changed",
         f"{test_dir}/testplug/testplug_sdk/0.1.0",
     ]
 

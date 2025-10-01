@@ -1,6 +1,6 @@
 description: plugin for test purposes
 name: testplug_w_migration
-version: 0.2.0_broken
+version: 0.2.0_changed
 services:
   - name: testservice_2
     description: testservice_2 descr
