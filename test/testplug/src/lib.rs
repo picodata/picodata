@@ -896,8 +896,8 @@ pub fn service_registrar(reg: &mut ServiceRegistry) {
     reg.add("testservice_2", "0.2.0", Service2::new);
     reg.add("service_with_rpc_tests", "0.1.0", || ServiceWithRpcTests);
 
-    // 0.2.0 broken version cause inconsistent migration
-    reg.add("testservice_2", "0.2.0_broken", Service2::new);
+    // 0.2.0 changed version cause inconsistent migration
+    reg.add("testservice_2", "0.2.0_changed", Service2::new);
 
     reg.add("testservice_w_string_conf", "0.1.0", || {
         ServiceWithStringConfigValue

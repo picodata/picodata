@@ -14,6 +14,9 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Instance's which loose ability to apply raft log updates will automatically
   become Offline. (See also https://git.picodata.io/core/picodata/-/issues/2238).
+- New ALTER SYSTEM parameter `plugin_check_migration_hash` (default: true)
+  allows disabling plugin migration file checksum validation. This allows plugin
+  authors to more easily fix mistakes in migration files.
 
 ### Fixes
 

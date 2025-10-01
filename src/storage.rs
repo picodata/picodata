@@ -3414,6 +3414,14 @@ impl DbConfig {
             Ok(None)
         }
     }
+
+    #[inline]
+    pub fn plugin_check_migration_hash(&self) -> tarantool::Result<bool> {
+        self.get_or_default(
+            system_parameter_name!(plugin_check_migration_hash),
+            Self::GLOBAL_SCOPE,
+        )
+    }
 }
 
 impl ToEntryIter<MP_SERDE> for DbConfig {

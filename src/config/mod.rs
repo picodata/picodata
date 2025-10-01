@@ -1794,6 +1794,11 @@ pub struct AlterSystemParameters {
     #[introspection(config_default = 0x300)]
     #[introspection(scope = tier)]
     pub iproto_net_msg_max: u64,
+
+    #[introspection(sbroad_type = SbroadType::Boolean)]
+    #[introspection(config_default = true)]
+    #[introspection(scope = global)]
+    pub plugin_check_migration_hash: bool,
 }
 
 impl AlterSystemParameters {

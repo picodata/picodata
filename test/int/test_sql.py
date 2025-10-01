@@ -651,6 +651,7 @@ def test_read_from_system_tables(cluster: Cluster):
         "memtx_checkpoint_interval",
         "pg_portal_max",
         "pg_statement_max",
+        "plugin_check_migration_hash",
         "raft_snapshot_chunk_size_max",
         "raft_snapshot_read_view_close_timeout",
         "raft_wal_count_max",
