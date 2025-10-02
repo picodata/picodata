@@ -51,6 +51,8 @@ openssl x509 -in server.crt          >> server-fullchain.crt
 # Test
 openssl verify -CAfile server-fullchain.crt server-fullchain.crt
 
+# Certificate authentication for user "pico_service"
+openssl req -new -key server.key -out server.csr -subj "/CN=pico_service@example.com"
 # Generate server-with-ext.crt with SAN.IP field (for iproto tls)
 openssl x509 -req -in server.csr -CA intermediate-ca.crt -CAkey intermediate-ca.key \
     -out server-with-ext.crt -days 36500 -sha256 \

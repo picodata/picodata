@@ -2,6 +2,7 @@ use crate::config::{BootstrapStrategy, ByteSize, ElectionMode, PicodataConfig};
 use crate::config_parameter_path;
 use crate::instance::Instance;
 use crate::introspection::Introspection;
+use crate::pico_service::pico_service_password;
 use crate::rpc::join;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::tlog;
@@ -226,6 +227,18 @@ impl ListenConfig {
         }
         result
     }
+
+    pub fn new_for_pico_service(uri: &str, tls_config: &crate::iproto::TlsConfig) -> Self {
+        if tls_config.enabled {
+            return Self::new(format!("{PICO_SERVICE_USER_NAME}@{uri}"), tls_config);
+        }
+
+        let password = pico_service_password();
+        Self::new(
+            format!("{PICO_SERVICE_USER_NAME}:{password}@{uri}"),
+            tls_config,
+        )
+    }
 }
 
 /// Tarantool configuration.
@@ -352,13 +365,9 @@ impl Cfg {
         resp: &join::Response,
     ) -> Result<Self, Error> {
         let mut replication_cfg = Vec::with_capacity(resp.box_replication.len());
-        let password = crate::pico_service::pico_service_password();
         let tls_config = &config.instance.iproto_tls;
         for address in &resp.box_replication {
-            replication_cfg.push(ListenConfig::new(
-                format!("{PICO_SERVICE_USER_NAME}:{password}@{address}"),
-                tls_config,
-            ));
+            replication_cfg.push(ListenConfig::new_for_pico_service(address, tls_config));
         }
 
         let mut res = Self {

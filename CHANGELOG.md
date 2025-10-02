@@ -21,6 +21,10 @@ with the `YY.MINOR.MICRO` scheme.
 - Support TLS in IPROTO for intra-cluster communication and CLI.
   - Configure via new config section: `instance.iproto_tls`;
   - Run CLI with new arguments: `--tls-cert`, `--tls-key`, `--tls-ca`.
+- Support TLS certificate authentication
+  - Use the certificate's Common Name (CN) field as the username;
+  - For example, use `CN=dbuser@company.com` or `CN=dbuser` in the certificate to authenticate the user "dbuser";
+  - This method takes precedence over other authentication mechanisms.
 - New ALTER SYSTEM parameter `plugin_check_migration_hash` (default: true)
   allows disabling plugin migration file checksum validation. This allows plugin
   authors to more easily fix mistakes in migration files.

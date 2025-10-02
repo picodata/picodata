@@ -258,7 +258,12 @@ def test_connect_auth_type_ldap(cluster: Cluster, ldap_server: LdapServer):
     cli.expect_exact("sql> ")
 
 
-def test_connect_testuser_tls(cluster: Cluster):
+@pytest.mark.parametrize(
+    "cert_auth_enabled",
+    [False, True],
+    ids=["cert_auth_disabled", "cert_auth_enabled"],
+)
+def test_connect_testuser_tls(cluster: Cluster, cert_auth_enabled):
     i1 = cluster.add_instance(wait_online=False)
     ssl_dir = pathlib.Path(os.path.realpath(__file__)).parent.parent / "ssl_certs"
     i1.iproto_tls_enabled = True
@@ -268,30 +273,37 @@ def test_connect_testuser_tls(cluster: Cluster):
     i1.start()
     i1.wait_online()
 
-    acl = i1.sql("create user \"testuser\" with password 'Testpa55'", sudo=True)
+    user = "Client"
+    password = "Testpa55"
+
+    acl = i1.sql(f"create user \"{user}\" with password '{password}'", sudo=True)
     assert acl["row_count"] == 1
 
+    args = [
+        "connect",
+        f"{i1.host}:{i1.port}",
+        "-u",
+        user,
+        "--tls-cert",
+        str(ssl_dir / "client.crt"),
+        "--tls-key",
+        str(ssl_dir / "client.key"),
+        "--tls-ca",
+        str(ssl_dir / "combined-ca.crt"),
+    ]
+    if cert_auth_enabled:
+        args.append("--tls-auth")
     cli = pexpect.spawn(
         command=i1.binary_path,
-        args=[
-            "connect",
-            f"{i1.host}:{i1.port}",
-            "-u",
-            "testuser",
-            "--tls-cert",
-            str(ssl_dir / "client.crt"),
-            "--tls-key",
-            str(ssl_dir / "client.key"),
-            "--tls-ca",
-            str(ssl_dir / "combined-ca.crt"),
-        ],
+        args=args,
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("Enter password for testuser: ")
-    cli.sendline("Testpa55")
+    if not cert_auth_enabled:
+        cli.expect_exact(f"Enter password for {user}: ")
+        cli.sendline(password)
 
     cli.expect_exact("sql> ")
 

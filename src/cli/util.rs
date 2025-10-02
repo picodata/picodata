@@ -224,11 +224,12 @@ impl TryFrom<&args::Expel> for Credentials {
 
         let password = match value.password_file.clone() {
             Some(path) => read_password_from_file(&path)?,
-            None => {
+            None if !value.tls.cert_auth => {
                 let prompt_message = format!("Enter password for {username}: ");
                 prompt_password(&prompt_message)
                     .map_err(|e| Error::other(format!("Failed to prompt for a password: {e}")))?
             }
+            _ => String::new(),
         };
 
         Ok(Credentials::new(username, password, value.auth_method))
@@ -250,12 +251,13 @@ impl TryFrom<&args::Connect> for Credentials {
         } else {
             match value.password_file.clone() {
                 Some(path) => read_password_from_file(&path)?,
-                None => {
+                None if !value.tls.cert_auth => {
                     let prompt_message = format!("Enter password for {username}: ");
                     prompt_password(&prompt_message).map_err(|e| {
                         Error::other(format!("Failed to prompt for a password: {e}"))
                     })?
                 }
+                _ => String::new(),
             }
         };
 
@@ -275,11 +277,12 @@ impl TryFrom<&args::Status> for Credentials {
 
         let password = match value.password_file.clone() {
             Some(path) => read_password_from_file(&path)?,
-            None => {
+            None if !value.tls.cert_auth => {
                 let prompt_message = format!("Enter password for {username}: ");
                 prompt_password(&prompt_message)
                     .map_err(|e| Error::other(format!("Failed to prompt for a password: {e}")))?
             }
+            _ => String::new(),
         };
 
         let method = if username == PICO_SERVICE_USER_NAME {
@@ -372,7 +375,7 @@ fn read_password_from_file(path: &Path) -> traft::Result<String> {
 ///
 /// This function bypasses `stdin` redirection (like `cat script.lua |
 /// picodata connect`) and always prompts a password from a TTY.
-pub fn prompt_password(prompt: &str) -> std::io::Result<String> {
+fn prompt_password(prompt: &str) -> std::io::Result<String> {
     // See also: <https://man7.org/linux/man-pages/man3/termios.3.html>.
     let mut tty = std::fs::File::options()
         .read(true)

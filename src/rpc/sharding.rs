@@ -74,7 +74,9 @@ crate::define_rpc_request! {
                 lua.eval("return box.info.listen")?,
                 tls_config);
             config.listen = Some(listen_config);
-            config.set_password_in_uris();
+            if !tls_config.enabled {
+                config.set_password_in_uris();
+            }
 
             crate::error_injection!("BROKEN_REPLICATION" => { config.sharding.clear(); });
 

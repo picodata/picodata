@@ -38,10 +38,8 @@ use crate::governor;
 #[allow(unused_imports)]
 use crate::governor::plan;
 use crate::has_states;
-use crate::pico_service::pico_service_password;
 #[allow(unused_imports)]
 use crate::rpc;
-use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::tarantool::{box_ro_reason, set_cfg_field, ListenConfig};
 use crate::tlog;
 use crate::traft::error::Error;
@@ -84,11 +82,9 @@ crate::define_rpc_request! {
         }
 
         let mut replication_cfg = Vec::with_capacity(req.replicaset_peers.len());
-        let password = pico_service_password();
         let tls_config = &PicodataConfig::get().instance.iproto_tls;
         for address in &req.replicaset_peers {
-            replication_cfg.push(ListenConfig::new(
-                format!("{PICO_SERVICE_USER_NAME}:{password}@{address}"),
+            replication_cfg.push(ListenConfig::new_for_pico_service(address,
                 tls_config));
         }
 

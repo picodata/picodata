@@ -873,6 +873,9 @@ pub struct IprotoTlsArgs {
     )]
     /// Path to trusted CA file to enable mTLS.
     pub ca: Option<PathBuf>,
+    #[clap(long = "tls-auth", env = "PICODATA_IPROTO_TLS_AUTH")]
+    /// Enables TLS certificate authentication.
+    pub cert_auth: bool,
 }
 
 impl IprotoTlsArgs {
