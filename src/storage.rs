@@ -3476,6 +3476,19 @@ impl DbConfig {
     }
 
     #[inline]
+    pub fn jwt_secret(&self) -> tarantool::Result<Option<String>> {
+        if let Some(jwt_secret) = self.by_key(system_parameter_name!(jwt_secret))?.next() {
+            Ok(Some(
+                jwt_secret
+                    .field(AlterSystemParameters::FIELD_VALUE)?
+                    .expect("field value exists"),
+            ))
+        } else {
+            Ok(None)
+        }
+    }
+
+    #[inline]
     pub fn plugin_check_migration_hash(&self) -> tarantool::Result<bool> {
         self.get_or_default(
             system_parameter_name!(plugin_check_migration_hash),

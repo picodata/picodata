@@ -273,6 +273,8 @@ def test_raft_log(instance: Instance):
     raft_log = str.join("\n", raft_log)
 
     def preprocess(s: str):
+        import re
+
         res = []
         tail = s
         while tail:
@@ -312,6 +314,16 @@ def test_raft_log(instance: Instance):
                     if len(uuid_and_rest) == 2:
                         contents = parts[0] + '["cluster_uuid","<uuid>"' + uuid_and_rest[1]
                         columns[3] = contents
+
+            # Handle jwt_secret - replace dynamic 16-character value with placeholder
+            jwt_pattern = r'Replace\(_pico_db_config, \["jwt_secret","","[^"]{16}"\]\)'
+            if re.search(jwt_pattern, contents):
+                contents = re.sub(
+                    r'Replace\(_pico_db_config, \["jwt_secret","","[^"]{16}"\]\)',
+                    'Replace(_pico_db_config, ["jwt_secret","","<jwt_secret>"])',
+                    contents,
+                )
+                columns[3] = contents
 
             # now let's break up the gigantic raft log rows with long BatchDml
             # entries into several lines, so that each sub operation is on it's
@@ -391,7 +403,8 @@ Replace(_pico_db_config, ["sql_storage_cache_count_max","",50]),
 Replace(_pico_db_config, ["memtx_checkpoint_count","default",2]),
 Replace(_pico_db_config, ["memtx_checkpoint_interval","default",3600]),
 Replace(_pico_db_config, ["iproto_net_msg_max","default",768]),
-Replace(_pico_db_config, ["plugin_check_migration_hash","",true]))|
+Replace(_pico_db_config, ["plugin_check_migration_hash","",true]),
+Replace(_pico_db_config, ["jwt_secret","","<jwt_secret>"]))|
 |  0  | 1  |BatchDml(
 Insert(_pico_db_config, ["shredding","",false])
 )|

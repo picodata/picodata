@@ -1891,6 +1891,26 @@ pub struct AlterSystemParameters {
     #[introspection(config_default = true)]
     #[introspection(scope = global)]
     pub plugin_check_migration_hash: bool,
+
+    #[introspection(sbroad_type = SbroadType::String)]
+    #[introspection(config_default = generate_secure_token())]
+    pub jwt_secret: String,
+}
+
+fn generate_secure_token() -> String {
+    use rand::rngs::OsRng;
+    use rand::RngCore;
+
+    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let mut rng = OsRng;
+    let mut bytes = [0u8; 16];
+
+    rng.fill_bytes(&mut bytes);
+
+    bytes
+        .iter()
+        .map(|&byte| CHARSET[(byte as usize) % CHARSET.len()] as char)
+        .collect()
 }
 
 impl AlterSystemParameters {
