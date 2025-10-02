@@ -306,6 +306,27 @@ def test_localtimestamp(postgres: Postgres):
     assert len(result) == 1
 
 
+def test_localtime_not_cached(postgres: Postgres):
+    conn = setup_psycopg_test_env(postgres)
+    cur = conn.cursor()
+
+    # regression test for https://git.picodata.io/core/picodata/-/issues/2261
+    # checks that repeatedly executing the same time-getting query will yield different results
+    cur.execute("SELECT LOCALTIMESTAMP;")
+    result1 = cur.fetchall()
+    assert len(result1) == 1
+    result1 = result1[0][0]
+
+    time.sleep(1)
+
+    cur.execute("SELECT LOCALTIMESTAMP;")
+    result2 = cur.fetchall()
+    assert len(result2) == 1
+    result2 = result2[0][0]
+
+    assert result1 != result2
+
+
 def test_current_date(postgres: Postgres):
     conn = setup_psycopg_test_env(postgres)
     cur = conn.cursor()

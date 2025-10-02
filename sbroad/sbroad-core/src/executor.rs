@@ -55,7 +55,6 @@ impl Plan {
             .push_down_not()?
             // In the case if the query was not fully parameterized
             // and contains some constants, lets apply constant folding.
-            .update_timestamps()?
             .cast_constants()?
             .fold_boolean_tree()?
             .split_columns()?
