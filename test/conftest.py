@@ -2631,7 +2631,7 @@ def binary_path() -> str:
     # we have to pass --target=... or set CARGO_BUILD_TARGET,
     # which will affect the binary path.
     cargo_build_target = os.environ.get("CARGO_BUILD_TARGET")
-    if cargo_build_target is None and profile == "asan":
+    if cargo_build_target is None and profile.startswith("asan"):
         cargo_build_target = target()
 
     if cargo_build_target:
