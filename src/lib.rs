@@ -325,6 +325,7 @@ fn start_http_server(
 ) -> Result<(), Error> {
     tlog!(Info, "starting http server at {host}:{port}");
     let lua = ::tarantool::lua_state();
+
     lua.exec_with(
         r#"
         local host, port = ...;
@@ -341,9 +342,58 @@ fn start_http_server(
     })?;
 
     lua.exec_with(
-        "pico.httpd:route({method = 'GET', path = 'api/v1/tiers' }, ...)",
-        tlua::Function::new(|| -> _ {
-            http_server::wrap_api_result!(http_server::http_api_tiers())
+        r#"
+              local handler = ...
+              pico.httpd:route({method = 'POST', path = 'api/v1/session' }, function(req) 
+              local json = require('json')
+              local body_string = req.body or ''
+              local ok, data = pcall(function() return req:json() end)
+              local username = ''
+              local password = ''
+              if ok and data then
+                    username = data.username or ''
+                    password = data.password or ''
+              end
+              return handler(username, password)
+        end)"#,
+        tlua::Function::new(|login: String, password: String| -> _ {
+            http_server::wrap_api_result!(http_server::http_api_login(login, password))
+        }),
+    )
+    .map_err(|err| {
+        Error::other(format!(
+            "failed to add route POST `/api/v1/session` to http server: {}",
+            err
+        ))
+    })?;
+
+    lua.exec_with(
+        r#"
+              local handler = ...
+              pico.httpd:route({method = 'GET', path = 'api/v1/session' }, function(req) 
+              local auth_header = req.headers['authorization'] or ''
+              return handler(auth_header)
+        end)"#,
+        tlua::Function::new(|auth_header: String| -> _ {
+            http_server::wrap_api_result!(http_server::http_api_refresh_session(auth_header))
+        }),
+    )
+    .map_err(|err| {
+        Error::other(format!(
+            "failed to add route GET `/api/v1/session` to http server: {}",
+            err
+        ))
+    })?;
+
+    lua.exec_with(
+        r#"
+              local handler = ...
+              pico.httpd:route({method = 'GET', path = 'api/v1/tiers' }, function(req) 
+              local auth_header = req.headers['authorization'] or ''
+              return handler(auth_header)
+        end)"#,
+        tlua::Function::new(|auth_header: String| -> _ {
+            http_server::wrap_api_result!(http_server::http_api_tiers_with_auth(auth_header))
         }),
     )
     .map_err(|err| {
@@ -353,9 +403,14 @@ fn start_http_server(
     })?;
 
     lua.exec_with(
-        "pico.httpd:route({method = 'GET', path = 'api/v1/cluster' }, ...)",
-        tlua::Function::new(|| -> _ {
-            http_server::wrap_api_result!(http_server::http_api_cluster())
+        r#"
+              local handler = ...
+              pico.httpd:route({method = 'GET', path = 'api/v1/cluster' }, function(req) 
+              local auth_header = req.headers['authorization'] or ''
+              return handler(auth_header)
+        end)"#,
+        tlua::Function::new(|auth_header: String| -> _ {
+            http_server::wrap_api_result!(http_server::http_api_cluster_with_auth(auth_header))
         }),
     )
     .map_err(|err| {

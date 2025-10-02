@@ -1,4 +1,4 @@
-from typing import Iterable
+from typing import Dict, Iterable, Any, Tuple
 
 from conftest import (
     Cluster,
@@ -6,10 +6,56 @@ from conftest import (
     TarantoolError,
     ErrorCode,
 )
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
+from urllib.error import HTTPError
 import pytest
 import json
 import requests  # type: ignore
+
+
+USERNAME = "test_auth"
+PASSWORD = "test_auth1A!"
+
+
+def create_user(instance: Instance):
+    try:
+        instance.sql(f"CREATE USER \"{USERNAME}\" WITH PASSWORD '{PASSWORD}' USING chap-sha1 OPTION (TIMEOUT = 3.0);")
+    except Exception as e:
+        if not isinstance(e, TarantoolError):
+            raise e
+
+
+def authorize(instance: Instance, username: str, password) -> Tuple[Dict[str, Any], int]:
+    create_user(instance)
+    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+    request = Request(
+        f"http://{http_listen}/api/v1/session",
+        data=json.dumps({"username": username, "password": password}).encode(),
+        method="POST",
+    )
+    try:
+        with urlopen(request) as response:
+            response_data = response.read().decode()
+            result = json.loads(response_data)
+            return result, response.status
+    except HTTPError as e:
+        response_data = e.read().decode("utf-8")
+        result = json.loads(response_data)
+        return result, e.status  # type: ignore
+
+
+def get_auth_token(instance: Instance) -> str:
+    return authorize(instance, USERNAME, PASSWORD)[0]["auth"]
+
+
+@pytest.fixture
+def auth_token(instance: Instance) -> str:
+    return get_auth_token(instance)
+
+
+def get_authorized(url: str, auth_token: str) -> Any:
+    request = Request(url, headers={"Authorization": f"Bearer {auth_token}"}, method="GET")
+    return urlopen(request)
 
 
 @pytest.mark.webui
@@ -30,7 +76,7 @@ def test_http_routes(instance: Instance):
 
 
 @pytest.mark.webui
-def test_webui_basic(instance: Instance):
+def test_webui_basic(instance: Instance, auth_token: str):
     http_listen = instance.env["PICODATA_HTTP_LISTEN"]
 
     instance_version = instance.eval("return pico.PICODATA_VERSION")
@@ -40,7 +86,7 @@ def test_webui_basic(instance: Instance):
     with urlopen(f"http://{http_listen}/") as response:
         assert response.headers.get("content-type") == "text/html"
 
-    with urlopen(f"http://{http_listen}/api/v1/tiers") as response:
+    with get_authorized(f"http://{http_listen}/api/v1/tiers", auth_token) as response:
         assert response.headers.get("content-type") == "application/json"
         assert json.load(response) == [
             {
@@ -81,7 +127,7 @@ def test_webui_basic(instance: Instance):
             }
         ]
 
-    with urlopen(f"http://{http_listen}/api/v1/cluster") as response:
+    with get_authorized(f"http://{http_listen}/api/v1/cluster", auth_token) as response:
         assert response.headers.get("content-type") == "application/json"
         assert json.load(response) == {
             "capacityUsage": capacity_usage,
@@ -152,6 +198,9 @@ def test_webui_with_plugin(cluster: Cluster):
 
     with urlopen(f"http://{http_listen}/") as response:
         assert response.headers.get("content-type") == "text/html"
+
+    create_user(i1)
+    auth_token = get_auth_token(i1)
 
     instance_template = {
         "failureDomain": {},
@@ -235,7 +284,7 @@ def test_webui_with_plugin(cluster: Cluster):
     }
     tier_green = {**tier_template, "name": "green", "services": [], "replicasets": [r3]}
 
-    with urlopen(f"http://{http_listen}/api/v1/tiers") as response:
+    with get_authorized(f"http://{http_listen}/api/v1/tiers", auth_token) as response:
         assert response.headers.get("content-type") == "application/json"
         assert sorted(json.load(response), key=lambda tier: tier["name"]) == [
             tier_blue,
@@ -243,7 +292,7 @@ def test_webui_with_plugin(cluster: Cluster):
             tier_red,
         ]
 
-    with urlopen(f"http://{http_listen}/api/v1/cluster") as response:
+    with get_authorized(f"http://{http_listen}/api/v1/cluster", auth_token) as response:
         assert response.headers.get("content-type") == "application/json"
         assert json.load(response) == {
             "capacityUsage": 0.0,
@@ -295,6 +344,9 @@ def test_webui_replicaset_state(cluster: Cluster):
 
     with urlopen(f"http://{http_listen}/") as response:
         assert response.headers.get("content-type") == "text/html"
+
+    create_user(i4)
+    auth_token = get_auth_token(i4)
 
     instance_template = {
         "failureDomain": {},
@@ -377,13 +429,13 @@ def test_webui_replicaset_state(cluster: Cluster):
         "replicasets": [r1, r2],
     }
 
-    with urlopen(f"http://{http_listen}/api/v1/tiers") as response:
+    with get_authorized(f"http://{http_listen}/api/v1/tiers", auth_token) as response:
         assert response.headers.get("content-type") == "application/json"
         assert sorted(json.load(response), key=lambda tier: tier["name"]) == [
             tier_red,
         ], "/api/v1/tier"
 
-    with urlopen(f"http://{http_listen}/api/v1/cluster") as response:
+    with get_authorized(f"http://{http_listen}/api/v1/cluster", auth_token) as response:
         assert response.headers.get("content-type") == "application/json"
         assert json.load(response) == {
             "capacityUsage": 0,
@@ -419,6 +471,9 @@ def test_webui_can_vote_flag(cluster: Cluster):
 
     with urlopen(f"http://{http_listen}/") as response:
         assert response.headers.get("content-type") == "text/html"
+
+    create_user(i1)
+    auth_token = get_auth_token(i1)
 
     instance_template = {
         "failureDomain": {},
@@ -489,7 +544,7 @@ def test_webui_can_vote_flag(cluster: Cluster):
         "replicasets": [r2],
     }
 
-    with urlopen(f"http://{http_listen}/api/v1/tiers") as response:
+    with get_authorized(f"http://{http_listen}/api/v1/tiers", auth_token) as response:
         assert response.headers.get("content-type") == "application/json"
         assert sorted(json.load(response), key=lambda tier: tier["name"]) == [
             tier_blue,
@@ -602,3 +657,52 @@ def test_pgproto_metrics_collected(instance: Instance) -> None:
     # the select above should've increase the metric value too
     metrics = get_metrics()
     check_metric(metrics, "pico_sql_query", 2.0)
+
+
+@pytest.mark.webui
+def test_jwt_session_login_success(instance: Instance):
+    response_data, status_code = authorize(instance, USERNAME, PASSWORD)
+
+    assert status_code == 200
+    assert "auth" in response_data
+    assert "refresh" in response_data
+    assert isinstance(response_data["auth"], str)
+    assert isinstance(response_data["refresh"], str)
+    assert len(response_data["auth"].split(".")) == 3
+    assert len(response_data["refresh"].split(".")) == 3
+
+
+@pytest.mark.webui
+def test_jwt_session_login_invalid_credentials(instance: Instance):
+    response_data, status_code = authorize(instance, USERNAME, "wrongpass")
+
+    assert status_code == 401
+    assert response_data["error"] == "wrongCredentials"
+    assert response_data["errorMessage"] == "invalid credentials"
+
+    response_data, status_code = authorize(instance, "someuser", "wrongpass")
+
+    assert status_code == 401
+    assert response_data["error"] == "wrongCredentials"
+    assert response_data["errorMessage"] == "invalid credentials"
+
+
+@pytest.mark.webui
+def test_jwt_session_refresh_success(instance: Instance):
+    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+
+    response_data, _ = authorize(instance, USERNAME, PASSWORD)
+    refresh_token = response_data["refresh"]
+
+    with get_authorized(f"http://{http_listen}/api/v1/session", refresh_token) as response:
+        new_tokens = json.loads(response.read().decode())
+        status_code = response.status
+
+    assert status_code == 200
+
+    assert "auth" in new_tokens
+    assert "refresh" in new_tokens
+    assert isinstance(new_tokens["auth"], str)
+    assert isinstance(new_tokens["refresh"], str)
+    assert len(new_tokens["auth"].split(".")) == 3
+    assert len(new_tokens["refresh"].split(".")) == 3

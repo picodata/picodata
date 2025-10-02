@@ -11,10 +11,135 @@ use crate::{has_states, tlog, unwrap_ok_or};
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tarantool::fiber;
 use tarantool::fiber::r#async::timeout::IntoTimeout;
+use tarantool::session::with_su;
 
 const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
+const AUTH_TOKEN_EXPIRY_HOURS: u64 = 24;
+const REFRESH_TOKEN_EXPIRY_DAYS: u64 = 365;
+
+fn as_admin<T>(f: impl FnOnce() -> T) -> T {
+    with_su(1, f).expect("becoming admin should not fail")
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct JwtClaims {
+    sub: String,
+    exp: u64,
+    typ: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    roles: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TokenResponse {
+    auth: String,
+    refresh: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ErrorResponse {
+    error: String,
+    #[serde(rename = "errorMessage")]
+    error_message: String,
+    #[serde(skip)]
+    pub(crate) status: u64,
+}
+
+impl std::fmt::Display for ErrorResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match serde_json::to_string(self) {
+            Ok(value) => write!(f, "{}", value),
+            Err(e) => write!(f, r#"{{"error":"{}","errorMessage":"Internal error"}}"#, e),
+        }
+    }
+}
+
+impl From<AuthError> for ErrorResponse {
+    fn from(value: AuthError) -> Self {
+        let error_message = value.error_msg();
+        let error = value.error_type();
+        let status = value.status_code();
+        Self {
+            error,
+            error_message,
+            status,
+        }
+    }
+}
+
+impl From<crate::traft::error::Error> for ErrorResponse {
+    fn from(value: crate::traft::error::Error) -> Self {
+        Self {
+            error: String::from("error"),
+            error_message: value.to_string(),
+            status: 500,
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct AuthContext {
+    pub username: String,
+    pub roles: Vec<String>,
+}
+
+pub(crate) enum AuthError {
+    Inner(String),
+    Disabled,
+    InvalidHeader,
+    InvalidType,
+    Expired,
+    InvalidCredentials,
+    InsufficientPrivileges,
+    JWTSecretLookup(String),
+    JWTEncoding(String),
+    JWTValidation(String),
+    UserLookup(String),
+    PrivilegesLookup(String),
+}
+
+impl AuthError {
+    fn error_type(&self) -> String {
+        String::from(match self {
+            AuthError::Inner(..) => "error",
+            AuthError::InvalidCredentials => "wrongCredentials",
+            AuthError::Expired => "sessionExpired",
+            _ => "authError",
+        })
+    }
+    fn status_code(&self) -> u64 {
+        match self {
+            AuthError::InvalidHeader | AuthError::InvalidType => 403,
+            AuthError::Expired
+            | AuthError::InsufficientPrivileges
+            | AuthError::InvalidCredentials
+            | AuthError::Disabled => 401,
+            _ => 500,
+        }
+    }
+
+    fn error_msg(&self) -> String {
+        match self {
+            AuthError::Disabled => String::from("auth disabled"),
+            AuthError::InvalidHeader => String::from("invalid authorization header"),
+            AuthError::InvalidType => String::from("invalid token type"),
+            AuthError::Expired => String::from("token expired"),
+            AuthError::InsufficientPrivileges => String::from("insufficient privileges"),
+            AuthError::JWTEncoding(v) => format!("failed to encode jwt: {}", v),
+            AuthError::JWTValidation(v) => format!("invalid jwt: {}", v),
+            AuthError::UserLookup(v) => format!("failed to find user jwt: {}", v),
+            AuthError::PrivilegesLookup(v) => format!("failed to find privileges: {}", v),
+            AuthError::InvalidCredentials => String::from("invalid credentials"),
+            AuthError::JWTSecretLookup(v) => format!("failed to find jwt secret: {}", v),
+            AuthError::Inner(v) => v.to_owned(),
+        }
+    }
+}
+
+type AuthResult<T> = std::result::Result<T, AuthError>;
 
 /// Response from instances:
 /// - `raft_id`: instance raft_id to find Instance to store data
@@ -458,24 +583,194 @@ pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>> {
     Ok(res.into_values().collect())
 }
 
+fn get_jwt_secret() -> AuthResult<Option<String>> {
+    as_admin(|| {
+        Catalog::get()
+            .db_config
+            .jwt_secret()
+            .map_err(|x| AuthError::JWTSecretLookup(x.to_string()))
+    })
+}
+
+fn get_unix_timestamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
+fn create_jwt_token(
+    username: &str,
+    token_type: &str,
+    roles: Option<Vec<String>>,
+) -> AuthResult<String> {
+    let Some(secret) = get_jwt_secret()? else {
+        return Err(AuthError::Disabled);
+    };
+
+    let expiry = match token_type {
+        "auth" => get_unix_timestamp() + (AUTH_TOKEN_EXPIRY_HOURS * 3600),
+        "refresh" => get_unix_timestamp() + (REFRESH_TOKEN_EXPIRY_DAYS * 24 * 3600),
+        _ => return Err(AuthError::InvalidType),
+    };
+
+    let claims = JwtClaims {
+        sub: username.to_string(),
+        exp: expiry,
+        typ: token_type.to_string(),
+        roles,
+    };
+
+    let header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256);
+    jsonwebtoken::encode(
+        &header,
+        &claims,
+        &jsonwebtoken::EncodingKey::from_secret(secret.as_ref()),
+    )
+    .map_err(|e| AuthError::JWTEncoding(e.to_string()))
+}
+
+fn validate_jwt_token(token: &str) -> AuthResult<JwtClaims> {
+    let Some(secret) = get_jwt_secret()? else {
+        return Err(AuthError::Disabled);
+    };
+
+    let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
+    jsonwebtoken::decode::<JwtClaims>(
+        token,
+        &jsonwebtoken::DecodingKey::from_secret(secret.as_ref()),
+        &validation,
+    )
+    .map(|token_data| token_data.claims)
+    .map_err(|e| AuthError::JWTValidation(e.to_string()))
+}
+
+fn authenticate_user(username: &str, password: Option<&str>) -> AuthResult<Vec<String>> {
+    if username.is_empty() {
+        return Err(AuthError::InvalidCredentials);
+    }
+
+    let storage = Catalog::get();
+
+    let user = storage
+        .users
+        .by_name(username)
+        .map_err(|e| AuthError::UserLookup(e.to_string()))?
+        .ok_or(AuthError::InvalidCredentials)?;
+
+    let privileges = storage
+        .privileges
+        .by_grantee_id(user.id)
+        .map_err(|e| AuthError::PrivilegesLookup(e.to_string()))?
+        .map(|p| p.privilege().as_str().to_string())
+        .collect::<Vec<String>>();
+
+    if !privileges.contains(&"login".to_string()) {
+        return Err(AuthError::InsufficientPrivileges);
+    }
+
+    if let Some(pwd) = password {
+        crate::auth::authenticate(username, pwd, None)
+            .map_err(|_| AuthError::InvalidCredentials)?;
+    }
+
+    Ok(privileges)
+}
+
+pub(crate) fn http_api_login(username: String, password: String) -> AuthResult<TokenResponse> {
+    as_admin(|| {
+        let roles = authenticate_user(&username, Some(password.as_str()))?;
+
+        let auth_token = create_jwt_token(&username, "auth", Some(roles))?;
+        let refresh_token = create_jwt_token(&username, "refresh", None)?;
+
+        Ok(TokenResponse {
+            auth: auth_token,
+            refresh: refresh_token,
+        })
+    })
+}
+
+pub(crate) fn http_api_refresh_session(auth_header: String) -> AuthResult<TokenResponse> {
+    as_admin(|| {
+        let token = auth_header
+            .strip_prefix("Bearer ")
+            .ok_or(AuthError::InvalidHeader)?;
+
+        let claims = validate_jwt_token(token)?;
+
+        if claims.typ != "refresh" {
+            return Err(AuthError::InvalidType);
+        }
+
+        if claims.exp < get_unix_timestamp() {
+            return Err(AuthError::Expired);
+        }
+
+        let user_roles = authenticate_user(&claims.sub, None)?;
+
+        let auth_token = create_jwt_token(&claims.sub, "auth", Some(user_roles))?;
+        let refresh_token = create_jwt_token(&claims.sub, "refresh", None)?;
+
+        Ok(TokenResponse {
+            auth: auth_token,
+            refresh: refresh_token,
+        })
+    })
+}
+
+pub(crate) fn validate_auth(auth_header: &str) -> AuthResult<AuthContext> {
+    let token = auth_header
+        .strip_prefix("Bearer ")
+        .ok_or(AuthError::InvalidHeader)?;
+
+    let claims = match validate_jwt_token(token) {
+        Ok(v) => v,
+        Err(e) => {
+            if matches!(e, AuthError::Disabled) {
+                return Ok(AuthContext::default());
+            } else {
+                return Err(e);
+            }
+        }
+    };
+
+    if claims.typ != "auth" {
+        return Err(AuthError::InvalidType);
+    }
+
+    if claims.exp < get_unix_timestamp() {
+        return Err(AuthError::Expired);
+    }
+
+    let roles = claims.roles.unwrap_or_default();
+    if !roles.contains(&"login".to_string()) {
+        return Err(AuthError::InsufficientPrivileges);
+    }
+
+    Ok(AuthContext {
+        username: claims.sub,
+        roles,
+    })
+}
+
 macro_rules! wrap_api_result {
     ($api_result:expr) => {{
         let mut status = 200;
-        let mut content_type = "application/json";
+        let content_type = "application/json";
         let content: String;
         match $api_result {
             Ok(res) => match serde_json::to_string(&res) {
                 Ok(value) => content = value,
                 Err(err) => {
-                    content = err.to_string();
-                    content_type = "plain/text";
+                    content = format!(r#"{{"error":"{err}","errorMessage":"Internal error"}}"#);
                     status = 500
                 }
             },
             Err(err) => {
-                content = err.to_string();
-                content_type = "plain/text";
-                status = 500
+                let error_resp = crate::http_server::ErrorResponse::from(err);
+                status = error_resp.status;
+                content = error_resp.to_string();
             }
         }
         tlua::AsTable((
@@ -487,3 +782,21 @@ macro_rules! wrap_api_result {
 }
 
 pub(crate) use wrap_api_result;
+
+pub(crate) fn auth_middleware<F, T>(auth_header: String, handler: F) -> AuthResult<T>
+where
+    F: FnOnce() -> Result<T>,
+    T: serde::Serialize,
+{
+    validate_auth(&auth_header)?;
+
+    handler().map_err(|x| AuthError::Inner(x.to_string()))
+}
+
+pub(crate) fn http_api_tiers_with_auth(auth_header: String) -> AuthResult<Vec<TierInfo>> {
+    as_admin(|| auth_middleware(auth_header, http_api_tiers))
+}
+
+pub(crate) fn http_api_cluster_with_auth(auth_header: String) -> AuthResult<ClusterInfo> {
+    as_admin(|| auth_middleware(auth_header, http_api_cluster))
+}

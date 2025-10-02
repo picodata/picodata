@@ -647,6 +647,7 @@ def test_read_from_system_tables(cluster: Cluster):
         "governor_plugin_rpc_timeout",
         "governor_raft_op_timeout",
         "iproto_net_msg_max",
+        "jwt_secret",
         "memtx_checkpoint_count",
         "memtx_checkpoint_interval",
         "pg_portal_max",
@@ -5886,12 +5887,25 @@ def test_alter_system_property(cluster: Cluster):
         data = i1.sql(""" select * from "_pico_db_config" where "key" = ? """, prop)
         assert data[0][2] == value
 
+    # Resetting jwt_secret to default generates a new value for it
+    [[jwt_secret_1]] = i1.sql("SELECT value FROM _pico_db_config WHERE key = 'jwt_secret'")
+    data = i1.sql("ALTER SYSTEM RESET jwt_secret")
+    assert data["row_count"] == 1
+
+    [[jwt_secret_2]] = i1.sql("SELECT value FROM _pico_db_config WHERE key = 'jwt_secret'")
+    assert jwt_secret_1 != jwt_secret_2
+
     # check reset all
     data = i1.sql(""" alter system reset all """)
     assert data["row_count"] == 1
     for (prop, _, _), default in zip(non_default_prop, default_prop):
         data = i1.sql(""" select * from "_pico_db_config" where "key" = ? """, prop)
         assert data[0][2] == default
+
+    # After resetting all to default jwt_secret is re-generated again
+    [[jwt_secret_3]] = i1.sql("SELECT value FROM _pico_db_config WHERE key = 'jwt_secret'")
+    assert jwt_secret_1 != jwt_secret_3
+    assert jwt_secret_2 != jwt_secret_3
 
 
 def test_alter_system_property_errors(cluster: Cluster):
