@@ -4353,7 +4353,7 @@ dependencies = [
 
 [[package]]
 name = "tarantool"
-version = "9.0.0"
+version = "10.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4410,9 +4410,9 @@ dependencies = [
 
 [[package]]
 name = "tarolog"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f886e52da9a0098bd1e3473f28c6066656d5036855e530cb9c0ddc7722f75734"
+checksum = "34dfbde512631bd8cab960cb78a04b50ee2e036dfe7668cb6cfeed01ecaffc53"
 dependencies = [
  "chrono",
  "libc",
@@ -4857,9 +4857,9 @@ dependencies = [
 
 [[package]]
 name = "tros"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2fb5c34883609f0a380d17edc3c37d196b0d8eefd442186352ab04625c242b2a"
+checksum = "1ba5bf240df5aeb7907292f4cfdbfbd05ce84e9edd402a3f6f2a7d461eb34c75"
 dependencies = [
  "async-scoped",
  "derive_builder",
