@@ -26,11 +26,11 @@
 Выдача права изменять данные пользователя `alice` пользователю `bob`:
 
 ```sql
-GRANT ALTER ON USER alice TO bob;
+GRANT ALTER ON USER alice TO bob OPTION (TIMEOUT = 3.0);
 ```
 
 Выдача права записи в таблицу `warehouse` для пользователя `alice`:
 
 ```sql
-GRANT WRITE ON TABLE warehouse to alice;
+GRANT WRITE ON TABLE warehouse to alice OPTION (TIMEOUT = 3.0);
 ```

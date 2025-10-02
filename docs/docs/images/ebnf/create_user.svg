@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   width="783"
-   height="287"
+   width="777"
+   height="373"
+   viewBox="0 0 777 373"
    version="1.1"
-   viewBox="0 0 783 287"
-   id="svg34"
+   id="svg46"
    sodipodi:docname="create_user.svg"
-   inkscape:version="1.4 (e7c3feb100, 2024-10-09)"
+   inkscape:version="1.4.2 (ebf0e940d0, 2025-05-08)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:xlink="http://www.w3.org/1999/xlink"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:svg="http://www.w3.org/2000/svg">
   <sodipodi:namedview
-     id="namedview34"
+     id="namedview46"
      pagecolor="#ffffff"
      bordercolor="#666666"
      borderopacity="1.0"
@@ -21,15 +21,15 @@
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
-     inkscape:zoom="1.385696"
-     inkscape:cx="391.13917"
-     inkscape:cy="143.61014"
-     inkscape:window-width="1753"
-     inkscape:window-height="927"
-     inkscape:window-x="112"
-     inkscape:window-y="116"
-     inkscape:window-maximized="0"
-     inkscape:current-layer="svg34" />
+     inkscape:zoom="1.1364221"
+     inkscape:cx="388.06004"
+     inkscape:cy="186.11042"
+     inkscape:window-width="1858"
+     inkscape:window-height="1014"
+     inkscape:window-x="62"
+     inkscape:window-y="29"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg46" />
   <defs
      id="defs1">
     <style
@@ -49,20 +49,20 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
 </style>
   </defs>
   <polygon
-     points="11 17 3 13 3 21"
+     points="9 17 1 13 1 21"
      id="polygon1" />
   <polygon
-     points="19 17 11 13 11 21"
+     points="17 17 9 13 9 21"
      id="polygon2" />
   <rect
-     x="33"
+     x="31"
      y="3"
      width="72"
      height="32"
      rx="10"
      id="rect2" />
   <rect
-     x="31"
+     x="29"
      y="1"
      width="72"
      height="32"
@@ -71,18 +71,18 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect3" />
   <text
      class="terminal"
-     x="41"
+     x="39"
      y="21"
      id="text3">CREATE</text>
   <rect
-     x="125"
+     x="123"
      y="3"
      width="56"
      height="32"
      rx="10"
      id="rect4" />
   <rect
-     x="123"
+     x="121"
      y="1"
      width="56"
      height="32"
@@ -91,18 +91,18 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect5" />
   <text
      class="terminal"
-     x="133"
+     x="131"
      y="21"
      id="text5">USER</text>
   <rect
-     x="221"
+     x="219"
      y="35"
      width="34"
      height="32"
      rx="10"
      id="rect6" />
   <rect
-     x="219"
+     x="217"
      y="33"
      width="34"
      height="32"
@@ -111,18 +111,18 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect7" />
   <text
      class="terminal"
-     x="229"
+     x="227"
      y="53"
      id="text7">IF</text>
   <rect
-     x="275"
+     x="273"
      y="35"
      width="48"
      height="32"
      rx="10"
      id="rect8" />
   <rect
-     x="273"
+     x="271"
      y="33"
      width="48"
      height="32"
@@ -131,18 +131,18 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect9" />
   <text
      class="terminal"
-     x="283"
+     x="281"
      y="53"
      id="text9">NOT</text>
   <rect
-     x="343"
+     x="341"
      y="35"
      width="70"
      height="32"
      rx="10"
      id="rect10" />
   <rect
-     x="341"
+     x="339"
      y="33"
      width="70"
      height="32"
@@ -151,7 +151,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect11" />
   <text
      class="terminal"
-     x="351"
+     x="349"
      y="53"
      id="text11">EXISTS</text>
   <a
@@ -159,13 +159,13 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      xlink:title="user"
      id="a13">
     <rect
-       x="453"
+       x="451"
        y="3"
        width="48"
        height="32"
        id="rect12" />
     <rect
-       x="451"
+       x="449"
        y="1"
        width="48"
        height="32"
@@ -173,7 +173,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
        id="rect13" />
     <text
        class="nonterminal"
-       x="461"
+       x="459"
        y="21"
        id="text13">user</text>
   </a>
@@ -380,14 +380,137 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      x="603"
      y="271"
      id="text33">MD5</text>
+  <rect
+     x="327"
+     y="339"
+     width="76"
+     height="32"
+     rx="10"
+     id="rect34" />
+  <rect
+     x="325"
+     y="337"
+     width="76"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect35" />
+  <text
+     class="terminal"
+     x="335"
+     y="357"
+     id="text35">OPTION</text>
+  <rect
+     x="423"
+     y="339"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect36" />
+  <rect
+     x="421"
+     y="337"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect37" />
+  <text
+     class="terminal"
+     x="431"
+     y="357"
+     id="text37">(</text>
+  <rect
+     x="469"
+     y="339"
+     width="82"
+     height="32"
+     rx="10"
+     id="rect38" />
+  <rect
+     x="467"
+     y="337"
+     width="82"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect39" />
+  <text
+     class="terminal"
+     x="477"
+     y="357"
+     id="text39">TIMEOUT</text>
+  <rect
+     x="571"
+     y="339"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect40" />
+  <rect
+     x="569"
+     y="337"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect41" />
+  <text
+     class="terminal"
+     x="579"
+     y="357"
+     id="text41">=</text>
+  <a
+     xlink:href="../../sql_types#double"
+     xlink:title="double"
+     id="a43">
+    <rect
+       x="621"
+       y="339"
+       width="62"
+       height="32"
+       id="rect42" />
+    <rect
+       x="619"
+       y="337"
+       width="62"
+       height="32"
+       class="nonterminal"
+       id="rect43" />
+    <text
+       class="nonterminal"
+       x="629"
+       y="357"
+       id="text43">double</text>
+  </a>
+  <rect
+     x="703"
+     y="339"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect44" />
+  <rect
+     x="701"
+     y="337"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect45" />
+  <text
+     class="terminal"
+     x="711"
+     y="357"
+     id="text45">)</text>
   <path
      class="line"
-     d="m19 17 h2 m0 0 h10 m72 0 h10 m0 0 h10 m56 0 h10 m20 0 h10 m0 0 h202 m-232 0 h20 m212 0 h20 m-252 0 q10 0 10 10 m232 0 q0 -10 10 -10 m-242 10 v12 m232 0 v-12 m-232 12 q0 10 10 10 m212 0 q10 0 10 -10 m-222 10 h10 m34 0 h10 m0 0 h10 m48 0 h10 m0 0 h10 m70 0 h10 m20 -32 h10 m48 0 h10 m2 0 l2 0 m2 0 l2 0 m2 0 l2 0 m-520 98 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m64 0 h10 m0 0 h10 m56 0 h10 m0 0 h550 m-730 0 h20 m710 0 h20 m-750 0 q10 0 10 10 m730 0 q0 -10 10 -10 m-740 10 v24 m730 0 v-24 m-730 24 q0 10 10 10 m710 0 q10 0 10 -10 m-700 10 h10 m0 0 h68 m-98 0 h20 m78 0 h20 m-118 0 q10 0 10 10 m98 0 q0 -10 10 -10 m-108 10 v12 m98 0 v-12 m-98 12 q0 10 10 10 m78 0 q10 0 10 -10 m-88 10 h10 m58 0 h10 m20 -32 h10 m100 0 h10 m0 0 h10 m24 0 h10 m0 0 h10 m80 0 h10 m0 0 h10 m24 0 h10 m20 0 h10 m0 0 h234 m-264 0 h20 m244 0 h20 m-284 0 q10 0 10 10 m264 0 q0 -10 10 -10 m-274 10 v12 m264 0 v-12 m-264 12 q0 10 10 10 m244 0 q10 0 10 -10 m-254 10 h10 m64 0 h10 m20 0 h10 m0 0 h110 m-140 0 h20 m120 0 h20 m-160 0 q10 0 10 10 m140 0 q0 -10 10 -10 m-150 10 v12 m140 0 v-12 m-140 12 q0 10 10 10 m120 0 q10 0 10 -10 m-130 10 h10 m100 0 h10 m-130 -10 v20 m140 0 v-20 m-140 20 v24 m140 0 v-24 m-140 24 q0 10 10 10 m120 0 q10 0 10 -10 m-130 10 h10 m50 0 h10 m0 0 h50 m63 -152 h-3"
-     id="path33" />
+     d="m17 17 h2 m0 0 h10 m72 0 h10 m0 0 h10 m56 0 h10 m20 0 h10 m0 0 h202 m-232 0 h20 m212 0 h20 m-252 0 q10 0 10 10 m232 0 q0 -10 10 -10 m-242 10 v12 m232 0 v-12 m-232 12 q0 10 10 10 m212 0 q10 0 10 -10 m-222 10 h10 m34 0 h10 m0 0 h10 m48 0 h10 m0 0 h10 m70 0 h10 m20 -32 h10 m48 0 h10 m2 0 l2 0 m2 0 l2 0 m2 0 l2 0 m-518 98 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m64 0 h10 m0 0 h10 m56 0 h10 m0 0 h550 m-730 0 h20 m710 0 h20 m-750 0 q10 0 10 10 m730 0 q0 -10 10 -10 m-740 10 v24 m730 0 v-24 m-730 24 q0 10 10 10 m710 0 q10 0 10 -10 m-700 10 h10 m0 0 h68 m-98 0 h20 m78 0 h20 m-118 0 q10 0 10 10 m98 0 q0 -10 10 -10 m-108 10 v12 m98 0 v-12 m-98 12 q0 10 10 10 m78 0 q10 0 10 -10 m-88 10 h10 m58 0 h10 m20 -32 h10 m100 0 h10 m0 0 h10 m24 0 h10 m0 0 h10 m80 0 h10 m0 0 h10 m24 0 h10 m20 0 h10 m0 0 h234 m-264 0 h20 m244 0 h20 m-284 0 q10 0 10 10 m264 0 q0 -10 10 -10 m-274 10 v12 m264 0 v-12 m-264 12 q0 10 10 10 m244 0 q10 0 10 -10 m-254 10 h10 m64 0 h10 m20 0 h10 m0 0 h110 m-140 0 h20 m120 0 h20 m-160 0 q10 0 10 10 m140 0 q0 -10 10 -10 m-150 10 v12 m140 0 v-12 m-140 12 q0 10 10 10 m120 0 q10 0 10 -10 m-130 10 h10 m100 0 h10 m-130 -10 v20 m140 0 v-20 m-140 20 v24 m140 0 v-24 m-140 24 q0 10 10 10 m120 0 q10 0 10 -10 m-130 10 h10 m50 0 h10 m0 0 h50 m62 -152 l2 0 m2 0 l2 0 m2 0 l2 0 m-492 206 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m0 0 h412 m-442 0 h20 m422 0 h20 m-462 0 q10 0 10 10 m442 0 q0 -10 10 -10 m-452 10 v12 m442 0 v-12 m-442 12 q0 10 10 10 m422 0 q10 0 10 -10 m-432 10 h10 m76 0 h10 m0 0 h10 m26 0 h10 m0 0 h10 m82 0 h10 m0 0 h10 m30 0 h10 m0 0 h10 m62 0 h10 m0 0 h10 m26 0 h10 m23 -32 h-3"
+     id="path45" />
   <polygon
-     points="773 115 781 111 781 119"
-     id="polygon33" />
+     points="767 321 775 317 775 325"
+     id="polygon45" />
   <polygon
-     points="773 115 765 111 765 119"
-     id="polygon34" />
+     points="767 321 759 317 759 325"
+     id="polygon46" />
 </svg>

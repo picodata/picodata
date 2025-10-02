@@ -133,8 +133,7 @@ insert      ::= 'INSERT' 'INTO' table ('(' column (',' column)* ')')? dql
 update      ::= 'UPDATE' table 'SET'
                 column '=' expression (',' column '=' expression)*
                 ('FROM' scan)? ('WHERE' expression)?
-acl         ::= (alter_user | create_role | create_user | drop_role | drop_user | grant | revoke | audit_policy)
-                ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+acl         ::= (alter_user | create_role | create_user | drop_role | drop_user | grant | revoke | audit_policy)                
 revoke      ::= 'REVOKE' (
                     (('CREATE' | 'ALTER' | 'DROP') 'USER')
                     | (('ALTER' | 'DROP') 'ON' 'USER' user)
@@ -146,7 +145,7 @@ revoke      ::= 'REVOKE' (
                     | (('EXECUTE' | 'DROP') 'ON' 'PROCEDURE' procedure ('(' unrestricted_type (',' type)* ')')?)
                     | role
                 )
-                'FROM' (role | user)
+                'FROM' (role | user) ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 grant       ::= 'GRANT' (
                     (('CREATE' | 'ALTER' | 'DROP') 'USER')
                     | (('ALTER' | 'DROP') 'ON' 'USER' user)
@@ -158,7 +157,7 @@ grant       ::= 'GRANT' (
                     | (('EXECUTE' | 'DROP') 'ON' 'PROCEDURE' procedure ('(' unrestricted_type (',' unrestricted_type)* ')')?)
                     | role
                 )
-                'TO' (role | user)
+                'TO' (role | user) ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 ddl         ::= (alter_plugin | alter_procedure | alter_system | alter_table
                 | create_index | create_plugin | create_procedure | create_table
                 | drop_index | drop_plugin | drop_procedure | drop_table | truncate_table | backup)
@@ -208,7 +207,7 @@ create_procedure ::= 'CREATE' 'PROCEDURE' ('IF' 'NOT' 'EXISTS')? procedure '(' u
                      )
                      ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                      ('OPTION' '(' ('TIMEOUT' '=' double)')')?
-create_role    ::= 'CREATE' 'ROLE' ('IF' 'NOT' 'EXISTS')? role
+create_role    ::= 'CREATE' 'ROLE' ('IF' 'NOT' 'EXISTS')? role ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 create_table   ::= 'CREATE' 'TABLE' ('IF' 'NOT' 'EXISTS')? table
                    '('
                        column column_def_type ('NOT'? 'NULL')? ('PRIMARY' 'KEY')? (',' column column_def_type ('NOT'? 'NULL')? ('PRIMARY' 'KEY')?)*
@@ -218,14 +217,14 @@ create_table   ::= 'CREATE' 'TABLE' ('IF' 'NOT' 'EXISTS')? table
                    (('DISTRIBUTED' (('BY' '(' column (',' column)* ')' ('IN' 'TIER' tier)?) | 'GLOBALLY'))?)?
                    ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
-create_user    ::= 'CREATE' 'USER' ('IF' 'NOT' 'EXISTS')? user (('USING' ('LDAP')) | ('WITH'? 'PASSWORD' "'" password "'" ('USING' ('CHAP-SHA1' | 'MD5')?)?))
+create_user    ::= 'CREATE' 'USER' ('IF' 'NOT' 'EXISTS')? user (('USING' ('LDAP')) | ('WITH'? 'PASSWORD' "'" password "'" ('USING' ('CHAP-SHA1' | 'MD5')?)?)) ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 alter_user     ::= 'ALTER' 'USER' user
                    'WITH'? (
                        'LOGIN'
                        | 'NOLOGIN'
                        | 'PASSWORD' (('USING' ('LDAP')) | ("'" password "'" ('USING' ('CHAP-SHA1' | 'MD5'))?))
                        | 'RENAME' 'TO' user
-                   )
+                   ) ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 drop_index     ::= 'DROP' 'INDEX' ('IF' 'EXISTS')? index
                    ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
@@ -256,8 +255,8 @@ alter_table    ::= 'ALTER' 'TABLE' table
                    )
                    ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
-drop_role      ::= 'DROP' 'ROLE' ('IF' 'EXISTS')? role
-drop_user      ::= 'DROP' 'USER' ('IF' 'EXISTS')? user
+drop_role      ::= 'DROP' 'ROLE' ('IF' 'EXISTS')? role ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+drop_user      ::= 'DROP' 'USER' ('IF' 'EXISTS')? user ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 create_plugin  ::= 'CREATE' 'PLUGIN' ('IF' 'NOT' 'EXISTS')? plugin version
                     ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 drop_plugin    ::= 'DROP' 'PLUGIN' ('IF' 'EXISTS')? plugin version ('WITH' 'DATA')?
@@ -276,7 +275,7 @@ alter_plugin  ::= 'ALTER' 'PLUGIN' plugin (
                             (',' (('TIMEOUT' | 'ROLLBACK_TIMEOUT') '=' double))*')'
                           )?
                    )
-audit_policy     ::= 'AUDIT' 'POLICY' policy ('BY' | 'EXCEPT') user
+audit_policy     ::= 'AUDIT' 'POLICY' policy ('BY' | 'EXCEPT') user ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 
 unrestricted_type ::= 'BOOL'
                     | 'BOOLEAN'
