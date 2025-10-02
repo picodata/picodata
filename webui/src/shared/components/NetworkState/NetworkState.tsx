@@ -13,7 +13,7 @@ type NetworkStateProps = {
 const translationLabel = {
   Online: "online",
   Offline: "offline",
-  Expelled: "unknown",
+  Expelled: "expelled",
 } satisfies {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   [_ in NetworkStateProps["state"]]: keyof TIntlContext["translation"]["components"]["networkState"]["label"];

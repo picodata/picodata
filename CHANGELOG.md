@@ -93,6 +93,9 @@ with the `YY.MINOR.MICRO` scheme.
   same auth function in a separate module `authentication::authenticate`.
   See <https://git.picodata.io/core/picodata/-/issues/2007>.
 
+### WebUI
+ - display expelled state
+
 ## [25.3.3] - 2025-09-10
 
 ### CLI

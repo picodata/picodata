@@ -5,7 +5,7 @@ export const components: (typeof en)["components"] = {
     label: {
       online: "онлайн",
       offline: "офлайн",
-      unknown: "неизвестно",
+      expelled: "исключен",
     },
   },
   buttons: {

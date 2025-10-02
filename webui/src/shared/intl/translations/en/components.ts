@@ -3,7 +3,7 @@ export const components = {
     label: {
       online: "Online",
       offline: "Offline",
-      unknown: "Unknown",
+      expelled: "Expelled",
     },
   },
   buttons: {
