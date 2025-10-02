@@ -599,6 +599,48 @@ def test_applier_cluster_uuid_mismatch(cluster: Cluster, second_cluster: Cluster
     lc.wait_matched()
 
 
+def assert_box_replication_follow(cluster: Cluster):
+    for instance in cluster.instances:
+        info = instance.eval("return box.info")
+
+        # remove our own info from output
+        own_id = info["id"]
+        info_replication = info["replication"]
+        del info_replication[own_id]
+
+        # we have all instances (assumes there is one replicaset in the cluster)
+        assert len(info_replication) == len(cluster.instances) - 1
+
+        # ensure status==follow for each one
+        for instance_replication_info in info_replication.values():
+            assert instance_replication_info["upstream"]["status"] == "follow"
+            assert instance_replication_info["downstream"]["status"] == "follow"
+
+
+def assert_data_replicates(master: Instance, replica: Instance):
+    master_vclock = master.get_vclock()
+    del master_vclock[0]
+
+    master.sql("""CREATE TABLE mytable (id UNSIGNED PRIMARY KEY, value STRING) DISTRIBUTED BY (id) """)
+    master.sql("""INSERT INTO mytable VALUES (0, 'foo'), (1, 'bar'), (2, 'baz') """)
+
+    new_master_vclock = master.get_vclock()
+    del new_master_vclock[0]
+
+    assert new_master_vclock != master_vclock
+    master_vclock = new_master_vclock
+
+    wait_vclock(replica, master_vclock)
+
+    rows_replica = []
+    rows_master = []
+    for i in range(3):
+        rows_replica.append(replica.eval(f"return box.space.mytable:get({i})"))
+        rows_master.append(master.eval(f"return box.space.mytable:get({i})"))
+
+    assert rows_master == rows_replica
+
+
 def test_iproto_tls_with_replication(cluster: Cluster):
     i1 = cluster.add_instance(replicaset_name="r1", wait_online=False)
     i2 = cluster.add_instance(replicaset_name="r1", wait_online=False)
@@ -612,10 +654,44 @@ def test_iproto_tls_with_replication(cluster: Cluster):
 
     cluster.wait_online()
 
-    info_replication = i1.eval("return box.info.replication")
-    assert info_replication[2]["upstream"]["status"] == "follow"
-    assert info_replication[2]["downstream"]["status"] == "follow"
+    master_name = i1.replicaset_master_name()
 
-    info_replication = i2.eval("return box.info.replication")
-    assert info_replication[1]["upstream"]["status"] == "follow"
-    assert info_replication[1]["downstream"]["status"] == "follow"
+    master, replica = sorted([i1, i2], key=lambda i: master_name == i.name, reverse=True)
+
+    assert_data_replicates(master, replica)
+
+    assert_box_replication_follow(cluster)
+
+
+def test_iproto_tls_enable_after_bootstrap(cluster: Cluster):
+    """
+    Test case when we setup cluster without tls first and then enable it
+    """
+    (i1, i2) = cluster.deploy(instance_count=2, init_replication_factor=2)
+
+    assert_box_replication_follow(cluster)
+
+    ssl_dir = pathlib.Path(os.path.realpath(__file__)).parent.parent / "ssl_certs"
+    for i in cluster.instances:
+        i.iproto_tls_enabled = True
+        i.iproto_tls_cert = str(ssl_dir / "server-with-ext.crt")
+        i.iproto_tls_key = str(ssl_dir / "server.key")
+        i.iproto_tls_ca = str(ssl_dir / "combined-ca.crt")
+
+    # Note: for now it doesnt always work if you restart instances one by one instead.
+    # this needs to be fixed separately
+    for i in cluster.instances:
+        i.terminate()
+
+    for i in cluster.instances:
+        i.start()
+
+    cluster.wait_online()
+
+    master_name = i1.replicaset_master_name()
+
+    master, replica = sorted([i1, i2], key=lambda i: master_name == i.name, reverse=True)
+
+    assert_data_replicates(master, replica)
+
+    assert_box_replication_follow(cluster)

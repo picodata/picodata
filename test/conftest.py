@@ -1591,12 +1591,12 @@ class Instance:
     def raft_leader_uuid(self):
         return self.call(".proc_raft_leader_uuid")
 
-    def get_vclock(self) -> int:
+    def get_vclock(self) -> Dict[int, int]:
         """Get current vclock"""
 
         return self.call(".proc_get_vclock")
 
-    def wait_vclock(self, target: int, timeout: int | float = 10) -> int:
+    def wait_vclock(self, target: Dict[int, int], timeout: int | float = 10) -> int:
         """
         Wait until Tarantool vclock reaches the `target`. Returns the
         actual vclock. It can be equal to or greater than the target one.
