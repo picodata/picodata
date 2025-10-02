@@ -915,6 +915,10 @@ def test_backup_does_not_break_new_replicaset_ddl_catching_up_no_restore(cluster
     assert i3.call("box.space._space.index.name:get", "t1") is not None
     assert i4.call("box.space._space.index.name:get", "t1") is not None
 
+    # Wait for rebalance
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1500)
+    cluster.wait_until_instance_has_this_many_active_buckets(i3, 1500)
+
     # Check select from tables works.
     for data in data_to_insert:
         dql = i4.sql("select * from t1")
