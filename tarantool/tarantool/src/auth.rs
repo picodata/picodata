@@ -18,9 +18,11 @@ impl AuthMethod {
 crate::define_str_enum! {
     #[derive(Default)]
     pub enum AuthMethod {
-        ChapSha1 = "chap-sha1",
         #[default]
         Md5 = "md5",
+
+        ScramSha256 = "scram-sha256",
+        ChapSha1 = "chap-sha1",
         Ldap = "ldap",
     }
 }

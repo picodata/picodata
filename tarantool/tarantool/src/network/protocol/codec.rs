@@ -245,6 +245,16 @@ pub fn encode_auth(
                 crate::util::slice_first_chunk::<4, _>(salt).expect("Can't fail for valid salt");
             auth_data = md5_auth_data(user, password, *salt_part);
         }
+        #[cfg(feature = "picodata")]
+        AuthMethod::ScramSha256 => {
+            use crate::error::{BoxError, TarantoolErrorCode};
+
+            return Err(BoxError::new(
+                TarantoolErrorCode::UnknownAuthMethod,
+                "scram-sha256 over iproto is not supported",
+            )
+            .into());
+        }
     }
 
     rmp::encode::write_map_len(stream, 2)?;

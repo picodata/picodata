@@ -38,6 +38,10 @@
 
 # Change Log
 
+# [10.0.0] Unreleased
+
+- Introduced `AuthMethod::ScramSha256` for a new auth method in Picodata.
+
 # [9.0.0] Oct 1 2025
 
 ### Changed
