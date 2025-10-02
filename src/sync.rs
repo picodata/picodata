@@ -214,7 +214,7 @@ pub fn wait_for_index_globally(
         };
 
         for instance_name in targets {
-            tlog!(Info, "calling proc_wait_index"; "instance_name" => %instance_name);
+            tlog!(Debug, "calling proc_wait_index"; "instance_name" => %instance_name);
             let resp = pool.call(**instance_name, proc_name!(proc_wait_index), &rpc, timeout)?;
             fs.push_back(resp);
         }
