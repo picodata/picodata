@@ -26,5 +26,5 @@
 Изъятие права чтения таблиц у пользователя `alice`:
 
 ```sql
-REVOKE READ TABLE FROM alice;
+REVOKE READ TABLE FROM alice OPTION (TIMEOUT = 3.0);
 ```

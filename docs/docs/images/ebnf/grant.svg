@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   width="873"
+   width="877"
    height="1213"
-   viewBox="0 0 873 1213"
+   viewBox="0 0 877 1213"
    version="1.1"
-   id="svg94"
+   id="svg106"
    sodipodi:docname="grant.svg"
    inkscape:version="1.4.2 (ebf0e940d0, 2025-05-08)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
@@ -13,7 +13,7 @@
    xmlns="http://www.w3.org/2000/svg"
    xmlns:svg="http://www.w3.org/2000/svg">
   <sodipodi:namedview
-     id="namedview94"
+     id="namedview106"
      pagecolor="#ffffff"
      bordercolor="#666666"
      borderopacity="1.0"
@@ -22,14 +22,14 @@
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
      inkscape:zoom="0.66859027"
-     inkscape:cx="435.99199"
-     inkscape:cy="605.00432"
+     inkscape:cx="438.98335"
+     inkscape:cy="606.5"
      inkscape:window-width="1858"
      inkscape:window-height="1014"
      inkscape:window-x="62"
      inkscape:window-y="29"
      inkscape:window-maximized="1"
-     inkscape:current-layer="svg94" />
+     inkscape:current-layer="svg106" />
   <defs
      id="defs1">
     <style
@@ -873,13 +873,13 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
     <rect
        x="559"
        y="1025"
-       width="128"
+       width="132"
        height="32"
        id="rect82" />
     <rect
        x="557"
        y="1023"
-       width="128"
+       width="132"
        height="32"
        class="nonterminal"
        id="rect83" />
@@ -910,14 +910,14 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      y="999"
      id="text85">,</text>
   <rect
-     x="727"
+     x="731"
      y="1025"
      width="26"
      height="32"
      rx="10"
      id="rect86" />
   <rect
-     x="725"
+     x="729"
      y="1023"
      width="26"
      height="32"
@@ -926,18 +926,18 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect87" />
   <text
      class="terminal"
-     x="735"
+     x="739"
      y="1043"
      id="text87">)</text>
   <rect
-     x="813"
+     x="817"
      y="69"
      width="38"
      height="32"
      rx="10"
      id="rect88" />
   <rect
-     x="811"
+     x="815"
      y="67"
      width="38"
      height="32"
@@ -946,7 +946,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect89" />
   <text
      class="terminal"
-     x="821"
+     x="825"
      y="87"
      id="text89">TO</text>
   <a
@@ -954,13 +954,13 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      xlink:title="role"
      id="a91">
     <rect
-       x="777"
+       x="319"
        y="1135"
        width="44"
        height="32"
        id="rect90" />
     <rect
-       x="775"
+       x="317"
        y="1133"
        width="44"
        height="32"
@@ -968,7 +968,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
        id="rect91" />
     <text
        class="nonterminal"
-       x="785"
+       x="327"
        y="1153"
        id="text91">role</text>
   </a>
@@ -977,13 +977,13 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      xlink:title="user"
      id="a93">
     <rect
-       x="777"
+       x="319"
        y="1179"
        width="48"
        height="32"
        id="rect92" />
     <rect
-       x="775"
+       x="317"
        y="1177"
        width="48"
        height="32"
@@ -991,18 +991,141 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
        id="rect93" />
     <text
        class="nonterminal"
-       x="785"
+       x="327"
        y="1197"
        id="text93">user</text>
   </a>
+  <rect
+     x="427"
+     y="1167"
+     width="76"
+     height="32"
+     rx="10"
+     id="rect94" />
+  <rect
+     x="425"
+     y="1165"
+     width="76"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect95" />
+  <text
+     class="terminal"
+     x="435"
+     y="1185"
+     id="text95">OPTION</text>
+  <rect
+     x="523"
+     y="1167"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect96" />
+  <rect
+     x="521"
+     y="1165"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect97" />
+  <text
+     class="terminal"
+     x="531"
+     y="1185"
+     id="text97">(</text>
+  <rect
+     x="569"
+     y="1167"
+     width="82"
+     height="32"
+     rx="10"
+     id="rect98" />
+  <rect
+     x="567"
+     y="1165"
+     width="82"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect99" />
+  <text
+     class="terminal"
+     x="577"
+     y="1185"
+     id="text99">TIMEOUT</text>
+  <rect
+     x="671"
+     y="1167"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect100" />
+  <rect
+     x="669"
+     y="1165"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect101" />
+  <text
+     class="terminal"
+     x="679"
+     y="1185"
+     id="text101">=</text>
+  <a
+     xlink:href="../../sql_types#double"
+     xlink:title="double"
+     id="a103">
+    <rect
+       x="721"
+       y="1167"
+       width="62"
+       height="32"
+       id="rect102" />
+    <rect
+       x="719"
+       y="1165"
+       width="62"
+       height="32"
+       class="nonterminal"
+       id="rect103" />
+    <text
+       class="nonterminal"
+       x="729"
+       y="1185"
+       id="text103">double</text>
+  </a>
+  <rect
+     x="803"
+     y="1167"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect104" />
+  <rect
+     x="801"
+     y="1165"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect105" />
+  <text
+     class="terminal"
+     x="811"
+     y="1185"
+     id="text105">)</text>
   <path
      class="line"
-     d="m17 17 h2 m0 0 h10 m66 0 h10 m2 0 l2 0 m2 0 l2 0 m2 0 l2 0 m-116 66 l2 0 m2 0 l2 0 m2 0 l2 0 m42 0 h10 m72 0 h10 m-112 0 h20 m92 0 h20 m-132 0 q10 0 10 10 m112 0 q0 -10 10 -10 m-122 10 v24 m112 0 v-24 m-112 24 q0 10 10 10 m92 0 q10 0 10 -10 m-102 10 h10 m62 0 h10 m0 0 h10 m-102 -10 v20 m112 0 v-20 m-112 20 v24 m112 0 v-24 m-112 24 q0 10 10 10 m92 0 q10 0 10 -10 m-102 10 h10 m58 0 h10 m0 0 h14 m20 -88 h10 m56 0 h10 m0 0 h540 m-768 0 h20 m748 0 h20 m-788 0 q10 0 10 10 m768 0 q0 -10 10 -10 m-778 10 v112 m768 0 v-112 m-768 112 q0 10 10 10 m748 0 q10 0 10 -10 m-738 10 h10 m62 0 h10 m-102 0 h20 m82 0 h20 m-122 0 q10 0 10 10 m102 0 q0 -10 10 -10 m-112 10 v24 m102 0 v-24 m-102 24 q0 10 10 10 m82 0 q10 0 10 -10 m-92 10 h10 m58 0 h10 m0 0 h4 m20 -44 h10 m40 0 h10 m0 0 h10 m56 0 h10 m0 0 h10 m48 0 h10 m0 0 h422 m-758 -10 v20 m768 0 v-20 m-768 20 v68 m768 0 v-68 m-768 68 q0 10 10 10 m748 0 q10 0 10 -10 m-738 10 h10 m72 0 h10 m-112 0 h20 m92 0 h20 m-132 0 q10 0 10 10 m112 0 q0 -10 10 -10 m-122 10 v24 m112 0 v-24 m-112 24 q0 10 10 10 m92 0 q10 0 10 -10 m-102 10 h10 m58 0 h10 m0 0 h14 m20 -44 h10 m56 0 h10 m0 0 h540 m-758 -10 v20 m768 0 v-20 m-768 20 v68 m768 0 v-68 m-768 68 q0 10 10 10 m748 0 q10 0 10 -10 m-738 10 h10 m0 0 h204 m-234 0 h20 m214 0 h20 m-254 0 q10 0 10 10 m234 0 q0 -10 10 -10 m-244 10 v12 m234 0 v-12 m-234 12 q0 10 10 10 m214 0 q10 0 10 -10 m-224 10 h10 m58 0 h10 m0 0 h10 m40 0 h10 m0 0 h10 m56 0 h10 m20 -32 h10 m44 0 h10 m0 0 h430 m-758 -10 v20 m768 0 v-20 m-768 20 v56 m768 0 v-56 m-768 56 q0 10 10 10 m748 0 q10 0 10 -10 m-738 10 h10 m72 0 h10 m-112 0 h20 m92 0 h20 m-132 0 q10 0 10 10 m112 0 q0 -10 10 -10 m-122 10 v24 m112 0 v-24 m-112 24 q0 10 10 10 m92 0 q10 0 10 -10 m-102 10 h10 m62 0 h10 m0 0 h10 m-102 -10 v20 m112 0 v-20 m-112 20 v24 m112 0 v-24 m-112 24 q0 10 10 10 m92 0 q10 0 10 -10 m-102 10 h10 m58 0 h10 m0 0 h14 m-102 -10 v20 m112 0 v-20 m-112 20 v24 m112 0 v-24 m-112 24 q0 10 10 10 m92 0 q10 0 10 -10 m-102 10 h10 m56 0 h10 m0 0 h16 m-102 -10 v20 m112 0 v-20 m-112 20 v24 m112 0 v-24 m-112 24 q0 10 10 10 m92 0 q10 0 10 -10 m-102 10 h10 m66 0 h10 m0 0 h6 m20 -176 h10 m62 0 h10 m0 0 h534 m-758 -10 v20 m768 0 v-20 m-768 20 v200 m768 0 v-200 m-768 200 q0 10 10 10 m748 0 q10 0 10 -10 m-738 10 h10 m62 0 h10 m0 0 h4 m-106 0 h20 m86 0 h20 m-126 0 q10 0 10 10 m106 0 q0 -10 10 -10 m-116 10 v24 m106 0 v-24 m-106 24 q0 10 10 10 m86 0 q10 0 10 -10 m-96 10 h10 m58 0 h10 m0 0 h8 m-96 -10 v20 m106 0 v-20 m-106 20 v24 m106 0 v-24 m-106 24 q0 10 10 10 m86 0 q10 0 10 -10 m-96 10 h10 m56 0 h10 m0 0 h10 m-96 -10 v20 m106 0 v-20 m-106 20 v24 m106 0 v-24 m-106 24 q0 10 10 10 m86 0 q10 0 10 -10 m-96 10 h10 m66 0 h10 m20 -132 h10 m40 0 h10 m0 0 h10 m62 0 h10 m0 0 h10 m52 0 h10 m0 0 h408 m-758 -10 v20 m768 0 v-20 m-768 20 v156 m768 0 v-156 m-768 156 q0 10 10 10 m748 0 q10 0 10 -10 m-738 10 h10 m72 0 h10 m0 0 h8 m-120 0 h20 m100 0 h20 m-140 0 q10 0 10 10 m120 0 q0 -10 10 -10 m-130 10 v24 m120 0 v-24 m-120 24 q0 10 10 10 m100 0 q10 0 10 -10 m-110 10 h10 m80 0 h10 m-110 -10 v20 m120 0 v-20 m-120 20 v24 m120 0 v-24 m-120 24 q0 10 10 10 m100 0 q10 0 10 -10 m-110 10 h10 m58 0 h10 m0 0 h22 m20 -88 h10 m104 0 h10 m0 0 h484 m-758 -10 v20 m768 0 v-20 m-768 20 v156 m768 0 v-156 m-768 156 q0 10 10 10 m748 0 q10 0 10 -10 m-738 10 h10 m80 0 h10 m-120 0 h20 m100 0 h20 m-140 0 q10 0 10 10 m120 0 q0 -10 10 -10 m-130 10 v24 m120 0 v-24 m-120 24 q0 10 10 10 m100 0 q10 0 10 -10 m-110 10 h10 m58 0 h10 m0 0 h22 m20 -44 h10 m40 0 h10 m0 0 h10 m104 0 h10 m0 0 h10 m84 0 h10 m20 0 h10 m26 0 h10 m20 0 h10 m128 0 h10 m-168 0 l20 0 m-1 0 q-9 0 -9 -10 l0 -24 q0 -10 10 -10 m148 44 l20 0 m-20 0 q10 0 10 -10 l0 -24 q0 -10 -10 -10 m-148 0 h10 m24 0 h10 m0 0 h104 m20 44 h10 m26 0 h10 m-300 0 h20 m280 0 h20 m-320 0 q10 0 10 10 m300 0 q0 -10 10 -10 m-310 10 v14 m300 0 v-14 m-300 14 q0 10 10 10 m280 0 q10 0 10 -10 m-290 10 h10 m0 0 h270 m40 -990 h10 m38 0 h10 m2 0 l2 0 m2 0 l2 0 m2 0 l2 0 m-138 1066 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m44 0 h10 m0 0 h4 m-88 0 h20 m68 0 h20 m-108 0 q10 0 10 10 m88 0 q0 -10 10 -10 m-98 10 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m48 0 h10 m23 -44 h-3"
-     id="path93" />
+     d="m17 17 h2 m0 0 h10 m66 0 h10 m2 0 l2 0 m2 0 l2 0 m2 0 l2 0 m-116 66 l2 0 m2 0 l2 0 m2 0 l2 0 m42 0 h10 m72 0 h10 m-112 0 h20 m92 0 h20 m-132 0 q10 0 10 10 m112 0 q0 -10 10 -10 m-122 10 v24 m112 0 v-24 m-112 24 q0 10 10 10 m92 0 q10 0 10 -10 m-102 10 h10 m62 0 h10 m0 0 h10 m-102 -10 v20 m112 0 v-20 m-112 20 v24 m112 0 v-24 m-112 24 q0 10 10 10 m92 0 q10 0 10 -10 m-102 10 h10 m58 0 h10 m0 0 h14 m20 -88 h10 m56 0 h10 m0 0 h544 m-772 0 h20 m752 0 h20 m-792 0 q10 0 10 10 m772 0 q0 -10 10 -10 m-782 10 v112 m772 0 v-112 m-772 112 q0 10 10 10 m752 0 q10 0 10 -10 m-742 10 h10 m62 0 h10 m-102 0 h20 m82 0 h20 m-122 0 q10 0 10 10 m102 0 q0 -10 10 -10 m-112 10 v24 m102 0 v-24 m-102 24 q0 10 10 10 m82 0 q10 0 10 -10 m-92 10 h10 m58 0 h10 m0 0 h4 m20 -44 h10 m40 0 h10 m0 0 h10 m56 0 h10 m0 0 h10 m48 0 h10 m0 0 h426 m-762 -10 v20 m772 0 v-20 m-772 20 v68 m772 0 v-68 m-772 68 q0 10 10 10 m752 0 q10 0 10 -10 m-742 10 h10 m72 0 h10 m-112 0 h20 m92 0 h20 m-132 0 q10 0 10 10 m112 0 q0 -10 10 -10 m-122 10 v24 m112 0 v-24 m-112 24 q0 10 10 10 m92 0 q10 0 10 -10 m-102 10 h10 m58 0 h10 m0 0 h14 m20 -44 h10 m56 0 h10 m0 0 h544 m-762 -10 v20 m772 0 v-20 m-772 20 v68 m772 0 v-68 m-772 68 q0 10 10 10 m752 0 q10 0 10 -10 m-742 10 h10 m0 0 h204 m-234 0 h20 m214 0 h20 m-254 0 q10 0 10 10 m234 0 q0 -10 10 -10 m-244 10 v12 m234 0 v-12 m-234 12 q0 10 10 10 m214 0 q10 0 10 -10 m-224 10 h10 m58 0 h10 m0 0 h10 m40 0 h10 m0 0 h10 m56 0 h10 m20 -32 h10 m44 0 h10 m0 0 h434 m-762 -10 v20 m772 0 v-20 m-772 20 v56 m772 0 v-56 m-772 56 q0 10 10 10 m752 0 q10 0 10 -10 m-742 10 h10 m72 0 h10 m-112 0 h20 m92 0 h20 m-132 0 q10 0 10 10 m112 0 q0 -10 10 -10 m-122 10 v24 m112 0 v-24 m-112 24 q0 10 10 10 m92 0 q10 0 10 -10 m-102 10 h10 m62 0 h10 m0 0 h10 m-102 -10 v20 m112 0 v-20 m-112 20 v24 m112 0 v-24 m-112 24 q0 10 10 10 m92 0 q10 0 10 -10 m-102 10 h10 m58 0 h10 m0 0 h14 m-102 -10 v20 m112 0 v-20 m-112 20 v24 m112 0 v-24 m-112 24 q0 10 10 10 m92 0 q10 0 10 -10 m-102 10 h10 m56 0 h10 m0 0 h16 m-102 -10 v20 m112 0 v-20 m-112 20 v24 m112 0 v-24 m-112 24 q0 10 10 10 m92 0 q10 0 10 -10 m-102 10 h10 m66 0 h10 m0 0 h6 m20 -176 h10 m62 0 h10 m0 0 h538 m-762 -10 v20 m772 0 v-20 m-772 20 v200 m772 0 v-200 m-772 200 q0 10 10 10 m752 0 q10 0 10 -10 m-742 10 h10 m62 0 h10 m0 0 h4 m-106 0 h20 m86 0 h20 m-126 0 q10 0 10 10 m106 0 q0 -10 10 -10 m-116 10 v24 m106 0 v-24 m-106 24 q0 10 10 10 m86 0 q10 0 10 -10 m-96 10 h10 m58 0 h10 m0 0 h8 m-96 -10 v20 m106 0 v-20 m-106 20 v24 m106 0 v-24 m-106 24 q0 10 10 10 m86 0 q10 0 10 -10 m-96 10 h10 m56 0 h10 m0 0 h10 m-96 -10 v20 m106 0 v-20 m-106 20 v24 m106 0 v-24 m-106 24 q0 10 10 10 m86 0 q10 0 10 -10 m-96 10 h10 m66 0 h10 m20 -132 h10 m40 0 h10 m0 0 h10 m62 0 h10 m0 0 h10 m52 0 h10 m0 0 h412 m-762 -10 v20 m772 0 v-20 m-772 20 v156 m772 0 v-156 m-772 156 q0 10 10 10 m752 0 q10 0 10 -10 m-742 10 h10 m72 0 h10 m0 0 h8 m-120 0 h20 m100 0 h20 m-140 0 q10 0 10 10 m120 0 q0 -10 10 -10 m-130 10 v24 m120 0 v-24 m-120 24 q0 10 10 10 m100 0 q10 0 10 -10 m-110 10 h10 m80 0 h10 m-110 -10 v20 m120 0 v-20 m-120 20 v24 m120 0 v-24 m-120 24 q0 10 10 10 m100 0 q10 0 10 -10 m-110 10 h10 m58 0 h10 m0 0 h22 m20 -88 h10 m104 0 h10 m0 0 h488 m-762 -10 v20 m772 0 v-20 m-772 20 v156 m772 0 v-156 m-772 156 q0 10 10 10 m752 0 q10 0 10 -10 m-742 10 h10 m80 0 h10 m-120 0 h20 m100 0 h20 m-140 0 q10 0 10 10 m120 0 q0 -10 10 -10 m-130 10 v24 m120 0 v-24 m-120 24 q0 10 10 10 m100 0 q10 0 10 -10 m-110 10 h10 m58 0 h10 m0 0 h22 m20 -44 h10 m40 0 h10 m0 0 h10 m104 0 h10 m0 0 h10 m84 0 h10 m20 0 h10 m26 0 h10 m20 0 h10 m132 0 h10 m-172 0 l20 0 m-1 0 q-9 0 -9 -10 l0 -24 q0 -10 10 -10 m152 44 l20 0 m-20 0 q10 0 10 -10 l0 -24 q0 -10 -10 -10 m-152 0 h10 m24 0 h10 m0 0 h108 m20 44 h10 m26 0 h10 m-304 0 h20 m284 0 h20 m-324 0 q10 0 10 10 m304 0 q0 -10 10 -10 m-314 10 v14 m304 0 v-14 m-304 14 q0 10 10 10 m284 0 q10 0 10 -10 m-294 10 h10 m0 0 h274 m40 -990 h10 m38 0 h10 m2 0 l2 0 m2 0 l2 0 m2 0 l2 0 m-600 1066 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m44 0 h10 m0 0 h4 m-88 0 h20 m68 0 h20 m-108 0 q10 0 10 10 m88 0 q0 -10 10 -10 m-98 10 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m48 0 h10 m40 -44 h10 m0 0 h412 m-442 0 h20 m422 0 h20 m-462 0 q10 0 10 10 m442 0 q0 -10 10 -10 m-452 10 v12 m442 0 v-12 m-442 12 q0 10 10 10 m422 0 q10 0 10 -10 m-432 10 h10 m76 0 h10 m0 0 h10 m26 0 h10 m0 0 h10 m82 0 h10 m0 0 h10 m30 0 h10 m0 0 h10 m62 0 h10 m0 0 h10 m26 0 h10 m23 -32 h-3"
+     id="path105" />
   <polygon
-     points="863 1149 871 1145 871 1153"
-     id="polygon93" />
+     points="867 1149 875 1145 875 1153"
+     id="polygon105" />
   <polygon
-     points="863 1149 855 1145 855 1153"
-     id="polygon94" />
+     points="867 1149 859 1145 859 1153"
+     id="polygon106" />
 </svg>
