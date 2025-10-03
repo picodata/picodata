@@ -218,3 +218,8 @@ build-base:
 		--build-arg TARANTOOL_VERSION=latest \
 		--build-arg RUST_VERSION={{ RUST_VERSION }} \
 		-t build_base .
+
+[group("misc")]
+[doc("sort picodata exports file alphabetically")]
+sort-exports:
+	sort exports_picodata -o exports_picodata
