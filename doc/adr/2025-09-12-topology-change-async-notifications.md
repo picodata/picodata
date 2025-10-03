@@ -196,7 +196,7 @@ CREATE TABLE _pico_instance (
     raft_id           UNSIGNED NOT NULL,
     -- Имя репликасета, к которому принадлежит инстанс
     replicaset_name   TEXT     NOT NULL,
-    -- Текущее состояние инстанса [State, Shema]
+    -- Текущее состояние инстанса [State, Incarnation]
     current_state     ARRAY    NOT NULL,
     target_state      ARRAY    NOT NULL,
     failure_domain    MAP      NOT NULL,
@@ -325,14 +325,21 @@ DISTRIBUTED GLOBALLY;
 Дополнительно, каждое сообщение содержит поле `raft`.
 Этот объект содержит поля `term` и `index`. Они нужны,
 чтобы клиенты могли обрабатывать события в порядке,
-определяемом алгоритмом Raft.
+определяемом алгоритмом Raft:
+
+```rust
+struct Raft{
+  term: u64,
+  index: u64
+}
+```
 
 В общем случае это поле является ключом идемпотентности:
 оно помогает сверять и обрабатывать устаревшие или
 пропущенные события: `term=7, index=42` всегда позже,
 чем `term=6, index=105`.
 
-##### Примеры
+##### Структуры событий
 
 Так как каждая системная таблица имеет префикс `_pico`,
 можно отбросить его при передаче в сообщении,
@@ -345,18 +352,70 @@ DISTRIBUTED GLOBALLY;
 - instance → (`_pico_instance`, `_pico_peer_address`)
 - bucket → `_pico_bucket`
 
+На стороне сервера и клиентов достаточно определить 3 структуры:
+
+```rust
+struct EventReplicaset {
+  pub op: String,
+  pub map: String,
+  pub timestamp: String,
+  pub raft: Raft,
+
+  pub replicaset_uuid: String,
+  pub current_master_uuid: Option<String>,
+}
+
+struct EventInstance {
+  pub op: String,
+  pub map: String,
+  pub timestamp: String,
+  pub raft: Raft,
+  
+  pub tier: Option<String>,
+  pub replicaset_uuid: Option<String>,
+  pub instance_uuid: String,
+  pub current_state: Option<String>,
+  pub address: Option<String>
+}
+
+struct EventBuckets {
+  pub op: String,
+  pub map: String,
+  pub timestamp: String,
+  pub raft: Raft,
+  
+  pub tier: String,
+  pub state: String,
+  pub bucket_id: Range
+  pub current_replicaset_uuid: String
+}
+
+struct Range {
+  pub start: u64,
+  pub end: u64
+}
+```
+
+[Выше](#cdc-для-таблиц) мы обсудили какие изменения топологии (события) необходимо отслеживать.
+Мы можем описать событие конкретным набором полей. Заметим, что некоторые структуры имеют опциональные поля. 
+Если в рамках события какие-то поля не используются, их значения будут None. При сериализации они не будут включены в итоговое JSON-сообщение. Это позволяет однозначно определить какой тип события необходимо обработать на клиенте и избежать сериализации и передачи по сети лишней информации.
+
+Ниже представлены примеры сообщений для каждого события.
+
+##### Примеры
+
 ###### Добавление репликасета
 
 ```json
 {
   "op": "replace",
   "map": "replicaset",
-  "replicaset_uuid": "9e273105-5af8-4f77-8f47-3d9a68f772ca",
   "timestamp": "2025-08-19T11:24:28+00:00",
   "raft": {
     "term": 1,
     "index": 2
-  }
+  },
+  "replicaset_uuid": "9e273105-5af8-4f77-8f47-3d9a68f772ca",
 }
 ```
 
@@ -366,12 +425,12 @@ DISTRIBUTED GLOBALLY;
 {
   "op": "delete",
   "map": "replicaset",
-  "replicaset_uuid": "9e273105-5af8-4f77-8f47-3d9a68f772ca",
   "timestamp": "2025-08-19T11:24:28+00:00",
   "raft": {
     "term": 1,
     "index": 2
-  }
+  },
+  "replicaset_uuid": "9e273105-5af8-4f77-8f47-3d9a68f772ca",
 }
 ```
 
@@ -381,16 +440,16 @@ DISTRIBUTED GLOBALLY;
 {
   "op": "replace",
   "map": "instance",
-  "tier": "default",
-  "replicaset_uuid": "9e273105-5af8-4f77-8f47-3d9a68f772ca",
-  "instance_uuid": "268a62a-8af6-4a3d-9f24-23e6c5f4bb32",
-  "current_state": "Offline",
-  "address": "127.0.0.1:1333",
   "timestamp": "2025-08-19T11:24:28+00:00",
   "raft": {
     "term": 1,
     "index": 2
-  }
+  },
+  "tier": "default",
+  "replicaset_uuid": "9e273105-5af8-4f77-8f47-3d9a68f772ca",
+  "instance_uuid": "268a62a-8af6-4a3d-9f24-23e6c5f4bb32",
+  "current_state": "Online",
+  "address": "127.0.0.1:1333",
 }
 ```
 
@@ -400,13 +459,13 @@ DISTRIBUTED GLOBALLY;
 {
   "op": "replace",
   "map": "instance",
-  "instance_uuid": "268a62a-8af6-4a3d-9f24-23e6c5f4bb32",
-  "current_state": "Offline",
   "timestamp": "2025-08-19T11:24:28+00:00",
   "raft": {
     "term": 1,
     "index": 2
-  }
+  },
+  "instance_uuid": "268a62a-8af6-4a3d-9f24-23e6c5f4bb32",
+  "current_state": "Offline",
 }
 ```
 
@@ -416,12 +475,12 @@ DISTRIBUTED GLOBALLY;
 {
   "op": "delete",
   "map": "instance",
-  "instance_uuid": "268a62a-8af6-4a3d-9f24-23e6c5f4bb32",
   "timestamp": "2025-08-19T11:24:28+00:00",
   "raft": {
     "term": 1,
     "index": 2
-  }
+  },
+  "instance_uuid": "268a62a-8af6-4a3d-9f24-23e6c5f4bb32",
 }
 ```
 
@@ -445,13 +504,13 @@ DISTRIBUTED GLOBALLY;
 {
   "op": "replace",
   "map": "replicaset",
-  "replicaset_uuid": "2638a62a-8af6-4a3d-9f24-23e6c5f4bb32",
-  "current_master": "9e273105-5af8-4f77-8f47-3d9a68f772ca",
   "timestamp": "2025-08-19T11:24:28+00:00",
   "raft": {
     "term": 1,
     "index": 2
-  }
+  },
+  "replicaset_uuid": "2638a62a-8af6-4a3d-9f24-23e6c5f4bb32",
+  "current_master_uuid": "9e273105-5af8-4f77-8f47-3d9a68f772ca",
 }
 ```
 
@@ -468,13 +527,13 @@ DISTRIBUTED GLOBALLY;
 {
   "op": "replace",
   "map": "instance",
-  "instance_uuid": "9e273105-5af8-4f77-8f47-3d9a68f772ca",
-  "address": "127.0.0.1:1333",
   "timestamp": "2025-08-19T11:24:28+00:00",
   "raft": {
     "term": 1,
     "index": 2
-  }
+  },
+  "instance_uuid": "9e273105-5af8-4f77-8f47-3d9a68f772ca",
+  "address": "127.0.0.1:1333",
 }
 ```
 
@@ -491,6 +550,11 @@ DISTRIBUTED GLOBALLY;
 {
   "op": "replace",
   "map": "bucket",
+  "timestamp": "2025-08-19T11:24:28+00:00",
+  "raft": {
+    "term": 1,
+    "index": 2
+  },
   "tier": "default",
   "state": "copied",
   "bucket_id": {
@@ -498,11 +562,6 @@ DISTRIBUTED GLOBALLY;
     "end": 1000
   },
   "current_replicaset_uuid": "9e273105-5af8-4f77-8f47-3d9a68f772ca",
-  "timestamp": "2025-08-19T11:24:28+00:00",
-  "raft": {
-    "term": 1,
-    "index": 2
-  }
 }
 ```
 
@@ -571,12 +630,12 @@ Cнепшот состоит из трёх частей:
 {
   "op": "replace",
   "map": "replicaset",
-  "replicaset_uuid": "9e273105-5af8-4f77-8f47-3d9a68f772ca",
   "timestamp": "2025-08-19T11:24:28+00:00",
   "raft": {
     "term": 1,
     "index": 2
-  }
+  },
+  "replicaset_uuid": "9e273105-5af8-4f77-8f47-3d9a68f772ca",
 }
 ```
 
@@ -586,16 +645,16 @@ Cнепшот состоит из трёх частей:
 {
   "op": "replace",
   "map": "instance",
+  "timestamp": "2025-08-19T11:24:28+00:00",
+  "raft": {
+    "term": 1,
+    "index": 2
+  },
   "tier": "default",
   "replicaset_uuid": "9e273105-5af8-4f77-8f47-3d9a68f772ca",
   "instance_uuid": "268a62a-8af6-4a3d-9f24-23e6c5f4bb32",
   "current_state": "Offline",
   "address": "127.0.0.1:1333",
-  "timestamp": "2025-08-19T11:24:28+00:00",
-  "raft": {
-    "term": 1,
-    "index": 2
-  }
 }
 ```
 
@@ -608,6 +667,11 @@ Cнепшот состоит из трёх частей:
 {
   "op": "replace",
   "map": "bucket",
+  "timestamp": "2025-08-19T11:24:28+00:00",
+  "raft": {
+    "term": 1,
+    "index": 2
+  },
   "tier": "default",
   "state": "active",
   "bucket_id": {
@@ -615,11 +679,6 @@ Cнепшот состоит из трёх частей:
     "end": 1000
   },
   "current_replicaset_uuid": "9e273105-5af8-4f77-8f47-3d9a68f772ca",
-  "timestamp": "2025-08-19T11:24:28+00:00",
-  "raft": {
-    "term": 1,
-    "index": 2
-  }
 }
 ```
 
