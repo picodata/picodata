@@ -78,13 +78,13 @@ alias tp := test-python
 [group("test")]
 [doc("`tp`: python tests")]
 test-python PATTERN="test":
-	poetry run pytest -k {{ PATTERN }}
+	poetry run pytest {{ PYTEST_JOBS }} -k {{ PATTERN }}
 
 alias tpv := test-python-verbose
 [group("test")]
 [doc("`tpv`: python tests with verbose realtime logging")]
 test-python-verbose PATTERN="test":
-	poetry run pytest -vvv -s -k {{ PATTERN }}
+	poetry run pytest -vvv -s {{ PYTEST_JOBS }} -k {{ PATTERN }}
 
 #*************#
 # group: LINT #
