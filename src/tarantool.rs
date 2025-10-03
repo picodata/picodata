@@ -736,7 +736,7 @@ pub fn box_is_ro() -> bool {
 pub fn box_ro_reason() -> Option<&'static str> {
     mod ffi {
         extern "C" {
-            pub fn box_ro_reason() -> *const i8;
+            pub fn box_ro_reason() -> *const std::ffi::c_char;
         }
     }
 
