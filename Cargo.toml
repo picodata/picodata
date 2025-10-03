@@ -1,6 +1,6 @@
 [package]
 name = "picodata"
-version = "25.4.0"
+version = "25.4.1"
 edition = "2021"
 autotests = false
 rust-version = "1.85"
