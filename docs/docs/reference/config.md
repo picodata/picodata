@@ -87,42 +87,44 @@ cluster:
   shredding: false # (4)!
 instance:
   instance_dir: . # (14)!
-  backup_dir: ./backup # (40)!
-  name: null # (21)!
-  replicaset_name: null # (27)!
-  tier: default # (28)!
+  backup_dir: ./backup # (41)!
+  name: null # (22)!
+  replicaset_name: null # (28)!
+  tier: default # (29)!
   failure_domain: {} # (12)!
-  peer: # (22)!
+  peer: # (23)!
   - 127.0.0.1:3301
   iproto_listen: 127.0.0.1:3301 # (15)!
   iproto_advertise: 127.0.0.1:3301 # (9)!
   http_listen: null # (13)!
   admin_socket: ./admin.sock # (8)!
-  share_dir: null # (26)!
+  share_dir: null # (27)!
   audit: null # (10)!
   log:
-    level: info # (18)!
-    destination: null # (16)!
-    format: plain # (17)!
+    level: info # (19)!
+    destination: null # (17)!
+    format: plain # (18)!
   memtx:
-    memory: 64M # (20)!
-    max_tuple_size: 1M # (19)!
+    memory: 64M # (21)!
+    max_tuple_size: 1M # (20)!
   vinyl:
-    memory: 128M # (30)!
-    cache: 128M # (29)!
-    bloom_fpr: 0.05 # (31)!
-    max_tuple_size: 1M # (32)!
-    page_size: 8K # (33)!
-    range_size: 1G # (34)!
-    run_count_per_level: 2 # (35)!
-    run_size_ratio: 3.5 # (36)!
-    read_threads: 1 # (37)!
-    write_threads: 4 # (38)!
-    timeout: 60.0 # (39)!
+    memory: 128M # (31)!
+    cache: 128M # (30)!
+    bloom_fpr: 0.05 # (32)!
+    max_tuple_size: 1M # (33)!
+    page_size: 8K # (34)!
+    range_size: 1G # (35)!
+    run_count_per_level: 2 # (36)!
+    run_size_ratio: 3.5 # (37)!
+    read_threads: 1 # (38)!
+    write_threads: 4 # (39)!
+    timeout: 60.0 # (40)!
   pg:
-    listen: 127.0.0.1:4327 # (24)!
-    advertise: 127.0.0.1:4327 # (23)!
-    ssl: false # (25)!
+    listen: 127.0.0.1:4327 # (25)!
+    advertise: 127.0.0.1:4327 # (24)!
+    ssl: false # (26)!
+  iproto_tls:
+    enabled: false # (16)!
   boot_timeout: 7200 # (11)!
 ```
 
@@ -141,31 +143,32 @@ instance:
 13. [instance.http_listen](#instance_http_listen)
 14. [instance.instance_dir](#instance_instance_dir)
 15. [instance.iproto_listen](#instance_iproto_listen)
-16. [instance.log.destination](#instance_log_destination)
-17. [instance.log.format](#instance_log_format)
-18. [instance.log.level](#instance_log_level)
-19. [instance.memtx.max_tuple_size](#instance_memtx_max_tuple_size)
-20. [instance.memtx.memory](#instance_memtx_memory)
-21. [instance.name](#instance_name)
-22. [instance.peer](#instance_peer)
-23. [instance.pg.advertise](#instance_pg_advertise)
-24. [instance.pg.listen](#instance_pg_listen)
-25. [instance.pg.ssl](#instance_pg_ssl)
-26. [instance.share_dir](#instance_share_dir)
-27. [instance.replicaset_name](#instance_replicaset_name)
-28. [instance.tier](#instance_tier)
-29. [instance.vinyl.cache](#instance_vinyl_cache)
-30. [instance.vinyl.memory](#instance_vinyl_memory)
-31. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
-32. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
-33. [instance.vinyl.page_size](#instance_vinyl_page_size)
-34. [instance.vinyl.range_size](#instance_vinyl_range_size)
-35. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
-36. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
-37. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
-38. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
-39. [instance.vinyl.timeout](#instance_vinyl_timeout)
-40. [instance.backup_dir](#instance_backup_dir)
+16. [instance.iproto_tls](#instance_iproto_tls)
+17. [instance.log.destination](#instance_log_destination)
+18. [instance.log.format](#instance_log_format)
+19. [instance.log.level](#instance_log_level)
+20. [instance.memtx.max_tuple_size](#instance_memtx_max_tuple_size)
+21. [instance.memtx.memory](#instance_memtx_memory)
+22. [instance.name](#instance_name)
+23. [instance.peer](#instance_peer)
+24. [instance.pg.advertise](#instance_pg_advertise)
+25. [instance.pg.listen](#instance_pg_listen)
+26. [instance.pg.ssl](#instance_pg_ssl)
+27. [instance.share_dir](#instance_share_dir)
+28. [instance.replicaset_name](#instance_replicaset_name)
+29. [instance.tier](#instance_tier)
+30. [instance.vinyl.cache](#instance_vinyl_cache)
+31. [instance.vinyl.memory](#instance_vinyl_memory)
+32. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
+33. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
+34. [instance.vinyl.page_size](#instance_vinyl_page_size)
+35. [instance.vinyl.range_size](#instance_vinyl_range_size)
+36. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
+37. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
+38. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
+39. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
+40. [instance.vinyl.timeout](#instance_vinyl_timeout)
+41. [instance.backup_dir](#instance_backup_dir)
 
 См. также:
 
@@ -319,7 +322,7 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 
 ### instance.backup_dir {: #instance_backup_dir }
 
-Директория для хранения резервных копий, создаваемых командой [`BACKUP`](sql/backup.md).  
+Директория для хранения резервных копий, создаваемых командой [`BACKUP`](sql/backup.md).
 Каждый инстанс сохраняет данные в поддиректории внутри `backup-dir` в файле, имя
 которого формируется в формате `YYYYMMDDThhmmss`.
 
@@ -466,6 +469,44 @@ export PICODATA_FAILURE_DOMAIN=rack=12-90,server=srv_007,vm=rhel8
 Аналогичная команда: [`picodata run --iproto-listen`]
 
 [`picodata run --iproto-listen`]: cli.md#run_iproto_listen
+
+### instance.iproto_tls {: #instance_iproto_tls }
+
+Конфигурация защищенного режима для внутренней коммуникации между узлами
+кластера по протоколу Iproto. Основной параметр
+`instance.iproto_tls.enabled` отвечает за включение/отключение режима
+шифрования mutual TLS (mTLS).
+
+* Тип: *bool*
+* Значение по умолчанию: `false`
+
+При установке значения `true` требуется использовать 3 дополнительных параметра:
+
+- `instance.iproto_tls.cert_file` (*str*) — путь к файлу сертификата
+- `instance.iproto_tls.key_file` (*str*) — путь к файлу с закрытым ключом
+- `instance.iproto_tls.ca_file` (*str*) — путь к файлу корневого сертификата
+
+При включенном mTLS блок настроек файла конфигурации будет иметь следующий вид:
+
+```yaml
+  iproto_tls:
+    enabled: true
+    cert_file: tls/server.crt
+    key_file: tls/server.key
+    ca_file: tls/ca.crt
+```
+
+Аналогичная команда:
+
+```shell
+picodata run -c instance.iproto_tls='{"enabled": true, "cert_file": "tls/server.crt", "key_file": "tls/server.key", "ca_file": "tls/ca.crt"}'
+```
+
+Режим mTLS настраивается глобально во всем кластере. Параметры
+`instance.iproto_tls.enabled` и `instance.iproto_tls.ca_file` должны
+быть идентичны на всех инстансах. Для параметров
+`instance.iproto_tls.cert_file` и `instance.iproto_tls.key_file`
+содержимое файлов должно быть уникальным на каждом инстансе.
 
 ### instance.log.destination {: #instance_log_destination }
 
