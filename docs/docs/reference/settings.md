@@ -338,6 +338,38 @@ table.legend {
             <td>PICODATA_IPROTO_LISTEN</td>
         </tr>
         <tr>
+            <td><span class="cluster">iproto-tls.enabled</span></td>
+            <td>Признак использования аутентификации по сертификату при доступе к инстансу (mutual TLS, mTLS)</td>
+            <td>false</td>
+            <td></td>
+            <td>[instance.iproto_tls.enabled](config.md#instance_iproto_tls)</td>
+            <td></td>
+        </tr>
+        <tr>
+            <td><span class="instance">iproto-tls.cert_file</span></td>
+            <td>Путь к файлу серверного сертификата для использования с mTLS</td>
+            <td></td>
+            <td></td>
+            <td>[instance.iproto_tls.cert_file](config.md#instance_iproto_tls)</td>
+            <td></td>
+        </tr>
+        <tr>
+            <td><span class="instance">iproto-tls.key_file</span></td>
+            <td>Путь к файлу закрытого ключа для использования с mTLS</td>
+            <td></td>
+            <td></td>
+            <td>[instance.iproto_tls.key_file](config.md#instance_iproto_tls)</td>
+            <td></td>
+        </tr>
+        <tr>
+            <td><span class="cluster">iproto-tls.ca_file</span></td>
+            <td>Путь к файлу корневого сертификата для использования с mTLS</td>
+            <td></td>
+            <td></td>
+            <td>[instance.iproto_tls.ca_file](config.md#instance_iproto_tls)</td>
+            <td></td>
+        </tr>
+        <tr>
             <td><span class="instance">log</span></td>
             <td>Конфигурация отладочного журнала</td>
             <td>null</td>
@@ -473,6 +505,61 @@ table.legend {
             <td>[picodata run --tier](cli.md#run_tier)</td>
             <td>[instance.tier](config.md#instance_tier)</td>
             <td>PICODATA_SHREDDING</td>
+        </tr>
+        <tr>
+            <td><span class="cluster">tls-auth</span></td>
+            <td>Признак использования аутентификации по сертификату при доступе к инстансу, на
+            котором включен и настроен mTLS. При значении `true` необходимо
+            использовать остальные параметры mTLS (т.е. указать путь к клиентскому
+            сертификату, закрытому клиентскому ключу и корневому сертификату).</td>
+            <td>false</td>
+            <td>
+            [picodata expel --tls-auth](cli.md#tls_auth)<br>
+            [picodata plugin configure --tls-auth](cli.md#tls_auth)<br>
+            [picodata status --tls-auth](cli.md#tls_auth)
+            </td>
+            <td></td>
+            <td>PICODATA_IPROTO_TLS_AUTH</td>
+        </tr>
+        <tr>
+            <td><span class="cluster">tls-ca</span></td>
+            <td>Путь к файлу корневого сертификата для доступа к инстансу, на котором
+            включен и настроен mTLS.</td>
+            <td></td>
+            <td>
+            [picodata expel --tls-ca](cli.md#tls_ca)<br>
+            [picodata plugin configure --tls-ca](cli.md#tls_ca)<br>
+            [picodata status --tls-ca](cli.md#tls_ca)
+            </td>
+            <td></td>
+            <td>PICODATA_IPROTO_TLS_CA</td>
+        </tr>
+        <tr>
+            <td><span class="instance">tls-cert</span></td>
+            <td>Путь к файлу клиентского сертификата для доступа к инстансу, на котором
+            включен и настроен mTLS.</td>
+            <td></td>
+            <td>
+            [picodata expel --tls-cert](cli.md#tls_cert)<br>
+            [picodata plugin configure --tls-cert](cli.md#tls_cert)<br>
+            [picodata status --tls-cert](cli.md#tls_cert)
+            </td>
+            <td></td>
+            <td>PICODATA_IPROTO_TLS_CERT</td>
+        </tr>
+        <tr>
+            <td><span class="instance">tls-key</span></td>
+            <td>
+            Путь к файлу закрытого клиентского ключа для доступа к инстансу, на котором
+            включен и настроен mTLS.</td>
+            <td></td>
+            <td>
+            [picodata expel --tls-key](cli.md#tls_key)<br>
+            [picodata plugin configure --tls-key](cli.md#tls_key)<br>
+            [picodata status --tls-key](cli.md#tls_key)
+            </td>
+            <td></td>
+            <td>PICODATA_IPROTO_TLS_KEY</td>
         </tr>
         <tr>
             <td><span class="instance">vinyl.bloom_fpr</span></td>

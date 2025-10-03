@@ -62,61 +62,9 @@ JDBC-драйвер для Picodata и источник данных
 - `PKCS#12 `(контейнер с поддержкой нескольких ключей и сертификатов)
 - глобальное хранилище, используемое в `sslFactory=io.picodata.jdbc.ssl.DefaultJavaSSLSocketFactory`
 
-### Создание сертификатов и ключей {: #create_certs_and_keys}
+См. также:
 
-Ниже показаны примеры команд для генерации самоподписанного сертификата
-(публичного ключа) и закрытого ключа как для сервера (Picodata), так и
-для клиентов, которые хотят подключиться к серверу. Для этих команд
-используется консольное приложение `openssl` из одноименного пакета.
-Серверный и клиентский сертификаты должны быть подписаны одним и тем же
-корневым сертификатом (CA).
-
-```bash title="Шаг 1. Создание директории для сертификатов для пользователя picouser"
-mkdir -p /home/picouser/certs && cd /home/picouser/certs
-```
-
-```bash title="Шаг 2. Создание корневого сертификата (CA)"
-openssl genrsa -out ca.key 2048
-openssl req -x509 -new -nodes -key ca.key -sha256 -days 365 -out ca.crt -subj "/CN=RootCA"
-```
-
-```bash title="Шаг 3. Создание серверного закрытого ключа"
-openssl genrsa -out server.key 2048
-```
-
-```bash title="Шаг 4. Создание запроса на подпись серверного сертификата (CSR)"
-openssl req -new -key server.key -out server.csr -subj "/CN=Server"
-```
-
-```bash title="Шаг 5. Подпись серверного сертификата с помощью корневого сертификата (CA)"
-openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 365 -sha256
-```
-
-```bash title="Шаг 6. Создание клиентского закрытого ключа"
-openssl genrsa -out client.key 2048
-```
-
-```bash title="Шаг 7. Создание запроса на подпись клиентского сертификата (CSR)"
-openssl req -new -key client.key -out client.csr -subj "/CN=Client"
-```
-
-```bash title="Шаг 8. Подпись клиентского сертификата с помощью корневого сертификата (CA)"
- openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt -days 365 -sha256
-```
-
-```bash title="Шаг 9. Конвертация клиентского ключа в формат PKCS#8"
-openssl pkcs8 -topk8 -inform PEM -outform DER -in client.key -out client.pk8 -nocrypt
-```
-
-```bash title="Шаг 10. Установка прав на файлы"
-chmod 640 ca.key server.key client.key client.pk8
-```
-
-Если требуется использовать хранилище в формате `PKCS#12`, то следует:
-
-- объединить сертификат и ключ клиента в один файл (`cat client.key client.csr > store.txt`)
-- конвертировать получившийся файл в формат `PKCS#12` (`openssl pkcs12 -export -in store.txt -out store.pkcs12
--name myAlias -noiter -nomaciter`)
+- [Создание сертификатов и ключей](../../admin/ssl.md#create_certs_and_keys)
 
 ### Параметры подключения {: #connection_params}
 
@@ -133,7 +81,7 @@ java.lang.Object
 
 - `user` — имя пользователя
 - `password` — пароль пользователя
-- `sslMode` — режим подключения (см. [ниже](#sslModes)). По умолчанию
+- `sslMode` — режим подключения (см. [ниже](#sslmode)). По умолчанию
   используется режим `require`
 - `sslPassword` — единый пароль для всех хранилищ в том случае, если
   хотя бы одно из них защищено паролем
@@ -161,7 +109,7 @@ java.lang.Object
   режиме `verify-full`. По умолчанию проверка сетевого имени производится
   средствами JDBC-драйвера
 
-### Режимы SslMode {: #sslModes }
+### Режимы sslmode {: #sslmode }
 
 - `allow` — сначала попробовать незашифрованное соединение, затем
   зашифрованное
