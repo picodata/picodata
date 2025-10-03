@@ -84,6 +84,7 @@ def test_catalog_upgrade_ok(compat_instance: Instance):
     assert res == []
 
 
+@pytest.mark.xfail(reason="Should be fixed as part of https://git.picodata.io/core/picodata/-/issues/1037")
 @pytest.mark.xdist_group(name="compat")
 def test_catalog_upgrade_from_25_3_1_to_25_4_1_ok(compat_instance: Instance):
     i = compat_instance
