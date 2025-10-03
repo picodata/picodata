@@ -80,6 +80,12 @@ alias tp := test-python
 test-python PATTERN="test":
 	poetry run pytest -k {{ PATTERN }}
 
+alias tpv := test-python-verbose
+[group("test")]
+[doc("`tpv`: python tests with verbose realtime logging")]
+test-python-verbose PATTERN="test":
+	poetry run pytest -vvv -s -k {{ PATTERN }}
+
 #*************#
 # group: LINT #
 #*************#
