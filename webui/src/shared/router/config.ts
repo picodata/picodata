@@ -1,4 +1,6 @@
-export const URL_CONFIG = {
-  NODES: { path: "nodes", absolutePath: "/nodes" },
-  USERS: { path: "users", absolutePath: "/users" },
-};
+export const enum Routes {
+  LOGIN = "/login",
+  NODES = "/nodes",
+  HOME = NODES,
+  USERS = "/users",
+}

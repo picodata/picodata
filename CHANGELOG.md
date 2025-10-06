@@ -13,6 +13,13 @@ with the `YY.MINOR.MICRO` scheme.
 ### Fixes
 - Fix compilation error on ARM architecture.
 
+### WebUI
+- Add a login form and JWT-based session management. The JWT secret is stored in
+  the `_pico_db_config` table as `jwt_secret`. Set `jwt_secret` to an empty string ("")
+  to disable authentication. On upgrade, Picodata leaves the existing `jwt_secret`
+  unchanged. To enable web authentication on existing clusters, reset `jwt_secret`
+  via the `ALTER SYSTEM` API.
+
 
 ## [25.4.1] - 2025-10-02
 

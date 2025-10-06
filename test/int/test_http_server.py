@@ -1,4 +1,4 @@
-from typing import Dict, Iterable, Any, Tuple
+from typing import Dict, Iterable, Any, Tuple, Optional
 
 from conftest import (
     Cluster,
@@ -25,7 +25,15 @@ def create_user(instance: Instance):
             raise e
 
 
-def authorize(instance: Instance, username: str, password) -> Tuple[Dict[str, Any], int]:
+def set_jwt_enabled(instance: Instance, enabled: bool):
+    try:
+        instance.sql("ALTER SYSTEM RESET jwt_secret" if enabled else "ALTER SYSTEM SET jwt_secret = ''")
+    except Exception as e:
+        if not isinstance(e, TarantoolError):
+            raise e
+
+
+def authorize(instance: Instance, username: str, password) -> Tuple[Dict[str, str], int]:
     create_user(instance)
     http_listen = instance.env["PICODATA_HTTP_LISTEN"]
     request = Request(
@@ -49,13 +57,31 @@ def get_auth_token(instance: Instance) -> str:
 
 
 @pytest.fixture
-def auth_token(instance: Instance) -> str:
+def auth_token(request, instance: Instance) -> Optional[str]:
+    auth_type = request.param
+    if auth_type == "unauthorized":
+        set_jwt_enabled(instance, False)
+        return None
+
+    set_jwt_enabled(instance, True)
     return get_auth_token(instance)
 
 
 def get_authorized(url: str, auth_token: str) -> Any:
     request = Request(url, headers={"Authorization": f"Bearer {auth_token}"}, method="GET")
     return urlopen(request)
+
+
+def get_unauthorized(url: str) -> Any:
+    request = Request(url, method="GET")
+    return urlopen(request)
+
+
+def get_url(url: str, auth_token: Optional[str]) -> Any:
+    if auth_token is None:
+        return get_unauthorized(url)
+
+    return get_authorized(url, auth_token)
 
 
 @pytest.mark.webui
@@ -76,7 +102,8 @@ def test_http_routes(instance: Instance):
 
 
 @pytest.mark.webui
-def test_webui_basic(instance: Instance, auth_token: str):
+@pytest.mark.parametrize("auth_token", ["authorized", "unauthorized"], indirect=True)
+def test_webui_basic(instance: Instance, auth_token: Optional[str]):
     http_listen = instance.env["PICODATA_HTTP_LISTEN"]
 
     instance_version = instance.eval("return pico.PICODATA_VERSION")
@@ -86,7 +113,7 @@ def test_webui_basic(instance: Instance, auth_token: str):
     with urlopen(f"http://{http_listen}/") as response:
         assert response.headers.get("content-type") == "text/html"
 
-    with get_authorized(f"http://{http_listen}/api/v1/tiers", auth_token) as response:
+    with get_url(f"http://{http_listen}/api/v1/tiers", auth_token) as response:
         assert response.headers.get("content-type") == "application/json"
         assert json.load(response) == [
             {
@@ -127,7 +154,7 @@ def test_webui_basic(instance: Instance, auth_token: str):
             }
         ]
 
-    with get_authorized(f"http://{http_listen}/api/v1/cluster", auth_token) as response:
+    with get_url(f"http://{http_listen}/api/v1/cluster", auth_token) as response:
         assert response.headers.get("content-type") == "application/json"
         assert json.load(response) == {
             "capacityUsage": capacity_usage,
@@ -284,7 +311,7 @@ def test_webui_with_plugin(cluster: Cluster):
     }
     tier_green = {**tier_template, "name": "green", "services": [], "replicasets": [r3]}
 
-    with get_authorized(f"http://{http_listen}/api/v1/tiers", auth_token) as response:
+    with get_url(f"http://{http_listen}/api/v1/tiers", auth_token) as response:
         assert response.headers.get("content-type") == "application/json"
         assert sorted(json.load(response), key=lambda tier: tier["name"]) == [
             tier_blue,
@@ -292,7 +319,7 @@ def test_webui_with_plugin(cluster: Cluster):
             tier_red,
         ]
 
-    with get_authorized(f"http://{http_listen}/api/v1/cluster", auth_token) as response:
+    with get_url(f"http://{http_listen}/api/v1/cluster", auth_token) as response:
         assert response.headers.get("content-type") == "application/json"
         assert json.load(response) == {
             "capacityUsage": 0.0,
@@ -429,13 +456,13 @@ def test_webui_replicaset_state(cluster: Cluster):
         "replicasets": [r1, r2],
     }
 
-    with get_authorized(f"http://{http_listen}/api/v1/tiers", auth_token) as response:
+    with get_url(f"http://{http_listen}/api/v1/tiers", auth_token) as response:
         assert response.headers.get("content-type") == "application/json"
         assert sorted(json.load(response), key=lambda tier: tier["name"]) == [
             tier_red,
         ], "/api/v1/tier"
 
-    with get_authorized(f"http://{http_listen}/api/v1/cluster", auth_token) as response:
+    with get_url(f"http://{http_listen}/api/v1/cluster", auth_token) as response:
         assert response.headers.get("content-type") == "application/json"
         assert json.load(response) == {
             "capacityUsage": 0,
@@ -544,7 +571,7 @@ def test_webui_can_vote_flag(cluster: Cluster):
         "replicasets": [r2],
     }
 
-    with get_authorized(f"http://{http_listen}/api/v1/tiers", auth_token) as response:
+    with get_url(f"http://{http_listen}/api/v1/tiers", auth_token) as response:
         assert response.headers.get("content-type") == "application/json"
         assert sorted(json.load(response), key=lambda tier: tier["name"]) == [
             tier_blue,
@@ -706,3 +733,14 @@ def test_jwt_session_refresh_success(instance: Instance):
     assert isinstance(new_tokens["refresh"], str)
     assert len(new_tokens["auth"].split(".")) == 3
     assert len(new_tokens["refresh"].split(".")) == 3
+
+
+@pytest.mark.webui
+@pytest.mark.parametrize("auth_token", ["authorized", "unauthorized"], indirect=True)
+def test_ui_config(instance: Instance, auth_token):
+    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+
+    with get_url(f"http://{http_listen}/api/v1/config", auth_token) as response:
+        assert response.headers.get("content-type") == "application/json"
+        assert response.status == 200
+        assert json.loads(response.read().decode()) == {"isAuthEnabled": auth_token is not None}

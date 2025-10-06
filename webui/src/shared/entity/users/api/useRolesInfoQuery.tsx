@@ -1,6 +1,6 @@
 import { useQuery } from "react-query";
 
-import { useQueryConfig } from "shared/api";
+import { useAuthAxios, useQueryConfig } from "shared/api";
 
 import { Role } from "../types/types";
 
@@ -9,8 +9,11 @@ import { getRolesInfo } from "./getRolesInfo";
 
 export const useRolesInfoQuery = () => {
   const queryConfig = useQueryConfig();
+  const axios = useAuthAxios();
 
-  return useQuery<Role[]>(ROLES_INFO_KEY, getRolesInfo, {
+  return useQuery<Role[]>({
+    queryKey: [ROLES_INFO_KEY],
+    queryFn: () => getRolesInfo(axios),
     ...queryConfig,
   });
 };

@@ -1,15 +1,19 @@
 import { useQuery } from "react-query";
+import { AxiosError } from "axios";
 
-import { useQueryConfig } from "shared/api";
+import { useAuthAxios, useQueryConfig } from "shared/api";
 
 import { REPLICASETS_LIST_KEY } from "./constants";
 import { getReplicasets } from "./api";
-import { select } from "./select";
+import { select, SelectedList, ServerReplicasetsListType } from "./select";
 
 export const useReplicasets = () => {
   const queryConfig = useQueryConfig();
+  const axios = useAuthAxios();
 
-  return useQuery(REPLICASETS_LIST_KEY, getReplicasets, {
+  return useQuery<ServerReplicasetsListType, AxiosError, SelectedList>({
+    queryKey: [REPLICASETS_LIST_KEY],
+    queryFn: () => getReplicasets(axios),
     ...queryConfig,
     select,
   });

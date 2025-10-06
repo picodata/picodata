@@ -3,7 +3,7 @@ import cn from "classnames";
 
 import styles from "./Input.module.scss";
 
-export type ButtonProps = {
+export type InputProps = {
   classes?: {
     container?: string;
   };
@@ -13,9 +13,9 @@ export type ButtonProps = {
   onBlur?: () => void;
   onChange: (v: string) => void;
   value: string;
-} & Omit<React.ButtonHTMLAttributes<HTMLInputElement>, "onChange">;
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange">;
 
-export const Input: React.FC<ButtonProps> = (props) => {
+export const Input: React.FC<InputProps> = (props) => {
   const {
     disabled = false,
     rightIcon,

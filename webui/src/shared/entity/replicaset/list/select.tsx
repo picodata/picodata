@@ -4,9 +4,12 @@ import { mapReplicasetToClient } from "../common";
 
 import { ServerReplicasetsListType } from "./types";
 
-export const select = (
-  data: ServerReplicasetsListType
-): { replicasets: ReplicasetType[]; instances: InstanceType[] } => {
+export interface SelectedList {
+  replicasets: ReplicasetType[];
+  instances: InstanceType[];
+}
+
+export const select = (data: ServerReplicasetsListType): SelectedList => {
   const replicasets = data.map(mapReplicasetToClient);
 
   return {
@@ -15,3 +18,5 @@ export const select = (
     instances: replicasets.map((replicaset) => replicaset.instances).flat(1),
   };
 };
+
+export type { ServerReplicasetsListType };

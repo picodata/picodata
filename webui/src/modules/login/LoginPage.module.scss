@@ -1,0 +1,131 @@
+@import 'styles/vars';
+
+.loginContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 80px;
+}
+
+.formContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.title {
+  margin: 0;
+  user-select: none;
+
+  /* Heading/Heading 1 */
+  font-style: normal;
+  font-weight: 400;
+  font-size: 24px;
+  line-height: 30px;
+  /* identical to box height, or 125% */
+
+  /* Text/Black */
+  color: $colorTextBlack;
+
+  /* Inside auto layout */
+  flex: none;
+  order: 0;
+  flex-grow: 0;
+}
+
+.formFields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.formField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.formFieldPadded {
+  margin-top: 8px;
+}
+
+.formFieldError {
+  display: inline-block;
+  /* Body/Body 3 */
+  font-style: normal;
+  font-weight: 400;
+  font-size: 12px;
+  line-height: 16px;
+  /* identical to box height, or 133% */
+
+  /* Fields/Text error */
+  color: $colorBgRed;
+
+  /* Inside auto layout */
+  flex: none;
+  order: 0;
+  flex-grow: 0;
+
+  text-wrap-mode: wrap;
+  text-wrap-style: stable;
+
+  transition: height 200ms ease;
+  height: calc-size(max-content, size);
+  transition: margin-top 200ms ease;
+  margin-top: 0;
+
+  &:empty {
+    margin-top: -8px;
+  }
+}
+
+.formFieldTitle {
+  width: 53px;
+  height: 24px;
+
+  font-style: normal;
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 24px;
+  /* identical to box height, or 150% */
+  display: flex;
+  align-items: center;
+
+  /* Text/Black */
+  color: $colorTextBlack;
+
+  /* Inside auto layout */
+  flex: none;
+  order: 0;
+  flex-grow: 0;
+}
+
+.passwordToggle {
+  display: flex;
+  align-items: center;
+  padding: 10px;
+  margin: -10px;
+  pointer-events: all !important;
+  cursor: pointer;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.formActions {
+  display: flex;
+  gap: 8px;
+
+  & > * {
+    user-select: none;
+    flex-basis: 200px;
+  }
+}
+
+.logo {
+  user-select: none;
+  height: 40px;
+  width: min-content;
+}

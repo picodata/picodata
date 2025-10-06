@@ -33,7 +33,7 @@ struct JwtClaims {
     roles: Option<Vec<String>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 pub(crate) struct TokenResponse {
     auth: String,
     refresh: String,
@@ -107,17 +107,15 @@ impl AuthError {
             AuthError::Inner(..) => "error",
             AuthError::InvalidCredentials => "wrongCredentials",
             AuthError::Expired => "sessionExpired",
+            AuthError::Disabled => "authDisabled",
             _ => "authError",
         })
     }
     fn status_code(&self) -> u64 {
         match self {
-            AuthError::InvalidHeader | AuthError::InvalidType => 403,
-            AuthError::Expired
-            | AuthError::InsufficientPrivileges
-            | AuthError::InvalidCredentials
-            | AuthError::Disabled => 401,
-            _ => 500,
+            AuthError::Inner(_) => 500,
+            AuthError::InsufficientPrivileges | AuthError::PrivilegesLookup(_) => 403,
+            _ => 401,
         }
     }
 
@@ -278,6 +276,12 @@ pub(crate) struct ClusterInfo {
     instances_current_state_online: usize,
     // list of serialized plugin identifiers - "<plugin_name> <plugin_version>"
     plugins: Vec<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UiConfig {
+    is_auth_enabled: bool,
 }
 
 fn get_replicasets(storage: &Catalog) -> Result<HashMap<ReplicasetName, Replicaset>> {
@@ -590,6 +594,9 @@ fn get_jwt_secret() -> AuthResult<Option<String>> {
             .jwt_secret()
             .map_err(|x| AuthError::JWTSecretLookup(x.to_string()))
     })
+    // Given successful db connection, secret cannot technically be None at this point,
+    // as it is set to empty string to disable auth instead of NULL
+    .map(|secret| secret.filter(|secret| !secret.is_empty()))
 }
 
 fn get_unix_timestamp() -> u64 {
@@ -630,10 +637,14 @@ fn create_jwt_token(
     .map_err(|e| AuthError::JWTEncoding(e.to_string()))
 }
 
-fn validate_jwt_token(token: &str) -> AuthResult<JwtClaims> {
+fn get_jwt_claims(auth_header: &str) -> AuthResult<JwtClaims> {
     let Some(secret) = get_jwt_secret()? else {
         return Err(AuthError::Disabled);
     };
+
+    let token = auth_header
+        .strip_prefix("Bearer ")
+        .ok_or(AuthError::InvalidHeader)?;
 
     let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
     jsonwebtoken::decode::<JwtClaims>(
@@ -677,63 +688,61 @@ fn authenticate_user(username: &str, password: Option<&str>) -> AuthResult<Vec<S
     Ok(privileges)
 }
 
+macro_rules! allow_disabled_auth {
+    ($maybe_auth_disabled_error:expr, $fallback:expr) => {
+        match $maybe_auth_disabled_error {
+            Ok(tokens) => Ok(tokens),
+            Err(e) => match e {
+                AuthError::Disabled => Ok($fallback),
+                _ => Err(e),
+            },
+        }
+    };
+}
+
 pub(crate) fn http_api_login(username: String, password: String) -> AuthResult<TokenResponse> {
-    as_admin(|| {
-        let roles = authenticate_user(&username, Some(password.as_str()))?;
+    allow_disabled_auth!(
+        as_admin(|| {
+            let roles = authenticate_user(&username, Some(password.as_str()))?;
 
-        let auth_token = create_jwt_token(&username, "auth", Some(roles))?;
-        let refresh_token = create_jwt_token(&username, "refresh", None)?;
-
-        Ok(TokenResponse {
-            auth: auth_token,
-            refresh: refresh_token,
-        })
-    })
+            Ok(TokenResponse {
+                auth: create_jwt_token(&username, "auth", Some(roles))?,
+                refresh: create_jwt_token(&username, "refresh", None)?,
+            })
+        }),
+        TokenResponse::default()
+    )
 }
 
 pub(crate) fn http_api_refresh_session(auth_header: String) -> AuthResult<TokenResponse> {
-    as_admin(|| {
-        let token = auth_header
-            .strip_prefix("Bearer ")
-            .ok_or(AuthError::InvalidHeader)?;
+    allow_disabled_auth!(
+        as_admin(|| {
+            let claims = get_jwt_claims(&auth_header)?;
 
-        let claims = validate_jwt_token(token)?;
+            if claims.typ != "refresh" {
+                return Err(AuthError::InvalidType);
+            }
 
-        if claims.typ != "refresh" {
-            return Err(AuthError::InvalidType);
-        }
+            if claims.exp < get_unix_timestamp() {
+                return Err(AuthError::Expired);
+            }
 
-        if claims.exp < get_unix_timestamp() {
-            return Err(AuthError::Expired);
-        }
+            let user_roles = authenticate_user(&claims.sub, None)?;
 
-        let user_roles = authenticate_user(&claims.sub, None)?;
+            let auth_token = create_jwt_token(&claims.sub, "auth", Some(user_roles))?;
+            let refresh_token = create_jwt_token(&claims.sub, "refresh", None)?;
 
-        let auth_token = create_jwt_token(&claims.sub, "auth", Some(user_roles))?;
-        let refresh_token = create_jwt_token(&claims.sub, "refresh", None)?;
-
-        Ok(TokenResponse {
-            auth: auth_token,
-            refresh: refresh_token,
-        })
-    })
+            Ok(TokenResponse {
+                auth: auth_token,
+                refresh: refresh_token,
+            })
+        }),
+        TokenResponse::default()
+    )
 }
 
 pub(crate) fn validate_auth(auth_header: &str) -> AuthResult<AuthContext> {
-    let token = auth_header
-        .strip_prefix("Bearer ")
-        .ok_or(AuthError::InvalidHeader)?;
-
-    let claims = match validate_jwt_token(token) {
-        Ok(v) => v,
-        Err(e) => {
-            if matches!(e, AuthError::Disabled) {
-                return Ok(AuthContext::default());
-            } else {
-                return Err(e);
-            }
-        }
-    };
+    let claims = get_jwt_claims(auth_header)?;
 
     if claims.typ != "auth" {
         return Err(AuthError::InvalidType);
@@ -788,7 +797,7 @@ where
     F: FnOnce() -> Result<T>,
     T: serde::Serialize,
 {
-    validate_auth(&auth_header)?;
+    allow_disabled_auth!(validate_auth(&auth_header), AuthContext::default())?;
 
     handler().map_err(|x| AuthError::Inner(x.to_string()))
 }
@@ -799,4 +808,10 @@ pub(crate) fn http_api_tiers_with_auth(auth_header: String) -> AuthResult<Vec<Ti
 
 pub(crate) fn http_api_cluster_with_auth(auth_header: String) -> AuthResult<ClusterInfo> {
     as_admin(|| auth_middleware(auth_header, http_api_cluster))
+}
+
+pub(crate) fn http_api_config() -> AuthResult<UiConfig> {
+    let is_auth_enabled = get_jwt_secret().is_ok_and(|secret| secret.is_some());
+
+    Ok(UiConfig { is_auth_enabled })
 }

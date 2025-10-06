@@ -1,15 +1,12 @@
+import "shared/entity/config/api";
 import ReactDOM from "react-dom/client";
 
-import App from "./App/App";
-import { IntlProvider } from "./providers/IntlProvider";
-import { ApiProvider } from "./providers/ApiProvider";
-
+import App from "./App";
 import "./styles/global.scss";
+import { AppProviders } from "./providers";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <IntlProvider>
-    <ApiProvider>
-      <App />
-    </ApiProvider>
-  </IntlProvider>
+  <AppProviders>
+    <App />
+  </AppProviders>
 );
