@@ -217,12 +217,12 @@ create_table   ::= 'CREATE' 'TABLE' ('IF' 'NOT' 'EXISTS')? table
                    (('DISTRIBUTED' (('BY' '(' column (',' column)* ')' ('IN' 'TIER' tier)?) | 'GLOBALLY'))?)?
                    ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
-create_user    ::= 'CREATE' 'USER' ('IF' 'NOT' 'EXISTS')? user (('USING' ('LDAP')) | ('WITH'? 'PASSWORD' "'" password "'" ('USING' ('CHAP-SHA1' | 'MD5')?)?)) ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+create_user    ::= 'CREATE' 'USER' ('IF' 'NOT' 'EXISTS')? user (('USING' ('LDAP')) | ('WITH'? 'PASSWORD' "'" password "'" ('USING' ('CHAP-SHA1' | 'MD5' | 'SCRAM-SHA256')?)?)) ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 alter_user     ::= 'ALTER' 'USER' user
                    'WITH'? (
                        'LOGIN'
                        | 'NOLOGIN'
-                       | 'PASSWORD' (('USING' ('LDAP')) | ("'" password "'" ('USING' ('CHAP-SHA1' | 'MD5'))?))
+                       | 'PASSWORD' (('USING' ('LDAP')) | ("'" password "'" ('USING' ('CHAP-SHA1' | 'MD5' | 'SCRAM-SHA256'))?))
                        | 'RENAME' 'TO' user
                    ) ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 drop_index     ::= 'DROP' 'INDEX' ('IF' 'EXISTS')? index

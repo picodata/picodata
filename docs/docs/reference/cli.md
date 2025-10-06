@@ -578,7 +578,7 @@ picodata expel [OPTIONS] <INSTANCE_UUID>
 
 Метод аутентификации, см. [Аутентификация с помощью LDAP](../admin/ldap.md).
 
-Возможные значения: `md5`, `ldap`, `chap-sha1`<br>
+Возможные значения: `md5`, `ldap`, `chap-sha1`, `scram-sha256`<br>
 Значение по умолчанию: `md5`<br>
 
 ### --cluster-name {: #expel_cluster_name }
