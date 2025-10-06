@@ -22,4 +22,5 @@ export const components: (typeof en)["components"] = {
   infoNoData: {
     label: "Нет данных",
   },
+  signout: "Выйти",
 };

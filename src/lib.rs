@@ -344,7 +344,7 @@ fn start_http_server(
     lua.exec_with(
         r#"
               local handler = ...
-              pico.httpd:route({method = 'POST', path = 'api/v1/session' }, function(req) 
+              pico.httpd:route({method = 'POST', path = 'api/v1/session' }, function(req)
               local json = require('json')
               local body_string = req.body or ''
               local ok, data = pcall(function() return req:json() end)
@@ -370,7 +370,7 @@ fn start_http_server(
     lua.exec_with(
         r#"
               local handler = ...
-              pico.httpd:route({method = 'GET', path = 'api/v1/session' }, function(req) 
+              pico.httpd:route({method = 'GET', path = 'api/v1/session' }, function(req)
               local auth_header = req.headers['authorization'] or ''
               return handler(auth_header)
         end)"#,
@@ -388,7 +388,7 @@ fn start_http_server(
     lua.exec_with(
         r#"
               local handler = ...
-              pico.httpd:route({method = 'GET', path = 'api/v1/tiers' }, function(req) 
+              pico.httpd:route({method = 'GET', path = 'api/v1/tiers' }, function(req)
               local auth_header = req.headers['authorization'] or ''
               return handler(auth_header)
         end)"#,
@@ -405,7 +405,7 @@ fn start_http_server(
     lua.exec_with(
         r#"
               local handler = ...
-              pico.httpd:route({method = 'GET', path = 'api/v1/cluster' }, function(req) 
+              pico.httpd:route({method = 'GET', path = 'api/v1/cluster' }, function(req)
               local auth_header = req.headers['authorization'] or ''
               return handler(auth_header)
         end)"#,
@@ -416,6 +416,22 @@ fn start_http_server(
     .map_err(|err| {
         Error::other(format!(
             "failed to add route `/api/v1/cluster` to http server: {err}",
+        ))
+    })?;
+
+    lua.exec_with(
+        r#"
+              local handler = ...
+              pico.httpd:route({method = 'GET', path = 'api/v1/config' }, function(req)
+              return handler()
+        end)"#,
+        tlua::Function::new(|| -> _ {
+            http_server::wrap_api_result!(http_server::http_api_config())
+        }),
+    )
+    .map_err(|err| {
+        Error::other(format!(
+            "failed to add route `/api/v1/config` to http server: {err}",
         ))
     })?;
 
@@ -478,6 +494,7 @@ fn start_webui() {
             if filename == 'index.html' then
                 pico.httpd:route({path = '/', method = 'GET'}, handler);
                 pico.httpd:route({path = '/nodes*path', method = 'GET'}, handler);
+                pico.httpd:route({path = '/login*path', method = 'GET'}, handler);
             end
             pico.httpd:route({path = '/' .. filename, method = 'GET'}, handler);
         end",

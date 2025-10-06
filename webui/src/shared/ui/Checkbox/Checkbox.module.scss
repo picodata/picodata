@@ -1,0 +1,91 @@
+@import 'styles/vars';
+@import 'styles/mixins';
+
+.container {
+  position: relative;
+  display: inline-flex;
+  text-decoration: none;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  flex: 0 0 auto;
+  touch-action: none;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+
+  gap: 16px;
+
+  &:disabled {
+    cursor: initial;
+  }
+}
+
+.content {
+  color: $colorTextBlack;
+  user-select: none;
+}
+
+.check {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  display: block;
+  width: 16px;
+  height: 16px;
+  stroke: $colorBgLightBeige;
+  pointer-events: none;
+}
+
+.input {
+  width: 24px;
+  height: 24px;
+
+  outline: none !important;
+  appearance: none;
+  border: 1px solid $colorPrimary;
+  border-radius: 4px;
+  transition: border-width 100ms ease;
+
+  &:focus {
+    border-width: 2px;
+  }
+
+  &:hover, &:focus {
+    border-color: $colorPrimaryHover;
+  }
+
+  &:active {
+    border-color: $colorPrimarySelected;
+  }
+
+  &:disabled {
+    border-color: $colorDisabled;
+  }
+
+  &:checked {
+    background-color: $colorPrimary;
+  }
+
+  &:checked:hover, &:checked:focus {
+    background-color: $colorPrimaryHover;
+  }
+
+  &:checked:active {
+    background-color: $colorPrimarySelected;
+  }
+
+  &:checked:disabled {
+    background-color: $colorDisabled;
+  }
+
+  &:checked + .check {
+    stroke: $colorBgWhite;
+  }
+
+  &:checked:disabled + .check {
+    stroke: $colorIconDisabled;
+  }
+}

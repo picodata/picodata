@@ -9,9 +9,10 @@
     <link rel="preload" href="/fonts/montserrat/latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/montserrat/latin-ext.woff2" as="font" type="font/woff2" crossorigin />
     <title>Picodata</title>
+    <script>window.appConfig=fetch('/api/v1/config',{priority:"high"}).then(r=>r.json())</script>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="/src/main.tsx" async></script>
   </body>
 </html>

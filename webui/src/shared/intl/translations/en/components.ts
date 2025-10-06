@@ -20,4 +20,5 @@ export const components = {
   infoNoData: {
     label: "No Data",
   },
+  signout: "Sign out",
 };

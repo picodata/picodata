@@ -15,6 +15,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Fix eliminate erroneous ER_READONLY message in logs when executing TRUNCATE on
   global tables sometimes (See also https://git.picodata.io/core/picodata/-/issues/2274).
 
+### WebUI
+- Login form and simple session control
 
 ## [25.4.1] - 2025-10-03
 

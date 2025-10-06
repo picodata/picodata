@@ -154,7 +154,7 @@
 
   @include animate(background-color);
 
-  &:hover {
+  &:hover, &:focus {
     background-color: $colorPrimaryHover;
   }
 
@@ -174,7 +174,7 @@
     color: $colorTextBlack;
   }
 
-  &:hover {
+  &:hover, &:focus {
     background-color: $colorSecondaryHover;
   }
 

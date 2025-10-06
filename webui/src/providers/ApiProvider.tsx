@@ -8,9 +8,9 @@ type ApiProviderProps = {
 };
 
 export const ApiProvider: React.FC<ApiProviderProps> = (props) => {
-  const { children } = props;
-
   return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      {props.children}
+    </QueryClientProvider>
   );
 };

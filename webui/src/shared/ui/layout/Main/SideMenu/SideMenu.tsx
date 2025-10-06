@@ -6,7 +6,7 @@ import { z } from "zod";
 import { BurgerIcon } from "shared/icons/BurgerIcon";
 import { useOutsideClickEvent } from "shared/react/hooks/useOutsideClickEvent";
 import { InstancesIcon } from "shared/icons/navLinks/InstancesIcon";
-import { URL_CONFIG } from "shared/router/config";
+import { Routes } from "shared/router/config";
 import { useLsState } from "shared/localStorage/hooks/useLsState";
 import { useTranslation } from "shared/intl";
 
@@ -30,7 +30,7 @@ export const SideMenu = () => {
 
   const navLinks = [
     {
-      to: URL_CONFIG.NODES.absolutePath,
+      to: Routes.NODES,
       label: sideMenuTranslations.navLinks.instances.label,
       icon: <InstancesIcon className={styles.icon} />,
     },
