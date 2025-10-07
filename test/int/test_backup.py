@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import pytest
+import shutil
 from conftest import (
     Cluster,
     CommandFailed,
@@ -10,6 +11,29 @@ from conftest import (
     log_crawler,
 )
 from datetime import datetime, timezone
+
+
+def create_share_dir_in_tmp(cluster: Cluster):
+    """
+    Copy shared_dir contents to cluster's temporary directory to enable hardlinking.
+
+    The shared_dir is located on a different device/filesystem than the cluster
+    instance, which prevents hardlinking and results in slow cross-device copies.
+    By copying files to the cluster's data_dir (in /tmp) first, subsequent
+    operations can use fast hardlinks instead of expensive file copies,
+    significantly speeding up CI execution.
+
+    Args:
+        cluster: Cluster instance whose data_dir will receive the copied files
+
+    Returns:
+        Path to the new shared directory in cluster's temporary space
+    """
+    original_shared_dir = cluster.share_dir
+    assert original_shared_dir is not None, "shared_dir must be set"
+    shared_dir = os.path.join(cluster.data_dir, "shared")
+    shutil.copytree(original_shared_dir, shared_dir, dirs_exist_ok=True)
+    return shared_dir
 
 
 def backup_folder_name_from_timestamp(ts: int):
@@ -50,8 +74,10 @@ def get_backup_timestamp_finished(i: Instance):
 
 
 def test_backup_basic_restore_sharded_table(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
 
     i1, *_ = cluster.wait_online()
 
@@ -84,8 +110,10 @@ def test_backup_basic_restore_sharded_table(cluster: Cluster):
 
 
 def test_backup_basic_restore_global_table(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
 
     i1, *_ = cluster.wait_online()
 
@@ -118,8 +146,10 @@ def test_backup_basic_restore_global_table(cluster: Cluster):
 
 
 def test_backup_restore_table_not_dropped(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
 
     i1, *_ = cluster.wait_online()
 
@@ -153,8 +183,10 @@ def test_backup_restore_table_not_dropped(cluster: Cluster):
 
 
 def _test_backup_restore_big_cluster(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=6, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=3)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=3, share_dir_path=shared_dir)
 
     i1, *_ = cluster.wait_online()
 
@@ -187,10 +219,11 @@ def _test_backup_restore_big_cluster(cluster: Cluster):
         assert [data] not in dql
 
 
-@pytest.mark.xfail(reason="flaky, will be fixed ASAP")
 def test_backup_double_round_trip_no_data(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
 
     i1, *_ = cluster.wait_online()
 
@@ -211,8 +244,10 @@ def test_backup_double_round_trip_no_data(cluster: Cluster):
 
 
 def test_backup_double_round_trip(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
 
     i1, *_ = cluster.wait_online()
 
@@ -251,8 +286,10 @@ def test_backup_double_round_trip(cluster: Cluster):
 
 
 def test_backup_abort_is_called(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
 
     i1, *_ = cluster.wait_online()
 
@@ -280,10 +317,11 @@ def test_backup_abort_is_called(cluster: Cluster):
     lc.wait_matched(timeout=30)
 
 
-@pytest.mark.xfail(reason="flaky, will be fixed ASAP")
 def test_backup_enables_read_only_on_prepare_sharded(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
 
     i1, *_ = cluster.wait_online()
 
@@ -315,10 +353,11 @@ def test_backup_enables_read_only_on_prepare_sharded(cluster: Cluster):
     assert dml["row_count"] == 1
 
 
-@pytest.mark.xfail(reason="flaky, will be fixed ASAP")
 def test_backup_enables_read_only_on_prepare_global(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
 
     i1, *_ = cluster.wait_online()
 
@@ -354,10 +393,11 @@ def test_backup_enables_read_only_on_prepare_global(cluster: Cluster):
     assert dml["row_count"] == 1
 
 
-@pytest.mark.xfail(reason="flaky, will be fixed ASAP")
 def test_backup_disables_read_only_mode_on_abort(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
 
     i1, *_ = cluster.wait_online()
 
@@ -393,12 +433,13 @@ def test_backup_disables_read_only_mode_on_abort(cluster: Cluster):
     assert dml["row_count"] == 1
 
 
-@pytest.mark.xfail(reason="flaky, will be fixed ASAP")
 def test_backup_saves_cookie(cluster: Cluster):
     # Deploy cluster with custom password.
     password = "MyPassword"
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False, service_password=password)
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
 
     i1, *_ = cluster.wait_online()
 
@@ -456,8 +497,10 @@ def test_backup_saves_share_dir(cluster: Cluster):
 # TODO: For some reason _pico_property is not updated with LastBackupTimestamp
 #       on i1 when it's online again (flaky?).
 def _test_backup_executes_correctly_on_instance_termination(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=1)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=1, share_dir_path=shared_dir)
 
     i1, i2 = cluster.wait_online()
 
@@ -495,13 +538,14 @@ def _test_backup_executes_correctly_on_instance_termination(cluster: Cluster):
         assert [data] in dql
 
 
-@pytest.mark.xfail(reason="flaky, will be fixed ASAP")
 def test_backup_is_failing_with_timeout_when_replica_is_terminated(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     i1 = cluster.add_instance(replicaset_name="r1", wait_online=False)
     i2 = cluster.add_instance(replicaset_name="r2", wait_online=False)
     i3 = cluster.add_instance(replicaset_name="r2", wait_online=False)
+    cluster.set_share_dir(shared_dir)
 
-    cluster.set_unique_configs_for_instances()
+    cluster.set_unique_configs_for_instances(share_dir_path=shared_dir)
 
     for i in [i1, i2, i3]:
         i.start()
@@ -532,8 +576,10 @@ def test_backup_is_failing_with_timeout_when_replica_is_terminated(cluster: Clus
 #       Seems like DdlPrepare is compacted for the moment i2 becames master?
 def _test_backup_makes_replica_read_only_on_master_down(cluster: Cluster):
     # i1 -- master, i2 -- replica.
+    shared_dir = create_share_dir_in_tmp(cluster)
     i1, i2 = cluster.deploy(instance_count=2, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
 
     for i in [i1, i2]:
         i.start()
@@ -575,10 +621,11 @@ def _test_backup_makes_replica_read_only_on_master_down(cluster: Cluster):
         i2.sql(f"insert into {sharded_table_name} values (1)")
 
 
-@pytest.mark.xfail(reason="flaky, will be fixed ASAP")
 def test_backup_is_using_hardlinks(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     i1, *_ = cluster.deploy(instance_count=2, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
     i1, *_ = cluster.wait_online()
 
     cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
@@ -632,8 +679,10 @@ def test_backup_is_failing_when_config_file_is_missing(cluster: Cluster):
 def test_backup_removes_partially_created_dir_on_abort(cluster: Cluster):
     # Deploy cluster.
     # i1 -- master, i2 -- replica.
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
 
     i1, i2 = cluster.wait_online()
 
@@ -677,14 +726,17 @@ def test_backup_removes_partially_created_dir_on_abort(cluster: Cluster):
     assert not os.path.isdir(backup_dir), "Backup directory should be removed on i1"
 
 
-@pytest.mark.xfail(reason="flaky, will be fixed ASAP")
 def test_backup_does_not_fail_when_backup_retries(cluster: Cluster):
     # Deploy cluster.
     # i1 -- master, i2 -- replica.
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
 
     i1, i2 = cluster.wait_online()
+
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
 
     # Pause BACKUP application on replica.
     # It's stopped right after data files (like .snap files are moved).
@@ -727,10 +779,11 @@ def test_backup_does_not_fail_when_backup_retries(cluster: Cluster):
     assert os.path.isfile(config_path_i1)
 
 
-@pytest.mark.xfail(reason="flaky, will be fixed ASAP")
 def test_backup_works_with_vinyl(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
     i1, i2 = cluster.wait_online()
 
     # Create vinyl table.
@@ -758,8 +811,10 @@ def test_backup_works_with_vinyl(cluster: Cluster):
 
 
 def test_backup_raises_schema_version(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
     i1, i2 = cluster.wait_online()
 
     # At cluster boot schema version is 3.
@@ -784,10 +839,11 @@ def test_backup_raises_schema_version(cluster: Cluster):
     assert i2.next_schema_version() == 5
 
 
-@pytest.mark.xfail(reason="flaky, will be fixed ASAP")
 def test_backup_consecutive_ddls_are_not_broken_after_restore(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
 
     i1, *_ = cluster.wait_online()
 
@@ -809,10 +865,11 @@ def test_backup_consecutive_ddls_are_not_broken_after_restore(cluster: Cluster):
     assert ddl["row_count"] == 1
 
 
-@pytest.mark.xfail(reason="flaky, will be fixed ASAP")
 def test_backup_does_not_break_new_replicaset_ddl_catching_up_with_restore(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
 
     i1, *_ = cluster.wait_online()
 
@@ -847,6 +904,7 @@ def test_backup_does_not_break_new_replicaset_ddl_catching_up_with_restore(clust
     # Add new replicaset to the cluster.
     i3 = cluster.add_instance(wait_online=False, init_replication_factor=2)
     i4 = cluster.add_instance(wait_online=False, init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
     # Wait until new instances are online.
     i3.start()
     i4.start()
@@ -872,10 +930,11 @@ def test_backup_does_not_break_new_replicaset_ddl_catching_up_with_restore(clust
     assert ddl["row_count"] == 1
 
 
-@pytest.mark.xfail(reason="flaky, will be fixed ASAP")
 def test_backup_does_not_break_new_replicaset_ddl_catching_up_no_restore(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
 
     i1, *_ = cluster.wait_online()
 
@@ -901,6 +960,7 @@ def test_backup_does_not_break_new_replicaset_ddl_catching_up_no_restore(cluster
     # Add new replicaset to the cluster.
     i3 = cluster.add_instance(wait_online=False)
     i4 = cluster.add_instance(wait_online=False)
+    cluster.set_share_dir(shared_dir)
     # Wait until new instances are online.
     i3.start()
     i4.start()
@@ -942,12 +1002,13 @@ def test_restore_dir_equal_to_instance_dir_cause_error(cluster: Cluster):
         cluster.restore(i1.instance_dir, is_absolute=True)
 
 
-@pytest.mark.xfail(reason="flaky, will be fixed ASAP")
 def test_restore_is_working_with_custom_config_name(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
+    cluster.set_share_dir(shared_dir)
 
     # Generate default configs named "picodata.yaml"
-    cluster.set_unique_configs_for_instances(init_replication_factor=2)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
 
     # Rename instances configs
     custom_config_name = "picodata_custom.my_ext"
@@ -973,8 +1034,10 @@ def test_restore_is_working_with_custom_config_name(cluster: Cluster):
 
 
 def test_restore_is_saving_the_single_snap_file(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=1, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=1)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=1, share_dir_path=shared_dir)
 
     i1, *_ = cluster.wait_online()
 
@@ -996,8 +1059,10 @@ def test_restore_is_saving_the_single_snap_file(cluster: Cluster):
 
 
 def test_restore_is_failing_when_config_file_is_missing(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=1, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=1)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=1, share_dir_path=shared_dir)
 
     i1, *_ = cluster.wait_online()
 
@@ -1018,8 +1083,10 @@ def test_restore_is_failing_when_config_file_is_missing(cluster: Cluster):
 
 
 def test_restore_is_failing_after_new_instance_is_added(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=1, wait_online=False)
-    cluster.set_unique_configs_for_instances(init_replication_factor=1)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=1, share_dir_path=shared_dir)
     i1, *_ = cluster.wait_online()
 
     cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
@@ -1033,6 +1100,7 @@ def test_restore_is_failing_after_new_instance_is_added(cluster: Cluster):
 
     # Add new instance.
     cluster.add_instance(wait_online=False)
+    cluster.set_share_dir(shared_dir)
 
     # Redeploy cluster.
     cluster.wait_online()
