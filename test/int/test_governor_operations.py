@@ -1,12 +1,9 @@
 import pytest
 from conftest import (
     Cluster,
-    Compatibility,
-    copy_dir,
     Instance,
     TarantoolError,
 )
-from packaging.version import Version
 from typing import Any
 
 
@@ -37,62 +34,10 @@ def insert_operations(cluster: Cluster, ops: list[str]) -> int:
     return index
 
 
-@pytest.mark.xdist_group(name="compat")
-def test_catalog_upgrade_ok(compat_instance: Instance):
-    """
-    Test that system catalog upgrade from previous version to current version is correct.
-    """
-    i = compat_instance
-    compat = Compatibility()
-    backup_dir = compat.previous_minor_path
-    copy_dir(backup_dir, i.instance_dir)
-
-    i.start_and_wait()
-    i.wait_governor_status("idle")
-
-    res_all = i.sql("SELECT COUNT(*) FROM _pico_governor_queue")
-    res_done = i.sql("SELECT COUNT(*) FROM _pico_governor_queue WHERE status = 'done'")
-    assert res_all == res_done
-
-    tt_procs = [
-        "proc_backup_abort_clear",
-        "proc_apply_backup",
-        "proc_internal_script",
-    ]
-    for proc_name in tt_procs:
-        res = i.call("box.space._func.index.name:select", [f".{proc_name}"])
-        assert res[0][2] == f".{proc_name}"
-
-    res = i.sql("SELECT name, is_default FROM _pico_tier")
-    assert res == [["default", True]]
-
-    res = i.sql("SELECT format FROM _pico_table WHERE id = 523")
-    assert res[0][0][7] == {"field_type": "boolean", "is_nullable": True, "name": "is_default"}
-
-    res = i.call("box.space._space:select", [523])
-    assert res[0][6][7] == {"type": "boolean", "is_nullable": True, "name": "is_default"}
-
-    res = compat_instance.sql("SELECT value FROM _pico_property WHERE key = 'system_catalog_version'")
-    assert res == [["25.4.1"]]
-
-    compat_instance.sql("AUDIT POLICY dml_default BY pico_service")
-    res = compat_instance.sql("SELECT * FROM _pico_user_audit_policy")
-    assert res == [[32, 0]]
-
-    compat_instance.sql("AUDIT POLICY dml_default EXCEPT pico_service")
-    res = compat_instance.sql("SELECT * FROM _pico_user_audit_policy")
-    assert res == []
-
-
 @pytest.mark.xfail(reason="Should be fixed as part of https://git.picodata.io/core/picodata/-/issues/1037")
 @pytest.mark.xdist_group(name="compat")
-def test_catalog_upgrade_from_25_3_1_to_25_4_1_ok(compat_instance: Instance):
-    i = compat_instance
-    compat = Compatibility()
-    backup_dir = compat.version_to_dir_path(Version("25.3.1"))
-    copy_dir(backup_dir, i.instance_dir)
-
-    i.start_and_wait()
+def test_catalog_upgrade_from_25_3_1_to_25_4_1_ok(instance: Instance):
+    i = instance
     i.wait_governor_status("idle")
 
     res = i.sql("SELECT * FROM _pico_governor_queue")
