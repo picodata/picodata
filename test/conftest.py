@@ -28,7 +28,6 @@ from typing import (
     Iterator,
     List,
     Literal,
-    NoReturn,
     Optional,
     Tuple,
     Type,
@@ -1728,7 +1727,51 @@ class Instance:
         return password
 
     def is_healthy(self) -> bool:
-        return self.current_state()["variant"] == "Online"
+        if self.current_state()["variant"] != "Online":
+            return False
+
+        res_all = self.sql("SELECT COUNT(*) FROM _pico_governor_queue")
+        res_done = self.sql("SELECT COUNT(*) FROM _pico_governor_queue WHERE status = 'done'")
+        if res_all != res_done:
+            return False
+
+        tt_procs = [
+            "proc_backup_abort_clear",
+            "proc_apply_backup",
+            "proc_internal_script",
+        ]
+        for proc_name in tt_procs:
+            res = self.call("box.space._func.index.name:select", [f".{proc_name}"])
+            if res[0][2] != f".{proc_name}":
+                return False
+
+        res = self.sql("SELECT name, is_default FROM _pico_tier")
+        if res != [["default", True]]:
+            return False
+
+        res = self.sql("SELECT format FROM _pico_table WHERE id = 523")
+        if res[0][0][7] != {"field_type": "boolean", "is_nullable": True, "name": "is_default"}:
+            return False
+
+        res = self.call("box.space._space:select", [523])
+        if res[0][6][7] != {"type": "boolean", "is_nullable": True, "name": "is_default"}:
+            return False
+
+        res = self.sql("SELECT value FROM _pico_property WHERE key = 'system_catalog_version'")
+        if res != [["25.4.1"]]:
+            return False
+
+        self.sql("AUDIT POLICY dml_default BY pico_service")
+        res = self.sql("SELECT * FROM _pico_user_audit_policy")
+        if res != [[32, 0]]:
+            return False
+
+        self.sql("AUDIT POLICY dml_default EXCEPT pico_service")
+        res = self.sql("SELECT * FROM _pico_user_audit_policy")
+        if res != []:
+            return False
+
+        return True
 
     def is_ceased(self) -> bool:
         try:
@@ -2904,20 +2947,6 @@ def second_cluster(binary_path_fixt, tmpdir, cluster_names, port_distributor):
     cluster.kill()
 
 
-@pytest.fixture(scope="class")
-def compat_cluster(binary_path_fixt, class_tmp_dir) -> Generator[Cluster, None, None]:
-    """Return a `Cluster` object capable of deploying backwards compatibility test clusters."""
-    cluster = Cluster(
-        runtime=binary_path_fixt,
-        id="demo",  # should be in sync with snapshot generation script
-        data_dir=class_tmp_dir,
-        base_host=BASE_HOST,  # should be in sync with snapshot generation script
-        port_distributor=PortDistributor(3301, 3303),  # should be in sync with snapshot generation script
-    )
-    yield cluster
-    cluster.kill()
-
-
 @pytest.fixture
 def unstarted_instance(
     cluster: Cluster, port_distributor: PortDistributor, pytestconfig
@@ -3210,153 +3239,6 @@ def copy_dir(src: Path, dst: Path, copy_socks: bool = False):
             shutil.copy2(source_item, dest_item)
 
 
-class Compatibility:
-    root: Path
-    git_repo: git.Repo
-    git_info: git.Git
-
-    all_tags: List[Version]
-    current_tag: Version
-    previous_minor_tag: Optional[Version] = None
-    previous_patch_tag: Optional[Version] = None
-
-    def __init__(self, root_path: Optional[Path] = None):
-        self.root = root_path or Path(os.getcwd())
-        self.git_repo = git.Repo(self.root)
-        self.git_info = git.Git(self.root)
-
-        self.all_tags = self._get_sorted_semver_tags()
-        self.current_tag = self._find_current_tag()
-
-    @property
-    def previous_minor_path(self) -> Path:
-        version = self._check_set_previous_minor_tag()
-        return self.version_to_dir_path(version)
-
-    @property
-    def previous_minor_version(self) -> Version:
-        return self._check_set_previous_minor_tag()
-
-    @property
-    def previous_patch_path(self) -> Path:
-        version = self._check_set_previous_patch_tag()
-        return self.version_to_dir_path(version)
-
-    @property
-    def previous_patch_version(self) -> Version:
-        return self._check_set_previous_patch_tag()
-
-    @property
-    def current_tag_version(self) -> Version:
-        return self.current_tag
-
-    @property
-    def current_tag_path(self) -> Path:
-        version = self.current_tag
-        return self.version_to_dir_path(version)
-
-    def version_to_dir_path(self, version: Version, skip_checks: bool = False) -> Path | NoReturn:
-        backup_path = Path(self.root) / "test" / "compat" / str(version)
-        if skip_checks:
-            return backup_path
-
-        if not backup_path.exists():
-            try:
-                backup_path.mkdir(parents=True)
-            except OSError as e:
-                pytest.fail(f"failed to create directory {backup_path}: {e}")
-
-            error = f"no backup instance directory for version {version} was found"
-            suggestion = f"new one was created at '{backup_path}' - fill it with backup data files"
-            pytest.fail(f"{error}\n{suggestion}")
-
-        if not any(backup_path.iterdir()):
-            error = f"backup instance directory for version {version} is empty"
-            suggestion = f"please fill '{backup_path}' with backup data files"
-            pytest.fail(f"{error}\n{suggestion}")
-
-        return backup_path
-
-    def _get_sorted_semver_tags(self) -> List[Version]:
-        raw_tags = self.git_repo.tags
-        if not raw_tags:
-            raise ValueError("no valid tags found in the repository")
-
-        valid_tags = []
-        for tag in raw_tags:
-            try:
-                version = Version(str(tag))
-                if version.major >= 25:  # from this version we started to support backwards compatibility
-                    valid_tags.append(version)
-            except ValueError:
-                continue
-
-        return sorted(valid_tags)
-
-    def _find_current_tag(self) -> Version:
-        dirty_version = self.git_info.describe()
-        version_parts = dirty_version.split("-")
-        clean_version = Version(version_parts[0])
-        return clean_version
-
-    def _check_set_previous_minor_tag(self) -> Version:
-        if self.previous_minor_tag is None:
-            self._find_previous_minor_tag()
-        assert self.previous_minor_tag
-        return self.previous_minor_tag
-
-    def _find_previous_minor_tag(self) -> None:
-        current_major = self.current_tag.major
-        current_minor = self.current_tag.minor
-
-        try:
-            current_index = self.all_tags.index(self.current_tag)
-        except ValueError:
-            pytest.fail(f"could not find current tag ({self.current_tag}) in list of tags")
-
-        # iterate backwards until we find a tag with a lower minor version
-        for i in reversed(range(current_index)):
-            tag = self.all_tags[i]
-            if tag.major == current_major and tag.minor < current_minor:
-                self.previous_minor_tag = tag
-                return
-
-        missing_previous_minor_version = f"{self.current_tag.major}.ANY<{self.current_tag.minor}.ANY"
-        raise ValueError(
-            f"no previous minor version ({missing_previous_minor_version}) to current ({self.current_tag}) was found"
-        )
-
-    def _check_set_previous_patch_tag(self) -> Version:
-        if self.previous_patch_tag is None:
-            self._find_previous_patch_tag()
-        assert self.previous_patch_tag
-        return self.previous_patch_tag
-
-    def _find_previous_patch_tag(self) -> None:
-        current_major = self.current_tag.major
-        current_minor = self.current_tag.minor
-        current_patch = self.current_tag.micro
-
-        try:
-            current_index = self.all_tags.index(self.current_tag)
-        except ValueError:
-            raise ValueError(f"could not find current tag ({self.current_tag}) in list of tags")
-
-        # iterate backwards until we find a tag with the same minor and a lower patch version
-        for i in reversed(range(current_index)):
-            tag = self.all_tags[i]
-            if tag.major == current_major and tag.minor == current_minor and tag.micro < current_patch:
-                self.previous_patch_tag = tag
-                return
-
-        missing_previous_patch_version = (
-            f"{self.current_tag.major}.{self.current_tag.minor}.ANY<{self.current_tag.micro}"
-        )
-        raise ValueError(
-            f"no previous patch version ({missing_previous_patch_version}) to current ({self.current_tag}) was found"
-        )
-
-
 @pytest.fixture
 def ldap_server(cluster: Cluster, port_distributor: PortDistributor) -> Generator[ldap.LdapServer, None, None]:
     server = ldap.configure_ldap_server(
@@ -3438,13 +3320,6 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
         issue.save()
 
     issue.discussions.create({"body": f"[AUTOMATIC COMMENT] Failed once again: {job_url}"})
-
-
-@pytest.fixture
-def compat_instance(compat_cluster: Cluster) -> Instance:
-    instance = compat_cluster.add_instance(wait_online=False)
-    os.makedirs(instance.instance_dir)
-    return instance
 
 
 class Repository:
