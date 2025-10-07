@@ -602,7 +602,7 @@ pub fn copy_file_hardlink_fallback(src: &PathBuf, dst: &PathBuf) -> traft::Resul
         Ok(_) => {}
         Err(e) if e.kind() == ErrorKind::CrossesDevices => {
             // Fall back to actual copy.
-            copy_file(src, dst)?;
+            return copy_file(src, dst);
         }
         Err(e) => {
             return Err(Error::other(format!(
