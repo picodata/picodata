@@ -2212,6 +2212,9 @@ cluster:
         rows = i.call("box.space.glob:select")
         assert rows == [[1, "foo"], [2, "bar"], [3, "kek"]]
 
+    error_message = "ER_READONLY: Can't modify data on a read-only instance"
+    lcs = [log_crawler(i, error_message) for i in (storage_1_1, storage_1_2)]
+
     leader.sql("TRUNCATE TABLE glob")
 
     latest_index = leader.raft_get_index()
@@ -2220,6 +2223,9 @@ cluster:
     for i in [leader, storage_1_1, storage_1_2]:
         rows = i.call("box.space.glob:select")
         assert rows == []
+
+    for lc in lcs:
+        assert not lc.matched
 
 
 def test_truncate_is_applied_from_snapshot_for_global_table(cluster: Cluster):
