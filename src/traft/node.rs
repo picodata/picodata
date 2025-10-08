@@ -1119,6 +1119,7 @@ impl NodeImpl {
                             &ddl,
                             v_pending,
                             true,
+                            self.topology_cache.my_tier_name(),
                         );
                         match res {
                             Err(rpc::ddl_apply::Error::Other(err)) => {
