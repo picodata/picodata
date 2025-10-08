@@ -166,7 +166,18 @@ pub fn apply_schema_change(
 
     match *ddl {
         Ddl::Backup { .. } => {
-            unreachable!("BACKUP should not be met under apply_schema_change call")
+            if !is_commit {
+                unreachable!("BACKUP should not be met under apply_schema_change call unless it's a catch up")
+            }
+            // TODO: See https://git.picodata.io/core/picodata/-/issues/2183.
+
+            // Backup is implemented in a different way compared to other DDL
+            // operations (because it's not really a DDL), governor calls
+            // `apply_backup` instead of `apply_schema_change`. We will only
+            // get here if a catching up instance will encounter a Ddl::Backup
+            // entry in the raft log after the operation was already applied, so
+            // we simply ignore the operation and just update the
+            // local_schema_version at the end.
         }
 
         Ddl::CreateTable { id, .. } => {

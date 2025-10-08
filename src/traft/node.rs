@@ -1152,12 +1152,6 @@ impl NodeImpl {
                         return SleepAndRetry(read_only(
                             "awaiting DDL results from master replica",
                         ));
-                    } else if matches!(ddl, Ddl::Backup { .. }) {
-                        // TODO: See https://git.picodata.io/core/picodata/-/issues/2183.
-
-                        // Backup should not be executed again when instance is catching up.
-                        // The only thing we need to do is to update the local_schema_version.
-                        set_local_schema_version(v_pending).expect("storage should not fail");
                     } else {
                         // Master applies schema change at this point.
                         // Note: Unlike RPC handler `proc_apply_schema_change`, there is no need
