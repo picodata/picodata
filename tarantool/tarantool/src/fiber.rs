@@ -2032,6 +2032,26 @@ impl Latch {
             None
         }
     }
+
+    /// Try to lock a latch. Waits timeout until the current fiber can gain access to the latch.
+    ///
+    /// Returns:
+    /// - `Some` - success
+    /// - `None` - the latch is locked.
+    ///
+    /// Panicking:
+    /// This function panics if the current tarantool executable doesn't support
+    /// `box_latch_lock_timeout` FFI function.
+    #[inline(always)]
+    pub fn lock_timeout(&self, timeout: Duration) -> Option<LatchGuard> {
+        if unsafe { ffi::box_latch_lock_timeout(self.inner, timeout.as_secs_f64()) } == 0 {
+            Some(LatchGuard {
+                latch_inner: self.inner,
+            })
+        } else {
+            None
+        }
+    }
 }
 
 impl Default for Latch {

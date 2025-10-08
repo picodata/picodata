@@ -38,6 +38,10 @@
 
 # Change Log
 
+# [10.1.0] Unreleased
+
+- Add lock_timeout in fiber::Mutex to wait no more than needed
+
 # [10.0.0] Oct 2 2025
 
 - Introduced `AuthMethod::ScramSha256` for a new auth method in Picodata.

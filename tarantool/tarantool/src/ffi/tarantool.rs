@@ -559,6 +559,14 @@ pub struct ipc_value {
 crate::define_dlsym_reloc! {
     pub fn ipc_value_new() -> *mut ipc_value;
     pub fn ipc_value_delete(msg: *mut ipc_msg);
+
+    /// Try to lock a latch. Return immediately if the latch is locked.
+    /// - `latch` a latch
+    ///
+    /// Returns:
+    /// - `0` - success
+    /// - `1` - the latch is locked.
+    pub fn box_latch_lock_timeout(latch: *mut Latch, timeout: ev_tstamp) -> c_int;
 }
 
 // Latch.

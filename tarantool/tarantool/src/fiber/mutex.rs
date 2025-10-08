@@ -131,6 +131,56 @@ impl<T: ?Sized> Mutex<T> {
         }
     }
 
+    /// Attempts to acquire this lock.
+    ///
+    /// If the lock could not be acquired at this timeout, then `None` is returned.
+    /// Otherwise, an RAII guard is returned. The lock will be unlocked when the
+    /// guard is dropped.
+    ///
+    /// This function does not yield.
+    ///
+    /// # Abortions
+    ///
+    /// This function might abort when called if the lock is already held by
+    /// the current fiber.
+    ///
+    /// # Panicking
+    ///
+    /// This function panics if the current tarantool executable doesn't support
+    /// `box_latch_lock_timeout` FFI function.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::rc::Rc;
+    /// use tarantool::fiber::{start_proc, mutex::Mutex};
+    /// use core::time::Duration;
+    ///
+    /// let mutex = Rc::new(Mutex::new(0));
+    /// let c_mutex = Rc::clone(&mutex);
+    ///
+    /// start_proc(move || {
+    ///     let mut lock = c_mutex.lock_timeout(Duration::from_millis(100));
+    ///     if let Some(ref mut mutex) = lock {
+    ///         **mutex = 10;
+    ///     } else {
+    ///         println!("lock_timeout failed");
+    ///     }
+    /// }).join();
+    /// assert_eq!(*mutex.lock(), 10);
+    /// ```
+    #[track_caller]
+    pub fn lock_timeout(&self, timeout: core::time::Duration) -> Option<MutexGuard<'_, T>> {
+        match self.latch.lock_timeout(timeout) {
+            Some(guard) => unsafe { Some(MutexGuard::new(self, guard)) },
+            None => {
+                #[cfg(debug_assertions)]
+                self.log_lock_location();
+                None
+            }
+        }
+    }
+
     /// Immediately drops the guard, and consequently unlocks the mutex.
     ///
     /// This function is equivalent to calling [`drop`] on the guard but is more
