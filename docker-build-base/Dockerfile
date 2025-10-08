@@ -12,6 +12,8 @@ RUN rm -f /etc/yum.repos.d/pgdg-redhat-all.repo \
     && dnf module -y enable nodejs:20 postgresql:16 \
     && curl --silent --location https://dl.yarnpkg.com/rpm/yarn.repo -o /etc/yum.repos.d/yarn.repo \
     && rpm --import https://dl.yarnpkg.com/rpm/pubkey.gpg \
+    && curl --silent --location https://download.picodata.io/tarantool-picodata/el/picodata.repo -o /etc/yum.repos.d/picodata.repo \
+    && rpm --import https://download.picodata.io/tarantool-picodata/picodata.gpg.key \
     && dnf install -y --nobest \
            bzip2-devel \
            cmake \
@@ -44,6 +46,7 @@ RUN rm -f /etc/yum.repos.d/pgdg-redhat-all.repo \
            yarn \
            zlib-devel \
            postgresql \
+           cpio \
     && ln -fs /usr/bin/python3 /usr/bin/python \
     && dnf clean all && \
     mkdir -p $(go env GOPATH)/bin && \
@@ -82,6 +85,11 @@ RUN set -e; \
     cd /bin; \
     curl -L -o glauth https://github.com/glauth/glauth/releases/download/v2.3.2/glauth-linux-amd64 && \
     chmod +x glauth
+
+# Install previous versions of Picodata. Used for rolling upgrade tests.
+# See more explanatory comments in the script itself.
+COPY tools/install_rolling_binaries.sh /usr/bin/install_rolling_binaries.sh
+RUN /usr/bin/install_rolling_binaries.sh
 
 # Timezone
 RUN ln -fs /usr/share/zoneinfo/Europe/Moscow /etc/localtime
