@@ -149,8 +149,10 @@ pub enum Error {
 /// The space and index definitions are extracted from picodata storage via
 /// `storage`.
 ///
-/// `is_commit` is `true` if schema change is being applied in response to a
-/// [`DdlCommit`] raft entry, else it's `false`.
+/// `is_commit` is
+/// - `false` when called from [`proc_apply_schema_change`] RPC by governor
+/// - `ture` when called from `handle_committed_normal_entry` in `raft_main_loop`
+///          when applying a [`DdlCommit`] raft entry
 ///
 /// [`DdlCommit`]: crate::traft::op::Op::DdlCommit
 pub fn apply_schema_change(
@@ -183,6 +185,8 @@ pub fn apply_schema_change(
                 crate::vshard::disable_rebalancer().map_err(Error::Other)?;
 
                 // Space is only dropped on commit.
+                // Don't change local_schema_version because the change will be
+                // appied later in raft_main_loop.
                 return Ok(());
             }
 
@@ -250,6 +254,8 @@ pub fn apply_schema_change(
 
         Ddl::DropProcedure { id, .. } => {
             if !is_commit {
+                // Don't change local_schema_version because the change will be
+                // appied later in raft_main_loop.
                 return Ok(());
             }
 
@@ -281,6 +287,8 @@ pub fn apply_schema_change(
             space_id, index_id, ..
         } => {
             if !is_commit {
+                // Don't change local_schema_version because the change will be
+                // appied later in raft_main_loop.
                 return Ok(());
             }
 
