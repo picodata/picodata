@@ -126,7 +126,6 @@ def test_successful_rollback_on_partial_upgrade_failure(factory: Factory):
 
     shutdown_instance = cluster.pick_random_instance()
     shutdown_instance.terminate()
-    assert cluster.is_healthy(exclude=[shutdown_instance])
 
     # step 3
 

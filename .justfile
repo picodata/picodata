@@ -20,6 +20,7 @@ CARGO_PROFILE := env("CARGO_PROFILE", "")
 CARGO_ENV := env("CARGO_ENV", "")
 LOCKED := "--locked"
 LOG_WARN := "PICODATA_LOG_LEVEL=warn"
+RUST_VERSION := env("RUST_VERSION", "1.85")
 
 #**************#
 # group: BUILD #
@@ -185,7 +186,7 @@ install DEST:
 [doc("install appropriate rust toolchain version")]
 toolchain:
 	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |\
-		sh -s -- -y --profile default --default-toolchain 1.85
+		sh -s -- -y --profile default --default-toolchain {{ RUST_VERSION }}
 
 [group("misc")]
 [doc("reset git submodules to initial state and update")]
@@ -202,3 +203,12 @@ tarantool-patch VERSION=env_var("VER_TNT"):
 [doc("patch tarantool version")]
 generate-snapshot:
 	poetry run python3 test/generate_snapshot.py
+
+[group("misc")]
+[doc("build base dockerfile")]
+build-base:
+	docker build \
+		-f docker-build-base/Dockerfile \
+		--build-arg TARANTOOL_VERSION=latest \
+		--build-arg RUST_VERSION={{ RUST_VERSION }} \
+		-t build_base .
