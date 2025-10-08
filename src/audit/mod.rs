@@ -334,15 +334,15 @@ tarantool::define_str_enum! {
 macro_rules! audit_kv(
     // Format using Display. Example: `key: %value`.
     ($key:ident : %$value:expr, $($rest:tt)*) => {
-        (slog::slog_kv!(stringify!($key) => %$value), $crate::audit_kv!($($rest)*))
+        (slog::kv!(stringify!($key) => %$value), $crate::audit_kv!($($rest)*))
     };
     // Format using Debug. Example: `key: ?value`.
     ($key:ident : ?$value:expr, $($rest:tt)*) => {
-        (slog::slog_kv!(stringify!($key) => ?$value), $crate::audit_kv!($($rest)*))
+        (slog::kv!(stringify!($key) => ?$value), $crate::audit_kv!($($rest)*))
     };
     // Substitute as is. Example: `key: value`.
     ($key:ident : $value:expr, $($rest:tt)*) => {
-        (slog::slog_kv!(stringify!($key) => $value), $crate::audit_kv!($($rest)*))
+        (slog::kv!(stringify!($key) => $value), $crate::audit_kv!($($rest)*))
     };
     () => { () };
 );
@@ -370,7 +370,7 @@ macro_rules! audit(
         $($aux_fields:tt)*
     ) => {
         if let Some(root) = $crate::audit::root() {
-            slog::slog_log!(
+            slog::log!(
                 // Boilerplate required by slog.
                 root, slog::Level::Info, "",
                 // The message itself.

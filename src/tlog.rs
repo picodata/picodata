@@ -116,7 +116,7 @@ macro_rules! tlog {
     ($lvl:ident, $($args:tt)*) => {{
         // Safety: always safe
         let logger = &$crate::tlog::root();
-        slog::slog_log!(logger, slog::Level::$lvl, "", $($args)*);
+        slog::log!(logger, slog::Level::$lvl, "", $($args)*);
     }}
 }
 
