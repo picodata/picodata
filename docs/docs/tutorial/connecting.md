@@ -185,7 +185,7 @@ psql postgres://admin:T0psecret@127.0.0.1:4327?sslmode=require
 
 См. также:
 
-- [Включение протокола SSL](../admin/ssl.md)
+- [Безопасность кластера](../admin/ssl.md)
 
 [`instance.pg.listen`]: ../reference/config.md#instance_admin_socket
 
