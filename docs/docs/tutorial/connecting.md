@@ -176,6 +176,16 @@ postgres://[user]:[password]@[host]:[port]/[database]?options=value1&key2=value2
 psql postgres://admin:T0psecret@127.0.0.1:4327
 ```
 
+Пример подключения с явным запросом безопасного режима:
+
+```shell
+psql postgres://admin:T0psecret@127.0.0.1:4327?sslmode=require
+```
+
+См. также:
+
+- [Безопасность кластера](../admin/ssl.md)
+
 [`instance.pg.listen`]: ../reference/config.md#instance_admin_socket
 
 В соответствии с доступными ему привилегиями, пользователь сможет

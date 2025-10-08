@@ -499,7 +499,7 @@ export PICODATA_FAILURE_DOMAIN=rack=12-90,server=srv_007,vm=rhel8
 Аналогичная команда:
 
 ```shell
-picodata run -c instance.iproto_tls='{"enabled": true, "cert_file": "tls/server.crt", "key_file": "tls/server.key", "ca_file": "tls/ca.crt"}'
+picodata run -c instance.iproto_tls.enabled=true -c instance.iproto_tls.cert_file=tls/server.crt -c instance.iproto_tls.key_file=tls/server.key -c instance.iproto_tls.ca_file=tls/ca.crt
 ```
 
 Режим mTLS настраивается глобально во всем кластере. Параметры
