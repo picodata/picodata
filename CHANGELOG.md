@@ -12,6 +12,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### Fixes
 - Fix compilation error on ARM architecture.
+- Fix eliminate erroneous ER_READONLY message in logs when executing TRUNCATE on
+  global tables sometimes (See also https://git.picodata.io/core/picodata/-/issues/2274).
 
 
 ## [25.3.5] - 2025-10-03
