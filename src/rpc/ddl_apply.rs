@@ -90,7 +90,9 @@ crate::define_rpc_request! {
         let ddl = storage.properties.pending_schema_change()?
             .ok_or_else(|| TraftError::other("pending schema change not found"))?;
 
-        let res = transaction(|| apply_schema_change(storage, &ddl, pending_schema_version, false));
+        let my_tier_name = node.topology_cache.my_tier_name();
+
+        let res = transaction(|| apply_schema_change(storage, &ddl, pending_schema_version, false, my_tier_name));
         match res {
             Ok(()) => Ok(Response::Ok),
             Err(TransactionError::RolledBack(Error::Aborted(err))) => {
@@ -160,6 +162,7 @@ pub fn apply_schema_change(
     ddl: &Ddl,
     version: u64,
     is_commit: bool,
+    my_tier_name: &str,
 ) -> Result<(), Error> {
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
 
@@ -224,22 +227,17 @@ pub fn apply_schema_change(
         }
 
         Ddl::TruncateTable { id, .. } => {
-            let space = storage
+            let table = storage
                 .pico_table
                 .get(id)
                 .map_err(|e| Error::Aborted(e.into()))?
                 .expect("failed to get space");
             // We have to skip truncate application in case it should be applied
             // only on a specific tier (case of sharded table).
-            let should_apply = match &space.distribution {
-                crate::schema::Distribution::Global => true,
-                crate::schema::Distribution::ShardedImplicitly { tier: tier_ddl, .. }
-                | crate::schema::Distribution::ShardedByField { tier: tier_ddl, .. } => {
-                    let node = node::global().map_err(|e| Error::Aborted(e.into()))?;
-                    let tier_node = node.topology_cache.my_tier_name();
-
-                    tier_node == tier_ddl.as_str()
-                }
+            let should_apply = if let Some(tier) = table.distribution.in_tier() {
+                tier == my_tier_name
+            } else {
+                table.distribution.is_global()
             };
 
             if should_apply {
