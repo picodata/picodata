@@ -1522,10 +1522,6 @@ impl QueryCache for RouterRuntimeMock {
     type Cache = LRUCache<SmolStr, Rc<Plan>>;
     type Mutex = RefCell<Self::Cache>;
 
-    fn clear_cache(&self) -> Result<(), SbroadError> {
-        self.ir_cache.lock().clear()
-    }
-
     fn cache(&self) -> &Self::Mutex {
         &self.ir_cache
     }

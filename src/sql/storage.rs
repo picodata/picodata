@@ -159,10 +159,6 @@ impl StorageCache for PicoStorageCache {
         }
         Ok(Some((ir, table_ids)))
     }
-
-    fn clear(&mut self) -> Result<(), SbroadError> {
-        self.cache.clear()
-    }
 }
 
 impl QueryCache for StorageRuntime {
@@ -171,10 +167,6 @@ impl QueryCache for StorageRuntime {
 
     fn cache(&self) -> &Self::Mutex {
         &self.cache
-    }
-
-    fn clear_cache(&self) -> Result<(), SbroadError> {
-        self.cache.lock().clear()
     }
 
     fn provides_versions(&self) -> bool {

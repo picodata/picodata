@@ -28,13 +28,6 @@ pub trait Cache<Key, Value> {
     /// # Errors
     /// - Internal error (should never happen).
     fn put(&mut self, key: Key, value: Value) -> Result<(), SbroadError>;
-
-    /// Clears the cache, eviction function is
-    /// applied to each element (in unspecified order)
-    ///
-    /// # Errors
-    /// - errors caused by eviction function
-    fn clear(&mut self) -> Result<(), SbroadError>;
 }
 
 pub struct LRUCache<Key, Value>
@@ -53,23 +46,6 @@ where
     #[must_use]
     pub fn capacity(&self) -> usize {
         self.lru.cap().into()
-    }
-
-    /// Empties the cache, `evict_fn` is applied
-    /// to every element in the cache in unspecified
-    /// order.
-    ///
-    ///
-    /// # Errors
-    /// - error on applying `evict_fn` to some value
-    pub fn clear(&mut self) -> Result<(), SbroadError> {
-        while let Some((k, mut v)) = self.lru.pop_lru() {
-            if let Some(ref f) = self.evict_fn {
-                f(&k, &mut v)?
-            }
-        }
-
-        Ok(())
     }
 
     pub fn adjust_capacity(&mut self, target_capacity: usize) -> Result<(), SbroadError> {
@@ -117,10 +93,6 @@ where
             }
         }
         Ok(())
-    }
-
-    fn clear(&mut self) -> Result<(), SbroadError> {
-        self.clear()
     }
 }
 

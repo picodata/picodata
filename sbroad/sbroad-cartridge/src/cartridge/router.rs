@@ -222,13 +222,6 @@ impl QueryCache for RouterRuntime {
         &self.ir_cache
     }
 
-    fn clear_cache(&self) -> Result<(), SbroadError>
-    where
-        Self: Sized,
-    {
-        self.ir_cache.lock().clear()
-    }
-
     fn provides_versions(&self) -> bool {
         false
     }
@@ -276,7 +269,7 @@ impl Router for RouterRuntime {
         plan: &mut ExecutionPlan,
         motion_node_id: &NodeId,
         buckets: &Buckets,
-        explain_data: Option<&mut String>
+        explain_data: Option<&mut String>,
     ) -> Result<VirtualTable, SbroadError> {
         materialize_motion(self, plan, *motion_node_id, buckets, explain_data)
     }
@@ -339,5 +332,10 @@ impl RouterRuntime {
 
     pub fn determine_bucket_id(&self, s: &[&Value]) -> u64 {
         bucket_id_by_tuple(s, self.bucket_count)
+    }
+
+    pub fn clear_cache(&mut self) -> Result<(), SbroadError> {
+        self.ir_cache = Mutex::new(LRUCache::new(DEFAULT_CAPACITY, None)?);
+        Ok(())
     }
 }

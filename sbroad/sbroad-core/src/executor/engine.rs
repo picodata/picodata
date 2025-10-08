@@ -181,12 +181,6 @@ pub trait StorageCache {
     /// has been changed, `None` is returned.
     #[allow(clippy::ptr_arg)]
     fn get(&mut self, plan_id: &SmolStr) -> Result<Option<(&Statement, &[NodeId])>, SbroadError>;
-
-    /// Clears the cache.
-    ///
-    /// # Errors
-    /// - internal errors from implementation
-    fn clear(&mut self) -> Result<(), SbroadError>;
 }
 
 pub type TableVersionMap = HashMap<SmolStr, u64>;
@@ -200,12 +194,6 @@ pub trait QueryCache {
     /// # Errors
     /// - Failed to get the cache.
     fn cache(&self) -> &Self::Mutex;
-
-    /// Clear the cache.
-    ///
-    /// # Errors
-    /// - Failed to clear the cache.
-    fn clear_cache(&self) -> Result<(), SbroadError>;
 
     /// `true` if cache can provide a schema version
     /// for given table. Only used for picodata,

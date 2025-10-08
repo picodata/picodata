@@ -56,10 +56,6 @@ impl StorageCache for CartridgeCache {
         };
         Ok(Some((stmt, table_ids.as_slice())))
     }
-
-    fn clear(&mut self) -> Result<(), SbroadError> {
-        self.0.clear()
-    }
 }
 
 impl QueryCache for StorageRuntime {
@@ -68,10 +64,6 @@ impl QueryCache for StorageRuntime {
 
     fn cache(&self) -> &Self::Mutex {
         &self.cache
-    }
-
-    fn clear_cache(&self) -> Result<(), SbroadError> {
-        self.cache.lock().clear()
     }
 
     fn provides_versions(&self) -> bool {

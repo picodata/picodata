@@ -293,10 +293,6 @@ impl Cache<SmolStr, Rc<Plan>> for PicoRouterCache {
         ROUTER_CACHE_STATEMENTS_ADDED_TOTAL.inc();
         Ok(())
     }
-
-    fn clear(&mut self) -> Result<(), SbroadError> {
-        self.inner.clear()
-    }
 }
 
 impl QueryCache for RouterRuntime {
@@ -305,10 +301,6 @@ impl QueryCache for RouterRuntime {
 
     fn cache(&self) -> &Self::Mutex {
         &self.ir_cache
-    }
-
-    fn clear_cache(&self) -> Result<(), SbroadError> {
-        self.ir_cache.lock().clear()
     }
 
     fn provides_versions(&self) -> bool {

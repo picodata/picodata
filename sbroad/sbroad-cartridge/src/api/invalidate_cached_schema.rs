@@ -5,7 +5,6 @@ use crate::{
     cartridge::ConfigurationProvider,
     utils::{wrap_proc_result, ProcResult},
 };
-use sbroad::executor::engine::QueryCache;
 
 /// Flush cached configuration in the Rust memory of the coordinator runtime.
 /// This function should be invoked in the Lua cartridge application with `apply_config()`.
@@ -14,7 +13,7 @@ fn invalidate_coordinator_cache() -> ProcResult<()> {
     wrap_proc_result(
         "invalidate_coordinator_cache".into(),
         COORDINATOR_ENGINE.with(|runtime| {
-            let runtime = runtime.lock();
+            let mut runtime = runtime.lock();
             runtime.clear_config().context("clear config")?;
             runtime.clear_cache().context("clear IR cache on router")
         }),
