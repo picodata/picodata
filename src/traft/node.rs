@@ -39,6 +39,7 @@ use crate::storage::schema::ddl_abort_on_master;
 use crate::storage::schema::ddl_meta_drop_routine;
 use crate::storage::schema::ddl_meta_drop_space;
 use crate::storage::schema::ddl_meta_space_update_operable;
+use crate::storage::schema::ddl_truncate_space_on_master;
 use crate::storage::snapshot::RaftSnapshot;
 use crate::storage::snapshot::SnapshotData;
 use crate::storage::space_by_id;
@@ -1143,12 +1144,7 @@ impl NodeImpl {
                         Info,
                         "Catching up from {v_local} to {v_pending} for {ddl:?}"
                     );
-                    if self.is_readonly() &&
-                        // Truncate on global tables is applied on all replicas
-                        // directly, because global tables are implemented as
-                        // tarantool local tables.
-                        !ddl.is_truncate_on_global_table(&self.storage)
-                    {
+                    if self.is_readonly() {
                         return SleepAndRetry(read_only(
                             "awaiting DDL results from master replica",
                         ));
@@ -1240,6 +1236,17 @@ impl NodeImpl {
                     }
 
                     Ddl::TruncateTable { id, initiator } => {
+                        // Truncate on global tables is applied on all replicas
+                        // directly, because global tables are implemented as
+                        // tarantool local tables.
+                        if ddl.is_truncate_on_global_table(&self.storage) {
+                            let abort_reason = ddl_truncate_space_on_master(id)
+                                .expect("truncating a local space shouldn't fail");
+                            if let Some(e) = abort_reason {
+                                crate::warn_or_panic!("global table truncate failed: {e}");
+                            }
+                        }
+
                         ddl_meta_space_update_operable(&self.storage, id, true)
                             .expect("storage shouldn't fail");
 
