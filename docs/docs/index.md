@@ -61,7 +61,7 @@ Picodata — это распределенная система промышле
 * [Мониторинг](admin/monitoring.md)
 * [Управление доступом](admin/access_control.md)
 * [Аутентификация с помощью LDAP/LDAPS](admin/ldap.md)
-* [Включение протокола SSL](admin/ssl.md)
+* [Безопасность кластера](admin/ssl.md)
 * [Использование журнала аудита](admin/audit_log.md)
 * [Рекомендации по сайзингу](admin/sizing.md)
 * [Настройка Systemd](admin/systemd.md)
