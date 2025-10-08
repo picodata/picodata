@@ -10,11 +10,20 @@ This document aims to describe a schema/contract for client-server sessions via 
 The document is a follow up on [a more general ADR about WebUI auth](./2025-09-04-webui-auth.md), and assumes implementation outcomes of either [Authentication Proposal 4](./2025-09-04-webui-auth.md#proposal-4-true-hybrid) or [Authentication Proposal 1.2](./2025-09-04-webui-auth.md#proposal-12-auth-token--infinite-refresh-token).
 
 # Desired outcome
+There are 2 distinct cases to be supported:
+1. WebUI is behind authentication.
+2. WebUI authentication is disabled.
+
+For case 1:
 1. WebUI is behind authentication.
 2. WebUI authentication is based on existing DB users.
 3. Everybody with `LOGIN` grant are able to view UI.
 4. Users do not have to relogin too often.
 5. Authentication system naturally supports all of Picodata's auth types (including those unimplemented yet such as Kerberos).
+
+For case 2:
+1. WebUI is freely accessible, just like before the JWT auth implementation.
+2. Everybody is able to view WebUI regardless of their previous authentication status.
 
 # Proposed solution:
 Implement a JWT system to support authentication.\
@@ -188,6 +197,30 @@ The tokens shall be generated randomly (16 random characters) by the authenticat
 Token is always generated automatically and no config or CLI parameters are provided to setup it in any way. The only manual actions possible are to change it via SQL.
 
 
+## Disabling authentication
+
+For all existing clusters, auth is disabled by default to allow backwards compatibility.
+
+For new clusters, auth is enabled by default to prioritize security.
+
+To enable auth, the following SQL command needs to be executed:
+`ALTER SYSTEM RESET jwt_secret;`
+
+To disable auth, a different command is needed:
+`ALTER SYSTEM SET jwt_secret = '';`
+
+Here, we use the state of the `jwt_secret` property to control how auth works.
+When the value is an empty string (`''`),
+the server works in a way that is compatible with the previous implementation:
+ignores the `authorization` header and allows all typical requests from WebUI.
+
+For WebUI to react accordingly, it needs a way to reconfigure itself based on the state of `jwt_secret` property:
+- When auth is disabled, the login form should be inaccessible for users, while all other pages are accessible.
+- When auth is enabled, the login form is the only accessible page, until the user gets authenticated - then WebUI should allow access to all pages except the login form.
+
+To facilitate this, implement a simple endpoint that returns the configuration for WebUI.
+This configuration can be expanded later, but for now, it should only contain a single property with information about the state of the authentication feature.
+
 ## Deliverables
 
 ### Required endpoints
@@ -224,6 +257,11 @@ The following API endpoints are required for the process to work:
         - `error`: error description token, as per the [error type](#error-types).
         - `errorMessage`: error message with any technical details that have no need to be relayed to the end user; mainly for debugging purposes.
 
+- `GET /config` - returns current WebUI configuration.
+    - Response 200 JSON fields:
+        - `isAuthEnabled`: boolean - reflects the state of `jwt_secret`:\
+        `false` if empty and auth should be disabled, `true` otherwise
+
 ### Error types
 
 All errors are to be sent as description tokens.\
@@ -232,6 +270,7 @@ This is required for WebUI to properly localize the error message for different 
 Required error types:
 - `wrongCredentials` - the user has submitted a wrong token or login credentials, the request cannot be fulfilled;
 - `sessionExpired` - user's token has expired, and they need to be redirected back to the login form.
+- `authDisabled` - user tried to log in, but auth is disabled, so it's impossible to generate valid tokens.
 
 Any additional situational error types should follow the same `camelCase` format.
 
