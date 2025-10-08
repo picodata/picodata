@@ -4,7 +4,7 @@
 
 Доступные коннекторы:
 
-- [Java](connectors/java.md)
+<!-- - [Java](connectors/java.md) -->
 - [JDBC](connectors/jdbc.md)
 - [Go](connectors/go.md)
 

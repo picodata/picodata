@@ -20,6 +20,7 @@ not_in_nav: |
   reference/api.md
   architecture/clusterwide_schema.md
   dev/connectors_index.md
+  dev/connectors/java.md
   plugins/argus.md
   plugins/svarog.md
   plugins/task.md
@@ -151,7 +152,6 @@ nav:
   - Разработка:
     - dev/developer_tools.md
     - Внешние коннекторы:
-      - dev/connectors/java.md
       - dev/connectors/jdbc.md
       - dev/connectors/go.md
     - Работа с плагинами:
