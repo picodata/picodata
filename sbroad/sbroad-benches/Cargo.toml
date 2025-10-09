@@ -2,9 +2,7 @@
 name = "sbroad-benches"
 version = "0.1.0"
 rust-version = "1.85"
-authors = [
-    "Picodata"
-]
+authors = ["Picodata"]
 license-file = "../LICENSE"
 edition = "2021"
 
@@ -15,23 +13,21 @@ sbroad-core = { path = "../sbroad-core", version = "0.1", features = ["mock"] }
 pest = "2.0"
 pest_derive = "2.0"
 bincode = "1.3"
-
-[dependencies.tarantool]
-git = "https://git.picodata.io/picodata/picodata/tarantool-module.git"
-version = ">=4.0"
-features = ["picodata"]
+tarantool = { path = "../../tarantool/tarantool", features = ["picodata"] }
 
 [dev-dependencies]
 clap = { version = "4", features = ["default"] }
 criterion = "0.5.1"
 rand = "0.8"
-
-[dev-dependencies.tarantool]
-git = "https://git.picodata.io/picodata/picodata/tarantool-module.git"
-version = ">=4.0"
-features = ["picodata", "standalone_decimal"]
+tarantool = { path = "../../tarantool/tarantool", features = [
+  "picodata",
+  "standalone_decimal",
+] }
 
 [[bench]]
 name = "parse"
 harness = false
 
+[features]
+picodata = ["tarantool/picodata"]
+standalone_decimal = ["tarantool/standalone_decimal"]

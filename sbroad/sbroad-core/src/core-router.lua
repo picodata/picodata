@@ -38,14 +38,8 @@ local function prepare_args(args, func_name)
 end
 
 local function get_router_for_tier(tier_name)
-    local get_router, postfix
-    if helper.pico_compat() then
-        get_router = _G.pico.get_router_for_tier
-        postfix = "pico"
-    else
-        get_router = _G.sbroad.get_router_for_tier
-        postfix = "sbroad"
-    end
+    local get_router = _G.pico.get_router_for_tier
+    local postfix = "pico"
     if get_router == nil then
         local err_msg = string.format(
             "can't get vshard router for tier %s. Please, define function\
@@ -130,8 +124,7 @@ function ResultHandler:process_res(res, map_format)
     len, data = msgpack.decode_array_header(data, res:size())
     -- When we use replicaset:callrw, result maybe wrapped in
     -- additional tuple if multireturn is not supported by this
-    -- tarantool version. In particular, this happens in
-    -- cartridge integration tests
+    -- tarantool version.
     if not map_format and not helper.is_iproto_multireturn_supported() then
         len, data = msgpack.decode_array_header(data, res:size())
     end

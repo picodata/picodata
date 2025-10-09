@@ -1473,8 +1473,6 @@ fn front_sql_join() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    // TODO: For the  hash function in the cartrisge runtime we can apply
-    //       `motion [policy: segment([ref("id")])]` instead of the `motion [policy: full]`.
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t1"."product_code"::string -> "product_code", "t1"."product_units"::bool -> "product_units")
         join on ("t1"."identification_number"::int = "t2"."id"::decimal) and (not ("t2"."id"::decimal is null))

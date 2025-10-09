@@ -42,12 +42,7 @@ end
 
 
 local function init()
-  -- cartridge
-  local module = 'sbroad'
-  if helper.pico_compat() then
-    -- picodata
-    module = 'pico'
-  end
+  local module = 'pico'
 
   if rawget(_G, module) == nil then
     error('buitins must be initialized after app module was set!')

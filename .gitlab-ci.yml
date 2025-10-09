@@ -19,7 +19,6 @@ stages:
   - test
   - pack
   - docker
-  - build-stress-image
   - stress-test
   - deploy
 
@@ -199,22 +198,6 @@ build-docs-image:
     DOCKERFILE: docker-build-base/docs.Dockerfile
     DESTINATION: ${BASE_IMAGE_DOCS}:${BASE_IMAGE_TAG}
 
-build-stress-image:
-  stage: build-stress-image
-  <<: *kaniko_image
-  rules:
-    - <<: *if-build-base-changes-on-dev-branch
-      variables:
-        BASE_IMAGE_TAG: ${PARENT_CI_COMMIT_SHA}
-      needs: ["build-base-image"]
-
-    - when: manual
-      allow_failure: true
-  variables:
-    GIT_SUBMODULE_STRATEGY: recursive
-    DOCKERFILE: docker-build-base/stress.Dockerfile
-    DESTINATION: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
-
 # When on master, the job creates cache containing fully fetched repository in working directory.
 # The cache includes submodules. This will happen once
 # per day or more. In dev branches, the cache is taken from the master by
@@ -228,13 +211,13 @@ clone:
   rules:
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
       variables:
-     # $MAIN_BRANCH should use a push cache policy so that master doesn't pull
-     # the previous master. This is important because there may be uncommitted
-     # changes when using git fetch -uf
+        # $MAIN_BRANCH should use a push cache policy so that master doesn't pull
+        # the previous master. This is important because there may be uncommitted
+        # changes when using git fetch -uf
         CACHE_POLICY: push
-     # dev branches should use a pull-push cache policy so that tests have the
-     # corresponding dev branch that we fetched during the clone step. This is
-     # important because tests should check the dev branch, not the master.
+      # dev branches should use a pull-push cache policy so that tests have the
+      # corresponding dev branch that we fetched during the clone step. This is
+      # important because tests should check the dev branch, not the master.
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
@@ -390,7 +373,6 @@ lint:
     - *poetry-install
     - make lint
     - pushd webui && yarn lint; popd
-    - pushd sbroad && make check
 
     # Show sccache statistics
     - |
@@ -649,7 +631,7 @@ helm-image:
 gamayun-prepare:
   extends: .test
   variables:
-      GIT_STRATEGY: clone
+    GIT_STRATEGY: clone
   when: manual
   rules:
     - <<: *if-build-base-changes-on-dev-branch
@@ -668,7 +650,7 @@ gamayun-prepare:
 gamayun-run:
   extends: .test
   variables:
-      GIT_STRATEGY: clone
+    GIT_STRATEGY: clone
   needs: ["gamayun-prepare"]
   tags:
     - picodata-shell
@@ -887,115 +869,6 @@ audit:
     - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
   script:
     - make audit
-
-stress_tests:
-  parallel:
-    matrix:
-      - STRESS_TEST:
-          - projection
-          - projection_wide
-          - groupby
-          - insert
-  tags:
-    - docker-k8s
-  rules:
-    - if: $CI_PIPELINE_SOURCE != "schedule"
-      allow_failure: true
-  variables:
-    TNT_HOST: tarantool
-    STRESS_TEST: insert
-    KUBERNETES_CPU_REQUEST: 6
-    KUBERNETES_MEMORY_REQUEST: "6Gi"
-  services:
-    - name: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
-      alias: tarantool
-      pull_policy: always
-  image: docker-public.binary.picodata.io/k6_tnt:latest
-  stage: stress-test
-  script:
-    - echo "STRESS_TEST=${STRESS_TEST}"
-    # wait while tnt cluster is started
-    - ./tools/check_tnt.sh
-    - mkdir -p sbroad/sbroad-cartridge/stress-test/$CI_COMMIT_BRANCH/${STRESS_TEST}/
-    - k6 run -u 10 -d 1m -e HOST=${TNT_HOST} sbroad/sbroad-cartridge/stress-test/${STRESS_TEST}/k6.js --summary-export sbroad/sbroad-cartridge/stress-test/$CI_COMMIT_BRANCH/${STRESS_TEST}/k6_summary.json
-  needs: [build-stress-image]
-  artifacts:
-    paths:
-      - sbroad/sbroad-cartridge/stress-test/$CI_COMMIT_BRANCH/${STRESS_TEST}/k6_summary.json
-    expire_in: 1 hour
-    when: always
-
-store-stress-results-for-main:
-  rules:
-    - if: ($CI_COMMIT_BRANCH ==  $CI_DEFAULT_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
-  stage: stress-test
-  script:
-    - |
-      tar -czvf sbroad-main-test-results.tgz -C sbroad/sbroad-cartridge/stress-test/ .
-      curl -f -H "Authorization: Basic $RAW_AUTH_RW" --upload-file sbroad-main-test-results.tgz $RAW_REGISTRY/sbroad-stress-tests/
-  needs:
-    - "stress_tests: [projection]"
-    - "stress_tests: [projection_wide]"
-    - "stress_tests: [groupby]"
-    - "stress_tests: [insert]"
-
-diff_stress-results:
-  stage: stress-test
-  rules:
-    - if: $CI_PIPELINE_SOURCE != "schedule"
-      when: manual
-      allow_failure: true
-  variables:
-    FARCH: "sbroad-main-test-results.tgz"
-  script:
-    - |
-      curl $RAW_REGISTRY/sbroad-stress-tests/$FARCH -o $FARCH
-      set -x
-      tar -xvf $FARCH -C sbroad/sbroad-cartridge/stress-test/
-      cd sbroad/sbroad-cartridge/stress-test/
-      find -name k6_summary.json
-      for D in $(find . -name k6_summary.json -exec sh -c "dirname {} | sed 's/.*\///g'" \; ); do
-        echo "Branch = $D"
-        if [ "$D" != "$MAIN_BRANCH" -a -f $MAIN_BRANCH/$D/k6_summary.json -a -f $CI_COMMIT_BRANCH/$D/k6_summary.json ]; then
-        tarantool compare.lua $MAIN_BRANCH/$D/k6_summary.json $CI_COMMIT_BRANCH/$D/k6_summary.json
-        elif [ "$D" == "$MAIN_BRANCH" ]; then
-          echo "skipped"
-        else
-          echo "Error: stress-test results not found!"; exit 2;
-        fi
-      done
-  needs:
-    - "stress_tests: [projection]"
-    - "stress_tests: [projection_wide]"
-    - "stress_tests: [groupby]"
-    - "stress_tests: [insert]"
-  artifacts:
-    paths:
-      - sbroad-cartridge/stress-test/**/**/k6_summary.json
-    expire_in: 1 week
-    when: always
-
-deploy-luarocks:
-  stage: deploy
-  needs: []
-  rules:
-    - if: $CI_COMMIT_TAG
-      when: manual
-  before_script:
-    - eval $(ssh-agent -s)
-    - echo "$DEPLOY_PROD_SSH_KEY" | base64 -d | ssh-add -
-    - |
-      if [ "$DEPLOY_PROD_SSH_KEY" == "" ]; then
-        echo "Error: Access to push in docker registry only for protected tag or branch!"
-        exit 1
-      fi
-  script:
-    - zip -r /tmp/sbroad.zip sbroad/
-    - cd sbroad
-    - make release_rock
-    - echo "Deploying luarocks..."
-    - scp -o stricthostkeychecking=no sbroad*rock luarocks@94.26.239.246:/data/nginx/www/packrepo/luarocks
-    - ssh -o stricthostkeychecking=no luarocks@94.26.239.246 "luarocks-admin make_manifest /data/nginx/www/packrepo/luarocks"
 
 clear-sccache:
   stage: test

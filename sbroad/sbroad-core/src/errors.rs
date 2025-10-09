@@ -32,8 +32,6 @@ pub enum Entity {
     Cache,
     /// corresponding to struct Chain
     Chain,
-    /// cartridge cluster schema
-    ClusterSchema,
     /// general variant
     Column,
     /// CTE
@@ -165,7 +163,6 @@ impl fmt::Display for Entity {
             Entity::Bytes => "bytes".to_smolstr(),
             Entity::Cache => "cache".to_smolstr(),
             Entity::Chain => "chain".to_smolstr(),
-            Entity::ClusterSchema => "cluster schema".to_smolstr(),
             Entity::Column => "column".to_smolstr(),
             Entity::Cte => "CTE".to_smolstr(),
             Entity::Ddl => "DDL".to_smolstr(),

@@ -1,29 +1,15 @@
 local compat = require('compat')
 local compat_mt = compat ~= nil and getmetatable(compat) or nil
 
---- Checks if building against picodata - mainly needed because stored procs should be used then.
-local function pico_compat()
-  return package.loaded["pico"] ~= nil
-end
-
 --- Make correct function name to be passed when executed via `proc_call_fn_name()`(see below).
 local function proc_fn_name(func_name)
-  if pico_compat() then
     return '.' .. func_name
-  else
-    return "sbroad.procs." .. func_name
-  end
 end
 
 --- Function that calls other local functions whose name supplied as argument.
---- Picodata relies on stored procs as for now, so it's `box.schema.func.call`,
---- whereas cartridge impl relies on custom caller impl based on `box.lib`.
+--- Picodata relies on stored procs as for now, so it's `box.schema.func.call`.
 local function proc_call_fn_name()
-    if pico_compat() then
-	    return 'box.schema.func.call'
-    else
-	    return 'sbroad.call_proc'
-    end
+	  return 'box.schema.func.call'
 end
 
 local function format_result(result)
@@ -95,7 +81,6 @@ end
 
 return {
     is_iproto_multireturn_supported = is_iproto_multireturn_supported,
-    pico_compat = pico_compat,
     proc_call_fn_name = proc_call_fn_name,
     proc_fn_name = proc_fn_name,
     vtable_limit_exceeded = vtable_limit_exceeded,

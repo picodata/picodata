@@ -229,8 +229,5 @@ publish-picodata-plugin:
 	cargo publish --dry-run -p picodata-plugin
 	cargo publish -p picodata-plugin
 
-build_cartridge_engine:
-	(cd sbroad; make build_cartridge_engine)
-
 install_release:
 	(cd sbroad; make install_release)

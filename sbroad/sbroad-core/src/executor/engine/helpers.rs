@@ -948,7 +948,7 @@ pub fn vtable_columns(plan: &Plan, top_id: NodeId) -> Result<Vec<Column>, Sbroad
     Ok(res)
 }
 
-/// Helper function reused for Cartridge/Picodata `materialize_values` method of Router.
+/// Helper function reused in the router trait method of the same name.
 ///
 /// # Errors
 /// - Types mismatch.

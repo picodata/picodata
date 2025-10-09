@@ -195,9 +195,7 @@ pub trait QueryCache {
     /// - Failed to get the cache.
     fn cache(&self) -> &Self::Mutex;
 
-    /// `true` if cache can provide a schema version
-    /// for given table. Only used for picodata,
-    /// cartridge does not need this.
+    /// `true` if cache can provide a schema version for given table.
     fn provides_versions(&self) -> bool;
 
     /// Return current schema version of given table.

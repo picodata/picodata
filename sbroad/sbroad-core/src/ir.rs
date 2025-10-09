@@ -666,9 +666,8 @@ pub struct Plan {
     /// of the pipeline.
     #[serde(skip)]
     pub context: Option<RefCell<BuildContext>>,
-    /// Any sharded table must belongs to a single tier.
-    /// Option::None is for: global tables or when the concept of tiers
-    /// is not applicable - for example cartridge case(vshard.router.static used).
+    /// Any sharded table must belongs to a single tier,
+    /// global tables use `None`.
     #[serde(skip)]
     pub tier: Option<SmolStr>,
 }

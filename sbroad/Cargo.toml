@@ -1,14 +1,3 @@
 [workspace]
 resolver = "2"
-members = [
-   "sbroad-benches",
-   "sbroad-cartridge",
-   "sbroad-core",
-   "sbroad-type-system",
-]
-
-[patch."https://git.picodata.io/picodata/picodata/tarantool-module.git"]
-tarantool = { path = "../tarantool/tarantool" }
-tarantool-proc = { path = "../tarantool/tarantool-proc" }
-tlua = { path = "../tarantool/tlua" }
-tlua-derive = { path = "../tarantool/tlua-derive" }
+members = ["sbroad-benches", "sbroad-core", "sbroad-type-system"]
