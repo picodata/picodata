@@ -724,7 +724,7 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="absent">F031-04</span></td>
+            <td class="center"><span class="full">F031-04</span></td>
             <td>Инструкция ALTER TABLE: предложение ADD COLUMN</td>
             <td class="td3 center"></td>
             <td></td>
