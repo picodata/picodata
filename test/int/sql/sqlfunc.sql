@@ -75,3 +75,28 @@ SELECT trim(  trailing 'b' from trim(  'aabb'  )) from "t"
 SELECT trim(  both 'ab' from 'aabb'  ) from "t"
 -- EXPECTED:
 ''
+
+-- TEST: like1
+-- SQL:
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1 (c1 TEXT, c2 INT primary key);
+INSERT INTO t1 VALUES ('', 1);
+INSERT INTO t1 VALUES ('p', 4);
+
+-- TEST: test_like-1.1
+-- SQL:
+select c2 from t1 where c1 like '';
+-- EXPECTED:
+1
+
+-- TEST: test_like-1.2
+-- SQL:
+SELECT (t1.c1 LIKE t1.c1) FROM t1;
+-- EXPECTED:
+true, true
+
+-- TEST: test_like-1.3
+-- SQL:
+SELECT (t1.c1 LIKE t1.c1) FROM t1 WHERE ((trim(t1.c1 from t1.c1) LIKE t1.c1));
+-- EXPECTED:
+true

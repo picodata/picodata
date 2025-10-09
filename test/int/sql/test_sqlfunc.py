@@ -4,6 +4,6 @@ from framework.sqltester import (
 )
 
 
-@sql_test_file("trim.sql")
-class TestTrim(ClusterTwoInstances):
+@sql_test_file("sqlfunc.sql")
+class TestSqlFunctions(ClusterTwoInstances):
     pass
