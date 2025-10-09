@@ -9,13 +9,21 @@ use tarantool::network::client::tls;
 )]
 pub struct TlsConfig {
     #[introspection(config_default = false)]
-    pub enabled: bool,
+    pub enabled: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cert_file: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_file: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ca_file: Option<PathBuf>,
+}
+
+impl TlsConfig {
+    #[inline]
+    pub fn enabled(&self) -> bool {
+        self.enabled
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
+    }
 }
 
 static mut TLS_CONTEXT: Option<TlsContext> = None;
@@ -48,7 +56,7 @@ pub fn get_tls_connector() -> Option<&'static tls::TlsConnector> {
 
 impl TlsContext {
     fn new(config: TlsConfig) -> Result<Self, Error> {
-        if !config.enabled {
+        if !config.enabled() {
             return Ok(Self {
                 tls_connector: None,
             });

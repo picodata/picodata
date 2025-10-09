@@ -3,6 +3,7 @@ import pathlib
 import pytest
 import re
 import time
+from pathlib import Path
 
 from conftest import (
     Cluster,
@@ -651,6 +652,7 @@ def test_iproto_tls_with_replication(cluster: Cluster):
         i.iproto_tls_cert = str(ssl_dir / "server-with-ext.crt")
         i.iproto_tls_key = str(ssl_dir / "server.key")
         i.iproto_tls_ca = str(ssl_dir / "combined-ca.crt")
+        i.iproto_tls = (Path(i.iproto_tls_cert), Path(i.iproto_tls_key), Path(i.iproto_tls_ca))
 
     cluster.wait_online()
 
@@ -677,6 +679,7 @@ def test_iproto_tls_enable_after_bootstrap(cluster: Cluster):
         i.iproto_tls_cert = str(ssl_dir / "server-with-ext.crt")
         i.iproto_tls_key = str(ssl_dir / "server.key")
         i.iproto_tls_ca = str(ssl_dir / "combined-ca.crt")
+        i.iproto_tls = (Path(i.iproto_tls_cert), Path(i.iproto_tls_key), Path(i.iproto_tls_ca))
 
     # Note: for now it doesnt always work if you restart instances one by one instead.
     # this needs to be fixed separately

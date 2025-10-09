@@ -15,6 +15,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fix eliminate erroneous ER_READONLY message in logs when executing TRUNCATE on
   global tables sometimes (See also https://git.picodata.io/core/picodata/-/issues/2274).
 - Fix possible crash when using TLS for iproto communication within cluster.
+- Specifying `instance.iproto_tls.enable` parameter via configuration file.
 
 ### WebUI
 - Login form and simple session control
