@@ -217,7 +217,7 @@ pub struct ListenConfig {
 impl ListenConfig {
     pub fn new(uri: String, config: &crate::iproto::TlsConfig) -> Self {
         let mut result = Self { uri, params: None };
-        if config.enabled {
+        if config.enabled() {
             result.params = Some(ListenConfigParams {
                 transport: "ssl".to_string(),
                 ssl_cert_file: config.cert_file.clone(),
@@ -229,7 +229,7 @@ impl ListenConfig {
     }
 
     pub fn new_for_pico_service(uri: &str, tls_config: &crate::iproto::TlsConfig) -> Self {
-        if tls_config.enabled {
+        if tls_config.enabled() {
             return Self::new(format!("{PICO_SERVICE_USER_NAME}@{uri}"), tls_config);
         }
 

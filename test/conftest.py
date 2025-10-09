@@ -636,6 +636,11 @@ class Instance:
     process: subprocess.Popen | None = None
     raft_id: int = INVALID_RAFT_ID
     _on_output_callbacks: list[Callable[[bytes], None]] = field(default_factory=list)
+
+    iproto_tls: tuple[Path, Path, Path] | None = None
+    """
+    order: (CERT_FILE, KEY_FILE, CA_FILE)
+    """
     iproto_tls_enabled: bool | None = None
     iproto_tls_cert: str | None = None
     iproto_tls_key: str | None = None
@@ -742,6 +747,8 @@ class Instance:
             if password is None:
                 password = self.service_password
 
+        need_iproto_tls = self.iproto_tls is not None and len(self.iproto_tls) == 3
+
         try:
             c = Connection(
                 self.host,
@@ -752,10 +759,10 @@ class Instance:
                 connection_timeout=timeout,
                 connect_now=True,
                 fetch_schema=False,
-                transport="ssl" if self.iproto_tls_enabled else None,
-                ssl_cert_file=self.iproto_tls_cert if self.iproto_tls_enabled else None,
-                ssl_key_file=self.iproto_tls_key if self.iproto_tls_enabled else None,
-                ssl_ca_file=self.iproto_tls_ca if self.iproto_tls_enabled else None,
+                transport="ssl" if need_iproto_tls else None,
+                ssl_cert_file=str(self.iproto_tls[0]) if need_iproto_tls else None,  # type: ignore
+                ssl_key_file=str(self.iproto_tls[1]) if need_iproto_tls else None,  # type: ignore
+                ssl_ca_file=str(self.iproto_tls[2]) if need_iproto_tls else None,  # type: ignore
             )
         except Exception as e:
             if can_cause_fail(e):

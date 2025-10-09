@@ -12,6 +12,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### Fixes
 - Fix possible crash when using TLS for iproto communication within cluster.
+- Specifying `instance.iproto_tls.enable` parameter via configuration file.
 
 
 ## [25.4.2] - 2025-10-09

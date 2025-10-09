@@ -74,7 +74,7 @@ crate::define_rpc_request! {
                 lua.eval("return box.info.listen")?,
                 tls_config);
             config.listen = Some(listen_config);
-            if !tls_config.enabled {
+            if !tls_config.enabled() {
                 config.set_password_in_uris();
             }
 

@@ -1,5 +1,6 @@
 from conftest import Cluster, Instance, PortDistributor, log_crawler, ColorCode
 import os
+import pathlib
 import subprocess
 import json
 import yaml
@@ -131,7 +132,7 @@ instance:
             ),
             boot_timeout=dict(value=7200, source="default"),
             iproto_tls=dict(
-                enabled=dict(value=False, source="commandline_or_environment"),
+                enabled=dict(value=False, source="default"),
             ),
         ),
     )
@@ -547,3 +548,35 @@ instance:
 
     assert os.path.exists(other_log_file)
     assert not os.path.exists(log_file)
+
+
+def test_iproto_tls_parameters(cluster: Cluster):
+    ssl_dir = pathlib.Path(os.path.realpath(__file__)).parent.parent / "ssl_certs"
+    cert_file = ssl_dir / "server-with-ext.crt"
+    key_file = ssl_dir / "server.key"
+    ca_file = ssl_dir / "combined-ca.crt"
+
+    cluster.set_config_file(
+        yaml=f"""
+instance:
+    cluster_name: test
+    iproto_tls:
+        enabled: true
+        cert_file: {cert_file}
+        key_file: {key_file}
+        ca_file: {ca_file}
+    """
+    )
+
+    instance = cluster.add_instance(wait_online=False)
+    instance.iproto_tls = (cert_file, key_file, ca_file)
+    instance.start_and_wait()
+
+    source = "config_file"
+    configuration = instance.call(".proc_get_config")
+    assert configuration["instance"]["iproto_tls"] == dict(
+        enabled=dict(value=True, source=source),
+        cert_file=dict(value=str(cert_file), source=source),
+        key_file=dict(value=str(key_file), source=source),
+        ca_file=dict(value=str(ca_file), source=source),
+    )

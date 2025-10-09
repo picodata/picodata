@@ -4,6 +4,7 @@ import pexpect  # type: ignore
 import pytest
 import stat
 import sys
+from pathlib import Path
 from conftest import CLI_TIMEOUT, Cluster, Instance, eprint
 
 from framework.ldap import is_glauth_available, LdapServer
@@ -270,6 +271,7 @@ def test_connect_testuser_tls(cluster: Cluster, cert_auth_enabled):
     i1.iproto_tls_cert = str(ssl_dir / "server-with-ext.crt")
     i1.iproto_tls_key = str(ssl_dir / "server.key")
     i1.iproto_tls_ca = str(ssl_dir / "combined-ca.crt")
+    i1.iproto_tls = (Path(i1.iproto_tls_cert), Path(i1.iproto_tls_key), Path(i1.iproto_tls_ca))
     i1.start()
     i1.wait_online()
 
