@@ -61,7 +61,7 @@ Radix поддерживает 16 баз данных, каждую из кот�
 в административной консоли Picodata.
 
 ```sql
-CREATE PLUGIN radix 0.11.0;
+CREATE PLUGIN radix 0.11.3;
 ```
 
 #### Пример с двумя тирами (hot/cold) {: #plugin_enable_hotcold }
@@ -69,37 +69,51 @@ CREATE PLUGIN radix 0.11.0;
 Для настройки миграций задайте значения для 16 параметров (по числу баз данных в Radix):
 
 ```sql
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_0='hot';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_1='hot';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_2='hot';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_3='hot';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_4='cold';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_5='cold';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_6='cold';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_7='cold';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_8='cold';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_9='cold';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_10='cold';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_11='cold';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_12='cold';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_13='cold';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_14='cold';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_15='cold';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_0='hot';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_1='hot';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_2='hot';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_3='hot';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_4='cold';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_5='cold';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_6='cold';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_7='cold';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_8='cold';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_9='cold';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_10='cold';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_11='cold';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_12='cold';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_13='cold';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_14='cold';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_15='cold';
 
-ALTER PLUGIN radix 0.11.0 ADD SERVICE radix TO TIER hot;
-ALTER PLUGIN radix 0.11.0 ADD SERVICE radix TO TIER cold;
+ALTER PLUGIN radix 0.11.3 ADD SERVICE radix TO TIER hot;
+ALTER PLUGIN radix 0.11.3 ADD SERVICE radix TO TIER cold;
 ```
 
 Для выполнения миграции:
 
 ```sql
-ALTER PLUGIN radix MIGRATE TO 0.10.0 OPTION(TIMEOUT=300);
+ALTER PLUGIN radix MIGRATE TO 0.11.3 OPTION(TIMEOUT=300);
 ```
+
+!!! note "Примечание"
+    При обновлении кластера с более старой версии возможна ошибка:
+    ```
+    unknown migration files found in manifest migrations (mismatched hash checksum for migrations/0001_dbs.sql, was 0f720bee6e85b3b83e697b1554a79687, became 529c0e80bcb67ede4aa509448550724a)
+    ```
+    В этом случае следует отключить проверку контрольных сумм на время обновления:
+    ```sql
+    ALTER SYSTEM SET plugin_check_migration_hash = 'false';
+    ```
+    После этого провести миграцию и включить проверку обратно:
+    ```sql
+    ALTER SYSTEM SET plugin_check_migration_hash = 'true';
+    ```
 
 Для включения плагина в кластере:
 
 ```sql title="Убедитесь, что задан адрес, который будет слушать Radix"
-ALTER PLUGIN radix 0.11.0 ENABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 0.11.3 ENABLE OPTION(TIMEOUT=30);
 ```
 
 Если в кластере ранее была включена предыдущая версия плагина, то ее
@@ -107,7 +121,7 @@ ALTER PLUGIN radix 0.11.0 ENABLE OPTION(TIMEOUT=30);
 
 ```sql
 ALTER PLUGIN radix 0.10.0 DISABLE OPTION(TIMEOUT=30);
-ALTER PLUGIN radix 0.11.0 ENABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 0.11.3 ENABLE OPTION(TIMEOUT=30);
 ```
 
 Чтобы убедиться в том, что плагин успешно добавлен и запущен, выполните запрос:
@@ -123,23 +137,23 @@ SELECT * FROM _pico_plugin;
 Если в кластере используется только один тир `default`, настройка миграций будет выглядеть так:
 
 ```sql
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_0='default';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_1='default';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_2='default';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_3='default';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_4='default';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_5='default';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_6='default';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_7='default';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_8='default';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_9='default';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_10='default';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_11='default';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_12='default';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_13='default';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_14='default';
-ALTER PLUGIN radix 0.11.0 SET migration_context.tier_15='default';
-ALTER PLUGIN radix 0.11.0 ADD SERVICE radix TO TIER default;
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_0='default';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_1='default';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_2='default';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_3='default';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_4='default';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_5='default';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_6='default';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_7='default';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_8='default';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_9='default';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_10='default';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_11='default';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_12='default';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_13='default';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_14='default';
+ALTER PLUGIN radix 0.11.3 SET migration_context.tier_15='default';
+ALTER PLUGIN radix 0.11.3 ADD SERVICE radix TO TIER default;
 ```
 
 ## Настройка {: #configuration }
@@ -160,6 +174,7 @@ sentinel_enabled: false  # режим совместимости с Redis Sentin
 redis_compatibility:
     enabled_deprecated_commands: []
     enforce_one_slot_transactions: false
+    push_result_includes_popped_items: false
 authorization_mode:
     state: Off
 ```
@@ -207,16 +222,38 @@ authorization_mode:
 #### enabled_deprecated_commands
 
 Список устаревших команд Redis через запятую, которые будут доступны при
-работе с Radix.
+работе с Radix. Устаревшие команды выключены по умолчанию. Для
+включения, добавьте их в [файл конфигурации](#configuration) в формате
+`["command", "other"]`, где `command` и `other` — названия желаемых
+команд в нижнем регистре.
 
 #### enforce_one_slot_transactions
 
-Проводить все SQL-транзакции принудительно в рамках одного слота (бакета).
-Данное поведение выключено по умолчанию, т.е. транзакции проводятся в рамках
-одного инстанса.
+Включает режим, в котором в транзакциях могут участвовать ключи только
+из одного слота (как и в Redis Cluster). Если он выключен — в
+транзакциях могут участвовать ключи из всего репликасета (между
+слотами), как в Redis Standalone. В этом случае вы можете эмулировать
+Redis Standalone, развернув Radix в составе одного репликасета.
 
-С выключенным флагом вы можете эмулировать Redis Standalone, развернув Radix
-в составе одного репликасета.
+Значение по умолчанию: `false` (выключено).
+
+#### push_result_includes_popped_items
+
+Включает режим, в котором элементы списков и сортированных множеств,
+отправившиеся в блокирующие команды, учитываются в выходных значениях
+команд [LPUSH](#lpush), [RPUSH](#rpush), [ZADD](#zadd),
+[ZUNIONSTORE](#zunionstore), [ZRANGESTORE](#zrangestore),
+[ZDIFFSTORE](#zdiffstore) и [ZINTERSTORE](#zinterstore).
+
+Согласно документации Redis, команды, добавляющие элементы в списки и
+множества, должны возвращать количество соответственно вставленных
+записей. Однако, если список/множество не содержит элементов, и при этом
+есть клиенты, которые ожидают вставки в него через блокирующие команды
+([BLPOP](#blpop), например), то часть записей вставлены не будут, а
+вместо этого возвратятся этим клиентам — Radix вернёт только количество
+действительно вставленных элементов. Если нужно поведение как в Redis
+(то есть, необходимо вернуть и количество элементов, улетевших в `BLPOP`
+и аналогичные команды), выставите эту настройку в `true`.
 
 ### cluster_mode
 
@@ -226,10 +263,14 @@ authorization_mode:
 
 Включает режим совместимости с [Redis Sentinel](https://redis.io/docs/latest/operate/oss_and_stack/management/sentinel/).
 
-#### Пример миграции приложения на Radix {: #sentinel_topology }
+В приложении требуется прописать адреса Radix в качестве адресов
+Sentinel. В качестве `service_name` укажите имена репликасетов, на
+которых развёрнут Radix (например, если в кластере 1 репликасет на
+тире `default`, то по умолчанию имя репликасета будет `default_1`).
+В качестве адреса Sentinel укажите адрес любого инстанса Radix.
 
-В настройках приложения следует указывать `service_name` (`master_name`) и адрес сервера Redis Sentinel из одного тира.
-Например, `service_name` — `cold_4`, а адрес Sentinel — `cold_4_1`, если топология кластера похожа на топологию ниже.
+Для примера, если в кластере нескольких тиров, а Radix развёрнут на тирах `hot` с двумя
+репликасетами и `cold` — с четырьмя, то получится такая топология:
 
 ```yaml
 # вариант топологии Radix
@@ -254,6 +295,10 @@ cold:
   - cold_4_1
   - cold_4_2
 ```
+
+Следует указывать названия `service_name` и адреса из одного тира. Если
+использовать в качестве адреса для Sentinel адрес реплики из другого
+тира, то такая конфигурация не будет работать.
 
 ### authorization_mode
 
@@ -281,7 +326,7 @@ cold:
 ##### Миграция с кластера с директивой `requirepass` {: #requirepass }
 
 ```sql
-ALTER PLUGIN radix 0.11.0 SET radix.authorization_mode = '{ "state": "On", "default_user_name": "default_radix_user" }';
+ALTER PLUGIN radix 0.11.3 SET radix.authorization_mode = '{ "state": "On", "default_user_name": "default_radix_user" }';
 CREATE USER default_radix_user WITH PASSWORD 'S0m1Str2ngP3ssword';
 GRANT radix_reader TO default_radix_user;
 GRANT radix_writer TO default_radix_user;
@@ -300,7 +345,7 @@ OK
 ##### Использование LDAP {: #ldapuser }
 
 ```sql
-ALTER PLUGIN radix 0.11.0 SET radix.authorization_mode = '{ "state": "On", "default_user_name": "default_radix_user" }';
+ALTER PLUGIN radix 0.11.3 SET radix.authorization_mode = '{ "state": "On", "default_user_name": "default_radix_user" }';
 CREATE USER default_radix_user USING ldap;
 GRANT radix_reader TO default_radix_user;
 GRANT radix_writer TO default_radix_user;
@@ -324,7 +369,7 @@ argus:
 ##### Разделение доступов по БД {: #access_separation }
 
 ```sql
-ALTER PLUGIN radix 0.11.0 SET radix.authorization_mode = '{ "state": "On" }';
+ALTER PLUGIN radix 0.11.3 SET radix.authorization_mode = '{ "state": "On" }';
 
 CREATE USER app_1_user WITH PASSWORD 'pwd1';
 GRANT radix_reader_0 TO app_1_user;
@@ -814,7 +859,7 @@ HMSET key field value [field value ...]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.11.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["hmset" ] }';
+    ALTER PLUGIN RADIX 0.11.3 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["hmset" ] }';
     ```
 
 #### hscan
@@ -1347,7 +1392,7 @@ ZRANGEBYLEX key min max [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.11.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrangebylex" ] }';
+    ALTER PLUGIN RADIX 0.11.3 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrangebylex" ] }';
     ```
 
 #### zrangebyscore
@@ -1364,7 +1409,7 @@ ZRANGEBYSCORE key min max [WITHSCORES] [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.11.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrangebyscore" ] }';
+    ALTER PLUGIN RADIX 0.11.3 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrangebyscore" ] }';
     ```
 
 #### zrank
@@ -1442,7 +1487,7 @@ ZREVRANGE key start stop [WITHSCORES]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.11.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrevrange" ] }';
+    ALTER PLUGIN RADIX 0.11.3 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrevrange" ] }';
     ```
 
 #### zrevrangebylex
@@ -1459,7 +1504,7 @@ ZREVRANGEBYLEX key max min [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.11.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrevrangebylex" ] }';
+    ALTER PLUGIN RADIX 0.11.3 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrevrangebylex" ] }';
     ```
 
 #### zrevrangebyscore
@@ -1476,7 +1521,7 @@ ZREVRANGEBYSCORE key max min [WITHSCORES] [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.11.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrevrangebyscore" ] }';
+    ALTER PLUGIN RADIX 0.11.3 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrevrangebyscore" ] }';
     ```
 
 #### zrevrank
@@ -2276,7 +2321,7 @@ PSETEX key milliseconds value
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.11.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["psetex" ] }';
+    ALTER PLUGIN RADIX 0.11.3 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["psetex" ] }';
     ```
 
 #### set
@@ -2331,7 +2376,7 @@ SET key value EX seconds
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.11.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["setex" ] }';
+    ALTER PLUGIN RADIX 0.11.3 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["setex" ] }';
     ```
 
 Установка некорректного значения вернет ошибку.
@@ -2351,7 +2396,7 @@ SETNX key value
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.11.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["setnx" ] }';
+    ALTER PLUGIN RADIX 0.11.3 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["setnx" ] }';
     ```
 
 #### strlen
@@ -2374,7 +2419,7 @@ Radix поддерживает необходимый минимум коман�
 включить, используйте запрос:
 
 ```sql
-ALTER PLUGIN radix 0.11.0 set radix.sentinel_enabled = 'true';
+ALTER PLUGIN radix 0.11.3 set radix.sentinel_enabled = 'true';
 ```
 <font size="2">_поддерживается с версии 0.10.0_</font>
 
@@ -2636,7 +2681,7 @@ INFO [section [section ...]]
     ```
     127.0.0.1:7379> info
     # Server
-    radix_version:0.11.0
+    radix_version:0.11.3
     picodata_version:25.3.0-378-g04d0f509d
     picodata_cluster_name:my_cluster
     picodata_cluster_uuid:5f6319ee-9608-46f7-9a19-f6f75f0872c8
