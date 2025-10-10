@@ -8,7 +8,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-## [25.3.6] - Unreleased
+## [25.3.6] - 2025-10-10
 
 ### Fixes
 - Fix compilation error on ARM architecture.
