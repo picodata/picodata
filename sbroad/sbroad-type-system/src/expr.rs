@@ -132,18 +132,18 @@ pub enum ExprKind<Id> {
     /// Coalesce expression.
     /// Examples: `coalesce(1, 2)`, `coalesce(1, $1)`.
     Coalesce(Vec<Expr<Id>>),
-    /// Index operator for arrays.
+    /// Index operator for arrays and maps.
     ///
-    /// In Tarantool, array index expressions can return values of any type, since arrays may
-    /// contain elements of mixed types. To correctly type-check chained indexing
+    /// In Tarantool, index expressions can return values of any type, since arrays and maps
+    /// may contain elements of mixed types. To correctly type-check chained indexing
     /// operations (e.g., `a[1][2]`), all indexes must be analyzed together.
     ///
     /// Without special handling for chaining, expressions like `a[1][2]` would be parsed as
     /// `Index { src: Index { src: 'a', which: 1 }, which: 2 }`.
     /// Type checking would then fail because the inner index returns any type,
-    /// which cannot be indexed
+    /// which cannot be indexed.
     ///
-    /// Examples: `a[1]`, `a[4][8]`
+    /// Examples: `a[1]`, `a[4][8]`, `m['some']['json']['path']`
     IndexChain {
         source: Box<Expr<Id>>,
         indexes: Vec<Expr<Id>>,

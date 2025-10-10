@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::Display;
 use std::hash::{BuildHasherDefault, DefaultHasher, Hash};
-use std::iter::zip;
+use std::iter::{self, zip};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FunctionKind {
@@ -475,31 +475,49 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 ref source,
                 ref indexes,
             } => {
-                let mut report = self.analyze(source, Type::Array)?;
-                if report.get_type(&source.id) != Type::Array {
-                    return Err(Error::CannotIndexExpressionOfType(
-                        report.get_type(&source.id),
+                let mut report = self.analyze(source, Type::Map)?;
+
+                // Ensure source is a map or an array and determine type for the first index.
+                let first_idx_type = match report.get_type(&source.id) {
+                    Type::Map => Type::Text,
+                    Type::Array => Type::Integer,
+                    other => return Err(Error::CannotIndexExpressionOfType(other)),
+                };
+
+                let mut indexes_iter = indexes.iter();
+                // Analyze first index type.
+                let first_idx = indexes_iter.next().expect("indexes cannot be empty");
+                let r = self.analyze(first_idx, first_idx_type)?;
+                report.extend(r);
+                // Analyze subsequent index types.
+                for idx in indexes_iter {
+                    let r = self.analyze(idx, Type::Text)?;
+                    report.extend(r);
+                }
+
+                // Type check index types:
+                // 1) The first corresponds to the source type,
+                //     i.e. int for arrays and text for maps.
+                // 2) Subsequent indexes are applied to expressions of any type,
+                //    (which can be maps or arrays), so these indexes can have
+                //    either integer or text types.
+                let expected_types = iter::once([first_idx_type, first_idx_type])
+                    .chain(iter::repeat([Type::Integer, Type::Text]));
+                if iter::zip(indexes, expected_types)
+                    .any(|(idx, expected)| !expected.contains(&report.get_type(&idx.id)))
+                {
+                    // Add the source itself to the argument list to make the error message
+                    // clearly indicate a problem with array or map indexing.
+                    let mut args = vec![source.as_ref()];
+                    args.extend(indexes.iter());
+                    return Err(self.could_not_resolve_function_overload_error(
+                        FunctionKind::Operator,
+                        "[]",
+                        &args,
                     ));
                 }
 
-                for idx in indexes {
-                    let r = self.analyze(idx, Type::Integer)?;
-                    report.extend(r);
-
-                    if report.get_type(&idx.id) != Type::Integer {
-                        // Add the array itself to the argument list to make the error message
-                        // clearly indicate a problem with array indexing.
-                        let mut args = vec![source.as_ref()];
-                        args.extend(indexes.iter());
-                        return Err(self.could_not_resolve_function_overload_error(
-                            FunctionKind::Operator,
-                            "[]",
-                            &args,
-                        ));
-                    }
-                }
-
-                // Arrays in tarantool can contain values of any type.
+                // Arrays and maps in tarantool can contain values of any type.
                 report.report(&expr.id, Type::Any);
                 Ok(report)
             }

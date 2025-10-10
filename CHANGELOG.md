@@ -33,6 +33,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### SQL
 - Support indexing arrays, i.e. `a[1][2]` expressions.
+- Support indexing maps with string keys, i.e. `m['key']` expressions.
 - Add IF NOT EXISTS support for ALTER TABLE ADD COLUMN.
 
 ### Pgproto

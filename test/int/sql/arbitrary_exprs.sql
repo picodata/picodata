@@ -346,3 +346,77 @@ SELECT (1 + 1)[1];
 -- ERROR:
 cannot index expression of type int
 
+-- TEST: test_index_with_maps_prepare
+-- SQL:
+DROP TABLE IF EXISTS t;
+CREATE TABLE t (id int primary key, txt text);
+
+-- TEST: test_index_with_maps-1
+-- SQL:
+SELECT
+  distribution['ShardedImplicitly'][1][1],
+  distribution['ShardedImplicitly'][2],
+  distribution['ShardedImplicitly'][3]
+FROM _pico_table
+WHERE name = 't'
+-- EXPECTED:
+'id', 'murmur3', 'default',
+
+-- TEST: test_index_with_maps-2
+-- SQL:
+WITH murmur_tables AS (
+  SELECT * FROM _pico_table WHERE distribution['ShardedImplicitly'][2]::text = 'murmur3'
+), sharded_tables AS (
+  SELECT * FROM _pico_table WHERE distribution['ShardedImplicitly'] IS NOT NULL
+)
+SELECT (SELECT count(*) FROM murmur_tables) = (SELECT count(*) FROM sharded_tables)
+-- EXPECTED:
+true
+
+-- TEST: test_map_index_must_be_a_string
+-- SQL:
+SELECT distribution[1]['ShardedImplicitly'] FROM _pico_table WHERE name = 't'
+-- ERROR:
+could not resolve operator overload for \[\]\(map, int, text\)
+
+-- TEST: test_subsequent_indexes_must_be_strings_or_integers-1
+-- SQL:
+SELECT distribution['ShardedImplicitly'][1][false] FROM _pico_table WHERE name = 't'
+-- ERROR:
+could not resolve operator overload for \[\]\(map, text, int, bool\)
+
+-- TEST: test_subsequent_indexes_must_be_strings_or_integers-2
+-- SQL:
+SELECT distribution['ShardedImplicitly'][1]['whatever'] FROM _pico_table WHERE name = 't'
+-- EXPECTED:
+null
+
+-- TEST: test_large_index_string
+-- SQL:
+SELECT
+  distribution['This string contains exactly 257 characters. xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx']
+FROM _pico_table
+WHERE name = 't'
+-- EXPECTED:
+null
+
+-- TEST: test_large_index_chain
+-- SQL:
+SELECT
+  distribution['ShardedImplicitly'][1][2][3][4][5][6][7][8][9][10][11][12][13][14][15]
+FROM _pico_table
+WHERE name = 't'
+-- EXPECTED:
+null
+
+-- TEST: test_index_of_unknown_type_is_inferred_to_text_for_maps
+-- SQL:
+SELECT distribution[NULL] FROM _pico_table WHERE name = 't'
+-- EXPECTED:
+null
+
+-- TEST: test_index_of_unknown_type_is_inferred_to_int_for_arrays
+-- SQL:
+SELECT DISTINCT current_state[NULL] FROM _pico_instance
+-- EXPECTED:
+null
