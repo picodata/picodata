@@ -9,6 +9,45 @@ pub trait MsgpackWriter {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ColumnType {
+    Map = 0,
+    Boolean,
+    Datetime,
+    Decimal,
+    Double,
+    Integer,
+    String,
+    Uuid,
+    Any,
+    Array,
+    Scalar,
+}
+
+impl TryFrom<u8> for ColumnType {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        let t = match value {
+            0 => ColumnType::Map,
+            1 => ColumnType::Boolean,
+            2 => ColumnType::Datetime,
+            3 => ColumnType::Decimal,
+            4 => ColumnType::Double,
+            5 => ColumnType::Integer,
+            6 => ColumnType::String,
+            7 => ColumnType::Uuid,
+            8 => ColumnType::Any,
+            9 => ColumnType::Array,
+            10 => ColumnType::Scalar,
+            _ => return Err(format!("Unknown column type: {}", value)),
+        };
+
+        Ok(t)
+    }
+}
+
 pub trait ProtocolEncoder {
     fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (&u32, &u64)>;
 
@@ -18,6 +57,15 @@ pub trait ProtocolEncoder {
 
     fn get_request_id(&self) -> String;
 
+    fn get_vtables_metadata(
+        &self,
+    ) -> impl ExactSizeIterator<
+        Item = (
+            SmolStr,
+            impl ExactSizeIterator<Item = (&SmolStr, ColumnType)>,
+        ),
+    >;
+
     fn get_vtables(
         &self,
         plan_id: u64,
@@ -26,6 +74,8 @@ pub trait ProtocolEncoder {
     fn get_options(&self) -> [u64; 2];
 
     fn get_params(&self) -> impl MsgpackWriter;
+
+    fn get_sql(&self) -> &SmolStr;
 }
 
 pub(crate) mod test {
@@ -118,10 +168,78 @@ pub(crate) mod test {
         }
     }
 
+    #[allow(dead_code)]
+    pub struct TestEncoderBuilder {
+        encoder: TestEncoder,
+    }
+
+    impl TestEncoderBuilder {
+        #[allow(dead_code)]
+        pub fn new() -> Self {
+            TestEncoderBuilder {
+                encoder: TestEncoder::default(),
+            }
+        }
+
+        #[allow(dead_code)]
+        pub fn build(self) -> TestEncoder {
+            self.encoder
+        }
+
+        #[allow(dead_code)]
+        pub fn set_schema_info(mut self, schema_info: HashMap<u32, u64>) -> Self {
+            self.encoder.schema_info = schema_info;
+            self
+        }
+        #[allow(dead_code)]
+        pub fn set_plan_id(mut self, plan_id: u64) -> Self {
+            self.encoder.plan_id = plan_id;
+            self
+        }
+        #[allow(dead_code)]
+        pub fn set_sender_id(mut self, sender_id: String) -> Self {
+            self.encoder.sender_id = sender_id;
+            self
+        }
+        #[allow(dead_code)]
+        pub fn set_meta(mut self, meta: HashMap<SmolStr, Vec<(SmolStr, ColumnType)>>) -> Self {
+            self.encoder.meta = meta;
+            self
+        }
+        #[allow(dead_code)]
+        pub fn set_sql(mut self, sql: SmolStr) -> Self {
+            self.encoder.sql = sql;
+            self
+        }
+        #[allow(dead_code)]
+        pub fn set_request_id(mut self, request_id: String) -> Self {
+            self.encoder.request_id = request_id;
+            self
+        }
+        #[allow(dead_code)]
+        pub fn set_vtables(mut self, vtables: HashMap<SmolStr, Vec<Vec<u64>>>) -> Self {
+            self.encoder.vtables = vtables;
+            self
+        }
+        #[allow(dead_code)]
+        pub fn set_options(mut self, options: [u64; 2]) -> Self {
+            self.encoder.options = options;
+            self
+        }
+        #[allow(dead_code)]
+        pub fn set_params(mut self, params: Vec<u64>) -> Self {
+            self.encoder.params = params;
+            self
+        }
+    }
+
+    #[derive(Default)]
     pub struct TestEncoder {
         pub schema_info: HashMap<u32, u64>,
         pub plan_id: u64,
         pub sender_id: String,
+        pub meta: HashMap<SmolStr, Vec<(SmolStr, ColumnType)>>,
+        pub sql: SmolStr,
         pub request_id: String,
         pub vtables: HashMap<SmolStr, Vec<Vec<u64>>>,
         pub options: [u64; 2],
@@ -145,6 +263,19 @@ pub(crate) mod test {
             self.request_id.clone()
         }
 
+        fn get_vtables_metadata(
+            &self,
+        ) -> impl ExactSizeIterator<
+            Item = (
+                SmolStr,
+                impl ExactSizeIterator<Item = (&SmolStr, ColumnType)>,
+            ),
+        > {
+            self.meta
+                .iter()
+                .map(|(k, v)| (k.clone(), v.iter().map(|(k, t)| (k, *t))))
+        }
+
         fn get_vtables(
             &self,
             _plan_id: u64,
@@ -160,6 +291,10 @@ pub(crate) mod test {
 
         fn get_params(&self) -> impl MsgpackWriter {
             TestParamIterator::new(self.params.iter())
+        }
+
+        fn get_sql(&self) -> &SmolStr {
+            &self.sql
         }
     }
 }

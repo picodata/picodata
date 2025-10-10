@@ -270,28 +270,219 @@ impl<'a> Iterator for DQLPackageIterator<'a> {
     }
 }
 
+pub fn write_dql_additional_data_package(
+    mut w: impl Write,
+    data: &impl ProtocolEncoder,
+) -> Result<(), std::io::Error> {
+    write_array_len(&mut w, 3)?;
+
+    let schema_info = data.get_schema_info();
+    write_map_len(&mut w, schema_info.len() as u32)?;
+    for (key, value) in schema_info {
+        write_uint(&mut w, *key as u64)?;
+        write_uint(&mut w, *value)?;
+    }
+
+    let vtables_metadata = data.get_vtables_metadata();
+    write_map_len(&mut w, vtables_metadata.len() as u32)?;
+    for (key, columns) in vtables_metadata {
+        write_str(&mut w, key.as_str())?;
+        write_array_len(&mut w, columns.len() as u32)?;
+        for (column, ty) in columns {
+            write_array_len(&mut w, 2)?;
+            write_str(&mut w, column.as_str())?;
+            rmp::encode::write_pfix(&mut w, ty as u8)?;
+        }
+    }
+
+    let sql = data.get_sql();
+    write_str(&mut w, sql)?;
+
+    Ok(())
+}
+
+#[derive(PartialEq, Debug, Copy, Clone)]
+#[repr(u8)]
+enum DQLCacheMissState {
+    SchemaInfo = 0,
+    VtablesMetadata,
+    Sql,
+    End,
+}
+
+pub enum DQLCacheMissResult<'a> {
+    SchemaInfo(MsgpackMapIterator<'a, u32, u64>),
+    VtablesMetadata(MsgpackMapIterator<'a, &'a str, Vec<(&'a str, ColumnType)>>),
+    Sql(&'a str),
+}
+
+const DQL_CACHE_MISS_PACKAGE_SIZE: usize = 3;
+pub struct DQLCacheMissIterator<'a> {
+    raw_payload: Cursor<&'a [u8]>,
+    state: DQLCacheMissState,
+}
+
+impl<'a> DQLCacheMissIterator<'a> {
+    pub fn new(raw_payload: &'a [u8]) -> Result<Self, ProtocolError> {
+        let mut cursor = Cursor::new(raw_payload);
+
+        let l = read_array_len(&mut cursor)?;
+        if l != DQL_CACHE_MISS_PACKAGE_SIZE as u32 {
+            return Err(ProtocolError::DecodeError(format!(
+                "DQL package is invalid: expected to have package array length {DQL_CACHE_MISS_PACKAGE_SIZE}, got {l}"
+            )));
+        }
+
+        Ok(Self {
+            raw_payload: cursor,
+            state: DQLCacheMissState::SchemaInfo,
+        })
+    }
+
+    fn get_schema_info(&mut self) -> Result<MsgpackMapIterator<'a, u32, u64>, ProtocolError> {
+        assert_eq!(self.state, DQLCacheMissState::SchemaInfo);
+        let l = read_map_len(&mut self.raw_payload)?;
+        let start = self.raw_payload.position() as usize;
+        for _ in 0..l * 2 {
+            skip_value(&mut self.raw_payload)
+                .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+        }
+        let end = self.raw_payload.position() as usize;
+        self.state = DQLCacheMissState::VtablesMetadata;
+        Ok(MsgpackMapIterator::new(
+            &self.raw_payload.get_ref()[start..end],
+            l,
+            |r| read_int(r).map_err(|err| ProtocolError::DecodeError(err.to_string())),
+            |r| read_int(r).map_err(|err| ProtocolError::DecodeError(err.to_string())),
+        ))
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn get_vtables_metadata(
+        &mut self,
+    ) -> Result<MsgpackMapIterator<'a, &'a str, Vec<(&'a str, ColumnType)>>, ProtocolError> {
+        assert_eq!(self.state, DQLCacheMissState::VtablesMetadata);
+        let l = read_map_len(&mut self.raw_payload)?;
+        let start = self.raw_payload.position() as usize;
+        for _ in 0..l * 2 {
+            skip_value(&mut self.raw_payload)
+                .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+        }
+        let end = self.raw_payload.position() as usize;
+        self.state = DQLCacheMissState::Sql;
+
+        let table_name_decoder = |r: &mut Cursor<&'a [u8]>| -> Result<&str, ProtocolError> {
+            let l = read_str_len(r)?;
+            let start = r.position() as usize;
+            let end = start + l as usize;
+            let vtable_name = from_utf8(&r.get_ref()[start..end])
+                .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+            r.set_position(end as u64);
+            Ok(vtable_name)
+        };
+
+        let metadata_decoder =
+            |r: &mut Cursor<&'a [u8]>| -> Result<Vec<(&str, ColumnType)>, ProtocolError> {
+                let l = read_array_len(r)? as usize;
+                let mut res = Vec::with_capacity(l);
+                for _ in 0..l {
+                    let l = read_array_len(r)? as usize;
+                    if l != 2 {
+                        return Err(ProtocolError::DecodeError(format!(
+                            "DQL Cache Miss package is invalid: expected to have array length 2, got {l}"
+                        )));
+                    }
+
+                    let l = read_str_len(r)?;
+                    let start = r.position() as usize;
+                    let end = start + l as usize;
+                    let column_name = from_utf8(&r.get_ref()[start..end])
+                        .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+                    r.set_position(end as u64);
+
+                    let ct = rmp::decode::read_pfix(r)?;
+                    let ct = ColumnType::try_from(ct)
+                        .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+
+                    res.push((column_name, ct));
+                }
+
+                Ok(res)
+            };
+
+        Ok(MsgpackMapIterator::new(
+            &self.raw_payload.get_ref()[start..end],
+            l,
+            table_name_decoder,
+            metadata_decoder,
+        ))
+    }
+
+    fn get_sql(&mut self) -> Result<&'a str, ProtocolError> {
+        assert_eq!(self.state, DQLCacheMissState::Sql);
+        let l = read_str_len(&mut self.raw_payload)?;
+        let start = self.raw_payload.position() as usize;
+        let end = start + l as usize;
+        let sql = from_utf8(&self.raw_payload.get_ref()[start..end])
+            .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+        self.raw_payload.set_position(end as u64);
+        self.state = DQLCacheMissState::End;
+        Ok(sql)
+    }
+}
+
+impl<'a> Iterator for DQLCacheMissIterator<'a> {
+    type Item = Result<DQLCacheMissResult<'a>, ProtocolError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.state {
+            DQLCacheMissState::SchemaInfo => match self.get_schema_info() {
+                Ok(schema_info) => Some(Ok(DQLCacheMissResult::SchemaInfo(schema_info))),
+                Err(err) => Some(Err(err)),
+            },
+            DQLCacheMissState::VtablesMetadata => match self.get_vtables_metadata() {
+                Ok(vtables_metadata) => {
+                    Some(Ok(DQLCacheMissResult::VtablesMetadata(vtables_metadata)))
+                }
+                Err(err) => Some(Err(err)),
+            },
+            DQLCacheMissState::Sql => match self.get_sql() {
+                Ok(sql) => Some(Ok(DQLCacheMissResult::Sql(sql))),
+                Err(err) => Some(Err(err)),
+            },
+            DQLCacheMissState::End => None,
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let size = DQL_CACHE_MISS_PACKAGE_SIZE - self.state as usize;
+        (size, Some(size))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol_encoder::test::TestEncoder;
+    use crate::protocol_encoder::test::TestEncoderBuilder;
+    use crate::protocol_encoder::ColumnType;
     use smol_str::ToSmolStr;
     use std::collections::HashMap;
     use std::str::from_utf8;
 
     #[test]
     fn test_encode_dql() {
-        let data = TestEncoder {
-            plan_id: 5264743718663535479,
-            request_id: "14e84334-71df-4e69-8c85-dc2707a390c6".to_string(),
-            schema_info: HashMap::from([(12, 138)]),
-            sender_id: "some".to_string(),
-            vtables: HashMap::from([(
+        let data = TestEncoderBuilder::new()
+            .set_plan_id(5264743718663535479)
+            .set_request_id("14e84334-71df-4e69-8c85-dc2707a390c6".to_string())
+            .set_schema_info(HashMap::from([(12, 138)]))
+            .set_sender_id("some".to_string())
+            .set_vtables(HashMap::from([(
                 "TMP_1302_".to_smolstr(),
                 vec![vec![1, 2, 3], vec![3, 2, 1]],
-            )]),
-            options: [123, 456],
-            params: vec![138, 123, 432],
-        };
+            )]))
+            .set_options([123, 456])
+            .set_params(vec![138, 123, 432])
+            .build();
 
         let mut writer = Vec::new();
 
@@ -354,6 +545,58 @@ mod tests {
                 DQLResult::Params(params) => {
                     let expected = vec![147, 204, 138, 123, 205, 1, 176];
                     assert_eq!(params, expected.as_slice());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_encode_dql_cache_miss() {
+        let data = TestEncoderBuilder::new()
+            .set_schema_info(HashMap::from([(12, 138)]))
+            .set_meta(HashMap::from([(
+                "TMP_1302_".to_smolstr(),
+                vec![
+                    ("a".to_smolstr(), ColumnType::Integer),
+                    ("b".to_smolstr(), ColumnType::Integer),
+                ],
+            )]))
+            .set_sql("select * from TMP_1302_;".to_smolstr())
+            .build();
+
+        let mut writer = Vec::new();
+        write_dql_additional_data_package(&mut writer, &data).unwrap();
+        let expected: &[u8] = b"\x93\x81\x0c\xcc\x8a\x81\xa9TMP_1302_\x92\x92\xa1a\x05\x92\xa1b\x05\xb8select * from TMP_1302_;";
+        assert_eq!(writer, expected);
+    }
+
+    #[test]
+    fn test_handle_dql_cache_miss() {
+        let data: &[u8] = b"\x93\x81\x0c\xcc\x8a\x81\xa9TMP_1302_\x92\x92\xa1a\x05\x92\xa1b\x05\xb8select * from TMP_1302_;";
+
+        let package = DQLCacheMissIterator::new(data).unwrap();
+
+        for elem in package {
+            match elem.unwrap() {
+                DQLCacheMissResult::SchemaInfo(schema_info) => {
+                    assert_eq!(schema_info.len(), 1);
+                    for res in schema_info {
+                        let (t_id, ver) = res.unwrap();
+                        assert_eq!(t_id, 12);
+                        assert_eq!(ver, 138);
+                    }
+                }
+                DQLCacheMissResult::VtablesMetadata(vtables_metadata) => {
+                    assert_eq!(vtables_metadata.len(), 1);
+                    for res in vtables_metadata {
+                        let (table_name, columns) = res.unwrap();
+                        assert_eq!(table_name, "TMP_1302_");
+                        let expected = vec![("a", ColumnType::Integer), ("b", ColumnType::Integer)];
+                        assert_eq!(columns, expected);
+                    }
+                }
+                DQLCacheMissResult::Sql(sql) => {
+                    assert_eq!(sql, "select * from TMP_1302_;");
                 }
             }
         }
