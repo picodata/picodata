@@ -416,7 +416,7 @@ def test_alter_system_sql_storage_cache_count_max(cluster: Cluster):
     bad_value = 0
     with pytest.raises(
         TarantoolError,
-        match=f"""invalid value for '{sql_storage_cache_count_max}': value must be between 1 and 18446744073709551615""",
+        match=f"""invalid value for '{sql_storage_cache_count_max}': value must be between 1 and 9223372036854775807""",
     ):
         instance.sql(f"ALTER SYSTEM SET {sql_storage_cache_count_max} = {bad_value}")
 

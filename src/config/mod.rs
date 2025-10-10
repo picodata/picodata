@@ -2086,7 +2086,7 @@ pub fn validate_alter_system_parameter_value<'v>(
         if cache_count < 1 {
             return Err(Error::other(format!(
                 "invalid value for '{name}': value must be between 1 and {}",
-                u64::MAX,
+                i64::MAX,
             )));
         }
     }
