@@ -94,7 +94,7 @@ pub fn skip_value(rd: &mut Cursor<&[u8]>) -> Result<()> {
             let len = rd
                 .read_data_u8()
                 .map_err(|e| Error::other(format!("u8 expected: {e}")))?;
-            shift_map_data(rd, len as u64)?;
+            shift_pos(rd, len as u64)?;
         }
         Marker::Bin16 => {
             let len = rd

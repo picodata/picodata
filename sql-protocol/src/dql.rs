@@ -1,28 +1,30 @@
 use crate::error::ProtocolError;
+use crate::iterators::{MsgpackMapIterator, TupleIterator};
 use crate::message_type::MessageType;
-use crate::msgpack::ByteCounter;
-use crate::protocol_encoder::{MsgpackWriter, ProtocolEncoder};
-use crate::tuple_iterator::TupleIterator;
+use crate::msgpack::{skip_value, ByteCounter};
+use crate::protocol_encoder::{ColumnType, MsgpackWriter, ProtocolEncoder};
+use rmp::decode::{read_array_len, read_int, read_map_len, read_str_len};
+use rmp::encode::{write_array_len, write_map_len, write_str, write_uint};
 use smol_str::SmolStr;
-use std::io::Write;
+use std::io::{Cursor, Write};
 use std::str::from_utf8;
 
 pub fn write_dql_package(
     mut w: impl Write,
     data: &impl ProtocolEncoder,
 ) -> Result<(), std::io::Error> {
-    rmp::encode::write_array_len(&mut w, 3)?;
+    write_array_len(&mut w, 3)?;
     let request_id = data.get_request_id();
-    rmp::encode::write_str(&mut w, request_id.as_str())?;
+    write_str(&mut w, request_id.as_str())?;
     rmp::encode::write_pfix(&mut w, MessageType::DQL as u8)?;
 
-    rmp::encode::write_array_len(&mut w, 6)?;
+    write_array_len(&mut w, 6)?;
     // Write schema info as map
     let schema_info = data.get_schema_info();
-    rmp::encode::write_map_len(&mut w, schema_info.len() as u32)?;
+    write_map_len(&mut w, schema_info.len() as u32)?;
     for (key, value) in schema_info {
-        rmp::encode::write_uint(&mut w, *key as u64)?;
-        rmp::encode::write_uint(&mut w, *value)?;
+        write_uint(&mut w, *key as u64)?;
+        write_uint(&mut w, *value)?;
     }
 
     let plan_id = data.get_plan_id();
@@ -34,13 +36,13 @@ pub fn write_dql_package(
     write_vtables(&mut w, data.get_vtables(plan_id))?;
 
     let options = data.get_options();
-    rmp::encode::write_array_len(&mut w, options.len() as u32)?;
+    write_array_len(&mut w, options.len() as u32)?;
     for option in options {
-        rmp::encode::write_uint(&mut w, option)?;
+        write_uint(&mut w, option)?;
     }
 
     let mut params = data.get_params();
-    rmp::encode::write_array_len(&mut w, params.len() as u32)?;
+    write_array_len(&mut w, params.len() as u32)?;
     while params.next().is_some() {
         params.write_current(&mut w)?;
     }
@@ -52,13 +54,13 @@ fn write_vtables(
     mut w: impl Write,
     vtables: impl ExactSizeIterator<Item = (SmolStr, impl MsgpackWriter)>,
 ) -> Result<(), std::io::Error> {
-    rmp::encode::write_map_len(&mut w, vtables.len() as u32)?;
+    write_map_len(&mut w, vtables.len() as u32)?;
 
     for (key, mut tuples) in vtables {
-        rmp::encode::write_str(&mut w, key.as_str())?;
-        rmp::encode::write_array_len(&mut w, 2)?;
-        rmp::encode::write_uint(&mut w, 0)?; // usual vtable
-        rmp::encode::write_array_len(&mut w, tuples.len() as u32)?;
+        write_str(&mut w, key.as_str())?;
+        write_array_len(&mut w, 2)?;
+        write_uint(&mut w, 0)?; // usual vtable
+        write_array_len(&mut w, tuples.len() as u32)?;
 
         while tuples.next().is_some() {
             let mut tuple_counter = ByteCounter::default();
@@ -71,92 +73,201 @@ fn write_vtables(
     Ok(())
 }
 
-pub fn execute_dql<VersionCheck, TupleInserter, Execute>(
-    mut raw_payload: &[u8],
-    version_check_f: VersionCheck,
-    tuple_f: TupleInserter,
-    execute_f: Execute,
-) -> Result<(), ProtocolError>
-where
-    VersionCheck: Fn(u32, u64) -> Result<(), ProtocolError>, // table_id, version
-    TupleInserter: Fn(&str, &mut TupleIterator) -> Result<(), ProtocolError>,
-    Execute: Fn(u64, &[u8], u64, u64) -> Result<(), ProtocolError>, // plan_id, params, motion_row_max, vdbe_opcode_max
-{
-    let l = rmp::decode::read_array_len(&mut raw_payload)?;
-    if l != 6 {
-        return Err(ProtocolError::DecodeError(format!(
-            "DQL package is invalid: expected to have package array length 6, got {l}"
-        )));
-    }
-    let l = rmp::decode::read_map_len(&mut raw_payload)?;
-    for _ in 0..l {
-        let id = rmp::decode::read_int(&mut raw_payload)?;
-        let version: u64 = rmp::decode::read_int(&mut raw_payload)?;
+#[derive(PartialEq, Debug, Copy, Clone)]
+#[repr(u8)]
+enum DQLState {
+    SchemaInfo = 0,
+    PlanId,
+    SenderId,
+    Vtables,
+    Options,
+    Params,
+    End,
+}
 
-        version_check_f(id, version)?;
-    }
+pub enum DQLResult<'a> {
+    SchemaInfo(MsgpackMapIterator<'a, u32, u64>),
+    PlanId(u64),
+    SenderId(&'a str),
+    Vtables(MsgpackMapIterator<'a, &'a str, TupleIterator<'a>>),
+    Options(u64, u64),
+    Params(&'a [u8]),
+}
 
-    let plan_id = rmp::decode::read_u64(&mut raw_payload)?;
+const DQL_PACKAGE_SIZE: usize = 6;
+pub struct DQLPackageIterator<'a> {
+    raw_payload: Cursor<&'a [u8]>,
+    state: DQLState,
+}
 
-    // TODO: check plan_id in cache
-    // if not in cache, unlock cache and make request to the router
-    // if in cache, just continue
+impl<'a> DQLPackageIterator<'a> {
+    pub fn new(raw_payload: &'a [u8]) -> Result<Self, ProtocolError> {
+        let mut cursor = Cursor::new(raw_payload);
 
-    let sender_id_len = rmp::decode::read_bin_len(&mut raw_payload)?;
-    let _sender_id = from_utf8(&raw_payload[..sender_id_len as usize])
-        .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
-    raw_payload = &raw_payload[sender_id_len as usize..];
-
-    // populate vtables
-
-    let l = rmp::decode::read_map_len(&mut raw_payload)?;
-    for _ in 0..l {
-        let ls = rmp::decode::read_str_len(&mut raw_payload)?;
-        let (vtable_name, la) = raw_payload.split_at(ls as usize);
-        let vtable_name =
-            from_utf8(vtable_name).map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
-        raw_payload = la;
-        let l = rmp::decode::read_array_len(&mut raw_payload)?;
-        if l != 2 {
+        let l = read_array_len(&mut cursor)?;
+        if l != DQL_PACKAGE_SIZE as u32 {
             return Err(ProtocolError::DecodeError(format!(
-                "DQL package is invalid: expected to have vtable array length 2, got {l}"
+                "DQL package is invalid: expected to have package array length {DQL_PACKAGE_SIZE}, got {l}"
             )));
         }
-        // don't use for now, only one type of vtable is supported
-        let _ = rmp::decode::read_pfix(&mut raw_payload)?;
-        let l = rmp::decode::read_array_len(&mut raw_payload)?;
-        let mut iterator = TupleIterator::new(raw_payload, l as usize);
 
-        tuple_f(vtable_name, &mut iterator)?;
+        Ok(Self {
+            raw_payload: cursor,
+            state: DQLState::SchemaInfo,
+        })
+    }
 
-        if iterator.next().is_some() {
-            return Err(ProtocolError::DecodeError(
-                "Tuple itartor was not consumed completely.".to_string(),
-            ));
+    fn get_schema_info(&mut self) -> Result<MsgpackMapIterator<'a, u32, u64>, ProtocolError> {
+        assert_eq!(self.state, DQLState::SchemaInfo);
+        let l = read_map_len(&mut self.raw_payload)?;
+
+        let start = self.raw_payload.position() as usize;
+        for _ in 0..l * 2 {
+            skip_value(&mut self.raw_payload)
+                .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
         }
+        let end = self.raw_payload.position() as usize;
+        self.state = DQLState::PlanId;
 
-        raw_payload = iterator.rest_bytes()?;
+        Ok(MsgpackMapIterator::new(
+            &self.raw_payload.get_ref()[start..end],
+            l,
+            |r| read_int(r).map_err(|err| ProtocolError::DecodeError(err.to_string())),
+            |r| read_int(r).map_err(|err| ProtocolError::DecodeError(err.to_string())),
+        ))
     }
 
-    let options = rmp::decode::read_array_len(&mut raw_payload)?;
-    if options != 2 {
-        return Err(ProtocolError::DecodeError(format!(
-            "DQL package is invalid: expected to have options array length 2, got {options}"
-        )));
+    fn get_plan_id(&mut self) -> Result<u64, ProtocolError> {
+        assert_eq!(self.state, DQLState::PlanId);
+        let plan_id = rmp::decode::read_u64(&mut self.raw_payload)?;
+        self.state = DQLState::SenderId;
+        Ok(plan_id)
     }
-    let sql_motion_row_max: u64 = rmp::decode::read_int(&mut raw_payload)?;
-    let sql_vdbe_opcode_max: u64 = rmp::decode::read_int(&mut raw_payload)?;
 
-    let encoded_params = raw_payload;
+    fn get_sender_id(&mut self) -> Result<&'a str, ProtocolError> {
+        assert_eq!(self.state, DQLState::SenderId);
+        let sender_id_len = rmp::decode::read_bin_len(&mut self.raw_payload)?;
+        let start = self.raw_payload.position() as usize;
+        let end = start + sender_id_len as usize;
+        let sender_id = from_utf8(&self.raw_payload.get_ref()[start..end])
+            .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+        self.raw_payload.set_position(end as u64);
+        self.state = DQLState::Vtables;
+        Ok(sender_id)
+    }
 
-    execute_f(
-        plan_id,
-        encoded_params,
-        sql_motion_row_max,
-        sql_vdbe_opcode_max,
-    )?;
+    fn get_vtables(
+        &mut self,
+    ) -> Result<MsgpackMapIterator<'a, &'a str, TupleIterator<'a>>, ProtocolError> {
+        assert_eq!(self.state, DQLState::Vtables);
 
-    Ok(())
+        let l = read_map_len(&mut self.raw_payload)?;
+        let start = self.raw_payload.position() as usize;
+        for _ in 0..l * 2 {
+            skip_value(&mut self.raw_payload)
+                .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+        }
+        let end = self.raw_payload.position() as usize;
+        self.state = DQLState::Options;
+
+        let table_name_decoder = |r: &mut Cursor<&'a [u8]>| -> Result<&'a str, ProtocolError> {
+            let l = read_str_len(r)?;
+            let start = r.position() as usize;
+            let end = start + l as usize;
+            let vtable_name = from_utf8(&r.get_ref()[start..end])
+                .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+            r.set_position(end as u64);
+            Ok(vtable_name)
+        };
+
+        let tuple_iterator_decoder =
+            |r: &mut Cursor<&'a [u8]>| -> Result<TupleIterator<'a>, ProtocolError> {
+                let l = read_array_len(r)?;
+                if l != 2 {
+                    return Err(ProtocolError::DecodeError(format!(
+                        "DQL package is invalid: expected to have vtable array length 2, got {l}"
+                    )));
+                }
+                // don't use for now, only one type of vtable is supported
+                let _ = rmp::decode::read_pfix(r)?;
+                let l = read_array_len(r)? as usize;
+                let start = r.position() as usize;
+                for _ in 0..l {
+                    skip_value(r).map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+                }
+                let end = r.position() as usize;
+
+                Ok(TupleIterator::new(&r.get_ref()[start..end], l))
+            };
+
+        Ok(MsgpackMapIterator::new(
+            &self.raw_payload.get_ref()[start..end],
+            l,
+            table_name_decoder,
+            tuple_iterator_decoder,
+        ))
+    }
+
+    fn get_options(&mut self) -> Result<(u64, u64), ProtocolError> {
+        assert_eq!(self.state, DQLState::Options);
+        let options = read_array_len(&mut self.raw_payload)?;
+        if options != 2 {
+            return Err(ProtocolError::DecodeError(format!(
+                "DQL package is invalid: expected to have options array length 2, got {options}"
+            )));
+        }
+        let sql_motion_row_max = read_int(&mut self.raw_payload)?;
+        let sql_vdbe_opcode_max = read_int(&mut self.raw_payload)?;
+        self.state = DQLState::Params;
+        Ok((sql_motion_row_max, sql_vdbe_opcode_max))
+    }
+
+    fn get_params(&mut self) -> Result<&'a [u8], ProtocolError> {
+        assert_eq!(self.state, DQLState::Params);
+        let l = self.raw_payload.position() as usize;
+        let params = &self.raw_payload.get_ref()[l..];
+        self.state = DQLState::End;
+        Ok(params)
+    }
+}
+
+impl<'a> Iterator for DQLPackageIterator<'a> {
+    type Item = Result<DQLResult<'a>, ProtocolError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.state {
+            DQLState::SchemaInfo => match self.get_schema_info() {
+                Ok(schema_info) => Some(Ok(DQLResult::SchemaInfo(schema_info))),
+                Err(err) => Some(Err(err)),
+            },
+            DQLState::PlanId => match self.get_plan_id() {
+                Ok(plan_id) => Some(Ok(DQLResult::PlanId(plan_id))),
+                Err(err) => Some(Err(err)),
+            },
+            DQLState::SenderId => match self.get_sender_id() {
+                Ok(sender_id) => Some(Ok(DQLResult::SenderId(sender_id))),
+                Err(err) => Some(Err(err)),
+            },
+            DQLState::Vtables => match self.get_vtables() {
+                Ok(vtables) => Some(Ok(DQLResult::Vtables(vtables))),
+                Err(err) => Some(Err(err)),
+            },
+            DQLState::Options => match self.get_options() {
+                Ok(options) => Some(Ok(DQLResult::Options(options.0, options.1))),
+                Err(err) => Some(Err(err)),
+            },
+            DQLState::Params => match self.get_params() {
+                Ok(params) => Some(Ok(DQLResult::Params(params))),
+                Err(err) => Some(Err(err)),
+            },
+            DQLState::End => None,
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let size = DQL_PACKAGE_SIZE - self.state as usize;
+        (size, Some(size))
+    }
 }
 
 #[cfg(test)]
@@ -194,31 +305,9 @@ mod tests {
     fn test_execute_dql_cache_hit() {
         let mut data: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x96\x81\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw\xc4\x04some\x81\xa9TMP_1302_\x92\x00\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
 
-        let version_f = |t_id: u32, ver: u64| -> Result<(), ProtocolError> {
-            assert_eq!(t_id, 12);
-            assert_eq!(ver, 138);
-            Ok(())
-        };
-
-        let tuple_f = |name: &str, tuples: &mut TupleIterator| -> Result<(), ProtocolError> {
-            assert_eq!(name, "TMP_1302_");
-            let actual = vec![tuples.next().unwrap(), tuples.next().unwrap()];
-            let expected = vec![[148, 1, 2, 3, 0], [148, 3, 2, 1, 1]];
-            assert_eq!(actual, expected);
-            Ok(())
-        };
-        let execute_f =
-            |plan: u64, params: &[u8], option1: u64, option2: u64| -> Result<(), ProtocolError> {
-                assert_eq!(plan, 5264743718663535479);
-                assert_eq!(params, &[147, 204, 138, 123, 205, 1, 176]);
-                assert_eq!(option1, 123);
-                assert_eq!(option2, 456);
-                Ok(())
-            };
-
-        let l = rmp::decode::read_array_len(&mut data).unwrap();
+        let l = read_array_len(&mut data).unwrap();
         assert_eq!(l, 3);
-        let str_len = rmp::decode::read_str_len(&mut data).unwrap();
+        let str_len = read_str_len(&mut data).unwrap();
         let (request_id, new_data) = data.split_at(str_len as usize);
         let request_id = from_utf8(request_id).unwrap();
         assert_eq!(request_id, "14e84334-71df-4e69-8c85-dc2707a390c6");
@@ -226,6 +315,47 @@ mod tests {
         let msg_type = rmp::decode::read_pfix(&mut data).unwrap();
         assert_eq!(msg_type, MessageType::DQL as u8);
 
-        execute_dql(data, version_f, tuple_f, execute_f).unwrap()
+        let package = DQLPackageIterator::new(data).unwrap();
+
+        for elem in package {
+            match elem.unwrap() {
+                DQLResult::SchemaInfo(schema_info) => {
+                    assert_eq!(schema_info.len(), 1);
+                    for res in schema_info {
+                        let (t_id, version) = res.unwrap();
+                        assert_eq!(t_id, 12);
+                        assert_eq!(version, 138);
+                    }
+                }
+                DQLResult::PlanId(plan_id) => {
+                    assert_eq!(plan_id, 5264743718663535479);
+                }
+                DQLResult::SenderId(sender_id) => {
+                    assert_eq!(sender_id, "some");
+                }
+                DQLResult::Vtables(vtables) => {
+                    for result in vtables {
+                        let (name, tuples) = result.unwrap();
+                        assert_eq!(name, "TMP_1302_");
+                        assert_eq!(tuples.len(), 2);
+                        let mut actual = Vec::with_capacity(2);
+                        for tuple in tuples {
+                            let tuple = tuple.unwrap();
+                            actual.push(tuple);
+                        }
+                        let expected = vec![[148, 1, 2, 3, 0], [148, 3, 2, 1, 1]];
+                        assert_eq!(actual, expected);
+                    }
+                }
+                DQLResult::Options(sql_motion_row_max, sql_vdbe_opcode_max) => {
+                    assert_eq!(sql_motion_row_max, 123);
+                    assert_eq!(sql_vdbe_opcode_max, 456);
+                }
+                DQLResult::Params(params) => {
+                    let expected = vec![147, 204, 138, 123, 205, 1, 176];
+                    assert_eq!(params, expected.as_slice());
+                }
+            }
+        }
     }
 }
