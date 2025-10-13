@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `25.2.0-23-ge0b4eb122`.
+Описание соответствует версии Picodata `25.5.0-51-g8de1078c9`.
 
 ### _pico_table
 
@@ -150,6 +150,7 @@
 * `target_vshard_config_version`: (_unsigned_)
 * `vshard_bootstrapped`: (_boolean_)
 * `bucket_count`: (_unsigned_)
+* `is_default`: (_boolean_)
 
 Индексы:
 
