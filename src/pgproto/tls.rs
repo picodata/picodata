@@ -43,16 +43,30 @@ pub struct TlsConfig {
 }
 
 impl TlsConfig {
-    pub fn from_instance_dir(instance_dir: &Path) -> Result<Self, TlsConfigError> {
+    pub fn from_paths(
+        instance_dir: &Path,
+        cert_file: Option<&Path>,
+        key_file: Option<&Path>,
+        ca_file: Option<&Path>,
+    ) -> Result<Self, TlsConfigError> {
         // We should use the absolute paths here, because SslContextBuilder::set_certificate_chain_file
         // fails for relative paths with an unclear error, represented as an empty error stack.
-        let cert = instance_dir.join("server.crt");
+        let cert = match cert_file {
+            Some(cert_file) => cert_file.to_path_buf(),
+            None => instance_dir.join("server.crt"),
+        };
         let cert = fs::canonicalize(&cert).map_err(|e| TlsConfigError::CertFile(cert, e))?;
 
-        let key = instance_dir.join("server.key");
+        let key = match key_file {
+            Some(key_file) => key_file.to_path_buf(),
+            None => instance_dir.join("server.key"),
+        };
         let key = fs::canonicalize(&key).map_err(|e| TlsConfigError::KeyFile(key, e))?;
 
-        let ca_cert = instance_dir.join("ca.crt");
+        let ca_cert = match ca_file {
+            Some(ca_file) => ca_file.to_path_buf(),
+            None => instance_dir.join("ca.crt"),
+        };
         let ca_cert = match fs::canonicalize(&ca_cert) {
             Ok(path) => Some(path),
             Err(e) if e.kind() == io::ErrorKind::NotFound => None,
@@ -135,8 +149,13 @@ impl TlsAcceptor {
         Ok(())
     }
 
-    pub fn new_from_dir(instance_dir: &Path) -> Result<Self, TlsConfigError> {
-        let tls_config = TlsConfig::from_instance_dir(instance_dir)?;
+    pub fn new_from_paths(
+        instance_dir: &Path,
+        cert_file: Option<&Path>,
+        key_file: Option<&Path>,
+        ca_file: Option<&Path>,
+    ) -> Result<Self, TlsConfigError> {
+        let tls_config = TlsConfig::from_paths(instance_dir, cert_file, key_file, ca_file)?;
         Self::new(&tls_config)
     }
 

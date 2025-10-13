@@ -622,6 +622,9 @@ class Instance:
     pg_host: str | None = None
     pg_port: int | None = None
     pg_ssl: bool | None = None
+    pg_ssl_cert_file: str | None = None
+    pg_ssl_key_file: str | None = None
+    pg_ssl_ca_file: str | None = None
     audit: str | bool = True
     tier: str | None = None
     init_replication_factor: int | None = None
@@ -717,6 +720,9 @@ class Instance:
             *([f"--iproto-listen={self.iproto_listen}"] if self.iproto_listen else []),
             *([f"--pg-listen={self.pg_listen}"] if self.pg_listen else []),
             *([f"-c instance.pg.ssl={self.pg_ssl}"] if self.pg_ssl else []),
+            *([f"-c instance.pg.cert_file={self.pg_ssl_cert_file}"] if self.pg_ssl and self.pg_ssl_cert_file else []),
+            *([f"-c instance.pg.key_file={self.pg_ssl_key_file}"] if self.pg_ssl and self.pg_ssl_key_file else []),
+            *([f"-c instance.pg.ca_file={self.pg_ssl_ca_file}"] if self.pg_ssl and self.pg_ssl_ca_file else []),
             *([f"--peer={str.join(',', self.peers)}"] if self.peers else []),
             *(f"--failure-domain={k}={v}" for k, v in self.failure_domain.items()),
             *(["--init-replication-factor", f"{self.init_replication_factor}"]
@@ -3043,6 +3049,9 @@ class Postgres:
     host: str = "127.0.0.1"
     ssl: bool = False
     ssl_verify: bool = False
+    cert_file: str | None = None
+    key_file: str | None = None
+    ca_file: str | None = None
 
     def install(self):
         # deploy ~~3~~ 1 instances and configure pgproto on the first one
@@ -3054,15 +3063,21 @@ class Postgres:
         i1.pg_host = self.host
         i1.pg_port = self.port
         i1.pg_ssl = self.ssl
+        i1.pg_ssl_cert_file = self.cert_file
+        i1.pg_ssl_key_file = self.key_file
+        i1.pg_ssl_ca_file = self.ca_file
 
-        ssl_dir = Path(os.path.realpath(__file__)).parent / "ssl_certs"
-        instance_dir = Path(i1.instance_dir)
-        instance_dir.mkdir(exist_ok=True)
-        shutil.copyfile(ssl_dir / "server.crt", instance_dir / "server.crt")
-        shutil.copyfile(ssl_dir / "server.key", instance_dir / "server.key")
+        if i1.pg_ssl_cert_file is None or i1.pg_ssl_key_file is None or i1.pg_ssl_ca_file is None:
+            ssl_dir = Path(os.path.realpath(__file__)).parent / "ssl_certs"
+            instance_dir = Path(i1.instance_dir)
+            instance_dir.mkdir(exist_ok=True)
+            if i1.pg_ssl_cert_file is None:
+                shutil.copyfile(ssl_dir / "server.crt", instance_dir / "server.crt")
+            if i1.pg_ssl_key_file is None:
+                shutil.copyfile(ssl_dir / "server.key", instance_dir / "server.key")
 
-        if self.ssl_verify:
-            shutil.copyfile(ssl_dir / "combined-ca.crt", instance_dir / "ca.crt")
+            if i1.pg_ssl_ca_file is None and self.ssl_verify:
+                shutil.copyfile(ssl_dir / "combined-ca.crt", instance_dir / "ca.crt")
 
         self.cluster.wait_online()
         return self
@@ -3099,6 +3114,17 @@ def postgres_with_tls(cluster: Cluster, pg_port: int):
 @pytest.fixture
 def postgres_with_mtls(cluster: Cluster, pg_port: int):
     return Postgres(cluster, port=pg_port, ssl=True, ssl_verify=True).install()
+
+
+@pytest.fixture
+def postgres_with_custom_cert_paths(cluster: Cluster, pg_port: int):
+    ssl_dir = Path(os.path.realpath(__file__)).parent / "ssl_certs"
+    cert_file = str(ssl_dir / "server-with-ext.crt")
+    key_file = str(ssl_dir / "my-server.key")
+    ca_file = str(ssl_dir / "my-combined-ca.crt")
+    return Postgres(
+        cluster, port=pg_port, ssl=True, ssl_verify=True, cert_file=cert_file, key_file=key_file, ca_file=ca_file
+    ).install()
 
 
 def copy_dir(src: Path, dst: Path, copy_socks: bool = False):

@@ -54,6 +54,12 @@ def test_mtls_with_known_cert(postgres_with_mtls: Postgres):
     try_connect_psycopg(postgres_with_mtls, client_tls_pair_name="server")
 
 
+def test_custom_server_cert_paths(postgres_with_custom_cert_paths: Postgres):
+    create_user(postgres_with_custom_cert_paths)
+
+    try_connect_psycopg(postgres_with_custom_cert_paths, client_tls_pair_name="server")
+
+
 def test_mtls_without_client_cert(postgres_with_mtls: Postgres):
     create_user(postgres_with_mtls)
 

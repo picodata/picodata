@@ -14,6 +14,12 @@ with the `YY.MINOR.MICRO` scheme.
 - Fix possible crash when using TLS for iproto communication within cluster.
 - Specifying `instance.iproto_tls.enable` parameter via configuration file.
 
+### Pgproto
+- Add support for configuring pgproto TLS certificates via:
+  - `instance.pg.ssl` (enable/disable TLS)
+  - `instance.pg.cert_file` (client certificate path)
+  - `instance.pg.key_file` (private key path)
+  - `instance.pg.ca_file` (CA certificate path).
 
 ## [25.4.2] - 2025-10-09
 
@@ -28,7 +34,6 @@ with the `YY.MINOR.MICRO` scheme.
   to disable authentication. On upgrade, Picodata leaves the existing `jwt_secret`
   unchanged. To enable web authentication on existing clusters, reset `jwt_secret`
   via the `ALTER SYSTEM` API.
-
 
 ## [25.4.1] - 2025-10-02
 
