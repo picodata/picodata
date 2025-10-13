@@ -26,6 +26,13 @@ with the `YY.MINOR.MICRO` scheme.
 ### SQL
 - Support indexing arrays, i.e. `a[1][2]` expressions.
 
+### Pgproto
+- Add support for configuring pgproto TLS certificates via:
+  - `instance.pg.ssl` (enable/disable TLS)
+  - `instance.pg.cert_file` (client certificate path)
+  - `instance.pg.key_file` (private key path)
+  - `instance.pg.ca_file` (CA certificate path).
+
 ## [25.4.1] - 2025-10-03
 
 ### Features

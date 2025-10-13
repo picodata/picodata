@@ -8,7 +8,7 @@ use crate::{
 use prometheus::IntCounter;
 use std::{
     os::fd::{AsRawFd, BorrowedFd},
-    path::Path,
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
         LazyLock,
@@ -79,6 +79,13 @@ pub struct Config {
 
     #[introspection(config_default = false)]
     pub ssl: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cert_file: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_file: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ca_file: Option<PathBuf>,
 }
 
 impl Config {
@@ -197,7 +204,14 @@ impl Context {
 
         let tls_acceptor = config
             .ssl()
-            .then(|| TlsAcceptor::new_from_dir(instance_dir))
+            .then(|| {
+                TlsAcceptor::new_from_paths(
+                    instance_dir,
+                    config.cert_file.as_deref(),
+                    config.key_file.as_deref(),
+                    config.ca_file.as_deref(),
+                )
+            })
             .transpose()
             .map_err(Error::invalid_configuration)?
             .inspect(|tls| tlog!(Info, "configured {} for pgproto", tls.kind()));
