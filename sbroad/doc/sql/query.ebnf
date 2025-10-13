@@ -1,5 +1,5 @@
 statement   ::= explain | ddl | dml | dql | acl | call
-explain     ::= 'EXPLAIN' (dml | dql)
+explain     ::= 'EXPLAIN' (dml | ('(' 'RAW' (',' 'FMT')? ')')? dql )
 dql         ::= (with? select | values)
                 ('OPTION' '('
                     (('sql_motion_row_max' | 'sql_vdbe_opcode_max') '=' unsigned)
