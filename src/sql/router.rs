@@ -461,10 +461,11 @@ impl Vshard for Tier {
     fn exec_ir_on_any_node(
         &self,
         sub_plan: ExecutionPlan,
+        buckets: &Buckets,
         return_format: DispatchReturnFormat,
     ) -> Result<Box<dyn Any>, SbroadError> {
         let runtime = StorageRuntime::new();
-        runtime.exec_ir_on_any_node(sub_plan, return_format)
+        runtime.exec_ir_on_any_node(sub_plan, buckets, return_format)
     }
 
     fn exec_explain_on_any_node(
@@ -510,10 +511,11 @@ impl Vshard for &Tier {
     fn exec_ir_on_any_node(
         &self,
         sub_plan: ExecutionPlan,
+        buckets: &Buckets,
         return_format: DispatchReturnFormat,
     ) -> Result<Box<dyn Any>, SbroadError> {
         let runtime = StorageRuntime::new();
-        runtime.exec_ir_on_any_node(sub_plan, return_format)
+        runtime.exec_ir_on_any_node(sub_plan, buckets, return_format)
     }
 
     fn exec_explain_on_any_node(

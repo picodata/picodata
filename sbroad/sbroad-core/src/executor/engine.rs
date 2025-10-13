@@ -448,6 +448,7 @@ pub trait Vshard {
     fn exec_ir_on_any_node(
         &self,
         sub_plan: ExecutionPlan,
+        buckets: &Buckets,
         return_format: DispatchReturnFormat,
     ) -> Result<Box<dyn Any>, SbroadError>;
 

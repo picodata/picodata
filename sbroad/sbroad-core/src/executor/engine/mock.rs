@@ -1543,6 +1543,7 @@ impl Vshard for RouterRuntimeMock {
     fn exec_ir_on_any_node(
         &self,
         _sub_plan: ExecutionPlan,
+        _buckets: &Buckets,
         _return_format: DispatchReturnFormat,
     ) -> Result<Box<dyn Any>, SbroadError> {
         Err(SbroadError::Unsupported(
@@ -1600,6 +1601,7 @@ impl Vshard for &RouterRuntimeMock {
     fn exec_ir_on_any_node(
         &self,
         _sub_plan: ExecutionPlan,
+        _buckets: &Buckets,
         _return_format: DispatchReturnFormat,
     ) -> Result<Box<dyn Any>, SbroadError> {
         Err(SbroadError::Unsupported(

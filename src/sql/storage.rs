@@ -340,6 +340,7 @@ impl Vshard for StorageRuntime {
     fn exec_ir_on_any_node(
         &self,
         sub_plan: ExecutionPlan,
+        _buckets: &Buckets,
         return_format: DispatchReturnFormat,
     ) -> Result<Box<dyn Any>, SbroadError> {
         let plan = sub_plan.get_ir_plan();

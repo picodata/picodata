@@ -926,7 +926,7 @@ pub fn dispatch_by_buckets(
                         ));
                 }
             }
-            runtime.exec_ir_on_any_node(sub_plan, return_format)
+            runtime.exec_ir_on_any_node(sub_plan, buckets, return_format)
         }
         Buckets::All | Buckets::Filtered(_) => {
             runtime.exec_ir_on_buckets(sub_plan, buckets, return_format)
