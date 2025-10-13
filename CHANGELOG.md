@@ -10,6 +10,10 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## [25.5.0] - Unreleased
 
+### Features
+
+- Reduce the frequency of heartbeats sent to raft learners, reducing the cluster traffic.
+
 ### Fixes
 - Fix compilation error on ARM architecture.
 - Fix eliminate erroneous ER_READONLY message in logs when executing TRUNCATE on

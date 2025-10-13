@@ -204,17 +204,33 @@ impl InstanceReachabilityManager {
         return Undecided;
     }
 
-    /// Is called from raft main loop when handling raft messages, passing a
-    /// raft id of an instance which was previously determined to be unreachable.
-    /// This function makes a decision about how often raft hearbeat messages
-    /// should be sent to such instances.
-    pub fn should_send_heartbeat_this_tick(&self, to: RaftId) -> bool {
+    /// Is called from raft main loop when handling raft messages
+    ///  to determine whether to actually send a heartbeat to an instance.
+    ///
+    /// If an instance was previously determined unreachable, heartbeats will be sent less often
+    ///  (with an exponential backoff).
+    ///
+    /// It will also limit the frequency of heartbeats to online learners to approximately
+    ///  three times per `auto_offline_timeout`
+    pub fn should_send_heartbeat_this_tick(&self, to: RaftId, is_learner: bool) -> bool {
+        self.update_auto_offline_timeout();
+
         let Some(info) = self.infos.get(&to) else {
             // No attempts were registered yet.
             return true;
         };
 
         if info.fail_streak == 0 {
+            // we want to reduce the amount of traffic sent to online learners
+            if let Some(last_attempt) = info.last_attempt {
+                if is_learner {
+                    let learner_heartbeat_period = self.auto_offline_timeout.get() / 3;
+
+                    let now = fiber::clock();
+                    return now > last_attempt + learner_heartbeat_period;
+                }
+            }
+
             // Last attempt was successful, keep going.
             return true;
         }

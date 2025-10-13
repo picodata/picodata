@@ -2287,8 +2287,10 @@ impl NodeImpl {
 
         for msg in messages {
             if msg.msg_type() == raft::MessageType::MsgHeartbeat {
+                // decrease the rate of heartbeats sent to nodes that we think are offline
                 let instance_reachability = self.instance_reachability.borrow();
-                if !instance_reachability.should_send_heartbeat_this_tick(msg.to) {
+                let is_learner = self.raw_node.raft.prs().conf().learners().contains(&msg.to);
+                if !instance_reachability.should_send_heartbeat_this_tick(msg.to, is_learner) {
                     skip_count += 1;
                     continue;
                 }
