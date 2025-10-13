@@ -6981,3 +6981,13 @@ def test_alter_table_rename(cluster: Cluster):
                 password=password,
             )
             assert sorted(query) == [[1], [2]]
+
+        # create old table again, check no conflicts
+        ddl = i1.sql(
+            f"""
+            CREATE TABLE {table_name} (id INTEGER NOT NULL, PRIMARY KEY (id))
+            USING memtx DISTRIBUTED {distribution}
+            OPTION (TIMEOUT = 3.0);
+            """
+        )
+        assert ddl["row_count"] == 1

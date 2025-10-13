@@ -69,9 +69,9 @@ def test_ddl_abort(cluster: Cluster):
         )
 
     assert i1.call("box.space._space:get", space_id) is not None
-    assert get_index_names(i1, space_id) == [f"{space_name}_pkey"]
+    assert get_index_names(i1, space_id) == [f"{space_id}_pkey"]
     assert i2.call("box.space._space:get", space_id) is not None
-    assert get_index_names(i2, space_id) == [f"{space_name}_pkey"]
+    assert get_index_names(i2, space_id) == [f"{space_id}_pkey"]
 
     # Wake the instance so that governor finds out there's a conflict
     # and aborts the ddl op.
@@ -222,7 +222,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
     pico_pk_def = [
         space_id,
         0,
-        "stuff_pkey",
+        f"{space_id}_pkey",
         "tree",
         [dict(unique=True)],
         [["id", "unsigned", None, False, None]],
@@ -237,7 +237,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
     tt_pk_def = [
         space_id,
         0,
-        "stuff_pkey",
+        f"{space_id}_pkey",
         "tree",
         dict(unique=True),
         [[0, "unsigned", None, False, None]],
@@ -341,7 +341,7 @@ def test_ddl_create_sharded_space(cluster: Cluster):
     pico_pk_def = [
         space_id,
         0,
-        "stuff_pkey",
+        f"{space_id}_pkey",
         "tree",
         [dict(unique=True)],
         [["id", "unsigned", None, False, None]],
@@ -354,7 +354,7 @@ def test_ddl_create_sharded_space(cluster: Cluster):
     tt_pk_def = [
         space_id,
         0,
-        "stuff_pkey",
+        f"{space_id}_pkey",
         "tree",
         dict(unique=True),
         [[0, "unsigned", None, False, None]],
@@ -493,9 +493,9 @@ def test_ddl_create_table_abort(cluster: Cluster):
         )
 
     assert i1.call("box.space._space:get", space_id) is not None
-    assert get_index_names(i1, space_id) == [f"{space_name}_pkey"]
+    assert get_index_names(i1, space_id) == [f"{space_id}_pkey"]
     assert i2.call("box.space._space:get", space_id) is not None
-    assert get_index_names(i2, space_id) == [f"{space_name}_pkey"]
+    assert get_index_names(i2, space_id) == [f"{space_id}_pkey"]
 
     # Wake the instance so that governor finds out there's a conflict
     # and aborts the ddl op.
@@ -665,7 +665,7 @@ def test_ddl_create_table_from_snapshot_at_boot(cluster: Cluster):
     tt_pk_def = [
         space_id,
         0,
-        "stuff_pkey",
+        f"{space_id}_pkey",
         "tree",
         dict(unique=True),
         [[0, "unsigned", None, False, None]],
@@ -762,7 +762,7 @@ def test_ddl_create_table_from_snapshot_at_catchup(cluster: Cluster):
     tt_pk_def = [
         space_id,
         0,
-        "stuff_pkey",
+        f"{space_id}_pkey",
         "tree",
         dict(unique=True),
         [[0, "unsigned", None, False, None]],
