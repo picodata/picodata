@@ -29,6 +29,7 @@ use crate::executor::ir::ExecutionPlan;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Motion, NodeId};
 use crate::ir::transformation::redistribution::MotionPolicy;
+use crate::ir::value::Value;
 use crate::ir::{Plan, Slices};
 use crate::BoundStatement;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
@@ -98,7 +99,7 @@ where
     pub fn from_text_and_params(
         coordinator: &'a C,
         query_text: &str,
-        params: Vec<crate::ir::value::Value>,
+        params: Vec<Value>,
     ) -> Result<Self, SbroadError>
     where
         C::Cache: lru::Cache<SmolStr, Rc<Plan>>,
@@ -190,17 +191,26 @@ where
                 }
 
                 let top_id = self.exec_plan.get_motion_subtree_root(*motion_id)?;
-                let mut explain_result = String::new();
 
                 let buckets = self.bucket_discovery(top_id)?;
-                let virtual_table = self.coordinator.materialize_motion(
+                let mut virtual_table = self.coordinator.materialize_motion(
                     &mut self.exec_plan,
                     motion_id,
                     &buckets,
-                    Some(&mut explain_result),
                 )?;
 
-                explain_vec.push(explain_result);
+                if self.exec_plan.get_ir_plan().is_raw_explain() {
+                    // Take the first tuple from the virtual table and decode it into
+                    // explain string.
+                    let tuples = std::mem::take(virtual_table.get_mut_tuples());
+                    let Some(first_tuple) = tuples.into_iter().next() else {
+                        unreachable!("Expect a single tuple from explain in a virtual table.");
+                    };
+                    let Some(Value::String(explain)) = first_tuple.into_iter().next() else {
+                        unreachable!("Expect a single string value in an explain tuple.");
+                    };
+                    explain_vec.push(explain);
+                }
 
                 self.exec_plan
                     .set_motion_vtable(motion_id, virtual_table, &vshard)?;

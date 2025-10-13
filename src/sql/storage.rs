@@ -297,54 +297,15 @@ impl Vshard for StorageRuntime {
         calculate_bucket_id(s, self.bucket_count())
     }
 
-    fn exec_explain_on_any_node(
-        &self,
-        sub_plan: ExecutionPlan,
-        buckets: &Buckets,
-    ) -> Result<Box<dyn Any>, SbroadError> {
-        let plan = sub_plan.get_ir_plan();
-        let top_id = plan.get_top()?;
-        let explain_type = plan.get_explain_type().unwrap();
-        let plan_id = plan.pattern_id(top_id)?;
-        let sp = SyntaxPlan::new(&sub_plan, top_id, Snapshot::Oldest)?;
-        let ordered = OrderedSyntaxNodes::try_from(sp)?;
-        let nodes = ordered.to_syntax_data()?;
-        let params = sub_plan.to_params().to_vec();
-        let version_map = sub_plan.get_ir_plan().version_map.clone();
-        let schema_info = SchemaInfo::new(version_map);
-        let mut locked_cache = self.cache().lock();
-
-        let mut info = LocalExecutionQueryInfo {
-            exec_plan: sub_plan,
-            plan_id,
-            nodes,
-            params,
-            schema_info,
-        };
-
-        if info.exec_plan.get_ir_plan().is_raw_explain() {
-            exec_explain_query_plan::<Self, <Self as QueryCache>::Mutex>(
-                &mut locked_cache,
-                &mut info,
-                buckets,
-                explain_type,
-            )
-        } else {
-            Err(SbroadError::Invalid(
-                Entity::MsgPack,
-                Some(format_smolstr!("expected explain query")),
-            ))
-        }
-    }
-
     fn exec_ir_on_any_node(
         &self,
         sub_plan: ExecutionPlan,
-        _buckets: &Buckets,
+        buckets: &Buckets,
         return_format: DispatchReturnFormat,
     ) -> Result<Box<dyn Any>, SbroadError> {
         let plan = sub_plan.get_ir_plan();
         let top_id = plan.get_top()?;
+        let explain_type = plan.get_explain_type();
         let plan_id = plan.pattern_id(top_id)?;
         let sp = SyntaxPlan::new(&sub_plan, top_id, Snapshot::Oldest)?;
         let ordered = OrderedSyntaxNodes::try_from(sp)?;
@@ -352,6 +313,8 @@ impl Vshard for StorageRuntime {
         let params = sub_plan.to_params().to_vec();
         let version_map = sub_plan.get_ir_plan().version_map.clone();
         let schema_info = SchemaInfo::new(version_map);
+        let mut locked_cache = self.cache().lock();
+
         let mut info = LocalExecutionQueryInfo {
             exec_plan: sub_plan,
             plan_id,
@@ -359,41 +322,55 @@ impl Vshard for StorageRuntime {
             params,
             schema_info,
         };
-        let mut locked_cache = self.cache().lock();
 
-        let boxed_bytes: Box<dyn Any> = read_or_prepare::<Self, <Self as QueryCache>::Mutex>(
-            &mut locked_cache,
-            &mut info,
-            &StorageReturnFormat::DqlRaw,
-        )?;
-        let bytes = boxed_bytes.downcast::<Vec<u8>>().map_err(|e| {
-            SbroadError::Invalid(
-                Entity::MsgPack,
-                Some(format_smolstr!("expected Tuple as result: {e:?}")),
-            )
-        })?;
-        // TODO: introduce a wrapper type, do not use raw Vec<u8> and
-        // implement convert trait
-        let res: Box<dyn Any> = match return_format {
-            DispatchReturnFormat::Tuple => {
-                let tup_buf = TupleBuffer::try_from_vec(*bytes)
-                    .expect("failed to convert raw dql result to tuple buffer");
-                Box::new(Tuple::from(&tup_buf))
-            }
-            DispatchReturnFormat::Inner => {
-                let mut data: Vec<ProducerResult> =
-                    msgpack::decode(bytes.as_slice()).map_err(|e| {
-                        SbroadError::Other(format_smolstr!("decode bytes into inner format: {e:?}"))
-                    })?;
-                let inner = data.get_mut(0).ok_or_else(|| {
-                    SbroadError::NotFound(Entity::ProducerResult, "from the tuple".into())
+        match explain_type {
+            None => {
+                let boxed_bytes: Box<dyn Any> = read_or_prepare::<Self, <Self as QueryCache>::Mutex>(
+                    &mut locked_cache,
+                    &mut info,
+                    &StorageReturnFormat::DqlRaw,
+                )?;
+                let bytes = boxed_bytes.downcast::<Vec<u8>>().map_err(|e| {
+                    SbroadError::Invalid(
+                        Entity::MsgPack,
+                        Some(format_smolstr!("expected Tuple as result: {e:?}")),
+                    )
                 })?;
-                let inner_owned = std::mem::take(inner);
-                Box::new(inner_owned)
-            }
-        };
+                // TODO: introduce a wrapper type, do not use raw Vec<u8> and
+                // implement convert trait
+                let res: Box<dyn Any> = match return_format {
+                    DispatchReturnFormat::Tuple => {
+                        let tup_buf = TupleBuffer::try_from_vec(*bytes)
+                            .expect("failed to convert raw dql result to tuple buffer");
+                        Box::new(Tuple::from(&tup_buf))
+                    }
+                    DispatchReturnFormat::Inner => {
+                        let mut data: Vec<ProducerResult> = msgpack::decode(bytes.as_slice())
+                            .map_err(|e| {
+                                SbroadError::Other(format_smolstr!(
+                                    "decode bytes into inner format: {e:?}"
+                                ))
+                            })?;
+                        let inner = data.get_mut(0).ok_or_else(|| {
+                            SbroadError::NotFound(Entity::ProducerResult, "from the tuple".into())
+                        })?;
+                        let inner_owned = std::mem::take(inner);
+                        Box::new(inner_owned)
+                    }
+                };
 
-        Ok(res)
+                Ok(res)
+            }
+            Some(ExplainType::Explain) => unreachable!("Explain should already be handled."),
+            Some(ExplainType::ExplainQueryPlan | ExplainType::ExplainQueryPlanFmt) => {
+                exec_explain_query_plan::<Self, <Self as QueryCache>::Mutex>(
+                    &mut locked_cache,
+                    &mut info,
+                    buckets,
+                    explain_type.unwrap(),
+                )
+            }
+        }
     }
 
     fn exec_ir_on_buckets(

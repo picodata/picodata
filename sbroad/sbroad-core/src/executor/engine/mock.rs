@@ -1564,17 +1564,6 @@ impl Vshard for RouterRuntimeMock {
         Ok(bucket_id_by_tuple(s, self.bucket_count()))
     }
 
-    fn exec_explain_on_any_node(
-        &self,
-        _sub_plan: ExecutionPlan,
-        _buckets: &Buckets,
-    ) -> Result<Box<dyn Any>, SbroadError> {
-        Err(SbroadError::Unsupported(
-            Entity::Runtime,
-            Some("exec_explain_locally is not supported for the mock runtime".to_smolstr()),
-        ))
-    }
-
     fn exec_ir_on_buckets(
         &self,
         sub_plan: ExecutionPlan,
@@ -1617,17 +1606,6 @@ impl Vshard for &RouterRuntimeMock {
         _return_format: DispatchReturnFormat,
     ) -> Result<Box<dyn Any>, SbroadError> {
         mock_exec_ir_on_buckets(&self.vshard_mock, buckets, sub_plan)
-    }
-
-    fn exec_explain_on_any_node(
-        &self,
-        _sub_plan: ExecutionPlan,
-        _buckets: &Buckets,
-    ) -> Result<Box<dyn Any>, SbroadError> {
-        Err(SbroadError::Unsupported(
-            Entity::Runtime,
-            Some("exec_explain_locally is not supported for the mock runtime".to_smolstr()),
-        ))
     }
 }
 
@@ -1704,7 +1682,6 @@ impl Router for RouterRuntimeMock {
         plan: &mut ExecutionPlan,
         motion_node_id: &NodeId,
         _buckets: &Buckets,
-        _explain_data: Option<&mut String>,
     ) -> Result<VirtualTable, SbroadError> {
         plan.unlink_motion_subtree(*motion_node_id)?;
         Ok(self

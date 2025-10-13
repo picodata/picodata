@@ -884,7 +884,7 @@ pub fn dispatch_impl(
                 Some("EXPLAIN QUERY PLAN is not supported for DML queries".into()),
             ));
         }
-        return tier_runtime.exec_explain_on_any_node(sub_plan, buckets);
+        return tier_runtime.exec_ir_on_any_node(sub_plan, buckets, return_format);
     }
 
     debug!(Option::from("dispatch"), &format!("sub plan: {sub_plan:?}"));
@@ -1083,7 +1083,6 @@ pub fn materialize_motion(
     plan: &mut ExecutionPlan,
     motion_node_id: NodeId,
     buckets: &Buckets,
-    explain_data: Option<&mut String>,
 ) -> Result<VirtualTable, SbroadError> {
     let top_id = plan.get_motion_subtree_root(motion_node_id)?;
 
@@ -1108,14 +1107,14 @@ pub fn materialize_motion(
     let result = runtime.dispatch(plan, top_id, buckets, DispatchReturnFormat::Inner)?;
 
     let mut vtable = if plan.get_ir_plan().is_raw_explain() {
-        let explain_res = *result.downcast::<String>().expect("must've failed earlier");
+        let explain = *result.downcast::<String>().expect("must've failed earlier");
 
         // Unlink motion node's child sub tree (it is already replaced with invalid values).
         plan.unlink_motion_subtree(motion_node_id)?;
 
-        let explain_data = explain_data.unwrap();
-        *explain_data = explain_res;
-        VirtualTable::with_columns(columns)
+        let mut vtab = VirtualTable::with_columns(columns);
+        vtab.add_tuple(vec![Value::from(explain)]);
+        vtab
     } else {
         let mut res = *result
             .downcast::<ProducerResult>()

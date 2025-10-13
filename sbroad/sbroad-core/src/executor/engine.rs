@@ -378,7 +378,6 @@ pub trait Router: QueryCache {
         plan: &mut ExecutionPlan,
         motion_node_id: &NodeId,
         buckets: &Buckets,
-        explain_data: Option<&mut String>,
     ) -> Result<VirtualTable, SbroadError>;
 
     /// Get tier name to which the coordinator belongs
@@ -450,18 +449,6 @@ pub trait Vshard {
         sub_plan: ExecutionPlan,
         buckets: &Buckets,
         return_format: DispatchReturnFormat,
-    ) -> Result<Box<dyn Any>, SbroadError>;
-
-    /// Execute query on any node.
-    /// All the data needed to execute query
-    /// is already in the plan.
-    ///
-    /// # Errors
-    /// - Execution errors
-    fn exec_explain_on_any_node(
-        &self,
-        sub_plan: ExecutionPlan,
-        _buckets: &Buckets,
     ) -> Result<Box<dyn Any>, SbroadError>;
 
     /// Get the amount of buckets in the cluster.

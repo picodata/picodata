@@ -334,9 +334,8 @@ impl Router for RouterRuntime {
         plan: &mut sbroad::executor::ir::ExecutionPlan,
         motion_node_id: &NodeId,
         buckets: &sbroad::executor::bucket::Buckets,
-        explain_data: Option<&mut String>,
     ) -> Result<sbroad::executor::vtable::VirtualTable, SbroadError> {
-        materialize_motion(self, plan, *motion_node_id, buckets, explain_data)
+        materialize_motion(self, plan, *motion_node_id, buckets)
     }
 
     fn dispatch(
@@ -467,15 +466,6 @@ impl Vshard for Tier {
         let runtime = StorageRuntime::new();
         runtime.exec_ir_on_any_node(sub_plan, buckets, return_format)
     }
-
-    fn exec_explain_on_any_node(
-        &self,
-        sub_plan: ExecutionPlan,
-        buckets: &Buckets,
-    ) -> Result<Box<dyn Any>, SbroadError> {
-        let runtime = StorageRuntime::new();
-        runtime.exec_explain_on_any_node(sub_plan, buckets)
-    }
 }
 
 impl Vshard for &Tier {
@@ -516,15 +506,6 @@ impl Vshard for &Tier {
     ) -> Result<Box<dyn Any>, SbroadError> {
         let runtime = StorageRuntime::new();
         runtime.exec_ir_on_any_node(sub_plan, buckets, return_format)
-    }
-
-    fn exec_explain_on_any_node(
-        &self,
-        sub_plan: ExecutionPlan,
-        buckets: &Buckets,
-    ) -> Result<Box<dyn Any>, SbroadError> {
-        let runtime = StorageRuntime::new();
-        runtime.exec_explain_on_any_node(sub_plan, buckets)
     }
 }
 
