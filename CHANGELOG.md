@@ -16,6 +16,7 @@ with the `YY.MINOR.MICRO` scheme.
   global tables sometimes (See also https://git.picodata.io/core/picodata/-/issues/2274).
 - Fix possible crash when using TLS for iproto communication within cluster.
 - Specifying `instance.iproto_tls.enable` parameter via configuration file.
+- Prevent conflicts when creating tables with renamed table names.
 - Print upper bound of a signed 64-bit integer for ALTERing the `sql_storage_cache_count_max`,
   instead of an unsigned 64-bit integer, after `UNSIGNED` has been deleted internally and range
   has been changed.
