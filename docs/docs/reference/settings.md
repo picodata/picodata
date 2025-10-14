@@ -682,7 +682,7 @@ table.legend {
             <td>true</td>
             <td>
             ```sql
-            ALTER SYSTEM SET auth_password_enforce_digits to false;
+            ALTER SYSTEM SET auth_password_enforce_digits = false;
             ```
             </td>
         </tr>
@@ -692,7 +692,7 @@ table.legend {
             <td>false</td>
             <td>
             ```sql
-            ALTER SYSTEM SET auth_password_enforce_specialchars to true;
+            ALTER SYSTEM SET auth_password_enforce_specialchars = true;
             ```
             </td>
         </tr>
@@ -702,7 +702,7 @@ table.legend {
             <td>true</td>
             <td>
             ```sql
-            ALTER SYSTEM SET auth_password_enforce_lowercase to false;
+            ALTER SYSTEM SET auth_password_enforce_lowercase = false;
             ```
             </td>
         </tr>
@@ -712,7 +712,7 @@ table.legend {
             <td>true</td>
             <td>
             ```sql
-            ALTER SYSTEM SET auth_password_enforce_uppercase to false;
+            ALTER SYSTEM SET auth_password_enforce_uppercase = false;
             ```
             </td>
         </tr>
@@ -813,6 +813,16 @@ table.legend {
             <td>
             ```sql
             ALTER SYSTEM SET pg_statement_max = 2048;
+            ```
+            </td>
+        </tr>
+        <tr>
+            <td><span class="sql-cluster">[plugin_check_migration_hash](db_config.md#plugin_check_migration_hash){.link}</span></td>
+            <td>Проверка изменения контрольных сумм у файлов миграций плагинов</td>
+            <td>true</td>
+            <td>
+            ```sql
+            ALTER SYSTEM SET plugin_check_migration_hash = false;
             ```
             </td>
         </tr>
