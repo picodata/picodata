@@ -1733,9 +1733,22 @@ pub(crate) fn setup() {
             2. enable (bool)
         "},
         {
+            #[derive(tlua::LuaRead)]
+            enum BoolOrString {
+                Bool(bool),
+                Str(String),
+            }
             tlog!(Info, "error injection enabled");
-            tlua::Function::new(|error: String, enable: bool| {
-                crate::error_injection::enable(&error, enable);
+            tlua::Function::new(|error: String, value: Option<BoolOrString>| match value {
+                None | Some(BoolOrString::Bool(false)) => {
+                    crate::error_injection::disable(&error);
+                }
+                Some(BoolOrString::Bool(true)) => {
+                    crate::error_injection::enable(&error, "1");
+                }
+                Some(BoolOrString::Str(value)) => {
+                    crate::error_injection::enable(&error, value);
+                }
             })
         },
     );
