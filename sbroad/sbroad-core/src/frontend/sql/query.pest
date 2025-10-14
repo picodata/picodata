@@ -264,7 +264,7 @@ ExplainQueryPlanFmt = { ( "," ~ WO ~ ^"fmt" ~ WO ) }
 ExplainQueryPlan    = { ( "(" ~ WO ~ ^"raw" ~ WO ~ (ExplainQueryPlanFmt)? ~ ")" ) }
 
 ExplainQuery = _{ Explain }
-    Explain = ${ ^"explain" ~ (W ~ ExplainQueryPlan)? ~ W ~ Query }
+    Explain = ${ ^"explain" ~ (WO ~ ExplainQueryPlan)? ~ W ~ Query }
 
 Query = { (SelectFull | Values | Insert | Update | Delete) ~ WO ~ DqlOption? }
     SelectFull = ${ (^"with" ~ W ~ Ctes ~ W)? ~ SelectStatement }
