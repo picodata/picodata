@@ -2123,6 +2123,12 @@ class Cluster:
         else:
             return self.instances
 
+    def reset(self):
+        self.kill()
+        self.remove_data()
+        self.instances = []
+        self.peer = None
+
     def wait_online(self, timeout: int = 30) -> list[Instance]:
         for instance in self.instances:
             instance.start()

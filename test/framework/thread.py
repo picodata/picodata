@@ -11,11 +11,14 @@ class ThreadWhichReturnsAValue(threading.Thread):
     args: tuple[Any, ...]
     result: Any
 
-    def __init__(self, func: Callable, args: tuple[Any, ...] = (), name: str | None = None):
+    def __init__(
+        self, func: Callable, args: tuple[Any, ...] = (), kwargs: dict[str, Any] | None = None, name: str | None = None
+    ):
         """Consider using the `spawn_thread` standalone function."""
 
         self.func = func
         self.args = args
+        self.kwargs = kwargs or dict()
         self.result = None
         if not name:
             name = "<unnamed>"
@@ -25,7 +28,7 @@ class ThreadWhichReturnsAValue(threading.Thread):
     def _trampoline(self):
         log.info(f"thread {self.name} started")
         try:
-            self.result = self.func(*self.args)
+            self.result = self.func(*self.args, **self.kwargs)
             log.info(f"thread {self.name} finished")
         except Exception as e:
             log.info(f"thread {self.name} failed")
@@ -58,14 +61,16 @@ class ThreadWhichReturnsAValue(threading.Thread):
         return self.result
 
 
-def spawn_thread(func: Callable, args: tuple[Any, ...] = (), name: str | None = None) -> ThreadWhichReturnsAValue:
+def spawn_thread(
+    func: Callable, args: tuple[Any, ...] = (), kwargs: dict[str, Any] | None = None, name: str | None = None
+) -> ThreadWhichReturnsAValue:
     """Spawn a thread which can return a value like in rust."""
     if not name:
         caller = inspect.stack()[1]
         file = os.path.basename(caller.filename)
         name = f"[{file}:{caller.lineno}]"
 
-    thread = ThreadWhichReturnsAValue(func, args, name=name)
+    thread = ThreadWhichReturnsAValue(func, args, kwargs=kwargs, name=name)
 
     thread.start()
 
