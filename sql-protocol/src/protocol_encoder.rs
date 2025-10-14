@@ -53,9 +53,9 @@ pub trait ProtocolEncoder {
 
     fn get_plan_id(&self) -> u64;
 
-    fn get_sender_id(&self) -> String;
+    fn get_sender_id(&self) -> &str;
 
-    fn get_request_id(&self) -> String;
+    fn get_request_id(&self) -> &str;
 
     fn get_vtables_metadata(
         &self,
@@ -255,12 +255,12 @@ pub(crate) mod test {
             self.plan_id
         }
 
-        fn get_sender_id(&self) -> String {
-            self.sender_id.clone()
+        fn get_sender_id(&self) -> &str {
+            self.sender_id.as_str()
         }
 
-        fn get_request_id(&self) -> String {
-            self.request_id.clone()
+        fn get_request_id(&self) -> &str {
+            self.request_id.as_str()
         }
 
         fn get_vtables_metadata(

@@ -1,4 +1,5 @@
 pub mod decode;
+pub mod dml;
 pub mod dql;
 pub mod encode;
 pub mod error;

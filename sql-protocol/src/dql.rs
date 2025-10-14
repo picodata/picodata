@@ -1,6 +1,7 @@
 use crate::error::ProtocolError;
 use crate::iterators::{MsgpackMapIterator, TupleIterator};
-use crate::message_type::MessageType;
+use crate::message_type::write_request_header;
+use crate::message_type::MessageType::DQL;
 use crate::msgpack::{skip_value, ByteCounter};
 use crate::protocol_encoder::{ColumnType, MsgpackWriter, ProtocolEncoder};
 use rmp::decode::{read_array_len, read_int, read_map_len, read_str_len};
@@ -13,10 +14,7 @@ pub fn write_dql_package(
     mut w: impl Write,
     data: &impl ProtocolEncoder,
 ) -> Result<(), std::io::Error> {
-    write_array_len(&mut w, 3)?;
-    let request_id = data.get_request_id();
-    write_str(&mut w, request_id.as_str())?;
-    rmp::encode::write_pfix(&mut w, MessageType::DQL as u8)?;
+    write_request_header(&mut w, DQL, data.get_request_id())?;
 
     write_array_len(&mut w, 6)?;
     // Write schema info as map
@@ -494,7 +492,7 @@ mod tests {
         assert_eq!(request_id, "14e84334-71df-4e69-8c85-dc2707a390c6");
         data = new_data;
         let msg_type = rmp::decode::read_pfix(&mut data).unwrap();
-        assert_eq!(msg_type, MessageType::DQL as u8);
+        assert_eq!(msg_type, DQL as u8);
 
         let package = DQLPackageIterator::new(data).unwrap();
 
