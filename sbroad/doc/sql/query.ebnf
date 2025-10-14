@@ -16,7 +16,7 @@ from        ::= 'FROM' scan
                 ('GROUP' 'BY' expression (',' expression)*)?
                 ('HAVING' expression)?
                 ('WINDOW' name 'AS' '(' partition ')')?
-                ('ORDER' 'BY' expression ('ASC' | 'DESC')? (',' expression ('ASC' | 'DESC')?)*)?
+                ('ORDER' 'BY' expression ('ASC' | 'DESC')? (',' expression ('ASC' | 'DESC')? ('NULLS' ('FIRST' | 'LAST'))?)*)?
                 (('UNION' 'ALL'? | 'EXCEPT' 'DISTINCT'?) select)?
                 ('LIMIT' (unsigned | 'ALL' | 'NULL'))?
 projection  ::= (table '.')? '*' | expression (('AS')? name)? | aggregate | window (('AS')? name)?
