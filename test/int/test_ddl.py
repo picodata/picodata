@@ -2731,3 +2731,16 @@ cluster:
     # And the DDL was applied of course (sanity check)
     assert storage_2_1.eval("return box.space.i_have_no_brain_and_i_must_think.id") is not None
     assert storage_2_2.eval("return box.space.i_have_no_brain_and_i_must_think.id") is not None
+
+
+def test_create_table_with_conflicting_pk(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=2)
+
+    i1.sql("CREATE TABLE new_table (id int, text text, primary key (id)) DISTRIBUTED GLOBALLY")
+    table_id = i1.sql("SELECT id FROM _pico_table WHERE name = 'new_table'")[0][0]
+
+    next_table_id = int(table_id) + 1
+    i1.sql(f'CREATE INDEX "{next_table_id}_pkey" ON new_table (id)')
+
+    with pytest.raises(TarantoolError, match=f"primary key '{next_table_id}_pkey' already exists"):
+        i1.sql("CREATE TABLE new_table2 (id int, text text, primary key (id)) DISTRIBUTED GLOBALLY")

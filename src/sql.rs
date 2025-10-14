@@ -1430,6 +1430,7 @@ fn ddl_ir_node_to_op_or_result(
             params.check_tier_exists(storage)?;
 
             params.choose_id_if_not_specified(name, governor_op_id)?;
+            params.check_primary_key(storage)?;
             params.test_create_space(storage)?;
             let ddl = params.into_ddl()?;
             Ok(Continue(Op::DdlPrepare {

@@ -14,6 +14,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fix possible crash when using TLS for iproto communication within cluster.
 - Specifying `instance.iproto_tls.enable` parameter via configuration file.
 - Prevent conflicts when creating tables with renamed table names.
+- Fix CREATE TABLE hanging on index conflict.
 
 ### Pgproto
 - Add support for configuring pgproto TLS certificates via:
