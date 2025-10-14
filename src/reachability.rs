@@ -97,21 +97,17 @@ impl InstanceReachabilityManager {
     ///
     /// `applied` is the index of the last applied raft log entry of the current instance.
     pub fn take_unreachables_to_report(&mut self, applied: RaftIndex) -> Vec<RaftId> {
-        self.update_auto_offline_timeout();
-
-        // This is how you turn off the borrow checker by the way.
-        let this = self as *const Self;
+        let auto_offline_timeout = self.auto_offline_timeout.get();
 
         let mut res = Vec::new();
-        for (raft_id, info) in &mut self.infos {
+        for (&raft_id, info) in &mut self.infos {
             if info.is_reported {
                 // Don't report nodes repeatedly.
                 continue;
             }
-            // SAFETY: this is safe because we're not accessing `self.infos` in
-            // this function.
-            if unsafe { &*this }.check_reachability(applied, info) == Unreachable {
-                res.push(*raft_id);
+            let status = Self::check_reachability(auto_offline_timeout, applied, info);
+            if status == Unreachable {
+                res.push(raft_id);
                 info.is_reported = true;
             }
         }
@@ -123,13 +119,13 @@ impl InstanceReachabilityManager {
     ///
     /// `applied` is the index of the last applied raft log entry of the current instance.
     pub fn get_unreachables(&self, applied: RaftIndex) -> HashSet<RaftId> {
-        self.update_auto_offline_timeout();
+        let auto_offline_timeout = self.auto_offline_timeout.get();
 
         let mut res = HashSet::new();
-        for (raft_id, info) in &self.infos {
-            let status = self.check_reachability(applied, info);
+        for (&raft_id, info) in &self.infos {
+            let status = Self::check_reachability(auto_offline_timeout, applied, info);
             if status == Unreachable {
-                res.insert(*raft_id);
+                res.insert(raft_id);
             }
         }
         return res;
@@ -141,11 +137,11 @@ impl InstanceReachabilityManager {
     ///
     /// This is an internal function.
     fn check_reachability(
-        &self,
+        auto_offline_timeout: Duration,
         our_applied: RaftIndex,
         info: &InstanceReachabilityInfo,
     ) -> ReachabilityState {
-        let reachability = self.check_reachability_via_rpc(info);
+        let reachability = Self::check_reachability_via_rpc(auto_offline_timeout, info);
         if reachability == Unreachable {
             return Unreachable;
         }
@@ -161,7 +157,7 @@ impl InstanceReachabilityManager {
         }
 
         let now = fiber::clock();
-        if now.duration_since(applied_changed) > self.auto_offline_timeout.get() {
+        if now.duration_since(applied_changed) > auto_offline_timeout {
             // Applied index is lagging and hasn't changed for too long, this
             // means that the instance's raft_main_loop is probably stuck and
             // can't progress for some reason. This could be caused by storage
@@ -178,14 +174,17 @@ impl InstanceReachabilityManager {
     /// Make a decision on the given instance's reachability based on the
     /// `info` about recent RPC communication attempts.
     /// This is an internal function.
-    fn check_reachability_via_rpc(&self, info: &InstanceReachabilityInfo) -> ReachabilityState {
+    fn check_reachability_via_rpc(
+        auto_offline_timeout: Duration,
+        info: &InstanceReachabilityInfo,
+    ) -> ReachabilityState {
         if let Some(last_success) = info.last_success {
             if info.fail_streak == 0 {
                 // Didn't fail once, so can't be unreachable.
                 return Reachable;
             }
             let now = fiber::clock();
-            if now.duration_since(last_success) > self.auto_offline_timeout.get() {
+            if now.duration_since(last_success) > auto_offline_timeout {
                 return Unreachable;
             } else {
                 return Reachable;
@@ -194,7 +193,7 @@ impl InstanceReachabilityManager {
 
         if let Some(first_fail) = info.fail_streak_start {
             let now = fiber::clock();
-            if now.duration_since(first_fail) > self.auto_offline_timeout.get() {
+            if now.duration_since(first_fail) > auto_offline_timeout {
                 return Unreachable;
             }
         }
