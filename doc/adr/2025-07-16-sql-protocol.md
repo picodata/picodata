@@ -245,6 +245,9 @@ WHERE id in (select t_id from t2 where s_id = 2);
 | target table version | u64           | 1             |
 | tuples               | EncodedTuples | EncodedTuples |
 
+При удалении без условия будет только table_id и table_version. Потому что нам надо различать удаление без условия 
+и удаление, когда условие дало пустое множество.
+
 **Insert**
 
 Запросы без локальной материализации
