@@ -1,5 +1,7 @@
-from conftest import Cluster
+from conftest import Cluster, Instance
 from framework.log import log
+from framework.thread import spawn_thread
+import time
 
 
 def test_global_space_dml_catchup_by_log(cluster: Cluster):
@@ -378,3 +380,174 @@ def test_vinyl_tmp_table(cluster: Cluster):
     )
 
     check_table_row_count("v1", 20)
+
+
+def do_test_global_dml_contention_load(
+    cluster: Cluster, instance_count, worker_count, update_count, raft_wal_count_max
+):
+    leader = cluster.add_instance(wait_online=False, enable_http=True)
+
+    followers = []
+    for _ in range(instance_count):
+        follower = cluster.add_instance(wait_online=False, enable_http=True)
+        followers.append(follower)
+
+    cluster.wait_online()
+    leader.promote_or_fail()
+
+    leader.sql("""
+        CREATE TABLE test (id INT PRIMARY KEY, counter INT NOT NULL)
+        USING MEMTX
+        DISTRIBUTED GLOBALLY
+    """)
+    leader.sql("INSERT INTO test VALUES (1, 0)")
+
+    leader.sql(f"ALTER SYSTEM SET raft_wal_count_max = {raft_wal_count_max}")
+
+    # Run performance critical code inside lua, to avoid spending time in RPC
+    # and overall python slowness
+    test_code = """
+        local fiber = require 'fiber'
+        local log = require 'log'
+
+        local worker_count, update_count = ...
+
+        local t0 = fiber.time()
+        local tN = t0
+
+        local fibers = {}
+
+        log.info('starting %d worker fibers...', worker_count)
+
+        for worker_index = 1, worker_count do
+            local f = fiber.new(function()
+                local instance_name = pico.instance_info().name
+                fiber.name(string.format('%s:worker_%d', instance_name, worker_index))
+                local start = fiber.time()
+
+                for i = 1, update_count do
+                    local t = fiber.time()
+                    if t - tN > 1 then
+                        local elapsed_so_far = t - t0
+                        log.info('\x1b[32mdone so far: %d in %f seconds (RPS ~%f)\x1b[0m', i, elapsed_so_far, i / elapsed_so_far)
+                        tN = t
+                    end
+
+                    ok, err = pico.sql('UPDATE test SET counter = counter + 1 WHERE id = 1')
+                    if err ~= box.NULL then
+                        error(err)
+                    end
+                end
+
+                return fiber.time() - start
+            end)
+            f:set_joinable(true)
+
+            table.insert(fibers, f)
+        end
+
+        log.info('waiting for %d workers to finish', worker_count)
+
+        local durations = {}
+        for _, f in ipairs(fibers) do
+            local fiber_name = f:name()
+            local ok, res = f:join()
+            if not ok then
+                error(res)
+            end
+            table.insert(durations, res)
+            log.info('fiber %s finished in %d seconds', fiber_name, res)
+        end
+
+
+        local elapsed = fiber.time() - t0
+        log.info('all done, elapsed %f seconds', elapsed)
+
+        assert(row_count == total_row_count)
+
+        return durations
+    """
+
+    rows = leader.sql("SELECT * FROM test")
+    log.info(f"{rows=}")
+
+    start = time.time()
+
+    threads = []
+    for follower in followers:
+        t = spawn_thread(
+            Instance.eval,
+            (follower, test_code, worker_count, update_count),
+            kwargs=dict(timeout=10 * 60),
+            name=follower.name,
+        )
+        threads.append(t)
+
+    # Hide the large text constant from pytest output in case of test failure
+    del test_code
+
+    results = dict()
+    t0 = time.time()
+    while threads:
+        now = time.time()
+        if now - t0 > 0.1:
+            t0 = now
+            [[counter]] = leader.sql("SELECT counter FROM test WHERE id = 1")
+
+        try:
+            res = threads[0].join(timeout=0.3)
+            t = threads.pop(0)
+            results[t.args[0].name] = res
+        except TimeoutError:
+            continue
+
+    total_elapsed = time.time() - start
+
+    [[counter]] = leader.sql("SELECT counter FROM test WHERE id = 1")
+    assert counter == instance_count * worker_count * update_count
+
+    cluster.kill()
+
+    instances = [follower.name for follower in followers]
+    log.info(f"{instances=}")
+
+    per_worker = []
+    for k, v in results.items():
+        per_worker.extend(v)
+        timings = str.join(", ", [f"{t:.1f}" for t in v])
+        log.info(f"{k}: {timings}")
+
+    m, sd = mean_and_standard_deviation(per_worker)
+    log.info(
+        f"{instance_count=} {worker_count=} {update_count=} {raft_wal_count_max=} elapsed={total_elapsed:.1f} (mean {m:.1f}, sd {sd:.1f})"
+    )
+
+    return total_elapsed, m, sd
+
+
+def mean_and_standard_deviation(samples):
+    count = len(samples)
+    mean = sum(samples) / count
+    variance = sum(((s - mean) ** 2 for s in samples)) / count
+    sd = variance**0.5
+    return mean, sd
+
+
+def test_global_dml_contention_load(cluster: Cluster):
+    # (instance_count, worker_count, update_count, raft_wal_count_max)
+    parameters = [
+        (1, 1, 6000, 16),
+        (4, 4, 375, 16),
+    ]
+    results = []
+    for params in parameters:
+        cluster.reset()
+        res = do_test_global_dml_contention_load(cluster, *params)
+        results.append((params, res))
+
+    for params, result in results:
+        instance_count, worker_count, update_count, raft_wal_count_max = params
+        t, m, sd = result
+        log.info(
+            f"{instance_count=} {worker_count=} {update_count=} {raft_wal_count_max=} elapsed={t:.1f} (mean {m:.1f}, sd {sd:.1f})"
+        )
