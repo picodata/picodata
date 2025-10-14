@@ -8,6 +8,12 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [25.3.7] - Unreleased
+
+- Fix Service::on_leader_change callbacks not being called after master goes Offline
+  due to sentinel auto-offline policy (See also https://git.picodata.io/core/picodata/-/issues/2303).
+
+
 ## [25.3.6] - 2025-10-10
 
 ### Fixes

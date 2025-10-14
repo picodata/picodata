@@ -89,7 +89,7 @@ crate::define_rpc_request! {
         set_cfg_field("replication", &replication_cfg)?;
 
         if req.is_master {
-            promote_to_master()?;
+            set_read_only(false)?;
             // _cluster is replicated from master to replicas, so we need to
             // update it on the master only.
             // Errors are not fatal here, we do not need to stop the process,
@@ -100,7 +100,7 @@ crate::define_rpc_request! {
             }
         } else {
             // Everybody else should be read-only
-            set_cfg_field("read_only", true)?;
+            set_read_only(true)?;
         }
 
         Ok(Response {})
@@ -226,29 +226,34 @@ fn update_sys_cluster() -> Result<()> {
     Ok(())
 }
 
-/// Promotes the target instance from read-only replica to master.
+/// Changes the current instance's read-only parameter.
 /// See [tarantool documentation](https://www.tarantool.io/en/doc/latest/reference/configuration/#cfg-basic-read-only)
 /// for more.
 ///
-/// Returns errors in the following cases: See implementation.
-fn promote_to_master() -> Result<()> {
+/// Calls the [`Service::on_leader_change`] callbacks if the parameter actually
+/// changed.
+///
+/// [`Service::on_leader_change`]: picodata_plugin::plugin::interface::Service::on_leader_change
+fn set_read_only(new_read_only: bool) -> Result<()> {
     let node = node::global()?;
 
     // XXX: Currently we just change the box.cfg.read_only option of the
     // instance but at some point we will implement support for
     // tarantool synchronous transactions then this operation will probably
     // become more involved.
-    let was_read_only = is_read_only()?;
+    let old_read_only = node.is_readonly();
 
-    set_cfg_field("read_only", false)?;
+    set_cfg_field("read_only", new_read_only)?;
 
-    #[rustfmt::skip]
-    if let Some(ro_reason) = box_ro_reason() {
-        tlog!(Warning, "failed to promote self to replication leader, reason = {ro_reason}");
-        return Err(Error::other(format!("instance is still in read only mode: {ro_reason}")));
-    };
+    if !new_read_only {
+        #[rustfmt::skip]
+        if let Some(ro_reason) = box_ro_reason() {
+            tlog!(Warning, "failed to promote self to replication leader, reason = {ro_reason}");
+            return Err(Error::other(format!("instance is still in read only mode: {ro_reason}")));
+        };
+    }
 
-    if was_read_only {
+    if old_read_only != new_read_only {
         // errors ignored because it must be already handled by plugin manager itself
         let res = node.plugin_manager.handle_rs_leader_change();
         if let Err(e) = res {
@@ -272,17 +277,7 @@ crate::define_rpc_request! {
         // of the file for explanation.
         node.status().check_term(req.term)?;
 
-        let was_read_only = is_read_only()?;
-
-        set_cfg_field("read_only", true)?;
-
-        if !was_read_only {
-            // errors ignored because it must be already handled by plugin manager itself
-            let res = node.plugin_manager.handle_rs_leader_change();
-            if let Err(e) = res {
-                tlog!(Error, "on_leader_change error: {e}");
-            }
-        }
+        set_read_only(true)?;
 
         let vclock = Vclock::current();
         let vclock = vclock.ignore_zero();
