@@ -144,7 +144,7 @@ DQL payload выглядит так:
 
 | Field         | MsgPack Type            | Example Value                     |
 |---------------|-------------------------|-----------------------------------|
-| shema_info    | map (u64, u64)          | 10, [1..20]                       |
+| schema_info    | map (u32, u64)           | 10, [1..20]                       |
 | plan_id       | u64                     | 0                                 |
 | sender_id     | binary                  | 10, [0..10] (router address)      |
 | vtables' data | map(str, EncodedTuples) | 10, ["TMP_13", EncodedTuples] ... |
@@ -173,7 +173,7 @@ sender_id и
 
 | Field         | MsgPack Type                   | Example Value                            |
 |---------------|--------------------------------|------------------------------------------|
-| shema_info    | map (u64, u64)                 | 10, [1..20]                              |
+| schema_info    | map (u32, u64)                 | 10, [1..20]                              |
 | vtables' meta | map (string, array of Columns) | 10, ["TMP_10321", 10, [Column, ...]] ... |
 | sql           | string                         | 10, "SELECT * FROM t"                    |
 
@@ -241,7 +241,7 @@ WHERE id in (select t_id from t2 where s_id = 2);
 
 | Field                | MsgPack Type  | Example Value |
 |----------------------|---------------|---------------|
-| target table         | u64           | 1             |
+| target table         | u32           | 1             |
 | target table version | u64           | 1             |
 | tuples               | EncodedTuples | EncodedTuples |
 
@@ -259,7 +259,7 @@ VALUES (select a, b, c from t2 where s_id = 2);
 
 | Field                | MsgPack Type  | Example Value |
 |----------------------|---------------|---------------|
-| target table         | u64           | 1             |
+| target table         | u32           | 1             |
 | target table version | u64           | 1             |
 | conflict_policy      | fixint        | 0 (DoNothing) |
 | tuples               | EncodedTuples | EncodedTuples |
@@ -302,7 +302,7 @@ Update Node собираются в новые tuple.
 
 | Field                | MsgPack Type                  | Example Value                 |
 |----------------------|-------------------------------|-------------------------------|
-| target table         | u64                           | 1                             |
+| target table         | u32                           | 1                             |
 | target table version | u64                           | 1                             |
 | update type          | fixint                        | Update Type                   |
 | update data          | Local Update or Shared Update | Local Update or Shared Update |
@@ -368,9 +368,9 @@ WHERE id in (select id from target_table where second_field > 2)
 
 | Field                | MsgPack Type    | Example Value                |
 |----------------------|-----------------|------------------------------|
-| target table         | u64             | 1                            |
+| target table         | u32             | 1                            |
 | target table version | u64             | 1                            |
-| shema_info           | map (u64, u64)  | 10, [1..20]                  |
+| schema_info           | map (u32, u64)  | 10, [1..20]                  |
 | plan_id              | u64             | 0                            |
 | sender_id            | binary          | 10, [0..10] (router address) |
 | vtable's data        | EncodedTuples   | EncodedTuples                |
@@ -396,7 +396,7 @@ motion key - это значение из LocalSegment, используется
 | columns              | array of u8     | 3, [1, 2, 3]                 |
 | conflict_policy      | fixint          | 0 (DoNothing)                |
 | motion key           | array of Target | 10, [Target, ...]            |
-| shema_info           | map (u64, u64)  | 10, [1..20]                  |
+| schema_info           | map (u32, u64)  | 10, [1..20]                  |
 | plan_id              | u64             | 0                            |
 | sender_id            | binary          | 10, [0..10] (router address) |
 | vtable's data        | EncodedTuples   | EncodedTuples                |
@@ -442,7 +442,7 @@ mapping columns pos указывает в каком порядке в tuple б�
 | target table version | u64             | 1                            |
 | mapping columns pos  | map (u64, u64)  | 3, [[1, 2], [2, 3], [3,4]]   |
 | primary keys pos     | aray of u64     | 3 [1, 3, 2]                  |
-| shema_info           | map (u64, u64)  | 10, [1..20]                  |
+| schema_info           | map (u32, u64)  | 10, [1..20]                  |
 | plan_id              | u64             | 0                            |
 | sender_id            | binary          | 10, [0..10] (router address) |
 | vtable's data        | EncodedTuples   | EncodedTuples                |
