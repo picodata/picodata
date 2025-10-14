@@ -135,6 +135,14 @@ impl Loop {
                     break;
                 }
             }
+
+            crate::error_injection!("FORCE_AUTO_OFFLINE" => |target_name| {
+                let target_instance = topology_ref.instance_by_name(target_name).unwrap();
+                if has_states!(target_instance, * -> Online) {
+                    instance_to_downgrade = Some(target_name.into());
+                }
+            });
+
             // Must not hold across yields
             drop(topology_ref);
 
@@ -189,6 +197,13 @@ impl Loop {
         // changed to Offline and try to update it to Online.
         let my_target_state = node.topology_cache.my_target_state();
         if my_target_state.variant == Offline {
+            crate::error_injection!("FORCE_AUTO_OFFLINE" => |target_name| {
+                if target_name == node.topology_cache.my_instance_name() {
+                    _ = status.changed().timeout(Self::SENTINEL_SHORT_RETRY).await;
+                    return ControlFlow::Continue(());
+                }
+            });
+
             set_action_kind(&mut stats.borrow_mut(), ActionKind::AutoOnlineBySelf);
 
             if exponential_backoff_before_retry(&stats.borrow(), Self::SENTINEL_SHORT_RETRY)

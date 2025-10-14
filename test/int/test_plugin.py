@@ -1590,6 +1590,41 @@ def test_on_leader_change(cluster: Cluster):
     plugin_ref.assert_last_seen_ctx("testservice_1", {"is_master": False}, i1, i3)
     plugin_ref.assert_last_seen_ctx("testservice_1", {"is_master": True}, i2)
 
+    leader = cluster.leader()
+
+    # Inject an error which will force `i2` to become offline as if it stopped responsding to RPCs
+    error_injection = "FORCE_AUTO_OFFLINE"
+    leader.call("pico._inject_error", error_injection, i2.name)
+    i2.call("pico._inject_error", error_injection, i2.name)
+
+    counter = leader.wait_governor_status("idle")
+    cluster.wait_has_states(i2, "Offline", "Offline")
+
+    # Governor calls on_leader_change callback on `i1`
+    plugin_ref.assert_cb_called("testservice_1", "on_leader_change", 2, i1)
+    # But `i2` is pressumed dead, so the callback is not called
+    plugin_ref.assert_cb_called("testservice_1", "on_leader_change", 1, i2)
+
+    # Therefore both `i1` and `i2` think they're the master
+    plugin_ref.assert_last_seen_ctx("testservice_1", {"is_master": True}, i1, i2)
+
+    # Disable the injected error
+    leader.call("pico._inject_error", error_injection, None)
+    i2.call("pico._inject_error", error_injection, None)
+
+    leader.wait_governor_status("idle", old_step_counter=counter)
+    # `i2` has come to it's senses
+    i2.wait_online()
+
+    # on_leader_change callback on `i1` was not called again
+    plugin_ref.assert_cb_called("testservice_1", "on_leader_change", 2, i1)
+    # But `i2` has now received the RPC and finally called the callback
+    plugin_ref.assert_cb_called("testservice_1", "on_leader_change", 2, i2)
+
+    # Now `i1` and `i2` both know who's the master
+    plugin_ref.assert_last_seen_ctx("testservice_1", {"is_master": True}, i1)
+    plugin_ref.assert_last_seen_ctx("testservice_1", {"is_master": False}, i2)
+
 
 def test_error_on_leader_change(cluster: Cluster):
     i1 = cluster.add_instance(replicaset_name="r1", wait_online=True)
