@@ -15,6 +15,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Specifying `instance.iproto_tls.enable` parameter via configuration file.
 - Prevent conflicts when creating tables with renamed table names.
 - Fix CREATE TABLE hanging on index conflict.
+- Fix Service::on_leader_change callbacks not being called after master goes Offline
+  due to sentinel auto-offline policy (See also https://git.picodata.io/core/picodata/-/issues/2303).
 
 ### Pgproto
 - Add support for configuring pgproto TLS certificates via:
