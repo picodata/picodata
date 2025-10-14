@@ -1768,6 +1768,8 @@ pub enum CreateTableError {
     UnexistingTier { tier_name: String },
     #[error("specified tier '{tier_name}' doesn't contain at least one instance")]
     EmptyTier { tier_name: String },
+    #[error("primary key '{0}' already exists")]
+    ConflictingPrimaryKey(String),
 }
 
 impl From<CreateTableError> for Error {
@@ -2299,6 +2301,20 @@ impl CreateTableParams {
                     "`sharding_fn` is specified but will be ignored, as `distribution` is `global`"
                 );
             }
+        }
+        Ok(())
+    }
+
+    pub fn check_primary_key(&self, storage: &Catalog) -> traft::Result<()> {
+        let id = self.id.expect("table id should be set before");
+        let index_name = format!("{id}_pkey");
+        if storage
+            .indexes
+            .by_name(&index_name)
+            .expect("storage should never fail")
+            .is_some()
+        {
+            return Err(CreateTableError::ConflictingPrimaryKey(index_name).into());
         }
         Ok(())
     }

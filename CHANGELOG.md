@@ -17,6 +17,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fix possible crash when using TLS for iproto communication within cluster.
 - Specifying `instance.iproto_tls.enable` parameter via configuration file.
 - Prevent conflicts when creating tables with renamed table names.
+- Fix CREATE TABLE hanging on index conflict.
 - Print upper bound of a signed 64-bit integer for ALTERing the `sql_storage_cache_count_max`,
   instead of an unsigned 64-bit integer, after `UNSIGNED` has been deleted internally and range
   has been changed.
