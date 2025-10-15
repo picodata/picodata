@@ -167,3 +167,17 @@ ALTER TABLE test_table ADD COLUMN age INT, ADD COLUMN age TEXT;
 -
 -
 column age already exists
+
+-- TEST: add_if_not_exists_duplicate_column
+-- SQL:
+DROP TABLE IF EXISTS test_table;
+CREATE TABLE test_table(id INT PRIMARY KEY, name TEXT);
+INSERT INTO test_table VALUES (1, 'Test');
+ALTER TABLE test_table ADD COLUMN IF NOT EXISTS name INT;
+
+-- TEST: add_if_not_exists_conflicting_columns
+-- SQL:
+DROP TABLE IF EXISTS test_table;
+CREATE TABLE test_table(id INT PRIMARY KEY);
+ALTER TABLE test_table ADD COLUMN age INT, ADD COLUMN IF NOT EXISTS age TEXT;
+INSERT INTO test_table VALUES (1, 42);

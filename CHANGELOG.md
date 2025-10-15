@@ -29,6 +29,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### SQL
 - Support indexing arrays, i.e. `a[1][2]` expressions.
+- Add IF NOT EXISTS support for ALTER TABLE ADD COLUMN.
 
 ### Pgproto
 - Add support for configuring pgproto TLS certificates via:
