@@ -496,17 +496,15 @@ export PICODATA_FAILURE_DOMAIN=rack=12-90,server=srv_007,vm=rhel8
     ca_file: tls/ca.crt
 ```
 
-Аналогичная команда:
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
 ```shell
 picodata run -c instance.iproto_tls.enabled=true -c instance.iproto_tls.cert_file=tls/server.crt -c instance.iproto_tls.key_file=tls/server.key -c instance.iproto_tls.ca_file=tls/ca.crt
 ```
 
-Режим mTLS настраивается глобально во всем кластере. Параметры
-`instance.iproto_tls.enabled` и `instance.iproto_tls.ca_file` должны
-быть идентичны на всех инстансах. Для параметров
+Режим mTLS настраивается глобально во всем кластере. Для параметров
 `instance.iproto_tls.cert_file` и `instance.iproto_tls.key_file`
-содержимое файлов должно быть уникальным на каждом инстансе.
+содержимое файлов должно быть идентичным на каждом инстансе.
 
 ### instance.log.destination {: #instance_log_destination }
 
@@ -723,25 +721,51 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 
 ### instance.pg.ssl {: #instance_pg_ssl }
 
-Признак использования протокола SSL при подключении к Pgproto.
+Признак использования протокола TLS/SSL или mTLS при подключении по протоколу PostgreSQL.
 
 Если для признака указано значение `true`, [в рабочей директории
-инстанса](cli.md#run_instance_dir) `<INSTANCE_DIR>` должны находиться необходимые
-SSL-сертификаты:
+инстанса](cli.md#run_instance_dir) `<INSTANCE_DIR>` должны находиться
+TLS-сертификат и закрытый ключ:
 
 * `server.crt`
 * `server.key`
+
+Для двусторонней проверки подлинности (mTLS) требуется разместить рядом
+файл корневого сертификата:
+
+* `ca.crt`
 
 Данные:
 
 * Тип: *bool*
 * Значение по умолчанию: `false`
 
+Размещение файлов сертификатов и закрытого ключа можно переопределить,
+используя следующие 3 дополнительных параметра:
+
+- `instance.pg.cert_file` (*str*) — путь к файлу сертификата
+- `instance.pg.key_file` (*str*) — путь к файлу с закрытым ключом
+- `instance.pg.ca_file` (*str*) — путь к файлу корневого сертификата
+
+При включенном mTLS блок настроек файла конфигурации будет иметь следующий вид:
+
+```yaml
+  pg:
+    enabled: true
+    cert_file: tls/server.crt
+    key_file: tls/server.key
+    ca_file: tls/ca.crt
+```
+
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
-picodata run -c instance.pg.ssl=true
+```shell
+picodata run -c instance.pg_ssl.enabled=true -c instance.pg.cert_file=tls/server.crt -c instance.pg.key_file=tls/server.key -c instance.pg.ca_file=tls/ca.crt
 ```
+
+Режим mTLS настраивается глобально во всем кластере. Для параметров
+`instance.iproto_tls.cert_file` и `instance.iproto_tls.key_file`
+содержимое файлов должно быть идентичным на каждом инстансе.
 
 ### instance.replicaset_name {: #instance_replicaset_name }
 
