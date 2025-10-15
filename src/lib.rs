@@ -57,6 +57,7 @@ use crate::traft::error::Error;
 use crate::traft::op;
 use crate::traft::Result;
 use crate::util::effective_user_id;
+use backoff::SimpleBackoffManager;
 use config::PicodataConfig;
 use instance_uuid_file::dump_instance_uuid_file;
 use instance_uuid_file::read_instance_uuid_file;
@@ -66,6 +67,7 @@ mod access_control;
 pub mod address;
 pub mod audit;
 pub mod auth;
+pub mod backoff;
 mod bootstrap_entries;
 pub mod cas;
 pub mod catalog;
@@ -1611,10 +1613,10 @@ fn start_pre_join(
 
     const INITIAL_TIMEOUT: Duration = Duration::from_secs(1);
     const MAX_TIMEOUT: Duration = Duration::from_secs(60);
-
-    let mut current_timeout = INITIAL_TIMEOUT;
+    let mut backoff = SimpleBackoffManager::new("proc_raft_join RPC", INITIAL_TIMEOUT, MAX_TIMEOUT);
 
     let resp: rpc::join::Response = loop {
+        let current_timeout = backoff.timeout();
         let f = rpc::network_call(
             &instance_address,
             proc_name!(rpc::join::proc_raft_join),
@@ -1633,7 +1635,7 @@ fn start_pre_join(
                     "join request timed out after {:?}, retrying...",
                     current_timeout
                 );
-                current_timeout = std::cmp::min(current_timeout * 2, MAX_TIMEOUT);
+                backoff.handle_failure();
                 continue;
             }
             Err(timeout::Error::Failed(e @ (TntError::ConnectionClosed(_) | TntError::IO(_)))) => {
@@ -1643,7 +1645,7 @@ fn start_pre_join(
                     current_timeout
                 );
                 fiber::sleep(current_timeout);
-                current_timeout = std::cmp::min(current_timeout * 2, MAX_TIMEOUT);
+                backoff.handle_failure();
                 continue;
             }
             Err(e) => {
@@ -1791,8 +1793,10 @@ fn postjoin(
         Instant::now_fiber().saturating_add(Duration::from_secs(config.instance.boot_timeout()));
 
     // This will be doubled on each retry, until max_retry_timeout is reached.
-    let mut retry_timeout = Duration::from_millis(250);
-    let max_retry_timeout = Duration::from_secs(5);
+    let base_timeout = Duration::from_millis(250);
+    let max_timeout = Duration::from_secs(5);
+    let mut backoff =
+        SimpleBackoffManager::new("proc_update_instance RPC", base_timeout, max_timeout);
 
     // When the whole cluster is restarting we use a smaller election timeout so
     // that we don't wait too long.
@@ -1944,8 +1948,8 @@ fn postjoin(
             }
         }
 
-        let timeout = retry_timeout.saturating_sub(now.elapsed());
-        retry_timeout = max_retry_timeout.max(retry_timeout * 2);
+        backoff.handle_failure();
+        let timeout = backoff.timeout();
         #[rustfmt::skip]
         tlog!(Warning, "failed to activate myself: {error_message}, retrying in {timeout:.02?}...");
         fiber::sleep(timeout);

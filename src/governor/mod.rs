@@ -1,19 +1,5 @@
-use std::collections::HashMap;
-use std::ops::ControlFlow;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::time::Duration;
-use tarantool::time::Instant;
-
-use ::tarantool::error::BoxError;
-use ::tarantool::error::IntoBoxError;
-use ::tarantool::error::TarantoolErrorCode::Timeout;
-use ::tarantool::fiber;
-use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
-use ::tarantool::fiber::r#async::watch;
-use ::tarantool::space::UpdateOps;
-
 use self::upgrade_operations::proc_internal_script;
+use crate::backoff::SimpleBackoffManager;
 use crate::cas;
 use crate::column_name;
 use crate::instance::InstanceName;
@@ -60,10 +46,22 @@ use crate::traft::raft_storage::RaftSpaceAccess;
 use crate::traft::{ConnectionType, Result};
 use crate::unwrap_ok_or;
 use crate::vshard;
+use ::tarantool::error::BoxError;
+use ::tarantool::error::IntoBoxError;
+use ::tarantool::error::TarantoolErrorCode::Timeout;
+use ::tarantool::fiber;
+use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
+use ::tarantool::fiber::r#async::watch;
+use ::tarantool::space::UpdateOps;
 use futures::future::try_join;
 use futures::future::try_join_all;
 use plan::action_plan;
 use plan::stage::*;
+use std::collections::HashMap;
+use std::ops::ControlFlow;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::time::Duration;
 
 mod conf_change;
 pub(crate) mod plan;
@@ -1563,80 +1561,21 @@ pub struct GovernorStatus {
 /// Manages backoff strategies and timeouts for the different stages of the governor.
 struct GovernorBackoffManager {
     /// Sharding stage (where `proc_sharding` is called).
-    pub sharding: BackoffManager,
+    pub sharding: SimpleBackoffManager,
 }
 
 impl GovernorBackoffManager {
+    const BASE_TIMEOUT: Duration = Duration::from_millis(125);
+    const MAX_TIMEOUT: Duration = Duration::from_secs(600);
+
     pub fn new() -> Self {
         Self {
-            sharding: BackoffManager::new("sharding"),
+            sharding: SimpleBackoffManager::new("sharding", Self::BASE_TIMEOUT, Self::MAX_TIMEOUT),
         }
     }
 
     /// Returns the current timeout.
     pub fn timeout(&self) -> Duration {
         Loop::RETRY_TIMEOUT.max(self.sharding.timeout())
-    }
-}
-
-/// Manages the backoff strategy and timeout for a single stage of the governor.
-struct BackoffManager {
-    name: &'static str,
-    last_try: Option<Instant>,
-    multiplier: u32,
-}
-
-impl BackoffManager {
-    const BASE_TIMEOUT: Duration = Duration::from_millis(125);
-    const MAX_TIMEOUT: Duration = Duration::from_secs(600);
-    const MULTIPLIER_COEFF: u32 = 2;
-    const BASE_MULTIPLIER: u32 = 1;
-
-    pub fn new(name: &'static str) -> Self {
-        Self {
-            name,
-            last_try: None,
-            multiplier: Self::BASE_MULTIPLIER,
-        }
-    }
-
-    /// Returns the current timeout.
-    pub fn timeout(&self) -> Duration {
-        Self::BASE_TIMEOUT.saturating_mul(self.multiplier)
-    }
-
-    /// Checks whether the governor's stage should be executed now
-    /// or if it must wait for the backoff timeout.
-    pub fn should_try(&self) -> bool {
-        let Some(last_try) = self.last_try else {
-            return true;
-        };
-        let now = fiber::clock();
-        let timeout = self.timeout();
-        let result = now.duration_since(last_try) > timeout;
-        if !result {
-            tlog!(
-                Debug,
-                "backoff manager: {} should wait {} ms",
-                self.name,
-                timeout.as_millis()
-            );
-        }
-
-        result
-    }
-
-    pub fn handle_success(&mut self) {
-        self.last_try = None;
-        self.multiplier = Self::BASE_MULTIPLIER;
-    }
-
-    pub fn handle_failure(&mut self) {
-        self.last_try = Some(fiber::clock());
-        let next_multiplier = self.multiplier.saturating_mul(Self::MULTIPLIER_COEFF);
-        let next_timeout = Self::BASE_TIMEOUT.saturating_mul(next_multiplier);
-        if next_timeout <= Self::MAX_TIMEOUT {
-            self.multiplier = next_multiplier;
-        }
     }
 }
