@@ -153,49 +153,7 @@ mod tests {
     use super::*;
     use crate::message_type::MessageType;
     use rmp::decode::read_str_len;
-    use std::io::Write;
     use std::str::from_utf8;
-    struct TestTuplesWriter<'tw> {
-        current: Option<&'tw Vec<u64>>,
-        iter: std::slice::Iter<'tw, Vec<u64>>,
-    }
-
-    impl<'tw> TestTuplesWriter<'tw> {
-        fn new(iter: std::slice::Iter<'tw, Vec<u64>>) -> Self {
-            Self {
-                current: None,
-                iter,
-            }
-        }
-    }
-
-    impl MsgpackWriter for TestTuplesWriter<'_> {
-        fn write_current(&self, mut w: impl Write) -> std::io::Result<()> {
-            let Some(elem) = self.current else {
-                return Ok(());
-            };
-
-            rmp::encode::write_array_len(&mut w, elem.len() as u32)?;
-
-            for elem in elem {
-                rmp::encode::write_uint(&mut w, *elem)?;
-            }
-
-            Ok(())
-        }
-
-        fn next(&mut self) -> Option<()> {
-            self.current = self.iter.next();
-
-            self.current?;
-
-            Some(())
-        }
-
-        fn len(&self) -> usize {
-            self.iter.len()
-        }
-    }
 
     struct TestDeleteEncoder {
         request_id: String,
@@ -225,7 +183,7 @@ mod tests {
             let Some(tuples) = &self.tuples else {
                 unreachable!();
             };
-            TestTuplesWriter::new(tuples.iter())
+            crate::iterators::TestTuplesWriter::new(tuples.iter())
         }
     }
 

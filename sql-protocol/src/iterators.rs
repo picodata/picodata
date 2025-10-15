@@ -1,5 +1,6 @@
 use crate::error::ProtocolError;
-use std::io::Cursor;
+use crate::protocol_encoder::MsgpackWriter;
+use std::io::{Cursor, Write};
 
 pub struct MsgpackMapIterator<'a, K, V> {
     count: u32,
@@ -120,5 +121,49 @@ impl<'a> Iterator for TupleIterator<'a> {
     fn size_hint(&self) -> (usize, Option<usize>) {
         let m = self.num_rows - self.current_row;
         (m, Some(m))
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) struct TestTuplesWriter<'tw> {
+    current: Option<&'tw Vec<u64>>,
+    iter: std::slice::Iter<'tw, Vec<u64>>,
+}
+
+impl<'tw> TestTuplesWriter<'tw> {
+    #[allow(dead_code)]
+    pub(crate) fn new(iter: std::slice::Iter<'tw, Vec<u64>>) -> Self {
+        Self {
+            current: None,
+            iter,
+        }
+    }
+}
+
+impl MsgpackWriter for TestTuplesWriter<'_> {
+    fn write_current(&self, mut w: impl Write) -> std::io::Result<()> {
+        let Some(elem) = self.current else {
+            return Ok(());
+        };
+
+        rmp::encode::write_array_len(&mut w, elem.len() as u32)?;
+
+        for elem in elem {
+            rmp::encode::write_uint(&mut w, *elem)?;
+        }
+
+        Ok(())
+    }
+
+    fn next(&mut self) -> Option<()> {
+        self.current = self.iter.next();
+
+        self.current?;
+
+        Some(())
+    }
+
+    fn len(&self) -> usize {
+        self.iter.len()
     }
 }
