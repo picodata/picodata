@@ -10,9 +10,12 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## [25.3.7] - Unreleased
 
+### Fixes
 - Fix Service::on_leader_change callbacks not being called after master goes Offline
   due to sentinel auto-offline policy (See also https://git.picodata.io/core/picodata/-/issues/2303).
 
+### SQL
+- Add IF NOT EXISTS support for ALTER TABLE ADD COLUMN.
 
 ## [25.3.6] - 2025-10-10
 
@@ -20,7 +23,6 @@ with the `YY.MINOR.MICRO` scheme.
 - Fix compilation error on ARM architecture.
 - Fix eliminate erroneous ER_READONLY message in logs when executing TRUNCATE on
   global tables sometimes (See also https://git.picodata.io/core/picodata/-/issues/2274).
-
 
 ## [25.3.5] - 2025-10-03
 
