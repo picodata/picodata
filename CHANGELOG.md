@@ -8,6 +8,11 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [25.4.4] - Unreleased
+
+### SQL
+- Add IF NOT EXISTS support for ALTER TABLE ADD COLUMN.
+
 ## [25.4.3] - 2025-10-15
 
 ### Fixes

@@ -1714,6 +1714,7 @@ fn ddl_ir_node_to_op_or_result(
                     for (i, f) in (0..).zip(&new_table_format) {
                         column_name_set.insert(SmolStr::new(&f.name), i);
                     }
+                    let mut num_skipped_ops = 0;
 
                     for op in columns.iter() {
                         match op {
@@ -1721,19 +1722,15 @@ fn ddl_ir_node_to_op_or_result(
                                 ref column,
                                 if_not_exists,
                             } => {
-                                // due to unclear semantics of IF NOT EXISTS
-                                if if_not_exists {
-                                    return Err(Error::Unsupported(error::Unsupported::new(
-                                        "IF NOT EXISTS".into(),
-                                        None,
-                                    )));
-                                }
-
                                 // do not add this column with the same name
                                 if column_name_set
                                     .insert(column.name.clone(), new_table_format.len())
                                     .is_some()
                                 {
+                                    if if_not_exists {
+                                        num_skipped_ops += 1;
+                                        continue;
+                                    }
                                     return Err(
                                         error::AlreadyExists::Column(column.name.clone()).into()
                                     );
@@ -1758,6 +1755,10 @@ fn ddl_ir_node_to_op_or_result(
                                 new_table_format[index].name = to.to_string();
                             }
                         }
+                    }
+
+                    if num_skipped_ops == columns.len() {
+                        return Ok(Break(ConsumerResult { row_count: 0 }));
                     }
 
                     Ok(Continue(Op::DdlPrepare {

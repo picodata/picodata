@@ -25,18 +25,12 @@ sbroad: unsupported DDL: `ALTER TABLE _ ALTER COLUMN` is not yet supported
 ALTER TABLE t RENAME COLUMN c TO x;
 ALTER TABLE t RENAME x TO c;
 
-
 -- TEST: add (err)
 -- SQL:
 ALTER TABLE t ADD COLUMN IF NOT EXISTS k INT WAIT APPLIED GLOBALLY;
 ALTER TABLE t ADD COLUMN IF NOT EXISTS i INT OPTION (timeout = 1000);
 ALTER TABLE t ADD COLUMN IF NOT EXISTS f INT;
 ALTER TABLE t ADD IF NOT EXISTS g INT;
--- ERROR:
-unsupported action/entity: IF NOT EXISTS
-unsupported action/entity: IF NOT EXISTS
-unsupported action/entity: IF NOT EXISTS
-unsupported action/entity: IF NOT EXISTS
 
 -- TEST: add (ok)
 -- SQL:
