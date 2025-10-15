@@ -145,6 +145,7 @@ impl SqlValue {
 
     /// Create SQL value of an unsigned integer type.
     #[deprecated]
+    #[allow(deprecated)]
     pub fn unsigned(u: u64) -> Self {
         SqlValue(SqlValueInner::Unsigned(u))
     }

@@ -268,6 +268,7 @@ extern "C" fn pico_ffi_wait_index(index: u64, timeout: RDuration) -> RResult<ROp
 struct SBroadValue(Value);
 
 impl From<SqlValue> for SBroadValue {
+    #[allow(deprecated)]
     fn from(value: SqlValue) -> Self {
         match value.into_inner() {
             SqlValueInner::Boolean(b) => SBroadValue(Value::Boolean(b)),
