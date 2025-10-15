@@ -338,7 +338,7 @@ table.legend {
             <td>PICODATA_IPROTO_LISTEN</td>
         </tr>
         <tr>
-            <td><span class="cluster">iproto-tls.enabled</span></td>
+            <td><span class="cluster">iproto-tls</span></td>
             <td>Признак использования аутентификации по сертификату при доступе к инстансу (mutual TLS, mTLS)</td>
             <td>false</td>
             <td></td>
@@ -448,11 +448,34 @@ table.legend {
             <td>PICODATA_PG_LISTEN</td>
         </tr>
         <tr>
-            <td><span class="instance">pg.ssl</span></td>
-            <td>Признак использования протокола SSL при подключении к SQL-консоли</td>
+            <td><span class="instance">pg-ssl</span></td>
+            <td>Признак использования протокола TSL/SSL или mTLS при подключении к SQL-консоли</td>
             <td>false</td>
             <td>[picodata run -c instance.pg.ssl=true](cli.md#run_config_parameter)</td>
             <td>[instance.pg.ssl](config.md#instance_pg_ssl)</td>
+            <td></td>
+        </tr>
+            <td><span class="instance">pg-cert_file</span></td>
+            <td>Путь к файлу серверного сертификата для использования с TLS/SSL или mTLS при подключении по протоколу PostgreSQL</td>
+            <td></td>
+            <td></td>
+            <td>[instance.pg.cert_file](config.md#instance_pg_ssl)</td>
+            <td></td>
+        </tr>
+        <tr>
+            <td><span class="instance">pg-key_file</span></td>
+            <td>Путь к файлу закрытого ключа для использования с TLS/SSL или mTLS при подключении по протоколу PostgreSQL</td>
+            <td></td>
+            <td></td>
+            <td>[instance.pg.key_file](config.md#instance_pg_ssl)</td>
+            <td></td>
+        </tr>
+        <tr>
+            <td><span class="cluster">pg-ca_file</span></td>
+            <td>Путь к файлу корневого сертификата для использования с TLS/SSL или mTLS при подключении по протоколу PostgreSQL</td>
+            <td></td>
+            <td></td>
+            <td>[instance.pg.ca_file](config.md#instance_pg_ssl)</td>
             <td></td>
         </tr>
         <tr>
