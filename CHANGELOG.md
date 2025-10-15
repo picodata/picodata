@@ -8,7 +8,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-## [25.4.3] - Unreleased
+## [25.4.3] - 2025-10-15
 
 ### Fixes
 - Fix possible crash when using TLS for iproto communication within cluster.

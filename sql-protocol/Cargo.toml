@@ -1,6 +1,6 @@
 [package]
 name = "sql_protocol"
-version = "25.4.2"
+version = "25.4.3"
 rust-version = "1.85"
 edition = "2021"
 license-file = "../LICENSE"
