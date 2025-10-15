@@ -58,8 +58,6 @@ fn write_vtables(
 
     for (key, mut tuples) in vtables {
         write_str(&mut w, key.as_str())?;
-        write_array_len(&mut w, 2)?;
-        write_uint(&mut w, 0)?; // usual vtable
         write_array_len(&mut w, tuples.len() as u32)?;
 
         while tuples.next().is_some() {
@@ -182,14 +180,6 @@ impl<'a> DQLPackageIterator<'a> {
 
         let tuple_iterator_decoder =
             |r: &mut Cursor<&'a [u8]>| -> Result<TupleIterator<'a>, ProtocolError> {
-                let l = read_array_len(r)?;
-                if l != 2 {
-                    return Err(ProtocolError::DecodeError(format!(
-                        "DQL package is invalid: expected to have vtable array length 2, got {l}"
-                    )));
-                }
-                // don't use for now, only one type of vtable is supported
-                let _ = rmp::decode::read_pfix(r)?;
                 let l = read_array_len(r)? as usize;
                 let start = r.position() as usize;
                 for _ in 0..l {
@@ -487,14 +477,14 @@ mod tests {
         let mut writer = Vec::new();
 
         write_dql_package(&mut writer, &data).unwrap();
-        let expected: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x96\x81\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw\xc4\x04some\x81\xa9TMP_1302_\x92\x00\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
+        let expected: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x96\x81\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw\xc4\x04some\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
 
         assert_eq!(writer, expected);
     }
 
     #[test]
     fn test_execute_dql_cache_hit() {
-        let mut data: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x96\x81\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw\xc4\x04some\x81\xa9TMP_1302_\x92\x00\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
+        let mut data: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x96\x81\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw\xc4\x04some\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
 
         let l = read_array_len(&mut data).unwrap();
         assert_eq!(l, 3);
