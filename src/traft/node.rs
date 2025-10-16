@@ -2623,7 +2623,11 @@ impl NodeImpl {
         }
 
         // Get the `Ready` with `RawNode::ready` interface.
-        if !self.raw_node.has_ready() {
+        if !self.raw_node.has_ready() &&
+            // if we have unapplied state we can't do this early exit
+            // otherwise DDL will get stuck until a heartbeat is received
+            self.applied.get() == self.commit.get()
+        {
             return Ok(());
         }
 
