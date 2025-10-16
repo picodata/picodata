@@ -13,6 +13,7 @@ with the `YY.MINOR.MICRO` scheme.
 ### Fixes
 - Fixed a bug where the raft snapshot would sometimes contain incorrect term
   which would result in an unrecoverable failure of the receiving instance.
+- Resolve hang when using TLS (hang in `ssl_iostream_destroy` when fiber is cancelled).
 - DML to global tables no longer will fail with errors such as "Compacted"
   (See also https://git.picodata.io/core/picodata/-/issues/2273).
 
