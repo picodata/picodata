@@ -7,6 +7,7 @@
 <!-- - [Java](connectors/java.md) -->
 - [JDBC](connectors/jdbc.md)
 - [Go](connectors/go.md)
+- [Rust](connectors/rust.md)
 
 См. также:
 
