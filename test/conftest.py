@@ -11,6 +11,9 @@ import time
 import threading
 from packaging.version import InvalidVersion, Version
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import requests
+from prometheus_client.parser import text_string_to_metric_families
+from prometheus_client import Metric
 
 import yaml as yaml_lib  # type: ignore
 import pytest
@@ -621,6 +624,7 @@ class Instance:
     peers: list[str] = field(default_factory=list)
     host: str | None = None
     port: int | None = None
+    _http_listen: str | bool | None = None
 
     pg_host: str | None = None
     pg_port: int | None = None
@@ -1171,6 +1175,38 @@ class Instance:
     def remove_data(self):
         log.info(f"removing instance_dir of {self}")
         shutil.rmtree(self.instance_dir)
+
+    def http_listen(self):
+        if isinstance(self._http_listen, str):
+            return self._http_listen
+
+        def error_message():
+            return f"Http server is disabled on instance {self}\nconsider passing enable_http=True to Cluster.add_instance()"
+
+        if self._http_listen is False:
+            raise Exception(error_message())
+
+        assert self._http_listen is None
+
+        info = self.call(".proc_runtime_info")
+        if "http" not in info:
+            self._http_listen = False
+            raise Exception(error_message())
+
+        http = info["http"]
+        self._http_listen = "{}:{}".format(http["host"], http["port"])
+
+        return self._http_listen
+
+    def get_metrics(self) -> dict[str, Metric]:
+        response = requests.get(f"http://{self.http_listen()}/metrics")
+        response.raise_for_status()
+
+        metrics = dict()
+        for metric in text_string_to_metric_families(response.text):
+            metrics[metric.name] = metric
+
+        return metrics
 
     def remove_backup(self):
         path = Path(self.backup_dir)
