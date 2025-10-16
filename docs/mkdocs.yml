@@ -68,6 +68,7 @@ nav:
     - Внешние коннекторы:
       - dev/connectors/jdbc.md
       - dev/connectors/go.md
+      - dev/connectors/rust.md
     - Работа с плагинами:
       - dev/plugin_create.md
       - dev/plugin_mgmt.md
