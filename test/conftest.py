@@ -2145,6 +2145,8 @@ class Cluster:
         pg_port: int | None = None,
         service_password: str | None = None,
         backup_dir: Path | None = None,
+        log_to_console: bool = True,
+        log_to_file: bool | None = None,
     ) -> Instance:
         """Add an `Instance` into the list of instances of the cluster and wait
         for it to attain Online grade unless `wait_online` is `False`.
@@ -2175,6 +2177,9 @@ class Cluster:
 
         instance_dir = self.choose_instance_dir(name or str(port))
 
+        if log_to_file:
+            os.makedirs(instance_dir)
+
         instance = Instance(
             runtime=self.runtime,
             cwd=self.data_dir,
@@ -2197,6 +2202,13 @@ class Cluster:
             audit=audit,
             registry=self.registry,
         )
+
+        if log_to_file and log_to_console:
+            instance.env["PICODATA_LOG"] = f"|tee {instance_dir}/picodata.log"
+        elif log_to_file:
+            instance.env["PICODATA_LOG"] = f"{instance_dir}/picodata.log"
+        elif not log_to_console:
+            instance.env["PICODATA_LOG"] = "/dev/null"
 
         if service_password:
             instance.set_service_password(service_password)
