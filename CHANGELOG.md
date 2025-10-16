@@ -13,9 +13,16 @@ with the `YY.MINOR.MICRO` scheme.
 ### Fixes
 - Fixed a bug where the raft snapshot would sometimes contain incorrect term
   which would result in an unrecoverable failure of the receiving instance.
+- DML to global tables no longer will fail with errors such as "Compacted"
+  (See also https://git.picodata.io/core/picodata/-/issues/2273).
 
 ### SQL
 - Add IF NOT EXISTS support for ALTER TABLE ADD COLUMN.
+
+### Observability
+- Added metrics `pico_sql_global_dml_query` and `pico_sql_global_dml_query_retries`
+  which report respectively the total number of SQL DML operations on global
+  tables and number of times these operations had to be retried due to CAS conflicts.
 
 ## [25.4.3] - 2025-10-15
 

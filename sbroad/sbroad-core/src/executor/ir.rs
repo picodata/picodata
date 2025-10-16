@@ -365,6 +365,18 @@ impl ExecutionPlan {
         let plan = self.get_ir_plan();
         let top_id = plan.get_top()?;
 
+        // XXX For historical reasons we destructively extract the subtree
+        // before sending it to a storage for execution. Ideally we would not
+        // do this and instead just send it via a read-only reference, and this
+        // will be done in future when we switch to the new sql-protocol.
+        //
+        // But for now we introduce this hack. It is needed because global DML
+        // operations go through CAS API, which may require retrying the request
+        // in expected situations (for example due to automatic compaction of
+        // raft log). In order to support correct DQL + DML queries we need to
+        // keep the original plan intact during the retry.
+        let dont_mutate = plan.is_dml_on_global_table()?;
+
         // We don't cut CTE and subquery subtrees during plan traversal
         // as they can be reused in other slices of the plan.
         // So, we collect such subtree nodes into the set to avoid their removal.
@@ -373,7 +385,8 @@ impl ExecutionPlan {
         // example of a subquery which is referenced by several nodes (one
         // below Motion and one above it). Such a situation is caused by our
         // EXCEPT implementation logic.
-        let nodes_to_save = {
+        let mut nodes_to_save = AHashSet::default();
+        if !dont_mutate {
             let filter = |node_id: NodeId| -> bool {
                 if let Ok(Relational::ScanCte(_) | Relational::ScanSubQuery(_)) =
                     plan.get_relation_node(node_id)
@@ -390,7 +403,7 @@ impl ExecutionPlan {
             rel_tree.populate_nodes(top_id);
 
             // Preallocate memory for all subqueries and CTE subtrees.
-            let mut nodes_to_save: AHashSet<NodeId> = AHashSet::with_capacity(SQ_IDS_CAPACITY * 2);
+            nodes_to_save.reserve(SQ_IDS_CAPACITY * 2);
 
             for LevelNode(_, node_id) in rel_tree.iter() {
                 let subtree = PostOrder::with_capacity(
@@ -401,9 +414,7 @@ impl ExecutionPlan {
                     nodes_to_save.insert(id);
                 }
             }
-
-            nodes_to_save
-        };
+        }
 
         let mut subtree = PostOrder::with_capacity(
             |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
@@ -442,7 +453,7 @@ impl ExecutionPlan {
 
             // Replace the node with some invalid value.
             let node = mut_plan.get_node(node_id)?;
-            let mut node: NodeOwned = if nodes_to_save.contains(&node_id) {
+            let mut node: NodeOwned = if dont_mutate || nodes_to_save.contains(&node_id) {
                 node.into_owned()
             } else {
                 mut_plan.replace_with_stub(node_id)

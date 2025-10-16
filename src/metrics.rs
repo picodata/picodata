@@ -55,6 +55,24 @@ static SQL_QUERY_DURATION: LazyLock<HistogramVec> = LazyLock::new(|| {
     .expect("Failed to create pico_sql_query_duration histogram")
 });
 
+static SQL_GLOBAL_DML_QUERY_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(Opts::new(
+        "pico_sql_global_dml_query_total",
+        "Total number of SQL DML queries on global tables executed",
+    ))
+    .expect("Failed to create pico_sql_query_total counter")
+});
+
+static SQL_GLOBAL_DML_QUERY_RETRIES_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(
+        Opts::new(
+            "pico_sql_global_dml_query_retries_total",
+            "Total number of SQL DML queries on global tables which failed due to CAS errors and were automatically retried",
+        ),
+    )
+    .expect("Failed to create pico_sql_query_total counter")
+});
+
 static RPC_REQUEST_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     IntCounterVec::new(
         Opts::new(
@@ -193,6 +211,14 @@ pub fn record_sql_query_total(tier: &str, replicaset: &str) {
     SQL_QUERY_TOTAL.with_label_values(&[tier, replicaset]).inc();
 }
 
+pub fn record_sql_global_dml_query_total() {
+    SQL_GLOBAL_DML_QUERY_TOTAL.inc();
+}
+
+pub fn record_sql_global_dml_query_retries_total() {
+    SQL_GLOBAL_DML_QUERY_RETRIES_TOTAL.inc();
+}
+
 pub fn record_sql_query_errors_total(tier: &str, replicaset: &str) {
     SQL_QUERY_ERRORS_TOTAL
         .with_label_values(&[tier, replicaset])
@@ -296,6 +322,8 @@ pub fn register_metrics(registry: &prometheus::Registry) -> prometheus::Result<(
     registry.register(Box::new(SQL_QUERY_DURATION.clone()))?;
     registry.register(Box::new(SQL_QUERY_ERRORS_TOTAL.clone()))?;
     registry.register(Box::new(SQL_QUERY_TOTAL.clone()))?;
+    registry.register(Box::new(SQL_GLOBAL_DML_QUERY_TOTAL.clone()))?;
+    registry.register(Box::new(SQL_GLOBAL_DML_QUERY_RETRIES_TOTAL.clone()))?;
     registry.register(Box::new(INFO_UPTIME.clone()))?;
 
     Ok(())

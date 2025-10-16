@@ -1110,8 +1110,14 @@ pub fn materialize_motion(
     let mut vtable = if plan.get_ir_plan().is_raw_explain() {
         let explain_res = *result.downcast::<String>().expect("must've failed earlier");
 
-        // Unlink motion node's child sub tree (it is already replaced with invalid values).
-        plan.unlink_motion_subtree(motion_node_id)?;
+        if !plan.get_ir_plan().is_dml_on_global_table()? {
+            // Unlink motion node's child sub tree (it is already replaced with invalid values).
+            plan.unlink_motion_subtree(motion_node_id)?;
+        } else {
+            // In case of global DML requests we must leave the tree unchanged,
+            // because the DML portion of the query may fail due to CAS errors and
+            // then the DQL part must be re-executed again
+        }
 
         let explain_data = explain_data.unwrap();
         *explain_data = explain_res;
