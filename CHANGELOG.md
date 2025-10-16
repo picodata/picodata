@@ -26,6 +26,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Print upper bound of a signed 64-bit integer for ALTERing the `sql_storage_cache_count_max`,
   instead of an unsigned 64-bit integer, after `UNSIGNED` has been deleted internally and range
   has been changed.
+- Resolve hang when using TLS (hang in `ssl_iostream_destroy` when fiber is cancelled).
 - Fix Service::on_leader_change callbacks not being called after master goes Offline
   due to sentinel auto-offline policy (See also https://git.picodata.io/core/picodata/-/issues/2303).
 - Fixed a bug where the raft snapshot would sometimes contain incorrect term

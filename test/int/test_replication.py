@@ -618,7 +618,7 @@ def assert_box_replication_follow(cluster: Cluster):
             assert instance_replication_info["downstream"]["status"] == "follow"
 
 
-def assert_data_replicates(master: Instance, replica: Instance):
+def assert_data_replicates(master: Instance, replicas: list[Instance]):
     master_vclock = master.get_vclock()
     del master_vclock[0]
 
@@ -631,23 +631,27 @@ def assert_data_replicates(master: Instance, replica: Instance):
     assert new_master_vclock != master_vclock
     master_vclock = new_master_vclock
 
-    wait_vclock(replica, master_vclock)
+    for replica in replicas:
+        wait_vclock(replica, master_vclock)
 
-    rows_replica = []
+    rows_replica: list[list[list[int | str]]] = [[] for _ in replicas]
     rows_master = []
     for i in range(3):
-        rows_replica.append(replica.eval(f"return box.space.mytable:get({i})"))
+        for j, replica in enumerate(replicas):
+            rows_replica[j].append(replica.eval(f"return box.space.mytable:get({i})"))
         rows_master.append(master.eval(f"return box.space.mytable:get({i})"))
 
-    assert rows_master == rows_replica
+    for rows in rows_replica:
+        assert rows_master == rows
 
 
 def test_iproto_tls_with_replication(cluster: Cluster):
     i1 = cluster.add_instance(replicaset_name="r1", wait_online=False)
     i2 = cluster.add_instance(replicaset_name="r1", wait_online=False)
+    i3 = cluster.add_instance(replicaset_name="r1", wait_online=False)
 
     ssl_dir = pathlib.Path(os.path.realpath(__file__)).parent.parent / "ssl_certs"
-    for i in (i1, i2):
+    for i in cluster.instances:
         i.iproto_tls_enabled = True
         i.iproto_tls_cert = str(ssl_dir / "server-with-ext.crt")
         i.iproto_tls_key = str(ssl_dir / "server.key")
@@ -658,9 +662,9 @@ def test_iproto_tls_with_replication(cluster: Cluster):
 
     master_name = i1.replicaset_master_name()
 
-    master, replica = sorted([i1, i2], key=lambda i: master_name == i.name, reverse=True)
+    master, replica1, replica2 = sorted([i1, i2, i3], key=lambda i: master_name == i.name, reverse=True)
 
-    assert_data_replicates(master, replica)
+    assert_data_replicates(master, [replica1, replica2])
 
     assert_box_replication_follow(cluster)
 
@@ -695,6 +699,6 @@ def test_iproto_tls_enable_after_bootstrap(cluster: Cluster):
 
     master, replica = sorted([i1, i2], key=lambda i: master_name == i.name, reverse=True)
 
-    assert_data_replicates(master, replica)
+    assert_data_replicates(master, [replica])
 
     assert_box_replication_follow(cluster)
