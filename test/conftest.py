@@ -1528,6 +1528,12 @@ class Instance:
                         if time.monotonic() > deadline:
                             raise e from e
 
+        if self._instance_dir:
+            instance_dir_by_name = Path(self._instance_dir).parent / self.name  # type: ignore
+            if not instance_dir_by_name.exists():
+                os.symlink(self._instance_dir, instance_dir_by_name, target_is_directory=True)
+                log.info(f"created a symlink {self._instance_dir} -> {instance_dir_by_name}")
+
         log.info(f"{self} is online")
 
     def wait_has_states(
@@ -2932,6 +2938,7 @@ def cluster(cluster_factory) -> Generator[Cluster, None, None]:
     cluster = cluster_factory()
     yield cluster
     cluster.kill()
+    log.info(f"Cluster data directory was: {cluster.data_dir}")
 
 
 @pytest.fixture
