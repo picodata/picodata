@@ -486,6 +486,8 @@ def do_test_global_dml_contention_load(
     # Hide the large text constant from pytest output in case of test failure
     del test_code
 
+    stats = []
+
     results = dict()
     t0 = time.time()
     while threads:
@@ -493,6 +495,12 @@ def do_test_global_dml_contention_load(
         if now - t0 > 0.1:
             t0 = now
             [[counter]] = leader.sql("SELECT counter FROM test WHERE id = 1")
+            per_instance = []
+            for follower in followers:
+                metrics = follower.get_metrics()
+                [total, retries] = get_global_dml_metrics(metrics)
+                per_instance.append((total, retries))
+            stats.append((counter, per_instance))
 
         try:
             res = threads[0].join(timeout=0.3)
@@ -506,7 +514,17 @@ def do_test_global_dml_contention_load(
     [[counter]] = leader.sql("SELECT counter FROM test WHERE id = 1")
     assert counter == instance_count * worker_count * update_count
 
+    per_instance = []
+    for follower in followers:
+        metrics = follower.get_metrics()
+        [total, retries] = get_global_dml_metrics(metrics)
+        per_instance.append((total, retries))
+    stats.append((counter, per_instance))
+
     cluster.kill()
+
+    for stat in stats:
+        log.info(f"{stat=}")
 
     instances = [follower.name for follower in followers]
     log.info(f"{instances=}")
@@ -531,6 +549,16 @@ def mean_and_standard_deviation(samples):
     variance = sum(((s - mean) ** 2 for s in samples)) / count
     sd = variance**0.5
     return mean, sd
+
+
+def get_global_dml_metrics(metrics):
+    metric = metrics["pico_sql_global_dml_query"]
+    [total] = [sample.value for sample in metric.samples]
+
+    metric = metrics["pico_sql_global_dml_query_retries"]
+    [retries] = [sample.value for sample in metric.samples]
+
+    return total, retries
 
 
 def test_global_dml_contention_load(cluster: Cluster):
