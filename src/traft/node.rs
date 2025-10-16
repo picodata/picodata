@@ -335,6 +335,7 @@ impl Node {
     }
 
     #[inline(always)]
+    #[track_caller]
     pub(crate) fn node_impl(&self) -> MutexGuard<'_, NodeImpl> {
         self.node_impl.lock()
     }
@@ -396,17 +397,17 @@ impl Node {
     // rolled back.
     #[track_caller]
     pub fn wait_index(&self, target: RaftIndex, timeout: Duration) -> traft::Result<RaftIndex> {
-        tlog!(Debug, "waiting for applied index {target}");
+        // tlog!(Debug, "waiting for applied index {target}");
         let mut applied = self.applied.clone();
         let deadline = fiber::clock().saturating_add(timeout);
         fiber::block_on(async {
             loop {
                 let current = self.get_index();
                 if current >= target {
-                    tlog!(
-                        Debug,
-                        "done waiting for applied index {target}, current: {current}"
-                    );
+                    // tlog!(
+                    //     Debug,
+                    //     "done waiting for applied index {target}, current: {current}"
+                    // );
                     return Ok(current);
                 }
 
@@ -2311,10 +2312,12 @@ impl NodeImpl {
             sent_count += 1;
         }
 
-        tlog!(
-            Debug,
-            "done sending messages, sent: {sent_count}, skipped: {skip_count}"
-        );
+        // tlog!(
+        //     Debug,
+        //     "done sending messages, sent: {sent_count}, skipped: {skip_count}"
+        // );
+        _ = sent_count;
+        _ = skip_count;
     }
 
     fn maybe_send_snapshot_report(&mut self, snapshot_was_handled: bool) {
@@ -2848,7 +2851,6 @@ impl NodeImpl {
 
             if let Err(e) = transaction(|| -> Result<(), Error> {
                 self.main_loop_status("persisting commit index");
-                tlog!(Debug, "commit index: {}", commit);
 
                 self.raft_storage.persist_commit(commit)?;
                 self.commit
