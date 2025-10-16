@@ -8,7 +8,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-## [25.3.7] - Unreleased
+## [25.3.7] - 2025-10-16
 
 ### Fixes
 - Fix Service::on_leader_change callbacks not being called after master goes Offline

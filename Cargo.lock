@@ -2793,7 +2793,7 @@ dependencies = [
 
 [[package]]
 name = "picodata"
-version = "25.3.6"
+version = "25.3.7"
 dependencies = [
  "abi_stable",
  "ahash 0.8.12",
@@ -2856,7 +2856,7 @@ dependencies = [
 
 [[package]]
 name = "picodata-plugin"
-version = "25.3.6"
+version = "25.3.7"
 dependencies = [
  "abi_stable",
  "gensym",
@@ -2878,7 +2878,7 @@ dependencies = [
 
 [[package]]
 name = "picodata-plugin-proc-macro"
-version = "25.3.6"
+version = "25.3.7"
 dependencies = [
  "proc-macro2",
  "quote",
