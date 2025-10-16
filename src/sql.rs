@@ -3,6 +3,7 @@
 use crate::access_control::access_check_plugin_system;
 use crate::access_control::{validate_password, UserMetadataKind};
 use crate::audit;
+use crate::backoff::SimpleBackoffManager;
 use crate::cas::Predicate;
 use crate::catalog::governor_queue;
 use crate::column_name;
@@ -2539,6 +2540,54 @@ pub unsafe extern "C" fn proc_sql_execute(
 // CAS. No retries are made in case of CAS error.
 fn do_dml_on_global_tbl(
     mut query: ExecutingQuery<RouterRuntime>,
+    override_deadline: Option<Instant>,
+    governor_op_id: Option<u64>,
+) -> traft::Result<ConsumerResult> {
+    let mut backoff = SimpleBackoffManager::new(
+        "global DML retry",
+        Duration::from_millis(100),
+        Duration::from_secs(30),
+    );
+    // Without randomization the `test_global_dml_contention_load`
+    // integration test runs ~5 times slower, because the parallel
+    // workers encounter conflicts at about the same time and thefore
+    // choose the same timeouts. We don't actually expect it to be this
+    // bad in real-life scenarios, but adding randomization may
+    // sometimes help. It should do any harm anyways
+    backoff.randomize = true;
+    // Golden ratio, because multiplying by 2 makes it grow too fast for this case
+    backoff.multiplier_coefficient = 1.6180339887;
+    loop {
+        let res = do_dml_on_global_tbl_no_retry(&mut query, override_deadline, governor_op_id);
+        let res = match res {
+            Ok(v) => v,
+            Err(e) => {
+                if e.is_retriable() {
+                    metrics::record_sql_global_dml_query_retries_total();
+
+                    backoff.handle_failure();
+                    let timeout = backoff.timeout();
+
+                    tlog!(
+                        Warning,
+                        "global DML failed: {e}, retrying in {timeout:.02?}..."
+                    );
+                    tarantool::fiber::sleep(timeout);
+
+                    continue;
+                }
+                return Err(e);
+            }
+        };
+
+        metrics::record_sql_global_dml_query_total();
+
+        return Ok(res);
+    }
+}
+
+fn do_dml_on_global_tbl_no_retry(
+    query: &mut ExecutingQuery<RouterRuntime>,
     override_deadline: Option<Instant>,
     governor_op_id: Option<u64>,
 ) -> traft::Result<ConsumerResult> {

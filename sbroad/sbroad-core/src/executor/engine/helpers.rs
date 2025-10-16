@@ -1028,8 +1028,14 @@ pub fn materialize_motion(
     // Dispatch the motion subtree (it will be replaced with invalid values).
     runtime.dispatch(plan, top_id, buckets, &mut port)?;
 
-    // Unlink motion node's child sub tree (it is already replaced with invalid values).
-    plan.unlink_motion_subtree(motion_node_id)?;
+    if !plan.get_ir_plan().is_dml_on_global_table()? {
+        // Unlink motion node's child sub tree (it is already replaced with invalid values).
+        plan.unlink_motion_subtree(motion_node_id)?;
+    } else {
+        // In case of global DML requests we must leave the tree unchanged,
+        // because the DML portion of the query may fail due to CAS errors and
+        // then the DQL part must be re-executed again
+    }
 
     let mut vtable = VirtualTable::with_columns(columns);
     if let Some(name) = alias {

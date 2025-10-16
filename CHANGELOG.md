@@ -30,6 +30,8 @@ with the `YY.MINOR.MICRO` scheme.
   due to sentinel auto-offline policy (See also https://git.picodata.io/core/picodata/-/issues/2303).
 - Fixed a bug where the raft snapshot would sometimes contain incorrect term
   which would result in an unrecoverable failure of the receiving instance.
+- DML to global tables no longer will fail with errors such as "Compacted"
+  (See also https://git.picodata.io/core/picodata/-/issues/2273).
 
 ### WebUI
 - Login form and simple session control
@@ -45,6 +47,11 @@ with the `YY.MINOR.MICRO` scheme.
   - `instance.pg.cert_file` (client certificate path)
   - `instance.pg.key_file` (private key path)
   - `instance.pg.ca_file` (CA certificate path).
+
+### Observability
+- Added metrics `pico_sql_global_dml_query` and `pico_sql_global_dml_query_retries`
+  which report respectively the total number of SQL DML operations on global
+  tables and number of times these operations had to be retried due to CAS conflicts.
 
 ## [25.4.1] - 2025-10-03
 
