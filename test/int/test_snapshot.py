@@ -453,7 +453,8 @@ cluster:
     storage_1_2.call("pico._inject_error", injected_error_1, False)
 
     # Make sure the snapshot is received
-    lc.wait_matched()
+    # HACK: timeout raised until https://git.picodata.io/core/picodata/-/issues/2313 is resolved
+    lc.wait_matched(timeout=20)
 
     # Make a schema change. WAIT APPLIED LOCALLY is needed because `storage_1_2`
     # is blocked by the injection

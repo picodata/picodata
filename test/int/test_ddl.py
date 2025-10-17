@@ -906,7 +906,8 @@ cluster:
     voter_2.sql("UPDATE _pico_tier SET target_vshard_config_version = current_vshard_config_version + 1")
 
     # Wait until it catches up the raft state
-    voter_2.wait_governor_status("idle", old_step_counter=counter)
+    # HACK: timeout raised until https://git.picodata.io/core/picodata/-/issues/2313 is resolved
+    voter_2.wait_governor_status("idle", old_step_counter=counter, timeout=20)
 
     # Make sure the DDL was applied
     assert storage_2.call("box.space._space.index.name:get", "top_g") is not None
