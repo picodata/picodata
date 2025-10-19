@@ -202,3 +202,19 @@ fn equality_classes() {
         },]
     );
 }
+
+#[test]
+fn issue_2016() {
+    let input = r#"SELECT "sys_op" FROM "hash_testing"
+    WHERE (product_units = ((product_units or true) AND false))"#;
+    let actual_pattern_params = check_transformation(input, vec![], &derive_equalities);
+
+    assert_eq!(
+        actual_pattern_params.params,
+        vec![Value::from(true), Value::from(false)]
+    );
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "hash_testing"."sys_op" FROM "hash_testing" WHERE "hash_testing"."product_units" = (("hash_testing"."product_units" or CAST($1 AS bool)) and CAST($2 AS bool))"#
+    );
+}

@@ -425,7 +425,6 @@ impl Plan {
         let mut visited: HashSet<NodeId> = HashSet::with_capacity(self.nodes.len());
         let mut chains: HashMap<NodeId, Chain, RepeatableState> =
             HashMap::with_capacity_and_hasher(nodes.len(), RepeatableState);
-
         for id in nodes {
             if visited.contains(id) {
                 continue;
@@ -450,18 +449,21 @@ impl Plan {
                 }) = expr
                 {
                     let children = vec![*left, *right];
+                    let mut local_chain_nodes = Vec::with_capacity(children.len());
                     for child_id in children {
                         visited.insert(child_id);
                         let child_expr = self.get_expression_node(child_id)?;
-                        if let Expression::Bool(BoolExpr {
-                            op: Bool::And | Bool::Or,
-                            ..
-                        }) = child_expr
-                        {
+                        if let Expression::Bool(BoolExpr { op: Bool::Or, .. }) = child_expr {
+                            local_chain_nodes.clear();
+                            break;
+                        }
+                        if let Expression::Bool(BoolExpr { op: Bool::And, .. }) = child_expr {
                             continue;
                         }
-                        nodes_for_chain.push(child_id);
+                        local_chain_nodes.push(child_id);
                     }
+
+                    nodes_for_chain.extend(local_chain_nodes);
                 }
             }
             let mut chain = Chain::with_capacity(nodes_for_chain.len());
