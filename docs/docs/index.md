@@ -44,13 +44,6 @@ Picodata — это распределенная система промышле
 * [Работа с данными SQL](tutorial/sql_examples.md)
 * [Работа в веб-интерфейсе](tutorial/webui.md)
 
-### Разработка приложений {: #development }
-
-* [Инструментарий разработчика](dev/developer_tools.md)
-* [Внешние коннекторы](dev/connectors_index.md)
-* [Создание плагина](dev/plugin_create.md)
-* [Управление плагинами](dev/plugin_mgmt.md)
-
 ### Администрирование кластера {: #administration }
 
 * [Развертывание кластера через Ansible](admin/deploy_ansible.md)
@@ -66,6 +59,24 @@ Picodata — это распределенная система промышле
 * [Рекомендации по сайзингу](admin/sizing.md)
 * [Настройка Systemd](admin/systemd.md)
 * [Устранение неполадок](admin/troubleshooting.md)
+
+### Разработка приложений {: #development }
+
+* [Инструментарий разработчика](dev/developer_tools.md)
+* [Внешние коннекторы](dev/connectors_index.md)
+* [Создание плагина](dev/plugin_create.md)
+* [Управление плагинами](dev/plugin_mgmt.md)
+
+### Плагины  {: #available_plugins }
+
+* [Argus](plugins/argus.md)
+* [Kirovets](plugins/kirovets.md)
+* [Radix](plugins/radix.md)
+* [Silver](plugins/silver.md)
+* [Sirin](plugins/sirin.md)
+* [Synapse](plugins/synapse.md)
+* [Ouroboros](plugins/ouroboros.md)
+* [Внешний модуль аудита](plugins/gostech_audit_log.md)
 
 ### Справочные материалы {: #reference }
 
@@ -91,17 +102,6 @@ Picodata — это распределенная система промышле
 * [Интерфейс RPC API](architecture/rpc_api.md)
 * [Файберы, потоки и многозадачность](architecture/fibers.md)
 * [Механизм плагинов](architecture/plugins.md)
-
-#### Плагины  {: #available_plugins }
-
-* [Argus](plugins/argus.md)
-* [Kirovets](plugins/kirovets.md)
-* [Radix](plugins/radix.md)
-* [Silver](plugins/silver.md)
-* [Sirin](plugins/sirin.md)
-* [Synapse](plugins/synapse.md)
-* [Ouroboros](plugins/ouroboros.md)
-* [Внешний модуль аудита](plugins/gostech_audit_log.md)
 
 ### Обеспечение безопасности {: #security }
 

@@ -62,6 +62,23 @@ nav:
       - admin/sizing.md
       - admin/systemd.md
       - admin/troubleshooting.md
+  - Разработка:
+    - dev/developer_tools.md
+    - Внешние коннекторы:
+      - dev/connectors/jdbc.md
+      - dev/connectors/go.md
+    - Работа с плагинами:
+      - dev/plugin_create.md
+      - dev/plugin_mgmt.md
+  - Плагины:
+    - plugins/argus.md
+    - plugins/kirovets.md
+    - plugins/radix.md
+    - plugins/silver.md
+    - plugins/sirin.md
+    - plugins/synapse.md
+    - plugins/ouroboros.md
+    - plugins/gostech_audit_log.md
   - Справочные материалы:
     - Язык SQL:
       - Команды и термины SQL: sql_index.md
@@ -149,23 +166,6 @@ nav:
     - architecture/rpc_api.md
     - architecture/fibers.md
     - architecture/plugins.md
-  - Разработка:
-    - dev/developer_tools.md
-    - Внешние коннекторы:
-      - dev/connectors/jdbc.md
-      - dev/connectors/go.md
-    - Работа с плагинами:
-      - dev/plugin_create.md
-      - dev/plugin_mgmt.md
-    - Доступные плагины:
-      - plugins/argus.md
-      - plugins/kirovets.md
-      - plugins/radix.md
-      - plugins/silver.md
-      - plugins/sirin.md
-      - plugins/synapse.md
-      - plugins/ouroboros.md
-      - plugins/gostech_audit_log.md
   - Обеспечение безопасности:
     - security/os.md
     - security/runtime.md
