@@ -268,7 +268,7 @@ def test_pico_instance_info(instance: Instance):
     assert instance_info() == myself
 
 
-def test_raft_log(instance: Instance):
+def test_pico_raft_log(instance: Instance):
     raft_log = instance.call("pico.raft_log", dict(max_width=99000))
     raft_log = str.join("\n", raft_log)
 

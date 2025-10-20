@@ -1726,6 +1726,34 @@ class Instance:
     def set_config_file(self, config_path: str):
         self.config_path = config_path
 
+    def setup_logging(self, log_to_console: bool | None, log_to_file: bool | None, env_instance_log: str | None):
+        # Choose default values for options
+        if env_instance_log:
+            assert env_instance_log in ["file", "console", "both", "none"], (
+                "invalid value for INSTANCE_LOG environment variable"
+            )
+            if log_to_file is None:
+                log_to_file = env_instance_log in ["file", "both"]
+            if log_to_console is None:
+                log_to_console = env_instance_log in ["console", "both"]
+        else:
+            # By default DON't log to file
+            if log_to_file is None:
+                log_to_file = False
+            # By default log to console
+            if log_to_console is None:
+                log_to_console = True
+
+        assert isinstance(log_to_console, bool)
+        assert isinstance(log_to_file, bool)
+
+        if log_to_file and log_to_console:
+            self.env["PICODATA_LOG"] = f"|tee {self.instance_dir}/picodata.log"
+        elif log_to_file:
+            self.env["PICODATA_LOG"] = f"{self.instance_dir}/picodata.log"
+        elif not log_to_console:
+            self.env["PICODATA_LOG"] = "/dev/null"
+
     @property
     def service_password(self) -> Optional[str]:
         if self.service_password_file is None:
@@ -2145,7 +2173,7 @@ class Cluster:
         pg_port: int | None = None,
         service_password: str | None = None,
         backup_dir: Path | None = None,
-        log_to_console: bool = True,
+        log_to_console: bool | None = None,
         log_to_file: bool | None = None,
     ) -> Instance:
         """Add an `Instance` into the list of instances of the cluster and wait
@@ -2203,12 +2231,7 @@ class Cluster:
             registry=self.registry,
         )
 
-        if log_to_file and log_to_console:
-            instance.env["PICODATA_LOG"] = f"|tee {instance_dir}/picodata.log"
-        elif log_to_file:
-            instance.env["PICODATA_LOG"] = f"{instance_dir}/picodata.log"
-        elif not log_to_console:
-            instance.env["PICODATA_LOG"] = "/dev/null"
+        instance.setup_logging(log_to_console, log_to_file, os.getenv("INSTANCE_LOG"))
 
         if service_password:
             instance.set_service_password(service_password)
