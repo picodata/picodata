@@ -48,7 +48,7 @@ impl TryFrom<u8> for ColumnType {
     }
 }
 
-pub trait ProtocolEncoder {
+pub trait DQLEncoder {
     fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (&u32, &u64)>;
 
     fn get_plan_id(&self) -> u64;
@@ -169,20 +169,20 @@ pub(crate) mod test {
     }
 
     #[allow(dead_code)]
-    pub struct TestEncoderBuilder {
-        encoder: TestEncoder,
+    pub struct TestDQLEncoderBuilder {
+        encoder: TestDQLEncoder,
     }
 
-    impl TestEncoderBuilder {
+    impl TestDQLEncoderBuilder {
         #[allow(dead_code)]
         pub fn new() -> Self {
-            TestEncoderBuilder {
-                encoder: TestEncoder::default(),
+            TestDQLEncoderBuilder {
+                encoder: TestDQLEncoder::default(),
             }
         }
 
         #[allow(dead_code)]
-        pub fn build(self) -> TestEncoder {
+        pub fn build(self) -> TestDQLEncoder {
             self.encoder
         }
 
@@ -234,7 +234,7 @@ pub(crate) mod test {
     }
 
     #[derive(Default)]
-    pub struct TestEncoder {
+    pub struct TestDQLEncoder {
         pub schema_info: HashMap<u32, u64>,
         pub plan_id: u64,
         pub sender_id: String,
@@ -246,7 +246,7 @@ pub(crate) mod test {
         pub params: Vec<u64>,
     }
 
-    impl ProtocolEncoder for TestEncoder {
+    impl DQLEncoder for TestDQLEncoder {
         fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (&u32, &u64)> {
             self.schema_info.iter()
         }

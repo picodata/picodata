@@ -1,10 +1,10 @@
 pub mod decode;
 pub mod dml;
 pub mod dql;
+pub mod dql_encoder;
 pub mod encode;
 pub mod error;
 pub mod iterators;
 pub mod message_type;
 pub mod msgpack;
-pub mod protocol_encoder;
 pub mod query_plan;

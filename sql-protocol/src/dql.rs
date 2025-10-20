@@ -1,54 +1,59 @@
+use crate::dql_encoder::{ColumnType, DQLEncoder, MsgpackWriter};
 use crate::error::ProtocolError;
 use crate::iterators::{MsgpackMapIterator, TupleIterator};
 use crate::message_type::write_request_header;
 use crate::message_type::MessageType::DQL;
 use crate::msgpack::{skip_value, ByteCounter};
-use crate::protocol_encoder::{ColumnType, MsgpackWriter, ProtocolEncoder};
 use rmp::decode::{read_array_len, read_int, read_map_len, read_str_len};
 use rmp::encode::{write_array_len, write_map_len, write_str, write_uint};
 use smol_str::SmolStr;
 use std::io::{Cursor, Write};
 use std::str::from_utf8;
 
-pub fn write_dql_package(
-    mut w: impl Write,
-    data: &impl ProtocolEncoder,
-) -> Result<(), std::io::Error> {
+pub fn write_dql_package(mut w: impl Write, data: &impl DQLEncoder) -> Result<(), std::io::Error> {
     write_request_header(&mut w, DQL, data.get_request_id())?;
 
     write_array_len(&mut w, 6)?;
-    // Write schema info as map
-    let schema_info = data.get_schema_info();
+    write_schema_info(&mut w, data.get_schema_info())?;
+
+    let plan_id = data.get_plan_id();
+    write_plan_id(&mut w, plan_id)?;
+
+    let sender_id = data.get_sender_id();
+    write_sender_id(&mut w, sender_id)?;
+
+    write_vtables(&mut w, data.get_vtables(plan_id))?;
+
+    let options = data.get_options();
+    write_options(&mut w, options.iter())?;
+
+    let params = data.get_params();
+    write_params(&mut w, params)?;
+
+    Ok(())
+}
+
+pub(crate) fn write_schema_info<'a>(
+    mut w: impl Write,
+    schema_info: impl ExactSizeIterator<Item = (&'a u32, &'a u64)>,
+) -> Result<(), std::io::Error> {
     write_map_len(&mut w, schema_info.len() as u32)?;
     for (key, value) in schema_info {
         write_uint(&mut w, *key as u64)?;
         write_uint(&mut w, *value)?;
     }
 
-    let plan_id = data.get_plan_id();
-    rmp::encode::write_u64(&mut w, plan_id)?;
-
-    let sender_id = data.get_sender_id();
-    rmp::encode::write_bin(&mut w, sender_id.as_bytes())?;
-
-    write_vtables(&mut w, data.get_vtables(plan_id))?;
-
-    let options = data.get_options();
-    write_array_len(&mut w, options.len() as u32)?;
-    for option in options {
-        write_uint(&mut w, option)?;
-    }
-
-    let mut params = data.get_params();
-    write_array_len(&mut w, params.len() as u32)?;
-    while params.next().is_some() {
-        params.write_current(&mut w)?;
-    }
-
     Ok(())
 }
 
-fn write_vtables(
+pub(crate) fn write_plan_id(mut w: impl Write, plan_id: u64) -> Result<(), std::io::Error> {
+    rmp::encode::write_u64(&mut w, plan_id).map_err(std::io::Error::from)
+}
+
+pub(crate) fn write_sender_id(mut w: impl Write, sender_id: &str) -> Result<(), std::io::Error> {
+    rmp::encode::write_bin(&mut w, sender_id.as_bytes()).map_err(std::io::Error::from)
+}
+pub(crate) fn write_vtables(
     mut w: impl Write,
     vtables: impl ExactSizeIterator<Item = (SmolStr, impl MsgpackWriter)>,
 ) -> Result<(), std::io::Error> {
@@ -64,6 +69,28 @@ fn write_vtables(
             rmp::encode::write_bin_len(&mut w, tuple_counter.bytes() as u32)?;
             tuples.write_current(&mut w)?;
         }
+    }
+
+    Ok(())
+}
+pub(crate) fn write_options<'a>(
+    mut w: impl Write,
+    options: impl ExactSizeIterator<Item = &'a u64>,
+) -> Result<(), std::io::Error> {
+    write_array_len(&mut w, options.len() as u32)?;
+    for option in options {
+        write_uint(&mut w, *option)?;
+    }
+
+    Ok(())
+}
+pub(crate) fn write_params(
+    mut w: impl Write,
+    mut params: impl MsgpackWriter,
+) -> Result<(), std::io::Error> {
+    write_array_len(&mut w, params.len() as u32)?;
+    while params.next().is_some() {
+        params.write_current(&mut w)?;
     }
 
     Ok(())
@@ -86,7 +113,7 @@ pub enum DQLResult<'a> {
     PlanId(u64),
     SenderId(&'a str),
     Vtables(MsgpackMapIterator<'a, &'a str, TupleIterator<'a>>),
-    Options(u64, u64),
+    Options((u64, u64)),
     Params(&'a [u8]),
 }
 
@@ -115,39 +142,22 @@ impl<'a> DQLPackageIterator<'a> {
 
     fn get_schema_info(&mut self) -> Result<MsgpackMapIterator<'a, u32, u64>, ProtocolError> {
         assert_eq!(self.state, DQLState::SchemaInfo);
-        let l = read_map_len(&mut self.raw_payload)?;
-
-        let start = self.raw_payload.position() as usize;
-        for _ in 0..l * 2 {
-            skip_value(&mut self.raw_payload)
-                .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
-        }
-        let end = self.raw_payload.position() as usize;
+        let schema_info = get_schema_info(&mut self.raw_payload)?;
         self.state = DQLState::PlanId;
 
-        Ok(MsgpackMapIterator::new(
-            &self.raw_payload.get_ref()[start..end],
-            l,
-            |r| read_int(r).map_err(|err| ProtocolError::DecodeError(err.to_string())),
-            |r| read_int(r).map_err(|err| ProtocolError::DecodeError(err.to_string())),
-        ))
+        Ok(schema_info)
     }
 
     fn get_plan_id(&mut self) -> Result<u64, ProtocolError> {
         assert_eq!(self.state, DQLState::PlanId);
-        let plan_id = rmp::decode::read_u64(&mut self.raw_payload)?;
+        let plan_id = get_plan_id(&mut self.raw_payload)?;
         self.state = DQLState::SenderId;
         Ok(plan_id)
     }
 
     fn get_sender_id(&mut self) -> Result<&'a str, ProtocolError> {
         assert_eq!(self.state, DQLState::SenderId);
-        let sender_id_len = rmp::decode::read_bin_len(&mut self.raw_payload)?;
-        let start = self.raw_payload.position() as usize;
-        let end = start + sender_id_len as usize;
-        let sender_id = from_utf8(&self.raw_payload.get_ref()[start..end])
-            .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
-        self.raw_payload.set_position(end as u64);
+        let sender_id = get_sender_id(&mut self.raw_payload)?;
         self.state = DQLState::Vtables;
         Ok(sender_id)
     }
@@ -156,67 +166,120 @@ impl<'a> DQLPackageIterator<'a> {
         &mut self,
     ) -> Result<MsgpackMapIterator<'a, &'a str, TupleIterator<'a>>, ProtocolError> {
         assert_eq!(self.state, DQLState::Vtables);
-
-        let l = read_map_len(&mut self.raw_payload)?;
-        let start = self.raw_payload.position() as usize;
-        for _ in 0..l * 2 {
-            skip_value(&mut self.raw_payload)
-                .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
-        }
-        let end = self.raw_payload.position() as usize;
+        let vtables = get_vtables(&mut self.raw_payload)?;
         self.state = DQLState::Options;
-
-        let table_name_decoder = |r: &mut Cursor<&'a [u8]>| -> Result<&'a str, ProtocolError> {
-            let l = read_str_len(r)?;
-            let start = r.position() as usize;
-            let end = start + l as usize;
-            let vtable_name = from_utf8(&r.get_ref()[start..end])
-                .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
-            r.set_position(end as u64);
-            Ok(vtable_name)
-        };
-
-        let tuple_iterator_decoder =
-            |r: &mut Cursor<&'a [u8]>| -> Result<TupleIterator<'a>, ProtocolError> {
-                let l = read_array_len(r)? as usize;
-                let start = r.position() as usize;
-                for _ in 0..l {
-                    skip_value(r).map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
-                }
-                let end = r.position() as usize;
-
-                Ok(TupleIterator::new(&r.get_ref()[start..end], l))
-            };
-
-        Ok(MsgpackMapIterator::new(
-            &self.raw_payload.get_ref()[start..end],
-            l,
-            table_name_decoder,
-            tuple_iterator_decoder,
-        ))
+        Ok(vtables)
     }
 
     fn get_options(&mut self) -> Result<(u64, u64), ProtocolError> {
         assert_eq!(self.state, DQLState::Options);
-        let options = read_array_len(&mut self.raw_payload)?;
-        if options != 2 {
-            return Err(ProtocolError::DecodeError(format!(
-                "DQL package is invalid: expected to have options array length 2, got {options}"
-            )));
-        }
-        let sql_motion_row_max = read_int(&mut self.raw_payload)?;
-        let sql_vdbe_opcode_max = read_int(&mut self.raw_payload)?;
+        let options = get_options(&mut self.raw_payload)?;
         self.state = DQLState::Params;
-        Ok((sql_motion_row_max, sql_vdbe_opcode_max))
+        Ok(options)
     }
 
     fn get_params(&mut self) -> Result<&'a [u8], ProtocolError> {
         assert_eq!(self.state, DQLState::Params);
-        let l = self.raw_payload.position() as usize;
-        let params = &self.raw_payload.get_ref()[l..];
+        let params = get_params(&mut self.raw_payload)?;
         self.state = DQLState::End;
         Ok(params)
     }
+}
+
+pub(crate) fn get_schema_info<'a>(
+    raw_payload: &mut Cursor<&'a [u8]>,
+) -> Result<MsgpackMapIterator<'a, u32, u64>, ProtocolError> {
+    let l = read_map_len(raw_payload)?;
+
+    let start = raw_payload.position() as usize;
+    for _ in 0..l * 2 {
+        skip_value(raw_payload).map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+    }
+    let end = raw_payload.position() as usize;
+
+    Ok(MsgpackMapIterator::new(
+        &raw_payload.get_ref()[start..end],
+        l,
+        |r| read_int(r).map_err(|err| ProtocolError::DecodeError(err.to_string())),
+        |r| read_int(r).map_err(|err| ProtocolError::DecodeError(err.to_string())),
+    ))
+}
+
+pub(crate) fn get_plan_id(raw_payload: &mut Cursor<&[u8]>) -> Result<u64, ProtocolError> {
+    let plan_id = rmp::decode::read_u64(raw_payload)?;
+    Ok(plan_id)
+}
+
+pub(crate) fn get_sender_id<'a>(
+    raw_payload: &mut Cursor<&'a [u8]>,
+) -> Result<&'a str, ProtocolError> {
+    let sender_id_len = rmp::decode::read_bin_len(raw_payload)?;
+    let start = raw_payload.position() as usize;
+    let end = start + sender_id_len as usize;
+    let sender_id = from_utf8(&raw_payload.get_ref()[start..end])
+        .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+    raw_payload.set_position(end as u64);
+    Ok(sender_id)
+}
+
+pub(crate) fn get_vtables<'a>(
+    raw_payload: &mut Cursor<&'a [u8]>,
+) -> Result<MsgpackMapIterator<'a, &'a str, TupleIterator<'a>>, ProtocolError> {
+    let l = read_map_len(raw_payload)?;
+    let start = raw_payload.position() as usize;
+    for _ in 0..l * 2 {
+        skip_value(raw_payload).map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+    }
+    let end = raw_payload.position() as usize;
+
+    let table_name_decoder = |r: &mut Cursor<&'a [u8]>| -> Result<&'a str, ProtocolError> {
+        let l = read_str_len(r)?;
+        let start = r.position() as usize;
+        let end = start + l as usize;
+        let vtable_name = from_utf8(&r.get_ref()[start..end])
+            .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+        r.set_position(end as u64);
+        Ok(vtable_name)
+    };
+
+    let tuple_iterator_decoder =
+        |r: &mut Cursor<&'a [u8]>| -> Result<TupleIterator<'a>, ProtocolError> {
+            let l = read_array_len(r)? as usize;
+            let start = r.position() as usize;
+            for _ in 0..l {
+                skip_value(r).map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+            }
+            let end = r.position() as usize;
+
+            Ok(TupleIterator::new(&r.get_ref()[start..end], l))
+        };
+
+    Ok(MsgpackMapIterator::new(
+        &raw_payload.get_ref()[start..end],
+        l,
+        table_name_decoder,
+        tuple_iterator_decoder,
+    ))
+}
+
+pub(crate) fn get_options(raw_payload: &mut Cursor<&[u8]>) -> Result<(u64, u64), ProtocolError> {
+    let options = read_array_len(raw_payload)?;
+    if options != 2 {
+        return Err(ProtocolError::DecodeError(format!(
+            "DQL package is invalid: expected to have options array length 2, got {options}"
+        )));
+    }
+    let sql_motion_row_max = read_int(raw_payload)?;
+    let sql_vdbe_opcode_max = read_int(raw_payload)?;
+    Ok((sql_motion_row_max, sql_vdbe_opcode_max))
+}
+
+pub(crate) fn get_params<'a>(
+    raw_payload: &mut Cursor<&'a [u8]>,
+) -> Result<&'a [u8], ProtocolError> {
+    let l = raw_payload.position() as usize;
+    let params = &raw_payload.get_ref()[l..];
+    Ok(params)
 }
 
 impl<'a> Iterator for DQLPackageIterator<'a> {
@@ -224,30 +287,12 @@ impl<'a> Iterator for DQLPackageIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.state {
-            DQLState::SchemaInfo => match self.get_schema_info() {
-                Ok(schema_info) => Some(Ok(DQLResult::SchemaInfo(schema_info))),
-                Err(err) => Some(Err(err)),
-            },
-            DQLState::PlanId => match self.get_plan_id() {
-                Ok(plan_id) => Some(Ok(DQLResult::PlanId(plan_id))),
-                Err(err) => Some(Err(err)),
-            },
-            DQLState::SenderId => match self.get_sender_id() {
-                Ok(sender_id) => Some(Ok(DQLResult::SenderId(sender_id))),
-                Err(err) => Some(Err(err)),
-            },
-            DQLState::Vtables => match self.get_vtables() {
-                Ok(vtables) => Some(Ok(DQLResult::Vtables(vtables))),
-                Err(err) => Some(Err(err)),
-            },
-            DQLState::Options => match self.get_options() {
-                Ok(options) => Some(Ok(DQLResult::Options(options.0, options.1))),
-                Err(err) => Some(Err(err)),
-            },
-            DQLState::Params => match self.get_params() {
-                Ok(params) => Some(Ok(DQLResult::Params(params))),
-                Err(err) => Some(Err(err)),
-            },
+            DQLState::SchemaInfo => Some(self.get_schema_info().map(DQLResult::SchemaInfo)),
+            DQLState::PlanId => Some(self.get_plan_id().map(DQLResult::PlanId)),
+            DQLState::SenderId => Some(self.get_sender_id().map(DQLResult::SenderId)),
+            DQLState::Vtables => Some(self.get_vtables().map(DQLResult::Vtables)),
+            DQLState::Options => Some(self.get_options().map(DQLResult::Options)),
+            DQLState::Params => Some(self.get_params().map(DQLResult::Params)),
             DQLState::End => None,
         }
     }
@@ -260,7 +305,7 @@ impl<'a> Iterator for DQLPackageIterator<'a> {
 
 pub fn write_dql_additional_data_package(
     mut w: impl Write,
-    data: &impl ProtocolEncoder,
+    data: &impl DQLEncoder,
 ) -> Result<(), std::io::Error> {
     write_array_len(&mut w, 3)?;
 
@@ -329,20 +374,9 @@ impl<'a> DQLCacheMissIterator<'a> {
 
     fn get_schema_info(&mut self) -> Result<MsgpackMapIterator<'a, u32, u64>, ProtocolError> {
         assert_eq!(self.state, DQLCacheMissState::SchemaInfo);
-        let l = read_map_len(&mut self.raw_payload)?;
-        let start = self.raw_payload.position() as usize;
-        for _ in 0..l * 2 {
-            skip_value(&mut self.raw_payload)
-                .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
-        }
-        let end = self.raw_payload.position() as usize;
+        let schema_info = get_schema_info(&mut self.raw_payload)?;
         self.state = DQLCacheMissState::VtablesMetadata;
-        Ok(MsgpackMapIterator::new(
-            &self.raw_payload.get_ref()[start..end],
-            l,
-            |r| read_int(r).map_err(|err| ProtocolError::DecodeError(err.to_string())),
-            |r| read_int(r).map_err(|err| ProtocolError::DecodeError(err.to_string())),
-        ))
+        Ok(schema_info)
     }
 
     #[allow(clippy::type_complexity)]
@@ -451,15 +485,15 @@ impl<'a> Iterator for DQLCacheMissIterator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol_encoder::test::TestEncoderBuilder;
-    use crate::protocol_encoder::ColumnType;
+    use crate::dql_encoder::test::TestDQLEncoderBuilder;
+    use crate::dql_encoder::ColumnType;
     use smol_str::ToSmolStr;
     use std::collections::HashMap;
     use std::str::from_utf8;
 
     #[test]
     fn test_encode_dql() {
-        let data = TestEncoderBuilder::new()
+        let data = TestDQLEncoderBuilder::new()
             .set_plan_id(5264743718663535479)
             .set_request_id("14e84334-71df-4e69-8c85-dc2707a390c6".to_string())
             .set_schema_info(HashMap::from([(12, 138)]))
@@ -526,7 +560,7 @@ mod tests {
                         assert_eq!(actual, expected);
                     }
                 }
-                DQLResult::Options(sql_motion_row_max, sql_vdbe_opcode_max) => {
+                DQLResult::Options((sql_motion_row_max, sql_vdbe_opcode_max)) => {
                     assert_eq!(sql_motion_row_max, 123);
                     assert_eq!(sql_vdbe_opcode_max, 456);
                 }
@@ -540,7 +574,7 @@ mod tests {
 
     #[test]
     fn test_encode_dql_cache_miss() {
-        let data = TestEncoderBuilder::new()
+        let data = TestDQLEncoderBuilder::new()
             .set_schema_info(HashMap::from([(12, 138)]))
             .set_meta(HashMap::from([(
                 "TMP_1302_".to_smolstr(),

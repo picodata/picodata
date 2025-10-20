@@ -1,5 +1,5 @@
+use crate::dql_encoder::MsgpackWriter;
 use crate::error::ProtocolError;
-use crate::protocol_encoder::MsgpackWriter;
 use std::io::{Cursor, Write};
 
 pub struct MsgpackMapIterator<'a, K, V> {

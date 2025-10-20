@@ -1,9 +1,9 @@
 use crate::dml::dml_type::write_dml_header;
 use crate::dml::dml_type::DMLType::Insert;
+use crate::dql_encoder::MsgpackWriter;
 use crate::error::ProtocolError;
 use crate::iterators::TupleIterator;
 use crate::msgpack::{skip_value, ByteCounter};
-use crate::protocol_encoder::MsgpackWriter;
 use rmp::decode::{read_array_len, read_int, read_pfix};
 use rmp::encode::{write_array_len, write_pfix, write_uint};
 use std::cmp::PartialEq;
