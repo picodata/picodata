@@ -1,9 +1,10 @@
 use crate::dml::dml_type::write_dml_header;
 use crate::dml::dml_type::DMLType::Update;
+use crate::dql::write_tuples;
 use crate::dql_encoder::MsgpackWriter;
 use crate::error::ProtocolError;
 use crate::iterators::TupleIterator;
-use crate::msgpack::{skip_value, ByteCounter};
+use crate::msgpack::skip_value;
 use rmp::decode::{read_array_len, read_int};
 use rmp::encode::{write_array_len, write_pfix, write_uint};
 use std::cmp::PartialEq;
@@ -28,14 +29,7 @@ pub fn write_update_package(
     write_uint(&mut w, data.get_target_table_version())?;
     write_pfix(&mut w, data.get_update_type() as u8)?;
 
-    let mut tuples = data.get_tuples();
-    write_array_len(&mut w, tuples.len() as u32)?;
-    while tuples.next().is_some() {
-        let mut tuple_counter = ByteCounter::default();
-        tuples.write_current(&mut tuple_counter)?;
-        rmp::encode::write_bin_len(&mut w, tuple_counter.bytes() as u32)?;
-        tuples.write_current(&mut w)?;
-    }
+    write_tuples(&mut w, data.get_tuples())?;
 
     Ok(())
 }

@@ -2,12 +2,13 @@ use crate::dml::dml_type::DMLType::Delete;
 use crate::dml::dml_type::{write_dml_header, write_dml_with_sql_header};
 use crate::dql::{
     get_options, get_params, get_plan_id, get_schema_info, get_sender_id, get_vtables,
-    write_options, write_params, write_plan_id, write_schema_info, write_sender_id, write_vtables,
+    write_options, write_params, write_plan_id, write_schema_info, write_sender_id, write_tuples,
+    write_vtables,
 };
 use crate::dql_encoder::{DQLEncoder, MsgpackWriter};
 use crate::error::ProtocolError;
 use crate::iterators::{MsgpackMapIterator, TupleIterator};
-use crate::msgpack::{skip_value, ByteCounter};
+use crate::msgpack::skip_value;
 use rmp::decode::{read_array_len, read_int};
 use rmp::encode::{write_array_len, write_uint};
 use std::cmp::PartialEq;
@@ -34,14 +35,7 @@ pub fn write_delete_package(
     write_uint(&mut w, data.get_target_table_id() as u64)?;
     write_uint(&mut w, data.get_target_table_version())?;
     if data.has_tuples() {
-        let mut tuples = data.get_tuples();
-        write_array_len(&mut w, tuples.len() as u32)?;
-        while tuples.next().is_some() {
-            let mut tuple_counter = ByteCounter::default();
-            tuples.write_current(&mut tuple_counter)?;
-            rmp::encode::write_bin_len(&mut w, tuple_counter.bytes() as u32)?;
-            tuples.write_current(&mut w)?;
-        }
+        write_tuples(&mut w, data.get_tuples())?;
     }
 
     Ok(())

@@ -62,6 +62,59 @@ impl<K, V> Iterator for MsgpackMapIterator<'_, K, V> {
     }
 }
 
+pub struct MsgpackArrayIterator<'a, T> {
+    count: u32,
+    current: u32,
+    raw_msgpack: Cursor<&'a [u8]>,
+    decode_f: fn(&mut Cursor<&'a [u8]>) -> Result<T, ProtocolError>,
+}
+
+impl<'a, T> MsgpackArrayIterator<'a, T> {
+    pub(crate) fn new(
+        raw_msgpack: &'a [u8],
+        count: u32,
+        decode_f: fn(&mut Cursor<&'a [u8]>) -> Result<T, ProtocolError>,
+    ) -> Self {
+        Self {
+            count,
+            current: 0,
+            raw_msgpack: Cursor::new(raw_msgpack),
+            decode_f,
+        }
+    }
+
+    pub fn len(&self) -> u32 {
+        self.count
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+}
+
+impl<T> Iterator for MsgpackArrayIterator<'_, T> {
+    type Item = Result<T, ProtocolError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current >= self.count {
+            return None;
+        }
+
+        let value = match (self.decode_f)(&mut self.raw_msgpack) {
+            Ok(v) => v,
+            Err(e) => return Some(Err(e)),
+        };
+
+        self.current += 1;
+        Some(Ok(value))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let m = self.count - self.current;
+        (m as usize, Some(m as usize))
+    }
+}
+
 pub struct TupleIterator<'a> {
     data: Cursor<&'a [u8]>,
     current_row: usize,

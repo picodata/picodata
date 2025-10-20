@@ -59,20 +59,28 @@ pub(crate) fn write_vtables(
 ) -> Result<(), std::io::Error> {
     write_map_len(&mut w, vtables.len() as u32)?;
 
-    for (key, mut tuples) in vtables {
+    for (key, tuples) in vtables {
         write_str(&mut w, key.as_str())?;
-        write_array_len(&mut w, tuples.len() as u32)?;
-
-        while tuples.next().is_some() {
-            let mut tuple_counter = ByteCounter::default();
-            tuples.write_current(&mut tuple_counter)?;
-            rmp::encode::write_bin_len(&mut w, tuple_counter.bytes() as u32)?;
-            tuples.write_current(&mut w)?;
-        }
+        write_tuples(&mut w, tuples)?;
     }
 
     Ok(())
 }
+pub(crate) fn write_tuples(
+    mut w: impl Write,
+    mut tuples: impl MsgpackWriter,
+) -> Result<(), std::io::Error> {
+    write_array_len(&mut w, tuples.len() as u32)?;
+    while tuples.next().is_some() {
+        let mut tuple_counter = ByteCounter::default();
+        tuples.write_current(&mut tuple_counter)?;
+        rmp::encode::write_bin_len(&mut w, tuple_counter.bytes() as u32)?;
+        tuples.write_current(&mut w)?;
+    }
+
+    Ok(())
+}
+
 pub(crate) fn write_options<'a>(
     mut w: impl Write,
     options: impl ExactSizeIterator<Item = &'a u64>,
