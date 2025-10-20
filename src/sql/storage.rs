@@ -16,7 +16,7 @@ use sbroad::backend::sql::space::TableGuard;
 use sbroad::backend::sql::tree::{OrderedSyntaxNodes, SyntaxData, SyntaxPlan};
 use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::bucket::Buckets;
-use sbroad::executor::engine::helpers::storage::unprepare;
+use sbroad::executor::engine::helpers::proxy::unprepare;
 use sbroad::executor::engine::helpers::vshard::get_random_bucket;
 use sbroad::executor::engine::helpers::{
     table_name, EncodedQueryInfo, FullPlanInfo, RequiredPlanInfo,

@@ -1,10 +1,16 @@
+use crate::backend::sql::space::ADMIN_ID;
+use crate::errors::SbroadError;
+use crate::executor::engine::helpers::table_name;
+use crate::ir::node::NodeId;
+use smol_str::SmolStr;
 use std::rc::Rc;
 use std::time::Duration;
-
 use tarantool::error::Error;
 use tarantool::fiber::channel::Channel;
 use tarantool::fiber::{self, SendError};
-use tarantool::sql::{prepare, unprepare, Statement};
+use tarantool::session::with_su;
+use tarantool::space::Space;
+use tarantool::sql::{prepare as sql_prepare, unprepare as sql_unprepare, Statement};
 
 const SEND_TIMEOUT: Duration = Duration::from_millis(1);
 
@@ -49,10 +55,10 @@ fn proxy_start(rq: Rc<Channel<CacheRequest>>, rsp: Rc<Channel<CacheResponse>>) -
                         let client_fiber_id = req.fiber_id();
                         let mut result = match req {
                             CacheRequest::Prepare((query, _)) => {
-                                CacheResponse::Prepared(prepare(query))
+                                CacheResponse::Prepared(sql_prepare(query))
                             }
                             CacheRequest::UnPrepare((stmt, _)) => {
-                                CacheResponse::UnPrepared(unprepare(stmt))
+                                CacheResponse::UnPrepared(sql_unprepare(stmt))
                             }
                         };
                         'send: loop {
@@ -141,4 +147,37 @@ impl SqlCacheProxy {
             CacheResponse::UnPrepared(resp) => resp,
         }
     }
+}
+
+pub fn prepare(pattern: String) -> Result<Statement, SbroadError> {
+    let stmt = SQL_CACHE_PROXY
+        .with(|proxy| proxy.prepare(pattern))
+        .map_err(|e| {
+            crate::error!(Option::from("prepare"), &format!("{e:?}"));
+            SbroadError::from(e)
+        })?;
+    Ok(stmt)
+}
+
+pub fn unprepare(
+    plan_id: &SmolStr,
+    entry: &mut (Statement, Vec<NodeId>),
+) -> Result<(), SbroadError> {
+    let (stmt, table_ids) = std::mem::take(entry);
+
+    // Remove the statement from the instance cache.
+    SQL_CACHE_PROXY
+        .with(|proxy| proxy.unprepare(stmt))
+        .map_err(|e| {
+            crate::error!(Option::from("unprepare"), &format!("{e:?}"));
+            SbroadError::from(e)
+        })?;
+
+    // Remove temporary tables from the instance.
+    for node_id in table_ids {
+        let table = table_name(plan_id, node_id);
+        Space::find(table.as_str()).map(|space| with_su(ADMIN_ID, || space.drop()));
+    }
+
+    Ok(())
 }

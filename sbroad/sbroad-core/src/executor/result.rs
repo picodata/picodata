@@ -1,15 +1,9 @@
 //! Result module.
 //! Result is everything that is returned from the query execution.
 //!
-//! When executing DQL (SELECT) we will get `ProducerResult`, which fields are:
-//! * `metadata` (Vec of `MetadataColumn`): information about
-//!   names and types of gotten columns (even if the number of returned columns is 0)
-//! * `rows` (Vec of `ExecutorTuple` (Vec of `Value`)): resulting tuples of values
-//!
 //! When executing DML (INSERT) we will get `ConsumerResult`, which fields are:
 //! * `row_count` (u64): the number of tuples inserted (that may be equal to 0)
 
-use comfy_table::{ContentArrangement, Table};
 use core::fmt::Debug;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use serde::{Deserialize, Deserializer};
@@ -19,7 +13,6 @@ use tarantool::tlua::{self, LuaRead};
 use tarantool::tuple::Encode;
 
 use crate::errors::SbroadError;
-use crate::executor::vtable::{VTableTuple, VirtualTable};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Node, NodeId};
 use crate::ir::relation::{Column, ColumnRole};
@@ -91,200 +84,6 @@ impl TryInto<Column> for &MetadataColumn {
     }
 }
 
-/// Results of query execution for `EXPLAIN QUERY PLAN ...`.
-/// Infromation returned to as from local Tarantool query execution.
-#[derive(Debug, Default, Deserialize, PartialEq, Clone, msgpack::Encode, msgpack::Decode)]
-pub struct ExplainProducerResult {
-    pub formatted: bool,
-    pub query: String,
-    pub params: Vec<String>,
-    pub location: String,
-    pub producer_result: ProducerResult,
-}
-
-impl ExplainProducerResult {
-    pub fn from(
-        formatted: bool,
-        query: String,
-        params: Vec<String>,
-        location: String,
-        producer_result: ProducerResult,
-    ) -> Self {
-        ExplainProducerResult {
-            formatted,
-            query,
-            params,
-            location,
-            producer_result,
-        }
-    }
-}
-
-fn format_sql(query: &str, params: Vec<String>, formatted: bool) -> String {
-    let mut fmt_options = sqlformat::FormatOptions::default();
-
-    if !formatted || query.len() < 80 {
-        fmt_options.joins_as_top_level = true;
-        fmt_options.inline = true;
-    }
-
-    sqlformat::format(
-        query,
-        &sqlformat::QueryParams::Indexed(params),
-        &fmt_options,
-    )
-}
-
-impl std::fmt::Display for ExplainProducerResult {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(
-            f,
-            "Query ({}):\n{}",
-            self.location,
-            format_sql(&self.query, self.params.clone(), self.formatted)
-        )?;
-
-        let mut table = Table::new();
-        table.set_content_arrangement(ContentArrangement::Dynamic);
-        table.set_header(self.producer_result.metadata.iter());
-
-        for row in &self.producer_result.rows {
-            let formatted_row: Vec<String> = row
-                .iter()
-                .map(|v| {
-                    // if cell is Utf8String, then we format it as plain string with no quotes
-                    if let Value::String(s) = v {
-                        s.as_str().to_string()
-                    } else {
-                        v.to_string()
-                    }
-                })
-                .collect();
-
-            table.add_row(formatted_row);
-        }
-
-        f.write_fmt(format_args!("{table\n}"))
-    }
-}
-
-/// Results of query execution for `SELECT`.
-/// Infromation returned to as from local Tarantool query execution.
-#[allow(clippy::module_name_repetitions)]
-#[derive(LuaRead, Debug, Deserialize, PartialEq, Clone, msgpack::Encode, msgpack::Decode)]
-#[encode(as_map)]
-pub struct ProducerResult {
-    pub metadata: Vec<MetadataColumn>,
-    pub rows: Vec<ExecutorTuple>,
-}
-
-#[allow(clippy::module_name_repetitions)]
-#[derive(LuaRead, Debug, Deserialize, PartialEq, Clone, msgpack::Encode, msgpack::Decode)]
-#[encode(as_map)]
-pub struct DQLQueryResult {
-    pub metadata: Vec<MetadataColumn>,
-    pub rows: Vec<ExecutorTuple>,
-}
-
-impl From<ProducerResult> for DQLQueryResult {
-    fn from(value: ProducerResult) -> Self {
-        Self {
-            metadata: value.metadata,
-            rows: value.rows,
-        }
-    }
-}
-
-impl Serialize for DQLQueryResult {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut map = serializer.serialize_map(Some(2))?;
-        map.serialize_entry("metadata", &self.metadata)?;
-        map.serialize_entry("rows", &self.rows)?;
-        map.end()
-    }
-}
-
-/// This impl allows to convert `DQLQueryResult` into `Tuple`, using `Tuple::new` method.
-impl Encode for DQLQueryResult {}
-
-impl Default for ProducerResult {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ProducerResult {
-    /// Create an empty result set for a query producing tuples.
-    #[allow(dead_code)]
-    #[must_use]
-    pub fn new() -> Self {
-        ProducerResult {
-            metadata: Vec::new(),
-            rows: Vec::new(),
-            // cache_miss: None,
-        }
-    }
-
-    /// Converts result to virtual table for linker.
-    ///
-    /// # Errors
-    /// - convert to virtual table error
-    pub fn as_virtual_table(&mut self, columns: Vec<Column>) -> Result<VirtualTable, SbroadError> {
-        let mut vtable = VirtualTable::with_columns(columns);
-
-        // Decode data
-        let mut data: Vec<VTableTuple> = Vec::with_capacity(self.rows.len());
-        let columns = vtable.get_columns();
-
-        for mut encoded_tuple in self.rows.drain(..) {
-            let mut tuple = Vec::with_capacity(encoded_tuple.len());
-            for (i, value) in encoded_tuple.drain(..).enumerate() {
-                let column = &columns[i];
-
-                // TODO: Seems like logic of casting may be removed and replaced with
-                //       `cast_values` call after vtable is built.
-                let Some(column_ty) = column.r#type.get() else {
-                    // No need to cast Null.
-                    tuple.push(value);
-                    continue;
-                };
-
-                let types_equal = *value.get_type().get() == Some(*column_ty);
-
-                let casted_value = if types_equal {
-                    value
-                } else {
-                    value.cast(*column_ty)?
-                };
-                tuple.push(casted_value);
-            }
-            data.push(tuple);
-        }
-        std::mem::swap(vtable.get_mut_tuples(), &mut data);
-
-        Ok(vtable)
-    }
-}
-
-impl Serialize for ProducerResult {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut map = serializer.serialize_map(Some(2))?;
-        map.serialize_entry("metadata", &self.metadata)?;
-        map.serialize_entry("rows", &self.rows)?;
-        // map.serialize_entry("cache_miss", &self.cache_miss)?;
-        map.end()
-    }
-}
-
-/// This impl allows to convert `ProducerResult` into `Tuple`, using `Tuple::new` method.
-impl Encode for ProducerResult {}
-
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, PartialEq, Deserialize, Eq, Clone)]
 pub struct ConsumerResult {
@@ -340,6 +139,3 @@ impl Plan {
         Ok(rel_tree.into_iter(top_id).next().is_some())
     }
 }
-
-#[cfg(test)]
-mod tests;

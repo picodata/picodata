@@ -4,7 +4,7 @@ use crate::tlog;
 use rmp::encode::{write_array_len, write_str, write_str_len, write_uint};
 use sbroad::backend::sql::space::ADMIN_ID;
 use sbroad::errors::{Action, Entity, SbroadError};
-use sbroad::executor::engine::helpers::storage::prepare;
+use sbroad::executor::engine::helpers::proxy::prepare;
 use sbroad::executor::engine::helpers::{
     build_insert_args, init_delete_tuple_builder, init_insert_tuple_builder,
     init_local_update_tuple_builder, init_sharded_update_tuple_builder, pk_name, populate_table,

@@ -3,7 +3,6 @@ use rmp::encode::{write_array_len, write_map_len, write_str};
 use rmp_serde::Serializer;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr};
-use std::any::Any;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::io::{Error as IoError, Result as IoResult, Write};
@@ -23,12 +22,9 @@ use crate::ir::value::{EncodedValue, MsgPackValue, Value};
 use crate::utils::{write_u32_array_len, ByteCounter};
 
 use super::ir::ExecutionPlan;
-use super::result::{ExecutorTuple, MetadataColumn, ProducerResult};
 use super::Port;
 
 use tarantool::msgpack;
-#[cfg(not(feature = "mock"))]
-use tarantool::tuple::Tuple;
 use tarantool::tuple::TupleBuilder;
 
 type ShardingKey = Vec<Value>;
@@ -638,44 +634,6 @@ impl VirtualTable {
             unique_cnt += 1;
         }
         self.tuples.truncate(unique_cnt);
-    }
-
-    /// Convert vtable to output tuple for returning
-    /// result from stored procedure.
-    ///
-    /// # Errors
-    /// - Failed to create tuple
-    pub fn to_output(&mut self, motion_aliases: &[SmolStr]) -> Result<Box<dyn Any>, SbroadError> {
-        let mut metadata = Vec::with_capacity(self.columns.len());
-        for (col, alias) in self.columns.iter().zip(motion_aliases.iter()) {
-            let meta_column = MetadataColumn::new(alias.to_string(), col.r#type.to_string());
-            metadata.push(meta_column);
-        }
-
-        let tuples = std::mem::take(&mut self.tuples);
-        let rows: Vec<ExecutorTuple> = tuples;
-
-        let res = vec![ProducerResult {
-            metadata,
-            rows,
-            // cache_miss: None,
-        }];
-        #[cfg(feature = "mock")]
-        {
-            Ok(Box::new(res))
-        }
-        #[cfg(not(feature = "mock"))]
-        {
-            let data = msgpack::encode(&res);
-            Ok(Box::new(Tuple::try_from_slice(data.as_slice()).map_err(
-                |e| {
-                    SbroadError::Invalid(
-                        Entity::VirtualTable,
-                        Some(format_smolstr!("failed to create tuple from vtable: {e}")),
-                    )
-                },
-            )?))
-        }
     }
 
     pub fn dump_mp<'alias, 'port>(

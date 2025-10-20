@@ -3,8 +3,7 @@
 //! Traits that define an execution engine interface.
 
 use base64ct::{Base64, Encoding};
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
-use tarantool::tuple::Tuple;
+use smol_str::{SmolStr, ToSmolStr};
 
 use crate::frontend::sql::get_real_function_name;
 use crate::ir::node::NodeId;
@@ -15,7 +14,7 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use crate::errors::{Action, Entity, SbroadError};
+use crate::errors::SbroadError;
 use crate::executor::bucket::Buckets;
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::protocol::SchemaInfo;
@@ -25,9 +24,6 @@ use crate::ir::relation::Table;
 use crate::ir::types::UnrestrictedType;
 use crate::ir::value::Value;
 
-use tarantool::msgpack;
-
-use super::result::ProducerResult;
 use super::Port;
 
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -238,86 +234,6 @@ pub fn query_id(pattern: &str, params: &[DerivedType]) -> SmolStr {
     hasher.update(&params_hash.to_ne_bytes());
     let hash = hasher.finalize();
     Base64::encode_string(hash.to_hex().as_bytes()).to_smolstr()
-}
-
-/// Helper struct specifying in which format
-/// DQL subtree dispatch should return data.
-#[derive(Clone, PartialEq, Eq)]
-pub enum DispatchReturnFormat {
-    /// When we executed the last subtree,
-    /// we must return result to user in form
-    /// of a tuple. This allows to do some optimisations
-    /// see `build_final_dql_result`.
-    ///
-    /// HACK: This is also critical for reading from
-    /// system tables. Currently we don't support
-    /// arrays or maps in tables, but we still can
-    /// allow users to read those values from tables.
-    /// This is because read from a system table is
-    /// executed on a single node and we don't decode
-    /// returned tuple, instead we return it as is.
-    Tuple,
-    /// Return value as `ProducerResult`. This is used
-    /// for non-final subtrees, when we need to create
-    /// a virtual table from the result.
-    Inner,
-}
-
-pub trait ConvertToDispatchResult {
-    /// Convert self to specified format
-    ///
-    /// # Errors
-    /// - Implementation errors
-    fn convert(self, format: DispatchReturnFormat) -> Result<Box<dyn Any>, SbroadError>;
-}
-
-impl ConvertToDispatchResult for ProducerResult {
-    fn convert(self, format: DispatchReturnFormat) -> Result<Box<dyn Any>, SbroadError> {
-        let res: Box<dyn Any> = match format {
-            DispatchReturnFormat::Tuple => {
-                let wrapped = vec![self];
-                #[cfg(feature = "mock")]
-                {
-                    Box::new(wrapped)
-                }
-                #[cfg(not(feature = "mock"))]
-                {
-                    let data = msgpack::encode(&wrapped);
-                    Box::new(Tuple::try_from_slice(&data).map_err(|e| {
-                        SbroadError::Other(format_smolstr!(
-                            "create tuple from producer result: {e}"
-                        ))
-                    })?)
-                }
-            }
-            DispatchReturnFormat::Inner => Box::new(self),
-        };
-        Ok(res)
-    }
-}
-
-impl ConvertToDispatchResult for Tuple {
-    fn convert(self, format: DispatchReturnFormat) -> Result<Box<dyn Any>, SbroadError> {
-        let res: Box<dyn Any> = match format {
-            DispatchReturnFormat::Tuple => Box::new(self),
-            DispatchReturnFormat::Inner => {
-                let wrapped = msgpack::decode::<Vec<ProducerResult>>(self.data()).map_err(|e| {
-                    SbroadError::FailedTo(
-                        Action::Decode,
-                        Some(Entity::Tuple),
-                        format_smolstr!("into producer result: {e:?}"),
-                    )
-                })?;
-                let res = wrapped.into_iter().next().ok_or_else(|| {
-                    SbroadError::Other(
-                        "failed to convert tuple into ProducerResult: tuple is empty".into(),
-                    )
-                })?;
-                Box::new(res)
-            }
-        };
-        Ok(res)
-    }
 }
 
 /// A router trait.
