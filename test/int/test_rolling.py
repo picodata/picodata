@@ -65,20 +65,30 @@ def factory(
 def test_node_by_node_sequential_upgrade_success(factory: Factory):
     """
     Verifies that upgrading node by node works smoothly:
-    1. Start a cluster on the PREVIOUS version.
-    2. Upgrade each node one at a time to the CURRENT version.
+    1. Start a cluster on the BEFORELAST version.
+    2. Upgrade each node one at a time to the PREVIOUS version.
     3. Confirm the cluster stays healthy after all upgrades.
+    4. Upgrade each node one at a time to the CURRENT version.
+    5. Confirm the cluster stays healthy after all upgrades.
     """
 
     # step 1
 
-    cluster = factory(of=Version.PREVIOUS_MINOR)
+    cluster = factory(of=Version.BEFORELAST_MINOR)
 
     # step 2
 
-    cluster.change_version(to=Version.CURRENT)
+    cluster.change_version(to=Version.PREVIOUS_MINOR)
 
     # step 3
+
+    assert cluster.is_healthy()
+
+    # step 4
+
+    cluster.change_version(to=Version.CURRENT)
+
+    # step 5
 
     assert cluster.is_healthy()
 
