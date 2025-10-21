@@ -522,6 +522,8 @@ test-patch-picodata:
     KUBERNETES_CPU_REQUEST: 8
     KUBERNETES_MEMORY_REQUEST: "8Gi"
   cache:
+    - <<: *cache_git
+      policy: pull
     - <<: *py_cache
       policy: pull
     - <<: *base_cache
@@ -540,6 +542,15 @@ test-patch-picodata:
 test-patch-tarantool:
   extends: .test
   <<: *test-patch-rules
+  cache:
+    - <<: *cache_git
+      policy: pull
+    - <<: *py_cache
+      policy: pull
+    - <<: *base_cache
+      policy: pull
+    - <<: *base_node
+      policy: pull
   script:
     - ./tools/prepare_source_tree_for_stat_analysis.py apply
     - pushd tarantool-sys/ && make -f .test.mk test-release;
