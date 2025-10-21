@@ -71,7 +71,7 @@ Requires:  postgresql
 Requires:  postgresql12
 %endif
 %if "%{?dist}" == ".p10"
-Requires:  postgresql17
+Requires:  postgresql16
 %endif
 %endif
 
