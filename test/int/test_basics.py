@@ -908,3 +908,18 @@ def test_conflicting_pg_listen(cluster: Cluster):
     with pytest.raises(ProcessDead, match="process exited unexpectedly"):
         cluster.wait_online()
     lc.wait_matched()
+
+
+def test_cold_restart_6(cluster: Cluster):
+    cluster.deploy(instance_count=6, init_replication_factor=2)
+
+    # Decrease the raft log length cap to maximize the possiblity of triggerring a rare bug
+    cluster.leader().sql("ALTER SYSTEM SET raft_wal_count_max = 16")
+
+    for instance in cluster.instances:
+        instance.terminate()
+
+    for instance in cluster.instances:
+        instance.start()
+
+    cluster.wait_online()
