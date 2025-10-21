@@ -1010,3 +1010,18 @@ def test_cold_restart_2_out_of_3(cluster: Cluster):
     # And i3 successfully restarts itself
     i3.start()
     i3.wait_online()
+
+
+def test_cold_restart_6(cluster: Cluster):
+    cluster.deploy(instance_count=6, init_replication_factor=2)
+
+    # Decrease the raft log length cap to maximize the possiblity of triggerring a rare bug
+    cluster.leader().sql("ALTER SYSTEM SET raft_wal_count_max = 16")
+
+    for instance in cluster.instances:
+        instance.terminate()
+
+    for instance in cluster.instances:
+        instance.start()
+
+    cluster.wait_online()
