@@ -40,11 +40,48 @@ Picodata и служит коннектором к СУБД Picodata из при
 
 ## Поддерживаемые возможности {: #features }
 
-JDBC-драйвер для Picodata использует протокол PGPROTO и поддерживает некоторые настройки подключения драйвера
+JDBC-драйвер для Picodata использует протокол PostgreSQL и поддерживает
+некоторые настройки подключения драйвера
 [PgJDBC](https://jdbc.postgresql.org/documentation/use/#system-properties).
-Реализован класс `io.picodata.Driver`, имплементирующий `java.sql.Driver`. В
-качестве адреса для подключения следует использовать формат
-`jdbc:picodata://host:port/?user=sqluser,password=P@ssw0rd`.
+Реализован класс `io.picodata.Driver`, имплементирующий
+`java.sql.Driver`. В качестве адреса для подключения следует
+использовать формат `jdbc:picodata://host:port`. Пример:
+
+```java
+String url = "jdbc:picodata://10.0.0.1:8000/";
+Properties props = new Properties();
+props.setProperty("user","my_user");
+props.setProperty("password","P@ssw0rd");
+Connection conn = DriverManager.getConnection(url, props);
+```
+
+Возможно подключение как к одному хосту, так и к нескольким. Для этого
+рекомендуется использовать `PicodataClusterAwareDataSource` — это позволит
+учитывать сведения о кластере, автоматическое обнаружение узлов и балансировку
+соединений. Пример подключения:
+
+```java
+    public void setupDataSource(PicodataBaseDataSource dataSource) {
+        dataSource.setHosts(List.of("10.0.0.1","10.0.0.2","10.0.0.3"));
+        dataSource.setPorts(List.of("8000","8001","8002"));
+        ...
+    }
+```
+
+Несколько хостов можно указать и другими способами. Например, с помощью строки подключения:
+
+`jdbc:picodata://10.0.0.1:8000,10.0.0.2:8001,10.0.0.3:8002`.
+
+или с помощью опции `PicodataProperty`:
+
+```java
+PicodataProperty.PICODATA_HOST.set(props, List.of("10.0.0.1","10.0.0.2","10.0.0.3"));
+PicodataProperty.PICODATA_PORT.set(props, List.of("8000","8001","8002"));
+```
+
+Списки хостов и портов должны содержать либо 1 элемент, либо одинаковое
+количество элементов (то есть, может быть 5 хостов и 1 порт, но не может
+быть 5 хостов и 4 порта).
 
 Полный список поддерживаемых возможностей приведен в документации API JDBC-драйвера:
 
