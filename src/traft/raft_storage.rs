@@ -177,11 +177,42 @@ impl RaftSpaceAccess {
         Ok(res)
     }
 
+    /// Returns the current term.
     #[inline(always)]
     pub(crate) fn term(&self) -> tarantool::Result<RaftTerm> {
         let res = self.try_get_raft_state("term")?;
         let res = res.unwrap_or(0);
         Ok(res)
+    }
+
+    /// Returns the term of the last applied entry.
+    #[inline]
+    pub(crate) fn applied_term(&self) -> tarantool::Result<RaftTerm> {
+        let res = self.try_get_raft_state("applied_term")?;
+        let Some(term) = res else {
+            return self.applied_term_compatibility_fallback();
+        };
+        Ok(term)
+    }
+
+    /// This function is needed to maintain compatibility with picodata clusters
+    /// deployed before 25.4.3 (inclusive).
+    fn applied_term_compatibility_fallback(&self) -> tarantool::Result<RaftTerm> {
+        let applied = self.applied()?;
+        let res = ::raft::Storage::term(self, applied);
+        let term = match res {
+            Ok(v) => v,
+            Err(RaftError::Store(StorageError::Compacted | StorageError::Unavailable)) => {
+                // Cannot afford to not return a value in these cases. Fallback to the current term.
+                return self.term();
+            }
+            Err(e) => {
+                // This is a recoverable error (hopefully)
+                return Err(crate::traft::error::to_error_other(e).into());
+            }
+        };
+
+        Ok(term)
     }
 
     #[inline(always)]
@@ -209,7 +240,7 @@ impl RaftSpaceAccess {
     pub fn applied_entry_id(&self) -> tarantool::Result<RaftEntryId> {
         Ok(RaftEntryId {
             index: self.applied()?,
-            term: self.term()?,
+            term: self.applied_term()?,
         })
     }
 
@@ -404,9 +435,10 @@ impl RaftSpaceAccess {
     }
 
     #[inline(always)]
-    pub fn persist_applied(&self, applied: RaftId) -> tarantool::Result<()> {
-        self.space_raft_state.replace(&("applied", applied))?;
-        metrics::record_raft_applied_index(applied);
+    pub fn persist_applied(&self, index: RaftId, term: RaftTerm) -> tarantool::Result<()> {
+        self.space_raft_state.replace(&("applied", index))?;
+        self.space_raft_state.replace(&("applied_term", term))?;
+        metrics::record_raft_applied_index(index);
         Ok(())
     }
 
@@ -526,7 +558,7 @@ impl RaftSpaceAccess {
         debug_assert!(meta_index >= applied, "meta_index: {meta_index}, applied: {applied}");
         // Must bump the applied index before doing log compaction,
         // because log compaction only removes applied entries
-        self.persist_applied(meta_index)?;
+        self.persist_applied(meta_index, meta.term)?;
         self.persist_conf_state(meta.conf_state())?;
 
         // We don't want to have a hole in the log, so we clear everything
@@ -1088,7 +1120,7 @@ mod tests {
             storage.persist_entries(&[dummy_entry(i, i)]).unwrap();
         }
         let applied = 8;
-        storage.persist_applied(applied).unwrap();
+        storage.persist_applied(applied, 1).unwrap();
         let entries =
             |lo, hi| S::entries(&storage, lo, hi, u64::MAX, GetEntriesContext::empty(false));
         let compact_log = |up_to| transaction(|| storage.compact_log(up_to));

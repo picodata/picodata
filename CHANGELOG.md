@@ -10,6 +10,10 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## [25.4.4] - Unreleased
 
+### Fixes
+- Fixed a bug where the raft snapshot would sometimes contain incorrect term
+  which would result in an unrecoverable failure of the receiving instance.
+
 ### SQL
 - Add IF NOT EXISTS support for ALTER TABLE ADD COLUMN.
 

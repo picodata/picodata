@@ -150,6 +150,14 @@ static RAFT_TERM: LazyLock<Gauge> = LazyLock::new(|| {
         .expect("Failed to create pico_raft_term gauge")
 });
 
+static RAFT_APPLIED_TERM: LazyLock<Gauge> = LazyLock::new(|| {
+    Gauge::with_opts(Opts::new(
+        "pico_raft_applied_term",
+        "Raft term of the last applied entry",
+    ))
+    .expect("Initializing metrics handlers shouldn't fail")
+});
+
 static RAFT_STATE: LazyLock<GaugeVec> = LazyLock::new(|| {
     GaugeVec::new(
         Opts::new(
@@ -251,6 +259,10 @@ pub fn record_raft_commit_index(index: u64) {
 
 pub fn record_raft_term(term: u64) {
     RAFT_TERM.set(term as f64);
+}
+
+pub fn record_raft_applied_term(term: u64) {
+    RAFT_APPLIED_TERM.set(term as f64);
 }
 
 pub fn record_raft_state(state: raft::StateRole) {
