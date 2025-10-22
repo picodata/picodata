@@ -1,8 +1,8 @@
 [package]
 name = "gostech-audit-log"
 version = "0.1.0"
-edition = "2021"
-license-file = "../../LICENSE"
+edition.workspace = true
+license-file.workspace = true
 
 [[bin]]
 name = "gostech-audit-log"
@@ -10,15 +10,15 @@ path = "src/main.rs"
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
-serde = { version = "1.0.197", features = ["derive"] }
-serde_json = { version = "1.0.115" }
-chrono = { version = "0.4" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+chrono = { workspace = true }
 reqwest = { version = "0.12.3", features = ["json", "native-tls"] }
-clap = { version = "4.4.11", features = ["derive"] }
-thiserror = { version = "1.0.58" }
+clap = { workspace = true, features = ["derive"]}
+thiserror = { workspace = true }
 log = { version = "0.4.21" }
 simple_logger = { version = "4.3.3" }
 
 [dev-dependencies]
 actix-web = { version = "4", features = ["openssl"] }
-openssl = { version = "0.10" }
+openssl = { workspace = true }

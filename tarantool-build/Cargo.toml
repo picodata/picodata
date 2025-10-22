@@ -1,8 +1,8 @@
 [package]
 name = "tarantool-build"
 version = "0.1.0"
-edition = "2021"
-license-file = "../LICENSE"
+edition.workspace = true
+license-file.workspace = true
 
 [dependencies]
-build-rs-helpers = { path = "../build-rs-helpers" }
+build-rs-helpers = { workspace = true }

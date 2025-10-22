@@ -1,15 +1,15 @@
 [package]
 name = "testplug"
 version = "0.0.0"
-edition = "2021"
-license-file = "../../LICENSE"
+edition.workspace = true
+license-file.workspace = true
 
 [dependencies]
-picodata-plugin = { path = "../../picodata-plugin" }
-serde = { version = "1.0", features = ["derive"] }
-serde_bytes = "*"
+picodata-plugin = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_bytes = { workspace = true }
 time-macros = "0.2.6"
-time = "0.3.37" # not used directly, but referenced by macro expansions from time-macros
+time = { workspace = true } # not used directly, but referenced by macro expansions from time-macros
 
 [lib]
 crate-type = ["lib", "cdylib"]

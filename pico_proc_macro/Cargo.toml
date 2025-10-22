@@ -1,8 +1,8 @@
 [package]
 name = "pico_proc_macro"
 version = "0.1.0"
-edition = "2021"
-license-file = "../LICENSE"
+edition.workspace = true
+license-file.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -11,5 +11,5 @@ proc-macro = true
 
 [dependencies]
 proc-macro2 = "1.0"
-quote = "1.0"
+quote = { workspace = true }
 syn = { version = "1.0", features = ["full", "extra-traits"] }

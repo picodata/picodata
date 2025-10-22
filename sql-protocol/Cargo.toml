@@ -1,13 +1,12 @@
 [package]
 name = "sql_protocol"
-version = "25.5.0"
-rust-version = "1.85"
-edition = "2021"
-license-file = "../LICENSE"
+version.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+license-file.workspace = true
 
 [dependencies]
-comfy-table = "7.2"
-rmp = { version = "0.8", features = ["std"] }
-smol_str = "0.2"
-thiserror = "1.0"
-
+comfy-table = { workspace = true }
+rmp = { workspace = true }
+smol_str = { workspace = true }
+thiserror = { workspace = true }

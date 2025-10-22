@@ -10,7 +10,6 @@ crate-type = ["lib"]
 
 [dependencies]
 abi_stable = "0.11"
-gensym = "0.1"
 log = "0.4"
 picodata-plugin-proc-macro = { path = "../picodata-plugin-proc-macro", version = "25.5.0" }
 rmp = "0.8"
