@@ -1,5 +1,3 @@
-local helper = require('sbroad.helper')
-
 local function verify_out_formats(formats)
     if type(formats) ~= "table" then
         return false
@@ -116,7 +114,7 @@ local function pg_describe_stmt(...)
         return nil, res
     end
 
-    return helper.format_result(res)
+    return res
 end
 
 local function pg_describe_portal(...)
@@ -142,7 +140,7 @@ local function pg_describe_portal(...)
         return nil, res
     end
 
-    return helper.format_result(res)
+    return res
 end
 
 local function pg_execute(...)
@@ -171,7 +169,7 @@ local function pg_execute(...)
         return nil, res
     end
 
-    return helper.format_result(res[1])
+    return res[1]
 end
 
 local function verify_param_oids(param_oids)
@@ -258,7 +256,7 @@ local function pg_statements(id)
         return nil, res
     end
 
-    return helper.format_result(res)
+    return res
 end
 
 local function pg_portals(id)
@@ -275,7 +273,7 @@ local function pg_portals(id)
         return nil, res
     end
 
-    return helper.format_result(res)
+    return res
 end
 
 return {

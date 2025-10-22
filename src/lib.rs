@@ -192,7 +192,6 @@ fn init_sbroad() {
 
     preload!("pgproto", "src/sql/pgproto.lua");
     preload!("sbroad", "src/sql/init.lua");
-    preload!("sbroad.helper", "sbroad/sbroad-core/src/helper.lua");
     preload!("sbroad.builtins", "sbroad/sbroad-core/src/builtins.lua");
     preload!("sbroad.dispatch", "src/sql/dispatch.lua");
 
