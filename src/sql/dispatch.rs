@@ -42,7 +42,17 @@ pub(crate) fn single_plan_dispatch<'p>(
         QueryType::DQL => {
             port_write_metadata(port, &ex_plan)?;
             let max_rows = ex_plan.get_sql_motion_row_max();
-            single_plan_dispatch_dql(port, &lua, ex_plan, &replicasets, max_rows, timeout, tier)?
+            let do_two_step = replicasets.len() != 1;
+            single_plan_dispatch_dql(
+                port,
+                &lua,
+                ex_plan,
+                &replicasets,
+                max_rows,
+                timeout,
+                tier,
+                do_two_step,
+            )?
         }
         QueryType::DML => {
             single_plan_dispatch_dml(port, &lua, ex_plan, &replicasets, timeout, tier)?
@@ -73,7 +83,17 @@ pub(crate) fn custom_plan_dispatch<'p>(
             // so we can use the original plan to write it to the port.
             port_write_metadata(port, &ex_plan)?;
             let max_rows = ex_plan.get_sql_motion_row_max();
-            custom_plan_dispatch_dql(port, &lua, ex_plan, rs_buckets, max_rows, timeout, tier)?;
+            let do_two_step = rs_buckets.len() != 1;
+            custom_plan_dispatch_dql(
+                port,
+                &lua,
+                ex_plan,
+                rs_buckets,
+                max_rows,
+                timeout,
+                tier,
+                do_two_step,
+            )?;
         }
         QueryType::DML => {
             custom_plan_dispatch_dml(port, &lua, ex_plan, rs_buckets, timeout, tier)?;
@@ -136,6 +156,7 @@ fn single_plan_dispatch_dql<'lua, 'p>(
     max_rows: u64,
     timeout: u64,
     tier: Option<&str>,
+    do_two_step: bool,
 ) -> SqlResult<()> {
     let row_len = row_len(&ex_plan)?;
     let required_message = {
@@ -143,8 +164,15 @@ fn single_plan_dispatch_dql<'lua, 'p>(
         FirstMessage::new(required_binary)
     };
     let deadline = fiber::clock().saturating_add(Duration::from_secs(timeout));
-    let lua_table = lua_single_plan_dispatch(lua, &required_message, replicasets, timeout, tier)
-        .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
+    let lua_table = lua_single_plan_dispatch(
+        lua,
+        &required_message,
+        replicasets,
+        timeout,
+        tier,
+        do_two_step,
+    )
+    .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
     let timeout = match first_round_process(
         port,
         lua_table,
@@ -161,8 +189,9 @@ fn single_plan_dispatch_dql<'lua, 'p>(
         let optional_binary = build_optional_binary(ex_plan)?;
         SecondMessage::new(required_binary, optional_binary)
     };
-    let lua_table = lua_single_plan_dispatch(lua, full_message, replicasets, timeout, tier)
-        .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
+    let lua_table =
+        lua_single_plan_dispatch(lua, full_message, replicasets, timeout, tier, do_two_step)
+            .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
     second_round_process(port, lua_table, replicasets.len(), row_len, max_rows)?;
     Ok(())
 }
@@ -175,6 +204,7 @@ fn custom_plan_dispatch_dql<'lua, 'p>(
     max_rows: u64,
     timeout: u64,
     tier: Option<&str>,
+    do_two_step: bool,
 ) -> SqlResult<()> {
     let row_len = row_len(&ex_plan)?;
     let mut rs_plan = prepare_rs_to_ir_map(&rs_buckets, ex_plan)?;
@@ -184,7 +214,7 @@ fn custom_plan_dispatch_dql<'lua, 'p>(
         first_args.insert(rs.clone(), RequiredMessage::from(required_binary));
     }
     let deadline = fiber::clock().saturating_add(Duration::from_secs(timeout));
-    let lua_table = lua_custom_plan_dispatch(lua, &first_args, timeout, tier)
+    let lua_table = lua_custom_plan_dispatch(lua, &first_args, timeout, tier, do_two_step)
         .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
     let timeout = match first_round_process(
         port,
@@ -208,7 +238,7 @@ fn custom_plan_dispatch_dql<'lua, 'p>(
         second_args.insert(rs, full_message);
     }
     let len = second_args.len();
-    let lua_table = lua_custom_plan_dispatch(lua, second_args, timeout, tier)
+    let lua_table = lua_custom_plan_dispatch(lua, second_args, timeout, tier, do_two_step)
         .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
     second_round_process(port, lua_table, len, row_len, max_rows)?;
     Ok(())
@@ -501,7 +531,7 @@ fn single_plan_dispatch_dml<'lua, 'p>(
     let required_binary = build_required_binary(&mut ex_plan)?;
     let optional_binary = build_optional_binary(ex_plan)?;
     let message = SecondMessage::new(required_binary, optional_binary);
-    let lua_table = lua_single_plan_dispatch(lua, message, replicasets, timeout, tier)
+    let lua_table = lua_single_plan_dispatch(lua, message, replicasets, timeout, tier, false)
         .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
     // TODO: all buckets will allocate nothing, because it is empty
     dml_process(port, lua_table, replicasets.len())?;
@@ -525,7 +555,7 @@ fn custom_plan_dispatch_dml<'lua, 'p>(
         args.insert(rs, message);
     }
     let len = args.len();
-    let lua_table = lua_custom_plan_dispatch(lua, args, timeout, tier)
+    let lua_table = lua_custom_plan_dispatch(lua, args, timeout, tier, false)
         .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
     dml_process(port, lua_table, len)?;
     Ok(())

@@ -22,8 +22,9 @@ local dispatch = {}
 -- FIXME: this should be removed, we should pass tuple
 -- from rust without using lua tables at all.
 --
-local function prepare_args(args, rid, sid)
+local function prepare_args(args, rid, sid, timeout)
     local call_args = {}
+    table.insert(call_args, timeout)
     table.insert(call_args, rid)
     table.insert(call_args, sid)
     table.insert(call_args, args['required'])
@@ -96,7 +97,7 @@ end
 --
 -- @return mapping between replicaset uuid and ibuf containing result
 --
-local function plan_dispatch(uuid_to_args, opts, tier)
+local function two_step_dispatch(uuid_to_args, opts, tier)
     local router = get_router_for_tier(tier)
     local replicasets = router:routeall()
     local timeout
@@ -164,7 +165,7 @@ local function plan_dispatch(uuid_to_args, opts, tier)
     for uuid, rs_args in pairs(uuid_to_args) do
         local rs = replicasets[uuid]
         opts_map['buffer'] = res_map[uuid]
-        res, err = rs:callrw('.proc_sql_execute', prepare_args(rs_args, rid, sid), opts_map)
+        res, err = rs:callrw('.proc_sql_execute', prepare_args(rs_args, rid, sid, -1), opts_map)
         if res == nil then
             err_uuid = uuid
             goto fail
@@ -173,6 +174,87 @@ local function plan_dispatch(uuid_to_args, opts, tier)
     end
     --
     -- Map stage: collect.
+    --
+    for uuid, f in pairs(futures) do
+        res, err = future_wait(f, timeout)
+        if res == nil then
+            err_uuid = uuid
+            goto fail
+        end
+        if err ~= nil then
+            err_uuid = uuid
+            goto fail
+        end
+        timeout = deadline - fiber.clock()
+    end
+    do return res_map end
+
+    ::fail::
+    for uuid, f in pairs(futures) do
+        f:discard()
+        -- Best effort to remove the created refs before exiting. Can help if
+        -- the timeout was big and the error happened early.
+        f = replicasets[uuid]:callrw('pico.dispatch.lref.del',
+            { rid, sid }, opts_ref)
+        if f ~= nil then
+            -- Don't care waiting for a result - no time for this. But it won't
+            -- affect the request sending if the connection is still alive.
+            f:discard()
+        end
+    end
+    local msg = "Unknown error"
+    if err ~= nil and err.message ~= nil then
+        msg = err.message
+    end
+    error(lerror.make("Error on replicaset " .. err_uuid .. ": " .. msg))
+end
+
+local function one_step_dispatch(uuid_to_args, opts, tier)
+    local router = get_router_for_tier(tier)
+    local replicasets = router:routeall()
+    local timeout
+    local res_map = {}
+    for uuid, _ in pairs(uuid_to_args) do
+        res_map[uuid] = buffer.ibuf()
+    end
+    if opts then
+        timeout = opts.timeout or SQL_MIN_TIMEOUT
+    else
+        timeout = SQL_MIN_TIMEOUT
+    end
+
+    local err, err_uuid, res
+    local futures = {}
+    local opts_ref = { is_async = true }
+    local opts_map = { is_async = true, skip_header = true }
+    local rid = ref_id + 1
+    local sid = session_id + 1
+    local deadline = fiber.clock() + timeout
+    -- Nil checks are done explicitly here (== nil instead of 'not'), because
+    -- netbox requests return box.NULL instead of nils.
+
+    -- Wait for all masters to connect.
+    vrs.wait_masters_connect(replicasets, timeout)
+    timeout = deadline - fiber.clock()
+
+    -- Send.
+    --
+    for uuid, rs_args in pairs(uuid_to_args) do
+        local rs = replicasets[uuid]
+        opts_map['buffer'] = res_map[uuid]
+        res, err = rs:callrw(
+          '.proc_sql_execute',
+          prepare_args(rs_args, rid, sid, timeout),
+          opts_map
+        )
+        if res == nil then
+            err_uuid = uuid
+            goto fail
+        end
+        futures[uuid] = res
+    end
+    --
+    -- Collect.
     --
     for uuid, f in pairs(futures) do
         res, err = future_wait(f, timeout)
@@ -217,10 +299,14 @@ dispatch.bucket_into_rs = function(bucket_id, tier)
     return rs.uuid
 end
 
-dispatch.custom_plan_dispatch = function(uuid_to_args, timeout, tier)
+dispatch.custom_plan_dispatch = function(uuid_to_args, timeout, tier, do_two_step)
     local opts = { timeout = timeout }
 
-    return plan_dispatch(uuid_to_args, opts, tier)
+    if do_two_step then
+        return two_step_dispatch(uuid_to_args, opts, tier)
+    else
+        return one_step_dispatch(uuid_to_args, opts, tier)
+    end
 end
 
 -- Execute an SQL query on the given replicasets UUIDs
@@ -234,7 +320,7 @@ end
 --
 -- @return mapping between a replicaset UUID and am ibuf with result.
 --
-dispatch.single_plan_dispatch = function(args, uuids, timeout, tier)
+dispatch.single_plan_dispatch = function(args, uuids, timeout, tier, do_two_step)
     if not next(uuids) then
         -- An empty list of UUIDs means execution on all replicasets.
         local uuid_to_rs = get_replicasets_from_tier(tier)
@@ -250,7 +336,11 @@ dispatch.single_plan_dispatch = function(args, uuids, timeout, tier)
 
     local opts = { timeout = timeout }
 
-    return plan_dispatch(uuid_to_args, opts, tier)
+    if do_two_step then
+        return two_step_dispatch(uuid_to_args, opts, tier)
+    else
+        return one_step_dispatch(uuid_to_args, opts, tier)
+    end
 end
 
 local function init()

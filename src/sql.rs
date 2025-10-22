@@ -97,7 +97,7 @@ pub mod port;
 pub mod router;
 pub mod storage;
 
-use self::lua::{escape_bytes, reference_del, reference_use};
+use self::lua::{escape_bytes, reference_add, reference_del, reference_use};
 use self::port::PicoPortC;
 use self::router::DEFAULT_QUERY_TIMEOUT;
 use serde::Serialize;
@@ -2484,9 +2484,9 @@ fn report(msg: &str, e: Error) -> i32 {
 #[no_mangle]
 pub unsafe extern "C" fn proc_sql_execute(
     mut ctx: FunctionCtx,
-    args: FunctionArgs,
+    func_args: FunctionArgs,
 ) -> ::std::os::raw::c_int {
-    let args_len = match usize::try_from(args.end.offset_from(args.start)) {
+    let args_len = match usize::try_from(func_args.end.offset_from(func_args.start)) {
         Ok(len) => len,
         Err(e) => {
             return report(
@@ -2496,9 +2496,9 @@ pub unsafe extern "C" fn proc_sql_execute(
         }
     };
 
-    let raw_args = std::slice::from_raw_parts(args.start, args_len);
-    let (rid, sid, raw_req, raw_opt) = match execute_args_split(raw_args) {
-        Ok((rid, sid, req, opt)) => (rid, sid, req, opt),
+    let raw_args = std::slice::from_raw_parts(func_args.start, args_len);
+    let args = match execute_args_split(raw_args) {
+        Ok(args) => args,
         Err(e) => {
             return report(
                 &format!(
@@ -2511,19 +2511,25 @@ pub unsafe extern "C" fn proc_sql_execute(
     };
 
     let mut pcall = || -> Result<(), Error> {
-        let mut required = RequiredData::try_from(raw_req)?;
+        let mut required = RequiredData::try_from(args.required)?;
         let runtime = StorageRuntime::new();
         let mut port = PicoPortC::from(ctx.mut_port_c());
-        runtime.execute_plan(&mut required, raw_opt, &mut port)?;
+        runtime.execute_plan(&mut required, args.optional, &mut port)?;
         Ok(())
     };
 
-    if let Err(e) = reference_use(rid, sid) {
-        return report("Failed to add a storage reference: ", e.into());
+    if args.timeout >= 0 {
+        if let Err(e) = reference_add(args.rid, args.sid, args.timeout) {
+            return report("Failed to add a storage reference: ", e.into());
+        };
+    }
+
+    if let Err(e) = reference_use(args.rid, args.sid) {
+        return report("Failed to use a storage reference: ", e.into());
     };
     let rc = pcall();
     // We should always unref the storage reference before exit.
-    reference_del(rid, sid).expect("Failed to remove reference from the storage");
+    reference_del(args.rid, args.sid).expect("Failed to remove reference from the storage");
 
     match rc {
         Ok(()) => 0,

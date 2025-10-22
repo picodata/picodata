@@ -3,26 +3,37 @@ use rmp::decode::{read_array_len, read_int, read_map_len, read_str_len, RmpRead}
 use std::io::{Cursor, Error as IoError, Result as IoResult};
 use std::str::from_utf8;
 
-/// (reference id, required data, optional data)
-pub type ExecuteArgs<'a> = (i64, i64, &'a [u8], Option<&'a [u8]>);
+#[derive(Default)]
+pub struct ExecuteArgs<'bytes> {
+    pub timeout: i64,
+    pub rid: i64,
+    pub sid: i64,
+    pub required: &'bytes [u8],
+    pub optional: Option<&'bytes [u8]>,
+}
 
 pub fn execute_args_split(mp: &[u8]) -> IoResult<ExecuteArgs<'_>> {
+    let mut args = ExecuteArgs::default();
     let mut stream = Cursor::new(mp);
     let elems = read_array_len(&mut stream)
         .map_err(|e| IoError::other(format!("Failed to decode arguments array length: {e}")))?
         as usize;
-    if elems != 3 && elems != 4 {
+    if elems != 4 && elems != 5 {
         return Err(IoError::other(format!(
-            "Expected an array of 2 or 3 elements, got: {elems}"
+            "Expected an array of 4 or 5 elements, got: {elems}"
         )));
     }
+    // Decode vshard storage timeout.
+    args.timeout = read_int(&mut stream)
+        .map_err(|e| IoError::other(format!("Failed to decode vshard storage timeout: {e}")))?;
+
     // Decode vshard storage reference ID.
-    let rid: i64 = read_int(&mut stream).map_err(|e| {
+    args.rid = read_int(&mut stream).map_err(|e| {
         IoError::other(format!("Failed to decode vshard storage reference ID: {e}"))
     })?;
 
     // Decode vshard storage session ID.
-    let sid: i64 = read_int(&mut stream)
+    args.sid = read_int(&mut stream)
         .map_err(|e| IoError::other(format!("Failed to decode vshard storage session ID: {e}")))?;
 
     // Decode required data.
@@ -38,9 +49,10 @@ pub fn execute_args_split(mp: &[u8]) -> IoResult<ExecuteArgs<'_>> {
         .map_err(|e| IoError::other(format!("Failed to unpack required bytes: {e}")))?
         as usize;
     let req_start = stream.position() as usize;
+    args.required = &mp[req_start..req_start + req_len];
 
     // Decode optional data if present.
-    if elems == 4 {
+    if elems == 5 {
         shift_pos(&mut stream, req_len as u64)?;
         let array_len = read_array_len(&mut stream)
             .map_err(|e| IoError::other(format!("Failed to unpack optional from array: {e}")))?;
@@ -54,16 +66,10 @@ pub fn execute_args_split(mp: &[u8]) -> IoResult<ExecuteArgs<'_>> {
             .map_err(|e| IoError::other(format!("Failed to unpack optional bytes: {e}")))?
             as usize;
         let opt_start = stream.position() as usize;
-
-        return Ok((
-            rid,
-            sid,
-            &mp[req_start..req_start + req_len],
-            Some(&mp[opt_start..opt_start + opt_len]),
-        ));
+        args.optional = Some(&mp[opt_start..opt_start + opt_len]);
     }
 
-    Ok((rid, sid, &mp[req_start..req_start + req_len], None))
+    Ok(args)
 }
 
 /// Decode a proc_sql_execute response.

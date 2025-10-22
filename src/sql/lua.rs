@@ -559,6 +559,7 @@ pub(crate) fn lua_single_plan_dispatch<'lua, T>(
     replicasets: &[String],
     timeout: u64,
     tier: Option<&str>,
+    do_two_step: bool,
 ) -> Result<Rc<IbufTable<'lua>>>
 where
     T: PushInto<LuaState>,
@@ -569,7 +570,8 @@ where
     let tier = tier.map(|s| s.to_string());
     let func = dispatch_get_func(lua, name)?;
 
-    let call_res = func.into_call_with_args::<LuaTable<_>, _>((args, replicasets, timeout, tier));
+    let call_res =
+        func.into_call_with_args::<LuaTable<_>, _>((args, replicasets, timeout, tier, do_two_step));
     match call_res {
         Ok(v) => Ok(Rc::new(v)),
         Err(e) => Err(TarantoolError::new(
@@ -585,6 +587,7 @@ pub(crate) fn lua_custom_plan_dispatch<'lua, T>(
     args: T,
     timeout: u64,
     tier: Option<&str>,
+    do_two_step: bool,
 ) -> Result<Rc<IbufTable<'lua>>>
 where
     T: PushInto<LuaState>,
@@ -595,7 +598,7 @@ where
     let tier = tier.map(|s| s.to_string());
     let func = dispatch_get_func(lua, name)?;
 
-    let call_res = func.into_call_with_args::<IbufTable, _>((args, timeout, tier));
+    let call_res = func.into_call_with_args::<IbufTable, _>((args, timeout, tier, do_two_step));
     match call_res {
         Ok(v) => Ok(Rc::new(v)),
         Err(e) => Err(TarantoolError::new(
@@ -624,6 +627,26 @@ pub(crate) fn bucket_into_rs(
     }
 }
 
+pub(crate) fn reference_add(rid: i64, sid: i64, timeout: i64) -> Result<()> {
+    let lua = tarantool::lua_state();
+    let func = storage_get_func(&lua, "add")?;
+
+    match func.call_with_args::<(Option<bool>, Option<VshardError>), _>((rid, sid, timeout)) {
+        Ok((Some(_), _)) => Ok(()),
+        Ok((None, Some(err))) => Err(err.to_tarantool_error().into()),
+        Ok((None, None)) => Err(TarantoolError::new(
+            TarantoolErrorCode::ProcLua,
+            "Adding a storage reference: unexpected empty result from vshard".to_string(),
+        )
+        .into()),
+        Err(e) => Err(TarantoolError::new(
+            TarantoolErrorCode::ProcLua,
+            format!("{}", LuaError::from(e)),
+        )
+        .into()),
+    }
+}
+
 pub(crate) fn reference_use(rid: i64, sid: i64) -> Result<()> {
     let lua = tarantool::lua_state();
     let func = storage_get_func(&lua, "use")?;
@@ -633,7 +656,7 @@ pub(crate) fn reference_use(rid: i64, sid: i64) -> Result<()> {
         Ok((None, Some(err))) => Err(err.to_tarantool_error().into()),
         Ok((None, None)) => Err(TarantoolError::new(
             TarantoolErrorCode::ProcLua,
-            "Adding a storage reference: unexpected empty result from vshard".to_string(),
+            "Using a storage reference: unexpected empty result from vshard".to_string(),
         )
         .into()),
         Err(e) => Err(TarantoolError::new(
