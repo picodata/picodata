@@ -28,6 +28,8 @@ with the `YY.MINOR.MICRO` scheme.
   has been changed.
 - Fix Service::on_leader_change callbacks not being called after master goes Offline
   due to sentinel auto-offline policy (See also https://git.picodata.io/core/picodata/-/issues/2303).
+- Fixed a bug where the raft snapshot would sometimes contain incorrect term
+  which would result in an unrecoverable failure of the receiving instance.
 
 ### WebUI
 - Login form and simple session control
