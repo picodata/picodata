@@ -10,8 +10,11 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## [25.3.8] - Unreleased
 
+### Fixes
 - Fixed an out-of-memory crash when using Response::encode_rmp with large
   collections in plugin API (see also https://git.picodata.io/core/picodata/-/issues/2028).
+- Fixed a bug where the raft snapshot would sometimes contain incorrect term
+  which would result in an unrecoverable failure of the receiving instance.
 
 
 ## [25.3.7] - 2025-10-16

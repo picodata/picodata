@@ -832,6 +832,7 @@ impl NodeImpl {
 
         for entry in traft_entries {
             let entry_index = entry.index;
+            let entry_term = entry.term;
 
             self.main_loop_info.borrow_mut().last_entry = Some(entry.clone());
 
@@ -851,7 +852,7 @@ impl NodeImpl {
                     }
                 }
 
-                let res = self.raft_storage.persist_applied(entry_index);
+                let res = self.raft_storage.persist_applied(entry_index, entry_term);
                 if let Err(e) = res {
                     tlog!(
                         Error,
