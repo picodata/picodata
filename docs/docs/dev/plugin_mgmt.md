@@ -50,15 +50,15 @@ OpenWeather и возвращает температуру в градусах �
 понадобятся Rust и Cargo 1.85 или новее. Используйте следующую команду:
 
 ```shell
-make artifacts
+cargo build
 ```
 
-Результат сборки появится в директории `build`. Перенесите файлы в
+Результат сборки появится в директории `target/debug`. Перенесите файлы в
 поддиректорию плагина так, чтобы получилась следующая структура:
 
 ```
 └── weather_cache
-    └── 0.1.0
+    └── 0.2.0
         ├── manifest.yaml
         ├── migrations
         │   └── 0001_weather.db
@@ -76,12 +76,13 @@ make artifacts
 ```yaml
 name: weather_cache
 description: That one is created as an example of Picodata's plugin
-version: 0.1.0
+version: 0.2.0
 services:
   - name: weather_service
     description: This service provides HTTP route for a throughput weather cache
     default_configuration:
-      openweather_timeout: 5
+      ttl: 30
+      timeout: 5
 migration:
   - migrations/0001_weather.db
 ```
@@ -106,11 +107,11 @@ OpenWeather).
 	-- pico.UP
 
 	CREATE TABLE "weather" (
-		id UUID NOT NULL,
-		latitude INTEGER NOT NULL,
-		longitude INTEGER NOT NULL,
-		temperature INTEGER NOT NULL,
-		PRIMARY KEY (id)
+		latitude DOUBLE NOT NULL,
+		longitude DOUBLE NOT NULL,
+		temperature DOUBLE NOT NULL,
+		created_at INTEGER NOT NULL,
+		PRIMARY KEY (latitude, longitude)
 	)
 	USING memtx
 	DISTRIBUTED BY (latitude, longitude);
@@ -134,7 +135,7 @@ OpenWeather).
 PLUGIN](../reference/sql/create_plugin.md):
 
 ```sql
-CREATE PLUGIN weather_cache 0.1.0;
+CREATE PLUGIN weather_cache 0.2.0;
 ```
 
 После успешного добавления в системных таблицах появятся записи о новом плагине.
@@ -147,7 +148,7 @@ CREATE PLUGIN weather_cache 0.1.0;
 | name        | enabled | services    | version | description | migration_ |
 |             |         |             |         |             | list       |
 +==========================================================================+
-| "weather_ca | false   | ["weather_s | "0.1.0" | "That one   | ["migratio |
+| "weather_ca | false   | ["weather_s | "0.2.0" | "That one   | ["migratio |
 | che"        |         | ervice"]    |         | is created  | ns/0001_we |
 |             |         |             |         | as an       | ather.db"] |
 |             |         |             |         | example of  |            |
@@ -161,13 +162,15 @@ CREATE PLUGIN weather_cache 0.1.0;
 
 ```sql
 (admin) sql> SELECT * FROM _pico_plugin_config;
-+-----------------+---------+-------------------+------------------+-------+
-| plugin          | version | entity            | key              | value |
-+==========================================================================+
-| "weather_cache" | "0.1.0" | "weather_service" | "openweather_tim | 5     |
-|                 |         |                   | eout"            |       |
-+-----------------+---------+-------------------+------------------+-------+
-(1 rows)
++---------------+---------+-----------------+---------+-------+
+| plugin        | version | entity          | key     | value |
++=============================================================+
+| weather_cache | 0.2.0   | weather_service | timeout | 5     |
+|---------------+---------+-----------------+---------+-------|
+| weather_cache | 0.2.0   | weather_service | ttl     | 30    |
++---------------+---------+-----------------+---------+-------+
+(2 rows)
+
 ```
 
 В таблице [`_pico_service`] со списком сервисов плагина (но пока без
@@ -178,7 +181,7 @@ CREATE PLUGIN weather_cache 0.1.0;
 +-----------------+-------------------+---------+-------+------------------+
 | plugin_name     | name              | version | tiers | description      |
 +==========================================================================+
-| "weather_cache" | "weather_service" | "0.1.0" | []    | "This service    |
+| "weather_cache" | "weather_service" | "0.2.0" | []    | "This service    |
 |                 |                   |         |       | provides HTTP    |
 |                 |                   |         |       | route for a      |
 |                 |                   |         |       | throughput       |
@@ -200,17 +203,17 @@ CREATE PLUGIN weather_cache 0.1.0;
 PLUGIN](../reference/sql/alter_plugin.md):
 
 ```sql
-ALTER PLUGIN weather_cache MIGRATE TO 0.1.0;
+ALTER PLUGIN weather_cache MIGRATE TO 0.2.0;
 ```
 
 Успешная миграция означает, что в БД появилась новая таблица `weather`:
 
 ```sql
 (admin) sql> SELECT * FROM weather;
-+----+----------+-----------+-------------+
-| id | latitude | longitude | temperature |
-+=========================================+
-+----+----------+-----------+-------------+
++----------+-----------+-------------+------------+
+| latitude | longitude | temperature | created_at |
++=================================================+
++----------+-----------+-------------+------------+
 (0 rows)
 ```
 
@@ -227,7 +230,7 @@ ALTER PLUGIN weather_cache MIGRATE TO 0.1.0;
 команде [ALTER PLUGIN](../reference/sql/alter_plugin.md):
 
 ```sql
-ALTER PLUGIN weather_cache 0.1.0 ADD SERVICE weather_service TO TIER default;
+ALTER PLUGIN weather_cache 0.2.0 ADD SERVICE weather_service TO TIER default;
 ```
 
 После успешного включения плагина в системной таблице [`_pico_service`]
@@ -238,7 +241,7 @@ ALTER PLUGIN weather_cache 0.1.0 ADD SERVICE weather_service TO TIER default;
 +----------------+----------------+---------+-------------+----------------+
 | plugin_name    | name           | version | tiers       | description    |
 +==========================================================================+
-| "weather_cache | "weather_servi | "0.1.0" | ["default"] | "This service  |
+| "weather_cache | "weather_servi | "0.2.0" | ["default"] | "This service  |
 | "              | ce"            |         |             | provides HTTP  |
 |                |                |         |             | route for a    |
 |                |                |         |             | throughput     |
@@ -257,7 +260,7 @@ ALTER PLUGIN weather_cache 0.1.0 ADD SERVICE weather_service TO TIER default;
 Включите плагин следующей командой:
 
 ```sql
-ALTER PLUGIN weather_cache 0.1.0 ENABLE;
+ALTER PLUGIN weather_cache 0.2.0 ENABLE;
 ```
 
 !!! note "Примечание"
@@ -275,7 +278,7 @@ ALTER PLUGIN weather_cache 0.1.0 ENABLE;
 | name        | enabled | services    | version | description | migration_ |
 |             |         |             |         |             | list       |
 +==========================================================================+
-| "weather_ca | true    | ["weather_s | "0.1.0" | "That one   | ["migratio |
+| "weather_ca | true    | ["weather_s | "0.2.0" | "That one   | ["migratio |
 | che"        |         | ervice"]    |         | is created  | ns/0001_we |
 |             |         |             |         | as an       | ather.db"] |
 |             |         |             |         | example of  |            |
@@ -291,7 +294,7 @@ ALTER PLUGIN weather_cache 0.1.0 ENABLE;
 Для отключения плагина используйте следующую команду:
 
 ```sql
-ALTER PLUGIN weather_cache 0.1.0 DISABLE;
+ALTER PLUGIN weather_cache 0.2.0 DISABLE;
 ```
 
 ## Конфигурация плагина {: #configure_plugin}
@@ -302,7 +305,7 @@ ALTER PLUGIN weather_cache 0.1.0 DISABLE;
 PLUGIN](../reference/sql/alter_plugin.md):
 
 ```sql
-ALTER PLUGIN weather_cache 0.1.0 SET weather_service.openweather_timeout='7';
+ALTER PLUGIN weather_cache 0.2.0 SET weather_service.timeout='7';
 ```
 
 См. также:
@@ -315,7 +318,9 @@ ALTER PLUGIN weather_cache 0.1.0 SET weather_service.openweather_timeout='7';
 проверки работы тестового плагина:
 
 ```shell
-curl "localhost:8081/api/v1/weather?longitude=55&latitude=66"
+curl -X POST "localhost:8081/weather" \
+  -H "Content-Type: application/json" \
+  -d '{"longitude": 55, "latitude": 66}'
 ```
 
 ## Удаление плагина {: #drop_plugin}
@@ -326,7 +331,7 @@ curl "localhost:8081/api/v1/weather?longitude=55&latitude=66"
 удаления плагина:
 
 ```sql
-DROP PLUGIN weather_cache 0.1.0;
+DROP PLUGIN weather_cache 0.2.0;
 ```
 
 При удалении плагина с помощью указанной выше команды его схема данных
@@ -336,7 +341,7 @@ DROP PLUGIN weather_cache 0.1.0;
 например:
 
 ```sql
-DROP PLUGIN weather_cache 0.1.0 WITH DATA;
+DROP PLUGIN weather_cache 0.2.0 WITH DATA;
 ```
 
 В таком случае будут запущена миграция `pico.DOWN`, а также удалены записи
