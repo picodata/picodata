@@ -2123,12 +2123,34 @@ class Cluster:
         else:
             return self.instances
 
-    def wait_online(self) -> list[Instance]:
+    def wait_online(self, timeout: int = 30) -> list[Instance]:
         for instance in self.instances:
             instance.start()
 
-        for instance in self.instances:
-            instance.wait_online()
+        deadline = time.time() + timeout
+
+        not_online = self.instances[:]
+        while not_online:
+            if len(not_online) == 1:
+                instance = not_online.pop()
+                instance.wait_online(timeout=deadline - time.time())
+                break
+
+            i = 0
+            while i < len(not_online):
+                instance = not_online[i]
+                try:
+                    instance.wait_online(timeout=0.2)
+                    not_online.pop(i)
+                except ProcessDead as e:
+                    raise e from e
+                except Exception as e:
+                    if time.time() > deadline:
+                        raise e from e
+                    else:
+                        # This instance is not yet online, check if maybe one
+                        # of the others is dead
+                        i += 1
 
         log.info(f" {self} deployed ".center(80, "="))
         return self.instances
