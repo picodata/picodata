@@ -103,13 +103,13 @@ build-asan-dev: build
 .PHONY: test-rs
 test-rs:
 	cargo test $(LOCKED) $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) $(CARGO_FLAGS_EXTRA) $(ERROR_INJECTION) \
-	  --exclude sbroad-core \
+	  --exclude sql-core \
 	  --exclude tarantool \
 	  --exclude tlua \
 	  --tests
 
 	cargo test $(LOCKED) $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) $(CARGO_FLAGS_EXTRA) $(ERROR_INJECTION) \
-	  --exclude sbroad-core \
+	  --exclude sql-core \
 	  --exclude tarantool \
 	  --exclude tlua \
 	  --doc -- --test-threads 2

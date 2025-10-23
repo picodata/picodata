@@ -1,5 +1,5 @@
 use chrono::DateTime;
-use sbroad::ir::operator::ConflictStrategy;
+use sql::ir::operator::ConflictStrategy;
 use tarantool::auth::AuthDef;
 use tarantool::error::{Error as TntError, TarantoolErrorCode as TntErrorCode};
 use tarantool::index::FieldType as IndexFieldType;
@@ -3406,12 +3406,12 @@ impl DbConfig {
         config::DYNAMIC_CONFIG.sql_vdbe_opcode_max.current_value()
     }
 
-    /// Gets `sql_vdbe_opcode_max` and `sql_motion_row_max` options as [`sbroad::ir::options::Options`] struct
+    /// Gets `sql_vdbe_opcode_max` and `sql_motion_row_max` options as [`sql::ir::options::Options`] struct
     #[inline]
-    pub fn sql_query_options(&self) -> sbroad::ir::options::Options {
+    pub fn sql_query_options(&self) -> sql::ir::options::Options {
         let sql_vdbe_opcode_max = self.sql_vdbe_opcode_max();
         let sql_motion_row_max = self.sql_motion_row_max();
-        sbroad::ir::options::Options {
+        sql::ir::options::Options {
             sql_motion_row_max,
             sql_vdbe_opcode_max,
         }

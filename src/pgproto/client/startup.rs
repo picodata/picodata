@@ -8,8 +8,8 @@ use crate::{
     tlog,
 };
 use pgwire::messages::startup::Startup;
-use sbroad::ir::options::PartialOptions;
 use smol_str::format_smolstr;
+use sql::ir::options::PartialOptions;
 use std::{
     collections::BTreeMap,
     io::{self, Read, Write},

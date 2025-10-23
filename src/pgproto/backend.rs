@@ -17,10 +17,10 @@ use crate::{
 };
 use bytes::Bytes;
 use postgres_types::Oid;
-use sbroad::ir::options::PartialOptions;
-use sbroad::ir::value::Value as SbroadValue;
-use sbroad::PreparedStatement;
 use smol_str::format_smolstr;
+use sql::ir::options::PartialOptions;
+use sql::ir::value::Value as SbroadValue;
+use sql::PreparedStatement;
 use std::sync::atomic::{AtomicU64, Ordering};
 use storage::param_oid_to_derived_type;
 use tarantool::session::with_su;

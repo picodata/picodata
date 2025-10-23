@@ -3,7 +3,7 @@ use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
 use std::ops::ControlFlow;
 
-use sbroad::ir::value::Value as SbroadValue;
+use sql::ir::value::Value as SbroadValue;
 
 #[derive(Debug, Clone)]
 pub enum WellKnownQuery {

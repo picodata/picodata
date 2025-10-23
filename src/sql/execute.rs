@@ -2,27 +2,27 @@ use crate::metrics::{STORAGE_CACHE_1ST_REQUESTS_TOTAL, STORAGE_CACHE_2ND_REQUEST
 use crate::sql::PicoPortC;
 use crate::tlog;
 use rmp::encode::{write_array_len, write_str, write_str_len, write_uint};
-use sbroad::backend::sql::space::ADMIN_ID;
-use sbroad::errors::{Action, Entity, SbroadError};
-use sbroad::executor::engine::helpers::proxy::prepare;
-use sbroad::executor::engine::helpers::{
+use smol_str::{format_smolstr, ToSmolStr};
+use sql::backend::sql::space::ADMIN_ID;
+use sql::errors::{Action, Entity, SbroadError};
+use sql::executor::engine::helpers::proxy::prepare;
+use sql::executor::engine::helpers::{
     build_insert_args, init_delete_tuple_builder, init_insert_tuple_builder,
     init_local_update_tuple_builder, init_sharded_update_tuple_builder, pk_name, populate_table,
     table_name, truncate_tables, vtable_columns, FullPlanInfo, QueryInfo, RequiredPlanInfo,
     TupleBuilderCommand, TupleBuilderPattern,
 };
-use sbroad::executor::engine::{QueryCache, StorageCache, Vshard};
-use sbroad::executor::ir::QueryType;
-use sbroad::executor::protocol::{OptionalData, RequiredData};
-use sbroad::executor::result::ConsumerResult;
-use sbroad::executor::vtable::{VTableTuple, VirtualTable, VirtualTableMeta};
-use sbroad::executor::{Port, PortType};
-use sbroad::ir::node::relational::Relational;
-use sbroad::ir::operator::ConflictStrategy;
-use sbroad::ir::value::{EncodedValue, MsgPackValue, Value};
-use sbroad::ir::{node::NodeId, relation::SpaceEngine};
-use sbroad::utils::MutexLike;
-use smol_str::{format_smolstr, ToSmolStr};
+use sql::executor::engine::{QueryCache, StorageCache, Vshard};
+use sql::executor::ir::QueryType;
+use sql::executor::protocol::{OptionalData, RequiredData};
+use sql::executor::result::ConsumerResult;
+use sql::executor::vtable::{VTableTuple, VirtualTable, VirtualTableMeta};
+use sql::executor::{Port, PortType};
+use sql::ir::node::relational::Relational;
+use sql::ir::operator::ConflictStrategy;
+use sql::ir::value::{EncodedValue, MsgPackValue, Value};
+use sql::ir::{node::NodeId, relation::SpaceEngine};
+use sql::utils::MutexLike;
 use std::io::{Cursor, Write};
 use std::sync::OnceLock;
 use tarantool::error::{Error, TarantoolErrorCode};

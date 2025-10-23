@@ -1,5 +1,5 @@
 [package]
-name = "sbroad-benches"
+name = "sql-benches"
 version = "0.1.0"
 rust-version = "1.85"
 authors = ["Picodata"]
@@ -9,7 +9,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-sbroad-core = { path = "../sql-planner", version = "0.1", features = ["mock"] }
+sql-core = { path = "../sql-planner", version = "0.1", features = ["mock"] }
 pest = "2.0"
 pest_derive = "2.0"
 bincode = "1.3"

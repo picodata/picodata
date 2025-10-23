@@ -1,6 +1,6 @@
 use crate::ir::types::UnrestrictedType;
-use sbroad_type_system::error::Error as TypeSystemError;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use sql_type_system::error::Error as TypeSystemError;
 use std::fmt;
 use tarantool::error::Error;
 use tarantool::transaction::TransactionError;

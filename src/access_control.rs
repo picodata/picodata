@@ -818,7 +818,7 @@ mod tests {
         storage::Catalog,
         traft::op::{Acl, Ddl, Dml, Op},
     };
-    use sbroad::ir::operator::ConflictStrategy;
+    use sql::ir::operator::ConflictStrategy;
     use tarantool::{
         auth::{AuthData, AuthDef, AuthMethod},
         session::{self, UserId},

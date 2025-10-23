@@ -10,7 +10,7 @@ use std::panic::Location;
 use std::path::Path;
 use std::time::Duration;
 
-use sbroad::ir::value::{EncodedValue, Value};
+use ::sql::ir::value::{EncodedValue, Value};
 use tarantool::network::Config;
 use tarantool::session::{self, UserId};
 

@@ -11,9 +11,9 @@ use crate::pgproto::{
 };
 use ::tarantool::proc;
 use postgres_types::Oid;
-use sbroad::ir::options::PartialOptions;
-use sbroad::ir::value::Value;
 use serde::Serialize;
+use sql::ir::options::PartialOptions;
+use sql::ir::value::Value;
 use tarantool::msgpack;
 use tarantool::tuple::{Decode, Encode, Tuple};
 

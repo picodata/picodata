@@ -845,7 +845,7 @@ pub fn ddl_create_tt_proc_on_master(proc_name: &str) -> traft::Result<()> {
     // This branching is needed because we have basically two "types" of exportable functions
     // either we want maximum exposure (available from SQL through the wrapper), or we need
     // them just internally, though exposed as C FFI functions only.
-    if sbroad::frontend::sql::FUNCTION_NAME_MAPPINGS
+    if sql::frontend::sql::FUNCTION_NAME_MAPPINGS
         .iter()
         .any(|mapping| mapping.rust_procedure == proc_name)
     {

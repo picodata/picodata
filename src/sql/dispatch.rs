@@ -6,17 +6,17 @@ use ::tarantool::fiber;
 use ahash::{AHashMap, AHashSet};
 use rmp::decode::{read_array_len, read_bool};
 use rmp::encode::{write_array_len, write_uint};
-use sbroad::errors::{Action, Entity, SbroadError};
-use sbroad::executor::bucket::Buckets;
-use sbroad::executor::engine::helpers::vshard::prepare_rs_to_ir_map;
-use sbroad::executor::engine::helpers::{
+use smol_str::format_smolstr;
+use sql::errors::{Action, Entity, SbroadError};
+use sql::executor::bucket::Buckets;
+use sql::executor::engine::helpers::vshard::prepare_rs_to_ir_map;
+use sql::executor::engine::helpers::{
     build_optional_binary, build_required_binary, try_get_metadata_from_plan,
 };
-use sbroad::executor::engine::Vshard;
-use sbroad::executor::ir::{ExecutionPlan, QueryType};
-use sbroad::executor::protocol::{Binary, RequiredMessage};
-use sbroad::executor::Port;
-use smol_str::format_smolstr;
+use sql::executor::engine::Vshard;
+use sql::executor::ir::{ExecutionPlan, QueryType};
+use sql::executor::protocol::{Binary, RequiredMessage};
+use sql::executor::Port;
 use sql_protocol::decode::{execute_read_response, SqlExecute, TupleIter};
 use sql_protocol::encode::write_metadata;
 use std::collections::HashMap;

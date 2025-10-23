@@ -2,10 +2,10 @@ use crate::access_control;
 use crate::schema;
 use crate::traft;
 use crate::util;
-use sbroad::errors::SbroadError;
-use sbroad::ir;
-use sbroad::ir::value::{DisplayValues, Value};
 use smol_str::ToSmolStr;
+use sql::errors::SbroadError;
+use sql::ir;
+use sql::ir::value::{DisplayValues, Value};
 use tarantool::session::with_su;
 
 pub type AuditPolicyId = u32;

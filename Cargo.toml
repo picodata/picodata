@@ -27,12 +27,25 @@ itoa = "1.0"
 libc = "0.2"
 libloading = "0.8"
 md5 = "0.7"
-nix = { version = "0.29", features = ["fs", "term", "process", "signal", "dir"] }
+nix = { version = "0.29", features = [
+  "fs",
+  "term",
+  "process",
+  "signal",
+  "dir",
+] }
 once_cell = "1.20"
 openssl = "0.10"
-pgwire = { version = "0.24", default-features = false, features = ["server-api"] }
+pgwire = { version = "0.24", default-features = false, features = [
+  "server-api",
+] }
 picodata-pike = "2.5.0"
-postgres-types = { version = "0.2", features = ["array-impls", "with-serde_json-1", "with-time-0_3", "with-uuid-0_8"] }
+postgres-types = { version = "0.2", features = [
+  "array-impls",
+  "with-serde_json-1",
+  "with-time-0_3",
+  "with-uuid-0_8",
+] }
 prometheus = "0.14.0"
 protobuf = { version = "3", features = ["bytes", "with-bytes"] }
 raft = { version = "0.7", git = "https://git.picodata.io/core/raft-rs.git", branch = "picodata-master" }
@@ -50,7 +63,10 @@ serde_json = "1.0"
 serde_repr = "0.1"
 serde_yaml = "0.9"
 sha2 = { version = "0.10", features = ["asm", "oid"] }
-slog = { version = "2.7", features = ["max_level_trace", "release_max_level_trace"] }
+slog = { version = "2.7", features = [
+  "max_level_trace",
+  "release_max_level_trace",
+] }
 smallvec = { version = "1.13", features = ["write"] }
 smol_str = "0.2"
 socket2 = "0.5"
@@ -71,11 +87,11 @@ sqlformat = "0.4"
 # Bundled modules
 pico_proc_macro = { path = "pico_proc_macro" }
 picodata-plugin = { path = "picodata-plugin", features = ["internal_test"] }
-sbroad-core = { path = "sql-planner" }
+sql-core = { path = "sql-planner" }
 tarantool = { path = "tarantool/tarantool", features = [
-    "picodata",
-    "test",
-    "stored_procs_slice",
+  "picodata",
+  "test",
+  "stored_procs_slice",
 ] }
 regex = "1.11"
 ordered_hash_map = { version = "0.5.0", features = ["serde"] }
@@ -100,7 +116,6 @@ tarantool-proc = { path = "tarantool/tarantool-proc" }
 tlua = { path = "tarantool/tlua" }
 tlua-derive = { path = "tarantool/tlua-derive" }
 
-# tlua, sbroad-core etc depend on tarantool-module's git repo
 [patch."https://git.picodata.io/picodata/picodata/tarantool-module.git"]
 tarantool = { path = "tarantool/tarantool" }
 tarantool-proc = { path = "tarantool/tarantool-proc" }
@@ -125,17 +140,17 @@ harness = false
 [workspace]
 resolver = "2"
 members = [
-    ".",
-    "benchmark/perf",
-    "build-rs-helpers",
-    "gostech/gostech-audit-log",
-    "pico_proc_macro",
-    "sql-benches",
-    "sql-planner",
-    "sql-protocol",
-    "sql-type-system",
-    "tarantool-build",
-    "test/testplug",
+  ".",
+  "benchmark/perf",
+  "build-rs-helpers",
+  "gostech/gostech-audit-log",
+  "pico_proc_macro",
+  "sql-benches",
+  "sql-planner",
+  "sql-protocol",
+  "sql-type-system",
+  "tarantool-build",
+  "test/testplug",
 ]
 
 # For releases, we prioritize performance over compilation time.

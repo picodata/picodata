@@ -3051,7 +3051,6 @@ dependencies = [
  "rust_decimal",
  "rustyline",
  "rustyline-derive",
- "sbroad-core",
  "scopeguard",
  "serde",
  "serde_bytes",
@@ -3063,6 +3062,7 @@ dependencies = [
  "smallvec",
  "smol_str",
  "socket2 0.5.10",
+ "sql-core",
  "sql_protocol",
  "sqlformat",
  "sqlparser",
@@ -3902,63 +3902,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sbroad-benches"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "clap",
- "criterion 0.5.1",
- "pest",
- "pest_derive",
- "rand 0.8.5",
- "sbroad-core",
- "tarantool",
-]
-
-[[package]]
-name = "sbroad-core"
-version = "0.1.0"
-dependencies = [
- "ahash 0.7.8",
- "base64ct",
- "bincode",
- "blake3",
- "chrono",
- "comfy-table",
- "hash32 0.2.1",
- "insta",
- "itertools 0.10.5",
- "lazy_static",
- "lru",
- "pest",
- "pest_derive",
- "pretty_assertions",
- "rand 0.8.5",
- "regex",
- "rmp",
- "rmp-serde",
- "rmpv",
- "sbroad-type-system",
- "serde",
- "serde_bytes",
- "serde_yaml",
- "smol_str",
- "sqlformat",
- "tarantool",
- "time",
- "twox-hash",
- "uuid 1.18.1",
-]
-
-[[package]]
-name = "sbroad-type-system"
-version = "0.1.0"
-dependencies = [
- "criterion 0.5.1",
- "thiserror 2.0.17",
-]
-
-[[package]]
 name = "schannel"
 version = "0.1.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4343,6 +4286,63 @@ checksum = "233504af464074f9d066d7b5416c5f9b894a5862a6506e306f7b816cdd6f1807"
 dependencies = [
  "libc",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "sql-benches"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "clap",
+ "criterion 0.5.1",
+ "pest",
+ "pest_derive",
+ "rand 0.8.5",
+ "sql-core",
+ "tarantool",
+]
+
+[[package]]
+name = "sql-core"
+version = "0.1.0"
+dependencies = [
+ "ahash 0.7.8",
+ "base64ct",
+ "bincode",
+ "blake3",
+ "chrono",
+ "comfy-table",
+ "hash32 0.2.1",
+ "insta",
+ "itertools 0.10.5",
+ "lazy_static",
+ "lru",
+ "pest",
+ "pest_derive",
+ "pretty_assertions",
+ "rand 0.8.5",
+ "regex",
+ "rmp",
+ "rmp-serde",
+ "rmpv",
+ "serde",
+ "serde_bytes",
+ "serde_yaml",
+ "smol_str",
+ "sql-type-system",
+ "sqlformat",
+ "tarantool",
+ "time",
+ "twox-hash",
+ "uuid 1.18.1",
+]
+
+[[package]]
+name = "sql-type-system"
+version = "0.1.0"
+dependencies = [
+ "criterion 0.5.1",
+ "thiserror 2.0.17",
 ]
 
 [[package]]

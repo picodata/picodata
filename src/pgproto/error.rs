@@ -200,9 +200,9 @@ impl From<crate::traft::error::Error> for PgError {
     }
 }
 
-impl From<sbroad::errors::SbroadError> for PgError {
+impl From<sql::errors::SbroadError> for PgError {
     #[inline(always)]
-    fn from(e: sbroad::errors::SbroadError) -> Self {
+    fn from(e: sql::errors::SbroadError) -> Self {
         crate::traft::error::Error::from(e).into()
     }
 }
@@ -257,7 +257,7 @@ impl PgError {
 
     pub fn is_sbroad_parsing_error(&self) -> bool {
         use crate::traft::error::Error;
-        use sbroad::errors::SbroadError;
+        use sql::errors::SbroadError;
 
         if let Self::PicodataError(e) = self {
             if let Error::Sbroad(SbroadError::ParsingError(..)) = **e {

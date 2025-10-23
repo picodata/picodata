@@ -137,7 +137,7 @@ pub enum Error {
     Ddl(#[from] crate::schema::DdlError),
 
     #[error("sbroad: {0}")]
-    Sbroad(#[from] sbroad::errors::SbroadError),
+    Sbroad(#[from] sql::errors::SbroadError),
 
     #[error("transaction: {0}")]
     Transaction(String),
@@ -206,7 +206,7 @@ impl Error {
             Self::Raft(_) => ErrorCode::Other as _,
             Self::Plugin(e) => e.error_code(),
             // TODO: when sbroad will need boxed errors, implement
-            // `IntoBoxError` for `sbroad::errors::SbroadError` and
+            // `IntoBoxError` for `sql::errors::SbroadError` and
             // use it here:
             Self::Sbroad(_) => ErrorCode::SbroadError as _,
             Self::LeaderUnknown => ErrorCode::LeaderUnknown as _,

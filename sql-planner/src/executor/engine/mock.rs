@@ -47,6 +47,12 @@ pub struct PortMocked {
     port_type: PortType,
 }
 
+impl Default for PortMocked {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PortMocked {
     pub fn new() -> Self {
         Self {
@@ -65,7 +71,7 @@ impl PortMocked {
     }
 }
 
-impl<'p> Port<'p> for PortMocked {
+impl Port<'_> for PortMocked {
     fn add_mp(&mut self, data: &[u8]) {
         self.tuples.push(data.to_vec());
     }
@@ -91,7 +97,7 @@ impl<'p> Port<'p> for PortMocked {
         unreachable!();
     }
 
-    fn iter<'i>(&'i self) -> impl Iterator<Item = &'i [u8]> {
+    fn iter(&self) -> impl Iterator<Item = &[u8]> {
         self.tuples.iter().map(|t| t.as_slice())
     }
 
@@ -795,7 +801,7 @@ impl RouterConfigurationMock {
             Table::new_global(random(), "global_t", columns, primary_key).unwrap(),
         );
 
-        // Table for sbroad-benches
+        // Table for sql-benches
         let columns = vec![
             Column::new(
                 "vehicleguid",
@@ -1693,7 +1699,7 @@ fn mock_dispatch<'p>(
 
 fn to_sql(plan: &ExecutionPlan) -> (String, Vec<Value>) {
     let top_id = plan.get_ir_plan().get_top().unwrap();
-    let sp = SyntaxPlan::new(&plan, top_id, Snapshot::Oldest).unwrap();
+    let sp = SyntaxPlan::new(plan, top_id, Snapshot::Oldest).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
     let (sql, _) = plan

@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use sbroad_type_system::expr::{Expr as GenericExpr, ExprKind as GenericExprKind, Type};
-use sbroad_type_system::type_system::{Function, TypeAnalyzer as GenericTypeAnalyzer, TypeSystem};
+use sql_type_system::expr::{Expr as GenericExpr, ExprKind as GenericExprKind, Type};
+use sql_type_system::type_system::{Function, TypeAnalyzer as GenericTypeAnalyzer, TypeSystem};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 type Expr = GenericExpr<usize>;

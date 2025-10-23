@@ -1,5 +1,5 @@
 [package]
-name = "sbroad-core"
+name = "sql-core"
 version = "0.1.0"
 rust-version = "1.85"
 authors = ["Picodata"]
@@ -33,7 +33,7 @@ twox-hash = "2.1"
 sqlformat = "0.4"
 comfy-table = "7.2.1"
 regex = "1.11.3"
-sbroad-type-system = { path = "../sql-type-system" }
+sql-type-system = { path = "../sql-type-system" }
 tarantool = { path = "../tarantool/tarantool", features = ["picodata"] }
 
 [dev-dependencies]
@@ -46,7 +46,7 @@ tarantool = { path = "../tarantool/tarantool", features = [
 ] }
 
 [lib]
-name = "sbroad"
+name = "sql"
 crate-type = ["cdylib", "rlib"]
 
 [features]

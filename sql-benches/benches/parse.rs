@@ -1,18 +1,18 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use sbroad::executor::engine::mock::{RouterConfigurationMock, RouterRuntimeMock};
-use sbroad::frontend::sql::ast::AbstractSyntaxTree;
-use sbroad::frontend::Ast;
+use sql::executor::engine::mock::{RouterConfigurationMock, RouterRuntimeMock};
+use sql::frontend::sql::ast::AbstractSyntaxTree;
+use sql::frontend::Ast;
 
 use pest::Parser;
 use pest_derive::Parser;
-use sbroad::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
-use sbroad::executor::ExecutingQuery;
-use sbroad::ir::tree::Snapshot;
-use sbroad::ir::value::Value;
-use sbroad::ir::Plan;
+use sql::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
+use sql::executor::ExecutingQuery;
+use sql::ir::tree::Snapshot;
+use sql::ir::value::Value;
+use sql::ir::Plan;
 
 #[derive(Parser)]
-#[grammar = "../sbroad-core/src/frontend/sql/query.pest"]
+#[grammar = "../sql-core/src/frontend/sql/query.pest"]
 struct ParseTree;
 
 #[allow(clippy::too_many_lines)]

@@ -6,6 +6,9 @@ use crate::traft::node;
 use crate::traft::op::{Dml, Op};
 use crate::util::effective_user_id;
 use crate::{cas, sql, traft};
+use ::sql::ir::operator::ConflictStrategy;
+use ::sql::ir::value::double::Double;
+use ::sql::ir::value::{Tuple, Value};
 use abi_stable::pmr::{RErr, RNone, ROk, ROption, RResult, RSome};
 use abi_stable::std_types::{RDuration, RString, RVec, Tuple2};
 use abi_stable::{sabi_extern_fn, RTuple};
@@ -20,9 +23,6 @@ use picodata_plugin::transport::rpc::client::FfiSafeRpcRequestArguments;
 use picodata_plugin::transport::rpc::server::FfiRpcHandler;
 use picodata_plugin::util::FfiSafeBytes;
 use picodata_plugin::util::FfiSafeStr;
-use sbroad::ir::operator::ConflictStrategy;
-use sbroad::ir::value::double::Double;
-use sbroad::ir::value::{Tuple, Value};
 use std::time::Duration;
 use std::{mem, slice};
 use tarantool::datetime::Datetime;
@@ -262,7 +262,7 @@ extern "C" fn pico_ffi_wait_index(index: u64, timeout: RDuration) -> RResult<ROp
     }
 }
 
-/// Wrapper over `sbroad::ir::value::Value`, using for transformation between
+/// Wrapper over `sql::ir::value::Value`, using for transformation between
 /// a ffi and `sbroad` type.
 struct SBroadValue(Value);
 

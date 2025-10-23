@@ -27,10 +27,10 @@ use crate::util::file_exists;
 use crate::util::{cast_and_encode, edit_distance};
 use crate::{config_parameter_path, sql};
 use crate::{pgproto, traft};
+use ::sql::ir::options;
+use ::sql::ir::value::{EncodedValue, Value};
 use observer::AtomicObserverProvider;
 use ordered_hash_map::OrderedHashMap;
-use sbroad::ir::options;
-use sbroad::ir::value::{EncodedValue, Value};
 use serde_yaml::Value as YamlValue;
 use std::collections::HashMap;
 use std::convert::{From, Into};
@@ -49,7 +49,7 @@ pub use crate::address::{
 
 pub const DEFAULT_CONFIG_FILE_NAME: &str = "picodata.yaml";
 
-pub use sbroad::ir::types::DomainType as SbroadType;
+pub use ::sql::ir::types::DomainType as SbroadType;
 
 ////////////////////////////////////////////////////////////////////////////////
 // PicodataConfig

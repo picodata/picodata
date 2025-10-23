@@ -4,8 +4,8 @@ use crate::sql::lua::{
 };
 use rmp::decode::{read_array_len, read_int};
 use rmp::encode::write_bool;
-use sbroad::executor::{Port as SqlPort, PortType as SqlPortType};
 use serde::Serialize;
+use sql::executor::{Port as SqlPort, PortType as SqlPortType};
 use sql_protocol::encode::{
     dispatch_write_dml_response, dispatch_write_dql_response, dispatch_write_explain_response,
     dispatch_write_query_plan_response, execute_write_dml_response, execute_write_dql_response,

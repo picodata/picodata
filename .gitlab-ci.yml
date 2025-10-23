@@ -308,7 +308,7 @@ test-linux:
       ci-log-section end "sccache-setup"
 
     - *poetry-install
-    - pushd sbroad && make test
+    - pushd sql-planner && make test
     - make bench_check; popd
 
     - |
@@ -859,14 +859,14 @@ publish-picodata-plugin:
     - if [ -z "$CARGO_REGISTRY_TOKEN" ]; then echo "Variable CARGO_TOKEN must be available, check that branch is protected" 1>&2 && exit 1; fi
     - make publish-picodata-plugin
 
-.test-sbroad:
+.test-sql:
   stage: test
   tags:
     - docker-k8s
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
   before_script:
-    - pushd sbroad
+    - pushd sql-planner
 
 audit:
   stage: test

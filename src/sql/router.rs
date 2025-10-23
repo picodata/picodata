@@ -2,23 +2,23 @@
 //! Implements infrastructure to build a distributed
 //! query plan and dispatch it to the storage nodes.
 
-use sbroad::errors::{Action, Entity, SbroadError};
-use sbroad::executor::bucket::Buckets;
-use sbroad::executor::engine::helpers::vshard::get_random_bucket;
-use sbroad::executor::engine::helpers::{
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use sql::errors::{Action, Entity, SbroadError};
+use sql::executor::bucket::Buckets;
+use sql::executor::engine::helpers::vshard::get_random_bucket;
+use sql::executor::engine::helpers::{
     dispatch_impl, empty_plan_write, explain_format, materialize_motion, materialize_values,
 };
-use sbroad::executor::engine::helpers::{sharding_key_from_map, sharding_key_from_tuple};
-use sbroad::executor::engine::{get_builtin_functions, QueryCache, Router, Vshard};
-use sbroad::executor::ir::ExecutionPlan;
-use sbroad::executor::lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY};
-use sbroad::executor::vtable::VirtualTable;
-use sbroad::frontend::sql::ast::AbstractSyntaxTree;
-use sbroad::ir::node::NodeId;
-use sbroad::ir::value::{MsgPackValue, Value};
-use sbroad::ir::Plan;
-use sbroad::utils::MutexLike;
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use sql::executor::engine::helpers::{sharding_key_from_map, sharding_key_from_tuple};
+use sql::executor::engine::{get_builtin_functions, QueryCache, Router, Vshard};
+use sql::executor::ir::ExecutionPlan;
+use sql::executor::lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY};
+use sql::executor::vtable::VirtualTable;
+use sql::frontend::sql::ast::AbstractSyntaxTree;
+use sql::ir::node::NodeId;
+use sql::ir::value::{MsgPackValue, Value};
+use sql::ir::Plan;
+use sql::utils::MutexLike;
 use tarantool::fiber::Mutex;
 use tarantool::session::with_su;
 
@@ -29,12 +29,12 @@ use crate::audit;
 use crate::schema::{Distribution, ShardingFn, ADMIN_ID};
 use crate::storage::{self, Catalog};
 
-use sbroad::executor::engine::helpers::normalize_name_from_sql;
-use sbroad::executor::engine::Metadata;
-use sbroad::executor::Port;
-use sbroad::ir::function::Function;
-use sbroad::ir::relation::{space_pk_columns, Column, ColumnRole, Table};
-use sbroad::ir::types::{DerivedType, UnrestrictedType};
+use sql::executor::engine::helpers::normalize_name_from_sql;
+use sql::executor::engine::Metadata;
+use sql::executor::Port;
+use sql::ir::function::Function;
+use sql::ir::relation::{space_pk_columns, Column, ColumnRole, Table};
+use sql::ir::types::{DerivedType, UnrestrictedType};
 
 use crate::sql::storage::StorageRuntime;
 use crate::traft::node;
@@ -335,18 +335,18 @@ impl Router for RouterRuntime {
 
     fn materialize_motion(
         &self,
-        plan: &mut sbroad::executor::ir::ExecutionPlan,
+        plan: &mut sql::executor::ir::ExecutionPlan,
         motion_node_id: &NodeId,
-        buckets: &sbroad::executor::bucket::Buckets,
-    ) -> Result<sbroad::executor::vtable::VirtualTable, SbroadError> {
+        buckets: &sql::executor::bucket::Buckets,
+    ) -> Result<sql::executor::vtable::VirtualTable, SbroadError> {
         materialize_motion(self, plan, *motion_node_id, buckets)
     }
 
     fn dispatch<'p>(
         &self,
-        plan: &mut sbroad::executor::ir::ExecutionPlan,
+        plan: &mut sql::executor::ir::ExecutionPlan,
         top_id: NodeId,
-        buckets: &sbroad::executor::bucket::Buckets,
+        buckets: &sql::executor::bucket::Buckets,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
         dispatch_impl(self, plan, top_id, buckets, port)

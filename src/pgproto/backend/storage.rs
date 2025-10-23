@@ -18,10 +18,10 @@ use crate::{
 };
 use postgres_types::{Oid, Type as PgType};
 use prometheus::IntCounter;
-use sbroad::executor::Port;
-use sbroad::ir::types::{DerivedType, UnrestrictedType as SbroadType};
 use serde::Serialize;
 use smol_str::format_smolstr;
+use sql::executor::Port;
+use sql::ir::types::{DerivedType, UnrestrictedType as SbroadType};
 use sql_protocol::query_plan::PlanBlockIter;
 use std::{
     cell::RefCell,
@@ -244,7 +244,7 @@ pub static PGPROTO_STATEMENTS_CLOSED_TOTAL: LazyLock<IntCounter> = LazyLock::new
 #[derive(Debug)]
 pub struct StatementInner {
     key: Key,
-    statement: sbroad::PreparedStatement,
+    statement: sql::PreparedStatement,
     describe: StatementDescribe,
 }
 
@@ -266,7 +266,7 @@ pub struct Statement(Rc<StatementInner>);
 impl Statement {
     pub fn new(
         key: Key,
-        statement: sbroad::PreparedStatement,
+        statement: sql::PreparedStatement,
         specified_param_oids: Vec<u32>,
     ) -> PgResult<Self> {
         // generate pgproto metadata
@@ -293,7 +293,7 @@ impl Statement {
     }
 
     #[inline(always)]
-    pub fn prepared_statement(&self) -> &sbroad::PreparedStatement {
+    pub fn prepared_statement(&self) -> &sql::PreparedStatement {
         &self.0.statement
     }
 
@@ -481,7 +481,7 @@ enum PortalState {
     /// Portal has just been created.
     /// Ideally, it should've been `Box<Plan>`, but we need to move it
     /// from a mutable reference and we don't want to allocate a substitute.
-    NotStarted(sbroad::BoundStatement),
+    NotStarted(sql::BoundStatement),
     /// Portal has been executed and contains rows to be sent in batches.
     StreamingRows(IntoIter<Vec<PgValue>>),
     /// Portal has been executed and contains a result ready to be sent.
@@ -547,7 +547,7 @@ impl PortalInner {
     fn start(
         &self,
         router: &RouterRuntime,
-        statement: sbroad::BoundStatement,
+        statement: sql::BoundStatement,
     ) -> PgResult<PortalState> {
         if let QueryType::Dml = self.describe.query_type() {
             if let Some(query) = self.statement.prepared_statement().query_for_audit() {
@@ -685,7 +685,7 @@ impl Portal {
         key: Key,
         statement: Statement,
         output_format: Vec<FieldFormat>,
-        bound_statement: sbroad::BoundStatement,
+        bound_statement: sql::BoundStatement,
     ) -> PgResult<Self> {
         let stmt_describe = statement.describe();
         let describe = PortalDescribe::new(stmt_describe.describe.clone(), output_format);
@@ -775,7 +775,7 @@ impl Return for UserPortalNames {
 mod test {
     use super::{pg_type_to_sbroad, sbroad_type_to_pg};
     use postgres_types::Type as PgType;
-    use sbroad::ir::types::UnrestrictedType as SbroadType;
+    use sql::ir::types::UnrestrictedType as SbroadType;
 
     #[test]
     fn test_sbroad_type_to_pg() {

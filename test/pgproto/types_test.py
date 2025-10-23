@@ -252,7 +252,7 @@ def test_unsigned(postgres: Postgres):
     # Note: u64::MAX can be sent, despite the fact, that PostgreSQL supports only
     # signed integers, because psycopg sends it as numeric. Also it explicitly sets
     # parameter type, so cast is needed to make type system happy. As a matter of fact
-    # it will fail, because sbroad can't handle values that are bigger than i64::MAX anymore.
+    # it will fail, because sql can't handle values that are bigger than i64::MAX anymore.
     with pytest.raises(
         psycopg.InternalError,
         match="failed decoding i64: out of range integral type conversion attempted",

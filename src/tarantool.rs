@@ -18,9 +18,9 @@ use ::tarantool::tlua::{self, LuaError, LuaFunction, LuaRead, LuaTable, LuaThrea
 pub use ::tarantool::trigger::on_shutdown;
 use file_shred::*;
 use rmpv::Value as RmpvValue;
-use sbroad::executor::Port as SqlPort;
 use serde::Deserialize;
 use smallvec::SmallVec;
+use sql::executor::Port as SqlPort;
 use std::collections::HashMap;
 use std::ffi::CStr;
 use std::io::Cursor;

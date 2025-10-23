@@ -76,7 +76,7 @@ use crate::ir::value::Value;
 use crate::ir::ExplainType::{Explain, ExplainQueryPlan, ExplainQueryPlanFmt};
 use crate::ir::{node::plugin, Plan};
 use crate::warn;
-use sbroad_type_system::error::Error as TypeSystemError;
+use sql_type_system::error::Error as TypeSystemError;
 use tarantool::auth::AuthMethod;
 use tarantool::datetime::Datetime;
 use tarantool::decimal::Decimal;
@@ -1716,7 +1716,7 @@ fn parse_insert_source<M: Metadata>(
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
 ) -> Result<NodeId, SbroadError> {
-    use sbroad_type_system::expr::Type;
+    use sql_type_system::expr::Type;
 
     let node = ast.nodes.get_node(node_id)?;
     match node.rule {
@@ -6077,7 +6077,7 @@ impl AbstractSyntaxTree {
                                 "column {} is of type {}, but expression is of type {}",
                                 to_user(col_name),
                                 // Try to keep type formatting sync with other errors.
-                                sbroad_type_system::expr::Type::from(col_type),
+                                sql_type_system::expr::Type::from(col_type),
                                 expr_type,
                             )));
                         }

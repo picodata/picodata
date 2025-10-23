@@ -13,14 +13,14 @@ use crate::ir::types::{CastType, DerivedType, UnrestrictedType as SbroadType};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use ahash::AHashMap;
-use sbroad_type_system::error::Error as TypeSystemError;
-use sbroad_type_system::expr::{
+use smol_str::format_smolstr;
+use sql_type_system::error::Error as TypeSystemError;
+use sql_type_system::expr::{
     ComparisonOperator, Expr as GenericExpr, ExprKind as GenericExprKind, FrameKind, Type,
     UnaryOperator, WindowFrame as GenericWindowFrame,
 };
-use sbroad_type_system::type_system::{Function, TypeAnalyzer as GenericTypeAnalyzer};
-use sbroad_type_system::{TypeReport as GenericTypeReport, TypeSystem};
-use smol_str::format_smolstr;
+use sql_type_system::type_system::{Function, TypeAnalyzer as GenericTypeAnalyzer};
+use sql_type_system::{TypeReport as GenericTypeReport, TypeSystem};
 use std::sync::LazyLock;
 
 #[cfg(test)]
@@ -427,7 +427,7 @@ pub fn to_type_expr(
 static TYPE_SYSTEM: LazyLock<TypeSystem> = LazyLock::new(default_type_system);
 
 fn default_type_system() -> TypeSystem {
-    use sbroad_type_system::expr::Type::*;
+    use sql_type_system::expr::Type::*;
 
     let functions = vec![
         // Arithmetic operations.

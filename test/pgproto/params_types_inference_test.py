@@ -200,7 +200,7 @@ def test_params_inference_in_values(postgres: Postgres):
     assert rows == [[1, Decimal(2.0), "3"]] * 3
     assert cols_oids(conn) == [type_oid("int8"), type_oid("numeric"), type_oid("text")]
 
-    # Note: we use cte here because sbroad resolves `VALUES (1 + :p1 + 1.5)` to unknown type
+    # Note: we use cte here because sql resolves `VALUES (1 + :p1 + 1.5)` to unknown type
     rows = conn.run("WITH t AS (VALUES (1 + :p1 + 1.5)) SELECT :p1", p1=1)
     assert rows == [[Decimal(1)]]
     assert cols_oids(conn) == [type_oid("numeric")]
@@ -475,7 +475,7 @@ def test_parameter_types_defaulting(postgres: Postgres):
     assert rows == [["p1"]]
     assert cols_oids(conn) == [type_oid("text")]
 
-    # Test defaulting in VALUES (can't run query because sbroad infers unknown type)
+    # Test defaulting in VALUES (can't run query because sql infers unknown type)
     rows = conn.prepare("VALUES (:p1, :p2)")
 
     # Test defaulting in COALESCE
@@ -483,10 +483,10 @@ def test_parameter_types_defaulting(postgres: Postgres):
     assert rows == [["p1"]]
     assert cols_oids(conn) == [type_oid("text")]
 
-    # Test defaulting in CTE (can't run query because sbroad infers unknown type)
+    # Test defaulting in CTE (can't run query because sql infers unknown type)
     rows = conn.prepare("WITH t(a) AS (SELECT :p) SELECT a FROM t")
 
-    # Test defaulting in a subquery (can't run query because sbroad infers unknown type)
+    # Test defaulting in a subquery (can't run query because sql infers unknown type)
     rows = conn.prepare("SELECT (SELECT :p)")
 
 

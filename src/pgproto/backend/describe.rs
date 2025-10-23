@@ -7,7 +7,9 @@ use pgwire::{
     messages::data::{FieldDescription, RowDescription},
 };
 use postgres_types::{Oid, Type};
-use sbroad::{
+use serde::Serialize;
+use serde_repr::{Deserialize_repr, Serialize_repr};
+use sql::{
     errors::{Entity, SbroadError},
     ir::{
         acl::GrantRevokeType,
@@ -19,8 +21,6 @@ use sbroad::{
         Plan,
     },
 };
-use serde::Serialize;
-use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::{collections::HashMap, iter::zip, os::raw::c_int};
 use tarantool::{
     proc::{Return, ReturnMsgpack},

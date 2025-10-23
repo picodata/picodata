@@ -1,9 +1,9 @@
 use core::fmt;
 use std::fmt::Formatter;
 
-use sbroad_type_system::expr::Type as TypeSystemType;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, ToSmolStr};
+use sql_type_system::expr::Type as TypeSystemType;
 use tarantool::space::FieldType as SpaceFieldType;
 use tarantool::tuple::FieldType;
 

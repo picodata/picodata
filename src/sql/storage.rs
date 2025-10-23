@@ -11,30 +11,30 @@ use crate::sql::router::{
 };
 use crate::traft::node;
 use once_cell::sync::Lazy;
-use sbroad::backend::sql::ir::PatternWithParams;
-use sbroad::backend::sql::space::TableGuard;
-use sbroad::backend::sql::tree::{OrderedSyntaxNodes, SyntaxData, SyntaxPlan};
-use sbroad::errors::{Action, Entity, SbroadError};
-use sbroad::executor::bucket::Buckets;
-use sbroad::executor::engine::helpers::proxy::unprepare;
-use sbroad::executor::engine::helpers::vshard::get_random_bucket;
-use sbroad::executor::engine::helpers::{
+use sql::backend::sql::ir::PatternWithParams;
+use sql::backend::sql::space::TableGuard;
+use sql::backend::sql::tree::{OrderedSyntaxNodes, SyntaxData, SyntaxPlan};
+use sql::errors::{Action, Entity, SbroadError};
+use sql::executor::bucket::Buckets;
+use sql::executor::engine::helpers::proxy::unprepare;
+use sql::executor::engine::helpers::vshard::get_random_bucket;
+use sql::executor::engine::helpers::{
     table_name, EncodedQueryInfo, FullPlanInfo, RequiredPlanInfo,
 };
-use sbroad::executor::engine::{QueryCache, StorageCache, Vshard};
-use sbroad::executor::ir::{ExecutionPlan, QueryType};
-use sbroad::executor::lru::{Cache, EvictFn, LRUCache};
-use sbroad::executor::protocol::{EncodedVTables, RequiredData, SchemaInfo, VTablesMeta};
-use sbroad::executor::{Port, PortType};
-use sbroad::ir::ExplainType;
+use sql::executor::engine::{QueryCache, StorageCache, Vshard};
+use sql::executor::ir::{ExecutionPlan, QueryType};
+use sql::executor::lru::{Cache, EvictFn, LRUCache};
+use sql::executor::protocol::{EncodedVTables, RequiredData, SchemaInfo, VTablesMeta};
+use sql::executor::{Port, PortType};
+use sql::ir::ExplainType;
 
 use crate::metrics::{
     STORAGE_CACHE_STATEMENTS_ADDED_TOTAL, STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL,
 };
-use sbroad::ir::node::NodeId;
-use sbroad::ir::tree::Snapshot;
-use sbroad::ir::value::Value;
 use smol_str::{format_smolstr, SmolStr};
+use sql::ir::node::NodeId;
+use sql::ir::tree::Snapshot;
+use sql::ir::value::Value;
 use std::collections::HashMap;
 use std::rc::Rc;
 use tarantool::fiber::Mutex;

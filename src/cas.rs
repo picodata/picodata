@@ -1224,7 +1224,7 @@ fn modifies_operable(op: &Op, space: SpaceId, storage: &Catalog) -> bool {
 
 /// Predicate tests based on the CaS Design Document.
 mod tests {
-    use sbroad::ir::operator::ConflictStrategy;
+    use sql::ir::operator::ConflictStrategy;
     use storage::PicoTable;
     use tarantool::index::IndexType;
     use tarantool::space::SpaceEngineType;

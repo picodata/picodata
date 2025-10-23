@@ -46,40 +46,40 @@ use chrono::Utc;
 use picodata_plugin::error_code::ErrorCode;
 use rmp::decode::{read_array_len, read_bin_len, read_str_len};
 use rmp::encode::{write_bin, write_str, write_uint};
-use sbroad::errors::{Entity, SbroadError};
-use sbroad::executor::engine::helpers::{
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use sql::errors::{Entity, SbroadError};
+use sql::executor::engine::helpers::{
     build_delete_args, build_insert_args, build_update_args, init_delete_tuple_builder,
     init_insert_tuple_builder, init_local_update_tuple_builder,
 };
-use sbroad::executor::engine::Router;
-use sbroad::executor::protocol::RequiredData;
-use sbroad::executor::result::ConsumerResult;
-use sbroad::executor::ExecutingQuery;
-use sbroad::executor::{Port, PortType};
-use sbroad::ir::acl::{AlterOption, AuditPolicyOption, GrantRevokeType, Privilege as SqlPrivilege};
-use sbroad::ir::ddl::{AlterSystemType, ParamDef};
-use sbroad::ir::node::acl::AclOwned;
-use sbroad::ir::node::block::Block;
-use sbroad::ir::node::ddl::{Ddl, DdlOwned};
-use sbroad::ir::node::expression::ExprOwned;
-use sbroad::ir::node::plugin::{
+use sql::executor::engine::Router;
+use sql::executor::protocol::RequiredData;
+use sql::executor::result::ConsumerResult;
+use sql::executor::ExecutingQuery;
+use sql::executor::{Port, PortType};
+use sql::ir::acl::{AlterOption, AuditPolicyOption, GrantRevokeType, Privilege as SqlPrivilege};
+use sql::ir::ddl::{AlterSystemType, ParamDef};
+use sql::ir::node::acl::AclOwned;
+use sql::ir::node::block::Block;
+use sql::ir::node::ddl::{Ddl, DdlOwned};
+use sql::ir::node::expression::ExprOwned;
+use sql::ir::node::plugin::{
     AppendServiceToTier, ChangeConfig, CreatePlugin, DisablePlugin, DropPlugin, EnablePlugin,
     MigrateTo, Plugin, RemoveServiceFromTier, SettingsPair,
 };
-use sbroad::ir::node::relational::Relational;
-use sbroad::ir::node::{
+use sql::ir::node::relational::Relational;
+use sql::ir::node::{
     AlterColumn, AlterSystem, AlterTableOp, AlterUser, AuditPolicy, Constant, CreateIndex,
     CreateProc, CreateRole, CreateTable, CreateUser, Delete, DropIndex, DropProc, DropRole,
     DropTable, DropUser, GrantPrivilege, Insert, Node as IrNode, NodeOwned, Procedure,
     RenameRoutine, RevokePrivilege, ScanRelation, SetParam, Update,
 };
-use sbroad::ir::node::{NodeId, TruncateTable};
-use sbroad::ir::operator::ConflictStrategy;
-use sbroad::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
-use sbroad::ir::types::UnrestrictedType;
-use sbroad::ir::value::Value;
-use sbroad::ir::Plan as IrPlan;
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use sql::ir::node::{NodeId, TruncateTable};
+use sql::ir::operator::ConflictStrategy;
+use sql::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
+use sql::ir::types::UnrestrictedType;
+use sql::ir::value::Value;
+use sql::ir::Plan as IrPlan;
 use sql_protocol::decode::execute_args_split;
 use sql_protocol::encode::write_metadata;
 use std::cmp::max;
@@ -100,8 +100,8 @@ pub mod storage;
 use self::lua::{escape_bytes, reference_del, reference_use};
 use self::port::PicoPortC;
 use self::router::DEFAULT_QUERY_TIMEOUT;
-use sbroad::BoundStatement;
 use serde::Serialize;
+use sql::BoundStatement;
 
 pub const DEFAULT_BUCKET_COUNT: u64 = 3000;
 
@@ -1375,7 +1375,7 @@ fn alter_system_ir_node_to_op_or_result(
             param_name,
             param_value,
         } => {
-            let casted_value: sbroad::ir::value::EncodedValue<'_> = crate::config::validate_alter_system_parameter_value(param_name, param_value)?;
+            let casted_value: sql::ir::value::EncodedValue<'_> = crate::config::validate_alter_system_parameter_value(param_name, param_value)?;
 
             let dmls = make_dmls(&casted_value, param_name, tier_name, storage, current_user)?;
 

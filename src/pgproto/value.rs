@@ -3,11 +3,11 @@ use crate::pgproto::error::{DecodingError, EncodingError, PgError, PgResult};
 use bytes::{BufMut, BytesMut};
 use pgwire::{api::results::DataRowEncoder, types::ToSqlText};
 use postgres_types::{FromSql, IsNull, Oid, ToSql, Type};
-use sbroad::{
+use smol_str::{format_smolstr, ToSmolStr};
+use sql::{
     frontend::sql::{try_parse_bool, try_parse_datetime},
     ir::value::Value as SbroadValue,
 };
-use smol_str::{format_smolstr, ToSmolStr};
 use std::{
     fmt::Debug,
     str::{self, FromStr},
