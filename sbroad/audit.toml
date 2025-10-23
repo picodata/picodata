@@ -1,4 +1,0 @@
-[advisories]
-# serde_cbor is unmaintained, used in criterion.
-# See https://github.com/bheisler/criterion.rs/issues/534
-ignore = [ "RUSTSEC-2021-0127" ]

@@ -71,7 +71,7 @@ sqlformat = "0.4"
 # Bundled modules
 pico_proc_macro = { path = "pico_proc_macro" }
 picodata-plugin = { path = "picodata-plugin", features = ["internal_test"] }
-sbroad-core = { path = "sbroad/sbroad-core" }
+sbroad-core = { path = "sql-planner" }
 tarantool = { path = "tarantool/tarantool", features = [
     "picodata",
     "test",
@@ -130,7 +130,10 @@ members = [
     "build-rs-helpers",
     "gostech/gostech-audit-log",
     "pico_proc_macro",
+    "sql-benches",
+    "sql-planner",
     "sql-protocol",
+    "sql-type-system",
     "tarantool-build",
     "test/testplug",
 ]

@@ -3902,6 +3902,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sbroad-benches"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "clap",
+ "criterion 0.5.1",
+ "pest",
+ "pest_derive",
+ "rand 0.8.5",
+ "sbroad-core",
+ "tarantool",
+]
+
+[[package]]
 name = "sbroad-core"
 version = "0.1.0"
 dependencies = [

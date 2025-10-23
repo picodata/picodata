@@ -33,14 +33,14 @@ twox-hash = "2.1"
 sqlformat = "0.4"
 comfy-table = "7.2.1"
 regex = "1.11.3"
-sbroad-type-system = { path = "../sbroad-type-system" }
-tarantool = { path = "../../tarantool/tarantool", features = ["picodata"] }
+sbroad-type-system = { path = "../sql-type-system" }
+tarantool = { path = "../tarantool/tarantool", features = ["picodata"] }
 
 [dev-dependencies]
 pretty_assertions = "1.3"
 serde_yaml = "0.9.34"
 insta = "1.42"
-tarantool = { path = "../../tarantool/tarantool", features = [
+tarantool = { path = "../tarantool/tarantool", features = [
   "picodata",
   "standalone_decimal",
 ] }
