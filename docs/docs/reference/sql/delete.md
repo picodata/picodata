@@ -60,3 +60,9 @@ DELETE FROM warehouse WHERE id IN (1,2,3);
 ```
 
 Во всех случаях в выводе в консоль будет указано количество удаленных кортежей.
+
+Требуемые привилегии: `READ TABLE` и `WRITE TABLE`
+
+См. также:
+
+- [Управление доступом — Таблица привилегий](../../admin/access_control.md#privileges_table)

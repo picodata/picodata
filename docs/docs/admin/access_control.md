@@ -63,31 +63,11 @@ Picodata является распределенной СУБД, и управл
 управления доступом (access control list, ACL), который определяет,
 какими привилегиями обладает пользователь или роль.
 
-### Привилегии {: #privileges }
-
-В Picodata определены следующие виды привилегий:
-
-- привилегии для работы с пользователями (`CREATE USER`, `ALTER USER`,
-  `DROP USER`)
-- привилегии для работы с ролями (`CREATE ROLE`, `DROP ROLE`)
-- привилегии для работы с таблицами (`CREATE TABLE`, `ALTER TABLE`,
-  `DROP TABLE`, `READ TABLE`, `WRITE TABLE`)
-- привилегии для работы с процедурами (`CREATE PROCEDURE`, `DROP PROCEDURE`,
-  `EXECUTE PROCEDURE`)
-- `LOGIN` — право подключаться к экземпляру кластера. Автоматически выдается
-  новым пользователям при создании.
-
-!!! note "Примечание"
-    Более подробная информация о синтаксисе SQL-команд для
-    управления привилегиями приведена в [справочнике терминов и команд
-    SQL](../sql_index.md)
-
 ### Пользователи СУБД {: #users }
 
 При подключении к системе пользователь указывает имя учетной записи.
 Действия, которые пользователь может совершать в системе, определяются
 выданными ему привилегиями.
-
 
 Каждый объект в системе (таблица, роль, учетная запись, процедура) имеет
 привязанного к нему владельца — пользователя СУБД. Владельцем объекта
@@ -191,6 +171,10 @@ GRANT db_admin to alice;
   столбец, поле, представление и иные объекты доступа);
 - выполнять процедуры (программный код), хранимые в БД.
 -->
+Только что созданный пользователь обладает:
+
+- ролью `public`
+- привилегией `login` (подключение к кластеру)
 
 Picodata позволяет наделить пользователя БД следующими правами:
 
@@ -207,6 +191,376 @@ GRANT READ ON TABLE warehouse TO alice;
 ```sql title="Пример для процедуры `proc` и пользователя `alice`"
 GRANT EXECUTE ON PROCEDURE proc TO alice;
 ```
+
+### Привилегии {: #privileges }
+
+В Picodata определены следующие виды привилегий:
+
+- привилегии для работы с пользователями (`CREATE USER`, `ALTER USER`,
+  `DROP USER`)
+- привилегии для работы с ролями (`CREATE ROLE`, `DROP ROLE`)
+- привилегии для работы с таблицами (`CREATE TABLE`, `ALTER TABLE`,
+  `DROP TABLE`, `READ TABLE`, `WRITE TABLE`)
+- привилегии для работы с процедурами (`CREATE PROCEDURE`, `DROP PROCEDURE`,
+  `EXECUTE PROCEDURE`)
+- `LOGIN` — право подключаться к экземпляру кластера. Автоматически выдается
+  новым пользователям при создании.
+
+!!! note "Примечание"
+    Привилегии на управление плагинами имеются только у Администратора СУБД.
+
+См. также:
+
+- [Команды и термины SQL](../sql_index.md)
+
+#### Таблица привилегий {: #privileges_table }
+
+<style>
+.md-typeset .admonition.abstract {
+    border-color: #9e9e9e;
+}
+
+.md-typeset .abstract > .admonition-title {
+    background-color: #9e9e9e1a;
+}
+
+.md-typeset .abstract > .admonition-title::before {
+    background-color: #9e9e9e;
+}
+
+.link {
+    color:rgb(0, 0, 0) !important;
+    text-decoration: none;
+}
+
+a.cmd:link,
+a.cmd:visited,
+a.cmd:hover,
+a.cmd:active {
+  text-decoration: none;
+  color: rgb(0, 0, 0) !important;
+}
+
+.sortable table  {
+
+}
+
+td {
+    align-content: center;
+    padding: 0.75em 0.5em !important;
+    line-height: 1.3;
+}
+
+td.td3 {
+    white-space: nowrap;
+}
+
+td.td3 ul {
+    list-style-type: none;
+}
+
+.td3 ul,
+.td3 ul > li {
+    margin-left: 0 !important;
+    word-break: break-all !important;
+}
+
+.tr-header td {
+    font-size: 1.25em;
+    }
+
+.tr-header > td > span {
+    font-family: revert;
+}
+
+.tr-header > td.td3 {
+    font-size: revert;
+}
+
+.center {
+    text-align: center !important;
+    width: auto;
+}
+
+.heading {
+    text-align: center !important;
+    border: 0.1em solid #9e9e9e;
+}
+
+.button {
+    font-weight: bold;
+}
+
+.legend-id {
+    line-height: 2.5em;
+    margin-left: 0.5em;
+    width: 87em;
+}
+
+.legend-dash {
+    margin: 0.5em; markdown="span"
+}
+
+.ddl,
+.dml,
+.dcl,
+.dql {
+    padding: 0.1em 0.5em;
+    border-radius: 1em;
+    font-family: monospace;
+}
+
+.ddl {
+    background-color: #d9ead3;
+}
+
+.dml {
+    background-color: #f4cccc;
+}
+
+.dcl {
+    background-color: #fff2cc;
+}
+
+.dql {
+    background-color: #9fcaff;
+}
+
+.fill-width {
+    width: 600px;
+}
+
+.basic table {
+    width: 50% !important;
+    white-space: nowrap;
+    table-layout: fixed !important;
+    display: table;
+    overflow: auto;
+    overflow-x: hidden !important;
+    font-size: .64rem;
+    max-width: 50%;
+    touch-action: auto;
+}
+
+.basic th, td {
+    overflow-x: hidden !important;
+    word-break: break-word;
+    border: 0.1em solid #9e9e9e;
+
+}
+
+/* Sortable tables */
+table.sortable thead {
+    background-color:#eee;
+        color:#666666;
+    cursor: default;
+    margin:0;
+    margin-bottom:.5em;
+    padding:0 .8rem;
+    white-space: nowrap;
+    table-layout: fixed !important;
+    overflow: auto;
+    font-size: .64rem;
+    overflow: auto !important;
+    overflow-x: visible !important;
+}
+
+table.sortable {
+    border-width: 0.1em !important;
+    border-style: solid;
+    width: 67em;
+    border-collapse: collapse;
+}
+
+table.sortable tbody {
+    font-size: .64rem;
+}
+
+.container{
+  display: block;
+  overflow-x: auto;
+}
+
+table.legend {
+    border-collapse:separate;
+    border:solid #9e9e9e 1px;
+    border-radius:10px;
+    width: 47em;
+}
+
+</style>
+
+В таблице ниже показаны привилегии и их возможности по отношению к объектам
+доступа. Привилегии показаны отдельно для объектов, созданных текущим
+пользователем (_свои объекты_) и объектов, владельцем которых является кто-то
+другой (_чужие объекты_).
+
+**Легенда**
+
+SQL-команды выделены в таблице цветом, в зависимости от их типа:
+
+<p markdown="span">
+    <span class="ddl legend-id"></span>&nbsp;— [Data Definition Language (DDL)](../reference/sql/ddl.md)<br>
+    <span class="dcl legend-id"></span>&nbsp;— [Data Control Language (DCL)](../reference/sql/dcl.md)<br>
+    <span class="dml legend-id"></span>&nbsp;— [Data Modification Language (DML)](../reference/sql/dml.md)<br>
+    <span class="dql legend-id"></span>&nbsp;— [Data Query Language (DQL)](../reference/sql/dql.md)
+</p><br>
+
+<div markdown="span" class="container">
+<table markdown="span" class="sortable">
+    <thead>
+        <tr>
+            <th class="heading"><button style='font-weight:bold'>SQL-команда</button></th>
+            <th class="heading"><button style='font-weight:bold'>Требуемая привилегия для своих объектов</button></th>
+            <th class="heading"><button style='font-weight:bold'>Требуемая привилегия для чужих объектов</button></th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><span class="ddl"><a class=cmd href="../../reference/sql/alter_plugin/"/>ALTER PLUGIN</span></td>
+            <td>_доступно только для пользователя admin_</td>
+            <td>_доступно только для пользователя admin_</td>
+        </tr>
+        <tr>
+            <td><span class="ddl"><a class=cmd href="../../reference/sql/alter_procedure/"/>ALTER PROCEDURE</span></td>
+            <td>не требуется</td>
+            <td>_не реализовано_</td>
+        </tr>
+        <tr>
+            <td><span class="ddl"><a class=cmd href="../../reference/sql/alter_system/"/>ALTER SYSTEM</span></td>
+            <td>_доступно только для пользователя admin_</td>
+            <td>_доступно только для пользователя admin_</td>
+        </tr>
+        <tr>
+            <td><span class="ddl"><a class=cmd href="../../reference/sql/alter_table/"/>ALTER TABLE</span></td>
+            <td>не требуется</td>
+            <td>ALTER TABLE</td>
+        </tr>
+        <tr>
+            <td><span class="ddl"><a class=cmd href="../../reference/sql/create_index/"/>CREATE INDEX</span></td>
+            <td>не требуется</td>
+            <td>CREATE TABLE</td>
+        </tr>
+        <tr>
+            <td><span class="ddl"><a class=cmd href="../../reference/sql/create_plugin/"/>CREATE PLUGIN</span></td>
+            <td>_доступно только для пользователя admin_</td>
+            <td>_доступно только для пользователя admin_</td>
+        </tr>
+        <tr>
+            <td><span class="ddl"><a class=cmd href="../../reference/sql/create_procedure/"/>CREATE PROCEDURE</span></td>
+            <td>CREATE PROCEDURE</td>
+            <td>CREATE PROCEDURE</td>
+        </tr>
+        <tr>
+            <td><span class="ddl"><a class=cmd href="../../reference/sql/create_table/"/>CREATE TABLE</span></td>
+            <td>CREATE TABLE</td>
+            <td>_не применимо_</td>
+        </tr>
+        <tr>
+            <td><span class="ddl"><a class=cmd href="../../reference/sql/drop_index/"/>DROP INDEX</span></td>
+            <td><ul>
+                <li>Своя таблица + свой индекс: не требуется</li>
+                <li>Чужая таблица + свой индекс: DROP TABLE</li>
+                </ul></td>
+            <td><ul>
+                <li>Своя таблица + чужой индекс: не требуется</li>
+                <li>Чужая таблица + чужой индекс: DROP TABLE</li>
+                </ul></td>
+        </tr>
+        <tr>
+            <td><span class="ddl"><a class=cmd href="../../reference/sql/drop_plugin/"/>DROP PLUGIN</span></td>
+            <td>_доступно только для пользователя admin_</td>
+            <td>_доступно только для пользователя admin_</td>
+        </tr>
+        <tr>
+            <td><span class="ddl"><a class=cmd href="../../reference/sql/drop_procedure/"/>DROP PROCEDURE</span></td>
+            <td>не требуется</td>
+            <td>DROP PROCEDURE</td>
+        </tr>
+        <tr>
+            <td><span class="ddl"><a class=cmd href="../../reference/sql/drop_table/"/>DROP TABLE</span></td>
+            <td>не требуется</td>
+            <td>DROP TABLE</td>
+        </tr>
+        <tr>
+            <td><span class="ddl"><a class=cmd href="../../reference/sql/truncate_table/"/>TRUNCATE TABLE</span></td>
+            <td>не требуется</td>
+            <td>WRITE TABLE</td>
+        </tr>
+        <tr>
+            <td><span class="dcl"><a class=cmd href="../../reference/sql/alter_user/"/>ALTER USER</span></td>
+            <td>не требуется</td>
+            <td>ALTER USER</td>
+        </tr>
+        <tr>
+            <td><span class="dcl"><a class=cmd href="../../reference/sql/create_role/"/>CREATE ROLE</span></td>
+            <td>_не применимо_</td>
+            <td>CREATE ROLE</td>
+        </tr>
+        <tr>
+            <td><span class="dcl"><a class=cmd href="../../reference/sql/create_user/"/>CREATE USER</span></td>
+            <td>_не применимо_</td>
+            <td>CREATE USER</td>
+        </tr>
+        <tr>
+            <td><span class="dcl"><a class=cmd href="../../reference/sql/drop_role/"/>DROP ROLE</span></td>
+            <td>не требуется</td>
+            <td>DROP ROLE</td>
+        </tr>
+        <tr>
+            <td><span class="dcl"><a class=cmd href="../../reference/sql/drop_user/"/>DROP USER</span></td>
+            <td>не требуется</td>
+            <td>DROP USER</td>
+        </tr>
+        <tr>
+            <td><span class="dcl"><a class=cmd href="../../reference/sql/grant/"/>GRANT</span></td>
+            <td>не требуется</td>
+            <td>_доступно только для пользователя admin_</td>
+        </tr>
+        <tr>
+            <td><span class="dcl"><a class=cmd href="../../reference/sql/revoke/"/>REVOKE</span></td>
+            <td>не требуется</td>
+            <td>_доступно только для пользователя admin_</td>
+        </tr>
+        <tr>
+            <td><span class="dcl"><a class=cmd href="../../reference/sql/audit_policy/"/>AUDIT POLICY</span></td>
+            <td>_доступно только для пользователя admin_</td>
+            <td>_доступно только для пользователя admin_</td>
+        </tr>
+        <tr>
+            <td><span class="dml"><a class=cmd href="../../reference/sql/call/"/>CALL</span></td>
+            <td><ul>
+                <li>Своя таблица + своя процедура: не требуется</li>
+                <li>Чужая таблица + своя процедура: WRITE TABLE</li>
+                </ul></td>
+            <td><ul>
+                <li>Своя таблица + чужая процедура: EXECUTE PROCEDURE</li>
+                <li>Чужая таблица + чужая процедура: EXECUTE PROCEDURE + WRITE TABLE</li>
+                </ul></td>
+        </tr>
+        <tr>
+            <td><span class="dml"><a class=cmd href="../../reference/sql/delete/"/>DELETE</span></td>
+            <td>не требуется</td>
+            <td>READ TABLE + WRITE TABLE</td>
+        </tr>
+        <tr>
+            <td><span class="dml"><a class=cmd href="../../reference/sql/insert/"/>INSERT</span></td>
+            <td>не требуется</td>
+            <td>WRITE TABLE</td>
+        </tr>
+        <tr>
+            <td><span class="dml"><a class=cmd href="../../reference/sql/update/"/>UPDATE</span></td>
+            <td>не требуется</td>
+            <td>READ TABLE + WRITE TABLE</td>
+        </tr>
+        <tr>
+            <td><span class="dql"><a class=cmd href="../../reference/sql/select/"/>SELECT</span></td>
+            <td>не требуется</td>
+            <td>READ TABLE</td>
+        </tr>
+      </tbody>
+</table>
+</div>
 
 ### Роли {: #roles }
 

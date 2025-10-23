@@ -19,6 +19,15 @@
 
 * **LITERAL** — переданное в процедуру значение аргумента.
 
+## Требуемые привилегии {: #required_privileges }
+
+Данная команда требует привилегий `EXECUTE PROCEDURE` и `WRITE TABLE`.
+
+См. также:
+
+- [Управление доступом — Таблица привилегий](../../admin/access_control.md#privileges_table)
+
+
 ## Примеры {: #examples }
 
 ```sql
