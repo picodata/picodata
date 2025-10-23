@@ -31,6 +31,14 @@
 
 [системных пользователей]: ../../admin/access_control.md#system_users
 
+## Требуемые привилегии {: #required_privileges }
+
+Данная команда требует привилегии `CREATE USER`.
+
+См. также:
+
+- [Управление доступом — Таблица привилегий](../../admin/access_control.md#privileges_table)
+
 ## Примеры {: #examples }
 
 ```sql title="Минимально возможная команда"

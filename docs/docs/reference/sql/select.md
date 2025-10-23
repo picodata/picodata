@@ -127,6 +127,14 @@
 
 - [Использование JOIN](join.md)
 
+## Требуемые привилегии {: #required_privileges }
+
+Данная команда требует привилегии `SELECT TABLE`.
+
+См. также:
+
+- [Управление доступом — Таблица привилегий](../../admin/access_control.md#privileges_table)
+
 ## Примеры {: #examples }
 
 ??? example "Тестовые таблицы"

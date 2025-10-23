@@ -24,6 +24,14 @@
   результате вернется нуль строк. Если же индекс не был удален, то
   вернется одна строка.
 
+## Требуемые привилегии {: #required_privileges }
+
+Данная команда требует привилегии `DROP TABLE`.
+
+См. также:
+
+- [Управление доступом — Таблица привилегий](../../admin/access_control.md#privileges_table)
+
 ## Примеры {: #examples }
 
 ```sql
@@ -36,4 +44,3 @@ DROP INDEX name_year
 WAIT APPLIED GLOBALLY
 OPTION (TIMEOUT = 3.0);
 ```
-

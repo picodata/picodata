@@ -69,6 +69,14 @@
 
 * [Движок хранения](../../overview/glossary.md#db_engine)
 
+## Требуемые привилегии {: #required_privileges }
+
+Данная команда требует привилегии `CREATE INDEX`.
+
+См. также:
+
+- [Управление доступом — Таблица привилегий](../../admin/access_control.md#privileges_table)
+
 ## Примеры {: #examples }
 
 ??? example "Тестовые таблицы"

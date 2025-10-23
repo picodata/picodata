@@ -31,6 +31,15 @@
 [tier]: ../../overview/glossary.md#tier
 [миграции]: ../../overview/glossary.md#migration
 
+## Требуемые привилегии {: #required_privileges }
+
+Данная команда требует привилегии [Администратора
+СУБД](../../admin/access_control.md#admin) (`admin`).
+
+См. также:
+
+- [Управление доступом — Таблица привилегий](../../admin/access_control.md#privileges_table)
+
 ## Примеры {: #examples }
 
 ```sql title="Запуск миграции"
