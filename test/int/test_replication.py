@@ -674,6 +674,7 @@ def test_iproto_tls_enable_after_bootstrap(cluster: Cluster):
     Test case when we setup cluster without tls first and then enable it
     """
     (i1, i2) = cluster.deploy(instance_count=2, init_replication_factor=2)
+    i1.promote_or_fail()
 
     assert_box_replication_follow(cluster)
 
@@ -685,13 +686,12 @@ def test_iproto_tls_enable_after_bootstrap(cluster: Cluster):
         i.iproto_tls_ca = str(ssl_dir / "combined-ca.crt")
         i.iproto_tls = (Path(i.iproto_tls_cert), Path(i.iproto_tls_key), Path(i.iproto_tls_ca))
 
-    # Note: for now it doesnt always work if you restart instances one by one instead.
-    # this needs to be fixed separately
-    for i in cluster.instances:
-        i.terminate()
+    i1.terminate()
+    i2.terminate()
 
-    for i in cluster.instances:
-        i.start()
+    i1.start()
+    i2.start()
+    i2.promote_or_fail()
 
     cluster.wait_online()
 
