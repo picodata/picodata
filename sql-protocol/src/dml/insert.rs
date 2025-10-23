@@ -24,51 +24,51 @@ pub trait InsertEncoder {
 }
 
 pub fn write_insert_package(
-    mut w: impl std::io::Write,
+    w: &mut impl std::io::Write,
     data: impl InsertEncoder,
 ) -> Result<(), std::io::Error> {
-    write_dml_header(&mut w, Insert, data.get_request_id())?;
-    write_array_len(&mut w, 4)?;
+    write_dml_header(w, Insert, data.get_request_id())?;
+    write_array_len(w, 4)?;
 
-    write_uint(&mut w, data.get_target_table_id() as u64)?;
-    write_uint(&mut w, data.get_target_table_version())?;
-    write_pfix(&mut w, data.get_conflict_policy() as u8)?;
+    write_uint(w, data.get_target_table_id() as u64)?;
+    write_uint(w, data.get_target_table_version())?;
+    write_pfix(w, data.get_conflict_policy() as u8)?;
 
-    write_tuples(&mut w, data.get_tuples())?;
+    write_tuples(w, data.get_tuples())?;
 
     Ok(())
 }
 
 pub fn write_insert_with_sql_package(
-    mut w: impl std::io::Write,
+    w: &mut impl std::io::Write,
     data: impl InsertEncoder + DQLEncoder,
 ) -> Result<(), std::io::Error> {
-    write_dml_with_sql_header(&mut w, Insert, InsertEncoder::get_request_id(&data))?;
-    write_array_len(&mut w, 10)?;
+    write_dml_with_sql_header(w, Insert, InsertEncoder::get_request_id(&data))?;
+    write_array_len(w, 10)?;
 
-    write_uint(&mut w, data.get_target_table_id() as u64)?;
-    write_uint(&mut w, data.get_target_table_version())?;
+    write_uint(w, data.get_target_table_id() as u64)?;
+    write_uint(w, data.get_target_table_version())?;
 
     let columns = data.get_columns();
-    write_array_len(&mut w, columns.len() as u32)?;
+    write_array_len(w, columns.len() as u32)?;
     for column in columns {
-        write_uint(&mut w, *column as u64)?;
+        write_uint(w, *column as u64)?;
     }
 
-    write_pfix(&mut w, data.get_conflict_policy() as u8)?;
+    write_pfix(w, data.get_conflict_policy() as u8)?;
 
-    write_schema_info(&mut w, data.get_schema_info())?;
+    write_schema_info(w, data.get_schema_info())?;
 
     let plan_id = data.get_plan_id();
-    write_plan_id(&mut w, plan_id)?;
+    write_plan_id(w, plan_id)?;
 
-    write_sender_id(&mut w, data.get_sender_id())?;
+    write_sender_id(w, data.get_sender_id())?;
 
-    write_vtables(&mut w, data.get_vtables(plan_id))?;
+    write_vtables(w, data.get_vtables(plan_id))?;
 
-    write_options(&mut w, data.get_options().iter())?;
+    write_options(w, data.get_options().iter())?;
 
-    write_params(&mut w, data.get_params())?;
+    write_params(w, data.get_params())?;
 
     Ok(())
 }

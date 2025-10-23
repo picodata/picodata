@@ -19,17 +19,17 @@ pub trait UpdateEncoder {
 }
 
 pub fn write_update_package(
-    mut w: impl std::io::Write,
+    w: &mut impl std::io::Write,
     data: impl UpdateEncoder,
 ) -> Result<(), std::io::Error> {
-    write_dml_header(&mut w, Update, data.get_request_id())?;
-    write_array_len(&mut w, 4)?;
+    write_dml_header(w, Update, data.get_request_id())?;
+    write_array_len(w, 4)?;
 
-    write_uint(&mut w, data.get_target_table_id() as u64)?;
-    write_uint(&mut w, data.get_target_table_version())?;
-    write_pfix(&mut w, data.get_update_type() as u8)?;
+    write_uint(w, data.get_target_table_id() as u64)?;
+    write_uint(w, data.get_target_table_version())?;
+    write_pfix(w, data.get_update_type() as u8)?;
 
-    write_tuples(&mut w, data.get_tuples())?;
+    write_tuples(w, data.get_tuples())?;
 
     Ok(())
 }

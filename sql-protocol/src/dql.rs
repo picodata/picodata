@@ -10,95 +10,95 @@ use smol_str::SmolStr;
 use std::io::{Cursor, Write};
 use std::str::from_utf8;
 
-pub fn write_dql_package(mut w: impl Write, data: &impl DQLEncoder) -> Result<(), std::io::Error> {
-    write_request_header(&mut w, DQL, data.get_request_id())?;
+pub fn write_dql_package(w: &mut impl Write, data: &impl DQLEncoder) -> Result<(), std::io::Error> {
+    write_request_header(w, DQL, data.get_request_id())?;
 
-    write_array_len(&mut w, 6)?;
-    write_schema_info(&mut w, data.get_schema_info())?;
+    write_array_len(w, 6)?;
+    write_schema_info(w, data.get_schema_info())?;
 
     let plan_id = data.get_plan_id();
-    write_plan_id(&mut w, plan_id)?;
+    write_plan_id(w, plan_id)?;
 
     let sender_id = data.get_sender_id();
-    write_sender_id(&mut w, sender_id)?;
+    write_sender_id(w, sender_id)?;
 
-    write_vtables(&mut w, data.get_vtables(plan_id))?;
+    write_vtables(w, data.get_vtables(plan_id))?;
 
     let options = data.get_options();
-    write_options(&mut w, options.iter())?;
+    write_options(w, options.iter())?;
 
     let params = data.get_params();
-    write_params(&mut w, params)?;
+    write_params(w, params)?;
 
     Ok(())
 }
 
 pub(crate) fn write_schema_info<'a>(
-    mut w: impl Write,
+    w: &mut impl Write,
     schema_info: impl ExactSizeIterator<Item = (&'a u32, &'a u64)>,
 ) -> Result<(), std::io::Error> {
-    write_map_len(&mut w, schema_info.len() as u32)?;
+    write_map_len(w, schema_info.len() as u32)?;
     for (key, value) in schema_info {
-        write_uint(&mut w, *key as u64)?;
-        write_uint(&mut w, *value)?;
+        write_uint(w, *key as u64)?;
+        write_uint(w, *value)?;
     }
 
     Ok(())
 }
 
-pub(crate) fn write_plan_id(mut w: impl Write, plan_id: u64) -> Result<(), std::io::Error> {
-    rmp::encode::write_u64(&mut w, plan_id).map_err(std::io::Error::from)
+pub(crate) fn write_plan_id(w: &mut impl Write, plan_id: u64) -> Result<(), std::io::Error> {
+    rmp::encode::write_u64(w, plan_id).map_err(std::io::Error::from)
 }
 
-pub(crate) fn write_sender_id(mut w: impl Write, sender_id: &str) -> Result<(), std::io::Error> {
-    rmp::encode::write_bin(&mut w, sender_id.as_bytes()).map_err(std::io::Error::from)
+pub(crate) fn write_sender_id(w: &mut impl Write, sender_id: &str) -> Result<(), std::io::Error> {
+    rmp::encode::write_bin(w, sender_id.as_bytes()).map_err(std::io::Error::from)
 }
 pub(crate) fn write_vtables(
-    mut w: impl Write,
+    w: &mut impl Write,
     vtables: impl ExactSizeIterator<Item = (SmolStr, impl MsgpackWriter)>,
 ) -> Result<(), std::io::Error> {
-    write_map_len(&mut w, vtables.len() as u32)?;
+    write_map_len(w, vtables.len() as u32)?;
 
     for (key, tuples) in vtables {
-        write_str(&mut w, key.as_str())?;
-        write_tuples(&mut w, tuples)?;
+        write_str(w, key.as_str())?;
+        write_tuples(w, tuples)?;
     }
 
     Ok(())
 }
 pub(crate) fn write_tuples(
-    mut w: impl Write,
+    w: &mut impl Write,
     mut tuples: impl MsgpackWriter,
 ) -> Result<(), std::io::Error> {
-    write_array_len(&mut w, tuples.len() as u32)?;
+    write_array_len(w, tuples.len() as u32)?;
     while tuples.next().is_some() {
         let mut tuple_counter = ByteCounter::default();
         tuples.write_current(&mut tuple_counter)?;
-        rmp::encode::write_bin_len(&mut w, tuple_counter.bytes() as u32)?;
-        tuples.write_current(&mut w)?;
+        rmp::encode::write_bin_len(w, tuple_counter.bytes() as u32)?;
+        tuples.write_current(w)?;
     }
 
     Ok(())
 }
 
 pub(crate) fn write_options<'a>(
-    mut w: impl Write,
+    w: &mut impl Write,
     options: impl ExactSizeIterator<Item = &'a u64>,
 ) -> Result<(), std::io::Error> {
-    write_array_len(&mut w, options.len() as u32)?;
+    write_array_len(w, options.len() as u32)?;
     for option in options {
-        write_uint(&mut w, *option)?;
+        write_uint(w, *option)?;
     }
 
     Ok(())
 }
 pub(crate) fn write_params(
-    mut w: impl Write,
+    w: &mut impl Write,
     mut params: impl MsgpackWriter,
 ) -> Result<(), std::io::Error> {
-    write_array_len(&mut w, params.len() as u32)?;
+    write_array_len(w, params.len() as u32)?;
     while params.next().is_some() {
-        params.write_current(&mut w)?;
+        params.write_current(w)?;
     }
 
     Ok(())
@@ -312,32 +312,32 @@ impl<'a> Iterator for DQLPackageIterator<'a> {
 }
 
 pub fn write_dql_additional_data_package(
-    mut w: impl Write,
+    w: &mut impl Write,
     data: &impl DQLEncoder,
 ) -> Result<(), std::io::Error> {
-    write_array_len(&mut w, 3)?;
+    write_array_len(w, 3)?;
 
     let schema_info = data.get_schema_info();
-    write_map_len(&mut w, schema_info.len() as u32)?;
+    write_map_len(w, schema_info.len() as u32)?;
     for (key, value) in schema_info {
-        write_uint(&mut w, *key as u64)?;
-        write_uint(&mut w, *value)?;
+        write_uint(w, *key as u64)?;
+        write_uint(w, *value)?;
     }
 
     let vtables_metadata = data.get_vtables_metadata();
-    write_map_len(&mut w, vtables_metadata.len() as u32)?;
+    write_map_len(w, vtables_metadata.len() as u32)?;
     for (key, columns) in vtables_metadata {
-        write_str(&mut w, key.as_str())?;
-        write_array_len(&mut w, columns.len() as u32)?;
+        write_str(w, key.as_str())?;
+        write_array_len(w, columns.len() as u32)?;
         for (column, ty) in columns {
-            write_array_len(&mut w, 2)?;
-            write_str(&mut w, column.as_str())?;
-            rmp::encode::write_pfix(&mut w, ty as u8)?;
+            write_array_len(w, 2)?;
+            write_str(w, column.as_str())?;
+            rmp::encode::write_pfix(w, ty as u8)?;
         }
     }
 
     let sql = data.get_sql();
-    write_str(&mut w, sql)?;
+    write_str(w, sql)?;
 
     Ok(())
 }

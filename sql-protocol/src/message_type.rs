@@ -22,13 +22,13 @@ impl TryFrom<u8> for MessageType {
 }
 
 pub(crate) fn write_request_header(
-    mut w: impl std::io::Write,
+    w: &mut impl std::io::Write,
     message_type: MessageType,
     request_id: &str,
 ) -> Result<(), std::io::Error> {
-    write_array_len(&mut w, 3)?;
-    write_str(&mut w, request_id)?;
-    rmp::encode::write_pfix(&mut w, message_type as u8)?;
+    write_array_len(w, 3)?;
+    write_str(w, request_id)?;
+    rmp::encode::write_pfix(w, message_type as u8)?;
 
     Ok(())
 }

@@ -1,7 +1,7 @@
 use smol_str::SmolStr;
 
 pub trait MsgpackWriter {
-    fn write_current(&self, w: impl std::io::Write) -> std::io::Result<()>;
+    fn write_current(&self, w: &mut impl std::io::Write) -> std::io::Result<()>;
     fn next(&mut self) -> Option<()>;
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
@@ -99,9 +99,9 @@ pub(crate) mod test {
     }
 
     impl MsgpackWriter for TestParamIterator<'_> {
-        fn write_current(&self, mut w: impl Write) -> std::io::Result<()> {
+        fn write_current(&self, w: &mut impl Write) -> std::io::Result<()> {
             if let Some(v) = self.current {
-                rmp::encode::write_uint(&mut w, *v)?;
+                rmp::encode::write_uint(w, *v)?;
             }
 
             Ok(())
@@ -135,17 +135,17 @@ pub(crate) mod test {
     }
 
     impl MsgpackWriter for TestVTableWriter<'_> {
-        fn write_current(&self, mut w: impl Write) -> std::io::Result<()> {
+        fn write_current(&self, w: &mut impl Write) -> std::io::Result<()> {
             let Some(elem) = self.current else {
                 return Ok(());
             };
 
-            rmp::encode::write_array_len(&mut w, (elem.len() + 1) as u32)?;
+            rmp::encode::write_array_len(w, (elem.len() + 1) as u32)?;
 
             for elem in elem {
-                rmp::encode::write_uint(&mut w, *elem)?;
+                rmp::encode::write_uint(w, *elem)?;
             }
-            rmp::encode::write_uint(&mut w, self.pk)?;
+            rmp::encode::write_uint(w, self.pk)?;
 
             Ok(())
         }

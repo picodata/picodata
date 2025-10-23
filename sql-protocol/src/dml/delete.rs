@@ -23,49 +23,49 @@ pub trait DeleteEncoder {
 }
 
 pub fn write_delete_package(
-    mut w: impl std::io::Write,
+    w: &mut impl std::io::Write,
     data: impl DeleteEncoder,
 ) -> Result<(), std::io::Error> {
-    write_dml_header(&mut w, Delete, data.get_request_id())?;
+    write_dml_header(w, Delete, data.get_request_id())?;
     if data.has_tuples() {
-        write_array_len(&mut w, 3)?;
+        write_array_len(w, 3)?;
     } else {
-        write_array_len(&mut w, 2)?;
+        write_array_len(w, 2)?;
     }
-    write_uint(&mut w, data.get_target_table_id() as u64)?;
-    write_uint(&mut w, data.get_target_table_version())?;
+    write_uint(w, data.get_target_table_id() as u64)?;
+    write_uint(w, data.get_target_table_version())?;
     if data.has_tuples() {
-        write_tuples(&mut w, data.get_tuples())?;
+        write_tuples(w, data.get_tuples())?;
     }
 
     Ok(())
 }
 
 pub fn write_delete_with_sql_package(
-    mut w: impl std::io::Write,
+    w: &mut impl std::io::Write,
     data: impl DeleteEncoder + DQLEncoder,
 ) -> Result<(), std::io::Error> {
-    write_dml_with_sql_header(&mut w, Delete, DeleteEncoder::get_request_id(&data))?;
-    write_array_len(&mut w, 8)?;
-    write_uint(&mut w, data.get_target_table_id() as u64)?;
-    write_uint(&mut w, data.get_target_table_version())?;
+    write_dml_with_sql_header(w, Delete, DeleteEncoder::get_request_id(&data))?;
+    write_array_len(w, 8)?;
+    write_uint(w, data.get_target_table_id() as u64)?;
+    write_uint(w, data.get_target_table_version())?;
 
     let schema_info = data.get_schema_info();
-    write_schema_info(&mut w, schema_info)?;
+    write_schema_info(w, schema_info)?;
 
     let plan_id = data.get_plan_id();
-    write_plan_id(&mut w, plan_id)?;
+    write_plan_id(w, plan_id)?;
 
     let sender_id = data.get_sender_id();
-    write_sender_id(&mut w, sender_id)?;
+    write_sender_id(w, sender_id)?;
 
-    write_vtables(&mut w, data.get_vtables(plan_id))?;
+    write_vtables(w, data.get_vtables(plan_id))?;
 
     let options = data.get_options();
-    write_options(&mut w, options.iter())?;
+    write_options(w, options.iter())?;
 
     let params = data.get_params();
-    write_params(&mut w, params)?;
+    write_params(w, params)?;
 
     Ok(())
 }
