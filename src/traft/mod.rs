@@ -449,6 +449,8 @@ pub struct RaftMessageExt {
     flags: RaftMessageFlags,
 
     /// Applied index of the sender.
+    ///
+    /// This is used by the leader to check whether some nodes are lagging behind
     applied: RaftIndex,
 }
 
@@ -499,6 +501,11 @@ impl RaftMessageExt {
         debug_assert!(
             status == Flags::SNAPSHOT_STATUS_SUCCESS || status == Flags::SNAPSHOT_STATUS_FAILURE
         );
+
+        // The message we generate will not be passed to raft-rs on the receiving side (because of `SKIP_RAW_NODE_STEP` flag).
+        // It's only purpose is to arrange for the call of `report_snapshot` on the leader.
+        // This is due to the design of raft-rs API (see https://github.com/tikv/raft-rs/issues/502).
+        // Because of that, it doesn't matter which `msg_type` we will use (we end up using the default one - `MsgType::MsgHup`)
         let mut res = Self::default();
         res.inner.to = to;
         res.inner.from = from;

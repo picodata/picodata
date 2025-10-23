@@ -534,9 +534,14 @@ pub(crate) struct NodeImpl {
     /// Stores the first snapshot chunk while snapshot application is blocked.
     pending_raft_snapshot: Option<RaftSnapshot>,
 
-    /// This is set to raft id of last instance which sent us a raft message with
-    /// [`Flags::EXPECTING_SNAPSHOT_STATUS`] flag set in it.
-    report_snapshot_status_to: Option<RaftId>,
+    /// This is set to true if we receive a message with [`Flags::EXPECTING_SNAPSHOT_STATUS`] flag set in it.
+    ///
+    /// It will cause us to send a snapshot status report to our leader,
+    ///  regardless of whether we have actually applied a snapshot or not.
+    should_report_snapshot_status: bool,
+
+    /// Persistent outgoing messages preserved when being blocked on replicaset sync.
+    pending_persisted_messages: Vec<raft::Message>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -610,7 +615,8 @@ impl NodeImpl {
             main_loop_info,
             plugin_manager,
             pending_raft_snapshot: None,
-            report_snapshot_status_to: None,
+            should_report_snapshot_status: false,
+            pending_persisted_messages: Vec::new(),
         })
     }
 
@@ -708,7 +714,7 @@ impl NodeImpl {
         if msg.flags.contains(Flags::EXPECTING_SNAPSHOT_STATUS)
             || msg.inner.msg_type() == raft::MessageType::MsgSnapshot
         {
-            self.report_snapshot_status_to = Some(msg.inner.from);
+            self.should_report_snapshot_status = true;
         }
 
         // This happens on instance which sent out the snapshot
@@ -2320,7 +2326,7 @@ impl NodeImpl {
         _ = skip_count;
     }
 
-    fn maybe_send_snapshot_report(&mut self, snapshot_was_handled: bool) {
+    fn maybe_send_snapshot_report(&mut self, have_applied_snapshot: bool) {
         let applied = self.applied.get();
         let from = self.raw_node.raft.id;
 
@@ -2331,28 +2337,29 @@ impl NodeImpl {
             return;
         }
 
-        let msg;
-        if snapshot_was_handled {
+        let snapshot_report;
+        if have_applied_snapshot {
             // We received the snapshot and successfully applied it.
-            debug_assert!(self.report_snapshot_status_to.is_some());
-            let to = self.report_snapshot_status_to.take();
-            let to = to.unwrap_or(self.raw_node.raft.leader_id);
-            msg =
+            debug_assert!(self.should_report_snapshot_status);
+            self.should_report_snapshot_status = false;
+            let to = self.raw_node.raft.leader_id;
+            snapshot_report =
                 RaftMessageExt::snapshot_report(applied, from, to, Flags::SNAPSHOT_STATUS_SUCCESS);
-        } else if let Some(to) = self.report_snapshot_status_to.take() {
-            // We didn't apply a snapshot but somebody is expecting a report
-            // from us. This can sometimes happen for example if somebody
+        } else if self.should_report_snapshot_status {
+            // We didn't apply a snapshot but the leader is expecting a report
+            // from us. This can sometimes happen for example if the leader
             // sends us a raft snapshot but we crash before applying it. In this
             // case we report failure to apply snapshot. This is needed because
             // of how raft-rs works under the hood...
-            msg =
+            let to = self.raw_node.raft.leader_id;
+            snapshot_report =
                 RaftMessageExt::snapshot_report(applied, from, to, Flags::SNAPSHOT_STATUS_FAILURE);
         } else {
             // We didn't receive a snapshot and nobody expects a status report.
             return;
         }
 
-        if let Err(e) = self.pool.send(msg) {
+        if let Err(e) = self.pool.send(snapshot_report) {
             tlog!(Error, "{e}");
         }
     }
@@ -2518,7 +2525,11 @@ impl NodeImpl {
             // Replicaset follower needs to sync with leader via tarantool
             // replication.
             tlog!(Warning, "blocked by replicaset sync");
-            return Err(BoxError::new(ErrorCode::Other, "blocked by replicaset sync").into());
+            return Err(BoxError::new(
+                ErrorCode::LocalSchemaNotUpToDate,
+                "blocked by replicaset sync",
+            )
+            .into());
         }
 
         let mut snapshot = self
@@ -2664,6 +2675,16 @@ impl NodeImpl {
         let snapshot = match res {
             Ok(v) => v,
             Err(e) => {
+                if let Error::BoxError(ref e) = e {
+                    if e.error_code() == ErrorCode::LocalSchemaNotUpToDate as u32 {
+                        // We are blocked on the replicaset sync, so we can't apply the snapshot right away.
+                        // Nevertheless, raft-rs has generated some messages that will notify master of the snapshot application.
+                        // We should preserve those messages, as they will not be re-generated in a future `advance` call
+                        //   which will be able to progress with snapshot application.
+                        self.pending_persisted_messages = ready.take_persisted_messages();
+                    }
+                };
+
                 // Error was already logged
                 if let Some(hard_state) = ready.hs() {
                     // Cannot persist this hard state change, because the snapshot
@@ -2815,7 +2836,13 @@ impl NodeImpl {
         // These messages are only available on followers. They must be sent only
         // AFTER the HardState, Entries and Snapshot are persisted
         // to the stable storage.
-        self.handle_messages(ready.take_persisted_messages());
+        let persisted_messages = {
+            let mut msgs = ready.take_persisted_messages();
+            // take care of sending out the preserved messages
+            msgs.extend(std::mem::take(&mut self.pending_persisted_messages));
+            msgs
+        };
+        self.handle_messages(persisted_messages);
 
         let committed_entries = ready.take_committed_entries();
 

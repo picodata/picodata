@@ -453,7 +453,9 @@ cluster:
     storage_1_2.call("pico._inject_error", injected_error_1, False)
 
     # Make sure the snapshot is received
-    # HACK: timeout raised until https://git.picodata.io/core/picodata/-/issues/2313 is resolved
+    # the increased timeout is needed because it takes a while
+    #  for the leader to notice that the node comes online after disabling IGNORE_ALL_RAFT_MESSAGES
+    #  due to our learner heartbeat throttling
     lc.wait_matched(timeout=20)
 
     # Make a schema change. WAIT APPLIED LOCALLY is needed because `storage_1_2`
