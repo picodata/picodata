@@ -16,13 +16,13 @@
 
 <a name=psql></a>
 ??? note "Установка psql"
-    Клиентское приложение `psql` уже поставляется в
-    составе [готовых пакетов](https://picodata.io/download) Picodata. В
-    остальных случаях для использования `psql` не требуется
-    устанавливать сам сервер баз данных PostgreSQL. В Linux достаточно
-    установить пакет `postgresql-client` (Debian/Ubuntu) или
-    `postgresql` (RHEL/Fedora). В macOS установите пакет `libpq` через
-    Homebrew.
+    Клиентское приложение `psql` указано в
+    качестве зависимости для [готовых пакетов](https://picodata.io/download)
+    Picodata и в большинстве случаев устанавливается автоматически. В
+    остальных случаях в Linux достаточно установить пакет
+    `postgresql-client` (Debian/Ubuntu) или `postgresql` (RHEL/Fedora).
+    В macOS установите пакет `libpq` через Homebrew. Сам сервер баз
+    данных PostgreSQL не требуется.
 
 См. также:
 
