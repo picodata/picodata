@@ -2919,11 +2919,15 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 name = "perf"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "clap",
  "criterion 0.7.0",
+ "pest",
+ "pest_derive",
  "picodata",
  "postgres-types",
  "rand 0.9.2",
+ "sql-core",
 ]
 
 [[package]]
@@ -4286,20 +4290,6 @@ checksum = "233504af464074f9d066d7b5416c5f9b894a5862a6506e306f7b816cdd6f1807"
 dependencies = [
  "libc",
  "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "sql-benches"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "clap",
- "criterion 0.5.1",
- "pest",
- "pest_derive",
- "rand 0.8.5",
- "sql-core",
- "tarantool",
 ]
 
 [[package]]

@@ -145,7 +145,6 @@ members = [
   "build-rs-helpers",
   "gostech/gostech-audit-log",
   "pico_proc_macro",
-  "sql-benches",
   "sql-planner",
   "sql-protocol",
   "sql-type-system",
