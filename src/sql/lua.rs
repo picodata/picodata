@@ -66,7 +66,7 @@ pub(crate) unsafe extern "C" fn dispatch_query_plan_dump_lua(
 
     for block in PlanBlockIter::new(port_c.iter()) {
         for s in block.to_string().split('\n') {
-            lua::lua_pushlstring(l, s.as_ptr() as *const i8, s.len());
+            lua::lua_pushlstring(l, s.as_ptr() as *const c_char, s.len());
             idx += 1;
             lua::lua_rawseti(l, -2, idx);
         }
