@@ -12,8 +12,8 @@ RUN apt install -y \
     git \
     libssl-dev \
     pkg-config \
-    tarantool \
-    tarantool-dev \
+    tarantool=2.11.7.g4e04060150-1 \
+    tarantool-dev=2.11.7.g4e04060150-1 \
     ;
 
 ENV PATH=/root/.cargo/bin:${PATH}
