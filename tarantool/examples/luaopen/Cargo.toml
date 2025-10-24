@@ -1,0 +1,15 @@
+[package]
+name = "luaopen"
+version = "0.1.0"
+authors = [
+    "Georgy Moshkin <gmoshkin@picodata.io>",
+]
+edition = "2021"
+license = "BSD-2-Clause"
+
+[dependencies.tarantool]
+path = "../../tarantool"
+
+[lib]
+test = false
+crate-type = ["cdylib"]

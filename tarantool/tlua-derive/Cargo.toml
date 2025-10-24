@@ -1,0 +1,21 @@
+[package]
+authors = [
+    "Georgy Moshkin <gmoshkin@picodata.io>",
+]
+name = "tlua-derive"
+description = "Tlua derive macro definitions"
+version = "1.0.2"
+edition = "2018"
+license = "BSD-2-Clause"
+documentation = "https://docs.rs/tlua-derive/"
+repository = "https://github.com/picodata/tarantool-module"
+rust-version = "1.82"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "1.0.98", features = ["full", "visit"] }
+quote = "^1.0"
+proc-macro2 = "^1.0"
+

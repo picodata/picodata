@@ -1,0 +1,22 @@
+[workspace]
+resolver = "1"
+members = [
+    "tarantool",
+    "tarantool-proc",
+    "tlua",
+    "tlua-derive",
+    "tests",
+    "examples/all_procs",
+    "examples/easy",
+    "examples/harder",
+    "examples/hardest",
+    "examples/read",
+    "examples/write",
+    "examples/tokio-hyper",
+    "examples/async-h1-client",
+    "examples/luaopen",
+    "perf-test"
+]
+
+[profile.dev]
+lto = "thin"

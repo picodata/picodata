@@ -1,0 +1,52 @@
+[package]
+name = "tarantool-module-test-runner"
+version = "0.1.0"
+authors = [
+    "Dmitriy Koltsov <dkoltsov@picodata.io>",
+    "Georgy Moshkin <gmoshkin@picodata.io>",
+    "Anton Melnikov <volt0@picodata.io>",
+    "Egor Ivkov <e.ivkov@picodata.io>",
+]
+edition = "2018"
+license = "BSD-2-Clause"
+rust-version = "1.82"
+
+[dependencies]
+log = "0.4.11"
+rand = "0.7.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_plain = "1.0"
+serde_bytes = "*"
+tester = "0.7.0"
+once_cell = "1.9.0"
+rmp = "=0.8.11"
+rmp-serde = "1"
+rmpv = { version = "1", features = ["with-serde"] }
+libc = "*"
+futures = "0.3.25"
+linkme = "0.3"
+time = "0.3.37" # not used directly, but referenced by macro expansions from time-macros
+time-macros = "0.2.6"
+
+[dependencies.tarantool]
+path = "../tarantool"
+features = ["all", "internal_test", "stored_procs_slice"]
+
+[dependencies.tarantool-proc]
+path = "../tarantool-proc"
+features = ["stored_procs_slice"]
+
+[lib]
+test = false
+crate-type = ["cdylib"]
+
+[[test]]
+name = "run_tests"
+path = "run.rs"
+harness = false
+
+[features]
+picodata = ["tarantool/picodata"]
+standalone_decimal = ["tarantool/standalone_decimal"]
+tokio_components = ["tarantool/tokio_components"]
