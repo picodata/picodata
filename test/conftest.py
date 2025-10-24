@@ -20,7 +20,6 @@ import pytest
 import signal
 import subprocess
 import msgpack  # type: ignore
-from rand.params import generate_seed
 from random import randint
 from functools import reduce
 from typing import (
@@ -150,13 +149,6 @@ def clamp_for_logs(*args):
 
 
 def pytest_addoption(parser: pytest.Parser):
-    parser.addoption("--seed", action="store", default=None, help="Seed for randomized tests")
-    parser.addoption(
-        "--delay",
-        action="store",
-        default=None,
-        help="Delay between steps for randomized tests",
-    )
     parser.addoption(
         "--with-flamegraph",
         action="store_true",
@@ -201,15 +193,6 @@ def port_distributor(xdist_worker_number: int, pytestconfig) -> PortDistributor:
     worker_max_port = worker_base_port + ports_per_worker
 
     return PortDistributor(start=worker_base_port, end=worker_max_port)
-
-
-@pytest.fixture(scope="session")
-def seed(pytestconfig):
-    """Return a seed for randomized tests. Unless passed via
-    command-line options it is generated automatically.
-    """
-    seed = pytestconfig.getoption("--seed")
-    return seed if seed else generate_seed()
 
 
 @pytest.fixture(scope="session")
