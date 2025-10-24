@@ -1,6 +1,7 @@
 import pytest
 import pg8000.dbapi as pg  # type: ignore
 import os
+from conftest import log_crawler
 from conftest import Postgres
 from decimal import Decimal
 import psycopg
@@ -326,6 +327,8 @@ def test_tcl(postgres: Postgres):
     port = postgres.port
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
+    prefix = "Transactions are currently unsupported. Empty query response provided for"
+
     conn = psycopg.connect(f"user={user} password={password} host={host} port={port} sslmode=disable")
     # With autocommit
     conn.autocommit = True
@@ -343,7 +346,10 @@ def test_tcl(postgres: Postgres):
     # Without autocommit
     conn.autocommit = False
 
+    message = f"{prefix} Begin"
+    crawler = log_crawler(postgres.instance, message)
     cur = conn.execute("BEGIN;", prepare=False)
+    crawler.wait_matched()
     assert cur.pgresult is not None
     assert cur.pgresult.status == ExecStatus.COMMAND_OK
 
@@ -355,7 +361,10 @@ def test_tcl(postgres: Postgres):
     rows = cur.fetchall()
     assert sorted(rows, key=lambda x: x[0]) == [(1, "Alice"), (2, "Bob")]
 
+    message = f"{prefix} Rollback"
+    crawler = log_crawler(postgres.instance, message)
     cur = conn.execute("ROLLBACK;", prepare=False)
+    crawler.wait_matched()
     assert cur.pgresult is not None
     assert cur.pgresult.status == ExecStatus.COMMAND_OK
 
@@ -374,7 +383,10 @@ def test_tcl(postgres: Postgres):
 
     cur = conn.execute("INSERT INTO test_table (id, name) VALUES (1,'Alice'), (2,'Bob');")
 
+    message = f"{prefix} Commit"
+    crawler = log_crawler(postgres.instance, message)
     cur = conn.execute("COMMIT;", prepare=False)
+    crawler.wait_matched()
     assert cur.pgresult is not None
     assert cur.pgresult.status == ExecStatus.COMMAND_OK
 
