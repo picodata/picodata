@@ -1,12 +1,12 @@
 [package]
 name = "sql-type-system"
 version = "0.1.0"
-edition = "2021"
-license-file = "../LICENSE"
+edition.workspace = true
+license-file.workspace = true
 
 [dependencies]
 criterion = "0.5.1"
-thiserror = "2.0.12"
+thiserror = { workspace = true }
 
 [[bench]]
 name = "benchmark"

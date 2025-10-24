@@ -4240,7 +4240,7 @@ dependencies = [
 name = "sql-core"
 version = "0.1.0"
 dependencies = [
- "ahash 0.7.8",
+ "ahash 0.8.12",
  "base64ct",
  "bincode",
  "blake3",
@@ -4276,7 +4276,7 @@ name = "sql-type-system"
 version = "0.1.0"
 dependencies = [
  "criterion 0.5.1",
- "thiserror 2.0.17",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

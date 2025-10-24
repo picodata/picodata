@@ -16,7 +16,7 @@ license-file = "LICENSE"
 
 [dependencies]
 abi_stable = "0.11"
-ahash = "0.8"
+ahash = { workspace = true }
 bitflags = "2.9.1"
 base64 = "0.22"
 bytes = "1.8"
@@ -53,11 +53,11 @@ prometheus = "0.14.0"
 protobuf = { version = "3", features = ["bytes", "with-bytes"] }
 raft = { version = "0.7", git = "https://git.picodata.io/core/raft-rs.git", branch = "picodata-master" }
 rand = { workspace = true }
-regex = "1.11"
+regex = { workspace = true }
 replace_with = "0.1.8"
 rmp = { workspace = true }
-rmp-serde = "1.1"
-rmpv = { version = "1.0", features = ["with-serde"] }
+rmp-serde = { workspace = true }
+rmpv = { workspace = true, features = ["with-serde"] }
 rust_decimal = { version = "1.36", features = ["db-postgres"] }
 rustyline = "14.0"
 rustyline-derive = "0.10"
@@ -91,15 +91,14 @@ zeroize = "1.8"
 pico_proc_macro = { path = "pico_proc_macro" }
 picodata-plugin = { workspace = true, features = ["internal_test"] }
 sql-core = { path = "sql-planner" }
-tarantool = { path = "tarantool/tarantool", features = [
-  "picodata",
+tarantool = { workspace = true, features = [
   "test",
   "stored_procs_slice",
 ] }
 
 [dev-dependencies]
 anyhow = "1.0"
-pretty_assertions = "1.4"
+pretty_assertions = { workspace = true }
 pbkdf2 = { version = "0.12.1", features = ["simple", "std"] }
 
 [build-dependencies]
@@ -124,6 +123,7 @@ tlua = { path = "tarantool/tlua" }
 tlua-derive = { path = "tarantool/tlua-derive" }
 
 [workspace.dependencies]
+ahash = "0.8"
 build-rs-helpers = { path = "build-rs-helpers" }
 chrono = "0.4"
 clap = "4.5"
@@ -131,13 +131,18 @@ comfy-table = "7.2"
 openssl = "0.10"
 picodata-plugin = { path = "picodata-plugin" }
 postgres-types = { version = "0.2", features = ["array-impls", "with-serde_json-1", "with-time-0_3", "with-uuid-0_8"] }
+pretty_assertions = "1.4"
 quote = "1.0"
 rand = "0.8"
+regex = "1.11"
 rmp = "0.8"
+rmp-serde = "1.1"
+rmpv = "1.0"
 serde = "1.0"
 serde_bytes = "0.11"
 serde_json = "1.0"
 smol_str = "0.2"
+tarantool = { path = "tarantool/tarantool", features = ["picodata"] }
 thiserror = "1.0"
 time = "0.3"
 
