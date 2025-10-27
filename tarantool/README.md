@@ -24,7 +24,7 @@ Links:
 
 - [Crate page][crates.io]
 - [API Documentation][docs.rs]
-- [Repository](https://github.com/picodata/tarantool-module)
+- [Repository](https://github.com/picodata/picodata/tree/master/tarantool)
 
 See also:
 
@@ -434,7 +434,7 @@ Please make sure to update tests as appropriate.
 
 ## Versioning
 
-We use [SemVer](http://semver.org/) for versioning. For the versions available, see the [tags on this repository](https://git.picodata.io/picodata/picodata/tarantool-module/-/tags).
+We use [SemVer](http://semver.org/) for versioning. For the versions available, see the [tags on this repository](https://git.picodata.io/picodata/picodata/picodata/-/tags).
 
 ## Authors
 

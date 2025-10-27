@@ -8,7 +8,7 @@ version = "4.0.1"
 edition = "2021"
 license = "BSD-2-Clause"
 documentation = "https://docs.rs/tarantool-proc/"
-repository = "https://github.com/picodata/tarantool-module"
+repository = "https://github.com/picodata/picodata"
 rust-version = "1.82"
 
 [lib]
