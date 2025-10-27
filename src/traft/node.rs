@@ -715,6 +715,17 @@ impl NodeImpl {
             );
         }
 
+        // This is a guard against another naked `.unwrap()` in raft-rs.
+        if self
+            .raw_node
+            .raft
+            .prs()
+            .get(self.raw_node.raft.id)
+            .is_none()
+        {
+            return Err(to_error_other("initial raft configuration wasn't applied yet").into());
+        }
+
         self.raw_node.campaign()?;
 
         Ok(())
