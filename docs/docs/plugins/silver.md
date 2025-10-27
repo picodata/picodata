@@ -24,7 +24,7 @@ Silver — это модуль расчета себестоимости для 
 
 ```
 └── silver
-    └── 0.6.1
+    └── 0.6.2
         ├── libsilver.so
         ├── manifest.yaml
         ├── migrations
@@ -63,19 +63,60 @@ picodata run --plugin-dir=<PLUGIN-DIR> ...
 После запуска Picodata с поддержкой плагинов в заданной директории подключитесь к [административной
 консоли] инстанса Picodata.
 
-Установите плагин, добавьте его к тиру и включите его с помощью
-следующих SQL-команд:
+Установите плагин, добавьте его к тиру, запустите миграции и включите
+его с помощью следующих SQL-команд:
 
 ```sql
-CREATE PLUGIN silver 0.6.1;
-ALTER PLUGIN silver 0.6.1 ADD SERVICE silver TO TIER default;
-ALTER PLUGIN silver 0.6.1 ENABLE;
+CREATE PLUGIN silver 0.6.2;
+ALTER PLUGIN silver 0.6.2 ADD SERVICE silver TO TIER default;
+ALTER PLUGIN silver MIGRATE TO 0.6.2;
+ALTER PLUGIN silver 0.6.2 ENABLE;
 ```
 
 Для диагностики работы плагина обратитесь к [отладочному журналу] инстанса Picodata.
 
 [отладочному журналу]: ../admin/monitoring.md#reading_log
 [административной консоли]: ../tutorial/connecting.md#admin_console
+
+## Конфигурация плагина {: #silver_config }
+
+Исходная конфигурация плагина задается в файле `manifest.yaml`:
+
+```yaml
+description: Plugin Silver - costs allocation
+name: silver
+version: 0.6.2
+services:
+  - name: silver
+    description: Costs allocation
+    default_configuration:
+      clear_intermediate: true
+      complete_batch_size: 50
+      complete_pool_size: 100
+      difference_limit: 50
+      iterations_limit: 150
+      max_step: 150
+      node_difference_limit: 0
+      results_allocation_only: false
+      step_batch_size: 50
+      step_pool_size: 2000
+migration:
+  - migrations/0001_tables.db
+  - migrations/0002_results_sum_type.db
+```
+
+Для изменения доступны следующие параметры в блоке `default_configuration`:
+
+- `clear_intermediate` — признак удаления промежуточных результатов
+- `complete_batch_size` — размер пакета для записи окончательных результатов расчета
+- `complete_pool_size` — количество вершин (узлов расчета), одновременно сохраняющих окончательные результаты
+- `difference_limit` — размер общей допустимой погрешности. Если сумма входящих затрат во всех вершинах в начале очередного шага будет меньше значения этого параметра, расчет завершится
+- `iterations_limit` — ограничение на число записей, которые обработает отдельный узел расчета перед тем, как отдать управление другому узлу
+- `max_step` — максимально число итераций расчета
+- `node_difference_limit` — аналогично `difference_limit`, но для отдельной вершины (узла расчета)
+- `results_allocation_only` — сохранять в результате только распределенные затраты, без учета плановых сумм (базы распределения)
+- `step_batch_size` — размер пакета для записи промежуточных результатов
+- `step_pool_size` — количество вершин (узлов расчета), выполняющих расчет одновременно
 
 ## Управление действиями плагина {: #silver_cli }
 
@@ -108,6 +149,9 @@ ALTER PLUGIN silver 0.6.1 ENABLE;
 Picodata, то выполнение итераций производится параллельно, что позволяет
 ускорить общее время расчета. При этом, результаты отдельной итерации
 записываются в таблицу промежуточных результатов.
+
+!!! note "Примечание"
+    Все рассчитанные суммы округляются до копеек (2 знака после запятой).
 
 ### Начальные данные {: #incoming_data }
 
