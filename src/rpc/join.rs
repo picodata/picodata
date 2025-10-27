@@ -38,9 +38,9 @@ crate::define_rpc_request! {
     fn proc_raft_join(req: Request) -> Result<Response> {
         crate::error_injection!(block "BLOCK_PROC_RAFT_JOIN");
 
+        tlog!(Info, "received join request {req:?}");
         let res = handle_join_request_and_wait(req, TIMEOUT)?;
 
-        tlog!(Info, "new instance joined the cluster: {:?}", res.instance);
         Ok(res)
     }
 
@@ -155,6 +155,11 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
 
             drop(guard);
 
+            tlog!(
+                Info,
+                "joined instance requested to join again: {instance:?}"
+            );
+
             return Ok(Response {
                 instance: Box::new(instance),
                 peer_addresses,
@@ -245,6 +250,8 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
         replication_addresses.insert(req.advertise_address.clone());
 
         drop(guard);
+
+        tlog!(Info, "new instance joined the cluster: {instance:?}");
 
         return Ok(Response {
             instance: instance.into(),
