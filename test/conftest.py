@@ -2456,13 +2456,13 @@ class Cluster:
             try:
                 raft_info = peer.call(".proc_raft_info")
                 self.peer = peer
-            except ProcessDead:
+            except (ProcessDead, ConnectionRefusedError):
                 pass
 
         if not raft_info and self.peer:
             try:
                 raft_info = self.peer.call(".proc_raft_info")
-            except ProcessDead:
+            except (ProcessDead, ConnectionRefusedError):
                 self.peer = None
 
         if not raft_info:
@@ -2471,7 +2471,7 @@ class Cluster:
                     raft_info = instance.call(".proc_raft_info")
                     self.peer = instance
                     break
-                except ProcessDead:
+                except (ProcessDead, ConnectionRefusedError):
                     pass
 
         assert raft_info, "no instances alive, are you sure the cluster is deployed?"
