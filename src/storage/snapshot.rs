@@ -404,7 +404,7 @@ impl Catalog {
             )?;
             self.apply_schema_changes_on_master(self.users.iter()?, &old_user_versions)?;
             self.apply_schema_changes_on_master(self.privileges.iter()?, &old_priv_versions)?;
-            set_local_schema_version(v_snapshot)?;
+            set_local_schema_version(v_snapshot, "snapshot")?;
 
             tlog!(
                 Debug,

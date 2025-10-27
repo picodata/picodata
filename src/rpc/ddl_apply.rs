@@ -311,7 +311,7 @@ pub fn apply_schema_change(
         }
     }
 
-    if let Err(e) = set_local_schema_version(version) {
+    if let Err(e) = set_local_schema_version(version, "DDL") {
         return Err(Error::Aborted(e.into()));
     }
 

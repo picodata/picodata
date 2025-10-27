@@ -4,6 +4,8 @@ use crate::schema::{fields_to_format, Distribution, PrivilegeType, SchemaObjectT
 use crate::schema::{IndexDef, IndexOption};
 use crate::schema::{PrivilegeDef, RoutineDef, UserDef};
 use crate::schema::{ADMIN_ID, PUBLIC_ID, UNIVERSE_ID};
+#[allow(unused_imports)]
+use crate::storage::local_schema_version;
 use crate::storage::Catalog;
 use crate::storage::RoutineId;
 use crate::storage::{set_local_schema_version, space_by_id_unchecked};
@@ -101,12 +103,17 @@ pub fn ddl_abort_on_master(storage: &Catalog, ddl: &Ddl, version: u64) -> traft:
             sys_index.delete(&[id, 1])?;
             sys_index.delete(&[id, 0])?;
             sys_space.delete(&[id])?;
-            set_local_schema_version(version)?;
         }
 
         Ddl::DropTable { .. } => {
             // Actual drop happens only on commit, so there's nothing to abort.
             crate::vshard::enable_rebalancer()?;
+
+            // When doing DROP TABLE we update local schema version when
+            // applying the DdlCommit raft op unlike other DDL operations.
+            // This means that during DdlAbort local schema version should already be up to date
+            debug_assert_eq!(version, local_schema_version()?);
+            return Ok(());
         }
         Ddl::RenameTable {
             table_id,
@@ -114,7 +121,6 @@ pub fn ddl_abort_on_master(storage: &Catalog, ddl: &Ddl, version: u64) -> traft:
             ..
         } => {
             ddl_rename_table_on_master(table_id, old_name)?;
-            set_local_schema_version(version)?;
         }
         Ddl::TruncateTable { .. } => {
             unreachable!("TRUNCATE execution should not reach `ddl_abort_on_master` call")
@@ -122,11 +128,16 @@ pub fn ddl_abort_on_master(storage: &Catalog, ddl: &Ddl, version: u64) -> traft:
 
         Ddl::CreateProcedure { id, .. } => {
             sys_func.delete(&[id])?;
-            set_local_schema_version(version)?;
         }
 
         Ddl::DropProcedure { .. } => {
             // Actual drop happens only on commit, so there's nothing to abort.
+            //
+            // When doing DROP PROCEDURE we update local schema version when
+            // applying the DdlCommit raft op unlike other DDL operations.
+            // This means that during DdlAbort local schema version should already be up to date
+            debug_assert_eq!(version, local_schema_version()?);
+            return Ok(());
         }
 
         Ddl::RenameProcedure {
@@ -135,18 +146,22 @@ pub fn ddl_abort_on_master(storage: &Catalog, ddl: &Ddl, version: u64) -> traft:
             ..
         } => {
             ddl_rename_function_on_master(storage, routine_id, old_name)?;
-            set_local_schema_version(version)?;
         }
 
         Ddl::CreateIndex {
             space_id, index_id, ..
         } => {
             sys_index.delete(&[space_id, index_id])?;
-            set_local_schema_version(version)?;
         }
 
         Ddl::DropIndex { .. } => {
             // Actual drop happens only on commit, so there's nothing to abort.
+            //
+            // When doing DROP INDEX we update local schema version when
+            // applying the DdlCommit raft op unlike other DDL operations.
+            // This means that during DdlAbort local schema version should already be up to date
+            debug_assert_eq!(version, local_schema_version()?);
+            return Ok(());
         }
 
         Ddl::ChangeFormat {
@@ -156,9 +171,10 @@ pub fn ddl_abort_on_master(storage: &Catalog, ddl: &Ddl, version: u64) -> traft:
             ..
         } => {
             ddl_change_format_on_master(table_id, old_format)?;
-            set_local_schema_version(version)?;
         }
     }
+
+    set_local_schema_version(version, "DDL Abort")?;
 
     Ok(())
 }

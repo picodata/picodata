@@ -3529,6 +3529,7 @@ pub(in crate::storage) fn ignore_only_error(
 // local schema version
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Gets the 'local_schema_version' field from '_schema' system space.
 pub fn local_schema_version() -> tarantool::Result<u64> {
     let space_schema = Space::from(SystemSpace::Schema);
     let tuple = space_schema.get(&["local_schema_version"])?;
@@ -3541,10 +3542,15 @@ pub fn local_schema_version() -> tarantool::Result<u64> {
     Ok(res)
 }
 
-pub fn set_local_schema_version(v: u64) -> tarantool::Result<()> {
+/// Sets the 'local_schema_version' field in '_schema' system space to `v`.
+/// `reason` is used to log a message for debug purposes.
+pub fn set_local_schema_version(v: u64, reason: &str) -> tarantool::Result<()> {
     let space_schema = Space::from(SystemSpace::Schema);
     space_schema.replace(&("local_schema_version", v))?;
-    tlog!(Info, "Updated local_schema_version to {v}");
+    tlog!(
+        Info,
+        "Updated local_schema_version to {v} (reason: {reason})"
+    );
     Ok(())
 }
 

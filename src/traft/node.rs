@@ -1187,6 +1187,11 @@ impl NodeImpl {
                             Ok(_) => {}
                         }
                     }
+                } else if self.is_readonly() {
+                    tlog!(
+                        Info,
+                        "local_schema_version = {v_local} (replica, ddl commit)"
+                    );
                 }
 
                 // Update pico metadata.
@@ -1842,8 +1847,11 @@ impl NodeImpl {
                             }
                             Acl::AuditPolicy { .. } => {}
                         }
-                        set_local_schema_version(v_pending).expect("storage should not fail");
+                        set_local_schema_version(v_pending, "ACL")
+                            .expect("storage should not fail");
                     }
+                } else if self.is_readonly() {
+                    tlog!(Info, "local_schema_version = {v_local} (replica, acl)");
                 }
 
                 match &acl {
