@@ -383,9 +383,8 @@ impl Cfg {
                 tls_config,
             )),
 
-            // If we're joining to an existing replicaset,
-            // then we're the follower.
-            read_only: replication_cfg.len() > 1,
+            // Raft leader determines who is booting up in read_only mode.
+            read_only: !resp.is_master,
 
             // Always contains the current instance.
             replication: replication_cfg,

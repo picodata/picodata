@@ -66,6 +66,15 @@ crate::define_rpc_request! {
         /// Replication sources in a replica set that the joining instance will belong to.
         /// See [tarantool documentation](https://www.tarantool.io/en/doc/latest/reference/configuration/#confval-replication)
         pub box_replication: Vec<Address>,
+        /// If `true` the joining instance is the master of the new replicaset.
+        /// Currently it's only possible for the joining instance to be the
+        /// master if it's the first instance in the replicaset.
+        ///
+        /// NOTE: It's possible for multiple instances to be joining at the same
+        /// time in case some of them crash and restart during bootstrap.
+        /// For that reason we must explicitly specify which of the joining
+        /// instance's is the master.
+        pub is_master: bool,
         pub shredding: bool,
         pub cluster_uuid: String,
     }
@@ -153,6 +162,10 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             let mut replication_addresses = storage.peer_addresses.addresses_by_ids(replicas)?;
             replication_addresses.insert(req.advertise_address.clone());
 
+            let topology_ref = node.topology_cache.get();
+            let replicaset = topology_ref.replicaset_by_uuid(&instance.replicaset_uuid)?;
+            let is_master = replicaset.target_master_name == instance.name;
+
             drop(guard);
 
             tlog!(
@@ -164,6 +177,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
                 instance: Box::new(instance),
                 peer_addresses,
                 box_replication: replication_addresses.into_iter().collect(),
+                is_master,
                 shredding: storage.db_config.shredding()?.expect("should be set"),
                 cluster_uuid,
             });
@@ -249,6 +263,10 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
         let mut replication_addresses = storage.peer_addresses.addresses_by_ids(replicas)?;
         replication_addresses.insert(req.advertise_address.clone());
 
+        let topology_ref = node.topology_cache.get();
+        let replicaset = topology_ref.replicaset_by_uuid(&instance.replicaset_uuid)?;
+        let is_master = replicaset.target_master_name == instance.name;
+
         drop(guard);
 
         tlog!(Info, "new instance joined the cluster: {instance:?}");
@@ -257,6 +275,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             instance: instance.into(),
             peer_addresses,
             box_replication: replication_addresses.into_iter().collect(),
+            is_master,
             shredding: storage.db_config.shredding()?.expect("should be set"),
             cluster_uuid,
         });

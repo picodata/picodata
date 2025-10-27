@@ -36,6 +36,15 @@ with the `YY.MINOR.MICRO` scheme.
 - Fix `use-after-poison` in `proc_sql_execute`.
 - Fixed a bug which made the effective value of `pg_portal_max` be the same as `pg_statement_max`
 - Fix trigger execution and privilege initialization for scram-sha256 auth in pgproto.
+- Fixed possible ER_BOOTSTRAP_READONLY failure during instance bootstrap.
+- Fixed a possible bootstrap failure when joining multiple instances at the same
+  time. NOTE: The fix requires modifying the proc_raft_join RPC response format
+  which technically breaks compatibility with previous versions of picodata.
+  However picodata explicitly doesn't support heterogeneous joins (when version
+  of joining instances mismatches version of cluster), so this shouldn't be a
+  problem for anybody. NOTE also that this doesn't affect restarting already
+  instances which already joined the cluster.
+
 
 ### WebUI
 - Login form and simple session control
