@@ -1742,8 +1742,12 @@ fn postjoin(
         #[rustfmt::skip]
         tlog!(Info, "this is the only voter in cluster, triggering election immediately");
 
-        node.tick_and_yield(1); // apply configuration, if any
-        node.campaign_and_yield().ok(); // trigger election immediately
+        // apply configuration, if any
+        node.tick_and_yield(1);
+        // trigger election immediately
+        if let Err(e) = node.campaign_and_yield() {
+            tlog!(Warning, "failed to trigger raft election: {e}");
+        }
         assert!(node.status().raft_state.is_leader());
     }
 
@@ -1844,17 +1848,7 @@ fn postjoin(
             );
 
             // Leader has been unknown for too long
-            let election_timeout_expired = fiber::clock() >= next_election_try;
-
-            // When a raft node is initialized the term is set to 0, but it's
-            // increased as soon as a raft configuration is applied. So term = 0
-            // means that this node has not seen any configuration changes yet
-            // and it makes no sense trying to promote to leader (actually
-            // it makes sense NOT to promote, as there are some `.unwrap()`
-            // calls in raft-rs which will panic in this case).
-            let seen_configuration_changes = node.status().term != 0;
-
-            if election_timeout_expired && seen_configuration_changes {
+            if fiber::clock() >= next_election_try {
                 // Normally we should get here only if the whole cluster of
                 // several instances is restarting at the same time, because
                 // otherwise the raft leader should be known and the waking up
@@ -1870,7 +1864,9 @@ fn postjoin(
                 // the pre_vote extension to the raft algorithm which is used in
                 // picodata.
                 tlog!(Info, "leader not known for too long, trying to promote");
-                node.campaign_and_yield().ok();
+                if let Err(e) = node.campaign_and_yield() {
+                    tlog!(Warning, "failed to start raft election: {e}");
+                }
                 next_election_try = fiber::clock().saturating_add(election_timeout);
             }
 

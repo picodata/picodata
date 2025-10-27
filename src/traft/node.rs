@@ -702,8 +702,22 @@ impl NodeImpl {
         Ok(entry_id)
     }
 
-    pub fn campaign(&mut self) -> Result<(), RaftError> {
-        self.raw_node.campaign()
+    pub fn campaign(&mut self) -> traft::Result<()> {
+        // When a raft node is initialized the term is set to 0, but it's
+        // increased as soon as a raft configuration is applied. So term = 0
+        // means that this node has not seen any configuration changes yet
+        // and it makes no sense trying to promote to leader (actually
+        // it makes sense NOT to promote, as there are some `.unwrap()`
+        // calls in raft-rs which will panic in this case).
+        if self.status.get().term == 0 {
+            return Err(
+                to_error_other("initial raft configuration wasn't applied yet (term = 0)").into(),
+            );
+        }
+
+        self.raw_node.campaign()?;
+
+        Ok(())
     }
 
     pub fn step(&mut self, msg: RaftMessageExt) -> Result<(), RaftError> {
