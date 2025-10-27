@@ -36,7 +36,7 @@ use super::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
 use super::types::{CastType, DerivedType};
 use super::value::Value;
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Default, Debug, PartialEq, Serialize, Clone)]
 enum ColExpr {
     Parentheses(Box<ColExpr>),
     Alias(Box<ColExpr>, SmolStr),
@@ -64,6 +64,7 @@ enum ColExpr {
     ),
     Trim(Option<TrimKind>, Option<Box<ColExpr>>, Box<ColExpr>),
     Row(Row),
+    #[default]
     None,
 }
 
@@ -157,12 +158,6 @@ impl Display for ColExpr {
 impl From<&ColExpr> for String {
     fn from(s: &ColExpr) -> Self {
         s.to_string()
-    }
-}
-
-impl Default for ColExpr {
-    fn default() -> Self {
-        Self::None
     }
 }
 

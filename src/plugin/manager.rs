@@ -734,8 +734,8 @@ impl PluginManager {
         drop(plugins);
 
         // stop all background jobs and remove metrics first
-        self.stop_background_jobs(&[service_to_del.clone()]);
-        self.remove_metrics_handlers(&[service_to_del.clone()]);
+        self.stop_background_jobs(std::slice::from_ref(&service_to_del));
+        self.remove_metrics_handlers(std::slice::from_ref(&service_to_del));
 
         // call `on_stop` callback and drop service
         stop_service(&service_to_del, &ctx);

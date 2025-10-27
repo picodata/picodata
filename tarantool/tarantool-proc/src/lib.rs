@@ -593,11 +593,11 @@ mod msgpack {
                     met_option = true;
                     decode_unnamed_optional_field(f, i, tarantool_crate, &mut var_names)
                 } else if met_option && allow_array_optionals {
-                    return syn::Error::new(
+                    syn::Error::new(
                         f.span(),
                         "optional fields must be the last in the parameter list with `allow_array_optionals` attribute",
                     )
-                    .to_compile_error();
+                    .to_compile_error()
                 } else {
                     decode_unnamed_required_field(f, i, tarantool_crate, &mut var_names)
                 }

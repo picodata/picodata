@@ -27,7 +27,6 @@ use super::Port;
 use tarantool::msgpack;
 use tarantool::tuple::TupleBuilder;
 
-type ShardingKey = Vec<Value>;
 pub type VTableTuple = Vec<Value>;
 
 /// Helper struct to group tuples by buckets.
@@ -62,9 +61,6 @@ impl From<HashMap<u64, Vec<usize>, RepeatableState>> for VTableIndex {
         Self { value }
     }
 }
-
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-struct ShardingRecord(ShardingKey, usize);
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct VirtualTableMeta {

@@ -596,7 +596,7 @@ impl Index {
     ///
     /// Return new index metadata from system `_index` space.
     #[inline]
-    pub fn rename(&self, new_name: &str) -> Result<Metadata, Error> {
+    pub fn rename(&self, new_name: &str) -> Result<Metadata<'_>, Error> {
         let sys_index = SystemSpace::Index.as_space();
         const BOX_INDEX_FIELD_NAME: u64 = 2;
         let mut ops = UpdateOps::new();

@@ -137,9 +137,6 @@ lint-rs:
 	cargo clippy \
 		$(LOCKED) $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) \
 		--features=load_test,error_injection \
-		--exclude tarantool \
-		--exclude tarantool-proc \
-		--exclude tlua \
 		-- --deny clippy::all --no-deps
 
 	RUSTDOCFLAGS="-Dwarnings -Arustdoc::private_intra_doc_links" \

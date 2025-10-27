@@ -153,8 +153,8 @@ pub enum Error {
 ///
 /// `is_commit` is
 /// - `false` when called from [`proc_apply_schema_change`] RPC by governor
-/// - `ture` when called from `handle_committed_normal_entry` in `raft_main_loop`
-///          when applying a [`DdlCommit`] raft entry
+/// - `true` when called from `handle_committed_normal_entry` in `raft_main_loop`
+///   when applying a [`DdlCommit`] raft entry
 ///
 /// [`DdlCommit`]: crate::traft::op::Op::DdlCommit
 pub fn apply_schema_change(
