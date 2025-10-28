@@ -3291,8 +3291,6 @@ def test_sql_acl_privileges(cluster: Cluster):
 
     # =========================ERRORs======================
     # Attempt to grant unsupported privileges.
-    with pytest.raises(TarantoolError, match=r"Supported privileges are: \[Read, Write, Alter, Drop\]"):
-        i1.sql(f""" grant create on table {table_name} to {username} """)
     with pytest.raises(TarantoolError, match=r"Supported privileges are: \[Create, Alter, Drop\]"):
         i1.sql(f""" grant read user to {username} """)
     with pytest.raises(TarantoolError, match=r"Supported privileges are: \[Alter, Drop\]"):
@@ -3473,6 +3471,10 @@ def test_sql_acl_privileges(cluster: Cluster):
     acl = i1.sql(f""" revoke create table from {username} """, sudo=True)
     assert acl["row_count"] == 1
     # * TODO: Creation is not available again.
+    acl = i1.sql(f""" grant create on table {table_name} to {username} """, sudo=True)
+    assert acl["row_count"] == 1
+    acl = i1.sql(f""" revoke create on table {table_name} from {username} """, sudo=True)
+    assert acl["row_count"] == 1
     # ------------------ALTER--------------------------------
     # * TODO: Unable to create new table index.
     # * Grant ALTER to user.

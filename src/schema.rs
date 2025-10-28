@@ -1142,7 +1142,7 @@ impl PrivilegeDef {
 
         let valid_privileges: &[PrivilegeType] = match privilege_def.object_type {
             SchemaObjectType::Table => match privilege_def.object_id() {
-                Some(_) => &[Read, Write, Alter, Drop],
+                Some(_) => &[Read, Write, Create, Alter, Drop],
                 None => &[Read, Write, Create, Alter, Drop],
             },
             SchemaObjectType::Role => match privilege_def.object_id() {
@@ -2948,7 +2948,7 @@ mod test {
         check_object_privilege(SchemaObjectType::Table, valid, -1);
 
         // particular table
-        let valid = &[Read, Write, Alter, Drop];
+        let valid = &[Read, Write, Create, Alter, Drop];
         check_object_privilege(SchemaObjectType::Table, valid, 42);
 
         // user

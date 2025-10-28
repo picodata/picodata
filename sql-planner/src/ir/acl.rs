@@ -137,6 +137,7 @@ impl GrantRevokeType {
             &[
                 Privilege::Read,
                 Privilege::Write,
+                Privilege::Create,
                 Privilege::Alter,
                 Privilege::Drop,
             ],

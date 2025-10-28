@@ -136,3 +136,41 @@ def test_access_sharded_table(cluster: Cluster):
         match="Write access to space 'wonderland' is denied for user 'bob'",
     ):
         i1.sql("""insert into "wonderland" values ('snail', 1)""", **as_bob)
+
+
+def test_grant_create_index_on_specific_table(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=2)
+
+    i1.sql("CREATE USER alice WITH PASSWORD 'T0psecret' USING chap-sha1")
+
+    with pytest.raises(
+        TarantoolError,
+        match="Create access to space 'mytable' is denied for user 'alice'",
+    ):
+        i1.sql("CREATE TABLE mytable (id int, text text, PRIMARY KEY (id)) DISTRIBUTED BY (id)", **as_alice)
+
+    i1.sql("CREATE TABLE mytable (id int, text text, PRIMARY KEY (id)) DISTRIBUTED BY (id)")
+
+    with pytest.raises(
+        TarantoolError,
+        match="Create access to space 'mytable' is denied for user 'alice'",
+    ):
+        i1.sql("CREATE INDEX myindex ON mytable USING TREE (text)", **as_alice)
+
+    i1.sql("GRANT CREATE ON TABLE mytable TO alice")
+
+    i1.sql("CREATE INDEX myindex ON mytable USING TREE (text)", **as_alice)
+    assert i1.sql("SELECT name FROM _pico_index WHERE name = 'myindex'") == [["myindex"]]
+
+    with pytest.raises(
+        TarantoolError,
+        match="Drop access to space 'mytable' is denied for user 'alice'",
+    ):
+        i1.sql("DROP INDEX myindex", **as_alice)
+
+    i1.sql("REVOKE CREATE ON TABLE mytable FROM alice")
+    with pytest.raises(
+        TarantoolError,
+        match="Create access to space 'mytable' is denied for user 'alice'",
+    ):
+        i1.sql("CREATE INDEX myindex2 ON mytable USING TREE (text)", **as_alice)

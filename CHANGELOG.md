@@ -40,6 +40,9 @@ with the `YY.MINOR.MICRO` scheme.
 ### WebUI
 - Login form and simple session control
 
+### ACL
+- Support granting CREATE privilege on specific table.
+
 ### SQL
 - Support indexing arrays, i.e. `a[1][2]` expressions.
 - Support indexing maps with string keys, i.e. `m['key']` expressions.

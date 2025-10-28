@@ -150,7 +150,7 @@ revoke      ::= 'REVOKE' (
                     | (('CREATE' | 'DROP') 'ROLE')
                     | ('DROP' 'ON' 'ROLE' role)
                     | (('CREATE' | 'ALTER' | 'DROP' | 'READ' | 'WRITE') 'TABLE')
-                    | (('ALTER' | 'DROP' | 'READ' | 'WRITE') 'ON' 'TABLE' table)
+                    | (('CREATE' | 'ALTER' | 'DROP' | 'READ' | 'WRITE') 'ON' 'TABLE' table)
                     | (('CREATE' | 'EXECUTE' | 'DROP') 'PROCEDURE')
                     | (('EXECUTE' | 'DROP') 'ON' 'PROCEDURE' procedure ('(' unrestricted_type (',' type)* ')')?)
                     | role
@@ -162,7 +162,7 @@ grant       ::= 'GRANT' (
                     | (('CREATE' | 'DROP') 'ROLE')
                     | ('DROP' 'ON' 'ROLE' role)
                     | (('CREATE' | 'ALTER' | 'DROP' | 'READ' | 'WRITE') 'TABLE')
-                    | (('ALTER' | 'DROP' | 'READ' | 'WRITE') 'ON' 'TABLE' table)
+                    | (('CREATE' | 'ALTER' | 'DROP' | 'READ' | 'WRITE') 'ON' 'TABLE' table)
                     | (('CREATE' | 'EXECUTE' | 'DROP') 'PROCEDURE')
                     | (('EXECUTE' | 'DROP') 'ON' 'PROCEDURE' procedure ('(' unrestricted_type (',' unrestricted_type)* ')')?)
                     | role
