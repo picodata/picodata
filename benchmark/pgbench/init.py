@@ -67,12 +67,37 @@ def main():
     # Populate pgbench_accounts table
     print("Populating pgbench_accounts...")
     batch = 1000
+    values_per_query = 64
+
     with conn.pipeline() as pipeline:
+        # batch rows so we can execute less queries
+        rows = []
         for aid in tqdm(range(naccounts * scale)):
-            conn.execute("INSERT INTO pgbench_accounts(aid, bid, abalance, filler) VALUES (%(aid)s::int, (%(aid)s::int - 1) / %(naccounts)s::int + 1, 0, '')",
-                         {"aid": aid, "naccounts": naccounts})
+            bid = (aid - 1) // naccounts + 1
+            rows.append((aid, bid))
+
+            if len(rows) == values_per_query:
+                placeholders = ", ".join(["(%s::int, %s::int, 0, '')"] * len(rows))
+                params = [x for row in rows for x in row]
+                conn.execute(
+                    f"INSERT INTO pgbench_accounts(aid, bid, abalance, filler) VALUES {placeholders}",
+                    params,
+                )
+                rows.clear()
+
             if aid % batch == 0:
                 pipeline.sync()
+
+        if rows:
+            placeholders = ", ".join(["(%s::int, %s::int, 0, '')"] * len(rows))
+            params = [x for row in rows for x in row]
+            conn.execute(
+                f"INSERT INTO pgbench_accounts(aid, bid, abalance, filler) VALUES {placeholders}",
+                params,
+            )
+            rows.clear()
+
+        pipeline.sync()
 
     print("Initialization complete!")
 
