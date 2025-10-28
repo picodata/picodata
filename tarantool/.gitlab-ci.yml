@@ -20,22 +20,9 @@ stages:
   - build-base-image
   - test
 
-workflow:
-  # See https://docs.gitlab.com/ee/ci/jobs/job_control.html#avoid-duplicate-pipelines
-  # https://docs.gitlab.com/ci/pipelines/downstream_pipelines/run-child-pipelines-with-merge-request-pipelines
-  # In child pipelines, $CI_PIPELINE_SOURCE always has a value of parent_pipeline
-  rules:
-    # To avoid duplicate pipelines we disable merge request events,
-    # leaving only pushes and manual triggering.
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      when: never
-    - if: $CI_PIPELINE_SOURCE == "push"
-    - if: $CI_PIPELINE_SOURCE == "web"
-    - if: $CI_PIPELINE_SOURCE == "pipeline"
-    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
-
-
-
+# for downstream pipeline in same repository $CI_PIPELINE_SOURCE == "parent_pipeline"
+# if we want to check for external triggers we should check $PARENT_CI_PIPELINE_SOURCE
+# passed from parent pipeline
 
 
 variables:
@@ -71,21 +58,21 @@ variables:
 #
 .rules:
   - &if-build-base-changes-on-master-branch
-    if: ($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH) && ($CI_PIPELINE_SOURCE != "pipeline")
+    if: ($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH) && ($PARENT_CI_PIPELINE_SOURCE != "pipeline")
     changes:
       # implies compare_to HEAD~1
       paths: &build-base-changes-paths
-        - docker/**
-        - .gitlab-ci.yml
+        - tarantool/docker/**
+        - tarantool/.gitlab-ci.yml
 
   - &if-build-base-changes-on-dev-branch
-    if: ($CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH) && ($CI_PIPELINE_SOURCE != "pipeline")
+    if: ($CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH) && ($PARENT_CI_PIPELINE_SOURCE != "pipeline")
     changes:
       compare_to: master
       paths: *build-base-changes-paths
     # Если запущено через родительский downstream trigger
   - &if-triggered
-    if: $CI_PIPELINE_SOURCE == "pipeline"
+    if: $PARENT_CI_PIPELINE_SOURCE == "pipeline"
 
   - &else {}
 

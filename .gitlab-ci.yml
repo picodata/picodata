@@ -176,6 +176,9 @@ tarantool-module-trigger:
   # Anyway this child pipeline always was independent, it does not need variables from this file.
   inherit:
     variables: false
+  variables:
+    TARANTOOL_VERSION: $TARANTOOL_VERSION
+    PARENT_CI_PIPELINE_SOURCE: $CI_PIPELINE_SOURCE
   trigger:
     include: tarantool/.gitlab-ci.yml
     strategy: depend
