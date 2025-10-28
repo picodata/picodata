@@ -284,7 +284,7 @@ impl PoolWorker {
                                 if let Some(instance_reachability) = &instance_reachability {
                                     instance_reachability
                                         .borrow_mut()
-                                        .report_communication_result(raft_id, is_connected, None);
+                                        .report_communication_result(raft_id, is_connected, None, None);
                                 }
                             }
                         }

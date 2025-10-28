@@ -57,7 +57,6 @@ use crate::traft::error::Error;
 use crate::traft::network::WorkerOptions;
 use crate::traft::op::PluginRaftOp;
 use crate::traft::op::{Acl, Ddl, Dml, Op};
-use crate::traft::ConnectionPool;
 use crate::traft::Flags;
 use crate::traft::LogicalClock;
 use crate::traft::RaftEntryId;
@@ -66,6 +65,7 @@ use crate::traft::RaftIndex;
 use crate::traft::RaftMessageExt;
 use crate::traft::RaftSpaceAccess;
 use crate::traft::RaftTerm;
+use crate::traft::{ConnectionPool, RaftMessageFlags};
 use crate::unwrap_ok_or;
 use crate::unwrap_some_or;
 use crate::util::NoYieldsRefCell;
@@ -2313,6 +2313,10 @@ impl NodeImpl {
                 }
             }
 
+            if self.raw_node.raft.leader_id == INVALID_ID {
+                msg.flags |= Flags::LEADER_UNKNOWN;
+            }
+
             if let Err(e) = self.pool.send(msg) {
                 tlog!(Error, "{e}");
             }
@@ -3341,7 +3345,12 @@ fn proc_raft_interact(data: RawByteBuf) -> traft::Result<()> {
 
     node.instance_reachability
         .borrow_mut()
-        .report_communication_result(msg.inner.from, true, Some(msg.applied));
+        .report_communication_result(
+            msg.inner.from,
+            true,
+            Some(msg.applied),
+            Some(msg.flags.contains(RaftMessageFlags::LEADER_UNKNOWN)),
+        );
 
     node.step_and_yield(msg);
 

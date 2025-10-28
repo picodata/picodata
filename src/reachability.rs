@@ -59,6 +59,7 @@ impl InstanceReachabilityManager {
         raft_id: RaftId,
         success: bool,
         applied: Option<RaftIndex>,
+        is_leader_unknown: Option<bool>,
     ) {
         let now = fiber::clock();
         let info = self.infos.entry(raft_id).or_default();
@@ -68,6 +69,10 @@ impl InstanceReachabilityManager {
         // sent to it, so raft node state may have changed and another
         // report_unreachable me be needed.
         info.is_reported = false;
+
+        if let Some(is_leader_unknown) = is_leader_unknown {
+            info.is_leader_unknown = is_leader_unknown;
+        }
 
         if success {
             info.last_success = Some(now);
@@ -222,6 +227,12 @@ impl InstanceReachabilityManager {
         if info.fail_streak == 0 {
             // we want to reduce the amount of traffic sent to online learners
             if let Some(last_attempt) = info.last_attempt {
+                // Do not delay heartbeats to nodes that claim to not know who the leader is
+                // The heartbeat is required for them to learn that we are the leader
+                if info.is_leader_unknown {
+                    return true;
+                }
+
                 if is_learner {
                     let learner_heartbeat_period = self.auto_offline_timeout.get() / 3;
 
@@ -298,5 +309,9 @@ pub struct InstanceReachabilityInfo {
     /// this index changed.
     pub last_applied_index: Option<(RaftIndex, Instant)>,
 
+    /// The node claims to not know who the leader is.
+    ///
+    /// Do not delay heartbeats to it, so it can learn that we are the leader.
+    pub is_leader_unknown: bool,
     pub is_reported: bool,
 }
