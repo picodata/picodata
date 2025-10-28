@@ -288,16 +288,16 @@ def test_gostech_auth(
         sudo=True,
     )
 
-    with instance.connect(4, user="ymir", password="T0psecret"):
+    with instance.connect(timeout=4, user="ymir", password="T0psecret"):
         pass
 
     for _ in range(MAX_LOGIN_ATTEMPTS):
         with pytest.raises(NetworkError, match="User not found or supplied credentials are invalid"):
-            with instance.connect(4, user="ymir", password="wrong_pwd"):
+            with instance.connect(timeout=4, user="ymir", password="wrong_pwd"):
                 pass
 
     with pytest.raises(NetworkError, match="Maximum number of login attempts exceeded"):
-        with instance.connect(4, user="ymir", password="Wr0ng_pwd"):
+        with instance.connect(timeout=4, user="ymir", password="Wr0ng_pwd"):
             pass
 
     event = audit.take_until_name("auth_ok")

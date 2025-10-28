@@ -6,17 +6,18 @@ import pg8000.dbapi as pg  # type: ignore
 import psycopg
 
 from typing import Generator
-
-from tarantool.error import (  # type: ignore
-    NetworkError,
-)
-
 from conftest import (
     MAX_LOGIN_ATTEMPTS,
     Instance,
     Cluster,
     Retriable,
 )
+
+
+# Auth methods that don't require requests to remote servers (e.g. LDAP).
+# TODO: maybe we should add chap-sha1 to pgproto via plain text auth.
+LOCAL_AUTH_METHODS = ["scram-sha256", "chap-sha1", "md5"]
+LOCAL_AUTH_METHODS_PGPROTO = [x for x in LOCAL_AUTH_METHODS if x != "chap-sha1"]
 
 
 @pytest.fixture
@@ -191,19 +192,20 @@ def test_create_drop_table(instance_with_audit_file: Instance):
     assert drop_table["initiator"] == "pico_service"
 
 
-def test_user(instance_with_audit_file: Instance):
+@pytest.mark.parametrize("auth_method", LOCAL_AUTH_METHODS_PGPROTO)
+def test_user(auth_method: str, instance_with_audit_file: Instance):
     instance = instance_with_audit_file
     instance.start()
     instance.sql(
-        """
-        create user "ymir" with password 'T0psecret' using chap-sha1
+        f"""
+        create user "ymir" with password 'T0psecret' using {auth_method}
         """
     )
     # TODO user cant change password without access to _pico_property
     # https://git.picodata.io/picodata/picodata/picodata/-/issues/449
     instance.sql(
-        """
-        alter user "ymir" password 'Topsecre1' using chap-sha1
+        f"""
+        alter user "ymir" password 'Topsecre1' using {auth_method}
         """,
         sudo=True,
     )
@@ -219,7 +221,7 @@ def test_user(instance_with_audit_file: Instance):
     create_user = take_until_title(events, "create_user")
     assert create_user is not None
     assert create_user["user"] == "ymir"
-    assert create_user["auth_type"] == "chap-sha1"
+    assert create_user["auth_type"] == auth_method
     assert create_user["message"] == f"created user `{create_user['user']}`"
     assert create_user["severity"] == "high"
     assert create_user["initiator"] == "pico_service"
@@ -227,7 +229,7 @@ def test_user(instance_with_audit_file: Instance):
     change_password = take_until_title(events, "change_password")
     assert change_password is not None
     assert change_password["user"] == "ymir"
-    assert change_password["auth_type"] == "chap-sha1"
+    assert change_password["auth_type"] == auth_method
     assert change_password["message"] == f"password of user `{change_password['user']}` was changed"
     assert change_password["severity"] == "high"
     assert change_password["initiator"] == "admin"
@@ -240,13 +242,14 @@ def test_user(instance_with_audit_file: Instance):
     assert drop_user["initiator"] == "pico_service"
 
 
-def test_role(instance_with_audit_file: Instance):
+@pytest.mark.parametrize("auth_method", LOCAL_AUTH_METHODS_PGPROTO)
+def test_role(auth_method: str, instance_with_audit_file: Instance):
     instance = instance_with_audit_file
     instance.start()
 
     setup = [
-        """
-        create user "bubba" with password 'T0psecret' using chap-sha1
+        f"""
+        create user "bubba" with password 'T0psecret' using {auth_method}
         """,
         """
         grant create role to "bubba"
@@ -255,28 +258,28 @@ def test_role(instance_with_audit_file: Instance):
     for query in setup:
         instance.sql(query, sudo=True)
 
-    with instance.connect(timeout=1, user="bubba", password="T0psecret") as c:
-        c.sql(
+    with instance.connect_via_pgproto(user="bubba", password="T0psecret") as c:
+        c.execute(
             """
             create role "skibidi"
             """
         )
-        c.sql(
+        c.execute(
             """
             create role "dummy"
             """
         )
-        c.sql(
+        c.execute(
             """
             grant "dummy" to "skibidi"
             """
         )
-        c.sql(
+        c.execute(
             """
             revoke "dummy" from "skibidi"
             """
         )
-        c.sql(
+        c.execute(
             """
             drop role "skibidi"
             """
@@ -431,13 +434,14 @@ def test_join_connect_instance(cluster: Cluster):
     assert connect_db["initiator"] == "admin"
 
 
-def test_auth(instance_with_audit_file: Instance):
+@pytest.mark.parametrize("auth_method", LOCAL_AUTH_METHODS_PGPROTO)
+def test_auth(auth_method: str, instance_with_audit_file: Instance):
     instance = instance_with_audit_file
     instance.start()
 
     instance.sql(
-        """
-        create user "ymir" with password 'T0psecret' using chap-sha1
+        f"""
+        create user "ymir" with password 'T0psecret' using {auth_method}
         """,
         sudo=True,
     )
@@ -453,7 +457,7 @@ def test_auth(instance_with_audit_file: Instance):
         pass
     events = audit.events()
 
-    with instance.connect(4, user="ymir", password="T0psecret"):
+    with instance.connect_via_pgproto(timeout=4, user="ymir", password="T0psecret"):
         pass
 
     auth_ok = take_until_title(events, "auth_ok")
@@ -464,8 +468,8 @@ def test_auth(instance_with_audit_file: Instance):
     assert auth_ok["verdict"] == "user is not blocked"
 
     for _ in range(MAX_LOGIN_ATTEMPTS):
-        with pytest.raises(NetworkError, match="User not found or supplied credentials are invalid"):
-            with instance.connect(4, user="ymir", password="wrong_pwd"):
+        with pytest.raises(psycopg.Error, match="authentication failed for user"):
+            with instance.connect_via_pgproto(timeout=4, user="ymir", password="wrong_pwd"):
                 pass
 
         auth_fail = take_until_title(events, "auth_fail")
@@ -476,8 +480,8 @@ def test_auth(instance_with_audit_file: Instance):
         assert auth_fail["user"] == "ymir"
         assert auth_fail["initiator"] == "ymir"
 
-    with pytest.raises(NetworkError, match="Maximum number of login attempts exceeded"):
-        with instance.connect(4, user="ymir", password="Wr0ng_pwd"):
+    with pytest.raises(psycopg.Error, match="authentication failed for user"):
+        with instance.connect_via_pgproto(timeout=4, user="ymir", password="Wr0ng_pwd"):
             pass
 
     auth_fail = take_until_title(events, "auth_fail")
@@ -489,11 +493,12 @@ def test_auth(instance_with_audit_file: Instance):
     assert auth_fail["initiator"] == "ymir"
 
 
-def test_access_denied(instance_with_audit_file: Instance):
+@pytest.mark.parametrize("auth_method", LOCAL_AUTH_METHODS_PGPROTO)
+def test_access_denied(auth_method: str, instance_with_audit_file: Instance):
     instance = instance_with_audit_file
     instance.start()
 
-    instance.create_user(with_name="ymir", with_password="T0psecret", with_auth="chap-sha1")
+    instance.create_user(with_name="ymir", with_password="T0psecret", with_auth=auth_method)
 
     audit = AuditFile(instance.audit_flag_value)
     for _ in audit.events():
@@ -508,7 +513,8 @@ def test_access_denied(instance_with_audit_file: Instance):
         Exception,
         match=expected_error,
     ):
-        instance.sql('CREATE ROLE "R"', user="ymir", password="T0psecret")
+        with instance.connect_via_pgproto(user="ymir", password="T0psecret") as c:
+            c.execute('CREATE ROLE "R"')
 
     access_denied = take_until_title(events, "access_denied")
     assert access_denied is not None
@@ -520,14 +526,15 @@ def test_access_denied(instance_with_audit_file: Instance):
     assert access_denied["initiator"] == "ymir"
 
 
-def test_grant_revoke(instance_with_audit_file: Instance):
+@pytest.mark.parametrize("auth_method", LOCAL_AUTH_METHODS_PGPROTO)
+def test_grant_revoke(auth_method: str, instance_with_audit_file: Instance):
     instance = instance_with_audit_file
     instance.start()
 
     user = "ymir"
     password = "T0psecret"
 
-    instance.create_user(with_name=user, with_password=password, with_auth="chap-sha1")
+    instance.create_user(with_name=user, with_password=password, with_auth=auth_method)
 
     instance.sql(f'GRANT CREATE ROLE TO "{user}"', sudo=True)
 
@@ -595,7 +602,8 @@ def test_grant_revoke(instance_with_audit_file: Instance):
     assert revoke_privilege["initiator"] == "admin"
     assert revoke_privilege["object"] == "_pico_tier"
 
-    instance.sql('CREATE ROLE "R"', user=user, password=password)
+    with instance.connect_via_pgproto(user=user, password=password) as c:
+        c.execute('CREATE ROLE "R"')
 
     # wildcard privilege to role
     instance.sql('GRANT CREATE TABLE TO "R"', sudo=True)
@@ -656,7 +664,8 @@ def test_grant_revoke(instance_with_audit_file: Instance):
     assert revoke_privilege["object"] == "_pico_user"
 
     # role to user
-    instance.sql('GRANT "R" TO "ymir"', user=user, password=password)
+    with instance.connect_via_pgproto(user=user, password=password) as c:
+        c.execute('GRANT "R" TO "ymir"')
 
     grant_role = take_until_title(events, "grant_role")
     assert grant_role is not None
@@ -667,7 +676,8 @@ def test_grant_revoke(instance_with_audit_file: Instance):
     assert grant_role["grantee_type"] == "user"
     assert grant_role["initiator"] == "ymir"
 
-    instance.sql(f'REVOKE "R" FROM "{user}"', user=user, password=password)
+    with instance.connect_via_pgproto(user=user, password=password) as c:
+        c.execute('REVOKE "R" FROM "ymir"')
 
     revoke_role = take_until_title(events, "revoke_role")
 
@@ -680,8 +690,9 @@ def test_grant_revoke(instance_with_audit_file: Instance):
     assert revoke_role["initiator"] == user
 
     # one role to another role
-    instance.sql('CREATE ROLE "R2"', user=user, password=password)
-    instance.sql('GRANT "R" TO "R2"', user=user, password=password)
+    with instance.connect_via_pgproto(user=user, password=password) as c:
+        c.execute('CREATE ROLE "R2"')
+        c.execute('GRANT "R" TO "R2"')
 
     grant_role = take_until_title(events, "grant_role")
     assert grant_role is not None
@@ -692,7 +703,8 @@ def test_grant_revoke(instance_with_audit_file: Instance):
     assert grant_role["grantee_type"] == "role"
     assert grant_role["initiator"] == "ymir"
 
-    instance.sql('REVOKE "R" FROM "R2"', user=user, password=password)
+    with instance.connect_via_pgproto(user=user, password=password) as c:
+        c.execute('REVOKE "R" FROM "R2"')
 
     revoke_role = take_until_title(events, "revoke_role")
 

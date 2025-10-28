@@ -51,7 +51,7 @@ fn read_password_message(
     Ok(message)
 }
 
-fn auth_exchage(
+fn auth_exchange_classic(
     stream: &mut PgStream<impl io::Read + io::Write>,
     user: &str,
     auth: &AuthDef,
@@ -111,7 +111,7 @@ fn read_sasl_initial(
     Ok(bytes)
 }
 
-fn auth_exchage_sasl(
+fn do_auth_exchange_sasl(
     stream: &mut PgStream<impl io::Read + io::Write>,
     user: &str,
     secret: &ServerSecret,
@@ -154,6 +154,35 @@ fn auth_exchage_sasl(
     }
 }
 
+fn auth_exchange_sasl(
+    stream: &mut PgStream<impl io::Read + io::Write>,
+    user: &str,
+    secret: &ServerSecret,
+) -> PgResult<()> {
+    let mut main_res = Ok(());
+
+    // XXX: Use tarantool's wrapper which will perform additional
+    // checks, execute triggers and update the credentials.
+    let extra_res = auth::authenticate_ext(user, |_user, _ctx| {
+        // Now do the exchange itself and store the result.
+        main_res = do_auth_exchange_sasl(stream, user, secret);
+
+        // XXX: propagate auth result back to `authenticate_ext`
+        // in order to run correct triggers for e.g. audit.
+        main_res.is_ok()
+    })
+    // We should not expose any details to the client.
+    .map_err(|_| AuthError::for_username(user));
+
+    // XXX: throw errors in this exact order:
+    // 1. sasl-specific auth errors.
+    // 2. other errors from `authenticate_ext`.
+    main_res?;
+    extra_res?;
+
+    Ok(())
+}
+
 /// Perform exchange of authentication messages and authentication.
 /// Authentication failure is treated as an error.
 pub fn authenticate(
@@ -186,18 +215,18 @@ pub fn authenticate(
     match maybe_auth {
         Some(auth) if auth.method == AuthMethod::ScramSha256 => {
             let secret = ServerSecret::parse(&auth.data).expect("invalid AuthDef in catalog");
-            auth_exchage_sasl(stream, user, &secret)?;
+            auth_exchange_sasl(stream, user, &secret)?;
         }
         // TODO: maybe this protection should be optional.
         // If that's the case, add `if <condition>` to this branch.
         None => {
             // Use a mock to prevent timing attacks against the branch above.
             let secret = ServerSecret::mock(rand::random());
-            auth_exchage_sasl(stream, user, &secret)?;
+            auth_exchange_sasl(stream, user, &secret)?;
         }
         Some(auth) => {
             let salt = rand::random();
-            auth_exchage(stream, user, &auth, salt)?;
+            auth_exchange_classic(stream, user, &auth, salt)?;
         }
     }
 

@@ -18,13 +18,16 @@
 //! For postgres password authentication, we need to perform a PBKDF2 using
 //! PRF=HMAC-SHA2-256, producing only 1 block (32 bytes) of output key.
 
-use hmac::digest::consts::U32;
+#[allow(deprecated)]
 use hmac::digest::generic_array::GenericArray;
+
+use hmac::digest::consts::U32;
 use hmac::digest::Mac as _;
 use zeroize::Zeroize as _;
 
 /// The Psuedo-random function used during PBKDF2 and the SCRAM-SHA-256 handshake.
 pub type Prf = hmac::Hmac<sha2::Sha256>;
+#[allow(deprecated)]
 pub type Block = GenericArray<u8, U32>;
 
 pub struct Pbkdf2 {

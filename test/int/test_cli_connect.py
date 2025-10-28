@@ -132,7 +132,7 @@ def test_wrong_pass(i1: Instance):
     cli.sendline("Badpa5s")
 
     cli.expect_exact(
-        f"ERROR: connection failure for address '{i1.host}:{i1.port}': user 'testuser' not found or supplied credentials are invalid"
+        f"ERROR: connection failure for address '{i1.host}:{i1.port}': User not found or supplied credentials are invalid"
     )
     cli.expect_exact(pexpect.EOF)
 

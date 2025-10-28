@@ -1,10 +1,15 @@
-use std::os::raw::{c_char, c_int, c_uint};
+use std::os::raw::{c_char, c_int, c_uint, c_void};
 use tarantool::auth::AuthMethod;
-use tarantool::error::{BoxError, IntoBoxError, TarantoolErrorCode};
+use tarantool::error::{BoxError, TarantoolErrorCode};
 use tarantool::network::protocol::codec::{chap_sha1_prepare, ldap_prepare, md5_prepare};
 
 /// This size is required by Tarantool to work properly.
 pub(crate) const SALT_MIN_LEN: usize = 20;
+
+#[repr(C)]
+pub(crate) struct TarantoolUser {
+    _opaque: [u8; 0],
+}
 
 unsafe extern "C" {
     /// # Safety
@@ -17,7 +22,18 @@ unsafe extern "C" {
         user_len: u32,
         salt: *const u8,
         auth_info: *const u8,
-    ) -> std::ffi::c_int;
+    ) -> c_int;
+
+    /// # Safety
+    ///
+    /// - Pointers must have valid and non-null values.
+    #[link_name = "authenticate_ext"]
+    pub(crate) unsafe fn authenticate_ext_raw(
+        user: *const u8,
+        user_len: u32,
+        auth_check: extern "C-unwind" fn(user: *const TarantoolUser, ctx: *mut c_void) -> bool,
+        ctx: *mut c_void,
+    ) -> c_int;
 
     /// # Safety
     ///
@@ -27,18 +43,6 @@ unsafe extern "C" {
         #[rustfmt::skip] method: *mut TarantoolAuthMethod,
     );
 }
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    // Do not provide any specific info to prevent user probing!
-    #[error("user '{0}' not found or supplied credentials are invalid")]
-    UserNotFoundOrInvalidCreds(String),
-
-    #[error("username {0} is too big")]
-    UsernameIsTooBig(String),
-}
-
-impl IntoBoxError for Error {}
 
 /// Builds an authentication information that is used by [`crate::auth::authenticate_raw`].
 /// Password may be either clear text or hash, depending on the provided authentication method.
@@ -113,7 +117,7 @@ pub(crate) fn authenticate_inner(
     password: impl AsRef<[u8]>,
     auth_salt: [u8; 20],
     auth_method: AuthMethod,
-) -> Result<(), Error> {
+) -> Result<(), BoxError> {
     let auth_info = build_auth_info(password.as_ref(), auth_method);
     let auth_info_ptr = auth_info.as_ptr();
 
@@ -125,7 +129,7 @@ pub(crate) fn authenticate_inner(
     // SAFETY: all arguments have been validated.
     let ret = unsafe { authenticate_raw(user_ptr, user_len, salt_ptr, auth_info_ptr) };
     if ret != 0 {
-        return Err(Error::UserNotFoundOrInvalidCreds(user.to_owned()));
+        return Err(BoxError::last());
     }
 
     Ok(())
@@ -139,34 +143,29 @@ pub(crate) fn authenticate_inner(
 ///
 /// - User was not found in the list of available users.
 /// - Authentication method was not initialized for the user.
-/// - Username length is greater than `u32`.
 /// - Password is not correct for the specified user.
 ///
 /// May panic if certain invariants are not upheld.
 pub(crate) fn authenticate(
-    user_name: &str,
-    user_pass: impl AsRef<[u8]>,
-    auth_salt: Option<[u8; 4]>,
+    user: &str,
+    password: impl AsRef<[u8]>,
+    salt: Option<[u8; 4]>,
 ) -> Result<(), BoxError> {
-    const USER_NAME_MAX_LEN: usize = u32::MAX as _;
-
-    let Some(method) = determine_auth_method(user_name) else {
-        return Err(Error::UserNotFoundOrInvalidCreds(user_name.into()).into_box_error());
+    let Some(method) = determine_auth_method(user) else {
+        return Err(BoxError::new(
+            TarantoolErrorCode::PasswordMismatch,
+            "User not found or supplied credentials are invalid",
+        ));
     };
 
-    let user_name_len = user_name.len();
-    if user_name_len > USER_NAME_MAX_LEN {
-        return Err(Error::UsernameIsTooBig(user_name.into()).into_box_error());
-    }
-
-    let salt_val = auth_salt.unwrap_or_else(rand::random);
+    let salt = salt.unwrap_or_else(rand::random);
     let mut salt_buf = [0u8; SALT_MIN_LEN];
-    salt_buf[0..4].copy_from_slice(&salt_val);
+    salt_buf[0..4].copy_from_slice(&salt);
 
-    let user_pass = match method {
-        AuthMethod::ChapSha1 => chap_sha1_prepare(user_pass, &salt_buf),
-        AuthMethod::Md5 => md5_prepare(user_name, user_pass, salt_val),
-        AuthMethod::Ldap => ldap_prepare(user_pass),
+    let password = match method {
+        AuthMethod::ChapSha1 => chap_sha1_prepare(password, &salt_buf),
+        AuthMethod::Md5 => md5_prepare(user, password, salt),
+        AuthMethod::Ldap => ldap_prepare(password),
         AuthMethod::ScramSha256 => {
             return Err(BoxError::new(
                 TarantoolErrorCode::UnknownAuthMethod,
@@ -175,7 +174,46 @@ pub(crate) fn authenticate(
         }
     };
 
-    authenticate_inner(user_name, user_pass, salt_buf, method).map_err(|e| e.into_box_error())
+    authenticate_inner(user, password, salt_buf, method)
+}
+
+/// Tries to authenticate with specified username and
+/// customizable authentication logic callback.
+///
+/// # Errors
+///
+/// - User was not found in the list of available users.
+/// - ... anything `auth_check` has to offer.
+///
+/// May panic if certain invariants are not upheld.
+pub(crate) fn authenticate_ext<F>(user: &str, mut auth_check: F) -> Result<(), BoxError>
+where
+    F: FnMut(*const TarantoolUser, *mut c_void) -> bool,
+{
+    extern "C-unwind" fn trampoline<F>(user: *const TarantoolUser, ctx: *mut c_void) -> bool
+    where
+        F: FnMut(*const TarantoolUser, *mut c_void) -> bool,
+    {
+        // SAFETY: we use the same `F` throughout this impl.
+        let callback = unsafe { &mut *(ctx as *mut F) };
+        (callback)(user, ctx)
+    }
+
+    let user_ptr = user.as_ptr();
+    let user_len = user.len() as u32;
+
+    // Trampoline's generic should match callback's type.
+    // The callback won't be persisted by the foreign call.
+    let trampoline = trampoline::<F>;
+    let callback = (&mut auth_check as *mut F) as *mut c_void;
+
+    // SAFETY: all arguments have been checked.
+    let ret = unsafe { authenticate_ext_raw(user_ptr, user_len, trampoline, callback) };
+    if ret != 0 {
+        return Err(BoxError::last());
+    }
+
+    Ok(())
 }
 
 /// Note: this struct is used in FFI.

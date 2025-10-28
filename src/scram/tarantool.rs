@@ -20,7 +20,7 @@ fn box_region_copy_unaligned(bytes: &[u8]) -> *mut [u8] {
     // SAFETY: buffer is guaranteed to be non-null and contain enough space.
     unsafe {
         buffer.copy_from_nonoverlapping(bytes.as_ptr(), size);
-        std::slice::from_raw_parts_mut(buffer, size)
+        std::ptr::slice_from_raw_parts_mut(buffer, size)
     }
 }
 
