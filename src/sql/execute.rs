@@ -104,15 +104,7 @@ pub(crate) fn dql_execute_second_round<'p, R: QueryCache>(
 where
     R::Cache: StorageCache,
 {
-    let mut cache_guarded: <<R as QueryCache>::Mutex as MutexLike<<R as QueryCache>::Cache>>::Guard<'_> = runtime.cache().lock();
-    if let Some((stmt, motion_ids)) = cache_guarded.get(info.id())? {
-        // Transaction rollbacks are very expensive in Tarantool, so we're going to
-        // avoid transactions for DQL queries. We can achieve atomicity by truncating
-        // temporary tables. Isolation is guaranteed by keeping a lock on the cache.
-        stmt_execute(stmt, info, motion_ids, port)?;
-    } else {
-        sql_execute::<R>(&mut cache_guarded, info, port)?;
-    }
+    plan_execute(runtime, info, port)?;
 
     STORAGE_CACHE_2ND_REQUESTS_TOTAL.inc();
     // We don't set port type here, because this code can be called
@@ -206,6 +198,26 @@ where
     })?
     .map_err(|err| SbroadError::Invalid(Entity::MsgPack, Some(format_smolstr!("{err}"))))?;
 
+    Ok(())
+}
+
+fn plan_execute<'p, R: QueryCache>(
+    runtime: &R,
+    info: &mut impl FullPlanInfo,
+    port: &mut impl Port<'p>,
+) -> Result<(), SbroadError>
+where
+    R::Cache: StorageCache,
+{
+    let mut cache_guarded: <<R as QueryCache>::Mutex as MutexLike<<R as QueryCache>::Cache>>::Guard<'_> = runtime.cache().lock();
+    if let Some((stmt, motion_ids)) = cache_guarded.get(info.id())? {
+        // Transaction rollbacks are very expensive in Tarantool, so we're going to
+        // avoid transactions for DQL queries. We can achieve atomicity by truncating
+        // temporary tables. Isolation is guaranteed by keeping a lock on the cache.
+        stmt_execute(stmt, info, motion_ids, port)?;
+    } else {
+        sql_execute::<R>(&mut cache_guarded, info, port)?;
+    }
     Ok(())
 }
 
@@ -397,10 +409,9 @@ where
     R::Cache: StorageCache,
 {
     let mut info = QueryInfo::new(optional, required);
-    let mut locked_cache = runtime.cache().lock();
     let mut port = TarantoolPort::new_port_c();
     let mut pico_port = PicoPortC::from(unsafe { port.as_mut_port_c() });
-    sql_execute::<R>(&mut locked_cache, &mut info, &mut pico_port)?;
+    plan_execute::<R>(runtime, &mut info, &mut pico_port)?;
     let ir_plan = optional.exec_plan.get_ir_plan();
     let columns = vtable_columns(ir_plan, child_id)?;
 
@@ -723,8 +734,7 @@ where
         // and want to execute local SQL instead of space api.
 
         let mut info = QueryInfo::new(optional, required);
-        let mut locked_cache = runtime.cache().lock();
-        return sql_execute::<R>(&mut locked_cache, &mut info, port);
+        return plan_execute::<R>(runtime, &mut info, port);
     }
 
     let delete_child_id = delete_childen[0];
