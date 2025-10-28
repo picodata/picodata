@@ -47,6 +47,7 @@
 ### Breaking
 
 - 1.85 is now MSRV.
+- Introduce `index::Index::rename` method to rename existing indexes.
 
 # [10.0.0] Oct 2 2025
 

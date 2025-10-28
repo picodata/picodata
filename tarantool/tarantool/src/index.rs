@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Error, TarantoolError, TarantoolErrorCode};
 use crate::ffi::tarantool as ffi;
 use crate::msgpack;
-use crate::space::{Space, SpaceId, SystemSpace};
+use crate::space::{Space, SpaceId, SystemSpace, UpdateOps};
 use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::tuple::{KeyDef, KeyDefPart};
 use crate::tuple_from_box_api;
@@ -590,6 +590,31 @@ impl Index {
             .into());
         };
         tuple.decode::<Metadata>()
+    }
+
+    /// Rename current index.
+    ///
+    /// Return new index metadata from system `_index` space.
+    #[inline]
+    pub fn rename(&self, new_name: &str) -> Result<Metadata, Error> {
+        let sys_index = SystemSpace::Index.as_space();
+        const BOX_INDEX_FIELD_NAME: u64 = 2;
+        let mut ops = UpdateOps::new();
+        ops.assign(BOX_INDEX_FIELD_NAME, new_name)?;
+        let tuple = sys_index.update(&[self.space_id(), self.id()], ops)?;
+        let Some(tuple) = tuple else {
+            return Err(crate::error::BoxError::new(
+                TarantoolErrorCode::ModifyIndex,
+                format!(
+                    "Failed to rename index #{} for space #{} into {new_name}.",
+                    self.index_id, self.space_id,
+                ),
+            )
+            .into());
+        };
+        let new_meta = tuple.decode::<Metadata>()?;
+
+        Ok(new_meta)
     }
 
     // Drops index.
@@ -1213,5 +1238,30 @@ mod tests {
             // Check index metadata is deserializable from what is actually in _index
             let _meta: Metadata = tuple.decode().unwrap();
         }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn rename_index() {
+        let space = Space::builder(&crate::temp_space_name!())
+            .field(("a", space::FieldType::Unsigned))
+            .field(("b", space::FieldType::String))
+            .create()
+            .unwrap();
+
+        let index = space
+            .index_builder("pk")
+            .unique(true)
+            .part(("a", FieldType::Unsigned))
+            .create()
+            .unwrap();
+
+        let meta = index.meta().unwrap();
+        assert_eq!(meta.name.as_ref(), "pk");
+
+        let new_meta = index.rename("pk_new").unwrap();
+        assert_eq!(new_meta.name.as_ref(), "pk_new");
+        assert_eq!(new_meta, index.meta().unwrap());
+
+        space.drop().unwrap();
     }
 }
