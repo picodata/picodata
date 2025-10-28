@@ -2518,7 +2518,7 @@ pub unsafe extern "C" fn proc_sql_execute(
         Ok(())
     };
 
-    if args.timeout >= 0 {
+    if args.timeout.is_sign_positive() {
         if let Err(e) = reference_add(args.rid, args.sid, args.timeout) {
             return report("Failed to add a storage reference: ", e.into());
         };

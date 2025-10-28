@@ -627,7 +627,7 @@ pub(crate) fn bucket_into_rs(
     }
 }
 
-pub(crate) fn reference_add(rid: i64, sid: &str, timeout: i64) -> Result<()> {
+pub(crate) fn reference_add(rid: i64, sid: &str, timeout: f64) -> Result<()> {
     let lua = tarantool::lua_state();
     let func = storage_get_func(&lua, "add")?;
 

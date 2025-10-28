@@ -1,11 +1,14 @@
 use crate::msgpack::{shift_pos, skip_value};
-use rmp::decode::{read_array_len, read_int, read_map_len, read_str_len, RmpRead};
+use rmp::decode::{
+    read_array_len, read_f32, read_f64, read_int, read_map_len, read_str_len, RmpRead,
+};
+use rmp::Marker;
 use std::io::{Cursor, Error as IoError, Result as IoResult};
 use std::str::from_utf8;
 
 #[derive(Default)]
 pub struct ExecuteArgs<'bytes> {
-    pub timeout: i64,
+    pub timeout: f64,
     pub rid: i64,
     pub sid: &'bytes str,
     pub required: &'bytes [u8],
@@ -23,9 +26,17 @@ pub fn execute_args_split(mp: &[u8]) -> IoResult<ExecuteArgs<'_>> {
             "Expected an array of 4 or 5 elements, got: {elems}"
         )));
     }
-    // Decode vshard storage timeout.
-    args.timeout = read_int(&mut stream)
-        .map_err(|e| IoError::other(format!("Failed to decode vshard storage timeout: {e}")))?;
+    // Decode vshard storage timeout. It can be either integer or float.
+    let marker = Marker::from_u8(mp[stream.position() as usize]);
+    args.timeout = match marker {
+        Marker::F64 => read_f64(&mut stream)
+            .map_err(|e| IoError::other(format!("Failed to decode vshard storage timeout: {e}")))?,
+        Marker::F32 => read_f32(&mut stream)
+            .map(|v| v as f64)
+            .map_err(|e| IoError::other(format!("Failed to decode vshard storage timeout: {e}")))?,
+        _ => read_int::<f64, _>(&mut stream)
+            .map_err(|e| IoError::other(format!("Failed to decode vshard storage timeout: {e}")))?,
+    };
 
     // Decode vshard storage reference ID.
     args.rid = read_int(&mut stream).map_err(|e| {
