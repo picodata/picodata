@@ -409,6 +409,78 @@ def test_crash_before_applying_raft_snapshot(cluster: Cluster):
     _ = cluster.add_instance(wait_online=True)
 
 
+def test_crash_learner_before_applying_raft_snapshot(cluster: Cluster):
+    # same as test_crash_before_applying_raft_snapshot, but now the crashing instance is a learner
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        voter:
+            can_vote: true
+            replication_factor: 1
+        storage:
+            can_vote: false
+            replication_factor: 2
+"""
+    )
+    i1 = cluster.add_instance(tier="voter", wait_online=False)
+    i2 = cluster.add_instance(tier="voter", wait_online=False)
+    i3 = cluster.add_instance(tier="storage", wait_online=False)
+    cluster.wait_online()
+
+    i3.terminate()
+
+    index, _ = i1.cas("insert", "_pico_property", ["yoyo", "yaya"])
+    i1.raft_wait_index(index)
+    i2.raft_wait_index(index)
+
+    # Compact raft log to trigger creation of snapshot
+    i1.raft_compact_log()
+    i2.raft_compact_log()
+
+    injected_error = "EXIT_BEFORE_APPLYING_RAFT_SNAPSHOT"
+    lc = log_crawler(i3, injected_error)
+    i3.env[f"PICODATA_ERROR_INJECTION_{injected_error}"] = "1"
+    # Instance crashes after receiving a raft snapshot before applying it.
+    i3.fail_to_start()
+    lc.wait_matched()
+
+    # After restart the Instance receives the snapshot again and applies it successfully.
+    del i3.env[f"PICODATA_ERROR_INJECTION_{injected_error}"]
+    i3.start()
+    i3.wait_online()
+
+    # Another instance also successfully joins (just checking)
+    _ = cluster.add_instance(tier="storage", wait_online=True)
+
+
+def test_restart_learner(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        voter:
+            can_vote: true
+            replication_factor: 1
+        storage:
+            can_vote: false
+            replication_factor: 2
+"""
+    )
+    _ = cluster.add_instance(tier="voter", wait_online=False)
+    _ = cluster.add_instance(tier="voter", wait_online=False)
+    i3 = cluster.add_instance(tier="storage", wait_online=False)
+    cluster.wait_online()
+
+    time.sleep(11)
+
+    i3.terminate()
+    i3.start()
+    i3.wait_online()
+
+
 def test_snapshot_with_stale_schema_version(cluster: Cluster):
     cluster.set_config_file(
         yaml="""

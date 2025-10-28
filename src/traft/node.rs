@@ -534,11 +534,12 @@ pub(crate) struct NodeImpl {
     /// Stores the first snapshot chunk while snapshot application is blocked.
     pending_raft_snapshot: Option<RaftSnapshot>,
 
-    /// This is set to true if we receive a message with [`Flags::EXPECTING_SNAPSHOT_STATUS`] flag set in it.
+    /// This is set to raft id of last instance which sent us a raft message with
+    /// [`Flags::EXPECTING_SNAPSHOT_STATUS`] flag set in it.
     ///
-    /// It will cause us to send a snapshot status report to our leader,
-    ///  regardless of whether we have actually applied a snapshot or not.
-    should_report_snapshot_status: bool,
+    /// We will try to send a snapshot report to our leader (falling back to the sender if the leader is not known).
+    /// This will happen regardless of whether we have actually applied a snapshot or not.
+    report_snapshot_status_to: Option<RaftId>,
 
     /// Persistent outgoing messages preserved when being blocked on replicaset sync.
     pending_persisted_messages: Vec<raft::Message>,
@@ -615,7 +616,7 @@ impl NodeImpl {
             main_loop_info,
             plugin_manager,
             pending_raft_snapshot: None,
-            should_report_snapshot_status: false,
+            report_snapshot_status_to: None,
             pending_persisted_messages: Vec::new(),
         })
     }
@@ -714,7 +715,7 @@ impl NodeImpl {
         if msg.flags.contains(Flags::EXPECTING_SNAPSHOT_STATUS)
             || msg.inner.msg_type() == raft::MessageType::MsgSnapshot
         {
-            self.should_report_snapshot_status = true;
+            self.report_snapshot_status_to = Some(msg.inner.from);
         }
 
         // This happens on instance which sent out the snapshot
@@ -2340,18 +2341,31 @@ impl NodeImpl {
         let snapshot_report;
         if have_applied_snapshot {
             // We received the snapshot and successfully applied it.
-            debug_assert!(self.should_report_snapshot_status);
-            self.should_report_snapshot_status = false;
-            let to = self.raw_node.raft.leader_id;
+            debug_assert!(self.report_snapshot_status_to.is_some());
+            let mut to = self.raw_node.raft.leader_id;
+            // in case we do not properly know who the leader is, send the message to the requester of the snapshot
+            // they _probably_ are the leader
+            if to == INVALID_ID {
+                if let Some(status_requester) = self.report_snapshot_status_to {
+                    to = status_requester;
+                }
+            }
+            self.report_snapshot_status_to = None;
             snapshot_report =
                 RaftMessageExt::snapshot_report(applied, from, to, Flags::SNAPSHOT_STATUS_SUCCESS);
-        } else if self.should_report_snapshot_status {
+        } else if let Some(status_requester) = self.report_snapshot_status_to {
             // We didn't apply a snapshot but the leader is expecting a report
             // from us. This can sometimes happen for example if the leader
             // sends us a raft snapshot but we crash before applying it. In this
             // case we report failure to apply snapshot. This is needed because
             // of how raft-rs works under the hood...
-            let to = self.raw_node.raft.leader_id;
+            let mut to = self.raw_node.raft.leader_id;
+            // in case we do not properly know who the leader is, send the message to the requester of the snapshot
+            // they _probably_ are the leader
+            if to == INVALID_ID {
+                to = status_requester;
+            }
+            self.report_snapshot_status_to = None;
             snapshot_report =
                 RaftMessageExt::snapshot_report(applied, from, to, Flags::SNAPSHOT_STATUS_FAILURE);
         } else {
