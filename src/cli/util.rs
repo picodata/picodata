@@ -342,9 +342,7 @@ fn try_determine_auth_method(
         }
     }
 
-    let username = config.creds.expect("credentials should be set").0;
-    let error = crate::auth::Error::UserNotFoundOrInvalidCreds(username);
-    Err(Box::new(error))
+    Err(String::from("User not found or supplied credentials are invalid").into())
 }
 
 fn read_password_from_file(path: &Path) -> traft::Result<String> {

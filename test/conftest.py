@@ -4,6 +4,7 @@ import json
 import os
 import re
 import filecmp
+import psycopg
 import shutil
 import stat
 import sys
@@ -755,8 +756,22 @@ class Instance:
     def __hash__(self):
         return hash((self.cluster_name, self.name))
 
+    def connect_via_pgproto(self, *, timeout: int | None = None, user: str, password: str):
+        # TODO: if chap-sha1 is ever supported, we can default to _pico_service here.
+
+        try:
+            return psycopg.connect(
+                user=user, password=password, host=self.pg_host, port=self.pg_port, connect_timeout=timeout
+            )
+        except Exception as e:
+            if can_cause_fail(e):
+                self.check_process_alive()
+            # if process is dead, the above call will raise an exception
+            # otherwise we raise the original exception
+            raise e from e
+
     @contextmanager
-    def connect(self, timeout: int | float, user: str | None = None, password: str | None = None):
+    def connect(self, *, timeout: int | float, user: str | None = None, password: str | None = None):
         if user is None:
             user = "pico_service"
             if password is None:
@@ -801,7 +816,7 @@ class Instance:
     ):
         log.info(f"{self.name or self.port} RPC CALL {fn}{clamp_for_logs(args)}", stacklevel=2)
         try:
-            with self.connect(timeout, user=user, password=password) as conn:
+            with self.connect(timeout=timeout, user=user, password=password) as conn:
                 result = conn.call(fn, args)
                 log.info(f"{self.name or self.port} RPC CALL {fn} result: {clamp_for_logs(result)}", stacklevel=2)
                 return result
@@ -823,7 +838,7 @@ class Instance:
         log.info(f"{self.name or self.port} RPC EVAL `{expr}` {clamp_for_logs(args)}", stacklevel=2)
         short_expr = shorten_expr_for_log(expr)
         try:
-            with self.connect(timeout, user=user, password=password) as conn:
+            with self.connect(timeout=timeout, user=user, password=password) as conn:
                 result = conn.eval(expr, *args)
                 log.info(
                     f"{self.name or self.port} RPC EVAL `{short_expr}` result: {clamp_for_logs(result)}",

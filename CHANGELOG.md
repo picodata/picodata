@@ -16,6 +16,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Resolve hang when using TLS (hang in `ssl_iostream_destroy` when fiber is cancelled).
 - DML to global tables no longer will fail with errors such as "Compacted"
   (See also https://git.picodata.io/core/picodata/-/issues/2273).
+- Fix trigger execution and privilege initialization for scram-sha256 auth in pgproto.
 
 ### SQL
 - Add IF NOT EXISTS support for ALTER TABLE ADD COLUMN.
