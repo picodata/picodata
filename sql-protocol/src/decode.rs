@@ -7,7 +7,7 @@ use std::str::from_utf8;
 pub struct ExecuteArgs<'bytes> {
     pub timeout: i64,
     pub rid: i64,
-    pub sid: i64,
+    pub sid: &'bytes str,
     pub required: &'bytes [u8],
     pub optional: Option<&'bytes [u8]>,
 }
@@ -33,8 +33,17 @@ pub fn execute_args_split(mp: &[u8]) -> IoResult<ExecuteArgs<'_>> {
     })?;
 
     // Decode vshard storage session ID.
-    args.sid = read_int(&mut stream)
-        .map_err(|e| IoError::other(format!("Failed to decode vshard storage session ID: {e}")))?;
+    let sid_len = read_str_len(&mut stream).map_err(|e| {
+        IoError::other(format!(
+            "Failed to decode vshard storage session ID length: {e}"
+        ))
+    })?;
+    let start = stream.position() as usize;
+    let end = start + sid_len as usize;
+    let sid_bytes = &mp[start..end];
+    args.sid = from_utf8(sid_bytes)
+        .map_err(|e| IoError::other(format!("Invalid UTF-8 in vshard storage session ID: {e}")))?;
+    stream.set_position(end as u64);
 
     // Decode required data.
     let array_len = read_array_len(&mut stream)

@@ -7,10 +7,19 @@ local table = require('table')
 local fiber = require('fiber')
 local buffer = require('buffer')
 local ref_id = 0
-local session_id = 0
+local session_id = require('uuid').str()
 local SQL_MIN_TIMEOUT = 10
 
 local dispatch = {}
+
+local function ref_new()
+    ref_id = ref_id + 1
+    return ref_id
+end
+
+local function session_current()
+    return session_id
+end
 
 -- Helper function to convert table in form of
 -- key-value table to array table.
@@ -116,8 +125,8 @@ local function two_step_dispatch(uuid_to_args, opts, tier)
     local opts_ref = { is_async = true }
     local opts_map = { is_async = true, skip_header = true }
     local rs_count = 0
-    local rid = ref_id + 1
-    local sid = session_id + 1
+    local rid = ref_new()
+    local sid = session_current()
     local deadline = fiber.clock() + timeout
     -- Nil checks are done explicitly here (== nil instead of 'not'), because
     -- netbox requests return box.NULL instead of nils.
@@ -227,8 +236,8 @@ local function one_step_dispatch(uuid_to_args, opts, tier)
     local futures = {}
     local opts_ref = { is_async = true }
     local opts_map = { is_async = true, skip_header = true }
-    local rid = ref_id + 1
-    local sid = session_id + 1
+    local rid = ref_new()
+    local sid = session_current()
     local deadline = fiber.clock() + timeout
     -- Nil checks are done explicitly here (== nil instead of 'not'), because
     -- netbox requests return box.NULL instead of nils.

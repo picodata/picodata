@@ -627,7 +627,7 @@ pub(crate) fn bucket_into_rs(
     }
 }
 
-pub(crate) fn reference_add(rid: i64, sid: i64, timeout: i64) -> Result<()> {
+pub(crate) fn reference_add(rid: i64, sid: &str, timeout: i64) -> Result<()> {
     let lua = tarantool::lua_state();
     let func = storage_get_func(&lua, "add")?;
 
@@ -647,7 +647,7 @@ pub(crate) fn reference_add(rid: i64, sid: i64, timeout: i64) -> Result<()> {
     }
 }
 
-pub(crate) fn reference_use(rid: i64, sid: i64) -> Result<()> {
+pub(crate) fn reference_use(rid: i64, sid: &str) -> Result<()> {
     let lua = tarantool::lua_state();
     let func = storage_get_func(&lua, "use")?;
 
@@ -667,7 +667,7 @@ pub(crate) fn reference_use(rid: i64, sid: i64) -> Result<()> {
     }
 }
 
-pub(crate) fn reference_del(rid: i64, sid: i64) -> Result<()> {
+pub(crate) fn reference_del(rid: i64, sid: &str) -> Result<()> {
     let lua = tarantool::lua_state();
     let func = storage_get_func(&lua, "del")?;
 
