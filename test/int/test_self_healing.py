@@ -1,5 +1,6 @@
 import pytest
 import time
+import random
 
 from conftest import Cluster, Instance, TarantoolError, Retriable, ErrorCode
 
@@ -374,3 +375,44 @@ def test_automatic_offline_due_to_global_dml_conflict(cluster: Cluster):
         [1337, "good"],
         [69105, "better"],
     ]
+
+
+@pytest.mark.xfail(
+    reason=(
+        """The following issues should be fixed before this test is stable:
+- https://git.picodata.io/core/picodata/-/issues/2349
+- https://git.picodata.io/core/picodata/-/issues/2336
+"""
+    )
+)
+def test_bootstrap_fault_tolerance(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        default:
+            replication_factor: 2
+        """
+    )
+    cluster.add_instance(wait_online=False, tier="default")
+    cluster.add_instance(wait_online=False, tier="default")
+    cluster.add_instance(wait_online=False, tier="default")
+    cluster.add_instance(wait_online=False, tier="default")
+    cluster.add_instance(wait_online=False, tier="default")
+    cluster.add_instance(wait_online=False, tier="default")
+
+    for instance in cluster.instances:
+        instance.start()
+
+    time.sleep(random.random() * 3)
+
+    # Don't wait_online on purpose
+
+    for instance in cluster.instances:
+        instance.terminate()
+
+    for instance in cluster.instances:
+        instance.start()
+
+    cluster.wait_online()
