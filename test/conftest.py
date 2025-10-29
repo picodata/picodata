@@ -1474,6 +1474,12 @@ class Instance:
                 message += "\n\n"
                 message += backtrace
 
+            if self._instance_dir:
+                log_path = self._instance_dir / "picodata.log"
+                if os.path.exists(log_path):
+                    message += "\n"
+                    message += f"instance logs have been written to '{log_path}'"
+
             raise ProcessDead(message)
 
     def assert_process_dead(self):
