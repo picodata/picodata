@@ -1,11 +1,18 @@
 use rmp::encode::{write_array_len, write_str};
+use std::fmt::Display;
 
 #[repr(u8)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum MessageType {
     DQL = 0,
     DML = 1,
     LocalDML = 2,
+}
+
+impl Display for MessageType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 impl TryFrom<u8> for MessageType {

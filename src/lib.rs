@@ -615,6 +615,14 @@ fn init_stored_procedures() {
         "#,
     )
     .expect(".proc_sql_execute registration should never fail");
+
+    lua.exec(
+        r#"
+        box.schema.func.create('.proc_query_metadata', {language = 'C', if_not_exists = true})
+        box.schema.role.grant('public', 'execute', 'function', '.proc_query_metadata', {if_not_exists = true})
+        "#,
+    )
+    .expect(".proc_query_metadata registration should never fail");
 }
 
 /// Sets interactive prompt to display `picodata>`.

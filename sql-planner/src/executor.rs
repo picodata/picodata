@@ -96,6 +96,13 @@ pub trait Port<'p>: Write {
     where
         Self: Sized;
 
+    fn process_stmt_with_raw_params(
+        &mut self,
+        stmt: &mut SqlStmt,
+        params: &[u8],
+        max_vdbe: u64,
+    ) -> Result<ExecutionInsight, SqlError>;
+
     fn iter(&self) -> impl Iterator<Item = &[u8]>
     where
         Self: Sized;

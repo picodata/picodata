@@ -103,39 +103,18 @@ impl SqlStmt {
         opcode_max: u64,
         port: &mut PortC,
     ) -> SqlResult<ExecutionInsight> {
-        if self.is_busy() {
-            // Compile and execute a new statement that is not busy.
-            let mut stmt = Self::compile(self.as_str())?;
-            debug_assert!(!stmt.is_busy());
-            stmt.execute(params, opcode_max, port)?;
-            return Ok(ExecutionInsight::BusyStmt);
-        }
-
-        let is_version_stale = !self.is_schema_version_valid();
-        if is_version_stale {
-            // Recompile this statement with current version.
-            *self = Self::compile(self.as_str())?;
-            debug_assert!(self.is_schema_version_valid());
-        }
-
         let params: Vec<_> = params.iter().map(EncodedValue::from).collect();
-        with_su(ADMIN_ID, || self.execute_raw(&params, opcode_max, port))
-            .expect("must be able to su into admin")?;
-
-        match is_version_stale {
-            true => Ok(ExecutionInsight::StaleStmt),
-            false => Ok(ExecutionInsight::Nothing),
-        }
+        let param_data =
+            Cow::from(rmp_serde::to_vec(&params).map_err(SqlError::FailedToEncodeStmtParams)?);
+        self.execute_with_raw_params(param_data.iter().as_slice(), opcode_max, port)
     }
 
     fn execute_raw(
         &mut self,
-        bind_params: &[EncodedValue],
+        param_data: &[u8],
         sql_vdbe_opcode_max: u64,
         port: &mut PortC,
     ) -> SqlResult<()> {
-        let param_data =
-            Cow::from(rmp_serde::to_vec(bind_params).map_err(SqlError::FailedToEncodeStmtParams)?);
         debug_assert!(
             tarantool::msgpack::skip_value(&mut std::io::Cursor::new(&param_data)).is_ok()
         );
@@ -153,6 +132,36 @@ impl SqlStmt {
             return Err(SqlError::FailedToExecuteStmt(TarantoolError::last()));
         }
         Ok(())
+    }
+
+    pub fn execute_with_raw_params(
+        &mut self,
+        params: &[u8],
+        opcode_max: u64,
+        port: &mut PortC,
+    ) -> SqlResult<ExecutionInsight> {
+        if self.is_busy() {
+            // Compile and execute a new statement that is not busy.
+            let mut stmt = Self::compile(self.as_str())?;
+            debug_assert!(!stmt.is_busy());
+            stmt.execute_with_raw_params(params, opcode_max, port)?;
+            return Ok(ExecutionInsight::BusyStmt);
+        }
+
+        let is_version_stale = !self.is_schema_version_valid();
+        if is_version_stale {
+            // Recompile this statement with current version.
+            *self = Self::compile(self.as_str())?;
+            debug_assert!(self.is_schema_version_valid());
+        }
+
+        with_su(ADMIN_ID, || self.execute_raw(params, opcode_max, port))
+            .expect("must be able to su into admin")?;
+
+        match is_version_stale {
+            true => Ok(ExecutionInsight::StaleStmt),
+            false => Ok(ExecutionInsight::Nothing),
+        }
     }
 
     /// Check if statement is currently executed by another thread.

@@ -53,7 +53,8 @@ impl ConnectionType {
 /// Wrapper over `Plan` containing `vtables` map.
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ExecutionPlan {
-    plan: Plan,
+    request_id: String,
+    pub(crate) plan: Plan,
     /// Virtual tables for `Motion` nodes.
     /// Map of { `Motion` node_id -> it's corresponding data }
     vtables: VirtualTableMap,
@@ -62,6 +63,7 @@ pub struct ExecutionPlan {
 impl From<Plan> for ExecutionPlan {
     fn from(plan: Plan) -> Self {
         ExecutionPlan {
+            request_id: uuid::Uuid::new_v4().to_string(),
             plan,
             vtables: VirtualTableMap::new(),
         }
@@ -104,6 +106,11 @@ impl SubtreeMap {
 const SQ_IDS_CAPACITY: usize = 100;
 
 impl ExecutionPlan {
+    #[must_use]
+    pub fn get_request_id(&self) -> &str {
+        &self.request_id
+    }
+
     #[must_use]
     pub fn get_ir_plan(&self) -> &Plan {
         &self.plan
@@ -921,6 +928,7 @@ impl ExecutionPlan {
             new_vtables
         };
         let new_exec_plan = ExecutionPlan {
+            request_id: self.request_id.clone(),
             plan: new_plan,
             vtables,
         };

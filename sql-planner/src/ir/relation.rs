@@ -15,12 +15,12 @@ use tarantool::index::Metadata as IndexMetadata;
 use tarantool::space::{Field, Space, SpaceEngineType, SpaceId, SystemSpace};
 use tarantool::tuple::{FieldType, KeyDef, KeyDefPart};
 
+use crate::errors::{Action, Entity, SbroadError};
+use crate::ir::value::Value;
 use serde::de::{Error, MapAccess, Visitor};
 use serde::ser::{Serialize as SerSerialize, SerializeMap, Serializer};
 use serde::{Deserialize, Deserializer, Serialize};
-
-use crate::errors::{Action, Entity, SbroadError};
-use crate::ir::value::Value;
+use sql_protocol::dql_encoder::ColumnType;
 
 use super::distribution::Key;
 use super::types::{DerivedType, UnrestrictedType};
@@ -90,6 +90,27 @@ impl From<&Column> for FieldType {
             FieldType::from(ty)
         } else {
             FieldType::Scalar
+        }
+    }
+}
+
+impl From<&Column> for ColumnType {
+    fn from(column: &Column) -> Self {
+        let Some(ty) = &column.r#type.get() else {
+            return ColumnType::Scalar;
+        };
+
+        match ty {
+            UnrestrictedType::Map => ColumnType::Map,
+            UnrestrictedType::Boolean => ColumnType::Boolean,
+            UnrestrictedType::Datetime => ColumnType::Datetime,
+            UnrestrictedType::Decimal => ColumnType::Decimal,
+            UnrestrictedType::Double => ColumnType::Double,
+            UnrestrictedType::Integer => ColumnType::Integer,
+            UnrestrictedType::String => ColumnType::String,
+            UnrestrictedType::Uuid => ColumnType::Uuid,
+            UnrestrictedType::Any => ColumnType::Any,
+            UnrestrictedType::Array => ColumnType::Array,
         }
     }
 }

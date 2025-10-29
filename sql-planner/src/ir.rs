@@ -1,4 +1,5 @@
 //! Contains the logical plan tree and helpers.
+use ahash::HashMapExt;
 use base64ct::{Base64, Encoding};
 use expression::Position;
 use node::acl::{Acl, MutAcl};
@@ -13,8 +14,11 @@ use relation::Table;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::cell::{RefCell, RefMut};
+use std::hash::Hasher;
+use std::io::Write;
 use std::slice::{Iter, IterMut};
 use tree::traversal::LevelNode;
+use twox_hash::XxHash3_64;
 use types::UnrestrictedType;
 
 use self::relation::Relations;
@@ -1991,6 +1995,63 @@ impl Plan {
 
         let hash = Base64::encode_string(blake3::hash(&bytes).to_hex().as_bytes()).to_smolstr();
         Ok(hash)
+    }
+    pub fn new_pattern_id(&self, top_id: NodeId) -> Result<u64, SbroadError> {
+        let mut dfs = PostOrder::with_capacity(|x| self.subtree_iter(x, true), self.nodes.len());
+        dfs.populate_nodes(top_id);
+        let nodes = dfs.take_nodes();
+
+        struct HashWriter<H: Hasher> {
+            hasher: H,
+        }
+
+        impl<H: Hasher> Write for HashWriter<H> {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.hasher.write(buf);
+                Ok(buf.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let mut hasher = HashWriter {
+            hasher: XxHash3_64::default(),
+        };
+
+        for (id, version) in &self.version_map {
+            hasher.write(id.to_be_bytes().as_slice()).map_err(|e| {
+                SbroadError::FailedTo(
+                    Action::Serialize,
+                    None,
+                    format_smolstr!("plan nodes to binary: {e:?}"),
+                )
+            })?;
+            hasher
+                .write(version.to_be_bytes().as_slice())
+                .map_err(|e| {
+                    SbroadError::FailedTo(
+                        Action::Serialize,
+                        None,
+                        format_smolstr!("plan nodes to binary: {e:?}"),
+                    )
+                })?;
+        }
+
+        for level_node in nodes {
+            let node = self.get_node(level_node.1)?;
+
+            bincode::serialize_into(&mut hasher, &node).map_err(|e| {
+                SbroadError::FailedTo(
+                    Action::Serialize,
+                    None,
+                    format_smolstr!("plan nodes to binary: {e:?}"),
+                )
+            })?;
+        }
+
+        Ok(hasher.hasher.finish())
     }
 }
 

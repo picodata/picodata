@@ -31,17 +31,54 @@ end
 -- FIXME: this should be removed, we should pass tuple
 -- from rust without using lua tables at all.
 --
-local function prepare_args(args, rid, sid, timeout)
+local function prepare_args(args, rid, sid, timeout, need_ref)
     local call_args = {}
     table.insert(call_args, timeout)
     table.insert(call_args, rid)
     table.insert(call_args, sid)
-    table.insert(call_args, args['required'])
-    if args['optional'] then
-        table.insert(call_args, args['optional'])
+    table.insert(call_args, need_ref)
+    if args['required'] then
+        table.insert(call_args, args['required'])
+        if args['optional'] then
+            table.insert(call_args, args['optional'])
+        end
+    else
+        table.insert(call_args, args) -- as is
     end
 
     return call_args
+end
+
+--
+-- Wait until the connection is established. This is necessary at least for
+-- async requests because they fail immediately if the connection is not done.
+-- Returns the remaining timeout because is expected to be used to connect to
+-- many instances in a loop, where such return saves one clock get in the caller
+-- code and is just cleaner code.
+--
+local function netbox_wait_connected(conn, timeout)
+    -- Fast path. Usually everything is connected.
+    if conn:is_connected() then
+        return timeout
+    end
+    local deadline = fiber.clock() + timeout
+    -- Loop against spurious wakeups.
+    repeat
+        -- Netbox uses fiber_cond inside, which throws an irrelevant usage error
+        -- at negative timeout. Need to check the case manually.
+        if timeout < 0 then
+            return nil, lerror.timeout()
+        end
+        local ok, res = pcall(conn.wait_connected, conn, timeout)
+        if not ok then
+            return nil, lerror.make(res)
+        end
+        if not res then
+            return nil, lerror.timeout()
+        end
+        timeout = deadline - fiber.clock()
+    until conn:is_connected()
+    return timeout
 end
 
 local function get_router_for_tier(tier_name)
@@ -174,7 +211,7 @@ local function two_step_dispatch(uuid_to_args, opts, tier)
     for uuid, rs_args in pairs(uuid_to_args) do
         local rs = replicasets[uuid]
         opts_map['buffer'] = res_map[uuid]
-        res, err = rs:callrw('.proc_sql_execute', prepare_args(rs_args, rid, sid, -1), opts_map)
+        res, err = rs:callrw('.proc_sql_execute', prepare_args(rs_args, rid, sid, timeout, false), opts_map)
         if res == nil then
             err_uuid = uuid
             goto fail
@@ -253,7 +290,7 @@ local function one_step_dispatch(uuid_to_args, opts, tier)
         opts_map['buffer'] = res_map[uuid]
         res, err = rs:callrw(
           '.proc_sql_execute',
-          prepare_args(rs_args, rid, sid, timeout),
+          prepare_args(rs_args, rid, sid, timeout, true),
           opts_map
         )
         if res == nil then
@@ -350,6 +387,60 @@ dispatch.single_plan_dispatch = function(args, uuids, timeout, tier, do_two_step
     else
         return one_step_dispatch(uuid_to_args, opts, tier)
     end
+end
+
+dispatch.query_metadata = function(tier, replicaset, instance, req_id, plan_id, opt_timeout)
+    local replicasets = get_replicasets_from_tier(tier)
+    local err, res, code
+    local ok, future
+    local inst, conn, r
+    local opts_map
+    local timeout = opt_timeout or SQL_MIN_TIMEOUT
+    local deadline = fiber.clock() + timeout
+    local rs = replicasets[replicaset]
+    if rs == nil then
+        err = lerror.make("Replicaset not found: " .. replicaset)
+        goto fail
+    end
+    inst = rs.replicas[instance]
+    if inst == nil then
+        err = lerror.make("Instance not found: " .. instance)
+        goto fail
+    end
+    if not inst.conn or not inst.conn:is_connected() then
+        conn = inst:connect()
+        timeout, err = netbox_wait_connected(conn, timeout)
+        if timeout == nil then
+            goto fail
+        end
+        timeout = deadline - fiber.clock()
+    end
+    res = buffer.ibuf();
+    opts_map = { is_async = true, skip_header = true, buffer = res, timeout = inst.net_timeout }
+    ok, future, err = inst:call('.proc_query_metadata', {timeout, req_id, plan_id}, opts_map)
+    if not ok and err ~= nil then
+        goto fail
+    end
+    code, err = future_wait(future, timeout)
+    if code == nil then
+        goto fail
+    end
+    if err ~= nil then
+        goto fail
+    end
+    r = {}
+    table.insert(r, res)
+    do return r end
+
+    ::fail::
+    if future ~= nil then
+        future:discard()
+    end
+    local msg = "Unknown error"
+    if err ~= nil and err.message ~= nil then
+        msg = err.message
+    end
+    error(lerror.make("Error on replicaset " .. replicaset .. " (instance: " .. instance .. "): " .. msg))
 end
 
 local function init()

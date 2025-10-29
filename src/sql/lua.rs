@@ -553,6 +553,23 @@ pub(crate) fn lua_decode_rs_ibufs<'lua>(
     Ok(ibufs)
 }
 
+pub(crate) fn lua_decode_ibufs<'lua>(
+    table: &Rc<IbufTable<'lua>>,
+    len: usize,
+) -> Result<Vec<LuaInputBuffer<'lua>>> {
+    let mut ibufs = Vec::with_capacity(len);
+    let iter = table.iter::<i32, CDataOnStack<_>>();
+    for item in iter {
+        let (_, mut ibuf_raw) = item.map_err(|e| TntError::other(format!("{e}")))?;
+        let ibuf = LuaInputBuffer {
+            ibuf_ptr: ibuf_raw.data_mut().as_mut_ptr() as *mut Ibuf,
+            _guard: Rc::clone(table),
+        };
+        ibufs.push(ibuf);
+    }
+    Ok(ibufs)
+}
+
 pub(crate) fn lua_single_plan_dispatch<'lua, T>(
     lua: &'lua LuaThread,
     args: T,
@@ -673,6 +690,30 @@ pub(crate) fn reference_del(rid: i64, sid: &str) -> Result<()> {
 
     match func.call_with_args((rid, sid)) {
         Ok(()) => Ok(()),
+        Err(e) => Err(TarantoolError::new(
+            TarantoolErrorCode::ProcLua,
+            format!("{}", LuaError::from(e)),
+        )
+        .into()),
+    }
+}
+
+pub(crate) fn lua_query_metadata<'lua>(
+    lua: &'lua LuaThread,
+    tier: &str,
+    replicaset: &str,
+    instance: &str,
+    request_id: &str,
+    plan_id: u64,
+    timeout: f64,
+) -> Result<Rc<IbufTable<'lua>>> {
+    let func = dispatch_get_func(lua, "query_metadata")?;
+
+    let call_res = func.into_call_with_args::<IbufTable, _>((
+        tier, replicaset, instance, request_id, plan_id, timeout,
+    ));
+    match call_res {
+        Ok(table) => Ok(Rc::new(table)),
         Err(e) => Err(TarantoolError::new(
             TarantoolErrorCode::ProcLua,
             format!("{}", LuaError::from(e)),

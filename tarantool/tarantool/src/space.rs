@@ -656,6 +656,20 @@ impl Space {
             buf = value.to_tuple_buffer()?;
             buf.as_ref()
         });
+        // SAFETY: this is always safe actually
+        unsafe { self.insert_unchecked(data) }
+    }
+
+    /// Insert a `value` into a space.
+    ///
+    /// Returns a new tuple.
+    ///
+    /// See also: `box.space[space_id]:insert(tuple)`
+    ///
+    /// # Safety
+    /// Safe as long as the data contains a valid msgpack
+    #[inline]
+    pub unsafe fn insert_unchecked(&self, data: &[u8]) -> Result<Tuple, Error> {
         let Range { start, end } = data.as_ptr_range();
         tuple_from_box_api!(
             ffi::box_insert[

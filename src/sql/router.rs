@@ -49,7 +49,7 @@ use tarantool::space::SpaceId;
 use super::dispatch::{custom_plan_dispatch, single_plan_dispatch};
 use super::port::PicoPortOwned;
 
-pub type VersionMap = HashMap<SmolStr, u64>;
+pub type VersionMap = HashMap<u32, u64>;
 
 thread_local! {
     static PLAN_CACHE: Rc<Mutex<PicoRouterCache>> = Rc::new(
@@ -228,17 +228,17 @@ impl Cache<SmolStr, Rc<Plan>> for PicoRouterCache {
                 SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
             })?;
             let pico_table = &node.storage.pico_table;
-            for (tbl_name, tbl) in &ir.relations.tables {
+            for tbl in ir.relations.tables.values() {
                 if tbl.is_system() {
                     continue;
                 }
-                let cached_version = *ir.version_map.get(tbl_name.as_str()).ok_or_else(|| {
+                let cached_version = *ir.version_map.get(&tbl.id).ok_or_else(|| {
                     SbroadError::NotFound(
                         Entity::Table,
-                        format_smolstr!("in version map with name: {}", tbl_name),
+                        format_smolstr!("in version map with name: {}", tbl.name),
                     )
                 })?;
-                let Some(space_def) = pico_table.by_name(tbl_name.as_str()).map_err(|e| {
+                let Some(space_def) = pico_table.by_id(tbl.id).map_err(|e| {
                     SbroadError::FailedTo(Action::Get, None, format_smolstr!("space_def: {}", e))
                 })?
                 else {

@@ -12,6 +12,7 @@ use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use crate::utils::MutexLike;
+use ahash::HashMapExt;
 use smol_str::SmolStr;
 use std::rc::Rc;
 
@@ -71,9 +72,9 @@ impl PreparedStatement {
             if router.provides_versions() {
                 let mut table_version_map =
                     TableVersionMap::with_capacity(plan.relations.tables.len());
-                for table in plan.relations.tables.keys() {
-                    let version = router.get_table_version(table.as_str())?;
-                    table_version_map.insert(table.clone(), version);
+                for table in plan.relations.tables.values() {
+                    let version = router.get_table_version_by_id(table.id)?;
+                    table_version_map.insert(table.id, version);
                 }
                 plan.version_map = table_version_map;
             }

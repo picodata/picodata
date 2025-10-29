@@ -8,5 +8,5 @@ license-file.workspace = true
 [dependencies]
 comfy-table = { workspace = true }
 rmp = { workspace = true }
-smol_str = { workspace = true }
 thiserror = { workspace = true }
+

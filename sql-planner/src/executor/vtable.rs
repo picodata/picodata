@@ -1,14 +1,3 @@
-use ahash::AHashSet;
-use rmp::encode::{write_array_len, write_map_len, write_str};
-use rmp_serde::Serializer;
-use serde::{Deserialize, Serialize};
-use smol_str::{format_smolstr, SmolStr};
-use std::collections::{hash_map::Entry, HashMap, HashSet};
-use std::fmt::{Display, Formatter};
-use std::io::{Error as IoError, Result as IoResult, Write};
-use std::rc::Rc;
-use std::vec;
-
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::{TupleBuilderCommand, TupleBuilderPattern};
 use crate::executor::protocol::{Binary, EncodedRows, EncodedVTables};
@@ -20,12 +9,24 @@ use crate::ir::transformation::redistribution::{ColumnPosition, MotionKey, Targe
 use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::{EncodedValue, MsgPackValue, Value};
 use crate::utils::{write_u32_array_len, ByteCounter};
+use ahash::AHashSet;
+use rmp::encode::{write_array_len, write_map_len, write_str, write_uint};
+use rmp_serde::Serializer;
+use serde::{Deserialize, Serialize};
+use smol_str::{format_smolstr, SmolStr};
+use sql_protocol::dql_encoder::MsgpackEncode;
+use std::collections::{hash_map::Entry, HashMap, HashSet};
+use std::fmt::{Display, Formatter};
+use std::io::{Error as IoError, Result as IoResult, Write};
+use std::rc::Rc;
+use std::vec;
 
 use super::ir::ExecutionPlan;
 use super::Port;
 
 use crate::ir::node::relational::Relational;
 use tarantool::msgpack;
+use tarantool::msgpack::Encode;
 use tarantool::tuple::TupleBuilder;
 
 pub type VTableTuple = Vec<Value>;
@@ -118,6 +119,30 @@ impl Display for VirtualTable {
             writeln!(f, "{row:?}")?;
         }
         writeln!(f)
+    }
+}
+
+pub struct VirtualTableTupleEncoder<'e> {
+    tuple: &'e VTableTuple,
+    pk: u64,
+}
+
+impl<'e> VirtualTableTupleEncoder<'e> {
+    pub fn new(tuple: &'e VTableTuple, pk: u64) -> Self {
+        Self { tuple, pk }
+    }
+}
+
+impl MsgpackEncode for VirtualTableTupleEncoder<'_> {
+    fn encode_into(&self, w: &mut impl Write) -> IoResult<()> {
+        write_array_len(w, (self.tuple.len() + 1) as u32)?;
+        for elem in self.tuple {
+            elem.encode(w, &msgpack::Context::DEFAULT)
+                .map_err(IoError::other)?;
+        }
+        write_uint(w, self.pk)?;
+
+        Ok(())
     }
 }
 

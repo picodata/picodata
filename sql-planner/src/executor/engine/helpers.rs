@@ -16,6 +16,7 @@ use crate::{
     },
 };
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use sql_protocol::dql_encoder::{ColumnType, DQLCacheMissDataSource, DQLDataSource, MsgpackEncode};
 use std::{
     any::Any,
     cmp::Ordering,
@@ -26,7 +27,10 @@ use std::{
 };
 use tarantool::space::Space;
 
+use super::{Metadata, Router, TableVersionMap, Vshard};
+use crate::executor::engine::helpers::vshard::CacheInfo;
 use crate::executor::protocol::{EncodedVTables, SchemaInfo};
+use crate::executor::vtable::VirtualTableTupleEncoder;
 use crate::executor::Port;
 use crate::ir::node::Node;
 use crate::ir::value::{EncodedValue, MsgPackValue};
@@ -54,12 +58,10 @@ use crate::{
 use rmp::encode::{write_array_len, write_map_len, write_str};
 use std::io::Write;
 use tarantool::msgpack::rmp::{self, decode::RmpRead};
+use tarantool::msgpack::Context;
+use tarantool::msgpack::Encode;
 use tarantool::session::with_su;
 use tarantool::tuple::Tuple;
-
-use self::vshard::CacheInfo;
-
-use super::{Metadata, Router, Vshard};
 
 pub mod vshard;
 
@@ -115,11 +117,214 @@ pub fn table_name(plan_id: &str, node_id: NodeId) -> SmolStr {
     format_smolstr!("TMP_{base}_{node_id}")
 }
 
+#[must_use]
+pub fn new_table_name(plan_id: u64, node_id: NodeId) -> SmolStr {
+    format_smolstr!("TMP_{plan_id}_{node_id}")
+}
+
 /// Generate a primary key name for the specified motion node.
 #[must_use]
 pub fn pk_name(plan_id: &str, node_id: NodeId) -> SmolStr {
     let base = xx_hash(plan_id);
     format_smolstr!("PK_{base}_{node_id}")
+}
+
+pub struct ArrayMsgpackEncoder<'e, V>
+where
+    V: Encode,
+{
+    data: &'e [V],
+}
+
+impl<'e, V> ArrayMsgpackEncoder<'e, V>
+where
+    V: Encode,
+{
+    fn new(data: &'e [V]) -> Self {
+        Self { data }
+    }
+}
+
+impl<V: Encode> MsgpackEncode for ArrayMsgpackEncoder<'_, V> {
+    fn encode_into(&self, w: &mut impl Write) -> std::io::Result<()> {
+        self.data
+            .encode(w, &Context::DEFAULT)
+            .map_err(std::io::Error::other)
+    }
+}
+
+pub struct ExecutionData {
+    plan_id: u64,
+    sender_id: String,
+    vtables: HashMap<SmolStr, Rc<VirtualTable>>,
+    plan: ExecutionPlan, // TODO: maybe Rc<> + top_id is better
+}
+
+impl DQLDataSource for ExecutionData {
+    fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
+        self.plan
+            .get_ir_plan()
+            .version_map
+            .iter()
+            .map(|(k, v)| (*k, *v))
+    }
+
+    fn get_plan_id(&self) -> u64 {
+        self.plan_id
+    }
+
+    fn get_sender_id(&self) -> &str {
+        self.sender_id.as_str()
+    }
+
+    fn get_request_id(&self) -> &str {
+        self.plan.get_request_id()
+    }
+
+    fn get_vtables(
+        &self,
+    ) -> impl ExactSizeIterator<Item = (&str, impl ExactSizeIterator<Item = impl MsgpackEncode>)>
+    {
+        self.vtables.iter().map(|(name, table)| {
+            (
+                name.as_str(),
+                table
+                    .get_tuples()
+                    .iter()
+                    .enumerate()
+                    .map(|(pk, tuple)| VirtualTableTupleEncoder::new(tuple, pk as u64)),
+            )
+        })
+    }
+
+    fn get_options(&self) -> [u64; 2] {
+        let options = &self.plan.get_ir_plan().effective_options;
+        [
+            options.sql_motion_row_max as u64,
+            options.sql_vdbe_opcode_max as u64,
+        ]
+    }
+
+    fn get_params(&self) -> impl MsgpackEncode {
+        ArrayMsgpackEncoder::new(self.plan.get_ir_plan().get_params().as_slice())
+    }
+}
+
+/// Data for handle dql cache miss
+#[derive(Default)]
+pub struct ExecutionCacheMissData {
+    pub schema_info: TableVersionMap,
+    pub vtables_meta: HashMap<SmolStr, Vec<(SmolStr, ColumnType)>>,
+    pub sql: String,
+}
+
+impl TryFrom<ExecutionData> for ExecutionCacheMissData {
+    type Error = SbroadError;
+
+    fn try_from(value: ExecutionData) -> Result<Self, Self::Error> {
+        let sql = {
+            let plan_id = value.get_plan_id();
+            let plan = value.plan.get_ir_plan();
+            let top_id = plan.get_top()?;
+            let sp = SyntaxPlan::new(&value.plan, top_id, Snapshot::Oldest)?;
+            let on = OrderedSyntaxNodes::try_from(sp)?;
+            let a = on.to_syntax_data()?;
+            let (sql, _) = value
+                .plan
+                .generate_sql(a.as_slice(), plan_id, None, new_table_name)?;
+            sql
+        };
+
+        let vtables_meta = {
+            let plan_id = value.get_plan_id();
+            value
+                .plan
+                .get_vtables()
+                .iter()
+                .map(|(k, v)| {
+                    let columns = v
+                        .get_columns()
+                        .iter()
+                        .map(|column| (column.name.clone(), column.into()));
+                    (new_table_name(plan_id, *k), columns.collect::<Vec<_>>())
+                })
+                .collect::<HashMap<_, _>>()
+        };
+
+        Ok(Self {
+            schema_info: value.plan.plan.version_map,
+            vtables_meta,
+            sql,
+        })
+    }
+}
+
+impl DQLCacheMissDataSource for ExecutionCacheMissData {
+    fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
+        self.schema_info.iter().map(|(k, v)| (*k, *v))
+    }
+    fn get_vtables_metadata(
+        &self,
+    ) -> impl ExactSizeIterator<Item = (&str, impl ExactSizeIterator<Item = (&str, ColumnType)>)>
+    {
+        self.vtables_meta
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.iter().map(|(name, ty)| (name.as_str(), *ty))))
+    }
+    fn get_sql(&self) -> &str {
+        self.sql.as_str()
+    }
+}
+
+pub fn build_dql_data_source(
+    exec_plan: ExecutionPlan,
+    sender_id: String,
+) -> Result<ExecutionData, SbroadError> {
+    let query_type = exec_plan.query_type()?;
+    let mut sub_plan_id = None;
+    {
+        let ir = exec_plan.get_ir_plan();
+        let top_id = ir.get_top()?;
+        match query_type {
+            QueryType::DQL => {
+                sub_plan_id = Some(ir.new_pattern_id(top_id)?);
+            }
+            QueryType::DML => {
+                let top = ir.get_relation_node(top_id)?;
+                let top_children = ir.children(top_id);
+                if matches!(top, Relational::Delete(_)) && top_children.is_empty() {
+                    sub_plan_id = Some(ir.new_pattern_id(top_id)?);
+                } else {
+                    let child_id = top_children[0];
+                    let is_cacheable = matches!(
+                        ir.get_relation_node(child_id)?,
+                        Relational::Motion(Motion {
+                            policy: MotionPolicy::Local | MotionPolicy::LocalSegment { .. },
+                            ..
+                        })
+                    );
+                    if is_cacheable {
+                        let cacheable_subtree_root_id =
+                            exec_plan.get_motion_subtree_root(child_id)?;
+                        sub_plan_id = Some(ir.new_pattern_id(cacheable_subtree_root_id)?);
+                    }
+                }
+            }
+        };
+    }
+    let plan_id = sub_plan_id.expect("should be initialized");
+    let vtables = exec_plan
+        .get_vtables()
+        .iter()
+        .map(|(k, t)| (new_table_name(plan_id, *k), t.clone()))
+        .collect();
+
+    Ok(ExecutionData {
+        plan_id,
+        sender_id,
+        vtables,
+        plan: exec_plan,
+    })
 }
 
 pub fn build_required_binary(exec_plan: &mut ExecutionPlan) -> Result<Binary, SbroadError> {
@@ -840,9 +1045,9 @@ pub fn dispatch_by_buckets<'p>(
             for (motion_id, vtable) in sub_plan.get_vtables() {
                 if !vtable.get_bucket_index().is_empty() {
                     return Err(SbroadError::Invalid(
-                            Entity::Motion,
-                            Some(format_smolstr!("Motion ({motion_id:?}) in subtree with distribution Single, but policy is not Full.")),
-                        ));
+                        Entity::Motion,
+                        Some(format_smolstr!("Motion ({motion_id:?}) in subtree with distribution Single, but policy is not Full.")),
+                    ));
                 }
             }
             runtime.exec_ir_on_any_node(sub_plan, buckets, port)?;
@@ -1172,7 +1377,7 @@ pub fn sharding_key_from_tuple<'tuple>(
     }
 }
 
-pub fn populate_table(
+pub fn old_populate_table(
     motion_id: &NodeId,
     plan_id: &SmolStr,
     vtables: &EncodedVTables,

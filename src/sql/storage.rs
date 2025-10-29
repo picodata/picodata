@@ -4,8 +4,8 @@
 
 use crate::sql::dispatch::port_write_metadata;
 use crate::sql::execute::{
-    dml_execute, dql_execute_first_round, dql_execute_second_round, explain_execute, sql_execute,
-    stmt_execute,
+    dml_execute, dql_execute, dql_execute_first_round, dql_execute_second_round, explain_execute,
+    old_sql_execute, stmt_execute,
 };
 use crate::sql::router::{
     calculate_bucket_id, get_table_version, get_table_version_by_id, VersionMap,
@@ -39,6 +39,8 @@ use sql::executor::vdbe::SqlStmt;
 use sql::ir::node::NodeId;
 use sql::ir::tree::Snapshot;
 use sql::ir::value::Value;
+use sql_protocol::decode::ProtocolMessage;
+use sql_protocol::message_type::MessageType;
 use std::collections::HashMap;
 use std::rc::Rc;
 use tarantool::space::{Space, SpaceId};
@@ -70,20 +72,40 @@ pub struct StorageRuntime {
     cache: Rc<Mutex<PicoStorageCache>>,
 }
 
-type StorageCacheValue = (SqlStmt, VersionMap, Vec<NodeId>);
+pub enum Tables {
+    New(Vec<SmolStr>),
+    Old(Vec<NodeId>),
+}
+
+type StorageCacheValue = (SqlStmt, VersionMap, Tables);
 
 fn evict(plan_id: &SmolStr, val: &mut StorageCacheValue) -> Result<(), SbroadError> {
     STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL.inc();
     // Remove temporary tables from the instance.
-    for node_id in &val.2 {
-        let table = table_name(plan_id, *node_id);
-        Space::find(table.as_str()).map(|space| {
-            with_su(ADMIN_ID, || {
-                space
-                    .drop()
-                    .inspect_err(|e| tlog!(Error, "failed to drop temporary table {table}: {e:?}"))
-            })
-        });
+    match &val.2 {
+        Tables::New(tables_names) => {
+            for table in tables_names {
+                Space::find(table.as_str()).map(|space| {
+                    with_su(ADMIN_ID, || {
+                        space.drop().inspect_err(|e| {
+                            tlog!(Error, "failed to drop temporary table {table}: {e:?}")
+                        })
+                    })
+                });
+            }
+        }
+        Tables::Old(tables_ids) => {
+            for node_id in tables_ids {
+                let table = table_name(plan_id, *node_id);
+                Space::find(table.as_str()).map(|space| {
+                    with_su(ADMIN_ID, || {
+                        space.drop().inspect_err(|e| {
+                            tlog!(Error, "failed to drop temporary table {table}: {e:?}")
+                        })
+                    })
+                });
+            }
+        }
     }
     Ok(())
 }
@@ -150,33 +172,33 @@ impl PicoStorageCache {
     }
 }
 
-impl StorageCache for PicoStorageCache {
-    fn put(
+impl PicoStorageCache {
+    fn put_impl(
         &mut self,
         plan_id: SmolStr,
         stmt: SqlStmt,
         schema_info: &SchemaInfo,
-        table_ids: Vec<NodeId>,
+        table_ids: Tables,
     ) -> Result<(), SbroadError> {
-        let mut version_map: HashMap<SmolStr, u64> =
+        let mut version_map: HashMap<u32, u64> =
             HashMap::with_capacity(schema_info.router_version_map.len());
         let node = node::global().map_err(|e| {
             SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
         })?;
         let pico_table = &node.storage.pico_table;
-        for table_name in schema_info.router_version_map.keys() {
+        for table_id in schema_info.router_version_map.keys() {
             let current_version = if let Some(table_def) =
-                pico_table.by_name(table_name.as_str()).map_err(|e| {
+                pico_table.by_id(*table_id).map_err(|e| {
                     SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
                 })? {
                 table_def.schema_version
             } else {
                 return Err(SbroadError::NotFound(
                     Entity::SpaceMetadata,
-                    format_smolstr!("for space: {}", table_name),
+                    format_smolstr!("for space: {}", table_id),
                 ));
             };
-            version_map.insert(table_name.clone(), current_version);
+            version_map.insert(*table_id, current_version);
         }
 
         let mem_added = stmt.estimated_size();
@@ -190,7 +212,10 @@ impl StorageCache for PicoStorageCache {
         Ok(())
     }
 
-    fn get(&mut self, plan_id: &SmolStr) -> Result<Option<(&mut SqlStmt, &[NodeId])>, SbroadError> {
+    fn get_impl(
+        &mut self,
+        plan_id: &SmolStr,
+    ) -> Result<Option<(&mut SqlStmt, &Tables)>, SbroadError> {
         let Some((ir, version_map, table_ids)) = self.cache.get_mut(plan_id) else {
             return Ok(None);
         };
@@ -199,8 +224,8 @@ impl StorageCache for PicoStorageCache {
             SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
         })?;
         let pico_table = &node.storage.pico_table;
-        for (table_name, cached_version) in version_map {
-            let Some(table_def) = pico_table.by_name(table_name.as_str()).map_err(|e| {
+        for (table_id, cached_version) in version_map {
+            let Some(table_def) = pico_table.by_id(*table_id).map_err(|e| {
                 SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
             })?
             else {
@@ -213,6 +238,63 @@ impl StorageCache for PicoStorageCache {
             }
         }
         Ok(Some((ir, table_ids)))
+    }
+}
+
+impl StorageCache<SmolStr, NodeId> for PicoStorageCache {
+    fn put(
+        &mut self,
+        plan_id: SmolStr,
+        stmt: SqlStmt,
+        schema_info: &SchemaInfo,
+        table_ids: Vec<NodeId>,
+    ) -> Result<(), SbroadError> {
+        self.put_impl(plan_id, stmt, schema_info, Tables::Old(table_ids))
+    }
+
+    fn get(&mut self, plan_id: &SmolStr) -> Result<Option<(&mut SqlStmt, &[NodeId])>, SbroadError> {
+        let maybe_value = self.get_impl(plan_id)?;
+
+        let Some((stmt, tables)) = maybe_value else {
+            return Ok(None);
+        };
+
+        let Tables::Old(tables) = tables else {
+            unreachable!("tables should be Old");
+        };
+
+        Ok(Some((stmt, tables.as_slice())))
+    }
+}
+
+impl StorageCache<u64, SmolStr> for PicoStorageCache {
+    fn put(
+        &mut self,
+        plan_id: u64,
+        stmt: SqlStmt,
+        schema_info: &SchemaInfo,
+        table_ids: Vec<SmolStr>,
+    ) -> Result<(), SbroadError> {
+        self.put_impl(
+            format_smolstr!("{}", plan_id),
+            stmt,
+            schema_info,
+            Tables::New(table_ids),
+        )
+    }
+    fn get(&mut self, plan_id: &u64) -> Result<Option<(&mut SqlStmt, &[SmolStr])>, SbroadError> {
+        let plan_id = format_smolstr!("{}", plan_id);
+        let maybe_value = self.get_impl(&plan_id)?;
+
+        let Some((stmt, tables)) = maybe_value else {
+            return Ok(None);
+        };
+
+        let Tables::New(tables) = tables else {
+            unreachable!("tables should be New");
+        };
+
+        Ok(Some((stmt, tables.as_slice())))
     }
 }
 
@@ -398,7 +480,7 @@ impl Vshard for StorageRuntime {
                         StaleStmt => report_storage_cache_miss("dql", "local", "stale"),
                     }
                 } else {
-                    match sql_execute::<Self>(&mut cache_guarded, &mut info, port)? {
+                    match old_sql_execute::<Self>(&mut cache_guarded, &mut info, port)? {
                         Nothing => report_storage_cache_miss("dql", "local", "true"),
                         BusyStmt => report_storage_cache_miss("dql", "local", "busy"),
                         StaleStmt => report_storage_cache_miss("dql", "local", "stale"),
@@ -457,17 +539,17 @@ impl StorageRuntime {
     /// # Errors
     /// - Something went wrong while executing the plan.
     #[allow(unused_variables)]
-    pub fn execute_plan<'p>(
+    pub fn old_execute_plan<'p>(
         &self,
         required: &mut RequiredData,
         optional: Option<OptionalData>,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
         // Compare router's schema versions with storage's ones.
-        for (table, version) in &required.schema_info.router_version_map {
+        for (table_id, version) in &required.schema_info.router_version_map {
             // TODO: if storage version is smaller than router's version
             // wait until state catches up.
-            if *version != get_table_version(table.as_str())? {
+            if *version != self.get_table_version_by_id(*table_id)? {
                 return Err(SbroadError::OutdatedStorageSchema);
             }
         }
@@ -487,6 +569,29 @@ impl StorageRuntime {
                     port.set_type(PortType::ExecuteDql);
                     dql_execute_second_round(self, &mut info, port)?;
                 }
+            }
+        }
+        Ok(())
+    }
+
+    /// Execute dispatched plan
+    ///
+    /// # Errors
+    /// - Something went wrong while executing the plan.
+    #[allow(unused_variables)]
+    pub fn execute_plan<'p>(
+        &self,
+        package: ProtocolMessage,
+        port: &mut impl Port<'p>,
+        timeout: f64,
+    ) -> Result<(), SbroadError> {
+        match package.msg_type {
+            MessageType::DQL => dql_execute(self, &package, port, timeout)?,
+            n => {
+                return Err(SbroadError::DispatchError(format_smolstr!(
+                    "unexpected message type: {}",
+                    n
+                )));
             }
         }
         Ok(())

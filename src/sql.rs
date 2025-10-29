@@ -81,7 +81,7 @@ use sql::ir::operator::ConflictStrategy;
 use sql::ir::types::UnrestrictedType;
 use sql::ir::value::Value;
 use sql::ir::Plan as IrPlan;
-use sql_protocol::decode::execute_args_split;
+use sql_protocol::decode::{execute_args_split, query_meta_args_split, QueryMetaArgs};
 use sql_protocol::encode::write_metadata;
 use std::cmp::max;
 use std::collections::BTreeMap;
@@ -101,9 +101,11 @@ pub mod storage;
 use self::lua::{escape_bytes, reference_add, reference_del, reference_use};
 use self::port::PicoPortC;
 use self::router::DEFAULT_QUERY_TIMEOUT;
+use crate::sql::dispatch::build_cache_miss_dql_packet;
 use serde::Serialize;
 use sql::executor::ir::QueryType;
 use sql::BoundStatement;
+use sql_protocol::decode::ExecuteArgsData::{New, Old};
 
 pub const DEFAULT_BUCKET_COUNT: u64 = 3000;
 
@@ -2578,8 +2580,20 @@ fn report(msg: &str, e: Error) -> i32 {
 
 struct ExecArgs {
     timeout: f64,
+    need_ref: bool,
     sid: SmallVec<[u8; 36]>,
     rid: i64,
+    data: ExecArgsData,
+}
+/// Temporary enum for protocol migration (remove after old protocol deprecation).
+/// New: raw payload vector for new protocol
+/// Old: parsed legacy protocol data
+enum ExecArgsData {
+    New(Vec<u8>),
+    Old(OldExecArgs),
+}
+
+struct OldExecArgs {
     required: RequiredData,
     optional: Option<OptionalData>,
 }
@@ -2605,49 +2619,72 @@ impl<'de> Decode<'de> for ExecArgs {
             ))
         })?;
 
-        let required = RequiredData::try_from(args.required).map_err(|e| {
-            TarantoolError::other(format!(
-                "Failed to decode required data for '.proc_sql_execute': {e}"
-            ))
-        })?;
-
         // We expect session id to be a text representation of UUID.
         let mut sid = smallvec::SmallVec::<[u8; 36]>::new();
         sid.extend_from_slice(args.sid.as_bytes());
-
-        let optional = args
-            .optional
-            .map(OptionalData::try_from)
-            .transpose()
-            .map_err(|e| {
-                TarantoolError::other(format!(
-                    "Failed to decode optional data for '.proc_sql_execute': {e}"
-                ))
-            })?;
         let timeout = args.timeout;
         let rid = args.rid;
+        let need_ref = args.need_ref;
 
-        Ok(ExecArgs {
-            timeout,
-            sid,
-            rid,
-            required,
-            optional,
-        })
+        match args.data {
+            New(data) => Ok(ExecArgs {
+                timeout,
+                need_ref,
+                sid,
+                rid,
+                data: ExecArgsData::New(data.to_vec()),
+            }),
+            Old(args) => {
+                let required = RequiredData::try_from(args.required).map_err(|e| {
+                    TarantoolError::other(format!(
+                        "Failed to decode required data for '.proc_sql_execute': {e}"
+                    ))
+                })?;
+
+                let optional = args
+                    .optional
+                    .map(OptionalData::try_from)
+                    .transpose()
+                    .map_err(|e| {
+                        TarantoolError::other(format!(
+                            "Failed to decode optional data for '.proc_sql_execute': {e}"
+                        ))
+                    })?;
+
+                Ok(ExecArgs {
+                    timeout,
+                    need_ref,
+                    sid,
+                    rid,
+                    data: ExecArgsData::Old(OldExecArgs { required, optional }),
+                })
+            }
+        }
     }
 }
 
-unsafe fn proc_sql_execute_impl(mut args: ExecArgs, port: &mut PicoPortC) -> ::std::os::raw::c_int {
+unsafe fn proc_sql_execute_impl(args: ExecArgs, port: &mut PicoPortC) -> ::std::os::raw::c_int {
     // Safety: safe as the original args.sid is as valid UTF-8 string.
     let sid = unsafe { std::str::from_utf8_unchecked(args.sid.as_slice()) };
 
     let pcall = || -> Result<(), Error> {
-        let runtime = StorageRuntime::new();
-        runtime.execute_plan(&mut args.required, args.optional, port)?;
+        match args.data {
+            ExecArgsData::New(data) => {
+                let package =
+                    sql_protocol::decode::ProtocolMessage::decode_from_bytes(data.as_slice())
+                        .map_err(Error::other)?;
+                let runtime = StorageRuntime::new();
+                runtime.execute_plan(package, port, args.timeout)?;
+            }
+            ExecArgsData::Old(mut args) => {
+                let runtime = StorageRuntime::new();
+                runtime.old_execute_plan(&mut args.required, args.optional, port)?;
+            }
+        }
         Ok(())
     };
 
-    if args.timeout.is_sign_positive() {
+    if args.need_ref {
         if let Err(e) = reference_add(args.rid, sid, args.timeout) {
             return report("Failed to add a storage reference: ", e.into());
         };
@@ -2680,26 +2717,60 @@ pub unsafe extern "C" fn proc_sql_execute(
 
     let mut port = PicoPortC::from(ctx.mut_port_c());
 
-    let is_first_req = args.optional.is_none();
-    let query_type = match args.required.query_type {
-        QueryType::DQL => "dql",
-        QueryType::DML => "dml",
+    let (is_old, is_first_req, query_type) = match &args.data {
+        ExecArgsData::New(_) => (false, true, "dql"),
+        ExecArgsData::Old(args) => {
+            let is_first_req = args.optional.is_none();
+            let query_type = match args.required.query_type {
+                QueryType::DQL => "dql",
+                QueryType::DML => "dml",
+            };
+            (true, is_first_req, query_type)
+        }
     };
 
     let ret = proc_sql_execute_impl(args, &mut port);
 
     let result = if ret == 0 { "ok" } else { "err" };
-    if is_first_req {
-        STORAGE_1ST_REQUESTS_TOTAL
-            .with_label_values(&[query_type, result])
-            .inc();
+    if is_old {
+        if is_first_req {
+            STORAGE_1ST_REQUESTS_TOTAL
+                .with_label_values(&[query_type, result])
+                .inc();
+        } else {
+            STORAGE_2ND_REQUESTS_TOTAL
+                .with_label_values(&[query_type, result])
+                .inc();
+        }
     } else {
-        STORAGE_2ND_REQUESTS_TOTAL
+        STORAGE_1ST_REQUESTS_TOTAL
             .with_label_values(&[query_type, result])
             .inc();
     }
 
     ret
+}
+
+struct QueryMetaRequest<'q> {
+    args: QueryMetaArgs<'q>,
+}
+
+impl<'de> Decode<'de> for QueryMetaRequest<'de> {
+    fn decode(data: &'de [u8]) -> tarantool::Result<Self> {
+        Ok(Self {
+            args: query_meta_args_split(data)?,
+        })
+    }
+}
+
+#[tarantool::proc(packed_args)]
+pub fn proc_query_metadata(req: QueryMetaRequest) -> Result<Tuple, Error> {
+    // SAFETY: The code below never yields, so it's safe to use a slice here
+    #[cfg(debug_assertions)]
+    let _guard = crate::util::NoYieldsGuard::new();
+    let args = req.args;
+    let tuple = build_cache_miss_dql_packet(args.request_id, args.plan_id)?;
+    Ok(tuple)
 }
 
 // Each DML request on global tables has the following plan:

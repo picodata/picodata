@@ -1,6 +1,7 @@
 use crate::executor::vdbe::SqlError;
 use crate::ir::types::UnrestrictedType;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use sql_protocol::error::ProtocolError;
 use sql_type_system::error::Error as TypeSystemError;
 use std::fmt;
 use tarantool::error::Error;
@@ -352,6 +353,7 @@ pub enum SbroadError {
     UseOfBothParamsStyles,
     GlobalDml(SmolStr),
     DispatchError(SmolStr),
+    ProtocolError(ProtocolError),
     // Can't use vdbe::SqlError because it doesn't implement PartialEq :(
     VdbeError(SmolStr),
     Other(SmolStr),
@@ -394,6 +396,9 @@ impl fmt::Display for SbroadError {
             SbroadError::TypeSystemError(err) => {
                 format_smolstr!("{err}")
             }
+            SbroadError::ProtocolError(err) => {
+                format_smolstr!("{err}")
+            }
             SbroadError::DispatchError(s) | SbroadError::Other(s) | SbroadError::VdbeError(s) => {
                 s.clone()
             }
@@ -434,6 +439,12 @@ impl From<TypeError> for SbroadError {
 impl From<TypeSystemError> for SbroadError {
     fn from(error: TypeSystemError) -> Self {
         SbroadError::TypeSystemError(error)
+    }
+}
+
+impl From<ProtocolError> for SbroadError {
+    fn from(error: ProtocolError) -> Self {
+        SbroadError::ProtocolError(error)
     }
 }
 

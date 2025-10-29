@@ -1,4 +1,4 @@
-use crate::dql_encoder::{ColumnType, DQLEncoder, MsgpackWriter};
+use crate::dql_encoder::{ColumnType, DQLCacheMissDataSource, DQLDataSource, MsgpackEncode};
 use crate::error::ProtocolError;
 use crate::iterators::{MsgpackMapIterator, TupleIterator};
 use crate::message_type::write_request_header;
@@ -6,23 +6,26 @@ use crate::message_type::MessageType::DQL;
 use crate::msgpack::{skip_value, ByteCounter};
 use rmp::decode::{read_array_len, read_int, read_map_len, read_str_len};
 use rmp::encode::{write_array_len, write_map_len, write_str, write_uint};
-use smol_str::SmolStr;
+use std::fmt;
+use std::fmt::Formatter;
 use std::io::{Cursor, Write};
 use std::str::from_utf8;
 
-pub fn write_dql_package(w: &mut impl Write, data: &impl DQLEncoder) -> Result<(), std::io::Error> {
+pub fn write_dql_packet(
+    w: &mut impl Write,
+    data: &impl DQLDataSource,
+) -> Result<(), std::io::Error> {
     write_request_header(w, DQL, data.get_request_id())?;
 
-    write_array_len(w, 6)?;
+    write_array_len(w, DQL_PACKET_FIELD_COUNT as u32)?;
     write_schema_info(w, data.get_schema_info())?;
 
-    let plan_id = data.get_plan_id();
-    write_plan_id(w, plan_id)?;
+    write_plan_id(w, data.get_plan_id())?;
 
     let sender_id = data.get_sender_id();
     write_sender_id(w, sender_id)?;
 
-    write_vtables(w, data.get_vtables(plan_id))?;
+    write_vtables(w, data.get_vtables())?;
 
     let options = data.get_options();
     write_options(w, options.iter())?;
@@ -33,14 +36,14 @@ pub fn write_dql_package(w: &mut impl Write, data: &impl DQLEncoder) -> Result<(
     Ok(())
 }
 
-pub(crate) fn write_schema_info<'a>(
+pub(crate) fn write_schema_info(
     w: &mut impl Write,
-    schema_info: impl ExactSizeIterator<Item = (&'a u32, &'a u64)>,
+    schema_info: impl ExactSizeIterator<Item = (u32, u64)>,
 ) -> Result<(), std::io::Error> {
     write_map_len(w, schema_info.len() as u32)?;
     for (key, value) in schema_info {
-        write_uint(w, *key as u64)?;
-        write_uint(w, *value)?;
+        write_uint(w, key as u64)?;
+        write_uint(w, value)?;
     }
 
     Ok(())
@@ -53,14 +56,14 @@ pub(crate) fn write_plan_id(w: &mut impl Write, plan_id: u64) -> Result<(), std:
 pub(crate) fn write_sender_id(w: &mut impl Write, sender_id: &str) -> Result<(), std::io::Error> {
     rmp::encode::write_bin(w, sender_id.as_bytes()).map_err(std::io::Error::from)
 }
-pub(crate) fn write_vtables(
+pub(crate) fn write_vtables<'a>(
     w: &mut impl Write,
-    vtables: impl ExactSizeIterator<Item = (SmolStr, impl MsgpackWriter)>,
+    vtables: impl ExactSizeIterator<Item = (&'a str, impl ExactSizeIterator<Item = impl MsgpackEncode>)>,
 ) -> Result<(), std::io::Error> {
     write_map_len(w, vtables.len() as u32)?;
 
     for (key, tuples) in vtables {
-        write_str(w, key.as_str())?;
+        write_str(w, key)?;
         write_tuples(w, tuples)?;
     }
 
@@ -68,14 +71,14 @@ pub(crate) fn write_vtables(
 }
 pub(crate) fn write_tuples(
     w: &mut impl Write,
-    mut tuples: impl MsgpackWriter,
+    tuples: impl ExactSizeIterator<Item = impl MsgpackEncode>,
 ) -> Result<(), std::io::Error> {
     write_array_len(w, tuples.len() as u32)?;
-    while tuples.next().is_some() {
+    for tuple in tuples {
         let mut tuple_counter = ByteCounter::default();
-        tuples.write_current(&mut tuple_counter)?;
+        tuple.encode_into(&mut tuple_counter)?;
         rmp::encode::write_bin_len(w, tuple_counter.bytes() as u32)?;
-        tuples.write_current(w)?;
+        tuple.encode_into(w)?;
     }
 
     Ok(())
@@ -94,12 +97,9 @@ pub(crate) fn write_options<'a>(
 }
 pub(crate) fn write_params(
     w: &mut impl Write,
-    mut params: impl MsgpackWriter,
+    params: impl MsgpackEncode,
 ) -> Result<(), std::io::Error> {
-    write_array_len(w, params.len() as u32)?;
-    while params.next().is_some() {
-        params.write_current(w)?;
-    }
+    params.encode_into(w)?;
 
     Ok(())
 }
@@ -125,20 +125,33 @@ pub enum DQLResult<'a> {
     Params(&'a [u8]),
 }
 
-const DQL_PACKAGE_SIZE: usize = 6;
-pub struct DQLPackageIterator<'a> {
+impl fmt::Display for DQLResult<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            DQLResult::SchemaInfo(_) => f.write_str("SchemaInfo"),
+            DQLResult::PlanId(_) => f.write_str("PlanId"),
+            DQLResult::SenderId(_) => f.write_str("SenderId"),
+            DQLResult::Vtables(_) => f.write_str("Vtables"),
+            DQLResult::Options(_) => f.write_str("Options"),
+            DQLResult::Params(_) => f.write_str("Params"),
+        }
+    }
+}
+
+const DQL_PACKET_FIELD_COUNT: usize = 6;
+pub struct DQLPacketPayloadIterator<'a> {
     raw_payload: Cursor<&'a [u8]>,
     state: DQLState,
 }
 
-impl<'a> DQLPackageIterator<'a> {
+impl<'a> DQLPacketPayloadIterator<'a> {
     pub fn new(raw_payload: &'a [u8]) -> Result<Self, ProtocolError> {
         let mut cursor = Cursor::new(raw_payload);
 
         let l = read_array_len(&mut cursor)?;
-        if l != DQL_PACKAGE_SIZE as u32 {
+        if l != DQL_PACKET_FIELD_COUNT as u32 {
             return Err(ProtocolError::DecodeError(format!(
-                "DQL package is invalid: expected to have package array length {DQL_PACKAGE_SIZE}, got {l}"
+                "DQL package is invalid: expected to have package array length {DQL_PACKET_FIELD_COUNT}, got {l}"
             )));
         }
 
@@ -290,7 +303,7 @@ pub(crate) fn get_params<'a>(
     Ok(params)
 }
 
-impl<'a> Iterator for DQLPackageIterator<'a> {
+impl<'a> Iterator for DQLPacketPayloadIterator<'a> {
     type Item = Result<DQLResult<'a>, ProtocolError>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -306,32 +319,32 @@ impl<'a> Iterator for DQLPackageIterator<'a> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let size = DQL_PACKAGE_SIZE - self.state as usize;
+        let size = DQL_PACKET_FIELD_COUNT.saturating_sub(self.state as usize);
         (size, Some(size))
     }
 }
 
-pub fn write_dql_additional_data_package(
+pub fn write_dql_cache_miss_packet(
     w: &mut impl Write,
-    data: &impl DQLEncoder,
+    data: &impl DQLCacheMissDataSource,
 ) -> Result<(), std::io::Error> {
-    write_array_len(w, 3)?;
+    write_array_len(w, DQL_CACHE_MISS_PACKET_FIELD_COUNT as u32)?;
 
     let schema_info = data.get_schema_info();
     write_map_len(w, schema_info.len() as u32)?;
     for (key, value) in schema_info {
-        write_uint(w, *key as u64)?;
-        write_uint(w, *value)?;
+        write_uint(w, key as u64)?;
+        write_uint(w, value)?;
     }
 
     let vtables_metadata = data.get_vtables_metadata();
     write_map_len(w, vtables_metadata.len() as u32)?;
     for (key, columns) in vtables_metadata {
-        write_str(w, key.as_str())?;
+        write_str(w, key)?;
         write_array_len(w, columns.len() as u32)?;
         for (column, ty) in columns {
             write_array_len(w, 2)?;
-            write_str(w, column.as_str())?;
+            write_str(w, column)?;
             rmp::encode::write_pfix(w, ty as u8)?;
         }
     }
@@ -357,20 +370,30 @@ pub enum DQLCacheMissResult<'a> {
     Sql(&'a str),
 }
 
-const DQL_CACHE_MISS_PACKAGE_SIZE: usize = 3;
-pub struct DQLCacheMissIterator<'a> {
+impl fmt::Display for DQLCacheMissResult<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            DQLCacheMissResult::SchemaInfo(_) => f.write_str("SchemaInfo"),
+            DQLCacheMissResult::VtablesMetadata(_) => f.write_str("VtablesMetadata"),
+            DQLCacheMissResult::Sql(_) => f.write_str("Sql"),
+        }
+    }
+}
+
+const DQL_CACHE_MISS_PACKET_FIELD_COUNT: usize = 3;
+pub struct DQLCacheMissPayloadIterator<'a> {
     raw_payload: Cursor<&'a [u8]>,
     state: DQLCacheMissState,
 }
 
-impl<'a> DQLCacheMissIterator<'a> {
+impl<'a> DQLCacheMissPayloadIterator<'a> {
     pub fn new(raw_payload: &'a [u8]) -> Result<Self, ProtocolError> {
         let mut cursor = Cursor::new(raw_payload);
 
         let l = read_array_len(&mut cursor)?;
-        if l != DQL_CACHE_MISS_PACKAGE_SIZE as u32 {
+        if l != DQL_CACHE_MISS_PACKET_FIELD_COUNT as u32 {
             return Err(ProtocolError::DecodeError(format!(
-                "DQL package is invalid: expected to have package array length {DQL_CACHE_MISS_PACKAGE_SIZE}, got {l}"
+                "DQL package is invalid: expected to have package array length {DQL_CACHE_MISS_PACKET_FIELD_COUNT}, got {l}"
             )));
         }
 
@@ -461,7 +484,7 @@ impl<'a> DQLCacheMissIterator<'a> {
     }
 }
 
-impl<'a> Iterator for DQLCacheMissIterator<'a> {
+impl<'a> Iterator for DQLCacheMissPayloadIterator<'a> {
     type Item = Result<DQLCacheMissResult<'a>, ProtocolError>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -485,7 +508,7 @@ impl<'a> Iterator for DQLCacheMissIterator<'a> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let size = DQL_CACHE_MISS_PACKAGE_SIZE - self.state as usize;
+        let size = DQL_CACHE_MISS_PACKET_FIELD_COUNT.saturating_sub(self.state as usize);
         (size, Some(size))
     }
 }
@@ -495,7 +518,7 @@ mod tests {
     use super::*;
     use crate::dql_encoder::test::TestDQLEncoderBuilder;
     use crate::dql_encoder::ColumnType;
-    use smol_str::ToSmolStr;
+
     use std::collections::HashMap;
     use std::str::from_utf8;
 
@@ -507,7 +530,7 @@ mod tests {
             .set_schema_info(HashMap::from([(12, 138)]))
             .set_sender_id("some".to_string())
             .set_vtables(HashMap::from([(
-                "TMP_1302_".to_smolstr(),
+                "TMP_1302_".to_string(),
                 vec![vec![1, 2, 3], vec![3, 2, 1]],
             )]))
             .set_options([123, 456])
@@ -516,7 +539,7 @@ mod tests {
 
         let mut writer = Vec::new();
 
-        write_dql_package(&mut writer, &data).unwrap();
+        write_dql_packet(&mut writer, &data).unwrap();
         let expected: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x96\x81\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw\xc4\x04some\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
 
         assert_eq!(writer, expected);
@@ -536,7 +559,7 @@ mod tests {
         let msg_type = rmp::decode::read_pfix(&mut data).unwrap();
         assert_eq!(msg_type, DQL as u8);
 
-        let package = DQLPackageIterator::new(data).unwrap();
+        let package = DQLPacketPayloadIterator::new(data).unwrap();
 
         for elem in package {
             match elem.unwrap() {
@@ -582,20 +605,20 @@ mod tests {
 
     #[test]
     fn test_encode_dql_cache_miss() {
-        let data = TestDQLEncoderBuilder::new()
+        let mut data = TestDQLEncoderBuilder::new()
             .set_schema_info(HashMap::from([(12, 138)]))
             .set_meta(HashMap::from([(
-                "TMP_1302_".to_smolstr(),
+                "TMP_1302_".to_string(),
                 vec![
-                    ("a".to_smolstr(), ColumnType::Integer),
-                    ("b".to_smolstr(), ColumnType::Integer),
+                    ("a".to_string(), ColumnType::Integer),
+                    ("b".to_string(), ColumnType::Integer),
                 ],
             )]))
-            .set_sql("select * from TMP_1302_;".to_smolstr())
+            .set_sql("select * from TMP_1302_;".to_string())
             .build();
 
         let mut writer = Vec::new();
-        write_dql_additional_data_package(&mut writer, &data).unwrap();
+        write_dql_cache_miss_packet(&mut writer, &mut data).unwrap();
         let expected: &[u8] = b"\x93\x81\x0c\xcc\x8a\x81\xa9TMP_1302_\x92\x92\xa1a\x05\x92\xa1b\x05\xb8select * from TMP_1302_;";
         assert_eq!(writer, expected);
     }
@@ -604,7 +627,7 @@ mod tests {
     fn test_handle_dql_cache_miss() {
         let data: &[u8] = b"\x93\x81\x0c\xcc\x8a\x81\xa9TMP_1302_\x92\x92\xa1a\x05\x92\xa1b\x05\xb8select * from TMP_1302_;";
 
-        let package = DQLCacheMissIterator::new(data).unwrap();
+        let package = DQLCacheMissPayloadIterator::new(data).unwrap();
 
         for elem in package {
             match elem.unwrap() {

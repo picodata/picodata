@@ -1,12 +1,6 @@
-use smol_str::SmolStr;
-
-pub trait MsgpackWriter {
-    fn write_current(&self, w: &mut impl std::io::Write) -> std::io::Result<()>;
-    fn next(&mut self) -> Option<()>;
-    fn len(&self) -> usize;
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
+/// Adapter trait for encoding data into msgpack format
+pub trait MsgpackEncode {
+    fn encode_into(&self, w: &mut impl std::io::Write) -> std::io::Result<()>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,8 +42,8 @@ impl TryFrom<u8> for ColumnType {
     }
 }
 
-pub trait DQLEncoder {
-    fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (&u32, &u64)>;
+pub trait DQLDataSource {
+    fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)>;
 
     fn get_plan_id(&self) -> u64;
 
@@ -57,25 +51,21 @@ pub trait DQLEncoder {
 
     fn get_request_id(&self) -> &str;
 
-    fn get_vtables_metadata(
-        &self,
-    ) -> impl ExactSizeIterator<
-        Item = (
-            SmolStr,
-            impl ExactSizeIterator<Item = (&SmolStr, ColumnType)>,
-        ),
-    >;
-
     fn get_vtables(
         &self,
-        plan_id: u64,
-    ) -> impl ExactSizeIterator<Item = (SmolStr, impl MsgpackWriter)>;
+    ) -> impl ExactSizeIterator<Item = (&str, impl ExactSizeIterator<Item = impl MsgpackEncode>)>;
 
     fn get_options(&self) -> [u64; 2];
 
-    fn get_params(&self) -> impl MsgpackWriter;
+    fn get_params(&self) -> impl MsgpackEncode;
+}
 
-    fn get_sql(&self) -> &SmolStr;
+pub trait DQLCacheMissDataSource {
+    fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)>;
+    fn get_vtables_metadata(
+        &self,
+    ) -> impl ExactSizeIterator<Item = (&str, impl ExactSizeIterator<Item = (&str, ColumnType)>)>;
+    fn get_sql(&self) -> &str;
 }
 
 pub(crate) mod test {
@@ -83,106 +73,67 @@ pub(crate) mod test {
     use std::collections::HashMap;
     use std::io::Write;
 
-    #[derive(Clone)]
-    struct TestParamIterator<'mi> {
-        current: Option<&'mi u64>,
-        iter: std::slice::Iter<'mi, u64>,
+    struct TestParamEncoder<'e> {
+        data: &'e [u64],
     }
 
-    impl<'mi> TestParamIterator<'mi> {
-        pub fn new(iter: std::slice::Iter<'mi, u64>) -> Self {
-            Self {
-                current: None,
-                iter,
-            }
+    impl<'e> TestParamEncoder<'e> {
+        pub fn new(data: &'e [u64]) -> Self {
+            Self { data }
         }
     }
 
-    impl MsgpackWriter for TestParamIterator<'_> {
-        fn write_current(&self, w: &mut impl Write) -> std::io::Result<()> {
-            if let Some(v) = self.current {
-                rmp::encode::write_uint(w, *v)?;
+    impl MsgpackEncode for TestParamEncoder<'_> {
+        fn encode_into(&self, w: &mut impl Write) -> std::io::Result<()> {
+            rmp::encode::write_array_len(w, self.data.len() as u32)?;
+
+            for param in self.data {
+                rmp::encode::write_uint(w, *param)?;
             }
 
             Ok(())
         }
-
-        fn next(&mut self) -> Option<()> {
-            self.current = self.iter.next();
-
-            self.current.map(|_| ())
-        }
-
-        fn len(&self) -> usize {
-            self.iter.len()
-        }
     }
 
-    struct TestVTableWriter<'vtw> {
+    struct TestTupleEncoder<'e> {
+        data: &'e Vec<u64>,
         pk: u64,
-        current: Option<&'vtw Vec<u64>>,
-        iter: std::slice::Iter<'vtw, Vec<u64>>,
     }
 
-    impl<'vtw> TestVTableWriter<'vtw> {
-        fn new(iter: std::slice::Iter<'vtw, Vec<u64>>) -> Self {
-            Self {
-                pk: 0,
-                current: None,
-                iter,
-            }
+    impl<'e> TestTupleEncoder<'e> {
+        pub fn new(data: &'e Vec<u64>, pk: u64) -> Self {
+            Self { data, pk }
         }
     }
 
-    impl MsgpackWriter for TestVTableWriter<'_> {
-        fn write_current(&self, w: &mut impl Write) -> std::io::Result<()> {
-            let Some(elem) = self.current else {
-                return Ok(());
-            };
+    impl MsgpackEncode for TestTupleEncoder<'_> {
+        fn encode_into(&self, w: &mut impl Write) -> std::io::Result<()> {
+            rmp::encode::write_array_len(w, (self.data.len() + 1) as u32)?;
 
-            rmp::encode::write_array_len(w, (elem.len() + 1) as u32)?;
-
-            for elem in elem {
+            for elem in self.data {
                 rmp::encode::write_uint(w, *elem)?;
             }
             rmp::encode::write_uint(w, self.pk)?;
 
             Ok(())
         }
-
-        fn next(&mut self) -> Option<()> {
-            let is_first = self.current.is_none();
-            self.current = self.iter.next();
-
-            self.current?;
-
-            if !is_first {
-                self.pk += 1;
-            }
-
-            Some(())
-        }
-
-        fn len(&self) -> usize {
-            self.iter.len()
-        }
     }
 
     #[allow(dead_code)]
     pub struct TestDQLEncoderBuilder {
-        encoder: TestDQLEncoder,
+        encoder: TestDQLDataSource,
     }
 
     impl TestDQLEncoderBuilder {
         #[allow(dead_code)]
         pub fn new() -> Self {
             TestDQLEncoderBuilder {
-                encoder: TestDQLEncoder::default(),
+                encoder: TestDQLDataSource::default(),
             }
         }
 
         #[allow(dead_code)]
-        pub fn build(self) -> TestDQLEncoder {
+        pub fn build(self) -> TestDQLDataSource {
             self.encoder
         }
 
@@ -202,12 +153,12 @@ pub(crate) mod test {
             self
         }
         #[allow(dead_code)]
-        pub fn set_meta(mut self, meta: HashMap<SmolStr, Vec<(SmolStr, ColumnType)>>) -> Self {
+        pub fn set_meta(mut self, meta: HashMap<String, Vec<(String, ColumnType)>>) -> Self {
             self.encoder.meta = meta;
             self
         }
         #[allow(dead_code)]
-        pub fn set_sql(mut self, sql: SmolStr) -> Self {
+        pub fn set_sql(mut self, sql: String) -> Self {
             self.encoder.sql = sql;
             self
         }
@@ -217,7 +168,7 @@ pub(crate) mod test {
             self
         }
         #[allow(dead_code)]
-        pub fn set_vtables(mut self, vtables: HashMap<SmolStr, Vec<Vec<u64>>>) -> Self {
+        pub fn set_vtables(mut self, vtables: HashMap<String, Vec<Vec<u64>>>) -> Self {
             self.encoder.vtables = vtables;
             self
         }
@@ -234,21 +185,21 @@ pub(crate) mod test {
     }
 
     #[derive(Default)]
-    pub struct TestDQLEncoder {
+    pub struct TestDQLDataSource {
         pub schema_info: HashMap<u32, u64>,
         pub plan_id: u64,
         pub sender_id: String,
-        pub meta: HashMap<SmolStr, Vec<(SmolStr, ColumnType)>>,
-        pub sql: SmolStr,
+        pub meta: HashMap<String, Vec<(String, ColumnType)>>,
+        pub sql: String,
         pub request_id: String,
-        pub vtables: HashMap<SmolStr, Vec<Vec<u64>>>,
+        pub vtables: HashMap<String, Vec<Vec<u64>>>,
         pub options: [u64; 2],
         pub params: Vec<u64>,
     }
 
-    impl DQLEncoder for TestDQLEncoder {
-        fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (&u32, &u64)> {
-            self.schema_info.iter()
+    impl DQLDataSource for TestDQLDataSource {
+        fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
+            self.schema_info.iter().map(|(k, v)| (*k, *v))
         }
 
         fn get_plan_id(&self) -> u64 {
@@ -263,37 +214,42 @@ pub(crate) mod test {
             self.request_id.as_str()
         }
 
-        fn get_vtables_metadata(
-            &self,
-        ) -> impl ExactSizeIterator<
-            Item = (
-                SmolStr,
-                impl ExactSizeIterator<Item = (&SmolStr, ColumnType)>,
-            ),
-        > {
-            self.meta
-                .iter()
-                .map(|(k, v)| (k.clone(), v.iter().map(|(k, t)| (k, *t))))
-        }
-
         fn get_vtables(
             &self,
-            _plan_id: u64,
-        ) -> impl ExactSizeIterator<Item = (SmolStr, impl MsgpackWriter)> {
-            self.vtables
-                .iter()
-                .map(|(k, v)| (k.clone(), TestVTableWriter::new(v.iter())))
+        ) -> impl ExactSizeIterator<Item = (&str, impl ExactSizeIterator<Item = impl MsgpackEncode>)>
+        {
+            self.vtables.iter().map(|(k, v)| {
+                (
+                    k.as_str(),
+                    v.iter()
+                        .enumerate()
+                        .map(|(pk, tuple)| TestTupleEncoder::new(tuple, pk as u64)),
+                )
+            })
         }
 
         fn get_options(&self) -> [u64; 2] {
             self.options
         }
 
-        fn get_params(&self) -> impl MsgpackWriter {
-            TestParamIterator::new(self.params.iter())
+        fn get_params(&self) -> impl MsgpackEncode {
+            TestParamEncoder::new(&self.params)
         }
+    }
 
-        fn get_sql(&self) -> &SmolStr {
+    impl DQLCacheMissDataSource for TestDQLDataSource {
+        fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
+            self.schema_info.iter().map(|(k, v)| (*k, *v))
+        }
+        fn get_vtables_metadata(
+            &self,
+        ) -> impl ExactSizeIterator<Item = (&str, impl ExactSizeIterator<Item = (&str, ColumnType)>)>
+        {
+            self.meta
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.iter().map(|(k, t)| (k.as_str(), *t))))
+        }
+        fn get_sql(&self) -> &str {
             &self.sql
         }
     }

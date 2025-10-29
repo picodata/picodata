@@ -52,6 +52,7 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("proc_name", "proc_instance_name"),
             ("proc_name", "proc_replicaset_name"),
             ("proc_name", "proc_tier_name"),
+            ("proc_name", "proc_query_metadata"),
             ("exec_script", "alter_pico_replicaset_add_master_change_counter"),
             ("exec_script", "alter_pico_replicaset_add_bucket_state_fields"),
             ("exec_script", "alter_pico_tier_add_bucket_state_fields"),

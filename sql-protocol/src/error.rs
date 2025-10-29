@@ -1,7 +1,7 @@
 use crate::error::ProtocolError::DecodeError;
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum ProtocolError {
     #[error("failed to decode MessagePack data: {0}")]
     DecodeError(String),

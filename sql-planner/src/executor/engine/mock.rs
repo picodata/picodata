@@ -87,6 +87,15 @@ impl Port<'_> for PortMocked {
         unreachable!();
     }
 
+    fn process_stmt_with_raw_params(
+        &mut self,
+        _stmt: &mut SqlStmt,
+        _params: &[u8],
+        _max_vdbe: u64,
+    ) -> Result<ExecutionInsight, SqlError> {
+        unreachable!();
+    }
+
     fn iter(&self) -> impl Iterator<Item = &[u8]> {
         self.tuples.iter().map(|t| t.as_slice())
     }

@@ -1,34 +1,117 @@
+use crate::decode::ExecuteArgsData::{New, Old};
+use crate::dml::delete::DeletePackageIterator;
+use crate::dml::insert::InsertPackageIterator;
+use crate::dml::update::UpdatePackageIterator;
+use crate::dql::DQLPacketPayloadIterator;
+use crate::error::ProtocolError;
+use crate::message_type::MessageType;
 use crate::msgpack::{shift_pos, skip_value};
 use rmp::decode::{
-    read_array_len, read_f32, read_f64, read_int, read_map_len, read_str_len, RmpRead,
+    read_array_len, read_bool, read_f32, read_f64, read_int, read_map_len, read_pfix, read_str_len,
+    RmpRead,
 };
 use rmp::Marker;
 use std::io::{Cursor, Error as IoError, Result as IoResult};
 use std::str::from_utf8;
 
 #[derive(Default)]
+pub struct QueryMetaArgs<'bytes> {
+    pub timeout: f64,
+    pub request_id: &'bytes str,
+    pub plan_id: u64,
+}
+
 pub struct ExecuteArgs<'bytes> {
     pub timeout: f64,
+    pub need_ref: bool,
     pub rid: i64,
     pub sid: &'bytes str,
+    pub data: ExecuteArgsData<'bytes>,
+}
+/// Temporary enum for protocol migration (remove after old protocol deprecation).
+/// New: raw payload bytes for new protocol
+/// Old: raw legacy protocol data
+pub enum ExecuteArgsData<'bytes> {
+    New(&'bytes [u8]),
+    Old(OldExecuteArgs<'bytes>),
+}
+pub struct OldExecuteArgs<'bytes> {
     pub required: &'bytes [u8],
     pub optional: Option<&'bytes [u8]>,
 }
 
+/// A decoded protocol message.
+/// Consists of common data that identifies the request and message type.
+/// `bytes` contains the payload for this message.
+pub struct ProtocolMessage<'bytes> {
+    pub request_id: &'bytes str,
+    pub msg_type: MessageType,
+    payload: &'bytes [u8],
+}
+
+pub enum ProtocolMessageIter<'bytes> {
+    Dql(DQLPacketPayloadIterator<'bytes>),
+    DmlInsert(InsertPackageIterator<'bytes>),
+    DmlUpdate(UpdatePackageIterator<'bytes>),
+    DmlDelete(DeletePackageIterator<'bytes>),
+}
+
+impl<'bytes> ProtocolMessage<'bytes> {
+    pub fn decode_from_bytes(mp: &'bytes [u8]) -> Result<Self, ProtocolError> {
+        let mut stream = Cursor::new(mp);
+        let len = read_array_len(&mut stream)?;
+        if len != 3 {
+            return Err(ProtocolError::DecodeError(
+                "protocol message must have 3 elements".to_string(),
+            ));
+        }
+        let len = read_str_len(&mut stream)?;
+        let start = stream.position() as usize;
+        let end = start + len as usize;
+        let request_id = from_utf8(&mp[start..end])
+            .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+
+        stream.set_position(end as u64);
+
+        let msg_type: MessageType = read_pfix(&mut stream)?
+            .try_into()
+            .map_err(ProtocolError::DecodeError)?;
+
+        let pos = stream.position() as usize;
+
+        Ok(Self {
+            request_id,
+            msg_type,
+            payload: &mp[pos..],
+        })
+    }
+
+    /// Returns an iterator over the message payload.
+    pub fn get_iter(&self) -> Result<ProtocolMessageIter<'bytes>, ProtocolError> {
+        match self.msg_type {
+            MessageType::DQL => {
+                DQLPacketPayloadIterator::new(self.payload).map(ProtocolMessageIter::Dql)
+            }
+            n => Err(ProtocolError::DecodeError(format!(
+                "Unknown message type: {n}"
+            ))),
+        }
+    }
+}
+
 pub fn execute_args_split(mp: &[u8]) -> IoResult<ExecuteArgs<'_>> {
-    let mut args = ExecuteArgs::default();
     let mut stream = Cursor::new(mp);
     let elems = read_array_len(&mut stream)
         .map_err(|e| IoError::other(format!("Failed to decode arguments array length: {e}")))?
         as usize;
-    if elems != 4 && elems != 5 {
+    if elems != 5 && elems != 6 {
         return Err(IoError::other(format!(
-            "Expected an array of 4 or 5 elements, got: {elems}"
+            "Expected an array of 5 or 6 elements, got: {elems}"
         )));
     }
     // Decode vshard storage timeout. It can be either integer or float.
     let marker = Marker::from_u8(mp[stream.position() as usize]);
-    args.timeout = match marker {
+    let timeout = match marker {
         Marker::F64 => read_f64(&mut stream)
             .map_err(|e| IoError::other(format!("Failed to decode vshard storage timeout: {e}")))?,
         Marker::F32 => read_f32(&mut stream)
@@ -39,7 +122,7 @@ pub fn execute_args_split(mp: &[u8]) -> IoResult<ExecuteArgs<'_>> {
     };
 
     // Decode vshard storage reference ID.
-    args.rid = read_int(&mut stream).map_err(|e| {
+    let rid = read_int(&mut stream).map_err(|e| {
         IoError::other(format!("Failed to decode vshard storage reference ID: {e}"))
     })?;
 
@@ -52,44 +135,115 @@ pub fn execute_args_split(mp: &[u8]) -> IoResult<ExecuteArgs<'_>> {
     let start = stream.position() as usize;
     let end = start + sid_len as usize;
     let sid_bytes = &mp[start..end];
-    args.sid = from_utf8(sid_bytes)
+    let sid = from_utf8(sid_bytes)
         .map_err(|e| IoError::other(format!("Invalid UTF-8 in vshard storage session ID: {e}")))?;
     stream.set_position(end as u64);
 
-    // Decode required data.
+    let need_ref = read_bool(&mut stream).map_err(|e| {
+        IoError::other(format!(
+            "Failed to decode vshard storage read only flag: {e}"
+        ))
+    })?;
+
+    let start_pos = stream.position() as usize;
     let array_len = read_array_len(&mut stream)
         .map_err(|e| IoError::other(format!("Failed to unpack required from array: {e}")))?;
-    if array_len != 1 {
-        return Err(IoError::other(format!(
-            "Expected an array of 1 element in required, got: {array_len}"
-        )));
-    }
-    // TODO: use binary instead of string.
-    let req_len = read_str_len(&mut stream)
-        .map_err(|e| IoError::other(format!("Failed to unpack required bytes: {e}")))?
-        as usize;
-    let req_start = stream.position() as usize;
-    args.required = &mp[req_start..req_start + req_len];
-
-    // Decode optional data if present.
-    if elems == 5 {
-        shift_pos(&mut stream, req_len as u64)?;
-        let array_len = read_array_len(&mut stream)
-            .map_err(|e| IoError::other(format!("Failed to unpack optional from array: {e}")))?;
+    if array_len == 3 {
+        Ok(ExecuteArgs {
+            timeout,
+            need_ref,
+            rid,
+            sid,
+            data: New(&mp[start_pos..]),
+        })
+    } else {
+        // Decode required data.
         if array_len != 1 {
             return Err(IoError::other(format!(
-                "Expected an array of 1 element in optional, got: {array_len}"
+                "Expected an array of 1 element in required, got: {array_len}"
             )));
         }
         // TODO: use binary instead of string.
-        let opt_len = read_str_len(&mut stream)
-            .map_err(|e| IoError::other(format!("Failed to unpack optional bytes: {e}")))?
+        let req_len = read_str_len(&mut stream)
+            .map_err(|e| IoError::other(format!("Failed to unpack required bytes: {e}")))?
             as usize;
-        let opt_start = stream.position() as usize;
-        args.optional = Some(&mp[opt_start..opt_start + opt_len]);
-    }
+        let req_start = stream.position() as usize;
+        let required = &mp[req_start..req_start + req_len];
 
-    Ok(args)
+        let mut args = ExecuteArgs {
+            timeout,
+            need_ref,
+            rid,
+            sid,
+            data: Old(OldExecuteArgs {
+                required,
+                optional: None,
+            }),
+        };
+
+        // Decode optional data if present.
+        if elems == 6 {
+            shift_pos(&mut stream, req_len as u64)?;
+            let array_len = read_array_len(&mut stream).map_err(|e| {
+                IoError::other(format!("Failed to unpack optional from array: {e}"))
+            })?;
+            if array_len != 1 {
+                return Err(IoError::other(format!(
+                    "Expected an array of 1 element in optional, got: {array_len}"
+                )));
+            }
+            // TODO: use binary instead of string.
+            let opt_len = read_str_len(&mut stream)
+                .map_err(|e| IoError::other(format!("Failed to unpack optional bytes: {e}")))?
+                as usize;
+            let opt_start = stream.position() as usize;
+            let Old(args) = &mut args.data else {
+                unreachable!("Optional data must be present in old format")
+            };
+            args.optional = Some(&mp[opt_start..opt_start + opt_len]);
+        }
+        Ok(args)
+    }
+}
+
+pub fn query_meta_args_split(mp: &[u8]) -> IoResult<QueryMetaArgs<'_>> {
+    let mut stream = Cursor::new(mp);
+    let elems = read_array_len(&mut stream)
+        .map_err(|e| IoError::other(format!("Failed to decode arguments array length: {e}")))?
+        as usize;
+    if elems != 3 {
+        return Err(IoError::other(format!(
+            "Expected an array of 3 elements, got: {elems}"
+        )));
+    }
+    // Decode vshard storage timeout. It can be either integer or float.
+    let marker = Marker::from_u8(mp[stream.position() as usize]);
+    let timeout = match marker {
+        Marker::F64 => read_f64(&mut stream)
+            .map_err(|e| IoError::other(format!("Failed to decode vshard storage timeout: {e}")))?,
+        Marker::F32 => read_f32(&mut stream)
+            .map(|v| v as f64)
+            .map_err(|e| IoError::other(format!("Failed to decode vshard storage timeout: {e}")))?,
+        _ => read_int::<f64, _>(&mut stream)
+            .map_err(|e| IoError::other(format!("Failed to decode vshard storage timeout: {e}")))?,
+    };
+
+    let len = read_str_len(&mut stream)
+        .map_err(|e| IoError::other(format!("Failed to decode request_id len: {e}")))?;
+    let start = stream.position() as usize;
+    let end = start + len as usize;
+    let request_id = from_utf8(&mp[start..end])
+        .map_err(|e| IoError::other(format!("Invalid UTF-8 in request_id: {e}")))?;
+    stream.set_position(end as u64);
+
+    let plan_id = read_int(&mut stream)
+        .map_err(|e| IoError::other(format!("Failed to decode plan_id: {e}")))?;
+
+    Ok(QueryMetaArgs {
+        timeout,
+        request_id,
+        plan_id,
+    })
 }
 
 /// Decode a proc_sql_execute response.

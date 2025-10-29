@@ -1,21 +1,30 @@
-use crate::metrics::{report_storage_cache_hit, report_storage_cache_miss};
+use crate::metrics::{
+    report_storage_cache_hit, report_storage_cache_miss, STORAGE_2ND_REQUESTS_TOTAL,
+};
+use crate::sql::lua::{lua_decode_ibufs, lua_query_metadata};
+use crate::sql::router::get_table_version_by_id;
 use crate::sql::PicoPortC;
 use crate::tlog;
+use crate::traft::{node, RaftId};
+use ahash::HashMapExt;
+use rmp::decode::read_array_len;
 use rmp::encode::{write_array_len, write_str, write_str_len, write_uint};
-use smol_str::{format_smolstr, ToSmolStr};
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql::backend::sql::space::ADMIN_ID;
+use sql::errors::Entity::MsgPack;
 use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::engine::helpers::{
     build_insert_args, init_delete_tuple_builder, init_insert_tuple_builder,
-    init_local_update_tuple_builder, init_sharded_update_tuple_builder, pk_name, populate_table,
-    table_name, truncate_tables, vtable_columns, FullPlanInfo, QueryInfo, RequiredPlanInfo,
-    TupleBuilderCommand, TupleBuilderPattern,
+    init_local_update_tuple_builder, init_sharded_update_tuple_builder, old_populate_table,
+    pk_name, table_name, truncate_tables, vtable_columns, FullPlanInfo, QueryInfo,
+    RequiredPlanInfo, TupleBuilderCommand, TupleBuilderPattern,
 };
-use sql::executor::engine::{QueryCache, StorageCache, Vshard};
+use sql::executor::engine::{QueryCache, StorageCache, TableVersionMap, Vshard};
 use sql::executor::ir::QueryType;
-use sql::executor::protocol::{OptionalData, RequiredData};
+use sql::executor::protocol::{OptionalData, RequiredData, SchemaInfo};
 use sql::executor::result::ConsumerResult;
-use sql::executor::vdbe::{ExecutionInsight, SqlStmt};
+use sql::executor::vdbe::ExecutionInsight::{BusyStmt, Nothing, StaleStmt};
+use sql::executor::vdbe::{ExecutionInsight, SqlError, SqlStmt};
 use sql::executor::vtable::{VTableTuple, VirtualTable, VirtualTableMeta};
 use sql::executor::{Port, PortType};
 use sql::ir::node::relational::Relational;
@@ -23,6 +32,11 @@ use sql::ir::operator::ConflictStrategy;
 use sql::ir::value::{EncodedValue, MsgPackValue, Value};
 use sql::ir::{node::NodeId, relation::SpaceEngine};
 use sql::utils::MutexLike;
+use sql_protocol::decode::{ProtocolMessage, ProtocolMessageIter};
+use sql_protocol::dql::{DQLCacheMissResult, DQLPacketPayloadIterator, DQLResult};
+use sql_protocol::dql_encoder::ColumnType;
+use sql_protocol::error::ProtocolError;
+use sql_protocol::iterators::TupleIterator;
 use std::io::{Cursor, Write};
 use std::sync::OnceLock;
 use tarantool::error::{Error, TarantoolErrorCode};
@@ -34,6 +48,60 @@ use tarantool::transaction::transaction;
 
 const LINE_WIDTH: usize = 80;
 
+#[macro_export]
+macro_rules! protocol_get {
+    ( $s:expr, $x:path ) => {{
+        let Some(val) = $s.next() else {
+            return Err(SbroadError::Invalid(
+                Entity::MsgPack,
+                Some(format_smolstr!(
+                    "Expected {}, but iterator is exceed",
+                    stringify!($x)
+                )),
+            ));
+        };
+
+        let val = val?;
+
+        let $x(val) = val else {
+            return Err(SbroadError::Invalid(
+                Entity::MsgPack,
+                Some(format_smolstr!("Expected {}, got {}", stringify!($x), val)),
+            ));
+        };
+
+        val
+    }};
+}
+
+fn populate_table(table_name: &str, tuples: TupleIterator) -> Result<(), SbroadError> {
+    with_su(ADMIN_ID, || -> Result<(), SbroadError> {
+        let space = Space::find(table_name).ok_or_else(|| {
+            // See https://git.picodata.io/core/picodata/-/issues/1859.
+            SbroadError::Invalid(
+                Entity::Space,
+                Some(format_smolstr!(
+                    "Temporary SQL table {table_name} not found. \
+                    Probably there are unused motions in the plan"
+                )),
+            )
+        })?;
+        for tuple in tuples {
+            let tuple = tuple?;
+            unsafe { space.insert_unchecked(tuple) }.map_err(|e|
+                // It is possible that the temporary table was recreated by admin
+                // user with a different format. We should not panic in this case.
+                SbroadError::FailedTo(
+                Action::Insert,
+                Some(Entity::Tuple),
+                format_smolstr!("tuple {tuple:?}, temporary table {table_name}: {e}"),
+            ))?;
+        }
+        Ok(())
+    })??;
+    Ok(())
+}
+
 /// Execute a DML query on the storage.
 pub(crate) fn dml_execute<'p, R: Vshard + QueryCache>(
     runtime: &R,
@@ -42,7 +110,7 @@ pub(crate) fn dml_execute<'p, R: Vshard + QueryCache>(
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<SmolStr, NodeId>,
 {
     if required.query_type != QueryType::DML {
         return Err(SbroadError::Invalid(
@@ -76,7 +144,7 @@ pub(crate) fn dql_execute_first_round<'p, R: Vshard + QueryCache>(
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<SmolStr, NodeId>,
 {
     let mut cache_guarded = runtime.cache().lock();
     if let Some((stmt, motion_ids)) = cache_guarded.get(info.id())? {
@@ -106,7 +174,7 @@ pub(crate) fn dql_execute_second_round<'p, R: QueryCache>(
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<SmolStr, NodeId>,
 {
     use ExecutionInsight::*;
     let mut cache_guarded = runtime.cache().lock();
@@ -120,7 +188,7 @@ where
             StaleStmt => report_storage_cache_miss("dql", "2nd", "stale"),
         }
     } else {
-        match sql_execute::<R>(&mut cache_guarded, info, port)? {
+        match old_sql_execute::<R>(&mut cache_guarded, info, port)? {
             Nothing => report_storage_cache_miss("dql", "2nd", "true"),
             BusyStmt => report_storage_cache_miss("dql", "2nd", "busy"),
             StaleStmt => report_storage_cache_miss("dql", "2nd", "stale"),
@@ -132,6 +200,253 @@ where
     Ok(())
 }
 
+// must be executed under lock
+fn dql_execute_impl<'p, 'b>(
+    stmt: &mut SqlStmt,
+    mut info: impl Iterator<Item = Result<DQLResult<'b>, ProtocolError>>,
+    port: &mut impl Port<'p>,
+) -> Result<ExecutionInsight, SbroadError> {
+    // populate vtables
+    let vtables = protocol_get!(info, DQLResult::Vtables);
+
+    let has_metadata = port.size() == 1;
+    let mut tables_names = Vec::with_capacity(vtables.len() as usize);
+    let mut max_rows = 0;
+    let pcall = || -> Result<ExecutionInsight, SbroadError> {
+        for vtable_data in vtables {
+            let (vtable, tuples) = vtable_data?;
+            populate_table(vtable, tuples)?;
+            tables_names.push(vtable);
+        }
+
+        let (sql_motion_row_max, sql_vdbe_opcode_max) = protocol_get!(info, DQLResult::Options);
+
+        max_rows = sql_motion_row_max;
+
+        let params = protocol_get!(info, DQLResult::Params);
+
+        with_su(ADMIN_ID, || -> Result<ExecutionInsight, SqlError> {
+            port.process_stmt_with_raw_params(stmt, params, sql_vdbe_opcode_max)
+        })?
+        .map_err(SbroadError::from)
+    };
+
+    let res = pcall();
+    with_su(ADMIN_ID, || {
+        for name in tables_names {
+            if let Some(space) = Space::find(name) {
+                space
+                    .truncate()
+                    .expect("failed to truncate temporary table");
+            }
+        }
+    })
+    .expect("failed to switch to admin user");
+    let res = res?;
+
+    // We should check if we exceed the maximum number of rows.
+    if port.size() > 0 {
+        let current_rows = port.size() - if has_metadata { 1 } else { 0 }; // exclude metadata tuple
+        if max_rows > 0 && current_rows as u64 > max_rows {
+            return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
+                "Exceeded maximum number of rows ({}) in virtual table: {}",
+                max_rows,
+                current_rows
+            )));
+        }
+    }
+
+    Ok(res)
+}
+
+/// Handle a cache miss for a DQL query.
+///
+/// Requests additional data from the router to prepare the query execution plan.
+/// After successful preparation, the plan is added to cache and execution resumes
+/// with cache hit processing.
+fn dql_cache_miss_execute<'p, 'b, R: Vshard + QueryCache>(
+    runtime: &R,
+    request_id: &str,
+    plan_id: u64,
+    mut info: DQLPacketPayloadIterator<'b>,
+    port: &mut impl Port<'p>,
+    timeout: f64,
+) -> Result<(), SbroadError>
+where
+    R::Cache: StorageCache<u64, SmolStr>,
+{
+    let sender_id = protocol_get!(info, DQLResult::SenderId);
+
+    let node = node::global().expect("should be init");
+    let raft_id: RaftId = sender_id.parse::<u64>().map_err(|e| {
+        SbroadError::Invalid(MsgPack, Some(format_smolstr!("Invalid sender id: {}", e)))
+    })?;
+
+    let instance = with_su(ADMIN_ID, || node.storage.instances.get(&raft_id))?
+        .map_err(|e| SbroadError::DispatchError(format_smolstr!("Failed to get instance: {e}")))?;
+
+    let lua = tarantool::lua_state();
+    let table = lua_query_metadata(
+        &lua,
+        instance.tier.as_str(),
+        instance.replicaset_uuid.as_str(),
+        instance.uuid.as_str(),
+        request_id,
+        plan_id,
+        timeout,
+    )?;
+
+    let rs_ibufs = lua_decode_ibufs(&table, 1).map_err(|e| {
+        SbroadError::DispatchError(format_smolstr!(
+            "Failed to decode ibufs from DQL cache miss {e}"
+        ))
+    })?;
+
+    debug_assert_eq!(rs_ibufs.len(), 1);
+    let rs_ibuf = &rs_ibufs[0];
+    let mut buf = rs_ibuf
+        .data()
+        .map_err(|e| SbroadError::DispatchError(format_smolstr!("Failed to decode ibuf {e}")))?;
+    let len = read_array_len(&mut buf).map_err(|e| SbroadError::Other(e.to_smolstr()))?;
+    if len != 1 {
+        return Err(SbroadError::Other(format_smolstr!(
+            "Expected array of length 1 from pcall result, got {len}",
+        )));
+    }
+    let mut cache_miss_info = sql_protocol::dql::DQLCacheMissPayloadIterator::new(buf)?;
+
+    let schema_info = protocol_get!(cache_miss_info, DQLCacheMissResult::SchemaInfo);
+
+    let mut table_versions = TableVersionMap::with_capacity(schema_info.len() as usize);
+    for schema in schema_info {
+        let (table, version) = schema?;
+        if version != get_table_version_by_id(table)? {
+            return Err(SbroadError::OutdatedStorageSchema);
+        }
+        table_versions.insert(table, version);
+    }
+
+    let mut cache_guarded = runtime.cache().lock();
+
+    if let Some((stmt, _motion_ids)) = cache_guarded.get(&plan_id)? {
+        match dql_execute_impl(stmt, info, port)? {
+            Nothing => report_storage_cache_hit("dql", "2nd"),
+            BusyStmt => report_storage_cache_miss("dql", "2nd", "busy"),
+            StaleStmt => report_storage_cache_miss("dql", "2nd", "stale"),
+        }
+
+        Ok(())
+    } else {
+        match sql_execute::<R>(
+            &mut cache_guarded,
+            plan_id,
+            &SchemaInfo::new(table_versions),
+            info,
+            cache_miss_info,
+            port,
+        )? {
+            Nothing => report_storage_cache_miss("dql", "2nd", "true"),
+            BusyStmt => report_storage_cache_miss("dql", "2nd", "busy"),
+            StaleStmt => report_storage_cache_miss("dql", "2nd", "stale"),
+        }
+
+        Ok(())
+    }
+}
+
+fn sql_execute<'a, 'p, R: QueryCache>(
+    cache_guarded: &mut <<R as QueryCache>::Mutex as MutexLike<R::Cache>>::Guard<'_>,
+    plan_id: u64,
+    schema_info: &SchemaInfo,
+    info: impl Iterator<Item = Result<DQLResult<'a>, ProtocolError>>,
+    mut cache_miss_info: impl Iterator<Item = Result<DQLCacheMissResult<'a>, ProtocolError>>,
+    port: &mut impl Port<'p>,
+) -> Result<ExecutionInsight, SbroadError>
+where
+    R::Cache: StorageCache<u64, SmolStr>,
+{
+    let metadata = protocol_get!(cache_miss_info, DQLCacheMissResult::VtablesMetadata);
+
+    let mut tables = Vec::with_capacity(metadata.len() as usize);
+    for data in metadata {
+        let (name, meta) = data?;
+        let pk_name = format!("PK_{}", name.strip_prefix("TMP_").unwrap_or(name));
+        table_create(name, pk_name.as_str(), meta)?;
+        tables.push(name.to_smolstr());
+    }
+
+    let sql = protocol_get!(cache_miss_info, DQLCacheMissResult::Sql);
+
+    let stmt = SqlStmt::compile(sql).inspect_err(|e| {
+        tlog!(
+            Warning,
+            "Failed to compile statement for the query '{sql}': {e}"
+        )
+    })?;
+    cache_guarded.put(plan_id, stmt, schema_info, tables)?;
+
+    let Some((stmt, _)) = cache_guarded.get(&plan_id)? else {
+        unreachable!("was just added, should be in the cache")
+    };
+
+    dql_execute_impl(stmt, info, port)
+}
+
+/// Execute a DQL query on storage.
+///
+/// The query is checked for presence in the cache. If not found, a cache miss
+/// request is performed and the query is added to the cache for future use.
+pub(crate) fn dql_execute<'p, R: Vshard + QueryCache>(
+    runtime: &R,
+    msg: &ProtocolMessage,
+    port: &mut impl Port<'p>,
+    timeout: f64,
+) -> Result<(), SbroadError>
+where
+    R::Cache: StorageCache<u64, SmolStr>,
+{
+    let ProtocolMessageIter::Dql(mut info) = msg.get_iter()? else {
+        unreachable!("should be dql iterator")
+    };
+
+    let schema_info = protocol_get!(info, DQLResult::SchemaInfo);
+
+    for schema in schema_info {
+        let (table, version) = schema?;
+        if version != get_table_version_by_id(table)? {
+            return Err(SbroadError::OutdatedStorageSchema);
+        }
+    }
+
+    let plan_id = protocol_get!(info, DQLResult::PlanId);
+
+    let mut cache_guarded = runtime.cache().lock();
+    if let Some((stmt, _)) = cache_guarded.get(&plan_id)? {
+        // skip it
+        let _ = protocol_get!(info, DQLResult::SenderId);
+
+        match dql_execute_impl(stmt, info, port)? {
+            Nothing => report_storage_cache_hit("dql", "1st"),
+            BusyStmt => report_storage_cache_miss("dql", "1st", "busy"),
+            StaleStmt => report_storage_cache_miss("dql", "1st", "stale"),
+        }
+
+        port.set_type(PortType::ExecuteDql);
+        Ok(())
+    } else {
+        drop(cache_guarded);
+        report_storage_cache_miss("dql", "1st", "true");
+
+        let res = dql_cache_miss_execute(runtime, msg.request_id, plan_id, info, port, timeout);
+        port.set_type(PortType::ExecuteDql);
+        let result = if res.is_err() { "err" } else { "ok" };
+        STORAGE_2ND_REQUESTS_TOTAL
+            .with_label_values(&["dql", result])
+            .inc();
+        res
+    }
+}
+
 pub fn explain_execute<'p, R: QueryCache>(
     runtime: &R,
     info: &mut impl FullPlanInfo,
@@ -140,7 +455,7 @@ pub fn explain_execute<'p, R: QueryCache>(
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<SmolStr, NodeId>,
 {
     let _lock: <<R as QueryCache>::Mutex as MutexLike<<R as QueryCache>::Cache>>::Guard<'_> =
         runtime.cache().lock();
@@ -209,7 +524,7 @@ where
                 Some(format_smolstr!("missing metadata for motion {motion_id}")),
             )
         })?;
-        table_create(&table_name, &pk_name, meta)?;
+        old_table_create(&table_name, &pk_name, meta)?;
     }
 
     let mut stmt = SqlStmt::compile(&explain)?;
@@ -223,7 +538,7 @@ fn plan_execute<'p, R: QueryCache>(
     port: &mut impl Port<'p>,
 ) -> Result<ExecutionInsight, SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<SmolStr, NodeId>,
 {
     let mut cache_guarded: <<R as QueryCache>::Mutex as MutexLike<<R as QueryCache>::Cache>>::Guard<'_> = runtime.cache().lock();
     if let Some((stmt, motion_ids)) = cache_guarded.get(info.id())? {
@@ -232,13 +547,11 @@ where
         // temporary tables. Isolation is guaranteed by keeping a lock on the cache.
         stmt_execute(stmt, info, motion_ids, port)
     } else {
-        sql_execute::<R>(&mut cache_guarded, info, port)
+        old_sql_execute::<R>(&mut cache_guarded, info, port)
     }
 }
 
-/// Create a temporary table. It wraps all Space API with `with_su`
-/// since user may have no permissions to read/write tables.
-fn table_create(name: &str, pk_name: &str, meta: &VirtualTableMeta) -> Result<(), SbroadError> {
+fn table_create_impl(name: &str, pk_name: &str, fields: Vec<Field>) -> Result<(), SbroadError> {
     let cleanup = |space: Space, name: &str| {
         if let Err(e) = with_su(ADMIN_ID, || space.drop()) {
             tlog!(Error, "Failed to drop temporary table {name}: {e}")
@@ -251,13 +564,6 @@ fn table_create(name: &str, pk_name: &str, meta: &VirtualTableMeta) -> Result<()
         cleanup(space, name);
     }
 
-    let mut fields: Vec<Field> = meta
-        .columns
-        .iter()
-        .map(|c| Field::from(c.clone()))
-        .collect();
-
-    fields.push(Field::unsigned(pk_name));
     let options = SpaceCreateOptions {
         format: Some(fields),
         engine: SpaceEngine::Memtx.into(),
@@ -299,6 +605,51 @@ fn table_create(name: &str, pk_name: &str, meta: &VirtualTableMeta) -> Result<()
     Ok(())
 }
 
+/// Create a temporary table. It wraps all Space API with `with_su`
+/// since user may have no permissions to read/write tables.
+fn old_table_create(name: &str, pk_name: &str, meta: &VirtualTableMeta) -> Result<(), SbroadError> {
+    let mut fields: Vec<Field> = meta
+        .columns
+        .iter()
+        .map(|c| Field::from(c.clone()))
+        .collect();
+
+    fields.push(Field::unsigned(pk_name));
+
+    table_create_impl(name, pk_name, fields)
+}
+/// Create a temporary table. It wraps all Space API with `with_su`
+/// since user may have no permissions to read/write tables.
+fn table_create(
+    name: &str,
+    pk_name: &str,
+    columns: Vec<(&str, ColumnType)>,
+) -> Result<(), SbroadError> {
+    let mut fields: Vec<Field> = columns
+        .iter()
+        .map(|(name, column_type)| {
+            match column_type {
+                ColumnType::Map => Field::map(*name),
+                ColumnType::Boolean => Field::boolean(*name),
+                ColumnType::Datetime => Field::datetime(*name),
+                ColumnType::Decimal => Field::decimal(*name),
+                ColumnType::Double => Field::double(*name),
+                ColumnType::Integer => Field::integer(*name),
+                ColumnType::String => Field::string(*name),
+                ColumnType::Uuid => Field::uuid(*name),
+                ColumnType::Any => Field::any(*name),
+                ColumnType::Array => Field::array(*name),
+                ColumnType::Scalar => Field::scalar(*name),
+            }
+            .is_nullable(true)
+        })
+        .collect();
+
+    fields.push(Field::unsigned(pk_name));
+
+    table_create_impl(name, pk_name, fields)
+}
+
 // Requires the cache to be locked.
 pub fn stmt_execute<'p>(
     stmt: &mut SqlStmt,
@@ -313,7 +664,7 @@ pub fn stmt_execute<'p>(
 
     let has_metadata = port.size() == 1;
     for motion_id in motion_ids {
-        populate_table(motion_id, info.id(), &vtables)?;
+        old_populate_table(motion_id, info.id(), &vtables)?;
     }
 
     let res = port.process_stmt(stmt, info.params(), info.sql_vdbe_opcode_max())?;
@@ -335,13 +686,13 @@ pub fn stmt_execute<'p>(
 }
 
 // Requires the cache to be locked.
-pub fn sql_execute<'p, R: QueryCache>(
+pub fn old_sql_execute<'p, R: QueryCache>(
     cache_guarded: &mut <<R as QueryCache>::Mutex as MutexLike<R::Cache>>::Guard<'_>,
     info: &mut impl FullPlanInfo,
     port: &mut impl Port<'p>,
 ) -> Result<ExecutionInsight, SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<SmolStr, NodeId>,
 {
     let (local_sql, motion_ids, vtables_meta) = info.take_query_meta()?;
     for motion_id in &motion_ids {
@@ -353,7 +704,7 @@ where
                 Some(format_smolstr!("missing metadata for motion {motion_id}")),
             )
         })?;
-        table_create(&table_name, &pk_name, meta)?;
+        old_table_create(&table_name, &pk_name, meta)?;
     }
 
     let stmt = SqlStmt::compile(&local_sql).inspect_err(|e| {
@@ -381,7 +732,7 @@ fn virtual_table_materialize<R: Vshard + QueryCache>(
     child_id: NodeId,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<SmolStr, NodeId>,
 {
     let mut info = QueryInfo::new(optional, required);
     let mut port = TarantoolPort::new_port_c();
@@ -415,7 +766,7 @@ fn update_execute<'p, R: Vshard + QueryCache>(
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<SmolStr, NodeId>,
 {
     let plan = optional.exec_plan.get_ir_plan();
     let update_id = plan.get_top()?;
@@ -698,7 +1049,7 @@ fn delete_execute<'p, R: Vshard + QueryCache>(
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<SmolStr, NodeId>,
 {
     let plan = optional.exec_plan.get_ir_plan();
     let delete_id = plan.get_top()?;
@@ -756,7 +1107,7 @@ fn insert_execute<'p, R: Vshard + QueryCache>(
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<SmolStr, NodeId>,
 {
     // We always generate a virtual table under the `INSERT` node
     // of the execution plan and prefer to execute it via space API

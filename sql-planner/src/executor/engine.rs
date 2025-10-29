@@ -27,6 +27,7 @@ use crate::ir::value::Value;
 use super::Port;
 
 use crate::executor::vdbe::SqlStmt;
+use crate::ir::helpers::RepeatableState;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use tarantool::space::SpaceId;
 
@@ -197,15 +198,16 @@ pub fn get_builtin_functions() -> &'static [Function] {
     })
 }
 
-pub trait StorageCache {
+// TODO: generics would be removed after execution on any would be on the new protocol
+pub trait StorageCache<K, T> {
     /// Put the prepared statement with given key in cache,
     /// remembering its version.
     fn put(
         &mut self,
-        plan_id: SmolStr,
+        plan_id: K,
         stmt: SqlStmt,
         schema_info: &SchemaInfo,
-        motion_ids: Vec<NodeId>,
+        motion_ids: Vec<T>,
     ) -> Result<(), SbroadError>;
 
     /// Get the prepared statement and a list of motion ids from cache.
@@ -213,10 +215,10 @@ pub trait StorageCache {
     /// has been changed, `None` is returned.
     #[allow(clippy::ptr_arg)]
     #[allow(clippy::type_complexity)]
-    fn get(&mut self, plan_id: &SmolStr) -> Result<Option<(&mut SqlStmt, &[NodeId])>, SbroadError>;
+    fn get(&mut self, plan_id: &K) -> Result<Option<(&mut SqlStmt, &[T])>, SbroadError>;
 }
 
-pub type TableVersionMap = HashMap<SmolStr, u64>;
+pub type TableVersionMap = HashMap<u32, u64, RepeatableState>;
 
 pub trait QueryCache {
     type Cache;

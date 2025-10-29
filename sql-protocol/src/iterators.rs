@@ -1,4 +1,4 @@
-use crate::dql_encoder::MsgpackWriter;
+use crate::dql_encoder::MsgpackEncode;
 use crate::error::ProtocolError;
 use std::io::{Cursor, Write};
 
@@ -178,45 +178,25 @@ impl<'a> Iterator for TupleIterator<'a> {
 }
 
 #[allow(dead_code)]
-pub(crate) struct TestTuplesWriter<'tw> {
-    current: Option<&'tw Vec<u64>>,
-    iter: std::slice::Iter<'tw, Vec<u64>>,
+pub(crate) struct TestPureTupleEncoder<'e> {
+    data: &'e Vec<u64>,
 }
 
-impl<'tw> TestTuplesWriter<'tw> {
+impl<'e> TestPureTupleEncoder<'e> {
     #[allow(dead_code)]
-    pub(crate) fn new(iter: std::slice::Iter<'tw, Vec<u64>>) -> Self {
-        Self {
-            current: None,
-            iter,
-        }
+    pub(crate) fn new(data: &'e Vec<u64>) -> Self {
+        Self { data }
     }
 }
 
-impl MsgpackWriter for TestTuplesWriter<'_> {
-    fn write_current(&self, w: &mut impl Write) -> std::io::Result<()> {
-        let Some(elem) = self.current else {
-            return Ok(());
-        };
+impl MsgpackEncode for TestPureTupleEncoder<'_> {
+    fn encode_into(&self, w: &mut impl Write) -> std::io::Result<()> {
+        rmp::encode::write_array_len(w, self.data.len() as u32)?;
 
-        rmp::encode::write_array_len(w, elem.len() as u32)?;
-
-        for elem in elem {
+        for elem in self.data {
             rmp::encode::write_uint(w, *elem)?;
         }
 
         Ok(())
-    }
-
-    fn next(&mut self) -> Option<()> {
-        self.current = self.iter.next();
-
-        self.current?;
-
-        Some(())
-    }
-
-    fn len(&self) -> usize {
-        self.iter.len()
     }
 }

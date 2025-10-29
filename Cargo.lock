@@ -4264,6 +4264,7 @@ dependencies = [
  "serde_yaml",
  "smol_str",
  "sql-type-system",
+ "sql_protocol",
  "sqlformat",
  "tarantool",
  "thiserror 1.0.69",
@@ -4286,7 +4287,6 @@ version = "25.5.0"
 dependencies = [
  "comfy-table",
  "rmp",
- "smol_str",
  "thiserror 1.0.69",
 ]
 

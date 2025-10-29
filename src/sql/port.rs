@@ -188,6 +188,15 @@ impl SqlPort<'_> for PicoPortOwned {
         stmt.execute(params, max_vdbe, self.port_c_mut())
     }
 
+    fn process_stmt_with_raw_params(
+        &mut self,
+        stmt: &mut SqlStmt,
+        params: &[u8],
+        max_vdbe: u64,
+    ) -> Result<ExecutionInsight, SqlError> {
+        stmt.execute_with_raw_params(params, max_vdbe, self.port_c_mut())
+    }
+
     fn iter(&self) -> impl Iterator<Item = &[u8]> {
         self.port_c().iter()
     }
@@ -246,6 +255,15 @@ impl<'p> SqlPort<'p> for PicoPortC<'p> {
         Self: Sized,
     {
         stmt.execute(params, max_vdbe, self.port)
+    }
+
+    fn process_stmt_with_raw_params(
+        &mut self,
+        stmt: &mut SqlStmt,
+        params: &[u8],
+        max_vdbe: u64,
+    ) -> Result<ExecutionInsight, SqlError> {
+        stmt.execute_with_raw_params(params, max_vdbe, self.port)
     }
 
     fn iter(&self) -> impl Iterator<Item = &[u8]> {

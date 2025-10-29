@@ -5,7 +5,7 @@ use crate::dql::{
     write_options, write_params, write_plan_id, write_schema_info, write_sender_id, write_tuples,
     write_vtables,
 };
-use crate::dql_encoder::{DQLEncoder, MsgpackWriter};
+use crate::dql_encoder::{DQLDataSource, MsgpackEncode};
 use crate::error::ProtocolError;
 use crate::iterators::{MsgpackArrayIterator, MsgpackMapIterator, TupleIterator};
 use crate::msgpack::skip_value;
@@ -22,7 +22,7 @@ pub trait UpdateEncoder {
     fn get_update_type(&self) -> UpdateType;
     fn get_mapping_columns(&self) -> impl ExactSizeIterator<Item = (&usize, &usize)>;
     fn get_pk_positions(&self) -> impl ExactSizeIterator<Item = &usize>;
-    fn get_tuples(&self) -> impl MsgpackWriter;
+    fn get_tuples(&self) -> impl ExactSizeIterator<Item = impl MsgpackEncode>;
 }
 
 pub fn write_update_package(
@@ -43,7 +43,7 @@ pub fn write_update_package(
 
 pub fn write_update_with_sql_package(
     w: &mut impl std::io::Write,
-    data: impl UpdateEncoder + DQLEncoder,
+    data: impl UpdateEncoder + DQLDataSource,
 ) -> Result<(), std::io::Error> {
     write_dml_with_sql_header(w, Update, UpdateEncoder::get_request_id(&data))?;
     write_array_len(w, LOCAL_UPDATE_PACKAGE_SIZE as u32)?;
@@ -72,12 +72,11 @@ pub fn write_update_with_sql_package(
 
     write_schema_info(w, data.get_schema_info())?;
 
-    let plan_id = data.get_plan_id();
-    write_plan_id(w, plan_id)?;
+    write_plan_id(w, data.get_plan_id())?;
 
     write_sender_id(w, data.get_sender_id())?;
 
-    write_vtables(w, data.get_vtables(plan_id))?;
+    write_vtables(w, data.get_vtables())?;
 
     write_options(w, data.get_options().iter())?;
 
@@ -405,11 +404,11 @@ impl<'a> Iterator for LocalUpdatePackageIterator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dql_encoder::test::{TestDQLEncoder, TestDQLEncoderBuilder};
-    use crate::dql_encoder::ColumnType;
+    use crate::dql_encoder::test::{TestDQLDataSource, TestDQLEncoderBuilder};
+    use crate::iterators::TestPureTupleEncoder;
     use crate::message_type::MessageType;
     use rmp::decode::read_str_len;
-    use smol_str::{SmolStr, ToSmolStr};
+
     use std::collections::{BTreeMap, HashMap};
     use std::str::from_utf8;
 
@@ -421,7 +420,7 @@ mod tests {
         column_mapping: BTreeMap<usize, usize>,
         pk_positions: Vec<usize>,
         tuples: Vec<Vec<u64>>,
-        dql_encoder: Option<TestDQLEncoder>,
+        dql_encoder: Option<TestDQLDataSource>,
     }
 
     impl UpdateEncoder for TestUpdateEncoder {
@@ -449,13 +448,13 @@ mod tests {
             self.pk_positions.iter()
         }
 
-        fn get_tuples(&self) -> impl MsgpackWriter {
-            crate::iterators::TestTuplesWriter::new(self.tuples.iter())
+        fn get_tuples(&self) -> impl ExactSizeIterator<Item = impl MsgpackEncode> {
+            self.tuples.iter().map(TestPureTupleEncoder::new)
         }
     }
 
-    impl DQLEncoder for TestUpdateEncoder {
-        fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (&u32, &u64)> {
+    impl DQLDataSource for TestUpdateEncoder {
+        fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
             self.dql_encoder.as_ref().unwrap().get_schema_info()
         }
 
@@ -471,37 +470,19 @@ mod tests {
             unreachable!("should not be called");
         }
 
-        fn get_vtables_metadata(
-            &self,
-        ) -> impl ExactSizeIterator<
-            Item = (
-                SmolStr,
-                impl ExactSizeIterator<Item = (&SmolStr, ColumnType)>,
-            ),
-        > {
-            unreachable!("should not be called");
-            // left here to satisfy the compiler
-            #[allow(unreachable_code)]
-            self.dql_encoder.as_ref().unwrap().get_vtables_metadata()
-        }
-
         fn get_vtables(
             &self,
-            plan_id: u64,
-        ) -> impl ExactSizeIterator<Item = (SmolStr, impl MsgpackWriter)> {
-            self.dql_encoder.as_ref().unwrap().get_vtables(plan_id)
+        ) -> impl ExactSizeIterator<Item = (&str, impl ExactSizeIterator<Item = impl MsgpackEncode>)>
+        {
+            self.dql_encoder.as_ref().unwrap().get_vtables()
         }
 
         fn get_options(&self) -> [u64; 2] {
             self.dql_encoder.as_ref().unwrap().get_options()
         }
 
-        fn get_params(&self) -> impl MsgpackWriter {
+        fn get_params(&self) -> impl MsgpackEncode {
             self.dql_encoder.as_ref().unwrap().get_params()
-        }
-
-        fn get_sql(&self) -> &SmolStr {
-            unreachable!("should not be called");
         }
     }
 
@@ -582,7 +563,7 @@ mod tests {
             .set_schema_info(HashMap::from([(12, 138)]))
             .set_sender_id("some".to_string())
             .set_vtables(HashMap::from([(
-                "TMP_1302_".to_smolstr(),
+                "TMP_1302_".to_string(),
                 vec![vec![1, 2, 3], vec![3, 2, 1]],
             )]))
             .set_options([123, 456])
@@ -615,7 +596,7 @@ mod tests {
             .set_schema_info(HashMap::from([(12, 138)]))
             .set_sender_id("some".to_string())
             .set_vtables(HashMap::from([(
-                "TMP_1302_".to_smolstr(),
+                "TMP_1302_".to_string(),
                 vec![vec![1, 2, 3], vec![3, 2, 1]],
             )]))
             .set_options([123, 456])
@@ -701,7 +682,7 @@ mod tests {
                     assert_eq!(vtables.len(), 1);
                     for res in vtables {
                         let (name, tuples) = res.unwrap();
-                        assert_eq!(name, "TMP_1302_".to_smolstr());
+                        assert_eq!(name, "TMP_1302_".to_string());
                         assert_eq!(tuples.len(), 2);
                         let mut actual = Vec::with_capacity(2);
                         for tuple in tuples {

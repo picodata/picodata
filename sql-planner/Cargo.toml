@@ -27,6 +27,7 @@ rmp = { workspace = true }
 rmp-serde = { workspace = true }
 rmpv = { workspace = true }
 serde = { workspace = true, features = ["derive", "rc"] }
+sql_protocol = { path = "../sql-protocol" }
 serde_bytes = { workspace = true }
 smol_str = { version = "0.2", features = ["serde"] }
 twox-hash = "2.1"
