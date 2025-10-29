@@ -1748,7 +1748,11 @@ fn postjoin(
         if let Err(e) = node.campaign_and_yield() {
             tlog!(Warning, "failed to trigger raft election: {e}");
         }
-        assert!(node.status().raft_state.is_leader());
+
+        // NOTE: this assert is incorrect, as there can potentially be an
+        // unapplied ConfChange entry in which case raft-rs will squash our
+        // attempt to promote
+        // assert!(node.status().raft_state.is_leader());
     }
 
     let tls_config = &config.instance.iproto_tls;
