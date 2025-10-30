@@ -493,6 +493,8 @@ mod tests {
     use crate::fiber::r#async::timeout::IntoTimeout as _;
     use crate::space::Space;
     use crate::test::util::listen_port;
+    #[cfg(feature = "picodata")]
+    use crate::test::util::{get_tls_connector, tls_listen_port};
     use std::time::Duration;
 
     async fn test_client() -> Client {
@@ -504,6 +506,23 @@ mod tests {
                 auth_method: crate::auth::AuthMethod::ChapSha1,
                 ..Default::default()
             },
+        )
+        .timeout(Duration::from_secs(3))
+        .await
+        .unwrap()
+    }
+
+    #[cfg(feature = "picodata")]
+    async fn test_tls_client() -> Client {
+        Client::connect_with_config_and_tls(
+            "127.0.0.1",
+            tls_listen_port(),
+            protocol::Config {
+                creds: Some(("test_user".into(), "password".into())),
+                auth_method: crate::auth::AuthMethod::ChapSha1,
+                ..Default::default()
+            },
+            Some(get_tls_connector()),
         )
         .timeout(Duration::from_secs(3))
         .await
@@ -529,9 +548,43 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "picodata")]
+    #[crate::test(tarantool = "crate")]
+    async fn tls_connect_with_timeout() {
+        // Without timeout, the connection hangs on address like this
+        let client = Client::connect_with_config_and_tls(
+            "123123", // Invalid host
+            tls_listen_port(),
+            protocol::Config {
+                connect_timeout: Some(Duration::from_secs(1)),
+                ..Default::default()
+            },
+            Some(get_tls_connector()),
+        );
+        let res = client.await.unwrap_err();
+        if cfg!(target_os = "macos") {
+            assert!(res.to_string().contains("No route to host"));
+        } else {
+            assert_eq!(res.to_string(), "connect timeout");
+        }
+    }
+
     #[crate::test(tarantool = "crate")]
     async fn connect() {
         let _client = Client::connect("localhost", listen_port()).await.unwrap();
+    }
+
+    #[cfg(feature = "picodata")]
+    #[crate::test(tarantool = "crate")]
+    async fn tls_connect() {
+        let _client = Client::connect_with_config_and_tls(
+            "127.0.0.1",
+            tls_listen_port(),
+            protocol::Config::default(),
+            Some(get_tls_connector()),
+        )
+        .await
+        .unwrap();
     }
 
     #[crate::test(tarantool = "crate")]
@@ -541,13 +594,35 @@ mod tests {
         assert!(matches!(dbg!(err), ClientError::ConnectionClosed(_)))
     }
 
+    #[cfg(feature = "picodata")]
     #[crate::test(tarantool = "crate")]
-    async fn ping() {
-        let client = test_client().await;
+    async fn tls_connect_failure() {
+        let err = Client::connect_with_config_and_tls(
+            "127.0.0.1",
+            0,
+            protocol::Config::default(),
+            Some(get_tls_connector()),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, ClientError::ConnectionClosed(_)))
+    }
 
+    async fn test_ping(client: Client) {
         for _ in 0..5 {
             client.ping().timeout(Duration::from_secs(3)).await.unwrap();
         }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    async fn ping() {
+        test_ping(test_client().await).await;
+    }
+
+    #[cfg(feature = "picodata")]
+    #[crate::test(tarantool = "crate")]
+    async fn tls_ping() {
+        test_ping(test_tls_client().await).await;
     }
 
     #[crate::test(tarantool = "crate")]
@@ -570,9 +645,7 @@ mod tests {
         client.ping().timeout(Duration::from_secs(3)).await.unwrap();
     }
 
-    #[crate::test(tarantool = "crate")]
-    fn ping_concurrent() {
-        let client = fiber::block_on(test_client());
+    fn test_ping_concurrent(client: Client) {
         let fiber_a = fiber::start_async(async {
             client.ping().timeout(Duration::from_secs(3)).await.unwrap()
         });
@@ -584,17 +657,27 @@ mod tests {
     }
 
     #[crate::test(tarantool = "crate")]
-    async fn execute() {
-        Space::find("test_s1")
-            .unwrap()
-            .insert(&(6001, "6001"))
-            .unwrap();
-        Space::find("test_s1")
-            .unwrap()
-            .insert(&(6002, "6002"))
-            .unwrap();
+    fn ping_concurrent() {
+        let client = fiber::block_on(test_client());
+        test_ping_concurrent(client);
+    }
 
-        let client = test_client().await;
+    #[cfg(feature = "picodata")]
+    #[crate::test(tarantool = "crate")]
+    fn tls_ping_concurrent() {
+        let client = fiber::block_on(test_tls_client());
+        test_ping_concurrent(client);
+    }
+
+    async fn test_execute(client: Client, key1: u64, key2: u64) {
+        Space::find("test_s1")
+            .unwrap()
+            .insert(&(key1, "6001"))
+            .unwrap();
+        Space::find("test_s1")
+            .unwrap()
+            .insert(&(key2, "6002"))
+            .unwrap();
 
         let lua = crate::lua_state();
         // Error is silently ignored on older versions, before 'compat' was introduced.
@@ -608,7 +691,7 @@ mod tests {
         assert!(result.len() >= 2);
 
         let result = client
-            .execute(r#"SELECT * FROM "test_s1" WHERE "id" = ?"#, &(6002,))
+            .execute(r#"SELECT * FROM "test_s1" WHERE "id" = ?"#, &(key2,))
             .timeout(Duration::from_secs(3))
             .await
             .unwrap();
@@ -616,20 +699,43 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert_eq!(
             result.first().unwrap().decode::<(u64, String)>().unwrap(),
-            (6002, "6002".into())
+            (key2, "6002".into())
         );
     }
 
     #[crate::test(tarantool = "crate")]
-    async fn call() {
+    async fn execute() {
         let client = test_client().await;
+        test_execute(client, 6001, 6002).await;
+    }
 
+    #[cfg(feature = "picodata")]
+    #[crate::test(tarantool = "crate")]
+    async fn tls_execute() {
+        let client = test_tls_client().await;
+        test_execute(client, 6003, 6004).await;
+    }
+
+    async fn test_call(client: Client) {
         let result = client
             .call("test_stored_proc", &(1, 2))
             .timeout(Duration::from_secs(3))
             .await
             .unwrap();
         assert_eq!(result.decode::<(i32,)>().unwrap(), (3,));
+    }
+
+    #[crate::test(tarantool = "crate")]
+    async fn call() {
+        let client = test_client().await;
+        test_call(client).await;
+    }
+
+    #[cfg(feature = "picodata")]
+    #[crate::test(tarantool = "crate")]
+    async fn tls_call() {
+        let client = test_tls_client().await;
+        test_call(client).await;
     }
 
     #[crate::test(tarantool = "crate")]
@@ -709,9 +815,7 @@ mod tests {
         client.check_state().unwrap_err();
     }
 
-    #[crate::test(tarantool = "crate")]
-    async fn concurrent_messages_one_fiber() {
-        let client = test_client().await;
+    async fn test_concurrent_messages_one_fiber(client: Client) {
         let mut ping_futures = vec![];
         for _ in 0..10 {
             ping_futures.push(client.ping());
@@ -719,6 +823,19 @@ mod tests {
         for res in futures::future::join_all(ping_futures).await {
             res.unwrap();
         }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    async fn concurrent_messages_one_fiber() {
+        let client = test_client().await;
+        test_concurrent_messages_one_fiber(client).await;
+    }
+
+    #[cfg(feature = "picodata")]
+    #[crate::test(tarantool = "crate")]
+    async fn tls_concurrent_messages_one_fiber() {
+        let client = test_tls_client().await;
+        test_concurrent_messages_one_fiber(client).await;
     }
 
     #[crate::test(tarantool = "crate")]
@@ -853,6 +970,108 @@ mod tests {
                     auth_method: AuthMethod::ChapSha1,
                     ..Default::default()
                 },
+            )
+            .timeout(Duration::from_secs(3))
+            .await
+            .unwrap();
+
+            // network::Client will not try actually connecting until we send the
+            // first request
+            let err = client.eval("return", &()).await.unwrap_err().to_string();
+            #[rustfmt::skip]
+            assert_eq!(err, "server responded with error: PasswordMismatch: User not found or supplied credentials are invalid");
+        }
+
+        crate::lua_state()
+            // This is the default
+            .exec_with(
+                "local username = ...
+                box.cfg { auth_type = 'chap-sha1' }
+                box.schema.user.drop(username)",
+                username,
+            )
+            .unwrap();
+    }
+
+    #[cfg(feature = "picodata")]
+    #[crate::test(tarantool = "crate")]
+    async fn tls_md5_auth_method() {
+        use crate::auth::AuthMethod;
+        use std::time::Duration;
+
+        let username = "Johnny";
+        let password = "B. Goode";
+
+        // NOTE: because we test our fork of `tarantool` here (see `picodata` feature flag on a test), we can
+        // pass `auth_type` parameter right into `box.schema.user.create`. This won't work in default `tarantool`.
+        crate::lua_state()
+            .exec_with(
+                "local username, password = ...
+                box.cfg { }
+                box.schema.user.create(username, { if_not_exists = true, auth_type = 'md5', password = password })
+                box.schema.user.grant(username, 'super', nil, nil, { if_not_exists = true })",
+                (username, password),
+            )
+            .unwrap();
+
+        // Successful connection
+        {
+            let client = Client::connect_with_config_and_tls(
+                "127.0.0.1",
+                tls_listen_port(),
+                protocol::Config {
+                    creds: Some((username.into(), password.into())),
+                    auth_method: AuthMethod::Md5,
+                    ..Default::default()
+                },
+                Some(get_tls_connector()),
+            )
+            .timeout(Duration::from_secs(3))
+            .await
+            .unwrap();
+
+            // network::Client will not try actually connecting until we send the
+            // first request
+            client
+                .eval("print('\\x1b[32mit works!\\x1b[0m')", &())
+                .await
+                .unwrap();
+        }
+
+        // Wrong password
+        {
+            let client = Client::connect_with_config_and_tls(
+                "127.0.0.1",
+                tls_listen_port(),
+                protocol::Config {
+                    creds: Some((username.into(), "wrong password".into())),
+                    auth_method: AuthMethod::Md5,
+                    ..Default::default()
+                },
+                Some(get_tls_connector()),
+            )
+            .timeout(Duration::from_secs(3))
+            .await
+            .unwrap();
+
+            // network::Client will not try actually connecting until we send the
+            // first request
+            let err = client.eval("return", &()).await.unwrap_err().to_string();
+            #[rustfmt::skip]
+            assert_eq!(err, "server responded with error: PasswordMismatch: User not found or supplied credentials are invalid");
+        }
+
+        // Wrong auth method
+        {
+            let client = Client::connect_with_config_and_tls(
+                "127.0.0.1",
+                tls_listen_port(),
+                protocol::Config {
+                    creds: Some((username.into(), password.into())),
+                    auth_method: AuthMethod::ChapSha1,
+                    ..Default::default()
+                },
+                Some(get_tls_connector()),
             )
             .timeout(Duration::from_secs(3))
             .await

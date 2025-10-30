@@ -15,9 +15,46 @@ end
 local current_dir = fio.dirname(current_file)
 fio.chdir(current_dir)
 
+function tarantool_executable()
+    local executable = os.getenv('TARANTOOL_EXECUTABLE')
+    if not executable then
+        executable = 'tarantool'
+    end
+    return executable
+end
+
+-- Only picodata's tarantool supports TLS/SSL.
+-- We need second listen port to test this functionality.
+function second_listen_transport()
+    local executable = tarantool_executable()
+    local data = io.popen(executable .. ' --version'):read('*a')
+    if string.find(data, 'picodata') or
+       string.find(data, 'tarantool-sys', 1, true) then
+        return 'ssl'
+    end
+    return 'plain'
+end
+
+local function certs_file(name)
+    return require('fio').abspath('./ssl_certs') .. "/" .. name
+end
+
 box.cfg{
     log_level = 'verbose',
-    listen = 'localhost:0',
+    listen = {
+        {
+            uri = 'localhost:0'
+        },
+        {
+            uri = '127.0.0.1:0',
+            params = {
+                transport = second_listen_transport(),
+                ssl_cert_file = certs_file('server.crt'),
+                ssl_key_file = certs_file('server.key'),
+                ssl_ca_file = certs_file('combined-ca.crt')
+            }
+        }
+    },
     wal_mode = 'none',
     memtx_dir = tmpdir,
     wal_dir = tmpdir,

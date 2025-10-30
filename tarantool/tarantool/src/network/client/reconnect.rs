@@ -194,6 +194,8 @@ mod tests {
     use crate::fiber;
     use crate::fiber::r#async::timeout::IntoTimeout as _;
     use crate::test::util::listen_port;
+    #[cfg(feature = "picodata")]
+    use crate::test::util::{get_tls_connector, tls_listen_port};
     use std::time::Duration;
 
     const _3_SEC: Duration = Duration::from_secs(3);
@@ -210,6 +212,20 @@ mod tests {
         )
     }
 
+    #[cfg(feature = "picodata")]
+    fn test_tls_client() -> Client {
+        Client::with_config_and_tls(
+            "127.0.0.1".into(),
+            tls_listen_port(),
+            protocol::Config {
+                creds: Some(("test_user".into(), "password".into())),
+                auth_method: crate::auth::AuthMethod::ChapSha1,
+                ..Default::default()
+            },
+            Some(get_tls_connector()),
+        )
+    }
+
     #[crate::test(tarantool = "crate")]
     async fn connect_failure() {
         // Can be any other unused port
@@ -223,10 +239,7 @@ mod tests {
         assert!(correct_err);
     }
 
-    #[crate::test(tarantool = "crate")]
-    async fn ping_after_reconnect() {
-        let client = test_client();
-
+    async fn test_ping_after_reconnect(client: Client) {
         for _ in 0..2 {
             client.ping().timeout(_3_SEC).await.unwrap();
         }
@@ -236,6 +249,19 @@ mod tests {
             client.ping().timeout(_3_SEC).await.unwrap();
         }
         assert_eq!(client.reconnect_count(), 1);
+    }
+
+    #[crate::test(tarantool = "crate")]
+    async fn ping_after_reconnect() {
+        let client = test_client();
+        test_ping_after_reconnect(client).await;
+    }
+
+    #[cfg(feature = "picodata")]
+    #[crate::test(tarantool = "crate")]
+    async fn tls_ping_after_reconnect() {
+        let client = test_tls_client();
+        test_ping_after_reconnect(client).await;
     }
 
     #[crate::test(tarantool = "crate")]
@@ -257,13 +283,10 @@ mod tests {
     }
 
     // More of an example of how this client can be used than a test
-    #[crate::test(tarantool = "crate")]
-    fn reconnect_on_network_error() {
+    fn test_reconnect_on_network_error(client: Client) {
         use std::io::{Error as IOError, ErrorKind};
         use std::sync::Arc;
         fiber::block_on(async {
-            let client = test_client();
-
             let err = ClientError::ConnectionClosed(Arc::new(
                 IOError::from(ErrorKind::ConnectionAborted).into(),
             ));
@@ -280,6 +303,19 @@ mod tests {
             client.reconnect_now().await.unwrap();
             assert_eq!(client.reconnect_count(), 2);
         });
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn reconnect_on_network_error() {
+        let client = test_client();
+        test_reconnect_on_network_error(client);
+    }
+
+    #[cfg(feature = "picodata")]
+    #[crate::test(tarantool = "crate")]
+    fn tls_reconnect_on_network_error() {
+        let client = test_tls_client();
+        test_reconnect_on_network_error(client);
     }
 
     #[crate::test(tarantool = "crate")]
@@ -315,9 +351,7 @@ mod tests {
         jh.join();
     }
 
-    #[crate::test(tarantool = "crate")]
-    async fn concurrent_messages_one_fiber() {
-        let client = test_client();
+    async fn test_concurrent_messages_one_fiber(client: Client) {
         let mut ping_futures = vec![];
         for _ in 0..10 {
             ping_futures.push(client.ping());
@@ -325,6 +359,19 @@ mod tests {
         for res in futures::future::join_all(ping_futures).await {
             res.unwrap();
         }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    async fn concurrent_messages_one_fiber() {
+        let client = test_client();
+        test_concurrent_messages_one_fiber(client).await;
+    }
+
+    #[cfg(feature = "picodata")]
+    #[crate::test(tarantool = "crate")]
+    async fn tls_concurrent_messages_one_fiber() {
+        let client = test_tls_client();
+        test_concurrent_messages_one_fiber(client).await;
     }
 
     #[crate::test(tarantool = "crate")]

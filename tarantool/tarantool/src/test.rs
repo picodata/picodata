@@ -112,16 +112,46 @@ pub fn collect_tester() -> Vec<TestDescAndFn> {
 
 #[cfg(feature = "internal_test")]
 pub mod util {
+    use crate::network::client::tls;
     use std::convert::Infallible;
+    use std::path::PathBuf;
     use tlua::AsLua;
     use tlua::LuaState;
 
     /// Returns the binary protocol port of the current tarantool instance.
+    /// It is the first port in the config.
     pub fn listen_port() -> u16 {
         let lua = crate::lua_state();
-        let listen: String = lua.eval("return box.info.listen").unwrap();
+        let listen: String = lua
+            .eval("return (box.info.listen[1] or box.info.listen)")
+            .unwrap();
         let (_address, port) = listen.rsplit_once(':').unwrap();
         port.parse().unwrap()
+    }
+
+    /// Returns the TLS binary protocol port of the current tarantool instance.
+    /// It is the second port in the config.
+    /// Makes sense only with "picodata" feature.
+    pub fn tls_listen_port() -> u16 {
+        let lua = crate::lua_state();
+        let listen: String = lua.eval("return box.info.listen[2]").unwrap();
+        let (_address, port) = listen.rsplit_once(':').unwrap();
+        port.parse().unwrap()
+    }
+
+    /// Returns TLS connector.
+    pub fn get_tls_connector() -> tls::TlsConnector {
+        let cargo_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let path = cargo_path.parent().unwrap().join("tests/ssl_certs");
+        let cert_file = path.join("server.crt");
+        let key_file = path.join("server.key");
+        let ca_file = path.join("combined-ca.crt");
+        let tls_config = tls::TlsConfig {
+            cert_file: &cert_file,
+            key_file: &key_file,
+            ca_file: Some(&ca_file),
+        };
+        tls::TlsConnector::new(tls_config).unwrap()
     }
 
     /// Returns a future, which is never resolved
