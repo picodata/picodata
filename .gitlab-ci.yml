@@ -184,10 +184,15 @@ tarantool-module-trigger:
     strategy: depend
   needs: []
   rules:
-    - changes:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
+    - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
+      changes:
+        compare_to: *main-branch
         paths:
           - tarantool/**/*
     - when: manual
+      allow_failure: true
 
 build-base-image:
   stage: build-base-image
