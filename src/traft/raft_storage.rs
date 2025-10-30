@@ -823,7 +823,10 @@ impl raft::Storage for RaftSpaceAccess {
 
         let compacted_index = self.compacted_index().cvt_err()?;
 
-        let storage = crate::storage::Catalog::get();
+        let node = crate::traft::node::global()
+            .map_err(tarantool::error::Error::from)
+            .cvt_err()?;
+        let parameters = &node.alter_system_parameters;
 
         // NOTE: There's a problem. Ideally we would want to cache the generated
         // snapshots and reuse them when someone else requests the compatible
@@ -840,8 +843,9 @@ impl raft::Storage for RaftSpaceAccess {
         // We could work around this by adding more crutches and implementing
         // our own system to report to the leader that the snapshot must be
         // regenerated, but I guess this is a TODO.
-        let (data, entry_id) = storage
-            .first_snapshot_data_chunk(applied, compacted_index)
+        let (data, entry_id) = node
+            .storage
+            .first_snapshot_data_chunk(applied, compacted_index, parameters)
             .cvt_err()?;
 
         let mut snapshot = raft::Snapshot::new();

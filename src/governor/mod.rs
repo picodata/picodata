@@ -228,23 +228,22 @@ impl Loop {
             return ControlFlow::Continue(());
         }
 
-        let v: f64 = storage
-            .db_config
-            .governor_raft_op_timeout()
-            .expect("storage should never ever fail");
-        let raft_op_timeout = Duration::from_secs_f64(v);
+        let node = global().expect("must be initialized");
 
-        let v: f64 = storage
-            .db_config
-            .governor_common_rpc_timeout()
-            .expect("storage should never ever fail");
-        let rpc_timeout = Duration::from_secs_f64(v);
+        let raft_op_timeout = node
+            .alter_system_parameters
+            .borrow()
+            .governor_raft_op_timeout();
 
-        let v: f64 = storage
-            .db_config
-            .governor_plugin_rpc_timeout()
-            .expect("storage should never ever fail");
-        let plugin_rpc_timeout = Duration::from_secs_f64(v);
+        let rpc_timeout = node
+            .alter_system_parameters
+            .borrow()
+            .governor_common_rpc_timeout();
+
+        let plugin_rpc_timeout = node
+            .alter_system_parameters
+            .borrow()
+            .governor_plugin_rpc_timeout();
 
         let instances = storage
             .instances
@@ -288,7 +287,6 @@ impl Loop {
         let cluster_uuid = raft_storage
             .cluster_uuid()
             .expect("storage should never fail");
-        let node = global().expect("must be initialized");
 
         let sentinel_status = node.sentinel_loop.status();
 

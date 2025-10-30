@@ -3090,7 +3090,7 @@ impl NodeImpl {
     fn do_raft_log_auto_compaction(&self, old_last_index: RaftIndex) -> traft::Result<()> {
         let mut compaction_needed = false;
 
-        let max_size: u64 = self.storage.db_config.raft_wal_size_max()?;
+        let max_size = self.alter_system_parameters.borrow().raft_wal_size_max;
         let current_size = self.raft_storage.raft_log_bsize()?;
         if current_size > max_size {
             #[rustfmt::skip]
@@ -3098,7 +3098,7 @@ impl NodeImpl {
             compaction_needed = true;
         }
 
-        let max_count: u64 = self.storage.db_config.raft_wal_count_max()?;
+        let max_count = self.alter_system_parameters.borrow().raft_wal_count_max;
         let current_count = self.raft_storage.raft_log_count()?;
         if current_count > max_count {
             #[rustfmt::skip]

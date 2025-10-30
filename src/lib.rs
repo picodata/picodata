@@ -624,10 +624,11 @@ fn set_login_check() {
         AuthFail,
         UnknownUser,
         UserBlocked(&'static str),
+        NotInitializedYet,
     }
 
     // Determines the outcome of an authentication attempt.
-    let f = move |user_name: String, successful_authentication: bool, storage: &Catalog| {
+    let f = move |user_name: String, successful_authentication: bool| {
         use std::collections::hash_map::Entry;
 
         // If the user is pico service (used for internal communication) we don't perform any additional checks.
@@ -645,9 +646,25 @@ fn set_login_check() {
             }
         }
 
+        let node = match traft::node::global() {
+            Ok(v) => v,
+            Err(err) => {
+                tlog!(Error, "failed accessing node: {err}");
+                // An iproto connection was opened before the global storage
+                // was initialized. This is possible in rare cases in a short
+                // window of time when an instance is booting up.
+                // In this case we simply drop the connection,
+                // because we can't yet determine verify anything.
+                // From the client's perspective the iproto interface is not
+                // yet ready to receive connections.
+                return Verdict::NotInitializedYet;
+            }
+        };
+
         // Switch to admin to access system spaces.
         let admin_guard = session::su(ADMIN_ID).expect("switching to admin should not fail");
-        let Some(user) = storage
+        let Some(user) = node
+            .storage
             .users
             .by_name(&user_name)
             .expect("accessing storage should not fail")
@@ -658,11 +675,9 @@ fn set_login_check() {
             debug_assert!(!successful_authentication);
             return Verdict::UnknownUser;
         };
-        let max_login_attempts = storage
-            .db_config
-            .auth_login_attempt_max()
-            .expect("accessing storage should not fail");
-        if storage
+        let max_login_attempts = node.alter_system_parameters.borrow().auth_login_attempt_max;
+        if node
+            .storage
             .privileges
             .get(user.id, "universe", 0, "login")
             .expect("storage should not fail")
@@ -674,7 +689,7 @@ fn set_login_check() {
         drop(admin_guard);
 
         // Borrowing will not panic as there are no yields while it's borrowed
-        let mut attempts = storage.login_attempts.borrow_mut();
+        let mut attempts = node.storage.login_attempts.borrow_mut();
         match attempts.entry(user_name) {
             Entry::Occupied(e) if *e.get() >= max_login_attempts => {
                 // The account is suspended until instance is restarted
@@ -718,22 +733,7 @@ fn set_login_check() {
 
         box.session.on_auth(on_auth)",
         tlua::function3(move |user: String, status: bool, lua: tlua::LuaState| {
-            let storage = match Catalog::try_get(false) {
-                Ok(v) => v,
-                Err(err) => {
-                    tlog!(Error, "failed accessing storage: {err}");
-                    // An iproto connection was opened before the global storage
-                    // was initialized. This is possible in rare cases in a short
-                    // window of time when an instance is booting up.
-                    // In this case we simply drop the connection,
-                    // because we can't yet determine verify anything.
-                    // From the client's perspective the iproto interface is not
-                    // yet ready to receive connections.
-                    tlua::error!(lua, "{}", err);
-                }
-            };
-
-            match compute_auth_verdict(user.clone(), status, storage) {
+            match compute_auth_verdict(user.clone(), status) {
                 Verdict::AuthOk => {
                     // We don't want to spam admins with
                     // unneeded info about internal user
@@ -786,6 +786,16 @@ fn set_login_check() {
                     //
                     // All the drop implementations are called, no need to clean anything up.
                     tlua::error!(lua, "{}", err);
+                }
+                Verdict::NotInitializedYet => {
+                    // An iproto connection was opened before the global storage
+                    // was initialized. This is possible in rare cases in a short
+                    // window of time when an instance is booting up.
+                    // In this case we simply drop the connection,
+                    // because we can't yet determine verify anything.
+                    // From the client's perspective the iproto interface is not
+                    // yet ready to receive connections.
+                    tlua::error!(lua, "not initialized yet");
                 }
             }
         }),
@@ -1187,6 +1197,11 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
             tarantool::set_cfg_field("read_only", true)?;
 
             let alter_system_parameters = AlterSystemParametersRef::default();
+            // Need to set default explicitly because some parameters may be read before
+            // the corresponding raft log entries are applied in raft_main_loop.
+            alter_system_parameters
+                .borrow_mut()
+                .set_defaults_explicitly();
             // Read all ALTER SYSTEM parameters from `_pico_db_config` system table,
             // apply the values using `box.cfg` if needed, cache the values in the
             // global struct for efficient and type-safe access.
@@ -1383,6 +1398,11 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     tlog!(Info, "tier name: {}", instance.tier);
 
     let alter_system_parameters = AlterSystemParametersRef::default();
+    // Need to set default explicitly because some parameters may be read before
+    // the corresponding raft log entries are applied in raft_main_loop.
+    alter_system_parameters
+        .borrow_mut()
+        .set_defaults_explicitly();
     // Read all ALTER SYSTEM parameters from `_pico_db_config` system table,
     // apply the values using `box.cfg` if needed, cache the values in the
     // global struct for efficient and type-safe access.
@@ -1741,6 +1761,10 @@ fn postjoin(
         let gen = raft_storage.gen().expect("failed to get gen for audit log");
         audit::init(config, raft_id, gen);
     }
+
+    // Initialize SQL statement cache
+    let capacity = alter_system_parameters.borrow().sql_storage_cache_count_max;
+    sql::storage::init_statement_cache(capacity as _);
 
     setup_metrics_and_start_http_server(config, &storage, &raft_storage)?;
 
@@ -2104,6 +2128,11 @@ fn start_join(
     tarantool::set_cfg(&cfg)?;
 
     let alter_system_parameters = AlterSystemParametersRef::default();
+    // Need to set default explicitly because some parameters may be read before
+    // the corresponding raft log entries are applied in raft_main_loop.
+    alter_system_parameters
+        .borrow_mut()
+        .set_defaults_explicitly();
     // Read all ALTER SYSTEM parameters from `_pico_db_config` system table,
     // apply the values using `box.cfg` if needed, cache the values in the
     // global struct for efficient and type-safe access.

@@ -94,7 +94,6 @@ pub(crate) enum AuthError {
     Expired,
     InvalidCredentials,
     InsufficientPrivileges,
-    JWTSecretLookup(String),
     JWTEncoding(String),
     JWTValidation(String),
     UserLookup(String),
@@ -131,7 +130,6 @@ impl AuthError {
             AuthError::UserLookup(v) => format!("failed to find user jwt: {}", v),
             AuthError::PrivilegesLookup(v) => format!("failed to find privileges: {}", v),
             AuthError::InvalidCredentials => String::from("invalid credentials"),
-            AuthError::JWTSecretLookup(v) => format!("failed to find jwt secret: {}", v),
             AuthError::Inner(v) => v.to_owned(),
         }
     }
@@ -588,15 +586,16 @@ pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>> {
 }
 
 fn get_jwt_secret() -> AuthResult<Option<String>> {
-    as_admin(|| {
-        Catalog::get()
-            .db_config
-            .jwt_secret()
-            .map_err(|x| AuthError::JWTSecretLookup(x.to_string()))
-    })
+    let node = crate::traft::node::global().map_err(|e| AuthError::Inner(e.to_string()))?;
+    let secret = node.alter_system_parameters.borrow().jwt_secret.clone();
+
     // Given successful db connection, secret cannot technically be None at this point,
     // as it is set to empty string to disable auth instead of NULL
-    .map(|secret| secret.filter(|secret| !secret.is_empty()))
+    if secret.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(secret))
+    }
 }
 
 fn get_unix_timestamp() -> u64 {

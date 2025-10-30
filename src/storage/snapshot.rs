@@ -1,4 +1,5 @@
 use crate::access_control::{user_by_id, UserMetadataKind};
+use crate::config::AlterSystemParametersRef;
 use crate::error_code::ErrorCode;
 use crate::schema::Distribution;
 use crate::schema::IndexDef;
@@ -94,12 +95,15 @@ impl Catalog {
         &self,
         rv: &mut SnapshotReadView,
         mut position: SnapshotPosition,
+        parameters: &AlterSystemParametersRef,
     ) -> Result<SnapshotData> {
         let global_spaces = rv.read_view.space_indexes().unwrap();
         let mut space_dumps = Vec::with_capacity(global_spaces.len());
         let mut total_size = 0;
         let mut hit_threashold = false;
-        let snapshot_chunk_max_size = self.db_config.raft_snapshot_chunk_size_max()?;
+
+        let snapshot_chunk_max_size = parameters.borrow().raft_snapshot_chunk_size_max as usize;
+
         let t0 = std::time::Instant::now();
         for &(space_id, index_id) in global_spaces {
             debug_assert_eq!(index_id, 0, "only primary keys should be added");
@@ -206,6 +210,7 @@ impl Catalog {
         &self,
         entry_id: RaftEntryId,
         position: SnapshotPosition,
+        parameters: &AlterSystemParametersRef,
     ) -> Result<SnapshotData> {
         // We keep a &mut on the read views container here,
         // so we mustn't yield for the duration of that borrow.
@@ -221,7 +226,7 @@ impl Catalog {
             .into());
         };
 
-        let snapshot_data = self.next_snapshot_data_chunk_impl(rv, position)?;
+        let snapshot_data = self.next_snapshot_data_chunk_impl(rv, position, parameters)?;
         if snapshot_data.next_chunk_position.is_none() {
             // This customer has been served.
             rv.ref_count -= 1;
@@ -233,6 +238,7 @@ impl Catalog {
         &self,
         entry_id: RaftEntryId,
         compacted_index: RaftIndex,
+        parameters: &AlterSystemParametersRef,
     ) -> Result<(SnapshotData, RaftEntryId)> {
         // We keep a &mut on the read views container here,
         // so we mustn't yield for the duration of that borrow.
@@ -247,7 +253,7 @@ impl Catalog {
             if let Some(rv) = read_view {
                 tlog!(Info, "reusing a snapshot read view for {entry_id}");
                 let position = SnapshotPosition::default();
-                let snapshot_data = self.next_snapshot_data_chunk_impl(rv, position)?;
+                let snapshot_data = self.next_snapshot_data_chunk_impl(rv, position, parameters)?;
                 // A new instance has started applying this snapshot,
                 // so we must keep it open until it finishes.
                 rv.ref_count += 1;
@@ -258,7 +264,7 @@ impl Catalog {
         let mut rv = self.open_read_view(entry_id)?;
         tlog!(Info, "opened snapshot read view for {entry_id}");
         let position = SnapshotPosition::default();
-        let snapshot_data = self.next_snapshot_data_chunk_impl(&mut rv, position)?;
+        let snapshot_data = self.next_snapshot_data_chunk_impl(&mut rv, position, parameters)?;
 
         if snapshot_data.next_chunk_position.is_none() {
             // Don't increase the reference count, so that it's cleaned up next
@@ -267,7 +273,8 @@ impl Catalog {
             rv.ref_count = 1;
         }
 
-        let timeout = self.db_config.raft_snapshot_read_view_close_timeout()?;
+        let timeout = parameters.borrow().raft_snapshot_read_view_close_timeout();
+
         let now = fiber::clock();
         // Clear old snapshots.
         // This is where we clear any stale snapshots with no references
@@ -1025,9 +1032,10 @@ mod tests {
         storage.replicasets.space.insert(&r).unwrap();
 
         PicodataConfig::init_for_tests();
+        let parameters = crate::config::AlterSystemParameters::for_tests();
 
         let (snapshot_data, _) = storage
-            .first_snapshot_data_chunk(Default::default(), Default::default())
+            .first_snapshot_data_chunk(Default::default(), Default::default(), &parameters)
             .unwrap();
         assert!(snapshot_data.next_chunk_position.is_none());
 

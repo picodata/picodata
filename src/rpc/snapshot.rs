@@ -1,15 +1,17 @@
 use crate::storage::snapshot::SnapshotData;
 use crate::storage::snapshot::SnapshotPosition;
-use crate::storage::Catalog;
 use crate::traft::RaftEntryId;
 use crate::traft::Result;
 
 crate::define_rpc_request! {
     fn proc_raft_snapshot_next_chunk(req: Request) -> Result<Response> {
-        let storage = Catalog::try_get(false)?;
+        let node = crate::traft::node::global()?;
+        let storage = &node.storage;
+        let parameters = &node.alter_system_parameters;
         let snapshot_data = storage.next_snapshot_data_chunk(
             req.entry_id,
             req.position,
+            parameters,
         )?;
         Ok(Response { snapshot_data })
     }

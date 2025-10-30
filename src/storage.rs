@@ -57,7 +57,6 @@ use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::ops::RangeInclusive;
 use std::rc::Rc;
-use std::time::Duration;
 
 pub mod schema;
 pub mod snapshot;
@@ -164,7 +163,7 @@ pub const LATEST_SYSTEM_CATALOG_VERSION: &'static str = upgrade_operations::CATA
 pub struct Catalog {
     pub snapshot_cache: Rc<SnapshotCache>,
     // It's ok to lose this information during restart.
-    pub login_attempts: Rc<RefCell<HashMap<String, usize>>>,
+    pub login_attempts: Rc<RefCell<HashMap<String, u64>>>,
     pub pico_table: PicoTable,
     pub indexes: Indexes,
     pub peer_addresses: PeerAddresses,
@@ -3357,14 +3356,6 @@ impl DbConfig {
         )
     }
 
-    #[inline]
-    pub fn auth_login_attempt_max(&self) -> tarantool::Result<usize> {
-        self.get_or_default(
-            system_parameter_name!(auth_login_attempt_max),
-            Self::GLOBAL_SCOPE,
-        )
-    }
-
     // NOTE: unlike the others, the four functions below do not access the underlying tarantool table
     // instead they are relying on `config::apply_parameter` putting up-to-date values into the static variables
     #[inline]
@@ -3388,21 +3379,6 @@ impl DbConfig {
     }
 
     #[inline]
-    pub fn raft_snapshot_chunk_size_max(&self) -> tarantool::Result<usize> {
-        self.get_or_default(
-            system_parameter_name!(raft_snapshot_chunk_size_max),
-            Self::GLOBAL_SCOPE,
-        )
-    }
-
-    #[inline]
-    pub fn raft_snapshot_read_view_close_timeout(&self) -> tarantool::Result<Duration> {
-        #[rustfmt::skip]
-        let res: f64 = self.get_or_default(system_parameter_name!(raft_snapshot_read_view_close_timeout), Self::GLOBAL_SCOPE)?;
-        Ok(Duration::from_secs_f64(res))
-    }
-
-    #[inline]
     pub fn sql_motion_row_max(&self) -> i64 {
         config::DYNAMIC_CONFIG.sql_motion_row_max.current_value()
     }
@@ -3423,51 +3399,6 @@ impl DbConfig {
         }
     }
 
-    /// `tier` argument should be from set of existing tiers.
-    pub fn sql_storage_cache_count_max(&self, tier: &str) -> tarantool::Result<usize> {
-        self.get_or_default(system_parameter_name!(sql_storage_cache_count_max), tier)
-    }
-
-    #[inline]
-    pub fn raft_wal_size_max(&self) -> tarantool::Result<u64> {
-        self.get_or_default(
-            system_parameter_name!(raft_wal_size_max),
-            Self::GLOBAL_SCOPE,
-        )
-    }
-
-    #[inline]
-    pub fn raft_wal_count_max(&self) -> tarantool::Result<u64> {
-        self.get_or_default(
-            system_parameter_name!(raft_wal_count_max),
-            Self::GLOBAL_SCOPE,
-        )
-    }
-
-    #[inline]
-    pub fn governor_raft_op_timeout(&self) -> tarantool::Result<f64> {
-        self.get_or_default(
-            system_parameter_name!(governor_raft_op_timeout),
-            Self::GLOBAL_SCOPE,
-        )
-    }
-
-    #[inline]
-    pub fn governor_common_rpc_timeout(&self) -> tarantool::Result<f64> {
-        self.get_or_default(
-            system_parameter_name!(governor_common_rpc_timeout),
-            Self::GLOBAL_SCOPE,
-        )
-    }
-
-    #[inline]
-    pub fn governor_plugin_rpc_timeout(&self) -> tarantool::Result<f64> {
-        self.get_or_default(
-            system_parameter_name!(governor_plugin_rpc_timeout),
-            Self::GLOBAL_SCOPE,
-        )
-    }
-
     #[inline]
     pub fn shredding(&self) -> tarantool::Result<Option<bool>> {
         if let Some(shredding) = self.by_key(config::SHREDDING_PARAM_NAME)?.next() {
@@ -3479,27 +3410,6 @@ impl DbConfig {
         } else {
             Ok(None)
         }
-    }
-
-    #[inline]
-    pub fn jwt_secret(&self) -> tarantool::Result<Option<String>> {
-        if let Some(jwt_secret) = self.by_key(system_parameter_name!(jwt_secret))?.next() {
-            Ok(Some(
-                jwt_secret
-                    .field(AlterSystemParameters::FIELD_VALUE)?
-                    .expect("field value exists"),
-            ))
-        } else {
-            Ok(None)
-        }
-    }
-
-    #[inline]
-    pub fn plugin_check_migration_hash(&self) -> tarantool::Result<bool> {
-        self.get_or_default(
-            system_parameter_name!(plugin_check_migration_hash),
-            Self::GLOBAL_SCOPE,
-        )
     }
 }
 

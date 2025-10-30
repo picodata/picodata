@@ -1922,6 +1922,33 @@ impl AlterSystemParameters {
     pub const FIELD_SCOPE: u32 = 1;
     pub const FIELD_VALUE: u32 = 2;
 
+    pub fn set_defaults_explicitly(&mut self) {
+        for path in &leaf_field_paths::<Self>() {
+            let Some(default) = self
+                // This function will use the already specified parameters for
+                // generating defaults for other dependent parameters. However
+                // it doesn't do any sort of topological sorting, so it may
+                // result in a panic if `#[introspection(config_default = ...)]`
+                // expressions contain any unwraps. So we must sort the
+                // parameters manually now
+                .get_field_default_value_as_rmpv(path)
+                .expect("paths are correct")
+            else {
+                continue;
+            };
+
+            self.set_field_from_rmpv(path, &default)
+                .expect("same type, path is correct");
+        }
+    }
+
+    /// Returns an instance of the struct which can be used in tests.
+    pub fn for_tests() -> AlterSystemParametersRef {
+        let res = AlterSystemParametersRef::default();
+        res.borrow_mut().set_defaults_explicitly();
+        res
+    }
+
     /// Returns error in case of `parameter_name` not in existing parameters.
     fn has_scope(parameter_name: &str, scope: &str) -> Result<bool, Error> {
         for field_info in Self::FIELD_INFOS {
@@ -1944,9 +1971,34 @@ impl AlterSystemParameters {
         Self::has_scope(parameter_name, "tier")
     }
 
+    /// See [`governor_auto_offline_timeout`](field@Self::governor_auto_offline_timeout).
     #[inline]
     pub fn governor_auto_offline_timeout(&self) -> std::time::Duration {
         std::time::Duration::from_secs_f64(self.governor_auto_offline_timeout)
+    }
+
+    /// See [`governor_raft_op_timeout`](field@Self::governor_raft_op_timeout).
+    #[inline]
+    pub fn governor_raft_op_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs_f64(self.governor_raft_op_timeout)
+    }
+
+    /// See [`governor_common_rpc_timeout`](field@Self::governor_common_rpc_timeout).
+    #[inline]
+    pub fn governor_common_rpc_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs_f64(self.governor_common_rpc_timeout)
+    }
+
+    /// See [`governor_plugin_rpc_timeout`](field@Self::governor_plugin_rpc_timeout).
+    #[inline]
+    pub fn governor_plugin_rpc_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs_f64(self.governor_plugin_rpc_timeout)
+    }
+
+    /// See [`raft_snapshot_read_view_close_timeout`](field@Self::raft_snapshot_read_view_close_timeout).
+    #[inline]
+    pub fn raft_snapshot_read_view_close_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs_f64(self.raft_snapshot_read_view_close_timeout)
     }
 }
 
@@ -2283,9 +2335,15 @@ pub fn apply_parameter(
             // lock() on cache might happen many times during executing sql, but
             // it doesn't take for long.
             // Also changing capacity is a very rare operation, so it shouldn't be a problem.
-            let mut cache = cache.lock();
-            cache.capacity = value;
-            cache.cache.adjust_capacity(value)
+            let mut res = Ok(());
+            if let Some(cache) = cache.get() {
+                let mut cache = cache.lock();
+                cache.capacity = value;
+                res = cache.cache.adjust_capacity(value);
+            } else {
+                // Statement cache will be initialized later with the correct capacity
+            }
+            res
         })?;
     }
 

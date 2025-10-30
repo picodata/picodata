@@ -710,8 +710,10 @@ pub fn migration_up(
 
         let old_hash_string = already_applied_migrations[i].hash();
         if hash_string != old_hash_string {
-            let plugin_check_migration_hash =
-                node.storage.db_config.plugin_check_migration_hash()?;
+            let plugin_check_migration_hash = node
+                .alter_system_parameters
+                .borrow()
+                .plugin_check_migration_hash;
             let filename = migration.shortname();
 
             if plugin_check_migration_hash {

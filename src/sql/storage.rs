@@ -10,7 +10,6 @@ use crate::sql::router::{
     calculate_bucket_id, get_table_version, get_table_version_by_id, VersionMap,
 };
 use crate::traft::node;
-use once_cell::sync::Lazy;
 use sql::backend::sql::ir::PatternWithParams;
 use sql::backend::sql::space::TableGuard;
 use sql::backend::sql::tree::{OrderedSyntaxNodes, SyntaxData, SyntaxPlan};
@@ -27,6 +26,7 @@ use sql::executor::lru::{Cache, EvictFn, LRUCache};
 use sql::executor::protocol::{EncodedVTables, RequiredData, SchemaInfo, VTablesMeta};
 use sql::executor::{Port, PortType};
 use sql::ir::ExplainType;
+use std::cell::OnceCell;
 
 use crate::metrics::{
     STORAGE_CACHE_STATEMENTS_ADDED_TOTAL, STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL,
@@ -43,15 +43,20 @@ use tarantool::space::SpaceId;
 use tarantool::sql::Statement;
 
 thread_local!(
-    // We need Lazy, because cache can be initialized only after raft node.
-    pub static STATEMENT_CACHE: Lazy<Rc<Mutex<PicoStorageCache>>> = Lazy::new(|| {
-        let node = node::global().expect("node should be initialized at this moment");
-        let tier = node.raft_storage.tier().expect("storage shouldn't fail").expect("tier for instance should exists");
-        let capacity = node.storage.db_config.sql_storage_cache_count_max(&tier).expect("storage shouldn't fail");
-        let cache_impl = Rc::new(Mutex::new(PicoStorageCache::new(capacity, Some(Box::new(evict))).unwrap()));
-        cache_impl
-    })
+    // OnceCell is used for interior mutability
+    pub static STATEMENT_CACHE: OnceCell<Rc<Mutex<PicoStorageCache>>> = const { OnceCell::new() };
 );
+
+pub fn init_statement_cache(capacity: usize) {
+    STATEMENT_CACHE.with(|cache| {
+        assert!(cache.get().is_none(), "must be initialized only once");
+        cache.get_or_init(|| {
+            Rc::new(Mutex::new(
+                PicoStorageCache::new(capacity, Some(Box::new(evict))).unwrap(),
+            ))
+        });
+    });
+}
 
 #[allow(clippy::module_name_repetitions)]
 pub struct StorageRuntime {
@@ -330,10 +335,16 @@ impl StorageRuntime {
         let node = node::global().expect("node should be initialized at this moment");
         let topology_ref = node.topology_cache.get();
         let tier = topology_ref.this_tier();
-        STATEMENT_CACHE.with(|cache| StorageRuntime {
+        let cache = STATEMENT_CACHE.with(|cache| {
+            cache
+                .get()
+                .expect("should be initialized by this point")
+                .clone()
+        });
+        Self {
             bucket_count: tier.bucket_count,
-            cache: (*cache).clone(),
-        })
+            cache,
+        }
     }
 
     /// Execute dispatched plan (divided into required and optional parts).
