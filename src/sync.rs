@@ -315,7 +315,7 @@ mod tests {
                 &instance.raft_id,
                 crate::proc_name!(proc_get_vclock),
                 &GetVclockRpc {},
-                None,
+                Duration::MAX,
             )
             .unwrap()
             .await
@@ -329,7 +329,7 @@ mod tests {
                 target: Vclock::current(),
                 timeout: 1.0,
             },
-            None,
+            Duration::MAX,
         )
         .unwrap()
         .await

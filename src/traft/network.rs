@@ -37,14 +37,12 @@ use std::time::Duration;
 use tarantool::network::client::tls;
 use tarantool::time::Instant;
 
-pub const DEFAULT_CALL_TIMEOUT: Duration = Duration::from_secs(3);
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 pub const DEFAULT_CUNCURRENT_FUTURES: usize = 10;
 
 #[derive(Clone, Debug)]
 pub struct WorkerOptions {
     pub raft_msg_handler: &'static str,
-    pub call_timeout: Duration,
     pub connect_timeout: Duration,
     pub max_concurrent_futs: usize,
     pub tls_connector: Option<tls::TlsConnector>,
@@ -54,7 +52,6 @@ impl Default for WorkerOptions {
     fn default() -> Self {
         Self {
             raft_msg_handler: crate::proc_name!(crate::traft::node::proc_raft_interact),
-            call_timeout: DEFAULT_CALL_TIMEOUT,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             max_concurrent_futs: DEFAULT_CUNCURRENT_FUTURES,
             tls_connector: None,
@@ -125,6 +122,7 @@ pub struct PoolWorker {
     fiber: fiber::JoinHandle<'static, ()>,
     inbox_ready: watch::Sender<()>,
     stop: oneshot::Sender<()>,
+    #[allow(unused)]
     options: WorkerOptions,
 
     /// Stored proc name which is called to pass raft messages between nodes.
@@ -326,10 +324,10 @@ impl PoolWorker {
         }
     }
 
-    pub fn send(&self, msg: RaftMessageExt) -> Result<()> {
+    pub fn send(&self, msg: RaftMessageExt, timeout: Duration) -> Result<()> {
         let raft_id = msg.inner.to;
         let args = msg.to_tuple_buffer()?;
-        let deadline = fiber::clock().saturating_add(self.options.call_timeout);
+        let deadline = fiber::clock().saturating_add(timeout);
         self.inbox
             .send(Request::raft_msg(self.raft_msg_handler, args, deadline));
         if self.inbox_ready.send(()).is_err() {
@@ -351,7 +349,7 @@ impl PoolWorker {
     pub fn rpc<R>(
         &self,
         request: &R,
-        timeout: Option<Duration>,
+        timeout: Duration,
         cb: impl FnOnce(Result<R::Response>) + 'static,
     ) where
         R: rpc::RequestArgs,
@@ -370,7 +368,7 @@ impl PoolWorker {
         &self,
         proc: &'static str,
         args: &Args,
-        timeout: Option<Duration>,
+        timeout: Duration,
         cb: impl FnOnce(Result<Response>) + 'static,
     ) where
         Args: ToTupleBuffer + ?Sized,
@@ -384,7 +382,6 @@ impl PoolWorker {
             let res = crate::rpc::decode_iproto_return_value(tuple)?;
             Ok(res)
         };
-        let timeout = timeout.unwrap_or(self.options.call_timeout);
         let deadline = fiber::clock().saturating_add(timeout);
         let request =
             Request::with_callback(proc, args, move |res| cb(convert_result(res)), deadline);
@@ -533,8 +530,9 @@ impl ConnectionPool {
     /// it's not appropriate for use inside a transaction. Anyway,
     /// sending a message inside a transaction is always a bad idea.
     #[inline]
-    pub fn send(&self, msg: RaftMessageExt) -> Result<()> {
-        self.get_or_create_by_raft_id(msg.inner.to)?.send(msg)
+    pub fn send(&self, msg: RaftMessageExt, timeout: Duration) -> Result<()> {
+        self.get_or_create_by_raft_id(msg.inner.to)?
+            .send(msg, timeout)
     }
 
     /// Send a request to instance with `id` (see `IdOfInstance`) returning a
@@ -545,8 +543,6 @@ impl ConnectionPool {
     /// understand the code and see from what places which stored procedures are
     /// being called.
     ///
-    /// If `timeout` is None, the `WorkerOptions::call_timeout` is used.
-    ///
     /// If the request failed, it's a responsibility of the caller
     /// to re-send it later.
     #[inline(always)]
@@ -555,13 +551,13 @@ impl ConnectionPool {
         id: &impl IdOfInstance,
         proc_name: &'static str,
         req: &R,
-        timeout: impl Into<Option<Duration>>,
+        timeout: Duration,
     ) -> Result<impl Future<Output = Result<R::Response>>>
     where
         R: rpc::RequestArgs,
     {
         debug_assert_eq!(R::PROC_NAME, proc_name);
-        self.call_raw(id, R::PROC_NAME, req, timeout.into())
+        self.call_raw(id, R::PROC_NAME, req, timeout)
     }
 
     /// Call an rpc on instance with `id` (see `IdOfInstance`) returning a
@@ -570,8 +566,6 @@ impl ConnectionPool {
     /// This method is similar to [`Self::call`] but allows to call rpcs
     /// without using [`crate::rpc::RequestArgs`] trait.
     ///
-    /// If `timeout` is None, the `WorkerOptions::call_timeout` is used.
-    ///
     /// If the request failed, it's a responsibility of the caller
     /// to re-send it later.
     pub fn call_raw<Args, Response>(
@@ -579,7 +573,7 @@ impl ConnectionPool {
         id: &impl IdOfInstance,
         proc: &'static str,
         args: &Args,
-        timeout: impl Into<Option<Duration>>,
+        timeout: Duration,
     ) -> Result<impl Future<Output = Result<Response>>>
     where
         Response: tarantool::tuple::DecodeOwned + 'static,
@@ -587,7 +581,7 @@ impl ConnectionPool {
     {
         let (tx, mut rx) = oneshot::channel();
         id.get_or_create_in(self)?
-            .rpc_raw(proc, args, timeout.into(), move |res| {
+            .rpc_raw(proc, args, timeout, move |res| {
                 if tx.send(res).is_err() {
                     tlog!(
                         Debug,
@@ -696,8 +690,13 @@ mod tests {
         crate::init_stored_procedures();
 
         let result: u32 = fiber::block_on(
-            pool.call_raw(&instance.raft_id, "test_stored_proc", &(1u32, 2u32), None)
-                .unwrap(),
+            pool.call_raw(
+                &instance.raft_id,
+                "test_stored_proc",
+                &(1u32, 2u32),
+                Duration::MAX,
+            )
+            .unwrap(),
         )
         .unwrap();
         assert_eq!(result, 3u32);
@@ -730,9 +729,9 @@ mod tests {
         // Connect to the current Tarantool instance
         let opts = WorkerOptions {
             raft_msg_handler: "test_interact",
-            call_timeout: Duration::from_millis(50),
             ..Default::default()
         };
+        let call_timeout = Duration::from_millis(50);
         let pool = ConnectionPool::new(node.storage.clone(), opts);
 
         let listen: String = l.eval("return box.info.listen").unwrap();
@@ -755,7 +754,7 @@ mod tests {
 
         // Send a request
         assert_eq!(
-            fiber::check_yield(|| pool.send(heartbeat_to_from(1337, 1)).unwrap()),
+            fiber::check_yield(|| pool.send(heartbeat_to_from(1337, 1), call_timeout).unwrap()),
             Yielded(()) // because no worker exists so a fiber is started.
         );
 
@@ -768,7 +767,7 @@ mod tests {
 
         // Assert unknown recipient error
         assert_eq!(
-            pool.send(heartbeat_to_from(9999, 3))
+            pool.send(heartbeat_to_from(9999, 3), call_timeout)
                 .unwrap_err()
                 .to_string(),
             "address of peer with id 9999 not found",
@@ -790,7 +789,7 @@ mod tests {
 
         // Send the second request
         assert_eq!(
-            fiber::check_yield(|| pool.send(heartbeat_to_from(1337, 4)).unwrap()),
+            fiber::check_yield(|| pool.send(heartbeat_to_from(1337, 4), call_timeout).unwrap()),
             DidntYield(()) // because the worker already exists
         );
 
@@ -822,9 +821,10 @@ mod tests {
         // Connect to the current Tarantool instance
         let opts = WorkerOptions {
             raft_msg_handler: "test_interact",
-            call_timeout: Duration::from_millis(50),
             ..Default::default()
         };
+        let call_timeout = Duration::from_millis(50);
+
         let pool = ConnectionPool::new(node.storage.clone(), opts);
         let listen: String = l.eval("return box.info.listen").unwrap();
 
@@ -845,7 +845,7 @@ mod tests {
         // Send several messages one by one
         for i in 0..10 {
             // Send a request
-            pool.send(heartbeat_to_from(1337, i)).unwrap();
+            pool.send(heartbeat_to_from(1337, i), call_timeout).unwrap();
 
             // Assert it arrives
             // Assert equality
@@ -858,7 +858,7 @@ mod tests {
         // Send multiple messages concurrently
         // Send first batch
         for i in 0..10 {
-            pool.send(heartbeat_to_from(1337, i)).unwrap();
+            pool.send(heartbeat_to_from(1337, i), call_timeout).unwrap();
         }
         for i in 0..10 {
             assert_eq!(
@@ -868,7 +868,7 @@ mod tests {
         }
         // Send second batch
         for i in 10..20 {
-            pool.send(heartbeat_to_from(1337, i)).unwrap();
+            pool.send(heartbeat_to_from(1337, i), call_timeout).unwrap();
         }
         for i in 10..20 {
             assert_eq!(
@@ -903,9 +903,9 @@ mod tests {
         // Connect to the current Tarantool instance
         let opts = WorkerOptions {
             raft_msg_handler: "test_interact",
-            call_timeout: Duration::from_secs(3),
             ..Default::default()
         };
+        let call_timeout = Duration::from_secs(3);
         let pool = ConnectionPool::new(storage.clone(), opts);
         let listen: String = l.eval("return box.info.listen").unwrap();
 
@@ -926,7 +926,7 @@ mod tests {
         for batch_exp in 0..15 {
             let batch_size = 2_u64.pow(batch_exp);
             for i in 0..batch_size {
-                pool.send(heartbeat_to_from(1337, i)).unwrap();
+                pool.send(heartbeat_to_from(1337, i), call_timeout).unwrap();
             }
             expected += batch_size;
             let start = Instant::now();

@@ -232,7 +232,6 @@ impl Node {
 
         let opts = WorkerOptions {
             raft_msg_handler: proc_name!(proc_raft_interact),
-            call_timeout: MainLoop::TICK.saturating_mul(4),
             tls_connector: tls_connector.cloned(),
             ..Default::default()
         };
@@ -2398,6 +2397,7 @@ impl NodeImpl {
         let mut skip_count = 0;
 
         let applied = self.applied.get();
+        let timeout = MainLoop::RPC_TIMEOUT;
 
         for msg in messages {
             if msg.msg_type() == raft::MessageType::MsgHeartbeat {
@@ -2422,7 +2422,7 @@ impl NodeImpl {
                 msg.flags |= Flags::LEADER_UNKNOWN;
             }
 
-            if let Err(e) = self.pool.send(msg) {
+            if let Err(e) = self.pool.send(msg, timeout) {
                 tlog!(Error, "{e}");
             }
             sent_count += 1;
@@ -2482,7 +2482,8 @@ impl NodeImpl {
             return;
         }
 
-        if let Err(e) = self.pool.send(snapshot_report) {
+        let timeout = MainLoop::RPC_TIMEOUT;
+        if let Err(e) = self.pool.send(snapshot_report, timeout) {
             tlog!(Error, "{e}");
         }
     }
@@ -3232,6 +3233,7 @@ struct MainLoopState {
 
 impl MainLoop {
     pub const TICK: Duration = Duration::from_millis(100);
+    pub const RPC_TIMEOUT: Duration = Self::TICK.saturating_mul(4);
 
     /// A base timeout before logging a repeating error message.
     const ERROR_LOG_BACKOFF_BASE_DURATION: Duration = Duration::from_secs(1);
