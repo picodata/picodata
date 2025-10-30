@@ -35,14 +35,17 @@ use std::pin::Pin;
 use std::task::Poll;
 use std::time::Duration;
 use tarantool::network::client::tls;
+use tarantool::time::Instant;
 
 pub const DEFAULT_CALL_TIMEOUT: Duration = Duration::from_secs(3);
+pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 pub const DEFAULT_CUNCURRENT_FUTURES: usize = 10;
 
 #[derive(Clone, Debug)]
 pub struct WorkerOptions {
     pub raft_msg_handler: &'static str,
     pub call_timeout: Duration,
+    pub connect_timeout: Duration,
     pub max_concurrent_futs: usize,
     pub tls_connector: Option<tls::TlsConnector>,
 }
@@ -52,6 +55,7 @@ impl Default for WorkerOptions {
         Self {
             raft_msg_handler: crate::proc_name!(crate::traft::node::proc_raft_interact),
             call_timeout: DEFAULT_CALL_TIMEOUT,
+            connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             max_concurrent_futs: DEFAULT_CUNCURRENT_FUTURES,
             tls_connector: None,
         }
@@ -59,36 +63,41 @@ impl Default for WorkerOptions {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// PoolWorker
+// Request
 ////////////////////////////////////////////////////////////////////////////////
 
 struct Request {
     proc: &'static str,
     args: TupleBuffer,
-    timeout: Option<Duration>,
+    deadline: Instant,
     on_result: OnRequestResult,
 }
 
 impl Request {
     #[inline(always)]
-    fn with_callback<H>(proc: &'static str, args: TupleBuffer, on_result: H) -> Self
+    fn with_callback<H>(
+        proc: &'static str,
+        args: TupleBuffer,
+        on_result: H,
+        deadline: Instant,
+    ) -> Self
     where
         H: FnOnce(Result<Tuple>) + 'static,
     {
         Self {
             proc,
             args,
-            timeout: None,
+            deadline,
             on_result: OnRequestResult::Callback(Box::new(on_result)),
         }
     }
 
     #[inline(always)]
-    fn raft_msg(proc: &'static str, args: TupleBuffer) -> Self {
+    fn raft_msg(proc: &'static str, args: TupleBuffer, deadline: Instant) -> Self {
         Self {
             proc,
             args,
-            timeout: None,
+            deadline,
             on_result: OnRequestResult::ReportUnreachable,
         }
     }
@@ -101,6 +110,10 @@ enum OnRequestResult {
 
 type Queue = Mailbox<Request>;
 
+////////////////////////////////////////////////////////////////////////////////
+// PoolWorker
+////////////////////////////////////////////////////////////////////////////////
+
 pub struct PoolWorker {
     // Despite instances are usually identified by `instance_name` in
     // picodata, raft commutication relies on `raft_id`, so it is
@@ -112,6 +125,7 @@ pub struct PoolWorker {
     fiber: fiber::JoinHandle<'static, ()>,
     inbox_ready: watch::Sender<()>,
     stop: oneshot::Sender<()>,
+    options: WorkerOptions,
 
     /// Stored proc name which is called to pass raft messages between nodes.
     /// This should always be ".proc_raft_interact".
@@ -127,7 +141,7 @@ impl PoolWorker {
         raft_id: RaftId,
         instance_name: impl Into<Option<InstanceName>>,
         storage: PeerAddresses,
-        opts: WorkerOptions,
+        options: WorkerOptions,
         instance_reachability: Option<InstanceReachabilityManagerRef>,
     ) -> Result<PoolWorker> {
         let inbox = Mailbox::new();
@@ -151,6 +165,7 @@ impl PoolWorker {
             )
             .func_async({
                 let inbox = inbox.clone();
+                let options = options.clone();
                 async move {
                     futures::select! {
                         _ = Self::worker_loop(
@@ -159,10 +174,8 @@ impl PoolWorker {
                                 inbox_ready_receiver,
                                 address,
                                 port,
-                                opts.call_timeout,
-                                opts.max_concurrent_futs,
+                                options,
                                 instance_reachability,
-                                opts.tls_connector,
                             ).fuse() => (),
                         _ = stop_receiver.fuse() => ()
                     }
@@ -178,7 +191,8 @@ impl PoolWorker {
             inbox,
             inbox_ready: inbox_ready_sender,
             stop: stop_sender,
-            raft_msg_handler: opts.raft_msg_handler,
+            raft_msg_handler: options.raft_msg_handler,
+            options,
         })
     }
 
@@ -188,20 +202,18 @@ impl PoolWorker {
         mut inbox_ready: watch::Receiver<()>,
         address: String,
         port: u16,
-        call_timeout: Duration,
-        max_concurrent_fut: usize,
+        options: WorkerOptions,
         instance_reachability: Option<InstanceReachabilityManagerRef>,
-        tls_connector: Option<tls::TlsConnector>,
     ) {
         let mut config = relay_connection_config();
-        config.connect_timeout = Some(call_timeout);
+        config.connect_timeout = Some(options.connect_timeout);
         let client =
-            ReconnClient::with_config_and_tls(address.clone(), port, config, tls_connector);
+            ReconnClient::with_config_and_tls(address.clone(), port, config, options.tls_connector);
 
         let mut client_ver: usize = 0;
         let mut futures = VecDeque::new();
         loop {
-            let requests = inbox.try_receive_n(max_concurrent_fut - futures.len());
+            let requests = inbox.try_receive_n(options.max_concurrent_futs - futures.len());
             // If there are no new requests and no requests are being sent - wait.
             if requests.is_empty() && futures.is_empty() {
                 inbox_ready
@@ -220,10 +232,7 @@ impl PoolWorker {
                     Box::pin(async move {
                         client
                             .call(request.proc, &request.args)
-                            // TODO: it would be better to get a deadline from
-                            // the caller instead of the timeout, so we can more
-                            // accurately limit the time of the given rpc request.
-                            .timeout(request.timeout.unwrap_or(call_timeout))
+                            .deadline(request.deadline)
                             .await
                     }),
                 ));
@@ -320,8 +329,9 @@ impl PoolWorker {
     pub fn send(&self, msg: RaftMessageExt) -> Result<()> {
         let raft_id = msg.inner.to;
         let args = msg.to_tuple_buffer()?;
+        let deadline = fiber::clock().saturating_add(self.options.call_timeout);
         self.inbox
-            .send(Request::raft_msg(self.raft_msg_handler, args));
+            .send(Request::raft_msg(self.raft_msg_handler, args, deadline));
         if self.inbox_ready.send(()).is_err() {
             tlog!(Warning, "failed sending request to peer, worker loop receiver dropped";
                 "raft_id" => raft_id,
@@ -374,8 +384,10 @@ impl PoolWorker {
             let res = crate::rpc::decode_iproto_return_value(tuple)?;
             Ok(res)
         };
-        let mut request = Request::with_callback(proc, args, move |res| cb(convert_result(res)));
-        request.timeout = timeout;
+        let timeout = timeout.unwrap_or(self.options.call_timeout);
+        let deadline = fiber::clock().saturating_add(timeout);
+        let request =
+            Request::with_callback(proc, args, move |res| cb(convert_result(res)), deadline);
         self.inbox.send(request);
         if self.inbox_ready.send(()).is_err() {
             tlog!(
