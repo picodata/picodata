@@ -61,7 +61,7 @@ Radix поддерживает 16 баз данных, каждую из кот�
 в административной консоли Picodata.
 
 ```sql
-CREATE PLUGIN radix 0.11.3;
+CREATE PLUGIN radix 0.12.0;
 ```
 
 #### Пример с двумя тирами (hot/cold) {: #plugin_enable_hotcold }
@@ -69,31 +69,31 @@ CREATE PLUGIN radix 0.11.3;
 Для настройки миграций задайте значения для 16 параметров (по числу баз данных в Radix):
 
 ```sql
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_0='hot';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_1='hot';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_2='hot';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_3='hot';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_4='cold';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_5='cold';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_6='cold';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_7='cold';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_8='cold';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_9='cold';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_10='cold';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_11='cold';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_12='cold';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_13='cold';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_14='cold';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_15='cold';
+ALTER PLUGIN radix 0.12.0 SET migration_context.tier_0='hot';
+ALTER PLUGIN radix 0.12.0 SET migration_context.tier_1='hot';
+ALTER PLUGIN radix 0.12.0 SET migration_context.tier_2='hot';
+ALTER PLUGIN radix 0.12.0 SET migration_context.tier_3='hot';
+ALTER PLUGIN radix 0.12.0 SET migration_context.tier_4='cold';
+ALTER PLUGIN radix 0.12.0 SET migration_context.tier_5='cold';
+ALTER PLUGIN radix 0.12.0 SET migration_context.tier_6='cold';
+ALTER PLUGIN radix 0.12.0 SET migration_context.tier_7='cold';
+ALTER PLUGIN radix 0.12.0 SET migration_context.tier_8='cold';
+ALTER PLUGIN radix 0.12.0 SET migration_context.tier_9='cold';
+ALTER PLUGIN radix 0.12.0 SET migration_context.tier_10='cold';
+ALTER PLUGIN radix 0.12.0 SET migration_context.tier_11='cold';
+ALTER PLUGIN radix 0.12.0 SET migration_context.tier_12='cold';
+ALTER PLUGIN radix 0.12.0 SET migration_context.tier_13='cold';
+ALTER PLUGIN radix 0.12.0 SET migration_context.tier_14='cold';
+ALTER PLUGIN radix 0.12.0 SET migration_context.tier_15='cold';
 
-ALTER PLUGIN radix 0.11.3 ADD SERVICE radix TO TIER hot;
-ALTER PLUGIN radix 0.11.3 ADD SERVICE radix TO TIER cold;
+ALTER PLUGIN radix 0.12.0 ADD SERVICE radix TO TIER hot;
+ALTER PLUGIN radix 0.12.0 ADD SERVICE radix TO TIER cold;
 ```
 
 Для выполнения миграции:
 
 ```sql
-ALTER PLUGIN radix MIGRATE TO 0.11.3 OPTION(TIMEOUT=300);
+ALTER PLUGIN radix MIGRATE TO 0.12.0 OPTION(TIMEOUT=300);
 ```
 
 !!! note "Примечание"
@@ -113,15 +113,15 @@ ALTER PLUGIN radix MIGRATE TO 0.11.3 OPTION(TIMEOUT=300);
 Для включения плагина в кластере:
 
 ```sql title="Убедитесь, что задан адрес, который будет слушать Radix"
-ALTER PLUGIN radix 0.11.3 ENABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 0.12.0 ENABLE OPTION(TIMEOUT=30);
 ```
 
 Если в кластере ранее была включена предыдущая версия плагина, то ее
 следует сначала отключить и лишь затем включить новую версию. Пример:
 
 ```sql
-ALTER PLUGIN radix 0.10.0 DISABLE OPTION(TIMEOUT=30);
-ALTER PLUGIN radix 0.11.3 ENABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 0.11.3 DISABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 0.12.0 ENABLE OPTION(TIMEOUT=30);
 ```
 
 Чтобы убедиться в том, что плагин успешно добавлен и запущен, выполните запрос:
@@ -408,6 +408,36 @@ CLUSTER GETKEYSINSLOT slot count
 Возвращает набор ключей, которые, в соответствии со своими хэш-суммами,
 относятся к указанному слоту. Второй аргумент ограничивает максимальное
 количество возвращаемых ключей.
+
+#### cluster info {: #cluster_info }
+
+```sql
+CLUSTER INFO
+```
+<font size="2">_поддерживается с версии 0.12.0_</font>
+
+Возвращает основной набор параметров кластера. Пример:
+
+```sql
+127.0.0.1:7301> cluster info
+cluster_state:ok
+cluster_slots_assigned:16384
+cluster_slots_ok:16384
+cluster_slots_pfail:0
+cluster_slots_fail:0
+cluster_known_nodes:8
+cluster_size:4
+cluster_current_epoch:2
+cluster_my_epoch:2
+cluster_stats_messages_ping_sent:0
+cluster_stats_messages_pong_sent:0
+cluster_stats_messages_sent:0
+cluster_stats_messages_ping_received:0
+cluster_stats_messages_pong_received:0
+cluster_stats_messages_meet_received:0
+cluster_stats_messages_fail_received:0
+cluster_stats_messages_received:0
+```
 
 #### cluster keyslot {: #cluster_keyslot }
 
@@ -2185,7 +2215,7 @@ PUBLISH channel message
 Сообщение будет доступно клиентам вне зависимости от того, к какому узлу
 кластера они подключены.
 
-#### pubsub channels  {: #pubsub_channels }
+#### pubsub channels {: #pubsub_channels }
 
 ```sql
 PUBSUB CHANNELS [pattern]
@@ -2305,6 +2335,30 @@ INCRBYFLOAT key increment
 Увеличивает значение, хранящееся по указанному ключу, на величину
 `increment`, но при этом поддерживает дробные и отрицательные значения.
 Если указанный ключ не существует, то его значение принимается за `0`.
+
+#### mget
+
+```sql
+MGET key [key ...]
+```
+<font size="2">_поддерживается с версии 0.12.0_</font>
+
+Возвращает значения всех указанных ключей. Если ключ не существует, или
+не содержит значения, то для него команда вернет `nil`. Благодаря этому,
+команда никогда не возвращает ошибку.
+
+#### mset
+
+```sql
+MSET key value [key value ...]
+```
+<font size="2">_поддерживается с версии 0.10.0_</font>
+
+Сохраняет строковые значения в ключах в соответствующих парах.
+Существующие значения при этом перезаписываются (аналогично
+[SET](#set)). Команда работает атомарно, устанавливая все значения за один
+проход, без возможности отследить, какие ключи были изменены, а какие
+нет.
 
 #### psetex
 
@@ -2430,7 +2484,7 @@ SENTINEL GET-MASTER-ADDR-BY-NAME <replicaset name>
 ```
 <font size="2">_поддерживается с версии 0.10.0_</font>
 
-Возвращает адрес Радикса для заданного репликасета.
+Возвращает адрес Radix для заданного репликасета.
 
 #### sentinel master {: #sentinel-master }
 
@@ -2679,41 +2733,43 @@ INFO [section [section ...]]
 
 ??? example "Образец вывода полного набора сведений"
     ```
-    127.0.0.1:7379> info
+    127.0.0.1:7301> info
     # Server
-    radix_version:0.11.3
-    picodata_version:25.3.0-378-g04d0f509d
-    picodata_cluster_name:my_cluster
-    picodata_cluster_uuid:5f6319ee-9608-46f7-9a19-f6f75f0872c8
+    radix_version:0.12.0
+    picodata_version:25.4.3-0-g6bc41a511
+    picodata_cluster_name:radix
+    picodata_cluster_uuid:637eb7e3-d181-4aae-972f-870729e4246c
+    picodata_instance_name:extra_1_1
+    picodata_instance_uuid:41ee45bf-695d-4266-8f3d-002517221598
     redis_version:8.0.0
-    redis_git_sha1:04ee91fd8c4fe13f80ad11c98c162d348058d12e
-    redis_git_dirty:1
+    redis_git_sha1:441bc4e6a70abe71a3aa4ec621d3924e86833877
+    redis_git_dirty:0
     redis_build_id:
     redis_mode:standalone
-    os:Fedora Linux 6.15.7-200.fc42.x86_64 x86_64
+    os:Fedora Linux 6.17.5-200.fc42.x86_64 x86_64
     arch_bits:64
     monotonic_clock:POSIX clock_gettime with CLOCK_MONOTONIC
     multiplexing_api:epoll
     atomicvar_api:c11-builtin
-    gcc_version:rustc 1.89.0 (29483883e 2025-08-04)
-    process_id:2052921
+    gcc_version:rustc 1.90.0 (1159e78c4 2025-09-14) (Fedora 1.90.0-1.fc42)
+    process_id:13939
     process_supervised:no
-    run_id:0ae842fb90404f66a483a2285ccb9a77
-    tcp_port:7379
-    server_time_usec:1759236461265248000
-    uptime_in_seconds:29878
-    uptime_in_days:0
-    hz:3200
+    run_id:3261c1de20e643e9a0063aa6eb52cff9
+    tcp_port:7301
+    server_time_usec:1761838105626718000
+    uptime_in_seconds:1282277
+    uptime_in_days:14
+    hz:3399
     configured_hz:0
     lru_clock:0
-    executable:/usr/local/bin/picodata
+    executable:/usr/bin/picodata
     config_file:
     io_threads_active:1
 
     # Clients
     connected_clients:1
     cluster_connections:0
-    maxclients:0
+    maxclients:10000
     client_recent_max_input_buffer:0
     client_recent_max_output_buffer:8192
     blocked_clients:0
@@ -2726,39 +2782,39 @@ INFO [section [section ...]]
     total_blocking_keys_on_nokey:0
 
     # Memory
-    used_memory:113246208
-    used_memory_human:108.00M
-    used_memory_rss:177856512
-    used_memory_rss_human:169.62M
-    used_memory_peak:113246208
-    used_memory_peak_human:108.00M
+    used_memory:226492416
+    used_memory_human:216.00M
+    used_memory_rss:118824960
+    used_memory_rss_human:113.32M
+    used_memory_peak:226492416
+    used_memory_peak_human:216.00M
     used_memory_peak_perc:100.00
-    used_memory_overhead:79691776
-    used_memory_startup:113246208
+    used_memory_overhead:192937984
+    used_memory_startup:226492416
     used_memory_dataset:33554432
-    used_memory_dataset_perc:29.63
-    allocator_allocated:113246208
-    allocator_active:113246208
-    allocator_resident:177856512
-    total_system_memory:33285332992
+    used_memory_dataset_perc:14.81
+    allocator_allocated:226492416
+    allocator_active:226492416
+    allocator_resident:118824960
+    total_system_memory:33282584576
     total_system_memory_human:31.00G
-    used_memory_lua:19273117
-    used_memory_vm_eval:19273117
-    used_memory_lua_human:18.38M
+    used_memory_lua:18939559
+    used_memory_vm_eval:18939559
+    used_memory_lua_human:18.06M
     used_memory_scripts_eval:0
     number_of_cached_scripts:0
     number_of_functions:0
     number_of_libraries:0
     used_memory_vm_functions:0
-    used_memory_vm_total:19273117
-    used_memory_vm_total_human:18.38M
+    used_memory_vm_total:18939559
+    used_memory_vm_total_human:18.06M
     used_memory_functions:0
     used_memory_scripts:0
     used_memory_scripts_human:0B
     maxmemory:0
     maxmemory_human:0B
     maxmemory_policy:allkeys-lru
-    allocator_frag_ratio:50.00
+    allocator_frag_ratio:1.68
     allocator_frag_bytes:33554432
     allocator_muzzy:0
     allocator_rss_ratio:NaN
@@ -2774,14 +2830,14 @@ INFO [section [section ...]]
     lazyfree_pending_objects:0
     lazyfreed_objects:0
     slab_info_items_size:16272
-    slab_info_items_used:8800
-    slab_info_items_used_ratio:54.08
-    slab_info_quota_size:67108864
+    slab_info_items_used:1600
+    slab_info_items_used_ratio:9.83
+    slab_info_quota_size:2000000000
     slab_info_quota_used:33554432
-    slab_info_quota_used_ratio:50
+    slab_info_quota_used_ratio:1.68
     slab_info_arena_size:33554432
-    slab_info_arena_used:860768
-    slab_info_arena_used_ratio:2.6
+    slab_info_arena_used:312896
+    slab_info_arena_used_ratio:0.9
 
     # Persistence
     loading:0
@@ -2792,7 +2848,7 @@ INFO [section [section ...]]
     total_commands_processed:3
     instantaneous_ops_per_sec:0
     total_net_input_bytes:84
-    total_net_output_bytes:886
+    total_net_output_bytes:990
     total_net_repl_input_bytes:0
     total_net_repl_output_bytes:0
     instantaneous_input_kbps:0.00
@@ -2822,24 +2878,25 @@ INFO [section [section ...]]
 
     # Replication
     role:master
-    connected_slaves:0
+    connected_slaves:1
+    slave0:id=extra_1_2,ip=127.0.0.1,port=3002,state=follow,offset=0,lag=0
     master_failover_state:no-failover
-    master_replid:f6547572-f3c0-4402-b72d-09af92b569be
-    master_replid2:f6547572-f3c0-4402-b72d-09af92b569be
-    master_repl_offset:35617
-    second_repl_offset:35617
+    master_replid:41ee45bf-695d-4266-8f3d-002517221598
+    master_replid2:41ee45bf-695d-4266-8f3d-002517221598
+    master_repl_offset:35734
+    second_repl_offset:35734
     repl_backlog_active:0
     repl_backlog_size:0
     repl_backlog_first_byte_offset: 0
     repl_backlog_histlen:0
 
     # CPU
-    used_cpu_sys:17.093780
-    used_cpu_user:39.019630
+    used_cpu_sys:7.032752
+    used_cpu_user:12.027181
     used_cpu_sys_children:0.000000
     used_cpu_user_children:0.000000
-    used_cpu_sys_main_thread:15.096654
-    used_cpu_user_main_thread:38.009288
+    used_cpu_sys_main_thread:3.015707
+    used_cpu_user_main_thread:12.066296
 
     # Modules
 
@@ -2851,9 +2908,9 @@ INFO [section [section ...]]
     # Keyspace
 
     # Commandstats
-    cmdstat_info:calls=1,usec=82000,usec_per_call=0,rejected_calls=0,failed_calls=0
+    cmdstat_info:calls=1,usec=102000,usec_per_call=0,rejected_calls=0,failed_calls=0
     # Sentinel
-    sentinel_masters:1
+    sentinel_masters:4
     sentinel_tilt:0
     sentinel_tilt_since_seconds:0
     sentinel_running_scripts:0
@@ -2875,6 +2932,37 @@ MEMORY USAGE key [SAMPLES count]
 `SAMPLES 0`.
 
 ## Журнал изменений {: #changelog }
+
+## 0.12.0 - 2025-10-29 {: #0.12.0 }
+
+**Новая функциональность**
+
+- Implement cluster info
+- Добавлена команда mget
+
+**Исправления**
+
+- Вывод значения настройки max_clients в info (498d8e9)
+- В вывод команды info server добавлены имя и uuid инстанса Picodata (417d62b)
+
+**Документация**
+
+📝 обновлена документация о процессе разработки (4713cfe)
+
+**Внутренние улучшения**
+
+Упорядочено чтение настроек на старте Радикса (ec23336)
+
+**Тестирование**
+
+- Добавлен тест вывода параметра maxclients (761fcf8)
+- Передача пути к Picodata в установке пароля в Makefile (8e86a40)
+
+**Прочее**
+
+- Обновили SDK до 25.4.3 (8d9514e)
+- 👷 исправлен CI для ветки main (a5ff0e1)
+- Bump picodata version to 25.4.1 (cd5cd2d)
 
 ### 0.11.0 - 2025-09-25 {: #0.11.0 }
 
@@ -3073,7 +3161,7 @@ MEMORY USAGE key [SAMPLES count]
 
 **Документация**
 
-- Создаем тикет на обновление доков радикса, а не аргуса
+- Создаем тикет на обновление доков Радикса, а не аргуса
 - Обновим пользовательскую документацию
 
 **Прочее**
@@ -3201,7 +3289,7 @@ MEMORY USAGE key [SAMPLES count]
 **Документация**
 
 - :memo: обновим документацию для пользователя
-- :memo: ADR для мультитирного (многорядного?) радикса
+- :memo: ADR для мультитирного (многорядного?) Радикса
 
 **Внутренние улучшения**
 
@@ -3242,7 +3330,7 @@ MEMORY USAGE key [SAMPLES count]
 
 **Build**
 
-- \`make pico_radix_release\` для запуска релизного радикса
+- \`make pico_radix_release\` для запуска релизного Радикса
 - :arrow_up: обновимся до пикодаты 25.1
 - На \`pico_stop\` убиваем пикодату из \`PICODATA_BINARY_PATH\`, а не просто \`picodata\`
 - :construction_worker: можно запускать тесты как на CI, но локально
