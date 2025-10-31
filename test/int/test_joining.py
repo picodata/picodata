@@ -135,7 +135,7 @@ def test_parallel(cluster3: Cluster):
     i4.assert_raft_status("Follower", leader_id=i2.raft_id)
 
 
-def test_replication(cluster: Cluster):
+def test_basic_replication_setup(cluster: Cluster):
     cluster.deploy(instance_count=2, init_replication_factor=2, service_password="secret")
     i1, i2 = cluster.instances
 
