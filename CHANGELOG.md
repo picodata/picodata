@@ -27,6 +27,7 @@ with the `YY.MINOR.MICRO` scheme.
   instead of an unsigned 64-bit integer, after `UNSIGNED` has been deleted internally and range
   has been changed.
 - Resolve hang when using TLS (hang in `ssl_iostream_destroy` when fiber is cancelled).
+- Resolve hang when using TLS (fix infinite loop in coio_writev_timeout on SSL_ERROR_ZERO_RETURN).
 - Fix Service::on_leader_change callbacks not being called after master goes Offline
   due to sentinel auto-offline policy (See also https://git.picodata.io/core/picodata/-/issues/2303).
 - Fixed a bug where the raft snapshot would sometimes contain incorrect term
