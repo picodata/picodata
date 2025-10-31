@@ -71,6 +71,8 @@ CLI_TIMEOUT = 10  # seconds
 
 TOO_LONG_FOR_LOGS = 512
 
+WAIT_ONLINE_TIMEOUT = int(os.getenv("WAIT_ONLINE_TIMEOUT") or 30)
+
 
 # Note: our tarantool.error.tnt_strerror only knows about first 113 error codes..
 class ErrorCode:
@@ -1520,7 +1522,7 @@ class Instance:
 
     def wait_online(
         self,
-        timeout: int | float = 30,
+        timeout: int | float = WAIT_ONLINE_TIMEOUT,
         rps: int | float = 5,
         expected_incarnation: int | None = None,
     ):
@@ -1598,7 +1600,7 @@ class Instance:
         current_state: str,
         target_state: str,
         target: "Instance | None" = None,
-        timeout: int | float = 30,
+        timeout: int | float = WAIT_ONLINE_TIMEOUT,
         rps: int | float = 5,
     ):
         """Block until instance has the given states.
@@ -2189,7 +2191,7 @@ class Cluster:
         self.instances = []
         self.peer = None
 
-    def wait_online(self, timeout: int = 30) -> list[Instance]:
+    def wait_online(self, timeout: int = WAIT_ONLINE_TIMEOUT) -> list[Instance]:
         for instance in self.instances:
             instance.start()
 
