@@ -3,7 +3,6 @@ use protobuf::Message;
 
 use ::tarantool::msgpack;
 
-use crate::access_control::validate_password;
 use crate::config::PicodataConfig;
 use crate::config::{self};
 use crate::info::PICODATA_VERSION;
@@ -12,22 +11,21 @@ use crate::replicaset::Replicaset;
 use crate::schema;
 use crate::schema::{ADMIN_ID, GUEST_ID, INITIAL_SCHEMA_VERSION, PUBLIC_ID};
 use crate::storage::PropertyName;
+use crate::storage::SystemTable;
 use crate::storage::{self};
-use crate::storage::{Catalog, SystemTable};
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::op;
 use std::collections::HashMap;
-use std::env;
 use tarantool::auth::{AuthData, AuthDef, AuthMethod};
 
 pub(super) fn prepare(
     config: &PicodataConfig,
     instance: &Instance,
     tiers: &HashMap<String, Tier>,
-    storage: &Catalog,
+    admin_auth: Option<AuthDef>,
 ) -> Result<Vec<raft::Entry>, Error> {
     let mut init_entries = Vec::new();
     let mut ops = vec![];
@@ -233,26 +231,13 @@ pub(super) fn prepare(
     );
 
     //
-    // Set up password for admin from environment variable
+    // Set up password for admin (see config::get_admin_auth_def_from_env for details)
     //
-    if let Some(var_password) = env::var_os("PICODATA_ADMIN_PASSWORD") {
-        let password = var_password.into_string().map_err(|e| {
-            Error::other(format!(
-                "Failed to convert OsString: {}",
-                e.into_string().unwrap()
-            ))
-        })?;
-
-        let method = AuthMethod::Md5;
-        let name = "admin";
-        validate_password(&password, &method, storage)?;
-        let data = AuthData::new(&method, name, &password);
-        let auth = AuthDef::new(method, data.into_string());
-
+    if let Some(admin_auth) = admin_auth {
         schema_version += 1;
         let op_elem = op::Op::Acl(op::Acl::ChangeAuth {
             user_id: ADMIN_ID,
-            auth,
+            auth: admin_auth,
             initiator: ADMIN_ID,
             schema_version,
         });

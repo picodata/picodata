@@ -1,5 +1,6 @@
 pub mod observer;
 
+use crate::access_control::validate_password;
 use crate::address::{HttpAddress, IprotoAddress, PgprotoAddress};
 use crate::cli::args;
 use crate::cli::args::CONFIG_PARAMETERS_ENV;
@@ -10,6 +11,7 @@ use crate::introspection::FieldInfo;
 use crate::introspection::Introspection;
 use crate::replicaset::ReplicasetName;
 use crate::schema::ADMIN_ID;
+use crate::schema::ADMIN_NAME;
 use crate::sql::storage::STATEMENT_CACHE;
 use crate::sql::value_type_str;
 use crate::static_ref;
@@ -42,6 +44,7 @@ use std::path::{Component, Path};
 use std::rc::Rc;
 use std::str::FromStr;
 use std::{env, fs};
+use tarantool::auth::{AuthData, AuthDef, AuthMethod};
 use tarantool::log::SayLevel;
 use tarantool::tuple::Tuple;
 
@@ -2019,6 +2022,10 @@ macro_rules! system_parameter_name {
     }};
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// ...
+////////////////////////////////////////////////////////////////////////////////
+
 pub const SHREDDING_PARAM_NAME: &str = "shredding";
 
 /// Stores atomic observer providers for some frequently-accessed config options
@@ -2049,6 +2056,10 @@ impl DynamicConfigProviders {
 }
 
 pub static DYNAMIC_CONFIG: DynamicConfigProviders = DynamicConfigProviders::new();
+
+////////////////////////////////////////////////////////////////////////////////
+// validate_alter_system_parameter_value
+////////////////////////////////////////////////////////////////////////////////
 
 pub fn validate_alter_system_parameter_value<'v>(
     name: &str,
@@ -2155,6 +2166,10 @@ pub fn validate_alter_system_parameter_value<'v>(
     Ok(casted_value)
 }
 
+////////////////////////////////////////////////////////////////////////////////
+//
+////////////////////////////////////////////////////////////////////////////////
+
 /// Returns `None` if there's no such parameter.
 pub fn get_type_of_alter_system_parameter(name: &str) -> Option<SbroadType> {
     let Ok(typ) = AlterSystemParameters::get_sbroad_type_of_field(name) else {
@@ -2188,6 +2203,10 @@ pub fn get_default_value_of_alter_system_parameter(name: &str) -> Option<rmpv::V
     let default = default.expect("default must be specified explicitly for all parameters");
     Some(default)
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// get_defaults_for_all_alter_system_parameters
+////////////////////////////////////////////////////////////////////////////////
 
 /// `tiers` is a list of names of all tiers in cluster.
 /// Returns an array of dmls that replacing all entries in _pico_db_config
@@ -2237,6 +2256,10 @@ pub fn get_defaults_for_all_alter_system_parameters(
 
     Ok(dmls)
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// apply_parameter
+////////////////////////////////////////////////////////////////////////////////
 
 /// Non-persistent apply of parameter from _pico_db_config
 /// represented by key-value tuple.
@@ -2348,6 +2371,36 @@ pub fn apply_parameter(
     }
 
     Ok(())
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ADMIN_PASSWORD
+////////////////////////////////////////////////////////////////////////////////
+
+/// Read value of `PICODATA_ADMIN_PASSWORD` environment variable validate it
+/// against our password policy and prepare the `AuthDef` using the md5 auth
+/// method.
+///
+/// The resulting `AuthDef` will be used in [`crate::bootstrap_entries::prepare`]
+/// to persist it in the system table `_pico_user`.
+pub fn get_admin_auth_def_from_env(storage: &storage::Catalog) -> Result<Option<AuthDef>, Error> {
+    let Some(var_password) = env::var_os("PICODATA_ADMIN_PASSWORD") else {
+        return Ok(None);
+    };
+
+    let password = var_password.into_string().map_err(|e| {
+        Error::other(format!(
+            "Failed to convert OsString: {}",
+            e.into_string().unwrap()
+        ))
+    })?;
+
+    let method = AuthMethod::Md5;
+    validate_password(&password, &method, storage)?;
+    let data = AuthData::new(&method, ADMIN_NAME, &password);
+    let auth = AuthDef::new(method, data.into_string());
+
+    Ok(Some(auth))
 }
 
 ////////////////////////////////////////////////////////////////////////////////

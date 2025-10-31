@@ -1365,7 +1365,11 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     tarantool::init_cluster_uuid(cluster_uuid);
     let cluster_uuid = cluster_uuid.to_hyphenated().to_string();
 
-    let bootstrap_entries = bootstrap_entries::prepare(config, &instance, &tiers, &storage)?;
+    // Check the PICODATA_ADMIN_PASSWORD environment variable, validate password
+    // against our password policy and prepare the auth data using the md5 auth method.
+    let admin_auth = config::get_admin_auth_def_from_env(&storage)?;
+
+    let bootstrap_entries = bootstrap_entries::prepare(config, &instance, &tiers, admin_auth)?;
 
     let hs = raft::HardState {
         term: traft::INIT_RAFT_TERM,

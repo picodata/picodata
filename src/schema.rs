@@ -981,6 +981,11 @@ pub const GUEST_ID: UserId = 0;
 /// See also <https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/_user/#box-space-user>
 pub const ADMIN_ID: UserId = 1;
 
+/// User name of the builtin user "admin".
+///
+/// See also [`ADMIN_ID`] for details on Admin user.
+pub const ADMIN_NAME: &'static str = "admin";
+
 /// User id of the builtin role "public".
 ///
 /// Pre-defined role, automatically granted to new users.
