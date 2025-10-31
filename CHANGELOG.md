@@ -14,6 +14,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed a bug where the raft snapshot would sometimes contain incorrect term
   which would result in an unrecoverable failure of the receiving instance.
 - Resolve hang when using TLS (hang in `ssl_iostream_destroy` when fiber is cancelled).
+- Resolve hang when using TLS (fix infinite loop in coio_writev_timeout on SSL_ERROR_ZERO_RETURN).
 - DML to global tables no longer will fail with errors such as "Compacted"
   (See also https://git.picodata.io/core/picodata/-/issues/2273).
 - Fix trigger execution and privilege initialization for scram-sha256 auth in pgproto.
