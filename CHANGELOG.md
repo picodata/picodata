@@ -66,6 +66,7 @@ with the `YY.MINOR.MICRO` scheme.
   - `pico_config_file_path()`: return an absolute path to the current instance configuration file. It
     does not check whether the config exist, it will still return the initial path. If the instance was
     started without specifying an instance config, it will return `null`.
+- Support ALTER INDEX RENAME command to rename an existing index.
 
 ### Pgproto
 - Add support for configuring pgproto TLS certificates via:

@@ -87,7 +87,9 @@ ACL = _{ DropRole | DropUser | CreateRole | CreateUser | AlterUser | GrantPrivil
             AuditPolicyOptionOn = { ^"by" ~ W ~ Identifier }
             AuditPolicyOptionOff = { ^"except" ~ W ~ Identifier }
 
-DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable | CreateIndex | DropIndex | CreateSchema | DropSchema
+DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable
+         | CreateIndex | DropIndex | RenameIndex
+         | CreateSchema | DropSchema
          | CreateProc | DropProc | RenameProc | SetParam | SetTransaction | AlterSystem
          | CreatePartition | Backup }
     Backup = ${ ^"backup" ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
@@ -213,6 +215,10 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable | CreateIndex | Dr
             Manhattan = { ^"manhattan" }
         Hint = !{ ^"hint" ~ "=" ~ (True | False) }
     DropIndex = ${ ^"drop" ~ W ~ ^"index" ~ W ~ (IfExists ~ W)? ~ (PublicSchema)? ~ Identifier ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+    RenameIndex = ${
+        ^"alter" ~ W ~ ^"index" ~ W ~ (IfExists ~ W)? ~ Identifier ~ W ~
+        ^"rename" ~ W ~ ^"to" ~ W ~ Identifier ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)?
+    }
 
     CreateSchema = ${ ^"create" ~ W ~ ^"schema" ~ W ~ (IfNotExists ~ W)? ~ Identifier }
     DropSchema = ${ ^"drop" ~ W ~ ^"schema" ~ W ~ (IfExists ~ W)? ~ Identifier ~ (W ~ (Cascade | Restrict))? }

@@ -159,6 +159,7 @@ impl Nodes {
                 Node96::DisablePlugin(disable) => Node::Plugin(Plugin::Disable(disable)),
                 Node96::DropPlugin(drop) => Node::Plugin(Plugin::Drop(drop)),
                 Node96::AuditPolicy(audit_policy) => Node::Acl(Acl::AuditPolicy(audit_policy)),
+                Node96::RenameIndex(rename) => Node::Ddl(Ddl::RenameIndex(rename)),
             }),
             ArenaType::Arena136 => self
                 .arena136
@@ -328,6 +329,7 @@ impl Nodes {
                     Node96::AuditPolicy(audit_policy) => {
                         MutNode::Acl(MutAcl::AuditPolicy(audit_policy))
                     }
+                    Node96::RenameIndex(rename) => MutNode::Ddl(MutDdl::RenameIndex(rename)),
                 }),
             ArenaType::Arena136 => {
                 self.arena136

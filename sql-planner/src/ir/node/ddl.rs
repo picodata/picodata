@@ -1,6 +1,6 @@
 use super::{
     AlterSystem, AlterTable, Backup, CreateIndex, CreateProc, CreateTable, DropIndex, DropProc,
-    DropTable, NodeAligned, RenameRoutine, SetParam, SetTransaction, TruncateTable,
+    DropTable, NodeAligned, RenameIndex, RenameRoutine, SetParam, SetTransaction, TruncateTable,
 };
 use crate::errors::{Entity, SbroadError};
 use crate::ir::Node32;
@@ -25,6 +25,7 @@ pub enum DdlOwned {
     SetParam(SetParam),
     SetTransaction(SetTransaction),
     Backup(Backup),
+    RenameIndex(RenameIndex),
 }
 
 impl DdlOwned {
@@ -46,6 +47,7 @@ impl DdlOwned {
             | DdlOwned::AlterSystem(AlterSystem { ref timeout, .. })
             | DdlOwned::CreateProc(CreateProc { ref timeout, .. })
             | DdlOwned::DropProc(DropProc { ref timeout, .. })
+            | DdlOwned::RenameIndex(RenameIndex { ref timeout, .. })
             | DdlOwned::RenameRoutine(RenameRoutine { ref timeout, .. }) => {
                 timeout.to_smolstr().parse().map_err(|e| {
                     SbroadError::Invalid(
@@ -67,6 +69,7 @@ impl DdlOwned {
             | DdlOwned::AlterTable(_)
             | DdlOwned::TruncateTable(_)
             | DdlOwned::CreateProc(_)
+            | DdlOwned::RenameIndex(_)
             | DdlOwned::RenameRoutine(_)
             | DdlOwned::AlterSystem(_)
             | DdlOwned::CreateIndex(_)
@@ -147,6 +150,7 @@ impl From<DdlOwned> for NodeAligned {
             DdlOwned::SetParam(set_param) => set_param.into(),
             DdlOwned::SetTransaction(set_trans) => set_trans.into(),
             DdlOwned::Backup(backup) => backup.into(),
+            DdlOwned::RenameIndex(rename_index) => rename_index.into(),
         }
     }
 }
@@ -169,6 +173,7 @@ pub enum MutDdl<'a> {
     SetParam(&'a mut SetParam),
     SetTransaction(&'a mut SetTransaction),
     Backup(&'a mut Backup),
+    RenameIndex(&'a mut RenameIndex),
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -189,6 +194,7 @@ pub enum Ddl<'a> {
     SetParam(&'a SetParam),
     SetTransaction(&'a SetTransaction),
     Backup(&'a Backup),
+    RenameIndex(&'a RenameIndex),
 }
 
 impl Ddl<'_> {
@@ -210,6 +216,7 @@ impl Ddl<'_> {
             | Ddl::AlterSystem(AlterSystem { ref timeout, .. })
             | Ddl::CreateProc(CreateProc { ref timeout, .. })
             | Ddl::DropProc(DropProc { ref timeout, .. })
+            | Ddl::RenameIndex(RenameIndex { ref timeout, .. })
             | Ddl::RenameRoutine(RenameRoutine { ref timeout, .. }) => {
                 timeout.to_smolstr().parse().map_err(|e| {
                     SbroadError::Invalid(
@@ -288,6 +295,7 @@ impl Ddl<'_> {
             Ddl::SetParam(set_param) => DdlOwned::SetParam((*set_param).clone()),
             Ddl::SetTransaction(set_trans) => DdlOwned::SetTransaction((*set_trans).clone()),
             Ddl::AlterTable(alter_table) => DdlOwned::AlterTable((*alter_table).clone()),
+            Ddl::RenameIndex(rename_index) => DdlOwned::RenameIndex((*rename_index).clone()),
         }
     }
 }

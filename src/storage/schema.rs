@@ -164,6 +164,15 @@ pub fn ddl_abort_on_master(storage: &Catalog, ddl: &Ddl, version: u64) -> traft:
             return Ok(());
         }
 
+        Ddl::RenameIndex {
+            space_id,
+            index_id,
+            ref old_name,
+            ..
+        } => {
+            ddl_rename_index_on_master(space_id, index_id, old_name.as_str())?;
+        }
+
         Ddl::ChangeFormat {
             table_id,
             ref old_format,
@@ -337,6 +346,23 @@ pub fn ddl_rename_function_on_master(
     meta.name = new_name;
     func_space.put(&FunctionMetadata::from(&routine_def))?;
 
+    Ok(())
+}
+
+pub fn ddl_rename_index_on_master(
+    space_id: u32,
+    index_id: u32,
+    new_name: &str,
+) -> traft::Result<()> {
+    debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
+    let sys_index = Space::from(SystemSpace::Index);
+    if sys_index.get(&[space_id, index_id])?.is_none() {
+        return Err(Error::other(format!(
+            "Index (#id {index_id}, #space {space_id}) not found on DDL abort."
+        )));
+    }
+    let index = unsafe { Index::from_ids_unchecked(space_id, index_id) };
+    let _ = index.rename(new_name)?;
     Ok(())
 }
 

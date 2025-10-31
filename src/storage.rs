@@ -842,6 +842,19 @@ impl Indexes {
     }
 
     #[inline]
+    pub fn rename(
+        &self,
+        space_id: SpaceId,
+        index_id: IndexId,
+        new_name: &str,
+    ) -> tarantool::Result<()> {
+        let mut ops = UpdateOps::with_capacity(1);
+        ops.assign(column_name!(IndexDef, name), new_name)?;
+        self.space.update(&(space_id, index_id), ops)?;
+        Ok(())
+    }
+
+    #[inline]
     pub fn by_name(&self, name: &str) -> tarantool::Result<Option<IndexDef>> {
         let tuple = self.index_name.get(&[name])?;
         tuple.as_ref().map(Tuple::decode).transpose()

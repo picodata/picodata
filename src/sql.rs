@@ -72,7 +72,7 @@ use sql::ir::node::relational::Relational;
 use sql::ir::node::{
     AlterColumn, AlterSystem, AlterTableOp, AlterUser, AuditPolicy, Constant, CreateIndex,
     CreateProc, CreateRole, CreateTable, CreateUser, Delete, DropIndex, DropProc, DropRole,
-    DropTable, DropUser, GrantPrivilege, Insert, Node as IrNode, NodeOwned, Procedure,
+    DropTable, DropUser, GrantPrivilege, Insert, Node as IrNode, NodeOwned, Procedure, RenameIndex,
     RenameRoutine, RevokePrivilege, ScanRelation, SetParam, Update,
 };
 use sql::ir::node::{NodeId, TruncateTable};
@@ -1766,6 +1766,41 @@ fn ddl_ir_node_to_op_or_result(
                 governor_op_id,
             }))
         }
+        DdlOwned::RenameIndex(RenameIndex {
+            old_name,
+            new_name,
+            if_exists,
+            ..
+        }) => {
+            let Some(index) = storage.indexes.by_name(old_name.as_str())? else {
+                if *if_exists {
+                    return Ok(Break(ConsumerResult { row_count: 0 }));
+                } else {
+                    return Err(error::DoesNotExist::Index(old_name.to_owned()).into());
+                }
+            };
+            if storage.indexes.by_name(new_name.as_str())?.is_some() {
+                return Err(error::AlreadyExists::Index(new_name.to_owned()).into());
+            }
+            let Some(table) = storage.pico_table.get(index.table_id)? else {
+                return Err(
+                    error::DoesNotExist::Table(format_smolstr!("id: {}", index.table_id)).into(),
+                );
+            };
+            Ok(Continue(Op::DdlPrepare {
+                schema_version,
+                ddl: OpDdl::RenameIndex {
+                    space_id: index.table_id,
+                    index_id: index.id,
+                    old_name: old_name.to_string(),
+                    new_name: new_name.to_string(),
+                    initiator_id: current_user,
+                    owner_id: table.owner,
+                    schema_version,
+                },
+                governor_op_id,
+            }))
+        }
         DdlOwned::AlterTable(alter_table) => {
             let Some(table) = &storage.pico_table.by_name(&alter_table.name)? else {
                 return Err(error::DoesNotExist::Table(alter_table.name.clone()).into());
@@ -2068,6 +2103,38 @@ fn check_ddl_applied(
 
             debug_assert_eq!(pending_schema_version, Some(schema_version));
             Ok(false)
+        }
+        OpDdl::RenameIndex {
+            space_id, index_id, ..
+        } => {
+            let Some(index_def) = storage.indexes.get(*space_id, *index_id)? else {
+                tlog!(
+                    Warning,
+                    "Index ({index_id} for space {space_id}) has already been dropped"
+                );
+                return Ok(true);
+            };
+
+            if index_def.schema_version != schema_version {
+                tlog!(
+                    Warning,
+                    "Index ({index_id} for space {space_id}) has changed, \
+                    schema version: {} vs {}",
+                    index_def.schema_version,
+                    schema_version,
+                );
+                return error(
+                    "Can't find out the result of the operation, \
+                    but index was changed afterwards.",
+                );
+            }
+
+            if !index_def.operable {
+                debug_assert_eq!(pending_schema_version, Some(schema_version));
+                return Ok(false);
+            }
+
+            Ok(true)
         }
         OpDdl::CreateProcedure { id, name, .. } => {
             let Some(routine_def) = storage.routines.by_id(*id)? else {

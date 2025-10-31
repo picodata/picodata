@@ -8,9 +8,9 @@ use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
     Alias, AlterColumn, AlterTable, AlterTableOp, Backup, Bound, BoundType, Frame, FrameType,
-    GroupBy, Node32, Over, Parameter, Reference, ReferenceAsteriskSource, ReferenceTarget, Row,
-    ScalarFunction, SubQueryReference, TimeParameters, Timestamp, TruncateTable, Values, ValuesRow,
-    Window,
+    GroupBy, Node32, Over, Parameter, Reference, ReferenceAsteriskSource, ReferenceTarget,
+    RenameIndex, Row, ScalarFunction, SubQueryReference, TimeParameters, Timestamp, TruncateTable,
+    Values, ValuesRow, Window,
 };
 use crate::ir::types::{DerivedType, UnrestrictedType};
 use ahash::{AHashMap, AHashSet};
@@ -765,6 +765,42 @@ fn parse_drop_index(ast: &AbstractSyntaxTree, node: &ParseNode) -> Result<DropIn
         name,
         if_exists,
         timeout,
+        wait_applied_globally,
+    })
+}
+
+fn parse_rename_index(
+    ast: &AbstractSyntaxTree,
+    node: &ParseNode,
+) -> Result<RenameIndex, SbroadError> {
+    assert_eq!(node.rule, Rule::RenameIndex);
+    let mut old_name: Option<SmolStr> = None;
+    let mut new_name: Option<SmolStr> = None;
+    let mut timeout = get_default_timeout();
+    let mut if_exists = DEFAULT_IF_EXISTS;
+    let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
+    for child_id in &node.children {
+        let child_node = ast.nodes.get_node(*child_id)?;
+        match child_node.rule {
+            Rule::Identifier => match (&mut old_name, &mut new_name) {
+                (None, None) => old_name = Some(parse_identifier(ast, *child_id)?),
+                (Some(_), None) => new_name = Some(parse_identifier(ast, *child_id)?),
+                _ => unreachable!("Invalid AST for rename index"),
+            },
+            Rule::Timeout => timeout = get_timeout(ast, *child_id)?,
+            Rule::IfExists => if_exists = true,
+            Rule::WaitAppliedGlobally => wait_applied_globally = true,
+            Rule::WaitAppliedLocally => wait_applied_globally = false,
+            _ => panic!("Unexpected drop index node: {child_node:?}"),
+        }
+    }
+    Ok(RenameIndex {
+        // It is safe to unwrap old and new index names,
+        // as they must be parsed from AST in the code above.
+        old_name: old_name.unwrap(),
+        new_name: new_name.unwrap(),
+        timeout,
+        if_exists,
         wait_applied_globally,
     })
 }
@@ -6423,6 +6459,11 @@ impl AbstractSyntaxTree {
                 Rule::DropIndex => {
                     let drop_index = parse_drop_index(self, node)?;
                     let plan_id = plan.nodes.push(drop_index.into());
+                    map.add(id, plan_id);
+                }
+                Rule::RenameIndex => {
+                    let rename_proc = parse_rename_index(self, node)?;
+                    let plan_id = plan.nodes.push(rename_proc.into());
                     map.add(id, plan_id);
                 }
                 Rule::DropSchema => {

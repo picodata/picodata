@@ -199,6 +199,23 @@ impl std::fmt::Display for Op {
             }
             Self::DdlPrepare {
                 schema_version,
+                ddl:
+                    Ddl::RenameIndex {
+                        space_id,
+                        index_id,
+                        old_name,
+                        new_name,
+                        ..
+                    },
+                ..
+            } => {
+                write!(
+                    f,
+                    "DdlPrepare({schema_version}, RenameIndex({space_id}, {index_id}, {old_name} -> {new_name}))"
+                )
+            }
+            Self::DdlPrepare {
+                schema_version,
                 ddl: Ddl::CreateProcedure { id, name, .. },
                 ..
             } => {
@@ -803,6 +820,15 @@ pub enum Ddl {
         space_id: SpaceId,
         index_id: IndexId,
         initiator: UserId,
+    },
+    RenameIndex {
+        space_id: SpaceId,
+        index_id: IndexId,
+        old_name: String,
+        new_name: String,
+        initiator_id: UserId,
+        owner_id: UserId,
+        schema_version: u64,
     },
     CreateProcedure {
         id: RoutineId,

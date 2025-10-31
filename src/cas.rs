@@ -1201,6 +1201,7 @@ fn modifies_operable(op: &Op, space: SpaceId, storage: &Catalog) -> bool {
         Ddl::Backup { .. } => false,
         Ddl::CreateIndex { .. } => false,
         Ddl::DropIndex { .. } => false,
+        Ddl::RenameIndex { .. } => false,
         Ddl::CreateProcedure { .. } => false,
         Ddl::DropProcedure { .. } => false,
         Ddl::RenameProcedure { .. } => false,

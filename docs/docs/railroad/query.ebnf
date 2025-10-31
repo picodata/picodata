@@ -143,7 +143,7 @@ insert      ::= 'INSERT' 'INTO' table ('(' column (',' column)* ')')? dql
 update      ::= 'UPDATE' table 'SET'
                 column '=' expression (',' column '=' expression)*
                 ('FROM' scan)? ('WHERE' expression)?
-acl         ::= (alter_user | create_role | create_user | drop_role | drop_user | grant | revoke | audit_policy)                
+acl         ::= (alter_user | create_role | create_user | drop_role | drop_user | grant | revoke | audit_policy)
 revoke      ::= 'REVOKE' (
                     (('CREATE' | 'ALTER' | 'DROP') 'USER')
                     | (('ALTER' | 'DROP') 'ON' 'USER' user)
@@ -168,7 +168,7 @@ grant       ::= 'GRANT' (
                     | role
                 )
                 'TO' (role | user) ('OPTION' '(' ('TIMEOUT' '=' double)')')?
-ddl         ::= (alter_plugin | alter_procedure | alter_system | alter_table
+ddl         ::= (alter_index | alter_plugin | alter_procedure | alter_system | alter_table
                 | create_index | create_plugin | create_procedure | create_table
                 | drop_index | drop_plugin | drop_procedure | drop_table | truncate_table | backup)
 alter_system ::= 'ALTER' 'SYSTEM'
@@ -179,6 +179,10 @@ alter_system ::= 'ALTER' 'SYSTEM'
                     ('FOR' ('ALL' 'TIERS' | 'TIER' tier))?
 alter_procedure ::= 'ALTER' 'PROCEDURE' procedure ('(' unrestricted_type (',' unrestricted_type)* ')')?
                      'RENAME' 'TO' procedure
+                     ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
+                     ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+alter_index ::=     'ALTER' 'INDEX' ('IF' 'EXISTS')? index
+                     'RENAME' 'TO' index
                      ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                      ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 create_index ::= 'CREATE' 'UNIQUE'? 'INDEX' ('IF' 'NOT' 'EXISTS')? index 'ON' table

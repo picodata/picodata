@@ -47,6 +47,7 @@ pub enum CommandTag {
     AlterRole = 0,
     AlterSystem = 22,
     AlterTable = 41,
+    Backup = 56,
     Begin = 52,
     CallProcedure = 16,
     CreateProcedure = 14,
@@ -75,6 +76,7 @@ pub enum CommandTag {
     Insert = 9,
     MigrateUp = 35,
     RemoveTier = 38,
+    RenameIndex = 57,
     RenameRoutine = 17,
     Revoke = 10,
     Rollback = 54,
@@ -84,7 +86,6 @@ pub enum CommandTag {
     SetTransaction = 21,
     TruncateTable = 40,
     Update = 13,
-    Backup = 56,
 }
 
 impl CommandTag {
@@ -124,6 +125,7 @@ impl CommandTag {
             Self::CreateProcedure => "CREATE PROCEDURE",
             Self::DropProcedure => "DROP PROCEDURE",
             Self::CallProcedure => "CALL",
+            Self::RenameIndex => "RENAME INDEX",
             Self::RenameRoutine => "RENAME ROUTINE",
             Self::SetParam | Self::SetTransaction => "SET",
             Self::CreatePlugin => "CREATE PLUGIN",
@@ -165,6 +167,7 @@ impl From<CommandTag> for QueryType {
             | CommandTag::CreateProcedure
             | CommandTag::CreateIndex
             | CommandTag::CreateSchema
+            | CommandTag::RenameIndex
             | CommandTag::RenameRoutine
             | CommandTag::DropIndex
             | CommandTag::DropSchema
@@ -225,6 +228,7 @@ impl TryFrom<&Node<'_>> for CommandTag {
                 Ddl::DropSchema => Ok(CommandTag::DropSchema),
                 Ddl::DropProc { .. } => Ok(CommandTag::DropProcedure),
                 Ddl::DropIndex { .. } => Ok(CommandTag::DropIndex),
+                Ddl::RenameIndex { .. } => Ok(CommandTag::RenameIndex),
                 Ddl::RenameRoutine { .. } => Ok(CommandTag::RenameRoutine),
                 Ddl::SetParam { .. } => Ok(CommandTag::SetParam),
                 Ddl::SetTransaction { .. } => Ok(CommandTag::SetTransaction),

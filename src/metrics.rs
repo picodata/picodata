@@ -459,6 +459,9 @@ pub fn get_op_type_and_table(op: &Op) -> Vec<(&str, String)> {
             } => {
                 operations.push(("ddl_drop_index", format!("{space_id}:{index_id}")));
             }
+            Ddl::RenameIndex {
+                old_name, new_name, ..
+            } => operations.push(("ddl_rename_index", format!("{old_name}→{new_name}"))),
             Ddl::CreateProcedure { name, .. } => {
                 operations.push(("ddl_create_procedure", name.clone()));
             }

@@ -1142,6 +1142,21 @@ impl From<CreateIndex> for NodeAligned {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct RenameIndex {
+    pub old_name: SmolStr,
+    pub new_name: SmolStr,
+    pub timeout: Decimal,
+    pub if_exists: bool,
+    pub wait_applied_globally: bool,
+}
+
+impl From<RenameIndex> for NodeAligned {
+    fn from(value: RenameIndex) -> Self {
+        Self::Node96(Node96::RenameIndex(value))
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
 pub enum FrameType {
     Range,
@@ -1479,6 +1494,7 @@ pub enum Node96 {
     DisablePlugin(DisablePlugin),
     DropPlugin(DropPlugin),
     AuditPolicy(AuditPolicy),
+    RenameIndex(RenameIndex),
 }
 
 impl Node96 {
@@ -1498,6 +1514,9 @@ impl Node96 {
             Node96::DisablePlugin(disable) => NodeOwned::Plugin(PluginOwned::Disable(disable)),
             Node96::AuditPolicy(audit_policy) => {
                 NodeOwned::Acl(AclOwned::AuditPolicy(audit_policy))
+            }
+            Node96::RenameIndex(rename_index) => {
+                NodeOwned::Ddl(DdlOwned::RenameIndex(rename_index))
             }
         }
     }

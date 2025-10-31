@@ -9,6 +9,7 @@ use crate::storage::schema::ddl_drop_function_on_master;
 use crate::storage::schema::ddl_drop_index_on_master;
 use crate::storage::schema::ddl_drop_space_on_master;
 use crate::storage::schema::ddl_rename_function_on_master;
+use crate::storage::schema::ddl_rename_index_on_master;
 use crate::storage::schema::ddl_rename_table_on_master;
 use crate::storage::schema::ddl_truncate_space_on_master;
 use crate::storage::Catalog;
@@ -306,6 +307,17 @@ pub fn apply_schema_change(
             }
 
             if let Err(e) = ddl_drop_index_on_master(space_id, index_id) {
+                return Err(Error::Aborted(e));
+            }
+        }
+
+        Ddl::RenameIndex {
+            space_id,
+            index_id,
+            ref new_name,
+            ..
+        } => {
+            if let Err(e) = ddl_rename_index_on_master(space_id, index_id, new_name) {
                 return Err(Error::Aborted(e));
             }
         }

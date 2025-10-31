@@ -1471,6 +1471,30 @@ impl NodeImpl {
                             initiator: initiator_def.name,
                         );
                     }
+
+                    Ddl::RenameIndex {
+                        space_id,
+                        index_id,
+                        old_name,
+                        new_name,
+                        initiator_id,
+                        ..
+                    } => {
+                        self.storage
+                            .indexes
+                            .update_operable(space_id, index_id, true)
+                            .expect("storage shouldn't fail");
+                        let initiator_def = user_by_id(initiator_id).expect("user must exist");
+
+                        crate::audit!(
+                            message: "renamed index `{old_name}` to `{new_name}`",
+                            title: "rename_index",
+                            severity: Medium,
+                            old_name: &old_name,
+                            new_name: &new_name,
+                            initiator: initiator_def.name,
+                        );
+                    }
                 }
 
                 storage_properties
@@ -1641,6 +1665,21 @@ impl NodeImpl {
                     Ddl::DropIndex {
                         space_id, index_id, ..
                     } => {
+                        self.storage
+                            .indexes
+                            .update_operable(space_id, index_id, true)
+                            .expect("storage shouldn't fail");
+                    }
+                    Ddl::RenameIndex {
+                        space_id,
+                        index_id,
+                        old_name,
+                        ..
+                    } => {
+                        self.storage
+                            .indexes
+                            .rename(space_id, index_id, &old_name)
+                            .expect("storage shouldn't fail");
                         self.storage
                             .indexes
                             .update_operable(space_id, index_id, true)
@@ -2128,6 +2167,21 @@ impl NodeImpl {
                 self.storage
                     .indexes
                     .insert(&index_def)
+                    .expect("storage shouldn't fail");
+            }
+            Ddl::RenameIndex {
+                space_id,
+                index_id,
+                new_name,
+                ..
+            } => {
+                self.storage
+                    .indexes
+                    .rename(space_id, index_id, &new_name)
+                    .expect("index existence must have been checked before commit");
+                self.storage
+                    .indexes
+                    .update_operable(space_id, index_id, false)
                     .expect("storage shouldn't fail");
             }
             Ddl::DropTable { id, .. } => {
