@@ -33,6 +33,7 @@ with the `YY.MINOR.MICRO` scheme.
   which would result in an unrecoverable failure of the receiving instance.
 - DML to global tables no longer will fail with errors such as "Compacted"
   (See also https://git.picodata.io/core/picodata/-/issues/2273).
+- Fix `use-after-poison` in `proc_sql_execute`.
 
 ### WebUI
 - Login form and simple session control

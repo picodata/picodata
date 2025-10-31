@@ -2486,24 +2486,19 @@ pub unsafe extern "C" fn proc_sql_execute(
     mut ctx: FunctionCtx,
     func_args: FunctionArgs,
 ) -> ::std::os::raw::c_int {
-    let args_len = match usize::try_from(func_args.end.offset_from(func_args.start)) {
-        Ok(len) => len,
-        Err(e) => {
-            return report(
-                "Invalid length of the 'proc_sql_execute' arguments: ",
-                Error::Other(Box::new(e)),
-            )
-        }
-    };
+    // XXX: Stored procedure arguments that must survive yield must be copied to memory
+    // (https://github.com/tarantool/tarantool/issues/4792#issuecomment-592893087).
+    //
+    // See also: https://git.picodata.io/core/picodata/-/issues/2359.
+    let raw_args = tarantool::tuple::Tuple::from(func_args).to_vec();
 
-    let raw_args = std::slice::from_raw_parts(func_args.start, args_len);
-    let args = match execute_args_split(raw_args) {
+    let args = match execute_args_split(&raw_args) {
         Ok(args) => args,
         Err(e) => {
             return report(
                 &format!(
                     "Failed to decode '.proc_sql_execute' arguments, msgpack {}: ",
-                    escape_bytes(raw_args)
+                    escape_bytes(&raw_args),
                 ),
                 Error::from(e),
             )
