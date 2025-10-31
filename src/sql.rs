@@ -1002,6 +1002,7 @@ fn alter_user_ir_node_to_op_or_result(
     alter_option: &AlterOption,
     current_user: UserId,
     schema_version: u64,
+    node: &TraftNode,
     storage: &Catalog,
 ) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
     let user_def = storage.users.by_name(name)?;
@@ -1021,7 +1022,7 @@ fn alter_user_ir_node_to_op_or_result(
             password,
             auth_method,
         } => {
-            validate_password(password, auth_method, storage)?;
+            validate_password(password, auth_method, &node.alter_system_parameters)?;
             let data = AuthData::new(auth_method, name, password);
             let auth = AuthDef::new(*auth_method, data.into_string());
 
@@ -1184,7 +1185,7 @@ fn acl_ir_node_to_op_or_result(
             check_name_emptyness(name)?;
             storage.users.check_user_limit()?;
 
-            validate_password(password, auth_method, storage)?;
+            validate_password(password, auth_method, &node.alter_system_parameters)?;
             let data = AuthData::new(auth_method, name, password);
             let auth = AuthDef::new(*auth_method, data.into_string());
 
@@ -1217,6 +1218,7 @@ fn acl_ir_node_to_op_or_result(
             alter_option,
             current_user,
             schema_version,
+            node,
             storage,
         ),
         AclOwned::GrantPrivilege(GrantPrivilege {

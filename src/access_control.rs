@@ -41,6 +41,7 @@ use tarantool::{
     tuple::Encode,
 };
 
+use crate::config::AlterSystemParametersRef;
 use crate::storage::SPACE_ID_INTERNAL_MAX;
 use crate::traft::error::Error;
 use crate::traft::op::Dml;
@@ -116,7 +117,7 @@ pub fn user_by_id_if_exists(id: UserId) -> tarantool::Result<Option<UserMetadata
 pub fn validate_password(
     password: &str,
     auth_method: &AuthMethod, // reference is taken for easier API interaction
-    storage: &Catalog,
+    parameters: &AlterSystemParametersRef,
 ) -> traft::Result<()> {
     if let AuthMethod::Ldap = auth_method {
         // LDAP doesn't need password for authentication
@@ -125,8 +126,7 @@ pub fn validate_password(
 
     // This check is called from user facing API.
     // A user is not expected to have access to _pico_property
-    let password_min_length =
-        session::with_su(ADMIN_ID, || storage.db_config.auth_password_length_min())??;
+    let password_min_length = parameters.borrow().auth_password_length_min as usize;
     if password.len() < password_min_length {
         return Err(Error::Other(
             format!(
@@ -138,36 +138,28 @@ pub fn validate_password(
         ));
     }
 
-    let password_enforce_uppercase = session::with_su(ADMIN_ID, || {
-        storage.db_config.auth_password_enforce_uppercase()
-    })??;
+    let password_enforce_uppercase = parameters.borrow().auth_password_enforce_uppercase;
     if password_enforce_uppercase && !password.chars().any(|ch| ch.is_uppercase()) {
         return Err(Error::Other(
             "invalid password: password should contain at least one uppercase letter".into(),
         ));
     }
 
-    let password_enforce_lowercase = session::with_su(ADMIN_ID, || {
-        storage.db_config.auth_password_enforce_lowercase()
-    })??;
+    let password_enforce_lowercase = parameters.borrow().auth_password_enforce_lowercase;
     if password_enforce_lowercase && !password.chars().any(|ch| ch.is_lowercase()) {
         return Err(Error::Other(
             "invalid password: password should contain at least one lowercase letter".into(),
         ));
     }
 
-    let password_enforce_digits = session::with_su(ADMIN_ID, || {
-        storage.db_config.auth_password_enforce_digits()
-    })??;
+    let password_enforce_digits = parameters.borrow().auth_password_enforce_digits;
     if password_enforce_digits && !password.chars().any(|ch| ch.is_ascii_digit()) {
         return Err(Error::Other(
             "invalid password: password should contain at least one digit".into(),
         ));
     }
 
-    let password_enforce_specialchars = session::with_su(ADMIN_ID, || {
-        storage.db_config.auth_password_enforce_specialchars()
-    })??;
+    let password_enforce_specialchars = parameters.borrow().auth_password_enforce_specialchars;
     if password_enforce_specialchars && !password.chars().any(|ch| SPECIAL_CHARACTERS.contains(&ch))
     {
         return Err(Error::Other(

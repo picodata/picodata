@@ -1365,9 +1365,16 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     tarantool::init_cluster_uuid(cluster_uuid);
     let cluster_uuid = cluster_uuid.to_hyphenated().to_string();
 
+    let alter_system_parameters = AlterSystemParametersRef::default();
+    // Need to set default explicitly because some parameters may be read before
+    // the corresponding raft log entries are applied in raft_main_loop.
+    alter_system_parameters
+        .borrow_mut()
+        .set_defaults_explicitly();
+
     // Check the PICODATA_ADMIN_PASSWORD environment variable, validate password
     // against our password policy and prepare the auth data using the md5 auth method.
-    let admin_auth = config::get_admin_auth_def_from_env(&storage)?;
+    let admin_auth = config::get_admin_auth_def_from_env(&alter_system_parameters)?;
 
     let bootstrap_entries = bootstrap_entries::prepare(config, &instance, &tiers, admin_auth)?;
 
@@ -1400,18 +1407,6 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     tlog!(Info, "replicaset name: {}", instance.replicaset_name);
     tlog!(Info, "replicaset uuid: {}", instance.replicaset_uuid);
     tlog!(Info, "tier name: {}", instance.tier);
-
-    let alter_system_parameters = AlterSystemParametersRef::default();
-    // Need to set default explicitly because some parameters may be read before
-    // the corresponding raft log entries are applied in raft_main_loop.
-    alter_system_parameters
-        .borrow_mut()
-        .set_defaults_explicitly();
-    // Read all ALTER SYSTEM parameters from `_pico_db_config` system table,
-    // apply the values using `box.cfg` if needed, cache the values in the
-    // global struct for efficient and type-safe access.
-    let current_tier_name = config.instance.tier();
-    reapply_dynamic_parameters(&alter_system_parameters, &storage, current_tier_name)?;
 
     postjoin(config, storage, raft_storage, alter_system_parameters)?;
     // In this case `create_local_db` is logged in postjoin

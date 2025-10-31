@@ -2383,7 +2383,9 @@ pub fn apply_parameter(
 ///
 /// The resulting `AuthDef` will be used in [`crate::bootstrap_entries::prepare`]
 /// to persist it in the system table `_pico_user`.
-pub fn get_admin_auth_def_from_env(storage: &storage::Catalog) -> Result<Option<AuthDef>, Error> {
+pub fn get_admin_auth_def_from_env(
+    parameters: &AlterSystemParametersRef,
+) -> Result<Option<AuthDef>, Error> {
     let Some(var_password) = env::var_os("PICODATA_ADMIN_PASSWORD") else {
         return Ok(None);
     };
@@ -2396,7 +2398,7 @@ pub fn get_admin_auth_def_from_env(storage: &storage::Catalog) -> Result<Option<
     })?;
 
     let method = AuthMethod::Md5;
-    validate_password(&password, &method, storage)?;
+    validate_password(&password, &method, parameters)?;
     let data = AuthData::new(&method, ADMIN_NAME, &password);
     let auth = AuthDef::new(method, data.into_string());
 

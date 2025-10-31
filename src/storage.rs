@@ -36,7 +36,6 @@ use crate::schema::{PluginDef, INITIAL_SCHEMA_VERSION};
 use crate::schema::{PrivilegeDef, RoutineDef, UserDef};
 use crate::static_ref;
 use crate::storage::snapshot::SnapshotCache;
-use crate::system_parameter_name;
 use crate::tarantool::box_schema_version;
 use crate::tier::Tier;
 use crate::tlog;
@@ -3270,90 +3269,10 @@ impl DbConfig {
         })
     }
 
-    #[inline]
-    pub fn get_or_default<T>(&self, key: &'static str, target_scope: &str) -> tarantool::Result<T>
-    where
-        T: DecodeOwned,
-        T: serde::de::DeserializeOwned,
-    {
-        let global_scope = AlterSystemParameters::has_scope_global(key)
-            .map_err(|err| ::tarantool::error::Error::other(err.to_string()))?;
-
-        for (index, tuple) in self.by_key(key)?.enumerate() {
-            // parameters with global scope are unique by it's name
-            if cfg!(debug_assertions) && global_scope {
-                assert!(index < 1);
-            }
-
-            let res: T = tuple
-                .field(AlterSystemParameters::FIELD_VALUE)?
-                .expect("field scope exists");
-
-            if global_scope {
-                return Ok(res);
-            }
-
-            let current_scope: &str = tuple
-                .field(AlterSystemParameters::FIELD_SCOPE)?
-                .expect("field scope exists");
-
-            if target_scope == current_scope {
-                return Ok(res);
-            }
-        }
-
-        // it's not unreachable since some of parameters may be needed before filling _pico_db_config
-
-        let value = config::get_default_value_of_alter_system_parameter(key)
-            .expect("parameter name is validated using system_parameter_name! macro");
-        let res = rmpv::ext::from_value(value).expect("default value type is correct");
-        Ok(res)
-    }
-
     #[inline(always)]
     pub fn by_key(&self, key: &str) -> tarantool::Result<EntryIter<Tuple, MP_SERDE>> {
         let iter = self.secondary.select(IteratorType::Eq, &[key])?;
         Ok(EntryIter::new(iter))
-    }
-
-    #[inline]
-    pub fn auth_password_length_min(&self) -> tarantool::Result<usize> {
-        self.get_or_default(
-            system_parameter_name!(auth_password_length_min),
-            Self::GLOBAL_SCOPE,
-        )
-    }
-
-    #[inline]
-    pub fn auth_password_enforce_uppercase(&self) -> tarantool::Result<bool> {
-        self.get_or_default(
-            system_parameter_name!(auth_password_enforce_uppercase),
-            Self::GLOBAL_SCOPE,
-        )
-    }
-
-    #[inline]
-    pub fn auth_password_enforce_lowercase(&self) -> tarantool::Result<bool> {
-        self.get_or_default(
-            system_parameter_name!(auth_password_enforce_lowercase),
-            Self::GLOBAL_SCOPE,
-        )
-    }
-
-    #[inline]
-    pub fn auth_password_enforce_digits(&self) -> tarantool::Result<bool> {
-        self.get_or_default(
-            system_parameter_name!(auth_password_enforce_digits),
-            Self::GLOBAL_SCOPE,
-        )
-    }
-
-    #[inline]
-    pub fn auth_password_enforce_specialchars(&self) -> tarantool::Result<bool> {
-        self.get_or_default(
-            system_parameter_name!(auth_password_enforce_specialchars),
-            Self::GLOBAL_SCOPE,
-        )
     }
 
     // NOTE: unlike the others, the four functions below do not access the underlying tarantool table
@@ -3401,6 +3320,13 @@ impl DbConfig {
 
     #[inline]
     pub fn shredding(&self) -> tarantool::Result<Option<bool>> {
+        // XXX: ideally we would want to also cache this value and eliminate
+        // this space lookup. IMO we should hookup `PicodataConfig` to the
+        // storage and update the global instance of that struct with values
+        // read from the persistent storage at startup. That way we can just
+        // read directly from `PicodataConfig::get().cluster.shredding`. This
+        // will also make `pico.config()` more usable, as it currently returns
+        // incorrect values for instance.name if it's generated automatically...
         if let Some(shredding) = self.by_key(config::SHREDDING_PARAM_NAME)?.next() {
             Ok(Some(
                 shredding
