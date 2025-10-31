@@ -3366,12 +3366,12 @@ impl DbConfig {
 
     #[inline]
     pub fn pg_portal_max(&self) -> usize {
-        config::DYNAMIC_CONFIG.pg_statement_max.current_value()
+        config::DYNAMIC_CONFIG.pg_portal_max.current_value()
     }
 
     #[inline]
     pub fn observe_pg_portal_max(&self) -> AtomicObserver<usize> {
-        config::DYNAMIC_CONFIG.pg_statement_max.make_observer()
+        config::DYNAMIC_CONFIG.pg_portal_max.make_observer()
     }
 
     #[inline]

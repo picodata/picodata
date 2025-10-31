@@ -34,6 +34,7 @@ with the `YY.MINOR.MICRO` scheme.
 - DML to global tables no longer will fail with errors such as "Compacted"
   (See also https://git.picodata.io/core/picodata/-/issues/2273).
 - Fix `use-after-poison` in `proc_sql_execute`.
+- Fixed a bug which made the effective value of `pg_portal_max` be the same as `pg_statement_max`
 
 ### WebUI
 - Login form and simple session control
