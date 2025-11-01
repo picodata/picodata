@@ -2582,6 +2582,13 @@ class Cluster:
                         -- router's bucket to replicaset mapping cache.
                         router:discovery_wakeup()
                     end
+
+                    -- The recovery and gc fibers handle any buckets left in a transitionary state
+                    -- in case rebalancing process got stopped abruptly. This can happen for example
+                    -- if an instance is joined while rebalancing is in progress.
+                    vshard.storage.recovery_wakeup()
+                    vshard.storage.garbage_collector_wakeup()
+
                     if vshard.storage.internal.rebalancer_fiber ~= nil then
                         -- The rebalancer fiber is responsible for sending sharded
                         -- data between storages.

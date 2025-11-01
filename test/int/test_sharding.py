@@ -1,6 +1,7 @@
 import funcy  # type: ignore
 import time
 import pytest
+import random
 
 from conftest import (
     Cluster,
@@ -486,3 +487,37 @@ def test_backoff_proc_sharding(cluster: Cluster):
         "UPDATE _pico_tier SET target_vshard_config_version = target_vshard_config_version + 1 WHERE name = 'default'"
     )
     i1.wait_governor_status("idle")
+
+
+def test_bucket_rebalancing_5_replicasets(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=False)
+    i2 = cluster.add_instance(wait_online=False)
+    i3 = cluster.add_instance(wait_online=False)
+    i4 = cluster.add_instance(wait_online=False)
+    i5 = cluster.add_instance(wait_online=False)
+
+    # This test verifies that our Cluster.wait_until_instance_has_this_many_active_buckets
+    # function works reliably even in cases where rebalancing may get stuck for a while.
+    # The idea behind this kind of cluster startup is as follows. Whenever a new
+    # replicaset is added (replication_factor = 1 here) vshard starts
+    # rebalancing the buckets, but then we add another replicaset which
+    # triggers vshard reconfiguration which will block any ongoing rebalancing.
+    # After that the rebalancer may restart on a different instance (as per
+    # `rebalancer_cfg_find_instance` in vshard/storage/init.lua) and it will not
+    # begin rebalancing until any previous bucket transfer is finished. At that
+    # point the recovery fiber is responsible for cleaning up unfinished transfers.
+    #
+    # So, long story short this test validates that we do everything correctly
+    i1.start()
+    # Wait between 0 and 1 seconds each time
+    time.sleep(random.random())
+    i2.start()
+    time.sleep(random.random())
+    i3.start()
+    time.sleep(random.random())
+    i4.start()
+    time.sleep(random.random())
+    i5.start()
+    cluster.wait_online()
+    for instance in cluster.instances:
+        cluster.wait_until_instance_has_this_many_active_buckets(instance, 600)
