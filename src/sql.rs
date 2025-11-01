@@ -35,7 +35,7 @@ use ::tarantool::access_control::{
 use ::tarantool::auth::{AuthData, AuthDef};
 use ::tarantool::decimal::Decimal;
 use ::tarantool::error::IntoBoxError;
-use ::tarantool::error::{BoxError, TarantoolErrorCode};
+use ::tarantool::error::{BoxError, Error as TarantoolError, TarantoolErrorCode};
 use ::tarantool::schema::function::func_next_reserved_id;
 use ::tarantool::session::{with_su, UserId};
 use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace, UpdateOps};
@@ -46,6 +46,7 @@ use chrono::Utc;
 use picodata_plugin::error_code::ErrorCode;
 use rmp::decode::{read_array_len, read_bin_len, read_str_len};
 use rmp::encode::{write_bin, write_str, write_uint};
+use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql::errors::{Entity, SbroadError};
 use sql::executor::engine::helpers::{
@@ -2479,6 +2480,59 @@ fn report(msg: &str, e: Error) -> i32 {
     TarantoolErrorCode::ProcC as i32
 }
 
+struct ExecArgs {
+    timeout: f64,
+    sid: SmallVec<[u8; 36]>,
+    rid: i64,
+    required: RequiredData,
+    optional: Option<Vec<u8>>,
+}
+
+impl<'de> Decode<'de> for ExecArgs {
+    fn decode(data: &'de [u8]) -> tarantool::Result<Self> {
+        // XXX: function arguments are stored in the fiber()->gc region and can't
+        // survive a fiber yield (port_c_get_msgpack). We must materialize all the
+        // data referencing arguments' bytes into the rust memory before calling any
+        // code that can possibly yield (reference add or plan execution) to avoid
+        // heap-after-free.
+        //
+        // See also:
+        // - https://github.com/tarantool/tarantool/issues/4792#issuecomment-592893087
+        // - https://git.picodata.io/core/picodata/-/issues/2359
+        #[cfg(debug_assertions)]
+        let _guard = crate::util::NoYieldsGuard::new();
+
+        let args = execute_args_split(data).map_err(|e| {
+            TarantoolError::other(format!(
+                "Failed to decode '.proc_sql_execute' arguments, msgpack {}: {e}",
+                escape_bytes(data),
+            ))
+        })?;
+
+        let required = RequiredData::try_from(args.required).map_err(|e| {
+            TarantoolError::other(format!(
+                "Failed to decode required data for '.proc_sql_execute': {e}"
+            ))
+        })?;
+
+        // We expect session id to be a text representation of UUID.
+        let mut sid = smallvec::SmallVec::<[u8; 36]>::new();
+        sid.extend_from_slice(args.sid.as_bytes());
+
+        let optional = args.optional.map(|slice| slice.to_vec());
+        let timeout = args.timeout;
+        let rid = args.rid;
+
+        Ok(ExecArgs {
+            timeout,
+            sid,
+            rid,
+            required,
+            optional,
+        })
+    }
+}
+
 /// # Safety
 /// Executes a query sub-plan on the local node.
 #[no_mangle]
@@ -2486,45 +2540,32 @@ pub unsafe extern "C" fn proc_sql_execute(
     mut ctx: FunctionCtx,
     func_args: FunctionArgs,
 ) -> ::std::os::raw::c_int {
-    // XXX: Stored procedure arguments that must survive yield must be copied to memory
-    // (https://github.com/tarantool/tarantool/issues/4792#issuecomment-592893087).
-    //
-    // See also: https://git.picodata.io/core/picodata/-/issues/2359.
-    let raw_args = tarantool::tuple::Tuple::from(func_args).to_vec();
-
-    let args = match execute_args_split(&raw_args) {
+    let mut args = match func_args.decode::<ExecArgs>() {
         Ok(args) => args,
-        Err(e) => {
-            return report(
-                &format!(
-                    "Failed to decode '.proc_sql_execute' arguments, msgpack {}: ",
-                    escape_bytes(&raw_args),
-                ),
-                Error::from(e),
-            )
-        }
+        Err(e) => return report("", Error::from(e)),
     };
+    // Safety: safe as the original args.sid is as valid UTF-8 string.
+    let sid = unsafe { std::str::from_utf8_unchecked(args.sid.as_slice()) };
 
     let mut pcall = || -> Result<(), Error> {
-        let mut required = RequiredData::try_from(args.required)?;
         let runtime = StorageRuntime::new();
         let mut port = PicoPortC::from(ctx.mut_port_c());
-        runtime.execute_plan(&mut required, args.optional, &mut port)?;
+        runtime.execute_plan(&mut args.required, args.optional.as_deref(), &mut port)?;
         Ok(())
     };
 
     if args.timeout.is_sign_positive() {
-        if let Err(e) = reference_add(args.rid, args.sid, args.timeout) {
+        if let Err(e) = reference_add(args.rid, sid, args.timeout) {
             return report("Failed to add a storage reference: ", e.into());
         };
     }
 
-    if let Err(e) = reference_use(args.rid, args.sid) {
+    if let Err(e) = reference_use(args.rid, sid) {
         return report("Failed to use a storage reference: ", e.into());
     };
     let rc = pcall();
     // We should always unref the storage reference before exit.
-    reference_del(args.rid, args.sid).expect("Failed to remove reference from the storage");
+    reference_del(args.rid, sid).expect("Failed to remove reference from the storage");
 
     match rc {
         Ok(()) => 0,
