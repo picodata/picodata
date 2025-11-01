@@ -313,16 +313,3 @@ test-macos-release-fork:
     # This variable tells tests/run_tests.lua which version of the library to use for testing
     TARANTOOL_MODULE_BUILD_MODE: release
     CARGO_PROFILE: release
-
-pages:
-  extends: .test
-  variables:
-    BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
-    RUSTDOCFLAGS: "-Dwarnings"
-  script:
-    - cargo doc --workspace --no-deps --features "picodata,tokio_components"
-    - rm -rf public
-    - mv target/doc public
-  artifacts:
-    paths:
-      - public
