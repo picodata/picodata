@@ -1,4 +1,4 @@
-from typing import Iterable
+from typing import Dict, Iterable, List, Optional
 
 from conftest import (
     Cluster,
@@ -10,6 +10,7 @@ import pytest
 import requests  # type: ignore
 from prometheus_client.parser import text_string_to_metric_families
 from prometheus_client import Metric
+from prometheus_client.samples import Sample
 import psycopg
 
 
@@ -68,19 +69,22 @@ def test_picodata_metrics(cluster: Cluster) -> None:
         assert metric in metrics_output, f"Metric '{metric}' not found in /metrics output"
 
 
-def get_metrics(http_listen):
+def get_metrics(http_listen) -> List[Metric]:
     response = requests.get(f"http://{http_listen}/metrics")
     response.raise_for_status()
     return list(text_string_to_metric_families(response.text))
 
 
-def check_metric(families: Iterable[Metric], name: str, value: float | None):
-    found_family = None
+def find_metric_by_name(families: List[Metric], name: str) -> Optional[Metric]:
     for family in families:
-        print(family.name, name)
         if family.name == name:
-            found_family = family
-            break
+            return family
+
+    return None
+
+
+def check_metric(families: Iterable[Metric], name: str, value: float | None):
+    found_family = find_metric_by_name(families, name)
     if value is None:
         assert found_family is None, "Metric {} found".format(name)
     else:
@@ -250,3 +254,77 @@ def test_router_and_storage_cache_metrics(instance: Instance):
     metrics = get_metrics(http_listen)
     check_metric(metrics, "pico_router_cache_statements_added", 51)
     check_metric(metrics, "pico_router_cache_statements_evicted", 1)
+
+
+def get_instance_state_metric(instance: Instance) -> Dict[str, Sample]:
+    metric = instance.get_metrics()["pico_instance_state"]
+    samples_by_instance_name = {}
+    for sample in metric.samples:
+        samples_by_instance_name[sample.labels["instance"]] = sample
+
+    return samples_by_instance_name
+
+
+def all_but_first_report_online(cluster: Cluster, offline_name):
+    for instance_to_fetch_metric in cluster.instances[1:]:
+        samples_by_instance_name = get_instance_state_metric(instance_to_fetch_metric)
+
+        for instance_to_check_state in cluster.instances:
+            assert instance_to_check_state.name is not None  # mypy
+            sample = samples_by_instance_name[instance_to_check_state.name]
+            if instance_to_check_state.name == offline_name:
+                assert sample.labels["state"] == "Offline"
+            else:
+                assert sample.labels["state"] == "Online"
+
+
+def test_instance_state_metric(cluster: Cluster):
+    i1, i2, i3 = cluster.deploy(instance_count=3, enable_http=True)
+
+    # check after startup all instances report all other instances as Online
+    for instance in cluster.instances:
+        samples_by_instance_name = get_instance_state_metric(instance)
+
+        for instance in cluster.instances:
+            assert instance.name is not None  # mypy
+            sample = samples_by_instance_name.get(instance.name)
+            assert sample is not None
+            assert sample.labels["tier"] == "default"
+            assert sample.labels["state"] == "Online"
+
+    # shut down one instance, ensure others see it as offline
+    i1.terminate()
+    i3.promote_or_fail()
+
+    all_but_first_report_online(cluster, i1.name)
+
+    i1.start_and_wait()
+
+    # check that after instance became online again we see it everywhere as online
+    for instance_with_metrics in cluster.instances:
+        samples_by_instance_name = get_instance_state_metric(instance_with_metrics)
+
+        for instance in cluster.instances:
+            assert instance.name is not None  # mypy
+            sample = samples_by_instance_name.get(instance.name)
+            assert sample is not None, f"Missing {instance.name} in {instance_with_metrics} metrics"
+            assert sample.labels["tier"] == "default"
+            assert sample.labels["state"] == "Online"
+
+    # make it offline again to check in snapshot later
+    i1.terminate()
+
+    all_but_first_report_online(cluster, i1.name)
+
+    # resest raft_wal_count_max to trigger snapshot transfer
+    i3.sql("ALTER SYSTEM SET raft_wal_count_max = 1")
+    assert i3.call("box.space._raft_log:len") == 0
+
+    # add new instance to trigger snapshot transfer, to check that metrics are updated with snapshot
+    i4 = cluster.add_instance(enable_http=True, peers=[i2.iproto_listen])
+
+    for instance in cluster.instances[1:]:
+        samples_by_instance_name = get_instance_state_metric(instance)
+        assert i4.name in samples_by_instance_name
+
+        all_but_first_report_online(cluster, i1.name)

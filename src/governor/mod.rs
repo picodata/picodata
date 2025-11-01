@@ -612,11 +612,9 @@ impl Loop {
             Plan::Downgrade(Downgrade {
                 instance_name,
                 new_current_state,
-                tier,
                 cas,
             }) => {
                 set_status!("update instance state to offline");
-                metrics::record_instance_state(tier, instance_name, new_current_state);
                 tlog!(Info, "downgrading instance {instance_name}");
 
                 governor_substep! {
@@ -768,12 +766,10 @@ impl Loop {
             Plan::ToOnline(ToOnline {
                 instance_name,
                 new_current_state,
-                tier,
                 plugin_rpc,
                 cas,
             }) => {
                 set_status!("update instance state to online");
-                metrics::record_instance_state(tier, instance_name, new_current_state);
                 governor_substep! {
                     "finalizing instance initialization" [
                         "instance_name" => %instance_name,

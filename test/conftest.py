@@ -2151,6 +2151,7 @@ class Cluster:
         service_password: str | None = None,
         audit: bool | str = True,
         wait_online: bool = True,
+        enable_http: bool = False,
     ) -> list[Instance]:
         """Deploy a cluster of instances.
 
@@ -2174,6 +2175,7 @@ class Cluster:
                 tier=tier,
                 init_replication_factor=init_replication_factor,
                 audit=audit,
+                enable_http=enable_http,
             )
 
         if wait_online:

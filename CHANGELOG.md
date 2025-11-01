@@ -45,7 +45,7 @@ with the `YY.MINOR.MICRO` scheme.
   of joining instances mismatches version of cluster), so this shouldn't be a
   problem for anybody. NOTE also that this doesn't affect restarting already
   instances which already joined the cluster.
-
+- Fix pico_instance_state metric to report correct value on all instances
 
 ### WebUI
 - Login form and simple session control

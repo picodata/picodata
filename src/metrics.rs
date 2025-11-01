@@ -1,5 +1,6 @@
 use crate::config::PicodataConfig;
 use crate::info as pd_info;
+use crate::instance::StateVariant;
 use crate::traft::node;
 use crate::traft::op::{Acl, Ddl, Op};
 use prometheus::{
@@ -333,9 +334,14 @@ pub fn observe_cas_ops_duration(duration_ms: f64) {
     CAS_OPS_DURATION.observe(duration_ms);
 }
 
-pub fn record_instance_state(tier: &str, instance_name: &str, state: &str) {
+pub fn record_instance_state(tier: &str, instance_name: &str, state: &StateVariant) {
+    // clean up previous metric, we dont need to keep it around
+    for s in StateVariant::values() {
+        let _ = INSTANCE_STATE.remove_label_values(&[tier, instance_name, s]);
+    }
+
     INSTANCE_STATE
-        .with_label_values(&[tier, instance_name, state])
+        .with_label_values(&[tier, instance_name, state.as_str()])
         .set(1.0); // Always set to 1.0 to avoid resetting for each state
 }
 

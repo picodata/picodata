@@ -125,7 +125,7 @@ pub(super) fn action_plan<'i>(
 
     if let Some(instance) = to_downgrade {
         let instance_name = &instance.name;
-        let new_current_state = instance.target_state.variant.as_str();
+        let new_current_state = instance.target_state.variant;
 
         let replicaset = *replicasets
             .get(&instance.replicaset_name)
@@ -166,7 +166,6 @@ pub(super) fn action_plan<'i>(
         return Ok(Downgrade {
             instance_name,
             new_current_state,
-            tier: &tier.name,
             cas,
         }
         .into());
@@ -507,7 +506,7 @@ pub(super) fn action_plan<'i>(
 
     if let Some(instance) = target {
         let instance_name = &instance.name;
-        let new_current_state = instance.target_state.variant.as_str();
+        let new_current_state = instance.target_state.variant;
 
         let replicaset = *replicasets
             .get(&instance.replicaset_name)
@@ -542,7 +541,6 @@ pub(super) fn action_plan<'i>(
         return Ok(Downgrade {
             instance_name,
             new_current_state,
-            tier: &tier.name,
             cas,
         }
         .into());
@@ -596,7 +594,6 @@ pub(super) fn action_plan<'i>(
         return Ok(ToOnline {
             instance_name,
             new_current_state,
-            tier: &tier.name,
             plugin_rpc,
             cas,
         }
@@ -1140,9 +1137,7 @@ pub mod stage {
             /// This instance is being downgraded. The name is only used for logging.
             pub instance_name: &'i InstanceName,
             /// The state which is going to be set as target's new current state. Is only used for logging.
-            pub new_current_state: &'i str,
-            /// The name of the tier to which this instance belongs. Is only used for logging.
-            pub tier: &'i str,
+            pub new_current_state: StateVariant,
             /// Global DML which updates `current_state` to `Offline` in `_pico_instance` for a given instance.
             pub cas: cas::Request,
         }
@@ -1212,8 +1207,6 @@ pub mod stage {
             pub instance_name: &'i InstanceName,
             /// This is going to be the new current state of the instance. Only used for logging.
             pub new_current_state: &'i str,
-            /// The name of the tier to which this instance belongs. Is only used for logging.
-            pub tier: &'i str,
             /// Request to call [`rpc::enable_all_plugins::proc_enable_all_plugins`] on `target`.
             /// It is not optional, although it probably should be.
             pub plugin_rpc: rpc::enable_all_plugins::Request,

@@ -1067,6 +1067,14 @@ impl NodeImpl {
                     let initiator_def = user_by_id(initiator).expect("user must exist");
 
                     do_audit_logging_for_instance_update(old.as_ref(), new, &initiator_def);
+
+                    if old.as_ref().map(|x| x.current_state) != Some(new.current_state) {
+                        metrics::record_instance_state(
+                            &new.tier,
+                            &new.name,
+                            &new.current_state.variant,
+                        );
+                    }
                 }
 
                 self.topology_cache.update_instance(old, new);
@@ -2854,6 +2862,17 @@ impl NodeImpl {
                 self.topology_cache
                     .full_reload(&self.storage)
                     .expect("schema upgrade not supported yet");
+
+                // we need to refresh instance_state metric after snapshot application
+                self.topology_cache.with(|topology_ref| {
+                    for instance in topology_ref.all_instances() {
+                        metrics::record_instance_state(
+                            &instance.tier,
+                            &instance.name,
+                            &instance.current_state.variant,
+                        );
+                    }
+                });
 
                 let current_tier = self.topology_cache.my_tier_name();
 

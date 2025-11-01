@@ -127,6 +127,16 @@ impl TopologyCache {
         self.inner.borrow()
     }
 
+    /// Similar to get, but keeps reference lifetime as short as needed. For example when you write code like:
+    /// ```ignore
+    /// let topology_ref = cache.get()
+    /// ```
+    /// `topology_ref` will be alive till the end of the block. Which may have yields and cache
+    /// reference cant be hold across yields.
+    pub fn with<R>(&self, f: impl FnOnce(NoYieldsRef<'_, TopologyCacheMutable>) -> R) -> R {
+        f(self.inner.borrow())
+    }
+
     #[inline(always)]
     pub fn clone_this_instance(&self) -> Instance {
         self.get()

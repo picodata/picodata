@@ -1648,28 +1648,11 @@ fn start_pre_join(
     }));
 }
 
-fn postjoin(
+fn setup_metrics_and_start_http_server(
     config: &PicodataConfig,
-    storage: Catalog,
-    raft_storage: RaftSpaceAccess,
+    storage: &Catalog,
+    raft_storage: &RaftSpaceAccess,
 ) -> Result<(), Error> {
-    tlog!(Info, "entering post-join phase");
-
-    config.validate_storage(&storage, &raft_storage)?;
-
-    let current_tier_name = raft_storage
-        .tier()?
-        .expect("tier for instance should exists");
-
-    if let Some(config) = &config.instance.audit {
-        let raft_id = raft_storage
-            .raft_id()
-            .expect("failed to get raft_id for audit log")
-            .expect("found zero raft_id during audit log init");
-        let gen = raft_storage.gen().expect("failed to get gen for audit log");
-        audit::init(config, raft_id, gen);
-    }
-
     // Build a Prometheus registry with const labels (instance_name)
     let registry: &'static prometheus::Registry = {
         let instance_name_for_metrics = raft_storage
@@ -1694,19 +1677,56 @@ fn postjoin(
         start_webui();
     }
     // Set global label for Tarantool metrics: instance_name
-    {
-        let instance_name_for_metrics = raft_storage
-            .instance_name()?
-            .expect("instance_name should be already set");
-        let lua = ::tarantool::lua_state();
-        lua.exec_with(
-            r#"
+    let instance_name_for_metrics = raft_storage
+        .instance_name()?
+        .expect("instance_name should be already set");
+    let lua = ::tarantool::lua_state();
+    lua.exec_with(
+        r#"
             local name = ...;
             require('metrics').set_global_labels({ instance_name = name })
             "#,
-            instance_name_for_metrics.to_string(),
-        )?;
+        instance_name_for_metrics.to_string(),
+    )?;
+
+    // update instance state metrics so it has fresh values from the start
+    if let Ok(instances) = storage.instances.all_instances() {
+        for instance in instances {
+            metrics::record_instance_state(
+                &instance.tier,
+                &instance.name,
+                &instance.current_state.variant,
+            );
+        }
     }
+
+    Ok(())
+}
+
+fn postjoin(
+    config: &PicodataConfig,
+    storage: Catalog,
+    raft_storage: RaftSpaceAccess,
+) -> Result<(), Error> {
+    tlog!(Info, "entering post-join phase");
+
+    config.validate_storage(&storage, &raft_storage)?;
+
+    let current_tier_name = raft_storage
+        .tier()?
+        .expect("tier for instance should exists");
+
+    if let Some(config) = &config.instance.audit {
+        let raft_id = raft_storage
+            .raft_id()
+            .expect("failed to get raft_id for audit log")
+            .expect("found zero raft_id during audit log init");
+        let gen = raft_storage.gen().expect("failed to get gen for audit log");
+        audit::init(config, raft_id, gen);
+    }
+
+    setup_metrics_and_start_http_server(config, &storage, &raft_storage)?;
+
     // Execute postjoin script if present
     if let Some(ref script) = config.instance.deprecated_script {
         let l = ::tarantool::lua_state();
