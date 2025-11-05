@@ -667,16 +667,22 @@ fn err_for_tnt_console(e: traft::error::Error) -> traft::error::Error {
     }
 }
 
-struct BindArgs {
+struct DispatchArgs {
     pattern: String,
     params: Vec<Value>,
 }
 
-impl<'de> Decode<'de> for BindArgs {
+impl<'de> Decode<'de> for DispatchArgs {
     fn decode(data: &'de [u8]) -> tarantool::Result<Self> {
-        let (pattern, params): (String, Vec<Value>) = msgpack::decode(data)?;
+        // XXX: function arguments are stored in the fiber()->gc region and can't
+        // survive a fiber yield (port_c_get_msgpack). We must materialize all the
+        // data referencing arguments' bytes into the rust memory before calling any
+        // code that can possibly yield to avoid heap-after-free.
+        #[cfg(debug_assertions)]
+        let _guard = crate::util::NoYieldsGuard::new();
 
-        Ok(BindArgs { pattern, params })
+        let (pattern, params): (String, Vec<Value>) = msgpack::decode(data)?;
+        Ok(DispatchArgs { pattern, params })
     }
 }
 
@@ -688,7 +694,7 @@ pub unsafe extern "C" fn proc_sql_dispatch(
     mut ctx: FunctionCtx,
     args: FunctionArgs,
 ) -> ::std::os::raw::c_int {
-    let bind_args = match args.decode::<BindArgs>() {
+    let bind_args = match args.decode::<DispatchArgs>() {
         Ok(v) => v,
         Err(e) => return report("", Error::from(e)),
     };
