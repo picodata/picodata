@@ -2739,6 +2739,20 @@ class Cluster:
         else:
             return self.pick_random_instance(exclude)
 
+    def wait_balanced(self, buckets_total: int = 3000, *, max_retries: int = 10):
+        if not self.instances:
+            raise RuntimeError("wait_balanced() called on an empty cluster")
+
+        assert buckets_total % len(self.instances) == 0, "buckets_total must be divisible by the number of instances"
+
+        expected_per_instance = buckets_total // len(self.instances)
+        for instance in self.instances:
+            self.wait_until_instance_has_this_many_active_buckets(
+                instance,
+                expected_per_instance,
+                max_retries=max_retries,
+            )
+
 
 def picodata_expel(
     *, peer: Instance, target: Instance, password_file: str | None, force: bool = False, timeout: int = 30
