@@ -10,4 +10,4 @@ Homepage: https://picodata.io/
 Architecture: amd64
 Maintainer: Dmitry Kibirev <kdy@picodata.io>
 Description: In-memory database and Rust application server
-Depends: postgresql-client | postgresql-client-15 | postgresql-client-11
+Recommends: postgresql-client | postgresql-client-15 | postgresql-client-11

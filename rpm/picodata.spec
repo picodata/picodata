@@ -63,16 +63,7 @@ BuildRequires: perl-FindBin
 %endif
 
 %if 0%{?rhel} >= 8 || 0%{?redos} > 0 || 0%{?fedora} >= 33 || "%{?mandriva_os}" == "linux"
-Requires:  postgresql
-%endif
-
-%if "%{?_build_vendor}" == "alt"
-%if "%{?dist}" == ".p9"
-Requires:  postgresql12
-%endif
-%if "%{?dist}" == ".p10"
-Requires:  postgresql16
-%endif
+Recommends:  postgresql
 %endif
 
 %description
@@ -81,6 +72,14 @@ application server. Picodata supports replication, online backup and
 stored procedures in Rust.
 
 This package provides the repository binary and tools
+%if "%{?_build_vendor}" == "alt"
+%if "%{?dist}" == ".p9"
+Recommends:  postgresql12
+%endif
+%if "%{?dist}" == ".p10"
+Recommends:  postgresql16
+%endif
+%endif
 
 %prep
 %setup -q -n %{name}-%{version}
