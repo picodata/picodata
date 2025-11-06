@@ -1347,7 +1347,7 @@ extern "C" {
     /// Function, which registers or deletes on_shutdown handler.
     /// - `arg` on_shutdown function's argument.
     /// - `new_handler` New on_shutdown handler, in case this argument is `NULL`,
-    ///     function finds and destroys old on_shutdown handler.
+    ///   function finds and destroys old on_shutdown handler.
     /// - `old_handler` Old on_shutdown handler.
     ///
     /// Returns 0 if success otherwise return -1 and sets errno.

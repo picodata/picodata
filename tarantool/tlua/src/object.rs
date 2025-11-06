@@ -169,9 +169,9 @@ where
     ///
     /// # Possible errors:
     /// - `LuaError::ExecutionError` if an error happened during the check that
-    ///     `index` is valid in `self`
+    ///   `index` is valid in `self`
     /// - `LuaError::WrongType` if the result lua value couldn't be read as the
-    ///     expected rust type
+    ///   expected rust type
     ///
     /// The index must implement the [`PushOneInto`] trait and the return type
     /// must implement the [`LuaRead`] trait. See [the documentation at the
@@ -212,9 +212,9 @@ where
     ///
     /// # Possible errors:
     /// - `LuaError::ExecutionError` if an error happened during the check that
-    ///     `index` is valid in `self`
+    ///   `index` is valid in `self`
     /// - `LuaError::WrongType` if the result lua value couldn't be read as the
-    ///     expected rust type
+    ///   expected rust type
     ///
     /// See also [`Index::get`]
     #[track_caller]
@@ -289,9 +289,9 @@ where
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::NoSuchMethod => f.write_str("Method not found"),
-            Self::LuaError(lua_error) => write!(f, "Lua error: {}", lua_error),
+            Self::LuaError(lua_error) => write!(f, "Lua error: {lua_error}"),
             Self::PushError(err) => {
-                write!(f, "Error while pushing arguments: {}", err)
+                write!(f, "Error while pushing arguments: {err}")
             }
         }
     }
@@ -592,9 +592,9 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::LuaError(lua_error) => write!(f, "Lua error: {}", lua_error),
+            Self::LuaError(lua_error) => write!(f, "Lua error: {lua_error}"),
             Self::PushError(err) => {
-                write!(f, "Error while pushing arguments: {}", err)
+                write!(f, "Error while pushing arguments: {err}")
             }
         }
     }

@@ -34,7 +34,7 @@ pub fn create_index(space_id: u32, index_name: &str, opts: &IndexOptions) -> Res
         .call_with_args((space_id, index_name, opts))
         .map_err(LuaError::from)?;
     let index_id: u32 = new_index.get("id").ok_or_else(|| {
-        ExecutionError(format!("box.space[{}].index['{}'] == nil", space_id, index_name).into())
+        ExecutionError(format!("box.space[{space_id}].index['{index_name}'] == nil").into())
     })?;
     Ok(Index::new(space_id, index_id))
 }

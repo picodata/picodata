@@ -172,7 +172,7 @@ impl Uuid {
 
     fn from_ext_structure(tag: i8, bytes: &[u8]) -> Result<Self, String> {
         if tag != ffi::MP_UUID {
-            return Err(format!("Expected UUID, found msgpack ext #{}", tag));
+            return Err(format!("Expected UUID, found msgpack ext #{tag}"));
         }
 
         Self::try_from_slice(bytes).ok_or_else(|| {

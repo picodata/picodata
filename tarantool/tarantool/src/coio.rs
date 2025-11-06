@@ -319,7 +319,7 @@ impl<T> Sender<T> {
 
         let was_empty = {
             let mut buffer = self.0.buffer.borrow_mut();
-            let was_empty = buffer.len() == 0;
+            let was_empty = buffer.is_empty();
             buffer.push_back(value);
             was_empty
         };
@@ -352,7 +352,7 @@ pub struct Receiver<T>(Rc<Chan<T>>);
 impl<T> Receiver<T> {
     /// Attempts to wait for a value on this receiver, returning `None` if the corresponding channel has hung up.
     pub fn recv(&self) -> Option<T> {
-        if self.0.buffer.borrow().len() == 0 {
+        if self.0.buffer.borrow().is_empty() {
             if self.0.tx_count.get() == 0 {
                 return None;
             }

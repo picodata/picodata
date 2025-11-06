@@ -238,7 +238,7 @@ impl std::fmt::Debug for DebugAsMPValue<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let mut read = self.0;
         match rmp_serde::from_read::<_, rmpv::Value>(&mut read) {
-            Ok(v) => write!(f, "{:?}", v),
+            Ok(v) => write!(f, "{v:?}"),
             Err(_) => write!(f, "{:?}", self.0),
         }
     }

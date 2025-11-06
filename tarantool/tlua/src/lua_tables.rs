@@ -121,9 +121,9 @@ where
     ///
     /// # Possible errors:
     /// - `LuaError::ExecutionError` if an error happened during the check that
-    ///     `index` is valid in `self` or in `__index` metamethod
+    ///   `index` is valid in `self` or in `__index` metamethod
     /// - `LuaError::WrongType` if the result lua value couldn't be read as the
-    ///     expected rust type
+    ///   expected rust type
     ///
     /// The `key` must implement the [`PushOneInto`] trait and the return type
     /// must implement the [`LuaRead`] trait. See [the documentation at the
@@ -246,7 +246,7 @@ where
     ///   user tries to write a non-existing entry in the table or userdata. Its signature is
     ///   `(object, index, value)`.
     /// - If non-nil, the `__lt`, `__le` and `__eq` entries correspond respectively to operators
-    ///    `<`, `<=` and `==`. Their signature is `(a, b) -> bool`. Other operators are
+    ///   `<`, `<=` and `==`. Their signature is `(a, b) -> bool`. Other operators are
     ///   automatically derived from these three functions.
     /// - If non-nil, the `__add`, `__mul`, `__sub`, `__div`, `__unm`, `__pow` and `__concat`
     ///   entries correspond to operators `+`, `*`, `-`, `/`, `-` (unary), `^` and `..`. Their

@@ -368,7 +368,7 @@ extern "C-unwind" {
     /// - [`LUA_ERRRUN`]: a runtime error.
     ///
     /// - [`LUA_ERRMEM`]: memory allocation error. For such errors, Lua does not
-    ///                   call the error handler function.
+    ///   call the error handler function.
     ///
     /// - [`LUA_ERRERR`]: error while running the error handler function.
     pub fn lua_pcall(l: *mut lua_State, nargs: c_int, nresults: c_int, errfunc: c_int) -> c_int;

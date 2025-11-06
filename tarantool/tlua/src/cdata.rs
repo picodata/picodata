@@ -158,6 +158,7 @@ where
     ///
     /// [`data`]: CDataOnStack::data
     /// [`ctypeid`]: CDataOnStack::ctypeid
+    #[allow(clippy::mut_from_ref)] // FIXME: current method is UB!
     #[inline(always)]
     pub fn try_downcast_mut<T>(&self) -> Option<&mut T>
     where

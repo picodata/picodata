@@ -82,12 +82,11 @@ where
             Self::TooManyValues(n) => {
                 write!(
                     fmt,
-                    "Can only push 1 or 2 values as lua table item, got {} instead",
-                    n,
+                    "Can only push 1 or 2 values as lua table item, got {n} instead",
                 )
             }
             Self::ValuePushError(e) => {
-                write!(fmt, "Pushing iterable item failed: {}", e)
+                write!(fmt, "Pushing iterable item failed: {e}")
             }
         }
     }
@@ -252,7 +251,7 @@ where
             // indices
             let e = WrongType::info("converting Lua table to Vec<_>")
                 .expected("indexes in range 1..N")
-                .actual(format!("value with index {}", min_key));
+                .actual(format!("value with index {min_key}"));
             return Err((table.into_inner(), e));
         }
 
@@ -404,11 +403,11 @@ where
         let e = match err {
             Error::Subtype(err) => err.when(when).expected_type::<Self>(),
             Error::WrongIndex(index) => WrongType::info(when)
-                .expected(format!("indexes in range 1..={}", N))
-                .actual(format!("value with index {}", index)),
+                .expected(format!("indexes in range 1..={N}"))
+                .actual(format!("value with index {index}")),
             Error::MissingIndex(index) => WrongType::info(when)
-                .expected(format!("indexes in range 1..={}", N))
-                .actual(format!("Lua table with missing index {}", index)),
+                .expected(format!("indexes in range 1..={N}"))
+                .actual(format!("Lua table with missing index {index}")),
         };
         return Err((table.into_inner(), e));
 

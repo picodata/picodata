@@ -46,7 +46,7 @@ pub unsafe fn dump_stack_raw_to(lua: LuaState, mut out: impl Write) -> std::io::
         let s = s.to_string_lossy();
         ffi::lua_pop(lua, 1);
 
-        writeln!(out, "{}: {}({})", i, t, s)?;
+        writeln!(out, "{i}: {t}({s})")?;
     }
     ffi::lua_settop(lua, top);
     Ok(())

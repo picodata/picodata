@@ -698,8 +698,8 @@ impl fmt::Display for Void {
     }
 }
 
-pub const NEGATIVE_ONE: NonZeroI32 = unsafe { NonZeroI32::new_unchecked(-1) };
-pub const NEGATIVE_TWO: NonZeroI32 = unsafe { NonZeroI32::new_unchecked(-2) };
+pub const NEGATIVE_ONE: NonZeroI32 = NonZeroI32::new(-1).unwrap();
+pub const NEGATIVE_TWO: NonZeroI32 = NonZeroI32::new(-2).unwrap();
 
 ////////////////////////////////////////////////////////////////////////////////
 // LuaRead
@@ -822,11 +822,11 @@ impl fmt::Display for WrongType {
         }
 
         if self.subtypes.len() == 1 {
-            write!(f, "{}", subtype)?;
+            write!(f, "{subtype}")?;
         } else {
-            write!(f, "variant #1: {}", subtype)?;
+            write!(f, "variant #1: {subtype}")?;
             for (subtype, i) in self.subtypes.iter().skip(1).zip(2..) {
-                write!(f, "\nvariant #{}: {}", i, subtype)?;
+                write!(f, "\nvariant #{i}: {subtype}")?;
             }
         }
 

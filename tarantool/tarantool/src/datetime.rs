@@ -115,7 +115,7 @@ impl Datetime {
 
     fn from_ext_structure(tag: i8, bytes: &[u8]) -> Result<Self, String> {
         if tag != ffi::MP_DATETIME {
-            return Err(format!("Expected Datetime, found msgpack ext #{}", tag));
+            return Err(format!("Expected Datetime, found msgpack ext #{tag}"));
         }
 
         if bytes.len() != 8 && bytes.len() != 16 {
@@ -241,7 +241,7 @@ where
             Err(err) => {
                 let e = tlua::WrongType::info("reading tarantool datetime")
                     .expected_type::<Self>()
-                    .actual(format!("datetime failing to convert: {}", err));
+                    .actual(format!("datetime failing to convert: {err}"));
                 Err((lua, e))
             }
         }

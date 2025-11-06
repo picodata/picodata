@@ -1050,7 +1050,7 @@ fn tarantool_error_doesnt_depend_on_link_error() {
     // the need for linking to tarantool symbols, because `#[test]` tests are
     // linked into a standalone executable without access to those symbols.
     assert!(!err.to_string().is_empty());
-    assert!(!format!("{}", err).is_empty());
+    assert!(!format!("{err}").is_empty());
 }
 
 #[cfg(feature = "internal_test")]

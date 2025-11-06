@@ -474,12 +474,9 @@ where
     let e = WrongType::info("reading Lua table").expected_type::<T>();
     let e = match err {
         LuaError::WrongType(subtype) => e
-            .actual(format!("table with wrong value at index {}", i))
+            .actual(format!("table with wrong value at index {i}"))
             .subtype(subtype),
-        other_err => e.actual(format!(
-            "error in meta method for index {}: {}",
-            i, other_err,
-        )),
+        other_err => e.actual(format!("error in meta method for index {i}: {other_err}",)),
     };
     Err((g, e))
 }
@@ -537,8 +534,8 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.0 {
-            TuplePushError::First(head) => write!(f, "{}", head),
-            TuplePushError::Other(tail) => write!(f, "ok, {}", tail),
+            TuplePushError::First(head) => write!(f, "{head}"),
+            TuplePushError::Other(tail) => write!(f, "ok, {tail}"),
         }
     }
 }
@@ -618,12 +615,11 @@ where
             Self::TooManyValues(n) => {
                 write!(
                     fmt,
-                    "Can only push 1 or 2 values as lua table item, got {} instead",
-                    n,
+                    "Can only push 1 or 2 values as lua table item, got {n} instead",
                 )
             }
             Self::ValuePushError(e) => {
-                write!(fmt, "Pushing iterable item failed: {}", e)
+                write!(fmt, "Pushing iterable item failed: {e}")
             }
         }
     }

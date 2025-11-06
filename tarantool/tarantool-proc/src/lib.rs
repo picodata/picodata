@@ -1354,7 +1354,7 @@ impl Inputs {
                             inject_expr = Some(expr);
                             false
                         }
-                        Err(e) => panic!("attribute argument error: {}", e),
+                        Err(e) => panic!("attribute argument error: {e}"),
                     }
                 } else {
                     // Skip doc comments as they are not allowed for inner functions

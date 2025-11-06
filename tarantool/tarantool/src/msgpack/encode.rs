@@ -204,7 +204,7 @@ impl Display for DecodeError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "failed decoding {}", self.ty)?;
         if let Some(ref part) = self.part {
-            write!(f, " ({})", part)?;
+            write!(f, " ({part})")?;
         }
         write!(f, ": {}", self.source)
     }

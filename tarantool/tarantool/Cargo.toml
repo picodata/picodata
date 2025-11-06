@@ -15,7 +15,7 @@ documentation = "https://docs.rs/tarantool/"
 repository = "https://github.com/picodata/picodata"
 keywords = ["ffi", "database", "tarantool"]
 categories = ["database"]
-rust-version = "1.82"
+rust-version = "1.85"
 
 [dependencies]
 base64 = "0.13"

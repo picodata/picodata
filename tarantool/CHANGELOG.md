@@ -40,7 +40,13 @@
 
 # [10.1.0] Unreleased
 
+### Added
+
 - Add lock_timeout in fiber::Mutex to wait no more than needed
+
+### Breaking
+
+- 1.85 is now MSRV.
 
 # [10.0.0] Oct 2 2025
 
