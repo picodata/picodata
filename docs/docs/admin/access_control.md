@@ -503,11 +503,25 @@ REVOKE DROP ON TABLE warehouse FROM alice;
 ```
 
 В качестве `<table_name>` можно использовать имена [системных таблиц] —
-по умолчанию доступ к ним запрещен всем [пользователям СУБД][u], кроме
+по умолчанию доступ к ним запрещен всем [пользователям СУБД](#users), кроме
 `admin` и `pico_service`.
 
+Привилегию на создание таблиц можно использовать как на все таблицы
+(`CREATE TABLE`), так и на явно указанную таблицу (`CREATE ON TABLE
+<table_name>`):
+
+```sql
+GRANT CREATE ON TABLE sklad TO alice;
+```
+
+Соответственно, администратор может отозвать конкретную привилегию через
+`REVOKE`:
+
+```sql
+REVOKE CREATE ON TABLE sklad FROM alice;
+```
+
 [системных таблиц]: ../architecture/system_tables.md
-[u]: #users
 
 ## Управление доступом к процедурам {: #proc_access }
 
