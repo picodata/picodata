@@ -106,7 +106,7 @@ article.md-typeset.md-typeset ul {
 <b>I</b>
 
 * [ILIKE](reference/sql/ilike.md)
-* [INSTANCE_UUID](reference/sql/instance_uuid.md)
+* [INSTANCE_UUID](reference/sql/system_functions.md#instance_uuid)
 * [INNER JOIN](reference/sql/join.md#inner_join)
 * [INSERT](reference/sql/insert.md)
 * [INTEGER](reference/sql_types.md#integer)
@@ -138,14 +138,14 @@ article.md-typeset.md-typeset ul {
 
 <b>P</b>
 
-* [PICO_INSTANCE_UUID](reference/sql/pico_instance_uuid.md)
-* [PICO_INSTANCE_NAME](reference/sql/pico_instance_name.md)
-* [PICO_REPLICASET_NAME](reference/sql/pico_replicaset_name.md)
-* [PICO_TIER_NAME](reference/sql/pico_tier_name.md)
-* [PICO_INSTANCE_DIR](reference/sql/pico_instance_dir.md)
-* [PICO_CONFIG_FILE_PATH](reference/sql/pico_config_file_path.md)
-* [PICO_RAFT_LEADER_ID](reference/sql/pico_raft_leader_id.md)
-* [PICO_RAFT_LEADER_UUID](reference/sql/pico_raft_leader_uuid.md)
+* [PICO_INSTANCE_UUID](reference/sql/system_functions.md#pico_instance_uuid)
+* [PICO_INSTANCE_NAME](reference/sql/system_functions.md#pico_instance_name)
+* [PICO_REPLICASET_NAME](reference/sql/system_functions.md#pico_replicaset_name)
+* [PICO_TIER_NAME](reference/sql/system_functions.md#pico_tier_name)
+* [PICO_INSTANCE_DIR](reference/sql/system_functions.md#pico_instance_dir)
+* [PICO_CONFIG_FILE_PATH](reference/sql/system_functions.md#pico_config_file_path)
+* [PICO_RAFT_LEADER_ID](reference/sql/system_functions.md#pico_raft_leader_id)
+* [PICO_RAFT_LEADER_UUID](reference/sql/system_functions.md#pico_raft_leader_uuid)
 * [plugin](architecture/plugins.md)
 * [procedure](admin/access_control.md#proc_access)
 * [projection](reference/sql/explain.md#plan_structure)
@@ -190,7 +190,7 @@ article.md-typeset.md-typeset ul {
 
 * [VALUES](reference/sql/values.md)
 * [VARCHAR](reference/sql_types.md#varchar)
-* [version](reference/sql/version.md)
+* [version](reference/sql/system_functions.md#version)
 
 <b>W</b>
 

@@ -6,7 +6,7 @@
    version="1.1"
    id="svg136"
    sodipodi:docname="expression.svg"
-   inkscape:version="1.4.2 (unknown)"
+   inkscape:version="1.4.2 (ebf0e940d0, 2025-05-08)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:xlink="http://www.w3.org/1999/xlink"
@@ -21,46 +21,32 @@
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
-     inkscape:zoom="1.605084"
-     inkscape:cx="373.50071"
-     inkscape:cy="462.90413"
-     inkscape:window-width="1920"
-     inkscape:window-height="1135"
-     inkscape:window-x="0"
-     inkscape:window-y="0"
+     inkscape:zoom="0.802542"
+     inkscape:cx="204.9737"
+     inkscape:cy="685.94541"
+     inkscape:window-width="1858"
+     inkscape:window-height="1014"
+     inkscape:window-x="62"
+     inkscape:window-y="29"
      inkscape:window-maximized="1"
      inkscape:current-layer="svg136" />
   <defs
      id="defs1">
     <style
        type="text/css"
-       id="style1">
-    @namespace &quot;http://www.w3.org/2000/svg&quot;;
-    .line                 {fill: none; stroke: #330000; stroke-width: 1;}
-    .bold-line            {stroke: #140000; shape-rendering: crispEdges; stroke-width: 2;}
-    .thin-line            {stroke: #1F0000; shape-rendering: crispEdges}
-    .filled               {fill: #330000; stroke: none;}
-    text.terminal         {font-family: Verdana, Sans-serif;
-                            font-size: 12px;
-                            fill: #140000;
-                            font-weight: bold;
-                          }
-    text.nonterminal      {font-family: Verdana, Sans-serif;
-                            font-size: 12px;
-                            fill: #1A0000;
-                            font-weight: normal;
-                          }
-    text.regexp           {font-family: Verdana, Sans-serif;
-                            font-size: 12px;
-                            fill: #1F0000;
-                            font-weight: normal;
-                          }
-    rect, circle, polygon {fill: #330000; stroke: #330000;}
-    rect.terminal         {fill: #FF4D4D; stroke: #330000; stroke-width: 1;}
-    rect.nonterminal      {fill: #FF9E9E; stroke: #330000; stroke-width: 1;}
-    rect.text             {fill: none; stroke: none;}
-    polygon.regexp        {fill: #FFC7C7; stroke: #330000; stroke-width: 1;}
-  </style>
+       id="style1">@namespace &quot;http://www.w3.org/2000/svg&quot;;.line { fill: none; stroke: #330000; stroke-width: 1; }
+.bold-line { stroke: #140000; shape-rendering: crispEdges; stroke-width: 2; }
+.thin-line { stroke: #1F0000; shape-rendering: crispEdges }
+.filled { fill: #330000; stroke: none; }
+text.terminal { font-family: Verdana, Sans-serif;                            font-size: 12px;                            fill: #140000;                            font-weight: bold; }
+text.nonterminal { font-family: Verdana, Sans-serif;                            font-size: 12px;                            fill: #1A0000;                            font-weight: normal; }
+text.regexp { font-family: Verdana, Sans-serif;                            font-size: 12px;                            fill: #1F0000;                            font-weight: normal; }
+rect, circle, polygon { fill: #330000; stroke: #330000; }
+rect.terminal { fill: #FF4D4D; stroke: #330000; stroke-width: 1; }
+rect.nonterminal { fill: #FF9E9E; stroke: #330000; stroke-width: 1; }
+rect.text { fill: none; stroke: none; }
+polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
+</style>
   </defs>
   <polygon
      points="9 51 1 47 1 55"
@@ -293,7 +279,7 @@
        id="text21">ilike</text>
   </a>
   <a
-     xlink:href="../instance_uuid"
+     xlink:href="../system_functions#instance_uuid"
      xlink:title="instance_uuid"
      id="a23">
     <rect
@@ -408,7 +394,7 @@
        id="text31">lower</text>
   </a>
   <a
-     xlink:href="../pico_config_file_path"
+     xlink:href="../system_functions#pico_config_file_path"
      xlink:title="pico_config_file_path"
      id="a33">
     <rect
@@ -431,7 +417,7 @@
        id="text33">pico_config_file_path</text>
   </a>
   <a
-     xlink:href="../pico_instance_dir"
+     xlink:href="../system_functions#pico_instance_dir"
      xlink:title="pico_instance_dir"
      id="a35">
     <rect
@@ -454,7 +440,7 @@
        id="text35">pico_instance_dir</text>
   </a>
   <a
-     xlink:href="../pico_instance_name"
+     xlink:href="../system_functions#pico_instance_name"
      xlink:title="pico_instance_name"
      id="a37">
     <rect
@@ -477,7 +463,7 @@
        id="text37">pico_instance_name</text>
   </a>
   <a
-     xlink:href="../pico_instance_uuid"
+     xlink:href="../system_functions#pico_instance_uuid"
      xlink:title="pico_instance_uuid"
      id="a39">
     <rect
@@ -500,7 +486,7 @@
        id="text39">pico_instance_uuid</text>
   </a>
   <a
-     xlink:href="../pico_raft_leader_id"
+     xlink:href="../system_functions#pico_raft_leader_id"
      xlink:title="pico_raft_leader_id"
      id="a41">
     <rect
@@ -523,7 +509,7 @@
        id="text41">pico_raft_leader_id</text>
   </a>
   <a
-     xlink:href="../pico_raft_leader_uuid"
+     xlink:href="../system_functions#pico_raft_leader_uuid"
      xlink:title="pico_raft_leader_uuid"
      id="a43">
     <rect
@@ -546,7 +532,7 @@
        id="text43">pico_raft_leader_uuid</text>
   </a>
   <a
-     xlink:href="../pico_replicaset_name"
+     xlink:href="../system_functions#pico_replicaset_name"
      xlink:title="pico_replicaset_name"
      id="a45">
     <rect
@@ -569,7 +555,7 @@
        id="text45">pico_replicaset_name</text>
   </a>
   <a
-     xlink:href="../pico_tier_name"
+     xlink:href="../system_functions#pico_tier_name"
      xlink:title="pico_tier_name"
      id="a47">
     <rect
@@ -730,7 +716,7 @@
        id="text59">upper</text>
   </a>
   <a
-     xlink:href="../version"
+     xlink:href="../system_functions#version"
      xlink:title="version"
      id="a61">
     <rect

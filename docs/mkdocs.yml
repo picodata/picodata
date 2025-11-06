@@ -143,17 +143,7 @@ nav:
         - reference/sql/aggregate.md
         - reference/sql/window_builtin.md
         - reference/sql/time_and_date.md
-        - Системные функции:
-          - reference/sql/instance_uuid.md
-          - reference/sql/pico_instance_uuid.md
-          - reference/sql/pico_instance_name.md
-          - reference/sql/pico_replicaset_name.md
-          - reference/sql/pico_tier_name.md
-          - reference/sql/pico_instance_dir.md
-          - reference/sql/pico_config_file_path.md
-          - reference/sql/pico_raft_leader_id.md
-          - reference/sql/pico_raft_leader_uuid.md
-          - reference/sql/version.md
+        - reference/sql/system_functions.md
     - reference/cli.md
     - reference/config.md
     - reference/audit_events.md
