@@ -13,6 +13,7 @@ use crate::traft::RaftIndex;
 use crate::traft::RaftTerm;
 use crate::vshard::VshardConfig;
 use std::borrow::Cow;
+use std::time::Duration;
 use tarantool::error::BoxError;
 use tarantool::fiber;
 use tarantool::proc;
@@ -20,6 +21,7 @@ use tarantool::tuple::RawByteBuf;
 
 pub const PICODATA_VERSION: &'static str = std::env!("GIT_DESCRIBE");
 pub const RPC_API_VERSION: &'static str = "1.0.0";
+const REDIRECT_RPC_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Note: this returns a `&'static str` because of clap's requirements.
 pub fn version_for_help() -> &'static str {
@@ -382,7 +384,7 @@ fn proc_instance_dir(uuid: String) -> Result<Option<String>, Error> {
                     &instance.name,
                     crate::proc_name!(proc_instance_dir),
                     &(uuid,),
-                    None,
+                    REDIRECT_RPC_TIMEOUT,
                 )?
                 .await
         };
@@ -438,7 +440,7 @@ fn proc_config_file(uuid: String) -> Result<Option<String>, Error> {
                     &instance.name,
                     crate::proc_name!(proc_config_file),
                     &(uuid,),
-                    None,
+                    REDIRECT_RPC_TIMEOUT,
                 )?
                 .await
         };
