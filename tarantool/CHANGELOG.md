@@ -49,6 +49,12 @@
 - 1.85 is now MSRV.
 - Introduce `index::Index::rename` method to rename existing indexes.
 
+### Deprecated
+
+- `CDataOnStack::try_downcast_mut` is unsafe and can produce undefined behavior.
+  The method is deprecated and its implementation is removed. Use
+  `try_downcast_into` to take ownership and mutate the value instead.
+
 # [10.0.0] Oct 2 2025
 
 - Introduced `AuthMethod::ScramSha256` for a new auth method in Picodata.

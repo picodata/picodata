@@ -158,14 +158,13 @@ where
     ///
     /// [`data`]: CDataOnStack::data
     /// [`ctypeid`]: CDataOnStack::ctypeid
-    #[allow(clippy::mut_from_ref)] // FIXME: current method is UB!
+    #[deprecated(since = "10.1.0", note = "Use `try_downcast_into` instead.")]
     #[inline(always)]
     pub fn try_downcast_mut<T>(&self) -> Option<&mut T>
     where
         T: AsCData,
     {
-        self.check_ctypeid::<T>()
-            .then(|| unsafe { &mut *(self.as_ptr().cast::<T>() as *mut _) })
+        unimplemented!("`try_downcast_mut` could produce undefined behavior and has been removed.")
     }
 
     /// Return the underlying value consuming `self` if
