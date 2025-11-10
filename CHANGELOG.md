@@ -17,6 +17,9 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed that vshard would consume non-negligible amount of resources when idling
   on big cluster setups.
 
+### Configuration
+- Changed default value for `raft_wal_count_max` ALTER SYSTEM parameter from 64 to 16384.
+
 
 ## [25.4.4] - 2025-11-12
 
