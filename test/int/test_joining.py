@@ -753,3 +753,36 @@ def test_membership_inconsistency_at_raft_rejoin(cluster: Cluster):
 
     # Instance uuid was removed automatically after successful boot
     assert not instance_uuid_filepath.exists()
+
+
+def test_ER_BOOTSTRAP_CONNECTION_NOT_TO_ALL(cluster: Cluster):
+    error_injection_for_all = "PICODATA_ERROR_INJECTION_USE_SHORT_REPLICATION_CONNECT_TIMEOUT"
+    leader = cluster.add_instance(name="leader", wait_online=False)
+    leader.env[error_injection_for_all] = "1"
+    leader.start_and_wait()
+    # For quorum
+    quorum = cluster.add_instance(name="quorum", wait_online=False, replicaset_name=leader.replicaset_name)
+    quorum.env[error_injection_for_all] = "1"
+    quorum.start_and_wait()
+
+    lagger = cluster.add_instance(wait_online=False, name="lagger", replicaset_name=leader.replicaset_name)
+    error_injection = "STALL_BEFORE_STORAGE_INIT_IN_START_JOIN"
+    lc = log_crawler(lagger, error_injection)
+    lagger.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
+    lagger.env[error_injection_for_all] = "1"
+    lagger.start()
+    lc.wait_matched()
+
+    control_1 = cluster.add_instance(name="control_1", wait_online=False, replicaset_name=leader.replicaset_name)
+    control_1.env[error_injection_for_all] = "1"
+    control_2 = cluster.add_instance(name="control_2", wait_online=False, replicaset_name=leader.replicaset_name)
+    control_2.env[error_injection_for_all] = "1"
+    control_1.start_and_wait()
+    control_2.start_and_wait()
+
+    assert leader.sql("SELECT current_state, target_state FROM _pico_instance WHERE name = 'lagger'") == [
+        [["Offline", 0], ["Offline", 0]]
+    ]
+
+    # cannot reach this if we get error ER_BOOTSTRAP_CONNECTION_NOT_TO_ALL
+    lagger.wait_online()

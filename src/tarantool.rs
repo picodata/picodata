@@ -394,9 +394,12 @@ impl Cfg {
             // what we want to use, so we should switch to that when that
             // feature is available in our tarantool fork.
             //
-            // When joining we already know the leader, and the "auto" strategy
-            // implies connecting to that leader during bootstrap.
-            bootstrap_strategy: Some(BootstrapStrategy::Auto),
+            // Use `bootstrap_strategy = legacy` instead of `auto` to
+            // work around `ER_BOOTSTRAP_CONNECTION_NOT_TO_ALL`, which is
+            // triggered only for `bootstrap_strategy = auto`.
+            // Note: Combine with `replication_connect_quorum = 0`. See below
+            // about it.
+            bootstrap_strategy: Some(BootstrapStrategy::Legacy),
 
             election_mode: ElectionMode::Off,
 
@@ -404,6 +407,21 @@ impl Cfg {
         };
 
         res.set_core_parameters(config)?;
+
+        // This option is required when using `bootstrap_strategy = legacy`.
+        //
+        // Setting this value to `0` disables the check for successful replica connections
+        // in Tarantool. This does not prevent connections to replicas or prevent the
+        // instance from proceeding with initialization.
+        //
+        // When `box.cfg()` succeeds, it indicates that the replica has successfully
+        // connected to at least one other replica and obtained a replication snapshot.
+        // If `box.cfg()` fails, Tarantool will panic, requiring a replica restart.
+        //
+        // Only after successful `box.cfg()` does an instance proceed further -
+        // it activates itself by changing its own state to 'Online' via RPC.
+        res.user_configured_fields
+            .insert("replication_connect_quorum".into(), 0.into());
         Ok(res)
     }
 
@@ -441,6 +459,10 @@ impl Cfg {
     pub fn set_core_parameters(&mut self, config: &PicodataConfig) -> Result<(), Error> {
         self.log.clone_from(&config.instance.log.destination);
         self.log_level = Some(config.instance.log_level() as _);
+        crate::error_injection!("USE_SHORT_REPLICATION_CONNECT_TIMEOUT" => {
+            self.user_configured_fields
+                .insert("replication_connect_timeout".into(), 2.into());
+        });
 
         // here we handle fields with `ByteSize` types that are needed to be
         // converted into `String`, and then parsed as `rmpv::Value::Integer`
