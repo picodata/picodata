@@ -191,7 +191,7 @@ article.md-typeset.md-typeset ul {
 <b>V</b>
 
 * [VALUES](reference/sql/values.md)
-* [VARCHAR](reference/sql_types.md#varchar)
+* [VARCHAR](reference/sql_types.md#text)
 * [version](reference/sql/system_functions.md#version)
 
 <b>W</b>

@@ -163,7 +163,7 @@ td.td3 ul {
         <tr>
             <td class="center"><span class="partly">E021-02</span></td>
             <td>Тип данных CHARACTER VARYING (включая все варианты написания)</td>
-            <td class="td3 center">[VARCHAR](sql_types.md#varchar)</td>
+            <td class="td3 center">[VARCHAR](sql_types.md#text)</td>
             <td>Типы VARYING, CHARACTER VARYING не поддерживаются, но есть VARCHAR</td>
         </tr>
         <tr>
