@@ -78,6 +78,9 @@ with the `YY.MINOR.MICRO` scheme.
   which report respectively the total number of SQL DML operations on global
   tables and number of times these operations had to be retried due to CAS conflicts.
 
+### Configuration
+- Changed default value for `raft_wal_count_max` ALTER SYSTEM parameter from 64 to 16384.
+
 ## [25.4.1] - 2025-10-03
 
 ### Features

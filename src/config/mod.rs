@@ -1776,7 +1776,7 @@ pub struct AlterSystemParameters {
     /// Maximum number of tuples `_raft_log` system space is allowed to grow to
     /// before it gets automatically compacted.
     #[introspection(sbroad_type = SbroadType::Unsigned)]
-    #[introspection(config_default = 64)]
+    #[introspection(config_default = 16 * 1024)]
     pub raft_wal_count_max: u64,
 
     /// Number of seconds to wait before automatically changing an

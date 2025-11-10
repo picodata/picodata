@@ -872,10 +872,10 @@ table.legend {
         <tr>
             <td><span class="sql-cluster">[raft_wal_count_max](db_config.md#raft_wal_count_max){.link}</span></td>
             <td>Максимальное количество записей в raft-журнале, при превышении которого он будет автоматически компактизирован</td>
-            <td>64</td>
+            <td>16384</td>
             <td>
             ```sql
-            ALTER SYSTEM SET raft_wal_count_max = 128;
+            ALTER SYSTEM SET raft_wal_count_max = 65536;
             ```
             </td>
         </tr>
