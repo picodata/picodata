@@ -95,7 +95,7 @@ pub fn check_dml_prohibited(storage: &Catalog, dml: &Dml) -> traft::Result<()> {
             }
             Dml::Update { key, .. } => check_config_prohibited(&String::decode(key.as_ref())?)?,
             Dml::Delete { key, .. } => check_config_prohibited(&String::decode(key.as_ref())?)?,
-        };
+        }
     }
 
     Ok(())
@@ -1389,6 +1389,7 @@ mod tests {
                 table,
                 key: key.clone(),
                 initiator: ADMIN_ID,
+                metainfo: None,
             },
         ];
 

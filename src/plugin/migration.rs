@@ -566,6 +566,7 @@ fn down_single_file_with_commit(
             storage::PluginMigrations::TABLE_ID,
             &[plugin_name, &queries.filename_from_manifest],
             ADMIN_ID,
+            None,
         )?;
         let ranges = vec![cas::Range::for_dml(&dml)?];
         Ok(PreconditionCheckResult::DoOp((Op::Dml(dml), ranges)))

@@ -366,6 +366,7 @@ fn finish_catalog_upgrade<'i>(
             Properties::TABLE_ID,
             &[PropertyName::PendingCatalogVersion],
             ADMIN_ID,
+            None,
         )?,
         Dml::replace(
             Properties::TABLE_ID,

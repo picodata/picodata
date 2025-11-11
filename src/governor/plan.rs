@@ -703,6 +703,7 @@ pub(super) fn action_plan<'i>(
             storage::Properties::TABLE_ID,
             &[PropertyName::PendingPluginOperation],
             ADMIN_ID,
+            None,
         )?;
         ranges.push(cas::Range::for_dml(&dml)?);
         ops.push(dml);
@@ -766,6 +767,7 @@ pub(super) fn action_plan<'i>(
             storage::Properties::TABLE_ID,
             &[PropertyName::PendingPluginOperation],
             ADMIN_ID,
+            None,
         )?;
         ranges.push(cas::Range::for_dml(&dml)?);
         success_dml.push(dml);
@@ -848,7 +850,8 @@ pub(super) fn action_plan<'i>(
                         plugin_version: &plugin.version,
                         service_name: &service_def.name,
                     };
-                    let dml = Dml::delete(storage::ServiceRouteTable::TABLE_ID, &key, ADMIN_ID)?;
+                    let dml =
+                        Dml::delete(storage::ServiceRouteTable::TABLE_ID, &key, ADMIN_ID, None)?;
                     ranges.push(cas::Range::for_dml(&dml)?);
                     on_success_dml.push(dml);
                 }
@@ -863,6 +866,7 @@ pub(super) fn action_plan<'i>(
             storage::Properties::TABLE_ID,
             &[PropertyName::PendingPluginOperation],
             ADMIN_ID,
+            None,
         )?;
         ranges.push(cas::Range::for_dml(&dml)?);
         on_success_dml.push(dml);

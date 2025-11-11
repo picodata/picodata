@@ -2043,10 +2043,15 @@ impl Plan {
         rel_id: NodeId,
     ) -> Result<Strategy, SbroadError> {
         let mut map = Strategy::new(rel_id);
-        let child_id = self.dml_child_id(rel_id)?;
-        let child_node = self.get_relation_node(child_id)?;
+        let children = self.children(rel_id);
+        if children.is_empty() {
+            return Ok(map);
+        }
+
+        let child_id = children.get(0).expect("cannot be reached");
+        let child_node = self.get_relation_node(*child_id)?;
         if !matches!(child_node, Relational::Motion(_)) {
-            map.upsert_child(child_id, MotionPolicy::Full, Program::default());
+            map.upsert_child(*child_id, MotionPolicy::Full, Program::default());
         }
         Ok(map)
     }

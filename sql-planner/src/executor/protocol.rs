@@ -181,7 +181,7 @@ impl FullMessage {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Default)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
 pub struct SchemaInfo {
     pub router_version_map: TableVersionMap,
 }

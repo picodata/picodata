@@ -17,7 +17,7 @@ use crate::schema::{
     ShardingFn, UserDef, ADMIN_ID,
 };
 use crate::sql::router::RouterRuntime;
-use crate::sql::storage::StorageRuntime;
+use crate::sql::storage::{GlobalDeleteInfo, StorageRuntime};
 use crate::storage::Catalog;
 use crate::storage::{get_backup_dir_name, space_by_name, DbConfig, SystemTable, ToEntryIter};
 use crate::sync::wait_for_index_globally;
@@ -54,7 +54,7 @@ use sql::executor::engine::helpers::{
     init_insert_tuple_builder, init_local_update_tuple_builder,
 };
 use sql::executor::engine::Router;
-use sql::executor::protocol::RequiredData;
+use sql::executor::protocol::{RequiredData, SchemaInfo};
 use sql::executor::result::ConsumerResult;
 use sql::executor::ExecutingQuery;
 use sql::executor::{Port, PortType};
@@ -2729,33 +2729,44 @@ fn do_dml_on_global_tbl(
     }
 }
 
-fn do_dml_on_global_tbl_no_retry(
+fn create_dml_ops(
     query: &mut ExecutingQuery<RouterRuntime>,
-    override_deadline: Option<Instant>,
-    governor_op_id: Option<u64>,
-) -> traft::Result<ConsumerResult> {
-    let current_user = effective_user_id();
-
-    let raft_node = node::global()?;
-    let raft_index = raft_node.get_index();
+    on_conflict: &mut ConflictStrategy,
+    current_user: u32,
+) -> traft::Result<(Vec<Dml>, usize)> {
+    let plan = query.get_exec_plan().get_ir_plan();
+    let top = plan.get_top()?;
+    let table = plan.dml_node_table(top)?;
+    let table_name = &table.name;
+    let childen = plan.children(top);
+    let space = Space::find(table_name.as_str())
+        .ok_or_else(|| Error::other(format!("failed to find table with name: {table_name}")))?;
+    if childen.is_empty() {
+        // If children are empty, there's delete without filter and
+        // there's no need to generate tuples.
+        let plan_id = plan.pattern_id(top)?;
+        let info = GlobalDeleteInfo {
+            table_name: table_name.clone(),
+            plan_id,
+            _params: vec![],
+            schema_info: SchemaInfo::new(plan.version_map.clone()),
+            options: plan.effective_options.clone(),
+        };
+        let op = Dml::delete(space.id(), &Vec::<u8>::new(), current_user, Some(info))?;
+        return Ok((vec![op], space.len()?));
+    }
 
     // Materialize reading subtree and extract some needed data from Plan
     let (table_id, dml_kind, vtable, on_conflict) = {
         let ir = query.get_exec_plan().get_ir_plan();
         let top = ir.get_top()?;
-        let table = ir.dml_node_table(top)?;
-        let table_name = &table.name;
-        let table_id = Space::find(table_name.as_str())
-            .ok_or_else(|| Error::other(format!("failed to find table with name: {table_name}")))?
-            .id();
 
         let node = ir.get_relation_node(top)?;
-        let mut on_conflict = Some(ConflictStrategy::DoFail);
         let dml_kind: DmlKind = match node {
             Relational::Insert(Insert {
                 conflict_strategy, ..
             }) => {
-                on_conflict = Some(*conflict_strategy);
+                *on_conflict = *conflict_strategy;
                 DmlKind::Insert
             }
             Relational::Update { .. } => DmlKind::Update,
@@ -2774,13 +2785,8 @@ fn do_dml_on_global_tbl_no_retry(
             .remove(&motion_id)
             .expect("subtree must be materialized");
 
-        (table_id, dml_kind, vtable, on_conflict)
+        (space.id(), dml_kind, vtable, on_conflict)
     };
-
-    // CAS will return error on empty batch
-    if vtable.get_tuples().is_empty() {
-        return Ok(ConsumerResult { row_count: 0 });
-    }
 
     // Convert virtual table to a batch of DML opcodes
 
@@ -2801,15 +2807,11 @@ fn do_dml_on_global_tbl_no_retry(
             // many tuples for one table.
             DmlKind::Insert => {
                 let tuple = build_insert_args(tuple, &builder, None)?;
-                if let Some(ref on_conflict) = on_conflict {
-                    Dml::insert_with_on_conflict(table_id, &tuple, current_user, *on_conflict)?
-                } else {
-                    Dml::insert(table_id, &tuple, current_user)?
-                }
+                Dml::insert_with_on_conflict(table_id, &tuple, current_user, *on_conflict)?
             }
             DmlKind::Delete => {
                 let tuple = build_delete_args(tuple, &builder)?;
-                Dml::delete(table_id, &tuple, current_user)?
+                Dml::delete(table_id, &tuple, current_user, None)?
             }
             DmlKind::Update => {
                 let args = build_update_args(tuple, &builder)?;
@@ -2829,6 +2831,27 @@ fn do_dml_on_global_tbl_no_retry(
         ops.push(op);
     }
 
+    let len = ops.len();
+    Ok((ops, len))
+}
+
+fn do_dml_on_global_tbl_no_retry(
+    query: &mut ExecutingQuery<RouterRuntime>,
+    override_deadline: Option<Instant>,
+    governor_op_id: Option<u64>,
+) -> traft::Result<ConsumerResult> {
+    let current_user = effective_user_id();
+
+    let raft_node = node::global()?;
+    let raft_index = raft_node.get_index();
+
+    let mut on_conflict = ConflictStrategy::DoFail;
+    let (mut ops, mut row_count) = create_dml_ops(query, &mut on_conflict, current_user)?;
+    // CAS will return error on empty batch
+    if ops.is_empty() {
+        return Ok(ConsumerResult { row_count: 0 });
+    }
+
     // If we have DML in governor operation (running from governor),
     // we need to add final update operation to change status.
     if let Some(governor_op_id) = governor_op_id {
@@ -2844,6 +2867,8 @@ fn do_dml_on_global_tbl_no_retry(
             ADMIN_ID,
         )?;
         ops.push(op);
+
+        row_count = ops.len();
     }
 
     // CAS must be done under admin, as we access system spaces
@@ -2855,7 +2880,6 @@ fn do_dml_on_global_tbl_no_retry(
             deadline = override_deadline.min(deadline);
         }
 
-        let ops_count = ops.len();
         let op = crate::traft::op::Op::BatchDml { ops };
 
         let predicate = Predicate::new(raft_index, []);
@@ -2863,11 +2887,11 @@ fn do_dml_on_global_tbl_no_retry(
         let res = crate::cas::compare_and_swap_and_wait(&cas_req, deadline)?;
 
         let (_, _, count) = res.no_retries()?;
-        if on_conflict == Some(ConflictStrategy::DoNothing) {
+        if on_conflict == ConflictStrategy::DoNothing {
             Ok(ConsumerResult { row_count: count })
         } else {
             Ok(ConsumerResult {
-                row_count: ops_count as u64,
+                row_count: row_count as u64,
             })
         }
     })?

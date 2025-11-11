@@ -167,6 +167,7 @@ impl From<types::Dml> for Dml {
                 table,
                 key: unsafe { TupleBuffer::from_vec_unchecked(key.to_vec()) },
                 initiator,
+                metainfo: None,
             },
         }
     }

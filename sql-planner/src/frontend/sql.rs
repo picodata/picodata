@@ -6232,15 +6232,7 @@ impl AbstractSyntaxTree {
                                 unreachable!("Scan expected under ScanTable")
                             };
 
-                            // See below where `proj_child_id`` is used. We don't want to apply such
-                            // an optimization for global tables yet (see issue
-                            // https://git.picodata.io/picodata/sbroad/-/issues/861).
-                            let proj_child_id = if metadata.table(relation)?.is_global() {
-                                Some(plan_scan_id)
-                            } else {
-                                None
-                            };
-                            (proj_child_id, relation.clone())
+                            (None, relation.clone())
                         }
                         Rule::DeleteFilter => {
                             let ast_table_id = first_child_node

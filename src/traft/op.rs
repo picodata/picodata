@@ -5,6 +5,7 @@ use crate::schema::{
     RoutineSecurity, UserDef, ADMIN_ID, GUEST_ID, PICO_SERVICE_ID, PUBLIC_ID, ROLE_REPLICATION_ID,
     SUPER_ID,
 };
+use crate::sql::storage::GlobalDeleteInfo;
 use crate::storage::{self, Catalog};
 use crate::storage::{space_by_name, RoutineId};
 use crate::traft::error::Error as TRaftError;
@@ -560,6 +561,7 @@ pub enum Dml {
         #[serde(with = "serde_bytes")]
         key: TupleBuffer,
         initiator: UserId,
+        metainfo: Option<GlobalDeleteInfo>,
     },
 }
 
@@ -696,11 +698,13 @@ impl Dml {
         space: impl Into<SpaceId>,
         key: &impl ToTupleBuffer,
         initiator: UserId,
+        metainfo: Option<GlobalDeleteInfo>,
     ) -> tarantool::Result<Self> {
         let res = Self::Delete {
             table: space.into(),
             key: key.to_tuple_buffer()?,
             initiator,
+            metainfo,
         };
         Ok(res)
     }
@@ -753,6 +757,7 @@ impl Dml {
                     table,
                     key,
                     initiator,
+                    metainfo: None,
                 })
             }
         }

@@ -11,6 +11,7 @@ use crate::sql::router::{
     calculate_bucket_id, get_table_version, get_table_version_by_id, VersionMap,
 };
 use crate::traft::node;
+use serde::{Deserialize, Serialize};
 use sql::backend::sql::ir::PatternWithParams;
 use sql::backend::sql::space::TableGuard;
 use sql::backend::sql::tree::{OrderedSyntaxNodes, SyntaxData, SyntaxPlan};
@@ -25,6 +26,7 @@ use sql::executor::ir::{ExecutionPlan, QueryType};
 use sql::executor::lru::{Cache, EvictFn, LRUCache};
 use sql::executor::protocol::{EncodedVTables, RequiredData, SchemaInfo, VTablesMeta};
 use sql::executor::{Port, PortType};
+use sql::ir::options::Options;
 use sql::ir::ExplainType;
 use std::cell::OnceCell;
 
@@ -232,6 +234,55 @@ impl QueryCache for StorageRuntime {
 
     fn get_table_version_by_id(&self, table_id: SpaceId) -> Result<u64, SbroadError> {
         get_table_version_by_id(table_id)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GlobalDeleteInfo {
+    pub table_name: SmolStr,
+    pub plan_id: SmolStr,
+    pub _params: Vec<Value>,
+    pub schema_info: SchemaInfo,
+    pub options: Options,
+}
+
+impl RequiredPlanInfo for GlobalDeleteInfo {
+    fn id(&self) -> &SmolStr {
+        &self.plan_id
+    }
+
+    fn params(&self) -> &Vec<Value> {
+        &self._params
+    }
+
+    fn schema_info(&self) -> &SchemaInfo {
+        &self.schema_info
+    }
+
+    fn extract_data(&mut self) -> EncodedVTables {
+        HashMap::new()
+    }
+
+    fn sql_vdbe_opcode_max(&self) -> u64 {
+        self.options.sql_vdbe_opcode_max as u64
+    }
+
+    fn sql_motion_row_max(&self) -> u64 {
+        self.options.sql_motion_row_max as u64
+    }
+}
+
+impl FullPlanInfo for GlobalDeleteInfo {
+    fn extract_query_and_table_guard(
+        &mut self,
+    ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
+        let local_sql = format!("DELETE FROM \"{}\"", self.table_name);
+        Ok((PatternWithParams::new(local_sql, vec![]), vec![]))
+    }
+
+    fn take_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError> {
+        let local_sql = format!("DELETE FROM \"{}\"", self.table_name);
+        Ok((local_sql, vec![], HashMap::new()))
     }
 }
 

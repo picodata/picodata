@@ -160,6 +160,7 @@ pub fn release(deadline: Instant) -> traft::Result<()> {
             storage::Properties::TABLE_ID,
             &[PropertyName::PendingPluginOperation],
             effective_user_id(),
+            None,
         )?;
 
         let ranges =

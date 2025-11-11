@@ -441,6 +441,7 @@ pub fn remove_routes(timeout: Duration) -> traft::Result<()> {
                     storage::ServiceRouteTable::TABLE_ID,
                     &routing_key,
                     effective_user_id(),
+                    None,
                 )
                 .expect("encoding should not fail")
             })

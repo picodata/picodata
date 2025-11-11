@@ -2,6 +2,7 @@ use chrono::DateTime;
 use sql::ir::operator::ConflictStrategy;
 use tarantool::auth::AuthDef;
 use tarantool::error::{Error as TntError, TarantoolErrorCode as TntErrorCode};
+use tarantool::ffi::sql::Port as TarantoolPort;
 use tarantool::index::FieldType as IndexFieldType;
 #[allow(unused_imports)]
 use tarantool::index::Metadata as IndexMetadata;
@@ -34,6 +35,9 @@ use crate::schema::ServiceRouteKey;
 use crate::schema::{IndexDef, IndexOption, TableDef};
 use crate::schema::{PluginDef, INITIAL_SCHEMA_VERSION};
 use crate::schema::{PrivilegeDef, RoutineDef, UserDef};
+use crate::sql::execute::dql_execute_second_round;
+use crate::sql::port::PicoPortC;
+use crate::sql::storage::StorageRuntime;
 use crate::static_ref;
 use crate::storage::snapshot::SnapshotCache;
 use crate::tarantool::box_schema_version;
@@ -53,6 +57,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::RangeInclusive;
 use std::rc::Rc;
@@ -362,7 +367,20 @@ impl Catalog {
             }
             Dml::Replace { tuple, .. } => space.replace(tuple).map(Some),
             Dml::Update { key, ops, .. } => space.update(key, ops),
-            Dml::Delete { key, .. } => space.delete(key).map(|_| None),
+            Dml::Delete { key, metainfo, .. } => {
+                if let Some(info) = metainfo {
+                    let rt = StorageRuntime::new();
+                    let mut info = info.clone();
+                    let mut port = TarantoolPort::new_port_c();
+                    let mut pico_port = PicoPortC::from(unsafe { port.as_mut_port_c() });
+                    dql_execute_second_round(&rt, &mut info, &mut pico_port)
+                        .map_err(|sbroad_err| TntError::Other(format!("{}", sbroad_err).into()))?;
+
+                    Ok(None)
+                } else {
+                    space.delete(key).map(|_| None)
+                }
+            }
         }
     }
 }
