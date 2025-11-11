@@ -555,6 +555,7 @@ fn try_parse_kv_uppercase(s: &str) -> Result<(Uppercase, Uppercase), String> {
 
 #[derive(Debug, Parser)]
 #[clap(about = "Connect to the Distributed SQL console")]
+#[clap(hide(true))]
 #[clap(after_help = "SPECIAL COMMANDS:
     \\e            Open the editor specified by the EDITOR environment variable
     \\help         Show this screen
