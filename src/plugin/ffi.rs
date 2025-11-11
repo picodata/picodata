@@ -1,5 +1,3 @@
-#[allow(unused_imports)]
-use crate::auth::Error as AuthError;
 use crate::info::{InstanceInfo, RaftInfo, VersionInfo};
 use crate::instance::StateVariant;
 use crate::plugin::{rpc, PluginIdentifier};
