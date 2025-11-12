@@ -8,7 +8,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-## [25.4.4] - 2025-10-28
+## [25.4.4] - 2025-11-12
 
 ### Fixes
 - Fixed a bug where the raft snapshot would sometimes contain incorrect term
