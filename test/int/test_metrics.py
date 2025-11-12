@@ -1,4 +1,4 @@
-from typing import Dict, Iterable, List, Optional
+from typing import Dict
 
 from conftest import (
     Cluster,
@@ -8,7 +8,6 @@ from conftest import (
 )
 import pytest
 import requests  # type: ignore
-from prometheus_client.parser import text_string_to_metric_families
 from prometheus_client import Metric
 from prometheus_client.samples import Sample
 import psycopg
@@ -69,22 +68,8 @@ def test_picodata_metrics(cluster: Cluster) -> None:
         assert metric in metrics_output, f"Metric '{metric}' not found in /metrics output"
 
 
-def get_metrics(http_listen) -> List[Metric]:
-    response = requests.get(f"http://{http_listen}/metrics")
-    response.raise_for_status()
-    return list(text_string_to_metric_families(response.text))
-
-
-def find_metric_by_name(families: List[Metric], name: str) -> Optional[Metric]:
-    for family in families:
-        if family.name == name:
-            return family
-
-    return None
-
-
-def check_metric(families: Iterable[Metric], name: str, value: float | None):
-    found_family = find_metric_by_name(families, name)
+def check_metric(families: Dict[str, Metric], name: str, value: float | None):
+    found_family = families.get(name)
     if value is None:
         assert found_family is None, "Metric {} found".format(name)
     else:
@@ -96,17 +81,13 @@ def check_metric(families: Iterable[Metric], name: str, value: float | None):
 
 @pytest.mark.webui
 def test_pgproto_metrics_collected(instance: Instance) -> None:
-    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
-
-    metrics = get_metrics(http_listen)
-    check_metric(metrics, "pico_sql_query", None)
+    check_metric(instance.get_metrics(), "pico_sql_query", None)
 
     # make a non-privileged user with iproto
     instance.sql("CREATE USER postgres WITH PASSWORD 'Passw0rd'")
 
     # creating a user for postgress will increase the metric value, so check it
-    metrics = get_metrics(http_listen)
-    check_metric(metrics, "pico_sql_query", 1.0)
+    check_metric(instance.get_metrics(), "pico_sql_query", 1.0)
 
     # execute a query through postgresql
     host, port = instance.pg_host, instance.pg_port
@@ -116,16 +97,12 @@ def test_pgproto_metrics_collected(instance: Instance) -> None:
     conn.execute("SELECT 1").fetchall()
 
     # the select above should've increase the metric value too
-    metrics = get_metrics(http_listen)
-    check_metric(metrics, "pico_sql_query", 2.0)
+    check_metric(instance.get_metrics(), "pico_sql_query", 2.0)
 
 
 @pytest.mark.webui
 def test_router_and_storage_cache_metrics(instance: Instance):
-    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
-
-    metrics = get_metrics(http_listen)
-    check_metric(metrics, "pico_router_cache_misses", 0)
+    check_metric(instance.get_metrics(), "pico_router_cache_misses", 0)
 
     ################
     # Run ACL query
@@ -137,7 +114,7 @@ def test_router_and_storage_cache_metrics(instance: Instance):
     pgproto = psycopg.connect(f"postgres://postgres:Passw0rd@{host}:{port}")
     pgproto.autocommit = True  # do not make a transaction
 
-    metrics = get_metrics(http_listen)
+    metrics = instance.get_metrics()
 
     # ACL is not cached
     check_metric(metrics, "pico_router_cache_statements_added", 0)
@@ -155,7 +132,7 @@ def test_router_and_storage_cache_metrics(instance: Instance):
 
     instance.sql("CREATE TABLE t (a INT PRIMARY KEY, b INT)")
 
-    metrics = get_metrics(http_listen)
+    metrics = instance.get_metrics()
 
     # Every query (even DDL) is looked in the router cache so miss is reported
     check_metric(metrics, "pico_router_cache_misses", 2)
@@ -169,7 +146,7 @@ def test_router_and_storage_cache_metrics(instance: Instance):
 
     instance.sql("INSERT INTO t VALUES (1,2)")
 
-    metrics = get_metrics(http_listen)
+    metrics = instance.get_metrics()
 
     # Every query is looked in the router cache so miss is reported
     check_metric(metrics, "pico_router_cache_misses", 3)
@@ -186,13 +163,12 @@ def test_router_and_storage_cache_metrics(instance: Instance):
     instance.sql("SELECT * FROM t")
 
     # DQL statement is cached
-    metrics = get_metrics(http_listen)
+    metrics = instance.get_metrics()
     check_metric(metrics, "pico_router_cache_statements_added", 2)
     check_metric(metrics, "pico_storage_cache_statements_added", 1)
 
     # Router cache miss is reported
-    metrics = get_metrics(http_listen)
-    check_metric(metrics, "pico_router_cache_misses", 4)
+    check_metric(instance.get_metrics(), "pico_router_cache_misses", 4)
 
     # Both requests to the storage cache are reported (i.e. cache miss)
     check_metric(metrics, "pico_storage_cache_1st_requests", 1)
@@ -205,12 +181,12 @@ def test_router_and_storage_cache_metrics(instance: Instance):
     instance.sql("SELECT * FROM t")
 
     # Statement wasn't cached again
-    metrics = get_metrics(http_listen)
+    metrics = instance.get_metrics()
     check_metric(metrics, "pico_router_cache_statements_added", 2)
     check_metric(metrics, "pico_storage_cache_statements_added", 1)
 
     # Cache hit is reported on the router
-    metrics = get_metrics(http_listen)
+    metrics = instance.get_metrics()
     check_metric(metrics, "pico_router_cache_hits", 1)
 
     # Only 1st requests to the storage cache is reported (i.e. cache hit)
@@ -224,13 +200,13 @@ def test_router_and_storage_cache_metrics(instance: Instance):
     # Make storage cache full
     instance.sql("ALTER SYSTEM SET sql_storage_cache_count_max = 1")
     # Nothing evicted yet
-    metrics = get_metrics(http_listen)
+    metrics = instance.get_metrics()
     check_metric(metrics, "pico_storage_cache_statements_evicted", 0)
     check_metric(metrics, "pico_storage_cache_statements_added", 1)
     # Overflow the cache
     instance.sql("SELECT a + b FROM t")
     # Ensure eviction is reported
-    metrics = get_metrics(http_listen)
+    metrics = instance.get_metrics()
     check_metric(metrics, "pico_storage_cache_statements_evicted", 1)
     check_metric(metrics, "pico_storage_cache_statements_added", 2)
 
@@ -239,19 +215,19 @@ def test_router_and_storage_cache_metrics(instance: Instance):
     #############################################
 
     # There is already 3 entries in the cache
-    metrics = get_metrics(http_listen)
+    metrics = instance.get_metrics()
     check_metric(metrics, "pico_router_cache_statements_added", 3)
     # Make router cache full
     for i in range(0, 47):
         instance.sql(f"SELECT a + {i} FROM t")
     # Nothing evicted yet
-    metrics = get_metrics(http_listen)
+    metrics = instance.get_metrics()
     check_metric(metrics, "pico_router_cache_statements_added", 50)
     check_metric(metrics, "pico_router_cache_statements_evicted", 0)
     # Overflow the cache
     instance.sql("SELECT a + b + 1 FROM t")
     # Ensure eviction is reported
-    metrics = get_metrics(http_listen)
+    metrics = instance.get_metrics()
     check_metric(metrics, "pico_router_cache_statements_added", 51)
     check_metric(metrics, "pico_router_cache_statements_evicted", 1)
 
