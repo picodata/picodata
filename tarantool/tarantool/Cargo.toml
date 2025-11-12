@@ -8,7 +8,7 @@ authors = [
     "Anton Melnikov <volt0@picodata.io>",
     "Egor Ivkov <e.ivkov@picodata.io>",
 ]
-edition = "2018"
+edition = "2021"
 license = "BSD-2-Clause"
 readme = "../README.md"
 documentation = "https://docs.rs/tarantool/"

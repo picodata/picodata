@@ -271,6 +271,12 @@ mod tests {
             unsafe { SENDER_THREAD_ID = Some(thread::current().id()) };
             let mut pipe = cbus::LCPipe::new("cbus_send_message_test");
             let msg = Message::new(move || {
+                // this is specific for edition 2021
+                // https://doc.rust-lang.org/edition-guide/rust-2021/disjoint-capture-in-closures.html#trait-implementations
+                // `cond_ptr` is `Send`, but `cond_ptr.0` is not `Send`
+                // since 2021 closure captures `cond_ptr.0` but not `cond_ptr``
+                let _ = &cond_ptr;
+
                 unsafe { TX_THREAD_ID = Some(thread::current().id()) };
                 let cond = unsafe { cond_ptr.0.as_ref().unwrap() };
                 cond.broadcast();

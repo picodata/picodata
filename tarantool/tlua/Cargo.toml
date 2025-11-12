@@ -1,7 +1,7 @@
 [package]
 name = "tlua"
 version = "7.0.0"
-edition = "2018"
+edition = "2021"
 authors = [
     "Georgy Moshkin <gmoshkin@picodata.io>",
     "Egor Ivkov <e.ivkov@picodata.io>",
