@@ -149,8 +149,9 @@ fn reuse_cte_values() {
     motion [policy: full]
                                 projection ("cte"."COLUMN_1"::int -> "b")
                                     scan "cte"
-                                        values
-                                            value row (data=ROW(1::int))
+                                        motion [policy: full]
+                                            values
+                                                value row (data=ROW(1::int))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -244,8 +245,9 @@ fn values_in_cte() {
     motion [policy: full]
                 projection ("cte"."COLUMN_1"::string -> "a")
                     scan "cte"
-                        values
-                            value row (data=ROW('a'::string))
+                        motion [policy: full]
+                            values
+                                value row (data=ROW('a'::string))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -268,8 +270,9 @@ fn union_all_in_cte() {
     motion [policy: full]
                                 projection ("cte1"."COLUMN_1"::string -> "a")
                                     scan "cte1"
-                                        values
-                                            value row (data=ROW('a'::string))
+                                        motion [policy: full]
+                                            values
+                                                value row (data=ROW('a'::string))
     subquery $1:
     motion [policy: full]
                 union all

@@ -3386,8 +3386,9 @@ fn front_sql_not_equal() {
     projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1")
         selection false::bool
             scan "unnamed_subquery"
-                values
-                    value row (data=ROW(1::int))
+                motion [policy: full]
+                    values
+                        value row (data=ROW(1::int))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -3402,8 +3403,9 @@ fn front_sql_not_cast() {
     projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1")
         selection false::bool
             scan "unnamed_subquery"
-                values
-                    value row (data=ROW(1::int))
+                motion [policy: full]
+                    values
+                        value row (data=ROW(1::int))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -3418,8 +3420,9 @@ fn from_sql_not_column() {
     projection ("unnamed_subquery"."COLUMN_1"::bool -> "COLUMN_1")
         selection not "unnamed_subquery"."COLUMN_1"::bool
             scan "unnamed_subquery"
-                values
-                    value row (data=ROW(true::bool))
+                motion [policy: full]
+                    values
+                        value row (data=ROW(true::bool))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -3434,8 +3437,9 @@ fn front_sql_not_or() {
     projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1")
         selection true::bool
             scan "unnamed_subquery"
-                values
-                    value row (data=ROW(1::int))
+                motion [policy: full]
+                    values
+                        value row (data=ROW(1::int))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -3449,8 +3453,9 @@ fn front_sql_not_and_with_parentheses() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (not (true::bool and false::bool) -> "col_1")
         scan "unnamed_subquery"
-            values
-                value row (data=ROW(1::int))
+            motion [policy: full]
+                values
+                    value row (data=ROW(1::int))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -3465,8 +3470,9 @@ fn front_sql_not_or_with_parentheses() {
     projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1")
         selection false::bool
             scan "unnamed_subquery"
-                values
-                    value row (data=ROW(1::int))
+                motion [policy: full]
+                    values
+                        value row (data=ROW(1::int))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -3481,14 +3487,16 @@ fn front_sql_not_exists() {
     projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1")
         selection not exists ROW($0)
             scan "unnamed_subquery"
-                values
-                    value row (data=ROW(1::int))
+                motion [policy: full]
+                    values
+                        value row (data=ROW(1::int))
     subquery $0:
     scan
                 projection ("unnamed_subquery_1"."COLUMN_2"::int -> "COLUMN_2")
                     scan "unnamed_subquery_1"
-                        values
-                            value row (data=ROW(1::int))
+                        motion [policy: full]
+                            values
+                                value row (data=ROW(1::int))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -3503,15 +3511,17 @@ fn front_sql_not_in() {
     projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1")
         selection not (1::int in ROW($0))
             scan "unnamed_subquery"
-                values
-                    value row (data=ROW(1::int))
+                motion [policy: full]
+                    values
+                        value row (data=ROW(1::int))
     subquery $0:
     motion [policy: full]
                 scan
                     projection ("unnamed_subquery_1"."COLUMN_2"::int -> "COLUMN_2")
                         scan "unnamed_subquery_1"
-                            values
-                                value row (data=ROW(1::int))
+                            motion [policy: full]
+                                values
+                                    value row (data=ROW(1::int))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -3546,8 +3556,9 @@ fn front_sql_not_complex_query() {
                 projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1")
                     selection false::bool
                         scan "unnamed_subquery"
-                            values
-                                value row (data=ROW(1::int))
+                            motion [policy: full]
+                                values
+                                    value row (data=ROW(1::int))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -3561,8 +3572,9 @@ fn front_sql_arithmetic_with_parentheses() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ((1::int + 2::int) * 3::int -> "col_1")
         scan "unnamed_subquery"
-            values
-                value row (data=ROW(1::int))
+            motion [policy: full]
+                values
+                    value row (data=ROW(1::int))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -3576,8 +3588,9 @@ fn front_sql_to_date() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("to_date"(("unnamed_subquery"."COLUMN_1"::string, '%Y/%d/%m'::string))::datetime -> "col_1")
         scan "unnamed_subquery"
-            values
-                value row (data=ROW('2010/10/10'::string))
+            motion [policy: full]
+                values
+                    value row (data=ROW('2010/10/10'::string))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -3599,8 +3612,9 @@ fn front_sql_current_date() {
         r#"projection ({today}::datetime -> "col_1")
     selection "to_date"(('2010/10/10'::string, '%Y/%d/%m'::string))::datetime < {today}::datetime
         scan "unnamed_subquery"
-            values
-                value row (data=ROW('2010/10/10'::string))
+            motion [policy: full]
+                values
+                    value row (data=ROW('2010/10/10'::string))
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
@@ -3798,8 +3812,9 @@ fn front_subqueries_interpreted_as_expression() {
         scan "test_space"
     subquery $0:
     scan
-            values
-                value row (data=ROW(2::int))
+            motion [policy: full]
+                values
+                    value row (data=ROW(2::int))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -3818,8 +3833,9 @@ fn front_subqueries_interpreted_as_expression_as_required_child() {
                 scan "test_space"
     subquery $0:
     scan
-                    values
-                        value row (data=ROW(1::int))
+                    motion [policy: full]
+                        values
+                            value row (data=ROW(1::int))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -3836,12 +3852,14 @@ fn front_subqueries_interpreted_as_expression_nested() {
         scan "test_space"
     subquery $0:
     scan
-                        values
-                            value row (data=ROW(2::int))
+                            motion [policy: full]
+                                values
+                                    value row (data=ROW(2::int))
     subquery $1:
     scan
-            values
-                value row (data=ROW(ROW($0)))
+            motion [policy: full]
+                values
+                    value row (data=ROW(ROW($0)))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -3862,8 +3880,9 @@ fn front_subqueries_interpreted_as_expression_under_group_by() {
                         scan "test_space"
     subquery $0:
     scan
-                            values
-                                value row (data=ROW(1::int))
+                            motion [policy: full]
+                                values
+                                    value row (data=ROW(1::int))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -3899,8 +3918,9 @@ fn front_select_without_scan_2() {
                             scan "t2"
     subquery $1:
     scan
-            values
-                value row (data=ROW(1::int))
+            motion [policy: full]
+                values
+                    value row (data=ROW(1::int))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000

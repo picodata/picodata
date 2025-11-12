@@ -104,8 +104,9 @@ fn except_transform_with_dag_plan() {
     except
         projection (1::int -> "col_1")
             scan "unnamed_subquery"
-                values
-                    value row (data=ROW(1::int))
+                motion [policy: full]
+                    values
+                        value row (data=ROW(1::int))
         motion [policy: full]
             intersect
                 projection ("t2"."e"::int -> "e")
@@ -113,8 +114,9 @@ fn except_transform_with_dag_plan() {
                         scan "t2"
                 projection (1::int -> "col_1")
                     scan "unnamed_subquery"
-                        values
-                            value row (data=ROW(1::int))
+                        motion [policy: full]
+                            values
+                                value row (data=ROW(1::int))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000

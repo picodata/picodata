@@ -172,9 +172,202 @@ JOIN t2 g ON h.a = g.c
 JOIN d  ON g.c = 2 JOIN d i ON i.a >= i.f;
 -- EXPECTED:
 
-
 -- TEST: cte-direct-child-of-motion-is-not-removed-on-take-subtree-2
 -- SQL:
 WITH a AS (SELECT 1) SELECT 2 FROM a UNION SELECT 3 FROM a LEFT JOIN t1 ON TRUE;
 -- EXPECTED:
 2, 3
+
+-- TEST: init_2
+-- SQL:
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1( a int primary key, b int, c int);
+INSERT INTO "t1"("a", "b", "c")
+VALUES (3, 4, 5);
+
+-- TEST: cte-with-values-correct-columns-names-1
+-- SQL:
+WITH i(g) AS (
+    VALUES(
+        (SELECT d.g FROM t1 JOIN (SELECT 7 AS g) AS d ON true)
+    ),
+    (1)
+)
+SELECT i.g FROM i;
+-- EXPECTED:
+7, 1
+
+-- TEST: cte-with-values-correct-columns-names-2
+-- SQL:
+WITH i(g) AS (
+    VALUES(
+        (SELECT d.g FROM t1 JOIN (SELECT 7 AS g) AS d ON true)
+    )
+)
+SELECT i.g FROM i;
+-- EXPECTED:
+7
+
+-- TEST: cte-with-values-correct-columns-names-3
+-- SQL:
+WITH i(g) AS (
+    VALUES (1), (
+        (SELECT d.g FROM t1 JOIN (SELECT 7 AS g) AS d ON true)
+    )
+)
+SELECT i.g FROM i;
+-- EXPECTED:
+1, 7
+
+-- TEST: cte-with-values-correct-columns-names-4
+-- SQL:
+WITH i(g) AS (
+    VALUES (1), (
+        (SELECT d.g FROM t1 JOIN (select (values (5)) as g) d ON true))
+    )
+SELECT i.g FROM i;
+-- EXPECTED:
+1, 5
+
+-- TEST: cte-with-values-correct-columns-names-5
+-- SQL:
+WITH i(g) AS (
+    VALUES (
+        (SELECT d.g FROM t1 JOIN (select (values (5)) as g) d ON true))
+        , (1)
+    )
+SELECT i.g FROM i;
+-- EXPECTED:
+5, 1
+
+-- TEST: cte-with-values-correct-columns-names-6
+-- SQL:
+WITH i(g, t) AS (
+    VALUES(
+        (SELECT d.g FROM t1 JOIN (SELECT 7 AS g) AS d ON true), 2
+    ),
+    (1, 5)
+)
+SELECT * FROM i;
+-- EXPECTED:
+7, 2, 1, 5
+
+-- TEST: cte-with-values-correct-columns-names-7
+-- SQL:
+WITH d AS (
+    SELECT 
+        1 AS g, 
+        t1.b
+    FROM t1 AS f
+    JOIN t1 ON f.a >= f.a
+),
+i(e, g, h) AS (
+    VALUES
+        (
+            0, 
+            (
+                SELECT j.g
+                FROM t1
+                JOIN d ON c = 5
+                JOIN d AS j ON TRUE
+            ), 
+            1
+        ),
+        (7, 1, 1)
+)
+SELECT 
+    k.g
+FROM d
+JOIN i AS k ON TRUE;
+-- EXPECTED:
+1, 1
+
+-- TEST: cte-with-values-correct-columns-names-8
+-- SQL:
+WITH table1(a, b, c) AS (
+    VALUES (1, 1, 1)
+),
+table2(a, b, d) AS (
+    VALUES(1, 1, 2)
+),
+res_table AS (
+    SELECT
+        t2.a,
+        t1.c,
+        t2.d
+    FROM table1 t1
+    JOIN table2 t2 ON t1.a = t2.a AND t1.b = t2.b
+)
+SELECT * from res_table;
+-- EXPECTED:
+1, 1, 2
+
+-- TEST: cte-with-values-correct-columns-names-9
+-- SQL:
+WITH cte1 (a) AS (
+    SELECT "a"
+    FROM "t"
+    WHERE "id" = 1
+),
+cte2 (b) AS (
+    SELECT *
+    FROM cte1
+    UNION ALL
+    SELECT "a"
+    FROM "t"
+    WHERE "id" = 2
+)
+SELECT b
+FROM cte2;
+-- EXPECTED:
+1, 2
+
+-- TEST: cte-with-values-correct-columns-names-10
+-- SQL:
+WITH c (d, e) AS (
+    VALUES (1, 4)
+),
+f AS (
+    SELECT g.b AS e,
+           g.a AS h
+    FROM t1 AS g
+),
+i AS (
+    SELECT h AS d,
+           e
+    FROM f
+),
+j (d, e) AS (
+    VALUES (0, (
+        SELECT 0
+        FROM c
+    ))
+)
+SELECT 8
+FROM f AS g
+JOIN i AS t1 ON g.e = t1.e
+JOIN j AS k ON true;
+-- EXPECTED:
+8
+
+-- TEST: cte-with-values-correct-columns-names-11
+-- SQL:
+WITH d (e) AS (
+    VALUES (8)
+),
+g AS (
+    SELECT (
+        SELECT d.e
+        FROM d
+        EXCEPT
+        SELECT 0
+        FROM t1
+        EXCEPT
+        SELECT 8
+        FROM t1
+    )
+)
+SELECT 1
+FROM g
+-- EXPECTED:
+1

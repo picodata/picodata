@@ -319,3 +319,119 @@ SELECT SUM(DISTINCT (SELECT MIN(id) FROM testing_space)) FROM testing_space GROU
 SELECT t1.a FROM t1 d JOIN t1 ON t1.b = d.a WHERE t1.b = d.c AND (SELECT e.a FROM t1 d JOIN t1 ON d.a = t1.a JOIN t1 e ON c = b) = (SELECT a FROM t1)
 -- EXPECTED:
 1
+
+-- TEST: test-explain-plan-subquery-as-expression-under-projection
+-- SQL:
+EXPLAIN SELECT (values (1)) from testing_space
+-- EXPECTED:
+projection (ROW($0) -> "col_1")
+    scan "testing_space"
+subquery $0:
+scan
+        motion [policy: full]
+            values
+                value row (data=ROW(1::int))
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [1-3000]
+
+-- TEST: test-explain-plan-subquery-as-expression-under-order-by
+-- SQL:
+EXPLAIN SELECT "id" FROM "testing_space" ORDER BY "id" + (VALUES (1))
+-- EXPECTED:
+projection ("id"::int -> "id")
+    order by ("id"::int + ROW($0))
+        motion [policy: full]
+            scan
+                projection ("testing_space"."id"::int -> "id")
+                    scan "testing_space"
+subquery $0:
+scan
+            motion [policy: full]
+                values
+                    value row (data=ROW(1::int))
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [1-3000]
+
+-- TEST: test-explain-plan-subquery-as-expression-under-projection-nested
+-- SQL:
+EXPLAIN SELECT (values ((values (1)))) from testing_space
+-- EXPECTED:
+projection (ROW($1) -> "col_1")
+    scan "testing_space"
+subquery $0:
+scan
+                        motion [policy: full]
+                            values
+                                value row (data=ROW(1::int))
+subquery $1:
+scan
+        motion [policy: full]
+            values
+                value row (data=ROW(ROW($0)))
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [1-3000]
+
+-- TEST: test-explain-plan-subquery-as-expression-under-group-by
+-- SQL:
+EXPLAIN SELECT (values ((values (1)))) from testing_space
+-- EXPECTED:
+projection (ROW($1) -> "col_1")
+    scan "testing_space"
+subquery $0:
+scan
+                        motion [policy: full]
+                            values
+                                value row (data=ROW(1::int))
+subquery $1:
+scan
+        motion [policy: full]
+            values
+                value row (data=ROW(ROW($0)))
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [1-3000]
+
+-- TEST: test-explain-plan-subquery-as-expression-under-selection
+-- SQL:
+EXPLAIN SELECT "id" FROM "testing_space" WHERE (VALUES (true))
+-- EXPECTED:
+projection ("testing_space"."id"::int -> "id")
+    selection ROW($0)
+        scan "testing_space"
+subquery $0:
+scan
+            motion [policy: full]
+                values
+                    value row (data=ROW(true::bool))
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [1-3000]
+
+-- TEST: test-explain-plan-subquery-as-expression-under-projection-several
+-- SQL:
+EXPLAIN SELECT (values (1)), (values (2)) from testing_space
+-- EXPECTED:
+projection (ROW($1) -> "col_1", ROW($0) -> "col_2")
+    scan "testing_space"
+subquery $0:
+scan
+        motion [policy: full]
+            values
+                value row (data=ROW(2::int))
+subquery $1:
+scan
+        motion [policy: full]
+            values
+                value row (data=ROW(1::int))
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [1-3000]

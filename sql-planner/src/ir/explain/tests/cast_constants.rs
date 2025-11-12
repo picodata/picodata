@@ -8,8 +8,9 @@ fn select_values_rows() {
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1", "unnamed_subquery"."COLUMN_2"::int -> "COLUMN_2", "unnamed_subquery"."COLUMN_3"::string -> "COLUMN_3")
         scan "unnamed_subquery"
-            values
-                value row (data=ROW(1::int, 2::int, 'txt'::string))
+            motion [policy: full]
+                values
+                    value row (data=ROW(1::int, 2::int, 'txt'::string))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000

@@ -402,8 +402,9 @@ fn select_value_plan() {
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1")
         scan "unnamed_subquery"
-            values
-                value row (data=ROW(1::int))
+            motion [policy: full]
+                values
+                    value row (data=ROW(1::int))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000

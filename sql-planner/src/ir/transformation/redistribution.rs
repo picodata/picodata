@@ -12,12 +12,12 @@ use crate::ir::api::children::Children;
 use crate::ir::distribution::{Distribution, Key, KeySet};
 use crate::ir::expression::ColumnPositionMap;
 use crate::ir::node::expression::Expression;
-use crate::ir::node::relational::{RelOwned, Relational};
+use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::operator::{Bool, JoinKind, OrderByEntity, Unary, UpdateStrategy};
 
 use crate::ir::node::ReferenceTarget::Single;
 use crate::ir::node::{
-    BoolExpr, Constant, Except, GroupBy, Having, Intersect, Join, Limit, NodeId, OrderBy,
+    BoolExpr, Constant, Except, GroupBy, Having, Intersect, Join, Limit, Motion, NodeId, OrderBy,
     Projection, Reference, ReferenceTarget, Row, ScanCte, ScanRelation, ScanSubQuery,
     SelectWithoutScan, Selection, SubQueryReference, UnaryExpr, Union, UnionAll, Update, Values,
     ValuesRow, Window,
@@ -2406,8 +2406,41 @@ impl Plan {
                 continue;
             }
             let sq = self.get_relation_node(sq_id)?;
-            if matches!(sq, Relational::Motion { .. }) {
-                continue;
+            match sq {
+                Relational::Motion(Motion {
+                    child: Some(motion_child),
+                    ..
+                }) => {
+                    let sq_child = if let Relational::ScanSubQuery(ScanSubQuery { child, .. }) =
+                        self.get_relation_node(*motion_child)?
+                    {
+                        *child
+                    } else {
+                        continue;
+                    };
+
+                    if let Relational::Motion(Motion {
+                        child: Some(nested_child_ref),
+                        output: nested_output_ref,
+                        ..
+                    }) = self.get_relation_node(sq_child)?
+                    {
+                        let nested_child = *nested_child_ref;
+                        let nested_output = *nested_output_ref;
+
+                        if let MutRelational::ScanSubQuery(scan_sq) =
+                            self.get_mut_relation_node(*motion_child)?
+                        {
+                            scan_sq.child = nested_child;
+                            scan_sq.output = nested_output;
+                        }
+                    }
+                    continue;
+                }
+                Relational::Motion(_) => {
+                    continue;
+                }
+                _ => {}
             }
 
             let sq_dist = self.get_rel_distribution(sq_id)?;
@@ -2459,10 +2492,31 @@ impl Plan {
         // Map of { old relational child -> new relational child }
         // used to fix Union nodes.
         let mut old_new: AHashMap<NodeId, NodeId> = AHashMap::new();
-
+        let mut values_covered = AHashSet::new();
         for LevelNode(_, id) in nodes {
             if visited.contains(&id) {
                 continue;
+            }
+
+            // Before processing the node itself we ensure that each of its children that is a
+            // `Values` node is covered with a `Motion::Full`.
+            {
+                let children = self.get_relational_children(id)?;
+
+                let mut strategy = Strategy::new(id);
+                for child_id in children.iter().copied() {
+                    if values_covered.contains(&child_id) {
+                        continue;
+                    }
+                    let child_rel = self.get_relation_node(child_id)?;
+                    if let Relational::Values(_) = child_rel {
+                        strategy.add_child(child_id, MotionPolicy::Full, Program::default());
+                        values_covered.insert(child_id);
+                    }
+                }
+                if !strategy.children_policy.is_empty() {
+                    self.create_motion_nodes(strategy)?;
+                }
             }
 
             // We clone it because immutable reference won't allow us to change plan later.

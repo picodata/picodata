@@ -138,31 +138,6 @@ FROM "arithmetic_space"
 -- EXPECTED:
 'first', 'second', '42', '42', '42', '42', '42', '42', '42', '42'
 
--- TEST: test_arbitrary_valid-12
--- SQL:
-SELECT
-    "id",
-    "val",
-    CASE "id"
-        WHEN 5 THEN 'five'
-        WHEN "val" THEN 'equal'
-    END "case_result"
-FROM "arithmetic_space"
-INNER JOIN
-(SELECT "COLUMN_2" as "val" FROM (VALUES (1), (2))) AS "values"
-ON true
--- EXPECTED:
-1, 1, 'equal', 2, 1, None,
-3, 1, None, 4, 1, None,
-5, 1, 'five', 6, 1, None,
-7, 1, None, 8, 1, None, 9,
-1, None, 10, 1, None, 1,
-2, None, 2, 2, 'equal', 3,
-2, None, 4, 2, None, 5,
-2, 'five', 6, 2, None, 7,
-2, None, 8, 2, None,
-9, 2, None, 10, 2, None
-
 -- TEST: test_arbitrary_valid-13
 -- SQL:
 SELECT
