@@ -1,4 +1,4 @@
-status: in progress
+status: accepted
 
 decision-makers: @kostja, @funbringer
 
@@ -573,8 +573,8 @@ struct Range {
 startup message, в виде объекта ключ-значение. Мы можем встроить
 любую информацию в этот заголовок, в частности:
 
-```m
-"smart_connector": "0.1",
+```c
+"picodata_catalog_cdc": 1,
 ```
 
 Наличие этого поля сообщает серверу, что он должен отправлять
@@ -587,11 +587,11 @@ startup message, в виде объекта ключ-значение. Мы мо
 этого клиента в своем маппинге для дальнейшей отправки событий.
 
 Для отладки протокола через psql также следует рассмотреть возможность
-передачи флага `smart_connector` через `options`. Это позволит получать
-и отображать служебные сообщения прямо в psql:
+передачи флага `picodata_catalog_cdc` через `options`. Это позволит 
+получать и отображать служебные сообщения прямо в psql:
 
 ```shell
-psql postgres://localhost:4327?options=smart_connector%3D0.1
+psql postgres://localhost:4327?options=picodata_catalog_cdc%3D1
 ```
 
 #### Отправка снапшота топологии
