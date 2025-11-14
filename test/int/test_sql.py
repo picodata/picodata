@@ -6891,3 +6891,19 @@ def test_alter_table_rename(cluster: Cluster):
             """
         )
         assert ddl["row_count"] == 1
+
+
+def test_identifiers_with_semicolon(instance: Instance):
+    queries = [
+        "CREATE TABLE t; (a INT PRIMARY KEY)",
+        "CREATE TABLE t (a; INT PRIMARY KEY)",
+        "SELECT 1 AS ; UNION SELECT 1",
+        "WITH cte; AS (SELECT 1) SELECT * FROM cte;",
+        "CREATE USER ; WITH PASSWORD 'Passw0rd'",
+        "SELECT * FROM _pico_table ; join _pico_table ON true",
+        "UPDATE t SET a = b; WHERE false",
+    ]
+
+    for q in queries:
+        with pytest.raises(TarantoolError, match="rule parsing error"):
+            instance.sql(q)

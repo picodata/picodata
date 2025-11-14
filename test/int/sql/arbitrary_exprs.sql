@@ -407,3 +407,27 @@ select 1 as "kek;"
 -- EXPECTED:
 1
 
+-- TEST: test_quoted_identifiers_work_with_semicolons
+-- SQL:
+CREATE TABLE "t;" ("id;" int primary key, "a;" int, "b;" int);
+INSERT INTO "t;" ("id;", "a;", "b;") VALUES (1,2,3);
+
+-- TEST: test_quoted_identifiers_with_semicolons_in_select
+-- SQL:
+SELECT "t;"."id;", "a;" + "b;" AS "a+b;" FROM "t;";
+-- EXPECTED:
+1,5
+
+-- TEST: test_quoted_identifiers_with_semicolons_in_rename
+-- SQL:
+ALTER TABLE "t;" RENAME TO "tt;";
+
+-- TEST: test_quoted_identifiers_with_semicolons_in_delete
+-- SQL:
+DELETE FROM "tt;" WHERE "id;" = "id;";
+
+-- TEST: test_quoted_identifiers_with_semicolons_in_drop
+
+-- SQL:
+DROP TABLE "tt;";
+

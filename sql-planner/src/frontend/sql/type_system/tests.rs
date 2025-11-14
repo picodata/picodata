@@ -356,7 +356,7 @@ fn case() {
             WHEN 'carrot' THEN 'vegetable'
             WHEN 'kiwi' THEN 'exotic fruit'
             ELSE 'unknown'
-          END AS food_type;
+          END AS food_type
         FROM params
         "#,
         "failed to parse 'apple' as a value of type int, consider using explicit type casts",

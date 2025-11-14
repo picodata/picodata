@@ -352,7 +352,7 @@ Identifier = @{ DelimitedIdentifier | RegularIdentifier  }
                             &IdentifierInapplicableSymbol }
         RegularIdentifierFirstApplicableSymbol = { !(IdentifierInapplicableSymbol | ASCII_DIGIT) ~ ANY }
         RegularIdentifierApplicableSymbol = { !IdentifierInapplicableSymbol ~ ANY }
-        IdentifierInapplicableSymbol = { WHITESPACE | "." | "," | "(" | EOF | ")" | "\"" | ":" | "[" | "]"
+        IdentifierInapplicableSymbol = { WHITESPACE | "." | "," | "(" | EOF | ")" | "\"" | ":" | ";" | "[" | "]"
                                        | "'" | ArithInfixOp | ConcatInfixOp | NotEq | GtEq
                                        | Gt | LtEq | Lt | Eq }
         KeywordCoverage = { Keyword ~ IdentifierInapplicableSymbol }
