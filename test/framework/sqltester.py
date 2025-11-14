@@ -8,6 +8,7 @@ from decimal import Decimal
 import re
 from conftest import Cluster, TarantoolError
 import psycopg
+import enum
 
 
 NOT_AN_ERROR = "-"
@@ -40,6 +41,62 @@ def compare_results(expected, actual):
         raise AssertionError("\n".join(message))
 
 
+# Extract queries from string divided by `;`.
+#
+# For the following input 3 queries will be returned:
+# ```sql
+# SELECT ';';
+# SELECT 1;
+# SELECT "kek;";
+# ```
+def parse_queries(raw_queries: str):
+    class State(enum.Enum):
+        SEARCHING_FOR_DELIMITER = enum.auto()
+        PARSING_STRING_LITERAL = enum.auto()
+        PARSING_QUOTED_IDENTIFIER = enum.auto()
+        PARSING_ESCAPED_QUOTE = enum.auto()
+
+    delimiter = ";"
+    state = State.SEARCHING_FOR_DELIMITER
+    cur_start = 0
+
+    assert raw_queries[-1] == delimiter, f"All queries must be terminated with '{delimiter}'"
+
+    queries = []
+    for i, ch in enumerate(raw_queries):
+        match state:
+            case State.SEARCHING_FOR_DELIMITER:
+                if ch == delimiter:
+                    queries.append(raw_queries[cur_start : i + 1])
+                    cur_start = i + 1
+                elif ch == "'":
+                    state = State.PARSING_STRING_LITERAL
+                elif ch == '"':
+                    state = State.PARSING_QUOTED_IDENTIFIER
+
+            case State.PARSING_STRING_LITERAL:
+                if ch == "'":
+                    if raw_queries[i + 1] == "'":
+                        state = State.PARSING_ESCAPED_QUOTE
+                    else:
+                        state = State.SEARCHING_FOR_DELIMITER
+
+            case State.PARSING_QUOTED_IDENTIFIER:
+                if ch == '"':
+                    state = State.SEARCHING_FOR_DELIMITER
+
+            case State.PARSING_ESCAPED_QUOTE:
+                assert ch == "'"
+                state = State.SEARCHING_FOR_DELIMITER
+
+    assert state == State.SEARCHING_FOR_DELIMITER
+    assert cur_start == len(raw_queries), "Couldn't parse all queries"
+
+    queries = [q.lstrip() for q in queries]
+
+    return queries
+
+
 class IprotoRunner:
     def __init__(self, cluster: Cluster):
         self.cluster = cluster
@@ -63,7 +120,7 @@ class IprotoRunner:
     def do_catchsql(self, sql: str, expected: str | list):
         cluster = self.cluster
         instance = cluster.leader()
-        queries = [q.strip() for q in sql.split(";") if q.strip()]
+        queries = parse_queries(sql)
 
         if isinstance(expected, str):
             expected = [expected]
@@ -118,7 +175,7 @@ class PgprotoRunner:
         assert explain == expected
 
     def do_catchsql(self, sql: str, expected: str | list):
-        queries = [q.strip() for q in sql.split(";") if q.strip()]
+        queries = parse_queries(sql)
 
         if isinstance(expected, str):
             expected = [expected]

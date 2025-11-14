@@ -394,3 +394,16 @@ null
 SELECT DISTINCT current_state[NULL] FROM _pico_instance;
 -- EXPECTED:
 null
+
+-- TEST: test_parsing_semicolons_in_literals
+-- SQL:
+select ';' union select ';';
+-- EXPECTED:
+';'
+
+-- TEST: test_parsing_semicolons_in_quoted_identifiers
+-- SQL:
+select 1 as "kek;"
+-- EXPECTED:
+1
+
