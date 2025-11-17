@@ -22,7 +22,7 @@ SELECT emp, region, total FROM (
         PARTITION BY region ORDER BY total DESC
     ) AS rownumber
     FROM sales
-) WHERE rownumber::int <= 2 ORDER BY region, total DESC
+) WHERE rownumber::int <= 2 ORDER BY region, total DESC;
 -- EXPECTED:
 'Horace', 'East', 1,
 'Charles', 'North', 45,

@@ -18,7 +18,7 @@ INSERT INTO "space_simple_shard_key_hist" ("id", "name", "sysOp") VALUES (1, 'ok
 -- TEST: test_simple_motion_query
 -- SQL:
 SELECT "id", "name" FROM "space_simple_shard_key"
-        WHERE "id" in (SELECT "id" FROM "testing_space_hist" WHERE "product_units" > 3)
+        WHERE "id" in (SELECT "id" FROM "testing_space_hist" WHERE "product_units" > 3);
 -- EXPECTED:
 1, 'ok'
 
@@ -34,7 +34,7 @@ SELECT * FROM (
             UNION ALL
             SELECT "id", "name" FROM "testing_space_hist" WHERE "product_units" > 3
         ) as "t2"
-        WHERE "id" = 1.00 and "name" = '123')
+        WHERE "id" = 1.00 and "name" = '123');
 -- EXPECTED:
 1, 'ok', 1, 'ok_hist'
 
@@ -58,21 +58,21 @@ SELECT "t3"."id", "t3"."name", "t8"."product_units"
         FROM "testing_space_hist"
         WHERE "product_units" > 0) AS "t8"
         ON "t3"."id" = "t8"."id1"
-    WHERE "t3"."id" = 1
+    WHERE "t3"."id" = 1;
 -- EXPECTED:
 1, 'ok', 5, 1, 'ok_hist', 5
 
 -- TEST: test_empty_motion_result-1
 -- SQL:
 SELECT "id", "name" FROM "testing_space"
-    WHERE "id" in (SELECT "id" FROM "space_simple_shard_key_hist" WHERE "sysOp" < 0)
+    WHERE "id" in (SELECT "id" FROM "space_simple_shard_key_hist" WHERE "sysOp" < 0);
 -- EXPECTED:
 
 
 -- TEST: test_empty_motion_result-2
 -- SQL:
 SELECT "id", "name" FROM "testing_space"
-    WHERE ("id", "name") in (SELECT "id", "name" FROM "space_simple_shard_key_hist" WHERE "sysOp" < 0)
+    WHERE ("id", "name") in (SELECT "id", "name" FROM "space_simple_shard_key_hist" WHERE "sysOp" < 0);
 -- EXPECTED:
 
 
@@ -80,7 +80,7 @@ SELECT "id", "name" FROM "testing_space"
 -- SQL:
 SELECT *, "bucket_id" FROM "testing_space"
     WHERE "id" in (SELECT "id" FROM "space_simple_shard_key_hist" WHERE "sysOp" > 0)
-        OR "id" in (SELECT "id" FROM "space_simple_shard_key_hist" WHERE "sysOp" < 0)
+        OR "id" in (SELECT "id" FROM "space_simple_shard_key_hist" WHERE "sysOp" < 0);
 -- EXPECTED:
 1, '123', 1, 1934
 
@@ -90,7 +90,7 @@ SELECT "sysOp", "product_units" FROM "testing_space"
     INNER JOIN (SELECT "sysOp" FROM (SELECT "product_units" from "testing_space_hist") as r
     INNER JOIN "space_simple_shard_key"
     on r."product_units" = "space_simple_shard_key"."sysOp") as q
-    on q."sysOp" = "testing_space"."product_units"
+    on q."sysOp" = "testing_space"."product_units";
 -- EXPECTED:
 
 -- TEST: test_subquery_under_motion_without_alias
@@ -99,7 +99,7 @@ SELECT * FROM
         (SELECT "id" as "tid" FROM "testing_space")
 INNER JOIN
         (SELECT "id" as "sid" FROM "space_simple_shard_key")
-ON true
+ON true;
 -- EXPECTED:
 1, 1, 1, 10
 
@@ -109,7 +109,7 @@ SELECT * FROM
         (SELECT "id" as "tid" FROM "testing_space")
 INNER JOIN
         (SELECT "id" as "sid" FROM "space_simple_shard_key") as "smth"
-ON true
+ON true;
 -- EXPECTED:
 1, 1, 1, 10
 
@@ -120,13 +120,13 @@ JOIN "space_simple_shard_key" as t2
 ON t1."id" = t2."id"
 JOIN "space_simple_shard_key_hist" as t3
 ON t2."id" = t3."id"
-WHERE t1."id" = 1
+WHERE t1."id" = 1;
 -- EXPECTED:
 1
 
 -- TEST: test_join_segment_motion-1.1
 -- SQL:
-insert into "space_simple_shard_key" ("id", "name", "sysOp") values (2, '222', 2), (3, '333', 3)
+insert into "space_simple_shard_key" ("id", "name", "sysOp") values (2, '222', 2), (3, '333', 3);
 
 -- TEST: test_join_segment_motion-1.2
 -- SQL:
@@ -136,6 +136,6 @@ SELECT "t1"."id" FROM (
 JOIN (
     SELECT "sysOp" FROM "space_simple_shard_key"
 ) as "t2"
-ON "t1"."id" = "t2"."sysOp"
+ON "t1"."id" = "t2"."sysOp";
 -- UNORDERED:
 1, 2, 3

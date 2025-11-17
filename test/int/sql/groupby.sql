@@ -40,14 +40,14 @@ VALUES
 -- SQL:
 SELECT "name"
     FROM "testing_space"
-    GROUP BY "name"
+    GROUP BY "name";
 -- EXPECTED:
 '1', '123', '2'
 
 -- TEST: test_grouping-2
 -- SQL:
 SELECT "name"
-FROM "testing_space"
+FROM "testing_space";
 -- EXPECTED:
 '123', '1', '1', '2', '123', '2'
 
@@ -55,7 +55,7 @@ FROM "testing_space"
 -- SQL:
 SELECT "name" || 'p' AS "name"
 FROM "testing_space"
-GROUP BY "name"
+GROUP BY "name";
 -- EXPECTED:
 '1p', '123p', '2p'
 
@@ -63,7 +63,7 @@ GROUP BY "name"
 -- SQL:
 SELECT "a" + "b" AS e1, "a" / "b" AS e2
 FROM "arithmetic_space"
-GROUP BY "a", "b"
+GROUP BY "a", "b";
 -- EXPECTED:
 2, 1, 3, 0, 5, 0
 
@@ -71,7 +71,7 @@ GROUP BY "a", "b"
 -- SQL:
 SELECT *
 FROM (SELECT cast("number_col" AS decimal) AS col FROM "arithmetic_space")
-GROUP BY col
+GROUP BY col;
 -- EXPECTED:
 Decimal('2'), Decimal('2.14'), Decimal('3.14')
 
@@ -79,7 +79,7 @@ Decimal('2'), Decimal('2.14'), Decimal('3.14')
 -- SQL:
 SELECT "f", "boolean_col", "string_col"
 FROM "arithmetic_space"
-GROUP BY "f", "boolean_col", "string_col"
+GROUP BY "f", "boolean_col", "string_col";
 -- EXPECTED:
 2, True, 'a', 2, True, 'c'
 
@@ -89,19 +89,19 @@ SELECT d, u
 FROM (
     SELECT CAST("number_col" AS DOUBLE) AS d, CAST("number_col" AS INTEGER) AS u FROM "arithmetic_space2"
 )
-GROUP BY d, u
+GROUP BY d, u;
 -- EXPECTED:
 2.717, 2, 2.718, 2, 3.1415, 3
 
 -- TEST: invalid-1
 -- SQL:
-SELECT "id" + "product_units" FROM "testing_space" GROUP BY "id"
+SELECT "id" + "product_units" FROM "testing_space" GROUP BY "id";
 -- ERROR:
 invalid query: column "product_units" is not found in grouping expressions!
 
 -- TEST: invalid-2
 -- SQL:
-SELECT * FROM "testing_space" GROUP BY "id" + 1
+SELECT * FROM "testing_space" GROUP BY "id" + 1;
 -- ERROR:
 invalid query: column "id" is not found in grouping expressions!
 
@@ -109,31 +109,31 @@ invalid query: column "id" is not found in grouping expressions!
 -- SQL:
 SELECT ("c"*"b"*"a")*count("c")/(("b"*"a"*"c")*count("c")) as u
 from "arithmetic_space"
-group by "a"*"b"*"c"
+group by "a"*"b"*"c";
 -- ERROR:
 invalid query: column "c" is not found in grouping expressions!
 
 -- TEST: invalid-4
 -- SQL:
-SELECT "id" + count("id") FROM "testing_space" GROUP BY "id" + count("id")
+SELECT "id" + count("id") FROM "testing_space" GROUP BY "id" + count("id");
 -- ERROR:
 invalid query: aggregate functions are not allowed inside grouping expression. Got aggregate: count
 
 -- TEST: invalid-5
 -- SQL:
-SELECT "name", "product_units" FROM "testing_space" GROUP BY "name"
+SELECT "name", "product_units" FROM "testing_space" GROUP BY "name";
 -- ERROR:
 invalid query: column "product_units" is not found in grouping expressions!
 
 -- TEST: invalid-6
 -- SQL:
-SELECT "name", "product_units" FROM "testing_space" GROUP BY "name" "product_units"
+SELECT "name", "product_units" FROM "testing_space" GROUP BY "name" "product_units";
 -- ERROR:
 rule parsing error
 
 -- TEST: invalid-7
 -- SQL:
-SELECT "product_units" FROM "testing_space" GROUP BY "name"
+SELECT "product_units" FROM "testing_space" GROUP BY "name";
 -- ERROR:
 invalid query: column "product_units" is not found in grouping expressions!
 
@@ -141,7 +141,7 @@ invalid query: column "product_units" is not found in grouping expressions!
 -- SQL:
 SELECT "product_units", "name"
 FROM "testing_space"
-GROUP BY "product_units", "name"
+GROUP BY "product_units", "name";
 -- EXPECTED:
 1, '1', 1, '123', 2, '123', 2, '2', 4, '2'
 
@@ -149,7 +149,7 @@ GROUP BY "product_units", "name"
 -- SQL:
 SELECT "product_units", "name"
 FROM "testing_space"
-GROUP BY "name", "product_units"
+GROUP BY "name", "product_units";
 -- EXPECTED:
 1, '1', 1, '123', 2, '123', 2, '2', 4, '2'
 
@@ -158,7 +158,7 @@ GROUP BY "name", "product_units"
 SELECT "product_units", "name"
 FROM "testing_space"
 WHERE "product_units" > 1
-GROUP BY "product_units", "name"
+GROUP BY "product_units", "name";
 -- EXPECTED:
 2, '123', 2, '2', 4, '2'
 
@@ -169,7 +169,7 @@ FROM "arithmetic_space"
 INNER JOIN
     (SELECT "id" as "id2", "a" as "a2" from "arithmetic_space2") as t
 ON "arithmetic_space"."id" = t."a2"
-GROUP BY "id", "id2"
+GROUP BY "id", "id2";
 -- EXPECTED:
 1, 3, 1, 4, 2, 1, 2, 2
 
@@ -180,7 +180,7 @@ FROM "arithmetic_space"
 INNER JOIN
     (SELECT "b" AS b1, "a" AS a1 FROM "arithmetic_space2") AS q
 ON "arithmetic_space"."c" = q.a1
-GROUP BY "c", a1
+GROUP BY "c", a1;
 -- EXPECTED:
 1, 1
 
@@ -190,7 +190,7 @@ SELECT "c", q.a1
 FROM "arithmetic_space"
 INNER JOIN
     (SELECT "b" AS b1, "a" AS a1 FROM "arithmetic_space2") AS q
-ON "arithmetic_space"."c" = q.a1
+ON "arithmetic_space"."c" = q.a1;
 -- EXPECTED:
 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
 
@@ -201,7 +201,7 @@ FROM (SELECT "a" + "b" AS "i" FROM "arithmetic_space2" GROUP BY "a"+"b") AS r
 INNER JOIN
     (SELECT "c", "b" FROM "arithmetic_space" GROUP BY "c", "b") AS q
 ON r."i" = q."b"
-GROUP BY r."i", q."b"
+GROUP BY r."i", q."b";
 -- EXPECTED:
 2, 2, 3, 3
 
@@ -211,19 +211,19 @@ SELECT r."i", q."b"
 FROM (SELECT "a" AS "i" FROM "arithmetic_space2") AS r
 INNER JOIN
     (SELECT "c", "b" FROM "arithmetic_space") AS q
-ON r."i" = q."b"
+ON r."i" = q."b";
 -- EXPECTED:
 2, 2, 2, 2, 1, 1, 1, 1
 
 -- TEST: test_with_union-1
 -- SQL:
-SELECT "a" FROM "arithmetic_space" GROUP BY "a" UNION ALL SELECT "a" FROM "arithmetic_space2"
+SELECT "a" FROM "arithmetic_space" GROUP BY "a" UNION ALL SELECT "a" FROM "arithmetic_space2";
 -- UNORDERED:
 1, 2, 2, 2, 1, 1
 
 -- TEST: test_with_union-2
 -- SQL:
-SELECT "a" FROM "arithmetic_space" GROUP BY "a" UNION ALL SELECT "a" FROM "arithmetic_space2" GROUP BY "a"
+SELECT "a" FROM "arithmetic_space" GROUP BY "a" UNION ALL SELECT "a" FROM "arithmetic_space2" GROUP BY "a";
 -- EXPECTED:
 1, 2, 1, 2
 
@@ -231,7 +231,7 @@ SELECT "a" FROM "arithmetic_space" GROUP BY "a" UNION ALL SELECT "a" FROM "arith
 -- SQL:
 SELECT "a" FROM (
 SELECT "a" FROM "arithmetic_space" GROUP BY "a" UNION ALL SELECT "a" FROM "arithmetic_space2" GROUP BY "a"
-) GROUP BY "a"
+) GROUP BY "a";
 -- EXPECTED:
 1, 2
 
@@ -239,7 +239,7 @@ SELECT "a" FROM "arithmetic_space" GROUP BY "a" UNION ALL SELECT "a" FROM "arith
 -- SQL:
 SELECT "b" FROM "arithmetic_space" GROUP BY "b"
 EXCEPT
-SELECT "b" FROM "arithmetic_space2"
+SELECT "b" FROM "arithmetic_space2";
 -- EXPECTED:
 3
 
@@ -251,7 +251,7 @@ SELECT * FROM (
     SELECT "c", "d" FROM "arithmetic_space"
     EXCEPT
     SELECT "c", "d" FROM "arithmetic_space2" GROUP BY "c", "d")
-) GROUP BY "a", "b"
+) GROUP BY "a", "b";
 -- EXPECTED:
 1, 1, 1, 2, 2, 3
 
@@ -260,7 +260,7 @@ SELECT * FROM (
 SELECT "b" FROM "arithmetic_space"
 EXCEPT
 SELECT "b" FROM "arithmetic_space2"
-GROUP BY "b"
+GROUP BY "b";
 -- EXPECTED:
 3
 
@@ -269,7 +269,7 @@ GROUP BY "b"
 SELECT * FROM (
     SELECT "a", "b" FROM "arithmetic_space2"
     GROUP BY "a", "b"
-)
+);
 -- EXPECTED:
 1, 1, 2, 1, 2, 2
 
@@ -277,20 +277,20 @@ SELECT * FROM (
 -- SQL:
 SELECT * FROM (
     SELECT "a", "b" FROM "arithmetic_space2"
-)
+);
 -- EXPECTED:
 2, 1, 2, 2, 1, 1, 1, 1
 
 -- TEST: test_with_subquery_2-1
 -- SQL:
-SELECT cast("number_col" AS integer) AS k FROM "arithmetic_space" GROUP BY "number_col"
+SELECT cast("number_col" AS integer) AS k FROM "arithmetic_space" "памагити" GROUP BY "number_col";
 -- EXPECTED:
 2, 2, 3
 
 -- TEST: test_with_subquery_2-2
 -- SQL:
 SELECT "f" FROM "arithmetic_space2"
-WHERE "id" in (SELECT cast("number_col" AS integer) FROM "arithmetic_space" GROUP BY "number_col")
+WHERE "id" in (SELECT cast("number_col" AS integer) FROM "arithmetic_space" GROUP BY "number_col");
 -- EXPECTED:
 2, 2
 
@@ -298,21 +298,21 @@ WHERE "id" in (SELECT cast("number_col" AS integer) FROM "arithmetic_space" GROU
 -- SQL:
 SELECT "f" FROM "arithmetic_space2"
 WHERE "id" in (SELECT cast("number_col" AS integer) FROM "arithmetic_space" GROUP BY "number_col")
-GROUP BY "f"
+GROUP BY "f";
 -- EXPECTED:
 2
 
 -- TEST: test_less_cols_in_proj
 -- SQL:
 SELECT "c" FROM "arithmetic_space"
-GROUP BY "c", "d"
+GROUP BY "c", "d";
 -- EXPECTED:
 1, 1
 
 -- TEST: test_less_cols_in_proj
 -- SQL:
 SELECT "c" FROM "arithmetic_space"
-GROUP BY "c", "d"
+GROUP BY "c", "d";
 -- EXPECTED:
 1, 1
 
@@ -324,7 +324,7 @@ INNER JOIN
 (SELECT "id" FROM "testing_space" WHERE "id" in (SELECT "a" FROM "arithmetic_space" GROUP BY "a")) AS t2
 on t2."id" = t1."b"
 WHERE "b" in (SELECT "c" FROM "arithmetic_space" GROUP BY "c")
-GROUP BY "b", "string_col"
+GROUP BY "b", "string_col";
 -- EXPECTED:
 1, 'a', 1, 'b'
 
@@ -342,7 +342,7 @@ SELECT * FROM (
         EXCEPT
         SELECT "a" FROM "arithmetic_space"
     )
-)
+);
 -- UNORDERED:
 1, 2, 3
 
@@ -368,14 +368,14 @@ SELECT * FROM (
 
 -- TEST: test_count_works-1
 -- SQL:
-SELECT "d", "e" from "arithmetic_space"
+SELECT "d", "e" from "arithmetic_space";
 -- EXPECTED:
 1, 2, 2, 2, 2, 2, 1, 2
 
 -- TEST: test_count_works-2
 -- SQL:
 SELECT "d", count("e") from "arithmetic_space"
-group by "d"
+group by "d";
 -- EXPECTED:
 1, 2, 2, 2
 
@@ -386,20 +386,20 @@ select cs, count("d") from (
     group by "d"
 ) as t
 where t."d" > 1
-group by cs
+group by cs;
 -- EXPECTED:
 4, 1
 
 -- TEST: test_aggr_invalid
 -- SQL:
-SELECT "d", count(sum("e")) from "arithmetic_space" group by "d"
+SELECT "d", count(sum("e")) from "arithmetic_space" group by "d";
 -- ERROR:
 invalid query
 
 -- TEST: test_groupby_arith_expression
 -- SQL:
 SELECT ("a"*"b"*"c")*count("c")/(("a"*"b"*"c")*count("c")) as u from "arithmetic_space"
-        group by ("a"*"b"*"c")
+        group by ("a"*"b"*"c");
 -- EXPECTED:
 1, 1, 1
 
@@ -408,7 +408,7 @@ SELECT ("a"*"b"*"c")*count("c")/(("a"*"b"*"c")*count("c")) as u from "arithmetic
 SELECT "string_col2" || "string_col" as u from
 (select "id" as "i", "string_col" as "string_col2" from "arithmetic_space") as "t1"
 join "arithmetic_space2" on "t1"."i" = "arithmetic_space2"."id"
-group by "string_col2" || "string_col"
+group by "string_col2" || "string_col";
 -- EXPECTED:
 'aa', 'cb'
 
@@ -417,63 +417,63 @@ group by "string_col2" || "string_col"
 SELECT "b1" and "b1" as "c1", "boolean_col" or "b1" as "c2" from
 (select "id" as "i", "boolean_col" as "b1" from "arithmetic_space") as "t1"
 join "arithmetic_space2" on "t1"."i" = "arithmetic_space2"."id"
-group by "b1" and "b1", "boolean_col" or "b1"
+group by "b1" and "b1", "boolean_col" or "b1";
 -- EXPECTED:
 true, true
 
 -- TEST: test_grouping_by_cast_expr
 -- SQL:
 SELECT cast("number_col" as double) from "arithmetic_space"
-group by cast("number_col" as double)
+group by cast("number_col" as double);
 -- EXPECTED:
 2.0, 2.14, 3.14
 
 -- TEST: test_aggr_valid-1
 -- SQL:
-SELECT sum("e" + "d") from "arithmetic_space"
+SELECT sum("e" + "d") from "arithmetic_space";
 -- EXPECTED:
 14
 
 -- TEST: test_aggr_valid-2
 -- SQL:
-SELECT "d", count("e" + "d") from "arithmetic_space" group by "d"
+SELECT "d", count("e" + "d") from "arithmetic_space" group by "d";
 -- EXPECTED:
 1, 2, 2, 2
 
 -- TEST: test_aggr_valid-3
 -- SQL:
-SELECT "d", couNT ("e") from "arithmetic_space" group by "d"
+SELECT "d", couNT ("e") from "arithmetic_space" group by "d";
 -- EXPECTED:
 1, 2, 2, 2
 
 -- TEST: test_aggr_valid-4
 -- SQL:
-SELECT "d", count("e" * 10 + "a") from "arithmetic_space2" group by "d"
+SELECT "d", count("e" * 10 + "a") from "arithmetic_space2" group by "d";
 -- EXPECTED:
 1, 3, 3, 1
 
 -- TEST: test_aggr_valid-5
 -- SQL:
 SELECT "d", sum("e") = sum("b"), sum("e") != sum("a"), sum("e") > count("a"),
-        (sum("e") > count("a")) or (sum("e") = sum("b")) from "arithmetic_space2" group by "d"
+        (sum("e") > count("a")) or (sum("e") = sum("b")) from "arithmetic_space2" group by "d";
 -- EXPECTED:
 1, False, True, True, True, 3, True, False, True, True
 
 -- TEST: test_aggr_valid-6
 -- SQL:
-SELECT "d", sum(("d" + "c")) from "arithmetic_space2" group by "d"
+SELECT "d", sum(("d" + "c")) from "arithmetic_space2" group by "d";
 -- EXPECTED:
 1, 6, 3, 4
 
 -- TEST: test_aggr_valid-7
 -- SQL:
-SELECT "d", count(("d" < "id")) from "arithmetic_space" group by "d"
+SELECT "d", count(("d" < "id")) from "arithmetic_space" group by "d";
 -- EXPECTED:
 1, 2, 2, 2
 
 -- TEST: test_aggr_valid-8
 -- SQL:
-SELECT "c", count(("b" in ("id"))) as ss from "arithmetic_space2" group by "c"
+SELECT "c", count(("b" in ("id"))) as ss from "arithmetic_space2" group by "c";
 -- EXPECTED:
 1, 4
 
@@ -484,7 +484,7 @@ SELECT count("e") from (SELECT "e" from "arithmetic_space"
             UNION ALL
             select * from (SELECT sum("e" + "d") from "arithmetic_space"
             UNION ALL
-            SELECT sum("e") from "arithmetic_space"))
+            SELECT sum("e") from "arithmetic_space"));
 -- EXPECTED:
 3
 
@@ -496,7 +496,7 @@ EXCEPT
 SELECT * from (
 SELECT sum("e" + "d") from "arithmetic_space"
 EXCEPT
-SELECT sum("e") from "arithmetic_space")
+SELECT sum("e") from "arithmetic_space");
 -- EXPECTED:
 2
 
@@ -505,7 +505,7 @@ SELECT sum("e") from "arithmetic_space")
 SELECT "e" from "arithmetic_space"
 GROUP BY "e"
 EXCEPT
-SELECT sum("e" + "d") from "arithmetic_space"
+SELECT sum("e" + "d") from "arithmetic_space";
 -- EXPECTED:
 2
 
@@ -515,7 +515,7 @@ SELECT sum("e" + "d") from "arithmetic_space"
 EXCEPT
 SELECT "e" from "arithmetic_space"
 WHERE "id" > 2
-GROUP BY "e"
+GROUP BY "e";
 -- EXPECTED:
 14
 
@@ -523,7 +523,7 @@ GROUP BY "e"
 -- SQL:
 select o.a, o.b, i.c, i.d from (select sum("a") as a, count("b") as b from "arithmetic_space") as o
             inner join (select "c" + 3 as c, "d" + 4 as d from "arithmetic_space") as i
-            on o.a = i.d or o.b = i.c
+            on o.a = i.d or o.b = i.c;
 -- EXPECTED:
 6, 4, 4, 5, 6, 4, 4, 6, 6, 4, 4, 6, 6, 4, 4, 5
 
@@ -533,7 +533,7 @@ select o.a, o.b, i.c, i.d from (select sum("a") as a, count("b") as b from "arit
 select o.a, o.b, i.c, i.d from  (select "c" + 3 as c, "d" + 4 as d from "arithmetic_space") as i
             inner join (select sum("a") as a, count("b") as b from "arithmetic_space") as o
             on o.a = i.d or o.b = i.c and i.c in (select "id" from "arithmetic_space")
-            where o.a > 5
+            where o.a > 5;
 -- EXPECTED:
 6, 4, 4, 5, 6, 4, 4, 6, 6, 4, 4, 6, 6, 4, 4, 5
 
@@ -541,7 +541,7 @@ select o.a, o.b, i.c, i.d from  (select "c" + 3 as c, "d" + 4 as d from "arithme
 -- SQL:
 select i.a, o.d from  (select "c" + 3 as c, "d" + 4 as d from "arithmetic_space") as o
             inner join (select sum("a") as a, count("b") as b from "arithmetic_space") as i
-            on i.a = cast(o.d as integer)
+            on i.a = cast(o.d as integer);
 -- EXPECTED:
 6, 6, 6, 6
 
@@ -549,7 +549,7 @@ select i.a, o.d from  (select "c" + 3 as c, "d" + 4 as d from "arithmetic_space"
 -- SQL:
 select i.a, o.d from  (select "c" + 3 as c, "d" + 4 as d from "arithmetic_space") as o
             inner join (select sum("a") as a, count("b") as b from "arithmetic_space") as i
-            on i.a < 10
+            on i.a < 10;
 -- EXPECTED:
 Decimal('6'), 5, Decimal('6'), 6, Decimal('6'), 6, Decimal('6'), 5
 
@@ -557,7 +557,7 @@ Decimal('6'), 5, Decimal('6'), 6, Decimal('6'), 6, Decimal('6'), 5
 -- SQL:
 -- select i.a, o.d from  (select "c" as c, "d" as d from "arithmetic_space" group by "c", "d") as o
 --             inner join (select sum("a") as a, count("b") as b from "arithmetic_space") as i
---             on i.a < o.d + 5
+--             on i.a < o.d + 5;
 -- EXPECTED:
 -- 6, 2
 
@@ -565,14 +565,14 @@ Decimal('6'), 5, Decimal('6'), 6, Decimal('6'), 6, Decimal('6'), 5
 -- SQL:
 select i.a, o.d from  (select "c" as c, "d" as d from "arithmetic_space") as o
             inner join (select sum("a") as a, count("b") as b from "arithmetic_space") as i
-            on i.a = o.d + 4 and i.b = o.c + 3
+            on i.a = o.d + 4 and i.b = o.c + 3;
 -- EXPECTED:
 6, 2, 6, 2
 
 -- TEST: test_aggr_distinct
 -- SQL:
 SELECT "d", count(distinct "e"), count(distinct "e"+"a"), count(distinct "e"+"a") + sum(distinct "d"),
-           sum("d") from "arithmetic_space" group by "d"
+           sum("d") from "arithmetic_space" group by "d";
 -- EXPECTED:
 1, 1, 2, 3, 2, 2, 1, 2, 4, 4
 
@@ -580,33 +580,33 @@ SELECT "d", count(distinct "e"), count(distinct "e"+"a"), count(distinct "e"+"a"
 -- SQL:
 SELECT sum(distinct "d"), count("e"+"a"),
     count(distinct "e"+"a"), count(distinct "e"+"a") + sum(distinct "d"),
-    sum("d") from "arithmetic_space"
+    sum("d") from "arithmetic_space";
 -- EXPECTED:
 3, 4, 2, 5, 6
 
 -- TEST: test_select_distinct-1
 -- SQL:
-SELECT distinct "a"*2 from "arithmetic_space"
+SELECT distinct "a"*2 from "arithmetic_space";
 -- EXPECTED:
 2, 4
 
 -- TEST: test_select_distinct-2
 -- SQL:
-SELECT "a"*2 from "arithmetic_space" group by "a"*2
+SELECT "a"*2 from "arithmetic_space" group by "a"*2;
 -- EXPECTED:
 2, 4
 
 -- TEST: test_select_distinct2
 -- SQL:
 SELECT distinct * from
-        (select "e", "f" from "arithmetic_space")
+        (select "e", "f" from "arithmetic_space");
 -- EXPECTED:
 2, 2
 
 -- TEST: test_select_distinct3
 -- SQL:
 SELECT distinct sum("e") from
-        (select "e" from "arithmetic_space")
+        (select "e" from "arithmetic_space");
 -- EXPECTED:
 8
 
@@ -614,7 +614,7 @@ SELECT distinct sum("e") from
 -- SQL:
 SELECT distinct sum("e") from
         (select "e", "f" from "arithmetic_space")
-        group by "f"
+        group by "f";
 -- EXPECTED:
 8
 
@@ -622,45 +622,45 @@ SELECT distinct sum("e") from
 -- SQL:
 SELECT distinct sum("e") from
         (select "e", "f" from "arithmetic_space")
-        group by "f"
+        group by "f";
 -- EXPECTED:
 8
 
 -- TEST: test_count_asterisk-1
 -- SQL:
-SELECT count(*) from "arithmetic_space"
+SELECT count(*) from "arithmetic_space";
 -- EXPECTED:
 4
 
 -- TEST: test_count_asterisk-2
 -- SQL:
-SELECT count(*) from "null_t"
+SELECT count(*) from "null_t";
 -- EXPECTED:
 5
 
 -- TEST: test_count_asterisk_with_groupby
 -- SQL:
-SELECT count(*), "nb" from "null_t" group by "nb"
+SELECT count(*), "nb" from "null_t" group by "nb";
 -- EXPECTED:
 4, null, 1, 1
 
 -- TEST: test_avg
 -- SQL:
-SELECT avg("c"), avg(distinct "c"), avg("b"), avg(distinct "b") from "arithmetic_space"
+SELECT avg("c"), avg(distinct "c"), avg("b"), avg(distinct "b") from "arithmetic_space";
 -- EXPECTED:
 1, 1, 2.25, 2
 
 -- TEST: test_avg_with_groupby
 -- SQL:
 SELECT "a", avg("b"), avg(distinct "b") FROM "arithmetic_space"
-        GROUP BY "a"
+        GROUP BY "a";
 -- EXPECTED:
 1, 1.5, 1.5, 2, 3, 3
 
 -- TEST: test_group_concat
 -- SQL:
 SELECT group_concat(cast("c" as string), ' '), group_concat(distinct cast("c" as string))
-        from "arithmetic_space"
+        from "arithmetic_space";
 -- EXPECTED:
 '1 1 1 1', '1'
 
@@ -668,37 +668,37 @@ SELECT group_concat(cast("c" as string), ' '), group_concat(distinct cast("c" as
 -- SQL:
 SELECT "a", group_concat(cast("e" as string), '|'), group_concat(distinct cast("e" as string))
 FROM "arithmetic_space"
-GROUP BY "a"
+GROUP BY "a";
 -- EXPECTED:
 1, '2|2', '2', 2, '2|2', '2'
 
 -- TEST: test_min
 -- SQL:
-SELECT min("id"), min(distinct "d" / 2) from "arithmetic_space"
+SELECT min("id"), min(distinct "d" / 2) from "arithmetic_space";
 -- EXPECTED:
 1, 0
 
 -- TEST: test_min_with_groupby
 -- SQL:
-SELECT "a", min("b"), min(distinct "b") FROM "arithmetic_space" GROUP BY "a"
+SELECT "a", min("b"), min(distinct "b") FROM "arithmetic_space" GROUP BY "a";
 -- EXPECTED:
 1, 1, 1, 2, 3, 3
 
 -- TEST: test_max
 -- SQL:
-SELECT max("id"), max(distinct "d" / 2) from "arithmetic_space"
+SELECT max("id"), max(distinct "d" / 2) from "arithmetic_space";
 -- EXPECTED:
 4, 1
 
 -- TEST: test_max_with_groupby
 -- SQL:
-SELECT "a", max("b"), max(distinct "b") FROM "arithmetic_space" GROUP BY "a"
+SELECT "a", max("b"), max(distinct "b") FROM "arithmetic_space" GROUP BY "a";
 -- EXPECTED:
 1, 2, 2, 2, 3, 3
 
 -- TEST: test_total
 -- SQL:
-SELECT total("id"), total(distinct "d" / 2) from "arithmetic_space"
+SELECT total("id"), total(distinct "d" / 2) from "arithmetic_space";
 -- EXPECTED:
 10, 1
 
@@ -706,7 +706,7 @@ SELECT total("id"), total(distinct "d" / 2) from "arithmetic_space"
 -- SQL:
 WITH first  AS (SELECT "id" FROM "arithmetic_space" WHERE "id" = 1),
         second AS (SELECT "id" FROM "arithmetic_space2" WHERE "id" = 2)
-SELECT DISTINCT * FROM first JOIN second ON TRUE
+SELECT DISTINCT * FROM first JOIN second ON TRUE;
 -- EXPECTED:
 1, 2
 
@@ -714,7 +714,7 @@ SELECT DISTINCT * FROM first JOIN second ON TRUE
 -- SQL:
 WITH first  AS (SELECT "id", "a" FROM "arithmetic_space"),
              second AS (SELECT "id", "a" FROM "arithmetic_space2")
-        SELECT DISTINCT * FROM first JOIN second ON first."id" = second."id"
+        SELECT DISTINCT * FROM first JOIN second ON first."id" = second."id";
 -- EXPECTED:
 1, 1, 1, 2, 2, 1, 2, 2, 3, 2, 3, 1, 4, 2, 4, 1
 
@@ -723,7 +723,7 @@ WITH first  AS (SELECT "id", "a" FROM "arithmetic_space"),
 SELECT total("id") from (
     select * from "arithmetic_space" inner join
     "null_t" on false
-)
+);
 -- EXPECTED:
 0
 
@@ -732,7 +732,7 @@ SELECT total("id") from (
 SELECT total("nb") from (
             select * from "arithmetic_space" left join
             "null_t" on false
-        )
+        );
 -- EXPECTED:
 0
 
@@ -741,7 +741,7 @@ SELECT total("nb") from (
 SELECT sum("id") from (
             select * from "arithmetic_space" inner join
             "null_t" on false
-        )
+        );
 -- EXPECTED:
 null
 
@@ -750,28 +750,28 @@ null
 SELECT sum("nb") from (
     select * from "arithmetic_space" left join
     "null_t" on false
-)
+);
 -- EXPECTED:
 null
 
 -- TEST: test_total_with_groupby
 -- SQL:
 SELECT "a", total("b"), total(distinct "b") FROM "arithmetic_space"
-        GROUP BY "a"
+        GROUP BY "a";
 -- EXPECTED:
 1, 3, 3, 2, 6, 3
 
 -- TEST: test_having_with_sq-1
 -- SQL:
 SELECT "a", sum(distinct "b") as "sum", count(distinct "b") as "count" from "arithmetic_space"
-        group by "a"
+        group by "a";
 -- EXPECTED:
 1, 3, 2, 2, 3, 1
 
 -- TEST: test_having_with_sq-2
 -- SQL:
 SELECT "a", sum(distinct "b") as "sum", count(distinct "b") as "count" from "arithmetic_space"
-group by "a" having count(distinct "b") in (select "a" from "arithmetic_space" where "a" = 2)
+group by "a" having count(distinct "b") in (select "a" from "arithmetic_space" where "a" = 2);
 -- EXPECTED:
 1, 3, 2
 
@@ -779,14 +779,14 @@ group by "a" having count(distinct "b") in (select "a" from "arithmetic_space" w
 -- SQL:
 SELECT "a", sum("b") as "sum" from "arithmetic_space"
 group by "a"
-having sum("b") > 5
+having sum("b") > 5;
 -- EXPECTED:
 2, 6
 
 -- TEST: test_having1-2
 -- SQL:
 SELECT "a", sum("b") as "sum" from "arithmetic_space"
-group by "a"
+group by "a";
 -- EXPECTED:
 1, Decimal('3'), 2, Decimal('6')
 
@@ -794,7 +794,7 @@ group by "a"
 -- SQL:
 SELECT "a", sum("b") as "sum" from "arithmetic_space"
 group by "a"
-having "a" = 1
+having "a" = 1;
 -- EXPECTED:
 1, 3
 
@@ -802,21 +802,21 @@ having "a" = 1
 -- SQL:
 SELECT "boolean_col", sum(distinct "f") as "sum" from "arithmetic_space"
         group by "boolean_col"
-        having "boolean_col" = true
+        having "boolean_col" = true;
 -- EXPECTED:
 true, 2
 
 -- TEST: test_having_no_groupby-1
 -- SQL:
 SELECT sum("a"), sum(distinct "a"), count("a"), count(distinct "a") from "arithmetic_space"
-        having count(distinct "a") > 1
+        having count(distinct "a") > 1;
 -- EXPECTED:
 6, 3, 4, 2
 
 -- TEST: test_having_no_groupby-2
 -- SQL:
 SELECT sum("a"), sum(distinct "a"), count("a"), count(distinct "a") from "arithmetic_space"
-        having count(distinct "a") > 100
+        having count(distinct "a") > 100;
 -- EXPECTED:
 
 -- TEST: test_having_selection-1
@@ -825,7 +825,7 @@ SELECT "string_col", count(distinct "string_col"), count("string_col")
 from "arithmetic_space"
 where "id" > 2 or "string_col" = 'a'
 group by "string_col"
-having sum(distinct "a") > 1
+having sum(distinct "a") > 1;
 -- EXPECTED:
 'c', 1, 2
 
@@ -834,7 +834,7 @@ having sum(distinct "a") > 1
 SELECT "string_col", count(distinct "string_col"), count("string_col")
         from "arithmetic_space"
         where "id" > 2 or "string_col" = 'a'
-        group by "string_col"
+        group by "string_col";
 -- EXPECTED:
 'a', 1, 2, 'c', 1, 2
 
@@ -849,7 +849,7 @@ from "arithmetic_space" as t1 inner join
 ) as t2
 on t1."c" = t2.s
 group by s, t1."b"
-having sum(distinct "a") in (2, 3) and count(distinct t2.s) = 1
+having sum(distinct "a") in (2, 3) and count(distinct t2.s) = 1;
 -- EXPECTED:
 2, 3, 1
 
@@ -859,7 +859,7 @@ SELECT t1."a", t2.b, t2.s, t1."d"
 from "arithmetic_space" as t1 inner join
 (select "b" as b, "string_col" as s from "arithmetic_space2") as t2
 on t1."a" = t2.b
-where t1."d" + t1."a" > 2
+where t1."d" + t1."a" > 2;
 -- EXPECTED:
 1, 1, 'a', 2, 1, 1, 'b', 2, 1, 1, 'b', 2, 2, 2, 'a', 2, 2, 2, 'a', 1
 
@@ -871,7 +871,7 @@ from "arithmetic_space" as t1 inner join
 on t1."a" = t2.b
 where t1."d" + t1."a" > 2
 group by "a"
-having count(distinct s) > 1
+having count(distinct s) > 1;
 -- EXPECTED:
 1, 2
 
@@ -882,7 +882,7 @@ having count(distinct s) > 1
 -- union all
 -- select "b" from "arithmetic_space"
 -- group by "b"
--- having count(distinct "d") > 1
+-- having count(distinct "d") > 1;
 -- EXPECTED:
 -- 2, 3
 
@@ -893,7 +893,7 @@ group by "e" having count(distinct "d") > 1
 union all
 select "b" from "arithmetic_space"
 group by "b"
-having count(distinct "d") > 1
+having count(distinct "d") > 1;
 -- EXPECTED:
 2, 3
 
@@ -903,7 +903,7 @@ select "e" from "arithmetic_space"
 union all
 select "b" from "arithmetic_space"
 group by "b"
-having count(distinct "d") > 1
+having count(distinct "d") > 1;
 -- EXPECTED:
 2, 2, 2, 2, 3
 
@@ -914,7 +914,7 @@ having count("e") = 4
 except
 select "b" from "arithmetic_space"
 group by "b"
-having count(distinct "d") > 1
+having count(distinct "d") > 1;
 -- EXPECTED:
 
 -- TEST: test_having_inside_except1
@@ -923,7 +923,7 @@ select "d" from "arithmetic_space"
 group by "d"
 except
 select sum(distinct "c") from "arithmetic_space"
-having count(distinct "c") = 1
+having count(distinct "c") = 1;
 -- EXPECTED:
 1, 2
 

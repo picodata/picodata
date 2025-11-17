@@ -68,4 +68,4 @@ INSERT INTO public.t VALUES(1,'2','3', null);
 UPDATE public.t SET b='kek' WHERE a < 5;
 DELETE FROM public.t WHERE a < 3;
 TRUNCATE TABLE public.t;
-DROP TABLE public.t
+DROP TABLE public.t;

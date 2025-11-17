@@ -33,7 +33,7 @@ select *
                 (select "id" from "testing_space") t2
              on true
             )
-          on "id" = f and "id" = s order by 1
+          on "id" = f and "id" = s order by 1;
 -- EXPECTED:
 1, 'a', 1, 1, 1,
 2, 'a', 1, 2, 2,
@@ -45,7 +45,7 @@ select *
 
 -- TEST: test_join2
 -- SQL:
-SELECT * FROM t JOIN t AS t1 ON 1 IN (t1.b, t1.a, t1.c) ORDER BY 1
+SELECT * FROM t JOIN t AS t1 ON 1 IN (t1.b, t1.a, t1.c) ORDER BY 1;
 -- EXPECTED:
 1, 2, 3, 1, 2, 3,
 4, 5, 6, 1, 2, 3, 
@@ -53,7 +53,7 @@ SELECT * FROM t JOIN t AS t1 ON 1 IN (t1.b, t1.a, t1.c) ORDER BY 1
 
 -- TEST: test_join3
 -- SQL:
-SELECT * FROM t JOIN t AS t1 ON t1.a IN (t1.b, t1.a) ORDER BY 1
+SELECT * FROM t JOIN t AS t1 ON t1.a IN (t1.b, t1.a) ORDER BY 1;
 -- EXPECTED:
 1, 2, 3, 1, 2, 3,
 1, 2, 3, 4, 5, 6,
@@ -102,19 +102,19 @@ SELECT * FROM t JOIN gt ON true join gt as gt2 ON TRUE;
 
 -- TEST: test-check-condition-types-1
 -- SQL:
-with t(b) as (select true) select * from t t1 join t t2 on t1.b or false
+with t(b) as (select true) select * from t t1 join t t2 on t1.b or false;
 -- EXPECTED:
 true, true
 
 -- TEST: test-check-condition-types-2
 -- SQL:
-with t(b) as (select true) select * from t t1 join t t2 on t1.b or 1
+with t(b) as (select true) select * from t t1 join t t2 on t1.b or 1;
 -- ERROR:
 could not resolve operator overload for or\(bool, int\)
 
 -- TEST: tets-sq-in-join-condition
 -- SQL:
-with t(a) as (values (1), (2), (3)) select * from t t1 join t t2 on (select true) and t1.a = t2.a
+with t(a) as (values (1), (2), (3)) select * from t t1 join t t2 on (select true) and t1.a = t2.a;
 -- EXPECTED:
 1, 1, 2, 2, 3, 3
 

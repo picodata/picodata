@@ -16,7 +16,7 @@ VALUES
 
 -- TEST: orderby1
 -- SQL:
-select * from "null_t" order by "na"
+select * from "null_t" order by "na";
 -- EXPECTED:
 1, 2, 1,
 2, NULL, 3,
@@ -29,7 +29,7 @@ select * from "null_t" order by "na"
 
 -- TEST: orderby2
 -- SQL:
-select * from "null_t" order by 1
+select * from "null_t" order by 1;
 -- EXPECTED:
 1, 2, 1,
 2, NULL, 3,
@@ -42,7 +42,7 @@ select * from "null_t" order by 1
 
 -- TEST: orderby3
 -- SQL:
-select * from "null_t" order by "na" asc
+select * from "null_t" order by "na" asc;
 -- EXPECTED:
 1, 2, 1,
 2, NULL, 3,
@@ -55,7 +55,7 @@ select * from "null_t" order by "na" asc
 
 -- TEST: orderby4
 -- SQL:
-select * from "null_t" order by 1 asc
+select * from "null_t" order by 1 asc;
 -- EXPECTED:
 1, 2, 1,
 2, NULL, 3,
@@ -68,7 +68,7 @@ select * from "null_t" order by 1 asc
 
 -- TEST: orderby5
 -- SQL:
-select * from "null_t" order by 1, 2
+select * from "null_t" order by 1, 2;
 -- EXPECTED:
 1, 2, 1,
 2, NULL, 3,
@@ -81,13 +81,13 @@ select * from "null_t" order by 1, 2
 
 -- TEST: orderby6
 -- SQL:
-select * from "null_t" order by 4
+select * from "null_t" order by 4;
 -- ERROR:
 invalid expression: Ordering index \(4\) is bigger than child projection output length \(3\)
 
 -- TEST: orderby7
 -- SQL:
-select * from "null_t" order by "nb", "na"
+select * from "null_t" order by "nb", "na";
 -- EXPECTED:
 2, NULL, 3,
 8, NULL, -1,
@@ -100,7 +100,7 @@ select * from "null_t" order by "nb", "na"
 
 -- TEST: orderby8
 -- SQL:
-select * from "null_t" order by "nb" asc, "na"
+select * from "null_t" order by "nb" asc, "na";
 -- EXPECTED:
 2, NULL, 3,
 8, NULL, -1,
@@ -113,7 +113,7 @@ select * from "null_t" order by "nb" asc, "na"
 
 -- TEST: orderby9
 -- SQL:
-select * from "null_t" order by 2, 1
+select * from "null_t" order by 2, 1;
 -- EXPECTED:
 2, NULL, 3,
 8, NULL, -1,
@@ -126,7 +126,7 @@ select * from "null_t" order by 2, 1
 
 -- TEST: orderby10
 -- SQL:
-select * from "null_t" order by "na" desc
+select * from "null_t" order by "na" desc;
 -- EXPECTED:
 8, NULL, -1,
 7, 1, 1,
@@ -139,7 +139,7 @@ select * from "null_t" order by "na" desc
 
 -- TEST: orderby11
 -- SQL:
-select * from "null_t" order by "nb" desc, "na"
+select * from "null_t" order by "nb" desc, "na";
 -- EXPECTED:
 4, 3, 1,
 1, 2, 1,
@@ -152,7 +152,7 @@ select * from "null_t" order by "nb" desc, "na"
 
 -- TEST: orderby12
 -- SQL:
-select * from "null_t" order by "nb" * 2 + 42 * "nb" desc, "na"
+select * from "null_t" order by "nb" * 2 + 42 * "nb" desc, "na";
 -- EXPECTED:
 4, 3, 1,
 1, 2, 1,
@@ -165,7 +165,7 @@ select * from "null_t" order by "nb" * 2 + 42 * "nb" desc, "na"
 
 -- TEST: orderby13
 -- SQL:
-select * from "null_t" order by "nb" desc, "na" desc
+select * from "null_t" order by "nb" desc, "na" desc;
 -- EXPECTED:
 4, 3, 1,
 3, 2, 3,
@@ -178,7 +178,7 @@ select * from "null_t" order by "nb" desc, "na" desc
 
 -- TEST: orderby14
 -- SQL:
-select * from "null_t" order by 2 asc, 1 desc, 2 desc, 1 asc
+select * from "null_t" order by 2 asc, 1 desc, 2 desc, 1 asc;
 -- EXPECTED:
 8, NULL, -1,
 2, NULL, 3,

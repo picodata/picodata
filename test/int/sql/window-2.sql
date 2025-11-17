@@ -53,7 +53,7 @@ ORDER BY a;
 SELECT a,
     sum(a) OVER (PARTITION BY b ORDER BY a DESC),
     sum(a) OVER (PARTITION BY c ORDER BY a)
-FROM t2 ORDER BY a
+FROM t2 ORDER BY a;
 -- EXPECTED:
 0, 12, 0,
 1, 9, 1,

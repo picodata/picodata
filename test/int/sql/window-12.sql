@@ -58,7 +58,7 @@ sbroad: could not resolve operator overload for >\(int, datetime\)
 
 -- TEST: window12-2.6
 -- SQL:
-SELECT  sum(x)  OVER ( ORDER BY x ROWS BETWEEN 1 + false PRECEDING AND 1 FOLLOWING) from t6
+SELECT  sum(x)  OVER ( ORDER BY x ROWS BETWEEN 1 + false PRECEDING AND 1 FOLLOWING) from t6;
 -- ERROR:
 sbroad: could not resolve operator overload for \+\(int, bool\)
 

@@ -176,7 +176,7 @@ INSERT INTO t5 VALUES(1, 1), (2, 2), (3, 2);
 WITH t2(b) AS (SELECT DISTINCT y FROM t5 ORDER BY y)
 SELECT * FROM
 t4 JOIN t3 ON TRUE JOIN t1 ON TRUE
-WHERE (t1.a=t3.a) AND (SELECT count(*) FROM t2 AS y WHERE t4.x!='abc')=t1.a
+WHERE (t1.a=t3.a) AND (SELECT count(*) FROM t2 AS y WHERE t4.x!='abc')=t1.a;
 -- EXPECTED:
 2, 2, 2
 
@@ -209,7 +209,7 @@ INSERT INTO t1 VALUES(10, 'B', 'B');
 
 -- TEST: distinct-9.1
 -- SQL:
-SELECT DISTINCT a, b FROM t1 ORDER BY a, b
+SELECT DISTINCT a, b FROM t1 ORDER BY a, b;
 -- EXPECTED:
 'A', 'A', 'B', 'B', 'a', 'a', 'a', 'b', 'a', 'c', 'b', 'a', 'b', 'b', 'b', 'c'
 

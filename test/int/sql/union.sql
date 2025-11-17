@@ -45,11 +45,11 @@ select id, a from arithmetic_space
 union
 select id, a from arithmetic_space
 union
-select id, a from arithmetic_space
+select id, a from arithmetic_space;
 
 -- TEST: test_union_under_insert1-2
 -- SQL:
-SELECT * FROM t
+SELECT * FROM t;
 -- EXPECTED:
 1, 1, 2, 1, 3, 2, 4, 2
 
@@ -62,11 +62,11 @@ DELETE FROM t;
 insert into t
 select * from (values (100, 200))
 union
-select * from (values (100, 200), (200, 100))
+select * from (values (100, 200), (200, 100));
 
 -- TEST: test_union_under_insert2-2
 -- SQL:
-SELECT * FROM t
+SELECT * FROM t;
 -- EXPECTED:
 100, 200, 200, 100
 
@@ -79,7 +79,7 @@ DELETE FROM t;
 select "name"
 from "testing_space"
 union all
-select null from "testing_space" where false
+select null from "testing_space" where false;
 -- EXPECTED:
 '123', '1', '1', '2', '123', '2'
 
@@ -88,7 +88,7 @@ select null from "testing_space" where false
 select "name"
 from "testing_space"
 union
-select null from "testing_space" where false
+select null from "testing_space" where false;
 -- EXPECTED:
 '1', '123', '2'
 
@@ -97,7 +97,7 @@ select null from "testing_space" where false
 select "a"
 from "arithmetic_space"
 union
-select sum("a") / 3 from "arithmetic_space"
+select sum("a") / 3 from "arithmetic_space";
 -- EXPECTED:
 1, 2
 
@@ -106,7 +106,7 @@ select sum("a") / 3 from "arithmetic_space"
 select "a", "b"
 from "arithmetic_space"
 union
-select "a" + 1 - 1, "b" from "arithmetic_space"
+select "a" + 1 - 1, "b" from "arithmetic_space";
 -- EXPECTED:
 1, 1, 1, 2, 2, 3
 
@@ -118,7 +118,7 @@ select * from (
     union
     select "a" from "arithmetic_space"
 ) union
-select "product_units" from "testing_space"
+select "product_units" from "testing_space";
 -- EXPECTED:
 1, 2, 4
 
@@ -127,7 +127,7 @@ select "product_units" from "testing_space"
 select "a"
 from "arithmetic_space"
 union
-select 'kek' || "name" from "testing_space"
+select 'kek' || "name" from "testing_space";
 -- ERROR:
 invalid value
 
@@ -137,7 +137,7 @@ select "a"
 from "arithmetic_space" where false
 union
 select "id" from "testing_space"
-where false
+where false;
 -- EXPECTED:
 
 -- TEST: test_union_with_window_func
@@ -148,7 +148,7 @@ select row_number() over () from t union select 1;
 
 -- TEST: test_union_with_named_window
 -- SQL:
-select count(*) over win from t WINDOW win as () union select 1
+select count(*) over win from t WINDOW win as () union select 1;
 -- EXPECTED:
 1
 
@@ -170,7 +170,7 @@ buckets = [1-3000]
 
 -- TEST: test_explain_union_with_named_window
 -- SQL:
-explain select count(*) over win from t WINDOW win as () union select 1
+explain select count(*) over win from t WINDOW win as () union select 1;
 -- EXPECTED:
 motion [policy: full]
     union

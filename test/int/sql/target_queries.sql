@@ -63,7 +63,7 @@ FROM
     SELECT "col1", "account_id", "amount"
     FROM "col1_transactions_actual"
     WHERE "sys_from" <= 0) AS "t3"
-WHERE "col1" = 1
+WHERE "col1" = 1;
 -- EXPECTED:
 1, 1, 2, 1, 1, 1, 1, 1, 3
 
@@ -80,7 +80,7 @@ FROM
     FROM "col1_col2_transactions_actual"
     WHERE "sys_from" <= 0) AS "t3"
 WHERE "col1" = 1
-        AND "col2" = 2
+        AND "col2" = 2;
 -- EXPECTED:
 1, 2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 3
 
@@ -98,7 +98,7 @@ FROM
     WHERE "sys_from" <= 0) AS "t3"
 WHERE "col1" = 1
         AND ("col2" = 2
-        AND "amount" > 2)
+        AND "amount" > 2);
 -- EXPECTED:
 1, 2, 1, 3
 
@@ -114,7 +114,7 @@ FROM
     SELECT "col1", "account_id", "amount"
     FROM "col1_transactions_actual"
     WHERE "sys_from" <= 0) AS "t3"
-WHERE "col1" = 1 OR "col1" = 3
+WHERE "col1" = 1 OR "col1" = 3;
 -- EXPECTED:
 1, 1, 2, 1, 1, 1, 1, 1, 3, 3, 1, 3
 
@@ -133,7 +133,7 @@ FROM
 WHERE "col1" = 1
         AND "col2" = 2
         OR "col1" = 1
-        AND "col2" = 1
+        AND "col2" = 1;
 -- EXPECTED:
 1, 2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 3, 1, 1, 1, 3
 
@@ -151,7 +151,7 @@ FROM
     WHERE "sys_from" <= 0) AS "t3"
 WHERE "col1" = 1
         OR ("col1" = 2
-        OR "col1" = 3)
+        OR "col1" = 3);
 -- EXPECTED:
 1, 1, 2, 1, 1, 1, 1, 1, 3, 3, 1, 3
 
@@ -171,7 +171,7 @@ WHERE ("col1" = 1
         OR ("col1" = 2
         OR "col1" = 3))
         AND ("col2" = 1
-        OR "col2" = 2)
+        OR "col2" = 2);
 -- EXPECTED:
 1, 2, 1, 2, 1, 2, 1, 1, 1, 1, 1, 3, 1, 2, 1, 3
 
@@ -192,7 +192,7 @@ WHERE ("col1" = 1
         OR "col1" = 3))
         AND (("col2" = 1
         OR "col2" = 2)
-        AND "amount" > 2)
+        AND "amount" > 2);
 -- EXPECTED:
 1, 1, 1, 3, 1, 2, 1, 3
 
@@ -218,7 +218,7 @@ WHERE "col1" IN
         SELECT "id", "cola", "colb"
         FROM "cola_accounts_actual"
         WHERE "sys_from" <= 0) AS "t8"
-    WHERE "cola" = 1)
+    WHERE "cola" = 1);
 -- EXPECTED:
 1, 1, 2, 1, 1, 1, 1, 1, 3
 
@@ -244,7 +244,7 @@ WHERE "col1" IN
         FROM "cola_accounts_actual"
         WHERE "sys_from" <= 0) AS "t8"
         WHERE "cola" = 1)
-  AND "amount" > 0
+  AND "amount" > 0;
 -- EXPECTED:
 1, 1, 2, 1, 1, 1, 1, 1, 3
 
@@ -270,7 +270,7 @@ WHERE ("col1", "col2") IN
         FROM "cola_accounts_actual"
         WHERE "sys_from" <= 0) AS "t8"
         WHERE "cola" = 1)
-    AND "amount" > 0
+    AND "amount" > 0;
 -- EXPECTED:
 1, 1, 1, 3
 
@@ -295,7 +295,7 @@ INNER JOIN
     FROM "cola_accounts_actual"
     WHERE "sys_from" <= 0) AS "t8"
     ON "t3"."account_id" = "t8"."id"
-WHERE "t3"."col1" = 1 AND "t8"."cola" = 1
+WHERE "t3"."col1" = 1 AND "t8"."cola" = 1;
 -- EXPECTED:
 1, 1, 1, 1, 1, 2,
 1, 1, 1, 1, 1, 3,
@@ -326,7 +326,7 @@ INNER JOIN
     WHERE "sys_from" <= 0) AS "t8"
     ON "t3"."account_id" = "t8"."id"
 WHERE "t3"."col1" = 1 AND ("t8"."cola" = 1
-        AND "t3"."amount" > 2)
+        AND "t3"."amount" > 2);
 -- EXPECTED:
 1, 1, 3, 1, 1, 2, 1, 1, 3, 1, 1, 3
 
@@ -351,7 +351,7 @@ INNER JOIN
     WHERE "sys_from" <= 0) AS "t8"
     ON "t3"."account_id" = "t8"."id"
 WHERE "t3"."col1" = 1 AND "t3"."col2" = 2
-AND ("t8"."cola" = 1 AND "t8"."colb" = 2)
+AND ("t8"."cola" = 1 AND "t8"."colb" = 2);
 -- EXPECTED:
 1, 2, 1, 1, 1, 1, 2, 1, 2, 1, 2, 1, 1, 2, 1, 2, 1, 3, 1, 1, 2
 
@@ -376,7 +376,7 @@ INNER JOIN
     WHERE "sys_from" <= 0) AS "t8"
     ON "t3"."account_id" = "t8"."id"
 WHERE "t3"."col1" = 1 AND "t3"."col2" = 2
-AND ("t8"."cola" = 1 AND ("t8"."colb" = 2 AND "t3"."amount" > 0))
+AND ("t8"."cola" = 1 AND ("t8"."colb" = 2 AND "t3"."amount" > 0));
 -- EXPECTED:
 1, 2, 1, 1, 1, 1, 2, 1, 2, 1, 2, 1, 1, 2, 1, 2, 1, 3, 1, 1, 2
 
@@ -400,7 +400,7 @@ INNER JOIN
     FROM "cola_accounts_actual"
     WHERE "sys_from" <= 0) AS "t8"
     ON "t3"."account_id" = "t8"."id"
-WHERE "t3"."col1" = 1 AND "t8"."cola" = 2
+WHERE "t3"."col1" = 1 AND "t8"."cola" = 2;
 -- EXPECTED:
 1, 1, 1, 1, 2, 3, 1, 1, 2, 1, 2, 3, 1, 1, 3, 1, 2, 3
 
@@ -424,7 +424,7 @@ INNER JOIN
     FROM "cola_colb_accounts_actual"
     WHERE "sys_from" <= 0) AS "t8"
     ON "t3"."account_id" = "t8"."id"
-WHERE "t3"."col1" = 1 AND "t3"."col2" = 2 AND ("t8"."cola" = 1 AND "t8"."colb" = 2)
+WHERE "t3"."col1" = 1 AND "t3"."col2" = 2 AND ("t8"."cola" = 1 AND "t8"."colb" = 2);
 -- EXPECTED:
 1, 2, 1, 2, 1, 1, 2, 1, 2, 1, 3, 1, 1, 2
 
@@ -448,7 +448,7 @@ INNER JOIN
     FROM "cola_accounts_actual"
     WHERE "sys_from" <= 0) AS "t8"
     ON "t3"."account_id" = "t8"."id"
-WHERE "t3"."col1" = 1 AND ("t3"."col2" = 1 AND "t8"."colb" = 2)
+WHERE "t3"."col1" = 1 AND ("t3"."col2" = 1 AND "t8"."colb" = 2);
 -- EXPECTED:
 1, 1, 1, 3, 1, 1, 2
 
@@ -472,7 +472,7 @@ INNER JOIN
     FROM "cola_accounts_actual"
     WHERE "sys_from" <= 0) AS "t8"
     ON "t3"."col1" = "t8"."cola"
-WHERE "t3"."col1" = 1 AND "t3"."col2" = 1
+WHERE "t3"."col1" = 1 AND "t3"."col2" = 1;
 -- EXPECTED:
 1, 1, 1, 3, 1, 1, 2, 1, 1, 1, 3, 1, 1, 3
 
@@ -496,7 +496,7 @@ INNER JOIN
     FROM "cola_accounts_actual"
     WHERE "sys_from" <= 0) AS "t8"
     ON "t3"."col1" = "t8"."cola"
-WHERE "t3"."col1" = 1
+WHERE "t3"."col1" = 1;
 -- EXPECTED:
 1, 1, 1, 1, 1, 2,
 1, 1, 1, 1, 1, 3,
@@ -527,7 +527,7 @@ WHERE "account_id" IN
         FROM "cola_accounts_actual"
         WHERE "sys_from" <= 0) AS "t8"
         WHERE "cola" = 1)
-    AND ("col1" = 1 AND "col2" = 2)
+    AND ("col1" = 1 AND "col2" = 2);
 -- EXPECTED:
 1, 2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 3
 
@@ -553,6 +553,6 @@ WHERE "account_id" IN
         FROM "cola_colb_accounts_actual"
         WHERE "sys_from" <= 0) AS "t8"
         WHERE "cola" = 1 AND "colb" = 2)
-    AND ("col1" = 1 AND "col2" = 2)
+    AND ("col1" = 1 AND "col2" = 2);
 -- EXPECTED:
 1, 2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 3

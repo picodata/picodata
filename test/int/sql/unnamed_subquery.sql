@@ -9,14 +9,14 @@ INSERT INTO gt ("a") VALUES (1), (2);
 
 -- TEST: unnamed_subquery-same-columns-1
 -- SQL:
-select * from t join (select * from gt) on true
+select * from t join (select * from gt) on true;
 -- EXPECTED:
 1, 1,
 1, 2,
 
 -- TEST: unnamed_subquery-same-columns-2
 -- SQL:
-select * from t join (select * from gt join gt as gt2 on true) on true
+select * from t join (select * from gt join gt as gt2 on true) on true;
 -- EXPECTED:
 1, 1, 1,
 1, 1, 2,
@@ -25,7 +25,7 @@ select * from t join (select * from gt join gt as gt2 on true) on true
 
 -- TEST: unnamed_subquery-same-columns-3
 -- SQL:
-select * from (select * from gt join gt as gt2 on true) join t on true
+select * from (select * from gt join gt as gt2 on true) join t on true;
 -- EXPECTED:
 1, 1, 1,
 1, 2, 1,

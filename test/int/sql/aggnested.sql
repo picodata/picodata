@@ -375,7 +375,7 @@ FROM t2 GROUP BY 'constant_string';
 
 -- TEST: aggnested-6.2.0
 -- SQL
-UPDATE t2 SET b=0
+UPDATE t2 SET b=0;
 
 -- TEST: aggnested-6.2.1
 -- TBD: https://git.picodata.io/core/picodata/-/issues/1926
@@ -418,13 +418,13 @@ INSERT INTO invoice VALUES
 SELECT sum(amount), name
 from invoice
 group by name
-having (select v > 6 from (select sum(amount) v) t)
+having (select v > 6 from (select sum(amount) v) t);
 -- EXPECTED:
 15.0, 'Bara', 8.0, 'Michael'
 
 -- TEST: aggnested-7.2
 -- TBD: https://git.picodata.io/core/picodata/-/issues/1926
-SELECT (select 1 from (select sum(amount))) FROM invoice
+SELECT (select 1 from (select sum(amount))) FROM invoice;
 -- EXPECTED:
 1
 

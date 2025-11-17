@@ -104,91 +104,91 @@ SELECT a FROM t JOIN (SELECT b from t) new ON t.b = new.b AND a NOT IN (1, 2) AN
 
 -- TEST: parentheses-under-cast-with-not
 -- SQL:
-SELECT (NOT TRUE)::TEXT
+SELECT (NOT TRUE)::TEXT;
 -- EXPECTED:
 'FALSE'
 
 -- TEST: parentheses-under-cast-with-concat
 -- SQL:
-SELECT ('1' || '2')::INT
+SELECT ('1' || '2')::INT;
 -- EXPECTED:
 12
 
 -- TEST: parentheses-under-is-null
 -- SQL:
-SELECT (TRUE OR FALSE) IS NULL
+SELECT (TRUE OR FALSE) IS NULL;
 -- EXPECTED:
 false
 
 -- TEST: parentheses-under-arithmetic
 -- SQL:
-SELECT 1 + (2 < 3)
+SELECT 1 + (2 < 3);
 -- ERROR:
 could not resolve operator overload for \+\(int, bool\)
 
 -- TEST: parentheses-under-arithmetic-with-not
 -- SQL:
-SELECT (NOT 1) + NULL
+SELECT (NOT 1) + NULL;
 -- ERROR:
 argument of NOT must be type boolean, not type int 
 
 -- TEST: parentheses-under-arithmetic-with-between
 -- SQL:
-SELECT 1 + (1 BETWEEN 1 AND 1)
+SELECT 1 + (1 BETWEEN 1 AND 1);
 -- ERROR:
 could not resolve operator overload for \+\(int, bool\)
 
 -- TEST: parentheses-under-concat
 -- SQL:
-SELECT (NOT 1) || '1'
+SELECT (NOT 1) || '1';
 -- ERROR:
 argument of NOT must be type boolean, not type int
 
 -- TEST: parentheses-under-divide
 -- SQL:
-SELECT 8 / (4 / 2)
+SELECT 8 / (4 / 2);
 -- EXPECTED:
 4
 
 -- TEST: parentheses-under-subtract
 -- SQL:
-SELECT 2 - (4 - 8)
+SELECT 2 - (4 - 8);
 -- EXPECTED:
 6
 
 -- TEST: parentheses-under-multiply
 -- SQL:
-SELECT 2 * (3 + 5)
+SELECT 2 * (3 + 5);
 -- EXPECTED:
 16
 
 -- TEST: parentheses-under-bool
 -- SQL:
-SELECT 1 = (2 = FALSE)
+SELECT 1 = (2 = FALSE);
 -- ERROR:
 could not resolve operator overload for =\(int, bool\)
 
 -- TEST: parentheses-under-like
 -- SQL:
-SELECT (NOT NULL) LIKE 'a'
+SELECT (NOT NULL) LIKE 'a';
 -- ERROR:
 could not resolve function overload for like\(bool, text, text\)
 
 -- TEST: parentheses-under-not-with-and
 -- SQL:
-SELECT NOT (FALSE AND TRUE)
+SELECT NOT (FALSE AND TRUE);
 -- EXPECTED:
 true
 
 -- TEST: parentheses-under-not-with-or
 -- SQL:
-SELECT NOT (TRUE OR TRUE)
+SELECT NOT (TRUE OR TRUE);
 -- EXPECTED:
 false
 
 -- TEST: parentheses-under-and
 -- SQL:
-SELECT FALSE AND (FALSE OR TRUE)
+SELECT FALSE AND (FALSE OR TRUE);
 -- EXPECTED:
 false
 
@@ -200,13 +200,13 @@ SELECT sum(a) FROM tb GROUP BY b HAVING b;
 
 -- TEST: select-distinct-asterisk
 -- SQL:
-SELECT DISTINCT * FROM t ORDER BY 1
+SELECT DISTINCT * FROM t ORDER BY 1;
 -- EXPECTED:
 1, 1, 2, 1, 3, 2, 4, 3
 
 -- TEST: select-asterisk-with-group-by
 -- SQL:
-SELECT * FROM t GROUP BY a, b ORDER BY 1
+SELECT * FROM t GROUP BY a, b ORDER BY 1;
 -- EXPECTED:
 1, 1, 2, 1, 3, 2, 4, 3
 
@@ -248,7 +248,7 @@ INSERT INTO tc (JSON) VALUES(1);
 
 -- TEST: test-json-is-not-keyword-2
 -- SQL:
-SELECT * FROM tc
+SELECT * FROM tc;
 -- EXPECTED:
 1
 
@@ -266,37 +266,37 @@ true, 1
 
 -- TEST: test-between-caching-1
 -- SQL:
-select (select 1) between 1 and 2
+select (select 1) between 1 and 2;
 -- EXPECTED:
 true
 
 -- TEST: test-between-caching-2
 -- SQL:
-select (select 1) between 1 and 2
+select (select 1) between 1 and 2;
 -- EXPECTED:
 true
 
 -- TEST: test-cte-union-caching-1
 -- SQL:
-with cte(escape) as (select '#') select escape from cte union all select escape from cte
+with cte(escape) as (select '#') select escape from cte union all select escape from cte;
 -- EXPECTED:
 '#', '#'
 
 -- TEST: test-cte-union-caching-2
 -- SQL:
-with cte(escape) as (select '#') select escape from cte union all select escape from cte
+with cte(escape) as (select '#') select escape from cte union all select escape from cte;
 -- EXPECTED:
 '#', '#'
 
 -- TEST: test-qualified-references-1
 -- SQL:
-SELECT "t".* FROM (SELECT 1) AS "t"
+SELECT "t".* FROM (SELECT 1) AS "t";
 -- EXPECTED:
 1
 
 -- TEST: test-qualified-references-2
 -- SQL:
-SELECT "no_such_table".* FROM (SELECT 1)
+SELECT "no_such_table".* FROM (SELECT 1);
 -- ERROR:
 sbroad: table 'no_such_table' not found
 
@@ -312,7 +312,7 @@ DROP TABLE tc;
 
 -- TEST: test-filter-keyword-1
 -- SQL:
-select 1 as int
+select 1 as int;
 -- EXPECTED:
 1
 
@@ -339,7 +339,7 @@ UPDATE int8 set int = 9;
 
 -- TEST: test-filter-keyword-6
 -- SQL:
-CREATE UNIQUE INDEX unsigned ON int8 USING HASH (bigint, uuid)
+CREATE UNIQUE INDEX unsigned ON int8 USING HASH (bigint, uuid);
 
 -- TEST: test-filter-keyword-7
 -- SQL:
@@ -347,7 +347,7 @@ CREATE PROCEDURE array (string)
 LANGUAGE SQL
 AS $$
     INSERT INTO int8 VALUES (10, 7, 'kek2')
-$$
+$$;
 
 -- TEST: test-filter-keyword-8
 -- SQL:

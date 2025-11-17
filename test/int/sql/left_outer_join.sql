@@ -87,7 +87,7 @@ VALUES (4, 4, 'a', 'a', 'a', 4, 4.0, 'a', 4, 'a', 4.0, 4.0, 4.0, 4, 4, 4),
 -- SQL:
 SELECT * from (select "a" as a from "arithmetic_space") as t1
         left join (select sum("f") as b from "arithmetic_space2") as t2
-        on t1.a = t2.b
+        on t1.a = t2.b;
 -- EXPECTED:
 1, null, 1, null, 2, null, 2, null
 
@@ -95,7 +95,7 @@ SELECT * from (select "a" as a from "arithmetic_space") as t1
 -- SQL:
 select * from (select "id" as "A" from "arithmetic_space") as "T1"
 left outer join (select "id" as "B" from "arithmetic_space2") as "T2"
-on "T1"."A" = "T2"."B"
+on "T1"."A" = "T2"."B";
 -- EXPECTED:
 1, 1,
 2, 2,
@@ -106,7 +106,7 @@ on "T1"."A" = "T2"."B"
 -- SQL:
 explain select * from (select "id" as "A" from "arithmetic_space") as "T1"
 left outer join (select "id" as "B" from "arithmetic_space2") as "T2"
-on "T1"."A" = "T2"."B"
+on "T1"."A" = "T2"."B";
 -- EXPECTED:
 projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
     left join on "T1"."A"::int = "T2"."B"::int
@@ -125,7 +125,7 @@ buckets = [1-3000]
 -- SQL:
 select * from (select "id" as "A" from "arithmetic_space") as "T1"
 left join (select "a" as "B" from "arithmetic_space2") as "T2"
-on "T1"."A" = "T2"."B"
+on "T1"."A" = "T2"."B";
 -- EXPECTED:
 1, 1,
 1, 1,
@@ -138,7 +138,7 @@ on "T1"."A" = "T2"."B"
 -- SQL:
 explain select * from (select "id" as "A" from "arithmetic_space") as "T1"
 left join (select "a" as "B" from "arithmetic_space2") as "T2"
-on "T1"."A" = "T2"."B"
+on "T1"."A" = "T2"."B";
 -- EXPECTED:
 projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
     left join on "T1"."A"::int = "T2"."B"::int
@@ -158,7 +158,7 @@ buckets = unknown
 -- SQL:
 select * from (select "id" as "A" from "arithmetic_space") as "T1"
 left join (select "a" as "B" from "arithmetic_space2") as "T2"
-on "T1"."A" < "T2"."B"
+on "T1"."A" < "T2"."B";
 -- EXPECTED:
 1, 2,
 1, 2,
@@ -170,7 +170,7 @@ on "T1"."A" < "T2"."B"
 -- SQL:
 explain select * from (select "id" as "A" from "arithmetic_space") as "T1"
 left join (select "a" as "B" from "arithmetic_space2") as "T2"
-on "T1"."A" < "T2"."B"
+on "T1"."A" < "T2"."B";
 -- EXPECTED:
 projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
     left join on "T1"."A"::int < "T2"."B"::int
@@ -190,7 +190,7 @@ buckets = [1-3000]
 -- SQL:
 select * from (select sum("a") / 3 as a from "arithmetic_space") as t1
 left join (select "id" as b from "arithmetic_space2") as t2
-on t1.a = t2.b
+on t1.a = t2.b;
 -- EXPECTED:
 2, 2
 
@@ -198,7 +198,7 @@ on t1.a = t2.b
 -- SQL:
 select * from (select sum("a") / 3 as a from "arithmetic_space") as t1
 left join (select "id" as b from "arithmetic_space2") as t2
-on t1.a < t2.b
+on t1.a < t2.b;
 -- EXPECTED:
 2, 3, 2, 4
 
@@ -206,7 +206,7 @@ on t1.a < t2.b
 -- SQL:
 select * from (select "id" as a from "arithmetic_space") as t1
 left join (select "id" as b from "arithmetic_space2") as t2
-on t1.a in (select "f" from "arithmetic_space2") or t1.a = 1 and t2.b = 4
+on t1.a in (select "f" from "arithmetic_space2") or t1.a = 1 and t2.b = 4;
 -- EXPECTED:
 1, 4, 2, 1, 2, 2, 2, 3, 2, 4, 3, None, 4, None
 
@@ -214,7 +214,7 @@ on t1.a in (select "f" from "arithmetic_space2") or t1.a = 1 and t2.b = 4
 -- SQL:
 select * from (select "a" as "A" from "arithmetic_space") as "T1"
 left join (select "id" as "B" from "arithmetic_space2") as "T2"
-on "T1"."A" in (select "a" + 1 from "arithmetic_space")
+on "T1"."A" in (select "a" + 1 from "arithmetic_space");
 -- EXPECTED:
 1, null,
 1, null,
@@ -231,7 +231,7 @@ on "T1"."A" in (select "a" + 1 from "arithmetic_space")
 -- SQL:
 explain select * from (select "a" as "A" from "arithmetic_space") as "T1"
 left join (select "id" as "B" from "arithmetic_space2") as "T2"
-on "T1"."A" in (select "a" + 1 from "arithmetic_space")
+on "T1"."A" in (select "a" + 1 from "arithmetic_space");
 -- EXPECTED:
 projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
     left join on "T1"."A"::int in ROW($0)
@@ -256,7 +256,7 @@ buckets = [1-3000]
 -- SQL:
 select * from (select "id" as "A" from "arithmetic_space") as t1
 left join (select "id" as "B" from "arithmetic_space2") as t2
-on t1."A" in (select "c" from "arithmetic_space")
+on t1."A" in (select "c" from "arithmetic_space");
 -- EXPECTED:
 1, 1,
 1, 2,
@@ -270,7 +270,7 @@ on t1."A" in (select "c" from "arithmetic_space")
 -- SQL:
 explain select * from (select "id" as "A" from "arithmetic_space") as t1
 left join (select "id" as "B" from "arithmetic_space2") as t2
-on t1."A" in (select "c" from "arithmetic_space")
+on t1."A" in (select "c" from "arithmetic_space");
 -- EXPECTED:
 projection ("t1"."A"::int -> "A", "t2"."B"::int -> "B")
     left join on "t1"."A"::int in ROW($0)
@@ -295,7 +295,7 @@ buckets = unknown
 -- SQL:
 select * from (select "nb" as a from "null_t") as t1
 left join (select "nc" as b from "null_t") as t2
-on t1.a = t2.b
+on t1.a = t2.b;
 -- EXPECTED:
 null, null,
 null, null,
@@ -308,7 +308,7 @@ null, null,
 -- SQL:
 select * from (select "nb" as a from "null_t") as t1
 left join (select "nc" as b from "null_t") as t2
-on t1.a is not null
+on t1.a is not null;
 -- EXPECTED:
 None, None,
 None, None,
@@ -324,7 +324,7 @@ None, None,
 -- SQL:
 select * from (select "nb" as a from "null_t" where false) as t1
 left join (select "nc" as b from "null_t") as t2
-on true
+on true;
 -- EXPECTED:
 
 
@@ -332,7 +332,7 @@ on true
 -- SQL:
 select * from (select "nb" as a from "null_t") as t1
 left join (select "nc" as b from "null_t" where false) as t2
-on true
+on true;
 -- EXPECTED:
 None, None, None, None, None, None, 1, None, None, None
 
@@ -341,7 +341,7 @@ None, None, None, None, None, None, 1, None, None, None
 select a, count(b) from (select "nb" as a from "null_t") as t1
 left join (select "nc" as b from "null_t" where false) as t2
 on true
-group by a
+group by a;
 -- EXPECTED:
 null, 0, 1, 0
 
@@ -349,7 +349,7 @@ null, 0, 1, 0
 -- SQL:
 select * from (select "nb" as a from "null_t" group by "nb") as t1
 left join (select "nc" as b from "null_t") as t2
-on t1.a = t2.b
+on t1.a = t2.b;
 -- EXPECTED:
 null, null,
 1, 1,
@@ -388,7 +388,7 @@ FROM
       sp2_1."count_to"
     FROM
       "SPACE2" AS sp2_1
-  ) AS sp2 ON sp1."a_to" = sp2."sp2_a" AND sp1."b_to" = sp2."sp2_b" AND sp1."yearquarter" = sp2."sp2_yearquarter"
+  ) AS sp2 ON sp1."a_to" = sp2."sp2_a" AND sp1."b_to" = sp2."sp2_b" AND sp1."yearquarter" = sp2."sp2_yearquarter";
 -- EXPECTED:
 1, 'a', 'a', null, null, null,
 2, 'a', 'a', null, null, null,
@@ -405,7 +405,7 @@ ON "SPACE1"."a_to" = "SPACE2"."a" AND "SPACE1"."b_to" = "SPACE2"."b"
 AND "SPACE1"."yearquarter" = "SPACE2"."yearquarter"
 LEFT JOIN "SPACE2" as space3
 ON "SPACE1"."a_to" = space3."a" AND "SPACE1"."b_to" = space3."b"
-WHERE "SPACE2"."yearquarter" = 4
+WHERE "SPACE2"."yearquarter" = 4;
 -- EXPECTED:
 4, 'a',
 4, 'a',

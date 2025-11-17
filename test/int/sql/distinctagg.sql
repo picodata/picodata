@@ -16,7 +16,7 @@ SELECT count(distinct a),
 
 -- TEST: distinctagg-1.2
 -- SQL:
-SELECT b, count(distinct c) FROM t1 GROUP BY b
+SELECT b, count(distinct c) FROM t1 GROUP BY b;
 -- EXPECTED:
 2, 1, 3, 2
 
@@ -28,13 +28,13 @@ INSERT INTO t1 SELECT pk * 1002, a+4, b+12, c+20 FROM t1;
 
 -- TEST: distinctagg-1.3
 -- SQL:
-SELECT count(*), count(distinct a), count(distinct b) FROM t1
+SELECT count(*), count(distinct a), count(distinct b) FROM t1;
 -- EXPECTED:
 24, 8, 16
 
 -- TEST: distinctagg-1.4
 -- SQL:
-SELECT a, count(distinct c) FROM t1 GROUP BY a ORDER BY a
+SELECT a, count(distinct c) FROM t1 GROUP BY a ORDER BY a;
 -- EXPECTED:
 1, 3, 2, 3, 3, 3, 4, 3, 5, 3, 6, 3, 7, 3, 8, 3
 
@@ -96,25 +96,25 @@ SELECT count(DISTINCT c) FROM t1 WHERE b=3;
 
 -- TEST: distinctagg-3.6
 -- SQL:
-SELECT count(DISTINCT a) FROM t1 JOIN t2 ON TRUE
+SELECT count(DISTINCT a) FROM t1 JOIN t2 ON TRUE;
 -- EXPECTED:
 5
 
 -- TEST: distinctagg-3.7
 -- SQL:
-SELECT count(DISTINCT a) FROM t2 JOIN t1 ON TRUE
+SELECT count(DISTINCT a) FROM t2 JOIN t1 ON TRUE;
 -- EXPECTED:
 5
 
 -- TEST: distinctagg-3.8
 -- SQL:
-SELECT count(DISTINCT a+b) FROM t1 JOIN t2 ON TRUE JOIN t2 ON TRUE JOIN t2 ON TRUE
+SELECT count(DISTINCT a+b) FROM t1 JOIN t2 ON TRUE JOIN t2 ON TRUE JOIN t2 ON TRUE;
 -- EXPECTED:
 6
 
 -- TEST: distinctagg-3.9
 -- SQL:
-SELECT count(DISTINCT c) FROM t1 WHERE c=2
+SELECT count(DISTINCT c) FROM t1 WHERE c=2;
 -- EXPECTED:
 1
 
@@ -165,7 +165,7 @@ INSERT INTO t4 VALUES(1, 1), (2, 2), (3, 2), (4, 3), (5, 1);
 
 -- TEST: distinctagg-4.1
 -- SQL:
-SELECT count(DISTINCT c) AS count FROM t1 GROUP BY b
+SELECT count(DISTINCT c) AS count FROM t1 GROUP BY b;
 -- UNORDERED:
 0,
 1,
@@ -174,7 +174,7 @@ SELECT count(DISTINCT c) AS count FROM t1 GROUP BY b
 
 -- TEST: distinctagg-4.2
 -- SQL:
-SELECT count(DISTINCT a) AS count FROM t1 GROUP BY b
+SELECT count(DISTINCT a) AS count FROM t1 GROUP BY b;
 -- UNORDERED:
 0,
 1,
@@ -184,7 +184,7 @@ SELECT count(DISTINCT a) AS count FROM t1 GROUP BY b
 
 -- TEST: distinctagg-4.4
 -- SQL:
-SELECT count(DISTINCT f) FROM t2 GROUP BY d, e
+SELECT count(DISTINCT f) FROM t2 GROUP BY d, e;
 -- UNORDERED:
 1,
 2,
@@ -193,25 +193,25 @@ SELECT count(DISTINCT f) FROM t2 GROUP BY d, e
 
 -- TEST: distinctagg-4.5
 -- SQL:
-SELECT count(DISTINCT f) FROM t2 GROUP BY d
+SELECT count(DISTINCT f) FROM t2 GROUP BY d;
 -- UNORDERED:
 2, 3
 
 -- TEST: distinctagg-4.6
 -- TBD: https://git.picodata.io/core/picodata/-/issues/1928
-SELECT count(DISTINCT f) FROM t2 WHERE d IS 1 GROUP BY e
+SELECT count(DISTINCT f) FROM t2 WHERE d IS 1 GROUP BY e;
 -- EXPECTED:
 1, 2, 2
 
 -- TEST: distinctagg-4.7
 -- SQL:
-SELECT count(DISTINCT a) FROM t1
+SELECT count(DISTINCT a) FROM t1;
 -- EXPECTED:
 4
 
 -- TEST: distinctagg-4.8
 -- SQL:
-SELECT count(DISTINCT a) FROM t4
+SELECT count(DISTINCT a) FROM t4;
 -- EXPECTED:
 3
 

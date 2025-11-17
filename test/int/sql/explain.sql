@@ -26,7 +26,7 @@ INSERT INTO "space_simple_shard_key_hist" ("id", "name", "sysOp") VALUES (1, 'ok
 -- TEST: test_motion_explain
 -- SQL:
 EXPLAIN SELECT "id", "name" FROM "testing_space"
-    WHERE "id" in (SELECT "id" FROM "space_simple_shard_key_hist" WHERE "sysOp" < 0)
+    WHERE "id" in (SELECT "id" FROM "space_simple_shard_key_hist" WHERE "sysOp" < 0);
 -- EXPECTED:
 projection ("testing_space"."id"::int -> "id", "testing_space"."name"::string -> "name")
     selection "testing_space"."id"::int in ROW($0)
@@ -51,7 +51,7 @@ FROM
 INNER JOIN
     (SELECT "id" as "tid"  FROM "testing_space" where "id" <> 1) AS "t8"
     ON "t3"."id" = "t8"."tid"
-WHERE "t3"."name" = '123'
+WHERE "t3"."name" = '123';
 -- EXPECTED:
 projection ("t3"."id"::int -> "id", "t3"."name"::string -> "name", "t8"."tid"::int -> "tid")
     selection "t3"."name"::string = '123'::string
@@ -81,7 +81,7 @@ EXPLAIN SELECT * FROM (
             SELECT "id", "name" FROM
             "space_simple_shard_key_hist" WHERE "sysOp" > 0
         ) as "t1"
-        WHERE "id" = 1
+        WHERE "id" = 1;
 -- EXPECTED:
 projection ("t1"."id"::int -> "id", "t1"."name"::string -> "name")
     selection "t1"."id"::int = 1::int
@@ -100,7 +100,7 @@ buckets = [1934]
 
 -- TEST: test_explain_arithmetic_selection-1
 -- SQL:
-EXPLAIN select "id" from "arithmetic_space" where "a" + "b" = "b" + "a"
+EXPLAIN select "id" from "arithmetic_space" where "a" + "b" = "b" + "a";
 -- EXPECTED:
 projection ("arithmetic_space"."id"::int -> "id")
     selection ("arithmetic_space"."a"::int + "arithmetic_space"."b"::int) = ("arithmetic_space"."b"::int + "arithmetic_space"."a"::int)
@@ -112,7 +112,7 @@ buckets = [1-3000]
 
 -- TEST: test_explain_arithmetic_selection-2
 -- SQL:
-EXPLAIN select "id" from "arithmetic_space" where "a" + "b" > 0 and "b" * "a" = 5
+EXPLAIN select "id" from "arithmetic_space" where "a" + "b" > 0 and "b" * "a" = 5;
 -- EXPECTED:
 projection ("arithmetic_space"."id"::int -> "id")
     selection (("arithmetic_space"."a"::int + "arithmetic_space"."b"::int) > 0::int) and (("arithmetic_space"."b"::int * "arithmetic_space"."a"::int) = 5::int)
@@ -132,7 +132,7 @@ FROM
 INNER JOIN
     (SELECT "id" as "id1" FROM "arithmetic_space2" WHERE "c" < 0) AS "t8"
 ON "t3"."id" + "t3"."a" * 2 = "t8"."id1" + 4
-WHERE "t3"."id" = 2
+WHERE "t3"."id" = 2;
 -- EXPECTED:
 projection ("t3"."id"::int -> "id", "t3"."a"::int -> "a", "t8"."id1"::int -> "id1")
     selection "t3"."id"::int = 2::int
@@ -165,7 +165,7 @@ FROM
 INNER JOIN
     (SELECT "id" as "id1" FROM "arithmetic_space2" WHERE "c" < 0) AS "t8"
 ON "t3"."id" + "t3"."a" * 2 = "t8"."id1" + 4
-WHERE "t3"."id" = 2
+WHERE "t3"."id" = 2;
 -- EXPECTED:
 projection ("t3"."id"::int -> "id", "t3"."a"::int -> "a", "t8"."id1"::int -> "id1")
     selection "t3"."id"::int = 2::int
@@ -190,7 +190,7 @@ buckets = [1-3000]
 
 -- TEST: test_explain_arithmetic_projection-1
 -- SQL:
-EXPLAIN select "id" + 2 from "arithmetic_space"
+EXPLAIN select "id" + 2 from "arithmetic_space";
 -- EXPECTED:
 projection ("arithmetic_space"."id"::int + 2::int -> "col_1")
     scan "arithmetic_space"
@@ -201,7 +201,7 @@ buckets = [1-3000]
 
 -- TEST: test_explain_arithmetic_projection-2
 -- SQL:
-EXPLAIN select "a" + "b" * "c" from "arithmetic_space"
+EXPLAIN select "a" + "b" * "c" from "arithmetic_space";
 -- EXPECTED:
 projection ("arithmetic_space"."a"::int + ("arithmetic_space"."b"::int * "arithmetic_space"."c"::int) -> "col_1")
     scan "arithmetic_space"
@@ -212,7 +212,7 @@ buckets = [1-3000]
 
 -- TEST: test_explain_arithmetic_projection-3
 -- SQL:
-EXPLAIN select ("a" + "b") * "c" from "arithmetic_space"
+EXPLAIN select ("a" + "b") * "c" from "arithmetic_space";
 -- EXPECTED:
 projection (("arithmetic_space"."a"::int + "arithmetic_space"."b"::int) * "arithmetic_space"."c"::int -> "col_1")
     scan "arithmetic_space"
@@ -223,7 +223,7 @@ buckets = [1-3000]
 
 -- TEST: test_explain_arithmetic_projection-4
 -- SQL:
-EXPLAIN select "a" > "b" from "arithmetic_space"
+EXPLAIN select "a" > "b" from "arithmetic_space";
 -- EXPECTED:
 projection ("arithmetic_space"."a"::int > "arithmetic_space"."b"::int -> "col_1")
     scan "arithmetic_space"
@@ -234,7 +234,7 @@ buckets = [1-3000]
 
 -- TEST: test_explain_arithmetic_projection-5
 -- SQL:
-EXPLAIN select "a" is null from "arithmetic_space"
+EXPLAIN select "a" is null from "arithmetic_space";
 -- EXPECTED:
 projection ("arithmetic_space"."a"::int is null -> "col_1")
     scan "arithmetic_space"
