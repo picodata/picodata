@@ -1043,6 +1043,8 @@ _NO_DATA_V_0_2_0: dict[str, None] = {
 
 def test_migration_separate_command(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
+    cluster.wait_until_buckets_balanced()
+
     expected_state = PluginReflection.default(i1, i2)
 
     i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, _PLUGIN_VERSION_1, timeout=5)
@@ -1078,6 +1080,7 @@ def test_migration_separate_command(cluster: Cluster):
 
 def test_migration_for_changed_migration(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
+    cluster.wait_until_buckets_balanced()
     expected_state = PluginReflection.default(i1, i2)
 
     # This table is needed a bit later
@@ -3018,6 +3021,7 @@ def test_sdk_authentication(cluster: Cluster, ldap_server: LdapServer):
 
 def test_sql_interface(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
+    cluster.wait_until_buckets_balanced()
 
     plugin_ref = PluginReflection(_PLUGIN_WITH_MIGRATION, "0.1.0", ["testservice_2"], [i1, i2])
 
