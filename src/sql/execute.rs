@@ -1,4 +1,4 @@
-use crate::metrics::{STORAGE_CACHE_1ST_REQUESTS_TOTAL, STORAGE_CACHE_2ND_REQUESTS_TOTAL};
+use crate::metrics::{report_storage_cache_hit, report_storage_cache_miss};
 use crate::sql::PicoPortC;
 use crate::tlog;
 use rmp::encode::{write_array_len, write_str, write_str_len, write_uint};
@@ -15,7 +15,7 @@ use sql::executor::engine::{QueryCache, StorageCache, Vshard};
 use sql::executor::ir::QueryType;
 use sql::executor::protocol::{OptionalData, RequiredData};
 use sql::executor::result::ConsumerResult;
-use sql::executor::vdbe::SqlStmt;
+use sql::executor::vdbe::{ExecutionInsight, SqlStmt};
 use sql::executor::vtable::{VTableTuple, VirtualTable, VirtualTableMeta};
 use sql::executor::{Port, PortType};
 use sql::ir::node::relational::Relational;
@@ -84,15 +84,20 @@ where
         // Transaction rollbacks are very expensive in Tarantool, so we're going to
         // avoid transactions for DQL queries. We can achieve atomicity by truncating
         // temporary tables. Isolation is guaranteed by keeping a lock on the cache.
-        stmt_execute(stmt, info, motion_ids, port)?;
+        use ExecutionInsight::*;
+        match stmt_execute(stmt, info, motion_ids, port)? {
+            Nothing => report_storage_cache_hit("dql", "1st"),
+            BusyStmt => report_storage_cache_miss("dql", "1st", "busy"),
+            StaleStmt => report_storage_cache_miss("dql", "1st", "stale"),
+        }
         port.set_type(PortType::ExecuteDql);
     } else {
         // Response with a cache miss. The router will retry the query
         // on the second round.
+        report_storage_cache_miss("dql", "1st", "true");
         port.set_type(PortType::ExecuteMiss);
     }
 
-    STORAGE_CACHE_1ST_REQUESTS_TOTAL.inc();
     Ok(())
 }
 
@@ -104,9 +109,14 @@ pub(crate) fn dql_execute_second_round<'p, R: QueryCache>(
 where
     R::Cache: StorageCache,
 {
-    plan_execute(runtime, info, port)?;
+    use ExecutionInsight::*;
+    let mut cache_guarded = runtime.cache().lock();
+    match sql_execute::<R>(&mut cache_guarded, info, port)? {
+        Nothing => report_storage_cache_miss("dql", "2nd", "true"),
+        BusyStmt => report_storage_cache_miss("dql", "2nd", "busy"),
+        StaleStmt => report_storage_cache_miss("dql", "2nd", "stale"),
+    }
 
-    STORAGE_CACHE_2ND_REQUESTS_TOTAL.inc();
     // We don't set port type here, because this code can be called
     // for dispatching (on any node) as well as for local execution.
     Ok(())
@@ -193,15 +203,15 @@ where
     }
 
     let mut stmt = SqlStmt::compile(&explain)?;
-    port.process_stmt(&mut stmt, info.params(), info.sql_vdbe_opcode_max())
-        .map_err(Into::into)
+    port.process_stmt(&mut stmt, info.params(), info.sql_vdbe_opcode_max())?;
+    Ok(())
 }
 
 fn plan_execute<'p, R: QueryCache>(
     runtime: &R,
     info: &mut impl FullPlanInfo,
     port: &mut impl Port<'p>,
-) -> Result<(), SbroadError>
+) -> Result<ExecutionInsight, SbroadError>
 where
     R::Cache: StorageCache,
 {
@@ -210,11 +220,10 @@ where
         // Transaction rollbacks are very expensive in Tarantool, so we're going to
         // avoid transactions for DQL queries. We can achieve atomicity by truncating
         // temporary tables. Isolation is guaranteed by keeping a lock on the cache.
-        stmt_execute(stmt, info, motion_ids, port)?;
+        stmt_execute(stmt, info, motion_ids, port)
     } else {
-        sql_execute::<R>(&mut cache_guarded, info, port)?;
+        sql_execute::<R>(&mut cache_guarded, info, port)
     }
-    Ok(())
 }
 
 /// Create a temporary table. It wraps all Space API with `with_su`
@@ -281,25 +290,23 @@ fn table_create(name: &str, pk_name: &str, meta: &VirtualTableMeta) -> Result<()
 }
 
 // Requires the cache to be locked.
-fn stmt_execute<'p>(
+pub fn stmt_execute<'p>(
     stmt: &mut SqlStmt,
     info: &mut impl RequiredPlanInfo,
     motion_ids: &[NodeId],
     port: &mut impl Port<'p>,
-) -> Result<(), SbroadError> {
-    let has_metadata = port.size() == 1;
+) -> Result<ExecutionInsight, SbroadError> {
     let vtables = info.extract_data();
-    let mut pcall = || -> Result<(), SbroadError> {
-        for motion_id in motion_ids {
-            populate_table(motion_id, info.id(), &vtables)?;
-        }
-        port.process_stmt(stmt, info.params(), info.sql_vdbe_opcode_max())
-            .map_err(Into::into)
-    };
+    scopeguard::defer!(
+        truncate_tables(motion_ids, info.id());
+    );
 
-    let res = pcall();
-    truncate_tables(motion_ids, info.id());
-    res?;
+    let has_metadata = port.size() == 1;
+    for motion_id in motion_ids {
+        populate_table(motion_id, info.id(), &vtables)?;
+    }
+
+    let res = port.process_stmt(stmt, info.params(), info.sql_vdbe_opcode_max())?;
 
     // We should check if we exceed the maximum number of rows.
     if port.size() > 0 {
@@ -314,15 +321,15 @@ fn stmt_execute<'p>(
         }
     }
 
-    Ok(())
+    Ok(res)
 }
 
 // Requires the cache to be locked.
-fn sql_execute<'p, R: QueryCache>(
+pub fn sql_execute<'p, R: QueryCache>(
     cache_guarded: &mut <<R as QueryCache>::Mutex as MutexLike<R::Cache>>::Guard<'_>,
     info: &mut impl FullPlanInfo,
     port: &mut impl Port<'p>,
-) -> Result<(), SbroadError>
+) -> Result<ExecutionInsight, SbroadError>
 where
     R::Cache: StorageCache,
 {
@@ -692,7 +699,8 @@ where
         // and want to execute local SQL instead of space api.
 
         let mut info = QueryInfo::new(optional, required);
-        return plan_execute::<R>(runtime, &mut info, port);
+        plan_execute::<R>(runtime, &mut info, port)?;
+        return Ok(());
     }
 
     let delete_child_id = delete_childen[0];

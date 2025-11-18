@@ -8,7 +8,7 @@ use crate::cas::Predicate;
 use crate::catalog::governor_queue;
 use crate::column_name;
 use crate::config::{AlterSystemParameters, DYNAMIC_CONFIG};
-use crate::metrics;
+use crate::metrics::{self, STORAGE_1ST_REQUESTS_TOTAL, STORAGE_2ND_REQUESTS_TOTAL};
 use crate::plugin::{InheritOpts, PluginIdentifier, TopologyUpdateOpKind};
 use crate::schema::{
     wait_for_ddl_commit, CreateIndexParams, CreateProcParams, CreateTableParams, DdlError,
@@ -102,6 +102,7 @@ use self::lua::{escape_bytes, reference_add, reference_del, reference_use};
 use self::port::PicoPortC;
 use self::router::DEFAULT_QUERY_TIMEOUT;
 use serde::Serialize;
+use sql::executor::ir::QueryType;
 use sql::BoundStatement;
 
 pub const DEFAULT_BUCKET_COUNT: u64 = 3000;
@@ -2608,24 +2609,13 @@ impl<'de> Decode<'de> for ExecArgs {
     }
 }
 
-/// # Safety
-/// Executes a query sub-plan on the local node.
-#[no_mangle]
-pub unsafe extern "C" fn proc_sql_execute(
-    mut ctx: FunctionCtx,
-    func_args: FunctionArgs,
-) -> ::std::os::raw::c_int {
-    let mut args = match func_args.decode::<ExecArgs>() {
-        Ok(args) => args,
-        Err(e) => return report("", Error::from(e)),
-    };
+unsafe fn proc_sql_execute_impl(mut args: ExecArgs, port: &mut PicoPortC) -> ::std::os::raw::c_int {
     // Safety: safe as the original args.sid is as valid UTF-8 string.
     let sid = unsafe { std::str::from_utf8_unchecked(args.sid.as_slice()) };
 
     let mut pcall = || -> Result<(), Error> {
         let runtime = StorageRuntime::new();
-        let mut port = PicoPortC::from(ctx.mut_port_c());
-        runtime.execute_plan(&mut args.required, args.optional.as_deref(), &mut port)?;
+        runtime.execute_plan(&mut args.required, args.optional.as_deref(), port)?;
         Ok(())
     };
 
@@ -2646,6 +2636,42 @@ pub unsafe extern "C" fn proc_sql_execute(
         Ok(()) => 0,
         Err(e) => return report("Failed to execute '.proc_sql_execute': ", e),
     }
+}
+
+/// # Safety
+/// Executes a query sub-plan on the local node.
+#[no_mangle]
+pub unsafe extern "C" fn proc_sql_execute(
+    mut ctx: FunctionCtx,
+    func_args: FunctionArgs,
+) -> ::std::os::raw::c_int {
+    let args = match func_args.decode::<ExecArgs>() {
+        Ok(args) => args,
+        Err(e) => return report("", Error::from(e)),
+    };
+
+    let mut port = PicoPortC::from(ctx.mut_port_c());
+
+    let is_first_req = args.optional.is_none();
+    let query_type = match args.required.query_type {
+        QueryType::DQL => "dql",
+        QueryType::DML => "dml",
+    };
+
+    let ret = proc_sql_execute_impl(args, &mut port);
+
+    let result = if ret == 0 { "ok" } else { "err" };
+    if is_first_req {
+        STORAGE_1ST_REQUESTS_TOTAL
+            .with_label_values(&[query_type, result])
+            .inc();
+    } else {
+        STORAGE_2ND_REQUESTS_TOTAL
+            .with_label_values(&[query_type, result])
+            .inc();
+    }
+
+    ret
 }
 
 // Each DML request on global tables has the following plan:

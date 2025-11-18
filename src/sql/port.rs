@@ -16,7 +16,7 @@ use std::ptr::NonNull;
 use tarantool::ffi::sql::{obuf_append, Obuf, Port, PortC, PortVTable};
 
 use super::lua::{dispatch_query_plan_dump_lua, escape_bytes};
-use sql::executor::vdbe::{SqlError, SqlStmt};
+use sql::executor::vdbe::{ExecutionInsight, SqlError, SqlStmt};
 use sql::ir::value::Value;
 
 /// The response of dump_mp callback is used in the IPROTO body
@@ -181,7 +181,7 @@ impl SqlPort<'_> for PicoPortOwned {
         stmt: &mut SqlStmt,
         params: &[Value],
         max_vdbe: u64,
-    ) -> Result<(), SqlError>
+    ) -> Result<ExecutionInsight, SqlError>
     where
         Self: Sized,
     {
@@ -241,7 +241,7 @@ impl<'p> SqlPort<'p> for PicoPortC<'p> {
         stmt: &mut SqlStmt,
         params: &[Value],
         max_vdbe: u64,
-    ) -> Result<(), SqlError>
+    ) -> Result<ExecutionInsight, SqlError>
     where
         Self: Sized,
     {

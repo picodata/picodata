@@ -68,15 +68,33 @@ def test_picodata_metrics(cluster: Cluster) -> None:
         assert metric in metrics_output, f"Metric '{metric}' not found in /metrics output"
 
 
-def check_metric(families: Dict[str, Metric], name: str, value: float | None):
+def check_metric(families: Dict[str, Metric], name: str, value: float | None, **labels):
     found_family = families.get(name)
     if value is None:
-        assert found_family is None, "Metric {} found".format(name)
+        if not labels:
+            assert found_family is None, "Metric {} found".format(name)
+        elif found_family is not None:
+            for sample in found_family.samples:
+                match_all_labels = all([sample.labels.get(lbl) == val for lbl, val in labels.items()])
+                assert not match_all_labels, "Labeled {} metric found".format(name)
     else:
         assert found_family is not None, "Metric {} not found".format(name)
-        assert len(found_family.samples) == 1, "Metric has {} samples instead of 1".format(len(found_family.samples))
-        sample = found_family.samples[0]
-        assert sample.value == value, "Metric has unexpected value"
+        if not labels:
+            assert len(found_family.samples) == 1, "Metric has {} samples instead of 1".format(
+                len(found_family.samples)
+            )
+            sample = found_family.samples[0]
+            assert sample.value == value, "Metric has unexpected value"
+        else:
+            filtered_samples = []
+            for sample in found_family.samples:
+                if all([sample.labels.get(label) == value for label, value in labels.items()]):
+                    filtered_samples.append(sample)
+            assert len(filtered_samples) == 1, "Labeled metric has {} samples instead of 1".format(
+                len(filtered_samples)
+            )
+            sample = filtered_samples[0]
+            assert sample.value == value, "Labeled metric has unexpected value"
 
 
 @pytest.mark.webui
@@ -102,7 +120,8 @@ def test_pgproto_metrics_collected(instance: Instance) -> None:
 
 @pytest.mark.webui
 def test_router_and_storage_cache_metrics(instance: Instance):
-    check_metric(instance.get_metrics(), "pico_router_cache_misses", 0)
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_router_cache_misses", 0)
 
     ################
     # Run ACL query
@@ -123,8 +142,8 @@ def test_router_and_storage_cache_metrics(instance: Instance):
     # Every query (even ACL) is looked in the router cache so miss is reported
     check_metric(metrics, "pico_router_cache_misses", 1)
     # ACL is not executed on storage so no requests are reported
-    check_metric(metrics, "pico_storage_cache_1st_requests", 0)
-    check_metric(metrics, "pico_storage_cache_2nd_requests", 0)
+    check_metric(metrics, "pico_storage_1st_requests", None)
+    check_metric(metrics, "pico_storage_2nd_requests", None)
 
     ################
     # Run DDL query
@@ -137,8 +156,8 @@ def test_router_and_storage_cache_metrics(instance: Instance):
     # Every query (even DDL) is looked in the router cache so miss is reported
     check_metric(metrics, "pico_router_cache_misses", 2)
     # ACL is not executed on storage so no requests are reported
-    check_metric(metrics, "pico_storage_cache_1st_requests", 0)
-    check_metric(metrics, "pico_storage_cache_2nd_requests", 0)
+    check_metric(metrics, "pico_storage_1st_requests", None)
+    check_metric(metrics, "pico_storage_2nd_requests", None)
 
     ################
     # Run DML query
@@ -152,9 +171,9 @@ def test_router_and_storage_cache_metrics(instance: Instance):
     check_metric(metrics, "pico_router_cache_misses", 3)
     # DML is cached on the router
     check_metric(metrics, "pico_router_cache_statements_added", 1)
-    # We don't cache in the storage cache DML so no requests are reported
-    check_metric(metrics, "pico_storage_cache_1st_requests", 0)
-    check_metric(metrics, "pico_storage_cache_2nd_requests", 0)
+    # DML is always executed via 2nd request.
+    check_metric(metrics, "pico_storage_1st_requests", None)
+    check_metric(metrics, "pico_storage_2nd_requests", 1, query_type="dml")
 
     ##########################
     # Execute first DQL query
@@ -168,11 +187,12 @@ def test_router_and_storage_cache_metrics(instance: Instance):
     check_metric(metrics, "pico_storage_cache_statements_added", 1)
 
     # Router cache miss is reported
-    check_metric(instance.get_metrics(), "pico_router_cache_misses", 4)
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_router_cache_misses", 4)
 
     # Both requests to the storage cache are reported (i.e. cache miss)
-    check_metric(metrics, "pico_storage_cache_1st_requests", 1)
-    check_metric(metrics, "pico_storage_cache_2nd_requests", 1)
+    check_metric(metrics, "pico_storage_1st_requests", 1, query_type="dql", result="ok")
+    check_metric(metrics, "pico_storage_2nd_requests", 1, query_type="dql", result="ok")
 
     #####################################
     # Run the same DQL query via pgproto
@@ -190,8 +210,8 @@ def test_router_and_storage_cache_metrics(instance: Instance):
     check_metric(metrics, "pico_router_cache_hits", 1)
 
     # Only 1st requests to the storage cache is reported (i.e. cache hit)
-    check_metric(metrics, "pico_storage_cache_1st_requests", 2)
-    check_metric(metrics, "pico_storage_cache_2nd_requests", 1)
+    check_metric(metrics, "pico_storage_1st_requests", 2, query_type="dql", result="ok")
+    check_metric(metrics, "pico_storage_2nd_requests", 1, query_type="dql", result="ok")
 
     ##############################################
     # Ensure storage cache evictions are reported
@@ -230,6 +250,38 @@ def test_router_and_storage_cache_metrics(instance: Instance):
     metrics = instance.get_metrics()
     check_metric(metrics, "pico_router_cache_statements_added", 51)
     check_metric(metrics, "pico_router_cache_statements_evicted", 1)
+
+    ##########################################################
+    # Ensure cache size is correctly reported after shrinking
+    ##########################################################
+
+    # Pollute storage cache
+    instance.sql("ALTER SYSTEM SET sql_storage_cache_count_max = 4")
+    instance.sql("SELECT (1) FROM t")
+    instance.sql("SELECT (1), (2) FROM t")
+    instance.sql("SELECT (1), (2), (3) FROM t")
+    instance.sql("SELECT (1), (2), (3), (4) FROM t")
+
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_storage_cache_statements_added", 8)
+    check_metric(metrics, "pico_storage_cache_statements_evicted", 4)
+
+    # Shrink the cache using count_max parameter
+    instance.sql("ALTER SYSTEM SET sql_storage_cache_count_max = 2")
+    # size = added - evicted
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_storage_cache_statements_added", 8)
+    check_metric(metrics, "pico_storage_cache_statements_evicted", 6)
+
+    # Shrink the cache using size_max parameter
+    instance.sql("ALTER SYSTEM SET sql_storage_cache_size_max = 1")
+    # size = added - evicted
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_storage_cache_statements_added", 8)
+    check_metric(metrics, "pico_storage_cache_statements_evicted", 8)
+
+    # Still can do some queries
+    instance.sql("SELECT * FROM t JOIN t t2 on t.a = t2.a")
 
 
 def get_instance_state_metric(instance: Instance) -> Dict[str, Sample]:
@@ -304,3 +356,161 @@ def test_instance_state_metric(cluster: Cluster):
         assert i4.name in samples_by_instance_name
 
         all_but_first_report_online(cluster, i1.name)
+
+
+@pytest.mark.webui
+def test_storage_cache_mestrics(instance: Instance):
+    # All metrics uninitialized
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_storage_cache_hits", None)
+    check_metric(metrics, "pico_storage_cache_misses", None)
+
+    # Create a postgres user to test metrics via pgproto
+    instance.sql("CREATE USER postgres WITH PASSWORD 'Passw0rd'")
+    host, port = instance.pg_host, instance.pg_port
+    pgproto = psycopg.connect(f"postgres://postgres:Passw0rd@{host}:{port}")
+    pgproto.autocommit = True  # do not make a transaction
+    instance.sql("GRANT CREATE TABLE TO postgres", sudo=True)
+
+    # ACL does not access the storage cache.
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_storage_cache_hits", None)
+    check_metric(metrics, "pico_storage_cache_misses", None)
+
+    # Create and fill table
+    pgproto.execute("CREATE TABLE t (a INT PRIMARY KEY, b INT)")
+    pgproto.execute("INSERT INTO t VALUES (1,2)")
+    pgproto.execute("INSERT INTO t VALUES (2,3)")
+
+    # DDL and DML do not access the storage cache.
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_storage_cache_hits", None)
+    check_metric(metrics, "pico_storage_cache_misses", None)
+
+    # DQL true cache misses are reported
+    pgproto.execute("SELECT a FROM t")
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_storage_cache_hits", None)
+    check_metric(metrics, "pico_storage_cache_misses", 1, query_type="dql", rpc_type="1st", miss_type="true")
+    check_metric(metrics, "pico_storage_cache_misses", 1, query_type="dql", rpc_type="2nd", miss_type="true")
+
+    # DQL cache hits are reported
+    pgproto.execute("SELECT a FROM t")
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_storage_cache_hits", 1, query_type="dql", rpc_type="1st")
+
+    # DQL stale cache misses are reported after schema changes.
+    pgproto.execute("CREATE TABLE t2 (a INT PRIMARY KEY, b INT)")
+    pgproto.execute("SELECT a FROM t")
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_storage_cache_hits", 1, query_type="dql", rpc_type="1st")
+    check_metric(metrics, "pico_storage_cache_misses", 1, query_type="dql", rpc_type="1st", miss_type="stale")
+
+    # Recompilation due to schema changes is reported.
+    pgproto.execute("CREATE INDEX ib ON t(b)")
+    pgproto.execute("SELECT a FROM t")
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_storage_cache_hits", 1, query_type="dql", rpc_type="1st")
+    check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="1st", miss_type="stale")
+
+    # ALTER TABLE changes picodata's schema version leading to
+    # complete recompilation of the plan and the statement from scratch.
+    pgproto.execute("ALTER TABLE t ADD COLUMN c INT")
+    pgproto.execute("SELECT a FROM t")
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_storage_cache_hits", 1, query_type="dql", rpc_type="1st")
+    check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="1st", miss_type="true")
+    check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="2nd", miss_type="true")
+
+    # `pico_storage_cache_busy_misses_total` cannot be reported at the moment
+    # due to the lock on the storage cache.
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="1st", miss_type="busy")
+    check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="2nd", miss_type="busy")
+
+
+@pytest.mark.webui
+def test_local_sql_collisions_gl_2367(instance: Instance):
+    # Create a postgres user to test metrics via pgproto
+    instance.sql("CREATE USER postgres WITH PASSWORD 'Passw0rd'")
+    host, port = instance.pg_host, instance.pg_port
+    pgproto = psycopg.connect(f"postgres://postgres:Passw0rd@{host}:{port}")
+    pgproto.autocommit = True  # do not make a transaction
+    instance.sql("GRANT CREATE TABLE TO postgres", sudo=True)
+
+    # Create and fill table
+    pgproto.execute("CREATE TABLE t (a INT PRIMARY KEY, b INT)")
+    pgproto.execute("INSERT INTO t VALUES (1,2)")
+
+    # All metrics uninitialized
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_storage_cache_hits", None, query_type="dql", rpc_type="1st")
+    check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="1st", miss_type="true")
+    check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="1st", miss_type="stale")
+
+    # Ensure statements with colliding local SQL are cached twice without any problems.
+    # (https://git.picodata.io/core/picodata/-/issues/2367)
+
+    # Assert local SQL collides.
+    raw1 = pgproto.execute("EXPLAIN (raw) SELECT DISTINCT * FROM t ORDER BY 1").fetchall()
+    raw2 = pgproto.execute("EXPLAIN (raw) SELECT * FROM t GROUP BY a, b ORDER BY 1").fetchall()
+    assert raw1[1] == raw2[1]
+
+    # EXPLAIN shouldn't be reported.
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_storage_cache_hits", None, query_type="dql", rpc_type="1st")
+    check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="1st", miss_type="true")
+    check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="1st", miss_type="stale")
+
+    # Cache statements.
+    pgproto.execute("SELECT DISTINCT * FROM t ORDER BY 1")
+
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_storage_cache_hits", None, query_type="dql", rpc_type="1st")
+    # Motion materialization gives one true miss.
+    check_metric(metrics, "pico_storage_cache_misses", 1, query_type="dql", rpc_type="1st", miss_type="true")
+    # Then the router executes the top query locally.
+    check_metric(metrics, "pico_storage_cache_misses", 1, query_type="dql", rpc_type="local", miss_type="true")
+
+    # Cache another statements with the same local SQL.
+    pgproto.execute("SELECT * FROM t GROUP BY a, b ORDER BY 1")
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_storage_cache_hits", None, query_type="dql", rpc_type="1st")
+    # Motion materialization gives one true miss.
+    check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="1st", miss_type="true")
+    # Then the router executes the top query locally.
+    check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="local", miss_type="true")
+
+    # Run cached statements.
+    # Due to temporary spaces creation stale misses will be reported on local and 1st requests.
+    pgproto.execute("SELECT DISTINCT * FROM t ORDER BY 1")
+    pgproto.execute("SELECT * FROM t GROUP BY a, b ORDER BY 1")
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_storage_cache_hits", None, query_type="dql", rpc_type="1st")
+    check_metric(metrics, "pico_storage_cache_hits", 1, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="1st", miss_type="true")
+    check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="local", miss_type="true")
+    check_metric(metrics, "pico_storage_cache_misses", 1, query_type="dql", rpc_type="local", miss_type="stale")
+    check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="1st", miss_type="stale")
+
+    # Run cached statements again after recompilation with the current schema verions.
+    pgproto.execute("SELECT DISTINCT * FROM t ORDER BY 1")
+    pgproto.execute("SELECT * FROM t GROUP BY a, b ORDER BY 1")
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_storage_cache_hits", 2, query_type="dql", rpc_type="1st")
+    check_metric(metrics, "pico_storage_cache_hits", 3, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="1st", miss_type="true")
+    check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="local", miss_type="true")
+    check_metric(metrics, "pico_storage_cache_misses", 1, query_type="dql", rpc_type="local", miss_type="stale")
+    check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="1st", miss_type="stale")
+
+    # Run cached statements one more time.
+    pgproto.execute("SELECT DISTINCT * FROM t ORDER BY 1")
+    pgproto.execute("SELECT * FROM t GROUP BY a, b ORDER BY 1")
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_storage_cache_hits", 4, query_type="dql", rpc_type="1st")
+    check_metric(metrics, "pico_storage_cache_hits", 5, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="1st", miss_type="true")
+    check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="local", miss_type="true")
+    check_metric(metrics, "pico_storage_cache_misses", 1, query_type="dql", rpc_type="local", miss_type="stale")
+    check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="1st", miss_type="stale")

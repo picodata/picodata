@@ -252,21 +252,61 @@ pub static STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL: LazyLock<IntCounter> = LazyLo
     .unwrap()
 });
 
-pub static STORAGE_CACHE_1ST_REQUESTS_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
-    IntCounter::with_opts(prometheus::Opts::new(
-        "pico_storage_cache_1st_requests_total",
-        "Total number of 1st requests to the storage cache since startup (aka total number of requests to the cache)",
-    ))
+pub static STORAGE_1ST_REQUESTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    IntCounterVec::new(
+        Opts::new(
+            "pico_storage_1st_requests_total",
+            "Total number of 1st requests to the storage cache since startup (aka total number of requests to the cache)",
+        ),
+        &["query_type", "result"],
+    )
     .unwrap()
 });
 
-pub static STORAGE_CACHE_2ND_REQUESTS_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
-    IntCounter::with_opts(prometheus::Opts::new(
-        "pico_storage_cache_2nd_requests_total",
-        "Total number of 2nd reqests to the storage cache since startup (aka total number of cache misses)",
-    ))
+pub static STORAGE_2ND_REQUESTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    IntCounterVec::new(
+        Opts::new(
+            "pico_storage_2nd_requests_total",
+            "Total number of 2nd reqests to the storage cache since startup (aka total number of cache misses)",
+        ),
+        &["query_type", "result"]
+    )
     .unwrap()
 });
+
+pub static STORAGE_CACHE_HITS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    IntCounterVec::new(
+        Opts::new(
+            "pico_storage_cache_hits_total",
+            "The total number cache hits on the storage",
+        ),
+        &["query_type", "rpc_type"],
+    )
+    .unwrap()
+});
+
+pub static STORAGE_CACHE_MISSES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    IntCounterVec::new(
+        Opts::new(
+            "pico_storage_cache_misses_total",
+            "The total number of cache misses on the storage",
+        ),
+        &["query_type", "rpc_type", "miss_type"],
+    )
+    .unwrap()
+});
+
+pub fn report_storage_cache_hit(query_type: &str, rpc_type: &str) {
+    STORAGE_CACHE_HITS_TOTAL
+        .with_label_values(&[query_type, rpc_type])
+        .inc()
+}
+
+pub fn report_storage_cache_miss(query_type: &str, rpc_type: &str, miss_type: &str) {
+    STORAGE_CACHE_MISSES_TOTAL
+        .with_label_values(&[query_type, rpc_type, miss_type])
+        .inc()
+}
 
 pub fn record_governor_change() {
     GOVERNOR_CHANGE_COUNTER.inc();
@@ -397,12 +437,14 @@ pub fn register_metrics(registry: &prometheus::Registry) -> prometheus::Result<(
     registry.register(Box::new(INFO_UPTIME.clone()))?;
     registry.register(Box::new(STORAGE_CACHE_STATEMENTS_ADDED_TOTAL.clone()))?;
     registry.register(Box::new(STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL.clone()))?;
-    registry.register(Box::new(STORAGE_CACHE_1ST_REQUESTS_TOTAL.clone()))?;
-    registry.register(Box::new(STORAGE_CACHE_2ND_REQUESTS_TOTAL.clone()))?;
+    registry.register(Box::new(STORAGE_1ST_REQUESTS_TOTAL.clone()))?;
+    registry.register(Box::new(STORAGE_2ND_REQUESTS_TOTAL.clone()))?;
     registry.register(Box::new(ROUTER_CACHE_STATEMENTS_ADDED_TOTAL.clone()))?;
     registry.register(Box::new(ROUTER_CACHE_STATEMENTS_EVICTED_TOTAL.clone()))?;
     registry.register(Box::new(ROUTER_CACHE_HITS_TOTAL.clone()))?;
     registry.register(Box::new(ROUTER_CACHE_MISSES_TOTAL.clone()))?;
+    registry.register(Box::new(STORAGE_CACHE_HITS_TOTAL.clone()))?;
+    registry.register(Box::new(STORAGE_CACHE_MISSES_TOTAL.clone()))?;
 
     Ok(())
 }

@@ -37,7 +37,7 @@ use tarantool::space::SpaceId;
 use super::helpers::vshard::prepare_rs_to_ir_map;
 use super::helpers::{dispatch_impl, normalize_name_from_sql, table_name};
 use super::{get_builtin_functions, Metadata, QueryCache};
-use crate::executor::vdbe::{SqlError, SqlStmt};
+use crate::executor::vdbe::{ExecutionInsight, SqlError, SqlStmt};
 
 pub const TEMPLATE: &str = "test";
 
@@ -80,7 +80,7 @@ impl Port<'_> for PortMocked {
         _stmt: &mut SqlStmt,
         _params: &[Value],
         _max_vdbe: u64,
-    ) -> Result<(), SqlError>
+    ) -> Result<ExecutionInsight, SqlError>
     where
         Self: Sized,
     {

@@ -4,7 +4,8 @@
 
 use crate::sql::dispatch::port_write_metadata;
 use crate::sql::execute::{
-    dml_execute, dql_execute_first_round, dql_execute_second_round, explain_execute,
+    dml_execute, dql_execute_first_round, dql_execute_second_round, explain_execute, sql_execute,
+    stmt_execute,
 };
 use crate::sql::router::{
     calculate_bucket_id, get_table_version, get_table_version_by_id, VersionMap,
@@ -28,7 +29,8 @@ use sql::ir::ExplainType;
 use std::cell::OnceCell;
 
 use crate::metrics::{
-    STORAGE_CACHE_STATEMENTS_ADDED_TOTAL, STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL,
+    report_storage_cache_hit, report_storage_cache_miss, STORAGE_CACHE_STATEMENTS_ADDED_TOTAL,
+    STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL,
 };
 use smol_str::{format_smolstr, SmolStr};
 use sql::executor::vdbe::SqlStmt;
@@ -344,7 +346,26 @@ impl Vshard for StorageRuntime {
                         "DML queries are not supported on arbitrary nodes".into(),
                     ));
                 }
-                dql_execute_second_round(self, &mut info, port)?;
+
+                use sql::executor::vdbe::ExecutionInsight::*;
+                let mut cache_guarded = self.cache().lock();
+
+                if let Some((stmt, motion_ids)) = cache_guarded.get(info.id())? {
+                    // Transaction rollbacks are very expensive in Tarantool, so we're going to
+                    // avoid transactions for DQL queries. We can achieve atomicity by truncating
+                    // temporary tables. Isolation is guaranteed by keeping a lock on the cache.
+                    match stmt_execute(stmt, &mut info, motion_ids, port)? {
+                        Nothing => report_storage_cache_hit("dql", "local"),
+                        BusyStmt => report_storage_cache_miss("dql", "local", "busy"),
+                        StaleStmt => report_storage_cache_miss("dql", "local", "stale"),
+                    }
+                } else {
+                    match sql_execute::<Self>(&mut cache_guarded, &mut info, port)? {
+                        Nothing => report_storage_cache_miss("dql", "local", "true"),
+                        BusyStmt => report_storage_cache_miss("dql", "local", "busy"),
+                        StaleStmt => report_storage_cache_miss("dql", "local", "stale"),
+                    }
+                }
             }
             Some(ExplainType::Explain) => unreachable!("Explain should already be handled."),
             Some(ExplainType::ExplainQueryPlan) => {

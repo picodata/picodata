@@ -26,6 +26,7 @@ use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::bucket::Buckets;
 use crate::executor::engine::{Router, Vshard};
 use crate::executor::ir::ExecutionPlan;
+use crate::executor::vdbe::ExecutionInsight;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Motion, NodeId};
 use crate::ir::transformation::redistribution::MotionPolicy;
@@ -89,7 +90,7 @@ pub trait Port<'p>: Write {
         stmt: &mut SqlStmt,
         params: &[Value],
         max_vdbe: u64,
-    ) -> Result<(), SqlError>
+    ) -> Result<ExecutionInsight, SqlError>
     where
         Self: Sized;
 

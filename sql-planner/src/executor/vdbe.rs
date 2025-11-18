@@ -49,6 +49,19 @@ pub enum SqlError {
 
 type SqlResult<T> = Result<T, SqlError>;
 
+/// Execution result gives some insights into execution process.
+/// The only purpose of it is performance troubleshooting and metrics collecting, if the user
+/// doesn't care about it this result can be safely ignored.
+#[derive(Debug, Clone, Copy)]
+pub enum ExecutionInsight {
+    /// Statement was executed without any special care.
+    Nothing,
+    /// Statement was executed by another fiber so a new statement was compiled and executed.
+    BusyStmt,
+    /// Statement had invalid schema version so it was recompiled before execution.
+    StaleStmt,
+}
+
 /// Compiled SQL statement from tarantool (struct Vdbe).
 #[derive(Debug)]
 pub struct SqlStmt {
@@ -87,25 +100,32 @@ impl SqlStmt {
     pub fn execute(
         &mut self,
         params: &[Value],
-        sql_vdbe_opcode_max: u64,
+        opcode_max: u64,
         port: &mut PortC,
-    ) -> SqlResult<()> {
+    ) -> SqlResult<ExecutionInsight> {
         if self.is_busy() {
             // Compile and execute a new statement that is not busy.
             let mut stmt = Self::compile(self.as_str())?;
             debug_assert!(!stmt.is_busy());
-            return stmt.execute(params, sql_vdbe_opcode_max, port);
+            stmt.execute(params, opcode_max, port)?;
+            return Ok(ExecutionInsight::BusyStmt);
         }
-        if !self.is_schema_version_valid() {
+
+        let is_version_stale = !self.is_schema_version_valid();
+        if is_version_stale {
             // Recompile this statement with current version.
             *self = Self::compile(self.as_str())?;
             debug_assert!(self.is_schema_version_valid());
         }
+
         let params: Vec<_> = params.iter().map(EncodedValue::from).collect();
-        with_su(ADMIN_ID, || {
-            self.execute_raw(&params, sql_vdbe_opcode_max, port)
-        })
-        .expect("must be able to su into admin")
+        with_su(ADMIN_ID, || self.execute_raw(&params, opcode_max, port))
+            .expect("must be able to su into admin")?;
+
+        match is_version_stale {
+            true => Ok(ExecutionInsight::StaleStmt),
+            false => Ok(ExecutionInsight::Nothing),
+        }
     }
 
     fn execute_raw(
