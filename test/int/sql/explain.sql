@@ -268,3 +268,28 @@ execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
 buckets = any
+
+-- TEST: test_raw_explain
+-- SQL:
+EXPLAIN (RAW, FMT) SELECT "id" from testing_space UNION SELECT "id" from testing_space;
+-- EXPECTED:
+1. Query (STORAGE):
+SELECT
+  "testing_space"."id"
+FROM
+  "testing_space"
+UNION
+SELECT
+  "testing_space"."id"
+FROM
+  "testing_space"
++----------+-------+------+-------------------------------------------------------+
+| selectid | order | from | detail                                                |
++=================================================================================+
+| 1        | 0     | 0    | SCAN TABLE testing_space (~1048576 rows)              |
+|----------+-------+------+-------------------------------------------------------|
+| 2        | 0     | 0    | SCAN TABLE testing_space (~1048576 rows)              |
+|----------+-------+------+-------------------------------------------------------|
+| 0        | 0     | 0    | COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (UNION) |
++----------+-------+------+-------------------------------------------------------+
+''

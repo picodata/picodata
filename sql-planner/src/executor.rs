@@ -301,11 +301,15 @@ where
             let Some(table) = Rc::get_mut(&mut ref_table) else {
                 return Err(err("there are other references for the virtual table"));
             };
-            table
-                .dump_mp(aliases.iter().map(|s| s.as_str()), port)
-                .map_err(|e| {
-                    SbroadError::Invalid(Entity::VirtualTable, Some(format_smolstr!("{e}")))
-                })?;
+
+            // Skip metadata in case of `EXPLAIN (RAW, FMT)`
+            if !self.exec_plan.get_ir_plan().is_raw_explain() {
+                table
+                    .dump_mp(aliases.iter().map(|s| s.as_str()), port)
+                    .map_err(|e| {
+                        SbroadError::Invalid(Entity::VirtualTable, Some(format_smolstr!("{e}")))
+                    })?;
+            }
             return Ok(());
         }
         let buckets = self.bucket_discovery(top_id)?;
