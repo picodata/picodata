@@ -19,6 +19,6 @@ RUN apt install -y \
 ENV PATH=/root/.cargo/bin:${PATH}
 RUN set -e; \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |\
-    sh -s -- -y --profile default --default-toolchain ${RUST_VERSION} -c rustfmt -c clippy;
+    sh -s -- -y --profile minimal --default-toolchain ${RUST_VERSION} -c rustfmt -c clippy;
 
-COPY docker/ci-log-section /usr/bin/ci-log-section
+COPY tarantool/docker/ci-log-section /usr/bin/ci-log-section

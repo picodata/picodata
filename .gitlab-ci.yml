@@ -177,7 +177,6 @@ tarantool-module-trigger:
   inherit:
     variables: false
   variables:
-    TARANTOOL_VERSION: $TARANTOOL_VERSION
     PARENT_CI_PIPELINE_SOURCE: $CI_PIPELINE_SOURCE
   trigger:
     include: tarantool/.gitlab-ci.yml
@@ -191,6 +190,7 @@ tarantool-module-trigger:
         compare_to: *main-branch
         paths:
           - tarantool/**/*
+          - tarantool-sys
     - when: manual
       allow_failure: true
 
