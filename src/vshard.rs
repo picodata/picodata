@@ -184,6 +184,10 @@ pub fn get_replicaset_uuid_by_bucket_id(tier: &str, bucket_id: u64) -> Result<St
     res.map_err(|e| tlua::LuaError::from(e).into())
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// VshardConfig
+////////////////////////////////////////////////////////////////////////////////
+
 #[rustfmt::skip]
 #[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Default, Clone, Debug, PartialEq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
@@ -343,4 +347,95 @@ impl VshardConfig {
             }
         }
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// VshardErrorCode
+////////////////////////////////////////////////////////////////////////////////
+
+/// Copied from `vshard/vshard/error.lua`
+pub enum VshardErrorCode {
+    /// msg = 'Cannot perform action with bucket %d, reason: %s'
+    WrongBucket = 1,
+    /// msg = 'Replica %s is not a master for replicaset %s anymore'
+    NonMaster = 2,
+    /// msg = 'Bucket %d already exists'
+    BucketAlreadyExists = 3,
+    /// msg = 'Replicaset %s not found'
+    NoSuchReplicaset = 4,
+    /// msg = 'Cannot move: bucket %d is already on replicaset %s'
+    MoveToSelf = 5,
+    /// msg = 'Master is not configured for replicaset %s'
+    MissingMaster = 6,
+    /// msg = 'Bucket %d is transferring to replicaset %s'
+    TransferIsInProgress = 7,
+    /// msg = 'There is no active replicas in replicaset %s'
+    UnreachableReplicaset = 8,
+    /// msg = 'Bucket %d cannot be found. Is rebalancing in progress?'
+    NoRouteToBucket = 9,
+    /// msg = 'Cluster is already bootstrapped'
+    NonEmpty = 10,
+    /// msg = 'Master of replicaset %s is unreachable: %s'
+    UnreachableMaster = 11,
+    /// msg = 'Replica is out of sync'
+    OutOfSync = 12,
+    /// msg = 'High replication lag: %f'
+    HighReplicationLag = 13,
+    /// msg = "Replica %s isn't active"
+    UnreachableReplica = 14,
+    /// msg = 'Only one replica is active'
+    LowRedundancy = 15,
+    /// msg = 'Sending and receiving buckets at same time is not allowed'
+    InvalidRebalancing = 16,
+    /// msg = 'A current read replica in replicaset %s is not optimal'
+    SuboptimalReplica = 17,
+    /// msg = '%d buckets are not discovered'
+    UnknownBuckets = 18,
+    /// msg = 'Replicaset is locked'
+    ReplicasetIsLocked = 19,
+    /// msg = 'Object is outdated after module reload/reconfigure. Use new instance.'
+    ObjectIsOutdated = 20,
+    /// msg = 'Router with name %s already exists'
+    RouterAlreadyExists = 21,
+    /// msg = 'Bucket %d is locked'
+    BucketIsLocked = 22,
+    /// msg = 'Invalid configuration: %s'
+    InvalidCfg = 23,
+    /// msg = 'Bucket %d is pinned'
+    BucketIsPinned = 24,
+    /// msg = 'Too many receiving buckets at once, please, throttle'
+    TooManyReceiving = 25,
+    /// msg = 'Storage is referenced'
+    StorageIsReferenced = 26,
+    /// msg = 'Can not add a storage ref: %s'
+    StorageRefAdd = 27,
+    /// msg = 'Can not use a storage ref: %s'
+    StorageRefUse = 28,
+    /// msg = 'Can not delete a storage ref: %s'
+    StorageRefDel = 29,
+    /// msg = 'Can not receive the bucket %s data in space "%s" at tuple %s: %s'
+    BucketRecvDataError = 30,
+    /// msg = 'Replicaset %s is in backoff, can\'t take requests right now. Last error was %s'
+    ReplicasetInBackoff = 32,
+    /// msg = 'Storage is disabled: %s'
+    StorageIsDisabled = 33,
+    /// msg = 'Bucket %d is corrupted: %s'
+    /// -- That is similar to WRONG_BUCKET, but the latter is not critical. It
+    /// -- usually can be retried. Corruption is a critical error, it requires
+    /// -- more attention.
+    BucketIsCorrupted = 34,
+    /// msg = 'Router is disabled: %s'
+    RouterIsDisabled = 35,
+    /// msg = 'Error during bucket GC: %s'
+    BucketGcError = 36,
+    /// msg = 'Configuration of the storage is in progress'
+    StorageCfgIsInProgress = 37,
+    /// msg = 'Configuration of the router with name %s is in progress'
+    RouterCfgIsInProgress = 38,
+    /// msg = 'Bucket %s update is invalid: %s'
+    BucketInvalidUpdate = 39,
+    /// msg = 'Handshake with %s have not been completed yet'
+    VhandshakeNotComplete = 40,
+    /// msg = 'Mismatch server name: expected "%s", but got "%s"'
+    InstanceNameMismatch = 41,
 }

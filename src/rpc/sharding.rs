@@ -7,9 +7,11 @@ use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::Result;
 use crate::traft::{node, RaftIndex, RaftTerm};
+use crate::vshard::VshardErrorCode;
 use crate::vshard::{ReplicasetSpec, VshardConfig};
 use std::collections::HashMap;
 use std::time::Duration;
+use tarantool::error::BoxError;
 use tarantool::fiber;
 use tarantool::index::IteratorType;
 use tarantool::space::Space;
@@ -188,25 +190,14 @@ pub mod bootstrap {
             }
 
             let lua = tarantool::lua_state();
-            let (ok, err): (Option<tlua::True>, Option<tlua::ToString>) =
-                lua.eval_with("
-                local lerror = require('vshard.error')
-                local tier_name = ...
-                local ok, err = pico.router[tier_name]:bootstrap()
-                if not ok and type(err) == 'table' then
-                    if err.code == lerror.code.NON_EMPTY then
-                        return true
-                    end
-                end
-
-                return ok, err
-                ",
-                tier_name
-            ).map_err(tlua::LuaError::from)?;
+            let (ok, err): (Option<tlua::True>, Option<BoxError>) =
+                lua.eval_with("return pico.router[...]:bootstrap()", tier_name)
+                    .map_err(tlua::LuaError::from)?;
 
             match (ok, err) {
                 (Some(tlua::True), None) => {}
-                (None, Some(tlua::ToString(e))) => {
+                (None, Some(e)) if e.error_code() == VshardErrorCode::NonEmpty as u32 => {}
+                (None, Some(e)) => {
                     return Err(Error::other(format!(
                         "pico.router[{tier_name}]:bootstrap() failed: {e}"
                     )));
