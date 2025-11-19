@@ -173,9 +173,12 @@ tarantool-module-trigger:
   stage: test
   # Without this inherit there were strange bugs in child pipeline,
   # when jobs did not see job variables like $CARGO_HOME.
-  # Anyway this child pipeline always was independent, it does not need variables from this file.
+  # Anyway this child pipeline always was independent, it does not need variables from this file,
+  # except MAIN_BRANCH which is used in rules. If global variable is used in rules - it should be
+  # inherited.
   inherit:
-    variables: false
+    variables:
+      - MAIN_BRANCH
   variables:
     PARENT_CI_PIPELINE_SOURCE: $CI_PIPELINE_SOURCE
   trigger:
