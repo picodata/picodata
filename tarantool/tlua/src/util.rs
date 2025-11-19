@@ -39,3 +39,22 @@ pub fn hash(s: &str) -> u32 {
     h = h.wrapping_sub(b.rotate_left(16));
     h
 }
+
+/// Convert `s` into a `CString` replacing any nul-bytes with `'�'` symbols.
+///
+/// Use this function when you need to unconditionally convert a rust string to
+/// a c string without failing for any reason (other then out-of-memory), for
+/// example when converting error messages.
+pub fn into_cstring_lossy(s: String) -> std::ffi::CString {
+    match std::ffi::CString::new(s) {
+        Ok(cstring) => cstring,
+        Err(e) => {
+            // Safety: the already Vec was a String a moment earlier
+            let s = unsafe { String::from_utf8_unchecked(e.into_vec()) };
+            // The same character String::from_utf8_lossy uses to replace non-utf8 bytes
+            let s = s.replace('\0', "�");
+            // Safety: s no longer contains any nul bytes.
+            unsafe { std::ffi::CString::from_vec_unchecked(s.into()) }
+        }
+    }
+}

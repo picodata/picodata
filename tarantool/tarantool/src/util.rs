@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::ffi::CString;
 
+pub use tlua::util::into_cstring_lossy;
+
 /// Exists to optimize code burden with access to mutable statics
 /// and avoid annoying warnings by Clippy about in-place dereference.
 /// It is pretty much a `addr_of*`/`&raw` wrapper without warnings,
@@ -267,26 +269,6 @@ pub const fn str_eq(lhs: &str, rhs: &str) -> bool {
 #[inline(always)]
 pub fn to_cstring_lossy(s: &str) -> CString {
     into_cstring_lossy(s.into())
-}
-
-/// Convert `s` into a `CString` replacing any nul-bytes with `'�'` symbols.
-///
-/// Use this function when you need to unconditionally convert a rust string to
-/// a c string without failing for any reason (other then out-of-memory), for
-/// example when converting error messages.
-#[inline]
-pub fn into_cstring_lossy(s: String) -> CString {
-    match CString::new(s) {
-        Ok(cstring) => cstring,
-        Err(e) => {
-            // Safety: the already Vec was a String a moment earlier
-            let s = unsafe { String::from_utf8_unchecked(e.into_vec()) };
-            // The same character String::from_utf8_lossy uses to replace non-utf8 bytes
-            let s = s.replace('\0', "�");
-            // Safety: s no longer contains any nul bytes.
-            unsafe { CString::from_vec_unchecked(s.into()) }
-        }
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

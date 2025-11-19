@@ -48,6 +48,8 @@
 - BoxError::set_display_fallback function which allows setting a fallback
   implementation std::fmt::Display for BoxError. Used in picodata for custom
   error code.
+- tlua::LuaFunction::load_file_contents function which allows to provide a
+  filename for better lua error messages.
 
 ### Fixed
 

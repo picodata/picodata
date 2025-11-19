@@ -74,6 +74,7 @@ impl<L> PushOne<L> for LuaCode<'_> where L: AsLua {}
 pub struct LuaCodeFromReader<R> {
     reader: R,
     location: &'static Location<'static>,
+    chunkname: Option<String>,
 }
 
 impl<R> LuaCodeFromReader<R> {
@@ -82,7 +83,13 @@ impl<R> LuaCodeFromReader<R> {
         Self {
             reader,
             location: Location::caller(),
+            chunkname: None,
         }
+    }
+
+    #[inline]
+    pub fn set_chunkname(&mut self, chunkname: String) {
+        self.chunkname = Some(chunkname);
     }
 }
 
@@ -137,14 +144,20 @@ where
                 }
             }
 
-            let (load_return_value, pushed_value) = {
+            let chunkname;
+            if let Some(name) = &self.chunkname {
+                chunkname = crate::util::into_cstring_lossy(name.into());
+            } else {
                 let location = format!("=[{}:{}]\0", self.location.file(), self.location.line());
-                let location = CString::from_vec_with_nul_unchecked(location.into());
+                chunkname = CString::from_vec_with_nul_unchecked(location.into());
+            }
+
+            let (load_return_value, pushed_value) = {
                 let code = ffi::lua_load(
                     lua.as_lua(),
                     reader::<R>,
                     &mut read_data as *mut ReadData<_> as *mut _,
-                    location.as_ptr(),
+                    chunkname.as_ptr(),
                 );
                 (code, PushGuard::new(lua, 1))
             };
@@ -415,5 +428,18 @@ where
     pub fn load(lua: L, code: &str) -> Result<Self, LuaError> {
         let reader = Cursor::new(code.as_bytes());
         Self::load_from_reader(lua, reader)
+    }
+
+    /// Loads the lua `code` and returns it as a lua function.
+    /// The provided `chunkname` will be used for the error messages.
+    #[track_caller]
+    pub fn load_file_contents(lua: L, code: &str, chunkname: &str) -> Result<Self, LuaError> {
+        let reader = Cursor::new(code.as_bytes());
+        let mut reader = LuaCodeFromReader::new(reader);
+        reader.chunkname = Some(chunkname.into());
+        match reader.push_into_lua(lua) {
+            Ok(pushed) => unsafe { Ok(Self::new(pushed, nzi32!(-1))) },
+            Err((err, _)) => Err(err),
+        }
     }
 }
