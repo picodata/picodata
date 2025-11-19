@@ -214,7 +214,7 @@ impl TryFrom<&Node<'_>> for CommandTag {
                 },
             },
             Node::Block(block) => match block {
-                Block::Procedure { .. } => Ok(CommandTag::CallProcedure),
+                Block::CallProcedure { .. } => Ok(CommandTag::CallProcedure),
             },
             Node::Ddl(ddl) => match ddl {
                 Ddl::AlterSystem { .. } => Ok(CommandTag::AlterSystem),

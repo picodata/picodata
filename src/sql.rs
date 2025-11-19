@@ -71,10 +71,10 @@ use sql::ir::node::plugin::{
 };
 use sql::ir::node::relational::Relational;
 use sql::ir::node::{
-    AlterColumn, AlterSystem, AlterTableOp, AlterUser, ArenaType, AuditPolicy, Constant,
-    CreateIndex, CreateProc, CreateRole, CreateTable, CreateUser, Delete, DropIndex, DropProc,
-    DropRole, DropTable, DropUser, GrantPrivilege, Insert, Node as IrNode, Node136, Node64, Node96,
-    NodeOwned, Procedure, RenameIndex, RenameRoutine, RevokePrivilege, ScanRelation, SetParam,
+    AlterColumn, AlterSystem, AlterTableOp, AlterUser, ArenaType, AuditPolicy, CallProcedure,
+    Constant, CreateIndex, CreateProc, CreateRole, CreateTable, CreateUser, Delete, DropIndex,
+    DropProc, DropRole, DropTable, DropUser, GrantPrivilege, Insert, Node as IrNode, Node136,
+    Node64, Node96, NodeOwned, RenameIndex, RenameRoutine, RevokePrivilege, ScanRelation, SetParam,
     Update,
 };
 use sql::ir::node::{NodeId, TruncateTable};
@@ -231,7 +231,7 @@ fn check_routine_privileges(plan: &IrPlan) -> traft::Result<()> {
     // At the moment we don't support nested procedure calls, so we can safely
     // assume that the top node is the only procedure in the plan.
     let top_id = plan.get_top()?;
-    let Ok(Block::Procedure(Procedure { name, .. })) = plan.get_block_node(top_id) else {
+    let Ok(Block::CallProcedure(CallProcedure { name, .. })) = plan.get_block_node(top_id) else {
         // There are no procedures in the plan tree: nothing to check.
         return Ok(());
     };
@@ -508,7 +508,7 @@ fn dispatch_bound_statement_impl<'p>(
         let top_id = ir_plan.get_top()?;
         let code_block = ir_plan.get_block_node(top_id)?;
         match code_block {
-            Block::Procedure(Procedure { name, values }) => {
+            Block::CallProcedure(CallProcedure { name, values }) => {
                 let values = values.clone();
                 let options = ir_plan.effective_options.clone();
 

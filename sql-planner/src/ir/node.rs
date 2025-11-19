@@ -1322,16 +1322,16 @@ impl From<Invalid> for NodeAligned {
 
 /// Procedure body.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Procedure {
+pub struct CallProcedure {
     /// The name of the procedure.
     pub name: SmolStr,
     /// Passed values to the procedure.
     pub values: Vec<NodeId>,
 }
 
-impl From<Procedure> for NodeAligned {
-    fn from(value: Procedure) -> Self {
-        Self::Node64(Node64::Procedure(value))
+impl From<CallProcedure> for NodeAligned {
+    fn from(value: CallProcedure) -> Self {
+        Self::Node64(Node64::CallProcedure(value))
     }
 }
 
@@ -1437,7 +1437,7 @@ pub enum Node64 {
     Having(Having),
     ValuesRow(ValuesRow),
     OrderBy(OrderBy),
-    Procedure(Procedure),
+    CallProcedure(CallProcedure),
     Join(Join),
     Row(Row),
     Delete(Delete),
@@ -1476,7 +1476,7 @@ impl Node64 {
             Node64::Join(join) => NodeOwned::Relational(RelOwned::Join(join)),
             Node64::OrderBy(order_by) => NodeOwned::Relational(RelOwned::OrderBy(order_by)),
             Node64::Row(row) => NodeOwned::Expression(ExprOwned::Row(row)),
-            Node64::Procedure(proc) => NodeOwned::Block(BlockOwned::Procedure(proc)),
+            Node64::CallProcedure(proc) => NodeOwned::Block(BlockOwned::CallProcedure(proc)),
             Node64::ScanCte(scan_cte) => NodeOwned::Relational(RelOwned::ScanCte(scan_cte)),
             Node64::ScanSubQuery(scan_squery) => {
                 NodeOwned::Relational(RelOwned::ScanSubQuery(scan_squery))

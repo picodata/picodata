@@ -1,4 +1,4 @@
-Command = _{ SOI ~ (Query | ExplainQuery | Block | DDL | ACL | TCL | Plugin | Deallocate | EmptyQuery) ~ EOF }
+Command = _{ SOI ~ (Query | ExplainQuery | CallProc | DDL | ACL | TCL | Plugin | Deallocate | EmptyQuery) ~ EOF }
 
 // Helper rule to denote we have to update plan relations from metadata
 // (with Table which name corresponds to current node).
@@ -266,8 +266,8 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable
         		    AlterSystemTiersAll = ${ ^"all" ~ W ~ ^"tiers" }
         		    AlterSystemTierSingle = ${ ^"tier" ~ W ~ Identifier }
 
-Block = ${ CallProc ~ (W ~ DqlOption)? }
-    CallProc = ${ ^"call"~ W ~ (PublicSchema)? ~ Identifier ~ WO ~ "(" ~ WO ~ ProcValues ~ WO ~ ")" }
+CallProc = ${ CallProcImpl ~ (W ~ DqlOption)? }
+    CallProcImpl = _{ ^"call"~ W ~ (PublicSchema)? ~ Identifier ~ WO ~ "(" ~ WO ~ ProcValues ~ WO ~ ")" }
         ProcValues = !{ (ProcValue ~ ("," ~ ProcValue)*)? }
             ProcValue = _{ Literal | Parameter }
 

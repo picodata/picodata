@@ -57,9 +57,9 @@ use crate::ir::node::plugin::{
 };
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
-    AlterSystem, AlterUser, AuditPolicy, BoolExpr, Constant, CountAsterisk, CreateIndex,
-    CreateProc, CreateRole, CreateTable, CreateUser, DropIndex, DropProc, DropRole, DropTable,
-    DropUser, GrantPrivilege, Node, NodeId, Procedure, RenameRoutine, RevokePrivilege, ScanCte,
+    AlterSystem, AlterUser, AuditPolicy, BoolExpr, CallProcedure, Constant, CountAsterisk,
+    CreateIndex, CreateProc, CreateRole, CreateTable, CreateUser, DropIndex, DropProc, DropRole,
+    DropTable, DropUser, GrantPrivilege, Node, NodeId, RenameRoutine, RevokePrivilege, ScanCte,
     ScanRelation, SetParam, SetTransaction, Trim,
 };
 use crate::ir::operator::{
@@ -334,9 +334,9 @@ fn parse_call_proc<M: Metadata>(
     pairs_map: &mut ParsingPairsMap,
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
-) -> Result<Procedure, SbroadError> {
+) -> Result<CallProcedure, SbroadError> {
     let proc_name_ast_id = node.children.first().expect("Expected to get Proc name");
-    let proc_name = parse_identifier(ast, *proc_name_ast_id)?;
+    let name = parse_identifier(ast, *proc_name_ast_id)?;
 
     let proc_values_id = node.children.get(1).expect("Expected to get Proc values");
     let proc_values = ast.nodes.get_node(*proc_values_id)?;
@@ -364,10 +364,7 @@ fn parse_call_proc<M: Metadata>(
         values.push(plan_value_id);
     }
 
-    let call_proc = Procedure {
-        name: proc_name,
-        values,
-    };
+    let call_proc = CallProcedure { name, values };
     Ok(call_proc)
 }
 
@@ -6717,14 +6714,6 @@ impl AbstractSyntaxTree {
                     // 2. Option child - for which no plan node is created
                     let child_id =
                         map.get(*node.children.first().expect("no children for Query rule"))?;
-                    map.add(id, child_id);
-                }
-                Rule::Block => {
-                    // Query may have two children:
-                    // 1. call
-                    // 2. Option child - for which no plan node is created
-                    let child_id =
-                        map.get(*node.children.first().expect("no children for Block rule"))?;
                     map.add(id, child_id);
                 }
                 Rule::CallProc => {

@@ -138,7 +138,7 @@ impl Nodes {
                 Node64::Having(having) => Node::Relational(Relational::Having(having)),
                 Node64::Join(join) => Node::Relational(Relational::Join(join)),
                 Node64::OrderBy(order_by) => Node::Relational(Relational::OrderBy(order_by)),
-                Node64::Procedure(proc) => Node::Block(Block::Procedure(proc)),
+                Node64::CallProcedure(proc) => Node::Block(Block::CallProcedure(proc)),
                 Node64::ScanCte(scan_cte) => Node::Relational(Relational::ScanCte(scan_cte)),
                 Node64::ScanSubQuery(scan_squery) => {
                     Node::Relational(Relational::ScanSubQuery(scan_squery))
@@ -295,7 +295,7 @@ impl Nodes {
                     Node64::OrderBy(order_by) => {
                         MutNode::Relational(MutRelational::OrderBy(order_by))
                     }
-                    Node64::Procedure(proc) => MutNode::Block(MutBlock::Procedure(proc)),
+                    Node64::CallProcedure(proc) => MutNode::Block(MutBlock::CallProcedure(proc)),
                     Node64::ScanCte(scan_cte) => {
                         MutNode::Relational(MutRelational::ScanCte(scan_cte))
                     }
