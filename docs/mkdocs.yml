@@ -49,6 +49,7 @@ nav:
       - tutorial/sql_examples.md
       - tutorial/webui.md
   - Администрирование кластера:
+      - admin/server_setup.md
       - admin/deploy_ansible.md
       - admin/deploy_kubernetes.md
       - admin/cluster_mgmt.md
