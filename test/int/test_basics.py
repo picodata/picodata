@@ -941,7 +941,7 @@ def test_join_cluster_name_mismatch(cluster: Cluster, second_cluster: Cluster):
 
     lc = log_crawler(
         i1,
-        "join request failed: server responded with error: box error #10000: cluster_name mismatch",
+        "join request failed: server responded with error: Other: cluster_name mismatch",
     )
 
     with pytest.raises(Exception, match="process exited unexpectedly"):

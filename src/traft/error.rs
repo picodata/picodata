@@ -428,3 +428,16 @@ impl IntoBoxError for ErrorInfo {
         self.error_code
     }
 }
+
+pub fn box_error_display(
+    e: &BoxError,
+    f: &mut std::fmt::Formatter<'_>,
+) -> Result<bool, std::fmt::Error> {
+    let Some(c) = ErrorCode::from_i64(e.error_code() as _) else {
+        return Ok(false);
+    };
+
+    write!(f, "{c:?}: {}", e.message())?;
+
+    Ok(true)
+}

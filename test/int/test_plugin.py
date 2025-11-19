@@ -485,7 +485,7 @@ services:
     i1.sql(f"CREATE PLUGIN {plugin} 0.1.0")
     i1.sql(f"ALTER PLUGIN {plugin} 0.1.0 ADD SERVICE testservice_1 TO TIER default")
     i1.sql(f"ALTER PLUGIN {plugin} 0.1.0 ADD SERVICE testservice_2 TO TIER default")
-    with pytest.raises(TarantoolError, match=f"box error #{ErrorCode.PluginError}: missing field `bar`"):
+    with pytest.raises(TarantoolError, match="PluginError: missing field `bar`"):
         i1.sql(f"ALTER PLUGIN {plugin} 0.1.0 ENABLE")
     PluginReflection(plugin, "0.1.0", ["testservice_1", "testservice_2"], [i1, i2]).install(True).assert_synced()
 
@@ -898,7 +898,7 @@ def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
         i1.sql(f"ALTER PLUGIN {_PLUGIN} 0.1.0 ENABLE")
     assert e.value.args[:-1] == (
         ErrorCode.Other,
-        f"Failed to enable plugin `{_PLUGIN}:0.1.0`: [instance name:default_2_1] Other: Callback: on_start: box error #{ErrorCode.PluginError}: error at `on_start`",  # noqa: E501
+        f"Failed to enable plugin `{_PLUGIN}:0.1.0`: [instance name:default_2_1] Other: Callback: on_start: PluginError: error at `on_start`",  # noqa: E501
     )
 
     # plugin installed but disabled
@@ -917,7 +917,7 @@ def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
     # assert that plugin not loaded and on_stop called on both instances
     with pytest.raises(
         TarantoolError,
-        match=f"] Other: Callback: on_start: box error #{ErrorCode.PluginError}: error at `on_start`",  # noqa: E501
+        match="] Other: Callback: on_start: PluginError: error at `on_start`",  # noqa: E501
     ):
         i1.sql(f"ALTER PLUGIN {_PLUGIN} 0.1.0 ENABLE")
 
@@ -2208,7 +2208,7 @@ def test_set_topology_with_error_on_start(cluster: Cluster):
 
     with pytest.raises(
         ReturnError,
-        match=f"Callback: on_start: box error #{ErrorCode.PluginError}: error at `on_start`",
+        match="Callback: on_start: PluginError: error at `on_start`",
     ):
         i1.call(
             "pico.service_append_tier",

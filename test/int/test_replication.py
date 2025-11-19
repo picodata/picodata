@@ -420,7 +420,7 @@ def test_replication_rpc_protection_from_old_governor(cluster: Cluster):
     different_term_error = log_crawler(
         i1,
         "failed calling proc_replication: server responded with error: "
-        "box error #10003: operation request from different term",
+        "TermMismatch: operation request from different term",
     )
     i3_replication_configured = log_crawler(i2, "configured replication with instance, instance_name: default_3_1")
 
@@ -460,7 +460,7 @@ def test_replication_demote_protection_from_old_governor(cluster: Cluster):
     term_error = log_crawler(
         i1,
         "failed demoting old master and synchronizing new master: server responded with error: "
-        "box error #10003: operation request from different term",
+        "TermMismatch: operation request from different term",
     )
 
     old_step_counter = i1.governor_step_counter()

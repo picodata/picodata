@@ -416,6 +416,32 @@ impl BoxError {
     pub fn fields(&self) -> &HashMap<Box<str>, rmpv::Value> {
         &self.fields
     }
+
+    /// Set a fallback [`std::fmt::Display`] implementation for `BoxError` which
+    /// will be called if `BoxError` has unknown type and or error code.
+    ///
+    /// If `cb` returns `Err(e)` the error is passed along up the stack.
+    /// If `cb` returns `Ok(false)` it's conisderred that the fallback didn't
+    /// print the error and the default implementation is used.
+    /// If `cb` returns `Ok(true)` the display is considerred successful.
+    pub fn set_display_fallback(
+        cb: impl Fn(&Self, &mut Formatter<'_>) -> Result<bool, std::fmt::Error> + 'static,
+    ) -> Result<(), BoxError> {
+        BOX_ERROR_FALLBACK_DISPLAY.with(|fallback| {
+            if fallback.get().is_some() {
+                return Err(BoxError::new(
+                    TarantoolErrorCode::Unsupported,
+                    "fallback callback is already set, cannot change it",
+                ));
+            }
+
+            if fallback.set(Box::new(cb)).is_err() {
+                unreachable!("already checked it's empty");
+            }
+
+            Ok(())
+        })
+    }
 }
 
 impl Display for BoxError {
@@ -430,9 +456,23 @@ impl Display for BoxError {
         if let Some(code) = TarantoolErrorCode::from_i64(self.code as _) {
             return write!(f, "{:?}: {}", code, self.message());
         }
+
+        let res = BOX_ERROR_FALLBACK_DISPLAY.with(|fallback| fallback.get().map(|cb| cb(self, f)));
+        if let Some(res) = res {
+            if res? {
+                return Ok(());
+            }
+        }
+
         write!(f, "box error #{}: {}", self.code, self.message())
     }
 }
+
+std::thread_local! {
+    static BOX_ERROR_FALLBACK_DISPLAY: std::cell::OnceCell<BoxErrorFallbackDisplayImpl> = std::cell::OnceCell::new();
+}
+type BoxErrorFallbackDisplayImpl =
+    Box<dyn Fn(&BoxError, &mut Formatter<'_>) -> Result<bool, std::fmt::Error>>;
 
 impl From<BoxError> for Error {
     fn from(error: BoxError) -> Self {

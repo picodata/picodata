@@ -362,7 +362,7 @@ def test_tt_proc_creation_error(cluster: Cluster):
                 "proc_nonexistent_function",
                 "proc_name",
                 "failed",
-                "server responded with error: box error #10000: cannot find procedure proc_nonexistent_function in `proc::all_procs` for schema creation",
+                "server responded with error: Other: cannot find procedure proc_nonexistent_function in `proc::all_procs` for schema creation",
                 "custom",
                 "my description",
             ],
@@ -442,6 +442,6 @@ cluster:
     assert res == [
         [
             "failed",
-            "server responded with error: box error #10000: cannot determine the default tier while altering _pico_tier",
+            "server responded with error: Other: cannot determine the default tier while altering _pico_tier",
         ]
     ]

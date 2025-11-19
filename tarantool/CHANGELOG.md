@@ -45,6 +45,9 @@
 - Add lock_timeout in fiber::Mutex to wait no more than needed
 - impl LuaRead for BoxError
 - impl std::error::Error for BoxError
+- BoxError::set_display_fallback function which allows setting a fallback
+  implementation std::fmt::Display for BoxError. Used in picodata for custom
+  error code.
 
 ### Fixed
 

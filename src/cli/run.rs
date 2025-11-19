@@ -42,6 +42,9 @@ pub fn main(mut args: args::Run) -> ! {
         #[cfg(feature = "error_injection")]
         error_injection::set_from_env();
 
+        tarantool::error::BoxError::set_display_fallback(crate::traft::error::box_error_display)
+            .expect("first time");
+
         // Note: this function may log something into the tarantool's logger, which means it must be done within
         // the `tarantool::main_cb` otherwise everything will break. The thing is, tarantool's logger needs to know things
         // about the current thread and the way it does that is by accessing the `cord_ptr` global variable. For the main
