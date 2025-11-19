@@ -1201,6 +1201,7 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
     quote! {
         #attrs_distributed_slice
         #[cfg(not(test))]
+        #[allow(deprecated)]
         static #desc_ident: #tarantool::proc::Proc = #tarantool::proc::Proc::new(
             #desc_name,
             #ident,

@@ -44,6 +44,11 @@
 
 - Add lock_timeout in fiber::Mutex to wait no more than needed
 
+### Fixed
+
+- Using `#[tarantool::proc]` attribute on a functions marked `#[deprecated]`
+  will no longer produce a deprecation warning.
+
 ### Breaking
 
 - 1.85 is now MSRV.
