@@ -299,7 +299,7 @@ extern "C" {
     pub fn fiber_cond_wait(cond: *mut FiberCond) -> c_int;
 }
 
-crate::define_dlsym_reloc! {
+crate::define_extern_or_dlsym_reloc! {
     /// Set fiber name.
     /// - `fiber`: Target fiber, if it's NULL the current fiber is used.
     /// - `name`:  A new name of `fiber`.
@@ -425,7 +425,7 @@ pub type ev_tstamp = f64;
 /// Infinity is roughly 100 years in seconds.
 pub const TIMEOUT_INFINITY: ev_tstamp = 100.0 * 365.0 * 24.0 * 60.0 * 60.0;
 
-crate::define_dlsym_reloc! {
+crate::define_extern_or_dlsym_reloc! {
     /// Allocate and construct a channel.
     ///
     /// Uses `malloc()`.

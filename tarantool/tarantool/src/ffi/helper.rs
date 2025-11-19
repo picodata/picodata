@@ -123,6 +123,26 @@ macro_rules! static_assert {
 // define_dlsym_reloc!
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Define an external symbol but don't mark it for linking by system linker.
+/// Instead the symbol is going to be looked up dynamically at first call using
+/// `dlsym`.
+///
+/// If the symbol defined that way is available then it's address is saved in
+/// a static variable and subsequent calls to the function will use that variable.
+///
+/// However if the symbol is not defined then the program panics.
+///
+/// To avoid the panic the code should first check if the symbol is actually
+/// available for example using [`has_dyn_symbol`] or via a helper function like
+/// [`crate::ffi::has_fiber_id`].
+///
+/// The benefit of this approach is that it allows for code which doesn't need
+/// to be recompiled for use in different versions of tarantool or picodata.
+///
+/// More specifically the problem we're solving is that when your module defines
+/// an `extern "C"` symbol the dynamic linker will attempt to link it while the
+/// shared object is being loaded into tarantool (or picodata) and if the symbol
+/// is not found the load is aborted completely.
 #[macro_export]
 macro_rules! define_dlsym_reloc {
     (
@@ -150,6 +170,28 @@ macro_rules! define_dlsym_reloc {
             }
         )+
     };
+}
+
+/// Static linking to picodata so this simply unwraps to `extern "C" { * }`
+#[cfg(feature = "static_linking")]
+#[macro_export]
+macro_rules! define_extern_or_dlsym_reloc {
+    ($($anything:tt)+) => {
+        extern "C" {
+            $($anything)+
+        }
+    }
+}
+
+/// Dynamic linking so this unwraps to `define_dlsym_reloc! { * }`
+#[cfg(not(feature = "static_linking"))]
+#[macro_export]
+macro_rules! define_extern_or_dlsym_reloc {
+    ($($anything:tt)+) => {
+        $crate::define_dlsym_reloc! {
+            $($anything)+
+        }
+    }
 }
 
 /// Find a symbol using the `tnt_internal_symbol` api.

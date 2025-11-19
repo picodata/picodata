@@ -94,6 +94,7 @@ sql-core = { path = "sql-planner" }
 tarantool = { workspace = true, features = [
   "test",
   "stored_procs_slice",
+  "static_linking",
 ] }
 
 [dev-dependencies]

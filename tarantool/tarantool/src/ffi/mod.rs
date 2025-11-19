@@ -63,6 +63,10 @@ pub fn has_tuple_field_by_path() -> bool {
 ///
 /// [`tarantool::datetime`]: mod@crate::datetime
 pub fn has_datetime() -> bool {
+    if cfg!(feature = "static_linking") {
+        return true;
+    }
+
     unsafe { helper::has_dyn_symbol(crate::c_str!("tnt_mp_encode_datetime")) }
 }
 
@@ -77,6 +81,10 @@ pub fn has_datetime() -> bool {
 /// [`fiber_get_ctx`]: crate::ffi::tarantool::fiber_get_ctx
 #[inline]
 pub unsafe fn has_fiber_set_ctx() -> bool {
+    if cfg!(feature = "static_linking") {
+        return true;
+    }
+
     static mut RESULT: Option<bool> = None;
     if (*std::ptr::addr_of!(RESULT)).is_none() {
         RESULT = Some(helper::has_dyn_symbol(crate::c_str!("fiber_set_ctx")));
@@ -93,6 +101,10 @@ pub unsafe fn has_fiber_set_ctx() -> bool {
 /// [`SpaceType::Temporary`]: crate::space::SpaceType::Temporary
 #[inline(always)]
 pub fn has_fully_temporary_spaces() -> bool {
+    if cfg!(feature = "static_linking") {
+        return true;
+    }
+
     crate::space::space_id_temporary_min().is_some()
 }
 
@@ -113,6 +125,10 @@ pub fn has_fully_temporary_spaces() -> bool {
 /// [`fiber_csw`]: crate::ffi::tarantool::fiber_csw
 #[inline]
 pub unsafe fn has_fiber_id() -> bool {
+    if cfg!(feature = "static_linking") {
+        return true;
+    }
+
     static mut RESULT: Option<bool> = None;
     if (*std::ptr::addr_of!(RESULT)).is_none() {
         RESULT = Some(helper::has_dyn_symbol(crate::c_str!("fiber_id")));

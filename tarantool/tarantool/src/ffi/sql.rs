@@ -18,7 +18,7 @@ pub const IPROTO_DATA: u8 = 0x30;
 // Note that all of the functions defined here are either `pub` or `pub(crate)`
 // even if they're only used in this file. This is because the `define_dlsym_reloc`
 // macro doesn't support private function declarations because rust's macro syntax is trash.
-crate::define_dlsym_reloc! {
+crate::define_extern_or_dlsym_reloc! {
     pub fn port_destroy(port: *mut Port);
     pub(crate) fn port_c_add_tuple(port: *mut Port, tuple: *mut BoxTuple);
     pub(crate) fn port_c_add_mp(port: *mut Port, mp: *const c_char, mp_end: *const c_char);
