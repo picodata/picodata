@@ -1028,6 +1028,7 @@ fn init_common(
 
     // Load Lua libraries
     preload_vshard();
+    crate::vshard::init_lua_helpers();
     preload_http();
     init_sbroad();
 

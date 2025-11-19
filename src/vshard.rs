@@ -106,6 +106,7 @@ where
         .get("pico")
         .ok_or_else(|| Error::other("pico lua module disappeared"))?;
 
+    // `pico._ddl_map_callrw` is defined in `src/vshard_helpers.lua`
     let func: tlua::LuaFunction<_> = pico.try_get("_ddl_map_callrw")?;
     let args = Tuple::new(req)?;
 
@@ -140,6 +141,7 @@ pub fn get_replicaset_priority_list(
         .get("pico")
         .ok_or_else(|| Error::other("pico lua module disappeared"))?;
 
+    // `pico._replicaset_priority_list` is defined in `src/vshard_helpers.lua`
     let func: tlua::LuaFunction<_> = pico.try_get("_replicaset_priority_list")?;
     let res = func.call_with_args((tier, replicaset_uuid));
     if res.is_err() {
@@ -171,6 +173,7 @@ pub fn get_replicaset_uuid_by_bucket_id(tier: &str, bucket_id: u64) -> Result<St
         .get("pico")
         .ok_or_else(|| Error::other("pico lua module disappeared"))?;
 
+    // `pico._replicaset_uuid_by_bucket_id` is defined in `src/vshard_helpers.lua`
     let func: tlua::LuaFunction<_> = pico.try_get("_replicaset_uuid_by_bucket_id")?;
     let res = func.call_with_args((tier, bucket_id));
     if res.is_err() {
@@ -438,4 +441,21 @@ pub enum VshardErrorCode {
     VhandshakeNotComplete = 40,
     /// msg = 'Mismatch server name: expected "%s", but got "%s"'
     InstanceNameMismatch = 41,
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// lua helpers
+////////////////////////////////////////////////////////////////////////////////
+
+pub fn init_lua_helpers() {
+    let lua = tarantool::lua_state();
+
+    () = tlua::LuaFunction::load_file_contents(
+        &lua,
+        include_str!("vshard_helpers.lua"),
+        "src/vshard_helpers.lua",
+    )
+    .expect("loading a file known at compile time")
+    .into_call()
+    .expect("loading a file known at compile time");
 }

@@ -325,15 +325,15 @@ cluster:
 
     assert ddl["row_count"] == 1
 
-    index_nullable_router_error = "no router found for tier 'storage'"
-
     # insert and select from table sharded in `uninitialized` tier is failed
     # because it uses vshard
-    with pytest.raises(TarantoolError, match=index_nullable_router_error):
+    with pytest.raises(TarantoolError) as e:
         first_master_of_storage.sql("""INSERT INTO "table_in_storage" VALUES(1) """)
+    assert "no router found for tier 'storage'" in e.value.args[1]
 
-    with pytest.raises(TarantoolError, match=index_nullable_router_error):
+    with pytest.raises(TarantoolError) as e:
         router_instance.sql("""INSERT INTO "table_in_storage" VALUES(1) """)
+    assert "no router found for tier 'storage'" in e.value.args[1]
 
     # since now `storage` tier contains full replicaset, so it's tables are operable
     storage_follower = cluster.add_instance(tier="storage")
