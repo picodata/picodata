@@ -46,6 +46,7 @@ Picodata — это распределенная система промышле
 
 ### Администрирование кластера {: #administration }
 
+* [Настройка серверов для кластера Picodata](admin/server_setup.md)
 * [Развертывание кластера через Ansible](admin/deploy_ansible.md)
 * [Picodata в Kubernetes](admin/deploy_kubernetes.md)
 * [Управление кластером в промышленной среде с ограниченными привилегиями](admin/cluster_mgmt.md)
