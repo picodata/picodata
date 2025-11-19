@@ -360,6 +360,12 @@ pub enum SbroadError {
     Other(SmolStr),
 }
 
+impl SbroadError {
+    pub fn other(msg: impl Into<SmolStr>) -> Self {
+        Self::Other(msg.into())
+    }
+}
+
 impl fmt::Display for SbroadError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let p: SmolStr = match self {

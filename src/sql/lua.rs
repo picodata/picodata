@@ -85,6 +85,7 @@ pub(crate) unsafe extern "C" fn dispatch_dml_dump_lua(
     }
 
     let mut iter = port_c.iter();
+
     let mp = iter.next().expect("DML port must contain a single msgpack");
 
     // Decode affected rows.

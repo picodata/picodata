@@ -307,105 +307,101 @@ impl AbstractSyntaxTree {
     /// - unexpected rule of some child
     #[allow(clippy::too_many_lines)]
     pub(super) fn transform_update(&mut self) -> Result<(), SbroadError> {
-        let update_id: usize = {
-            let mut update_id: Option<usize> = None;
-            for id in 0..self.nodes.arena.len() {
-                let node = self.nodes.get_node(id)?;
-                if node.rule == Rule::Update {
-                    update_id = Some(id);
-                    break;
+        let mut update_ids = Vec::new();
+        for id in 0..self.nodes.arena.len() {
+            let node = self.nodes.get_node(id)?;
+            if node.rule == Rule::Update {
+                update_ids.push(id)
+            }
+        }
+        for update_id in update_ids {
+            let node = self.nodes.get_node(update_id)?;
+            let update_table_scan_id = *node
+                .children
+                .first()
+                .expect("expected Update AST node to have at least two children");
+            let update_list_id = *node
+                .children
+                .get(1)
+                .expect("expected Update AST node to have at least two children");
+            let table_scan = self.nodes.get_node(update_table_scan_id)?;
+            let table_id = *table_scan.children.first().expect("must exist");
+            let upd_table_scan = ParseNode {
+                children: table_scan.children.clone(),
+                rule: Rule::Scan,
+                value: None,
+            };
+            let upd_table_scan_id = self.nodes.push_node(upd_table_scan);
+            let node = self.nodes.get_node(update_id)?;
+            match node.children.len() {
+                // update t set ..
+                2 => {
+                    self.nodes.set_children(
+                        update_id,
+                        vec![upd_table_scan_id, table_id, update_list_id],
+                    )?;
                 }
-            }
-            if let Some(id) = update_id {
-                id
-            } else {
-                return Ok(());
-            }
-        };
-        let node = self.nodes.get_node(update_id)?;
-        let update_table_scan_id = *node
-            .children
-            .first()
-            .expect("expected Update AST node to have at least two children");
-        let update_list_id = *node
-            .children
-            .get(1)
-            .expect("expected Update AST node to have at least two children");
-
-        let table_scan = self.nodes.get_node(update_table_scan_id)?;
-        let table_id = *table_scan.children.first().expect("must exist");
-        let upd_table_scan = ParseNode {
-            children: table_scan.children.clone(),
-            rule: Rule::Scan,
-            value: None,
-        };
-        let upd_table_scan_id = self.nodes.push_node(upd_table_scan);
-        let node = self.nodes.get_node(update_id)?;
-        match node.children.len() {
-            // update t set ..
-            2 => {
-                self.nodes
-                    .set_children(update_id, vec![upd_table_scan_id, table_id, update_list_id])?;
-            }
-            // update t set .. from .. OR update t set .. where ..
-            3 => {
-                // update t set a = 1 where id = 1
-                let child_id = *node.children.get(2).unwrap();
-                let is_selection = matches!(self.nodes.get_node(child_id)?.rule, Rule::Selection);
-                let update_child_id = if is_selection {
-                    self.nodes.push_front_child(child_id, upd_table_scan_id)?;
-                    child_id
-                } else {
-                    // update t set a = t.a + t1.b from t1
-                    let true_literal_node = ParseNode {
-                        children: vec![],
-                        rule: Rule::True,
-                        value: Some("true".into()),
+                // update t set .. from .. OR update t set .. where ..
+                3 => {
+                    // update t set a = 1 where id = 1
+                    let child_id = *node.children.get(2).unwrap();
+                    let is_selection =
+                        matches!(self.nodes.get_node(child_id)?.rule, Rule::Selection);
+                    let update_child_id = if is_selection {
+                        self.nodes.push_front_child(child_id, upd_table_scan_id)?;
+                        child_id
+                    } else {
+                        // update t set a = t.a + t1.b from t1
+                        let true_literal_node = ParseNode {
+                            children: vec![],
+                            rule: Rule::True,
+                            value: Some("true".into()),
+                        };
+                        let true_literal_id = self.nodes.push_node(true_literal_node);
+                        let expr_node = ParseNode {
+                            children: vec![true_literal_id],
+                            rule: Rule::Expr,
+                            value: None,
+                        };
+                        let expr_id = self.nodes.push_node(expr_node);
+                        let inner_kind_id = self.nodes.push_node(ParseNode {
+                            children: vec![],
+                            rule: Rule::InnerJoinKind,
+                            value: None,
+                        });
+                        let join_node = ParseNode {
+                            children: vec![upd_table_scan_id, inner_kind_id, child_id, expr_id],
+                            rule: Rule::Join,
+                            value: None,
+                        };
+                        self.nodes.push_node(join_node)
                     };
-                    let true_literal_id = self.nodes.push_node(true_literal_node);
-                    let expr_node = ParseNode {
-                        children: vec![true_literal_id],
-                        rule: Rule::Expr,
-                        value: None,
-                    };
-                    let expr_id = self.nodes.push_node(expr_node);
+                    self.nodes
+                        .set_children(update_id, vec![update_child_id, table_id, update_list_id])?;
+                }
+                4 => {
+                    // update t set a = t.a + t1.b from t1 where expr
+                    let expr_id = *node.children.get(3).unwrap();
+                    let right_scan_id = *node.children.get(2).unwrap();
                     let inner_kind_id = self.nodes.push_node(ParseNode {
                         children: vec![],
                         rule: Rule::InnerJoinKind,
                         value: None,
                     });
                     let join_node = ParseNode {
-                        children: vec![upd_table_scan_id, inner_kind_id, child_id, expr_id],
+                        children: vec![upd_table_scan_id, inner_kind_id, right_scan_id, expr_id],
                         rule: Rule::Join,
                         value: None,
                     };
-                    self.nodes.push_node(join_node)
-                };
-                self.nodes
-                    .set_children(update_id, vec![update_child_id, table_id, update_list_id])?;
-            }
-            4 => {
-                // update t set a = t.a + t1.b from t1 where expr
-                let expr_id = *node.children.get(3).unwrap();
-                let right_scan_id = *node.children.get(2).unwrap();
-                let inner_kind_id = self.nodes.push_node(ParseNode {
-                    children: vec![],
-                    rule: Rule::InnerJoinKind,
-                    value: None,
-                });
-                let join_node = ParseNode {
-                    children: vec![upd_table_scan_id, inner_kind_id, right_scan_id, expr_id],
-                    rule: Rule::Join,
-                    value: None,
-                };
-                let update_child_id = self.nodes.push_node(join_node);
-                self.nodes
-                    .set_children(update_id, vec![update_child_id, table_id, update_list_id])?;
-            }
-            _ => {
-                return Err(SbroadError::UnexpectedNumberOfValues(
-                    "expected Update ast node to have at most 4 children!".into(),
-                ))
+                    let update_child_id = self.nodes.push_node(join_node);
+                    self.nodes
+                        .set_children(update_id, vec![update_child_id, table_id, update_list_id])?;
+                }
+                _ => {
+                    return Err(SbroadError::UnexpectedNumberOfValues(
+                        "expected Update ast node to have at most 4 children!".into(),
+                    ))
+                }
             }
         }
         Ok(())

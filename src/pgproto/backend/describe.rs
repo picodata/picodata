@@ -15,7 +15,8 @@ use sql::{
         acl::GrantRevokeType,
         node::{
             acl::Acl, block::Block, ddl::Ddl, expression::Expression, plugin::Plugin,
-            relational::Relational, tcl::Tcl, Alias, GrantPrivilege, Node, RevokePrivilege,
+            relational::Relational, tcl::Tcl, Alias, AnonymousBlock, GrantPrivilege, Node,
+            RevokePrivilege,
         },
         types::{DerivedType, UnrestrictedType as SbroadType},
         Plan,
@@ -86,6 +87,7 @@ pub enum CommandTag {
     SetTransaction = 21,
     TruncateTable = 40,
     Update = 13,
+    Do = 58,
 }
 
 impl CommandTag {
@@ -109,6 +111,7 @@ impl CommandTag {
             Self::DropIndex => "DROP INDEX",
             Self::Delete => "DELETE",
             Self::Explain => "EXPLAIN",
+            Self::Do => "DO",
             Self::Grant => "GRANT",
             Self::GrantRole => "GRANT ROLE",
             // ** from postgres sources **
@@ -190,6 +193,7 @@ impl From<CommandTag> for QueryType {
             CommandTag::Select => QueryType::Dql,
             CommandTag::Deallocate | CommandTag::DeallocateAll => QueryType::Deallocate,
             CommandTag::Begin | CommandTag::Commit | CommandTag::Rollback => QueryType::Tcl,
+            CommandTag::Do => QueryType::Tcl,
             CommandTag::EmptyQuery => QueryType::Empty,
         }
     }
@@ -215,6 +219,7 @@ impl TryFrom<&Node<'_>> for CommandTag {
             },
             Node::Block(block) => match block {
                 Block::CallProcedure { .. } => Ok(CommandTag::CallProcedure),
+                Block::Anonymous { .. } => Ok(CommandTag::Do),
             },
             Node::Ddl(ddl) => match ddl {
                 Ddl::AlterSystem { .. } => Ok(CommandTag::AlterSystem),
@@ -331,6 +336,16 @@ fn pg_type_from_sbroad(sbroad: &DerivedType) -> Type {
 fn dql_output_format(ir: &Plan) -> PgResult<Vec<MetadataColumn>> {
     // Get metadata (column types) from the top node's output tuple.
     let top_id = ir.get_top()?;
+    if ir.is_block()? {
+        let block = ir.get_block_node(top_id)?;
+        if let Block::Anonymous(AnonymousBlock { return_columns, .. }) = block {
+            let metadata = return_columns
+                .iter()
+                .map(|(name, ty)| MetadataColumn::new(name.to_string(), pg_type_from_sbroad(ty)))
+                .collect();
+            return Ok(metadata);
+        }
+    }
     let top_output_id = ir.get_relation_node(top_id)?.output();
     let columns = ir.get_row_list(top_output_id)?;
     let mut metadata = Vec::with_capacity(columns.len());
@@ -405,7 +420,22 @@ impl Describe {
             let node = plan.get_node(top)?;
             CommandTag::try_from(&node)?
         };
-        let query_type = command_tag.into();
+        let query_type = if plan.is_block()? {
+            let top = plan.get_top()?;
+            let block = plan.get_block_node(top)?;
+            match block {
+                Block::Anonymous(AnonymousBlock { return_columns, .. }) => {
+                    if return_columns.is_empty() {
+                        QueryType::Dml
+                    } else {
+                        QueryType::Dql
+                    }
+                }
+                Block::CallProcedure(_) => QueryType::Dml,
+            }
+        } else {
+            command_tag.into()
+        };
 
         let metadata = match query_type {
             QueryType::Acl

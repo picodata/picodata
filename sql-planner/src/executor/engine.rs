@@ -3,12 +3,15 @@
 //! Traits that define an execution engine interface.
 
 use base64ct::{Base64, Encoding};
+use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, ToSmolStr};
 
 use crate::ir::node::NodeId;
 use crate::ir::types::DerivedType;
 use crate::utils::MutexLike;
-use crate::{frontend::sql::get_real_function_name, ir::helpers::RepeatableState};
+use crate::{
+    frontend::sql::get_real_function_name, ir::helpers::RepeatableState, ir::node::BlockStatement,
+};
 use std::any::Any;
 
 use std::collections::HashMap;
@@ -27,6 +30,8 @@ use crate::ir::value::Value;
 use super::preemption::SchedulerOptions;
 use super::Port;
 
+use super::result::MetadataColumn;
+use crate::backend::sql::ir::PatternWithParams;
 use crate::executor::vdbe::SqlStmt;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use tarantool::space::SpaceId;
@@ -419,6 +424,15 @@ pub trait Router: QueryCache {
     fn get_scheduler_options(&self) -> SchedulerOptions;
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BlockExecData {
+    pub statements: Vec<BlockStatement<PatternWithParams>>,
+    pub table_versions: VersionMap,
+    pub index_versions: HashMap<[u32; 2], u64, RepeatableState>,
+    pub vdbe_max_steps: u64,
+    pub returns_rows: bool,
+}
+
 pub trait Vshard {
     /// Execute a query on a given buckets.
     ///
@@ -440,6 +454,14 @@ pub trait Vshard {
     fn exec_ir_on_any_node<'p>(
         &self,
         sub_plan: ExecutionPlan,
+        buckets: &Buckets,
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError>;
+
+    fn exec_block_on_buckets<'p>(
+        &self,
+        metadata: Vec<MetadataColumn>,
+        block: BlockExecData,
         buckets: &Buckets,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError>;

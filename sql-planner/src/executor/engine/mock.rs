@@ -22,7 +22,7 @@ use crate::executor::vtable::VirtualTable;
 use crate::executor::{Port, PortType};
 use crate::frontend::sql::ast::AbstractSyntaxTree;
 use crate::ir::function::Function;
-use crate::ir::node::NodeId;
+use crate::ir::node::{BlockStatement, NodeId};
 use crate::ir::relation::{Column, ColumnRole, SpaceEngine, Table};
 use crate::ir::tree::Snapshot;
 use crate::ir::types::{DerivedType, UnrestrictedType};
@@ -37,7 +37,9 @@ use tarantool::space::SpaceId;
 
 use super::helpers::vshard::prepare_rs_to_ir_map;
 use super::helpers::{dispatch_impl, normalize_name_from_sql, table_name};
-use super::{get_builtin_functions, Metadata, QueryCache};
+use super::{get_builtin_functions, BlockExecData, Metadata, QueryCache, VersionMap};
+use crate::backend::sql::ir::PatternWithParams;
+use crate::executor::result::MetadataColumn;
 use crate::executor::vdbe::{ExecutionInsight, SqlError, SqlStmt};
 
 pub const TEMPLATE: &str = "test";
@@ -1704,6 +1706,16 @@ impl Vshard for RouterRuntimeMock {
         mock_dispatch(self, sub_plan, buckets, port)?;
         Ok(())
     }
+
+    fn exec_block_on_buckets<'p>(
+        &self,
+        _metadata: Vec<MetadataColumn>,
+        _block: BlockExecData,
+        _buckets: &Buckets,
+        _port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError> {
+        todo!()
+    }
 }
 
 impl Vshard for &RouterRuntimeMock {
@@ -1737,6 +1749,16 @@ impl Vshard for &RouterRuntimeMock {
     ) -> Result<(), SbroadError> {
         mock_dispatch(self, sub_plan, buckets, port)?;
         Ok(())
+    }
+
+    fn exec_block_on_buckets<'p>(
+        &self,
+        _metadata: Vec<MetadataColumn>,
+        _block: BlockExecData,
+        _buckets: &Buckets,
+        _port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError> {
+        todo!()
     }
 }
 

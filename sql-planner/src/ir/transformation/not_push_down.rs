@@ -269,8 +269,13 @@ impl Plan {
         Ok(new_expr_id)
     }
 
-    pub fn push_down_not(mut self) -> Result<Self, SbroadError> {
-        self.transform_expr_trees(&call_expr_tree_not_push_down)?;
+    pub fn push_down_not(self) -> Result<Self, SbroadError> {
+        let top_id = self.get_top()?;
+        self.push_down_not_in_subtree(top_id)
+    }
+
+    pub fn push_down_not_in_subtree(mut self, top_id: NodeId) -> Result<Self, SbroadError> {
+        self.transform_expr_trees(top_id, &call_expr_tree_not_push_down)?;
         Ok(self)
     }
 }

@@ -118,12 +118,17 @@ impl Plan {
         Ok(top_id)
     }
 
+    pub fn split_columns(self) -> Result<Self, SbroadError> {
+        let top_id = self.get_top()?;
+        self.split_columns_in_subtree(top_id)
+    }
+
     /// Split columns in all the boolean operators of the plan.
     ///
     /// # Errors
     /// - If the plan tree is invalid (doesn't contain correct nodes where we expect it to).
-    pub fn split_columns(mut self) -> Result<Self, SbroadError> {
-        self.transform_expr_trees(&call_expr_tree_split_columns)
+    pub fn split_columns_in_subtree(mut self, top_id: NodeId) -> Result<Self, SbroadError> {
+        self.transform_expr_trees(top_id, &call_expr_tree_split_columns)
             .map(|_| self)
     }
 }

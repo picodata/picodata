@@ -1,17 +1,19 @@
 use serde::Serialize;
 
-use super::{CallProcedure, NodeAligned};
+use super::{AnonymousBlock, CallProcedure, NodeAligned};
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub enum BlockOwned {
     CallProcedure(CallProcedure),
+    Anonymous(AnonymousBlock),
 }
 
 impl From<BlockOwned> for NodeAligned {
     fn from(value: BlockOwned) -> Self {
         match value {
             BlockOwned::CallProcedure(proc) => proc.into(),
+            BlockOwned::Anonymous(block) => block.into(),
         }
     }
 }
@@ -20,12 +22,14 @@ impl From<BlockOwned> for NodeAligned {
 #[derive(Debug, Eq, PartialEq, Serialize)]
 pub enum MutBlock<'a> {
     CallProcedure(&'a mut CallProcedure),
+    Anonymous(&'a mut AnonymousBlock),
 }
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub enum Block<'a> {
     CallProcedure(&'a CallProcedure),
+    Anonymous(&'a AnonymousBlock),
 }
 
 impl Block<'_> {
@@ -33,6 +37,7 @@ impl Block<'_> {
     pub fn get_block_owned(&self) -> BlockOwned {
         match self {
             Block::CallProcedure(call) => BlockOwned::CallProcedure((*call).clone()),
+            Block::Anonymous(block) => BlockOwned::Anonymous((*block).clone()),
         }
     }
 }

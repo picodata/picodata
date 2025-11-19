@@ -20,6 +20,8 @@ use crate::ir::transformation::redistribution::MotionPolicy;
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
+use smallvec::SmallVec;
+use std::fmt::Display;
 
 /// Buckets are used to determine which nodes to send the query to.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -88,6 +90,27 @@ impl Buckets {
             (_, Buckets::Any) => self.clone(),
         };
         Ok(buckets)
+    }
+}
+
+impl Display for Buckets {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Buckets::All => write!(f, "all"),
+            Buckets::Any => write!(f, "any"),
+            Buckets::Filtered(hash_set) => {
+                let mut buckets = hash_set.iter().collect::<SmallVec<[_; 16]>>();
+                buckets.sort_unstable();
+                write!(f, "[")?;
+                if let Some((first, others)) = buckets.split_first() {
+                    write!(f, "{}", first)?;
+                    for bucket in others {
+                        write!(f, ", {}", bucket)?;
+                    }
+                }
+                write!(f, "]")
+            }
+        }
     }
 }
 

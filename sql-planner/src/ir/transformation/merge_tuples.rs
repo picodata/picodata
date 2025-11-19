@@ -624,13 +624,18 @@ impl Plan {
         Ok(expr_id)
     }
 
+    pub fn merge_tuples(self) -> Result<Self, SbroadError> {
+        let top_id = self.get_top()?;
+        self.merge_tuples_in_subtree(top_id)
+    }
+
     /// Group boolean operators in the AND-ed chain by operator type and merge
     /// them into a single boolean operator.
     ///
     /// # Errors
     /// - If the plan tree is invalid (doesn't contain correct nodes where we expect it to).
-    pub fn merge_tuples(mut self) -> Result<Self, SbroadError> {
-        self.transform_expr_trees(&call_expr_tree_merge_tuples)
+    pub fn merge_tuples_in_subtree(mut self, top_id: NodeId) -> Result<Self, SbroadError> {
+        self.transform_expr_trees(top_id, &call_expr_tree_merge_tuples)
             .map(|_| self)
     }
 }

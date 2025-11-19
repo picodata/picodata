@@ -1275,7 +1275,7 @@ where
     Ok(())
 }
 
-fn port_write_execute_dml<'p>(port: &mut impl Port<'p>, changed: u64) {
+pub fn port_write_execute_dml<'p>(port: &mut impl Port<'p>, changed: u64) {
     let mut mp = [0_u8; 5 + 9];
     let pos = {
         let mut wr = Cursor::new(&mut mp[..]);

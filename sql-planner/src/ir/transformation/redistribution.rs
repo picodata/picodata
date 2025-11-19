@@ -2582,19 +2582,23 @@ impl Plan {
         Ok(())
     }
 
+    pub fn add_motions(self) -> Result<Self, SbroadError> {
+        let top_id = self.get_top()?;
+        self.add_motions_to_subtree(top_id)
+    }
+
     /// Add motion nodes to the plan tree.
     ///
     /// # Errors
     /// - failed to get relational nodes (plan is invalid?)
     /// - failed to resolve distribution conflicts
     /// - failed to set distribution
-    pub fn add_motions(mut self) -> Result<Self, SbroadError> {
+    pub fn add_motions_to_subtree(mut self, mut top_id: NodeId) -> Result<Self, SbroadError> {
         type CteChildId = ChildId;
         type MotionId = ChildId;
         let mut cte_motions: AHashMap<CteChildId, MotionId> = AHashMap::with_capacity(CTE_CAPACITY);
-        let top = self.get_top()?;
         let post_tree = PostOrder::with_capacity(|node| self.nodes.rel_iter(node), REL_CAPACITY);
-        let nodes = post_tree.populate_nodes(top);
+        let nodes = post_tree.populate_nodes(top_id);
         // Set of already visited nodes. Used for the case of BETWEEN where two expressions may
         // refer to the same relational node.
         let mut visited = AHashSet::with_capacity(nodes.len());
@@ -2926,10 +2930,10 @@ impl Plan {
                 1,
                 "add_motions: old_new map has too many entries"
             );
-            self.set_top(*old_new.values().next().unwrap())?;
+            top_id = *old_new.values().next().unwrap();
+            self.set_top(top_id)?;
         }
 
-        let top_id = self.get_top()?;
         let slices = self.calculate_slices(top_id)?;
         self.set_slices(slices);
         Ok(self)

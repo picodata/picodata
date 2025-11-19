@@ -1335,6 +1335,85 @@ impl From<CallProcedure> for NodeAligned {
     }
 }
 
+/// A generic block statement containing a query-like object,
+/// which can be `NodeId` of a query subtree, `ExecutionPlan` and etc.
+/// The block is represented as a sequence of such statements.
+///
+/// The lifecycle:
+/// 1) Parsing and planning: `BlockStatement<NodeId>`
+/// 2) Execution: `BlockStatement<PatternWithParams>`
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub enum BlockStatement<T> {
+    /// Execute query and return the result form the block.
+    /// Query *must* be DQL so there are rows to return.
+    ///
+    /// Example: `RETURN QUERY SELECT a FROM t WHERE pk = 1;`
+    ReturnQuery(T),
+
+    /// Execute a query.
+    /// Query is supposed to be DML; DQL result will be omitted.
+    ///
+    /// Example: `UPDATE t SET b = 1 WHERE pk = 1;`
+    Query(T),
+}
+
+impl<T> BlockStatement<T> {
+    /// Get a reference to the query from the statement.
+    pub fn get(&self) -> &T {
+        match self {
+            Self::ReturnQuery(v) => v,
+            Self::Query(v) => v,
+        }
+    }
+
+    /// Get a mutable reference to the query from the statement.
+    pub fn get_mut(&mut self) -> &mut T {
+        match self {
+            Self::ReturnQuery(v) => v,
+            Self::Query(v) => v,
+        }
+    }
+
+    /// Map query from the statement using given function.
+    pub fn try_map<F, U, E>(self, f: F) -> Result<BlockStatement<U>, E>
+    where
+        F: FnOnce(T) -> Result<U, E>,
+    {
+        Ok(match self {
+            Self::ReturnQuery(v) => BlockStatement::ReturnQuery(f(v)?),
+            Self::Query(v) => BlockStatement::Query(f(v)?),
+        })
+    }
+}
+
+/// Node representing an anonymous block query.
+///
+/// Example:
+/// ```sql
+/// DO $$
+/// BEGIN
+///     LET a = (SELECT a FROM t WHERE pk = 1);
+///     LET b = (SELECT b FROM t WHERE pk = 1);
+///     RETURN QUERY SELECT a + b;
+///     UPDATE t SET a = a - 1, b = b + 1 WHERE pk = 1;
+/// END $$;
+/// ```
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct AnonymousBlock {
+    /// Block statements planned and executed in order.
+    /// Each statement contains a node id of a corresponding subquery.
+    pub statements: Vec<BlockStatement<NodeId>>,
+    /// Vector of column names and types returned via RETURN QUERY statement(s).
+    /// This vector is empty if there is no RETURN QUERY statements.
+    pub return_columns: Vec<(String, DerivedType)>,
+}
+
+impl From<AnonymousBlock> for NodeAligned {
+    fn from(value: AnonymousBlock) -> Self {
+        Self::Node64(Node64::AnonymousBlock(value))
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Union {
     /// Left child id
@@ -1431,6 +1510,7 @@ impl Node32 {
 #[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum Node64 {
+    AnonymousBlock(AnonymousBlock),
     ScanCte(ScanCte),
     Case(Case),
     Selection(Selection),
@@ -1459,6 +1539,7 @@ impl Node64 {
     #[must_use]
     pub fn into_owned(self) -> NodeOwned {
         match self {
+            Node64::AnonymousBlock(block) => NodeOwned::Block(BlockOwned::Anonymous(block)),
             Node64::Over(over) => NodeOwned::Expression(ExprOwned::Over(over)),
             Node64::Case(case) => NodeOwned::Expression(ExprOwned::Case(case)),
             Node64::Invalid(invalid) => NodeOwned::Invalid(invalid),

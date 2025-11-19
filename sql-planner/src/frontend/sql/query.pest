@@ -1,4 +1,22 @@
-Command = _{ SOI ~ (Query | ExplainQuery | CallProc | DDL | ACL | TCL | Plugin | Deallocate | EmptyQuery) ~ EOF }
+Command = _{ SOI ~ (AnonymousBlock | Query | ExplainQuery | CallProc | DDL | ACL | TCL | Plugin | Deallocate | EmptyQuery) ~ EOF }
+
+AnonymousBlock = ${
+    ^"do" ~ W ~ ExplicitBlockLanguage? ~
+    "$$" ~ WO ~ AnonymousBlockCode ~ WO ~ "$$"
+    ~ WO ~ AnonymousBlockOptions?
+}
+
+ExplicitBlockLanguage = ${ ^"language" ~ W ~ BlockLanguage ~ W }
+    BlockLanguage = _{ SqlLanguage }
+        SqlLanguage = { ^"sql" }
+
+AnonymousBlockCode = _{ ^"begin" ~ W ~ (WO ~ BlockStatement ~ WO)+ ~ WO ~ ^"end" }
+    BlockStatement = _{ BlockLetStatement | BlockReturnQueryStatement | BlockQueryStatement }
+      BlockLetStatement = { ^"let" ~ W ~ Identifier ~ WO ~ "=" ~ WO ~ SubQuery ~ WO ~ ";" }
+      BlockReturnQueryStatement = { ^"return" ~ W ~ ^"query" ~ W ~ Query ~ WO ~ ";" }
+      BlockQueryStatement = { Query ~ WO ~ ";" }
+
+AnonymousBlockOptions = { DqlOption }
 
 // Helper rule to denote we have to update plan relations from metadata
 // (with Table which name corresponds to current node).

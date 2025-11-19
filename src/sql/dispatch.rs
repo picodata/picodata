@@ -1,3 +1,4 @@
+use super::storage::execute_block_locally;
 use crate::catalog::pico_table::PicoTable;
 use crate::config::{DEFAULT_SQL_PREEMPTION, DYNAMIC_CONFIG};
 use crate::sql::lua::{
@@ -21,8 +22,9 @@ use sql::executor::engine::protocol::{
     FilteredDeleteData, FullDeleteData, InsertCoreData, LocalInsertData, LocalUpdateData,
     SharedUpdateData, TupleInsertData, UpdateCoreData,
 };
-use sql::executor::engine::Vshard;
+use sql::executor::engine::{BlockExecData, Vshard};
 use sql::executor::ir::{ExecutionPlan, QueryType};
+use sql::executor::result::MetadataColumn;
 use sql::executor::Port;
 use sql::ir::api::children::Children;
 use sql::ir::node::relational::Relational;
@@ -32,6 +34,7 @@ use sql::ir::options::ReadPreference;
 use sql::ir::transformation::redistribution::MotionPolicy;
 use sql::ir::Plan;
 use sql::utils::ByteCounter;
+use sql_protocol::block::write_block_packet;
 use sql_protocol::decode::{execute_read_response, SqlExecute, TupleIter};
 use sql_protocol::dml::delete::{write_delete_filtered_packet, write_delete_full_packet};
 use sql_protocol::dml::insert::{write_insert_materialized_packet, write_insert_packet};
@@ -221,6 +224,108 @@ pub(crate) fn custom_plan_dispatch<'p>(
         }
     };
     Ok(())
+}
+
+pub(crate) fn block_dispatch<'p>(
+    port: &mut impl Port<'p>,
+    metadata: Vec<MetadataColumn>,
+    block: BlockExecData,
+    buckets: &Buckets,
+    timeout: u64,
+    tier: Option<&str>,
+) -> Result<(), SbroadError> {
+    match buckets {
+        Buckets::All => Err(SbroadError::Other(
+            "cannot execute block on all buckets".into(),
+        )),
+        Buckets::Any => {
+            write_metadata(
+                port,
+                metadata
+                    .iter()
+                    .map(|c| (c.name.as_str(), c.r#type.as_str())),
+                metadata.len() as _,
+            )
+            .map_err(|e| {
+                SbroadError::FailedTo(
+                    Action::Serialize,
+                    Some(Entity::Metadata),
+                    format_smolstr!("{e:?}"),
+                )
+            })?;
+
+            execute_block_locally(block, port)
+        }
+        Buckets::Filtered(_) => {
+            let lua = tarantool::lua_state();
+            let replicasets = replicasets_from_buckets(&lua, buckets, tier)?;
+
+            if !metadata.is_empty() {
+                write_metadata(
+                    port,
+                    metadata
+                        .iter()
+                        .map(|c| (c.name.as_str(), c.r#type.as_str())),
+                    metadata.len() as _,
+                )
+                .map_err(|e| {
+                    SbroadError::FailedTo(
+                        Action::Serialize,
+                        Some(Entity::Metadata),
+                        format_smolstr!("{e:?}"),
+                    )
+                })?;
+            }
+            let columns = Some(metadata.len());
+
+            let columns =
+                columns.ok_or_else(|| SbroadError::Other("block must return rows!".into()))?;
+
+            let data = rmp_serde::encode::to_vec(&block).map_err(|e| {
+                SbroadError::DispatchError(format_smolstr!(
+                    "failed to encode block mesasge payload: {e}"
+                ))
+            })?;
+
+            let mut tb = TupleBuilder::rust_allocated();
+            // Every protocol message must have some request id,
+            // but blocks don't use them so it's OK to pass a random value.
+            let request_id = "XXXX";
+            write_block_packet(&mut tb, request_id, &data)
+                .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
+            let tuple = tb
+                .into_tuple()
+                .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
+
+            let lua_table = lua_single_plan_dispatch(
+                &lua,
+                &tuple,
+                &replicasets,
+                timeout,
+                tier,
+                String::from("leader"),
+                false,
+            )
+            .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
+
+            // Block cannot have any motions.
+            let motion_max_rows = 0;
+
+            if !metadata.is_empty() {
+                dql_execution_result_process(
+                    port,
+                    lua_table,
+                    replicasets.len(),
+                    columns as _,
+                    motion_max_rows,
+                )?;
+            } else {
+                dml_process(port, lua_table, replicasets.len())?;
+            }
+
+            Ok(())
+        }
+    }
 }
 
 pub(crate) fn port_write_metadata<'p>(

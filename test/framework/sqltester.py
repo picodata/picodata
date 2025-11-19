@@ -55,6 +55,9 @@ def parse_queries(raw_queries: str):
         PARSING_STRING_LITERAL = enum.auto()
         PARSING_QUOTED_IDENTIFIER = enum.auto()
         PARSING_ESCAPED_QUOTE = enum.auto()
+        STARING_PARSING_BLOCK_BODY = enum.auto()
+        PARSING_BLOCK_BODY = enum.auto()
+        FINISHING_BLOCK_BODY = enum.auto()
 
     delimiter = ";"
     state = State.SEARCHING_FOR_DELIMITER
@@ -73,6 +76,8 @@ def parse_queries(raw_queries: str):
                     state = State.PARSING_STRING_LITERAL
                 elif ch == '"':
                     state = State.PARSING_QUOTED_IDENTIFIER
+                elif ch == "$" and raw_queries[i + 1] == "$":
+                    state = State.STARING_PARSING_BLOCK_BODY
 
             case State.PARSING_STRING_LITERAL:
                 if ch == "'":
@@ -87,6 +92,18 @@ def parse_queries(raw_queries: str):
 
             case State.PARSING_ESCAPED_QUOTE:
                 assert ch == "'"
+                state = State.SEARCHING_FOR_DELIMITER
+
+            case State.STARING_PARSING_BLOCK_BODY:
+                assert ch == "$"
+                state = State.PARSING_BLOCK_BODY
+
+            case State.PARSING_BLOCK_BODY:
+                if ch == "$" and raw_queries[i + 1] == "$":
+                    state = State.FINISHING_BLOCK_BODY
+
+            case State.FINISHING_BLOCK_BODY:
+                assert ch == "$"
                 state = State.SEARCHING_FOR_DELIMITER
 
     assert state == State.SEARCHING_FOR_DELIMITER

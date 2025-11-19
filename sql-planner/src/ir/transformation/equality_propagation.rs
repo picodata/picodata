@@ -486,12 +486,17 @@ impl Plan {
         }
     }
 
+    pub fn derive_equalities(self) -> Result<Self, SbroadError> {
+        let top_id = self.get_top()?;
+        self.derive_equalities_in_subtree(top_id)
+    }
+
     /// Derive new equalities in the expression tree.
     ///
     /// # Errors
     /// - If the plan tree is invalid (doesn't contain correct nodes where we expect it to).
-    pub fn derive_equalities(mut self) -> Result<Self, SbroadError> {
-        self.transform_expr_trees(&call_expr_tree_derive_equalities)
+    pub fn derive_equalities_in_subtree(mut self, top_id: NodeId) -> Result<Self, SbroadError> {
+        self.transform_expr_trees(top_id, &call_expr_tree_derive_equalities)
             .map(|_| self)
     }
 }

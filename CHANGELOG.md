@@ -48,6 +48,21 @@ with the `YY.MINOR.MICRO` scheme.
     store them using the vinyl engine.
 - \[breaking\] Instead of always being a tier with name `default`, default tier is now the first tier mentioned in the config.
 - Add support for `compression_level` Vinyl option for secondary indices created with `CREATE INDEX`.
+- Add suppoort for anonymous blocks. An anonymous block is a sequence of statements that execute
+  queries transactionally. Blocks are single-bucket, meaning that all the queries within the
+  block must be executed on the same bucket (or have distribution any).
+
+  Supported statements are:
+  - QUERY: execute the given query;
+  - RETURN QUERY: execute the given query and return its result.
+
+  Example of a block query:
+  ```sql
+  DO $$ BEGIN
+    RETURN QUERY SELECT a FROM t WHERE pk = 1;
+    UPDATE t SET a = a + 1 WHERE pk = 1;
+  END $$;
+  ```
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:

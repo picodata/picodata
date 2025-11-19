@@ -4,7 +4,7 @@ use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     BoundType, Constant, Delete, FrameType, Join, Node, NodeId, Parameter, Projection, Reference,
-    ScalarFunction, ScanRelation, SubQueryReference,
+    ScalarFunction, ScanRelation, SubQueryReference, Update,
 };
 use crate::ir::relation::Column;
 use ahash::AHashSet;
@@ -175,7 +175,7 @@ impl ExecutionPlan {
 
     pub fn generate_sql<T, TableName>(
         &self,
-        nodes: &[&SyntaxData],
+        nodes: &[impl AsRef<SyntaxData>],
         plan_id: T,
         vtables_meta: Option<&VTablesMeta>,
         table_name: TableName,
@@ -202,11 +202,13 @@ impl ExecutionPlan {
         let need_delim_after = |id: usize| -> bool {
             let mut result: bool = true;
             if id > 0 {
-                if let Some(SyntaxData::OpenParenthesis) = nodes.get(id - 1) {
+                if let Some(SyntaxData::OpenParenthesis) = nodes.get(id - 1).map(|n| n.as_ref()) {
                     result = false;
                 }
             }
-            if let Some(SyntaxData::Comma | SyntaxData::CloseParenthesis) = nodes.get(id) {
+            if let Some(SyntaxData::Comma | SyntaxData::CloseParenthesis) =
+                nodes.get(id).map(|n| n.as_ref())
+            {
                 result = false;
             }
             if id == 0 {
@@ -223,7 +225,8 @@ impl ExecutionPlan {
         // the global counter with the columns that need an auto-generated name.
         // As a result each such column would be named like "COLUMN_%d", where "%d"
         // is the new global counter value.
-        for (id, data) in nodes.iter().enumerate() {
+        let nodes = nodes.iter().map(|n| n.as_ref());
+        for (id, data) in nodes.enumerate() {
             if let Some(' ' | '(') = sql.chars().last() {
             } else if need_delim_after(id) {
                 sql.push_str(delim);
@@ -374,6 +377,10 @@ impl ExecutionPlan {
                                 sql.push_str("DELETE FROM ");
                                 push_identifier(&mut sql, relation)
                             }
+                            Relational::Update(Update { relation, .. }) => {
+                                sql.push_str("UPDATE ");
+                                push_identifier(&mut sql, relation);
+                            }
                             Relational::Join(Join { kind, .. }) => sql.push_str(
                                 format!("{} JOIN", kind.to_string().to_uppercase()).as_str(),
                             ),
@@ -394,7 +401,7 @@ impl ExecutionPlan {
                             Relational::Union { .. } => sql.push_str("UNION"),
                             Relational::UnionAll { .. } => sql.push_str("UNION ALL"),
                             Relational::Values { .. } => sql.push_str("VALUES"),
-                            Relational::Insert { .. } | Relational::Update { .. } => {
+                            Relational::Insert { .. } => {
                                 return Err(SbroadError::Invalid(
                                     Entity::Node,
                                     Some("DML nodes are not supported in local SQL".into()),

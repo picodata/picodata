@@ -62,7 +62,7 @@ use sql::executor::{Port, PortType};
 use sql::ir::acl::{AlterOption, AuditPolicyOption, GrantRevokeType, Privilege as SqlPrivilege};
 use sql::ir::ddl::{AlterSystemType, ParamDef};
 use sql::ir::node::acl::AclOwned;
-use sql::ir::node::block::Block;
+use sql::ir::node::block::{Block, BlockOwned};
 use sql::ir::node::ddl::{Ddl, DdlOwned};
 use sql::ir::node::expression::ExprOwned;
 use sql::ir::node::plugin::{
@@ -71,11 +71,11 @@ use sql::ir::node::plugin::{
 };
 use sql::ir::node::relational::Relational;
 use sql::ir::node::{
-    AlterColumn, AlterSystem, AlterTableOp, AlterUser, ArenaType, AuditPolicy, CallProcedure,
-    Constant, CreateIndex, CreateProc, CreateRole, CreateTable, CreateUser, Delete, DropIndex,
-    DropProc, DropRole, DropTable, DropUser, GrantPrivilege, Insert, Node as IrNode, Node136,
-    Node64, Node96, NodeOwned, RenameIndex, RenameRoutine, RevokePrivilege, ScanRelation, SetParam,
-    Update,
+    AlterColumn, AlterSystem, AlterTableOp, AlterUser, AnonymousBlock, ArenaType, AuditPolicy,
+    CallProcedure, Constant, CreateIndex, CreateProc, CreateRole, CreateTable, CreateUser, Delete,
+    DropIndex, DropProc, DropRole, DropTable, DropUser, GrantPrivilege, Insert, Node as IrNode,
+    Node136, Node64, Node96, NodeOwned, RenameIndex, RenameRoutine, RevokePrivilege, ScanRelation,
+    SetParam, Update,
 };
 use sql::ir::node::{NodeId, TruncateTable};
 use sql::ir::operator::ConflictStrategy;
@@ -106,6 +106,7 @@ use self::port::PicoPortC;
 use self::router::DEFAULT_QUERY_TIMEOUT;
 use crate::sql::dispatch::build_cache_miss_dql_packet;
 use serde::Serialize;
+
 use sql::BoundStatement;
 
 pub const DEFAULT_BUCKET_COUNT: u64 = 3000;
@@ -278,6 +279,17 @@ fn dispatch_bound_statement_impl<'p>(
         port.set_type(PortType::DispatchExplain);
     } else if query.get_exec_plan().get_ir_plan().is_dql()? || query.is_backup()? {
         port.set_type(PortType::DispatchDql);
+    } else if query.is_block()? {
+        let plan = query.get_exec_plan().get_ir_plan();
+        let top_id = plan.get_top().expect("must be set");
+        let block = plan.get_block_node(top_id)?;
+        if let Block::Anonymous(AnonymousBlock { return_columns, .. }) = block {
+            if return_columns.is_empty() {
+                port.set_type(PortType::DispatchDml);
+            } else {
+                port.set_type(PortType::DispatchDql);
+            }
+        }
     } else {
         port.set_type(PortType::DispatchDml);
     }
@@ -503,16 +515,19 @@ fn dispatch_bound_statement_impl<'p>(
         port_write_dml_response(port, 1);
         Ok(())
     } else if query.is_block()? {
-        check_routine_privileges(query.get_exec_plan().get_ir_plan())?;
-        let ir_plan = query.get_mut_exec_plan().get_mut_ir_plan();
-        let top_id = ir_plan.get_top()?;
-        let code_block = ir_plan.get_block_node(top_id)?;
+        let code_block = {
+            check_routine_privileges(query.get_exec_plan().get_ir_plan())?;
+            let ir_plan = query.get_mut_exec_plan().get_mut_ir_plan();
+            let top_id = ir_plan.get_top()?;
+            ir_plan.get_block_node(top_id)?.get_block_owned()
+        };
         match code_block {
-            Block::CallProcedure(CallProcedure { name, values }) => {
+            BlockOwned::CallProcedure(CallProcedure { name, values }) => {
+                let ir_plan = query.get_mut_exec_plan().get_mut_ir_plan();
                 let values = values.clone();
                 let options = ir_plan.effective_options.clone();
 
-                let routine = routine_by_name(name)?;
+                let routine = routine_by_name(&name)?;
 
                 // Check that the amount of passed values is correct.
                 if routine.params.len() != values.len() {
@@ -578,6 +593,9 @@ fn dispatch_bound_statement_impl<'p>(
                     None,
                     port,
                 )
+            }
+            BlockOwned::Anonymous(AnonymousBlock { .. }) => {
+                query.dispatch(port).map_err(Error::Sbroad)
             }
         }
     } else {
@@ -2719,6 +2737,7 @@ pub unsafe extern "C" fn proc_sql_execute(
                     let query_type = match msg.msg_type {
                         ProtocolMessageType::Dql => "dql",
                         ProtocolMessageType::Dml(_) | ProtocolMessageType::LocalDml(_) => "dml",
+                        ProtocolMessageType::Block => "block",
                     };
                     query_type
                 }

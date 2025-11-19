@@ -126,6 +126,12 @@ pub enum SyntaxData {
     Empty,
 }
 
+impl AsRef<SyntaxData> for SyntaxData {
+    fn as_ref(&self) -> &SyntaxData {
+        self
+    }
+}
+
 /// A syntax tree node.
 ///
 /// In order to understand the process of `left` (and `right`) fields filling
@@ -798,7 +804,8 @@ impl<'p> SyntaxPlan<'p> {
                 }
                 _ => {}
             }
-            panic!("Checking syntax node: expected plan node {plan_id:?} but got {id:?}.");
+            let plan = self.plan.get_ir_plan();
+            panic!("Checking syntax node: expected plan node {plan_id:?} but got {id:?} ({:?} and {:?})", plan.get_node(plan_id), plan.get_node(*id));
         }
     }
 
@@ -972,8 +979,9 @@ impl<'p> SyntaxPlan<'p> {
                 self.nodes.push_sn_plan(sn);
             }
             Node::Relational(ref rel) => match rel {
+                Relational::Update { .. } => (),
                 Relational::Delete { .. } => self.add_delete(id),
-                Relational::Insert { .. } | Relational::Update { .. } => {
+                Relational::Insert { .. } => {
                     panic!("DML node {node:?} is not supported in the syntax plan")
                 }
                 Relational::Join { .. } => self.add_join(id),

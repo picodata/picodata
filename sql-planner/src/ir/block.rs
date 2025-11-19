@@ -6,6 +6,7 @@ use crate::ir::{Node, Plan};
 use smol_str::format_smolstr;
 
 use super::node::block::{Block, MutBlock};
+use crate::ir::node::block::BlockOwned;
 
 impl Plan {
     /// Get a reference to a block node.
@@ -54,5 +55,9 @@ impl Plan {
                 )),
             )),
         }
+    }
+
+    pub fn get_owned_block_node(&self, node_id: NodeId) -> Result<BlockOwned, SbroadError> {
+        self.get_block_node(node_id).map(|b| b.get_block_owned())
     }
 }

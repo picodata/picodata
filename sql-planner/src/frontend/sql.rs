@@ -8,10 +8,10 @@ use crate::ir::node::ddl::DdlOwned;
 use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
-    Alias, AlterColumn, AlterTable, AlterTableOp, Backup, Bound, BoundType, Frame, FrameType,
-    GroupBy, Node32, Over, Parameter, Reference, ReferenceAsteriskSource, ReferenceTarget,
-    RenameIndex, Row, ScalarFunction, SubQueryReference, TimeParameters, Timestamp, TruncateTable,
-    Values, ValuesRow, Window,
+    Alias, AlterColumn, AlterTable, AlterTableOp, AnonymousBlock, Backup, BlockStatement, Bound,
+    BoundType, Frame, FrameType, GroupBy, Node32, Over, Parameter, Reference,
+    ReferenceAsteriskSource, ReferenceTarget, RenameIndex, Row, ScalarFunction, SubQueryReference,
+    TimeParameters, Timestamp, TruncateTable, Values, ValuesRow, Window,
 };
 use crate::ir::types::{DerivedType, UnrestrictedType};
 use ahash::{AHashMap, AHashSet};
@@ -1976,6 +1976,179 @@ fn can_assign(src: DerivedType, dst: UnrestrictedType) -> bool {
     };
 
     src == dst
+}
+
+/// Get column types that dql query returns.
+fn dql_return_columns(
+    ir: &Plan,
+    query_id: NodeId,
+) -> Result<Vec<(String, DerivedType)>, SbroadError> {
+    let output_id = ir.get_relation_node(query_id)?.output();
+    let output_row = ir.get_row_list(output_id)?;
+    let mut columns = Vec::with_capacity(output_row.len());
+    for col_id in output_row {
+        let column = ir.get_expression_node(*col_id)?;
+        let column_name = if let Expression::Alias(Alias { name, .. }) = column {
+            name.to_string()
+        } else {
+            return Err(SbroadError::Invalid(
+                Entity::Expression,
+                Some(smol_str::format_smolstr!("expected alias, got {column:?}")),
+            ));
+        };
+        let column = ir.get_expression_node(*col_id)?;
+        let column_type = column.calculate_type(ir)?;
+        columns.push((column_name, column_type));
+    }
+    Ok(columns)
+}
+
+fn parse_anonymous_block(
+    ast: &AbstractSyntaxTree,
+    node_id: usize,
+    map: &Translation,
+    plan: &Plan,
+) -> Result<AnonymousBlock, SbroadError> {
+    fn ensure_can_generate_local_sql_for_update(
+        update_id: NodeId,
+        plan: &Plan,
+    ) -> Result<(), SbroadError> {
+        let dfs = PostOrder::with_capacity(|x| plan.nodes.rel_iter(x), REL_CAPACITY);
+        for LevelNode(_, id) in dfs.into_iter(update_id) {
+            match plan.get_relation_node(id)? {
+                Relational::ScanSubQuery(_) => {
+                    return Err(SbroadError::other("UPDATE in block cannot have subqueries"))
+                }
+                Relational::Join(_) => {
+                    return Err(SbroadError::other("UPDATE in block cannot have joins"))
+                }
+                _ => (),
+            }
+        }
+
+        Ok(())
+    }
+    let node = ast.nodes.get_node(node_id)?;
+    let mut statements = Vec::new();
+    let mut return_columns: Vec<(String, DerivedType)> = Vec::new();
+    for child_id in &node.children {
+        let child = ast.nodes.get_node(*child_id)?;
+        match child.rule {
+            Rule::ExplicitBlockLanguage => (),
+            Rule::AnonymousBlockOptions => (),
+            Rule::BlockReturnQueryStatement => {
+                let query_id = map.get(*child_id)?;
+                let columns = dql_return_columns(plan, query_id)?;
+                if !return_columns.is_empty() {
+                    let return_types: Vec<_> = return_columns.iter().map(|c| c.1).collect();
+                    let query_types: Vec<_> = columns.iter().map(|c| c.1).collect();
+                    if return_types != query_types {
+                        return Err(SbroadError::Other(format_smolstr!(
+                            "RETURN QUERY types cannot be matched ([{}] and [{}])",
+                            return_types.iter().join(", "),
+                            query_types.iter().join(", "),
+                        )));
+                    }
+                } else {
+                    return_columns = columns;
+                }
+                statements.push(BlockStatement::ReturnQuery(query_id));
+            }
+            Rule::BlockQueryStatement => {
+                let query_id = map.get(*child_id)?;
+                if !plan.get_relation_node(query_id)?.is_dml() {
+                    // So nobody will be confused that `DO $$ BEGIN SELECT 1; END $$`
+                    // doesn't return rows.
+                    return Err(SbroadError::other(
+                        "QUERY statements must execute DML queries, use RETURN QUERY to return rows",
+                    ));
+                }
+                statements.push(BlockStatement::Query(query_id));
+            }
+            rule => unreachable!("{rule:?} is unexpected according to the grammar"),
+        }
+    }
+
+    // Validate OPTION usage.
+    let mut options_count = None;
+    for child_id in &node.children {
+        let child = ast.nodes.get_node(*child_id)?;
+        if let Rule::AnonymousBlockOptions = child.rule {
+            let option_rule = child.children[0];
+            let options = ast.nodes.get_node(option_rule)?;
+            options_count = Some(options.children.len());
+        }
+    }
+
+    let block_options_count = options_count.unwrap_or(0);
+    // All options must be specified for this block.
+    if block_options_count != plan.raw_options.len() {
+        return Err(SbroadError::other(
+            "OPTION cannot be specified for a query from block; they can be specified for the whole block only"
+        ));
+    }
+
+    for opt in &plan.raw_options {
+        if opt.kind == OptionKind::MotionRowMax {
+            return Err(SbroadError::other(
+                "block cannot have any motions; SQL_MOTION_ROW_MAX doesn't make sense",
+            ));
+        }
+    }
+
+    // Force users to write statements as they are executed (dql before dml).
+    for (id1, id2) in node.children.windows(2).map(|pair| (pair[0], pair[1])) {
+        let r1 = ast.nodes.get_node(id1)?.rule;
+        let r2 = ast.nodes.get_node(id2)?.rule;
+        if let (
+            Rule::BlockQueryStatement,
+            Rule::BlockLetStatement | Rule::BlockReturnQueryStatement,
+        ) = (r1, r2)
+        {
+            return Err(SbroadError::Other(format_smolstr!(
+                "QUERY statements must follow LET and RETURN QUERY statements",
+            )));
+        }
+    }
+
+    // Ensure block can operate on all the tables.
+    let mut block_tier = None;
+    for (name, table) in &plan.relations.tables {
+        let tables_must_be_sharded_error = |name, kind| {
+            SbroadError::Other(format_smolstr!(
+                "all block tables must be sharded, but '{name}' is {kind}"
+            ))
+        };
+
+        match table.kind {
+            TableKind::ShardedSpace { .. } => (),
+            TableKind::GlobalSpace => return Err(tables_must_be_sharded_error(name, "global")),
+            TableKind::SystemSpace => return Err(tables_must_be_sharded_error(name, "system")),
+        }
+
+        if let (Some(block_tier), Some(table_tier)) = (block_tier, &table.tier) {
+            if block_tier != table_tier {
+                // TODO: more context
+                return Err(SbroadError::Other(format_smolstr!(
+                    "all block tables must belong to the same tier"
+                )));
+            }
+        }
+        block_tier = block_tier.or(table.tier.as_ref());
+    }
+
+    // Ensure `generate_pattern_with_params_for_block` can handle queries.
+    for stmt in &statements {
+        let node_id = *stmt.get();
+        if let Relational::Update(_) = plan.get_relation_node(node_id)? {
+            ensure_can_generate_local_sql_for_update(node_id, plan)?;
+        }
+    }
+
+    Ok(AnonymousBlock {
+        statements,
+        return_columns,
+    })
 }
 
 /// Get String value under node that is considered to be an identifier
@@ -6715,6 +6888,40 @@ impl AbstractSyntaxTree {
                     let child_id =
                         map.get(*node.children.first().expect("no children for Query rule"))?;
                     map.add(id, child_id);
+                }
+                Rule::BlockReturnQueryStatement => {
+                    let child_id = map.get(
+                        *node
+                            .children
+                            .first()
+                            .expect("no children for BlockReturnQueryStatement rule"),
+                    )?;
+                    map.add(id, child_id);
+                }
+                Rule::BlockQueryStatement => {
+                    let child_id = map.get(
+                        *node
+                            .children
+                            .first()
+                            .expect("no children for BlockQueryStatement rule"),
+                    )?;
+                    map.add(id, child_id);
+                }
+                Rule::BlockLetStatement => {
+                    return Err(SbroadError::other("LET statements are not supported yet"));
+                }
+                Rule::AnonymousBlock => {
+                    // At the moment all queries are parsed analyzed so we can set parameter
+                    // types in the plan and avoid unknown types in projections.
+                    //
+                    // Without this step `DO $$ BEGIN RETURN QUERY SELECT $1; END $$` would have
+                    // unknown type in metadata.
+                    let param_types = get_parameter_derived_types(&type_analyzer);
+                    plan.set_types_in_parameter_nodes(&param_types)?;
+
+                    let block = parse_anonymous_block(self, id, &map, &plan)?;
+                    let plan_id = plan.nodes.push(block.into());
+                    map.add(id, plan_id);
                 }
                 Rule::CallProc => {
                     let call_proc = parse_call_proc(

@@ -27,9 +27,11 @@ use crate::executor::bucket::Buckets;
 use crate::executor::engine::{Router, Vshard};
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::vdbe::ExecutionInsight;
-use crate::ir::node::relational::Relational;
-use crate::ir::node::{Motion, NodeId};
+use crate::ir::node::block::{BlockOwned, MutBlock};
+use crate::ir::node::relational::{MutRelational, Relational};
+use crate::ir::node::{AnonymousBlock, Motion, NodeId};
 use crate::ir::transformation::redistribution::MotionPolicy;
+use crate::ir::tree::traversal::{PostOrder, REL_CAPACITY};
 use crate::ir::value::Value;
 use crate::ir::{Plan, Slices};
 use crate::BoundStatement;
@@ -58,20 +60,138 @@ impl Plan {
     /// # Errors
     /// - Failed to optimize the plan.
     pub fn optimize(self) -> Result<Self, SbroadError> {
-        self.replace_in_operator()?
-            .push_down_not()?
+        let top_id = self.get_top()?;
+        self.optimize_subtree(top_id)
+    }
+
+    pub fn optimize_subtree(self, top_id: NodeId) -> Result<Self, SbroadError> {
+        self.replace_in_operator_in_subtree(top_id)?
+            .push_down_not_in_subtree(top_id)?
             // In the case if the query was not fully parameterized
             // and contains some constants, lets apply constant folding.
             .cast_constants()?
             .fold_boolean_tree()?
-            .split_columns()?
-            .set_dnf()?
-            .derive_equalities()?
-            .merge_tuples()?
-            .add_motions()?
+            .split_columns_in_subtree(top_id)?
+            .set_dnf_in_subtree(top_id)?
+            .derive_equalities_in_subtree(top_id)?
+            .merge_tuples_in_subtree(top_id)?
+            .add_motions_to_subtree(top_id)?
             .update_substring()?
             // After all transformations we can finally determine what parameters are unique.
             .mark_unique_parameters()
+    }
+
+    pub fn optimize_block(mut self) -> Result<Self, SbroadError> {
+        // Eliminate motions from the plan so it can be executed locally within a block.
+        fn eliminate_motions_in_subtree(
+            plan: &mut Plan,
+            top_id: NodeId,
+        ) -> Result<(), SbroadError> {
+            let top = plan.get_relation_node(top_id)?;
+            if top.is_dml() {
+                // Ensure motion is local.
+                let top_children = plan.get_relation_children(top_id)?;
+                let Some(motion_id) = top_children.get(0) else {
+                    return Ok(());
+                };
+                let motion = plan.get_relation_node(*motion_id)?;
+                if !matches!(
+                    motion,
+                    Relational::Motion(Motion {
+                        policy: MotionPolicy::Local,
+                        ..
+                    })
+                ) {
+                    return Ok(());
+                }
+
+                // Unlink update's child.
+                let motion_child_id = plan.get_rel_child(*motion_id, 0)?;
+                if let MutRelational::Update(update) = plan.get_mut_relation_node(top_id)? {
+                    update.child = motion_child_id
+                }
+            }
+
+            Ok(())
+        }
+
+        let block_id = self.get_top()?;
+        let block = self.get_block_node(block_id)?.get_block_owned();
+        let BlockOwned::Anonymous(AnonymousBlock { mut statements, .. }) = block else {
+            panic!("can't opmitize {block:?} as block");
+        };
+
+        // Optimize subtrees and eliminate motions.
+        for stmt in &mut statements {
+            let query_id = *stmt.get();
+            // Remember keyword for the top node before motions are added.
+            let keyword = self.as_keyword(query_id);
+
+            // Set top so `optimize_subtree()` can update it when subtree's top changes.
+            self.set_top(query_id).expect("top node can't be missed");
+            self = self.optimize_subtree(*stmt.get())?;
+            eliminate_motions_in_subtree(&mut self, *stmt.get())?;
+            let new_top = self.get_top().expect("just set");
+            *stmt.get_mut() = new_top;
+
+            // Ensure no motions.
+            if self.subtree_has_motions(new_top)? {
+                return Err(SbroadError::Other(format_smolstr!(
+                    "{keyword} query has motions which is not allowed for block queries"
+                )));
+            }
+        }
+
+        // Set block as the top node back.
+        self.set_top(block_id).expect("block node can't be missed");
+
+        // Update statements since as a result of optimizations each subtree can have a new top.
+        if let MutBlock::Anonymous(AnonymousBlock {
+            statements: ref mut plan_statements,
+            ..
+        }) = self.get_mut_block_node(block_id)?
+        {
+            *plan_statements = statements;
+        }
+
+        Ok(self)
+    }
+
+    fn subtree_has_motions(&self, top_id: NodeId) -> Result<bool, SbroadError> {
+        let post_tree = PostOrder::with_capacity(|node| self.nodes.rel_iter(node), REL_CAPACITY);
+        for node in post_tree.populate_nodes(top_id) {
+            if let Relational::Motion(_) = self.get_relation_node(node.1)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    fn as_keyword(&self, top_id: NodeId) -> &'static str {
+        let Ok(top) = self.get_relation_node(top_id) else {
+            return "";
+        };
+
+        match top {
+            Relational::Values(_) | Relational::ValuesRow(_) => "VALUES",
+            Relational::Projection(_) | Relational::SelectWithoutScan(_) => "SELECT",
+            Relational::ScanCte(_) | Relational::ScanSubQuery(_) => "FROM",
+            Relational::ScanRelation(_) => "FROM",
+            Relational::Selection(_) => "WHERE",
+            Relational::UnionAll(_) => "UNION ALL",
+            Relational::Union(_) => "UNION",
+            Relational::Except(_) => "EXCEPT",
+            Relational::Limit(_) => "LIMIT",
+            Relational::Join(_) => "JOIN",
+            Relational::Intersect(_) => "INTERSECT",
+            Relational::Update(_) => "UPDATE",
+            Relational::Delete(_) => "DELETE",
+            Relational::Insert(_) => "INSERT",
+            Relational::Having(_) => "HAVING",
+            Relational::GroupBy(_) => "GROUP BY",
+            Relational::OrderBy(_) => "ORDER BY",
+            Relational::Motion(_) => "<MOTION>",
+        }
     }
 }
 
@@ -296,15 +416,52 @@ where
     /// - Failed to materialize motion result and build a virtual table.
     /// - Failed to get plan top.
     pub fn dispatch<'p>(&mut self, port: &mut impl Port<'p>) -> Result<(), SbroadError> {
-        if self.is_explain() {
-            self.produce_explain(port)?;
-            return Ok(());
+        let top_id = self.exec_plan.get_ir_plan().get_top()?;
+        if self.exec_plan.get_ir_plan().is_block()? {
+            let block = self.exec_plan.get_ir_plan().get_owned_block_node(top_id)?;
+            let BlockOwned::Anonymous(block) = block else {
+                unreachable!("plan.is_block() returned true, but top is {block:?}")
+            };
+
+            let mut block_buckets = None;
+            for query_id in block.statements.iter().map(|stmt| *stmt.get()) {
+                let buckets = self.bucket_discovery(query_id)?;
+                match buckets {
+                    Buckets::All => {
+                        return Err(SbroadError::Other(format_smolstr!(
+                            "block cannot be executed on all buckets"
+                        )))
+                    }
+                    Buckets::Filtered(ref filtered) => {
+                        if filtered.len() != 1 {
+                            return Err(SbroadError::Other(format_smolstr!(
+                                "block can only be executed on a single bucket, got {buckets}"
+                            )));
+                        }
+
+                        if let Some(block_buckets) = &block_buckets {
+                            if block_buckets != &buckets {
+                                return Err(SbroadError::Other(format_smolstr!(
+                                    "block queries have different buckets: {block_buckets} and {buckets}"
+                                )));
+                            }
+                        } else {
+                            block_buckets = Some(buckets);
+                        }
+                    }
+                    Buckets::Any => (),
+                }
+            }
+
+            let buckets = block_buckets.unwrap_or(Buckets::Any);
+            return self
+                .coordinator
+                .dispatch(&mut self.exec_plan, top_id, &buckets, port);
         }
 
         let slices = self.exec_plan.get_ir_plan().clone_slices();
         self.materialize_subtree(slices, Some(port))?;
         let ir_plan = self.exec_plan.get_ir_plan();
-        let top_id = ir_plan.get_top()?;
         if ir_plan.get_relation_node(top_id)?.is_motion() {
             let err =
                 |s: &str| -> SbroadError { SbroadError::Invalid(Entity::Plan, Some(s.into())) };
@@ -326,6 +483,7 @@ where
             }
             return Ok(());
         }
+
         let buckets = self.bucket_discovery(top_id)?;
         self.coordinator
             .dispatch(&mut self.exec_plan, top_id, &buckets, port)?;

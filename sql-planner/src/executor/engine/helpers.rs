@@ -1,6 +1,15 @@
 use crate::{
-    backend::sql::space::ADMIN_ID, executor::preemption::Scheduler, ir::api::children::Children,
-    ir::node::expression::MutExpression,
+    backend::sql::{
+        ir::PatternWithParams,
+        space::ADMIN_ID,
+        tree::{OrderedSyntaxNodes, SyntaxPlan},
+    },
+    executor::preemption::Scheduler,
+    ir::{
+        api::children::Children,
+        node::{block::BlockOwned, expression::MutExpression},
+        tree::Snapshot,
+    },
 };
 use ahash::AHashMap;
 
@@ -19,7 +28,7 @@ use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::{any::Any, cmp::Ordering, collections::HashMap, rc::Rc, sync::OnceLock};
 use tarantool::space::Space;
 
-use super::{Metadata, Router, Vshard};
+use super::{BlockExecData, Metadata, Router, Vshard};
 use crate::executor::Port;
 use crate::ir::node::Node;
 use crate::ir::value::{EncodedValue, MsgPackValue};
@@ -714,6 +723,158 @@ fn dml_get_motion_child(
     }
 }
 
+/// Generate pattern with params for block query.
+/// Note that this function can generate UPDATE queries,
+/// not sure if we should support it elsewhere.
+fn generate_pattern_with_params_for_block(
+    plan: &mut ExecutionPlan,
+    query_id: NodeId,
+) -> Result<PatternWithParams, SbroadError> {
+    use crate::backend::sql::tree::SyntaxData;
+
+    struct Select {
+        projection: Vec<Vec<SyntaxData>>,
+        filter: Vec<SyntaxData>,
+        indexed_by: Option<SyntaxData>,
+    }
+
+    /// Extract projection, filter and indexed by from a SELECT query.
+    fn parse_select(nodes: &[&SyntaxData], plan: &Plan) -> Result<Select, SbroadError> {
+        // We are trying to parse dql part of update query.
+        // Arena has the following structure of a SELECT query:
+        // [
+        //      PlanId(Porjection),
+        //          <expr>, <alias>, <comma>,
+        //          <expr>, <alias>, <comma>,
+        //          ...
+        //      FROM, PlanId(ScanRelation),
+        //      (OPTIONAL) IndexedBy(_),
+        //      PlanId(Selection), <expr>
+        //  ]
+        //
+        //  XXX Thanks to the checks in the parser (see `ensure_can_generate_local_sql_for_update`)
+        //  - <expr> cannot have subqueries so it's safe to divide projection exprs by <alias>
+        //  - there are no joins, so WHERE comes right after the part with from and scan
+        //    (and maybe indexed by)
+
+        let mut projection = Vec::new();
+        let mut filter = Vec::new();
+        let mut indexed_by = None;
+
+        let mut nodes = nodes.iter();
+
+        // Parse projection.
+        while let Some(data) = nodes.next() {
+            debug_assert!(matches!(
+                data,
+                SyntaxData::PlanId(_) | SyntaxData::Comma | SyntaxData::From
+            ));
+
+            if let SyntaxData::From = data {
+                break;
+            }
+
+            let mut expr = Vec::new();
+            for data in nodes.by_ref() {
+                if let SyntaxData::Alias(_) = data {
+                    break;
+                }
+                expr.push(SyntaxData::clone(*data));
+            }
+
+            projection.push(expr);
+        }
+
+        // Skip scan.
+        let plan_id = nodes.next();
+        let Some(SyntaxData::PlanId(scan_id)) = plan_id else {
+            panic!("expected PlanId, got {:?}", plan_id);
+        };
+        let scan = plan.get_relation_node(*scan_id).expect("scan must be here");
+        let Relational::ScanRelation(scan) = scan else {
+            panic!("expected ScanRelation, got {:?}", scan);
+        };
+
+        // Set indexed by.
+        if scan.indexed_by.is_some() {
+            indexed_by = nodes.next().map(|x| (*x).clone());
+        }
+
+        // Parse filter.
+        filter.extend(nodes.cloned().cloned());
+
+        let plan_id = filter.first().expect("filter cannot be empty");
+        let SyntaxData::PlanId(selection_id) = plan_id else {
+            panic!("expected PlanId, got {:?}", plan_id);
+        };
+
+        let selection = plan.get_relation_node(*selection_id);
+        debug_assert!(matches!(selection, Ok(Relational::Selection(_))));
+
+        Ok(Select {
+            projection,
+            filter,
+            indexed_by,
+        })
+    }
+
+    plan.get_mut_ir_plan()
+        .stash_constants_in_subtree(query_id, Snapshot::Oldest)?;
+    let params = plan.to_params().to_vec();
+
+    let plan_id = plan.get_ir_plan().new_pattern_id(query_id)?;
+    let sp = SyntaxPlan::new(plan, query_id, Snapshot::Oldest)?;
+    let on = OrderedSyntaxNodes::try_from(sp)?;
+    let nodes = on.to_syntax_data()?;
+
+    let ir_plan = plan.get_ir_plan();
+    let pattern = if let Relational::Update(update) = ir_plan.get_relation_node(query_id)? {
+        // Generate SQL for UPDATE by translating SELECT syntax data.
+        let mut update_nodes = Vec::new();
+        let select = parse_select(&nodes, ir_plan)?;
+
+        // UPDATE <relation>
+        update_nodes.push(SyntaxData::PlanId(query_id));
+
+        let relation = ir_plan
+            .relations
+            .get(&update.relation)
+            .expect("cannot miss UPDATE relation");
+
+        // INDEXED BY
+        if let Some(indexed_by) = select.indexed_by {
+            update_nodes.push(indexed_by);
+        }
+
+        // SET
+        update_nodes.push(SyntaxData::Inline(SmolStr::from(" SET ")));
+
+        // col1 = expr1, col2 = expr2
+        for (update_col, proj_col) in &update.update_columns_map {
+            update_nodes.push(SyntaxData::Inline(format_smolstr!(
+                "\"{}\" = ",
+                relation.columns[*update_col].name,
+            )));
+            update_nodes.extend(select.projection[*proj_col].clone());
+            update_nodes.push(SyntaxData::Comma);
+        }
+        // Remove last comma
+        update_nodes.pop();
+
+        // WHERE <expr>
+        update_nodes.extend(select.filter);
+
+        let (pattern, _) = plan.generate_sql(&update_nodes, plan_id, None, new_table_name)?;
+        PatternWithParams { pattern, params }
+    } else {
+        let (pattern, _) = plan.generate_sql(&nodes, plan_id, None, new_table_name)?;
+        PatternWithParams { pattern, params }
+    };
+
+    plan.get_mut_ir_plan().constants.clear();
+    Ok(pattern)
+}
+
 /// A helper function to dispatch the execution plan from the router to the storages.
 ///
 /// # Errors
@@ -728,6 +889,43 @@ pub fn dispatch_impl<'p>(
     if plan.get_ir_plan().is_empty() {
         empty_plan_write(port, plan)?;
         return Ok(());
+    }
+
+    if plan.get_ir_plan().is_block()? {
+        let tier = {
+            match plan.get_ir_plan().tier.as_ref() {
+                None => coordinator.get_current_tier_name()?,
+                tier => tier.cloned(),
+            }
+        };
+
+        let BlockOwned::Anonymous(block) = plan.get_ir_plan().get_owned_block_node(top_id)? else {
+            unreachable!("plan.is_block() returned true");
+        };
+
+        let metadata = block
+            .return_columns
+            .iter()
+            .map(|(name, ty)| MetadataColumn::new(name.to_string(), ty.to_string()))
+            .collect();
+
+        let mut statements = Vec::with_capacity(block.statements.len());
+        for stmt in block.statements {
+            statements.push(stmt.try_map(|id| generate_pattern_with_params_for_block(plan, id))?);
+        }
+
+        let vdbe_max_steps = plan.get_ir_plan().effective_options.sql_vdbe_opcode_max as _;
+        let table_versions = std::mem::take(&mut plan.get_mut_ir_plan().table_version_map);
+        let index_versions = std::mem::take(&mut plan.get_mut_ir_plan().index_version_map);
+        let tier_runtime = coordinator.get_vshard_object_by_tier(tier.as_ref())?;
+        let exec_block = BlockExecData {
+            statements,
+            table_versions,
+            index_versions,
+            vdbe_max_steps,
+            returns_rows: !block.return_columns.is_empty(),
+        };
+        return tier_runtime.exec_block_on_buckets(metadata, exec_block, buckets, port);
     }
 
     let mut sub_plan = plan.take_subtree(top_id, buckets)?;

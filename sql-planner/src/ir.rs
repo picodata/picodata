@@ -121,6 +121,7 @@ impl Nodes {
                 Node32::Backup(backup) => Node::Ddl(Ddl::Backup(backup)),
             }),
             ArenaType::Arena64 => self.arena64.get(id.offset as usize).map(|node| match node {
+                Node64::AnonymousBlock(block) => Node::Block(Block::Anonymous(block)),
                 Node64::Over(over) => Node::Expression(Expression::Over(over)),
                 Node64::Case(case) => Node::Expression(Expression::Case(case)),
                 Node64::Invalid(invalid) => Node::Invalid(invalid),
@@ -272,6 +273,7 @@ impl Nodes {
                 .arena64
                 .get_mut(id.offset as usize)
                 .map(|node| match node {
+                    Node64::AnonymousBlock(block) => MutNode::Block(MutBlock::Anonymous(block)),
                     Node64::Over(over) => MutNode::Expression(MutExpression::Over(over)),
                     Node64::Case(case) => MutNode::Expression(MutExpression::Case(case)),
                     Node64::Invalid(invalid) => MutNode::Invalid(invalid),
@@ -1279,13 +1281,10 @@ impl Plan {
     }
 
     /// Checks that plan is a block of queries.
-    ///
-    /// # Errors
-    /// - top node doesn't exist in the plan or is invalid.
     pub fn is_block(&self) -> Result<bool, SbroadError> {
-        let top_id = self.get_top()?;
-        let top = self.get_node(top_id)?;
-        Ok(matches!(top, Node::Block(_)))
+        let maybe_top_id = self.get_top();
+        let maybe_top = maybe_top_id.and_then(|top_id| self.get_node(top_id));
+        Ok(matches!(maybe_top, Ok(Node::Block(_))))
     }
 
     /// Checks that plan is a dml query on global table.
@@ -2093,7 +2092,7 @@ impl Plan {
 }
 
 impl Plan {
-    /// Collect parameter types for DQL or DML queries.
+    /// Collect parameter types for DQL, DML or DO queries.
     ///
     /// Note that procedures can have parameters too, but they have special semantics so this
     /// function ignores them and returns an empty result.
@@ -2101,9 +2100,16 @@ impl Plan {
     /// # Panics
     /// - If there are parameters with unknown types.
     pub fn collect_parameter_types(&self) -> Vec<UnrestrictedType> {
+        if self.is_empty() {
+            return Vec::new();
+        }
+
         if !self
             .is_dql_or_dml()
             .expect("top must be valid when collecting parameter types")
+            && !self
+                .is_block()
+                .expect("top must be valid when collecting parameter types")
         {
             return Vec::new();
         }

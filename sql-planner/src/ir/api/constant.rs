@@ -63,7 +63,7 @@ impl Plan {
     /// # Panics
     #[must_use]
     /// # Panics
-    pub fn get_const_list(&self, snapshot: Snapshot) -> Vec<NodeId> {
+    pub fn get_const_list(&self, top_id: NodeId, snapshot: Snapshot) -> Vec<NodeId> {
         let filter = |node_id: NodeId| -> bool {
             if let Ok(Node::Expression(Expression::Constant(..))) = self.get_node(node_id) {
                 return true;
@@ -77,7 +77,6 @@ impl Plan {
             REL_CAPACITY,
             Box::new(filter),
         );
-        let top_id = self.get_top().expect("Top node should be specified!");
 
         let mut set = HashSet::new();
         let mut vec = Vec::new();
@@ -96,6 +95,15 @@ impl Plan {
     /// # Errors
     /// - The plan is corrupted (collected constants point to invalid arena positions).
     pub fn stash_constants(&mut self, snapshot: Snapshot) -> Result<(), SbroadError> {
+        let top_id = self.get_top().expect("Top node should be specified!");
+        self.stash_constants_in_subtree(top_id, snapshot)
+    }
+
+    pub fn stash_constants_in_subtree(
+        &mut self,
+        top_id: NodeId,
+        snapshot: Snapshot,
+    ) -> Result<(), SbroadError> {
         // TODO: ensure that constants.len() does not exceed the limit on the number of parameters
         // in tarantool
         let index = |num: usize| -> Result<u16, _> {
@@ -103,9 +111,9 @@ impl Plan {
                 SbroadError::Other(format_smolstr!("too many parameters in local sql: {num}"))
             })
         };
-        let constants = self.get_const_list(snapshot);
-        self.constants.reserve(constants.len());
-        for (num, const_id) in constants.iter().enumerate() {
+        let constant_ids = self.get_const_list(top_id, snapshot);
+        self.constants.reserve(constant_ids.len());
+        for (num, const_id) in constant_ids.iter().enumerate() {
             let param_type = self.calculate_expression_type(*const_id)?;
             let param_type = param_type
                 .map(DerivedType::new)

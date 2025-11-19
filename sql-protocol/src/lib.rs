@@ -1,3 +1,4 @@
+pub mod block;
 pub mod decode;
 pub mod dml;
 pub mod dql;

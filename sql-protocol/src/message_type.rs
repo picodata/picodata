@@ -7,6 +7,7 @@ pub enum MessageType {
     DQL = 0,
     DML = 1,
     LocalDML = 2,
+    Block = 3,
 }
 
 impl Display for MessageType {
@@ -23,6 +24,7 @@ impl TryFrom<u8> for MessageType {
             0 => Ok(MessageType::DQL),
             1 => Ok(MessageType::DML),
             2 => Ok(MessageType::LocalDML),
+            3 => Ok(MessageType::Block),
             n => Err(format!("Unknown message type: {n}")),
         }
     }

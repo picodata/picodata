@@ -10,7 +10,7 @@ use sql::executor::engine::helpers::{
     dispatch_impl, empty_plan_write, explain_format, materialize_motion, materialize_values,
 };
 use sql::executor::engine::helpers::{sharding_key_from_map, sharding_key_from_tuple};
-use sql::executor::engine::{get_builtin_functions, QueryCache, Router, Vshard};
+use sql::executor::engine::{get_builtin_functions, BlockExecData, QueryCache, Router, Vshard};
 use sql::executor::ir::ExecutionPlan;
 use sql::executor::lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY};
 use sql::executor::preemption::SchedulerOptions;
@@ -52,6 +52,8 @@ use tarantool::space::SpaceId;
 
 use super::dispatch::{custom_plan_dispatch, single_plan_dispatch};
 use super::port::PicoPortOwned;
+use crate::sql::dispatch::block_dispatch;
+use sql::executor::result::MetadataColumn;
 
 pub type VersionMap = HashMap<u32, u64, RepeatableState>;
 
@@ -96,6 +98,7 @@ pub struct Tier {
 }
 
 impl Tier {
+    /// FIXME: Why is it option? Why do we clone here?
     fn name(&self) -> Option<SmolStr> {
         Some(self.name.clone())
     }
@@ -558,6 +561,23 @@ impl Vshard for Tier {
         runtime.exec_ir_on_any_node(sub_plan, buckets, port)?;
         Ok(())
     }
+
+    fn exec_block_on_buckets<'p>(
+        &self,
+        metadata: Vec<MetadataColumn>,
+        block: BlockExecData,
+        buckets: &Buckets,
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError> {
+        block_dispatch(
+            port,
+            metadata,
+            block,
+            buckets,
+            DEFAULT_QUERY_TIMEOUT,
+            self.name().as_deref(),
+        )
+    }
 }
 
 impl Vshard for &Tier {
@@ -599,6 +619,23 @@ impl Vshard for &Tier {
         let runtime = StorageRuntime::new();
         runtime.exec_ir_on_any_node(sub_plan, buckets, port)?;
         Ok(())
+    }
+
+    fn exec_block_on_buckets<'p>(
+        &self,
+        metadata: Vec<MetadataColumn>,
+        block: BlockExecData,
+        buckets: &Buckets,
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError> {
+        block_dispatch(
+            port,
+            metadata,
+            block,
+            buckets,
+            DEFAULT_QUERY_TIMEOUT,
+            self.name().as_deref(),
+        )
     }
 }
 
@@ -778,7 +815,9 @@ fn bucket_dispatch<'p>(
             return Ok(());
         }
     }
+
     let timeout = DEFAULT_QUERY_TIMEOUT;
+
     if !ex_plan.has_segmented_tables() && !ex_plan.has_customization_opcodes() {
         single_plan_dispatch(port, ex_plan, buckets, timeout, tier)?;
     } else {

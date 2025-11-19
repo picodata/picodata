@@ -33,6 +33,7 @@ pub enum ProtocolMessageType {
     Dql,
     Dml(DMLType),
     LocalDml(DMLType),
+    Block,
 }
 
 /// A decoded protocol message.
@@ -52,6 +53,7 @@ pub enum ProtocolMessageIter<'bytes> {
     LocalDmlInsert(InsertMaterializedIterator<'bytes>),
     LocalDmlUpdate(UpdateIterator<'bytes>),
     LocalDmlDelete(DeleteFilteredIterator<'bytes>),
+    Block(&'bytes [u8]),
 }
 
 impl<'bytes> ProtocolMessage<'bytes> {
@@ -76,6 +78,7 @@ impl<'bytes> ProtocolMessage<'bytes> {
             .map_err(ProtocolError::DecodeError)?;
 
         let msg_type = match msg_type {
+            MessageType::Block => ProtocolMessageType::Block,
             MessageType::DQL => ProtocolMessageType::Dql,
             MessageType::DML | MessageType::LocalDML => {
                 let len = read_array_len(&mut stream)?;
@@ -132,6 +135,7 @@ impl<'bytes> ProtocolMessage<'bytes> {
                 DMLType::Delete => DeleteFilteredIterator::new(self.payload)
                     .map(ProtocolMessageIter::LocalDmlDelete),
             },
+            ProtocolMessageType::Block => Ok(ProtocolMessageIter::Block(self.payload)),
         }
     }
 }

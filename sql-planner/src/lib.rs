@@ -13,6 +13,7 @@ use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use crate::utils::MutexLike;
+use ir::node::block::Block;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -105,6 +106,12 @@ impl PreparedStatement {
             if plan.is_dql_or_dml()? {
                 plan.check_raw_options()?;
                 plan = plan.optimize()?;
+            } else if plan.is_block()? {
+                plan.check_raw_options()?;
+                let top = plan.get_top().expect("must be set");
+                if let Block::Anonymous(_) = plan.get_block_node(top)? {
+                    plan = plan.optimize_block()?;
+                };
             }
 
             Ok(plan)
@@ -175,9 +182,7 @@ impl PreparedStatement {
 
         if plan.is_empty() {
             // Empty query, do nothing
-        } else if plan.is_block()? {
-            plan.bind_params(params, default_options)?;
-        } else if plan.is_dql_or_dml()? {
+        } else if plan.is_dql_or_dml()? || plan.is_block()? {
             plan.bind_params(params, default_options)?;
             *plan = plan
                 .update_timestamps()?

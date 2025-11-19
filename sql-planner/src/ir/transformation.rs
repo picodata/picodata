@@ -153,8 +153,11 @@ impl Plan {
     /// Apply given transformation to all expressions that are:
     /// * Join conditions
     /// * Selection filters
-    pub fn transform_expr_trees(&mut self, f: TransformFunctionOldNew) -> Result<(), SbroadError> {
-        let top_id = self.get_top()?;
+    pub fn transform_expr_trees(
+        &mut self,
+        top_id: NodeId,
+        f: TransformFunctionOldNew,
+    ) -> Result<(), SbroadError> {
         let filter = |id: NodeId| -> bool {
             matches!(
                 self.get_node(id),
