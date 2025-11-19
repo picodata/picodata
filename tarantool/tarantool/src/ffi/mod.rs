@@ -135,3 +135,27 @@ pub unsafe fn has_fiber_id() -> bool {
     }
     RESULT.unwrap()
 }
+
+/// Check whether the current tarantool executable supports the [`luaL_iserror`],
+/// ffi apis.
+///
+/// If this function returns `false` then [`tlua::LuaRead`] implementation of
+/// [`BoxError`] will always fail.
+///
+/// # Safety
+/// This function is only safe to be called from the tx thread.
+///
+/// [`BoxError`]: crate::tarantool::error::BoxError
+/// [`luaL_iserror`]: tarantool::luaL_iserror
+#[inline]
+pub unsafe fn has_box_error_from_lua() -> bool {
+    if cfg!(feature = "static_linking") {
+        return true;
+    }
+
+    static mut RESULT: Option<bool> = None;
+    if (*std::ptr::addr_of!(RESULT)).is_none() {
+        RESULT = Some(helper::has_dyn_symbol(crate::c_str!("luaL_iserror")));
+    }
+    RESULT.unwrap()
+}

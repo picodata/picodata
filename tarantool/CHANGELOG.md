@@ -43,6 +43,8 @@
 ### Added
 
 - Add lock_timeout in fiber::Mutex to wait no more than needed
+- impl LuaRead for BoxError
+- impl std::error::Error for BoxError
 
 ### Fixed
 

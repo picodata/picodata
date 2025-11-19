@@ -420,6 +420,13 @@ impl BoxError {
 
 impl Display for BoxError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        // Vshard uses this error type and custom error codes which overlap with
+        // tarantool error codes. So for Vshard errors we don't convert error
+        // codes into names, as they would be wrong.
+        if matches!(&self.error_type, Some(s) if &**s == "ShardingError") {
+            return write!(f, "ShardingError #{}: {}", self.code, self.message());
+        }
+
         if let Some(code) = TarantoolErrorCode::from_i64(self.code as _) {
             return write!(f, "{:?}: {}", code, self.message());
         }
@@ -430,6 +437,113 @@ impl Display for BoxError {
 impl From<BoxError> for Error {
     fn from(error: BoxError) -> Self {
         Error::Tarantool(error)
+    }
+}
+
+impl std::error::Error for BoxError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.cause.as_ref().map(|e| e as &dyn std::error::Error)
+    }
+}
+
+impl<L> tlua::LuaRead<L> for BoxError
+where
+    L: tlua::AsLua,
+{
+    fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> tlua::ReadResult<Self, L> {
+        let l = lua.as_lua();
+        let i = index.into();
+
+        if unsafe { crate::ffi::has_box_error_from_lua() } {
+            // SAFETY: lua pointer must be valid which it is because we only pass valid lua pointers
+            let ptr = unsafe { crate::ffi::tarantool::luaL_iserror(l, i) };
+
+            if let Some(ptr) = std::ptr::NonNull::new(ptr) {
+                // SAFETY: tarantool guarantees that the pointer is valid
+                let res = unsafe { Self::from_ptr(ptr) };
+                return Ok(res);
+            }
+        } else {
+            // TODO It's actually pretty simple to implement this in rust
+            // without ffi, for example using helpers from tlua::cdata, but we
+            // aren't going to use this code in picodata, so I'm not going to
+            // waste my time
+        }
+
+        // Not a box_error pointer, let's try implicitly converting from something
+        // SAFETY: lua pointer is valid
+        let ty = unsafe { tlua::ffi::lua_type(l, i) };
+        match ty {
+            tlua::ffi::LUA_TSTRING => {
+                let mut len = 0;
+                // SAFETY: lua pointer is valid
+                let ptr = unsafe { tlua::ffi::lua_tolstring(l, i, &mut len) };
+                let mut s = std::borrow::Cow::Borrowed("<unexpected error>");
+                // We already checked that lua_type is STRING, so lua_tolstring
+                // will 100% return as non null, but we're being paranoid.
+                if !ptr.is_null() {
+                    // SAFETY: lua pointer is valid
+                    let bytes = unsafe { std::slice::from_raw_parts(ptr as _, len as _) };
+                    s = String::from_utf8_lossy(bytes);
+                }
+
+                return Ok(Self::new(TarantoolErrorCode::ProcLua, s));
+            }
+
+            // This is the format of vshard's errors. We don't care about other
+            // formats for now.
+            tlua::ffi::LUA_TTABLE => {
+                let t = tlua::LuaTable::lua_read(lua)?;
+
+                let error_type = match t.try_get::<_, String>("type") {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let e = to_wrong_type(e).expected("field 'type' of type string");
+                        return Err((t.into_inner(), e));
+                    }
+                };
+
+                let code = match t.try_get::<_, u32>("code") {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let e = to_wrong_type(e).expected("field 'code' of type u32");
+                        return Err((t.into_inner(), e));
+                    }
+                };
+
+                let message = match t.try_get::<_, String>("message") {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let e = to_wrong_type(e).expected("field 'message' of type string");
+                        return Err((t.into_inner(), e));
+                    }
+                };
+
+                let mut res = Self::new(code, message);
+                res.error_type = Some(error_type.into());
+
+                return Ok(res);
+            }
+
+            _ => {}
+        }
+
+        let e = tlua::WrongType::info("decoding BoxError")
+            .expected_type::<Self>()
+            .actual_single_lua(l, index);
+
+        return Err((lua, e));
+
+        fn to_wrong_type(e: tlua::LuaError) -> tlua::WrongType {
+            match e {
+                tlua::LuaError::WrongType(e) => e,
+                other_error => {
+                    tlua::WrongType::info("").actual(format!("thrown error: {other_error}"))
+                }
+            }
+            .when("decoding error object")
+        }
     }
 }
 

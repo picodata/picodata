@@ -177,6 +177,79 @@ mod tests {
         assert_eq!(expected, data[..9]);
         data.clear();
     }
+
+    #[::tarantool::test]
+    fn box_error_from_lua() {
+        use tarantool::error::BoxError;
+        use tarantool::error::TarantoolErrorCode;
+
+        let lua = tarantool::lua_state();
+
+        // Implicit conversion from string
+        let e: BoxError = lua.eval("return 'error from string'").unwrap();
+        assert_eq!(e.error_type(), "Unknown");
+        assert_eq!(e.error_code(), TarantoolErrorCode::ProcLua as u32);
+        assert_eq!(e.message(), "error from string");
+
+        // struct box_error * -> BoxError
+        let e: BoxError = lua.eval("return box.error.new(box.error.UNSUPPORTED, 'picodata', 'synchronous replication')").unwrap();
+        assert_eq!(e.error_type(), "ClientError");
+        assert_eq!(e.error_code(), TarantoolErrorCode::Unsupported as u32);
+        assert_eq!(
+            e.message(),
+            "picodata does not support synchronous replication"
+        );
+
+        // Vshard-style error objects
+        let e: BoxError = lua.eval("return { type = 'CustomType', code = 420, message = 'vshard uses this type of errors'}").unwrap();
+        assert_eq!(e.error_type(), "CustomType");
+        assert_eq!(e.error_code(), 420);
+        assert_eq!(e.message(), "vshard uses this type of errors");
+
+        //
+        // Error cases
+        //
+        let e = lua.eval::<BoxError>("return nil").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "failed reading value(s) returned by Lua: tarantool::error::BoxError expected, got nil"
+        );
+
+        let e = lua.eval::<BoxError>("return 69").unwrap_err();
+        assert_eq!(e.to_string(), "failed reading value(s) returned by Lua: tarantool::error::BoxError expected, got number");
+
+        let e = lua.eval::<BoxError>("return {}").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "failed reading Lua value: alloc::string::String expected, got nil
+    while decoding error object: field 'type' of type string expected, got nil
+    while reading value(s) returned by Lua: tarantool::error::BoxError expected, got table"
+        );
+
+        let e = lua
+            .eval::<BoxError>(
+                "return { type = 'CustomType', code = 420, msg = 'incorrect field name'}",
+            )
+            .unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "failed reading Lua value: alloc::string::String expected, got nil
+    while decoding error object: field 'message' of type string expected, got nil
+    while reading value(s) returned by Lua: tarantool::error::BoxError expected, got table"
+        );
+
+        let e = lua
+            .eval::<BoxError>(
+                "return { type = 'CustomType', code = 'wrong type', message = 'missing fields'}",
+            )
+            .unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "failed reading Lua value: u32 expected, got string
+    while decoding error object: field 'code' of type u32 expected, got string
+    while reading value(s) returned by Lua: tarantool::error::BoxError expected, got table"
+        );
+    }
 }
 
 #[derive(

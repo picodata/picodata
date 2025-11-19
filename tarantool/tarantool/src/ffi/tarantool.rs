@@ -736,6 +736,11 @@ extern "C" {
     pub fn error_unref(error: *mut BoxError);
 }
 
+crate::define_extern_or_dlsym_reloc! {
+    #[allow(non_snake_case)]
+    pub fn luaL_iserror(l: *mut lua_State, narg: std::ffi::c_int) -> *mut BoxError;
+}
+
 // Session.
 extern "C" {
     pub fn box_session_push(data: *const c_char, data_end: *const c_char) -> c_int;
