@@ -69,15 +69,25 @@ impl ServerSecret {
         Some(secret)
     }
 
-    pub fn is_password_invalid(&self, client_key: &ScramKey) -> Choice {
+    /// Check if a client key doesn't match the secret.
+    pub fn is_client_key_invalid(&self, client_key: &ScramKey) -> Choice {
         // constant time to not leak partial key match
         client_key.sha256().ct_ne(&self.stored_key) | Choice::from(self.doomed as u8)
+    }
+
+    /// Check if a plain text password doesn't match the secret.
+    pub fn is_password_invalid(&self, password: impl AsRef<[u8]>) -> Choice {
+        let salt = BASE64_STANDARD.decode(self.salt_base64.as_bytes()).unwrap();
+        let new = Self::generate(password.as_ref(), &salt, self.iterations);
+
+        // constant time to not leak partial key match
+        self.stored_key.ct_ne(&new.stored_key) | Choice::from(self.doomed as u8)
     }
 
     /// To avoid revealing information to an attacker, we use a
     /// mocked server secret even if the user doesn't exist.
     /// See `auth-scram.c : mock_scram_secret` for details.
-    pub fn mock(nonce: [u8; 32]) -> Self {
+    pub fn mock(nonce: &[u8; 32]) -> Self {
         Self {
             // We use the default number of iterations (4096),
             // otherwise clients like usql fail with strange errors.

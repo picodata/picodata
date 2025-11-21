@@ -1,5 +1,6 @@
+use crate::{scram, storage::Catalog};
 use std::os::raw::{c_char, c_int, c_uint, c_void};
-use tarantool::auth::AuthMethod;
+use tarantool::auth::{AuthDef, AuthMethod};
 use tarantool::error::{BoxError, TarantoolErrorCode};
 use tarantool::network::protocol::codec::{chap_sha1_prepare, ldap_prepare, md5_prepare};
 
@@ -42,6 +43,31 @@ unsafe extern "C" {
     pub(crate) unsafe fn auth_method_register_raw(
         #[rustfmt::skip] method: *mut TarantoolAuthMethod,
     );
+}
+
+/// Try fetching user auth info ([`AuthDef`]) from system catalog.
+/// **Important:** whenever possible, failure to find such info should
+/// nonetheless result in a fake authentication attempt to prevent
+/// user probing. This is exactly what we should do for SCRAM.
+///
+/// Please make sure to understand this before editing this function
+/// or its call sites in pgproto or elsewhere.
+pub fn try_get_auth_def(storage: &Catalog, user: &str) -> Option<AuthDef> {
+    let user_def =
+        tarantool::session::with_su(crate::schema::ADMIN_ID, || storage.users.by_name(user))
+            .expect("failed to su into admin")
+            .inspect_err(|e| {
+                // This should not happen (failed to even check if user exists).
+                crate::tlog!(Error, "failed to get UserDef for user {user}: {e}");
+            })
+            .ok()??;
+
+    if user_def.auth.is_none() {
+        // This should not happen (user without auth info).
+        crate::tlog!(Error, "failed to get AuthDef for user {user}");
+    }
+
+    user_def.auth
 }
 
 /// Builds an authentication information that is used by [`crate::auth::authenticate_raw`].
@@ -92,39 +118,21 @@ fn build_auth_info(password: &[u8], method: AuthMethod) -> Vec<u8> {
     result
 }
 
-/// Retrieves the authentication method for a given user
-/// via looking into `_pico_user` using `admin`'s session.
-/// Returns `None` if the specified user does not exist.
-///
-/// May panic if certain invariants are not upheld.
-fn determine_auth_method(username: &str) -> Option<AuthMethod> {
-    let node = crate::traft::node::global().expect("node should be initialized");
-
-    // Running as admin helps us avoid insufficient
-    // permissions error on reading from `_pico_user` system table.
-    let user_def = tarantool::session::with_su(crate::schema::ADMIN_ID, || {
-        node.storage.users.by_name(username)
-    })
-    .expect("should be able to su into admin")
-    .expect("failed to access storage");
-
-    Some(user_def?.auth?.method)
-}
-
-/// See [`authenticate`] for more info.
-pub(crate) fn authenticate_inner(
+/// A bare bones wrapper for tarantool's authentication API.
+/// See [`authenticate_with_password`] for more info.
+pub(crate) fn do_authenticate(
     user: &str,
     password: impl AsRef<[u8]>,
-    auth_salt: [u8; 20],
-    auth_method: AuthMethod,
+    salt: &[u8; SALT_MIN_LEN],
+    method: AuthMethod,
 ) -> Result<(), BoxError> {
-    let auth_info = build_auth_info(password.as_ref(), auth_method);
+    let auth_info = build_auth_info(password.as_ref(), method);
     let auth_info_ptr = auth_info.as_ptr();
 
     let user_ptr = user.as_ptr();
     let user_len = user.len() as u32;
 
-    let salt_ptr = auth_salt.as_ptr();
+    let salt_ptr = salt.as_ptr();
 
     // SAFETY: all arguments have been validated.
     let ret = unsafe { authenticate_raw(user_ptr, user_len, salt_ptr, auth_info_ptr) };
@@ -135,9 +143,43 @@ pub(crate) fn authenticate_inner(
     Ok(())
 }
 
-/// Tries to authenticate with specified username and password.
-/// If no authentication salt was passed, it generates a random
-/// one for the first 4 bytes, filling other 16 with zeroes.
+/// A specialized auth flow for SCRAM only.
+/// Still, it uses tarantool's API to run auth triggers.
+fn do_authenticate_scram(
+    user: &str,
+    password: impl AsRef<[u8]>,
+    secret: &scram::ServerSecret,
+) -> Result<(), BoxError> {
+    let make_error = || {
+        BoxError::new(
+            TarantoolErrorCode::PasswordMismatch,
+            "User not found or supplied credentials are invalid",
+        )
+    };
+
+    // XXX: Use tarantool's wrapper which will perform additional
+    // checks, execute triggers and update the credentials.
+    let mut main_res = Ok(());
+    let extra_res = crate::auth::authenticate_ext(user, |_user, _ctx| {
+        if secret.is_password_invalid(&password).into() {
+            main_res = Err(make_error());
+        }
+
+        // XXX: propagate auth result back to `authenticate_ext`
+        // in order to run correct triggers for e.g. audit.
+        main_res.is_ok()
+    });
+
+    // XXX: throw errors in this exact order:
+    // 1. sasl-specific auth errors.
+    // 2. other errors from `authenticate_ext`.
+    main_res?;
+    extra_res?;
+
+    Ok(())
+}
+
+/// Try to authenticate with specified username and password.
 ///
 /// # Errors
 ///
@@ -146,38 +188,45 @@ pub(crate) fn authenticate_inner(
 /// - Password is not correct for the specified user.
 ///
 /// May panic if certain invariants are not upheld.
-pub(crate) fn authenticate(
+pub(crate) fn authenticate_with_password(
     user: &str,
     password: impl AsRef<[u8]>,
-    salt: Option<[u8; 4]>,
 ) -> Result<(), BoxError> {
-    let Some(method) = determine_auth_method(user) else {
-        return Err(BoxError::new(
-            TarantoolErrorCode::PasswordMismatch,
-            "User not found or supplied credentials are invalid",
-        ));
-    };
+    const fn zero_salt<const N: usize>() -> [u8; N] {
+        [0; N]
+    }
 
-    let salt = salt.unwrap_or_else(rand::random);
-    let mut salt_buf = [0u8; SALT_MIN_LEN];
-    salt_buf[0..4].copy_from_slice(&salt);
+    let node = crate::traft::node::global()?;
+    let auth_def = try_get_auth_def(&node.storage, user);
 
-    let password = match method {
-        AuthMethod::ChapSha1 => chap_sha1_prepare(password, &salt_buf),
-        AuthMethod::Md5 => md5_prepare(user, password, salt),
-        AuthMethod::Ldap => ldap_prepare(password),
-        AuthMethod::ScramSha256 => {
-            return Err(BoxError::new(
-                TarantoolErrorCode::UnknownAuthMethod,
-                "scram-sha256 is not supported yet",
-            ));
+    match auth_def.map(|x| (x.method, x.data)) {
+        Some((method @ AuthMethod::Md5, _)) => {
+            let password = md5_prepare(user, password, &zero_salt());
+            do_authenticate(user, password, &zero_salt(), method)
         }
-    };
-
-    authenticate_inner(user, password, salt_buf, method)
+        Some((method @ AuthMethod::Ldap, _)) => {
+            let password = ldap_prepare(password);
+            do_authenticate(user, password, &zero_salt(), method)
+        }
+        Some((method @ AuthMethod::ChapSha1, _)) => {
+            let password = chap_sha1_prepare(password, &zero_salt());
+            do_authenticate(user, password, &zero_salt(), method)
+        }
+        Some((AuthMethod::ScramSha256, secret)) => {
+            let secret = scram::ServerSecret::parse(&secret).expect("invalid AuthDef in catalog");
+            do_authenticate_scram(user, password, &secret)
+        }
+        // TODO: maybe this protection should be optional.
+        // If that's the case, add `if <condition>` to this branch.
+        None => {
+            // Use a mock to prevent timing attacks against the branch above.
+            let secret = scram::ServerSecret::mock(&zero_salt());
+            do_authenticate_scram(user, password, &secret)
+        }
+    }
 }
 
-/// Tries to authenticate with specified username and
+/// Try to authenticate with specified username and
 /// customizable authentication logic callback.
 ///
 /// # Errors

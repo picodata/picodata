@@ -193,7 +193,7 @@ impl SaslSentInner {
             .derive_client_key(&client_final_message.proof);
 
         // Auth fails either if keys don't match or it's pre-determined to fail.
-        if secret.is_password_invalid(&client_key).into() {
+        if secret.is_client_key_invalid(&client_key).into() {
             return Ok(sasl::Step::Failure);
         }
 

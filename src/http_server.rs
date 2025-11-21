@@ -680,7 +680,7 @@ fn authenticate_user(username: &str, password: Option<&str>) -> AuthResult<Vec<S
     }
 
     if let Some(pwd) = password {
-        crate::auth::authenticate(username, pwd, None)
+        crate::auth::authenticate_with_password(username, pwd)
             .map_err(|_| AuthError::InvalidCredentials)?;
     }
 

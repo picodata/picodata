@@ -1,4 +1,3 @@
-use crate::auth;
 use crate::pgproto::error::{AuthError, PgError};
 use crate::pgproto::stream::{FeMessage, PgStream};
 use crate::pgproto::{error::PgResult, messages};
@@ -7,37 +6,23 @@ use crate::scram::ServerSecret;
 use crate::storage::Catalog;
 use crate::tlog;
 use pgwire::messages::startup::PasswordMessageFamily;
-use smol_str::{format_smolstr, ToSmolStr};
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::io;
 use tarantool::auth::{AuthDef, AuthMethod};
 use tarantool::error::BoxError;
 
-/// Perform authentication, throwing [`PgError::AuthError`] if it failed.
-fn do_authenticate(
-    user: &str,
-    salt: [u8; 4],
-    password: &str,
-    auth_method: AuthMethod,
-) -> Result<(), AuthError> {
-    let mut auth_salt = [0u8; auth::SALT_MIN_LEN];
-    auth_salt[0..4].copy_from_slice(&salt);
+/// Extract the exact reason from [`BoxError`] depending on the auth method.
+fn explain_box_error(method: AuthMethod) -> Option<SmolStr> {
+    if method == AuthMethod::Ldap {
+        let error = BoxError::maybe_last()
+            .err()
+            .map(|s| s.message().to_smolstr())
+            .unwrap_or_else(|| format_smolstr!("unknown error"));
 
-    auth::authenticate_inner(user, password, auth_salt, auth_method).map_err(|_| {
-        let mut extra = None;
-        if auth_method == AuthMethod::Ldap {
-            let error = BoxError::maybe_last()
-                .err()
-                .map(|s| s.message().to_smolstr())
-                .unwrap_or_else(|| format_smolstr!("unknown error"));
+        return Some(format_smolstr!("LDAP: {error}"));
+    }
 
-            extra = Some(format_smolstr!("LDAP: {error}"));
-        }
-
-        AuthError {
-            user: user.into(),
-            extra,
-        }
-    })
+    None
 }
 
 fn read_password_message(
@@ -80,8 +65,15 @@ fn auth_exchange_classic(
         .map(|x| x.password)
         .map_err(io::Error::other)?;
 
-    // Note: this method will throw an error if auth fails.
-    do_authenticate(user, salt, &password, auth.method)?;
+    let mut salt_buf = [0u8; crate::auth::SALT_MIN_LEN];
+    salt_buf[0..4].copy_from_slice(&salt);
+
+    crate::auth::do_authenticate(user, password, &salt_buf, auth.method)
+        // Raise a proper auth error with an explanation as needed.
+        .map_err(|_| AuthError {
+            user: user.into(),
+            extra: explain_box_error(auth.method),
+        })?;
 
     stream.write_message_noflush(messages::auth_ok())?;
 
@@ -159,11 +151,10 @@ fn auth_exchange_sasl(
     user: &str,
     secret: &ServerSecret,
 ) -> PgResult<()> {
-    let mut main_res = Ok(());
-
     // XXX: Use tarantool's wrapper which will perform additional
     // checks, execute triggers and update the credentials.
-    let extra_res = auth::authenticate_ext(user, |_user, _ctx| {
+    let mut main_res = Ok(());
+    let extra_res = crate::auth::authenticate_ext(user, |_user, _ctx| {
         // Now do the exchange itself and store the result.
         main_res = do_auth_exchange_sasl(stream, user, secret);
 
@@ -194,24 +185,7 @@ pub fn authenticate(
     // Futhermore, do not throw any errors too early -- we can use scram's mock
     // secret to make "missing user" (almost) indistinguishable from "bad password"
     // from the standpoint of timings (at least for scram).
-    let maybe_auth = storage
-        .users
-        .by_name(user)
-        .inspect_err(|e| {
-            // This should not happen (failed to even check if user exists).
-            tlog!(Error, "failed to get UserDef for user {user}: {e}");
-        })
-        .ok()
-        .flatten()
-        .and_then(|user_def| {
-            if user_def.auth.is_none() {
-                // This should not happen (user without auth info).
-                tlog!(Error, "failed to get AuthDef for user {user}");
-            }
-
-            user_def.auth
-        });
-
+    let maybe_auth = crate::auth::try_get_auth_def(storage, user);
     match maybe_auth {
         Some(auth) if auth.method == AuthMethod::ScramSha256 => {
             let secret = ServerSecret::parse(&auth.data).expect("invalid AuthDef in catalog");
@@ -221,7 +195,7 @@ pub fn authenticate(
         // If that's the case, add `if <condition>` to this branch.
         None => {
             // Use a mock to prevent timing attacks against the branch above.
-            let secret = ServerSecret::mock(rand::random());
+            let secret = ServerSecret::mock(&rand::random());
             auth_exchange_sasl(stream, user, &secret)?;
         }
         Some(auth) => {

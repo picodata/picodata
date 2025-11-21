@@ -111,7 +111,7 @@ pub fn encode_header(
 
 /// Prepares (hashes) password with salt according to CHAP-SHA1 algorithm.
 #[inline]
-pub fn chap_sha1_prepare(password: impl AsRef<[u8]>, salt: &[u8]) -> Vec<u8> {
+pub fn chap_sha1_prepare(password: impl AsRef<[u8]>, salt: &[u8; 20]) -> Vec<u8> {
     // prepare 'chap-sha1' scramble:
     // salt = base64_decode(encoded_salt);
     // step_1 = sha1(password);
@@ -130,7 +130,7 @@ pub fn chap_sha1_prepare(password: impl AsRef<[u8]>, salt: &[u8]) -> Vec<u8> {
     let step_2 = hasher.finalize();
 
     let mut hasher = Sha1::new();
-    hasher.update(&salt[0..20]);
+    hasher.update(salt);
     hasher.update(step_2);
     let step_3 = hasher.finalize();
 
@@ -147,7 +147,7 @@ pub fn chap_sha1_prepare(password: impl AsRef<[u8]>, salt: &[u8]) -> Vec<u8> {
 /// Prepares (hashes) password with salt according to CHAP-SHA1 algorithm and encodes into MessagePack.
 // TODO(kbezuglyi): password should be `impl AsRef<[u8]>`, not `&str`.
 #[inline]
-pub fn chap_sha1_auth_data(password: &str, salt: &[u8]) -> Vec<u8> {
+pub fn chap_sha1_auth_data(password: &str, salt: &[u8; 20]) -> Vec<u8> {
     let hashed_data = chap_sha1_prepare(password, salt);
     let hashed_len = hashed_data.len();
 
@@ -183,11 +183,11 @@ pub fn ldap_auth_data(password: &str) -> Vec<u8> {
 /// Prepares (hashes) password with salt according to MD5.
 #[cfg(feature = "picodata")]
 #[inline]
-pub fn md5_prepare(user: &str, password: impl AsRef<[u8]>, salt: [u8; 4]) -> Vec<u8> {
+pub fn md5_prepare(user: &str, password: impl AsRef<[u8]>, salt: &[u8; 4]) -> Vec<u8> {
     // recv_from_db(salt)
     // recv_from_user(name, password)
     //   shadow_pass = md5(name + password), do not add "md5" prefix
-    //   client_pass = md5(shadow_pass + salt), only first 4 bytes of salt are used
+    //   client_pass = md5(shadow_pass + salt)
     //   result = encode_as_msgpack_str(client_pass)
     // send_to_db(result)
 
@@ -210,7 +210,7 @@ pub fn md5_prepare(user: &str, password: impl AsRef<[u8]>, salt: [u8; 4]) -> Vec
 // TODO(kbezuglyi): password should be `impl AsRef<[u8]>`, not `&str`.
 #[cfg(feature = "picodata")]
 #[inline]
-pub fn md5_auth_data(user: &str, password: &str, salt: [u8; 4]) -> Vec<u8> {
+pub fn md5_auth_data(user: &str, password: &str, salt: &[u8; 4]) -> Vec<u8> {
     let hashed_data = md5_prepare(user, password, salt);
     let hashed_len = hashed_data.len();
 
@@ -225,11 +225,14 @@ pub fn encode_auth(
     user: &str,
     password: &str,
     salt: &[u8],
-    auth_method: AuthMethod,
+    method: AuthMethod,
 ) -> Result<(), Error> {
     let auth_data;
-    match auth_method {
+    match method {
         AuthMethod::ChapSha1 => {
+            let salt = salt
+                .first_chunk()
+                .ok_or_else(|| std::io::Error::other("bad salt length (expect 20)"))?;
             auth_data = chap_sha1_auth_data(password, salt);
         }
         #[cfg(feature = "picodata")]
@@ -241,9 +244,10 @@ pub fn encode_auth(
             // We only use first four bytes of a salt. To understand why,
             // check `MD5_SALT_LEN` from `tarantool-sys/src/lib/core/md5.h:enum`,
             // that is used in `tarantool-sys/src/lib/core/crypt.c:md5_encrypt`.
-            let salt_part =
-                crate::util::slice_first_chunk::<4, _>(salt).expect("Can't fail for valid salt");
-            auth_data = md5_auth_data(user, password, *salt_part);
+            let salt = salt
+                .first_chunk()
+                .ok_or_else(|| std::io::Error::other("bad salt length (expect >= 4)"))?;
+            auth_data = md5_auth_data(user, password, salt);
         }
         #[cfg(feature = "picodata")]
         AuthMethod::ScramSha256 => {
@@ -266,7 +270,7 @@ pub fn encode_auth(
     // encrypted password:
     rmp::encode::write_pfix(stream, TUPLE)?;
     rmp::encode::write_array_len(stream, 2)?;
-    rmp::encode::write_str(stream, auth_method.as_str())?;
+    rmp::encode::write_str(stream, method.as_str())?;
     stream.write_all(&auth_data)?;
     Ok(())
 }
