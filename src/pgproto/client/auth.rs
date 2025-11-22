@@ -153,23 +153,14 @@ fn auth_exchange_sasl(
 ) -> PgResult<()> {
     // XXX: Use tarantool's wrapper which will perform additional
     // checks, execute triggers and update the credentials.
-    let mut main_res = Ok(());
-    let extra_res = crate::auth::authenticate_ext(user, |_user, _ctx| {
-        // Now do the exchange itself and store the result.
-        main_res = do_auth_exchange_sasl(stream, user, secret);
+    let main_res = crate::auth::authenticate_ext(user, || {
+        // Now do the exchange itself and return the result.
+        do_auth_exchange_sasl(stream, user, secret)
+    });
 
-        // XXX: propagate auth result back to `authenticate_ext`
-        // in order to run correct triggers for e.g. audit.
-        main_res.is_ok()
-    })
-    // We should not expose any details to the client.
-    .map_err(|_| AuthError::for_username(user));
-
-    // XXX: throw errors in this exact order:
-    // 1. sasl-specific auth errors.
-    // 2. other errors from `authenticate_ext`.
-    main_res?;
-    extra_res?;
+    // The 2nd error is from `authenticate_ext` itself.
+    // We have to map it in order to not leak any details.
+    main_res?.map_err(|_| AuthError::for_username(user))?;
 
     Ok(())
 }

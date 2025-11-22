@@ -150,31 +150,18 @@ fn do_authenticate_scram(
     password: impl AsRef<[u8]>,
     secret: &scram::ServerSecret,
 ) -> Result<(), BoxError> {
-    let make_error = || {
-        BoxError::new(
-            TarantoolErrorCode::PasswordMismatch,
-            "User not found or supplied credentials are invalid",
-        )
-    };
-
     // XXX: Use tarantool's wrapper which will perform additional
     // checks, execute triggers and update the credentials.
-    let mut main_res = Ok(());
-    let extra_res = crate::auth::authenticate_ext(user, |_user, _ctx| {
+    crate::auth::authenticate_ext(user, || {
         if secret.is_password_invalid(&password).into() {
-            main_res = Err(make_error());
+            return Err(BoxError::new(
+                TarantoolErrorCode::PasswordMismatch,
+                "User not found or supplied credentials are invalid",
+            ));
         }
 
-        // XXX: propagate auth result back to `authenticate_ext`
-        // in order to run correct triggers for e.g. audit.
-        main_res.is_ok()
-    });
-
-    // XXX: throw errors in this exact order:
-    // 1. sasl-specific auth errors.
-    // 2. other errors from `authenticate_ext`.
-    main_res?;
-    extra_res?;
+        Ok(())
+    })??;
 
     Ok(())
 }
@@ -226,26 +213,17 @@ pub(crate) fn authenticate_with_password(
     }
 }
 
-/// Try to authenticate with specified username and
-/// customizable authentication logic callback.
-///
-/// # Errors
-///
-/// - User was not found in the list of available users.
-/// - ... anything `auth_check` has to offer.
-///
-/// May panic if certain invariants are not upheld.
-pub(crate) fn authenticate_ext<F>(user: &str, mut auth_check: F) -> Result<(), BoxError>
+fn authenticate_ext_impl<F>(user: &str, mut auth_check: F) -> Result<(), BoxError>
 where
-    F: FnMut(*const TarantoolUser, *mut c_void) -> bool,
+    F: FnMut() -> bool,
 {
-    extern "C-unwind" fn trampoline<F>(user: *const TarantoolUser, ctx: *mut c_void) -> bool
+    extern "C-unwind" fn trampoline<F>(_user: *const TarantoolUser, ctx: *mut c_void) -> bool
     where
-        F: FnMut(*const TarantoolUser, *mut c_void) -> bool,
+        F: FnMut() -> bool,
     {
         // SAFETY: we use the same `F` throughout this impl.
         let callback = unsafe { &mut *(ctx as *mut F) };
-        (callback)(user, ctx)
+        (callback)()
     }
 
     let user_ptr = user.as_ptr();
@@ -263,6 +241,46 @@ where
     }
 
     Ok(())
+}
+
+/// Try to authenticate with specified username and
+/// customizable authentication logic callback.
+///
+/// **Important:** this function returns Result-of-Result;
+/// the topmost layer represents the callback error while the
+/// innermost layer represents the error of [`authenticate_ext`]
+/// itself.
+///
+/// # Errors
+///
+/// - User was not found in the list of available users.
+/// - ... anything `auth_check` has to offer.
+///
+/// May panic if certain invariants are not upheld.
+pub(crate) fn authenticate_ext<E, F>(
+    user: &str,
+    mut auth_check: F,
+) -> Result<Result<(), BoxError>, E>
+where
+    F: FnMut() -> Result<(), E>,
+{
+    // XXX: Use tarantool's wrapper which will perform additional
+    // checks, execute triggers and update the credentials.
+    let mut main_res = Ok(());
+    let extra_res = crate::auth::authenticate_ext_impl(user, || {
+        // Now perform the check itself and store the result.
+        main_res = auth_check();
+
+        // XXX: propagate auth result back to `authenticate_ext_impl`
+        // in order to run correct triggers for e.g. audit.
+        main_res.is_ok()
+    });
+
+    // XXX: throw errors in this exact order:
+    // 1. callback-specific auth errors.
+    // 2. other errors from `authenticate_ext_impl`.
+    main_res?;
+    Ok(extra_res)
 }
 
 /// Note: this struct is used in FFI.
