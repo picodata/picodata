@@ -3464,7 +3464,7 @@ mod tests {
         let faildom = FailureDomain::from([("a", "b")]);
         let picodata_version = PICODATA_VERSION.to_string();
 
-        for instance in vec![
+        for instance in [
             // r1
             ("i1", "i1-uuid", 1u64, "r1", "r1-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER, &picodata_version),
             ("i2", "i2-uuid", 2u64, "r1", "r1-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER, &picodata_version),
