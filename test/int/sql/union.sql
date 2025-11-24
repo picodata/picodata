@@ -129,7 +129,7 @@ from "arithmetic_space"
 union
 select 'kek' || "name" from "testing_space";
 -- ERROR:
-invalid value
+Unable to unify inconsistent types: Integer and String
 
 -- TEST: test_union_empty_children
 -- SQL:

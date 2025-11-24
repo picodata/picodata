@@ -938,7 +938,7 @@ fn front_sql_global_union_all3() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     union all
-        projection ("unnamed_subquery"."a"::int -> "a")
+        projection ("unnamed_subquery"."a"::decimal -> "a")
             scan "unnamed_subquery"
                 union all
                     projection ("global_t"."a"::int -> "a")

@@ -22,7 +22,7 @@ fn union_all() {
     let sql = r#"
     select "product_code" from "hash_testing"
     union all
-    select "e" from "t2"
+    select "e"::text from "t2"
     limit 100
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
@@ -34,7 +34,7 @@ fn union_all() {
                 union all
                     projection ("hash_testing"."product_code"::string -> "product_code")
                         scan "hash_testing"
-                    projection ("t2"."e"::int -> "e")
+                    projection ("t2"."e"::int::string -> "col_1")
                         scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000

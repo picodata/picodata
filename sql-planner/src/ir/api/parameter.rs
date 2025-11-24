@@ -106,16 +106,24 @@ impl Plan {
         Ok(())
     }
 
-    fn update_value_rows(&mut self, nodes: &[LevelNode<NodeId>]) -> Result<(), SbroadError> {
+    pub fn update_value_rows(&mut self) -> Result<(), SbroadError> {
+        // Note: `need_output` is set to false for `subtree_iter` specially to avoid traversing
+        //       the same nodes twice. See `update_values_row` for more info.
+        let mut tree =
+            PostOrder::with_capacity(|node| self.subtree_iter(node, false), self.nodes.len());
+        let top_id = self.get_top()?;
+        tree.populate_nodes(top_id);
+        let nodes = tree.take_nodes();
+
         for LevelNode(_, id) in nodes {
-            if let Ok(Node::Relational(Relational::ValuesRow(_))) = self.get_node(*id) {
-                self.update_values_row(*id)?;
+            if let Ok(Node::Relational(Relational::ValuesRow(_))) = self.get_node(id) {
+                self.update_values_row(id)?;
             }
         }
         Ok(())
     }
 
-    fn recalculate_ref_types(&mut self) -> Result<(), SbroadError> {
+    pub fn recalculate_ref_types(&mut self) -> Result<(), SbroadError> {
         let ref_nodes = {
             let filter = |node_id| {
                 matches!(
@@ -192,19 +200,7 @@ impl Plan {
             return Ok(());
         }
 
-        // Note: `need_output` is set to false for `subtree_iter` specially to avoid traversing
-        //       the same nodes twice. See `update_values_row` for more info.
-        let mut tree =
-            PostOrder::with_capacity(|node| self.subtree_iter(node, false), self.nodes.len());
-        let top_id = self.get_top()?;
-        tree.populate_nodes(top_id);
-        let nodes = tree.take_nodes();
-
-        bind_params(self, values)?;
-
-        self.update_value_rows(&nodes)?;
-        self.recalculate_ref_types()?;
-        Ok(())
+        bind_params(self, values)
     }
 
     /// Replaces the timestamp functions with corresponding constants

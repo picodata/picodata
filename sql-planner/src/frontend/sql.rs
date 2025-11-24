@@ -6853,6 +6853,13 @@ impl AbstractSyntaxTree {
         // The problem is that we crete Between structures before replacing subqueries.
         worker.fix_betweens(&mut plan)?;
         plan.replace_group_by_ordinals_with_references()?;
+
+        // Some recalculations that need to be performed after all parameter types are known.
+        // TODO: They are likely to be redundant and should be removed because now parameters get
+        // their types as soon as they are parsed but it needs to be investigated.
+        plan.update_value_rows()?;
+        plan.recalculate_ref_types()?;
+
         Ok(plan)
     }
 }

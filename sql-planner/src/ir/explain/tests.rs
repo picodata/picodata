@@ -151,7 +151,7 @@ WHERE "id" IN (SELECT "id"
 fn explain_except1() {
     let query = r#"SELECT "product_code" as "pc" FROM "hash_testing" AS "t"
         EXCEPT DISTINCT
-        SELECT "identification_number" FROM "hash_testing_hist""#;
+        SELECT "identification_number"::text FROM "hash_testing_hist""#;
 
     let plan = sql_to_optimized_ir(query, vec![]);
     let top = &plan.get_top().unwrap();
@@ -163,7 +163,7 @@ fn explain_except1() {
         r#"    projection ("t"."product_code"::string -> "pc")"#,
         r#"        scan "hash_testing" -> "t""#,
         r#"    motion [policy: full]"#,
-        r#"        projection ("hash_testing_hist"."identification_number"::int -> "identification_number")"#,
+        r#"        projection ("hash_testing_hist"."identification_number"::int::string -> "col_1")"#,
         r#"            scan "hash_testing_hist""#,
         r#"execution options:"#,
         r#"    sql_vdbe_opcode_max = 45000"#,

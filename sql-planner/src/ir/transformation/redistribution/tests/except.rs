@@ -8,7 +8,7 @@ use super::{Motion, Relational};
 
 #[test]
 fn except1() {
-    let query = r#"SELECT 1, 2 FROM "hash_testing" AS "t"
+    let query = r#"SELECT 1, '2' FROM "hash_testing" AS "t"
         EXCEPT DISTINCT
         SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist""#;
 
@@ -36,7 +36,7 @@ fn except2() {
 fn except3() {
     let query = r#"SELECT "identification_number", "product_code" FROM "hash_testing"
         EXCEPT
-        SELECT 1, 2 FROM "hash_testing_hist""#;
+        SELECT 1, '2' FROM "hash_testing_hist""#;
 
     let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
     let motion_id = *get_motion_id(&plan, 0, 0).unwrap();
@@ -63,7 +63,7 @@ fn except4() {
         SELECT * FROM (
             SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist"
             UNION ALL
-            SELECT 1, 2 FROM "hash_testing_hist"
+            SELECT 1, '2' FROM "hash_testing_hist"
         ) as t"#;
 
     let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
@@ -91,7 +91,7 @@ fn except5() {
         SELECT * FROM (
             SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist"
             EXCEPT
-            SELECT 1, 2 FROM "hash_testing_hist"
+            SELECT 1, '2' FROM "hash_testing_hist"
         ) as t"#;
 
     let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
