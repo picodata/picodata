@@ -55,6 +55,7 @@
   extra allocations.
 - impl LuaRead & Push for SmolStr (optionally under `extra_impls` feature flag)
 - impl msgpack::Encode & Decode for SmolStr (optionally under `extra_impls` feature flag)
+- impl proc::Return for SmolStr (optionally under `extra_impls` feature flag)
 
 ### Fixed
 

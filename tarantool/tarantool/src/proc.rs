@@ -396,3 +396,12 @@ macro_rules! impl_return_for_tuple {
     }
 }
 impl_return_for_tuple! {A B C D E F G H I J K L M N O P Q}
+
+#[cfg(feature = "extra_impls")]
+impl Return for smol_str::SmolStr {
+    #[inline]
+    #[track_caller]
+    fn ret(self, ctx: FunctionCtx) -> c_int {
+        unwrap_or_report_err!(ctx.return_mp(&self))
+    }
+}
