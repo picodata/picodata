@@ -95,6 +95,7 @@ tarantool = { workspace = true, features = [
   "test",
   "stored_procs_slice",
   "static_linking",
+  "extra_impls",
 ] }
 
 [dev-dependencies]

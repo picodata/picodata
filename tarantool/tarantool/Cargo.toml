@@ -35,6 +35,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_bytes = "^0"
 sha-1 = "0.9"
+smol_str = { version = "0.2", optional = true }
 md-5 = "0.10"
 tarantool-proc = { path = "../tarantool-proc", version = "4" }
 uuid = "0.8.2"
@@ -78,6 +79,8 @@ internal_test = ["test", "tlua/internal_test", "pretty_assertions", "tempfile"]
 # options are not exactly the same. Thus deviations in behaviour between them are possible
 standalone_decimal = ["dec"]
 stored_procs_slice = ["tarantool-proc/stored_procs_slice"]
+# Enables implementations of some traits for types from some external crates.
+extra_impls = ["tlua/extra_impls", "smol_str"]
 
 [dev-dependencies]
 time-macros = "0.2.6"

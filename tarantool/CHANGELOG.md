@@ -53,6 +53,7 @@
 - Clarification difference between `tlua::Nil` & `tlua::Null` in doc-comments.
 - tlua::BytesInLua helper struct for reading non-utf8 strings from lua without
   extra allocations.
+- impl LuaRead & Push for SmolStr (optionally under `extra_impls` feature flag)
 
 ### Fixed
 
