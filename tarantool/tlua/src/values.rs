@@ -610,6 +610,71 @@ impl<L> Deref for StringInLua<'_, L> {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// BytesInLua
+////////////////////////////////////////////////////////////////////////////////
+
+/// Helper struct for reading lua string without extra memory allocations.
+///
+/// The `BytesInLua` derefs to `[u8]`.
+///
+/// # Example
+///
+/// ```no_run
+/// let mut lua = tlua::Lua::new();
+/// lua.set("a", "\x01\x02\x03");
+///
+/// let s: tlua::BytesInLua<_> = lua.get("a").unwrap();
+/// println!("{:?}", &*s);    // Prints [1, 2, 3].
+/// ```
+#[derive(Debug, Eq, Ord, Hash)]
+pub struct BytesInLua<'a, L: 'a> {
+    lua: L,
+    slice: &'a [u8],
+}
+
+impl<L> BytesInLua<'_, L> {
+    #[inline]
+    pub fn into_inner(self) -> L {
+        self.lua
+    }
+}
+
+impl<L> std::cmp::PartialEq for BytesInLua<'_, L> {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.slice.eq(other.slice)
+    }
+}
+
+impl<L> std::cmp::PartialOrd for BytesInLua<'_, L> {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.slice.partial_cmp(other.slice)
+    }
+}
+
+impl<'a, L> LuaRead<L> for BytesInLua<'a, L>
+where
+    L: 'a + AsLua,
+{
+    #[inline]
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> ReadResult<Self, L> {
+        let (slice, lua) = read_lua_string_or_err::<Self, _>(lua, index)?;
+
+        Ok(BytesInLua { lua, slice })
+    }
+}
+
+impl<L> Deref for BytesInLua<'_, L> {
+    type Target = [u8];
+
+    #[inline]
+    fn deref(&self) -> &[u8] {
+        self.slice
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // bool
 ////////////////////////////////////////////////////////////////////////////////
 
