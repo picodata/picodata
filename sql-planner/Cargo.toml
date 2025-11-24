@@ -41,7 +41,7 @@ uuid = { version = "1.1", features = ["v4", "fast-rng", "macro-diagnostics"] }
 pretty_assertions = { workspace = true }
 serde_yaml = "0.9.34"
 insta = "1.42"
-tarantool = { workspace = true, features = ["standalone_decimal"] }
+tarantool = { workspace = true, features = ["standalone_decimal", "extra_impls"] }
 
 [lib]
 name = "sql"

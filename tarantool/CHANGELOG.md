@@ -56,6 +56,8 @@
 - impl LuaRead & Push for SmolStr (optionally under `extra_impls` feature flag)
 - impl msgpack::Encode & Decode for SmolStr (optionally under `extra_impls` feature flag)
 - impl proc::Return for SmolStr (optionally under `extra_impls` feature flag)
+- impl const methods to_smolstr for enums defined with define_str_enum! macro
+  (optionally under `extra_impls` feature flag)
 
 ### Fixed
 

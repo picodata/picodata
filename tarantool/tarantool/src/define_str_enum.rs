@@ -329,6 +329,8 @@ macro_rules! define_str_enum {
                 res
             }
         }
+
+        $crate::define_str_enum_extra!{ $vis $enum }
     };
 
     (@attr coerce_from_str $($then:tt)*) => {
@@ -340,7 +342,26 @@ macro_rules! define_str_enum {
             concat!("unknown attribute: ", stringify!($other))
         )
     };
+}
 
+#[cfg(feature = "extra_impls")]
+#[macro_export]
+macro_rules! define_str_enum_extra {
+    ($vis:vis $enum:ident) => {
+        #[allow(dead_code)]
+        impl $enum {
+            #[inline]
+            $vis const fn to_smolstr(self) -> ::smol_str::SmolStr {
+                ::smol_str::SmolStr::new_static(self.as_str())
+            }
+        }
+    }
+}
+
+#[cfg(not(feature = "extra_impls"))]
+#[macro_export]
+macro_rules! define_str_enum_extra {
+    ($($any:tt)*) => {};
 }
 
 /// Auto-generate enum with some introspection facilities, including conversion
