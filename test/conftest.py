@@ -1017,11 +1017,14 @@ class Instance:
         finally:
             self.kill()
 
+    def name_or_port(self):
+        return self.name or f":{self.port}"
+
     def _process_output(self, src, out: io.TextIOWrapper):
         is_a_tty = sys.stdout.isatty()
 
         def make_prefix():
-            id = self.name or f":{self.port}"
+            id = self.name_or_port()
             prefix = f"{id:<11} | "
 
             if is_a_tty:
@@ -1467,7 +1470,7 @@ class Instance:
             # it's fine, the process is still running
             pass
         else:
-            message = f"process exited unexpectedly, {exit_code=}"
+            message = f"process exited unexpectedly, {exit_code=} (instance {self.name_or_port()})"
             pid = self.process.pid
             bt = os.path.join(self.cwd, f"picodata-{pid}.backtrace")
             if os.path.exists(bt):
