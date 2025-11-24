@@ -45,7 +45,7 @@ JDBC-драйвер для Picodata использует протокол Postgr
 [PgJDBC](https://jdbc.postgresql.org/documentation/use/#system-properties).
 Реализован класс `io.picodata.Driver`, имплементирующий
 `java.sql.Driver`. В качестве адреса для подключения следует
-использовать формат `jdbc:picodata://host:port`. Пример:
+использовать формат `jdbc:picodata://host:port/`. Пример:
 
 ```java
 String url = "jdbc:picodata://10.0.0.1:8000/";
@@ -58,30 +58,99 @@ Connection conn = DriverManager.getConnection(url, props);
 Возможно подключение как к одному хосту, так и к нескольким. Для этого
 рекомендуется использовать `PicodataClusterAwareDataSource` — это позволит
 учитывать сведения о кластере, автоматическое обнаружение узлов и балансировку
-соединений. Пример подключения:
+соединений.
 
-```java
-    public void setupDataSource(PicodataBaseDataSource dataSource) {
-        dataSource.setHosts(List.of("10.0.0.1","10.0.0.2","10.0.0.3"));
-        dataSource.setPorts(List.of("8000","8001","8002"));
-        ...
-    }
+??? example "Пример использования PicodataClusterAwareDataSource"
+    ```java
+        PicodataClusterAwareDataSource dataSource = new PicodataClusterAwareDataSource();
+        // Mandatory properties
+        dataSource.setUser("sqluser");
+        dataSource.setPassword("P@ssw0rd");
+
+        // Another way of setting up initial hosts and ports.
+        // The driver will pick up a random address for fetching metdata connection.
+        // It will try the other ones until one returns a connection or the reconnection attempts limit is reached.
+        // The number of ports should either contain one element or match the number of hosts and vice versa.
+        dataSource.setHosts(Collections.singletonList("localhost"));
+        dataSource.setPorts(Collections.singletonList(5432));
+
+        // Use unsecure connection. This is the default variant
+        dataSource.setSslMode("disable");
+
+        // Uncomment the following lines to set up mTLS connection
+
+        // dataSource.setSslMode("verify-full");
+        // dataSource.setSslCert("/tmp/mycustom.crt");
+        // dataSource.setSslKey("/tmp/mycustom.pk8");
+        // dataSource.setSslRootCert("/tmp/mycustomca.crt");
+        // dataSource.setSslPassword("topsecret");
+
+        // If there is no password set for the private key, use an empty string:
+        // dataSource.setSslPassword("");
+
+        // If there are any properties in the URL, they will override the ones set before.
+        // Only properties backed by {@link io.picodata.jdbc.PicodataProperty} are supported in the URL.
+        dataSource.setURL(connstr);
+
+        // Specific properties for PicodataClusterAwareDataSource
+
+        // Set an interval between re-fetching the cluster metadata
+        dataSource.setTopologyUpdateDelay(5000);
+        // Set the maximum number of reconnection attempts if fetching the cluster metadata fails.
+        // The driver will try to connect to all available nodes from the initial URL or from the previously fetched metadata
+        dataSource.setTopologyUpdateMaxReconnectionAttempts(5);
+
+        // You can implement your custom strategy for selecting the next node address for connection based on the cluster metadata
+        // dataSource.setNodesSelectionStrategy("io.picodata.jdbc.loadbalancer.CustomNodesSelectionStrategyImpl");
+
+        // You can set up which node tiers are allowed or forbidden for making connections.
+        // Use a comma-separated list of tier names for each case.
+        // dataSource.setNodesAllowedTiers("read-only,primary");
+        // dataSource.setNodesForbiddenTiers("arbiter");
+    ```
+
+Для указания хостов используйте следующий синтаксис (допускается как IP-адреса, так и DNS-имена):
+
+```java title="для одного хоста"
+dataSource.setHosts(Collections.singletonList("10.0.0.1"));
+dataSource.setPorts(Collections.singletonList(8000));
 ```
 
-Несколько хостов можно указать и другими способами. Например, с помощью строки подключения:
+```java title="для нескольких хостов"
+dataSource.setHosts(List.of("10.0.0.1","10.0.0.2","10.0.0.3"));
+dataSource.setPorts(List.of("8000","8001","8002"));
+```
 
-`jdbc:picodata://10.0.0.1:8000,10.0.0.2:8001,10.0.0.3:8002`.
-
-или с помощью опции `PicodataProperty`:
+Несколько хостов можно указать и другими способами. Например, с помощью
+опции `PicodataProperty`:
 
 ```java
 PicodataProperty.PICODATA_HOST.set(props, List.of("10.0.0.1","10.0.0.2","10.0.0.3"));
 PicodataProperty.PICODATA_PORT.set(props, List.of("8000","8001","8002"));
 ```
 
-Списки хостов и портов должны содержать либо 1 элемент, либо одинаковое
-количество элементов (то есть, может быть 5 хостов и 1 порт, но не может
-быть 5 хостов и 4 порта).
+или через передачу строки подключения (`setUrl`):
+
+```java
+dataSource.setUrl("jdbc:picodata://10.0.0.1:8000,10.0.0.2:8001,10.0.0.3:8002/");
+```
+
+Вариант с `setUrl` предпочтителен также тем, что позволяет добавить к
+строке подключения отдельные параметры из `props.setProperty`, например:
+
+```java
+dataSource.setUrl("jdbc:picodata://10.0.0.1:8000/?prepareThreshold=-1&reWriteBatchedInserts=true");
+```
+
+???+ example "Примеры setProperty"
+    ```java
+    props.setProperty("dataSourceClassName", PicodataClusterAwareDataSource.class.getName());
+    props.setProperty("dataSource.url", connstr);
+    props.setProperty("dataSource.user", "sqluser");
+    props.setProperty("dataSource.password", "P@ssw0rd");
+    props.setProperty("dataSource.reWriteBatchedInserts", "true");
+    props.setProperty("dataSource.prepareThreshold", "1");
+    ```
 
 Полный список поддерживаемых возможностей приведен в документации API JDBC-драйвера:
 
