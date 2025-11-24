@@ -319,92 +319,137 @@ macro_rules! impl_push_read {
     }
 }
 
-macro_rules! push_string_impl {
-    ($self:ident, $lua:ident) => {
-        unsafe {
-            ffi::lua_pushlstring(
-                $lua.as_lua(),
-                $self.as_bytes().as_ptr() as _,
-                $self.as_bytes().len() as _,
-            );
-            Ok(PushGuard::new($lua, 1))
-        }
-    };
+#[inline]
+pub unsafe fn push_lua_string(lua: crate::LuaState, s: &[u8]) {
+    // SAFETY:
+    // - `lua` msut be valid
+    // - may crash if stack overflows
+    unsafe {
+        ffi::lua_pushlstring(lua.as_lua(), s.as_ptr() as _, s.len() as _);
+    }
 }
 
-macro_rules! lua_read_string_impl {
-    ($lua:ident, $index:ident, $from_slice:expr) => {
-        (|| unsafe {
-            let mut size = MaybeUninit::uninit();
-            let type_code = ffi::lua_type($lua.as_lua(), $index.into());
-            // Because this function may be called while iterating over
-            // a table we must make sure not to change the value on the
-            // stack. So no number to string conversions are supported
-            // anymore
-            if type_code != ffi::LUA_TSTRING {
-                return Err($lua);
-            }
-            let c_ptr = ffi::lua_tolstring($lua.as_lua(), $index.into(), size.as_mut_ptr());
-            if c_ptr.is_null() {
-                return Err($lua);
-            }
-            let slice = slice::from_raw_parts(c_ptr as _, size.assume_init());
-            $from_slice(slice, $lua)
-        })()
-        .map_err(|lua| {
-            let e = $crate::WrongType::default()
-                .expected_type::<Self>()
-                .actual_single_lua(&lua, $index);
-            (lua, e)
-        })
+#[inline]
+pub fn push_lua_string_and_guard<L>(lua: L, s: &[u8]) -> PushGuard<L>
+where
+    L: AsLua,
+{
+    unsafe {
+        push_lua_string(lua.as_lua(), s);
+    }
+    // SAFETY: just pushed a value onto stack
+    unsafe { PushGuard::new(lua, 1) }
+}
+
+pub fn read_lua_string<'a>(lua: crate::LuaState, index: i32) -> Option<&'a [u8]> {
+    // SAFETY: `lua` must be valid
+    unsafe {
+        let type_code = ffi::lua_type(lua, index);
+        // lua_tolstring will silently convert a number to string and return
+        // a success. But because this function may be called while
+        // iterating over a table such silent conversion will break the
+        // iterator. So instead we must check for the type explicitly
+        if type_code != ffi::LUA_TSTRING {
+            return None;
+        }
+
+        let mut size = 0;
+        let c_ptr = ffi::lua_tolstring(lua, index, &mut size);
+        if c_ptr.is_null() {
+            return None;
+        }
+
+        let slice = slice::from_raw_parts(c_ptr as _, size);
+        Some(slice)
+    }
+}
+
+pub fn read_lua_string_or_err<'a, T, L>(
+    lua: L,
+    index: NonZeroI32,
+) -> Result<(&'a [u8], L), (L, WrongType)>
+where
+    L: AsLua,
+{
+    let res = read_lua_string(lua.as_lua(), index.into());
+    let Some(slice) = res else {
+        let e = crate::WrongType::default()
+            .expected_type::<T>()
+            .actual_single_lua(&lua, index);
+        return Err((lua, e));
     };
+
+    Ok((slice, lua))
 }
 
 impl_push_read! { String,
     push_to_lua(&self, lua) {
-        push_string_impl!(self, lua)
+        Ok(push_lua_string_and_guard(lua, self.as_bytes()))
     }
     push_into_lua(self, lua) {
-        push_string_impl!(self, lua)
+        self.push_to_lua(lua)
     }
     read_at_position(lua, index) {
-        lua_read_string_impl!(lua, index,
-            |slice: &[u8], lua| String::from_utf8(slice.to_vec()).map_err(|_| lua)
-        )
+        let (slice, lua) = read_lua_string_or_err::<Self, _>(lua, index)?;
+
+        let res = String::from_utf8(slice.to_vec());
+        let s = match res {
+            Ok(v) => v,
+            Err(e) => {
+                let e = crate::WrongType::default()
+                    .expected_type::<Self>()
+                    .actual(format!("non-utf8 string: {e}"));
+                return Err((lua, e));
+            }
+        };
+
+        Ok(s)
     }
 }
 
 impl_push_read! { CString,
     push_to_lua(&self, lua) {
-        push_string_impl!(self, lua)
+        Ok(push_lua_string_and_guard(lua, self.as_bytes()))
     }
     push_into_lua(self, lua) {
-        push_string_impl!(self, lua)
+        self.push_to_lua(lua)
     }
     read_at_position(lua, index) {
-        lua_read_string_impl!(lua, index,
-            |slice: &[u8], lua| CString::new(slice).map_err(|_| lua)
-        )
+        let (slice, lua) = read_lua_string_or_err::<Self, _>(lua, index)?;
+
+        let res = CString::new(slice.to_vec());
+        let s = match res {
+            Ok(v) => v,
+            Err(e) => {
+                let e = crate::WrongType::default()
+                    .expected_type::<Self>()
+                    .actual(format!("string with nul-byte: {e}"));
+                return Err((lua, e));
+            }
+        };
+
+        Ok(s)
     }
 }
 
 impl_push_read! { AnyLuaString,
     push_to_lua(&self, lua) {
-        push_string_impl!(self, lua)
+        Ok(push_lua_string_and_guard(lua, self.as_bytes()))
     }
     push_into_lua(self, lua) {
-        push_string_impl!(self, lua)
+        self.push_to_lua(lua)
     }
     read_at_position(lua, index) {
-        lua_read_string_impl!(lua, index,
-            |slice: &[u8], _| Ok(AnyLuaString(slice.to_vec()))
-        )
+        let (slice, _) = read_lua_string_or_err::<Self, _>(lua, index)?;
+
+        let s = AnyLuaString(slice.to_vec());
+        Ok(s)
     }
 }
 
 impl_push_read! { str,
     push_to_lua(&self, lua) {
-        push_string_impl!(self, lua)
+        Ok(push_lua_string_and_guard(lua, self.as_bytes()))
     }
 }
 
@@ -423,31 +468,31 @@ impl_push_read! { CStr,
 
 impl_push_read! { OsString,
     push_to_lua(&self, lua) {
-        push_string_impl!(self, lua)
+        Ok(push_lua_string_and_guard(lua, self.as_bytes()))
     }
     push_into_lua(self, lua) {
-        push_string_impl!(self, lua)
+        self.push_to_lua(lua)
     }
     read_at_position(lua, index) {
-        lua_read_string_impl!(lua, index,
-            |slice: &[u8], _| Ok(OsString::from_vec(slice.to_vec()))
-        )
+        let (slice, _) = read_lua_string_or_err::<Self, _>(lua, index)?;
+
+        let s = OsString::from_vec(slice.to_vec());
+        Ok(s)
     }
 }
 
 impl_push_read! { OsStr,
     push_to_lua(&self, lua) {
-        push_string_impl!(self, lua)
+        Ok(push_lua_string_and_guard(lua, self.as_bytes()))
     }
 }
 
 impl_push_read! { PathBuf,
     push_to_lua(&self, lua) {
-        self.as_path().push_to_lua(lua)
+        Ok(push_lua_string_and_guard(lua, self.as_os_str().as_bytes()))
     }
     push_into_lua(self, lua) {
-        let s = self.into_os_string();
-        push_string_impl!(s, lua)
+        self.push_to_lua(lua)
     }
     read_at_position(lua, index) {
         OsString::lua_read_at_position(lua, index).map(Into::into)
@@ -456,8 +501,7 @@ impl_push_read! { PathBuf,
 
 impl_push_read! { Path,
     push_to_lua(&self, lua) {
-        let s = self.as_os_str();
-        push_string_impl!(s, lua)
+        Ok(push_lua_string_and_guard(lua, self.as_os_str().as_bytes()))
     }
 }
 
@@ -512,14 +556,19 @@ where
     L: 'a + AsLua,
 {
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> ReadResult<Self, L> {
-        lua_read_string_impl!(
-            lua,
-            index,
-            |slice: &'a [u8], lua| match str::from_utf8(slice) {
-                Ok(str_ref) => Ok(StringInLua { lua, str_ref }),
-                Err(_) => Err(lua),
+        let (slice, lua) = read_lua_string_or_err::<Self, _>(lua, index)?;
+
+        let res = str::from_utf8(slice);
+        let str_ref = match res {
+            Ok(v) => v,
+            Err(e) => {
+                let e = crate::WrongType::default()
+                    .expected_type::<Self>()
+                    .actual(format!("non-utf8 string: {e}"));
+                return Err((lua, e));
             }
-        )
+        };
+        Ok(StringInLua { lua, str_ref })
     }
 }
 

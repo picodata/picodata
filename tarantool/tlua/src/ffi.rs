@@ -164,7 +164,12 @@ extern "C-unwind" {
     pub fn lua_gettop(l: *mut lua_State) -> c_int;
     pub fn lua_settop(l: *mut lua_State, index: c_int);
     pub fn lua_pushboolean(l: *mut lua_State, n: c_int);
-    pub fn lua_pushlstring(l: *mut lua_State, s: *const libc::c_char, l: libc::size_t);
+    /// Pushes the string pointed to by `s` with size `len` onto the stack. Lua
+    /// makes (or reuses) an internal copy of the given string, so the memory at
+    /// s can be freed or reused immediately after the function returns. The
+    /// string can contain embedded zeros.
+    /// *[-0, +1, m]*
+    pub fn lua_pushlstring(l: *mut lua_State, s: *const libc::c_char, len: libc::size_t);
 
     /// Pushes the zero-terminated string pointed to by `s` onto the stack. Lua
     /// makes (or reuses) an internal copy of the given string, so the memory at
