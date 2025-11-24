@@ -449,14 +449,26 @@ impl Service for Service3 {
                     })
                     .unwrap();
             }
-            "authentication" => {
-                // md5
-                picodata_plugin::internal::authenticate("first", "F1rstUs3r").unwrap();
+            "authentication_unknown_user" => {
+                // should fail
+                picodata_plugin::internal::authenticate(
+                    "He-Who-Must-Not-Be-Named",
+                    "wrong password here",
+                )
+                .expect_err("auth should fail (unknown user)");
+            }
+            "authentication_classic" => {
+                let user = "sdk_auth_user";
+                let password = "GreppablePassword1";
 
-                // sha1
-                picodata_plugin::internal::authenticate("second", "S3condUs3r").unwrap();
+                // ok
+                picodata_plugin::internal::authenticate(user, password).unwrap();
 
-                // ldap
+                // should fail
+                picodata_plugin::internal::authenticate(user, "wrong password here")
+                    .expect_err("auth should fail (incorrect password)");
+            }
+            "authentication_ldap" => {
                 picodata_plugin::internal::authenticate("ldapuser", "ldappass").unwrap();
             }
             "no_test" => {}

@@ -1,31 +1,31 @@
-from dataclasses import dataclass, field
-import time
-from typing import Any, Dict, List, Optional
-import pytest
-import uuid
-import msgpack  # type: ignore
-import os
 import hashlib
+import os
+import signal
+import time
+import uuid
+from dataclasses import dataclass, field
+from decimal import Decimal
 from pathlib import Path
-from framework.ldap import is_glauth_available, LdapServer
+from typing import Any, Dict, List, Optional
 
+import msgpack  # type: ignore
+import pytest
+import requests
 from conftest import (
     Cluster,
     ErrorCode,
-    ReturnError,
-    Retriable,
     Instance,
     ProcessDead,
+    Retriable,
+    ReturnError,
     TarantoolError,
-    log_crawler,
     assert_starts_with,
     copy_plugin_library,
     get_test_dir,
+    log_crawler,
 )
+from framework.ldap import LdapServer, is_glauth_available
 from framework.thread import spawn_thread
-from decimal import Decimal
-import requests
-import signal
 
 _3_SEC = 3
 _DEFAULT_CFG = {"foo": True, "bar": 101, "baz": ["one", "two", "three"]}
@@ -2990,11 +2990,38 @@ def test_sdk_background(cluster: Cluster):
     PluginReflection.clear_persisted_data(i1)
 
 
+def test_sdk_authentication_unknown_user(cluster: Cluster):
+    inst = cluster.add_instance()
+
+    install_and_enable_plugin(
+        inst,
+        _PLUGIN_W_SDK,
+        _PLUGIN_W_SDK_SERVICES,
+        migrate=True,
+        default_config={"test_type": "authentication_unknown_user"},
+    )
+
+
+@pytest.mark.parametrize("auth_method", ["scram-sha256", "chap-sha1", "md5"])
+def test_sdk_authentication_classic(auth_method: str, cluster: Cluster):
+    inst = cluster.add_instance()
+
+    inst.sql(f"CREATE USER sdk_auth_user WITH PASSWORD 'GreppablePassword1' USING {auth_method}")
+
+    install_and_enable_plugin(
+        inst,
+        _PLUGIN_W_SDK,
+        _PLUGIN_W_SDK_SERVICES,
+        migrate=True,
+        default_config={"test_type": "authentication_classic"},
+    )
+
+
 @pytest.mark.skipif(
     not is_glauth_available(),
     reason="need installed glauth",
 )
-def test_sdk_authentication(cluster: Cluster, ldap_server: LdapServer):
+def test_sdk_authentication_ldap(cluster: Cluster, ldap_server: LdapServer):
     inst = cluster.add_instance(wait_online=False)
 
     inst.env["TT_LDAP_URL"] = f"ldap://{ldap_server.host}:{ldap_server.port}"
@@ -3003,10 +3030,6 @@ def test_sdk_authentication(cluster: Cluster, ldap_server: LdapServer):
     inst.start()
     inst.wait_online()
 
-    inst.sql("CREATE USER first WITH PASSWORD 'F1rstUs3r' USING MD5")
-    inst.sql("GRANT READ ON TABLE _pico_user TO first", sudo=True)
-    inst.sql("CREATE USER second WITH PASSWORD 'S3condUs3r' USING CHAP-SHA1")
-    inst.sql("GRANT READ ON TABLE _pico_user TO second", sudo=True)
     inst.sql(f"CREATE USER {ldap_server.user} USING LDAP")
     inst.sql(f"GRANT READ ON TABLE _pico_user TO {ldap_server.user}", sudo=True)
 
@@ -3015,7 +3038,7 @@ def test_sdk_authentication(cluster: Cluster, ldap_server: LdapServer):
         _PLUGIN_W_SDK,
         _PLUGIN_W_SDK_SERVICES,
         migrate=True,
-        default_config={"test_type": "authentication"},
+        default_config={"test_type": "authentication_ldap"},
     )
 
 
