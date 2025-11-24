@@ -660,6 +660,7 @@ class Instance:
     iproto_tls_ca: str | None = None
 
     registry: Optional[Registry] = None
+    symlink_created = False
 
     @property
     def instance_dir(self):
@@ -1521,6 +1522,13 @@ class Instance:
         assert isinstance(info["cluster_uuid"], str)
         target.cluster_uuid = info["cluster_uuid"]
 
+        if not target.symlink_created and target._instance_dir:
+            instance_dir_by_name = Path(target._instance_dir).parent / target.name  # type: ignore
+            if not instance_dir_by_name.exists():
+                os.symlink(target._instance_dir, instance_dir_by_name, target_is_directory=True)
+                log.info(f"created a symlink {target._instance_dir} -> {instance_dir_by_name}")
+                target.symlink_created = True
+
         return info
 
     def wait_online(
@@ -1589,12 +1597,6 @@ class Instance:
                     case _:
                         if time.monotonic() > deadline:
                             raise e from e
-
-        if self._instance_dir:
-            instance_dir_by_name = Path(self._instance_dir).parent / self.name  # type: ignore
-            if not instance_dir_by_name.exists():
-                os.symlink(self._instance_dir, instance_dir_by_name, target_is_directory=True)
-                log.info(f"created a symlink {self._instance_dir} -> {instance_dir_by_name}")
 
         log.info(f"{self} is online")
 
