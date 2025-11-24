@@ -35,10 +35,12 @@ export const InstanceCard: FC<InstanceCardProps> = React.memo(
             classes?.cardWrapper
           )}
         >
-          {instance.isLeader && (
+          {instance.isLeader ? (
             <div className={styles.leaderBlock}>
               {instanceTranslations.leader.label}
             </div>
+          ) : (
+            <div className={styles.followerBlock} />
           )}
           <div className={styles.content}>
             <div

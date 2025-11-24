@@ -139,9 +139,9 @@ $leader-height: 16px;
   background-color: $colorBgWhite;
 }
 
-.leaderBlock {
+.followerBlock {
   width: $leader-height;
-  background-color: $colorNotificationSuccess;
+  background-color: transparent;
   font-size: 10px;
   line-height: 16px;
   font-weight: 400;
@@ -152,4 +152,9 @@ $leader-height: 16px;
   justify-content: center;
   writing-mode: vertical-lr;
   text-orientation: mixed;
+}
+
+.leaderBlock {
+  @extend .followerBlock;
+  background-color: $colorNotificationSuccess !important;
 }
