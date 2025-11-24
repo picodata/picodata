@@ -304,7 +304,7 @@ cluster:
         default:
 """
     )
-    i1 = cluster.add_instance(wait_online=False)
+    i1 = cluster.add_instance(wait_online=False, log_to_file=False, log_to_console=True)
     i1.start()
     i1.wait_online()
 
@@ -533,7 +533,12 @@ instance:
 
     assert not os.path.exists(log_file)
 
-    i1 = cluster.add_instance(wait_online=True)
+    i1 = cluster.add_instance(
+        wait_online=True,
+        # Don't request logging to file via ENV, instead the setting from the config file will be used
+        log_to_file=False,
+        log_to_console=True,
+    )
     assert os.path.exists(log_file)
 
     i1.terminate()

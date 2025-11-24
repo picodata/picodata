@@ -1796,9 +1796,9 @@ class Instance:
             if log_to_console is None:
                 log_to_console = env_instance_log in ["console", "both"]
         else:
-            # By default DON't log to file
+            # By default log to file
             if log_to_file is None:
-                log_to_file = False
+                log_to_file = True
             # By default log to console
             if log_to_console is None:
                 log_to_console = True
@@ -1807,7 +1807,7 @@ class Instance:
         assert isinstance(log_to_file, bool)
 
         if log_to_file and log_to_console:
-            self.env["PICODATA_LOG"] = f"|tee {self.instance_dir}/picodata.log"
+            self.env["PICODATA_LOG"] = f"|tee {self.instance_dir}/picodata.log >&2"
         elif log_to_file:
             self.env["PICODATA_LOG"] = f"{self.instance_dir}/picodata.log"
         elif not log_to_console:

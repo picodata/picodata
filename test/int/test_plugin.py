@@ -2844,7 +2844,12 @@ instance:
     #
     # Start instance and check
     #
-    [i1] = cluster.deploy(instance_count=1)
+    i1 = cluster.add_instance(
+        wait_online=True,
+        # Don't request logging to file via ENV,instead the setting from the config file will be used
+        log_to_file=False,
+        log_to_console=True,
+    )
 
     i1.sql(f"CREATE PLUGIN {plugin_name} 0.1.0")
     i1.sql(f"ALTER PLUGIN {plugin_name} 0.1.0 ADD SERVICE {service_name} TO TIER default")
