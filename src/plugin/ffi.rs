@@ -35,13 +35,13 @@ use tarantool::uuid::Uuid;
 
 #[no_mangle]
 extern "C" fn pico_ffi_version() -> RTuple!(*const u8, usize) {
-    let version = VersionInfo::current().picodata_version;
+    let version = &VersionInfo::current().picodata_version;
     Tuple2(version.as_ptr(), version.len())
 }
 
 #[no_mangle]
 extern "C" fn pico_ffi_rpc_version() -> RTuple!(*const u8, usize) {
-    let version = VersionInfo::current().rpc_api_version;
+    let version = &VersionInfo::current().rpc_api_version;
     Tuple2(version.as_ptr(), version.len())
 }
 

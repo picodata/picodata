@@ -10,6 +10,7 @@ use crate::util::Uppercase;
 use crate::{has_states, tlog, unwrap_ok_or};
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tarantool::fiber;
@@ -146,7 +147,7 @@ type AuthResult<T> = std::result::Result<T, AuthError>;
 #[derive(Deserialize)]
 struct InstanceDataResponse {
     httpd_address: String,
-    version: String,
+    version: SmolStr,
     mem_usable: u64,
     mem_used: u64,
 }
@@ -178,7 +179,7 @@ struct MemoryInfo {
 #[serde(rename_all = "camelCase")]
 struct InstanceInfo {
     http_address: String,
-    version: String,
+    version: SmolStr,
     failure_domain: HashMap<Uppercase, Uppercase>,
     is_leader: bool,
     current_state: StateVariant,
@@ -204,7 +205,7 @@ struct InstanceInfo {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ReplicasetInfo {
-    version: String,
+    version: SmolStr,
     state: StateVariant,
     instance_count: usize,
     uuid: String,
@@ -269,7 +270,7 @@ pub(crate) struct ClusterInfo {
     capacity_usage: f64,
     cluster_name: &'static str,
     #[serde(rename = "currentInstaceVersion")] // for compatibility with lua version
-    current_instance_version: String,
+    current_instance_version: SmolStr,
     replicasets_count: usize,
     instances_current_state_offline: usize,
     memory: MemoryInfo,
@@ -363,8 +364,8 @@ async fn get_instances_data(
         fs.push({
             async move {
                 let mut data = InstanceDataResponse {
-                    httpd_address: String::new(),
-                    version: String::new(),
+                    httpd_address: Default::default(),
+                    version: Default::default(),
                     mem_usable: 0u64,
                     mem_used: 0u64,
                 };
@@ -374,7 +375,7 @@ async fn get_instances_data(
                         if let Some(http) = info.http {
                             data.httpd_address = format!("{}:{}", &http.host, &http.port);
                         }
-                        data.version = info.version_info.picodata_version.to_string();
+                        data.version = info.version_info.picodata_version.clone();
                         data.mem_usable = info.slab_info.quota_size;
                         data.mem_used = info.slab_info.quota_used;
                     }
@@ -425,13 +426,13 @@ fn get_replicasets_info(storage: &Catalog, only_leaders: bool) -> Result<Vec<Rep
             tier.clone_from(&replicaset.tier);
         }
 
-        let mut http_address = String::new();
-        let mut version = String::new();
+        let mut http_address = String::default();
+        let mut version = SmolStr::default();
         let mut mem_usable: u64 = 0u64;
         let mut mem_used: u64 = 0u64;
         if let Some(data) = instances_props.get(&instance.raft_id) {
             http_address.clone_from(&data.httpd_address);
-            version.clone_from(&data.version);
+            version = data.version.clone();
             mem_usable = data.mem_usable;
             mem_used = data.mem_used;
         }
@@ -487,7 +488,7 @@ fn get_capacity_usage(mem_usable: u64, mem_used: u64) -> f64 {
 }
 
 pub(crate) fn http_api_cluster() -> Result<ClusterInfo> {
-    let version = String::from(VersionInfo::current().picodata_version);
+    let version = VersionInfo::current().picodata_version.clone();
 
     let storage = Catalog::get();
     let replicasets = get_replicasets_info(storage, true)?;
@@ -497,7 +498,7 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo> {
         .get_all()
         .expect("storage shouldn't fail")
         .iter()
-        .map(|plugin| [plugin.name.clone(), plugin.version.clone()].join(" "))
+        .map(|plugin| format!("{} {}", plugin.name, plugin.version))
         .collect();
 
     let mut instances = 0;

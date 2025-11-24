@@ -12,7 +12,9 @@ use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::RaftTerm;
 use crate::vshard::VshardConfig;
+use smol_str::SmolStr;
 use std::borrow::Cow;
+use std::cell::OnceCell;
 use std::time::Duration;
 use tarantool::error::BoxError;
 use tarantool::fiber;
@@ -25,7 +27,7 @@ const REDIRECT_RPC_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Note: this returns a `&'static str` because of clap's requirements.
 pub fn version_for_help() -> &'static str {
-    static VERSION_OUTPUT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    static VERSION_OUTPUT: std::sync::OnceLock<SmolStr> = std::sync::OnceLock::new();
 
     VERSION_OUTPUT.get_or_init(|| {
         let mut result = PICODATA_VERSION.to_string();
@@ -42,7 +44,7 @@ pub fn version_for_help() -> &'static str {
         result.push('\n');
 
         result.push_str(env!("OS_VERSION"));
-        result
+        SmolStr::new(result)
     })
 }
 
@@ -51,32 +53,40 @@ pub fn version_for_help() -> &'static str {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
-pub struct VersionInfo<'a> {
-    pub picodata_version: Cow<'a, str>,
-    pub rpc_api_version: Cow<'a, str>,
-    pub build_type: Cow<'a, str>,
-    pub build_profile: Cow<'a, str>,
-    pub tarantool_version: Cow<'a, str>,
+pub struct VersionInfo {
+    pub picodata_version: SmolStr,
+    pub rpc_api_version: SmolStr,
+    pub build_type: SmolStr,
+    pub build_profile: SmolStr,
+    pub tarantool_version: SmolStr,
 }
 
-impl tarantool::tuple::Encode for VersionInfo<'_> {}
+impl tarantool::tuple::Encode for VersionInfo {}
 
-impl tarantool::proc::Return for VersionInfo<'_> {
+impl tarantool::proc::Return for &'static VersionInfo {
     #[inline(always)]
     fn ret(self, ctx: tarantool::tuple::FunctionCtx) -> std::os::raw::c_int {
         tarantool::proc::ReturnMsgpack(self).ret(ctx)
     }
 }
 
-impl VersionInfo<'static> {
+impl VersionInfo {
     #[inline(always)]
-    pub fn current() -> Self {
-        Self {
-            picodata_version: PICODATA_VERSION.into(),
-            rpc_api_version: RPC_API_VERSION.into(),
-            build_type: env!("BUILD_TYPE").into(),
-            build_profile: env!("BUILD_PROFILE").into(),
-            tarantool_version: crate::tarantool::version().into(),
+    #[allow(static_mut_refs)]
+    pub fn current() -> &'static Self {
+        static mut GLOBAL: OnceCell<VersionInfo> = OnceCell::new();
+
+        // SAFETY:
+        // - only called from tx thread
+        // - mutated only once during initialization
+        unsafe {
+            GLOBAL.get_or_init(|| Self {
+                picodata_version: SmolStr::new_static(PICODATA_VERSION),
+                rpc_api_version: SmolStr::new_static(RPC_API_VERSION),
+                build_type: SmolStr::new_static(env!("BUILD_TYPE")),
+                build_profile: SmolStr::new_static(env!("BUILD_PROFILE")),
+                tarantool_version: SmolStr::new_static(crate::tarantool::version()),
+            })
         }
     }
 }
@@ -86,8 +96,8 @@ impl VersionInfo<'static> {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[proc]
-pub fn proc_picodata_version() -> String {
-    VersionInfo::current().picodata_version.into_owned()
+pub fn proc_picodata_version() -> &'static str {
+    PICODATA_VERSION
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -95,7 +105,7 @@ pub fn proc_picodata_version() -> String {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[proc]
-pub fn proc_version_info() -> VersionInfo<'static> {
+pub fn proc_version_info() -> &'static VersionInfo {
     VersionInfo::current()
 }
 
@@ -631,7 +641,7 @@ pub struct RuntimeInfoDeprecated<'a> {
     pub internal: InternalInfo<'a>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub http: Option<HttpServerInfo>,
-    pub version_info: VersionInfo<'a>,
+    pub version_info: VersionInfo,
     pub slab_info: SlabInfo,
 }
 
@@ -672,7 +682,7 @@ pub struct RuntimeInfo<'a> {
     pub internal: InternalInfo<'a>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub http: Option<HttpServerInfo>,
-    pub version_info: VersionInfo<'a>,
+    pub version_info: VersionInfo,
     pub slab_info: SlabInfo,
     pub slab_system_info: SlabInfo,
 }
@@ -701,7 +711,7 @@ impl RuntimeInfo<'static> {
             raft: RaftInfo::get(node),
             internal: InternalInfo::get(node),
             http,
-            version_info: VersionInfo::current(),
+            version_info: VersionInfo::current().clone(),
             slab_info,
             slab_system_info,
         })
