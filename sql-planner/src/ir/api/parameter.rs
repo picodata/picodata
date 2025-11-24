@@ -17,18 +17,13 @@ use time::{OffsetDateTime, Time};
 
 use crate::ir;
 use crate::ir::options::{OptionParamValue, OptionSpec};
-use ahash::AHashSet;
 
 // Calculate the maximum parameter index value.
 // For example, the result for a query `SELECT $1, $1, $2` will be 2.
-fn count_max_parameter_index(
-    plan: &Plan,
-    param_node_ids: &AHashSet<NodeId>,
-) -> Result<usize, SbroadError> {
+fn count_max_parameter_index(plan: &Plan) -> Result<usize, SbroadError> {
     let mut params_count = 0;
-    for param_id in param_node_ids {
-        let param = plan.get_expression_node(*param_id)?;
-        if let Expression::Parameter(Parameter { index, .. }) = param {
+    for node in plan.nodes.iter32() {
+        if let Node32::Parameter(Parameter { index, .. }) = node {
             params_count = std::cmp::max(*index as usize, params_count);
         }
     }
@@ -36,18 +31,12 @@ fn count_max_parameter_index(
 }
 
 /// Replace parameters in the plan.
-fn bind_params(
-    plan: &mut Plan,
-    param_node_ids: &AHashSet<NodeId>,
-    values: &[Value],
-) -> Result<(), SbroadError> {
-    for param_id in param_node_ids {
-        let node = plan.get_expression_node(*param_id)?;
-        if let Expression::Parameter(Parameter { index, .. }) = node {
-            let value = values[(index - 1) as usize].clone();
+fn bind_params(plan: &mut Plan, values: &[Value]) -> Result<(), SbroadError> {
+    for node in plan.nodes.iter32_mut() {
+        if let Node32::Parameter(Parameter { index, .. }) = node {
+            let value = values[(*index - 1) as usize].clone();
             let constant = Constant { value };
-            plan.nodes
-                .replace32(*param_id, Node32::Constant(constant))?;
+            *node = Node32::Constant(constant);
         }
     }
 
@@ -80,26 +69,6 @@ impl Plan {
             .map(|&OptionSpec { kind, ref val }| OptionSpec {
                 kind,
                 val: resolve_value(param_values, val),
-            })
-            .collect()
-    }
-
-    // Gather all parameter nodes from the tree to a hash set.
-    #[must_use]
-    pub fn get_param_set(&self) -> AHashSet<NodeId> {
-        self.nodes
-            .arena32
-            .iter()
-            .enumerate()
-            .filter_map(|(id, node)| {
-                if let Node32::Parameter(_) = node {
-                    Some(NodeId {
-                        offset: u32::try_from(id).unwrap(),
-                        arena_type: ArenaType::Arena32,
-                    })
-                } else {
-                    None
-                }
             })
             .collect()
     }
@@ -199,10 +168,9 @@ impl Plan {
         values: &[Value],
         default_options: ir::Options,
     ) -> Result<(), SbroadError> {
-        let param_node_ids = self.get_param_set();
         // As parameter indexes are used as indexes in parameters array,
         // we expect that the number of parameters is not less than the max index.
-        let params_count = count_max_parameter_index(self, &param_node_ids)?;
+        let params_count = count_max_parameter_index(self)?;
 
         // Extra values are ignored.
         if params_count > values.len() {
@@ -232,7 +200,7 @@ impl Plan {
         tree.populate_nodes(top_id);
         let nodes = tree.take_nodes();
 
-        bind_params(self, &param_node_ids, values)?;
+        bind_params(self, values)?;
 
         self.update_value_rows(&nodes)?;
         self.recalculate_ref_types()?;
