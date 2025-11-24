@@ -50,6 +50,7 @@
   error code.
 - tlua::LuaFunction::load_file_contents function which allows to provide a
   filename for better lua error messages.
+- Clarification difference between `tlua::Nil` & `tlua::Null` in doc-comments.
 
 ### Fixed
 
