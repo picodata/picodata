@@ -13,6 +13,7 @@ with the `YY.MINOR.MICRO` scheme.
 ### Fixes
 - DDL queries with WAIT APPLIED GLOBALLY option (on by default) will no longer
   be blocked by Offline instances.
+- Auto-populate default options on restore to avoid panics.
 
 
 ## [25.4.4] - 2025-11-12

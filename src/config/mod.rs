@@ -220,6 +220,22 @@ Using configuration file '{args_path}'.");
         Ok(config_ref)
     }
 
+    /// Fulfill the unset config fields which have defaults
+    ///
+    /// # Errors:
+    /// - Invalid `Self`
+    pub fn populate_restore_defaults(&mut self) -> Result<(), Error> {
+        self.validate_from_file()?;
+        let mut parameter_sources = ParameterSourcesMap::default();
+
+        #[rustfmt::skip]
+		mark_non_none_field_sources(&mut parameter_sources, self, ParameterSource::ConfigFile);
+
+        self.set_defaults_explicitly(&parameter_sources);
+
+        Ok(())
+    }
+
     #[inline(always)]
     pub fn get() -> &'static Self {
         // SAFETY:

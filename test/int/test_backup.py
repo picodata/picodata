@@ -1038,6 +1038,28 @@ def test_restore_is_failing_after_new_instance_is_added(cluster: Cluster):
         cluster.restore(new_backup_folder_name)
 
 
+def test_restore_without_cfg_defaults(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        default:
+            replication_factor: 1
+            can_vote: true
+"""
+    )
+
+    cluster.deploy(instance_count=1, wait_online=False)
+    i1, *_ = cluster.wait_online()
+    cluster.wait_until_buckets_balanced()
+
+    ddl = i1.sql("BACKUP", timeout=40)
+    new_backup_folder_name = ddl[0][0]
+
+    cluster.restore(new_backup_folder_name)
+
+
 ################### TODO TESTS ###################
 
 # * BACKUP is failing when there are no memory left
