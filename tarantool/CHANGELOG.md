@@ -54,6 +54,7 @@
 - tlua::BytesInLua helper struct for reading non-utf8 strings from lua without
   extra allocations.
 - impl LuaRead & Push for SmolStr (optionally under `extra_impls` feature flag)
+- impl msgpack::Encode & Decode for SmolStr (optionally under `extra_impls` feature flag)
 
 ### Fixed
 

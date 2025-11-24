@@ -4,6 +4,8 @@ use crate::Result;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 
 pub mod encode;
+#[cfg(feature = "extra_impls")]
+pub mod smol_str;
 pub use encode::*;
 pub use rmp::{self, Marker};
 
