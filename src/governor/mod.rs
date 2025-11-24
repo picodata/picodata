@@ -59,6 +59,7 @@ use futures::future::try_join;
 use futures::future::try_join_all;
 use plan::action_plan;
 use plan::stage::*;
+use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::ops::ControlFlow;
 use std::path::PathBuf;
@@ -90,7 +91,7 @@ impl Loop {
     const RETRY_TIMEOUT: Duration = Duration::from_millis(250);
 
     async fn collect_proc_apply_schema_change(
-        targets: Vec<(InstanceName, String)>,
+        targets: Vec<(InstanceName, SmolStr)>,
         rpc: rpc::ddl_apply::Request,
         pool: Rc<ConnectionPool>,
         rpc_timeout: Duration,
@@ -133,7 +134,7 @@ impl Loop {
     }
 
     async fn collect_proc_apply_backup(
-        targets: Vec<(InstanceName, String)>,
+        targets: Vec<(InstanceName, SmolStr)>,
         rpc: rpc::ddl_backup::Request,
         pool: Rc<ConnectionPool>,
         rpc_timeout: Duration,
@@ -176,7 +177,7 @@ impl Loop {
     }
 
     async fn collect_proc_backup_abort_clear(
-        targets: Vec<(InstanceName, String)>,
+        targets: Vec<(InstanceName, SmolStr)>,
         rpc: rpc::ddl_backup::RequestClear,
         pool: Rc<ConnectionPool>,
         rpc_timeout: Duration,

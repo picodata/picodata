@@ -1,9 +1,5 @@
 //! Remote procedure calls
 
-use ::tarantool::network::AsClient as _;
-use ::tarantool::network::Client;
-use ::tarantool::tuple::{DecodeOwned, Encode};
-
 use crate::has_states;
 use crate::instance::Instance;
 use crate::instance::InstanceName;
@@ -14,13 +10,15 @@ use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::{node, ConnectionType, Result};
 use crate::util::relay_connection_config;
-
+use ::tarantool::network::AsClient as _;
+use ::tarantool::network::Client;
+use ::tarantool::tuple::{DecodeOwned, Encode};
+use serde::de::DeserializeOwned;
+use smol_str::SmolStr;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt::Debug;
 use std::io;
-
-use serde::de::DeserializeOwned;
-use std::collections::HashSet;
 
 pub mod before_online;
 pub mod ddl_apply;
@@ -43,7 +41,7 @@ static mut STATIC_PROCS: Option<HashSet<String>> = None;
 pub fn replicasets_masters<'a>(
     replicasets: &HashMap<&ReplicasetName, &'a Replicaset>,
     instances: &'a [Instance],
-) -> Vec<(&'a InstanceName, &'a String)> {
+) -> Vec<(&'a InstanceName, &'a SmolStr)> {
     let mut masters = Vec::with_capacity(replicasets.len());
     // TODO: invert this loop to improve performance
     // `for instances { replicasets.get() }` instead of `for replicasets { instances.find() }`

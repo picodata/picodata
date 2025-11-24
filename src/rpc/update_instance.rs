@@ -1,3 +1,4 @@
+use super::join::compare_picodata_versions;
 use crate::cas;
 use crate::column_name;
 use crate::failure_domain::FailureDomain;
@@ -15,12 +16,11 @@ use crate::traft::op::{Dml, Op};
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
 use crate::util::Uppercase;
+use smol_str::SmolStr;
 use std::collections::HashSet;
 use std::time::Duration;
 use tarantool::fiber;
 use tarantool::space::UpdateOps;
-
-use super::join::compare_picodata_versions;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -52,8 +52,8 @@ crate::define_rpc_request! {
     #[derive(Default)]
     pub struct Request {
         pub instance_name: InstanceName,
-        pub cluster_name: String,
-        pub cluster_uuid: String,
+        pub cluster_name: SmolStr,
+        pub cluster_uuid: SmolStr,
         /// Only allowed to be set by leader
         pub current_state: Option<State>,
         /// Can be set by instance
@@ -62,7 +62,7 @@ crate::define_rpc_request! {
         /// If `true` then the resulting CaS request is not retried upon failure.
         pub dont_retry: bool,
         /// Only set by instance when it is waking up.
-        pub picodata_version: Option<String>,
+        pub picodata_version: Option<SmolStr>,
     }
 
     pub struct Response {}
@@ -72,8 +72,8 @@ impl Request {
     #[inline]
     pub fn new(
         instance_name: InstanceName,
-        cluster_name: impl Into<String>,
-        cluster_uuid: impl Into<String>,
+        cluster_name: impl Into<SmolStr>,
+        cluster_uuid: impl Into<SmolStr>,
     ) -> Self {
         Self {
             instance_name,
@@ -108,7 +108,7 @@ impl Request {
         self
     }
     #[inline]
-    pub fn with_picodata_version(mut self, value: String) -> Self {
+    pub fn with_picodata_version(mut self, value: SmolStr) -> Self {
         self.picodata_version = Some(value);
         self
     }

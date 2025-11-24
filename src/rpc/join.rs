@@ -17,6 +17,8 @@ use crate::traft::{self};
 use crate::traft::{error::Error, node, Address, PeerAddress, Result};
 use crate::version::Version;
 use smol_str::format_smolstr;
+use smol_str::SmolStr;
+use smol_str::ToSmolStr;
 use std::collections::HashSet;
 use std::time::Duration;
 use tarantool::fiber;
@@ -47,14 +49,14 @@ crate::define_rpc_request! {
 
     /// Request to join the cluster.
     pub struct Request {
-        pub cluster_name: String,
+        pub cluster_name: SmolStr,
         pub instance_name: Option<InstanceName>,
         pub replicaset_name: Option<ReplicasetName>,
-        pub advertise_address: String,
-        pub pgproto_advertise_address: String,
+        pub advertise_address: SmolStr,
+        pub pgproto_advertise_address: SmolStr,
         pub failure_domain: FailureDomain,
-        pub tier: String,
-        pub picodata_version: String,
+        pub tier: SmolStr,
+        pub picodata_version: SmolStr,
         pub uuid: String,
     }
 
@@ -393,7 +395,7 @@ pub fn build_instance(
             _ => {
                 // Create a new replicaset
                 replicaset_name = requested_replicaset_name.clone();
-                replicaset_uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
+                replicaset_uuid = uuid::Uuid::new_v4().to_hyphenated().to_smolstr();
             }
         }
     } else {
@@ -407,7 +409,7 @@ pub fn build_instance(
             Err(new_replicaset_name) => {
                 // Create a new replicaset
                 replicaset_name = new_replicaset_name;
-                replicaset_uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
+                replicaset_uuid = uuid::Uuid::new_v4().to_hyphenated().to_smolstr();
             }
         }
     }
@@ -442,7 +444,7 @@ pub fn build_instance(
         instance_name = choose_instance_name(storage, replicaset_name.clone());
     }
 
-    let instance_uuid = uuid.to_string();
+    let instance_uuid = uuid.to_smolstr();
 
     let instance = Instance {
         raft_id,
@@ -454,7 +456,7 @@ pub fn build_instance(
         target_state: State::new(Offline, 0),
         failure_domain: failure_domain.clone(),
         tier: tier.name.clone(),
-        picodata_version: picodata_version.to_string(),
+        picodata_version: picodata_version.into(),
     };
 
     Ok((instance, false))

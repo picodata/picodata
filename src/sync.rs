@@ -1,16 +1,5 @@
 //! Picodata synchronization primitives.
 
-use ::tarantool::tuple::Encode;
-use ::tarantool::vclock::Vclock;
-use ::tarantool::{fiber, proc};
-use futures::stream::FuturesOrdered;
-use futures::{Future, StreamExt};
-use serde::{Deserialize, Serialize};
-
-use std::collections::HashSet;
-use std::rc::Rc;
-use std::time::Duration;
-
 use crate::instance::InstanceName;
 use crate::rpc::RequestArgs;
 use crate::topology_cache::TopologyCache;
@@ -21,6 +10,16 @@ use crate::traft::RaftIndex;
 use crate::util::duration_from_secs_f64_clamped;
 use crate::{proc_name, tlog};
 use crate::{rpc, traft};
+use ::tarantool::tuple::Encode;
+use ::tarantool::vclock::Vclock;
+use ::tarantool::{fiber, proc};
+use futures::stream::FuturesOrdered;
+use futures::{Future, StreamExt};
+use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
+use std::collections::HashSet;
+use std::rc::Rc;
+use std::time::Duration;
 use tarantool::time::Instant;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -296,7 +295,7 @@ mod tests {
         // Connect to the current Tarantool instance
         let pool = ConnectionPool::new(node.storage.clone(), Default::default());
         let l = ::tarantool::lua_state();
-        let listen: String = l.eval("return box.info.listen").unwrap();
+        let listen: SmolStr = l.eval("return box.info.listen").unwrap();
 
         let instance = Instance {
             raft_id: 1337,

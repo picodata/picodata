@@ -96,6 +96,7 @@ use ::tarantool::tuple::RawByteBuf;
 use ::tarantool::tuple::{Decode, Tuple};
 use picodata_plugin::util::DisplayErrorLocation;
 use protobuf::Message as _;
+use smol_str::format_smolstr;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::ops::ControlFlow;
@@ -1285,8 +1286,8 @@ impl NodeImpl {
                             message: "created table `{name}`",
                             title: "create_table",
                             severity: Medium,
-                            name: &name,
-                            initiator: initiator_def.name,
+                            name: %name,
+                            initiator: %initiator_def.name,
                         );
                     }
 
@@ -1302,8 +1303,8 @@ impl NodeImpl {
                             message: "dropped table `{name}`",
                             title: "drop_table",
                             severity: Medium,
-                            name: &name,
-                            initiator: initiator_def.name,
+                            name: %name,
+                            initiator: %initiator_def.name,
                         );
                     }
 
@@ -1331,7 +1332,7 @@ impl NodeImpl {
                             message: "truncated table `{name}`",
                             title: "truncate_table",
                             severity: Medium,
-                            name: &name,
+                            name: %name,
                             initiator: initiator_def.name,
                         );
                     }
@@ -1358,8 +1359,8 @@ impl NodeImpl {
                             message: "renamed table `{old_name}` to `{new_name}`",
                             title: "rename_table",
                             severity: Medium,
-                            old_name: &old_name,
-                            new_name: &new_name,
+                            old_name: %old_name,
+                            new_name: %new_name,
                             initiator: initiator_def.name,
                         );
                     }
@@ -1388,7 +1389,7 @@ impl NodeImpl {
                             message: "changed table format for `{name}`",
                             title: "change_table_format",
                             severity: Medium,
-                            name: &name,
+                            name: %name,
                             initiator: initiator_def.name,
                         );
                     }
@@ -1407,7 +1408,7 @@ impl NodeImpl {
                             message: "created procedure `{name}`",
                             title: "create_procedure",
                             severity: Medium,
-                            name: &name,
+                            name: %name,
                             initiator: initiator_def.name,
                         );
                     }
@@ -1424,7 +1425,7 @@ impl NodeImpl {
                             message: "dropped procedure `{name}`",
                             title: "drop_procedure",
                             severity: Medium,
-                            name: &name,
+                            name: %name,
                             initiator: initiator_def.name,
                         );
                     }
@@ -1445,8 +1446,8 @@ impl NodeImpl {
                             message: "renamed procedure `{old_name}` to `{new_name}`",
                             title: "rename_procedure",
                             severity: Medium,
-                            old_name: &old_name,
-                            new_name: &new_name,
+                            old_name: %old_name,
+                            new_name: %new_name,
                             initiator: initiator_def.name,
                         );
                     }
@@ -1469,7 +1470,7 @@ impl NodeImpl {
                             message: "created index `{name}`",
                             title: "create_index",
                             severity: Medium,
-                            name: &name,
+                            name: %name,
                             initiator: initiator_def.name,
                         );
                     }
@@ -1492,7 +1493,7 @@ impl NodeImpl {
                             message: "dropped index `{name}`",
                             title: "drop_index",
                             severity: Medium,
-                            name: &index.name,
+                            name: %index.name,
                             initiator: initiator_def.name,
                         );
                     }
@@ -1515,8 +1516,8 @@ impl NodeImpl {
                             message: "renamed index `{old_name}` to `{new_name}`",
                             title: "rename_index",
                             severity: Medium,
-                            old_name: &old_name,
-                            new_name: &new_name,
+                            old_name: %old_name,
+                            new_name: %new_name,
                             initiator: initiator_def.name,
                         );
                     }
@@ -2117,7 +2118,7 @@ impl NodeImpl {
                 let primary_key_def = IndexDef {
                     table_id: id,
                     id: 0,
-                    name: format!("{id}_pkey"),
+                    name: format_smolstr!("{id}_pkey"),
                     ty: IndexType::Tree,
                     opts: vec![IndexOption::Unique(true)],
                     parts: primary_key,

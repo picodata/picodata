@@ -29,6 +29,7 @@ use ::tarantool::tuple::Decode;
 use ::tarantool::vclock::Vclock;
 use indoc::formatdoc;
 use indoc::indoc;
+use smol_str::SmolStr;
 use std::time::Duration;
 
 #[inline(always)]
@@ -155,13 +156,9 @@ pub(crate) fn setup() {
         "},
         tlua::Function::new(move || -> traft::Result<_> {
             let node = node::global()?;
-            let tier = node
-                .raft_storage
-                .tier()?
-                .expect("tier for instance should exists");
-
-            let Some(tier) = node.storage.tiers.by_name(&tier)? else {
-                return Err(Error::NoSuchTier(tier));
+            let tier = node.topology_cache.my_tier_name();
+            let Some(tier) = node.storage.tiers.by_name(tier)? else {
+                return Err(Error::NoSuchTier(tier.into()));
             };
             let config = crate::vshard::VshardConfig::from_storage(
                 &node.storage,
@@ -1427,7 +1424,7 @@ pub(crate) fn setup() {
                 inherit_config: Option<bool>,
                 inherit_topology: Option<bool>,
             }
-            tlua::function3(|name: String, version: String, opts: Option<Opts>| -> traft::Result<()> {
+            tlua::function3(|name: SmolStr, version: SmolStr, opts: Option<Opts>| -> traft::Result<()> {
                 let mut timeout = Duration::from_secs(10);
                 let mut if_not_exists = false;
                 let mut inherit_opts = InheritOpts::default();
@@ -1469,7 +1466,7 @@ pub(crate) fn setup() {
                 timeout: Option<f64>,
                 on_start_timeout: Option<f64>,
             }
-            tlua::function3(|name: String, version: String, opts: Option<Opts>| -> traft::Result<()> {
+            tlua::function3(|name: SmolStr, version: SmolStr, opts: Option<Opts>| -> traft::Result<()> {
                 let mut on_start_timeout = Duration::from_secs(5);
                 let mut timeout = Duration::from_secs(10);
                 if let Some(opts) = opts {
@@ -1510,7 +1507,7 @@ pub(crate) fn setup() {
             struct Opts {
                 timeout: Option<f64>,
             }
-            tlua::function5(|plugin_name: String, plugin_version: String, service_name: String, tier: String, opts: Option<Opts>| -> traft::Result<()> {
+            tlua::function5(|plugin_name: SmolStr, plugin_version: SmolStr, service_name: String, tier: String, opts: Option<Opts>| -> traft::Result<()> {
                 let mut timeout = Duration::from_secs(10);
                 if let Some(opts) = opts {
                     if let Some(t) = opts.timeout {
@@ -1553,7 +1550,7 @@ pub(crate) fn setup() {
             struct Opts {
                 timeout: Option<f64>,
             }
-            tlua::function5(|plugin_name: String, plugin_version: String, service_name: String, tier: String, opts: Option<Opts>| -> traft::Result<()> {
+            tlua::function5(|plugin_name: SmolStr, plugin_version: SmolStr, service_name: String, tier: String, opts: Option<Opts>| -> traft::Result<()> {
                 let mut timeout = Duration::from_secs(10);
                 if let Some(opts) = opts {
                     if let Some(t) = opts.timeout {
@@ -1594,7 +1591,7 @@ pub(crate) fn setup() {
             struct Opts {
                 timeout: Option<f64>,
             }
-            tlua::function3(|name: String, version: String, opts: Option<Opts>| -> traft::Result<()> {
+            tlua::function3(|name: SmolStr, version: SmolStr, opts: Option<Opts>| -> traft::Result<()> {
                 let mut timeout = Duration::from_secs(10);
                 if let Some(opts) = opts {
                     if let Some(t) = opts.timeout {
@@ -1629,14 +1626,14 @@ pub(crate) fn setup() {
             struct Opts {
                 timeout: Option<f64>,
             }
-            tlua::function3(|name: String, version: String, opts: Option<Opts>| -> traft::Result<()> {
+            tlua::function3(|name: SmolStr, version: SmolStr, opts: Option<Opts>| -> traft::Result<()> {
                 let mut timeout = Duration::from_secs(10);
                 if let Some(opts) = opts {
                     if let Some(t) = opts.timeout {
                         timeout = duration_from_secs_f64_clamped(t);
                     }
                 }
-                plugin::drop_plugin(&PluginIdentifier::new(name, version),  false, false, timeout)
+                plugin::drop_plugin(&PluginIdentifier::new(name, version), false, false, timeout)
             })
         },
     );
@@ -1666,7 +1663,7 @@ pub(crate) fn setup() {
                 timeout: Option<f64>,
                 rollback_timeout: Option<f64>,
             }
-            tlua::function3(|name: String, version: String, opts: Option<Opts>| -> traft::Result<()> {
+            tlua::function3(|name: SmolStr, version: SmolStr, opts: Option<Opts>| -> traft::Result<()> {
                 let mut timeout = Duration::from_secs(10);
                 let mut rollback_timeout = Duration::from_secs(10);
                 if let Some(opts) = opts {
@@ -1705,7 +1702,7 @@ pub(crate) fn setup() {
             struct Opts {
                 timeout: Option<f64>,
             }
-            tlua::function3(|name: String, version: String, opts: Option<Opts>| -> traft::Result<()> {
+            tlua::function3(|name: SmolStr, version: SmolStr, opts: Option<Opts>| -> traft::Result<()> {
                 let mut timeout = Duration::from_secs(10);
                 if let Some(opts) = opts {
                     if let Some(t) = opts.timeout {

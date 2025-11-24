@@ -63,7 +63,11 @@ pub fn get_tier_info(tier_name: &str) -> Result<Tier, SbroadError> {
 
     let topology_ref = node.topology_cache.get();
     let tier = topology_ref.tier_by_name(tier_name).map_err(|e| {
-        SbroadError::FailedTo(Action::Get, None, format_smolstr!("tier info: {}", e))
+        SbroadError::FailedTo(
+            Action::Get,
+            None,
+            format_smolstr!("tier object by tier name: {e}"),
+        )
     })?;
 
     Ok(Tier {
@@ -84,12 +88,12 @@ fn get_current_tier_name() -> Result<&'static str, SbroadError> {
 #[derive(Default)]
 pub struct Tier {
     bucket_count: u64,
-    name: String,
+    name: SmolStr,
 }
 
 impl Tier {
     fn name(&self) -> Option<SmolStr> {
-        Some(SmolStr::from(&self.name))
+        Some(self.name.clone())
     }
 }
 

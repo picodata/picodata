@@ -119,7 +119,7 @@ pub struct PluginManager {
     ///
     /// There are two mutex here to avoid the situation when one long service callback
     /// will block other services.
-    plugins: Rc<fiber::Mutex<HashMap<String, PluginState>>>,
+    plugins: Rc<fiber::Mutex<HashMap<SmolStr, PluginState>>>,
 
     /// A connection pool for plugin RPC needs.
     pub(crate) pool: ConnectionPool,
@@ -142,8 +142,7 @@ impl PluginManager {
     /// Create a new plugin manager.
     pub fn new(storage: Catalog, tls_connector: Option<TlsConnector>) -> Self {
         let (rx, tx) = fiber::channel::Channel::new(1000).into_clones();
-        let plugins: Rc<fiber::Mutex<HashMap<String, PluginState>>> =
-            Rc::new(fiber::Mutex::default());
+        let plugins: Rc<fiber::Mutex<HashMap<_, PluginState>>> = Rc::new(fiber::Mutex::default());
 
         let options = WorkerOptions {
             tls_connector,
@@ -172,8 +171,8 @@ impl PluginManager {
 
     fn load_plugin_dir(&self, ident: &PluginIdentifier) -> Result<ReadDir> {
         let share_dir = PicodataConfig::get().instance.share_dir();
-        let plugin_dir = share_dir.join(&ident.name);
-        let plugin_dir = plugin_dir.join(&ident.version);
+        let plugin_dir = share_dir.join(&*ident.name);
+        let plugin_dir = plugin_dir.join(&*ident.version);
         Ok(fs::read_dir(plugin_dir)?)
     }
 
@@ -325,7 +324,7 @@ impl PluginManager {
             .expect("storage should not fail");
 
         // filter services according to topology
-        let topology_ctx = topology::TopologyContext::current()?;
+        let topology_ctx = topology::TopologyContext::current();
         let service_defs = service_defs
             .into_iter()
             .filter(|svc_def| topology::probe_service(&topology_ctx, svc_def))
@@ -380,7 +379,11 @@ impl PluginManager {
                 }
 
                 items.extend(self.plugins.lock()[&ident.name].services.iter().map(|svc| {
-                    ServiceRouteItem::new_healthy(instance_name.into(), &ident, &svc.id.service)
+                    ServiceRouteItem::new_healthy(
+                        instance_name.into(),
+                        &ident,
+                        svc.id.service.clone(),
+                    )
                 }));
             }
             if items.is_empty() {
@@ -519,7 +522,7 @@ impl PluginManager {
                         let route = ServiceRouteItem::new_healthy(
                             instance_name.into(),
                             plugin_identity,
-                            &id.service,
+                            id.service.clone(),
                         );
                         return Ok(PreconditionCheckResult::DoOp((
                             build_service_routes_replace_dml(&[route]),
@@ -538,7 +541,7 @@ impl PluginManager {
                     let route = ServiceRouteItem::new_poison(
                         instance_name.into(),
                         plugin_identity,
-                        &id.service,
+                        id.service.clone(),
                     );
                     return Ok(PreconditionCheckResult::DoOp((
                         build_service_routes_replace_dml(&[route]),
@@ -605,7 +608,7 @@ impl PluginManager {
                                 routes_to_replace.push(ServiceRouteItem::new_healthy(
                                     instance_name.into(),
                                     &plugin_identity,
-                                    &id.service,
+                                    id.service.clone(),
                                 ));
                             }
                         }
@@ -620,7 +623,7 @@ impl PluginManager {
                             routes_to_replace.push(ServiceRouteItem::new_poison(
                                 instance_name.into(),
                                 &plugin_identity,
-                                &id.service,
+                                id.service.clone(),
                             ));
                         }
                     }

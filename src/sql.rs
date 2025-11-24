@@ -395,7 +395,7 @@ fn dispatch_bound_statement_impl<'p>(
                 if_not_exists,
                 timeout,
             }) => plugin::create_plugin(
-                PluginIdentifier::new(name.to_string(), version.to_string()),
+                PluginIdentifier::new(name.clone(), version.clone()),
                 timeout_from_decimal(*timeout)?,
                 *if_not_exists,
                 InheritOpts {
@@ -409,7 +409,7 @@ fn dispatch_bound_statement_impl<'p>(
                 version,
                 timeout,
             }) => plugin::enable_plugin(
-                &PluginIdentifier::new(name.to_string(), version.to_string()),
+                &PluginIdentifier::new(name.clone(), version.clone()),
                 // TODO this option should be un-hardcoded and moved into picodata configuration
                 Duration::from_secs(10),
                 timeout_from_decimal(*timeout)?,
@@ -419,7 +419,7 @@ fn dispatch_bound_statement_impl<'p>(
                 version,
                 timeout,
             }) => plugin::disable_plugin(
-                &PluginIdentifier::new(name.to_string(), version.to_string()),
+                &PluginIdentifier::new(name.clone(), version.clone()),
                 timeout_from_decimal(*timeout)?,
             )?,
             Plugin::Drop(DropPlugin {
@@ -429,7 +429,7 @@ fn dispatch_bound_statement_impl<'p>(
                 with_data,
                 timeout,
             }) => plugin::drop_plugin(
-                &PluginIdentifier::new(name.to_string(), version.to_string()),
+                &PluginIdentifier::new(name.clone(), version.clone()),
                 *with_data,
                 *if_exists,
                 timeout_from_decimal(*timeout)?,
@@ -439,7 +439,7 @@ fn dispatch_bound_statement_impl<'p>(
                 version,
                 opts,
             }) => plugin::migration_up(
-                &PluginIdentifier::new(name.to_string(), version.to_string()),
+                &PluginIdentifier::new(name.clone(), version.clone()),
                 timeout_from_decimal(opts.timeout)?,
                 timeout_from_decimal(opts.rollback_timeout)?,
             )?,
@@ -450,7 +450,7 @@ fn dispatch_bound_statement_impl<'p>(
                 tier,
                 timeout,
             }) => plugin::update_service_tiers(
-                &PluginIdentifier::new(plugin_name.to_string(), version.to_string()),
+                &PluginIdentifier::new(plugin_name.clone(), version.clone()),
                 service_name,
                 tier,
                 TopologyUpdateOpKind::Add,
@@ -463,7 +463,7 @@ fn dispatch_bound_statement_impl<'p>(
                 tier,
                 timeout,
             }) => plugin::update_service_tiers(
-                &PluginIdentifier::new(plugin_name.to_string(), version.to_string()),
+                &PluginIdentifier::new(plugin_name.clone(), version.clone()),
                 service_name,
                 tier,
                 TopologyUpdateOpKind::Remove,
@@ -490,7 +490,7 @@ fn dispatch_bound_statement_impl<'p>(
                     .collect::<Vec<_>>();
 
                 plugin::change_config_atom(
-                    &PluginIdentifier::new(plugin_name.to_string(), version.to_string()),
+                    &PluginIdentifier::new(plugin_name.clone(), version.clone()),
                     &config,
                     timeout_from_decimal(*timeout)?,
                 )?
@@ -1100,7 +1100,7 @@ fn alter_user_ir_node_to_op_or_result(
                 Some(_) => return Err(error::AlreadyExists::User(new_name.clone()).into()),
                 None => Ok(Continue(Op::Acl(OpAcl::RenameUser {
                     user_id: user_def.id,
-                    name: new_name.to_string(),
+                    name: new_name.clone(),
                     initiator: current_user,
                     schema_version,
                 }))),
@@ -1188,7 +1188,7 @@ fn acl_ir_node_to_op_or_result(
             let id = node.get_next_grantee_id()?;
             let role_def = UserDef {
                 id,
-                name: name.to_string(),
+                name: name.clone(),
                 // This field will be updated later.
                 schema_version,
                 owner: current_user,
@@ -1225,7 +1225,7 @@ fn acl_ir_node_to_op_or_result(
             let id = node.get_next_grantee_id()?;
             let user_def = UserDef {
                 id,
-                name: name.to_string(),
+                name: name.clone(),
                 schema_version,
                 auth: Some(auth.clone()),
                 owner: current_user,
@@ -1427,7 +1427,8 @@ fn alter_system_ir_node_to_op_or_result(
                 // reset all
                 None => {
                     let tiers = storage.tiers.iter()?.map(|tier| tier.name).collect::<Vec<_>>();
-                    let dmls = crate::config::get_defaults_for_all_alter_system_parameters(&tiers.iter().map(String::as_str).collect::<Vec<_>>())?;
+                    let tiers = tiers.iter().map(|s| &**s).collect::<Vec<_>>();
+                    let dmls = crate::config::get_defaults_for_all_alter_system_parameters(&tiers)?;
                     Ok(Continue(Op::BatchDml { ops: dmls }))
                 }
             }
@@ -1477,7 +1478,7 @@ fn ddl_ir_node_to_op_or_result(
             let format = format
                 .iter()
                 .map(|f| Field {
-                    name: f.name.to_string(),
+                    name: f.name.clone(),
                     r#type: FieldType::from(&f.data_type),
                     is_nullable: f.is_nullable,
                 })
@@ -1488,14 +1489,12 @@ fn ddl_ir_node_to_op_or_result(
                 DistributionParam::Global
             };
 
-            let primary_key = primary_key.iter().cloned().map(String::from).collect();
-            let sharding_key = sharding_key
-                .as_ref()
-                .map(|sh_key| sh_key.iter().cloned().map(String::from).collect());
+            let primary_key = primary_key.clone();
+            let sharding_key = sharding_key.clone();
 
             let mut params = CreateTableParams {
                 id: None,
-                name: name.to_string(),
+                name: name.clone(),
                 format,
                 primary_key,
                 distribution,
@@ -1505,7 +1504,7 @@ fn ddl_ir_node_to_op_or_result(
                 engine: Some(*engine_type),
                 timeout: None,
                 owner: current_user,
-                tier: tier.as_ref().map(SmolStr::to_string),
+                tier: tier.clone(),
             };
             params.validate()?;
 
@@ -1591,10 +1590,10 @@ fn ddl_ir_node_to_op_or_result(
             let security = RoutineSecurity::default();
 
             let params = CreateProcParams {
-                name: name.to_string(),
+                name: name.clone(),
                 params,
                 language,
-                body: body.to_string(),
+                body: body.clone(),
                 security,
                 owner: current_user,
             };
@@ -1657,8 +1656,8 @@ fn ddl_ir_node_to_op_or_result(
             ..
         }) => {
             let params = RenameRoutineParams {
-                new_name: new_name.to_string(),
-                old_name: old_name.to_string(),
+                new_name: new_name.clone(),
+                old_name: old_name.clone(),
                 params: params.clone(),
             };
 
@@ -1742,11 +1741,11 @@ fn ddl_ir_node_to_op_or_result(
             }
             opts.shrink_to_fit();
 
-            let columns = columns.iter().cloned().map(String::from).collect();
+            let columns = columns.clone();
 
             let params = CreateIndexParams {
-                name: name.to_string(),
-                space_name: table_name.to_string(),
+                name: name.clone(),
+                space_name: table_name.clone(),
                 columns,
                 ty: *index_type,
                 opts,
@@ -1816,8 +1815,8 @@ fn ddl_ir_node_to_op_or_result(
                 ddl: OpDdl::RenameIndex {
                     space_id: index.table_id,
                     index_id: index.id,
-                    old_name: old_name.to_string(),
-                    new_name: new_name.to_string(),
+                    old_name: old_name.clone(),
+                    new_name: new_name.clone(),
                     initiator_id: current_user,
                     owner_id: table.owner,
                     schema_version,
@@ -1909,7 +1908,7 @@ fn ddl_ir_node_to_op_or_result(
                         ddl: OpDdl::RenameTable {
                             table_id: table.id,
                             old_name: table.name.clone(),
-                            new_name: new_table_name.to_string(),
+                            new_name: new_table_name.clone(),
                             initiator_id: current_user,
                             owner_id: table.owner,
                             schema_version,

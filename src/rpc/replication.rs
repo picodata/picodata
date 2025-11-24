@@ -48,6 +48,7 @@ use crate::traft::node::{Node, NodeImpl};
 #[allow(unused_imports)]
 use crate::traft::op::Op;
 use crate::traft::{node, RaftTerm, Result};
+use smol_str::SmolStr;
 use std::time::Duration;
 use tarantool::index::IteratorType;
 use tarantool::space::{Space, SystemSpace};
@@ -122,7 +123,7 @@ crate::define_rpc_request! {
         /// URIs of all replicas in the replicaset.
         /// See [tarantool documentation](https://www.tarantool.io/en/doc/latest/reference/configuration/#confval-replication)
         /// for more.
-        pub replicaset_peers: Vec<String>,
+        pub replicaset_peers: Vec<SmolStr>,
     }
 
     /// Response to [`ConfigureReplicationRequest`].

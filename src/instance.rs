@@ -6,6 +6,9 @@ use crate::traft::RaftId;
 use crate::util::Transition;
 use ::serde::{Deserialize, Serialize};
 use ::tarantool::tuple::Encode;
+use smol_str::format_smolstr;
+use smol_str::SmolStr;
+use smol_str::ToSmolStr;
 
 pub mod state;
 pub use state::State;
@@ -25,7 +28,7 @@ crate::define_smolstr_newtype! {
 pub struct Instance {
     /// Instances are identified by name.
     pub name: InstanceName,
-    pub uuid: String,
+    pub uuid: SmolStr,
 
     /// Used for identifying raft nodes.
     /// Must be unique in the raft group.
@@ -33,7 +36,7 @@ pub struct Instance {
 
     /// Name of a replicaset the instance belongs to.
     pub replicaset_name: ReplicasetName,
-    pub replicaset_uuid: String,
+    pub replicaset_uuid: SmolStr,
 
     /// The cluster's mind about actual state of this instance's activity.
     pub current_state: State,
@@ -47,11 +50,11 @@ pub struct Instance {
     pub failure_domain: FailureDomain,
 
     /// Instance tier. Each instance belongs to only one tier.
-    pub tier: String,
+    pub tier: SmolStr,
 
     /// Version of picodata executable which running this instance.
     /// It should match the version returned by `.proc_version_info` on this instance.
-    pub picodata_version: String,
+    pub picodata_version: SmolStr,
 }
 
 impl Encode for Instance {}
@@ -169,9 +172,9 @@ mod tests {
         Instance {
             raft_id,
             name: name.into(),
-            uuid: format!("{name}-uuid"),
+            uuid: format_smolstr!("{name}-uuid"),
             replicaset_name: replicaset_name.into(),
-            replicaset_uuid: format!("{replicaset_name}-uuid"),
+            replicaset_uuid: format_smolstr!("{replicaset_name}-uuid"),
             current_state: *state,
             target_state: *state,
             failure_domain: FailureDomain::default(),
@@ -480,7 +483,7 @@ mod tests {
         let storage = Catalog::for_tests();
         add_tier(&storage, DEFAULT_TIER, 1, true).unwrap();
         let global_cluster_version = PICODATA_VERSION;
-        let new_picodata_version = Version::try_from(global_cluster_version).expect("correct picodata version").next_by_minor().to_string();
+        let new_picodata_version = Version::try_from(global_cluster_version).expect("correct picodata version").next_by_minor().to_smolstr();
 
         let instance_name = "default_r1_1";
         let instance = dummy_instance(1, instance_name, "r1", &State::new(Online, 1));
@@ -506,7 +509,7 @@ mod tests {
         let instance_name = "default_r1_expelled";
         let expelled_instance = Instance {
             name: instance_name.into(),
-            uuid: format!("{instance_name}-uuid"),
+            uuid: format_smolstr!("{instance_name}-uuid"),
             raft_id: 2,
             replicaset_name: "r1".into(),
             replicaset_uuid: "r1-uuid".into(),
@@ -514,7 +517,7 @@ mod tests {
             target_state: State::new(Expelled, 0),
             failure_domain: FailureDomain::default(),
             tier: DEFAULT_TIER.into(),
-            picodata_version: PICODATA_VERSION.to_string(),
+            picodata_version: PICODATA_VERSION.into(),
         };
         add_instance(&storage, &expelled_instance).unwrap();
 

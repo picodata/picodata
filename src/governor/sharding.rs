@@ -70,7 +70,7 @@ pub(super) fn handle_sharding<'i>(
                 targets,
                 rpc,
                 cas,
-                tier_name: tier_name.to_string(),
+                tier_name: tier_name.into(),
             }
             .into(),
         ));
@@ -105,7 +105,7 @@ pub(super) fn handle_sharding_bootstrap<'i>(
             term,
             applied,
             timeout,
-            tier: tier_name.to_string(),
+            tier: tier_name.clone(),
         };
 
         let mut uops = UpdateOps::new();
@@ -120,7 +120,7 @@ pub(super) fn handle_sharding_bootstrap<'i>(
                 target,
                 rpc,
                 cas,
-                tier_name: tier_name.to_string(),
+                tier_name: tier_name.clone(),
             }
             .into(),
         ));

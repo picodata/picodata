@@ -1,26 +1,24 @@
-use crate::info::InstanceInfo;
 use crate::instance::{Instance, InstanceName};
-use crate::plugin;
-use crate::plugin::PluginError;
 use crate::schema::ServiceDef;
 use crate::traft::node;
+use smol_str::SmolStr;
 
 pub struct TopologyContext {
-    instance_tier: String,
+    instance_tier: SmolStr,
     instance_name: InstanceName,
 }
 
 impl TopologyContext {
     /// Return topology context for current instance.
-    pub fn current() -> plugin::Result<Self> {
+    pub fn current() -> Self {
         let node = node::global().expect("node must be already initialized");
-        let current_instance_info = InstanceInfo::try_get(node, None)
-            .map_err(|e| PluginError::TopologyError(e.to_string()))?;
+        let instance_name = node.topology_cache.my_instance_name().into();
+        let instance_tier = node.topology_cache.my_tier_name().into();
 
-        Ok(Self {
-            instance_name: current_instance_info.name,
-            instance_tier: current_instance_info.tier,
-        })
+        Self {
+            instance_name,
+            instance_tier,
+        }
     }
 
     /// Return topology context for instance.
@@ -42,6 +40,6 @@ pub fn probe_service(ctx: &TopologyContext, svc_def: &ServiceDef) -> bool {
 }
 
 /// Check that tiers is available in given topology context.
-pub fn probe_tiers(ctx: &TopologyContext, tiers: &[String]) -> bool {
+pub fn probe_tiers(ctx: &TopologyContext, tiers: &[SmolStr]) -> bool {
     tiers.contains(&ctx.instance_tier)
 }

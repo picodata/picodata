@@ -13,6 +13,7 @@ use crate::traft::op::{Dml, Op};
 use crate::util::Lexer;
 use crate::util::QuoteEscapingStyle;
 use crate::{sql, tlog, traft};
+use smol_str::SmolStr;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs::File;
@@ -74,7 +75,7 @@ where
     let (sender, receiver) = cbus::oneshot::channel(ENDPOINT_NAME);
 
     let jh = std::thread::Builder::new()
-        .name("blocking".to_owned())
+        .name("blocking".into())
         .spawn(|| {
             sender.send(f());
         })?;
@@ -152,7 +153,7 @@ pub struct MigrationInfo {
     /// in the system tables and is used for displaying diagnostics to the user.
     ///
     /// This should be a postfix of [`Self::full_filepath`].
-    filename_from_manifest: String,
+    filename_from_manifest: SmolStr,
 
     /// This is the full path to the file with the migration queries.
     /// It is used for accessing the file system.
@@ -165,12 +166,12 @@ pub struct MigrationInfo {
 
 impl MigrationInfo {
     /// Initializes the struct, doesn't read the file yet.
-    pub fn new_unparsed(plugin_ident: &PluginIdentifier, filename: String) -> Self {
+    pub fn new_unparsed(plugin_ident: &PluginIdentifier, filename: SmolStr) -> Self {
         let share_dir = PicodataConfig::get().instance.share_dir();
         let plugin_dir = share_dir
-            .join(&plugin_ident.name)
-            .join(&plugin_ident.version);
-        let fullpath = plugin_dir.join(&filename);
+            .join(&*plugin_ident.name)
+            .join(&*plugin_ident.version);
+        let fullpath = plugin_dir.join(&*filename);
 
         MigrationInfo {
             filename_from_manifest: filename,
@@ -234,7 +235,7 @@ fn read_migration_queries_from_file_async(
 #[inline]
 fn read_migration_queries_from_file(
     migration: &mut MigrationInfo,
-    substitutions: &HashMap<String, rmpv::Value>,
+    substitutions: &HashMap<SmolStr, rmpv::Value>,
 ) -> Result<(), BoxError> {
     let fullpath = &migration.full_filepath;
     let source = match std::fs::read_to_string(fullpath) {
@@ -252,7 +253,7 @@ fn read_migration_queries_from_file(
 fn parse_migration_queries(
     source: &str,
     migration: &mut MigrationInfo,
-    substitutions: &HashMap<String, rmpv::Value>,
+    substitutions: &HashMap<SmolStr, rmpv::Value>,
 ) -> Result<(), BoxError> {
     let mut up_lines = vec![];
     let mut down_lines = vec![];
@@ -414,7 +415,7 @@ fn substitute_config_placeholders<'a>(
     query_string: &'a str,
     filename: &str,
     lineno: usize,
-    substitutions: &HashMap<String, rmpv::Value>,
+    substitutions: &HashMap<SmolStr, rmpv::Value>,
 ) -> Result<Cow<'a, str>, BoxError> {
     let mut query_string = Cow::from(query_string);
 
@@ -456,7 +457,7 @@ fn bad_type(filename: &str, lineno: usize, key: &str, value: &rmpv::Value) -> Bo
 
 #[derive(Debug, PartialEq, Eq)]
 struct Placeholder {
-    variable: String,
+    variable: SmolStr,
     start: usize,
     end: usize,
 }
@@ -473,7 +474,7 @@ fn find_placeholder(query_string: &str) -> Option<Placeholder> {
     let variable = &query_string[start + MARKER.len()..start + MARKER.len() + end];
 
     Some(Placeholder {
-        variable: variable.to_owned(),
+        variable: variable.into(),
         start,
         end: start + MARKER.len() + end,
     })
@@ -592,7 +593,7 @@ fn down_single_file_with_commit(
 /// * `deadline`: applying deadline
 pub fn apply_up_migrations(
     plugin_ident: &PluginIdentifier,
-    migrations: &[String],
+    migrations: &[SmolStr],
     deadline: Instant,
     rollback_timeout: Duration,
 ) -> traft::Result<()> {
@@ -687,7 +688,7 @@ pub fn apply_up_migrations(
 /// * `migrations`: list of migration file names
 pub fn apply_down_migrations(
     plugin_ident: &PluginIdentifier,
-    migrations: &[String],
+    migrations: &[SmolStr],
     deadline: Instant,
     storage: &Catalog,
 ) {
@@ -957,81 +958,81 @@ sql_command_3;
 
     #[test]
     fn test_find_placeholder() {
-        let query_string = "SELECT @_plugin_config.kek FROM bubba".to_owned();
-        let placeholder = find_placeholder(&query_string).expect("placeholder must be found");
+        let query_string = "SELECT @_plugin_config.kek FROM bubba";
+        let placeholder = find_placeholder(query_string).expect("placeholder must be found");
         assert_eq!(
             placeholder,
             Placeholder {
-                variable: "kek".to_owned(),
+                variable: "kek".into(),
                 start: 7,
                 end: 26,
             }
         );
 
         // check with underscore and such
-        let query_string = "SELECT @_plugin_config.kek_91 FROM bubba".to_owned();
-        let placeholder = find_placeholder(&query_string).expect("placeholder must be found");
+        let query_string = "SELECT @_plugin_config.kek_91 FROM bubba";
+        let placeholder = find_placeholder(query_string).expect("placeholder must be found");
 
         assert_eq!(
             placeholder,
             Placeholder {
-                variable: "kek_91".to_owned(),
+                variable: "kek_91".into(),
                 start: 7,
                 end: 29,
             }
         );
 
-        let query_string = "SELECT @_plugin_config.kek.with.dot FROM bubba".to_owned();
+        let query_string = "SELECT @_plugin_config.kek.with.dot FROM bubba";
         let placeholder_with_service =
-            find_placeholder(&query_string).expect("placeholder must be found");
+            find_placeholder(query_string).expect("placeholder must be found");
         assert_eq!(
             placeholder_with_service,
             Placeholder {
-                variable: "kek".to_owned(),
+                variable: "kek".into(),
                 start: 7,
                 end: 26,
             }
         );
 
         // check case at the end of the query
-        let query_string = "foo bar @_plugin_config.kek".to_owned();
-        let placeholder = find_placeholder(&query_string).expect("placeholder must be found");
+        let query_string = "foo bar @_plugin_config.kek";
+        let placeholder = find_placeholder(query_string).expect("placeholder must be found");
 
         assert_eq!(
             placeholder,
             Placeholder {
-                variable: "kek".to_owned(),
+                variable: "kek".into(),
                 start: 8,
                 end: 27,
             }
         );
 
         // at the end with special symbols
-        let query_string = "foo bar @_plugin_config.kek_".to_owned();
-        let placeholder = find_placeholder(&query_string).expect("placeholder must be found");
+        let query_string = "foo bar @_plugin_config.kek_";
+        let placeholder = find_placeholder(query_string).expect("placeholder must be found");
 
         assert_eq!(
             placeholder,
             Placeholder {
-                variable: "kek_".to_owned(),
+                variable: "kek_".into(),
                 start: 8,
                 end: 28,
             }
         );
 
         let query_string = "SELECT 1";
-        assert!(find_placeholder(&query_string).is_none());
+        assert!(find_placeholder(query_string).is_none());
     }
 
-    fn migration_context() -> HashMap<String, rmpv::Value> {
+    fn migration_context() -> HashMap<SmolStr, rmpv::Value> {
         let mut substitutions = HashMap::new();
         substitutions.insert(
-            String::from("var_a"),
+            "var_a".into(),
             rmpv::Value::String(Utf8String::from("value_123")),
         );
 
         substitutions.insert(
-            String::from("var_b_longer_name"),
+            "var_b_longer_name".into(),
             rmpv::Value::String(Utf8String::from("value_123_also_long")),
         );
 
@@ -1040,25 +1041,24 @@ sql_command_3;
 
     #[test]
     fn test_substitute_config_placeholder_one() {
-        let mut query_string = "SELECT @_plugin_config.var_a".to_owned();
+        let query_string = "SELECT @_plugin_config.var_a";
 
         let substitutions = migration_context();
 
         assert_eq!(
-            substitute_config_placeholders(&mut query_string, "test", 1, &substitutions).unwrap(),
+            substitute_config_placeholders(query_string, "test", 1, &substitutions).unwrap(),
             "SELECT value_123"
         )
     }
 
     #[test]
     fn test_substitute_config_placeholders_many() {
-        let mut query_string =
-            "SELECT @_plugin_config.var_a @@_plugin_config.var_b_longer_name".to_owned();
+        let query_string = "SELECT @_plugin_config.var_a @@_plugin_config.var_b_longer_name";
 
         let substitutions = migration_context();
 
         assert_eq!(
-            substitute_config_placeholders(&mut query_string, "test", 1, &substitutions).unwrap(),
+            substitute_config_placeholders(query_string, "test", 1, &substitutions).unwrap(),
             "SELECT value_123 @value_123_also_long"
         )
     }

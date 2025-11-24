@@ -10,6 +10,7 @@ use crate::util::Uppercase;
 use crate::{has_states, tlog, unwrap_ok_or};
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
+use smol_str::format_smolstr;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -146,7 +147,7 @@ type AuthResult<T> = std::result::Result<T, AuthError>;
 /// - `mem_used`: quota_used from box.slab.info
 #[derive(Deserialize)]
 struct InstanceDataResponse {
-    httpd_address: String,
+    httpd_address: SmolStr,
     version: SmolStr,
     mem_usable: u64,
     mem_used: u64,
@@ -178,15 +179,15 @@ struct MemoryInfo {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct InstanceInfo {
-    http_address: String,
+    http_address: SmolStr,
     version: SmolStr,
     failure_domain: HashMap<Uppercase, Uppercase>,
     is_leader: bool,
     current_state: StateVariant,
     target_state: StateVariant,
     name: InstanceName,
-    binary_address: String,
-    pg_address: String,
+    binary_address: SmolStr,
+    pg_address: SmolStr,
 }
 
 // From the Lua version:
@@ -208,13 +209,13 @@ struct ReplicasetInfo {
     version: SmolStr,
     state: StateVariant,
     instance_count: usize,
-    uuid: String,
+    uuid: SmolStr,
     instances: Vec<InstanceInfo>,
     capacity_usage: f64,
     memory: MemoryInfo,
     name: ReplicasetName,
     #[serde(skip)]
-    tier: String,
+    tier: SmolStr,
 }
 
 // From the Lua version:
@@ -241,8 +242,8 @@ pub(crate) struct TierInfo {
     instance_count: usize,
     #[serde(rename = "can_vote")] // for compatibility with lua version
     can_vote: bool,
-    name: String,
-    services: Vec<String>,
+    name: SmolStr,
+    services: Vec<SmolStr>,
     memory: MemoryInfo,
     capacity_usage: f64,
 }
@@ -295,8 +296,8 @@ fn get_peer_addresses(
     replicasets: &HashMap<ReplicasetName, Replicaset>,
     instances: &[Instance],
     only_leaders: bool, // get data from leaders only or from all instances
-) -> Result<HashMap<u64, (String, String)>> {
-    let leaders: HashMap<u64, bool> = instances
+) -> Result<HashMap<u64, (SmolStr, SmolStr)>> {
+    let leaders: HashMap<_, _> = instances
         .iter()
         .filter(|item| {
             !only_leaders
@@ -311,7 +312,7 @@ fn get_peer_addresses(
             || peer.connection_type == ConnectionType::Pgproto
     });
     Ok(i.filter(|pa| leaders.get(&pa.raft_id) == Some(&true)).fold(
-        HashMap::<u64, (String, String)>::new(),
+        HashMap::new(),
         |mut acc, pa| {
             acc.entry(pa.raft_id)
                 .and_modify(|(iproto, pgproto)| {
@@ -324,8 +325,8 @@ fn get_peer_addresses(
                 .or_insert_with(|| {
                     // Use or_insert_with for lazy evaluation
                     match pa.connection_type {
-                        ConnectionType::Iproto => (pa.address, String::new()), // More idiomatic than "".to_string()
-                        ConnectionType::Pgproto => (String::new(), pa.address),
+                        ConnectionType::Iproto => (pa.address, "".into()),
+                        ConnectionType::Pgproto => ("".into(), pa.address),
                     }
                 });
             acc // Only inserts if key doesn't exist
@@ -373,7 +374,7 @@ async fn get_instances_data(
                     Ok(info) => {
                         let info: RuntimeInfo = info;
                         if let Some(http) = info.http {
-                            data.httpd_address = format!("{}:{}", &http.host, &http.port);
+                            data.httpd_address = format_smolstr!("{}:{}", &http.host, &http.port);
                         }
                         data.version = info.version_info.picodata_version.clone();
                         data.mem_usable = info.slab_info.quota_size;
@@ -417,21 +418,21 @@ fn get_replicasets_info(storage: &Catalog, only_leaders: bool) -> Result<Vec<Rep
 
         let replicaset_name = instance.replicaset_name;
         let mut is_leader = false;
-        let mut replicaset_uuid = String::new();
+        let mut replicaset_uuid = SmolStr::default();
         let mut tier = instance.tier.clone();
         if let Some(replicaset) = replicasets.get(&replicaset_name) {
             is_leader = replicaset.current_master_name == instance.name;
-            replicaset_uuid.clone_from(&replicaset.uuid);
+            replicaset_uuid = replicaset.uuid.clone();
             debug_assert_eq!(replicaset.tier, instance.tier);
             tier.clone_from(&replicaset.tier);
         }
 
-        let mut http_address = String::default();
+        let mut http_address = SmolStr::default();
         let mut version = SmolStr::default();
         let mut mem_usable: u64 = 0u64;
         let mut mem_used: u64 = 0u64;
         if let Some(data) = instances_props.get(&instance.raft_id) {
-            http_address.clone_from(&data.httpd_address);
+            http_address = data.httpd_address.clone();
             version = data.version.clone();
             mem_usable = data.mem_usable;
             mem_used = data.mem_used;
@@ -541,7 +542,7 @@ pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>> {
     let replicasets = get_replicasets_info(storage, false)?;
     let tiers = storage.tiers.iter()?;
 
-    let mut res: HashMap<String, TierInfo> = tiers
+    let mut res: HashMap<_, _> = tiers
         .map(|item: Tier| {
             (
                 item.name.clone(),

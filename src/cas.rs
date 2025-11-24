@@ -20,6 +20,7 @@ use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::GetEntriesContext;
 use ::raft::StorageError;
+use smol_str::SmolStr;
 use tarantool::error::Error as TntError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
@@ -552,7 +553,7 @@ crate::define_rpc_request! {
     }
 
     pub struct Request {
-        pub cluster_name: String,
+        pub cluster_name: SmolStr,
         pub predicate: Predicate,
         pub op: Op,
         pub as_user: UserId,
@@ -613,7 +614,7 @@ pub enum Error {
     },
 
     #[error("TableNotAllowed: table {table} cannot be modified by DML Raft Operation directly")]
-    TableNotAllowed { table: String },
+    TableNotAllowed { table: SmolStr },
 
     #[error("ConfigNotAllowed: config {config} cannot be modified")]
     ConfigNotAllowed { config: String },
@@ -621,7 +622,7 @@ pub enum Error {
     #[error(
         "TableNotOperable: table {table} cannot be modified now as DDL operation is in progress"
     )]
-    TableNotOperable { table: String },
+    TableNotOperable { table: SmolStr },
 
     /// An error related to `key_def` operation arised from tarantool
     /// depths while checking the predicate.
@@ -1255,7 +1256,7 @@ mod tests {
 
         let create_space = builder.with_op(Ddl::CreateTable {
             id: space_id,
-            name: space_name.into(),
+            name: space_name.clone(),
             format: vec![],
             primary_key: vec![],
             distribution: Distribution::Global,

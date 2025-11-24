@@ -28,19 +28,6 @@
 //! make them based on effective user.
 use std::collections::{HashMap, HashSet};
 
-use tarantool::auth::AuthMethod;
-use tarantool::error::TarantoolErrorCode::{self, AccessDenied};
-use tarantool::{
-    access_control::{
-        box_access_check_ddl, box_access_check_space, PrivType,
-        SchemaObjectType as TntSchemaObjectType,
-    },
-    error::BoxError,
-    session::{self, UserId},
-    space::{Space, SystemSpace},
-    tuple::Encode,
-};
-
 use crate::config::AlterSystemParametersRef;
 use crate::storage::SPACE_ID_INTERNAL_MAX;
 use crate::traft::error::Error;
@@ -55,6 +42,19 @@ use crate::{
         self,
         op::{self, Op},
     },
+};
+use smol_str::format_smolstr;
+use tarantool::auth::AuthMethod;
+use tarantool::error::TarantoolErrorCode::{self, AccessDenied};
+use tarantool::{
+    access_control::{
+        box_access_check_ddl, box_access_check_space, PrivType,
+        SchemaObjectType as TntSchemaObjectType,
+    },
+    error::BoxError,
+    session::{self, UserId},
+    space::{Space, SystemSpace},
+    tuple::Encode,
 };
 
 const SPECIAL_CHARACTERS: [char; 6] = ['&', '|', '?', '!', '$', '@'];
@@ -181,7 +181,7 @@ fn forbid_drop_if_system_space(storage: &Catalog, space_id: u32) -> tarantool::R
     let table_name = storage
         .pico_table
         .get(space_id)?
-        .map_or_else(|| format!("id={space_id}"), |table| table.name);
+        .map_or_else(|| format_smolstr!("id={space_id}"), |table| table.name);
 
     return Err(BoxError::new(
         TarantoolErrorCode::AccessDenied,
@@ -219,7 +219,7 @@ fn access_check_dml(storage: &Catalog, dml: &Dml, as_user: UserId) -> tarantool:
         let table_name = storage
             .pico_table
             .get(space_id)?
-            .map_or_else(|| format!("id={space_id}"), |table| table.name);
+            .map_or_else(|| format_smolstr!("id={space_id}"), |table| table.name);
 
         return Err(tarantool::error::BoxError::new(
             TarantoolErrorCode::AccessDenied,
@@ -860,10 +860,10 @@ mod tests {
         )
     }
 
-    fn dummy_user_def(id: UserId, name: String, owner: Option<UserId>) -> UserDef {
+    fn dummy_user_def(id: UserId, name: &str, owner: Option<UserId>) -> UserDef {
         UserDef {
             id,
-            name,
+            name: name.into(),
             schema_version: 0,
             auth: Some(dummy_auth_def()),
             owner: owner.unwrap_or_else(|| session::uid().unwrap()),
@@ -874,7 +874,7 @@ mod tests {
     #[track_caller]
     fn make_user(name: &str, owner: Option<UserId>) -> u32 {
         let id = next_user_id();
-        let user_def = dummy_user_def(id, name.to_owned(), owner);
+        let user_def = dummy_user_def(id, name, owner);
         on_master_create_user(&user_def, true).unwrap();
         id
     }
@@ -954,7 +954,7 @@ mod tests {
         {
             let space_to_be_created = Ddl::CreateTable {
                 id: 42,
-                name: String::from("space_to_be_created"),
+                name: "space_to_be_created".into(),
                 format: vec![],
                 primary_key: vec![],
                 distribution: Distribution::Global,
@@ -1188,11 +1188,7 @@ mod tests {
             let e = access_check_acl(
                 &storage,
                 &Acl::CreateUser {
-                    user_def: dummy_user_def(
-                        123,
-                        String::from("user_to_be_created"),
-                        Some(actor_user_id),
-                    ),
+                    user_def: dummy_user_def(123, "user_to_be_created", Some(actor_user_id)),
                 },
                 actor_user_id,
             )
@@ -1215,11 +1211,7 @@ mod tests {
             access_check_acl(
                 &storage,
                 &Acl::CreateUser {
-                    user_def: dummy_user_def(
-                        123,
-                        String::from("user_to_be_created"),
-                        Some(actor_user_id),
-                    ),
+                    user_def: dummy_user_def(123, "user_to_be_created", Some(actor_user_id)),
                 },
                 actor_user_id,
             )
@@ -1626,7 +1618,7 @@ mod tests {
         let role_name = "box_access_check_ddl_test_role_some_role";
         let role_def = UserDef {
             id: next_user_id(),
-            name: String::from(role_name),
+            name: role_name.into(),
             schema_version: 0,
             owner: ADMIN_ID,
             auth: None,
@@ -1638,7 +1630,7 @@ mod tests {
         {
             let role_to_be_created = UserDef {
                 id: 123,
-                name: String::from("role_to_be_created"),
+                name: "role_to_be_created".into(),
                 schema_version: 0,
                 owner: user_id,
                 auth: None,
@@ -1774,7 +1766,7 @@ mod tests {
             let role_id_grant = next_user_id();
             let role_def = UserDef {
                 id: role_id_grant,
-                name: role_name_grant.clone(),
+                name: role_name_grant.clone().into(),
                 schema_version: 0,
                 owner: user_id,
                 auth: None,
@@ -1820,11 +1812,11 @@ mod tests {
     fn prohibit_circular_role_grant() {
         let storage = Catalog::for_tests();
 
-        let create_role = |name| {
+        let create_role = |name: &str| {
             let id = next_user_id();
             let role_def = UserDef {
                 id,
-                name: String::from(name),
+                name: name.into(),
                 schema_version: 0,
                 owner: ADMIN_ID,
                 auth: None,

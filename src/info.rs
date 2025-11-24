@@ -119,17 +119,17 @@ pub fn proc_version_info() -> &'static VersionInfo {
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
 pub struct InstanceInfo {
     pub raft_id: RaftId,
-    pub iproto_advertise: String,
+    pub iproto_advertise: SmolStr,
     pub name: InstanceName,
-    pub uuid: String,
+    pub uuid: SmolStr,
     pub replicaset_name: ReplicasetName,
-    pub replicaset_uuid: String,
-    pub cluster_name: String,
+    pub replicaset_uuid: SmolStr,
+    pub cluster_name: SmolStr,
     pub current_state: State,
     pub target_state: State,
-    pub tier: String,
-    pub picodata_version: String,
-    pub cluster_uuid: String,
+    pub tier: SmolStr,
+    pub picodata_version: SmolStr,
+    pub cluster_uuid: SmolStr,
 }
 
 impl tarantool::tuple::Encode for InstanceInfo {}
@@ -283,7 +283,7 @@ pub fn proc_raft_leader_id() -> Result<u64, Error> {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[proc]
-pub fn proc_raft_leader_uuid() -> Result<String, Error> {
+pub fn proc_raft_leader_uuid() -> Result<SmolStr, Error> {
     let node = node::global()?;
     let raft = RaftInfo::get(node);
 
@@ -297,7 +297,7 @@ pub fn proc_raft_leader_uuid() -> Result<String, Error> {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[proc]
-pub fn proc_instance_uuid() -> Result<String, Error> {
+pub fn proc_instance_uuid() -> Result<SmolStr, Error> {
     let node = node::global()?;
     Ok(node.topology_cache.my_instance_uuid().into())
 }
@@ -307,7 +307,7 @@ pub fn proc_instance_uuid() -> Result<String, Error> {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[proc]
-fn proc_instance_name(uuid: String) -> Result<Option<String>, Error> {
+fn proc_instance_name(uuid: SmolStr) -> Result<Option<SmolStr>, Error> {
     let node = node::global()?;
     let cache = node.topology_cache.get();
     match cache.instance_by_uuid(&uuid) {
@@ -322,7 +322,7 @@ fn proc_instance_name(uuid: String) -> Result<Option<String>, Error> {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[proc]
-fn proc_replicaset_name(uuid: String) -> Result<Option<String>, Error> {
+fn proc_replicaset_name(uuid: SmolStr) -> Result<Option<SmolStr>, Error> {
     let node = node::global()?;
     let cache = node.topology_cache.get();
     match cache.instance_by_uuid(&uuid) {
@@ -337,7 +337,7 @@ fn proc_replicaset_name(uuid: String) -> Result<Option<String>, Error> {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[proc]
-fn proc_tier_name(uuid: String) -> Result<Option<String>, Error> {
+fn proc_tier_name(uuid: SmolStr) -> Result<Option<SmolStr>, Error> {
     let node = node::global()?;
     let cache = node.topology_cache.get();
     match cache.instance_by_uuid(&uuid) {
@@ -375,7 +375,7 @@ fn impl_proc_instance_dir() -> Result<Option<String>, Error> {
 }
 
 #[proc]
-fn proc_instance_dir(uuid: String) -> Result<Option<String>, Error> {
+fn proc_instance_dir(uuid: SmolStr) -> Result<Option<String>, Error> {
     let node = node::global()?;
     let requested_uuid = uuid.to_string();
     let my_uuid = node.topology_cache.my_instance_uuid();
@@ -431,7 +431,7 @@ fn impl_proc_config_file() -> Result<Option<String>, Error> {
 }
 
 #[proc]
-fn proc_config_file(uuid: String) -> Result<Option<String>, Error> {
+fn proc_config_file(uuid: SmolStr) -> Result<Option<String>, Error> {
     let node = node::global()?;
     let requested_uuid = uuid.to_string();
     let my_uuid = node.topology_cache.my_instance_uuid();
@@ -604,7 +604,7 @@ impl RaftEntryInfo {
 
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
 pub struct HttpServerInfo {
-    pub host: String,
+    pub host: SmolStr,
     pub port: u16,
 }
 
@@ -615,12 +615,12 @@ pub struct SlabInfo {
     #[allow(dead_code)]
     pub items_size: u64,
     #[allow(dead_code)]
-    pub items_used_ratio: String,
+    pub items_used_ratio: SmolStr,
     pub quota_size: u64,
     #[allow(dead_code)]
-    pub quota_used_ratio: String,
+    pub quota_used_ratio: SmolStr,
     #[allow(dead_code)]
-    pub arena_used_ratio: String,
+    pub arena_used_ratio: SmolStr,
     #[allow(dead_code)]
     pub items_used: u64,
     pub quota_used: u64,
@@ -692,7 +692,7 @@ impl tarantool::tuple::Encode for RuntimeInfo<'_> {}
 impl RuntimeInfo<'static> {
     pub fn try_get(node: &node::Node) -> Result<Self, Error> {
         let lua = tarantool::lua_state();
-        let host_port: Option<(String, String)> = lua.eval(
+        let host_port: Option<(SmolStr, SmolStr)> = lua.eval(
             "if pico.httpd ~= nil then
                 return pico.httpd.host, pico.httpd.port
             else
@@ -743,14 +743,12 @@ pub fn proc_get_config() -> Result<rmpv::Value, Error> {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[proc]
-pub fn proc_get_vshard_config(tier_name: Option<String>) -> Result<RawByteBuf, Error> {
+pub fn proc_get_vshard_config(tier_name: Option<SmolStr>) -> Result<RawByteBuf, Error> {
     let node = node::global()?;
     let tier_name = if let Some(tier_name) = tier_name {
         tier_name
     } else {
-        node.raft_storage
-            .tier()?
-            .expect("tier for instance should exists")
+        node.topology_cache.my_tier_name().into()
     };
     let Some(tier) = node.storage.tiers.by_name(&tier_name)? else {
         return Err(Error::NoSuchTier(tier_name));

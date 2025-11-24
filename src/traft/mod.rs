@@ -10,25 +10,24 @@ use crate::instance::Instance;
 use ::raft::prelude as raft;
 use ::tarantool::tuple::Encode;
 use error::to_error_other;
+pub use network::ConnectionPool;
 use op::Op;
 use picodata_plugin::util::msgpack_decode_bin;
+use protobuf::Message as _;
+pub use raft_storage::RaftSpaceAccess;
 use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
 use std::convert::TryFrom;
 use std::fmt::Debug;
 use std::result::Result as StdResult;
 use tarantool::error::BoxError;
 use tarantool::error::TarantoolErrorCode;
 
-use protobuf::Message as _;
-
-pub use network::ConnectionPool;
-pub use raft_storage::RaftSpaceAccess;
-
 pub type RaftId = u64;
 pub type RaftTerm = u64;
 pub type ResRowCount = u64;
 pub type RaftIndex = u64;
-pub type Address = String;
+pub type Address = SmolStr;
 pub type Distance = u64;
 
 pub const INIT_RAFT_TERM: RaftTerm = 1;

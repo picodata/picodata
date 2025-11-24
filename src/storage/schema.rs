@@ -13,6 +13,7 @@ use crate::traft::error::Error;
 use crate::traft::op::Ddl;
 use crate::{column_name, tlog, traft};
 use serde::Serialize;
+use smol_str::SmolStr;
 use sql::frontend::sql::FUNCTION_NAME_MAPPINGS;
 use std::collections::HashMap;
 use std::ffi::CString;
@@ -932,7 +933,7 @@ pub mod acl {
         fn grantee_type_and_name(
             &self,
             storage: &Catalog,
-        ) -> tarantool::Result<(&'static str, String)> {
+        ) -> tarantool::Result<(&'static str, SmolStr)> {
             let user_def = storage.users.by_id(self.grantee_id())?;
             let Some(user_def) = user_def else {
                 panic!("found neither user nor role for grantee_id")
@@ -1000,7 +1001,7 @@ pub mod acl {
             title: "create_user",
             severity: High,
             auth_type: user_def.auth.as_ref().expect("user always should have non empty auth").method.as_str(),
-            user: user,
+            user: %user,
             initiator: owner_def.name,
         );
 
@@ -1030,7 +1031,7 @@ pub mod acl {
             title: "change_password",
             severity: High,
             auth_type: auth.method.as_str(),
-            user: user,
+            user: %user,
             initiator: initiator_def.name,
         );
 
@@ -1054,8 +1055,8 @@ pub mod acl {
             message: "name of user `{old_name}` was changed to `{new_name}`",
             title: "rename_user",
             severity: High,
-            old_name: old_name,
-            new_name: new_name,
+            old_name: %old_name,
+            new_name: %new_name,
             initiator: initiator_def.name,
         );
 
@@ -1084,7 +1085,7 @@ pub mod acl {
             message: "dropped user `{user}`",
             title: "drop_user",
             severity: Medium,
-            user: user,
+            user: %user,
             initiator: initiator_def.name,
         );
 
@@ -1102,7 +1103,7 @@ pub mod acl {
             message: "created role `{role}`",
             title: "create_role",
             severity: High,
-            role: role,
+            role: %role,
             initiator: initiator_def.name,
         );
 
@@ -1128,7 +1129,7 @@ pub mod acl {
             message: "dropped role `{role}`",
             title: "drop_role",
             severity: Medium,
-            role: role,
+            role: %role,
             initiator: initiator_def.name,
         );
         Ok(())
@@ -1163,8 +1164,8 @@ pub mod acl {
                     message: "granted role `{object}` to {grantee_type} `{grantee}`",
                     title: "grant_role",
                     severity: High,
-                    role: &object,
-                    grantee: &grantee,
+                    role: %object,
+                    grantee: %grantee,
                     grantee_type: grantee_type,
                     initiator: initiator_def.name,
                 );
@@ -1180,7 +1181,7 @@ pub mod acl {
                     privilege: privilege.as_str(),
                     object: object,
                     object_type: object_type.as_str(),
-                    grantee: &grantee,
+                    grantee: %grantee,
                     grantee_type: grantee_type,
                     initiator: initiator_def.name,
                 );
@@ -1218,8 +1219,8 @@ pub mod acl {
                     message: "revoked role `{object}` from {grantee_type} `{grantee}`",
                     title: "revoke_role",
                     severity: High,
-                    role: &object,
-                    grantee: &grantee,
+                    role: %object,
+                    grantee: %grantee,
                     grantee_type: grantee_type,
                     initiator: initiator_def.name,
                 );
@@ -1233,9 +1234,9 @@ pub mod acl {
                     title: "revoke_privilege",
                     severity: High,
                     privilege: privilege.as_str(),
-                    object: object,
+                    object: %object,
                     object_type: object_type.as_str(),
-                    grantee: &grantee,
+                    grantee: %grantee,
                     grantee_type: grantee_type,
                     initiator: initiator_def.name,
                 );

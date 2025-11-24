@@ -6,6 +6,9 @@ use prometheus::{
     Gauge, GaugeVec, Histogram, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, Opts,
     TextEncoder,
 };
+use smol_str::format_smolstr;
+use smol_str::SmolStr;
+use smol_str::ToSmolStr;
 use std::borrow::Cow;
 use std::ffi::OsStr;
 use std::sync::LazyLock;
@@ -455,64 +458,67 @@ pub fn collect_from_registry(registry: &prometheus::Registry) -> String {
     encoder.encode_to_string(&metric_families).unwrap()
 }
 
-pub fn get_op_type_and_table(op: &Op) -> Vec<(&str, String)> {
+pub fn get_op_type_and_table(op: &Op) -> Vec<(&str, SmolStr)> {
     let mut operations = vec![];
 
     match op {
         Op::Dml(dml) => {
             let op_type = dml.kind().as_str();
-            operations.push((op_type, dml.table_id().to_string()));
+            operations.push((op_type, dml.table_id().to_smolstr()));
         }
         Op::BatchDml { ops } => {
             for dml in ops {
                 let op_type = dml.kind().as_str();
-                operations.push((op_type, dml.table_id().to_string()));
+                operations.push((op_type, dml.table_id().to_smolstr()));
             }
         }
         Op::DdlPrepare { ddl, .. } => match ddl {
             Ddl::Backup { .. } => {
-                operations.push(("ddl_backup", String::new()));
+                operations.push(("ddl_backup", Default::default()));
             }
             Ddl::CreateTable { name, .. } => {
                 operations.push(("ddl_create_table", name.clone()));
             }
             Ddl::DropTable { id, .. } => {
-                operations.push(("ddl_drop_table", id.to_string()));
+                operations.push(("ddl_drop_table", id.to_smolstr()));
             }
             Ddl::TruncateTable { id, .. } => {
-                operations.push(("ddl_truncate_table", id.to_string()));
+                operations.push(("ddl_truncate_table", id.to_smolstr()));
             }
             Ddl::ChangeFormat { table_id, .. } => {
-                operations.push(("ddl_change_format", table_id.to_string()));
+                operations.push(("ddl_change_format", table_id.to_smolstr()));
             }
             Ddl::RenameTable {
                 old_name, new_name, ..
             } => {
-                operations.push(("ddl_rename_table", format!("{old_name}→{new_name}")));
+                operations.push(("ddl_rename_table", format_smolstr!("{old_name}→{new_name}")));
             }
             Ddl::CreateIndex {
                 space_id, index_id, ..
             } => {
-                operations.push(("ddl_create_index", format!("{space_id}:{index_id}")));
+                operations.push(("ddl_create_index", format_smolstr!("{space_id}:{index_id}")));
             }
             Ddl::DropIndex {
                 space_id, index_id, ..
             } => {
-                operations.push(("ddl_drop_index", format!("{space_id}:{index_id}")));
+                operations.push(("ddl_drop_index", format_smolstr!("{space_id}:{index_id}")));
             }
             Ddl::RenameIndex {
                 old_name, new_name, ..
-            } => operations.push(("ddl_rename_index", format!("{old_name}→{new_name}"))),
+            } => operations.push(("ddl_rename_index", format_smolstr!("{old_name}→{new_name}"))),
             Ddl::CreateProcedure { name, .. } => {
                 operations.push(("ddl_create_procedure", name.clone()));
             }
             Ddl::DropProcedure { id, .. } => {
-                operations.push(("ddl_drop_procedure", id.to_string()));
+                operations.push(("ddl_drop_procedure", id.to_smolstr()));
             }
             Ddl::RenameProcedure {
                 old_name, new_name, ..
             } => {
-                operations.push(("ddl_rename_procedure", format!("{old_name} -> {new_name}")));
+                operations.push((
+                    "ddl_rename_procedure",
+                    format_smolstr!("{old_name} -> {new_name}"),
+                ));
             }
         },
         Op::Acl(acl) => match acl {
@@ -523,29 +529,29 @@ pub fn get_op_type_and_table(op: &Op) -> Vec<(&str, String)> {
                 operations.push(("acl_rename_user", name.clone()));
             }
             Acl::ChangeAuth { user_id, .. } => {
-                operations.push(("acl_change_auth", user_id.to_string()));
+                operations.push(("acl_change_auth", user_id.to_smolstr()));
             }
             Acl::DropUser { user_id, .. } => {
-                operations.push(("acl_drop_user", user_id.to_string()));
+                operations.push(("acl_drop_user", user_id.to_smolstr()));
             }
             Acl::CreateRole { role_def } => {
                 operations.push(("acl_create_role", role_def.name.clone()));
             }
             Acl::DropRole { role_id, .. } => {
-                operations.push(("acl_drop_role", role_id.to_string()));
+                operations.push(("acl_drop_role", role_id.to_smolstr()));
             }
             Acl::GrantPrivilege { priv_def } => {
-                operations.push(("acl_grant_privilege", priv_def.object_type().to_string()));
+                operations.push(("acl_grant_privilege", priv_def.object_type().to_smolstr()));
             }
             Acl::RevokePrivilege { priv_def, .. } => {
-                operations.push(("acl_revoke_privilege", priv_def.object_type().to_string()));
+                operations.push(("acl_revoke_privilege", priv_def.object_type().to_smolstr()));
             }
             Acl::AuditPolicy { user_id, .. } => {
-                operations.push(("acl_audit_policy", user_id.to_string()));
+                operations.push(("acl_audit_policy", user_id.to_smolstr()));
             }
         },
         _ => {
-            operations.push(("other", "global".into()));
+            operations.push(("other", SmolStr::new_static("global")));
         }
     }
 

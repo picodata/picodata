@@ -215,7 +215,7 @@ impl GovernorQueue {
     #[inline]
     pub fn next_pending_operation(
         &self,
-        batch_id: Option<String>,
+        batch_id: Option<&str>,
     ) -> tarantool::Result<Option<GovernorOperationDef>> {
         let mut iter = self.all_operations()?.into_iter();
         let next_op;
@@ -223,7 +223,7 @@ impl GovernorQueue {
             next_op = iter.find(|op| {
                 op.kind == GovernorOpKind::Upgrade
                     && op.status == GovernorOpStatus::Pending
-                    && op.batch_id <= batch_id
+                    && &*op.batch_id <= batch_id
             });
         } else {
             next_op = iter.find(|op| {

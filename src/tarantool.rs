@@ -407,8 +407,8 @@ impl Cfg {
         let mut res = Self {
             // At this point uuids must be valid, it will be impossible to
             // change them until the instance is expelled.
-            instance_uuid: Some(leader.uuid.clone()),
-            replicaset_uuid: Some(leader.replicaset_uuid.clone()),
+            instance_uuid: Some(leader.uuid.to_string()),
+            replicaset_uuid: Some(leader.replicaset_uuid.to_string()),
 
             // Listen port will be set after the global raft node is initialized.
             listen: None,
@@ -446,13 +446,13 @@ impl Cfg {
         let mut res = Self {
             // At this point uuids must be valid, it will be impossible to
             // change them until the instance is expelled.
-            instance_uuid: Some(resp.instance.uuid.clone()),
-            replicaset_uuid: Some(resp.instance.replicaset_uuid.clone()),
+            instance_uuid: Some(resp.instance.uuid.to_string()),
+            replicaset_uuid: Some(resp.instance.replicaset_uuid.to_string()),
 
             // Needs to be set, because an applier will attempt to connect to
             // self and will block box.cfg() call until it succeeds.
             listen: Some(ListenConfig::new(
-                config.instance.iproto_listen().to_host_port(),
+                config.instance.iproto_listen().to_host_port().into(),
                 tls_config,
             )),
 

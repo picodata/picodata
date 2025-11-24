@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use crate::error_code::ErrorCode;
 use crate::has_states;
 use crate::instance::StateVariant::*;
@@ -7,6 +5,8 @@ use crate::rpc;
 use crate::rpc::update_instance::handle_update_instance_request_and_wait;
 use crate::traft::node;
 use crate::traft::Result;
+use smol_str::SmolStr;
+use std::time::Duration;
 use tarantool::error::BoxError;
 use tarantool::error::TarantoolErrorCode;
 
@@ -74,8 +74,8 @@ crate::define_rpc_request! {
     /// Use [`redirect::Request`] for automatic redirection from any instance to leader.
     pub struct Request {
         /// The cluster_name parameter is no longer used and will be removed in next major release (version 26).
-        pub cluster_name: String,
-        pub instance_uuid: String,
+        pub cluster_name: SmolStr,
+        pub instance_uuid: SmolStr,
         pub force: bool,
         pub timeout: Duration,
     }

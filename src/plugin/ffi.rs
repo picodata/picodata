@@ -71,12 +71,12 @@ extern "C" fn pico_ffi_instance_info() -> RResult<types::InstanceInfo, ()> {
     };
     ROk(types::InstanceInfo::new(
         info.raft_id,
-        info.iproto_advertise,
+        info.iproto_advertise.into(),
         info.name.into(),
-        info.uuid,
+        info.uuid.into(),
         info.replicaset_name.into(),
-        info.replicaset_uuid,
-        info.cluster_name,
+        info.replicaset_uuid.into(),
+        info.cluster_name.into(),
         types::State::new(
             info.current_state.variant.into(),
             info.current_state.incarnation,
@@ -85,7 +85,7 @@ extern "C" fn pico_ffi_instance_info() -> RResult<types::InstanceInfo, ()> {
             info.target_state.variant.into(),
             info.target_state.incarnation,
         ),
-        info.tier,
+        info.tier.into(),
     ))
 }
 
@@ -355,7 +355,7 @@ extern "C" fn pico_ffi_rpc_request(
         input = arguments.input.as_bytes();
     };
 
-    let identity = &PluginIdentifier::new(plugin.to_string(), version.to_string());
+    let identity = &PluginIdentifier::new(plugin.into(), version.into());
     match rpc::client::send_rpc_request(identity, service, target, path, input, timeout) {
         Ok(out) => {
             // SAFETY: pointers must be valid for the lifetime of this function

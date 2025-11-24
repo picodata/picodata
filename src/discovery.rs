@@ -1,3 +1,6 @@
+use crate::proc_name;
+use crate::static_ref;
+use crate::traft;
 use ::tarantool::fiber;
 use ::tarantool::fiber::r#async::sleep;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
@@ -6,16 +9,13 @@ use ::tarantool::proc;
 use ::tarantool::uuid::Uuid;
 use either::{Either, Left, Right};
 use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
 use std::collections::BTreeSet;
 use std::error::Error as StdError;
+use std::sync::{LazyLock, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 
-use crate::proc_name;
-use crate::static_ref;
-use crate::traft;
-use std::sync::{LazyLock, Mutex as StdMutex};
-
-type Address = String;
+type Address = SmolStr;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Role {
@@ -153,7 +153,7 @@ impl Discovery {
             }
             (State::LeaderElection { .. }, Response::Done(role)) => {
                 self.state = State::Done(Role::NonLeader {
-                    leader: role.leader_address().into(),
+                    leader: role.leader_address().clone(),
                 });
                 self.visited.clear();
                 self.address = None;

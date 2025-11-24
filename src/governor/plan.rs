@@ -29,6 +29,7 @@ use crate::traft::op::{Ddl, Dml, Op};
 use crate::traft::{RaftId, RaftIndex, RaftTerm, Result};
 use crate::util::Uppercase;
 use crate::warn_or_panic;
+use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
 use tarantool::space::{SpaceId, UpdateOps};
 use tarantool::vclock::Vclock;
@@ -42,7 +43,7 @@ pub(super) fn action_plan<'i>(
     sentinel_status: SentinelStatus,
     instances: &'i [Instance],
     existing_fds: &HashSet<Uppercase>,
-    peer_addresses: &'i HashMap<RaftId, String>,
+    peer_addresses: &'i HashMap<RaftId, SmolStr>,
     voters: &[RaftId],
     learners: &[RaftId],
     replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
@@ -54,11 +55,11 @@ pub(super) fn action_plan<'i>(
     services: &HashMap<PluginIdentifier, Vec<&'i ServiceDef>>,
     plugin_op: Option<&'i PluginOp>,
     sync_timeout: std::time::Duration,
-    global_cluster_version: String,
+    global_cluster_version: SmolStr,
     next_schema_version: u64,
     governor_operations: &'i [GovernorOperationDef],
-    global_catalog_version: Option<String>,
-    pending_catalog_version: Option<String>,
+    global_catalog_version: Option<SmolStr>,
+    pending_catalog_version: Option<SmolStr>,
     backoff_manager: &GovernorBackoffManager,
 ) -> Result<Plan<'i>> {
     // This function is specifically extracted, to separate the task
@@ -740,7 +741,7 @@ pub(super) fn action_plan<'i>(
                 }
                 let dml = Dml::replace(
                     storage::ServiceRouteTable::TABLE_ID,
-                    &ServiceRouteItem::new_healthy(i.name.clone(), plugin, &svc.name),
+                    &ServiceRouteItem::new_healthy(i.name.clone(), plugin, svc.name.clone()),
                     ADMIN_ID,
                 )?;
                 success_dml.push(dml);
@@ -816,7 +817,11 @@ pub(super) fn action_plan<'i>(
                     enable_targets.push(&i.name);
                     let dml = Dml::replace(
                         storage::ServiceRouteTable::TABLE_ID,
-                        &ServiceRouteItem::new_healthy(i.name.clone(), plugin, &service_def.name),
+                        &ServiceRouteItem::new_healthy(
+                            i.name.clone(),
+                            plugin,
+                            service_def.name.clone(),
+                        ),
                         ADMIN_ID,
                     )?;
                     on_success_dml.push(dml);
@@ -1025,7 +1030,7 @@ pub mod stage {
             /// Global DML operation which updates `current_vshard_config_version` in corresponding record of table `_pico_tier`.
             pub cas: cas::Request,
             /// Tier name to which the vshard configuration applies
-            pub tier_name: String,
+            pub tier_name: SmolStr,
         }
 
         pub struct TransferLeadership<'i> {
@@ -1132,7 +1137,7 @@ pub mod stage {
             /// This will be `None` if replicaset's current_master_name != target_master_name.
             pub master_name: Option<&'i InstanceName>,
             /// This is an explicit list of peer addresses.
-            pub replicaset_peers: Vec<String>,
+            pub replicaset_peers: Vec<SmolStr>,
             /// Global DML operation which updates `current_config_version` in table `_pico_replicaset` for the given replicaset.
             pub replication_config_version_actualize: cas::Request,
         }
@@ -1145,7 +1150,7 @@ pub mod stage {
             /// Global DML operation which updates `vshard_bootstrapped` in corresponding record of table `_pico_tier`.
             pub cas: cas::Request,
             /// Tier name where vshard.bootstrap takes place.
-            pub tier_name: String,
+            pub tier_name: SmolStr,
         }
 
         pub struct ProposeReplicasetStateChanges {
@@ -1202,7 +1207,7 @@ pub mod stage {
             pub tier: Option<&'i str>,
             /// These are masters of all the replicasets in the cluster
             /// (their instance names with corresponding tier names).
-            pub targets: Vec<(&'i InstanceName, &'i String)>,
+            pub targets: Vec<(&'i InstanceName, &'i SmolStr)>,
             /// Request to call [`rpc::ddl_apply::proc_apply_schema_change`] on `targets`.
             pub rpc: Option<rpc::ddl_apply::Request>,
         }
@@ -1304,9 +1309,9 @@ pub mod stage {
 
 fn get_replicaset_to_configure<'i>(
     instances: &'i [Instance],
-    peer_addresses: &'i HashMap<RaftId, String>,
+    peer_addresses: &'i HashMap<RaftId, SmolStr>,
     replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
-) -> Option<(&'i Replicaset, Vec<&'i InstanceName>, Vec<String>)> {
+) -> Option<(&'i Replicaset, Vec<&'i InstanceName>, Vec<SmolStr>)> {
     for replicaset in replicasets.values() {
         if replicaset.current_config_version == replicaset.target_config_version {
             // Already configured

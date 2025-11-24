@@ -74,7 +74,7 @@ crate::define_rpc_request! {
 
         let Some(pending_schema_version) = storage.properties.pending_schema_version()? else {
             let pending_catalog_version = storage.properties.pending_catalog_version()?;
-            if let Some(next_op) = storage.governor_queue.next_pending_operation(pending_catalog_version)? {
+            if let Some(next_op) = storage.governor_queue.next_pending_operation(pending_catalog_version.as_deref())? {
                 if next_op.op_format == GovernorOpFormat::ProcName {
                     ddl_create_tt_proc_on_master(&next_op.op)?;
                     return Ok(Response::Ok);

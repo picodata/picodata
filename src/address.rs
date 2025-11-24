@@ -1,3 +1,5 @@
+use smol_str::format_smolstr;
+use smol_str::SmolStr;
 use std::str::FromStr;
 use tarantool::tlua;
 
@@ -48,8 +50,8 @@ impl IprotoAddress {
     }
 
     #[inline(always)]
-    pub fn to_host_port(&self) -> String {
-        format!("{}:{}", self.host, self.port)
+    pub fn to_host_port(&self) -> SmolStr {
+        format_smolstr!("{}:{}", self.host, self.port)
     }
 
     fn parse_address(addr: &str) -> Result<Self, String> {
@@ -215,8 +217,8 @@ impl PgprotoAddress {
     }
 
     #[inline(always)]
-    pub fn to_host_port(&self) -> String {
-        format!("{}:{}", self.host, self.port)
+    pub fn to_host_port(&self) -> SmolStr {
+        format_smolstr!("{}:{}", self.host, self.port)
     }
 }
 

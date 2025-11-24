@@ -1,4 +1,5 @@
 use ::tarantool::tlua;
+use smol_str::SmolStr;
 use tarantool::{space::UpdateOps, tuple::Encode};
 
 use crate::{
@@ -17,7 +18,7 @@ pub const DEFAULT_TIER: &str = "default";
 ///
 /// Can be used to store tier definition in the _pico_tier global table.
 pub struct Tier {
-    pub name: String,
+    pub name: SmolStr,
     pub replication_factor: u8,
     pub can_vote: bool,
     pub current_vshard_config_version: u64,

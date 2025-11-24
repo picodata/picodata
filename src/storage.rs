@@ -1,22 +1,6 @@
-use chrono::DateTime;
-use sql::ir::operator::ConflictStrategy;
-use tarantool::auth::AuthDef;
-use tarantool::error::{Error as TntError, TarantoolErrorCode as TntErrorCode};
-use tarantool::ffi::sql::Port as TarantoolPort;
-use tarantool::index::FieldType as IndexFieldType;
-#[allow(unused_imports)]
-use tarantool::index::Metadata as IndexMetadata;
-use tarantool::index::Part;
-use tarantool::index::{Index, IndexId, IndexIterator, IndexType, IteratorType};
-use tarantool::session::UserId;
-use tarantool::space::UpdateOps;
-use tarantool::space::{FieldType, Space, SpaceId, SpaceType, SystemSpace};
-use tarantool::tlua;
-use tarantool::tuple::{DecodeOwned, KeyDef, ToTupleBuffer};
-use tarantool::tuple::{RawBytes, Tuple};
-
 use crate::catalog::governor_queue::GovernorQueue;
 use crate::catalog::user_audit_policy::PicoUserAuditPolicy;
+use crate::config::observer::AtomicObserver;
 use crate::config::{self, AlterSystemParameters};
 use crate::failure_domain::FailureDomain;
 use crate::governor::upgrade_operations;
@@ -50,10 +34,9 @@ use crate::traft::op::{Ddl, RenameMapping};
 use crate::traft::RaftId;
 use crate::traft::Result;
 use crate::util::Uppercase;
-
-use crate::config::observer::AtomicObserver;
-use rmpv::Utf8String;
-use std::borrow::Cow;
+use chrono::DateTime;
+use smol_str::SmolStr;
+use sql::ir::operator::ConflictStrategy;
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -61,6 +44,20 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::RangeInclusive;
 use std::rc::Rc;
+use tarantool::auth::AuthDef;
+use tarantool::error::{Error as TntError, TarantoolErrorCode as TntErrorCode};
+use tarantool::ffi::sql::Port as TarantoolPort;
+use tarantool::index::FieldType as IndexFieldType;
+#[allow(unused_imports)]
+use tarantool::index::Metadata as IndexMetadata;
+use tarantool::index::Part;
+use tarantool::index::{Index, IndexId, IndexIterator, IndexType, IteratorType};
+use tarantool::session::UserId;
+use tarantool::space::UpdateOps;
+use tarantool::space::{FieldType, Space, SpaceId, SpaceType, SystemSpace};
+use tarantool::tlua;
+use tarantool::tuple::{DecodeOwned, KeyDef, ToTupleBuffer};
+use tarantool::tuple::{RawBytes, Tuple};
 
 pub mod schema;
 pub mod snapshot;
@@ -167,7 +164,7 @@ pub const LATEST_SYSTEM_CATALOG_VERSION: &'static str = upgrade_operations::CATA
 pub struct Catalog {
     pub snapshot_cache: Rc<SnapshotCache>,
     // It's ok to lose this information during restart.
-    pub login_attempts: Rc<RefCell<HashMap<String, u64>>>,
+    pub login_attempts: Rc<RefCell<HashMap<SmolStr, u64>>>,
     pub pico_table: PicoTable,
     pub indexes: Indexes,
     pub peer_addresses: PeerAddresses,
@@ -257,11 +254,11 @@ impl Catalog {
         }
     }
 
-    fn global_table_name(&self, id: SpaceId) -> Result<Cow<'static, str>> {
+    fn global_table_name(&self, id: SpaceId) -> Result<SmolStr> {
         let Some(table_def) = self.pico_table.get(id)? else {
             return Err(Error::other(format!("global space #{id} not found")));
         };
-        Ok(table_def.name.into())
+        Ok(table_def.name.clone())
     }
 
     /// Get a reference to a global instance of clusterwide storage.
@@ -604,7 +601,7 @@ impl PicoTable {
     pub fn rename(&self, id: u32, new_name: &str) -> tarantool::Result<()> {
         // We can't use UpdateOps as we use custom encoding
         let mut table_def = self.get(id)?.expect("should exist");
-        table_def.name = new_name.to_string();
+        table_def.name = new_name.into();
         self.put(&table_def)?;
         Ok(())
     }
@@ -1609,15 +1606,15 @@ impl Properties {
     }
 
     #[inline]
-    pub fn cluster_version(&self) -> tarantool::Result<String> {
-        let res: String = self
-            .get::<String>(PropertyName::ClusterVersion.as_str())?
+    pub fn cluster_version(&self) -> tarantool::Result<SmolStr> {
+        let res: SmolStr = self
+            .get::<SmolStr>(PropertyName::ClusterVersion.as_str())?
             .expect("ClusterVersion should be initialized");
         Ok(res)
     }
 
     #[inline]
-    pub fn system_catalog_version(&self) -> tarantool::Result<Option<String>> {
+    pub fn system_catalog_version(&self) -> tarantool::Result<Option<SmolStr>> {
         self.get(PropertyName::SystemCatalogVersion.as_str())
     }
 
@@ -1627,7 +1624,7 @@ impl Properties {
     }
 
     #[inline]
-    pub fn pending_catalog_version(&self) -> tarantool::Result<Option<String>> {
+    pub fn pending_catalog_version(&self) -> tarantool::Result<Option<SmolStr>> {
         self.get(PropertyName::PendingCatalogVersion.as_str())
     }
 }
@@ -2719,7 +2716,7 @@ impl Services {
     }
 
     #[inline]
-    pub fn get_by_tier(&self, tier_name: &String) -> tarantool::Result<Vec<ServiceDef>> {
+    pub fn get_by_tier(&self, tier_name: &SmolStr) -> tarantool::Result<Vec<ServiceDef>> {
         let all_services = self.space.select(IteratorType::All, &())?;
         let mut result = vec![];
         for tuple in all_services {
@@ -3087,7 +3084,7 @@ impl PluginConfig {
         &self,
         ident: &PluginIdentifier,
         entity: &str,
-    ) -> tarantool::Result<HashMap<String, rmpv::Value>> {
+    ) -> tarantool::Result<HashMap<SmolStr, rmpv::Value>> {
         let cfg_records = self
             .space
             .select(IteratorType::Eq, &(&ident.name, &ident.version, entity))?;
@@ -3116,10 +3113,7 @@ impl PluginConfig {
         let mut result = vec![];
         for tuple in cfg_records {
             let cfg_record: PluginConfigRecord = tuple.decode()?;
-            result.push((
-                rmpv::Value::String(Utf8String::from(cfg_record.key)),
-                cfg_record.value,
-            ));
+            result.push((rmpv::Value::from(&*cfg_record.key), cfg_record.value));
         }
 
         if result.is_empty() {
@@ -3153,12 +3147,12 @@ impl PluginConfig {
         &self,
         ident: &PluginIdentifier,
         entity: &str,
-        kv_pairs: Vec<(String, rmpv::Value)>,
+        kv_pairs: Vec<(SmolStr, rmpv::Value)>,
     ) -> tarantool::Result<()> {
         let new_config_records = kv_pairs.into_iter().map(|(k, v)| PluginConfigRecord {
-            plugin: ident.name.to_string(),
-            version: ident.version.to_string(),
-            entity: entity.to_string(),
+            plugin: ident.name.clone(),
+            version: ident.version.clone(),
+            entity: entity.into(),
             key: k,
             value: v,
         });
@@ -3175,7 +3169,7 @@ impl PluginConfig {
     pub fn all_entities(
         &self,
         ident: &PluginIdentifier,
-    ) -> tarantool::Result<HashMap<String, rmpv::Value>> {
+    ) -> tarantool::Result<HashMap<SmolStr, rmpv::Value>> {
         let cfg_records = self
             .space
             .select(IteratorType::Eq, &(&ident.name, &ident.version))?;
@@ -3186,7 +3180,7 @@ impl PluginConfig {
             let entry = grouped_records
                 .entry(cfg_record.entity.clone())
                 .or_insert(vec![]);
-            entry.push((rmpv::Value::String(cfg_record.key.into()), cfg_record.value));
+            entry.push((rmpv::Value::from(&*cfg_record.key), cfg_record.value));
         }
         Ok(grouped_records
             .into_iter()
@@ -3508,7 +3502,7 @@ mod tests {
                 raft_id: 1,
                 name: "i99".into(),
                 tier: DEFAULT_TIER.into(),
-                picodata_version: PICODATA_VERSION.to_string(),
+                picodata_version: PICODATA_VERSION.into(),
                 ..Instance::default()
             }),
             format!(
@@ -3704,7 +3698,7 @@ mod tests {
 
             // This check is a bit redundant, but better safe than sorry
             assert_eq!(tt_space_def.id, sys_table.id);
-            assert_eq!(tt_space_def.name, sys_table.name);
+            assert_eq!(&*tt_space_def.name, &*sys_table.name);
 
             // Check "_space" agrees with `SystemTable.format`
             assert_eq!(tt_space_def.format, fields_to_format(&sys_table.format));

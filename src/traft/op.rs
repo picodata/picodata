@@ -797,7 +797,7 @@ pub struct BatchDmlInLua {
 pub enum Ddl {
     CreateTable {
         id: SpaceId,
-        name: String,
+        name: SmolStr,
         format: Vec<Field>,
         primary_key: Vec<Part<String>>,
         distribution: Distribution,
@@ -815,7 +815,7 @@ pub enum Ddl {
     CreateIndex {
         space_id: SpaceId,
         index_id: IndexId,
-        name: String,
+        name: SmolStr,
         ty: IndexType,
         opts: Vec<IndexOption>,
         by_fields: Vec<Part<String>>,
@@ -829,18 +829,18 @@ pub enum Ddl {
     RenameIndex {
         space_id: SpaceId,
         index_id: IndexId,
-        old_name: String,
-        new_name: String,
+        old_name: SmolStr,
+        new_name: SmolStr,
         initiator_id: UserId,
         owner_id: UserId,
         schema_version: u64,
     },
     CreateProcedure {
         id: RoutineId,
-        name: String,
+        name: SmolStr,
         params: RoutineParams,
         language: RoutineLanguage,
-        body: String,
+        body: SmolStr,
         security: RoutineSecurity,
         owner: UserId,
     },
@@ -850,16 +850,16 @@ pub enum Ddl {
     },
     RenameProcedure {
         routine_id: u32,
-        old_name: String,
-        new_name: String,
+        old_name: SmolStr,
+        new_name: SmolStr,
         initiator_id: UserId,
         owner_id: UserId,
         schema_version: u64,
     },
     RenameTable {
         table_id: u32,
-        old_name: String,
-        new_name: String,
+        old_name: SmolStr,
+        new_name: SmolStr,
         initiator_id: UserId,
         owner_id: UserId,
         schema_version: u64,
@@ -995,9 +995,13 @@ impl RenameMapping {
     /// assert_eq!(mapping.transform_name(&mut nonexisting_name), false);
     /// assert_eq!(nonexisting_name.as_str(), "weird_name");
     /// ```
-    pub fn transform_name(&self, name: &mut String) -> bool {
-        if let Some(new_name) = self.map.get(name.as_str()) {
-            *name = new_name.to_string();
+    pub fn transform_name<S>(&self, name: &mut S) -> bool
+    where
+        S: AsRef<str>,
+        S: From<SmolStr>,
+    {
+        if let Some(new_name) = self.map.get(name.as_ref()) {
+            *name = new_name.clone().into();
             true
         } else {
             false
@@ -1090,7 +1094,7 @@ pub enum Acl {
     /// Rename a tarantool user.
     RenameUser {
         user_id: UserId,
-        name: String,
+        name: SmolStr,
         initiator: UserId,
         schema_version: u64,
     },
@@ -1229,7 +1233,7 @@ pub enum PluginRaftOp {
     PluginConfigPartialUpdate {
         ident: PluginIdentifier,
         /// Pairs of { service name -> list of new key-value }
-        updates: Vec<(String, Vec<(String, rmpv::Value)>)>,
+        updates: Vec<(SmolStr, Vec<(SmolStr, rmpv::Value)>)>,
     },
     /// Abort one of the mutlistage plugin change operations.
     Abort { cause: ErrorInfo },

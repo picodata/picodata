@@ -14,6 +14,7 @@ use crate::traft::error::IdOfInstance;
 use crate::traft::node::NodeImpl;
 use crate::traft::RaftId;
 use crate::traft::Result;
+use smol_str::SmolStr;
 use std::cell::OnceCell;
 use std::collections::HashMap;
 use tarantool::fiber::safety::NoYieldsRef;
@@ -49,19 +50,19 @@ pub struct TopologyCache {
     pub my_raft_id: RaftId,
 
     /// Instance name never changes on running instance after it's determined, so it can be cached here.
-    pub my_instance_name: OnceCell<String>,
+    pub my_instance_name: OnceCell<SmolStr>,
 
     /// Instance uuid never changes on running instance after it's determined, so it can be cached here.
-    pub my_instance_uuid: OnceCell<String>,
+    pub my_instance_uuid: OnceCell<SmolStr>,
 
     /// Replicaset name never changes on running instance after it's determined, so it can be cached here.
-    pub my_replicaset_name: OnceCell<String>,
+    pub my_replicaset_name: OnceCell<SmolStr>,
 
     /// Replicaset uuid never changes on running instance after it's determined, so it can be cached here.
-    pub my_replicaset_uuid: OnceCell<String>,
+    pub my_replicaset_uuid: OnceCell<SmolStr>,
 
     /// Tier name never changes on running instance after it's determined, so it can be cached here.
-    pub my_tier_name: OnceCell<String>,
+    pub my_tier_name: OnceCell<SmolStr>,
 }
 
 impl TopologyCache {
@@ -84,13 +85,13 @@ impl TopologyCache {
             // If at this point we know this instance's info, we cache it immediately.
             // Otherwise this info will be set in `update_instance` bellow as soon as it's known.
             my_instance_name
-                .set(this_instance.name.to_string())
+                .set(this_instance.name.0.clone())
                 .expect("was empty");
             my_instance_uuid
                 .set(this_instance.uuid.clone())
                 .expect("was empty");
             my_replicaset_name
-                .set(this_instance.replicaset_name.to_string())
+                .set(this_instance.replicaset_name.0.clone())
                 .expect("was empty");
             my_replicaset_uuid
                 .set(this_instance.replicaset_uuid.clone())
@@ -242,13 +243,13 @@ impl TopologyCache {
         if let Some(new) = &new {
             if self.my_instance_name.get().is_none() && new.raft_id == self.my_raft_id {
                 self.my_instance_name
-                    .set(new.name.to_string())
+                    .set(new.name.0.clone())
                     .expect("was empty");
                 self.my_instance_uuid
                     .set(new.uuid.clone())
                     .expect("was empty");
                 self.my_replicaset_name
-                    .set(new.replicaset_name.to_string())
+                    .set(new.replicaset_name.0.clone())
                     .expect("was empty");
                 self.my_replicaset_uuid
                     .set(new.replicaset_uuid.clone())
@@ -332,8 +333,8 @@ pub struct TopologyCacheMutable {
     /// good reason, why a small string can't store 36 bytes in-place but we'll
     /// have to implement our own. Thankfully it's going to be super fricken ez,
     /// we just have to do it..
-    instances_by_name: HashMap<String, Instance>,
-    instance_name_by_uuid: HashMap<String, String>,
+    instances_by_name: HashMap<SmolStr, Instance>,
+    instance_name_by_uuid: HashMap<SmolStr, SmolStr>,
 
     /// We store replicasets by uuid because in some places we need bucket_id
     /// based routing which only works via vshard at the moment, which only
@@ -341,10 +342,10 @@ pub struct TopologyCacheMutable {
     /// For instances there's no such need and we don't have any APIs which
     /// operate on instance uuids at the moment, so we optimize for lookup based
     /// on instance name.
-    replicasets_by_uuid: HashMap<String, Replicaset>,
-    replicaset_uuid_by_name: HashMap<String, String>,
+    replicasets_by_uuid: HashMap<SmolStr, Replicaset>,
+    replicaset_uuid_by_name: HashMap<SmolStr, SmolStr>,
 
-    tiers_by_name: HashMap<String, Tier>,
+    tiers_by_name: HashMap<SmolStr, Tier>,
 
     /// The meaning of the data is such:
     /// ```ignore
@@ -352,14 +353,14 @@ pub struct TopologyCacheMutable {
     /// ```
     ///
     /// XXX: This monstrosity exists, because rust is such a great language.
-    /// What we want is to have HashMap<(String, String, String, String), T>,
+    /// What we want is to have HashMap<(SmolStr, SmolStr, SmolStr, SmolStr), T>,
     /// but this would mean that when HashMap::get will have to take a
-    /// &(String, String, String, String), which means we need to construct 4 strings
+    /// &(SmolStr, SmolStr, SmolStr, SmolStr), which means we need to construct 4 strings
     /// every time we want to read the data. And passing a (&str, &str, &str, &str)
     /// will not compile. We need this code to be blazingly fast though, so we
     /// do this...
     #[allow(clippy::type_complexity)]
-    service_routes: HashMap<String, HashMap<String, HashMap<String, HashMap<String, bool>>>>,
+    service_routes: HashMap<SmolStr, HashMap<SmolStr, HashMap<SmolStr, HashMap<SmolStr, bool>>>>,
 }
 
 impl TopologyCacheMutable {
@@ -377,7 +378,7 @@ impl TopologyCacheMutable {
 
         let instances = storage.instances.all_instances()?;
         for instance in instances {
-            let instance_name = instance.name.to_string();
+            let instance_name = instance.name.0.clone();
 
             if instance.raft_id == my_raft_id {
                 this_instance = Some(instance.clone());
@@ -396,7 +397,7 @@ impl TopologyCacheMutable {
                 }
             }
 
-            let replicaset_name = replicaset.name.to_string();
+            let replicaset_name = replicaset.name.0.clone();
             replicaset_uuid_by_name.insert(replicaset_name, replicaset_uuid.clone());
             replicasets_by_uuid.insert(replicaset_uuid, replicaset);
         }
@@ -615,7 +616,7 @@ impl TopologyCacheMutable {
             // Create new instance
             (None, Some(new)) => {
                 let new_uuid = new.uuid.clone();
-                let new_name = new.name.to_string();
+                let new_name = new.name.0.clone();
 
                 let old_cached_name = self
                     .instance_name_by_uuid
@@ -633,7 +634,7 @@ impl TopologyCacheMutable {
 
                 if old != new {
                     let new_uuid = new.uuid.clone();
-                    let new_name = new.name.to_string();
+                    let new_name = new.name.0.clone();
 
                     let same_uuid = (old.uuid == new_uuid);
                     if !same_uuid {
@@ -678,7 +679,7 @@ impl TopologyCacheMutable {
             // Create new replicaset
             (None, Some(new)) => {
                 let new_uuid = new.uuid.clone();
-                let new_name = new.name.to_string();
+                let new_name = new.name.0.clone();
 
                 let old_cached_uuid = self
                     .replicaset_uuid_by_name
@@ -696,7 +697,7 @@ impl TopologyCacheMutable {
 
                 if old != new {
                     let new_uuid = new.uuid.clone();
-                    let new_name = new.name.to_string();
+                    let new_name = new.name.0.clone();
 
                     let same_uuid = (old.uuid == new_uuid);
                     if !same_uuid {
@@ -821,9 +822,9 @@ mod tests {
     #[::tarantool::test]
     fn test_check_route_to_instance() {
         let storage = Catalog::for_tests();
-        let plugin = PluginIdentifier::new("plugin".to_string(), "version".to_string());
-        let service = String::from("service");
-        let instance = String::from("instance");
+        let plugin = PluginIdentifier::new("plugin".into(), "version".into());
+        let service = SmolStr::new("service");
+        let instance = SmolStr::new("instance");
         let routing_item = ServiceRouteItem::new_healthy(instance.into(), &plugin, service);
         let _ = storage.service_route_table.put(&routing_item);
 

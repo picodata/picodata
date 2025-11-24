@@ -13,33 +13,6 @@
 // Prevents ok_or(BoxError::new(...))
 #![warn(clippy::or_fun_call)]
 
-use ::raft::Storage;
-use ::sql::frontend::sql::transform_to_regex_pattern;
-use ::sql::frontend::sql::FUNCTION_NAME_MAPPINGS;
-use config::apply_parameter;
-use config::AlterSystemParametersRef;
-use info::PICODATA_VERSION;
-use regex::Regex;
-use serde::{Deserialize, Serialize};
-use std::io::Write;
-use std::os::fd::AsRawFd;
-use std::path::{Path, PathBuf};
-use storage::ToEntryIter;
-
-use ::raft::prelude as raft;
-use ::tarantool::error::BoxError;
-use ::tarantool::error::Error as TntError;
-use ::tarantool::error::IntoBoxError;
-use ::tarantool::fiber::r#async::timeout::{self, IntoTimeout};
-use ::tarantool::time::Instant;
-use ::tarantool::tlua;
-use ::tarantool::transaction::transaction;
-use ::tarantool::{fiber, session};
-use std::fs;
-use std::time::Duration;
-use storage::Catalog;
-use traft::RaftSpaceAccess;
-
 use crate::access_control::user_by_id;
 use crate::address::HttpAddress;
 use crate::error_code::ErrorCode;
@@ -58,11 +31,38 @@ use crate::traft::error::Error;
 use crate::traft::op;
 use crate::traft::Result;
 use crate::util::effective_user_id;
+use ::raft::prelude as raft;
+use ::raft::Storage;
+use ::sql::frontend::sql::transform_to_regex_pattern;
+use ::sql::frontend::sql::FUNCTION_NAME_MAPPINGS;
+use ::tarantool::error::BoxError;
+use ::tarantool::error::Error as TntError;
+use ::tarantool::error::IntoBoxError;
+use ::tarantool::fiber::r#async::timeout::{self, IntoTimeout};
+use ::tarantool::time::Instant;
+use ::tarantool::tlua;
+use ::tarantool::transaction::transaction;
+use ::tarantool::{fiber, session};
 use backoff::SimpleBackoffManager;
+use config::apply_parameter;
+use config::AlterSystemParametersRef;
 use config::PicodataConfig;
+use info::PICODATA_VERSION;
 use instance_uuid_file::dump_instance_uuid_file;
 use instance_uuid_file::read_instance_uuid_file;
 use instance_uuid_file::remove_instance_uuid_file;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
+use smol_str::ToSmolStr;
+use std::fs;
+use std::io::Write;
+use std::os::fd::AsRawFd;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+use storage::Catalog;
+use storage::ToEntryIter;
+use traft::RaftSpaceAccess;
 
 mod access_control;
 pub mod address;
@@ -628,7 +628,7 @@ fn set_login_check() {
     }
 
     // Determines the outcome of an authentication attempt.
-    let f = move |user_name: String, successful_authentication: bool| {
+    let f = move |user_name: SmolStr, successful_authentication: bool| {
         use std::collections::hash_map::Entry;
 
         // If the user is pico service (used for internal communication) we don't perform any additional checks.
@@ -732,7 +732,7 @@ fn set_login_check() {
         end
 
         box.session.on_auth(on_auth)",
-        tlua::function3(move |user: String, status: bool, lua: tlua::LuaState| {
+        tlua::function3(move |user: SmolStr, status: bool, lua: tlua::LuaState| {
             match compute_auth_verdict(user.clone(), status) {
                 Verdict::AuthOk => {
                     // We don't want to spam admins with
@@ -745,8 +745,8 @@ fn set_login_check() {
                         message: "successfully authenticated user `{user}`",
                         title: "auth_ok",
                         severity: High,
-                        user: &user,
-                        initiator: &user,
+                        user: %user,
+                        initiator: %user,
                         verdict: "user is not blocked",
                     );
                 }
@@ -755,8 +755,8 @@ fn set_login_check() {
                         message: "failed to authenticate user `{user}`",
                         title: "auth_fail",
                         severity: High,
-                        user: &user,
-                        initiator: &user,
+                        user: %user,
+                        initiator: %user,
                         verdict: "user is not blocked",
                     );
                 }
@@ -765,8 +765,8 @@ fn set_login_check() {
                         message: "failed to authenticate unknown user `{user}`",
                         title: "auth_fail",
                         severity: High,
-                        user: &user,
-                        initiator: &user,
+                        user: %user,
+                        initiator: %user,
                         verdict: "user is not blocked",
                     );
                 }
@@ -775,8 +775,8 @@ fn set_login_check() {
                         message: "failed to authenticate user `{user}`",
                         title: "auth_fail",
                         severity: High,
-                        user: &user,
-                        initiator: &user,
+                        user: %user,
+                        initiator: %user,
                         verdict: format_args!("{err}; user blocked"),
                     );
 
@@ -865,7 +865,7 @@ pub enum Entrypoint {
     StartDiscover,
     StartBoot,
     StartPreJoin {
-        leader_address: String,
+        leader_address: SmolStr,
         instance_uuid: Option<String>,
     },
     StartJoin {
@@ -1284,8 +1284,10 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
     // Start listening only after we've checked if this is a restart.
     // Postjoin phase has its own idea of when to start listening.
     let tls_config = &config.instance.iproto_tls;
-    let listen_config =
-        ListenConfig::new(config.instance.iproto_listen().to_host_port(), tls_config);
+    let listen_config = ListenConfig::new(
+        config.instance.iproto_listen().to_host_port().into(),
+        tls_config,
+    );
     tarantool::set_cfg_field("listen", listen_config).map_err(|err| {
         Error::other(format!(
             "failed to start listening on iproto {}: {}",
@@ -1335,14 +1337,14 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     let instance = Instance {
         raft_id,
         name: instance_name.clone(),
-        uuid: uuid::Uuid::new_v4().to_hyphenated().to_string(),
+        uuid: uuid::Uuid::new_v4().to_hyphenated().to_smolstr(),
         replicaset_name,
-        replicaset_uuid: uuid::Uuid::new_v4().to_hyphenated().to_string(),
+        replicaset_uuid: uuid::Uuid::new_v4().to_hyphenated().to_smolstr(),
         current_state: instance::State::new(Offline, 0),
         target_state: instance::State::new(Offline, 0),
         failure_domain: config.instance.failure_domain().clone(),
         tier: my_tier_name.into(),
-        picodata_version: PICODATA_VERSION.to_string(),
+        picodata_version: SmolStr::new_static(PICODATA_VERSION),
     };
 
     assert!(
@@ -1553,7 +1555,7 @@ fn restore_from_backup(config: &PicodataConfig, backup_path: &PathBuf) -> Result
 
 fn start_pre_join(
     config: &PicodataConfig,
-    instance_address: String,
+    instance_address: SmolStr,
     instance_uuid_opt: Option<String>,
 ) -> Result<Option<Entrypoint>, Error> {
     tlog!(
@@ -1619,11 +1621,12 @@ fn start_pre_join(
     };
 
     #[allow(unused_mut)]
-    let mut version = info::PICODATA_VERSION.to_string();
+    let mut version = SmolStr::new_static(info::PICODATA_VERSION);
     #[cfg(feature = "error_injection")]
     crate::error_injection!("UPDATE_PICODATA_VERSION" => {
-        version = std::env::var("PICODATA_INTERNAL_VERSION_OVERRIDE")
-            .unwrap_or_else(|_| info::PICODATA_VERSION.to_string());
+        if let Ok(v) = std::env::var("PICODATA_INTERNAL_VERSION_OVERRIDE") {
+            version = v.into();
+        }
     });
 
     let req = rpc::join::Request {
@@ -1821,8 +1824,10 @@ fn postjoin(
     }
 
     let tls_config = &config.instance.iproto_tls;
-    let listen_config =
-        ListenConfig::new(config.instance.iproto_listen().to_host_port(), tls_config);
+    let listen_config = ListenConfig::new(
+        config.instance.iproto_listen().to_host_port().into(),
+        tls_config,
+    );
     tarantool::set_cfg_field("listen", listen_config).map_err(|err| {
         Error::other(format!(
             "failed to change listen address to {}: {}",
@@ -1945,11 +1950,12 @@ fn postjoin(
         tlog!(Debug, "leader address is known: {leader_address}");
 
         #[allow(unused_mut)]
-        let mut version = info::PICODATA_VERSION.to_string();
+        let mut version = SmolStr::new_static(info::PICODATA_VERSION);
         #[cfg(feature = "error_injection")]
         crate::error_injection!("UPDATE_PICODATA_VERSION" => {
-            version = std::env::var("PICODATA_INTERNAL_VERSION_OVERRIDE")
-                .unwrap_or_else(|_| info::PICODATA_VERSION.to_string());
+            if let Ok(v) = std::env::var("PICODATA_INTERNAL_VERSION_OVERRIDE") {
+                version = v.into();
+            }
         });
 
         tlog!(

@@ -18,12 +18,12 @@ use crate::traft::error::Error;
 use crate::traft::op::{Ddl, Dml, Op};
 use crate::traft::{RaftIndex, Result};
 use crate::version::Version;
-use tarantool::index::Part;
-use tarantool::space::{SpaceEngineType, SpaceId, UpdateOps};
-
+use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::Duration;
+use tarantool::index::Part;
+use tarantool::space::{SpaceEngineType, SpaceId, UpdateOps};
 
 const MIN_PICODATA_VERSION_WITH_G_QUEUE: Version = Version::new_clean(25, 3, 0);
 
@@ -33,8 +33,8 @@ pub(super) fn handle_governor_queue<'i>(
     governor_operations: &'i [GovernorOperationDef],
     next_schema_version: u64,
     global_cluster_version: &str,
-    pending_catalog_version: Option<String>,
-    current_catalog_version: Option<String>,
+    pending_catalog_version: Option<SmolStr>,
+    current_catalog_version: Option<SmolStr>,
     applied: RaftIndex,
     replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
     instances: &'i [Instance],
@@ -99,8 +99,8 @@ fn handle_catalog_upgrade<'i>(
     tables: &HashMap<SpaceId, &'i TableDef>,
     governor_operations: &'i [GovernorOperationDef],
     next_schema_version: u64,
-    pending_catalog_version: String,
-    current_catalog_version: Option<String>,
+    pending_catalog_version: SmolStr,
+    current_catalog_version: Option<SmolStr>,
     applied: RaftIndex,
     replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
     instances: &'i [Instance],
@@ -156,7 +156,7 @@ fn handle_catalog_upgrade<'i>(
     }
 
     // we have all upgrade operations completed here
-    finish_catalog_upgrade(pending_catalog_version, applied)
+    finish_catalog_upgrade(&pending_catalog_version, applied)
 }
 
 /// Runs operation from `_pico_governor_queue` table.
@@ -239,7 +239,7 @@ fn create_governor_table_if_not_exists<'i>(
 
         let ddl = Ddl::CreateTable {
             id: GovernorQueue::TABLE_ID,
-            name: GovernorQueue::TABLE_NAME.to_string(),
+            name: SmolStr::new_static(GovernorQueue::TABLE_NAME),
             format: GovernorQueue::format(),
             primary_key: vec![Part::field("id")],
             distribution: Distribution::Global,
@@ -354,7 +354,7 @@ fn get_versions_for_upgrade(
 ///
 /// Returns `FinishCatalogUpgrade` plan.
 fn finish_catalog_upgrade<'i>(
-    pending_catalog_version: String,
+    pending_catalog_version: &str,
     applied: RaftIndex,
 ) -> Result<Option<Plan<'i>>> {
     tlog!(

@@ -9,6 +9,7 @@ use crate::traft::Result;
 use crate::traft::{node, RaftIndex, RaftTerm};
 use crate::vshard::VshardErrorCode;
 use crate::vshard::{ReplicasetSpec, VshardConfig};
+use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::time::Duration;
 use tarantool::error::BoxError;
@@ -88,7 +89,7 @@ crate::define_rpc_request! {
             // new configurations before calling router:cfg() or storage:cfg().
 
             if current_instance_tier == tier.name {
-                let current_sharding_param: Option<HashMap<String, ReplicasetSpec>> = lua.eval(
+                let current_sharding_param: Option<HashMap<SmolStr, ReplicasetSpec>> = lua.eval(
                     "vshard = require('vshard')
                     if vshard.storage.internal.current_cfg ~= nil then
                         return vshard.storage.internal.current_cfg.sharding
@@ -112,7 +113,7 @@ crate::define_rpc_request! {
                 }
             }
 
-            let current_sharding_param: Option<HashMap<String, ReplicasetSpec>> = lua.eval_with(
+            let current_sharding_param: Option<HashMap<SmolStr, ReplicasetSpec>> = lua.eval_with(
                 "vshard = require('vshard')
                 local tier_name, cfg = ...
                 local router = pico.router[tier_name]
@@ -217,7 +218,7 @@ pub mod bootstrap {
             pub term: RaftTerm,
             pub applied: RaftIndex,
             pub timeout: Duration,
-            pub tier: String,
+            pub tier: SmolStr,
         }
 
         /// Response to [`sharding::bootstrap::Request`].

@@ -2,6 +2,7 @@ use super::instance::InstanceName;
 use crate::instance::Instance;
 use ::tarantool::tuple::Encode;
 use ::tarantool::vclock::Vclock;
+use smol_str::SmolStr;
 
 // TODO: this redundant boilerplate needs to be removed
 crate::define_smolstr_newtype! {
@@ -22,7 +23,7 @@ pub struct Replicaset {
     pub name: ReplicasetName,
 
     /// UUID used to identify replicasets by tarantool's subsystems.
-    pub uuid: String,
+    pub uuid: SmolStr,
 
     /// Instance name of the current replication leader.
     pub current_master_name: InstanceName,
@@ -31,7 +32,7 @@ pub struct Replicaset {
     pub target_master_name: InstanceName,
 
     /// Name of the tier the replicaset belongs to.
-    pub tier: String,
+    pub tier: SmolStr,
 
     /// Sharding weight of the replicaset.
     ///

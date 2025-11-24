@@ -82,12 +82,12 @@ pub enum Error {
     /// cluster_name of the joining instance mismatches the cluster_name of the cluster
     #[error("cluster_name mismatch: cluster_name of the instance = {instance_cluster_name:?}, cluster_name of the cluster = {cluster_name:?}")]
     ClusterNameMismatch {
-        instance_cluster_name: String,
+        instance_cluster_name: SmolStr,
         cluster_name: &'static str,
     },
     #[error("cluster UUID mismatch: instance {instance_uuid}, cluster {cluster_uuid}")]
     ClusterUuidMismatch {
-        instance_uuid: String,
+        instance_uuid: SmolStr,
         cluster_uuid: &'static str,
     },
     /// Instance was requested to configure replication with different replicaset.
@@ -119,13 +119,13 @@ pub enum Error {
     #[error("replicaset with {} \"{name}\" not found", if *.id_is_uuid { "uuid" } else { "name" })]
     NoSuchReplicaset { name: String, id_is_uuid: bool },
     #[error("tier with name \"{0}\" not found")]
-    NoSuchTier(String),
+    NoSuchTier(SmolStr),
     #[error("address of peer with id {0} not found")]
     AddressUnknownForRaftId(RaftId),
     #[error("address of peer with id \"{0}\" not found")]
     AddressUnknownForInstanceName(InstanceName),
     #[error("address of peer is incorrectly formatted: {0}")]
-    AddressParseFailure(String),
+    AddressParseFailure(SmolStr),
     #[error("leader is unknown yet")]
     LeaderUnknown,
     #[error("governor has stopped")]

@@ -321,7 +321,7 @@ mod tests {
 
         ) => {{
             let mut instance = p!($raft_id, $state -> $state);
-            instance.tier = $tier.to_string();
+            instance.tier = $tier.into();
             instance
         }}
     }

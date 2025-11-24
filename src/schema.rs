@@ -16,6 +16,7 @@ use crate::util::effective_user_id;
 use ahash::AHashSet;
 use picodata_plugin::error_code::ErrorCode;
 use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
 use sql::ir::ddl::{Language, ParamDef};
 use sql::ir::value::Value as IrValue;
 use std::borrow::Cow;
@@ -63,7 +64,7 @@ pub const INITIAL_SCHEMA_VERSION: u64 = 0;
 #[derive(Clone, Debug, msgpack::Encode, msgpack::Decode, PartialEq, Eq)]
 pub struct TableDef {
     pub id: SpaceId,
-    pub name: String,
+    pub name: SmolStr,
     pub distribution: Distribution,
     pub format: Vec<tarantool::space::Field>,
     pub schema_version: u64,
@@ -224,10 +225,10 @@ pub enum Distribution {
     /// Tuples will be implicitly sharded. E.g. sent to the corresponding bucket
     /// which will be determined by a hash of the provided `sharding_key`.
     ShardedImplicitly {
-        sharding_key: Vec<String>,
+        sharding_key: Vec<SmolStr>,
         #[serde(default)]
         sharding_fn: ShardingFn,
-        tier: String,
+        tier: SmolStr,
     },
     /// Tuples will be explicitly sharded. E.g. sent to the bucket
     /// which id is provided by field that is specified here.
@@ -235,8 +236,8 @@ pub enum Distribution {
     /// Default field name: "bucket_id"
     ShardedByField {
         #[serde(default = "default_bucket_id_field")]
-        field: String,
-        tier: String,
+        field: SmolStr,
+        tier: SmolStr,
     },
 }
 
@@ -257,8 +258,8 @@ impl Distribution {
     }
 }
 
-fn default_bucket_id_field() -> String {
-    "bucket_id".into()
+fn default_bucket_id_field() -> SmolStr {
+    SmolStr::new_static("bucket_id")
 }
 
 ::tarantool::define_str_enum! {
@@ -382,7 +383,7 @@ impl IndexOption {
 pub struct IndexDef {
     pub table_id: SpaceId,
     pub id: IndexId,
-    pub name: String,
+    pub name: SmolStr,
     #[serde(rename = "type")]
     pub ty: IndexType,
     pub opts: Vec<IndexOption>,
@@ -495,21 +496,21 @@ impl IndexDef {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PluginDef {
     /// Plugin name.
-    pub name: String,
+    pub name: SmolStr,
     /// Indicates plugin enabled or not.
     pub enabled: bool,
     /// List of plugin services.
-    pub services: Vec<String>,
+    pub services: Vec<SmolStr>,
     /// Plugin version.
     // TODO currently this version is unused,
     // expect service loading algorithm (when version from .so file
     // should be equal with plugin version from manifest).
     // This would be change in future, with API breaking changes and plugin rolling update feature.
-    pub version: String,
+    pub version: SmolStr,
     /// Plugin description
-    pub description: String,
+    pub description: SmolStr,
     /// List of migration files.
-    pub migration_list: Vec<String>,
+    pub migration_list: Vec<SmolStr>,
 }
 
 impl Encode for PluginDef {}
@@ -537,9 +538,9 @@ impl PluginDef {
         Self {
             name: "plugin".into(),
             enabled: false,
-            services: vec!["service_1".to_string(), "service_2".to_string()],
+            services: vec!["service_1".into(), "service_2".into()],
             version: "0.0.1".into(),
-            description: "description".to_string(),
+            description: "description".into(),
             migration_list: vec![],
         }
     }
@@ -569,15 +570,15 @@ impl PluginDef {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ServiceDef {
     /// Plugin name.
-    pub plugin_name: String,
+    pub plugin_name: SmolStr,
     /// Service name.
-    pub name: String,
+    pub name: SmolStr,
     /// Service version must be the same as a plugin version.
-    pub version: String,
+    pub version: SmolStr,
     /// List of tiers where service must be running.
-    pub tiers: Vec<String>,
+    pub tiers: Vec<SmolStr>,
     /// Plugin description
-    pub description: String,
+    pub description: SmolStr,
 }
 
 impl Encode for ServiceDef {}
@@ -607,11 +608,11 @@ impl ServiceDef {
     #[cfg(test)]
     pub fn for_tests() -> Self {
         Self {
-            plugin_name: "plugin".to_string(),
-            name: "service".into(),
+            plugin_name: SmolStr::new_static("plugin"),
+            name: SmolStr::new_static("service"),
             version: "0.0.1".into(),
-            tiers: vec!["t1".to_string(), "t2".to_string()],
-            description: "description".to_string(),
+            tiers: vec![SmolStr::new_static("t1"), SmolStr::new_static("t2")],
+            description: "description".into(),
         }
     }
 }
@@ -623,9 +624,9 @@ impl ServiceDef {
 /// Single route definition in _pico_service_route system table.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ServiceRouteItem {
-    pub plugin_name: String,
-    pub plugin_version: String,
-    pub service_name: String,
+    pub plugin_name: SmolStr,
+    pub plugin_version: SmolStr,
+    pub service_name: SmolStr,
     pub instance_name: InstanceName,
     /// `true` if route is poisoned, `false` otherwise.
     pub poison: bool,
@@ -642,12 +643,12 @@ impl ServiceRouteItem {
     pub fn new_healthy(
         instance_name: InstanceName,
         plugin_ident: &PluginIdentifier,
-        service_name: impl ToString,
+        service_name: SmolStr,
     ) -> Self {
         Self {
             plugin_name: plugin_ident.name.clone(),
-            plugin_version: plugin_ident.version.to_string(),
-            service_name: service_name.to_string(),
+            plugin_version: plugin_ident.version.clone(),
+            service_name,
             instance_name,
             poison: false,
         }
@@ -656,12 +657,12 @@ impl ServiceRouteItem {
     pub fn new_poison(
         instance_name: InstanceName,
         plugin_ident: &PluginIdentifier,
-        service_name: impl ToString,
+        service_name: SmolStr,
     ) -> Self {
         Self {
             plugin_name: plugin_ident.name.clone(),
-            plugin_version: plugin_ident.version.to_string(),
-            service_name: service_name.to_string(),
+            plugin_version: plugin_ident.version.clone(),
+            service_name,
             instance_name,
             poison: true,
         }
@@ -683,10 +684,10 @@ impl ServiceRouteItem {
     #[cfg(test)]
     pub fn for_tests() -> Self {
         Self {
-            plugin_name: "plugin".to_string(),
-            plugin_version: "version".to_string(),
-            service_name: "service".to_string(),
-            instance_name: InstanceName("i1".to_string()),
+            plugin_name: SmolStr::new_static("plugin"),
+            plugin_version: SmolStr::new_static("version"),
+            service_name: SmolStr::new_static("service"),
+            instance_name: InstanceName(SmolStr::new_static("i1")),
             poison: false,
         }
     }
@@ -729,11 +730,11 @@ impl<'a> ServiceRouteKey<'a> {
 /// Single record in _pico_plugin_migration system table.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct PluginMigrationRecord {
-    pub plugin_name: String,
+    pub plugin_name: SmolStr,
     /// Migration file path.
-    pub migration_file: String,
+    pub migration_file: SmolStr,
     /// MD5 of a migration file content, represented by a hex string.
-    hash: String,
+    hash: SmolStr,
 }
 
 impl Encode for PluginMigrationRecord {}
@@ -757,10 +758,12 @@ impl PluginMigrationRecord {
 
     #[cfg(test)]
     pub fn for_tests() -> Self {
+        use smol_str::format_smolstr;
+
         Self {
-            plugin_name: "plugin".to_string(),
-            migration_file: "migration_1.db".to_string(),
-            hash: format!("{:x}", md5::compute("test")),
+            plugin_name: SmolStr::new_static("plugin"),
+            migration_file: SmolStr::new_static("migration_1.db"),
+            hash: format_smolstr!("{:x}", md5::compute("test")),
         }
     }
 }
@@ -773,13 +776,13 @@ impl PluginMigrationRecord {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct PluginConfigRecord {
     /// Plugin name.
-    pub plugin: String,
+    pub plugin: SmolStr,
     /// Plugin version.
-    pub version: String,
+    pub version: SmolStr,
     /// Plugin service or extension name.
-    pub entity: String,
+    pub entity: SmolStr,
     /// Configuration key.
-    pub key: String,
+    pub key: SmolStr,
     /// Configration value.
     pub value: rmpv::Value,
 }
@@ -827,10 +830,10 @@ impl PluginConfigRecord {
                 )
             })?;
             result.push(Self {
-                plugin: ident.name.to_string(),
-                version: ident.version.to_string(),
-                entity: entity.to_string(),
-                key: key.to_string(),
+                plugin: ident.name.clone(),
+                version: ident.version.clone(),
+                entity: entity.into(),
+                key: key.into(),
                 value: v,
             });
         }
@@ -846,10 +849,10 @@ impl PluginConfigRecord {
     #[cfg(test)]
     pub fn for_tests() -> Self {
         Self {
-            plugin: "plugin".to_string(),
-            version: "0.1.0".to_string(),
-            entity: "service_1".to_string(),
-            key: "key_1".to_string(),
+            plugin: SmolStr::new_static("plugin"),
+            version: SmolStr::new_static("0.1.0"),
+            entity: SmolStr::new_static("service_1"),
+            key: SmolStr::new_static("key_1"),
             value: rmpv::Value::Boolean(true),
         }
     }
@@ -863,7 +866,7 @@ impl PluginConfigRecord {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct UserDef {
     pub id: UserId,
-    pub name: String,
+    pub name: SmolStr,
     pub schema_version: u64,
     pub auth: Option<AuthDef>,
     pub owner: UserId,
@@ -1263,7 +1266,7 @@ impl PrivilegeDef {
     ///
     /// # Panics
     /// 1. On storage failure
-    pub fn resolve_object_name(&self, storage: &Catalog) -> Result<Option<String>, Error> {
+    pub fn resolve_object_name(&self, storage: &Catalog) -> Result<Option<SmolStr>, Error> {
         let Some(id) = self.object_id() else {
             return Ok(None);
         };
@@ -1637,12 +1640,12 @@ pub enum RoutineSecurity {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RoutineDef {
     pub id: RoutineId,
-    pub name: String,
+    pub name: SmolStr,
     pub kind: RoutineKind,
     pub params: RoutineParams,
     pub returns: RoutineReturns,
     pub language: RoutineLanguage,
-    pub body: String,
+    pub body: SmolStr,
     pub security: RoutineSecurity,
     pub operable: bool,
     pub schema_version: u64,
@@ -1756,13 +1759,13 @@ pub enum CreateTableError {
     #[error("space with id {id} exists with a different name '{actual_name}', but expected '{expected_name}'")]
     ExistsWithDifferentName {
         id: SpaceId,
-        expected_name: String,
-        actual_name: String,
+        expected_name: SmolStr,
+        actual_name: SmolStr,
     },
     #[error("several fields have the same name: {0}")]
-    DuplicateFieldName(String),
+    DuplicateFieldName(SmolStr),
     #[error("no field with name: {0}")]
-    FieldUndefined(String),
+    FieldUndefined(SmolStr),
     #[error("distribution is `sharded`, but neither `by_field` nor `sharding_key` is set")]
     ShardingPolicyUndefined,
     #[error("only one of sharding policy fields (`by_field`, `sharding_key`) should be set")]
@@ -1786,11 +1789,11 @@ impl From<CreateTableError> for Error {
 #[derive(Debug, thiserror::Error)]
 pub enum CreateIndexError {
     #[error("table {table_name} not found")]
-    TableNotFound { table_name: String },
+    TableNotFound { table_name: SmolStr },
     #[error("table {table_name} is not operable")]
-    TableNotOperable { table_name: String },
+    TableNotOperable { table_name: SmolStr },
     #[error("no field with name: {name}")]
-    FieldUndefined { name: String },
+    FieldUndefined { name: SmolStr },
     #[error("table engine {engine} does not support option {option}")]
     IncompatibleTableEngineOption { engine: String, option: String },
     #[error("index type {ty} does not support option {option}")]
@@ -1820,7 +1823,7 @@ impl From<CreateIndexError> for Error {
 // TODO: Add `LuaRead` to tarantool::space::Field and use it
 #[derive(Clone, Debug, LuaRead)]
 pub struct Field {
-    pub name: String,
+    pub name: SmolStr,
     // TODO(gmoshkin): &str
     pub r#type: FieldType,
     pub is_nullable: bool,
@@ -1829,7 +1832,7 @@ pub struct Field {
 impl From<Field> for tarantool::space::Field {
     fn from(field: Field) -> Self {
         tarantool::space::Field {
-            name: field.name,
+            name: field.name.into(),
             field_type: field.r#type,
             is_nullable: field.is_nullable,
         }
@@ -1847,8 +1850,8 @@ impl From<Field> for tarantool::space::Field {
 
 #[derive(Clone, Debug)]
 pub struct RenameRoutineParams {
-    pub new_name: String,
-    pub old_name: String,
+    pub new_name: SmolStr,
+    pub old_name: SmolStr,
     pub params: Option<Vec<ParamDef>>,
 }
 
@@ -1864,10 +1867,10 @@ impl RenameRoutineParams {
 
 #[derive(Clone, Debug)]
 pub struct CreateProcParams {
-    pub name: String,
+    pub name: SmolStr,
     pub params: RoutineParams,
     pub language: RoutineLanguage,
-    pub body: String,
+    pub body: SmolStr,
     pub security: RoutineSecurity,
     pub owner: UserId,
 }
@@ -1892,9 +1895,9 @@ impl CreateProcParams {
 
 #[derive(Clone, Debug)]
 pub struct CreateIndexParams {
-    pub(crate) name: String,
-    pub(crate) space_name: String,
-    pub(crate) columns: Vec<String>,
+    pub(crate) name: SmolStr,
+    pub(crate) space_name: SmolStr,
+    pub(crate) columns: Vec<SmolStr>,
     pub(crate) ty: IndexType,
     pub(crate) opts: Vec<IndexOption>,
     pub(crate) initiator: UserId,
@@ -1962,7 +1965,7 @@ impl CreateIndexParams {
                     ctype: column.field_type.to_string(),
                 })?;
             let part = Part {
-                field: column_name.into(),
+                field: (&**column_name).into(),
                 r#type: Some(index_field_type),
                 collation: None,
                 is_nullable: Some(column.is_nullable),
@@ -2142,16 +2145,16 @@ impl CreateIndexParams {
 #[derive(Clone, Debug, LuaRead)]
 pub struct CreateTableParams {
     pub(crate) id: Option<SpaceId>,
-    pub(crate) name: String,
+    pub(crate) name: SmolStr,
     pub(crate) format: Vec<Field>,
-    pub(crate) primary_key: Vec<String>,
+    pub(crate) primary_key: Vec<SmolStr>,
     pub(crate) distribution: DistributionParam,
-    pub(crate) by_field: Option<String>,
-    pub(crate) sharding_key: Option<Vec<String>>,
+    pub(crate) by_field: Option<SmolStr>,
+    pub(crate) sharding_key: Option<Vec<SmolStr>>,
     pub(crate) sharding_fn: Option<ShardingFn>,
     pub(crate) engine: Option<SpaceEngineType>,
     pub(crate) owner: UserId,
-    pub(crate) tier: Option<String>,
+    pub(crate) tier: Option<SmolStr>,
     /// Timeout in seconds.
     ///
     /// Specifying the timeout identifies how long user is ready to wait for ddl to be applied.
@@ -2358,7 +2361,7 @@ impl CreateTableParams {
                     engine: self.engine.unwrap_or_default(),
                     id: Some(id),
                     field_count: self.format.len() as u32,
-                    user: Some(user),
+                    user: Some(user.to_string()),
                     space_type: SpaceType::Normal,
                     format: Some(
                         self.format
@@ -2595,7 +2598,7 @@ mod tests {
             .users
             .insert(&UserDef {
                 id: ADMIN_ID,
-                name: String::from("admin"),
+                name: SmolStr::new_static("admin"),
                 schema_version: 0,
                 auth: Some(AuthDef::new(AuthMethod::Md5, String::from(""))),
                 owner: ADMIN_ID,

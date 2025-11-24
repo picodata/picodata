@@ -20,13 +20,13 @@ use crate::traft::RaftId;
 use crate::traft::Result;
 use ::tarantool::msgpack::ViaMsgpack;
 use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
 use sql::executor::engine::Vshard;
 use std::collections::HashMap;
 use std::time::Duration;
 use tarantool::space::SpaceId;
 use tarantool::tlua;
 use tarantool::tuple::ToTupleBuffer;
-
 use tarantool::tuple::Tuple;
 
 fn is_vshard_not_initialized() -> crate::traft::Result<bool> {
@@ -87,7 +87,7 @@ pub(crate) fn disable_rebalancer() -> crate::traft::Result<()> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DdlMapCallRwRes {
-    pub uuid: String,
+    pub uuid: SmolStr,
     pub response: Response,
 }
 
@@ -111,7 +111,7 @@ where
     let args = Tuple::new(req)?;
 
     let res_raw = func
-        .call_with_args::<HashMap<String, [ViaMsgpack<Response>; 1]>, _>((
+        .call_with_args::<HashMap<SmolStr, [ViaMsgpack<Response>; 1]>, _>((
             tier,
             rpc_timeout.as_secs_f64(),
             function_name,
@@ -159,7 +159,7 @@ pub fn get_replicaset_priority_list(
 /// order.
 ///
 /// This function **may yield** if vshard needs to update it's bucket mapping.
-pub fn get_replicaset_uuid_by_bucket_id(tier: &str, bucket_id: u64) -> Result<String, Error> {
+pub fn get_replicaset_uuid_by_bucket_id(tier: &str, bucket_id: u64) -> Result<SmolStr, Error> {
     let info = router::get_tier_info(tier)?;
 
     let max_bucket_id = info.bucket_count();
@@ -195,7 +195,7 @@ pub fn get_replicaset_uuid_by_bucket_id(tier: &str, bucket_id: u64) -> Result<St
 #[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Default, Clone, Debug, PartialEq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
 pub struct VshardConfig {
-    pub sharding: HashMap<String, ReplicasetSpec>,
+    pub sharding: HashMap<SmolStr, ReplicasetSpec>,
     discovery_mode: DiscoveryMode,
 
     /// Id of system table `_bucket`.
@@ -216,7 +216,7 @@ pub struct VshardConfig {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Default, Clone, Debug, PartialEq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
 pub struct ReplicasetSpec {
-    replicas: HashMap<String, ReplicaSpec>,
+    replicas: HashMap<SmolStr, ReplicaSpec>,
     weight: Option<Weight>,
 }
 
@@ -225,7 +225,7 @@ pub struct ReplicasetSpec {
 #[derive(Default, Clone, Debug, PartialEq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
 pub struct ReplicaSpec {
     uri: ListenConfig,
-    name: String,
+    name: SmolStr,
     master: bool,
 }
 
@@ -273,12 +273,12 @@ impl VshardConfig {
 
     pub fn new(
         instances: &[Instance],
-        peer_addresses: &HashMap<RaftId, String>,
+        peer_addresses: &HashMap<RaftId, SmolStr>,
         replicasets: &HashMap<&ReplicasetName, &Replicaset>,
         tier_name: &str,
         bucket_count: u64,
     ) -> Self {
-        let mut sharding: HashMap<String, ReplicasetSpec> = HashMap::new();
+        let mut sharding: HashMap<SmolStr, ReplicasetSpec> = HashMap::new();
         for peer in instances {
             if !peer.may_respond() || peer.tier != tier_name {
                 continue;
@@ -314,7 +314,7 @@ impl VshardConfig {
                         tls_config,
                     ),
                     master: is_master,
-                    name: peer.name.to_string(),
+                    name: peer.name.clone().into(),
                 },
             );
         }

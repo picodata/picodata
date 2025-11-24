@@ -30,6 +30,7 @@ pub use picodata_plugin::plugin::interface::ServiceId;
 use picodata_plugin::plugin::interface::{ServiceBox, ValidatorBox};
 use rmpv::Value;
 use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
@@ -63,7 +64,7 @@ pub enum PluginError {
     #[error("Invalid shared object file: {0}")]
     InvalidSharedObject(#[from] libloading::Error),
     #[error("Plugin partial load (some of services not found: {0:?})")]
-    PartialLoad(Vec<String>),
+    PartialLoad(Vec<SmolStr>),
     #[error("Callback: {0}")]
     Callback(#[from] PluginCallbackError),
     #[error("Attempt to call a disabled plugin")]
@@ -81,7 +82,7 @@ pub enum PluginError {
     #[error("Topology: {0}")]
     TopologyError(String),
     #[error("Found more than one service factory for `{0}` ver. `{1}`")]
-    ServiceCollision(String, String),
+    ServiceCollision(SmolStr, SmolStr),
     #[error(
         "Cannot specify install candidate (there should be only one directory in plugin main dir)"
     )]
@@ -89,7 +90,7 @@ pub enum PluginError {
     #[error("Cannot specify enable candidate (there should be only one installed plugin version)")]
     AmbiguousEnableCandidate,
     #[error("Some of configuration keys are unknown ({0})")]
-    InvalidConfigurationKey(String),
+    InvalidConfigurationKey(SmolStr),
     #[error("Trying to update an empty configuration")]
     UpdateEmptyConfig,
     #[error("Unexpected invalid configuration")]
@@ -258,9 +259,9 @@ impl Drop for LibraryWrapper {
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 struct ServiceManifest {
     /// Service name
-    name: String,
+    name: SmolStr,
     /// Service description
-    description: String,
+    description: SmolStr,
     /// Service default configuration (this configuration will be sent to `on_start` callback)
     default_configuration: rmpv::Value,
 }
@@ -271,16 +272,16 @@ impl Eq for ServiceManifest {}
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct Manifest {
     /// Plugin name
-    pub name: String,
+    pub name: SmolStr,
     /// Plugin description
-    description: String,
+    description: SmolStr,
     /// Plugin version (TODO use SemVer instead of any string)
-    pub version: String,
+    pub version: SmolStr,
     /// Plugin services
     services: Vec<ServiceManifest>,
     /// Plugin migration list.
     #[serde(default)]
-    pub migration: Vec<String>,
+    pub migration: Vec<SmolStr>,
 }
 
 impl Manifest {
@@ -314,15 +315,11 @@ impl Manifest {
     /// Return plugin defenition built from manifest.
     pub fn plugin_def(&self) -> PluginDef {
         PluginDef {
-            name: self.name.to_string(),
+            name: self.name.clone(),
             enabled: false,
-            services: self
-                .services
-                .iter()
-                .map(|srv| srv.name.to_string())
-                .collect(),
-            version: self.version.to_string(),
-            description: self.description.to_string(),
+            services: self.services.iter().map(|srv| srv.name.clone()).collect(),
+            version: self.version.clone(),
+            description: self.description.clone(),
             migration_list: self.migration.clone(),
         }
     }
@@ -337,11 +334,11 @@ impl Manifest {
         self.services
             .iter()
             .map(|svc| ServiceDef {
-                plugin_name: self.name.to_string(),
-                name: svc.name.to_string(),
+                plugin_name: self.name.clone(),
+                name: svc.name.clone(),
                 tiers: vec![],
-                version: self.version.to_string(),
-                description: svc.description.to_string(),
+                version: self.version.clone(),
+                description: svc.description.clone(),
             })
             .collect()
     }
@@ -367,25 +364,25 @@ pub enum PluginAsyncEvent {
     /// Plugin service configuration is updated.
     ServiceConfigurationUpdated {
         ident: PluginIdentifier,
-        service: String,
+        service: SmolStr,
         old_raw: Vec<u8>,
         new_raw: Vec<u8>,
     },
     /// Plugin removed at instance.
-    PluginDisabled { name: String },
+    PluginDisabled { name: SmolStr },
 }
 
 /// Unique plugin identifier in the system.
 #[derive(Deserialize, Serialize, Debug, Clone, Eq, PartialEq, Hash)]
 pub struct PluginIdentifier {
     /// Plugin name.
-    pub name: String,
+    pub name: SmolStr,
     /// Plugin version.
-    pub version: String,
+    pub version: SmolStr,
 }
 
 impl PluginIdentifier {
-    pub fn new(name: String, version: String) -> Self {
+    pub fn new(name: SmolStr, version: SmolStr) -> Self {
         Self { name, version }
     }
 }
@@ -748,7 +745,7 @@ fn missing_migration_files(applied_count: usize, manifest_count: usize) -> BoxEr
 }
 
 #[track_caller]
-fn unknown_migration_file(details: String) -> BoxError {
+fn unknown_migration_file(details: impl std::fmt::Display) -> BoxError {
     BoxError::new(
         ErrorCode::PluginError,
         format!("unknown migration files found in manifest migrations ({details})"),
@@ -1045,8 +1042,8 @@ pub fn drop_plugin(
 pub enum PluginOp {
     CreatePlugin {
         manifest: Manifest,
-        inherit_entities: HashMap<String, Value>,
-        inherit_topology: HashMap<String, Vec<String>>,
+        inherit_entities: HashMap<SmolStr, Value>,
+        inherit_topology: HashMap<SmolStr, Vec<SmolStr>>,
     },
     EnablePlugin {
         plugin: PluginIdentifier,
@@ -1055,8 +1052,8 @@ pub enum PluginOp {
     /// Operation to change on which tiers the given service should be deployed.
     AlterServiceTiers {
         plugin: PluginIdentifier,
-        service: String,
-        tier: String,
+        service: SmolStr,
+        tier: SmolStr,
         kind: TopologyUpdateOpKind,
     },
     MigrationLock(PicoPropertyLock),
@@ -1177,6 +1174,7 @@ pub fn change_config_atom(
         let mut service_config_part = Vec::with_capacity(kv.len());
         let mut ranges = Vec::with_capacity(kv.len());
         for (service, kv) in kv {
+            let service = *service;
             ranges.push(Range::new(storage::Services::TABLE_ID).eq((
                 &ident.name,
                 service,
@@ -1188,25 +1186,25 @@ pub fn change_config_atom(
                 service,
             )));
 
-            let kv: Vec<(String, rmpv::Value)> = kv
+            let kv: Vec<(_, rmpv::Value)> = kv
                 .iter()
                 .map(|(k, v)| {
                     let json = serde_json::from_str(v);
                     let value = json.unwrap_or_else(|_| rmpv::Value::from(*v));
-                    (k.to_string(), value)
+                    (SmolStr::new(*k), value)
                 })
                 .collect();
 
             // when migration context is changed we do not perform validation
             // since we dont have anything to validate against
-            if service == &migration::CONTEXT_ENTITY {
-                service_config_part.push((service.to_string(), kv));
+            if service == migration::CONTEXT_ENTITY {
+                service_config_part.push((SmolStr::new(service), kv));
                 continue;
             }
 
             let service_def = node.storage.services.get(ident, service)?;
             if service_def.is_none() {
-                let service_id = ServiceId::new(&ident.name, *service, &ident.version);
+                let service_id = ServiceId::new(&*ident.name, service, &*ident.version);
                 #[rustfmt::skip]
                 return Err(BoxError::new(ErrorCode::NoSuchService, format!("no such service `{service_id}`")).into());
             }
@@ -1237,7 +1235,7 @@ pub fn change_config_atom(
             node.plugin_manager
                 .handle_before_service_reconfigured(ident, service, &new_cfg_raw)?;
 
-            service_config_part.push((service.to_string(), kv));
+            service_config_part.push((service.into(), kv));
         }
 
         Ok(PreconditionCheckResult::DoOp((
