@@ -44,10 +44,13 @@ pub fn main(args: args::Restore) -> ! {
 
             let config_path = backup_path.join(config_name);
             let inner = PicodataConfig::read_yaml_file(&config_path);
-            let Ok(inner) = inner else {
+            let Ok(mut inner) = inner else {
                 tlog!(Error, "No config file to execute restore");
                 std::process::exit(1)
             };
+
+            inner.populate_restore_defaults()?;
+
             unsafe {
                 assert!(static_ref!(const GLOBAL_CONFIG).is_none());
                 static_ref!(mut GLOBAL_CONFIG).insert(inner)
