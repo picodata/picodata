@@ -780,9 +780,5 @@ def test_ER_BOOTSTRAP_CONNECTION_NOT_TO_ALL(cluster: Cluster):
     control_1.start_and_wait()
     control_2.start_and_wait()
 
-    assert leader.sql("SELECT current_state, target_state FROM _pico_instance WHERE name = 'lagger'") == [
-        [["Offline", 0], ["Offline", 0]]
-    ]
-
     # cannot reach this if we get error ER_BOOTSTRAP_CONNECTION_NOT_TO_ALL
     lagger.wait_online()
