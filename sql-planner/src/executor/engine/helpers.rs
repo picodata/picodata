@@ -909,9 +909,6 @@ pub fn materialize_values(
 
     // Flag indicating whether VALUES contains only constants.
     let mut only_constants = true;
-    // Ids of constants that we have to replace with parameters.
-    // We'll need to use it only in case
-    let mut constants_to_erase: Vec<NodeId> = Vec::new();
     for row_id in &children {
         let row_node = exec_plan.get_ir_plan().get_relation_node(*row_id)?;
         let Relational::ValuesRow(ValuesRow { data, .. }) = row_node else {
@@ -925,7 +922,6 @@ pub fn materialize_values(
                 .unwrap_or_else(|| panic!("Column not found at position {idx} in the row."));
             let column_node = exec_plan.get_ir_plan().get_node(column_id)?;
             if let Node::Expression(Expression::Constant(Constant { value, .. })) = column_node {
-                constants_to_erase.push(column_id);
                 row.push(value.clone());
             } else {
                 only_constants = false;
@@ -951,11 +947,6 @@ pub fn materialize_values(
     }
 
     let mut vtable = if only_constants {
-        // Otherwise `dispatch` call will replace nodes on Parameters.
-        for column_id in constants_to_erase {
-            let _ = exec_plan.get_mut_ir_plan().replace_with_stub(column_id);
-        }
-
         // Create vtable columns with default column field (that will be fixed later).
         let columns = vtable.get_mut_columns();
         columns.reserve(column_names.len());
