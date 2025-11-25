@@ -226,10 +226,11 @@ impl Expression<'_> {
             });
             let col_expr = plan.get_expression_node(column_id)?;
             let ty: DerivedType = col_expr.calculate_type(plan)?;
-            types.push(vec![ty])
+            types.push(std::iter::once(ty))
         }
 
-        let unified_res = calculate_unified_types(&types)?;
+        // TODO: Change `types` type to iterator to avoid allocations.
+        let unified_res = calculate_unified_types(types.into_iter())?;
         let (_, unified_type) = unified_res.first().expect(
             "Vec for reference unified type recalculation should consists of a single column.",
         );

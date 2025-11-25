@@ -344,7 +344,7 @@ fn vtable_values_types_casting_single_tuple() {
     actual_vtable.add_column(vcolumn_integer_user_non_null());
     actual_vtable.add_tuple(vec![Value::Integer(1)]);
     let vtable_types = actual_vtable.get_types();
-    let unified_types = calculate_unified_types(&vtable_types).unwrap();
+    let unified_types = calculate_unified_types(vtable_types).unwrap();
     actual_vtable.cast_values(&unified_types).unwrap();
 
     let mut expected_vtable = VirtualTable::new();
@@ -366,7 +366,7 @@ fn vtable_values_types_casting_two_tuples() {
     actual_vtable.add_tuple(vec![Value::Integer(1)]);
     actual_vtable.add_tuple(vec![Value::Integer(1)]);
     let vtable_types = actual_vtable.get_types();
-    let unified_types = calculate_unified_types(&vtable_types).unwrap();
+    let unified_types = calculate_unified_types(vtable_types).unwrap();
     actual_vtable.cast_values(&unified_types).unwrap();
 
     let mut expected_vtable = VirtualTable::new();
@@ -389,7 +389,7 @@ fn vtable_values_types_casting_two_tuples_err() {
     actual_vtable.add_tuple(vec![Value::Integer(1)]);
     actual_vtable.add_tuple(vec![Value::String("name".into())]);
     let vtable_types = actual_vtable.get_types();
-    let err = calculate_unified_types(&vtable_types).unwrap_err();
+    let err = calculate_unified_types(vtable_types).unwrap_err();
     assert_eq!(
         true,
         err.to_string()
@@ -405,7 +405,7 @@ fn vtable_values_types_casting_two_columns() {
     actual_vtable.add_column(vcolumn_integer_user_non_null());
     actual_vtable.add_tuple(vec![Value::Integer(1), Value::Integer(1)]);
     let vtable_types = actual_vtable.get_types();
-    let unified_types = calculate_unified_types(&vtable_types).unwrap();
+    let unified_types = calculate_unified_types(vtable_types).unwrap();
     actual_vtable.cast_values(&unified_types).unwrap();
 
     let mut expected_vtable = VirtualTable::new();
@@ -433,7 +433,7 @@ fn vtable_values_types_casting_two_columns_two_tuples() {
     actual_vtable.add_tuple(vec![Value::Integer(1), Value::Integer(1)]);
     actual_vtable.add_tuple(vec![Value::from(Decimal::from(2)), Value::Integer(1)]);
     let vtable_types = actual_vtable.get_types();
-    let unified_types = calculate_unified_types(&vtable_types).unwrap();
+    let unified_types = calculate_unified_types(vtable_types).unwrap();
     actual_vtable.cast_values(&unified_types).unwrap();
 
     let mut expected_vtable = VirtualTable::new();
@@ -463,7 +463,7 @@ fn vtable_values_types_casting_two_columns_with_nulls() {
     actual_vtable.add_tuple(vec![Value::Null, Value::Null]);
     actual_vtable.add_tuple(vec![Value::from(Decimal::from(2)), Value::Null]);
     let vtable_types = actual_vtable.get_types();
-    let unified_types = calculate_unified_types(&vtable_types).unwrap();
+    let unified_types = calculate_unified_types(vtable_types).unwrap();
     actual_vtable.cast_values(&unified_types).unwrap();
 
     let mut expected_vtable = VirtualTable::new();
@@ -502,7 +502,7 @@ fn vtable_values_types_casting_two_columns_numerical() {
         Value::Double(0.5_f64.into()),
     ]);
     let vtable_types = actual_vtable.get_types();
-    let unified_types = calculate_unified_types(&vtable_types).unwrap();
+    let unified_types = calculate_unified_types(vtable_types).unwrap();
     actual_vtable.cast_values(&unified_types).unwrap();
 
     let mut expected_vtable = VirtualTable::new();

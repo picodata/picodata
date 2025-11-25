@@ -975,8 +975,10 @@ pub fn materialize_values(
         vtable
     };
 
+    // This isn't cheap and should be avoided once we support type coercions.
+    // (https://git.picodata.io/core/picodata/-/issues/1812)
     let vtable_types = vtable.get_types();
-    let unified_types = calculate_unified_types(&vtable_types)?;
+    let unified_types = calculate_unified_types(vtable_types)?;
     vtable.cast_values(&unified_types)?;
 
     let _ = exec_plan.get_mut_ir_plan().replace_with_stub(values_id);

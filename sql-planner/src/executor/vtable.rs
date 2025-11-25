@@ -184,12 +184,12 @@ impl VirtualTable {
     }
 
     /// Retrieve value types of virtual table tuples.
-    #[must_use]
-    pub fn get_types(&self) -> Vec<Vec<DerivedType>> {
+    pub fn get_types(
+        &self,
+    ) -> impl Iterator<Item = impl ExactSizeIterator<Item = DerivedType> + use<'_>> + use<'_> {
         self.get_tuples()
             .iter()
-            .map(|tuple| tuple.iter().map(|v| v.get_type()).collect::<Vec<_>>())
-            .collect()
+            .map(|tuple| tuple.iter().map(|v| v.get_type()))
     }
 
     /// Gets a mutable virtual table tuples list
@@ -796,7 +796,7 @@ impl ExecutionPlan {
 /// Each pair in the returned vec is (is_type_nullable, unified_type).
 #[allow(clippy::too_many_lines)]
 pub fn calculate_unified_types(
-    types: &Vec<Vec<DerivedType>>,
+    mut types: impl Iterator<Item = impl ExactSizeIterator<Item = DerivedType>>,
 ) -> Result<Vec<(bool, DerivedType)>, SbroadError> {
     // Map of { type -> types_which_can_be_upcasted_to_given_one }.
     let get_types_less = |ty: &UnrestrictedType| -> &[UnrestrictedType] {
@@ -814,8 +814,7 @@ pub fn calculate_unified_types(
         }
     };
 
-    let columns_len = types.first().expect("Types vec should not be empty").len();
-    let mut nullable_column_indices = HashSet::with_capacity(columns_len);
+    let mut nullable_column_indices = HashSet::new();
     let fix_type = |current_type_unified: &mut DerivedType, given_type: &UnrestrictedType| {
         if let Some(current_type_unified) = current_type_unified.get_mut() {
             if get_types_less(given_type).contains(current_type_unified) {
@@ -834,10 +833,12 @@ pub fn calculate_unified_types(
         Ok(())
     };
 
-    let mut unified_types: Vec<DerivedType> = vec![DerivedType::unknown(); columns_len];
+    let first = types.next().unwrap();
+    let mut unified_types: Vec<DerivedType> = vec![DerivedType::unknown(); first.len()];
+    let types = std::iter::once(first).chain(types);
 
     for type_tuple in types {
-        for (i, ty) in type_tuple.iter().enumerate() {
+        for (i, ty) in type_tuple.enumerate() {
             let current_type_unified = unified_types.get_mut(i).unwrap_or_else(|| {
                 panic!("Unified types vec isn't initialized to retrieve index {i}.")
             });

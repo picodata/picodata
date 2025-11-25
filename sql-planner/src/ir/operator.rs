@@ -1614,10 +1614,12 @@ impl Plan {
                     let col_expr = self.get_expression_node(*col_id)?;
                     col_expr.calculate_type(self)
                 })
+                // TODO: Avoid collect + into_iter.
                 .collect();
-            types.push(tuple_types?)
+            types.push(tuple_types?.into_iter())
         }
-        let unified_types = calculate_unified_types(&types)?;
+        // TODO: Change `types` type to iterator to avoid allocations.
+        let unified_types = calculate_unified_types(types.into_iter())?;
 
         // Generate a row of aliases referencing all the children.
         let mut aliases: Vec<NodeId> = Vec::with_capacity(names.len());
