@@ -1,9 +1,8 @@
-use crate::ir::node::Node32;
+use crate::ir::node::{ArenaType, Node32};
 use crate::{
     errors::SbroadError,
     ir::{
-        node::{expression::Expression, Cast, Constant, Node, NodeId},
-        tree::traversal::{LevelNode, PostOrderWithFilter},
+        node::{expression::Expression, Cast, Constant, NodeId},
         types::CastType,
         value::Value,
         Plan,
@@ -31,30 +30,40 @@ fn apply_cast(plan: &Plan, child_id: NodeId, target_type: CastType) -> Option<Va
     }
 }
 
+// Collect cast node ids and return them in case there are some constant nodes.
+fn find_cast_node_ids_for_cast_constants_opt(plan: &Plan) -> Vec<NodeId> {
+    let mut found_const = false;
+    let mut found_casts = vec![];
+
+    for (offset, node) in plan.nodes.iter32().enumerate() {
+        match node {
+            Node32::Cast(_) => {
+                let offset = offset.try_into().unwrap();
+                let arena_type = ArenaType::Arena32;
+                let cast_id = NodeId { offset, arena_type };
+                found_casts.push(cast_id);
+            }
+            Node32::Constant(_) => found_const = true,
+            _ => (),
+        }
+    }
+
+    // If there is no constants there is nothing we can cast.
+    if !found_const {
+        return vec![];
+    }
+
+    found_casts
+}
+
 impl Plan {
     /// Evaluates cast constant expressions and replaces them with actual values in the plan.
     ///
     /// This function focuses on simplifying the plan by eliminating unnecessary casts in selection
     /// expressions, enabling bucket filtering and in value rows, enabling local materialization.
     pub fn cast_constants(mut self) -> Result<Self, SbroadError> {
-        let cast_filter = |node_id| {
-            matches!(
-                self.get_node(node_id),
-                Ok(Node::Expression(Expression::Cast(_)))
-            )
-        };
-        let mut subtree = PostOrderWithFilter::with_capacity(
-            |node| self.subtree_iter(node, false),
-            self.nodes.len(),
-            Box::new(cast_filter),
-        );
-
-        let top_id = self.get_top()?;
-        subtree.populate_nodes(top_id);
-        let row_ids = subtree.take_nodes();
-        drop(subtree);
-
-        for LevelNode(_, cast_id) in row_ids {
+        let cast_ids = find_cast_node_ids_for_cast_constants_opt(&self);
+        for cast_id in cast_ids {
             let replace_node = if let Expression::Cast(Cast {
                 child: cast_child,
                 to,

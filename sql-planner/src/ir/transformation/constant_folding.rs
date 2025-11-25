@@ -1,10 +1,11 @@
 use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::{MutRelational, Relational};
-use crate::ir::node::{ArenaType, BoolExpr, Constant, Join, Node, NodeId, Selection, UnaryExpr};
+use crate::ir::node::{
+    ArenaType, BoolExpr, Constant, Join, Node, Node64, NodeId, Selection, UnaryExpr,
+};
 use crate::ir::operator::{Bool, Unary};
-use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
-use crate::ir::tree::Snapshot;
+use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::value::{Trivalent, TrivalentOrdering, Value};
 use crate::ir::Plan;
 use smol_str::format_smolstr;
@@ -76,6 +77,18 @@ fn handle_isnull(val: &Value) -> Result<Option<Value>, SbroadError> {
     };
 
     Ok(res)
+}
+
+fn collect_join_and_selection_nodes(plan: &Plan) -> Vec<NodeId> {
+    plan.nodes
+        .iter64()
+        .enumerate()
+        .filter(|(_, n)| matches!(n, Node64::Selection(_) | Node64::Join(_)))
+        .map(|(i, _)| NodeId {
+            offset: i.try_into().unwrap(),
+            arena_type: ArenaType::Arena64,
+        })
+        .collect()
 }
 
 impl Plan {
@@ -164,34 +177,22 @@ impl Plan {
     }
 
     pub fn fold_boolean_tree(mut self) -> Result<Self, SbroadError> {
-        let selection_filter = |id: NodeId| -> bool {
-            matches!(
-                self.get_node(id),
-                Ok(Node::Relational(
-                    Relational::Selection(_) | Relational::Join(_)
-                ))
-            )
-        };
+        let node_ids = collect_join_and_selection_nodes(&self);
 
-        let mut dfs = PostOrderWithFilter::with_capacity(
-            |node_id| self.exec_plan_subtree_iter(node_id, Snapshot::Latest),
-            REL_CAPACITY / 3,
-            Box::new(selection_filter),
-        );
-        dfs.populate_nodes(self.get_top()?);
-        let nodes = dfs.take_nodes();
-        drop(dfs);
+        // Early return, there is no relational nodes with filters that benefit from folding.
+        if node_ids.is_empty() {
+            return Ok(self);
+        }
 
         let mut const_map = OldNewFoldingMap::new();
 
-        for LevelNode(_, id) in nodes.iter() {
-            let rel_node = self.get_relation_node(*id)?;
+        for id in node_ids {
+            let rel_node = self.get_relation_node(id)?;
             let filter = match rel_node {
                 Relational::Selection(Selection { filter, .. }) => *filter,
                 Relational::Join(Join { condition, .. }) => *condition,
                 _ => unreachable!("expected Selection or Join node"),
             };
-
             let bool_filter = |id: NodeId| -> bool {
                 matches!(
                     self.get_node(id),
@@ -258,7 +259,7 @@ impl Plan {
             }
 
             if let Some(new_filter) = const_map.get(&filter) {
-                match self.get_mut_relation_node(*id)? {
+                match self.get_mut_relation_node(id)? {
                     MutRelational::Join(Join {
                         condition: mut_condition,
                         ..
