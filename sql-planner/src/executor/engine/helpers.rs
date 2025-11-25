@@ -914,7 +914,7 @@ pub fn materialize_values(
         let Relational::ValuesRow(ValuesRow { data, .. }) = row_node else {
             panic!("Expected ValuesRow under Values. Got {row_node:?}.")
         };
-        let data_row_list: Vec<NodeId> = exec_plan.get_ir_plan().get_row_list(*data)?.to_vec();
+        let data_row_list = exec_plan.get_ir_plan().get_row_list(*data)?;
         let mut row: VTableTuple = Vec::with_capacity(columns_len);
         for idx in 0..columns_len {
             let column_id = *data_row_list
