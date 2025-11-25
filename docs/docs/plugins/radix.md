@@ -61,7 +61,7 @@ Radix поддерживает 16 баз данных, каждую из кот�
 в административной консоли Picodata.
 
 ```sql
-CREATE PLUGIN radix 0.12.0;
+CREATE PLUGIN radix 0.13.0;
 ```
 
 #### Пример с двумя тирами (hot/cold) {: #plugin_enable_hotcold }
@@ -69,31 +69,31 @@ CREATE PLUGIN radix 0.12.0;
 Для настройки миграций задайте значения для 16 параметров (по числу баз данных в Radix):
 
 ```sql
-ALTER PLUGIN radix 0.12.0 SET migration_context.tier_0='hot';
-ALTER PLUGIN radix 0.12.0 SET migration_context.tier_1='hot';
-ALTER PLUGIN radix 0.12.0 SET migration_context.tier_2='hot';
-ALTER PLUGIN radix 0.12.0 SET migration_context.tier_3='hot';
-ALTER PLUGIN radix 0.12.0 SET migration_context.tier_4='cold';
-ALTER PLUGIN radix 0.12.0 SET migration_context.tier_5='cold';
-ALTER PLUGIN radix 0.12.0 SET migration_context.tier_6='cold';
-ALTER PLUGIN radix 0.12.0 SET migration_context.tier_7='cold';
-ALTER PLUGIN radix 0.12.0 SET migration_context.tier_8='cold';
-ALTER PLUGIN radix 0.12.0 SET migration_context.tier_9='cold';
-ALTER PLUGIN radix 0.12.0 SET migration_context.tier_10='cold';
-ALTER PLUGIN radix 0.12.0 SET migration_context.tier_11='cold';
-ALTER PLUGIN radix 0.12.0 SET migration_context.tier_12='cold';
-ALTER PLUGIN radix 0.12.0 SET migration_context.tier_13='cold';
-ALTER PLUGIN radix 0.12.0 SET migration_context.tier_14='cold';
-ALTER PLUGIN radix 0.12.0 SET migration_context.tier_15='cold';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_0='hot';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_1='hot';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_2='hot';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_3='hot';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_4='cold';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_5='cold';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_6='cold';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_7='cold';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_8='cold';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_9='cold';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_10='cold';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_11='cold';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_12='cold';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_13='cold';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_14='cold';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_15='cold';
 
-ALTER PLUGIN radix 0.12.0 ADD SERVICE radix TO TIER hot;
-ALTER PLUGIN radix 0.12.0 ADD SERVICE radix TO TIER cold;
+ALTER PLUGIN radix 0.13.0 ADD SERVICE radix TO TIER hot;
+ALTER PLUGIN radix 0.13.0 ADD SERVICE radix TO TIER cold;
 ```
 
 Для выполнения миграции:
 
 ```sql
-ALTER PLUGIN radix MIGRATE TO 0.12.0 OPTION(TIMEOUT=300);
+ALTER PLUGIN radix MIGRATE TO 0.13.0 OPTION(TIMEOUT=300);
 ```
 
 !!! note "Примечание"
@@ -113,15 +113,15 @@ ALTER PLUGIN radix MIGRATE TO 0.12.0 OPTION(TIMEOUT=300);
 Для включения плагина в кластере:
 
 ```sql title="Убедитесь, что задан адрес, который будет слушать Radix"
-ALTER PLUGIN radix 0.12.0 ENABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 0.13.0 ENABLE OPTION(TIMEOUT=30);
 ```
 
 Если в кластере ранее была включена предыдущая версия плагина, то ее
 следует сначала отключить и лишь затем включить новую версию. Пример:
 
 ```sql
-ALTER PLUGIN radix 0.11.3 DISABLE OPTION(TIMEOUT=30);
-ALTER PLUGIN radix 0.12.0 ENABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 0.12.0 DISABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 0.13.0 ENABLE OPTION(TIMEOUT=30);
 ```
 
 Чтобы убедиться в том, что плагин успешно добавлен и запущен, выполните запрос:
@@ -137,23 +137,23 @@ SELECT * FROM _pico_plugin;
 Если в кластере используется только один тир `default`, настройка миграций будет выглядеть так:
 
 ```sql
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_0='default';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_1='default';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_2='default';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_3='default';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_4='default';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_5='default';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_6='default';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_7='default';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_8='default';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_9='default';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_10='default';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_11='default';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_12='default';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_13='default';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_14='default';
-ALTER PLUGIN radix 0.11.3 SET migration_context.tier_15='default';
-ALTER PLUGIN radix 0.11.3 ADD SERVICE radix TO TIER default;
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_0='default';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_1='default';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_2='default';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_3='default';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_4='default';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_5='default';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_6='default';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_7='default';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_8='default';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_9='default';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_10='default';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_11='default';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_12='default';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_13='default';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_14='default';
+ALTER PLUGIN radix 0.13.0 SET migration_context.tier_15='default';
+ALTER PLUGIN radix 0.13.0 ADD SERVICE radix TO TIER default;
 ```
 
 ## Настройка {: #configuration }
@@ -326,7 +326,7 @@ cold:
 ##### Миграция с кластера с директивой `requirepass` {: #requirepass }
 
 ```sql
-ALTER PLUGIN radix 0.11.3 SET radix.authorization_mode = '{ "state": "On", "default_user_name": "default_radix_user" }';
+ALTER PLUGIN radix 0.13.0 SET radix.authorization_mode = '{ "state": "On", "default_user_name": "default_radix_user" }';
 CREATE USER default_radix_user WITH PASSWORD 'S0m1Str2ngP3ssword';
 GRANT radix_reader TO default_radix_user;
 GRANT radix_writer TO default_radix_user;
@@ -345,7 +345,7 @@ OK
 ##### Использование LDAP {: #ldapuser }
 
 ```sql
-ALTER PLUGIN radix 0.11.3 SET radix.authorization_mode = '{ "state": "On", "default_user_name": "default_radix_user" }';
+ALTER PLUGIN radix 0.13.0 SET radix.authorization_mode = '{ "state": "On", "default_user_name": "default_radix_user" }';
 CREATE USER default_radix_user USING ldap;
 GRANT radix_reader TO default_radix_user;
 GRANT radix_writer TO default_radix_user;
@@ -369,7 +369,7 @@ argus:
 ##### Разделение доступов по БД {: #access_separation }
 
 ```sql
-ALTER PLUGIN radix 0.11.3 SET radix.authorization_mode = '{ "state": "On" }';
+ALTER PLUGIN radix 0.13.0 SET radix.authorization_mode = '{ "state": "On" }';
 
 CREATE USER app_1_user WITH PASSWORD 'pwd1';
 GRANT radix_reader_0 TO app_1_user;
@@ -528,6 +528,28 @@ PING [message]
   если это не так (например, при загрузке из постоянного хранилища или
   обращении к устаревшей реплике)
 - измерения задержки
+
+#### quit
+
+```sql
+QUIT
+```
+<font size="2">_поддерживается с версии 0.13.0_</font>
+
+Отправляет серверу сигнал на закрытие соединения. Сервер исполнит запрос
+после того как будут отправлены все ответы на уже обработанные запросы.
+Данная команда относится к числу устаревших и не рекомендуется к
+использованию — более правильно разрывать соединение на стороне клиента
+когда оно больше не требуется.
+
+??? warning "Примечание"
+    Вместо этой команды необходимо использовать команду `HSET`
+    Данная команда отнесена в Redis в разряд
+    устаревших и по умолчанию отключена в Radix. Для включения
+    используйте следующий SQL-запрос:
+    ```sql
+    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["hmset" ] }';
+    ```
 
 
 #### readonly {: #cluster_readonly }
@@ -889,7 +911,7 @@ HMSET key field value [field value ...]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.11.3 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["hmset" ] }';
+    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["hmset" ] }';
     ```
 
 #### hscan
@@ -923,6 +945,271 @@ HVALS key
 <font size="2">_поддерживается с версии 0.7.0_</font>
 
 Возвращает значения всех полей в хэше, хранящиеся по адресу ключа `key`.
+
+### Команды для множеств {: #set_commands }
+
+#### sadd
+
+```sql
+SADD key member [member ...]
+```
+<font size="2">_поддерживается с версии 0.13.0_</font>
+
+Добавляет указанные элементы (`member`) к множеству, хранящемуся по
+ключу `key`. Если такие элемены уже есть, они будут проигнорированы.
+Если указанного ключа `key` нет, он будет создан, а элементы — добавлены
+в новое множество. Если ключ `key` существует, но хранящееся в нем
+значение не являестя множеством, команда вернет ошибку.
+
+#### scard
+
+```sql
+SCARD key
+```
+<font size="2">_поддерживается с версии 0.13.0_</font>
+
+Возвращает мощность множества (количество элементов), хранящегося по
+ключу `key`.
+
+#### sdiff
+
+```sql
+SDIFF key [key ...]
+```
+<font size="2">_поддерживается с версии 0.13.0_</font>
+
+Работает аналогично [SDIFFSTORE](#sdiffstore), но вместо записи
+результирующего множества выводит его клиенту.
+
+#### sdiffstore
+
+```sql
+SDIFFSTORE destination key [key ...]
+```
+<font size="2">_поддерживается с версии 0.13.0_</font>
+
+Вычисляет разницу между первым и последующими множествами (хранящимися в
+соответствующих ключах `key`) и записывает его в `destination`. Команда
+выводит количество элементов в результирующем множестве. Несуществующий
+ключ обрабатывается как ключ, содержащий пустое множество. Если целевое
+множество в `destination` уже существует, оно будет перезаписано.
+
+Примеры:
+
+```sql
+127.0.0.1:7379> SADD key1 "a"
+(integer) 1
+127.0.0.1:7379> SADD key1 "b"
+(integer) 1
+127.0.0.1:7379> SADD key1 "c"
+(integer) 1
+127.0.0.1:7379> SADD key2 "c"
+(integer) 1
+127.0.0.1:7379> SADD key2 "d"
+(integer) 1
+127.0.0.1:7379> SADD key2 "e"
+(integer) 1
+127.0.0.1:7379> SDIFFSTORE key key1 key2
+(integer) 2
+127.0.0.1:7379> SMEMBERS key
+1) "a"
+2) "b"
+127.0.0.1:7379>
+```
+
+#### sinter
+
+```sql
+SINTER key [key ...]
+```
+<font size="2">_поддерживается с версии 0.13.0_</font>
+
+Работает аналогично [SINTERSTORE](#sinterstore), но вместо записи
+результирующего множества выводит его клиенту.
+
+#### sintercard
+
+```sql
+SINTERCARD numkeys key [key ...] [LIMIT limit]
+```
+<font size="2">_поддерживается с версии 0.13.0_</font>
+
+Работает аналогично [SINTER](#sinter), но выводит клиенту не само
+множество, а только его мощность. Если указан несуществующий ключ `key`,
+то он будет обработан как пустое множество. Если из нескольких указанных
+ключей хотя бы один будет содержать пустое множество, то и
+результирующее пересечение также будет пустым.
+
+Дополнительный параметр `LIMIT` позволяет ограничить показатель мощности
+явно заданным числом. По умолчанию, ограничение не используется (`LIMIT`
+равен 0).
+
+#### sinterstore
+
+```sql
+SINTERSTORE destination key [key ...]
+```
+<font size="2">_поддерживается с версии 0.13.0_</font>
+
+Вычисляет пересечение элементов из двух или более множеств,
+хранящихся по указанным ключам (`key`) в виде нового
+множества и записывает его в `destination`. Команда
+выводит количество элементов в результирующем множестве.
+
+Пример:
+
+```sql
+127.0.0.1:7379> SADD key1 "a"
+(integer) 1
+127.0.0.1:7379> SADD key1 "b"
+(integer) 1
+127.0.0.1:7379> SADD key1 "c"
+(integer) 1
+127.0.0.1:7379> SADD key2 "c"
+(integer) 1
+127.0.0.1:7379> SADD key2 "d"
+(integer) 1
+127.0.0.1:7379> SADD key2 "e"
+(integer) 1
+127.0.0.1:7379> SINTERSTORE key key1 key2
+(integer) 1
+127.0.0.1:7379> SMEMBERS key
+1) "c"
+127.0.0.1:7379>
+```
+
+#### sismember
+
+```sql
+SISMEMBER key member
+```
+<font size="2">_поддерживается с версии 0.13.0_</font>
+
+Возвращает признак присутствия элемента в указанном множестве. В вывоже
+будет `1` или `0`, соответственно.
+
+#### smembers
+
+```sql
+SMEMBERS key
+```
+<font size="2">_поддерживается с версии 0.13.0_</font>
+
+Возвращает список всех элементов, хранящихся в указанном множестве.
+
+#### smove
+
+```sql
+SMOVE source destination member
+```
+<font size="2">_поддерживается с версии 0.13.0_</font>
+
+Перемещает элемент из исходного множества (`source`) в целевое
+(`destination`). Операция является атомарной. В любой момент времени
+элемент будет отображаться как элемент источника или назначения для
+других клиентов. Если исходное множествоне существует или не содержит
+указанный элемент, операция не выполняется и возвращается значение 0. В
+противном случае элемент удаляется из исходного множества и добавляется
+в целевое. Если указанный элемент уже существует в целевом множестве, он
+удаляется из исходного множестве.
+
+#### spop
+
+```sql
+SPOP key [count]
+```
+<font size="2">_поддерживается с версии 0.13.0_</font>
+
+Извлекает один или несколько элементов (согласно числу, указанному в
+`count`), хранящихся в множестве по указанному ключу. Если `count` не
+указан, то по умолчанию команда извлечет один элемент.
+
+#### srandmember
+
+```sql
+SRANDMEMBER key [count]
+```
+<font size="2">_поддерживается с версии 0.13.0_</font>
+
+Возвращает случайный элемент из множества, хранящегося по ключу `key`.
+Дополнительный параметр `count` позволяет указать количество выводимых
+элементов.
+Если `count` положителен, команда возвращает массив различных элементов.
+Длина массива равна `count` или мощности множества ([SCARD](#scard)), в
+зависимости от того, какое из этих значений меньше.
+При вызове с отрицательным значением `count` поведение меняется, и
+команда может возвращать один и тот же элемент несколько раз. В этом
+случае количество возвращаемых элементов равно абсолютному значению
+указанного `count`.
+
+#### srem
+
+```sql
+SREM key member [member ...]
+```
+<font size="2">_поддерживается с версии 0.13.0_</font>
+
+Удаляет указанные элементы из множества, хранящегося по ключу `key`.
+Если указанный элемент отсутствует в множестве, то такой элемент
+игнорируется. Если ключ `key` существует, но хранящееся в нем значение
+не явлется множеством, команда вернет ошибку.
+
+#### sscan
+
+```sql
+SSCAN key cursor [MATCH pattern] [COUNT count]
+```
+<font size="2">_поддерживается с версии 0.13.0_</font>
+
+См. [SCAN](#scan)
+
+#### sunion
+
+```sql
+SUNION key [key ...]
+```
+<font size="2">_поддерживается с версии 0.13.0_</font>
+
+Работает аналогично [SUNIONSTORE](#sunionstore), но вместо записи
+результирующего множества выводит его клиенту.
+
+#### sunionstore
+
+```sql
+SUNIONSTORE destination key [key ...]
+```
+<font size="2">_поддерживается с версии 0.13.0_</font>
+
+Вычисляет пересечение элементов из двух или более множеств,
+хранящихся по указанным ключам (`key`) в виде нового
+множества и записывает его в `destination`. Команда
+выводит количество элементов в результирующем множестве. Если множество
+в `destination` уже существует, оно будет перезаписано.
+
+Пример:
+
+```sql
+127.0.0.1:7379> SADD key1 "a"
+(integer) 1
+127.0.0.1:7379> SADD key1 "b"
+(integer) 1
+127.0.0.1:7379> SADD key1 "c"
+(integer) 1
+127.0.0.1:7379> SADD key2 "c"
+(integer) 1
+127.0.0.1:7379> SADD key2 "d"
+(integer) 1
+127.0.0.1:7379> SADD key2 "e"
+(integer) 1
+127.0.0.1:7379> SUNIONSTORE key key1 key2
+(integer) 5
+127.0.0.1:7379> SMEMBERS key
+1) "a"
+2) "b"
+3) "c"
+4) "d"
+5) "e"
+```
 
 ### Команды для сортированных множеств {: #ordered_sets }
 
@@ -1016,7 +1303,7 @@ ZCARD key
 <font size="2">_поддерживается с версии 0.10.0_</font>
 
 Возвращает мощность множества (количество элементов в сортированном
-множестве), хранящемся по ключу `key`.
+множестве), хранящегося по ключу `key`.
 
 #### zcount
 
@@ -1026,7 +1313,7 @@ ZCOUNT key min max
 <font size="2">_поддерживается с версии 0.10.0_</font>
 
 Возвращает мощность множества (количество элементов в сортированном
-множестве), хранящемся по ключу `key`, с оценкой в диапазоне от `min` до
+множестве), хранящегося по ключу `key`, с оценкой в диапазоне от `min` до
 `max`. Поведение аргументов `min` и `max` такое же, как в
 [ZREMRANGEBYSCORE](#zremrangebyscore).
 
@@ -1083,7 +1370,7 @@ ZINCRBY key increment member
 <font size="2">_поддерживается с версии 0.10.0_</font>
 
 Увеличивает оценку элемента `member` в сортированном множестве,
-хранящегося по ключу `key`, на величину `increment`. Если указанный
+хранящемся по ключу `key`, на величину `increment`. Если указанный
 элемент в множестве отсутствует, то он будет создан с оценкой, равной
 `increment`. Если указанного ключа `key` нет, он будет создан, и элемент
 добавлен в новое сортированное множество. Если ключ `key` существует, но
@@ -1215,7 +1502,7 @@ ZRANDMEMBER key [count [WITHSCORES]]
 ```
 <font size="2">_поддерживается с версии 0.10.0_</font>
 
-Возвращает случайный элемент из сортированного списка, хранящегося по
+Возвращает случайный элемент из сортированного множества, хранящегося по
 ключу `key`.
 
 Дополнительный параметр `count` позволяет указать количество выводимых
@@ -1422,7 +1709,7 @@ ZRANGEBYLEX key min max [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.11.3 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrangebylex" ] }';
+    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrangebylex" ] }';
     ```
 
 #### zrangebyscore
@@ -1439,7 +1726,7 @@ ZRANGEBYSCORE key min max [WITHSCORES] [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.11.3 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrangebyscore" ] }';
+    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrangebyscore" ] }';
     ```
 
 #### zrank
@@ -1517,7 +1804,7 @@ ZREVRANGE key start stop [WITHSCORES]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.11.3 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrevrange" ] }';
+    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrevrange" ] }';
     ```
 
 #### zrevrangebylex
@@ -1534,7 +1821,7 @@ ZREVRANGEBYLEX key max min [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.11.3 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrevrangebylex" ] }';
+    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrevrangebylex" ] }';
     ```
 
 #### zrevrangebyscore
@@ -1551,7 +1838,7 @@ ZREVRANGEBYSCORE key max min [WITHSCORES] [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.11.3 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrevrangebyscore" ] }';
+    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrevrangebyscore" ] }';
     ```
 
 #### zrevrank
@@ -1704,6 +1991,27 @@ BLPOP key [key ...] timeout
 в течение указанного в `timeout` времени (в секундах), и в случае
 неудачи вернет ошибку. Если таймаут установить в `0`, то блокировка
 будет бесконечной.
+
+#### brpoplpush
+
+```sql
+BRPOPLPUSH source destination timeout
+```
+<font size="2">_поддерживается с версии 0.13.0_</font>
+
+Работает аналогично [RPOPLPUSH](#rpoplpush), но с использованием
+блокировки. При использовании внутри блока [MULTI](#multi) или
+[EXEC](#exec) данная команда ведет себя полностью идентично
+[RPOPLPUSH](#rpoplpush).
+
+??? warning "Примечание"
+    Данная команда отнесена в Redis в разряд
+    устаревших и по умолчанию отключена в Radix. Для включения
+    используйте следующий SQL-запрос:
+    ```sql
+    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["psetex" ] }';
+    ```
+
 
 #### brpop
 
@@ -2166,6 +2474,27 @@ RPOP key [count]
 2) "two"
 ```
 
+#### rpoplpush
+
+```sql
+RPOPLPUSH source destination
+```
+<font size="2">_поддерживается с версии 0.13.0_</font>
+
+Извлекает один последний элемент из множества, хранящегося в `source` и
+добавляет его в начало множества, хранящегося в `destination`. Если
+`source` не существует, команда вернет `nil` и ничего не переместит.
+Если в качестве `source` и `destination` уазать одно и то жн множество,
+то команда переместит элемент из его конца в его начало.
+
+??? warning "Примечание"
+    Данная команда отнесена в Redis в разряд
+    устаревших и по умолчанию отключена в Radix. Для включения
+    используйте следующий SQL-запрос:
+    ```sql
+    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["psetex" ] }';
+    ```
+
 #### rpush
 
 ```sql
@@ -2375,7 +2704,7 @@ PSETEX key milliseconds value
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.11.3 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["psetex" ] }';
+    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["psetex" ] }';
     ```
 
 #### set
@@ -2430,7 +2759,7 @@ SET key value EX seconds
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.11.3 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["setex" ] }';
+    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["setex" ] }';
     ```
 
 Установка некорректного значения вернет ошибку.
@@ -2450,7 +2779,7 @@ SETNX key value
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.11.3 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["setnx" ] }';
+    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["setnx" ] }';
     ```
 
 #### strlen
@@ -2473,7 +2802,7 @@ Radix поддерживает необходимый минимум коман�
 включить, используйте запрос:
 
 ```sql
-ALTER PLUGIN radix 0.11.3 set radix.sentinel_enabled = 'true';
+ALTER PLUGIN radix 0.13.0 SET radix.sentinel_enabled = 'true';
 ```
 <font size="2">_поддерживается с версии 0.10.0_</font>
 
@@ -2726,43 +3055,45 @@ INFO [section [section ...]]
 - `replication`
 - `cpu`
 - `modules`
+- `errorstats`
 - `cluster`
 - `keyspace`
-- `errorstats`
 - `commandstats`
+- `latencystats`
+- `sentinel`
 
 ??? example "Образец вывода полного набора сведений"
     ```
     127.0.0.1:7301> info
     # Server
-    radix_version:0.12.0
-    picodata_version:25.4.3-0-g6bc41a511
-    picodata_cluster_name:radix
-    picodata_cluster_uuid:637eb7e3-d181-4aae-972f-870729e4246c
-    picodata_instance_name:extra_1_1
-    picodata_instance_uuid:41ee45bf-695d-4266-8f3d-002517221598
+    radix_version:0.13.0
+    picodata_version:25.5.0-1284-g631e71065
+    picodata_cluster_name:my_cluster
+    picodata_cluster_uuid:10d8c31f-5dea-4a29-9aa2-a5d27c6f4a0a
+    picodata_instance_name:i1
+    picodata_instance_uuid:2df62d9a-ce1b-4158-b486-c9ac815855f2
     redis_version:8.0.0
-    redis_git_sha1:441bc4e6a70abe71a3aa4ec621d3924e86833877
+    redis_git_sha1:9297307730399070ba42395b66671901966073f6
     redis_git_dirty:0
     redis_build_id:
     redis_mode:standalone
-    os:Fedora Linux 6.17.5-200.fc42.x86_64 x86_64
+    os:Fedora Linux 6.17.8-300.fc43.x86_64 x86_64
     arch_bits:64
     monotonic_clock:POSIX clock_gettime with CLOCK_MONOTONIC
     multiplexing_api:epoll
     atomicvar_api:c11-builtin
-    gcc_version:rustc 1.90.0 (1159e78c4 2025-09-14) (Fedora 1.90.0-1.fc42)
-    process_id:13939
+    gcc_version:rustc 1.91.1 (ed61e7d7e 2025-11-07) (Fedora 1.91.1-1.fc43)
+    process_id:101910
     process_supervised:no
-    run_id:3261c1de20e643e9a0063aa6eb52cff9
-    tcp_port:7301
-    server_time_usec:1761838105626718000
-    uptime_in_seconds:1282277
-    uptime_in_days:14
-    hz:3399
+    run_id:1d2a20127972481fbcbb413bc83564cc
+    tcp_port:7379
+    server_time_usec:1764079412720062000
+    uptime_in_seconds:454396
+    uptime_in_days:5
+    hz:3301
     configured_hz:0
     lru_clock:0
-    executable:/usr/bin/picodata
+    executable:/usr/local/bin/picodata
     config_file:
     io_threads_active:1
 
@@ -2771,7 +3102,7 @@ INFO [section [section ...]]
     cluster_connections:0
     maxclients:10000
     client_recent_max_input_buffer:0
-    client_recent_max_output_buffer:8192
+    client_recent_max_output_buffer:16384
     blocked_clients:0
     tracking_clients:0
     pubsub_clients:0
@@ -2782,39 +3113,39 @@ INFO [section [section ...]]
     total_blocking_keys_on_nokey:0
 
     # Memory
-    used_memory:226492416
-    used_memory_human:216.00M
-    used_memory_rss:118824960
-    used_memory_rss_human:113.32M
-    used_memory_peak:226492416
-    used_memory_peak_human:216.00M
+    used_memory:117440512
+    used_memory_human:112.00M
+    used_memory_rss:150224896
+    used_memory_rss_human:143.27M
+    used_memory_peak:117440512
+    used_memory_peak_human:112.00M
     used_memory_peak_perc:100.00
-    used_memory_overhead:192937984
-    used_memory_startup:226492416
+    used_memory_overhead:83886080
+    used_memory_startup:117440512
     used_memory_dataset:33554432
-    used_memory_dataset_perc:14.81
-    allocator_allocated:226492416
-    allocator_active:226492416
-    allocator_resident:118824960
-    total_system_memory:33282584576
+    used_memory_dataset_perc:28.57
+    allocator_allocated:117440512
+    allocator_active:117440512
+    allocator_resident:150224896
+    total_system_memory:33283235840
     total_system_memory_human:31.00G
-    used_memory_lua:18939559
-    used_memory_vm_eval:18939559
-    used_memory_lua_human:18.06M
+    used_memory_lua:8804252
+    used_memory_vm_eval:8804252
+    used_memory_lua_human:8.40M
     used_memory_scripts_eval:0
     number_of_cached_scripts:0
     number_of_functions:0
     number_of_libraries:0
     used_memory_vm_functions:0
-    used_memory_vm_total:18939559
-    used_memory_vm_total_human:18.06M
+    used_memory_vm_total:8804252
+    used_memory_vm_total_human:8.40M
     used_memory_functions:0
     used_memory_scripts:0
     used_memory_scripts_human:0B
     maxmemory:0
     maxmemory_human:0B
     maxmemory_policy:allkeys-lru
-    allocator_frag_ratio:1.68
+    allocator_frag_ratio:50.00
     allocator_frag_bytes:33554432
     allocator_muzzy:0
     allocator_rss_ratio:NaN
@@ -2824,20 +3155,20 @@ INFO [section [section ...]]
     mem_total_replication_buffers:0
     mem_fragmentation_ratio:NaN
     mem_fragmentation_bytes:0
-    mem_clients_normal:16384
+    mem_clients_normal:24576
     mem_allocator:slab
     active_defrag_running:0
     lazyfree_pending_objects:0
     lazyfreed_objects:0
     slab_info_items_size:16272
-    slab_info_items_used:1600
-    slab_info_items_used_ratio:9.83
-    slab_info_quota_size:2000000000
+    slab_info_items_used:4480
+    slab_info_items_used_ratio:27.53
+    slab_info_quota_size:67108864
     slab_info_quota_used:33554432
-    slab_info_quota_used_ratio:1.68
+    slab_info_quota_used_ratio:50
     slab_info_arena_size:33554432
-    slab_info_arena_used:312896
-    slab_info_arena_used_ratio:0.9
+    slab_info_arena_used:807296
+    slab_info_arena_used_ratio:2.4
 
     # Persistence
     loading:0
@@ -2845,10 +3176,10 @@ INFO [section [section ...]]
 
     # Stats
     total_connections_received:1
-    total_commands_processed:3
+    total_commands_processed:10
     instantaneous_ops_per_sec:0
-    total_net_input_bytes:84
-    total_net_output_bytes:990
+    total_net_input_bytes:414
+    total_net_output_bytes:21910
     total_net_repl_input_bytes:0
     total_net_repl_output_bytes:0
     instantaneous_input_kbps:0.00
@@ -2868,49 +3199,59 @@ INFO [section [section ...]]
     latest_fork_usec:0
     migrate_cached_sockets:0
     unexpected_error_replies:0
-    total_error_replies:0
-    total_reads_processed:4
-    total_writes_processed:3
+    total_error_replies:4
+    total_reads_processed:11
+    total_writes_processed:10
     client_query_buffer_limit_disconnections:0
     client_output_buffer_limit_disconnections:0
-    reply_buffer_expands:0
+    reply_buffer_expands:1
     reply_buffer_shrinks:0
 
     # Replication
     role:master
-    connected_slaves:1
-    slave0:id=extra_1_2,ip=127.0.0.1,port=3002,state=follow,offset=0,lag=0
+    connected_slaves:0
     master_failover_state:no-failover
-    master_replid:41ee45bf-695d-4266-8f3d-002517221598
-    master_replid2:41ee45bf-695d-4266-8f3d-002517221598
-    master_repl_offset:35734
-    second_repl_offset:35734
+    master_replid:2df62d9a-ce1b-4158-b486-c9ac815855f2
+    master_replid2:2df62d9a-ce1b-4158-b486-c9ac815855f2
+    master_repl_offset:36384
+    second_repl_offset:36384
     repl_backlog_active:0
     repl_backlog_size:0
     repl_backlog_first_byte_offset: 0
     repl_backlog_histlen:0
 
     # CPU
-    used_cpu_sys:7.032752
-    used_cpu_user:12.027181
+    used_cpu_sys:4.018689
+    used_cpu_user:10.076686
     used_cpu_sys_children:0.000000
     used_cpu_user_children:0.000000
-    used_cpu_sys_main_thread:3.015707
-    used_cpu_user_main_thread:12.066296
+    used_cpu_sys_main_thread:3.043188
+    used_cpu_user_main_thread:9.025456
 
     # Modules
 
     # Errorstats
-
+    errorstat_UNKNOWN_COMMAND:count=2
+    errorstat_MALFORMED_ARGS:count=2
     # Cluster
     cluster_enabled:1
 
     # Keyspace
-
+    db0:keys=0,expires=0,avg_ttl=0,subexpiry=0
     # Commandstats
-    cmdstat_info:calls=1,usec=102000,usec_per_call=0,rejected_calls=0,failed_calls=0
+    cmdstat_pico status:calls=2,usec=57000,usec_per_call=0,rejected_calls=0,failed_calls=0
+    cmdstat_pico sql:calls=2,usec=21179000,usec_per_call=0,rejected_calls=0,failed_calls=2
+    cmdstat_info:calls=1,usec=348000,usec_per_call=0,rejected_calls=0,failed_calls=0
+    cmdstat_command:calls=0,usec=136000,usec_per_call=0,rejected_calls=0,failed_calls=2
+    cmdstat_pico enable:calls=1,usec=36000,usec_per_call=0,rejected_calls=0,failed_calls=0
+    # Latencystats
+    latency_percentiles_usec_pico sql:p50.0=6708000,p99.0=14386000,p99.9=14386000
+    latency_percentiles_usec_command:p50.0=117000,p99.0=117000,p99.9=117000
+    latency_percentiles_usec_pico enable:p50.0=36000,p99.0=36000,p99.9=36000
+    latency_percentiles_usec_pico status:p50.0=29000,p99.0=29000,p99.9=29000
+    latency_percentiles_usec_info:p50.0=348000,p99.0=348000,p99.9=348000
     # Sentinel
-    sentinel_masters:4
+    sentinel_masters:1
     sentinel_tilt:0
     sentinel_tilt_since_seconds:0
     sentinel_running_scripts:0
@@ -2931,9 +3272,134 @@ MEMORY USAGE key [SAMPLES count]
 `SAMPLES` равно 5. Для учета всех дочерних элементов следует указать
 `SAMPLES 0`.
 
+### Команды для отладки {: #pico_debug }
+
+Команды с префиксом `pico` предназначены для отладки и диагностики
+кластера в том случае, если отсутствует возможность подключиться к
+Picodata другим способом.
+
+!!! warning "Внимание"
+    Никаких гарантий на форматы вывода нет; любые
+    попытки использования данных команд в работе приложения не
+    поддерживаются!
+
+#### pico status  {: #pico_status }
+
+Отображает состояние команд для отладки (включено/выклчено).
+
+#### pico enable {: #pico_enable }
+
+Включает использование команд для отладки.
+
+#### pico disable {: #pico_disable }
+
+Выключает использование команд для отладки.
+
+#### pico sql {: #pico_sql }
+
+Позволяет выполнить SQL-запрос в Redis-консоли.
+
+Пример:
+
+```sql
+127.0.0.1:7379> pico sql "SELECT * FROM _pico_user WHERE schema_version=4"
+1) "+----+------+----------------+------------------------------------------------+-------+------+"
+2) "| id | name | schema_version | auth                                           | owner | type |"
+3) "+============================================================================================+"
+4) "| 33 | andy | 4              | ['md5', 'md59ee8b0076cf18219f9b2f585f57d4d0c'] | 1     | user |"
+5) "+----+------+----------------+------------------------------------------------+-------+------+"
+6) "(1 rows)"
+```
+
+#### pico lua {: #pico_lua}
+
+Позволяет выполнить Lua-запрос в Redis-консоли.
+
+Пример:
+
+```sql
+127.0.0.1:7379> pico lua "return box.cfg.memtx_dir"
+"data"
+```
+
 ## Журнал изменений {: #changelog }
 
-## 0.12.0 - 2025-10-29 {: #0.12.0 }
+### 0.13.0 — 2025-11-20 {: #0.13.0 }
+
+**Новая функциональность**
+
+- Добавлена команда QUIT
+- Добавлены команды pico для дебага
+- Добавлена секция latency в info
+- Добавлена поддержка шардированного пабсаб
+- Добавлена поддержка rpoplpush и brpoplpush
+- Добавлены команды со структурой данных set
+
+
+**Исправления**
+
+- Добавлена повторная попытка отправить запрос обновления подписчика паттерна через cas
+- Exec всегда помечает соединение как нетранзакционное
+- Исправлено поведение флага PUSH_RESULT_INCLUDES_POPPED_ITEMS: теперь он считает элементы, даже если они все улетели в блокирующую команду
+- Убрана паника при отсутствии аргументов pubsub shardnumsub
+- Исправлены команды zremrangeby*: теперь они удаляют ключ, если были удалены все его элементы
+- Исправлены коамнды z*store: теперь они заменяют значение ключа вне зависимости от типа
+- Исправлены коамнды s*store: теперь они заменяют значение ключа вне зависимости от типа
+- Исправлено удаление patsubscriber
+- Исправлена команда mset — теперь она перезаписывает значение ключа вне зависимости от типа
+- Исправлен расчет бакета для z*store команд
+- Исправлено поведение флага ch команды zadd
+- Исправлена передача аргументов начала и конца поиска в командах zrevrange*
+- Исправлено сообщение об ошибке значения первого и последнего индексов поиска команды zrange
+- Исправлены команды eval и eval_ro — теперь они не сохраняют скрипт
+- Исправлено поведение команды lrange с отрицательными индексами
+- Добавлена сортировка значений в команде lpos и правильная обработка аргумента COUNT
+- Исправлен порядок элементов в блокирующих командах над списками при удалении справа
+- Исправлена команда hincrby — теперь она создает тип, если ключа не было в базе данных
+- Исправлены команды ttl и pttl — теперь их результаты округляются вверх
+- Исправлены команды set, psetex, setex, setnx — теперь они перезаписывают ключ вне зависимости от типа
+- Инплейс проверки для defer модуля
+- Детализация ошибок записи в Picodata
+- Игнорирование expell узлов при определении режима работы
+- Запрещены команды в контексте пабсаб кроме пабсаб команд
+- Добавлена передача адреса при возврате moved ошибки
+- Исправлено поведение zrandmember в соответсвии с документацией redis
+
+**Документация**
+
+- детализировал описание настройки enforce_one_slot_transactions
+- добавили описание особенностей некоторых команд
+- добавили таймаут в 20 минут на все команды из README
+
+**Внутренние улучшения**
+
+- исправили предупреждения rust 1.91
+
+**Тестирование**
+
+- Добавлен тест команды quit на редисе
+- Обновлены ключи в тесте TestRedisPExpireBusyMainLoop — теперь они уникальны между клиентами
+- Добавили реакцию на PICODATA_WRITE_ERROR — переподключение
+- Обновили зависимости в тестах
+- Добавлен запуск интеграционных тестов на Redis Cluster, Redis Standalone, Radix Standalone и Radix в режиме совместимости с Redis
+- Добавил вывод отчёта о бенчмарках в гитлаб
+- Добавлена проверка одновременной работы sentinel и deprecated команд
+- Добавлен режим тестирования на реплике для чтения
+- Тест на downgrade плагина
+
+**Прочее**
+
+- исправил сообщения на колбеках: info при успехе, warn при ошибке
+- добавлено логирование на плагин хуках
+- сделаем отдельный образ для тестов редиса
+- унифицировали установку го и версию пикодаты для тестов
+- обновлен темплейт issue — теперь правильно выставляется лейбл бага
+
+**Сhore**
+
+- Удалено разделение команд на сабкоманды
+
+### 0.12.0 — 2025-10-29 {: #0.12.0 }
 
 **Новая функциональность**
 
@@ -2964,7 +3430,7 @@ MEMORY USAGE key [SAMPLES count]
 - 👷 исправлен CI для ветки main (a5ff0e1)
 - Bump picodata version to 25.4.1 (cd5cd2d)
 
-### 0.11.0 - 2025-09-25 {: #0.11.0 }
+### 0.11.0 — 2025-09-25 {: #0.11.0 }
 
 **Новая функциональность**
 
@@ -2999,7 +3465,7 @@ MEMORY USAGE key [SAMPLES count]
 - Add ci benchmarks
 - Remove debug logging
 
-### 0.10.0 - 2025-09-02 {: #0.10.0 }
+### 0.10.0 — 2025-09-02 {: #0.10.0 }
 
 **Новая функциональность**
 
@@ -3083,7 +3549,7 @@ MEMORY USAGE key [SAMPLES count]
 
 - Обновим пикодату до 25.3.2
 
-### 0.9.0 - 2025-06-25 {: #0.9.0 }
+### 0.9.0 — 2025-06-25 {: #0.9.0 }
 
 **Новая функциональность**
 
@@ -3127,7 +3593,7 @@ MEMORY USAGE key [SAMPLES count]
 - :coffin: удалим старые неиспользуемые луашки
 - :construction_worker: добавляю Гамаюна
 
-### 0.8.0 - 2025-06-04 {: #0.8.0 }
+### 0.8.0 — 2025-06-04 {: #0.8.0 }
 
 **Новая функциональность**
 
@@ -3141,7 +3607,7 @@ MEMORY USAGE key [SAMPLES count]
 
 - Add redis_compatibility user documentation
 
-### 0.7.0 - 2025-05-28 {: #0.7.0 }
+### 0.7.0 — 2025-05-28 {: #0.7.0 }
 
 **Новая функциональность**
 
@@ -3175,7 +3641,7 @@ MEMORY USAGE key [SAMPLES count]
 
 - :arrow_up: picodata 25.1.2
 
-  0.6.1 - 2025-04-28 0.6.1
+  0.6.1 — 2025-04-28 0.6.1
 
 **Документация**
 
@@ -3185,7 +3651,7 @@ MEMORY USAGE key [SAMPLES count]
 
 - :construction_worker: вернем redos
 
-### 0.6.0 - 2025-04-18 {: #0.6.0 }
+### 0.6.0 — 2025-04-18 {: #0.6.0 }
 
 **Новая функциональность**
 
@@ -3236,13 +3702,13 @@ MEMORY USAGE key [SAMPLES count]
 - :adhesive_bandage: сделал по два репликасета на каждый тир как и в оригинальном кластере
 - :arrow_up: introduce pike 2.0.0
 
-### 0.5.2 - 2025-03-19 {: #0.5.2 }
+### 0.5.2 — 2025-03-19 {: #0.5.2 }
 
 **Прочее**
 
 - :technologist: добавим отлаженного Бендера
 
-### 0.5.1 - 2025-03-13 {: #0.5.1 }
+### 0.5.1 — 2025-03-13 {: #0.5.1 }
 
 **Исправления**
 
@@ -3265,7 +3731,7 @@ MEMORY USAGE key [SAMPLES count]
 
 - :construction_worker: отсылаем нотификацию о релизе в спецчат в телеге
 
-### 0.5.0 - 2025-03-06 {: #0.5.0 }
+### 0.5.0 — 2025-03-06 {: #0.5.0 }
 
 **Новая функциональность**
 
@@ -3335,7 +3801,7 @@ MEMORY USAGE key [SAMPLES count]
 - На \`pico_stop\` убиваем пикодату из \`PICODATA_BINARY_PATH\`, а не просто \`picodata\`
 - :construction_worker: можно запускать тесты как на CI, но локально
 
-### 0.4.4 - 2025-01-13 {: #0.4.4 }
+### 0.4.4 — 2025-01-13 {: #0.4.4 }
 
 **Исправления**
 
@@ -3353,13 +3819,13 @@ MEMORY USAGE key [SAMPLES count]
 
 - Add benches for hash commands
 
-### 0.4.3 - 2024-12-24 {: #0.4.3 }
+### 0.4.3 — 2024-12-24 {: #0.4.3 }
 
 **Новая функциональность**
 
 - Implement incrs
 
-### 0.4.1 - 2024-12-18 {: #0.4.1 }
+### 0.4.1 — 2024-12-18 {: #0.4.1 }
 
 **Новая функциональность**
 
@@ -3379,7 +3845,7 @@ MEMORY USAGE key [SAMPLES count]
 
 - Добавим возможность запустить вторую копию
 
-### 0.4.0 - 2024-12-10 {: #0.4.0 }
+### 0.4.0 — 2024-12-10 {: #0.4.0 }
 
 **Новая функциональность**
 
@@ -3442,7 +3908,7 @@ MEMORY USAGE key [SAMPLES count]
 - :construction_worker: поправил докерфайлы для установки всегда новой пикодаты
 - :heavy_plus_sign: переводим плагин на picodata-plugin сдк
 
-### 0.2.0 - 2024-10-04 {: #0.2.0 }
+### 0.2.0 — 2024-10-04 {: #0.2.0 }
 
 **Новая функциональность**
 
@@ -3477,7 +3943,7 @@ MEMORY USAGE key [SAMPLES count]
 - Change name of package
 - :hammer: set up docker compose for every artifact
 
-### 0.1.1 - 2024-09-13 {: #0.1.1 }
+### 0.1.1 — 2024-09-13 {: #0.1.1 }
 
 **Новая функциональность**
 
@@ -3497,7 +3963,7 @@ MEMORY USAGE key [SAMPLES count]
 
 - Add pack for all supported by picodata OS
 
-### 0.1.0 - 2024-09-09 {: #0.1.0 }
+### 0.1.0 — 2024-09-09 {: #0.1.0 }
 
 **Новая функциональность**
 
