@@ -354,5 +354,16 @@ CREATE TABLE g1(a INT PRIMARY KEY, b INT, c INT);
 
 -- TEST: window12-5.1
 -- SQL:
+select t1.a from
+	t1
+	left join t2 on (
+		select a from t1 limit 1
+	) > 0
+	group by t1.a
+;
+-- EXPECTED:
+
+-- TEST: window12-5.2
+-- SQL:
 SELECT sum(-13) AS c0, 11 AS c1, t3.b AS c2, t3.c AS c3 FROM t2 AS t0 LEFT JOIN t1 AS t1 ON t0.c > t1.b JOIN t1 AS t2 ON t2.c = t1.c JOIN t2 AS t3 ON (SELECT t2.a AS c0 FROM t1 AS t0 LEFT JOIN g1 AS t1 ON t0.b = t1.a JOIN g1 AS t2 ON t1.a = t2.a LEFT JOIN t2 AS t3 ON t3.a = t2.a WHERE t0.b = t0.a AND t2.c >= t2.a UNION SELECT max(t0.a) AS c0 FROM t1 AS t0 LEFT JOIN g1 AS t1 ON t0.b = t1.b JOIN g1 AS t2 ON t2.c = t1.c WHERE t1.b <> t1.b OR t1.c < t1.c HAVING 15 < avg(t0.c) OR count(t0.c) = 5961600 WINDOW win0 AS (PARTITION BY t1.a, t2.a ORDER BY t1.a), win1 AS (PARTITION BY t0.a ORDER BY t1.c DESC, t1.c DESC), win2 AS (PARTITION BY (SELECT t0.a AS c0 FROM t2 AS t0 WHERE t0.c < t0.a OR t0.a = t0.b OR t0.a NOT BETWEEN t0.c AND t0.a ORDER BY c0 DESC LIMIT 1), count(t0.b), max(9), t0.a ORDER BY t0.b ASC, t0.c ASC, t0.a ASC, t2.c ASC, t0.a ASC) ORDER BY c0 ASC LIMIT 1) < t3.b WHERE t0.a = t1.a OR t3.b <= t3.b GROUP BY t3.c, t3.b HAVING max(DISTINCT t3.a) = 11 ORDER BY c3, c1 ASC, c0 DESC, c2 ASC;
 -- EXPECTED:

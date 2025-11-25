@@ -2684,12 +2684,15 @@ impl Plan {
 impl Plan {
     fn replace_group_by_ordinals_with_references(&mut self) -> Result<(), SbroadError> {
         let top = self.get_top()?;
+        if !matches!(self.get_node(top)?, Node::Relational(_)) {
+            return Ok(());
+        }
         let mut post_tree =
             PostOrder::with_capacity(|node| self.nodes.rel_iter(node), REL_CAPACITY);
         post_tree.populate_nodes(top);
         let nodes = post_tree.take_nodes();
         for LevelNode(_, id) in nodes {
-            if let Ok(Relational::Projection(_)) = self.get_relation_node(id) {
+            if matches!(self.get_relation_node(id)?, Relational::Projection(_)) {
                 self.adjust_grouping_exprs(id)?;
             }
         }
@@ -2697,15 +2700,16 @@ impl Plan {
     }
 
     fn adjust_grouping_exprs(&mut self, final_proj_id: NodeId) -> Result<(), SbroadError> {
-        let (_, upper) = self.split_group_by(final_proj_id)?;
+        let group_by = self.get_group_by(final_proj_id)?;
+        let Some(group_by) = group_by else {
+            return Ok(());
+        };
         let final_proj_output = self.get_relational_output(final_proj_id)?;
         let final_proj_cols = self.get_row_list(final_proj_output)?.clone();
-        let mut grouping_exprs =
-            if let Relational::GroupBy(GroupBy { gr_exprs, .. }) = self.get_relation_node(upper)? {
-                gr_exprs.clone()
-            } else {
-                return Ok(());
-            };
+        let mut grouping_exprs = match self.get_relation_node(group_by)? {
+            Relational::GroupBy(GroupBy { gr_exprs, .. }) => gr_exprs.clone(),
+            _ => unreachable!("expected GroupBy node"),
+        };
 
         for expr in grouping_exprs.iter_mut() {
             match self.get_expression_node(*expr)? {
@@ -2725,7 +2729,7 @@ impl Plan {
                         _ => continue,
                     };
 
-                    self.replace_const_with_reference(&final_proj_cols, upper, expr, pos)?;
+                    self.replace_const_with_reference(&final_proj_cols, group_by, expr, pos)?;
                 }
                 Expression::ScalarFunction(ScalarFunction { name, .. }) => {
                     return Err(SbroadError::Invalid(
@@ -2740,7 +2744,7 @@ impl Plan {
         }
 
         if let MutRelational::GroupBy(GroupBy { gr_exprs, .. }) =
-            self.get_mut_relation_node(upper)?
+            self.get_mut_relation_node(group_by)?
         {
             *gr_exprs = grouping_exprs;
         }
@@ -2812,7 +2816,7 @@ impl Plan {
                 position, col_type, ..
             }) = expr_node
             {
-                let node_id = self.get_relational_child(groupby_id, 0)?;
+                let node_id = self.get_first_rel_child(groupby_id)?;
                 let ref_id = self.nodes.add_ref(
                     ReferenceTarget::Single(node_id),
                     *position,

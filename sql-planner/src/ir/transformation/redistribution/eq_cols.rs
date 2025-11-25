@@ -73,8 +73,8 @@ impl ReferredMap {
         condition_id: NodeId,
         join_id: NodeId,
     ) -> Result<Self, SbroadError> {
-        let outer_child = plan.get_relational_child(join_id, 0)?;
-        let inner_child = plan.get_relational_child(join_id, 1)?;
+        let outer_child = plan.get_rel_child(join_id, 0)?;
+        let inner_child = plan.get_rel_child(join_id, 1)?;
         let mut referred = ReferredMap::with_capacity(EXPR_CAPACITY);
         let expr_tree =
             PostOrder::with_capacity(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
@@ -517,7 +517,7 @@ impl EqualityCols {
         condition_id: NodeId,
     ) -> Result<Option<EqualityCols>, SbroadError> {
         let mut node_eq_cols: EqualityColsMap = EqualityColsMap::new();
-        let outer_id = plan.get_relational_child(join_id, 0)?;
+        let outer_id = plan.get_first_rel_child(join_id)?;
         let refers_to = ReferredMap::new_from_join_condition(plan, condition_id, join_id)?;
         let filter = |node_id: NodeId| -> bool {
             if let Ok(Node::Expression(Expression::Bool(_))) = plan.get_node(node_id) {

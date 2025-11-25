@@ -277,7 +277,7 @@ impl ExecutionPlan {
         let rel = self.get_ir_plan().get_relation_node(*top_id)?;
         match rel {
             Relational::ScanSubQuery { .. } | Relational::ScanCte { .. } => {
-                self.get_ir_plan().get_relational_child(*top_id, 0)
+                self.get_ir_plan().get_first_rel_child(*top_id)
             }
             Relational::Except { .. }
             | Relational::GroupBy { .. }
@@ -304,31 +304,19 @@ impl ExecutionPlan {
         }
     }
 
-    /// Extract a child from the motion node. Motion node must contain only a single child.
+    /// Extract the child from the Motion node.
+    ///
+    /// # Panics:
+    /// - `motion_id` is not Motion IR node
     ///
     /// # Errors
-    /// - node is not `Relation` type
-    /// - node does not contain children
-    pub(crate) fn get_motion_child(&self, node_id: NodeId) -> Result<NodeId, SbroadError> {
-        let node = self.get_ir_plan().get_relation_node(node_id)?;
-        if !node.is_motion() {
-            return Err(SbroadError::Invalid(
-                Entity::Relational,
-                Some(format_smolstr!("current node ({node_id:?}) is not motion")),
-            ));
-        }
-
-        let children = self.plan.get_relational_children(node_id)?;
-
-        assert!(
-            children.len() == 1,
-            "Motion node ({node_id:?}:{node:?}) must have a single child only (actual {})",
-            children.len()
-        );
-
-        let child_id = children.get(0).expect("Motion has no children");
-
-        Ok(*child_id)
+    /// - `motion_id` is not `Relational` type
+    /// - Node `motion_id` does not contain child
+    pub(crate) fn get_motion_child(&self, motion_id: NodeId) -> Result<NodeId, SbroadError> {
+        let Relational::Motion(_) = self.get_ir_plan().get_relation_node(motion_id)? else {
+            unreachable!("expected Motion IR node");
+        };
+        self.plan.get_first_rel_child(motion_id)
     }
 
     /// Unlink the subtree of the motion node.
@@ -605,9 +593,20 @@ impl ExecutionPlan {
                         RelOwned::ValuesRow(ValuesRow { data, .. }) => {
                             *data = subtree_map.get_id(*data);
                         }
-                        RelOwned::Projection(Projection { windows, .. }) => {
+                        RelOwned::Projection(Projection {
+                            windows,
+                            group_by,
+                            having,
+                            ..
+                        }) => {
                             for window in windows {
                                 *window = subtree_map.get_id(*window);
+                            }
+                            if let Some(group_by_id) = group_by {
+                                *group_by_id = subtree_map.get_id(*group_by_id);
+                            }
+                            if let Some(having_id) = having {
+                                *having_id = subtree_map.get_id(*having_id);
                             }
                         }
                         RelOwned::Except { .. }

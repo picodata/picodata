@@ -452,15 +452,12 @@ impl Plan {
         &mut self,
         proj_id: NodeId,
     ) -> Result<(), SbroadError> {
-        if !matches!(
-            self.get_relation_node(proj_id)?,
-            Relational::Projection { .. }
-        ) {
+        if !matches!(self.get_relation_node(proj_id)?, Relational::Projection(_)) {
             panic!("Expected projection on id: {proj_id}.")
         };
 
         let output_id = self.get_relational_output(proj_id)?;
-        let child_id = self.get_relational_child(proj_id, 0)?;
+        let child_id = self.get_first_rel_child(proj_id)?;
         let ref_info = ReferenceInfo::new(output_id, self)?;
         let child_dist = self.dist_from_child(child_id, &ref_info.child_column_to_parent_col)?;
 
@@ -612,17 +609,17 @@ impl Plan {
             .unwrap_or_else(|| panic!("Unexpected node to get required children number: {node:?}"));
         // Check all required children have Global distribution.
         for child_idx in 0..required_children_len {
-            let child_id = self.get_relational_child(node_id, child_idx)?;
+            let child_id = self.get_rel_child(node_id, child_idx)?;
             let child_dist = self.get_rel_distribution(child_id)?;
             if !matches!(child_dist, Distribution::Global) {
                 return Ok(None);
             }
         }
 
-        let children_len = node.children().len();
+        let children_len = node.children_len();
         let mut suggested_dist = Some(Distribution::Global);
         for sq_idx in required_children_len..children_len {
-            let sq_id = self.get_relational_child(node_id, sq_idx)?;
+            let sq_id = self.get_rel_child(node_id, sq_idx)?;
             let sq_dist = self.get_rel_distribution(sq_id)?;
             match sq_dist {
                 Distribution::Segment { .. } => {

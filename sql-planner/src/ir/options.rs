@@ -225,10 +225,10 @@ impl Plan {
             // if it's an insert - try to determine number of values we are trying to insert.
             // for unoptimized queries we can look at the first child to find the Values node,
             // optimized queries have motions, however, and we have to support this too
-            let child_id = self.get_relational_child(id, 0)?;
+            let child_id = self.get_first_rel_child(id)?;
             match self.get_relation_node(child_id)? {
                 Relational::Motion(_) => {
-                    let child2_id = self.get_relational_child(child_id, 0)?;
+                    let child2_id = self.get_first_rel_child(child_id)?;
                     if let Relational::Values(values) = self.get_relation_node(child2_id)? {
                         return Ok(Some(values.children.len()));
                     }

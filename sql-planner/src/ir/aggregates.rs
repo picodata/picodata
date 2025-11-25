@@ -247,7 +247,7 @@ impl Aggregate {
     ) -> Result<NodeId, SbroadError> {
         let fun_expr = plan.get_expression_node(self.fun_id)?;
         let col_type = fun_expr.calculate_type(plan)?;
-        let child_id = plan.get_relational_child(self.parent_rel, 0)?;
+        let child_id = plan.get_first_rel_child(self.parent_rel)?;
         let ref_id = plan.nodes.add_ref(
             ReferenceTarget::Single(child_id),
             position,
@@ -468,31 +468,34 @@ impl Plan {
     /// TODO: We should also support OrderBy.
     ///
     /// # Arguments
-    /// * `finals` - ids of nodes in final (reduce stage) before adding two stage aggregation.
-    ///   It may contain ids of `Projection` or `Having`.
+    /// - `proj` - id of final Projection node.
+    /// - `having` - id of Having node under final Projection
     ///   Note: final `GroupBy` is not present because it will be added later in 2-stage pipeline.
-    pub fn collect_aggregates(&self, finals: &Vec<NodeId>) -> Result<Vec<Aggregate>, SbroadError> {
+    pub fn collect_aggregates(
+        &self,
+        proj: NodeId,
+        having: Option<NodeId>,
+    ) -> Result<Vec<Aggregate>, SbroadError> {
         let mut aggrs = Vec::with_capacity(AGGR_CAPACITY);
-        for node_id in finals {
-            let node = self.get_relation_node(*node_id)?;
-            match node {
-                Relational::Projection(Projection { output, .. }) => {
-                    let mut collector = AggrCollector::with_capacity(self, AGGR_CAPACITY, *node_id);
-                    for col in self.get_row_list(*output)? {
-                        aggrs.extend(collector.collect_aggregates(*col)?);
-                    }
-                }
-                Relational::Having(Having { filter, .. }) => {
-                    let mut collector = AggrCollector::with_capacity(self, AGGR_CAPACITY, *node_id);
-                    aggrs.extend(collector.collect_aggregates(*filter)?);
-                }
-                _ => {
-                    unreachable!(
-                        "Unexpected {node:?} met as final relational to collect aggregates"
-                    )
+        match self.get_relation_node(proj)? {
+            Relational::Projection(Projection { output, .. }) => {
+                let mut collector = AggrCollector::with_capacity(self, AGGR_CAPACITY, proj);
+                for col in self.get_row_list(*output)? {
+                    aggrs.extend(collector.collect_aggregates(*col)?);
                 }
             }
+            _ => {
+                unreachable!("expected Projection node");
+            }
         }
+
+        if let Some(having) = having {
+            let Relational::Having(Having { filter, .. }) = self.get_relation_node(having)? else {
+                unreachable!("expected Having node");
+            };
+            let mut collector = AggrCollector::with_capacity(self, AGGR_CAPACITY, having);
+            aggrs.extend(collector.collect_aggregates(*filter)?);
+        };
 
         for aggr in &aggrs {
             let top = aggr.fun_id;

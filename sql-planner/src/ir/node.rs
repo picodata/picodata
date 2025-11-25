@@ -700,11 +700,14 @@ pub struct Projection {
     pub output: NodeId,
     /// Whether the select was marked with `distinct` keyword
     pub is_distinct: bool,
+
+    pub group_by: Option<NodeId>,
+    pub having: Option<NodeId>,
 }
 
 impl From<Projection> for NodeAligned {
     fn from(value: Projection) -> Self {
-        Self::Node64(Node64::Projection(value))
+        Self::Node96(Node96::Projection(value))
     }
 }
 
@@ -1417,7 +1420,6 @@ impl Node32 {
 pub enum Node64 {
     ScanCte(ScanCte),
     Case(Case),
-    Projection(Projection),
     Selection(Selection),
     Having(Having),
     ValuesRow(ValuesRow),
@@ -1463,7 +1465,6 @@ impl Node64 {
             Node64::OrderBy(order_by) => NodeOwned::Relational(RelOwned::OrderBy(order_by)),
             Node64::Row(row) => NodeOwned::Expression(ExprOwned::Row(row)),
             Node64::Procedure(proc) => NodeOwned::Block(BlockOwned::Procedure(proc)),
-            Node64::Projection(proj) => NodeOwned::Relational(RelOwned::Projection(proj)),
             Node64::ScanCte(scan_cte) => NodeOwned::Relational(RelOwned::ScanCte(scan_cte)),
             Node64::ScanRelation(scan_rel) => {
                 NodeOwned::Relational(RelOwned::ScanRelation(scan_rel))
@@ -1484,6 +1485,7 @@ impl Node64 {
 #[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum Node96 {
+    Projection(Projection),
     Reference(Reference),
     Invalid(Invalid),
     ScalarFunction(ScalarFunction),
@@ -1501,6 +1503,7 @@ impl Node96 {
     #[must_use]
     pub fn into_owned(self) -> NodeOwned {
         match self {
+            Node96::Projection(reference) => NodeOwned::Relational(RelOwned::Projection(reference)),
             Node96::Reference(reference) => NodeOwned::Expression(ExprOwned::Reference(reference)),
             Node96::DropProc(drop_proc) => NodeOwned::Ddl(DdlOwned::DropProc(drop_proc)),
             Node96::Insert(insert) => NodeOwned::Relational(RelOwned::Insert(insert)),

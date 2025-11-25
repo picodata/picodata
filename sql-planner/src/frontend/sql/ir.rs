@@ -338,6 +338,8 @@ impl SubtreeCloner {
                 windows: _,
                 output: _,
                 is_distinct: _,
+                group_by: _,
+                having: _,
             })
             | RelOwned::Insert(Insert {
                 relation: _,

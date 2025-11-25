@@ -89,9 +89,8 @@ impl RelOwned {
             | RelOwned::Join(_)
             | RelOwned::Delete(_)
             | RelOwned::ScanSubQuery(_)
-            | RelOwned::GroupBy(_)
-            | RelOwned::Projection(_) => ArenaType::Arena64,
-            RelOwned::Insert(_) => ArenaType::Arena96,
+            | RelOwned::GroupBy(_) => ArenaType::Arena64,
+            RelOwned::Insert(_) | RelOwned::Projection(_) => ArenaType::Arena96,
             RelOwned::Update(_) | RelOwned::Motion(_) => ArenaType::Arena136,
         }
     }
@@ -634,6 +633,23 @@ impl Relational<'_> {
             Relational::Delete(Delete { child: None, .. })
             | Relational::Motion(Motion { child: None, .. })
             | Relational::ScanRelation(_) => Children::None,
+        }
+    }
+
+    pub fn children_len(&self) -> usize {
+        if matches!(
+            self,
+            Relational::Projection(Projection {
+                group_by: Some(_),
+                ..
+            }) | Relational::Projection(Projection {
+                having: Some(_),
+                ..
+            })
+        ) {
+            self.children().len() + 1
+        } else {
+            self.children().len()
         }
     }
 

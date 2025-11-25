@@ -23,11 +23,11 @@ impl Plan {
     ) -> Result<Option<Strategy>, SbroadError> {
         let is_left_join = matches!(join_kind, JoinKind::LeftOuter);
         let is_outer_global = matches!(
-            self.get_rel_distribution(self.get_relational_child(join_id, 0)?)?,
+            self.get_rel_distribution(self.get_rel_child(join_id, 0)?)?,
             Distribution::Global
         );
         let is_inner_non_local = matches!(
-            self.get_rel_distribution(self.get_relational_child(join_id, 1)?)?,
+            self.get_rel_distribution(self.get_rel_child(join_id, 1)?)?,
             Distribution::Segment { .. } | Distribution::Any
         );
         if !(is_left_join && is_outer_global && is_inner_non_local) {
@@ -46,7 +46,7 @@ impl Plan {
             ));
         };
 
-        let outer_id = self.get_relational_child(join_id, 0)?;
+        let outer_id = self.get_first_rel_child(join_id)?;
 
         // In case there are no motions under outer child,
         // we need to add one, because we need to materialize
@@ -56,7 +56,7 @@ impl Plan {
             let mut motion_child_id = None;
             // Check if there is already motion under outer child
             if child.is_subquery_or_cte() {
-                let sq_child = self.get_relational_child(outer_id, 0)?;
+                let sq_child = self.get_first_rel_child(outer_id)?;
                 if self.get_relation_node(sq_child)?.is_motion() {
                     motion_child_id = Some(sq_child);
                 }
@@ -81,7 +81,7 @@ impl Plan {
         };
         let mut strategy = Strategy::new(parent_id);
 
-        strategy.add_child(join_id, MotionPolicy::Full, Program(vec![motion_op]));
+        strategy.upsert_child(join_id, MotionPolicy::Full, Program(vec![motion_op]));
 
         Ok(Some(strategy))
     }

@@ -2763,7 +2763,7 @@ fn do_dml_on_global_tbl_no_retry(
             _ => unreachable!(),
         };
 
-        let motion_id = ir.get_relational_child(top, 0)?;
+        let motion_id = ir.get_first_rel_child(top)?;
         let slices = ir.calculate_slices(motion_id)?;
         let port: Option<&mut PicoPortC> = None;
         query.materialize_subtree(slices.into(), port)?;

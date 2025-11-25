@@ -487,9 +487,6 @@ fn subtree_next<'plan>(
                 })
                 | Relational::SelectWithoutScan(SelectWithoutScan {
                     output, children, ..
-                })
-                | Relational::Projection(Projection {
-                    output, children, ..
                 }) => {
                     let step = *iter.get_child().borrow();
                     *iter.get_child().borrow_mut() += 1;
@@ -507,6 +504,41 @@ fn subtree_next<'plan>(
                         if step == children.len() {
                             return Some(*output);
                         }
+                    }
+                    None
+                }
+                Relational::Projection(Projection {
+                    output,
+                    children,
+                    group_by,
+                    having,
+                    ..
+                }) => {
+                    let step = *iter.get_child().borrow();
+                    *iter.get_child().borrow_mut() += 1;
+                    let mut step_shift: usize = 0;
+                    if iter.output_first() {
+                        if step == 0 {
+                            return Some(*output);
+                        }
+                        step_shift += 1;
+                    }
+                    if having.is_some() {
+                        if step - step_shift == 0 {
+                            return *having;
+                        }
+                        step_shift += 1;
+                    } else if group_by.is_some() {
+                        if step - step_shift == 0 {
+                            return *group_by;
+                        }
+                        step_shift += 1;
+                    }
+                    let child_idx = step - step_shift;
+                    if child_idx < children.len() {
+                        return children.get(child_idx).copied();
+                    } else if !iter.output_first() && child_idx == children.len() {
+                        return Some(*output);
                     }
                     None
                 }

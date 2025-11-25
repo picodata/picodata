@@ -42,7 +42,7 @@ fn simple_select() {
 					Column type: int
 	---------------------------------------------
 	---------------------------------------------
-	[id: 364] relation: Projection
+	[id: 696] relation: Projection
 		Children:
 			Child_id = 164
 		Output:	[id: 264] expression: Row [distribution = Any]
@@ -103,7 +103,7 @@ fn simple_join() {
     				Column type: int
     ---------------------------------------------
     ---------------------------------------------
-    [id: 364] relation: Projection
+    [id: 696] relation: Projection
     	Children:
     		Child_id = 164
     	Output:	[id: 264] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0] }}) }]
@@ -118,151 +118,151 @@ fn simple_join() {
     				Column type: int
     ---------------------------------------------
     ---------------------------------------------
-    [id: 564] relation: ScanSubQuery
+    [id: 464] relation: ScanSubQuery
     	Alias: t1
     	Children:
-    		Child_id = 364
-    	Output:	[id: 464] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0] }}) }]
+    		Child_id = 696
+    	Output:	[id: 364] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0] }}) }]
     		List:
     		[id: 632] expression: Alias [name = id]
     			Child:
-    			[id: 696] expression: Reference
+    			[id: 796] expression: Reference
     				Alias: id
     				Referenced table name (or alias): test_space
-    				target_id: 364
+    				target_id: 696
     				Position: 0
     				Column type: int
     ---------------------------------------------
     ---------------------------------------------
-    [id: 764] relation: ScanRelation
+    [id: 664] relation: ScanRelation
     	Relation: hash_testing
     	[No children]
-    	Output:	[id: 664] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0, 1] }}) }]
+    	Output:	[id: 564] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0, 1] }}) }]
     		List:
     		[id: 732] expression: Alias [name = identification_number]
     			Child:
-    			[id: 796] expression: Reference
+    			[id: 896] expression: Reference
     				Position: 0
     				Column type: int
     		[id: 832] expression: Alias [name = product_code]
     			Child:
-    			[id: 896] expression: Reference
+    			[id: 996] expression: Reference
     				Position: 1
     				Column type: string
     		[id: 932] expression: Alias [name = product_units]
     			Child:
-    			[id: 996] expression: Reference
+    			[id: 1096] expression: Reference
     				Position: 2
     				Column type: bool
     		[id: 1032] expression: Alias [name = sys_op]
     			Child:
-    			[id: 1096] expression: Reference
+    			[id: 1196] expression: Reference
     				Position: 3
     				Column type: int
     		[id: 1132] expression: Alias [name = bucket_id]
     			Child:
-    			[id: 1196] expression: Reference
+    			[id: 1296] expression: Reference
     				Position: 4
     				Column type: int
     ---------------------------------------------
     ---------------------------------------------
-    [id: 964] relation: Projection
+    [id: 1496] relation: Projection
     	Children:
-    		Child_id = 764
-    	Output:	[id: 864] expression: Row [distribution = Any]
+    		Child_id = 664
+    	Output:	[id: 764] expression: Row [distribution = Any]
     		List:
     		[id: 1232] expression: Alias [name = identification_number]
-    			Child:
-    			[id: 1296] expression: Reference
-    				Alias: identification_number
-    				Referenced table name (or alias): hash_testing
-    				target_id: 764
-    				Position: 0
-    				Column type: int
-    ---------------------------------------------
-    ---------------------------------------------
-    [id: 1164] relation: ScanSubQuery
-    	Alias: t2
-    	Children:
-    		Child_id = 964
-    	Output:	[id: 1064] expression: Row [distribution = Any]
-    		List:
-    		[id: 1332] expression: Alias [name = identification_number]
     			Child:
     			[id: 1396] expression: Reference
     				Alias: identification_number
     				Referenced table name (or alias): hash_testing
-    				target_id: 964
+    				target_id: 664
+    				Position: 0
+    				Column type: int
+    ---------------------------------------------
+    ---------------------------------------------
+    [id: 964] relation: ScanSubQuery
+    	Alias: t2
+    	Children:
+    		Child_id = 1496
+    	Output:	[id: 864] expression: Row [distribution = Any]
+    		List:
+    		[id: 1332] expression: Alias [name = identification_number]
+    			Child:
+    			[id: 1596] expression: Reference
+    				Alias: identification_number
+    				Referenced table name (or alias): hash_testing
+    				target_id: 1496
     				Position: 0
     				Column type: int
     ---------------------------------------------
     ---------------------------------------------
     [id: 0136] relation: Motion [policy = Segment(MotionKey { targets: [Reference(0)] }), alias = t2]
     	Children:
-    		Child_id = 1164
-    	Output:	[id: 1664] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0] }}) }]
+    		Child_id = 964
+    	Output:	[id: 1364] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0] }}) }]
     		List:
     		[id: 1832] expression: Alias [name = identification_number]
     			Child:
-    			[id: 1996] expression: Reference
+    			[id: 2296] expression: Reference
     				Alias: identification_number
     				Referenced table name (or alias): t2
-    				target_id: 1164
+    				target_id: 964
     				Position: 0
     				Column type: int
     ---------------------------------------------
     ---------------------------------------------
-    [id: 1364] relation: InnerJoin
+    [id: 1164] relation: InnerJoin
     	Condition:
     		[id: 1432] expression: Bool [op: =]
     			Left child
-    			[id: 1496] expression: Reference
-    				Alias: id
-    				Referenced table name (or alias): t1
-    				target_id: 564
-    				Position: 0
-    				Column type: int
-    			Right child
-    			[id: 1596] expression: Reference
-    				Alias: identification_number
-    				Referenced table name (or alias): t2
-    				target_id: 0136
-    				Position: 0
-    				Column type: int
-    	Children:
-    		Child_id = 564
-    		Child_id = 0136
-    	Output:	[id: 1264] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [1] }, Key { positions: [0] }}) }]
-    		List:
-    		[id: 1532] expression: Alias [name = id]
-    			Child:
     			[id: 1696] expression: Reference
     				Alias: id
     				Referenced table name (or alias): t1
-    				target_id: 564
+    				target_id: 464
     				Position: 0
     				Column type: int
-    		[id: 1632] expression: Alias [name = identification_number]
-    			Child:
+    			Right child
     			[id: 1796] expression: Reference
     				Alias: identification_number
     				Referenced table name (or alias): t2
     				target_id: 0136
     				Position: 0
     				Column type: int
-    ---------------------------------------------
-    ---------------------------------------------
-    [id: 1564] relation: Projection
     	Children:
-    		Child_id = 1364
-    	Output:	[id: 1464] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0] }}) }]
+    		Child_id = 464
+    		Child_id = 0136
+    	Output:	[id: 1064] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [1] }, Key { positions: [0] }}) }]
     		List:
-    		[id: 1732] expression: Alias [name = id]
+    		[id: 1532] expression: Alias [name = id]
     			Child:
     			[id: 1896] expression: Reference
     				Alias: id
     				Referenced table name (or alias): t1
-    				target_id: 1364
+    				target_id: 464
+    				Position: 0
+    				Column type: int
+    		[id: 1632] expression: Alias [name = identification_number]
+    			Child:
+    			[id: 1996] expression: Reference
+    				Alias: identification_number
+    				Referenced table name (or alias): t2
+    				target_id: 0136
+    				Position: 0
+    				Column type: int
+    ---------------------------------------------
+    ---------------------------------------------
+    [id: 2196] relation: Projection
+    	Children:
+    		Child_id = 1164
+    	Output:	[id: 1264] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0] }}) }]
+    		List:
+    		[id: 1732] expression: Alias [name = id]
+    			Child:
+    			[id: 2096] expression: Reference
+    				Alias: id
+    				Referenced table name (or alias): t1
+    				target_id: 1164
     				Position: 0
     				Column type: int
     ---------------------------------------------
@@ -289,80 +289,80 @@ fn simple_join_subtree() {
 
     insta::assert_snapshot!(actual_arena_subtree, @r"
     ---------------------------------------------
-    [id: 764] relation: ScanRelation
+    [id: 664] relation: ScanRelation
     	Relation: hash_testing
     	[No children]
-    	Output:	[id: 664] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0, 1] }}) }]
+    	Output:	[id: 564] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0, 1] }}) }]
     		List:
     		[id: 732] expression: Alias [name = identification_number]
     			Child:
-    			[id: 796] expression: Reference
+    			[id: 896] expression: Reference
     				Position: 0
     				Column type: int
     		[id: 832] expression: Alias [name = product_code]
     			Child:
-    			[id: 896] expression: Reference
+    			[id: 996] expression: Reference
     				Position: 1
     				Column type: string
     		[id: 932] expression: Alias [name = product_units]
     			Child:
-    			[id: 996] expression: Reference
+    			[id: 1096] expression: Reference
     				Position: 2
     				Column type: bool
     		[id: 1032] expression: Alias [name = sys_op]
     			Child:
-    			[id: 1096] expression: Reference
+    			[id: 1196] expression: Reference
     				Position: 3
     				Column type: int
     		[id: 1132] expression: Alias [name = bucket_id]
     			Child:
-    			[id: 1196] expression: Reference
+    			[id: 1296] expression: Reference
     				Position: 4
     				Column type: int
     ---------------------------------------------
     ---------------------------------------------
-    [id: 964] relation: Projection
+    [id: 1496] relation: Projection
     	Children:
-    		Child_id = 764
-    	Output:	[id: 864] expression: Row [distribution = Any]
+    		Child_id = 664
+    	Output:	[id: 764] expression: Row [distribution = Any]
     		List:
     		[id: 1232] expression: Alias [name = identification_number]
-    			Child:
-    			[id: 1296] expression: Reference
-    				Alias: identification_number
-    				Referenced table name (or alias): hash_testing
-    				target_id: 764
-    				Position: 0
-    				Column type: int
-    ---------------------------------------------
-    ---------------------------------------------
-    [id: 1164] relation: ScanSubQuery
-    	Alias: t2
-    	Children:
-    		Child_id = 964
-    	Output:	[id: 1064] expression: Row [distribution = Any]
-    		List:
-    		[id: 1332] expression: Alias [name = identification_number]
     			Child:
     			[id: 1396] expression: Reference
     				Alias: identification_number
     				Referenced table name (or alias): hash_testing
-    				target_id: 964
+    				target_id: 664
+    				Position: 0
+    				Column type: int
+    ---------------------------------------------
+    ---------------------------------------------
+    [id: 964] relation: ScanSubQuery
+    	Alias: t2
+    	Children:
+    		Child_id = 1496
+    	Output:	[id: 864] expression: Row [distribution = Any]
+    		List:
+    		[id: 1332] expression: Alias [name = identification_number]
+    			Child:
+    			[id: 1596] expression: Reference
+    				Alias: identification_number
+    				Referenced table name (or alias): hash_testing
+    				target_id: 1496
     				Position: 0
     				Column type: int
     ---------------------------------------------
     ---------------------------------------------
     [id: 0136] relation: Motion [policy = Segment(MotionKey { targets: [Reference(0)] }), alias = t2]
     	Children:
-    		Child_id = 1164
-    	Output:	[id: 1664] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0] }}) }]
+    		Child_id = 964
+    	Output:	[id: 1364] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0] }}) }]
     		List:
     		[id: 1832] expression: Alias [name = identification_number]
     			Child:
-    			[id: 1996] expression: Reference
+    			[id: 2296] expression: Reference
     				Alias: identification_number
     				Referenced table name (or alias): t2
-    				target_id: 1164
+    				target_id: 964
     				Position: 0
     				Column type: int
     ---------------------------------------------
@@ -463,14 +463,13 @@ fn simple_aggregation_with_group_by() {
 				Column type: int
 ---------------------------------------------
 ---------------------------------------------
-[id: 764] relation: Projection
+[id: 1496] relation: Projection
 	Children:
-		Child_id = 364
-	Output:	[id: 664] expression: Row [distribution = Any]
+	Output:	[id: 564] expression: Row [distribution = Any]
 		List:
 		[id: 1132] expression: Alias [name = gr_expr_1]
 			Child:
-			[id: 1296] expression: Reference
+			[id: 1396] expression: Reference
 				Alias: product_code
 				Referenced table name (or alias): hash_testing
 				target_id: 364
@@ -480,49 +479,48 @@ fn simple_aggregation_with_group_by() {
 ---------------------------------------------
 [id: 0136] relation: Motion [policy = Full, alias = None]
 	Children:
-		Child_id = 764
-	Output:	[id: 1064] expression: Row [distribution = Global]
+		Child_id = 1496
+	Output:	[id: 864] expression: Row [distribution = Global]
 		List:
 		[id: 1332] expression: Alias [name = gr_expr_1]
 			Child:
-			[id: 1696] expression: Reference
+			[id: 1896] expression: Reference
 				Alias: gr_expr_1
 				Referenced table name (or alias): hash_testing
-				target_id: 764
+				target_id: 1496
 				Position: 0
 				Column type: string
 ---------------------------------------------
 ---------------------------------------------
-[id: 964] relation: GroupBy
+[id: 764] relation: GroupBy
 	Gr_cols:
-		[id: 1396] expression: Reference
+		[id: 1596] expression: Reference
 			Alias: gr_expr_1
 			target_id: 0136
 			Position: 0
 			Column type: string
 	Children:
 		Child_id = 0136
-	Output:	[id: 864] expression: Row [distribution = Single]
+	Output:	[id: 664] expression: Row [distribution = Single]
 		List:
 		[id: 1232] expression: Alias [name = gr_expr_1]
 			Child:
-			[id: 1496] expression: Reference
+			[id: 1696] expression: Reference
 				Alias: gr_expr_1
 				target_id: 0136
 				Position: 0
 				Column type: string
 ---------------------------------------------
 ---------------------------------------------
-[id: 564] relation: Projection
+[id: 1296] relation: Projection
 	Children:
-		Child_id = 964
 	Output:	[id: 464] expression: Row [distribution = Single]
 		List:
 		[id: 1032] expression: Alias [name = product_code]
 			Child:
-			[id: 1596] expression: Reference
+			[id: 1796] expression: Reference
 				Alias: gr_expr_1
-				target_id: 964
+				target_id: 764
 				Position: 0
 				Column type: string
 ---------------------------------------------

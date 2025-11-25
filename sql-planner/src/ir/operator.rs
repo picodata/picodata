@@ -652,6 +652,8 @@ impl Plan {
             windows: vec![],
             output: proj_output,
             is_distinct: false,
+            group_by: None,
+            having: None,
         };
         let proj_id = self.add_relational(proj_node.into())?;
         let upd_output = self.add_row_for_output(proj_id, &[], false, None)?;
@@ -932,11 +934,26 @@ impl Plan {
         needs_shard_col: bool,
     ) -> Result<NodeId, SbroadError> {
         let output = self.add_row_for_output(child, col_names, needs_shard_col, None)?;
+
+        let (children, having_id, group_by_id) = match self.get_relation_node(child)? {
+            Relational::GroupBy(_) => (vec![], None, Some(child)),
+            Relational::Having(_) => {
+                let gb_id = self.get_first_rel_child(child)?;
+                match self.get_relation_node(gb_id)? {
+                    Relational::GroupBy(_) => (vec![], Some(child), Some(gb_id)),
+                    _ => (vec![], Some(child), None),
+                }
+            }
+            _ => (vec![child], None, None),
+        };
+
         let proj = Projection {
-            children: vec![child],
+            children,
             windows,
             output,
             is_distinct,
+            group_by: group_by_id,
+            having: having_id,
         };
 
         self.add_relational(proj.into())
@@ -956,11 +973,36 @@ impl Plan {
         windows: Vec<NodeId>,
     ) -> Result<NodeId, SbroadError> {
         let output = self.nodes.add_row(columns.to_vec(), None);
+
+        let child = *children
+            .first()
+            .expect("Projection expected to have at least one child");
+
+        let (having_id, group_by_id) = match self.get_relation_node(child)? {
+            Relational::GroupBy(_) => (None, Some(child)),
+            Relational::Having(_) => {
+                let gb_id = self.get_first_rel_child(child)?;
+                match self.get_relation_node(gb_id)? {
+                    Relational::GroupBy(_) => (Some(child), Some(gb_id)),
+                    _ => (Some(child), None),
+                }
+            }
+            _ => (None, None),
+        };
+
         let proj = Projection {
-            children,
+            children: match (having_id, group_by_id) {
+                (None, None) => children,
+                _ => {
+                    let (_, sqs) = children.split_first().expect("expected to be non-empty");
+                    sqs.to_vec()
+                }
+            },
             windows,
             output,
             is_distinct,
+            group_by: group_by_id,
+            having: having_id,
         };
 
         self.add_relational(proj.into())
@@ -994,7 +1036,10 @@ impl Plan {
         let filter = |id: NodeId| -> bool {
             matches!(
                 self.get_node(id),
-                Ok(Node::Relational(Relational::Projection(_)))
+                Ok(Node::Relational(Relational::Projection(Projection {
+                    group_by: Some(_),
+                    ..
+                })))
             )
         };
         let mut dft = PostOrderWithFilter::with_capacity(
@@ -1004,43 +1049,50 @@ impl Plan {
         );
 
         dft.populate_nodes(top);
-        let proj_nodes = dft.take_nodes();
+        let nodes = dft.take_nodes();
         drop(dft);
 
-        for LevelNode(_, proj_id) in proj_nodes {
-            let (_, groupby_id) = self.split_group_by(proj_id)?;
+        for LevelNode(_, proj_id) in nodes {
+            let group_by_id = self.get_group_by(proj_id)?;
+            let Some(group_by_id) = group_by_id else {
+                continue;
+            };
 
             let (gr_exprs, groupby_target_rel) = {
                 // Try to retrieve GroupBy node and its first child (target)
-                let grouby_node = self.get_relation_node(groupby_id)?;
-                let Relational::GroupBy(GroupBy {
+                let group_by_node = self.get_relation_node(group_by_id)?;
+                if let Relational::GroupBy(GroupBy {
                     gr_exprs, children, ..
-                }) = grouby_node
-                else {
+                }) = group_by_node
+                {
+                    (
+                        gr_exprs,
+                        *children
+                            .first()
+                            .expect("at least one child expected in group by"),
+                    )
+                } else {
                     continue;
-                };
-                (
-                    gr_exprs,
-                    *children
-                        .first()
-                        .expect("at least one child expected in group by"),
-                )
+                }
             };
 
             let (proj_target_id, proj_output_id) = {
                 let rel = self.get_relation_node(proj_id)?;
-                let Relational::Projection(Projection {
-                    output, children, ..
-                }) = rel
-                else {
-                    unreachable!("expected Projection node");
-                };
-                (
-                    *children
-                        .first()
-                        .expect("expected at least one child in projection"),
-                    *output,
-                )
+                match rel {
+                    Relational::Projection(Projection {
+                        output,
+                        having: Some(having_id),
+                        ..
+                    }) => (*having_id, *output),
+                    Relational::Projection(Projection {
+                        output,
+                        group_by: Some(group_by_id),
+                        ..
+                    }) => (*group_by_id, *output),
+                    _ => {
+                        unreachable!("expected Projection or Projection node with group_by");
+                    }
+                }
             };
 
             let mut col_aliases = HashMap::new();
@@ -1083,8 +1135,8 @@ impl Plan {
                     }
                 }
 
-                let grouby_node = self.get_mut_relation_node(groupby_id)?;
-                let MutRelational::GroupBy(GroupBy { gr_exprs, .. }) = grouby_node else {
+                let group_by_node = self.get_mut_relation_node(group_by_id)?;
+                let MutRelational::GroupBy(GroupBy { gr_exprs, .. }) = group_by_node else {
                     unreachable!("expected GroupBy node");
                 };
                 for (idx, new_child) in idx_to_new_child {
@@ -1096,8 +1148,8 @@ impl Plan {
             // `select a as a_1 from t group by a_1 * 1`
             // I.e. when the alias is not a gr_expr[i] subtree root
             {
-                let grouby_node = self.get_relation_node(groupby_id)?;
-                let Relational::GroupBy(GroupBy { gr_exprs, .. }) = grouby_node else {
+                let group_by_node = self.get_relation_node(group_by_id)?;
+                let Relational::GroupBy(GroupBy { gr_exprs, .. }) = group_by_node else {
                     unreachable!("expected GroupBy node");
                 };
 
@@ -1626,7 +1678,7 @@ impl Plan {
     }
 
     /// Gets children from relational node.
-    pub fn get_relational_children(&self, rel_id: NodeId) -> Result<Children<'_>, SbroadError> {
+    pub fn get_relation_children(&self, rel_id: NodeId) -> Result<Children<'_>, SbroadError> {
         if let Node::Relational(_) = self.get_node(rel_id)? {
             Ok(self.children(rel_id))
         } else {
@@ -1642,17 +1694,53 @@ impl Plan {
     /// # Panics
     /// - Node is not relational.
     /// - Node does not have child with specified index.
-    pub fn get_relational_child(
-        &self,
+    pub fn get_rel_child(&self, rel_id: NodeId, child_idx: usize) -> Result<NodeId, SbroadError> {
+        match self.get_relation_node(rel_id)? {
+            Relational::Projection(Projection {
+                having,
+                group_by,
+                children,
+                ..
+            }) => match (having, group_by) {
+                (None, None) => Ok(children[child_idx]),
+                _ => {
+                    if child_idx == 0 {
+                        if let Some(having) = having {
+                            Ok(*having)
+                        } else if let Some(group_by) = group_by {
+                            Ok(*group_by)
+                        } else {
+                            unreachable!("either Having or GroupBy must exist");
+                        }
+                    } else {
+                        Ok(children[child_idx - 1])
+                    }
+                }
+            },
+            _ => {
+                if let Node::Relational(rel) = self.get_node(rel_id)? {
+                    Ok(*rel.children().get(child_idx).unwrap_or_else(|| {
+                        panic!("Rel node {rel:?} has no child with idx ({child_idx}).")
+                    }))
+                } else {
+                    panic!("Relational node with id {rel_id} is not found.")
+                }
+            }
+        }
+    }
+
+    pub fn set_relation_child(
+        &mut self,
         rel_id: NodeId,
         child_idx: usize,
-    ) -> Result<NodeId, SbroadError> {
-        if let Node::Relational(rel) = self.get_node(rel_id)? {
-            return Ok(*rel.children().get(child_idx).unwrap_or_else(|| {
-                panic!("Rel node {rel:?} has no child with idx ({child_idx}).")
-            }));
-        }
-        panic!("Relational node with id {rel_id} is not found.")
+        val: NodeId,
+    ) -> Result<(), SbroadError> {
+        *self
+			.get_mut_relation_node(rel_id)?
+			.mut_children()
+			.get_mut(child_idx)
+			.unwrap_or_else(|| panic!("cannot access child with index {child_idx} in Relational IR node with id: {rel_id}")) = val;
+        Ok(())
     }
 
     /// Some nodes (like Having, Selection, Join),
@@ -1665,13 +1753,19 @@ impl Plan {
     pub fn get_required_children_len(&self, rel_id: NodeId) -> Result<Option<usize>, SbroadError> {
         let rel_node = self.get_relation_node(rel_id)?;
         let len = match rel_node {
-            Relational::Join { .. } => 2,
-            Relational::Having { .. }
-            | Relational::Selection { .. }
-            | Relational::Projection { .. }
-            | Relational::GroupBy { .. }
-            | Relational::OrderBy { .. } => 1,
-            Relational::ValuesRow { .. } | Relational::SelectWithoutScan { .. } => 0,
+            Relational::Join(_) => 2,
+            Relational::Having(_)
+            | Relational::Selection(_)
+            | Relational::Projection(Projection {
+                having: None,
+                group_by: None,
+                ..
+            })
+            | Relational::GroupBy(_)
+            | Relational::OrderBy(_) => 1,
+            Relational::Projection(_)
+            | Relational::ValuesRow(_)
+            | Relational::SelectWithoutScan(_) => 0,
             _ => return Ok(None),
         };
         Ok(Some(len))
@@ -1923,7 +2017,7 @@ impl Plan {
         rel_id: NodeId,
         sq_id: NodeId,
     ) -> Result<bool, SbroadError> {
-        let children = self.get_relational_children(rel_id)?;
+        let children = self.get_relation_children(rel_id)?;
         let to_skip = self.get_required_children_len(rel_id)?;
         let Some(to_skip) = to_skip else {
             return Ok(false);

@@ -99,7 +99,7 @@ impl BucketsInfo {
 
             // true if this subtree has non-local motion
             let mut has_non_local_motion = false;
-            for _ in 0..rel.children().len() {
+            for _ in 0..rel.children_len() {
                 let (child_id, child_value) = stack.pop().expect("rel iter visits all children");
 
                 if !child_value {

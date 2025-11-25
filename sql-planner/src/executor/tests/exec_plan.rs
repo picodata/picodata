@@ -1295,6 +1295,8 @@ fn take_subtree_projection_windows_transfer() {
             windows: vec![window],
             output,
             is_distinct: false,
+            group_by: None,
+            having: None,
         };
 
         plan.nodes.push(projection.into())

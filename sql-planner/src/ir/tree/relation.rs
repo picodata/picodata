@@ -91,11 +91,29 @@ fn relational_next<'nodes>(iter: &mut impl RelationalTreeIterator<'nodes>) -> Op
                     }
                     None
                 }
-                Relational::Projection(Projection { children, .. }) => {
+                Relational::Projection(Projection {
+                    children,
+                    group_by,
+                    having,
+                    ..
+                }) => {
                     let step = *iter.get_child().borrow();
-                    if step < children.len() {
-                        *iter.get_child().borrow_mut() += 1;
-                        return children.get(step).copied();
+                    *iter.get_child().borrow_mut() += 1;
+                    let mut step_shift: usize = 0;
+                    if having.is_some() {
+                        if step == 0 {
+                            return *having;
+                        }
+                        step_shift += 1;
+                    } else if group_by.is_some() {
+                        if step - step_shift == 0 {
+                            return *group_by;
+                        }
+                        step_shift += 1;
+                    }
+                    let child_idx = step - step_shift;
+                    if child_idx < children.len() {
+                        return children.get(child_idx).copied();
                     }
                     None
                 }

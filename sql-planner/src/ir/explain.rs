@@ -1435,8 +1435,15 @@ impl FullExplain {
                     children,
                     ..
                 }) => {
-                    let sq_ref_map =
-                        result.get_sq_ref_map(&mut current_node, &mut stack, children, 1);
+                    let req_children_cnt = ir.get_required_children_len(id)?.unwrap_or_else(|| {
+                        unreachable!("GroupBy expected to have required children count")
+                    });
+                    let sq_ref_map = result.get_sq_ref_map(
+                        &mut current_node,
+                        &mut stack,
+                        children,
+                        req_children_cnt,
+                    );
                     let p = GroupBy::new(ir, gr_exprs, *output, &sq_ref_map)?;
                     Some(ExplainNode::GroupBy(p))
                 }
@@ -1445,16 +1452,34 @@ impl FullExplain {
                     children,
                     ..
                 }) => {
-                    let sq_ref_map =
-                        result.get_sq_ref_map(&mut current_node, &mut stack, children, 1);
+                    let req_children_cnt = ir.get_required_children_len(id)?.unwrap_or_else(|| {
+                        unreachable!("OrderBy expected to have required children count")
+                    });
+                    let sq_ref_map = result.get_sq_ref_map(
+                        &mut current_node,
+                        &mut stack,
+                        children,
+                        req_children_cnt,
+                    );
                     let o_b = OrderBy::new(ir, order_by_elements, &sq_ref_map)?;
                     Some(ExplainNode::OrderBy(o_b))
                 }
                 Relational::Projection(node::Projection {
-                    output, children, ..
+                    output,
+                    children,
+                    having,
+                    group_by,
+                    ..
                 }) => {
+                    let mut res_children = Vec::with_capacity(children.len() + 1);
+                    if let Some(having) = *having {
+                        res_children.push(having);
+                    } else if let Some(group_by) = *group_by {
+                        res_children.push(group_by);
+                    }
+                    res_children.extend(children);
                     let sq_ref_map: HashMap<NodeId, usize> =
-                        result.get_sq_ref_map(&mut current_node, &mut stack, children, 1);
+                        result.get_sq_ref_map(&mut current_node, &mut stack, &res_children, 1);
 
                     let p = Projection::new(ir, *output, &sq_ref_map)?;
                     Some(ExplainNode::Projection(p))
@@ -1462,8 +1487,15 @@ impl FullExplain {
                 Relational::SelectWithoutScan(node::SelectWithoutScan {
                     output, children, ..
                 }) => {
-                    let sq_ref_map =
-                        result.get_sq_ref_map(&mut current_node, &mut stack, children, 0);
+                    let req_children_cnt = ir.get_required_children_len(id)?.unwrap_or_else(|| {
+                        unreachable!("SelectWithoutScan expected to have required children count")
+                    });
+                    let sq_ref_map = result.get_sq_ref_map(
+                        &mut current_node,
+                        &mut stack,
+                        children,
+                        req_children_cnt,
+                    );
                     let p = Projection::new(ir, *output, &sq_ref_map)?;
                     Some(ExplainNode::Projection(p))
                 }

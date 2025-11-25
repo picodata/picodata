@@ -1420,7 +1420,7 @@ impl<'p> SyntaxPlan<'p> {
             let sq_id = self
                 .plan
                 .get_ir_plan()
-                .get_relational_child(id, child_idx)
+                .get_rel_child(id, child_idx)
                 .expect("node can't change between iters");
             // Pop sq from the stack and do nothing with them.
             // We've already handled them as a part of the `output`.
@@ -1453,18 +1453,34 @@ impl<'p> SyntaxPlan<'p> {
         else {
             panic!("Expected PROJECTION node");
         };
-        let child_plan_id = *children.first().expect("PROJECTION child");
         let output = *output;
         let children = children.clone();
 
-        for sq_id in children.iter().skip(1).rev() {
+        let required_children_cnt = {
+            let err_msg = "Projection IR node expected to have required children count";
+            self.plan
+                .get_ir_plan()
+                .get_required_children_len(id)
+                .expect(err_msg)
+                .unwrap_or_else(|| unreachable!("{err_msg}"))
+        };
+        for sq_id in children.iter().skip(required_children_cnt).rev() {
             // Pop sq from the stack and do nothing with them.
             // We've already handled them as a part of the `output`.
             self.pop_from_stack(*sq_id, id);
         }
 
-        let child_sn_id = self.pop_from_stack(child_plan_id, id);
-        let row_sn_id = self.pop_from_stack(output, id);
+        let (child_sn_id, row_sn_id) = {
+            let child_plan_id = self
+                .plan
+                .get_ir_plan()
+                .get_first_rel_child(id)
+                .expect("Projection expected to have at least one child");
+            (
+                self.pop_from_stack(child_plan_id, id),
+                self.pop_from_stack(output, id),
+            )
+        };
         // We don't need the row node itself, only its children. Otherwise we'll produce
         // redundant parentheses between `SELECT` and `FROM`.
         let sn_from_id = self.nodes.push_sn_non_plan(SyntaxNode::new_from());
@@ -2583,6 +2599,7 @@ impl<'p> SyntaxPlan<'p> {
             Snapshot::Oldest => {
                 let dft_post =
                     PostOrder::with_capacity(|node| ir_plan.flashback_subtree_iter(node), capacity);
+
                 for level_node in dft_post.into_iter(top) {
                     let id = level_node.1;
                     // it works only for post-order traversal

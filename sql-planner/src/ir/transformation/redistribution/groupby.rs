@@ -13,7 +13,7 @@ use crate::ir::node::{
     ArenaType, GroupBy, Having, NodeId, Projection, Reference, ReferenceTarget, SubQueryReference,
 };
 use crate::ir::transformation::redistribution::{MotionPolicy, Program, Strategy};
-use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
+use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::{Node, Plan};
 use std::collections::HashMap;
 
@@ -296,105 +296,135 @@ impl Plan {
     ///
     /// Returns:
     /// - id of the first child
-    pub fn get_first_child(&self, rel_id: NodeId) -> Result<NodeId, SbroadError> {
-        let c = *self
-            .get_relational_children(rel_id)?
-            .get(0)
-            .ok_or_else(|| {
-                SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                    "expected relation node ({rel_id:?}) to have children!"
-                ))
-            })?;
-        Ok(c)
+    pub fn get_first_rel_child(&self, rel_id: NodeId) -> Result<NodeId, SbroadError> {
+        self.get_rel_child(rel_id, 0)
     }
 
-    /// Get ids of nodes in Reduce stage (finals) and id of the top node in Map stage.
+    /// Get id of GroupBy under Projection.
     ///
-    /// Finals are nodes in Reduce stage without final `GroupBy`.
+    /// # Examples:
     ///
-    /// # Example
-    /// original query: `select sum(a), b from t group by by t having sum(a) > 1`
-    /// Approximate plan before adding 2-stage aggregation:
     /// ```txt
     /// Projection (1)
-    ///         Having (2)
-    ///             GroupBy (3)
-    ///                 Scan (4)
+    ///     Having (2)
+    ///     GroupBy (3)
+    ///         Scan (4)
     /// ```
-    /// Then this function will return `([1, 2], 3)`
-    pub(crate) fn split_group_by(
-        &self,
-        final_proj_id: NodeId,
-    ) -> Result<(Vec<NodeId>, NodeId), SbroadError> {
-        let mut finals: Vec<NodeId> = Vec::with_capacity(3);
-        let mut next = final_proj_id;
-        let max_reduce_nodes = 3;
-        for _ in 0..=max_reduce_nodes {
-            match self.get_relation_node(next)? {
-                Relational::Projection(_) | Relational::Having(_) => {
-                    finals.push(next);
-                    next = self.get_first_child(next)?;
-                }
-                _ => return Ok((finals, next)),
-            }
+    /// Then this function will return `Some(3)`
+    ///
+    /// ```txt
+    /// Projection (1)
+    ///     Scan (2)
+    /// ```
+    /// Then this function will return `None`
+    ///
+    /// # Errors:
+    /// - `proj_id` does not point to `Relational` node
+    ///
+    /// # Panics:
+    /// - `proj_id` is `Relational` but not `Projection` node
+    ///
+    /// # Returns:
+    /// - group_by_id if exists
+    pub(crate) fn get_group_by(&self, proj_id: NodeId) -> Result<Option<NodeId>, SbroadError> {
+        if let Relational::Projection(Projection { group_by, .. }) =
+            self.get_relation_node(proj_id)?
+        {
+            Ok(*group_by)
+        } else {
+            unreachable!("expected Projection IR node");
         }
-        Err(SbroadError::Invalid(
-            Entity::Plan,
-            Some(format_smolstr!(
-                "too many nodes ({}) in Reduce stage",
-                finals.len()
-            )),
-        ))
+    }
+
+    /// Get id of Having under Projection.
+    ///
+    /// # Examples:
+    /// ```txt
+    /// Projection (1)
+    ///     Having (2)
+    ///     GroupBy (3)
+    ///         Scan (4)
+    /// ```
+    /// Then this function will return `Some(2)`
+    ///
+    /// ```txt
+    /// Projection (1)
+    ///     GroupBy (2)
+    ///         Scan (3)
+    /// ```
+    /// Then this function will return `None`
+    ///
+    /// # Errors:
+    /// - `proj_id` does not point to `Relational` node
+    ///
+    /// # Panics:
+    /// - `proj_id` is `Relational` but not `Projection` node
+    ///
+    /// # Returns:
+    /// - group_by_id if exists
+    pub(crate) fn get_having(&self, proj_id: NodeId) -> Result<Option<NodeId>, SbroadError> {
+        if let Relational::Projection(Projection { having, .. }) =
+            self.get_relation_node(proj_id)?
+        {
+            Ok(*having)
+        } else {
+            unreachable!("expected Projection IR node");
+        }
     }
 
     /// In case we deal with a query containing "distinct" qualifier and
     /// not containing aggregates or user defined GroupBy, we have to add
     /// GroupBy node for fulfill "distinct" semantics.
+    ///
+    /// Add GroupBy corresponding to `distinct` in Projection to IR plan.
+    ///
+    /// # Errors:
+    /// - `proj_id` is not `Relational` node
+    /// - cannot get `Projection` columns
+    /// - incorrect `Projection` column subtree
+    /// - cannot add `GroupBy` node to IR plan
+    ///
+    /// # Returns:
+    /// - GroupBy node id if in Projection `distinct = true`
     fn add_group_by_for_distinct(
         &mut self,
         proj_id: NodeId,
-        upper: NodeId,
-        scalar_sqs_to_fix: &mut OrderedSet<NodeId, RepeatableState>,
+        group_by_child: NodeId,
+        scalar_sqs: &mut OrderedSet<NodeId, RepeatableState>,
     ) -> Result<Option<NodeId>, SbroadError> {
         let Relational::Projection(Projection {
-            is_distinct,
+            is_distinct: true,
             output,
+            group_by: None,
             ..
         }) = self.get_relation_node(proj_id)?
         else {
-            unreachable!("Projection expected as a top final node")
+            return Ok(None);
         };
+        let proj_cols_len = self.get_row_list(*output)?.len();
+        let mut grouping_exprs: Vec<NodeId> = Vec::with_capacity(proj_cols_len);
 
-        let groupby_id = if *is_distinct {
-            let proj_cols_len = self.get_row_list(*output)?.len();
-            let mut grouping_exprs: Vec<NodeId> = Vec::with_capacity(proj_cols_len);
+        for i in 0..proj_cols_len {
+            let aliased_col = self.get_proj_col(proj_id, i)?;
+            let proj_col_id = self.get_child_under_alias(aliased_col)?;
 
-            for i in 0..proj_cols_len {
-                let aliased_col = self.get_proj_col(proj_id, i)?;
-                let proj_col_id = self.get_child_under_alias(aliased_col)?;
-
-                // For query like `SELECT DISTINCT (values (1)), a FROM t`
-                // we should remove scalar subquery from the final projection children
-                // and move it to the GroupBy expression (and children).
-                for ref_id in self.get_refs_from_subtree(proj_col_id)? {
-                    if matches!(
-                        self.get_expression_node(ref_id)?,
-                        Expression::SubQueryReference { .. }
-                    ) {
-                        scalar_sqs_to_fix.insert(self.get_relational_from_reference_node(ref_id)?);
-                    }
+            // For queries of the form `SELECT DISTINCT a, <SQ_1>, ..., <SQ_n> FROM t`,
+            // where each SQ_i is a scalar subquery,
+            // we need to collect these subqueries so they can be attached to subsequent local nodes.
+            for ref_id in self.get_refs_from_subtree(proj_col_id)? {
+                if matches!(
+                    self.get_expression_node(ref_id)?,
+                    Expression::SubQueryReference { .. }
+                ) {
+                    scalar_sqs.insert(self.get_relational_from_reference_node(ref_id)?);
                 }
-
-                // Copy expression from Projection to GroupBy.
-                let col = SubtreeCloner::clone_subtree(self, proj_col_id)?;
-                grouping_exprs.push(col);
             }
-            let groupby_id = self.add_groupby(upper, &grouping_exprs)?;
-            Some(groupby_id)
-        } else {
-            None
-        };
-        Ok(groupby_id)
+
+            let col = SubtreeCloner::clone_subtree(self, proj_col_id)?;
+            grouping_exprs.push(col);
+        }
+        let group_by_id = self.add_groupby(group_by_child, &grouping_exprs)?;
+        Ok(Some(group_by_id))
     }
 
     /// Fill grouping expression map (see comments next to
@@ -402,99 +432,99 @@ impl Plan {
     #[allow(clippy::too_many_lines)]
     fn fill_grouping_exprs_map(
         &mut self,
-        finals: &Vec<NodeId>,
+        proj: NodeId,
         groupby_info: &mut GroupByInfo,
     ) -> Result<(), SbroadError> {
-        for rel_id in finals {
-            let final_node = self.get_relation_node(*rel_id)?;
-            match final_node {
-                Relational::Projection(Projection { output, .. }) => {
-                    let mut mapper = ExpressionMapper::new(
-                        &groupby_info.grouping_exprs,
-                        self,
-                        *rel_id,
-                        &mut groupby_info.grouping_exprs_map,
-                    );
-                    for col in self.get_row_list(*output)? {
-                        mapper.find_matches(*col)?;
-                    }
+        match self.get_relation_node(proj)? {
+            Relational::Projection(Projection { output, .. }) => {
+                let mut mapper = ExpressionMapper::new(
+                    &groupby_info.grouping_exprs,
+                    self,
+                    proj,
+                    &mut groupby_info.grouping_exprs_map,
+                );
+                for col in self.get_row_list(*output)? {
+                    mapper.find_matches(*col)?;
                 }
+            }
+            _ => {
+                unreachable!("expected Projection IR node");
+            }
+        }
+
+        if let Some(having) = self.get_having(proj)? {
+            match self.get_relation_node(having)? {
                 Relational::Having(Having { filter, .. }) => {
                     let mut mapper = ExpressionMapper::new(
                         &groupby_info.grouping_exprs,
                         self,
-                        *rel_id,
+                        having,
                         &mut groupby_info.grouping_exprs_map,
                     );
                     mapper.find_matches(*filter)?;
                 }
                 _ => {
-                    unreachable!("{final_node:?} node should not be present in finals");
+                    unreachable!("expected Having IR node");
                 }
             }
         }
-
         Ok(())
     }
 
     /// In case query doesn't contain user defined GroupBy, check that all
     /// column references under `finals` are inside aggregate functions.
-    fn check_refs_out_of_aggregates(&self, finals: &Vec<NodeId>) -> Result<(), SbroadError> {
-        for id in finals {
-            let node = self.get_relation_node(*id)?;
-            match node {
-                Relational::Projection(Projection { output, .. }) => {
-                    for col in self.get_row_list(*output)? {
-                        let filter = |node_id: NodeId| -> bool {
-                            matches!(
-                                self.get_node(node_id),
-                                Ok(Node::Expression(Expression::Reference(_)))
-                            )
-                        };
-                        let mut dfs = PostOrderWithFilter::with_capacity(
-                            |x| self.nodes.aggregate_iter(x, false),
-                            EXPR_CAPACITY,
-                            Box::new(filter),
-                        );
-                        dfs.populate_nodes(*col);
-                        let nodes = dfs.take_nodes();
-                        for level_node in nodes {
-                            let id = level_node.1;
-                            let n = self.get_expression_node(id)?;
-                            if matches!(n, Expression::Reference(_)) {
-                                let alias = match self.get_alias_from_reference_node(&n) {
-                                    Ok(v) => v.to_smolstr(),
-                                    Err(e) => e.to_smolstr(),
-                                };
-                                return Err(SbroadError::Invalid(
-                                    Entity::Query,
-                                    Some(format_smolstr!(
-                                        "found column reference ({}) outside aggregate function",
-                                        to_user(alias)
-                                    )),
-                                ));
-                            }
-                        }
-                    }
+    fn check_refs_out_of_aggregates(&self, proj: NodeId) -> Result<(), SbroadError> {
+        let output = self.get_relational_output(proj)?;
+        for col in self.get_row_list(output)? {
+            let filter = |node_id: NodeId| -> bool {
+                matches!(
+                    self.get_node(node_id),
+                    Ok(Node::Expression(Expression::Reference(_)))
+                )
+            };
+            let mut dfs = PostOrderWithFilter::with_capacity(
+                |x| self.nodes.aggregate_iter(x, false),
+                EXPR_CAPACITY,
+                Box::new(filter),
+            );
+            dfs.populate_nodes(*col);
+            let nodes = dfs.take_nodes();
+            for LevelNode(_, id) in nodes {
+                let n = self.get_expression_node(id)?;
+                if matches!(n, Expression::Reference(_)) {
+                    let alias = match self.get_alias_from_reference_node(&n) {
+                        Ok(v) => v.to_smolstr(),
+                        Err(e) => e.to_smolstr(),
+                    };
+                    return Err(SbroadError::Invalid(
+                        Entity::Query,
+                        Some(format_smolstr!(
+                            "found column reference ({}) outside aggregate function",
+                            to_user(alias)
+                        )),
+                    ));
                 }
-                Relational::Having(Having { filter, .. }) => {
-                    let mut dfs = PostOrder::with_capacity(
-                        |x| self.nodes.aggregate_iter(x, false),
-                        EXPR_CAPACITY,
-                    );
-                    dfs.populate_nodes(*filter);
-                    let nodes = dfs.take_nodes();
-                    for level_node in nodes {
-                        let id = level_node.1;
-                        if let Expression::Reference(_) = self.get_expression_node(id)? {
-                            return Err(SbroadError::Invalid(
-                                Entity::Query,
-                                Some("HAVING argument must appear in the GROUP BY clause or be used in an aggregate function".into())
-                            ));
-                        }
-                    }
-                }
-                _ => {}
+            }
+        }
+
+        let Some(having) = self.get_having(proj)? else {
+            return Ok(());
+        };
+
+        let Relational::Having(Having { filter, .. }) = self.get_relation_node(having)? else {
+            unreachable!("expected having node");
+        };
+
+        let mut dfs =
+            PostOrder::with_capacity(|x| self.nodes.aggregate_iter(x, false), EXPR_CAPACITY);
+        dfs.populate_nodes(*filter);
+        let nodes = dfs.take_nodes();
+        for LevelNode(_, id) in nodes {
+            if matches!(self.get_expression_node(id)?, Expression::Reference(_)) {
+                return Err(SbroadError::Invalid(
+					Entity::Query,
+					Some("HAVING argument must appear in the GROUP BY clause or be used in an aggregate function".into())
+				));
             }
         }
         Ok(())
@@ -531,11 +561,11 @@ impl Plan {
         &mut self,
         groupby_info: &mut Option<GroupByInfo>,
         aggrs: &mut [Aggregate],
-        finals: &Vec<NodeId>,
-        scalar_sqs_to_fix: &mut OrderedSet<NodeId, RepeatableState>,
+        proj: NodeId,
+        scalar_sqs: &mut OrderedSet<NodeId, RepeatableState>,
     ) -> Result<(), SbroadError> {
         let distinct_aggr_grouping_exprs =
-            self.collect_grouping_exprs_from_distinct_aggrs(aggrs, scalar_sqs_to_fix)?;
+            self.collect_grouping_exprs_from_distinct_aggrs(aggrs, scalar_sqs)?;
 
         // Index for generating local grouping expressions aliases.
         let mut local_alias_index = 1;
@@ -596,14 +626,14 @@ impl Plan {
                     .insert(expr.id, local_alias.clone());
             }
 
-            let child = self.get_relational_child(groupby_info.id, 0)?;
+            let child = self.get_first_rel_child(groupby_info.id)?;
 
             // Move scalar subqueries that came from DISTINCT qualifier to GroupBy children.
             let groupby = self.get_mut_relation_node(groupby_info.id)?;
             let MutRelational::GroupBy(GroupBy { children, .. }) = groupby else {
                 unreachable!("GroupBy node should be met for groupby info")
             };
-            children.extend(scalar_sqs_to_fix.iter());
+            children.extend(scalar_sqs.iter());
 
             for gr_expr_local in &grouping_exprs_local {
                 self.set_target_in_subtree(*gr_expr_local, child)?;
@@ -615,7 +645,7 @@ impl Plan {
                     let ref_node = self.get_expression_node(ref_id)?;
                     match ref_node {
                         Expression::SubQueryReference(SubQueryReference { rel_id, .. }) => {
-                            scalar_sqs_to_fix.insert(*rel_id);
+                            scalar_sqs.insert(*rel_id);
                         }
                         _ => unreachable!("Expected SubQueryReference, got: {ref_node:?}"),
                     }
@@ -623,7 +653,7 @@ impl Plan {
             }
 
             self.set_grouping_exprs(groupby_info.id, grouping_exprs_local)?;
-            self.fill_grouping_exprs_map(finals, groupby_info)?;
+            self.fill_grouping_exprs_map(proj, groupby_info)?;
 
             self.set_rel_output_distribution(groupby_info.id)?;
         }
@@ -637,7 +667,7 @@ impl Plan {
     fn collect_grouping_exprs_from_distinct_aggrs<'aggr>(
         &self,
         aggrs: &'aggr mut [Aggregate],
-        scalar_sqs_to_fix: &mut OrderedSet<NodeId, RepeatableState>,
+        scalar_sqs: &mut OrderedSet<NodeId, RepeatableState>,
     ) -> Result<Vec<(NodeId, &'aggr mut Aggregate)>, SbroadError> {
         let mut res = Vec::with_capacity(aggrs.len());
         for aggr in aggrs.iter_mut().filter(|x| x.is_distinct) {
@@ -653,7 +683,7 @@ impl Plan {
                 let ref_node = self.get_expression_node(ref_id)?;
                 match ref_node {
                     Expression::SubQueryReference(SubQueryReference { rel_id, .. }) => {
-                        scalar_sqs_to_fix.insert(*rel_id);
+                        scalar_sqs.insert(*rel_id);
                     }
                     _ => unreachable!("Expected SubQueryReference, got: {ref_node:?}"),
                 }
@@ -665,7 +695,7 @@ impl Plan {
     }
 
     /// Adds grouping expressions to columns of local projection.
-    fn add_grouping_exprs(
+    fn add_grouping_exprs_for_local_proj(
         &mut self,
         groupby_info: &mut GroupByInfo,
         output_cols: &mut Vec<NodeId>,
@@ -722,7 +752,7 @@ impl Plan {
         let mut output_cols: Vec<NodeId> = vec![];
 
         if let Some(groupby_info) = groupby_info.as_mut() {
-            self.add_grouping_exprs(groupby_info, &mut output_cols)?;
+            self.add_grouping_exprs_for_local_proj(groupby_info, &mut output_cols)?;
         };
 
         self.add_local_aggregates(aggrs, &mut output_cols)?;
@@ -733,7 +763,7 @@ impl Plan {
     /// Create Projection node for Map(local) stage of 2-stage aggregation
     ///
     /// # Arguments
-    /// * `upper_id` - id of child for Projection node to be created.
+    /// * `child` - id of child for Projection node to be created.
     /// * `aggrs` - vector of metadata for each aggregate function that was found in final
     ///   projection.
     ///
@@ -781,50 +811,64 @@ impl Plan {
     /// `Having`, `GroupBy`, `OrderBy`.
     fn add_local_projection(
         &mut self,
-        upper_id: NodeId,
+        child: NodeId,
         aggrs: &mut [Aggregate],
         groupby_info: &mut Option<GroupByInfo>,
-        scalar_sqs_to_fix: &OrderedSet<NodeId, RepeatableState>,
+        scalar_sqs: &OrderedSet<NodeId, RepeatableState>,
     ) -> Result<NodeId, SbroadError> {
         let proj_output_cols = self.create_columns_for_local_proj(aggrs, groupby_info)?;
         let proj_output: NodeId = self.nodes.add_row(proj_output_cols, None);
 
-        let mut children = vec![upper_id];
+        let (mut children, having_id, group_by_id) = match self.get_relation_node(child)? {
+            Relational::GroupBy(_) => (vec![], None, Some(child)),
+            Relational::Having(_) => {
+                let having = child;
+                let group_by = self.get_first_rel_child(having)?;
+                let Relational::GroupBy(_) = self.get_relation_node(group_by)? else {
+                    return Err(SbroadError::NotImplemented(
+                        Entity::Operator,
+                        format_smolstr!("having for entire set group"),
+                    ));
+                };
+                (vec![], Some(having), Some(group_by))
+            }
+            _ => (vec![child], None, None),
+        };
+
         // Handle scalar subqueries which we have to move
         // from final Projection to this local one.
-        children.extend(scalar_sqs_to_fix.iter());
+        children.extend(scalar_sqs.iter());
 
         let proj = Projection {
             output: proj_output,
             children,
-            // TODO: Do we need to handle projections with window functions
-            //       and aggregates somehow specifically?
             windows: vec![],
             is_distinct: false,
+            group_by: group_by_id,
+            having: having_id,
         };
         let proj_id = self.add_relational(proj.into())?;
 
         // Expressions used under newly created output are referencing final Projection. We
         // have to fix it so that they reference newly created Projection.
 
-        self.set_target_in_subtree(proj_output, upper_id)?;
+        self.set_target_in_subtree(proj_output, child)?;
 
         self.set_rel_output_distribution(proj_id)?;
 
         Ok(proj_id)
     }
 
-    /// Add final `GroupBy` node in case `grouping_exprs` are not empty.
     fn add_final_groupby(
         &mut self,
-        child_id: NodeId,
+        upper_local_proj: NodeId,
         groupby_info: &GroupByInfo,
     ) -> Result<NodeId, SbroadError> {
         let grouping_exprs = &groupby_info.grouping_exprs;
         let local_aliases_map = &groupby_info.reduce_info.local_aliases_map;
 
         let mut gr_exprs: Vec<NodeId> = Vec::with_capacity(grouping_exprs.len());
-        let child_map: ColumnPositionMap = ColumnPositionMap::new(self, child_id)?;
+        let child_map: ColumnPositionMap = ColumnPositionMap::new(self, upper_local_proj)?;
         let mut nodes = Vec::with_capacity(grouping_exprs.len());
         for expr_id in grouping_exprs {
             let Some(local_alias) = local_aliases_map.get(expr_id) else {
@@ -849,7 +893,7 @@ impl Plan {
             }
             let new_col = Reference {
                 position,
-                target: ReferenceTarget::Single(child_id),
+                target: ReferenceTarget::Single(upper_local_proj),
                 col_type,
                 asterisk_source: None,
                 is_system: false,
@@ -860,13 +904,13 @@ impl Plan {
             let new_col_id = self.nodes.push(node.into());
             gr_exprs.push(new_col_id);
         }
-        let output = self.add_row_for_output(child_id, &[], true, None)?;
+        let output = self.add_row_for_output(upper_local_proj, &[], true, None)?;
 
         // Because GroupBy node lies in the Arena64.
         let final_id = self.nodes.next_id(ArenaType::Arena64);
         let final_groupby = GroupBy {
             gr_exprs,
-            children: vec![child_id],
+            children: vec![upper_local_proj],
             output,
         };
         self.add_relational(final_groupby.into())?;
@@ -883,7 +927,10 @@ impl Plan {
     /// reduce query: `select l1 as user_alias from tmp_space group by l1`
     /// In above example this function will replace `a + b` expression in final `Projection`
     #[allow(clippy::too_many_lines)]
-    fn patch_grouping_exprs(&mut self, groupby_info: &GroupByInfo) -> Result<(), SbroadError> {
+    fn adjust_grouping_exprs_from_grby_info(
+        &mut self,
+        groupby_info: &GroupByInfo,
+    ) -> Result<(), SbroadError> {
         let local_aliases_map = &groupby_info.reduce_info.local_aliases_map;
         let gr_exprs_map = &groupby_info.grouping_exprs_map;
 
@@ -914,7 +961,7 @@ impl Plan {
         };
         for (rel_id, group) in map {
             // E.g. GroupBy under final Projection.
-            let child_id = self.get_first_child(rel_id)?;
+            let child_id = self.get_first_rel_child(rel_id)?;
             let alias_to_pos_map = ColumnPositionMap::new(self, child_id)?;
             let mut nodes = Vec::with_capacity(group.len());
             for (gr_expr_id, expr_id, parent_expr_id) in group {
@@ -933,7 +980,7 @@ impl Plan {
                         return Err(SbroadError::Invalid(
                             Entity::Type,
                             Some(format_smolstr!(
-                                "patch_finals: expected scalar expression, found: {col_type}"
+                                "adjust_finals: expected scalar expression, found: {col_type}"
                             )),
                         ));
                     };
@@ -974,7 +1021,7 @@ impl Plan {
         Ok(())
     }
 
-    /// Make finals nodes in 2-stage aggregation valid, after local stage was created.
+    /// Make Reduce (final) nodes in 2-stage aggregation valid, after Map (local) stage nodes were created.
     ///
     /// After reduce stage was created, finals nodes contain invalid
     /// references and aggregate functions. This function replaces
@@ -990,52 +1037,57 @@ impl Plan {
     /// `count(distinct b)` to `count(distinct l2)`
     ///
     /// # Arguments
-    /// * `finals` - ids of nodes to be patched
-    /// * `finals_child_id` - id of a relational node right after `finals` in the plan. In case
-    ///   original query had `GroupBy`, this will be final `GroupBy` id.
-    /// * `local_aliases_map` - map between grouping expressions ids and corresponding local aliases.
+    /// * `final_proj` - id of final Projection node
+    /// * `upper_local_proj` - id of the upper local Projection node
     /// * `aggrs` - list of metadata about aggregates
-    fn patch_finals(
+    /// * `groupby_info` - information about Map (local) and Reduce (final) GroupBy
+    /// * `scalar_sqs` - ScanSubQuery nodes with scalar results which we met earlier in Projection/GroupBy/Having
+    fn adjust_finals(
         &mut self,
-        finals: &[NodeId],
-        finals_child_id: NodeId,
+        final_proj: NodeId,
+        upper_local_proj: NodeId,
         aggrs: &Vec<Aggregate>,
         groupby_info: &Option<GroupByInfo>,
-        scalar_sqs_to_fix: &OrderedSet<NodeId, RepeatableState>,
+        scalar_sqs: &OrderedSet<NodeId, RepeatableState>,
     ) -> Result<(), SbroadError> {
-        // Update relational child of the last final.
-        let last_final_id = finals.last().expect("last final node should exist");
-        *self
-            .get_mut_relation_node(*last_final_id)?
-            .mut_children()
-            .get_mut(0)
-            .expect("last final node should have child") = finals_child_id;
+        let having = self.get_having(final_proj)?;
+        let group_by = self.get_group_by(final_proj)?;
 
-        // After we added a Map stage, we need to
-        // update output of Having in Reduce stage.
-        for node_id in finals.iter().rev() {
-            let node = self.get_relation_node(*node_id)?;
-            match node {
-                Relational::Projection(_) => {
-                    // Projection node is the top node in finals: its aliases
-                    // must not be changed (because those are user aliases), so
-                    // nothing to do here.
-                }
-                Relational::Having(Having { children, .. }) => {
-                    let child_id = *children.first().expect("Having should have a child");
-                    let output = self.add_row_for_output(child_id, &[], true, None)?;
-                    *self.get_mut_relation_node(*node_id)?.mut_output() = output;
-                }
-                _ => unreachable!("Unexpected node in reduce stage: {node:?}"),
+        match (having, group_by) {
+            (None, None) => {
+                self.set_relation_child(final_proj, 0, upper_local_proj)?;
+            }
+            (Some(having), None) => {
+                self.set_relation_child(having, 0, upper_local_proj)?;
+            }
+            (Some(having), Some(group_by)) => {
+                let output = self.add_row_for_output(group_by, &[], true, None)?;
+                *self.get_mut_relation_node(having)?.mut_output() = output;
+
+                self.set_relation_child(having, 0, group_by)?;
+                self.set_relation_child(group_by, 0, upper_local_proj)?;
+            }
+            (None, Some(group_by)) => {
+                self.set_relation_child(group_by, 0, upper_local_proj)?;
             }
         }
 
-        if let Some(groupby_info) = groupby_info {
-            self.patch_grouping_exprs(groupby_info)?;
+        // After we added a Map (local) stage, we need to
+        // update output of Having in Reduce (final) stage.
+        if let Some(having) = having {
+            let Relational::Having(_) = self.get_relation_node(having)? else {
+                unreachable!("expected Having IR node");
+            };
+            let child_id = self.get_first_rel_child(having)?;
+            let output = self.add_row_for_output(child_id, &[], true, None)?;
+            *self.get_mut_relation_node(having)?.mut_output() = output;
         }
 
-        let mut parent_to_aggrs: HashMap<NodeId, Vec<Aggregate>> =
-            HashMap::with_capacity(finals.len());
+        if let Some(groupby_info) = groupby_info {
+            self.adjust_grouping_exprs_from_grby_info(groupby_info)?;
+        }
+
+        let mut parent_to_aggrs: HashMap<NodeId, Vec<Aggregate>> = HashMap::with_capacity(2);
         for aggr in aggrs {
             if let Some(parent_aggrs_vec) = parent_to_aggrs.get_mut(&aggr.parent_rel) {
                 parent_aggrs_vec.push(aggr.clone());
@@ -1044,10 +1096,7 @@ impl Plan {
             }
         }
         for (parent, aggrs) in parent_to_aggrs {
-            let child_id = *self
-                .get_relational_children(parent)?
-                .get(0)
-                .expect("final relational node should have a child");
+            let child_id = self.get_first_rel_child(parent)?;
 
             // We construct mapping { AggrKind -> Pos in the output }
             // out of maps
@@ -1067,182 +1116,228 @@ impl Plan {
         // children shift.
         // Note that we are doing it after there are no references that we've copied to other operators
         // left (e.g. for aggregates they are replaced with aliases above).
-        for final_id in finals.iter().rev() {
-            let final_node = self.get_relation_node(*final_id)?;
-            let children = match final_node {
-                Relational::Projection(Projection { children, .. })
-                | Relational::Having(Having { children, .. }) => children,
-                _ => unreachable!("Unexpected node in reduce stage: {final_node:?}"),
-            };
 
-            let fixed_children = {
-                let mut fixed_children = Vec::with_capacity(children.len());
-                fixed_children.push(children[0]);
-                for (index_prev, child_id) in children.iter().enumerate() {
-                    if index_prev == 0 || scalar_sqs_to_fix.iter().any(|sq_id| *sq_id == *child_id)
-                    {
-                        continue;
-                    }
-                    fixed_children.push(*child_id);
+        let filter = |children: &Vec<NodeId>| -> Vec<NodeId> {
+            let mut res = Vec::with_capacity(children.len());
+            children.iter().for_each(|child_id| {
+                if !scalar_sqs.contains_key(child_id) {
+                    res.push(*child_id);
                 }
-                fixed_children
-            };
-            let mut final_node_mut = self.get_mut_relation_node(*final_id)?;
-            final_node_mut.set_children(fixed_children);
+            });
+            res
+        };
+
+        if let Some(having) = having {
+            if let Relational::Having(Having { children, .. }) = self.get_relation_node(having)? {
+                let filtered_children = filter(children);
+                let mut having_node = self.get_mut_relation_node(having)?;
+                having_node.set_children(filtered_children);
+            } else {
+                unreachable!("expected Having IR node");
+            }
+        }
+
+        if let Relational::Projection(Projection { children, .. }) =
+            self.get_relation_node(final_proj)?
+        {
+            let filtered_children = filter(children);
+            let mut proj_node = self.get_mut_relation_node(final_proj)?;
+            proj_node.set_children(filtered_children);
+        } else {
+            unreachable!("expected Projection IR node");
         }
 
         Ok(())
     }
 
+    /// Add Motion node between Reduce (final) and Map (local) Projections.
+    ///
+    /// # Errors:
+    /// - cannot get Having from Projection
+    /// - cannot get GroupBy from Projection
+    /// - cannot insert Motion node with certain Strategy
+    /// - cannot set distribution for output of Projection/GroupBy/Having
+    ///
+    /// # Returns:
+    /// - nothing if succeed
     fn add_motion_to_two_stage(
         &mut self,
-        finals_child_id: NodeId,
-        finals: &[NodeId],
+        final_proj: NodeId,
+        upper_local_proj: NodeId,
     ) -> Result<(), SbroadError> {
-        let final_proj_id = *finals.first().expect("finals should not be empty");
-        if let Relational::Projection(_) = self.get_relation_node(final_proj_id)? {
-        } else {
-            unreachable!("Projection should be the first node in reduce stage")
-        }
+        let final_having = self.get_having(final_proj)?;
+        let final_group_by = self.get_group_by(final_proj)?;
 
-        // In case we have final GroupBy, then `finals_child_id`` is final GroupBy.
-        let finals_child_node = self.get_relation_node(finals_child_id)?;
+        let lower_final_node = match (final_having, final_group_by) {
+            (None, None) => final_proj,
+            (Some(id), None) => id,
+            (_, Some(id)) => id,
+        };
 
-        let (finals_last_id, finals_last_child_id) =
-            if let Relational::GroupBy(GroupBy { children, .. }) = finals_child_node {
-                // Final GroupBy exists.
-                let final_group_by_child_id = *children.first().unwrap_or_else(|| {
-                    unreachable!("final GroupBy ({finals_child_id:?}) should have children")
-                });
-                (finals_child_id, final_group_by_child_id)
-            } else {
-                // No final GroupBy.
-                (*finals.last().unwrap(), finals_child_id)
-            };
-
-        let mut strategy = Strategy::new(finals_last_id);
-        strategy.add_child(finals_last_child_id, MotionPolicy::Full, Program::default());
-        self.create_motion_nodes(strategy)?;
+        let mut strategy = Strategy::new(lower_final_node);
+        strategy.upsert_child(upper_local_proj, MotionPolicy::Full, Program::default());
+        self.insert_motion_nodes(strategy)?;
 
         self.set_dist(
-            self.get_relational_output(finals_last_id)?,
+            self.get_relational_output(final_proj)?,
             Distribution::Single,
         )?;
-        for node_id in finals {
-            self.set_dist(self.get_relational_output(*node_id)?, Distribution::Single)?;
+        if let Some(id) = final_group_by {
+            self.set_dist(self.get_relational_output(id)?, Distribution::Single)?;
+        }
+        if let Some(id) = final_having {
+            self.set_dist(self.get_relational_output(id)?, Distribution::Single)?;
         }
 
         Ok(())
     }
 
     /// Create Motion nodes for scalar subqueries present under Having node.
-    fn fix_subqueries_under_having(&mut self, finals: &[NodeId]) -> Result<(), SbroadError> {
-        let mut having_id: Option<NodeId> = None;
-        for node_id in finals.iter().skip(1).rev() {
-            if let Relational::Having(_) = self.get_relation_node(*node_id)? {
-                having_id = Some(*node_id);
-            }
-        }
-        if let Some(having_id) = having_id {
-            if let Relational::Having(Having { filter, output, .. }) =
-                self.get_relation_node(having_id)?
-            {
-                let (filter, output) = (*filter, *output);
-                let strategy = self.resolve_sub_query_conflicts(having_id, filter)?;
-                let fixed_subquery_ids = strategy.get_rel_ids();
-                self.create_motion_nodes(strategy)?;
-                self.fix_additional_subqueries(having_id, &fixed_subquery_ids)?;
+    ///
+    /// # Errors:
+    /// - cannot calculate Motion strategies (`resolve_sq_conflicts`).
+    /// - cannot insert Motion nodes for certain Strategy
+    /// - cannot set node distribution for Having output
+    ///
+    /// # Returns:
+    /// - nothing if succeed
+    fn adjust_sqs_under_having(&mut self, having: NodeId) -> Result<(), SbroadError> {
+        if let Relational::Having(Having { filter, output, .. }) = self.get_relation_node(having)? {
+            let (filter, output) = (*filter, *output);
+            let strategy = self.resolve_sq_conflicts(having, filter)?;
 
-                self.try_dist_from_subqueries(having_id, output)?;
-            }
+            let correct_rel_ids = strategy.get_rel_ids();
+            self.insert_motion_nodes(strategy)?;
+            self.adjust_sqs_of_rel_node(having, &correct_rel_ids)?;
+
+            self.try_dist_from_subqueries(having, output)?;
+        } else {
+            unreachable!("Expected Having IR node");
         }
         Ok(())
     }
 
-    /// Handle GroupBy, aggregates and distinct qualifier
-    /// in case they are present in the query. We have to create
-    /// additional relational nodes (including Motions) in order to guarantee
-    /// corectness of such query execution.
+    fn collect_sqs_from_aggregate(
+        &self,
+        aggr: &Aggregate,
+        scalar_sqs: &mut OrderedSet<NodeId, RepeatableState>,
+    ) -> Result<(), SbroadError> {
+        // All aggregates have no more than 1 argument
+        let arg: NodeId = *self
+            .nodes
+            .expr_iter(aggr.fun_id, false)
+            .collect::<Vec<NodeId>>()
+            .first()
+            .expect("Number of args for aggregate should have been already checked");
+
+        for ref_id in self.get_sq_refs_from_subtree(arg)? {
+            let ref_node = self.get_expression_node(ref_id)?;
+            match ref_node {
+                Expression::SubQueryReference(SubQueryReference { rel_id, .. }) => {
+                    scalar_sqs.insert(*rel_id);
+                }
+                _ => unreachable!("Expected SubQueryReference IR node, got: {ref_node:?}"),
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Handle GroupBy, aggregates and distinct qualifier.
+    /// Create additional relational nodes: Projection, GroupBy, Motion.
     ///
-    /// We call this algorithm a "two" stage aggregation, because it assumes
-    /// execution of a GroupBy related logic being executed in MapReduce manner.
-    /// On a Map stage on each instance we execute:
-    /// * Grouping by needed expressions
-    /// * (if present) aggregates calculation
+    /// # Terms
+    /// - Map - local stage (on storage)
+    /// - Reduce - final stage (on router)
+    ///
+    /// On a Map stage on each storage we execute:
+    /// * GroupBy which is pushed down in certain cases
+    /// * Aggregate calculation
     ///
     /// On a Reduce stage we finalize calculation by gathering all the results
     /// and applying the same logic (grouping or aggregation) on a whole set of
     /// data. Map stage is present in order not to apply all the calculations
     /// (e.g. aggregates) on the router but spread them between all instances.
     ///
-    /// Among other, see `add_local_projection` comments.
-    ///
-    /// Returns `true` if there are any aggregate
-    /// functions or `GroupBy` is present. Otherwise, returns `false` and
-    /// does nothing.
-    pub fn add_two_stage_aggregation(
-        &mut self,
-        final_proj_id: NodeId,
-    ) -> Result<bool, SbroadError> {
-        let (finals, mut upper_id) = self.split_group_by(final_proj_id)?;
-        let mut groupby_info =
-            if matches!(self.get_relation_node(upper_id)?, Relational::GroupBy(_)) {
-                // In case user defined GroupBy in initial query.
-                //
-                // Example: `select a from t group by a`.
-                Some(GroupByInfo::new(upper_id))
-            } else {
-                None
-            };
+    /// # Returns
+    /// - `true` if there are any aggregate functions, distinct qualifier or `GroupBy` is present. Otherwise, `false`.
+    pub fn add_two_stage_aggregation(&mut self, final_proj: NodeId) -> Result<bool, SbroadError> {
+        let mut groupby_info = {
+            let gb_id = self.get_group_by(final_proj)?;
+            gb_id.map(GroupByInfo::new)
+        };
 
-        let mut aggrs = self.collect_aggregates(&finals)?;
+        let final_having = self.get_having(final_proj)?;
+        let mut upper_local_node = match final_having {
+            Some(id) => self.get_first_rel_child(id)?,
+            None => self.get_first_rel_child(final_proj)?,
+        };
+        let mut aggrs = self.collect_aggregates(final_proj, final_having)?;
 
         // In case scalar sq are met in queries like
         // * `select distinct (select 1) from t`
         // * `select sum((select 1)) from t`
         // they should be moved from final Projection/Having to the local Projection/GroupBy
-        // (we remove them from additional children of final node when call `patch_finals`).
+        // (we remove them from additional children of final node when call `adjust_finals`).
         //
         // Here is a map of { (ref_parent, ref_target) -> sq_id }.
         // Mapping is needed only for the stage of local targets fixing (not for final nodes fixing).
-        let mut scalar_sqs_to_fix = OrderedSet::with_hasher(RepeatableState);
+        let mut scalar_sqs = OrderedSet::with_hasher(RepeatableState);
 
         if groupby_info.is_none() && aggrs.is_empty() {
-            if let Some(groupby_id) =
-                self.add_group_by_for_distinct(final_proj_id, upper_id, &mut scalar_sqs_to_fix)?
+            if let Some(distinct_group_by) =
+                self.add_group_by_for_distinct(final_proj, upper_local_node, &mut scalar_sqs)?
             {
+                upper_local_node = distinct_group_by;
+
                 // In case aggregates or GroupBy are present, "distinct" qualifier under
                 // Projection doesn't add any new features to the plan. Otherwise, we should add
-                // a new GroupBy node for a local map stage.
+                // a new GroupBy node for a Map (local) stage.
                 //
                 // Example: `select distinct a, b + 42 from t`.
-                upper_id = groupby_id;
-                groupby_info = Some(GroupByInfo::new(upper_id));
+                if let MutRelational::Projection(Projection {
+                    group_by, children, ..
+                }) = self.get_mut_relation_node(final_proj)?
+                {
+                    if group_by.is_none() {
+                        // Remove the first child because it is linked through the `distinct_group_by` GroupBy IR node
+                        children.remove(0);
+                    }
+                    *group_by = Some(distinct_group_by);
+                }
+
+                if final_having.is_none() {
+                    self.set_target_in_subtree(
+                        self.get_relational_output(final_proj)?,
+                        distinct_group_by,
+                    )?;
+                }
+
+                groupby_info = Some(GroupByInfo::new(distinct_group_by));
             } else {
                 // Query doesn't contain GroupBy, aggregates or "distinct" qualifier.
                 //
-                // Example: `select a, b + 42 from t`.
+                // Example: `select a, b + 42 from t`
                 return Ok(false);
             }
         }
 
         if groupby_info.is_none() {
-            self.check_refs_out_of_aggregates(&finals)?;
+            self.check_refs_out_of_aggregates(final_proj)?;
         }
 
         let distinct_aggrs_are_present = aggrs.iter().any(|a| a.is_distinct);
         if groupby_info.is_none() && distinct_aggrs_are_present {
-            // GroupBy doesn't exist and we have to create it just for
-            // distinct aggregates.
+            // GroupBy doesn't exist and we have to create it for distinct aggregates.
             //
             // Example: `select sum(distinct a) from t`
             //
             // Currently it's the only case when GroupBy will be present
-            // on a Map stage, but will not be generated for Reduce stage.
+            // on a Map (local) stage, but will not be generated for Reduce (final) stage.
 
-            let groupby_id = self.add_groupby(upper_id, &[])?;
-            upper_id = groupby_id;
-            groupby_info = Some(GroupByInfo::new(upper_id));
+            let group_by_id = self.add_groupby(upper_local_node, &[])?;
+            upper_local_node = group_by_id;
+            groupby_info = Some(GroupByInfo::new(upper_local_node));
         }
 
         // Note: All the cases in which a local GroupBy node is created (in
@@ -1251,12 +1346,7 @@ impl Plan {
         //       local GroupBy node, please try to implement it above (so that
         //       such node creation is located in one place).
 
-        self.collect_grouping_exprs(
-            &mut groupby_info,
-            &mut aggrs,
-            &finals,
-            &mut scalar_sqs_to_fix,
-        )?;
+        self.collect_grouping_exprs(&mut groupby_info, &mut aggrs, final_proj, &mut scalar_sqs)?;
 
         if let Some(groupby_info) = groupby_info.as_ref() {
             if !groupby_info.grouping_exprs.is_empty()
@@ -1268,47 +1358,42 @@ impl Plan {
 
         // We have to move scalar subqueries from non distinct aggregates to local Projection.
         for aggr in aggrs.iter().filter(|x| !x.is_distinct) {
-            let arg: NodeId = *self
-                .nodes
-                .expr_iter(aggr.fun_id, false)
-                .collect::<Vec<NodeId>>()
-                .first()
-                .expect("Number of args for aggregate should have been already checked");
+            self.collect_sqs_from_aggregate(aggr, &mut scalar_sqs)?;
+        }
 
-            for ref_id in self.get_sq_refs_from_subtree(arg)? {
-                let ref_node = self.get_expression_node(ref_id)?;
-                match ref_node {
-                    Expression::SubQueryReference(SubQueryReference { rel_id, .. }) => {
-                        scalar_sqs_to_fix.insert(*rel_id);
-                    }
-                    _ => unreachable!("Expected SubQueryReference, got: {ref_node:?}"),
+        let upper_local_proj = self.add_local_projection(
+            upper_local_node,
+            &mut aggrs,
+            &mut groupby_info,
+            &scalar_sqs,
+        )?;
+
+        if let Some(groupby_info) = groupby_info.as_ref() {
+            if !groupby_info.grouping_exprs.is_empty() {
+                let final_group_by = self.add_final_groupby(upper_local_proj, groupby_info)?;
+                if let MutRelational::Projection(Projection { group_by, .. }) =
+                    self.get_mut_relation_node(final_proj)?
+                {
+                    *group_by = Some(final_group_by);
+                } else {
+                    unreachable!("expected Projection IR node")
                 }
             }
         }
 
-        let local_proj_id =
-            self.add_local_projection(upper_id, &mut aggrs, &mut groupby_info, &scalar_sqs_to_fix)?;
-        let finals_child_id = if let Some(groupby_info) = groupby_info.as_ref() {
-            if groupby_info.grouping_exprs.is_empty() {
-                local_proj_id
-            } else {
-                self.add_final_groupby(local_proj_id, groupby_info)?
-            }
-        } else {
-            local_proj_id
-        };
-
-        self.patch_finals(
-            &finals,
-            finals_child_id,
+        self.adjust_finals(
+            final_proj,
+            upper_local_proj,
             &aggrs,
             &groupby_info,
-            &scalar_sqs_to_fix,
+            &scalar_sqs,
         )?;
 
-        self.add_motion_to_two_stage(finals_child_id, &finals)?;
+        self.add_motion_to_two_stage(final_proj, upper_local_proj)?;
 
-        self.fix_subqueries_under_having(&finals)?;
+        if let Some(id) = final_having {
+            self.adjust_sqs_under_having(id)?;
+        }
 
         Ok(true)
     }

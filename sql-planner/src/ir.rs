@@ -131,7 +131,6 @@ impl Nodes {
                 Node64::Join(join) => Node::Relational(Relational::Join(join)),
                 Node64::OrderBy(order_by) => Node::Relational(Relational::OrderBy(order_by)),
                 Node64::Procedure(proc) => Node::Block(Block::Procedure(proc)),
-                Node64::Projection(proj) => Node::Relational(Relational::Projection(proj)),
                 Node64::ScanCte(scan_cte) => Node::Relational(Relational::ScanCte(scan_cte)),
                 Node64::ScanRelation(scan_rel) => {
                     Node::Relational(Relational::ScanRelation(scan_rel))
@@ -147,6 +146,7 @@ impl Nodes {
                 }
             }),
             ArenaType::Arena96 => self.arena96.get(id.offset as usize).map(|node| match node {
+                Node96::Projection(proj) => Node::Relational(Relational::Projection(proj)),
                 Node96::Reference(reference) => Node::Expression(Expression::Reference(reference)),
                 Node96::DropProc(drop_proc) => Node::Ddl(Ddl::DropProc(drop_proc)),
                 Node96::Insert(insert) => Node::Relational(Relational::Insert(insert)),
@@ -288,9 +288,6 @@ impl Nodes {
                         MutNode::Relational(MutRelational::OrderBy(order_by))
                     }
                     Node64::Procedure(proc) => MutNode::Block(MutBlock::Procedure(proc)),
-                    Node64::Projection(proj) => {
-                        MutNode::Relational(MutRelational::Projection(proj))
-                    }
                     Node64::ScanCte(scan_cte) => {
                         MutNode::Relational(MutRelational::ScanCte(scan_cte))
                     }
@@ -313,6 +310,9 @@ impl Nodes {
                 .arena96
                 .get_mut(id.offset as usize)
                 .map(|node| match node {
+                    Node96::Projection(proj) => {
+                        MutNode::Relational(MutRelational::Projection(proj))
+                    }
                     Node96::Reference(reference) => {
                         MutNode::Expression(MutExpression::Reference(reference))
                     }
@@ -1814,12 +1814,13 @@ impl Plan {
                     "projection column index out of range. Node: {node:?}"
                 ))
             })?;
-            return Ok(*col_id);
+            Ok(*col_id)
+        } else {
+            Err(SbroadError::Invalid(
+                Entity::Node,
+                Some(format_smolstr!("Expected Projection node. Got: {node:?}")),
+            ))
         }
-        Err(SbroadError::Invalid(
-            Entity::Node,
-            Some(format_smolstr!("Expected Projection node. Got: {node:?}")),
-        ))
     }
 
     /// Gets `GroupBy` columns

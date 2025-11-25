@@ -85,7 +85,7 @@ fn check_join_motions(
         })
         .unwrap();
     let join_id = level_node.1;
-    let children = plan.get_relational_children(join_id).unwrap();
+    let children = plan.get_relation_children(join_id).unwrap();
     let (left_id, right_id, sq_nodes_ids) = (children[0], children[1], &children[2..]);
     let (left_actual, right_actual) = (plan.to_test_motion(left_id), plan.to_test_motion(right_id));
     assert_eq!(left_expected, left_actual);
