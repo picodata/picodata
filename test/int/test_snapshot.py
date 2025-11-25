@@ -542,10 +542,11 @@ cluster:
     # Disable the error and make sure the instance successfully catches up eventually
     storage_1_2.call("pico._inject_error", injected_error_2, False)
 
+    leader.sql("INSERT INTO life_is_good VALUES (1), (2), (3)")
+
     applied = leader.call(".proc_get_index")
     storage_1_2.call(".proc_wait_index", applied, 10)
 
-    leader.sql("INSERT INTO life_is_good VALUES (1), (2), (3)")
     rows = storage_1_2.sql("SELECT * FROM life_is_good")
     assert rows == [[1], [2], [3]]
 
