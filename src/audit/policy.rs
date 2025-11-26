@@ -46,17 +46,13 @@ pub fn is_dml_audit_enabled_for_user(plan: &ir::Plan) -> Result<bool, SbroadErro
     }
 
     let current_user = util::effective_user_id();
-    with_su(schema::ADMIN_ID, || {
+    with_su(schema::ADMIN_ID, || -> traft::Result<bool> {
         let node = traft::node::global()?;
-        let Ok(space) = node.storage.users_audit_policies.get_space() else {
-            // During the upgrade process, the table might temporarily not exist.
-            // Do not log in this case.
-            return Ok(false);
-        };
+        let space = &node.storage.users_audit_policies.space;
         if space.get(&(current_user, DmlDefaultPolicy::ID))?.is_none() {
             return Ok(false);
         }
-        Ok::<bool, traft::error::Error>(true)
+        Ok(true)
     })?
     .map_err(|e| SbroadError::Other(e.to_smolstr()))
 }

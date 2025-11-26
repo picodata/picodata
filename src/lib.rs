@@ -1077,6 +1077,9 @@ fn bootstrap_storage_on_master() -> Result<(Catalog, RaftSpaceAccess)> {
     // Create picodata system table definitions in `_space`, `_index`, etc.
     let storage = Catalog::try_get(true).expect("storage initialization should never fail");
 
+    // Create system tables & indexes.
+    storage.initialize_storage_on_master()?;
+
     let raft_storage =
         RaftSpaceAccess::new().expect("raft storage initialization should never fail");
 
@@ -1094,11 +1097,6 @@ fn bootstrap_storage_on_master() -> Result<(Catalog, RaftSpaceAccess)> {
     // populated from the bootstrap_entries once the raft main loop gets going.
     let system_catalog_version = storage::LATEST_SYSTEM_CATALOG_VERSION;
     tlog!(Info, "system catalog version: {system_catalog_version}");
-
-    // Create `_pico_governor_queue` space.
-    storage.governor_queue.create_space()?;
-    // Create `_pico_user_audit_policy` space.
-    storage.users_audit_policies.create_space()?;
 
     Ok((storage.clone(), raft_storage))
 }

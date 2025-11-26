@@ -1,7 +1,6 @@
 use crate::column_name;
 use crate::schema::{IndexDef, IndexOption, INITIAL_SCHEMA_VERSION};
-use crate::storage::{space_by_id, SystemTable};
-
+use crate::storage::{space_by_id_unchecked, SystemTable};
 use tarantool::index::{FieldType as IndexFieldType, IndexType, IteratorType, Part};
 use tarantool::space::{Field, FieldType, Space, SpaceId, SpaceType, UpdateOps};
 use tarantool::tuple::Encode;
@@ -133,7 +132,7 @@ impl std::fmt::Display for GovernorOperationDef {
 /// (struct for accessing of `_pico_governor_queue` table).
 #[derive(Debug, Clone)]
 pub struct GovernorQueue {
-    space_id: SpaceId,
+    space: Space,
 }
 
 impl SystemTable for GovernorQueue {
@@ -162,7 +161,7 @@ impl SystemTable for GovernorQueue {
 impl GovernorQueue {
     pub fn new() -> tarantool::Result<Self> {
         Ok(Self {
-            space_id: Self::TABLE_ID,
+            space: space_by_id_unchecked(Self::TABLE_ID),
         })
     }
 
@@ -170,7 +169,7 @@ impl GovernorQueue {
     /// We need to create the new space only on masters
     /// to avoid duplicate key problem.
     /// That's why space creating logic is in separate function.
-    pub fn create_space(&self) -> tarantool::Result<()> {
+    pub fn create(&self) -> tarantool::Result<()> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
@@ -184,6 +183,8 @@ impl GovernorQueue {
             .if_not_exists(true)
             .create()?;
 
+        debug_assert_eq!(self.space.id(), space.id());
+
         Ok(())
     }
 
@@ -192,22 +193,16 @@ impl GovernorQueue {
     /// returns an empty vector.
     #[inline]
     pub fn all_operations(&self) -> tarantool::Result<Vec<GovernorOperationDef>> {
-        let Ok(space) = space_by_id(self.space_id) else {
-            return Ok(vec![]);
-        };
-        space
-            .select(IteratorType::All, &())?
-            .map(|tuple| tuple.decode())
-            .collect()
+        let iter = self.space.select(IteratorType::All, &())?;
+        iter.map(|tuple| tuple.decode()).collect()
     }
 
     /// Updates operation status.
     #[inline]
     pub fn update_status(&self, id: u64, status: GovernorOpStatus) -> tarantool::Result<()> {
-        let space = space_by_id(self.space_id)?;
         let mut ops = UpdateOps::with_capacity(1);
         ops.assign(column_name!(GovernorOperationDef, status), status)?;
-        space.update(&[id], ops)?;
+        self.space.update(&[id], ops)?;
         Ok(())
     }
 

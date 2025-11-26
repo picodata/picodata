@@ -76,7 +76,8 @@ macro_rules! column_name {
 }
 
 #[inline(always)]
-fn space_by_id_unchecked(space_id: SpaceId) -> Space {
+pub fn space_by_id_unchecked(space_id: SpaceId) -> Space {
+    // SAFETY: this is always safe. Tarantool will check if space exists when executing requests
     unsafe { Space::from_id_unchecked(space_id) }
 }
 
@@ -104,6 +105,12 @@ pub fn space_by_name(space_name: &str) -> tarantool::Result<Space> {
         tarantool::error::TarantoolError::last()
     })?;
     Ok(space)
+}
+
+#[inline]
+pub fn index_by_ids_unchecked(space_id: SpaceId, index_id: IndexId) -> Index {
+    // SAFETY: this is always safe. Tarantool will check if space exists when executing requests
+    unsafe { Index::from_ids_unchecked(space_id, index_id) }
 }
 
 pub fn storage_is_initialized() -> bool {
@@ -197,8 +204,7 @@ impl Catalog {
     ///
     /// This function is private because it should only be called once
     /// per picodata instance on boot.
-    #[inline(always)]
-    fn initialize() -> tarantool::Result<Self> {
+    fn new() -> tarantool::Result<Self> {
         // SAFETY: safe as long as only called from tx thread.
         static mut WAS_CALLED: bool = false;
         unsafe {
@@ -228,6 +234,60 @@ impl Catalog {
             snapshot_cache: Default::default(),
             login_attempts: Default::default(),
         })
+    }
+
+    /// Creates system tables & indexes. Should only be called on master during
+    /// instance bootstrap.
+    pub fn initialize_storage_on_master(&self) -> tarantool::Result<()> {
+        // NOTE: we use a pattern assignment so that we don't forget to handle
+        // new tables when they're added in the future
+        let Self {
+            pico_table,
+            indexes,
+            peer_addresses,
+            instances,
+            properties,
+            replicasets,
+            users,
+            privileges,
+            tiers,
+            routines,
+            plugins,
+            services,
+            service_route_table,
+            plugin_migrations,
+            plugin_config,
+            db_config,
+            governor_queue,
+            users_audit_policies,
+            snapshot_cache,
+            login_attempts,
+        } = self;
+        // Initialization not needed
+        _ = snapshot_cache;
+        _ = login_attempts;
+
+        // Initialize system tables
+        pico_table.create()?;
+        indexes.create()?;
+        peer_addresses.create()?;
+        instances.create()?;
+        properties.create()?;
+        replicasets.create()?;
+        users.create()?;
+        privileges.create()?;
+        tiers.create()?;
+        routines.create()?;
+        plugins.create()?;
+        services.create()?;
+        service_route_table.create()?;
+        plugin_migrations.create()?;
+        plugin_config.create()?;
+        db_config.create()?;
+        governor_queue.create()?;
+        users_audit_policies.create()?;
+
+        Ok(())
     }
 
     pub fn system_space_name_by_id(id: SpaceId) -> Option<&'static str> {
@@ -288,7 +348,7 @@ impl Catalog {
                 if !init {
                     return Err(Error::Uninitialized);
                 }
-                STORAGE = Some(Self::initialize()?);
+                STORAGE = Some(Self::new()?);
             }
             Ok(static_ref!(const STORAGE).as_ref().unwrap())
         }
@@ -309,8 +369,7 @@ impl Catalog {
     /// Should only be used in tests.
     pub(crate) fn for_tests() -> Self {
         let storage = Self::try_get(true).unwrap();
-        storage.governor_queue.create_space().unwrap();
-        storage.users_audit_policies.create_space().unwrap();
+        storage.initialize_storage_on_master().unwrap();
 
         if storage.pico_table.space.len().unwrap() != 0 {
             // Already initialized by other tests.
@@ -561,6 +620,15 @@ impl SystemTable for PicoTable {
 
 impl PicoTable {
     pub fn new() -> tarantool::Result<Self> {
+        Ok(Self {
+            space: space_by_id_unchecked(Self::TABLE_ID),
+            index_id: index_by_ids_unchecked(Self::TABLE_ID, 0),
+            index_name: index_by_ids_unchecked(Self::TABLE_ID, 1),
+            index_owner_id: index_by_ids_unchecked(Self::TABLE_ID, 2),
+        })
+    }
+
+    pub fn create(&self) -> tarantool::Result<()> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
@@ -589,12 +657,12 @@ impl PicoTable {
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self {
-            space,
-            index_id,
-            index_name,
-            index_owner_id,
-        })
+        debug_assert_eq!(self.space.id(), space.id());
+        debug_assert_eq!(self.index_id.id(), index_id.id());
+        debug_assert_eq!(self.index_name.id(), index_name.id());
+        debug_assert_eq!(self.index_owner_id.id(), index_owner_id.id());
+
+        Ok(())
     }
 
     #[inline(always)]
@@ -789,6 +857,14 @@ impl SystemTable for Indexes {
 
 impl Indexes {
     pub fn new() -> tarantool::Result<Self> {
+        Ok(Self {
+            space: space_by_id_unchecked(Self::TABLE_ID),
+            index_id: index_by_ids_unchecked(Self::TABLE_ID, 0),
+            index_name: index_by_ids_unchecked(Self::TABLE_ID, 1),
+        })
+    }
+
+    pub fn create(&self) -> tarantool::Result<()> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
@@ -811,11 +887,11 @@ impl Indexes {
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self {
-            space,
-            index_id,
-            index_name,
-        })
+        debug_assert_eq!(space.id(), self.space.id());
+        debug_assert_eq!(index_id.id(), self.index_id.id());
+        debug_assert_eq!(index_name.id(), self.index_name.id());
+
+        Ok(())
     }
 
     #[inline]
@@ -937,6 +1013,13 @@ impl SystemTable for PeerAddresses {
 
 impl PeerAddresses {
     pub fn new() -> tarantool::Result<Self> {
+        Ok(Self {
+            space: space_by_id_unchecked(Self::TABLE_ID),
+            index: index_by_ids_unchecked(Self::TABLE_ID, 0),
+        })
+    }
+
+    pub fn create(&self) -> tarantool::Result<()> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
@@ -952,7 +1035,10 @@ impl PeerAddresses {
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self { space, index })
+        debug_assert_eq!(self.space.id(), space.id());
+        debug_assert_eq!(self.index.id(), index.id());
+
+        Ok(())
     }
 
     #[inline]
@@ -1243,48 +1329,58 @@ impl SystemTable for Instances {
 
 impl Instances {
     pub fn new() -> tarantool::Result<Self> {
-        let space_instances = Space::builder(Self::TABLE_NAME)
+        Ok(Self {
+            space: space_by_id_unchecked(Self::TABLE_ID),
+            index_instance_name: index_by_ids_unchecked(Self::TABLE_ID, 0),
+            index_instance_uuid: index_by_ids_unchecked(Self::TABLE_ID, 1),
+            index_raft_id: index_by_ids_unchecked(Self::TABLE_ID, 2),
+            index_replicaset_name: index_by_ids_unchecked(Self::TABLE_ID, 3),
+        })
+    }
+
+    pub fn create(&self) -> tarantool::Result<()> {
+        let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
             .format(Self::format())
             .if_not_exists(true)
             .create()?;
 
-        let index_instance_name = space_instances
+        let index_instance_name = space
             .index_builder("_pico_instance_name")
             .unique(true)
             .part("name")
             .if_not_exists(true)
             .create()?;
 
-        let index_instance_uuid = space_instances
+        let index_instance_uuid = space
             .index_builder("_pico_instance_uuid")
             .unique(true)
             .part("uuid")
             .if_not_exists(true)
             .create()?;
 
-        let index_raft_id = space_instances
+        let index_raft_id = space
             .index_builder("_pico_instance_raft_id")
             .unique(true)
             .part("raft_id")
             .if_not_exists(true)
             .create()?;
 
-        let index_replicaset_name = space_instances
+        let index_replicaset_name = space
             .index_builder("_pico_instance_replicaset_name")
             .unique(false)
             .part("replicaset_name")
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self {
-            space: space_instances,
-            index_instance_name,
-            index_instance_uuid,
-            index_raft_id,
-            index_replicaset_name,
-        })
+        debug_assert_eq!(self.space.id(), space.id());
+        debug_assert_eq!(self.index_instance_name.id(), index_instance_name.id());
+        debug_assert_eq!(self.index_instance_uuid.id(), index_instance_uuid.id());
+        debug_assert_eq!(self.index_raft_id.id(), index_raft_id.id());
+        debug_assert_eq!(self.index_replicaset_name.id(), index_replicaset_name.id());
+
+        Ok(())
     }
 
     #[inline]
@@ -1475,6 +1571,13 @@ impl SystemTable for Properties {
 
 impl Properties {
     pub fn new() -> tarantool::Result<Self> {
+        Ok(Self {
+            space: space_by_id_unchecked(Self::TABLE_ID),
+            index: index_by_ids_unchecked(Self::TABLE_ID, 0),
+        })
+    }
+
+    pub fn create(&self) -> tarantool::Result<()> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
@@ -1491,7 +1594,10 @@ impl Properties {
 
         on_replace(space.id(), Self::on_replace)?;
 
-        Ok(Self { space, index })
+        debug_assert_eq!(self.space.id(), space.id());
+        debug_assert_eq!(self.index.id(), index.id());
+
+        Ok(())
     }
 
     /// Callback which is called when data in _pico_property is updated.
@@ -1686,6 +1792,14 @@ impl SystemTable for Replicasets {
 
 impl Replicasets {
     pub fn new() -> tarantool::Result<Self> {
+        Ok(Self {
+            space: space_by_id_unchecked(Self::TABLE_ID),
+            index_replicaset_name: index_by_ids_unchecked(Self::TABLE_ID, 0),
+            index_replicaset_uuid: index_by_ids_unchecked(Self::TABLE_ID, 1),
+        })
+    }
+
+    pub fn create(&self) -> tarantool::Result<()> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
@@ -1707,11 +1821,11 @@ impl Replicasets {
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self {
-            space,
-            index_replicaset_name,
-            index_replicaset_uuid,
-        })
+        debug_assert_eq!(self.space.id(), space.id());
+        debug_assert_eq!(self.index_replicaset_name.id(), index_replicaset_name.id());
+        debug_assert_eq!(self.index_replicaset_uuid.id(), index_replicaset_uuid.id());
+
+        Ok(())
     }
 
     #[inline]
@@ -1906,6 +2020,15 @@ impl SystemTable for Users {
 
 impl Users {
     pub fn new() -> tarantool::Result<Self> {
+        Ok(Self {
+            space: space_by_id_unchecked(Self::TABLE_ID),
+            index_id: index_by_ids_unchecked(Self::TABLE_ID, 0),
+            index_name: index_by_ids_unchecked(Self::TABLE_ID, 1),
+            index_owner_id: index_by_ids_unchecked(Self::TABLE_ID, 2),
+        })
+    }
+
+    pub fn create(&self) -> tarantool::Result<()> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
@@ -1934,12 +2057,12 @@ impl Users {
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self {
-            space,
-            index_id,
-            index_name,
-            index_owner_id,
-        })
+        debug_assert_eq!(self.space.id(), space.id());
+        debug_assert_eq!(self.index_id.id(), index_id.id());
+        debug_assert_eq!(self.index_name.id(), index_name.id());
+        debug_assert_eq!(self.index_owner_id.id(), index_owner_id.id());
+
+        Ok(())
     }
 
     #[inline]
@@ -2082,6 +2205,14 @@ impl SystemTable for Privileges {
 
 impl Privileges {
     pub fn new() -> tarantool::Result<Self> {
+        Ok(Self {
+            space: space_by_id_unchecked(Self::TABLE_ID),
+            primary_key: index_by_ids_unchecked(Self::TABLE_ID, 0),
+            object_idx: index_by_ids_unchecked(Self::TABLE_ID, 1),
+        })
+    }
+
+    pub fn create(&self) -> tarantool::Result<()> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
@@ -2104,11 +2235,11 @@ impl Privileges {
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self {
-            space,
-            primary_key,
-            object_idx,
-        })
+        debug_assert_eq!(self.space.id(), space.id());
+        debug_assert_eq!(self.primary_key.id(), primary_key.id());
+        debug_assert_eq!(self.object_idx.id(), object_idx.id());
+
+        Ok(())
     }
 
     #[inline(always)]
@@ -2277,6 +2408,13 @@ impl SystemTable for Tiers {
 }
 impl Tiers {
     pub fn new() -> tarantool::Result<Self> {
+        Ok(Self {
+            space: space_by_id_unchecked(Self::TABLE_ID),
+            index_name: index_by_ids_unchecked(Self::TABLE_ID, 0),
+        })
+    }
+
+    pub fn create(&self) -> tarantool::Result<()> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
@@ -2291,7 +2429,10 @@ impl Tiers {
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self { space, index_name })
+        debug_assert_eq!(self.space.id(), space.id());
+        debug_assert_eq!(self.index_name.id(), index_name.id());
+
+        Ok(())
     }
 
     #[inline(always)]
@@ -2379,6 +2520,15 @@ impl SystemTable for Routines {
 
 impl Routines {
     pub fn new() -> tarantool::Result<Self> {
+        Ok(Self {
+            space: space_by_id_unchecked(Self::TABLE_ID),
+            index_id: index_by_ids_unchecked(Self::TABLE_ID, 0),
+            index_name: index_by_ids_unchecked(Self::TABLE_ID, 1),
+            index_owner_id: index_by_ids_unchecked(Self::TABLE_ID, 2),
+        })
+    }
+
+    pub fn create(&self) -> tarantool::Result<()> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
@@ -2407,12 +2557,12 @@ impl Routines {
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self {
-            space,
-            index_id,
-            index_name,
-            index_owner_id,
-        })
+        debug_assert_eq!(self.space.id(), space.id());
+        debug_assert_eq!(self.index_id.id(), index_id.id());
+        debug_assert_eq!(self.index_name.id(), index_name.id());
+        debug_assert_eq!(self.index_owner_id.id(), index_owner_id.id());
+
+        Ok(())
     }
 
     #[inline(always)]
@@ -2521,6 +2671,13 @@ impl SystemTable for Plugins {
 }
 impl Plugins {
     pub fn new() -> tarantool::Result<Self> {
+        Ok(Self {
+            space: space_by_id_unchecked(Self::TABLE_ID),
+            primary_key: index_by_ids_unchecked(Self::TABLE_ID, 0),
+        })
+    }
+
+    pub fn create(&self) -> tarantool::Result<()> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
@@ -2536,7 +2693,10 @@ impl Plugins {
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self { space, primary_key })
+        debug_assert_eq!(self.space.id(), space.id());
+        debug_assert_eq!(self.primary_key.id(), primary_key.id());
+
+        Ok(())
     }
 
     #[inline]
@@ -2640,6 +2800,13 @@ impl SystemTable for Services {
 }
 impl Services {
     pub fn new() -> tarantool::Result<Self> {
+        Ok(Self {
+            space: space_by_id_unchecked(Self::TABLE_ID),
+            index_name: index_by_ids_unchecked(Self::TABLE_ID, 0),
+        })
+    }
+
+    pub fn create(&self) -> tarantool::Result<()> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
@@ -2656,7 +2823,10 @@ impl Services {
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self { space, index_name })
+        debug_assert_eq!(self.space.id(), space.id());
+        debug_assert_eq!(self.index_name.id(), index_name.id());
+
+        Ok(())
     }
 
     #[inline(always)]
@@ -2784,6 +2954,13 @@ impl SystemTable for ServiceRouteTable {
 }
 impl ServiceRouteTable {
     pub fn new() -> tarantool::Result<Self> {
+        Ok(Self {
+            space: space_by_id_unchecked(Self::TABLE_ID),
+            primary_key: index_by_ids_unchecked(Self::TABLE_ID, 0),
+        })
+    }
+
+    pub fn create(&self) -> tarantool::Result<()> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
@@ -2801,7 +2978,10 @@ impl ServiceRouteTable {
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self { space, primary_key })
+        debug_assert_eq!(self.space.id(), space.id());
+        debug_assert_eq!(self.primary_key.id(), primary_key.id());
+
+        Ok(())
     }
 
     #[inline]
@@ -2924,6 +3104,13 @@ impl SystemTable for PluginMigrations {
 }
 impl PluginMigrations {
     pub fn new() -> tarantool::Result<Self> {
+        Ok(Self {
+            space: space_by_id_unchecked(Self::TABLE_ID),
+            primary_key: index_by_ids_unchecked(Self::TABLE_ID, 0),
+        })
+    }
+
+    pub fn create(&self) -> tarantool::Result<()> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
@@ -2939,7 +3126,10 @@ impl PluginMigrations {
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self { space, primary_key })
+        debug_assert_eq!(self.space.id(), space.id());
+        debug_assert_eq!(self.primary_key.id(), primary_key.id());
+
+        Ok(())
     }
 
     pub fn get_by_plugin(
@@ -2995,6 +3185,13 @@ impl SystemTable for PluginConfig {
 }
 impl PluginConfig {
     pub fn new() -> tarantool::Result<Self> {
+        Ok(Self {
+            space: space_by_id_unchecked(Self::TABLE_ID),
+            primary: index_by_ids_unchecked(Self::TABLE_ID, 0),
+        })
+    }
+
+    pub fn create(&self) -> tarantool::Result<()> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
@@ -3012,7 +3209,10 @@ impl PluginConfig {
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self { space, primary })
+        debug_assert_eq!(self.space.id(), space.id());
+        debug_assert_eq!(self.primary.id(), primary.id());
+
+        Ok(())
     }
 
     #[inline(always)]
@@ -3250,6 +3450,14 @@ impl DbConfig {
     pub const GLOBAL_SCOPE: &'static str = "";
 
     pub fn new() -> tarantool::Result<Self> {
+        Ok(Self {
+            space: space_by_id_unchecked(Self::TABLE_ID),
+            primary: index_by_ids_unchecked(Self::TABLE_ID, 0),
+            secondary: index_by_ids_unchecked(Self::TABLE_ID, 1),
+        })
+    }
+
+    pub fn create(&self) -> tarantool::Result<()> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
@@ -3274,11 +3482,11 @@ impl DbConfig {
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self {
-            space,
-            primary,
-            secondary,
-        })
+        debug_assert_eq!(self.space.id(), space.id());
+        debug_assert_eq!(self.primary.id(), primary.id());
+        debug_assert_eq!(self.secondary.id(), secondary.id());
+
+        Ok(())
     }
 
     #[inline(always)]

@@ -1,6 +1,6 @@
 use crate::audit::policy::AuditPolicyId;
 use crate::schema::{IndexDef, IndexOption, INITIAL_SCHEMA_VERSION};
-use crate::storage::{space_by_id, SystemTable};
+use crate::storage::{space_by_id_unchecked, SystemTable};
 use tarantool::index::{FieldType as IndexFieldType, IndexType, IteratorType, Part};
 use tarantool::session::UserId;
 use tarantool::space::{Field, FieldType, Space, SpaceId, SpaceType};
@@ -49,7 +49,7 @@ impl std::fmt::Display for UserAuditPolicyDef {
 /// - Primary key: (`user_id`, `policy_id`) composite
 #[derive(Debug, Clone)]
 pub struct PicoUserAuditPolicy {
-    space_id: SpaceId,
+    pub space: Space,
 }
 
 impl SystemTable for PicoUserAuditPolicy {
@@ -82,7 +82,7 @@ impl SystemTable for PicoUserAuditPolicy {
 impl PicoUserAuditPolicy {
     pub fn new() -> tarantool::Result<Self> {
         Ok(Self {
-            space_id: Self::TABLE_ID,
+            space: space_by_id_unchecked(Self::TABLE_ID),
         })
     }
 
@@ -90,7 +90,7 @@ impl PicoUserAuditPolicy {
     /// We need to create the new space only on masters
     /// to avoid duplicate key problem.
     /// That's why space creating logic is in separate function.
-    pub fn create_space(&self) -> tarantool::Result<()> {
+    pub fn create(&self) -> tarantool::Result<()> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
@@ -108,11 +108,6 @@ impl PicoUserAuditPolicy {
         Ok(())
     }
 
-    /// Retrieves the space for the `_pico_user_audit_policy` table.
-    pub fn get_space(&self) -> tarantool::Result<Space> {
-        space_by_id(self.space_id)
-    }
-
     /// Retrieves the audit policy association for a specific user from the `_pico_user_audit_policy` table.
     ///
     /// # Returns
@@ -125,8 +120,7 @@ impl PicoUserAuditPolicy {
         user_id: UserId,
         policy_id: AuditPolicyId,
     ) -> tarantool::Result<Option<UserAuditPolicyDef>> {
-        let space = space_by_id(self.space_id)?;
-        let Some(tuple) = space.get(&(user_id, policy_id))? else {
+        let Some(tuple) = self.space.get(&(user_id, policy_id))? else {
             return Ok(None);
         };
         tuple.decode()
@@ -141,8 +135,7 @@ impl PicoUserAuditPolicy {
         user_id: UserId,
         policy_id: AuditPolicyId,
     ) -> tarantool::Result<()> {
-        let space = space_by_id(self.space_id)?;
-        space.replace(&(user_id, policy_id))?;
+        self.space.replace(&(user_id, policy_id))?;
         Ok(())
     }
 
@@ -155,18 +148,15 @@ impl PicoUserAuditPolicy {
         user_id: UserId,
         policy_id: AuditPolicyId,
     ) -> tarantool::Result<()> {
-        let space = space_by_id(self.space_id)?;
-        space.delete(&(user_id, policy_id))?;
+        self.space.delete(&(user_id, policy_id))?;
         Ok(())
     }
 
     /// Deletes all audit policy associations for a specific user.
     #[inline]
     pub fn delete_by_user(&self, user_id: UserId) -> tarantool::Result<()> {
-        let Ok(space) = space_by_id(self.space_id) else {
-            return Ok(());
-        };
-        let user_policies: Vec<_> = space
+        let user_policies: Vec<_> = self
+            .space
             .select(IteratorType::Eq, &[user_id])?
             .map(|tuple| {
                 tuple
@@ -175,7 +165,7 @@ impl PicoUserAuditPolicy {
             })
             .collect();
         for UserAuditPolicyDef { policy_id, .. } in user_policies {
-            space.delete(&(user_id, policy_id))?;
+            self.space.delete(&(user_id, policy_id))?;
         }
         Ok(())
     }
