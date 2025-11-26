@@ -3,7 +3,7 @@ use crate::backend::sql::ir::PatternWithParams;
 use crate::executor::engine::mock::{DispatchInfo, PortMocked, RouterRuntimeMock};
 use crate::executor::vtable::VirtualTable;
 use crate::ir::tests::vcolumn_integer_user_non_null;
-use crate::ir::transformation::redistribution::MotionPolicy;
+use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy};
 use crate::ir::value::Value;
 use pretty_assertions::assert_eq;
 
@@ -789,6 +789,26 @@ fn groupby_linker_test() {
         ),
     );
     assert!(params.is_empty());
+}
+
+#[test]
+fn insert_into_values() {
+    let sql = "INSERT INTO t VALUES (1,2,3,4);";
+    let coordinator = RouterRuntimeMock::new();
+    let query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+
+    let motion_id = query.get_motion_id(0, 0);
+    let Relational::Motion(Motion { program, .. }) = query
+        .exec_plan
+        .get_ir_plan()
+        .get_relation_node(motion_id)
+        .unwrap()
+    else {
+        unreachable!("missed motion");
+    };
+
+    // Assert there is only one opcode.
+    assert_eq!(&program.0, &[MotionOpcode::ReshardIfNeeded]);
 }
 
 mod between;

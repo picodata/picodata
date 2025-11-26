@@ -856,7 +856,12 @@ impl Plan {
         }) = mut_child_node
         {
             *new_policy = policy.clone();
-            new_program.0.extend_from_slice(&program.0);
+            // Extend program with new opcodes.
+            for opcode in program.0 {
+                if !new_program.0.contains(&opcode) {
+                    new_program.0.push(opcode);
+                }
+            }
             return Ok(child_id);
         }
 
