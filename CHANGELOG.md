@@ -51,6 +51,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### WebUI
 - Login form and simple session control
+- Introduce display of used memory in terms of tier
 
 ### ACL
 - Support granting CREATE privilege on specific table.

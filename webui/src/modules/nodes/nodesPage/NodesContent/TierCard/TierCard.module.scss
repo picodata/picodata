@@ -39,6 +39,13 @@ $chevron-column-flex: 0.2;
   display: flex;
   flex-direction: column;
   align-items: center;
+  white-space: nowrap;
+}
+
+.capacityColumn {
+  flex: 1 360px;
+  align-items: flex-start;
+  padding: calc($column-item-vertical-padding * 2) 8px;
 }
 
 .hiddenColumn {
@@ -55,23 +62,24 @@ $chevron-column-flex: 0.2;
 }
 
 .replicasetsColumn {
-  flex: 1 166px;
+  flex: 1 96px;
 }
 
 .instancesColumn {
-  flex: 1 166px;
+  flex: 1 78px;
 }
 
 .rfColumn {
-  flex: 1 166px;
+  flex: 1 96px;
+  white-space: nowrap;
 }
 
 .bucketCountColumn {
-  flex: 1 166px;
+  flex: 1 78px;
 }
 
 .canVoterColumn {
-  flex: 1 77px;
+  flex: 1 60px;
 }
 
 .chevronColumn {

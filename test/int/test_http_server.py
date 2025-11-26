@@ -148,6 +148,11 @@ def test_webui_basic(instance: Instance, auth_token: Optional[str]):
                 "can_vote": True,
                 "name": "default",
                 "services": [],
+                "capacityUsage": capacity_usage,
+                "memory": {
+                    "usable": instance_slab["quota_size"],
+                    "used": instance_slab["quota_used"],
+                },
             }
         ]
 
@@ -292,6 +297,11 @@ def test_webui_with_plugin(cluster: Cluster):
         "bucketCount": 3000,
         "instanceCount": 1,
         "can_vote": True,
+        "capacityUsage": 0.0,
+        "memory": {
+            "usable": 67108864,
+            "used": 0,
+        },
     }
 
     tier_red = {
@@ -416,7 +426,7 @@ def test_webui_replicaset_state(cluster: Cluster):
         "state": "Online",
         "version": instance_version,
         "instanceCount": 2,
-        "capacityUsage": 0,
+        "capacityUsage": 0.0,
     }
     r1 = {
         **replicaset_template,
@@ -451,6 +461,12 @@ def test_webui_replicaset_state(cluster: Cluster):
         "name": "red",
         "services": [],
         "replicasets": [r1, r2],
+        "capacityUsage": 0.0,
+        "memory": {
+            # r1.memory.usable + r2.memory.usable
+            "usable": 134217728,
+            "used": 0,
+        },
     }
 
     with get_url(f"http://{http_listen}/api/v1/tiers", auth_token) as response:
@@ -462,7 +478,7 @@ def test_webui_replicaset_state(cluster: Cluster):
     with get_url(f"http://{http_listen}/api/v1/cluster", auth_token) as response:
         assert response.headers.get("content-type") == "application/json"
         assert json.load(response) == {
-            "capacityUsage": 0,
+            "capacityUsage": 0.0,
             "clusterName": cluster.id,
             "replicasetsCount": 2,
             "instancesCurrentStateOnline": 3,
@@ -551,6 +567,11 @@ def test_webui_can_vote_flag(cluster: Cluster):
         "rf": 1,
         "bucketCount": 3000,
         "instanceCount": 1,
+        "capacityUsage": 0.0,
+        "memory": {
+            "usable": 67108864,
+            "used": 0,
+        },
     }
 
     tier_red = {

@@ -10,14 +10,16 @@ import { useTranslation } from "shared/intl";
 import { HiddenWrapper } from "shared/ui/HiddenWrapper/HiddenWrapper";
 
 import { ReplicasetCard } from "../ReplicasetCard/ReplicasetCard";
+import { CapacityProgress } from "../../ClusterInfo/CapacityProgress/CapacityProgress";
 
 import styles from "./TierCard.module.scss";
 
 export interface TierCardProps {
+  theme?: "primary" | "secondary";
   tier: TierType;
 }
 
-export const TierCard: FC<TierCardProps> = React.memo(({ tier }) => {
+export const TierCard: FC<TierCardProps> = React.memo(({ tier, theme }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
 
   const { translation } = useTranslation();
@@ -102,6 +104,18 @@ export const TierCard: FC<TierCardProps> = React.memo(({ tier }) => {
             <SwitchInfo checked={tier.can_vote} />
           </div>
         </div>
+        {tier.memory && (
+          <div className={cn(styles.infoColumn, styles.capacityColumn)}>
+            <CapacityProgress
+              percent={tier.capacityUsage}
+              currentValue={tier.memory?.used ?? 0}
+              limit={tier.memory?.usable ?? 0}
+              size="small"
+              theme={theme === "secondary" ? "primary" : "secondary"}
+              progressLineWidth="100%"
+            />
+          </div>
+        )}
         <div className={cn(styles.infoColumn, styles.chevronColumn)}>
           <ChevronDown
             className={cn(styles.chevronIcon, isOpen && styles.chevronIconOpen)}

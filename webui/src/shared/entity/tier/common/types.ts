@@ -13,6 +13,11 @@ export type ServerTierType = {
   bucketCount: number;
   can_vote: boolean;
   replicasets: ServerReplicasetType[];
+  memory?: {
+    usable: number;
+    used: number;
+  };
+  capacityUsage?: number;
 };
 
 export type TierType = Override<

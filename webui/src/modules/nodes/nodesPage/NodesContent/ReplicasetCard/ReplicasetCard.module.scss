@@ -33,22 +33,23 @@ $column-item-horizontal-padding: 8px;
 }
 
 .nameColumn {
-  flex: 1 171px;
+  flex: 1 360px;
   align-items: flex-start;
 }
 
 .inctancesColumn {
-  flex: 1 326px;
+  flex: 1 96px;
 }
 
 .stateColumn {
   flex: 1 135px;
+  white-space: nowrap;
 }
 
 .capacityColumn {
   flex: 1 288px;
   align-items: flex-start;
-  padding: calc($column-item-vertical-padding * 2) 30px;
+  padding: calc($column-item-vertical-padding * 2) 8px;
 }
 
 .chevronColumn {

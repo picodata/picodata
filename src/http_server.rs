@@ -242,6 +242,8 @@ pub(crate) struct TierInfo {
     can_vote: bool,
     name: String,
     services: Vec<String>,
+    memory: MemoryInfo,
+    capacity_usage: f64,
 }
 
 // From the Lua version:
@@ -461,11 +463,7 @@ fn get_replicasets_info(storage: &Catalog, only_leaders: bool) -> Result<Vec<Rep
             });
 
         if is_leader {
-            replicaset_info.capacity_usage = if mem_usable == 0 {
-                0_f64
-            } else {
-                ((mem_used as f64) / (mem_usable as f64) * 10000_f64).round() / 100_f64
-            };
+            replicaset_info.capacity_usage = get_capacity_usage(mem_usable, mem_used);
             replicaset_info.memory.usable = mem_usable;
             replicaset_info.memory.used = mem_used;
 
@@ -478,6 +476,14 @@ fn get_replicasets_info(storage: &Catalog, only_leaders: bool) -> Result<Vec<Rep
     }
 
     Ok(res.into_values().collect())
+}
+
+fn get_capacity_usage(mem_usable: u64, mem_used: u64) -> f64 {
+    if mem_usable == 0 {
+        0_f64
+    } else {
+        ((mem_used as f64) / (mem_usable as f64) * 10000_f64).round() / 100_f64
+    }
 }
 
 pub(crate) fn http_api_cluster() -> Result<ClusterInfo> {
@@ -516,11 +522,7 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo> {
     let cluster_name = node::global()?.raft_storage.cluster_name()?;
 
     let res = ClusterInfo {
-        capacity_usage: if mem_info.usable == 0 {
-            0_f64
-        } else {
-            ((mem_info.used as f64) / (mem_info.usable as f64) * 10000_f64).round() / 100_f64
-        },
+        capacity_usage: get_capacity_usage(mem_info.usable, mem_info.used),
         cluster_name,
         current_instance_version: version,
         replicasets_count,
@@ -550,6 +552,8 @@ pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>> {
                     instance_count: 0,
                     can_vote: item.can_vote,
                     name: item.name.clone(),
+                    memory: MemoryInfo { usable: 0, used: 0 },
+                    capacity_usage: 0_f64,
                     services: storage
                         .services
                         .get_by_tier(&item.name)
@@ -575,11 +579,16 @@ pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>> {
 
         tier.replicaset_count += 1;
         tier.instance_count += replicaset.instances.len();
+
+        tier.memory.usable += replicaset.memory.usable;
+        tier.memory.used += replicaset.memory.used;
+
         tier.replicasets.push(replicaset);
     }
 
-    res.iter_mut().for_each(|tup| {
-        tup.1.replicasets.sort_by_key(|rs| rs.name.clone());
+    res.iter_mut().for_each(|(_, tier)| {
+        tier.replicasets.sort_by_key(|rs| rs.name.clone());
+        tier.capacity_usage = get_capacity_usage(tier.memory.usable, tier.memory.used);
     });
 
     Ok(res.into_values().collect())
