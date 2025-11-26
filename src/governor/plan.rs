@@ -1001,6 +1001,9 @@ macro_rules! define_plan {
             }
         )+
 
+        // We don't care about `large_enum_variant` in this case, because this
+        // enum is only stored on the stack and never even gets copied.
+        #[allow(clippy::large_enum_variant)]
         pub enum Plan<'i> {
             GoIdle,
             $(

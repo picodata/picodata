@@ -63,6 +63,28 @@ pub struct Replicaset {
 
     /// Vclock of the current master at the moment it was promoted.
     pub promotion_vclock: Vclock,
+
+    /// Is increased everytime [`Self::current_master_name`] changes.
+    ///
+    /// It can be used to guard against requests from deposed masters.
+    // XXX maybe it should instead increase each time target_master_name
+    // changes? But in that case the user can change target_master_name without
+    // bumping the version and everything breaks...
+    #[serde(default)]
+    pub master_change_counter: u64,
+
+    /// Version of the bucket distribution which is currently applied on this replicaset.
+    ///
+    /// If `current_bucket_state_version` != `target_bucket_state_version` then
+    /// bucket rebalancing is currently in progress on this replicaset.
+    #[serde(default)]
+    pub current_bucket_state_version: u64,
+
+    /// Version of the bucket distribution which should be applied on this replicaset.
+    ///
+    /// This value is increased everytime the bucket rebalancing process starts.
+    #[serde(default)]
+    pub target_bucket_state_version: u64,
 }
 impl Encode for Replicaset {}
 
@@ -95,6 +117,9 @@ impl Replicaset {
             current_config_version: 0,
             target_config_version: 0,
             promotion_vclock: Vclock::from([]),
+            master_change_counter: 0,
+            current_bucket_state_version: 0,
+            target_bucket_state_version: 0,
         }
     }
 
@@ -114,12 +139,20 @@ impl Replicaset {
             Field::from(("current_config_version", FieldType::Unsigned)),
             Field::from(("target_config_version", FieldType::Unsigned)),
             Field::from(("promotion_vclock", FieldType::Map)),
+            Field::from(("master_change_counter", FieldType::Unsigned)).is_nullable(true),
+            Field::from(("current_bucket_state_version", FieldType::Unsigned)).is_nullable(true),
+            Field::from(("target_bucket_state_version", FieldType::Unsigned)).is_nullable(true),
         ]
     }
 
     #[inline(always)]
     pub fn master_is_transitioning(&self) -> bool {
         self.current_master_name != self.target_master_name
+    }
+
+    #[inline(always)]
+    pub fn resharding_in_progress(&self) -> bool {
+        self.current_bucket_state_version != self.target_bucket_state_version
     }
 
     /// Returns the name of instance which should be the master replica at this
@@ -153,6 +186,9 @@ impl Replicaset {
             current_config_version: 13,
             target_config_version: 13,
             promotion_vclock: Vclock::from([420, 69105]),
+            master_change_counter: 24,
+            current_bucket_state_version: 37,
+            target_bucket_state_version: 37,
         }
     }
 }

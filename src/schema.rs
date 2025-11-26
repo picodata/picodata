@@ -143,7 +143,7 @@ pub fn system_table_definitions() -> Vec<(TableDef, Vec<IndexDef>)> {
     let mut result = Vec::new();
 
     macro_rules! push_definitions {
-        ($result:ident, $( $table:ident ),*) => {
+        ($result:ident, $( $table:ident ),* $(,)?) => {
             $(
                 let table_def = TableDef {
                     id: $table::TABLE_ID,
@@ -164,6 +164,8 @@ pub fn system_table_definitions() -> Vec<(TableDef, Vec<IndexDef>)> {
     }
 
     use crate::catalog::governor_queue::GovernorQueue;
+    use crate::catalog::pico_bucket::PicoBucket;
+    use crate::catalog::pico_resharding_state::PicoReshardingState;
     use crate::catalog::user_audit_policy::PicoUserAuditPolicy;
     use crate::storage::*;
     push_definitions!(
@@ -185,7 +187,9 @@ pub fn system_table_definitions() -> Vec<(TableDef, Vec<IndexDef>)> {
         PluginConfig,
         DbConfig,
         GovernorQueue,
-        PicoUserAuditPolicy
+        PicoUserAuditPolicy,
+        PicoBucket,
+        PicoReshardingState,
     );
 
     // TODO: there's also "_raft_log" & "_raft_state" spaces, but we don't treat

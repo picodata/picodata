@@ -1,6 +1,8 @@
+use crate::catalog::pico_bucket::PicoBucket;
+use crate::catalog::pico_resharding_state::PicoReshardingState;
 use crate::storage::schema::ddl_change_format_on_master;
-use crate::storage::{SystemTable, Tiers};
-use crate::tier::{Tier, DEFAULT_TIER};
+use crate::storage::{Replicasets, SystemTable, Tiers};
+use crate::tier::DEFAULT_TIER;
 use crate::tlog;
 use crate::traft;
 use std::rc::Rc;
@@ -50,6 +52,11 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("proc_name", "proc_instance_name"),
             ("proc_name", "proc_replicaset_name"),
             ("proc_name", "proc_tier_name"),
+            ("exec_script", "alter_pico_replicaset_add_master_change_counter"),
+            ("exec_script", "alter_pico_replicaset_add_bucket_state_fields"),
+            ("exec_script", "alter_pico_tier_add_bucket_state_fields"),
+            ("sql", PicoBucket::SQL_CREATE),
+            ("sql", PicoReshardingState::SQL_CREATE),
         ],
     ),
 ];
@@ -58,7 +65,35 @@ tarantool::define_str_enum! {
     /// List of internal scripts.
     pub enum InternalScript {
         /// Schema upgrade operation `ALTER TABLE _pico_tier ADD is_default bool`.
+        ///
+        /// NOTE: this must be done as a special script step instead of simple
+        /// SQL, because alterring any of _pico_instance, _pico_replicaset,
+        /// _pico_tier via SQL will block any CAS requests into those tables
+        /// which may lead to a deadlock if any instance in the cluster goes
+        /// offline during cluster upgrade.
         AlterPicoTierAddIsDefault = "alter_pico_tier_add_is_default",
+
+        /// Schema upgrade operation equivalent to:
+        /// ```ignore
+        /// ALTER TABLE _pico_replicaset ADD COLUMN master_change_counter UNSIGNED NULL
+        /// ```
+        AlterPicoReplicasetAddMasterChangeCounter = "alter_pico_replicaset_add_master_change_counter",
+
+        /// Schema upgrade operation equivalent to:
+        /// ```ignore
+        /// ALTER TABLE _pico_replicaset ADD COLUMN
+        ///     current_bucket_state_version UNSIGNED NULL,
+        ///     target_bucket_state_version  UNSIGNED NULL
+        /// ```
+        AlterPicoReplicasetAddBucketStateFields = "alter_pico_replicaset_add_bucket_state_fields",
+
+        /// Schema upgrade operation equivalent to:
+        /// ```ignore
+        /// ALTER TABLE _pico_tier ADD COLUMN
+        ///     current_bucket_state_version UNSIGNED NULL,
+        ///     target_bucket_state_version  UNSIGNED NULL
+        /// ```
+        AlterPicoTierAddBucketStateFields = "alter_pico_tier_add_bucket_state_fields",
     }
 }
 
@@ -76,6 +111,9 @@ crate::define_rpc_request! {
         let _guard = lock.lock();
         match script_name {
             InternalScript::AlterPicoTierAddIsDefault => execute_alter_pico_tier_add_is_default(),
+            InternalScript::AlterPicoReplicasetAddMasterChangeCounter => execute_alter_pico_replicaset_add_master_change_counter(),
+            InternalScript::AlterPicoReplicasetAddBucketStateFields => execute_alter_pico_replicaset_add_bucket_state_fields(),
+            InternalScript::AlterPicoTierAddBucketStateFields => execute_alter_pico_tier_add_bucket_state_fields(),
         }
     }
 
@@ -88,7 +126,6 @@ crate::define_rpc_request! {
 
 fn execute_alter_pico_tier_add_is_default() -> traft::Result<Response> {
     let node = traft::node::global()?;
-    let is_master = !node.is_readonly();
 
     // Preliminary check before schema change performing.
     let topology_cache_ref = node.topology_cache.get();
@@ -108,33 +145,66 @@ fn execute_alter_pico_tier_add_is_default() -> traft::Result<Response> {
     };
     drop(topology_cache_ref);
 
+    actualize_system_table_format::<Tiers>()?;
+
+    Ok(Response {})
+}
+
+fn execute_alter_pico_replicaset_add_master_change_counter() -> traft::Result<Response> {
+    actualize_system_table_format::<Replicasets>()?;
+    Ok(Response {})
+}
+
+fn execute_alter_pico_replicaset_add_bucket_state_fields() -> traft::Result<Response> {
+    actualize_system_table_format::<Replicasets>()?;
+    Ok(Response {})
+}
+
+fn execute_alter_pico_tier_add_bucket_state_fields() -> traft::Result<Response> {
+    actualize_system_table_format::<Tiers>()?;
+    Ok(Response {})
+}
+
+fn actualize_system_table_format<T: SystemTable>() -> traft::Result<()> {
+    let node = traft::node::global()?;
+    let is_master = !node.is_readonly();
+
+    let table_id = T::TABLE_ID;
+    let table_name = T::TABLE_NAME;
+    let expected_format = T::format();
+
     // Idempotency check.
-    let table_def = node
+    let res = node
         .storage
         .pico_table
-        .get(Tiers::TABLE_ID)
-        .expect("storage shouldn't fail")
-        .expect("_pico_tier should exist");
-    if table_def.format == Tier::format() {
-        tlog!(Info, "no need to alter _pico_tier; this was already done");
-        return Ok(Response {});
+        .get(table_id)
+        .expect("storage shouldn't fail");
+    let Some(table_def) = res else {
+        return Err(traft::error::Error::other(format!(
+            "failed looking up info about table {table_name}",
+        )));
+    };
+
+    if table_def.format == expected_format {
+        tlog!(Info, "no need to alter {table_name}; this was already done",);
+        return Ok(());
     }
 
     // We cannot perform all operations in a single transaction
     // because Tarantool prohibits space format check within multi-statement transaction.
     if is_master {
-        transaction::transaction(|| ddl_change_format_on_master(Tiers::TABLE_ID, &Tier::format()))?;
+        transaction::transaction(|| ddl_change_format_on_master(table_id, &expected_format))?;
     }
 
-    transaction::transaction(|| {
+    transaction::transaction(|| -> traft::Result<()> {
         let rename_mapping = traft::op::RenameMappingBuilder::new().build();
         node.storage
             .pico_table
-            .update_format(Tiers::TABLE_ID, &Tier::format(), &rename_mapping)
+            .update_format(table_id, &expected_format, &rename_mapping)
             .expect("storage shouldn't fail");
 
-        Ok::<(), traft::error::Error>(())
+        Ok(())
     })?;
 
-    Ok(Response {})
+    Ok(())
 }

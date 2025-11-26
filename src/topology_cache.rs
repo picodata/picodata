@@ -1,4 +1,6 @@
 #![allow(unused_parens)]
+use crate::catalog::pico_bucket::BucketRecord;
+use crate::catalog::pico_resharding_state::ReshardingStateRecord;
 use crate::instance::Instance;
 use crate::instance::State;
 use crate::replicaset::Replicaset;
@@ -288,6 +290,34 @@ impl TopologyCache {
     ) {
         self.inner.borrow_mut().update_service_route(old, new)
     }
+
+    /// Updates the `_pico_bucket` record
+    ///
+    /// This function should only be called from [`NodeImpl::handle_dml_entry`].
+    #[inline(always)]
+    pub(crate) fn update_bucket_record(
+        &self,
+        old: Option<BucketRecord>,
+        new: Option<BucketRecord>,
+    ) {
+        // TODO:
+        _ = old;
+        _ = new;
+    }
+
+    /// Updates the `_pico_bucket` record
+    ///
+    /// This function should only be called from [`NodeImpl::handle_dml_entry`].
+    #[inline(always)]
+    pub(crate) fn update_resharding_state_record(
+        &self,
+        old: Option<ReshardingStateRecord>,
+        new: Option<ReshardingStateRecord>,
+    ) {
+        // TODO:
+        _ = old;
+        _ = new;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -376,6 +406,10 @@ impl TopologyCacheMutable {
         let mut tiers_by_name = HashMap::default();
         let mut service_routes = HashMap::default();
 
+        //
+        // _pico_instance
+        //
+
         let instances = storage.instances.all_instances()?;
         for instance in instances {
             let instance_name = instance.name.0.clone();
@@ -387,6 +421,10 @@ impl TopologyCacheMutable {
             instance_name_by_uuid.insert(instance.uuid.clone(), instance_name.clone());
             instances_by_name.insert(instance_name, instance);
         }
+
+        //
+        // _pico_replicaset
+        //
 
         let replicasets = storage.replicasets.iter()?;
         for replicaset in replicasets {
@@ -402,6 +440,10 @@ impl TopologyCacheMutable {
             replicasets_by_uuid.insert(replicaset_uuid, replicaset);
         }
 
+        //
+        // _pico_tier
+        //
+
         let tiers = storage.tiers.iter()?;
         for tier in tiers {
             if let Some(instance) = &this_instance {
@@ -412,6 +454,10 @@ impl TopologyCacheMutable {
 
             tiers_by_name.insert(tier.name.clone(), tier);
         }
+
+        //
+        // _pico_service_route
+        //
 
         let items = storage.service_route_table.iter()?;
         for item in items {
@@ -424,6 +470,22 @@ impl TopologyCacheMutable {
                 .or_insert_with(HashMap::default)
                 .insert(item.instance_name.into(), item.poison);
         }
+
+        //
+        // _pico_bucket
+        //
+
+        // TODO
+
+        //
+        // _pico_resharding_state
+        //
+
+        // TODO
+
+        //
+        // end
+        //
 
         Ok(Self {
             my_raft_id,

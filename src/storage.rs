@@ -1,4 +1,6 @@
 use crate::catalog::governor_queue::GovernorQueue;
+use crate::catalog::pico_bucket::PicoBucket;
+use crate::catalog::pico_resharding_state::PicoReshardingState;
 use crate::catalog::user_audit_policy::PicoUserAuditPolicy;
 use crate::config::observer::AtomicObserver;
 use crate::config::{self, AlterSystemParameters};
@@ -56,8 +58,9 @@ use tarantool::session::UserId;
 use tarantool::space::UpdateOps;
 use tarantool::space::{FieldType, Space, SpaceId, SpaceType, SystemSpace};
 use tarantool::tlua;
+use tarantool::tuple::RawBytes;
+use tarantool::tuple::Tuple;
 use tarantool::tuple::{DecodeOwned, KeyDef, ToTupleBuffer};
-use tarantool::tuple::{RawBytes, Tuple};
 
 pub mod schema;
 pub mod snapshot;
@@ -148,7 +151,8 @@ pub fn storage_is_initialized() -> bool {
 /// 530 - _pico_plugin_config
 /// 531 - _pico_db_config
 /// 532 - _bucket
-/// 533 or first available space id - can be used in tests (testplug)
+/// 533 - _pico_bucket
+/// 534 - _pico_resharding_state
 ////////////////////////////////////////////////////////////////////////////////
 pub const SYSTEM_TABLES_ID_RANGE: RangeInclusive<u32> = 512..=SPACE_ID_INTERNAL_MAX;
 
@@ -190,6 +194,8 @@ pub struct Catalog {
     pub db_config: DbConfig,
     pub governor_queue: GovernorQueue,
     pub users_audit_policies: PicoUserAuditPolicy,
+    pub pico_bucket: PicoBucket,
+    pub pico_resharding_state: PicoReshardingState,
 }
 
 /// Id of system table `_bucket`. Note that we don't add in to `Clusterwide`
@@ -231,6 +237,8 @@ impl Catalog {
             db_config: DbConfig::new()?,
             governor_queue: GovernorQueue::new()?,
             users_audit_policies: PicoUserAuditPolicy::new()?,
+            pico_bucket: PicoBucket::new()?,
+            pico_resharding_state: PicoReshardingState::new()?,
             snapshot_cache: Default::default(),
             login_attempts: Default::default(),
         })
@@ -260,6 +268,8 @@ impl Catalog {
             db_config,
             governor_queue,
             users_audit_policies,
+            pico_bucket,
+            pico_resharding_state,
             snapshot_cache,
             login_attempts,
         } = self;
@@ -286,6 +296,8 @@ impl Catalog {
         db_config.create()?;
         governor_queue.create()?;
         users_audit_policies.create()?;
+        pico_bucket.create()?;
+        pico_resharding_state.create()?;
 
         Ok(())
     }
@@ -310,6 +322,8 @@ impl Catalog {
             DbConfig::TABLE_ID => Some(DbConfig::TABLE_NAME),
             GovernorQueue::TABLE_ID => Some(GovernorQueue::TABLE_NAME),
             PicoUserAuditPolicy::TABLE_ID => Some(PicoUserAuditPolicy::TABLE_NAME),
+            PicoBucket::TABLE_ID => Some(PicoBucket::TABLE_NAME),
+            PicoReshardingState::TABLE_ID => Some(PicoReshardingState::TABLE_NAME),
             _ => None,
         }
     }
@@ -1882,9 +1896,9 @@ impl ToEntryIter<MP_SERDE> for Replicasets {
 // trait bounds so we have to rely on const generics to allow
 // both encode implementations.
 /// Msgpack encoder/decoder implementation.
-type MpImpl = bool;
+pub type MpImpl = bool;
 /// rmp-serde based implementation.
-const MP_SERDE: MpImpl = false;
+pub const MP_SERDE: MpImpl = false;
 /// Custom implementation from [`::tarantool::msgpack`]
 const MP_CUSTOM: MpImpl = true;
 
@@ -3591,10 +3605,11 @@ pub(in crate::storage) fn ignore_only_error(
 // local schema version
 ////////////////////////////////////////////////////////////////////////////////
 
+pub const SPACE_SCHEMA: Space = unsafe { Space::from_id_unchecked(SystemSpace::Schema as _) };
+
 /// Gets the 'local_schema_version' field from '_schema' system space.
 pub fn local_schema_version() -> tarantool::Result<u64> {
-    let space_schema = Space::from(SystemSpace::Schema);
-    let tuple = space_schema.get(&["local_schema_version"])?;
+    let tuple = SPACE_SCHEMA.get(&["local_schema_version"])?;
     let mut res = INITIAL_SCHEMA_VERSION;
     if let Some(tuple) = tuple {
         if let Some(v) = tuple.field(1)? {
@@ -3607,8 +3622,7 @@ pub fn local_schema_version() -> tarantool::Result<u64> {
 /// Sets the 'local_schema_version' field in '_schema' system space to `v`.
 /// `reason` is used to log a message for debug purposes.
 pub fn set_local_schema_version(v: u64, reason: &str) -> tarantool::Result<()> {
-    let space_schema = Space::from(SystemSpace::Schema);
-    space_schema.replace(&("local_schema_version", v))?;
+    SPACE_SCHEMA.replace(&("local_schema_version", v))?;
     tlog!(
         Info,
         "Updated local_schema_version to {v} (reason: {reason})"

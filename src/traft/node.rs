@@ -9,6 +9,10 @@ use crate::access_control::user_by_id;
 use crate::access_control::UserMetadata;
 use crate::catalog;
 use crate::catalog::governor_queue::GovernorOpStatus;
+use crate::catalog::pico_bucket::index_of_bucket_id_column;
+use crate::catalog::pico_bucket::PicoBucket;
+use crate::catalog::pico_bucket::DEFAULT_BUCKET_ID_COLUMN_NAME;
+use crate::catalog::pico_resharding_state::PicoReshardingState;
 use crate::config::apply_parameter;
 use crate::config::AlterSystemParametersRef;
 use crate::config::PicodataConfig;
@@ -25,6 +29,7 @@ use crate::plugin::PluginAsyncEvent;
 use crate::proc_name;
 use crate::reachability::instance_reachability_manager;
 use crate::reachability::InstanceReachabilityManagerRef;
+use crate::resharding_loop::ReshardingLoop;
 use crate::rpc;
 use crate::rpc::snapshot::proc_raft_snapshot_next_chunk;
 use crate::schema::system_table_definitions;
@@ -179,6 +184,7 @@ pub struct Node {
     pub(crate) governor_loop: governor::Loop,
     pub(crate) sentinel_loop: sentinel::Loop,
     #[allow(unused)]
+    pub(crate) resharding_loop: ReshardingLoop,
     pub(crate) pool: Rc<ConnectionPool>,
     status: watch::Receiver<Status>,
     applied: watch::Receiver<RaftIndex>,
@@ -288,11 +294,18 @@ impl Node {
             sentinel::Loop::start(pool.clone(), status.clone(), instance_reachability.clone())
         };
 
+        let resharding_loop = if for_tests {
+            ReshardingLoop::for_tests()
+        } else {
+            ReshardingLoop::start()
+        };
+
         let node = Node {
             raft_id,
             main_loop,
             governor_loop,
             sentinel_loop,
+            resharding_loop,
             pool,
             node_impl,
             topology_cache,
@@ -424,6 +437,24 @@ impl Node {
                 }
             }
         })
+    }
+
+    /// Block the current fiber until one of the following events:
+    /// - applied index changes
+    /// - timeout runs out
+    /// - somebody wakes up the current fiber for example by an explicit fiber_wakeup call
+    ///
+    /// This is a weaker version of [`Self::wait_index`] which is useful when
+    /// you need to block the current fiber until global state changes but you
+    /// also want to have the option of waking up the fiber explicitly before
+    /// that.
+    pub fn wait_index_change(&self, timeout: Duration) -> traft::Result<RaftIndex> {
+        let mut applied = self.applied.clone();
+        let res = fiber::block_on(applied.changed().timeout(timeout));
+        if let Err(TimeoutError::Expired) = res {
+            return Err(Error::timeout());
+        }
+        Ok(applied.get())
     }
 
     /// Proposes a `Op::Nop` operation to raft log.
@@ -1040,6 +1071,8 @@ impl NodeImpl {
             | storage::Instances::TABLE_ID
             | storage::Replicasets::TABLE_ID
             | storage::Tiers::TABLE_ID
+            | PicoBucket::TABLE_ID
+            | PicoReshardingState::TABLE_ID
             | storage::ServiceRouteTable::TABLE_ID) => {
                 let s = space_by_id(s).expect("system space must exist");
                 match &op {
@@ -1142,6 +1175,34 @@ impl NodeImpl {
                     table: storage::DbConfig::TABLE_ID,
                     new_tuple,
                 }));
+            }
+
+            PicoBucket::TABLE_ID => {
+                let old = old
+                    .as_ref()
+                    .map(|x| x.decode().expect("schema upgrade not supported yet"));
+                let new = new
+                    .as_ref()
+                    .map(|x| x.decode().expect("format was already verified"));
+
+                // TEMPORARY:
+                tlog!(Info, "update _pico_bucket: {old:?} -> {new:?}");
+
+                self.topology_cache.update_bucket_record(old, new);
+            }
+
+            PicoReshardingState::TABLE_ID => {
+                let old = old
+                    .as_ref()
+                    .map(|x| x.decode().expect("schema upgrade not supported yet"));
+                let new = new
+                    .as_ref()
+                    .map(|x| x.decode().expect("format was already verified"));
+
+                // TEMPORARY:
+                tlog!(Info, "update _pico_resharding_state: {old:?} -> {new:?}");
+
+                self.topology_cache.update_resharding_state_record(old, new);
             }
 
             _ => {}
@@ -2080,11 +2141,10 @@ impl NodeImpl {
                 engine,
                 owner,
             } => {
-                let mut last_pk_part_index = 0;
                 for pk_part in &mut primary_key {
                     let name = &pk_part.field;
-                    let field_index = format.iter().zip(0..).find(|(f, _)| f.name == *name);
-                    let Some((field, index)) = field_index else {
+                    let field = format.iter().find(|f| f.name == *name);
+                    let Some(field) = field else {
                         // Ddl prepare operations should be verified before being proposed,
                         // so this shouldn't ever happen. But ignoring this is safe anyway,
                         // because proc_apply_schema_change will catch the error and ddl will be aborted.
@@ -2112,7 +2172,6 @@ impl NodeImpl {
                     // right here.
                     pk_part.r#type = Some(field_type);
                     pk_part.is_nullable = Some(field.is_nullable);
-                    last_pk_part_index = last_pk_part_index.max(index);
                 }
 
                 let primary_key_def = IndexDef {
@@ -2148,8 +2207,11 @@ impl NodeImpl {
                         // bucket_id to go closer to the beginning of the tuple,
                         // but this will require to update primary key part
                         // indexes, so somebody should do that at some point.
-                        let bucket_id_index = last_pk_part_index + 1;
-                        format.insert(bucket_id_index as _, ("bucket_id", SFT::Unsigned).into());
+                        let bucket_id_index = index_of_bucket_id_column(&primary_key_def, &format);
+                        format.insert(
+                            bucket_id_index as _,
+                            (DEFAULT_BUCKET_ID_COLUMN_NAME, SFT::Unsigned).into(),
+                        );
                     }
                 }
 

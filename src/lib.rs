@@ -98,6 +98,7 @@ mod pico_service;
 pub mod plugin;
 pub mod reachability;
 pub mod replicaset;
+pub mod resharding_loop;
 pub mod rpc;
 mod sasl;
 pub mod schema;

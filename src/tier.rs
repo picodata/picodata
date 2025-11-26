@@ -18,15 +18,67 @@ pub const DEFAULT_TIER: &str = "default";
 ///
 /// Can be used to store tier definition in the _pico_tier global table.
 pub struct Tier {
+    /// Tier name.
     pub name: SmolStr,
+
+    /// The size of replicasets in this tier.
+    ///
+    /// When adding new instances to this tier picodata will try adding them to
+    /// existing replicasets only if they don't already contain
+    /// `replication_factor` of replicas.
+    ///
+    /// Also note that replicasets which aren't yet filled to the replication
+    /// factor will not store any sharded data (cannot own buckets).
     pub replication_factor: u8,
+
+    /// If `true` the instances of this tier can vote for and/or become the
+    /// governor (raft leader of the cluster).
     pub can_vote: bool,
+
+    /// Version number of the vshard configuration which was most recently applied to the cluster.
+    /// If this is not equal to the value of `target_vshard_config_version`,
+    /// then the actual runtime vsahrd configuration may be different on different instances.
+    ///
+    /// The replication config consists of:
+    /// - `vshard.storage.cfg`
+    /// - `pico.tier[*].cfg`
     pub current_vshard_config_version: u64,
+
+    /// Version number of the vshard configuration which should be applied to the cluster.
+    /// If this is equal to the value of `current_vshard_config_version`, then the configuration is up to date.
     pub target_vshard_config_version: u64,
+
+    /// If `true` then the initial bucket distribution has been bootstrapped in
+    /// this tier. Otherwise none of the replicasets in the tier own any buckets.
+    ///
+    /// Bucket distribution gets bootstrapped when the first replicaset in the
+    /// tier gets filled up to the `replication_factor`.
     pub vshard_bootstrapped: bool,
+
+    /// The number of buckets into which the data is sharded in this tier.
     pub bucket_count: u64,
+
+    /// If `true` this is the default tier of the cluster.
+    ///
+    /// The default tier is used in some operations when the explicit tier
+    /// parameter is not specified. For example CREATE TABLE will create a table
+    /// with data distributed in this tier unless specified otherwise.
+    /// NOTE: this feature is not yet implemented, see <https://git.picodata.io/core/picodata/-/issues/1437>
     #[serde(default)]
     pub is_default: Option<bool>,
+
+    /// Version of the bucket distribution which is currently applied on this tier.
+    ///
+    /// If `current_bucket_state_version` != `target_bucket_state_version` then
+    /// bucket rebalancing is currently in progress in this tier.
+    #[serde(default)]
+    pub current_bucket_state_version: u64,
+
+    /// Version of the bucket distribution which should be applied on this tier.
+    ///
+    /// This value is increased everytime the bucket rebalancing process starts.
+    #[serde(default)]
+    pub target_bucket_state_version: u64,
 }
 
 impl Encode for Tier {}
@@ -45,6 +97,8 @@ impl Tier {
             Field::from(("vshard_bootstrapped", FieldType::Boolean)),
             Field::from(("bucket_count", FieldType::Unsigned)),
             Field::from(("is_default", FieldType::Boolean)).is_nullable(true),
+            Field::from(("current_bucket_state_version", FieldType::Unsigned)).is_nullable(true),
+            Field::from(("target_bucket_state_version", FieldType::Unsigned)).is_nullable(true),
         ]
     }
 
@@ -72,6 +126,8 @@ impl Default for Tier {
             target_vshard_config_version: 0,
             vshard_bootstrapped: false,
             is_default: Some(false),
+            current_bucket_state_version: 0,
+            target_bucket_state_version: 0,
         }
     }
 }
