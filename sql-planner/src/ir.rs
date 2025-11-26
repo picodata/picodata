@@ -726,6 +726,10 @@ impl Plan {
         self.constants.as_ref()
     }
 
+    pub fn get_nodes(&self) -> &Nodes {
+        &self.nodes
+    }
+
     /// Add relation to the plan.
     ///
     /// If relation already exists, do nothing.

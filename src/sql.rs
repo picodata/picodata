@@ -70,14 +70,14 @@ use sql::ir::node::plugin::{
 };
 use sql::ir::node::relational::Relational;
 use sql::ir::node::{
-    AlterColumn, AlterSystem, AlterTableOp, AlterUser, AuditPolicy, Constant, CreateIndex,
-    CreateProc, CreateRole, CreateTable, CreateUser, Delete, DropIndex, DropProc, DropRole,
-    DropTable, DropUser, GrantPrivilege, Insert, Node as IrNode, NodeOwned, Procedure, RenameIndex,
-    RenameRoutine, RevokePrivilege, ScanRelation, SetParam, Update,
+    AlterColumn, AlterSystem, AlterTableOp, AlterUser, ArenaType, AuditPolicy, Constant,
+    CreateIndex, CreateProc, CreateRole, CreateTable, CreateUser, Delete, DropIndex, DropProc,
+    DropRole, DropTable, DropUser, GrantPrivilege, Insert, Node as IrNode, Node136, Node64, Node96,
+    NodeOwned, Procedure, RenameIndex, RenameRoutine, RevokePrivilege, ScanRelation, SetParam,
+    Update,
 };
 use sql::ir::node::{NodeId, TruncateTable};
 use sql::ir::operator::ConflictStrategy;
-use sql::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
 use sql::ir::types::UnrestrictedType;
 use sql::ir::value::Value;
 use sql::ir::Plan as IrPlan;
@@ -113,36 +113,57 @@ enum Privileges {
     ReadWrite,
 }
 
-fn check_table_privileges(plan: &IrPlan) -> traft::Result<()> {
-    let filter = |node_id: NodeId| -> bool {
-        if let Ok(IrNode::Relational(
-            Relational::ScanRelation { .. }
-            | Relational::Delete { .. }
-            | Relational::Insert { .. }
-            | Relational::Update { .. },
-        )) = plan.get_node(node_id)
-        {
-            return true;
+// Collect data access nodes from the plan, i.e. nodes referring to tables.
+fn find_data_access_nodes(plan: &IrPlan) -> impl Iterator<Item = NodeId> + use<'_> {
+    fn node_id(offset: usize, arena_type: ArenaType) -> NodeId {
+        NodeId {
+            offset: offset.try_into().unwrap(),
+            arena_type,
         }
-        false
-    };
-    let mut plan_traversal = PostOrderWithFilter::with_capacity(
-        |node| plan.subtree_iter(node, false),
-        REL_CAPACITY,
-        Box::new(filter),
-    );
-    let top_id = plan.get_top()?;
-    plan_traversal.populate_nodes(top_id);
-    let nodes = plan_traversal.take_nodes();
+    }
+
+    let scan_and_delete = plan
+        .get_nodes()
+        .iter64()
+        .enumerate()
+        .filter_map(|(i, n)| match n {
+            Node64::ScanRelation(_) => Some(node_id(i, ArenaType::Arena64)),
+            Node64::Delete(_) => Some(node_id(i, ArenaType::Arena64)),
+            _ => None,
+        });
+
+    let insert = plan
+        .get_nodes()
+        .iter96()
+        .enumerate()
+        .filter_map(|(i, n)| match n {
+            Node96::Insert(_) => Some(node_id(i, ArenaType::Arena96)),
+            _ => None,
+        });
+
+    let update = plan
+        .get_nodes()
+        .iter136()
+        .enumerate()
+        .filter_map(|(i, n)| match n {
+            Node136::Update(_) => Some(node_id(i, ArenaType::Arena136)),
+            _ => None,
+        });
+
+    scan_and_delete.chain(insert).chain(update)
+}
+
+fn check_table_privileges(plan: &IrPlan) -> traft::Result<()> {
+    let nodes = find_data_access_nodes(plan);
 
     // We don't want to switch the user back and forth for each node, so we
     // collect all space ids and privileges and then check them all at once.
-    let mut space_privs: Vec<(SpaceId, Privileges)> = Vec::with_capacity(nodes.len());
+    let mut space_privs = SmallVec::<[(SpaceId, Privileges); 16]>::new();
 
     // Switch to admin to get space ids. At the moment we don't use space cache in tarantool
     // module and can't get space metadata without _space table read permissions.
     with_su(ADMIN_ID, || -> traft::Result<()> {
-        for LevelNode(_, node_id) in nodes {
+        for node_id in nodes {
             let rel_node = plan.get_relation_node(node_id)?;
             let (relation, privileges) = match rel_node {
                 Relational::ScanRelation(ScanRelation { relation, .. }) => {
