@@ -778,7 +778,7 @@ impl PicoTable {
 
         let tuple = self.index_name.get(&[name])?;
         if let Some(tuple) = tuple {
-            let table_def = msgpack::decode(&tuple.to_vec())?;
+            let table_def = msgpack::decode(&tuple.to_vec())?; // TODO: do we need to vec?
             Ok(Some(table_def))
         } else {
             Ok(None)
@@ -791,7 +791,7 @@ impl PicoTable {
 
         let tuple = self.index_id.get(&[id])?;
         if let Some(tuple) = tuple {
-            let table_def = msgpack::decode(&tuple.to_vec())?;
+            let table_def = msgpack::decode(&tuple.to_vec())?; // TODO: do we need to vec?
             Ok(Some(table_def))
         } else {
             Ok(None)

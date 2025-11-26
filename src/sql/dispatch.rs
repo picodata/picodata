@@ -6,20 +6,33 @@ use crate::traft::node;
 use ahash::{AHashMap, AHashSet};
 use rmp::decode::{read_array_len, read_bool};
 use rmp::encode::{write_array_len, write_uint};
-use smol_str::{format_smolstr, ToSmolStr};
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::bucket::Buckets;
 use sql::executor::engine::helpers::vshard::prepare_rs_to_ir_map;
 use sql::executor::engine::helpers::{
-    build_dql_data_source, build_optional_binary, build_required_binary,
-    try_get_metadata_from_plan, ExecutionCacheMissData, ExecutionData,
+    init_delete_tuple_builder, init_insert_tuple_builder, init_local_update_tuple_builder,
+    init_sharded_update_tuple_builder, try_get_metadata_from_plan, vtable_columns,
+};
+use sql::executor::engine::protocol::{
+    build_dql_data_source, DeleteCoreData, ExecutionCacheMissData, ExecutionData,
+    FilteredDeleteData, FullDeleteData, InsertCoreData, LocalInsertData, LocalUpdateData,
+    SharedUpdateData, TupleInsertData, UpdateCoreData,
 };
 use sql::executor::engine::Vshard;
 use sql::executor::ir::{ExecutionPlan, QueryType};
-use sql::executor::protocol::Binary;
 use sql::executor::Port;
+use sql::ir::api::children::Children;
+use sql::ir::node::relational::Relational;
+use sql::ir::node::{Delete, Insert, Motion, Update};
+use sql::ir::operator::UpdateStrategy;
+use sql::ir::transformation::redistribution::MotionPolicy;
+use sql::ir::Plan;
 use sql::utils::ByteCounter;
 use sql_protocol::decode::{execute_read_response, SqlExecute, TupleIter};
+use sql_protocol::dml::delete::{write_delete_filtered_packet, write_delete_full_packet};
+use sql_protocol::dml::insert::{write_insert_materialized_packet, write_insert_packet};
+use sql_protocol::dml::update::{write_update_packet, write_update_shared_key_packet};
 use sql_protocol::dql::write_dql_packet;
 use sql_protocol::dql_encoder::DQLDataSource;
 use sql_protocol::encode::write_metadata;
@@ -29,7 +42,7 @@ use std::collections::HashMap;
 use std::io::{Cursor, Error as IoError, Result as IoResult};
 use std::rc::{Rc, Weak};
 use tarantool::fiber::Mutex;
-use tarantool::tlua::{self, LuaThread, Push, PushInto};
+use tarantool::tlua::LuaThread;
 use tarantool::tuple::{Tuple, TupleBuilder};
 
 pub type SqlResult<T> = Result<T, SbroadError>;
@@ -220,18 +233,6 @@ pub(crate) fn port_write_metadata<'p>(
     )
     .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
     Ok(())
-}
-
-#[derive(PushInto, Push, Debug)]
-struct SecondMessage {
-    required: Binary,
-    optional: Binary,
-}
-
-impl SecondMessage {
-    fn new(required: Binary, optional: Binary) -> Self {
-        Self { required, optional }
-    }
 }
 
 fn single_plan_dispatch_dql<'lua, 'p>(
@@ -568,17 +569,209 @@ fn buckets_by_replicasets(
     Ok(map.into_iter().collect())
 }
 
+/// Creates a message to be sent to storages.
+///
+/// Returns a tuple of (message, `Option<ExecutionData>`).
+/// ExecutionData is present when a cache miss is possible, otherwise None.
+fn build_dml_message(ex_plan: ExecutionPlan) -> SqlResult<(Tuple, Option<ExecutionData>)> {
+    let plan = ex_plan.get_ir_plan();
+    let top_id = plan.get_top()?;
+    let relation_node = plan.get_relation_node(top_id)?;
+
+    // If DML child is a motion with local policy, data will be processed in storage.
+    // Plan should be stored for cache miss handling.
+    let with_dql = if let Children::Single(child) = relation_node.children() {
+        matches!(
+            plan.get_relation_node(*child)?,
+            Relational::Motion(Motion {
+                policy: MotionPolicy::Local | MotionPolicy::LocalSegment { .. },
+                ..
+            })
+        )
+    } else {
+        false
+    };
+
+    /// Helper to extract table id and version from a relation reference
+    fn get_table_info(plan: &Plan, relation: &SmolStr) -> SqlResult<(u32, u64)> {
+        let table = plan.relations.get(relation).ok_or_else(|| {
+            SbroadError::Invalid(
+                Entity::Plan,
+                Some(format_smolstr!("Relation {relation} not found in plan")),
+            )
+        })?;
+
+        let table_version = plan.table_version_map.get(&table.id).ok_or_else(|| {
+            SbroadError::Invalid(
+                Entity::Plan,
+                Some(format_smolstr!(
+                    "Version of table {relation} not found in plan"
+                )),
+            )
+        })?;
+
+        Ok((table.id, *table_version))
+    }
+
+    /// Helper to encode data to msgpack.
+    /// Pre-calculates size, allocates once, then encodes.
+    macro_rules! encode_with_reservation {
+        ($data:expr, $func:ident) => {{
+            let mut bc = ByteCounter::default();
+            $func(&mut bc, $data).map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
+
+            let mut tb = TupleBuilder::rust_allocated();
+            tb.reserve(bc.bytes());
+            $func(&mut tb, $data).map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
+
+            tb.into_tuple()?
+        }};
+    }
+
+    match relation_node {
+        Relational::Delete(Delete {
+            relation, child, ..
+        }) => {
+            let (table_id, table_version) = get_table_info(plan, relation)?;
+
+            let core = DeleteCoreData {
+                request_id: ex_plan.get_request_id().to_smolstr(),
+                space_id: table_id,
+                space_version: table_version,
+            };
+
+            match child {
+                Some(child) => {
+                    debug_assert!(with_dql, "Delete filtered works only with DQL");
+
+                    let types = vtable_columns(plan, *child)?;
+                    let pattern = init_delete_tuple_builder(plan, top_id)?;
+                    let raft_id = node::global()
+                        .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?
+                        .raft_id;
+                    let plan = build_dql_data_source(ex_plan, raft_id)
+                        .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
+
+                    let data = FilteredDeleteData::new(core, types, pattern, &plan);
+                    let tuple = encode_with_reservation!(&data, write_delete_filtered_packet);
+                    Ok((tuple, Some(plan)))
+                }
+                None => {
+                    debug_assert!(!with_dql, "Delete full works only without DQL");
+                    let plan_id = plan.new_pattern_id(top_id)?;
+                    let options = &plan.effective_options;
+                    let data = FullDeleteData::new(
+                        core,
+                        plan_id,
+                        (
+                            options.sql_motion_row_max as u64,
+                            options.sql_vdbe_opcode_max as u64,
+                        ),
+                    );
+                    let tuple = encode_with_reservation!(&data, write_delete_full_packet);
+                    Ok((tuple, None))
+                }
+            }
+        }
+        Relational::Insert(Insert {
+            relation,
+            conflict_strategy,
+            child,
+            ..
+        }) => {
+            let (table_id, table_version) = get_table_info(plan, relation)?;
+            let core = InsertCoreData {
+                request_id: ex_plan.get_request_id().to_smolstr(),
+                space_id: table_id,
+                space_version: table_version,
+                conflict_policy: conflict_strategy.into(),
+            };
+
+            if !with_dql {
+                let table = ex_plan.get_motion_vtable(*child)?;
+                let pattern = init_insert_tuple_builder(plan, table.get_columns(), top_id)?;
+                let data = TupleInsertData::new(core, table, pattern);
+                let tuple = encode_with_reservation!(&data, write_insert_packet);
+                Ok((tuple, None))
+            } else {
+                let raft_id = node::global()
+                    .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?
+                    .raft_id;
+                let types = vtable_columns(plan, *child)?;
+                let pattern = init_insert_tuple_builder(plan, types.as_slice(), top_id)?;
+                let plan = build_dql_data_source(ex_plan, raft_id)
+                    .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
+                let data = LocalInsertData::new(core, types, pattern, &plan);
+                let tuple = encode_with_reservation!(&data, write_insert_materialized_packet);
+                Ok((tuple, Some(plan)))
+            }
+        }
+        Relational::Update(Update {
+            relation,
+            strategy,
+            child,
+            ..
+        }) => {
+            let (table_id, table_version) = get_table_info(plan, relation)?;
+
+            let core = UpdateCoreData {
+                request_id: ex_plan.get_request_id().to_smolstr(),
+                space_id: table_id,
+                space_version: table_version,
+                update_type: strategy.into(),
+            };
+
+            match strategy {
+                UpdateStrategy::ShardedUpdate { delete_tuple_len } => {
+                    debug_assert!(!with_dql, "ShardedUpdate cannot be used with DQL");
+                    let delete_tuple_len =
+                        delete_tuple_len.expect("ShardedUpdate must have delete_tuple_len");
+                    let table = ex_plan.get_motion_vtable(*child)?;
+                    let pattern =
+                        init_sharded_update_tuple_builder(plan, table.get_columns(), top_id)?;
+                    let data = SharedUpdateData::new(core, delete_tuple_len, table, pattern);
+                    let tuple = encode_with_reservation!(&data, write_update_shared_key_packet);
+                    Ok((tuple, None))
+                }
+                UpdateStrategy::LocalUpdate => {
+                    debug_assert!(with_dql, "LocalUpdate cannot be used without DQL");
+                    let raft_id = node::global()
+                        .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?
+                        .raft_id;
+                    let types = vtable_columns(plan, *child)?;
+                    let pattern = init_local_update_tuple_builder(plan, types.as_slice(), top_id)?;
+                    let plan = build_dql_data_source(ex_plan, raft_id)
+                        .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
+                    let data = LocalUpdateData::new(core, types, pattern, &plan);
+                    let tuple = encode_with_reservation!(&data, write_update_packet);
+                    Ok((tuple, Some(plan)))
+                }
+            }
+        }
+        _ => Err(SbroadError::DispatchError(format_smolstr!(
+            "Unsupported DML operation"
+        ))),
+    }
+}
+
 fn single_plan_dispatch_dml<'lua, 'p>(
     port: &mut impl Port<'p>,
     lua: &'lua LuaThread,
-    mut ex_plan: ExecutionPlan,
+    ex_plan: ExecutionPlan,
     replicasets: &[String],
     timeout: u64,
     tier: Option<&str>,
 ) -> SqlResult<()> {
-    let required_binary = build_required_binary(&mut ex_plan)?;
-    let optional_binary = build_optional_binary(ex_plan)?;
-    let message = SecondMessage::new(required_binary, optional_binary);
+    let (message, new_plan) = build_dml_message(ex_plan)?;
+
+    let _guard = if let Some(new_plan) = new_plan {
+        let key = new_plan.get_plan_id();
+        let query_meta_storage = QueryMetaStorage::new();
+        Some(query_meta_storage.put(key, new_plan)?)
+    } else {
+        None
+    };
+
     let lua_table = lua_single_plan_dispatch(lua, message, replicasets, timeout, tier, false)
         .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
     // TODO: all buckets will allocate nothing, because it is empty
@@ -595,13 +788,20 @@ fn custom_plan_dispatch_dml<'lua, 'p>(
     tier: Option<&str>,
 ) -> SqlResult<()> {
     let rs_plan = prepare_rs_to_ir_map(&rs_buckets, ex_plan)?;
+    let mut dql_encoder = None;
     let mut args = HashMap::with_capacity(rs_plan.len());
-    for (rs, mut ex_plan) in rs_plan {
-        let required_binary = build_required_binary(&mut ex_plan)?;
-        let optional_binary = build_optional_binary(ex_plan)?;
-        let message = SecondMessage::new(required_binary, optional_binary);
+    for (rs, ex_plan) in rs_plan {
+        let (message, new_plan) = build_dml_message(ex_plan)?;
+        dql_encoder = new_plan;
         args.insert(rs, message);
     }
+    let _guard = if let Some(new_plan) = dql_encoder {
+        let key = new_plan.get_plan_id();
+        let query_meta_storage = QueryMetaStorage::new();
+        Some(query_meta_storage.put(key, new_plan)?)
+    } else {
+        None
+    };
     let len = args.len();
     let lua_table = lua_custom_plan_dispatch(lua, args, timeout, tier, false)
         .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;

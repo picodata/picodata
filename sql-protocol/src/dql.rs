@@ -17,6 +17,15 @@ pub fn write_dql_packet(
 ) -> Result<(), std::io::Error> {
     write_request_header(w, DQL, data.get_request_id())?;
 
+    write_dql_packet_data(w, data)?;
+
+    Ok(())
+}
+
+pub(crate) fn write_dql_packet_data(
+    w: &mut impl Write,
+    data: &impl DQLDataSource,
+) -> Result<(), std::io::Error> {
     write_array_len(w, DQL_PACKET_FIELD_COUNT as u32)?;
 
     write_schema_info(w, data.get_table_schema_info())?;

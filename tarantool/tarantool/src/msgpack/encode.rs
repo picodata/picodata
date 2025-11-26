@@ -41,6 +41,13 @@ pub fn encode(value: &impl Encode) -> Vec<u8> {
 pub fn decode<'de, T: Decode<'de>>(mut bytes: &'de [u8]) -> Result<T, DecodeError> {
     T::decode(&mut bytes, &Context::DEFAULT)
 }
+#[inline(always)]
+pub fn decode_from_read<'de, T: Decode<'de>>(
+    bytes: &mut &'de [u8],
+    context: &Context,
+) -> Result<T, DecodeError> {
+    T::decode(bytes, context)
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Context

@@ -171,9 +171,9 @@ def test_router_and_storage_cache_metrics(instance: Instance):
     check_metric(metrics, "pico_router_cache_misses", 3)
     # DML is cached on the router
     check_metric(metrics, "pico_router_cache_statements_added", 1)
-    # DML is always executed via 2nd request.
-    check_metric(metrics, "pico_storage_1st_requests", None)
-    check_metric(metrics, "pico_storage_2nd_requests", 1, query_type="dml")
+    # DML without DQL doesn't have cache misses
+    check_metric(metrics, "pico_storage_1st_requests", 1, query_type="dml")
+    check_metric(metrics, "pico_storage_2nd_requests", None)
 
     ##########################
     # Execute first DQL query

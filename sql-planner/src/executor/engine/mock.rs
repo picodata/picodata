@@ -1595,6 +1595,10 @@ impl QueryCache for RouterRuntimeMock {
     fn get_table_version_by_id(&self, _: SpaceId) -> Result<u64, SbroadError> {
         Err(SbroadError::DoSkip)
     }
+
+    fn get_table_name_and_version(&self, _: SpaceId) -> Result<(SmolStr, u64), SbroadError> {
+        Err(SbroadError::DoSkip)
+    }
 }
 
 impl Vshard for RouterRuntimeMock {

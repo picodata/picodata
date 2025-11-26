@@ -5,11 +5,11 @@
 use crate::sql::dispatch::port_write_metadata;
 use crate::sql::execute::{
     dml_execute, dql_execute, dql_execute_first_round, dql_execute_second_round, explain_execute,
-    old_sql_execute, stmt_execute,
+    old_dml_execute, old_sql_execute, old_stmt_execute,
 };
 use crate::sql::router::{
-    calculate_bucket_id, get_index_version_by_pk, get_table_version, get_table_version_by_id,
-    VersionMap,
+    calculate_bucket_id, get_index_version_by_pk, get_table_name_and_version, get_table_version,
+    get_table_version_by_id, VersionMap,
 };
 use crate::traft::node;
 use serde::{Deserialize, Serialize};
@@ -41,8 +41,7 @@ use sql::executor::vdbe::SqlStmt;
 use sql::ir::node::NodeId;
 use sql::ir::tree::Snapshot;
 use sql::ir::value::Value;
-use sql_protocol::decode::ProtocolMessage;
-use sql_protocol::message_type::MessageType;
+use sql_protocol::decode::{ProtocolMessage, ProtocolMessageIter, ProtocolMessageType};
 use std::collections::HashMap;
 use std::rc::Rc;
 use tarantool::space::{Space, SpaceId};
@@ -348,6 +347,10 @@ impl QueryCache for StorageRuntime {
         get_table_version_by_id(table_id)
     }
 
+    fn get_table_name_and_version(&self, table_id: SpaceId) -> Result<(SmolStr, u64), SbroadError> {
+        get_table_name_and_version(table_id)
+    }
+
     fn get_index_version_by_pk(&self, space_id: u32, index_id: u32) -> Result<u64, SbroadError> {
         get_index_version_by_pk(space_id, index_id)
     }
@@ -509,7 +512,7 @@ impl Vshard for StorageRuntime {
                     // Transaction rollbacks are very expensive in Tarantool, so we're going to
                     // avoid transactions for DQL queries. We can achieve atomicity by truncating
                     // temporary tables. Isolation is guaranteed by keeping a lock on the cache.
-                    match stmt_execute(stmt, &mut info, motion_ids, port)? {
+                    match old_stmt_execute(stmt, &mut info, motion_ids, port)? {
                         Nothing => report_storage_cache_hit("dql", "local"),
                         BusyStmt => report_storage_cache_miss("dql", "local", "busy"),
                         StaleStmt => report_storage_cache_miss("dql", "local", "stale"),
@@ -574,6 +577,7 @@ impl StorageRuntime {
     /// # Errors
     /// - Something went wrong while executing the plan.
     #[allow(unused_variables)]
+    #[deprecated(note = "Remove in next release. Used for smooth upgrade")]
     pub fn old_execute_plan<'p>(
         &self,
         required: &mut RequiredData,
@@ -593,7 +597,7 @@ impl StorageRuntime {
                 let optional = optional.ok_or_else(|| {
                     SbroadError::Other("DML query must have a non-empty optional part".into())
                 })?;
-                dml_execute(self, required, optional, port)?;
+                old_dml_execute(self, required, optional, port)?;
             }
             QueryType::DQL => {
                 let is_first_round = optional.is_none();
@@ -621,12 +625,14 @@ impl StorageRuntime {
         timeout: f64,
     ) -> Result<(), SbroadError> {
         match package.msg_type {
-            MessageType::DQL => dql_execute(self, &package, port, timeout)?,
-            n => {
-                return Err(SbroadError::DispatchError(format_smolstr!(
-                    "unexpected message type: {}",
-                    n
-                )));
+            ProtocolMessageType::Dql => {
+                let ProtocolMessageIter::Dql(info) = package.get_iter()? else {
+                    unreachable!("should be dql iterator")
+                };
+                dql_execute(self, package.request_id, info, port, timeout)?;
+            }
+            ProtocolMessageType::Dml(_) | ProtocolMessageType::LocalDml(_) => {
+                dml_execute(self, &package, port, timeout)?;
             }
         }
         Ok(())

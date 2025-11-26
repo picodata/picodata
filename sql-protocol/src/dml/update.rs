@@ -1,89 +1,21 @@
 use crate::dml::dml_type::DMLType::Update;
 use crate::dml::dml_type::{write_dml_header, write_dml_with_sql_header};
-use crate::dql::{
-    get_options, get_params, get_plan_id, get_schema_info, get_sender_id, get_vtables,
-    write_index_schema_info, write_options, write_params, write_plan_id, write_schema_info,
-    write_sender_id, write_tuples, write_vtables,
-};
-use crate::dql_encoder::{DQLDataSource, MsgpackEncode};
+use crate::dql::{write_dql_packet_data, write_tuples, DQLPacketPayloadIterator};
+use crate::dql_encoder::{ColumnType, DQLDataSource, MsgpackEncode};
 use crate::error::ProtocolError;
-use crate::iterators::{MsgpackArrayIterator, MsgpackMapIterator, TupleIterator};
+use crate::iterators::{MsgpackArrayIterator, TupleIterator};
 use crate::msgpack::skip_value;
-use rmp::decode::{read_array_len, read_int, read_map_len};
-use rmp::encode::{write_array_len, write_map_len, write_pfix, write_uint};
+use rmp::decode::{read_array_len, read_int, read_pfix};
+use rmp::encode::{write_array_len, write_pfix, write_uint};
 use std::cmp::PartialEq;
 use std::fmt::{Display, Formatter};
-use std::io::Cursor;
+use std::io::{Cursor, Seek, SeekFrom};
 
-pub trait UpdateEncoder {
+pub trait CoreUpdateDataSource {
     fn get_request_id(&self) -> &str;
     fn get_target_table_id(&self) -> u32;
     fn get_target_table_version(&self) -> u64;
     fn get_update_type(&self) -> UpdateType;
-    fn get_mapping_columns(&self) -> impl ExactSizeIterator<Item = (&usize, &usize)>;
-    fn get_pk_positions(&self) -> impl ExactSizeIterator<Item = &usize>;
-    fn get_tuples(&self) -> impl ExactSizeIterator<Item = impl MsgpackEncode>;
-}
-
-pub fn write_update_package(
-    w: &mut impl std::io::Write,
-    data: impl UpdateEncoder,
-) -> Result<(), std::io::Error> {
-    write_dml_header(w, Update, data.get_request_id())?;
-    write_array_len(w, UPDATE_PACKAGE_SIZE as u32)?;
-
-    write_uint(w, data.get_target_table_id() as u64)?;
-    write_uint(w, data.get_target_table_version())?;
-    write_pfix(w, data.get_update_type() as u8)?;
-
-    write_tuples(w, data.get_tuples())?;
-
-    Ok(())
-}
-
-pub fn write_update_with_sql_package(
-    w: &mut impl std::io::Write,
-    data: impl UpdateEncoder + DQLDataSource,
-) -> Result<(), std::io::Error> {
-    write_dml_with_sql_header(w, Update, UpdateEncoder::get_request_id(&data))?;
-    write_array_len(w, LOCAL_UPDATE_PACKAGE_SIZE as u32)?;
-    write_uint(w, data.get_target_table_id() as u64)?;
-    write_uint(w, data.get_target_table_version())?;
-
-    let update_type = data.get_update_type();
-    if update_type != UpdateType::Local {
-        return Err(std::io::Error::other(format!(
-            "cannot construct update with sql with non local update: {update_type}"
-        )));
-    }
-
-    let mapping_columns = data.get_mapping_columns();
-    write_map_len(w, mapping_columns.len() as u32)?;
-    for (src, dst) in mapping_columns {
-        write_uint(w, *src as u64)?;
-        write_uint(w, *dst as u64)?;
-    }
-
-    let pk_positions = data.get_pk_positions();
-    write_array_len(w, pk_positions.len() as u32)?;
-    for pos in pk_positions {
-        write_uint(w, *pos as u64)?;
-    }
-
-    write_schema_info(w, data.get_table_schema_info())?;
-    write_index_schema_info(w, data.get_index_schema_info())?;
-
-    write_plan_id(w, data.get_plan_id())?;
-
-    write_sender_id(w, data.get_sender_id())?;
-
-    write_vtables(w, data.get_vtables())?;
-
-    write_options(w, data.get_options().iter())?;
-
-    write_params(w, data.get_params())?;
-
-    Ok(())
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -114,70 +46,108 @@ impl TryFrom<u8> for UpdateType {
     }
 }
 
+pub trait UpdateSharedKeyDataSource: CoreUpdateDataSource {
+    fn get_del_tuples(&self) -> impl ExactSizeIterator<Item = impl MsgpackEncode>;
+
+    fn get_tuples(&self) -> impl ExactSizeIterator<Item = impl MsgpackEncode>;
+}
+
+pub fn write_update_shared_key_packet(
+    w: &mut impl std::io::Write,
+    data: &impl UpdateSharedKeyDataSource,
+) -> Result<(), std::io::Error> {
+    write_dml_header(w, Update, data.get_request_id())?;
+    write_array_len(w, UPDATE_SHARED_KEY_FIELD_COUNT as u32)?;
+
+    write_uint(w, data.get_target_table_id() as u64)?;
+    write_uint(w, data.get_target_table_version())?;
+    write_pfix(w, data.get_update_type() as u8)?;
+
+    write_tuples(w, data.get_del_tuples())?;
+    write_tuples(w, data.get_tuples())?;
+
+    Ok(())
+}
+
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u8)]
-enum UpdateStates {
-    TableId = 1,
+enum UpdateSharedKeyState {
+    TableId = 0,
     TableVersion,
     UpdateType,
+    DelTuples,
     Tuples,
     End,
 }
 
-pub enum UpdateResult<'a> {
-    TableId(u64),
+pub enum UpdateSharedKeyResult<'a> {
+    TableId(u32),
     TableVersion(u64),
     UpdateType(UpdateType),
+    DelTuples(TupleIterator<'a>),
     Tuples(TupleIterator<'a>),
 }
-const UPDATE_PACKAGE_SIZE: usize = 4;
-pub struct UpdatePackageIterator<'a> {
-    raw_payload: Cursor<&'a [u8]>,
-    state: UpdateStates,
+
+impl Display for UpdateSharedKeyResult<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UpdateSharedKeyResult::TableId(_) => f.write_str("TableId"),
+            UpdateSharedKeyResult::TableVersion(_) => f.write_str("TableVersion"),
+            UpdateSharedKeyResult::UpdateType(_) => f.write_str("UpdateType"),
+            UpdateSharedKeyResult::DelTuples(_) => f.write_str("DelTuples"),
+            UpdateSharedKeyResult::Tuples(_) => f.write_str("Tuples"),
+        }
+    }
 }
 
-impl<'a> UpdatePackageIterator<'a> {
+const UPDATE_SHARED_KEY_FIELD_COUNT: usize = 5;
+pub struct UpdateSharedKeyIterator<'a> {
+    raw_payload: Cursor<&'a [u8]>,
+    state: UpdateSharedKeyState,
+}
+
+impl<'a> UpdateSharedKeyIterator<'a> {
     pub fn new(payload: &'a [u8]) -> Result<Self, ProtocolError> {
         let mut cursor = Cursor::new(payload);
 
         let size = read_array_len(&mut cursor)?;
-        if size != UPDATE_PACKAGE_SIZE as u32 {
+        if size != UPDATE_SHARED_KEY_FIELD_COUNT as u32 {
             return Err(ProtocolError::DecodeError(format!(
-                "DML Update package is invalid: expected to have package array length {UPDATE_PACKAGE_SIZE}, got {size}"
+                "Invalid Shared Update payload: expected array length {UPDATE_SHARED_KEY_FIELD_COUNT}, got {size}"
             )));
         }
 
         Ok(Self {
             raw_payload: cursor,
-            state: UpdateStates::TableId,
+            state: UpdateSharedKeyState::TableId,
         })
     }
 
-    fn get_target_table_id(&mut self) -> Result<u64, ProtocolError> {
-        debug_assert_eq!(self.state, UpdateStates::TableId);
+    fn get_target_table_id(&mut self) -> Result<u32, ProtocolError> {
+        debug_assert_eq!(self.state, UpdateSharedKeyState::TableId);
         let target_table_id = read_int(&mut self.raw_payload)?;
-        self.state = UpdateStates::TableVersion;
+        self.state = UpdateSharedKeyState::TableVersion;
         Ok(target_table_id)
     }
 
     fn get_target_table_version(&mut self) -> Result<u64, ProtocolError> {
-        debug_assert_eq!(self.state, UpdateStates::TableVersion);
+        debug_assert_eq!(self.state, UpdateSharedKeyState::TableVersion);
         let target_table_version = read_int(&mut self.raw_payload)?;
-        self.state = UpdateStates::UpdateType;
+        self.state = UpdateSharedKeyState::UpdateType;
         Ok(target_table_version)
     }
 
     fn get_update_type(&mut self) -> Result<UpdateType, ProtocolError> {
-        debug_assert_eq!(self.state, UpdateStates::UpdateType);
+        debug_assert_eq!(self.state, UpdateSharedKeyState::UpdateType);
         let update_type = rmp::decode::read_pfix(&mut self.raw_payload)?
             .try_into()
             .map_err(ProtocolError::DecodeError)?;
-        self.state = UpdateStates::Tuples;
+        self.state = UpdateSharedKeyState::DelTuples;
         Ok(update_type)
     }
 
-    fn get_tuples(&mut self) -> Result<TupleIterator<'a>, ProtocolError> {
-        debug_assert_eq!(self.state, UpdateStates::Tuples);
+    fn get_del_tuples(&mut self) -> Result<TupleIterator<'a>, ProtocolError> {
+        debug_assert_eq!(self.state, UpdateSharedKeyState::DelTuples);
         let rows = read_array_len(&mut self.raw_payload)? as usize;
         let start = self.raw_payload.position() as usize;
         for _ in 0..rows {
@@ -189,121 +159,167 @@ impl<'a> UpdatePackageIterator<'a> {
         let payload = &self.raw_payload.get_ref()[start..end];
         let tuples = TupleIterator::new(payload, rows);
 
-        self.state = UpdateStates::End;
+        self.state = UpdateSharedKeyState::Tuples;
+        Ok(tuples)
+    }
+
+    fn get_tuples(&mut self) -> Result<TupleIterator<'a>, ProtocolError> {
+        debug_assert_eq!(self.state, UpdateSharedKeyState::Tuples);
+        let rows = read_array_len(&mut self.raw_payload)? as usize;
+        let start = self.raw_payload.position() as usize;
+        for _ in 0..rows {
+            skip_value(&mut self.raw_payload)
+                .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+        }
+        let end = self.raw_payload.position() as usize;
+
+        let payload = &self.raw_payload.get_ref()[start..end];
+        let tuples = TupleIterator::new(payload, rows);
+
+        self.state = UpdateSharedKeyState::End;
         Ok(tuples)
     }
 }
 
-impl<'a> Iterator for UpdatePackageIterator<'a> {
-    type Item = Result<UpdateResult<'a>, ProtocolError>;
+impl<'a> Iterator for UpdateSharedKeyIterator<'a> {
+    type Item = Result<UpdateSharedKeyResult<'a>, ProtocolError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.state {
-            UpdateStates::TableId => Some(self.get_target_table_id().map(UpdateResult::TableId)),
-            UpdateStates::TableVersion => Some(
-                self.get_target_table_version()
-                    .map(UpdateResult::TableVersion),
+            UpdateSharedKeyState::TableId => Some(
+                self.get_target_table_id()
+                    .map(UpdateSharedKeyResult::TableId),
             ),
-            UpdateStates::UpdateType => Some(self.get_update_type().map(UpdateResult::UpdateType)),
-            UpdateStates::Tuples => Some(self.get_tuples().map(UpdateResult::Tuples)),
-            UpdateStates::End => None,
+            UpdateSharedKeyState::TableVersion => Some(
+                self.get_target_table_version()
+                    .map(UpdateSharedKeyResult::TableVersion),
+            ),
+            UpdateSharedKeyState::UpdateType => Some(
+                self.get_update_type()
+                    .map(UpdateSharedKeyResult::UpdateType),
+            ),
+            UpdateSharedKeyState::DelTuples => {
+                Some(self.get_del_tuples().map(UpdateSharedKeyResult::DelTuples))
+            }
+            UpdateSharedKeyState::Tuples => {
+                Some(self.get_tuples().map(UpdateSharedKeyResult::Tuples))
+            }
+            UpdateSharedKeyState::End => None,
         }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = UPDATE_PACKAGE_SIZE - self.state as usize;
+        let len = UPDATE_SHARED_KEY_FIELD_COUNT - self.state as usize;
         (len, Some(len))
     }
 }
 
+pub trait UpdateDataSource: CoreUpdateDataSource {
+    fn get_column_types(&self) -> impl ExactSizeIterator<Item = ColumnType>;
+    fn get_builder(&self) -> impl MsgpackEncode;
+    fn get_dql_data_source(&self) -> &impl DQLDataSource;
+}
+
+pub fn write_update_packet(
+    w: &mut impl std::io::Write,
+    data: &impl UpdateDataSource,
+) -> Result<(), std::io::Error> {
+    write_dml_with_sql_header(w, Update, CoreUpdateDataSource::get_request_id(data))?;
+    write_array_len(w, UPDATE_FIELD_COUNT as u32)?;
+    write_uint(w, data.get_target_table_id() as u64)?;
+    write_uint(w, data.get_target_table_version())?;
+
+    let update_type = data.get_update_type();
+    if update_type != UpdateType::Local {
+        return Err(std::io::Error::other(format!(
+            "cannot construct update with sql with non local update: {update_type}"
+        )));
+    }
+
+    let types = data.get_column_types();
+    write_array_len(w, types.len() as u32)?;
+    for ty in types {
+        write_pfix(w, ty as u8)?;
+    }
+
+    let builder = data.get_builder();
+    builder.encode_into(w)?;
+
+    write_dql_packet_data(w, data.get_dql_data_source())?;
+
+    Ok(())
+}
+
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u8)]
-enum LocalUpdateStates {
-    TableId = 1,
+enum UpdateState {
+    TableId = 0,
     TableVersion,
-    ColumnMapping,
-    PrimaryKey,
-    SchemaInfo,
-    PlanId,
-    SenderId,
-    Vtables,
-    Options,
-    Params,
+    Columns,
+    DqlInfo,
+    Builder,
     End,
 }
 
-pub enum LocalUpdateResult<'a> {
-    TableId(u64),
+pub enum UpdateResult<'a> {
+    TableId(u32),
     TableVersion(u64),
-    ColumnMapping(MsgpackMapIterator<'a, usize, usize>),
-    PrimaryKey(MsgpackArrayIterator<'a, usize>),
-    SchemaInfo(MsgpackMapIterator<'a, u32, u64>),
-    PlanId(u64),
-    SenderId(u64),
-    Vtables(MsgpackMapIterator<'a, &'a str, TupleIterator<'a>>),
-    Options((u64, u64)),
-    Params(&'a [u8]),
-}
-const LOCAL_UPDATE_PACKAGE_SIZE: usize = 10;
-pub struct LocalUpdatePackageIterator<'a> {
-    raw_payload: Cursor<&'a [u8]>,
-    state: LocalUpdateStates,
+    Columns(MsgpackArrayIterator<'a, ColumnType>),
+    Builder(&'a [u8]),
+    DqlInfo(DQLPacketPayloadIterator<'a>),
 }
 
-impl<'a> LocalUpdatePackageIterator<'a> {
+impl Display for UpdateResult<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UpdateResult::TableId(_) => f.write_str("TableId"),
+            UpdateResult::TableVersion(_) => f.write_str("TableVersion"),
+            UpdateResult::Columns(_) => f.write_str("Columns"),
+            UpdateResult::Builder(_) => f.write_str("Builder"),
+            UpdateResult::DqlInfo(_) => f.write_str("DqlInfo"),
+        }
+    }
+}
+
+const UPDATE_FIELD_COUNT: usize = 5;
+pub struct UpdateIterator<'a> {
+    raw_payload: Cursor<&'a [u8]>,
+    state: UpdateState,
+}
+
+impl<'a> UpdateIterator<'a> {
     pub fn new(payload: &'a [u8]) -> Result<Self, ProtocolError> {
         let mut cursor = Cursor::new(payload);
 
         let size = read_array_len(&mut cursor)?;
-        if size != LOCAL_UPDATE_PACKAGE_SIZE as u32 {
+        if size != UPDATE_FIELD_COUNT as u32 {
             return Err(ProtocolError::DecodeError(format!(
-                "DML Update with sql package is invalid: expected to have package array length {LOCAL_UPDATE_PACKAGE_SIZE}, got {size}"
+                "Invalid Local Update payload: expected array length {UPDATE_FIELD_COUNT}, got {size}"
             )));
         }
 
         Ok(Self {
             raw_payload: cursor,
-            state: LocalUpdateStates::TableId,
+            state: UpdateState::TableId,
         })
     }
 
-    fn get_target_table_id(&mut self) -> Result<u64, ProtocolError> {
-        debug_assert_eq!(self.state, LocalUpdateStates::TableId);
+    fn get_target_table_id(&mut self) -> Result<u32, ProtocolError> {
+        debug_assert_eq!(self.state, UpdateState::TableId);
         let target_table_id = read_int(&mut self.raw_payload)?;
-        self.state = LocalUpdateStates::TableVersion;
+        self.state = UpdateState::TableVersion;
         Ok(target_table_id)
     }
 
     fn get_target_table_version(&mut self) -> Result<u64, ProtocolError> {
-        debug_assert_eq!(self.state, LocalUpdateStates::TableVersion);
+        debug_assert_eq!(self.state, UpdateState::TableVersion);
         let target_table_version = read_int(&mut self.raw_payload)?;
-        self.state = LocalUpdateStates::ColumnMapping;
+        self.state = UpdateState::Columns;
         Ok(target_table_version)
     }
 
-    fn get_column_mapping(
-        &mut self,
-    ) -> Result<MsgpackMapIterator<'a, usize, usize>, ProtocolError> {
-        debug_assert_eq!(self.state, LocalUpdateStates::ColumnMapping);
-        let size = read_map_len(&mut self.raw_payload)?;
-        let start = self.raw_payload.position() as usize;
-        for _ in 0..size * 2 {
-            skip_value(&mut self.raw_payload)
-                .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
-        }
-        let end = self.raw_payload.position() as usize;
-        let payload = &self.raw_payload.get_ref()[start..end];
-        self.state = LocalUpdateStates::PrimaryKey;
-        Ok(MsgpackMapIterator::new(
-            payload,
-            size,
-            |cur| read_int(cur).map_err(ProtocolError::from),
-            |cur| read_int(cur).map_err(ProtocolError::from),
-        ))
-    }
-
-    fn get_pk_positions(&mut self) -> Result<MsgpackArrayIterator<'a, usize>, ProtocolError> {
-        debug_assert_eq!(self.state, LocalUpdateStates::PrimaryKey);
+    fn get_column_types(&mut self) -> Result<MsgpackArrayIterator<'a, ColumnType>, ProtocolError> {
+        debug_assert_eq!(self.state, UpdateState::Columns);
         let size = read_array_len(&mut self.raw_payload)?;
         let start = self.raw_payload.position() as usize;
         for _ in 0..size {
@@ -312,92 +328,61 @@ impl<'a> LocalUpdatePackageIterator<'a> {
         }
         let end = self.raw_payload.position() as usize;
         let payload = &self.raw_payload.get_ref()[start..end];
-        self.state = LocalUpdateStates::SchemaInfo;
+        self.state = UpdateState::Builder;
         Ok(MsgpackArrayIterator::new(payload, size, |cur| {
-            read_int(cur).map_err(ProtocolError::from)
+            read_pfix(cur)
+                .map_err(ProtocolError::from)?
+                .try_into()
+                .map_err(ProtocolError::DecodeError)
         }))
     }
 
-    fn get_schema_info(&mut self) -> Result<MsgpackMapIterator<'a, u32, u64>, ProtocolError> {
-        debug_assert_eq!(self.state, LocalUpdateStates::SchemaInfo);
-        let schema_info = get_schema_info(&mut self.raw_payload)?;
-        self.state = LocalUpdateStates::PlanId;
-        Ok(schema_info)
+    fn get_builder(&mut self) -> Result<&'a [u8], ProtocolError> {
+        debug_assert_eq!(self.state, UpdateState::Builder);
+        let start = self.raw_payload.position() as usize;
+        let size = read_array_len(&mut self.raw_payload)?;
+        for _ in 0..size {
+            skip_value(&mut self.raw_payload)
+                .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+        }
+        let end = self.raw_payload.position() as usize;
+        let payload = &self.raw_payload.get_ref()[start..end];
+        self.state = UpdateState::DqlInfo;
+        Ok(payload)
     }
 
-    fn get_plan_id(&mut self) -> Result<u64, ProtocolError> {
-        debug_assert_eq!(self.state, LocalUpdateStates::PlanId);
-        let plan_id = get_plan_id(&mut self.raw_payload)?;
-        self.state = LocalUpdateStates::SenderId;
-        Ok(plan_id)
-    }
-
-    fn get_sender_id(&mut self) -> Result<u64, ProtocolError> {
-        debug_assert_eq!(self.state, LocalUpdateStates::SenderId);
-        let sender_id = get_sender_id(&mut self.raw_payload)?;
-        self.state = LocalUpdateStates::Vtables;
-        Ok(sender_id)
-    }
-
-    fn get_vtables(
-        &mut self,
-    ) -> Result<MsgpackMapIterator<'a, &'a str, TupleIterator<'a>>, ProtocolError> {
-        debug_assert_eq!(self.state, LocalUpdateStates::Vtables);
-        let vtables = get_vtables(&mut self.raw_payload)?;
-        self.state = LocalUpdateStates::Options;
-        Ok(vtables)
-    }
-
-    fn get_options(&mut self) -> Result<(u64, u64), ProtocolError> {
-        debug_assert_eq!(self.state, LocalUpdateStates::Options);
-        let options = get_options(&mut self.raw_payload)?;
-        self.state = LocalUpdateStates::Params;
-        Ok(options)
-    }
-
-    fn get_params(&mut self) -> Result<&'a [u8], ProtocolError> {
-        debug_assert_eq!(self.state, LocalUpdateStates::Params);
-        let params = get_params(&mut self.raw_payload)?;
-        self.state = LocalUpdateStates::End;
-        Ok(params)
+    fn get_dql_info(&mut self) -> Result<DQLPacketPayloadIterator<'a>, ProtocolError> {
+        debug_assert_eq!(self.state, UpdateState::DqlInfo);
+        let start = self.raw_payload.position() as usize;
+        let data = &self.raw_payload.get_ref()[start..];
+        let info = DQLPacketPayloadIterator::new(data)?;
+        self.raw_payload
+            .seek(SeekFrom::End(0))
+            .expect("failed to seek");
+        self.state = UpdateState::End;
+        Ok(info)
     }
 }
 
-impl<'a> Iterator for LocalUpdatePackageIterator<'a> {
-    type Item = Result<LocalUpdateResult<'a>, ProtocolError>;
+impl<'a> Iterator for UpdateIterator<'a> {
+    type Item = Result<UpdateResult<'a>, ProtocolError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.state {
-            LocalUpdateStates::TableId => {
-                Some(self.get_target_table_id().map(LocalUpdateResult::TableId))
-            }
-            LocalUpdateStates::TableVersion => Some(
+            UpdateState::TableId => Some(self.get_target_table_id().map(UpdateResult::TableId)),
+            UpdateState::TableVersion => Some(
                 self.get_target_table_version()
-                    .map(LocalUpdateResult::TableVersion),
+                    .map(UpdateResult::TableVersion),
             ),
-            LocalUpdateStates::ColumnMapping => Some(
-                self.get_column_mapping()
-                    .map(LocalUpdateResult::ColumnMapping),
-            ),
-            LocalUpdateStates::PrimaryKey => {
-                Some(self.get_pk_positions().map(LocalUpdateResult::PrimaryKey))
-            }
-            LocalUpdateStates::SchemaInfo => {
-                Some(self.get_schema_info().map(LocalUpdateResult::SchemaInfo))
-            }
-            LocalUpdateStates::PlanId => Some(self.get_plan_id().map(LocalUpdateResult::PlanId)),
-            LocalUpdateStates::SenderId => {
-                Some(self.get_sender_id().map(LocalUpdateResult::SenderId))
-            }
-            LocalUpdateStates::Vtables => Some(self.get_vtables().map(LocalUpdateResult::Vtables)),
-            LocalUpdateStates::Options => Some(self.get_options().map(LocalUpdateResult::Options)),
-            LocalUpdateStates::Params => Some(self.get_params().map(LocalUpdateResult::Params)),
-            LocalUpdateStates::End => None,
+            UpdateState::Columns => Some(self.get_column_types().map(UpdateResult::Columns)),
+            UpdateState::Builder => Some(self.get_builder().map(UpdateResult::Builder)),
+            UpdateState::DqlInfo => Some(self.get_dql_info().map(UpdateResult::DqlInfo)),
+            UpdateState::End => None,
         }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = LOCAL_UPDATE_PACKAGE_SIZE - self.state as usize;
+        let len = UPDATE_FIELD_COUNT - self.state as usize;
         (len, Some(len))
     }
 }
@@ -405,12 +390,12 @@ impl<'a> Iterator for LocalUpdatePackageIterator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dql::DQLResult;
     use crate::dql_encoder::test::{TestDQLDataSource, TestDQLEncoderBuilder};
     use crate::iterators::TestPureTupleEncoder;
     use crate::message_type::MessageType;
     use rmp::decode::read_str_len;
-
-    use std::collections::{BTreeMap, HashMap};
+    use std::collections::HashMap;
     use std::str::from_utf8;
 
     struct TestUpdateEncoder {
@@ -418,13 +403,18 @@ mod tests {
         table_id: u32,
         table_version: u64,
         update_type: UpdateType,
-        column_mapping: BTreeMap<usize, usize>,
-        pk_positions: Vec<usize>,
+
+        // Shared
+        del_tuples: Vec<Vec<u64>>,
         tuples: Vec<Vec<u64>>,
+
+        // Local
+        columns: Vec<ColumnType>,
+        builder: Vec<u64>,
         dql_encoder: Option<TestDQLDataSource>,
     }
 
-    impl UpdateEncoder for TestUpdateEncoder {
+    impl CoreUpdateDataSource for TestUpdateEncoder {
         fn get_request_id(&self) -> &str {
             self.request_id.as_str()
         }
@@ -440,13 +430,11 @@ mod tests {
         fn get_update_type(&self) -> UpdateType {
             self.update_type
         }
+    }
 
-        fn get_mapping_columns(&self) -> impl ExactSizeIterator<Item = (&usize, &usize)> {
-            self.column_mapping.iter()
-        }
-
-        fn get_pk_positions(&self) -> impl ExactSizeIterator<Item = &usize> {
-            self.pk_positions.iter()
+    impl UpdateSharedKeyDataSource for TestUpdateEncoder {
+        fn get_del_tuples(&self) -> impl ExactSizeIterator<Item = impl MsgpackEncode> {
+            self.del_tuples.iter().map(TestPureTupleEncoder::new)
         }
 
         fn get_tuples(&self) -> impl ExactSizeIterator<Item = impl MsgpackEncode> {
@@ -454,69 +442,48 @@ mod tests {
         }
     }
 
-    impl DQLDataSource for TestUpdateEncoder {
-        fn get_table_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
-            self.dql_encoder.as_ref().unwrap().get_table_schema_info()
+    impl UpdateDataSource for TestUpdateEncoder {
+        fn get_column_types(&self) -> impl ExactSizeIterator<Item = ColumnType> {
+            self.columns.iter().copied()
         }
 
-        fn get_index_schema_info(&self) -> impl ExactSizeIterator<Item = ([u32; 2], u64)> {
-            self.dql_encoder.as_ref().unwrap().get_index_schema_info()
+        fn get_builder(&self) -> impl MsgpackEncode {
+            TestPureTupleEncoder::new(&self.builder)
         }
 
-        fn get_plan_id(&self) -> u64 {
-            self.dql_encoder.as_ref().unwrap().get_plan_id()
-        }
-
-        fn get_sender_id(&self) -> u64 {
-            self.dql_encoder.as_ref().unwrap().get_sender_id()
-        }
-
-        fn get_request_id(&self) -> &str {
-            unreachable!("should not be called");
-        }
-
-        fn get_vtables(
-            &self,
-        ) -> impl ExactSizeIterator<Item = (&str, impl ExactSizeIterator<Item = impl MsgpackEncode>)>
-        {
-            self.dql_encoder.as_ref().unwrap().get_vtables()
-        }
-
-        fn get_options(&self) -> [u64; 2] {
-            self.dql_encoder.as_ref().unwrap().get_options()
-        }
-
-        fn get_params(&self) -> impl MsgpackEncode {
-            self.dql_encoder.as_ref().unwrap().get_params()
+        fn get_dql_data_source(&self) -> &impl DQLDataSource {
+            self.dql_encoder.as_ref().unwrap()
         }
     }
 
     #[test]
-    fn test_encode_update() {
+    fn test_encode_update_shared_key() {
         let encoder = TestUpdateEncoder {
             request_id: "d3763996-6d21-418d-987f-d7349d034da9".to_string(),
             table_id: 128,
             table_version: 1,
             update_type: UpdateType::Shared,
-            column_mapping: BTreeMap::new(),
-            pk_positions: Vec::new(),
+            del_tuples: vec![vec![1], vec![3]],
             tuples: vec![vec![1, 2], vec![3, 4]],
+
+            columns: vec![],
+            builder: vec![],
             dql_encoder: None,
         };
 
         let expected: &[u8] =
-            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x01\x92\x01\x94\xcc\x80\x01\x00\x92\xc4\x03\x92\x01\x02\xc4\x03\x92\x03\x04";
+            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x01\x92\x01\x95\xcc\x80\x01\x00\x92\xc4\x02\x91\x01\xc4\x02\x91\x03\x92\xc4\x03\x92\x01\x02\xc4\x03\x92\x03\x04";
         let mut actual = Vec::new();
 
-        write_update_package(&mut actual, encoder).unwrap();
+        write_update_shared_key_packet(&mut actual, &encoder).unwrap();
 
         assert_eq!(actual, expected);
     }
 
     #[test]
-    fn test_decode_update() {
+    fn test_decode_update_shared_key() {
         let mut data: &[u8] =
-            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x01\x92\x01\x94\xcc\x80\x01\x00\x92\xc4\x03\x92\x01\x02\xc4\x03\x92\x03\x04";
+            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x01\x92\x01\x95\xcc\x80\x01\x00\x92\xc4\x02\x91\x01\xc4\x02\x91\x03\x92\xc4\x03\x92\x01\x02\xc4\x03\x92\x03\x04";
 
         let l = read_array_len(&mut data).unwrap();
         assert_eq!(l, 3);
@@ -534,20 +501,30 @@ mod tests {
         let dml_type = rmp::decode::read_pfix(&mut data).unwrap();
         assert_eq!(dml_type, Update as u8);
 
-        let package = UpdatePackageIterator::new(data).unwrap();
+        let iterator = UpdateSharedKeyIterator::new(data).unwrap();
 
-        for elem in package {
+        for elem in iterator {
             match elem.unwrap() {
-                UpdateResult::TableId(table_id) => {
+                UpdateSharedKeyResult::TableId(table_id) => {
                     assert_eq!(table_id, 128);
                 }
-                UpdateResult::TableVersion(version) => {
+                UpdateSharedKeyResult::TableVersion(version) => {
                     assert_eq!(version, 1);
                 }
-                UpdateResult::UpdateType(update_type) => {
+                UpdateSharedKeyResult::UpdateType(update_type) => {
                     assert_eq!(update_type, UpdateType::Shared);
                 }
-                UpdateResult::Tuples(tuples) => {
+                UpdateSharedKeyResult::DelTuples(tuples) => {
+                    assert_eq!(tuples.len(), 2);
+                    let mut actual = Vec::with_capacity(2);
+                    for tuple in tuples {
+                        let tuple = tuple.unwrap();
+                        actual.push(tuple);
+                    }
+                    let expected = vec![[145, 1], [145, 3]];
+                    assert_eq!(actual, expected);
+                }
+                UpdateSharedKeyResult::Tuples(tuples) => {
                     assert_eq!(tuples.len(), 2);
                     let mut actual = Vec::with_capacity(2);
                     for tuple in tuples {
@@ -562,7 +539,7 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_update_with_sql() {
+    fn test_encode_update() {
         let dql_encoder = TestDQLEncoderBuilder::new()
             .set_plan_id(14235593344027757343)
             .set_schema_info((HashMap::from([(12, 138)]), HashMap::from([([12, 12], 138)])))
@@ -579,23 +556,25 @@ mod tests {
             table_id: 128,
             table_version: 1,
             update_type: UpdateType::Local,
-            column_mapping: BTreeMap::from([(0, 1), (1, 0)]),
-            pk_positions: vec![1],
-            tuples: vec![vec![1, 2], vec![3, 4]],
+            columns: vec![ColumnType::Integer],
+            builder: vec![138], // some command
             dql_encoder: Some(dql_encoder),
+
+            del_tuples: vec![],
+            tuples: vec![],
         };
 
         let expected: &[u8] =
-            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x02\x92\x01\x9a\xcc\x80\x01\x82\x00\x01\x01\x00\x91\x01\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\xcf\xc5\x8e\xfc\xb9\x15\xb0\x8b\x1f\x2a\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
+            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x02\x92\x01\x95\xcc\x80\x01\x91\x05\x91\xcc\x8a\x97\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\xcf\xc5\x8e\xfc\xb9\x15\xb0\x8b\x1f*\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
         let mut actual = Vec::new();
 
-        write_update_with_sql_package(&mut actual, encoder).unwrap();
+        write_update_packet(&mut actual, &encoder).unwrap();
 
         assert_eq!(actual, expected);
     }
 
     #[test]
-    fn test_encode_update_with_sql_but_update_shared() {
+    fn test_encode_update_but_update_shared() {
         let dql_encoder = TestDQLEncoderBuilder::new()
             .set_plan_id(14235593344027757343)
             .set_schema_info((HashMap::from([(12, 138)]), HashMap::from([([12, 12], 138)])))
@@ -612,26 +591,26 @@ mod tests {
             table_id: 128,
             table_version: 1,
             update_type: UpdateType::Shared,
-            column_mapping: BTreeMap::from([(0, 1), (1, 0)]),
-            pk_positions: vec![1],
-            tuples: vec![vec![1, 2], vec![3, 4]],
+            columns: vec![ColumnType::Integer],
+            builder: vec![138], // some command
             dql_encoder: Some(dql_encoder),
+
+            del_tuples: vec![],
+            tuples: vec![],
         };
 
         let expected = "cannot construct update with sql with non local update: Shared";
 
         let mut actual = Vec::new();
-        let actual = write_update_with_sql_package(&mut actual, encoder)
-            .err()
-            .unwrap();
+        let actual = write_update_packet(&mut actual, &encoder).err().unwrap();
 
         assert_eq!(actual.to_string(), expected);
     }
 
     #[test]
-    fn test_decode_update_with_sql() {
+    fn test_decode_update() {
         let mut data: &[u8] =
-            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x02\x92\x01\x9a\xcc\x80\x01\x82\x00\x01\x01\x00\x91\x01\x81\x0c\xcc\x8a\xcf\xc5\x8e\xfc\xb9\x15\xb0\x8b\x1f*\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
+            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x02\x92\x01\x95\xcc\x80\x01\x91\x05\x91\xcc\x8a\x97\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\xcf\xc5\x8e\xfc\xb9\x15\xb0\x8b\x1f*\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
 
         let l = read_array_len(&mut data).unwrap();
         assert_eq!(l, 3);
@@ -649,58 +628,73 @@ mod tests {
         let dml_type = rmp::decode::read_pfix(&mut data).unwrap();
         assert_eq!(dml_type, Update as u8);
 
-        let package = LocalUpdatePackageIterator::new(data).unwrap();
+        let iterator = UpdateIterator::new(data).unwrap();
 
-        for elem in package {
+        for elem in iterator {
             match elem.unwrap() {
-                LocalUpdateResult::TableId(table_id) => {
+                UpdateResult::TableId(table_id) => {
                     assert_eq!(table_id, 128);
                 }
-                LocalUpdateResult::TableVersion(version) => {
+                UpdateResult::TableVersion(version) => {
                     assert_eq!(version, 1);
                 }
-                LocalUpdateResult::ColumnMapping(column_mapping) => {
-                    let column_mapping = column_mapping.map(Result::unwrap).collect::<Vec<_>>();
-                    let expected = vec![(0, 1), (1, 0)];
-                    assert_eq!(column_mapping, expected);
+                UpdateResult::Columns(columns) => {
+                    let actual = columns.map(Result::unwrap).collect::<Vec<_>>();
+                    let expected = vec![ColumnType::Integer];
+                    assert_eq!(actual, expected);
                 }
-                LocalUpdateResult::PrimaryKey(pk_positions) => {
-                    let pk_positions = pk_positions.map(Result::unwrap).collect::<Vec<_>>();
-                    let expected = vec![1];
-                    assert_eq!(pk_positions, expected);
+                UpdateResult::Builder(actual) => {
+                    let expected = vec![145, 204, 138];
+                    assert_eq!(actual, expected);
                 }
-                LocalUpdateResult::SchemaInfo(schema_info) => {
-                    assert_eq!(schema_info.len(), 1);
-                    for res in schema_info {
-                        let (t_id, ver) = res.unwrap();
-                        assert_eq!(t_id, 12);
-                        assert_eq!(ver, 138);
-                    }
-                }
-                LocalUpdateResult::PlanId(plan_id) => {
-                    assert_eq!(plan_id, 14235593344027757343);
-                }
-                LocalUpdateResult::SenderId(sender_id) => {
-                    assert_eq!(sender_id, 42);
-                }
-                LocalUpdateResult::Vtables(vtables) => {
-                    assert_eq!(vtables.len(), 1);
-                    for res in vtables {
-                        let (name, tuples) = res.unwrap();
-                        assert_eq!(name, "TMP_1302_".to_string());
-                        assert_eq!(tuples.len(), 2);
-                        let mut actual = Vec::with_capacity(2);
-                        for tuple in tuples {
-                            let tuple = tuple.unwrap();
-                            actual.push(tuple);
+                UpdateResult::DqlInfo(info) => {
+                    for res in info {
+                        let res = res.unwrap();
+
+                        match res {
+                            DQLResult::TableSchemaInfo(schema_info) => {
+                                assert_eq!(schema_info.len(), 1);
+                                for res in schema_info {
+                                    let (t_id, ver) = res.unwrap();
+                                    assert_eq!(t_id, 12);
+                                    assert_eq!(ver, 138);
+                                }
+                            }
+                            DQLResult::IndexSchemaInfo(schema_info) => {
+                                assert_eq!(schema_info.len(), 1);
+                                for res in schema_info {
+                                    let (t_id, ver) = res.unwrap();
+                                    assert_eq!(t_id, [12, 12]);
+                                    assert_eq!(ver, 138);
+                                }
+                            }
+                            DQLResult::PlanId(plan_id) => {
+                                assert_eq!(plan_id, 14235593344027757343);
+                            }
+                            DQLResult::SenderId(sender_id) => {
+                                assert_eq!(sender_id, 42);
+                            }
+                            DQLResult::Vtables(vtables) => {
+                                assert_eq!(vtables.len(), 1);
+                                for res in vtables {
+                                    let (name, tuples) = res.unwrap();
+                                    assert_eq!(name, "TMP_1302_");
+                                    assert_eq!(tuples.len(), 2);
+                                    let mut actual = Vec::with_capacity(2);
+                                    for tuple in tuples {
+                                        let tuple = tuple.unwrap();
+                                        actual.push(tuple);
+                                    }
+                                }
+                            }
+                            DQLResult::Options(options) => {
+                                assert_eq!(options, (123, 456));
+                            }
+                            DQLResult::Params(params) => {
+                                assert_eq!(params, vec![147, 204, 138, 123, 205, 1, 176]);
+                            }
                         }
                     }
-                }
-                LocalUpdateResult::Options(options) => {
-                    assert_eq!(options, (123, 456));
-                }
-                LocalUpdateResult::Params(params) => {
-                    assert_eq!(params, vec![147, 204, 138, 123, 205, 1, 176]);
                 }
             }
         }
