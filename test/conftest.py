@@ -624,6 +624,7 @@ class Instance:
     cluster_name: str | None = None
     _instance_dir: Path | None = None
     _backup_dir: Path | None = None
+    _log_file: Path | None = None
     peers: list[str] = field(default_factory=list)
     host: str | None = None
     port: int | None = None
@@ -640,6 +641,7 @@ class Instance:
     init_replication_factor: int | None = None
     config_path: str | None = None
     name: str | None = None
+    version: str | None = None
     cluster_uuid: str | None = None
     replicaset_name: str | None = None
     failure_domain: dict[str, str] = field(default_factory=dict)
@@ -752,10 +754,10 @@ class Instance:
         # fmt: on
 
     def __repr__(self):
-        if self.process:
-            return f"Instance({self.name}, iproto_listen={self.iproto_listen}, cluster={self.cluster_name}, process.pid={self.process.pid})"  # noqa: E501
-        else:
-            return f"Instance({self.name}, iproto_listen={self.iproto_listen}, cluster={self.cluster_name})"  # noqa: E501
+        maybe_process = f", process.pid={self.process.pid}" if self.process else ""
+        maybe_version = f", version={self.version}" if self.version else ""
+        maybe_log_file = f", log_file={self.log_file()}" if self.log_file() else ""
+        return f"Instance({self.name}, iproto_listen={self.iproto_listen}, cluster={self.cluster_name}{maybe_version}{maybe_process}{maybe_log_file})"  # noqa: E501
 
     def __hash__(self):
         return hash((self.cluster_name, self.name))
@@ -1481,11 +1483,8 @@ class Instance:
                 message += "\n\n"
                 message += backtrace
 
-            if self._instance_dir:
-                log_path = self._instance_dir / "picodata.log"
-                if os.path.exists(log_path):
-                    message += "\n"
-                    message += f"instance logs have been written to '{log_path}'"
+            if self.log_file():
+                message += f"\ninstance logs have been written to '{self.log_file()}'"
 
             raise ProcessDead(message)
 
@@ -1522,6 +1521,9 @@ class Instance:
 
         assert isinstance(info["cluster_uuid"], str)
         target.cluster_uuid = info["cluster_uuid"]
+
+        assert isinstance(info["picodata_version"], str)
+        target.version = info["picodata_version"]
 
         if not target.symlink_created and target._instance_dir:
             instance_dir_by_name = Path(target._instance_dir).parent / target.name  # type: ignore
@@ -1622,10 +1624,8 @@ Timed out waiting for instance '{self.name_or_port()}' state 'Online'.
 Expected state 'Online', actual: '{actual_state}'
 """
 
-        if self._instance_dir:
-            log_path = self._instance_dir / "picodata.log"
-            if os.path.exists(log_path):
-                message += f"Instance log file: {log_path}\n"
+        if self.log_file():
+            message += f"Instance log file: {self.log_file()}\n"
 
         if governor_status:
             assert leader
@@ -1634,10 +1634,8 @@ Meanwhile governor is '{leader.name_or_port()}'
 Governor loop status is: '{governor_status}'
 """
 
-        if leader and leader != self and leader._instance_dir:
-            log_path = leader._instance_dir / "picodata.log"
-            if os.path.exists(log_path):
-                message += f"Governor log file: {log_path}"
+        if leader and leader != self and leader.log_file():
+            message += f"Governor log file: {leader.log_file()}"
 
         if last_error:
             message += f"""
@@ -1864,6 +1862,20 @@ Last governor error is:
             self.env["PICODATA_LOG"] = f"{self.instance_dir}/picodata.log"
         elif not log_to_console:
             self.env["PICODATA_LOG"] = "/dev/null"
+
+    def log_file(self) -> Path | None:
+        if self._log_file:
+            return self._log_file
+
+        if not self._instance_dir:
+            return None
+
+        log_file = self._instance_dir / "picodata.log"
+        if not os.path.exists(log_file):
+            return None
+
+        self._log_file = log_file
+        return self._log_file
 
     @property
     def service_password(self) -> Optional[str]:
