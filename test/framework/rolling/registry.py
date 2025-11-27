@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 from framework.rolling.runtime import Runtime
-from framework.rolling.version import Version as RelativeVersion
+from framework.rolling.version import RelativeVersion
 
 import pytest
 

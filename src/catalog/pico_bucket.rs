@@ -12,7 +12,6 @@ use serde::Serialize;
 use smol_str::SmolStr;
 use tarantool::index::FieldType as IndexFieldType;
 use tarantool::index::Index;
-use tarantool::index::IndexId;
 use tarantool::index::IndexIterator;
 use tarantool::index::IndexType;
 use tarantool::index::IteratorType;
@@ -28,8 +27,6 @@ use tarantool::tuple::Encode;
 pub const BUCKET_ID_MIN: u64 = 1;
 /// Column name in which sharded tables store the bucket_id by default.
 pub const DEFAULT_BUCKET_ID_COLUMN_NAME: &'static str = "bucket_id";
-/// Index by bucket id is always at index 1
-pub const SHARDED_TABLE_BUCKET_ID_INDEX: IndexId = 1;
 
 pub type BucketIdRange = std::ops::RangeInclusive<u64>;
 

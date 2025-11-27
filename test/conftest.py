@@ -53,7 +53,7 @@ from framework.constants import BASE_HOST
 from framework.port_distributor import PortDistributor
 from framework.rolling.registry import Registry
 from framework.rolling.runtime import Runtime
-from framework.rolling.version import Version as RelativeVersion
+from framework.rolling.version import RelativeVersion, parse_picodata_version
 
 pytest_plugins = "framework.sqltester"
 
@@ -1922,6 +1922,16 @@ Last governor error is:
         if res[0][6][7] != {"type": "boolean", "is_nullable": True, "name": "is_default"}:
             return False
 
+        [[cluster_version]] = self.sql("SELECT value FROM _pico_property WHERE key = 'cluster_version'")
+        if parse_picodata_version(cluster_version) >= Version("25.5.0"):
+            res = self.sql("SELECT name, id FROM _pico_table WHERE name = '_pico_bucket'")
+            if res != [["_pico_bucket", 533]]:
+                log.error(f"Invalid metadata for _pico_bucket: {res}")
+
+            res = self.sql("SELECT name, id FROM _pico_table WHERE name = '_pico_resharding_state'")
+            if res != [["_pico_resharding_state", 534]]:
+                log.error(f"Invalid metadata for _pico_bucket: {res}")
+
         res = self.sql("SELECT value FROM _pico_property WHERE key = 'system_catalog_version'")
         if res[0][0] not in ["25.3.7", "25.4.1", "25.5.1"]:
             return False
@@ -2766,6 +2776,9 @@ class Cluster:
         self,
         exclude: List[Instance] = list(),
     ) -> bool:
+        # Wait until governor finishes all ongoing activities
+        self.leader().wait_governor_status("idle")
+
         for instance in self.instances:
             if instance not in exclude:
                 if instance.is_ceased() and not instance.is_healthy():

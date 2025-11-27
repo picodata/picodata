@@ -1,7 +1,7 @@
 from typing import Generator, Protocol
 
 from conftest import Cluster
-from framework.rolling.version import Version
+from framework.rolling.version import RelativeVersion as Version
 from framework.rolling.registry import Registry
 
 import pytest

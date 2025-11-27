@@ -8,7 +8,7 @@ from typing import Optional
 import os
 import shutil
 
-from framework.rolling.version import Version as RelativeVersion
+from framework.rolling.version import RelativeVersion
 
 import pytest
 
