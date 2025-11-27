@@ -12,8 +12,6 @@ use crate::sql::router::{
 };
 use crate::traft::node;
 use serde::{Deserialize, Serialize};
-use sql::backend::sql::ir::PatternWithParams;
-use sql::backend::sql::space::TableGuard;
 use sql::backend::sql::tree::{OrderedSyntaxNodes, SyntaxData, SyntaxPlan};
 use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::bucket::Buckets;
@@ -273,13 +271,6 @@ impl RequiredPlanInfo for GlobalDeleteInfo {
 }
 
 impl FullPlanInfo for GlobalDeleteInfo {
-    fn extract_query_and_table_guard(
-        &mut self,
-    ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
-        let local_sql = format!("DELETE FROM \"{}\"", self.table_name);
-        Ok((PatternWithParams::new(local_sql, vec![]), vec![]))
-    }
-
     fn take_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError> {
         let local_sql = format!("DELETE FROM \"{}\"", self.table_name);
         Ok((local_sql, vec![], HashMap::new()))
@@ -324,12 +315,6 @@ impl RequiredPlanInfo for LocalExecutionQueryInfo<'_> {
 }
 
 impl FullPlanInfo for LocalExecutionQueryInfo<'_> {
-    fn extract_query_and_table_guard(
-        &mut self,
-    ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
-        self.exec_plan.to_sql(&self.nodes, &self.plan_id, None)
-    }
-
     fn take_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError> {
         let vtables = self.exec_plan.get_vtables();
         let mut meta = VTablesMeta::with_capacity(vtables.len());

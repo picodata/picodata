@@ -1254,18 +1254,6 @@ pub trait RequiredPlanInfo {
 }
 
 pub trait FullPlanInfo: RequiredPlanInfo {
-    /// Extracts the query and the temporary tables from the plan.
-    /// Temporary tables truncate their data in destructor and act
-    /// as a guard.
-    ///
-    /// # Errors
-    /// - Failed to extract query and table guard.
-    ///
-    /// TODO: remove this method and use `take_query_meta` instead.
-    fn extract_query_and_table_guard(
-        &mut self,
-    ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError>;
-
     /// Extracts the query and vtables meta from the plan.
     ///
     /// # Errors
@@ -1311,12 +1299,6 @@ impl RequiredPlanInfo for QueryInfo<'_> {
 }
 
 impl FullPlanInfo for QueryInfo<'_> {
-    fn extract_query_and_table_guard(
-        &mut self,
-    ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
-        compile_optional(self.optional, &self.required.plan_id)
-    }
-
     fn take_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError> {
         let nodes = self.optional.ordered.to_syntax_data()?;
         let (local_sql, motion_ids) = self.optional.exec_plan.generate_sql(
@@ -1373,19 +1355,6 @@ impl RequiredPlanInfo for EncodedQueryInfo<'_> {
 }
 
 impl FullPlanInfo for EncodedQueryInfo<'_> {
-    fn extract_query_and_table_guard(
-        &mut self,
-    ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
-        let Some(opt_bytes) = self.optional_bytes else {
-            return Err(SbroadError::Invalid(
-                Entity::OptionalData,
-                Some("optional data is missing".into()),
-            ));
-        };
-        let mut optional = OptionalData::try_from(opt_bytes)?;
-        compile_optional(&mut optional, &self.required.plan_id)
-    }
-
     fn take_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError> {
         let Some(opt_bytes) = self.optional_bytes else {
             return Err(SbroadError::Invalid(
