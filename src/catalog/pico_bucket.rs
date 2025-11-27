@@ -26,7 +26,7 @@ use tarantool::tuple::Encode;
 /// The first bucket_id
 pub const BUCKET_ID_MIN: u64 = 1;
 /// Column name in which sharded tables store the bucket_id by default.
-pub const DEFAULT_BUCKET_ID_COLUMN_NAME: &'static str = "bucket_id";
+pub const DEFAULT_BUCKET_ID_COLUMN_NAME: &str = sql::frontend::sql::DEFAULT_BUCKET_ID_COLUMN_NAME;
 
 pub type BucketIdRange = std::ops::RangeInclusive<u64>;
 
@@ -406,7 +406,12 @@ impl ToEntryIter<MP_SERDE> for PicoBucket {
 pub fn index_of_bucket_id_column(
     primary_index_def: &IndexDef,
     format: &[tarantool::space::Field],
+    has_bucket_id_in_pk: bool,
 ) -> u32 {
+    if has_bucket_id_in_pk {
+        return 0;
+    }
+
     let mut last_pk_part_index = 0;
     for part in &primary_index_def.parts {
         let name = &part.field;

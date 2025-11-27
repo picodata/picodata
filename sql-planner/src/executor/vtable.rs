@@ -255,7 +255,7 @@ impl VirtualTable {
         &mut self.columns
     }
 
-    /// Gets virtual table's buket index
+    /// Gets virtual table's bucket index
     #[must_use]
     pub fn get_bucket_index(&self) -> &HashMap<u64, Vec<usize>, RepeatableState> {
         &self.bucket_index.value

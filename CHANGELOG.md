@@ -21,6 +21,9 @@ with the `YY.MINOR.MICRO` scheme.
   the instance will be automatically made Offline.
 - New ALTER SYSTEM parameter `sql_log` (default: false)
   enables logging of all SQL statements to log file.
+- Add CREATE TABLE syntax "PRIMARY KEY (bucket_id, ...)":
+  - When this syntax is used, there is no separate 'bucket_id' index;
+  - Instead, 'bucket_id' is included as the first part of the primary key index.
 - New columns `target_state_reason` & `target_state_change_time` in `_pico_instance` system table
 - Added env option PICODATA_UNSAFE_FORCE_RECOVERY.
   - Possible values: true, false.

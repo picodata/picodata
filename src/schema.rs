@@ -84,6 +84,12 @@ pub enum TableOption {
     #[serde(rename = "unlogged")]
     #[encode(rename = "unlogged")]
     Unlogged(bool),
+
+    /// When this is enabled, there is no separate 'bucket_id' index in the table.
+    /// Instead, 'bucket_id' is included as the first part of the primary key index.
+    #[serde(rename = "pk_contains_bucket_id")]
+    #[encode(rename = "pk_contains_bucket_id")]
+    PkContainsBucketId(bool),
 }
 
 /// Database table definition.
@@ -1854,6 +1860,8 @@ pub enum CreateTableError {
     EmptyTier { tier_name: String },
     #[error("primary key '{0}' already exists")]
     ConflictingPrimaryKey(String),
+    #[error("incorrect sharding key '{0}'")]
+    IncorrectShardingKey(String),
 }
 
 impl From<CreateTableError> for Error {
@@ -2231,6 +2239,7 @@ pub struct CreateTableParams {
     pub(crate) engine: Option<SpaceEngineType>,
     pub(crate) owner: UserId,
     pub(crate) tier: Option<SmolStr>,
+    /// Table options.
     pub(crate) opts: Vec<TableOption>,
     /// Timeout in seconds.
     ///
@@ -2359,6 +2368,15 @@ impl CreateTableParams {
                         // And all parts are unique
                         if !parts.insert(part.as_str()) {
                             return Err(CreateTableError::DuplicateFieldName(part.clone()).into());
+                        }
+                    }
+                    if self.opts.contains(&TableOption::PkContainsBucketId(true)) {
+                        // Sharding key must be prefix of primary key in this case.
+                        if !self.primary_key.starts_with(sharding_key) {
+                            return Err(CreateTableError::IncorrectShardingKey(
+                                sharding_key.join(","),
+                            )
+                            .into());
                         }
                     }
                 }

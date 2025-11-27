@@ -557,7 +557,7 @@ impl Plan {
             // Calculate primary key positions in table_tuple
             if let Some(bucket_id_pos) = table.get_bucket_id_position()? {
                 table.primary_key.positions.iter().for_each(|pos| {
-                    if *pos < bucket_id_pos {
+                    if *pos <= bucket_id_pos {
                         primary_key_positions.push(*pos);
                     } else {
                         primary_key_positions.push(*pos - 1);
@@ -2023,14 +2023,13 @@ impl Plan {
 
     /// Create a mapping between column positions
     /// in table and corresponding positions in
-    /// relational node's output. Sharding
-    /// column is skipped.
+    /// relational node's output.
     ///
     /// # Errors
     /// - Node is not relational
     /// - Output tuple is invalid
     /// - Some table column is not found among output columns
-    pub fn table_position_map(
+    fn table_position_map(
         &self,
         table_name: &str,
         rel_id: NodeId,
@@ -2040,10 +2039,7 @@ impl Plan {
         let mut map: HashMap<ColumnPosition, ColumnPosition> =
             HashMap::with_capacity(table.columns.len());
         for (table_pos, col) in table.columns.iter().enumerate() {
-            if let ColumnRole::Sharding = col.role {
-                continue;
-            }
-            let output_pos = alias_to_pos.get(col.name.as_str())?;
+            let output_pos = alias_to_pos.get_with_scan(col.name.as_str(), Some(table_name))?;
             map.insert(table_pos, output_pos);
         }
         Ok(map)

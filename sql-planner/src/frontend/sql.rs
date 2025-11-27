@@ -99,6 +99,10 @@ const DEFAULT_WAIT_APPLIED_GLOBALLY: bool = true;
 // The same limit as in PostgreSQL (http://postgresql.org/docs/16/limits.html)
 const MAX_PARAMETER_INDEX: usize = 65535;
 
+/// The default column name where sharded tables store the `bucket_id`.
+/// The sharding key is mapped (via hashing) to a `bucket_id` value stored in this column.
+pub const DEFAULT_BUCKET_ID_COLUMN_NAME: &str = "bucket_id";
+
 fn get_default_timeout() -> Decimal {
     Decimal::from_str(&format!("{DEFAULT_TIMEOUT_F64}")).expect("default timeout casting failed")
 }
@@ -882,6 +886,7 @@ fn parse_create_table(
     let mut if_not_exists = DEFAULT_IF_NOT_EXISTS;
     let mut unlogged = DEFAULT_UNLOGGED;
     let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
+    let mut pk_contains_bucket_id = false;
 
     let nullable_primary_key_column_error = Err(SbroadError::Invalid(
         Entity::Column,
@@ -966,7 +971,7 @@ fn parse_create_table(
                 let pk_node = ast.nodes.get_node(*child_id)?;
 
                 // First child is a `PrimaryKeyMark` that we should skip.
-                for pk_col_id in pk_node.children.iter().skip(1) {
+                for (index, pk_col_id) in pk_node.children.iter().skip(1).enumerate() {
                     let pk_col_name = parse_identifier(ast, *pk_col_id)?;
                     let mut column_found = false;
                     for column in &mut columns {
@@ -977,7 +982,12 @@ fn parse_create_table(
                             }
                             // Infer not null on primary key column
                             column.is_nullable = false;
+                            break;
                         }
+                    }
+                    if index == 0 && pk_col_name == DEFAULT_BUCKET_ID_COLUMN_NAME {
+                        pk_contains_bucket_id = true;
+                        continue;
                     }
                     if !column_found {
                         return Err(SbroadError::Invalid(
@@ -1106,6 +1116,10 @@ fn parse_create_table(
             Some(format_smolstr!("Primary key must be declared.")),
         ));
     }
+    if is_global && pk_contains_bucket_id {
+        // It makes sense only for sharded tables.
+        pk_contains_bucket_id = false;
+    }
     // infer sharding key from primary key
     if shard_key.is_empty() && !is_global {
         for pk_key in &pk_keys {
@@ -1162,6 +1176,7 @@ fn parse_create_table(
         wait_applied_globally,
         timeout,
         tier,
+        pk_contains_bucket_id,
     })
 }
 
@@ -6573,7 +6588,7 @@ impl AbstractSyntaxTree {
                                 asterisk_source: None,
                             },
                             false,
-                            false,
+                            true,
                         )?;
                         let mut alias_ids = Vec::with_capacity(pk_column_ids.len());
                         for (pk_pos, pk_column_id) in pk_column_ids.iter().enumerate() {

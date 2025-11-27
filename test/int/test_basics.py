@@ -795,6 +795,8 @@ cluster:
         connection_fetch_schema=False,
         failover_interval=10.0,
         failover_ping_timeout=10.0,
+        max_internal_space_id=1024,
+        use_pk_as_shard_index=True,
     )
 
     storage_vshard_config_explicit = storage_instance.call(".proc_get_vshard_config", "storage")

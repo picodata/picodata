@@ -417,8 +417,18 @@ pub fn ddl_create_space_on_master(
         ))
     })?;
 
-    let bucket_id_def = match &pico_table_def.distribution {
-        Distribution::ShardedImplicitly { .. } => {
+    let bucket_id_def = if matches!(
+        &pico_table_def.distribution,
+        Distribution::ShardedImplicitly { .. }
+    ) {
+        let has_bucket_id_in_pk = pico_table_def
+            .format
+            .first()
+            .map(|f| f.name == DEFAULT_BUCKET_ID_COLUMN_NAME)
+            .unwrap_or(false);
+        if has_bucket_id_in_pk {
+            None
+        } else {
             let index = IndexDef {
                 table_id: pico_table_def.id,
                 id: 1,
@@ -433,7 +443,8 @@ pub fn ddl_create_space_on_master(
             };
             Some(index)
         }
-        _ => None,
+    } else {
+        None
     };
 
     let res = (|| -> tarantool::Result<()> {

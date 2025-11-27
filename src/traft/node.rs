@@ -36,7 +36,7 @@ use crate::schema::system_table_definitions;
 use crate::schema::RoutineDef;
 use crate::schema::RoutineKind;
 use crate::schema::SchemaObjectType;
-use crate::schema::{Distribution, IndexDef, IndexOption, TableDef};
+use crate::schema::{Distribution, IndexDef, IndexOption, TableDef, TableOption};
 use crate::sentinel;
 use crate::static_ref;
 use crate::storage::cached_key_def;
@@ -90,6 +90,7 @@ use ::tarantool::fiber::r#async::timeout::Error as TimeoutError;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::{oneshot, watch};
 use ::tarantool::fiber::Mutex;
+use ::tarantool::index;
 use ::tarantool::index::IndexType;
 use ::tarantool::proc;
 use ::tarantool::space::FieldType as SFT;
@@ -2196,6 +2197,16 @@ impl NodeImpl {
                     pk_part.is_nullable = Some(field.is_nullable);
                 }
 
+                let has_bucket_id_in_pk = opts.contains(&TableOption::PkContainsBucketId(true));
+                if has_bucket_id_in_pk {
+                    primary_key.insert(
+                        0,
+                        index::Part::field(DEFAULT_BUCKET_ID_COLUMN_NAME)
+                            .field_type(index::FieldType::Unsigned)
+                            .is_nullable(false),
+                    );
+                }
+
                 let primary_key_def = IndexDef {
                     table_id: id,
                     id: 0,
@@ -2229,7 +2240,11 @@ impl NodeImpl {
                         // bucket_id to go closer to the beginning of the tuple,
                         // but this will require to update primary key part
                         // indexes, so somebody should do that at some point.
-                        let bucket_id_index = index_of_bucket_id_column(&primary_key_def, &format);
+                        let bucket_id_index = index_of_bucket_id_column(
+                            &primary_key_def,
+                            &format,
+                            has_bucket_id_in_pk,
+                        );
                         format.insert(
                             bucket_id_index as _,
                             (DEFAULT_BUCKET_ID_COLUMN_NAME, SFT::Unsigned).into(),

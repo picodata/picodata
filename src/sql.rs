@@ -1488,6 +1488,7 @@ fn ddl_ir_node_to_op_or_result(
             tier,
             if_not_exists,
             unlogged,
+            pk_contains_bucket_id,
             ..
         }) => {
             let format = format
@@ -1509,6 +1510,9 @@ fn ddl_ir_node_to_op_or_result(
             let mut opts = vec![];
             if *unlogged {
                 opts.push(TableOption::Unlogged(true));
+            }
+            if *pk_contains_bucket_id {
+                opts.push(TableOption::PkContainsBucketId(*pk_contains_bucket_id));
             }
 
             let mut params = CreateTableParams {

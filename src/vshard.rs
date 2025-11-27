@@ -7,7 +7,7 @@ use crate::rpc::ddl_apply::Response;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::sql::router;
 use crate::storage::ToEntryIter as _;
-use crate::storage::TABLE_ID_BUCKET;
+use crate::storage::{SPACE_ID_INTERNAL_MAX, TABLE_ID_BUCKET};
 use crate::tarantool::ListenConfig;
 use crate::topology_cache::TopologyCacheRef;
 use crate::traft::error::Error as TraftError;
@@ -212,6 +212,18 @@ pub struct VshardConfig {
     #[serde(skip_serializing_if="Option::is_none")]
     #[serde(default)]
     pub listen: Option<ListenConfig>,
+
+    /// When this is enabled, the vshard can use primary key as shard index
+    /// in addition to the "shard_index" parameter.
+    #[serde(skip_serializing_if="Option::is_none")]
+    #[serde(default)]
+    pub use_pk_as_shard_index: Option<bool>,
+
+    /// Upper limit for internal space IDs - prevents internal spaces
+    /// from being sharded when numeric shard_index used.
+    #[serde(skip_serializing_if="Option::is_none")]
+    #[serde(default)]
+    pub max_internal_space_id: Option<u32>,
 }
 
 const VSHARD_FAILOVER_INTERVAL: f64 = 10.0;
@@ -337,6 +349,8 @@ impl VshardConfig {
             // We don't need vshard net.box connections to have up-to-date schema definitions
             connection_fetch_schema: false,
             bucket_count,
+            use_pk_as_shard_index: Some(true),
+            max_internal_space_id: Some(SPACE_ID_INTERNAL_MAX),
         }
     }
 

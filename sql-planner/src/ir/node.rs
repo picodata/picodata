@@ -1002,6 +1002,9 @@ pub struct CreateTable {
     /// 1) Global table.
     /// 2) Sharded table without [ON TIER] part. In this case picodata will use default tier.
     pub tier: Option<SmolStr>,
+    /// When this is enabled, there is no separate 'bucket_id' index in the table.
+    /// Instead, 'bucket_id' is included as the first part of the primary key index.
+    pub pk_contains_bucket_id: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]

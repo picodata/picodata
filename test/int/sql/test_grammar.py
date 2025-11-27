@@ -17,3 +17,8 @@ class TestPublicSchema(ClusterSingleInstance):
 @sql_test_file("audit_policy_grammar.sql")
 class TestAuditPolicy(ClusterSingleInstance):
     pass
+
+
+@sql_test_file("create_table_with_bucket_id.sql")
+class TestCreateTableWithBucketId(ClusterSingleInstance):
+    pass
