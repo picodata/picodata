@@ -98,16 +98,19 @@ struct PreparedStatementMetadata {
   После получения такой ошибки, клиент выполняет reprepare - закрывает устаревший 
   Prepared Statement и отправляет `Parse`-запрос повторно. Перед отправкой новой ошибки 
   требуется расширить функционал `pgproto` определением нового типа и кода ошибки. 
-  Для получения новой ошибки, клиент указывает в заголовке (startup message) специальную kv-пару:
+- При установке соединения с сервером (инстансом), клиент обязан
+  очистить кэш. Это один из шагов по восстановлению топологии, подробнее
+  можно узнать [в этом ADR](https://git.picodata.io/core/picodata/-/blob/master/doc/adr/2025-09-12-topology-change-async-notifications.md?ref_type=heads#%D0%B2%D0%BE%D1%81%D1%81%D1%82%D0%B0%D0%BD%D0%BE%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5-%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D0%BE%D0%B3%D0%B8%D0%B8).
 
-   ```c
-   "picodata_stmt_invalidation" = true
-   ```
+### Клиентский handshake
 
--  При установке соединения с сервером (инстансом), клиент обязан
-   очистить кэш. Это один из шагов по восстановлению топологии, подробнее
-   можно узнать [в этом ADR](https://git.picodata.io/core/picodata/-/blob/master/doc/adr/2025-09-12-topology-change-async-notifications.md?ref_type=heads#%D0%B2%D0%BE%D1%81%D1%81%D1%82%D0%B0%D0%BD%D0%BE%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5-%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D0%BE%D0%B3%D0%B8%D0%B8).
+Для получения `Notice`-сообщений с метаданными запроса после этапа `Parse` и нового типа ошибки при `Bind` невалидного `Prepared Statement`, клиент указывает в заголовке (startup message) специальную kv-пару или использует option:
 
+```c
+"picodata_stmt_invalidation" = true
+```
+
+Аналогичное поведение описано в этом [ADR](https://git.picodata.io/core/picodata/-/blob/master/doc/adr/2025-09-12-topology-change-async-notifications.md?ref_type=heads#%D0%BA%D0%BB%D0%B8%D0%B5%D0%BD%D1%82%D1%81%D0%BA%D0%B8%D0%B9-handshake).
 
 ### Unbounded queries
 
