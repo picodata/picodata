@@ -116,6 +116,7 @@ impl Plan {
                 Node32::Parameter(Parameter {
                     param_type,
                     index: index(num)?,
+                    unique: false,
                 }),
             )?;
             if let Node32::Constant(Constant { value }) = const_node {

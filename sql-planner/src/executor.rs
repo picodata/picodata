@@ -68,7 +68,9 @@ impl Plan {
             .derive_equalities()?
             .merge_tuples()?
             .add_motions()?
-            .update_substring()
+            .update_substring()?
+            // After all transformations we can finally determine what parameters are unique.
+            .mark_unique_parameters()
     }
 }
 

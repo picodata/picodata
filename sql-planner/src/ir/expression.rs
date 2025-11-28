@@ -304,15 +304,18 @@ impl<'plan> Comparator<'plan> {
                 match left {
                     Expression::Alias(_) | Expression::Timestamp(_) => {}
                     Expression::Parameter(Parameter {
-                        param_type: _,
+                        param_type: l_param_type,
                         index: l_index,
+                        unique: l_unique,
                     }) => {
                         if let Expression::Parameter(Parameter {
-                            param_type: _,
+                            param_type: r_param_type,
                             index: r_index,
+                            unique: r_unique,
                         }) = right
                         {
-                            return Ok(l_index == r_index);
+                            return Ok((l_param_type, l_index, l_unique)
+                                == (r_param_type, r_index, r_unique));
                         }
                     }
                     Expression::Window(Window {

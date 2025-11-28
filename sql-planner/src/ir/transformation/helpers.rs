@@ -38,7 +38,7 @@ pub fn sql_to_optimized_ir(query: &str, params: Vec<Value>) -> Plan {
 pub fn sql_to_ir(query: &str, params: Vec<Value>) -> Plan {
     let params_types: Vec<_> = params.iter().map(|v| v.get_type()).collect();
     let mut plan = sql_to_ir_without_bind(query, &params_types);
-    plan.bind_params(&params, Options::default()).unwrap();
+    plan.bind_params(params, Options::default()).unwrap();
     plan
 }
 

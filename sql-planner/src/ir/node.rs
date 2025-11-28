@@ -479,6 +479,12 @@ pub struct Parameter {
     pub param_type: DerivedType,
     // index of parameter (starting with 1)
     pub index: u16,
+    // True if there is only one parameter with such index, false otherwise.
+    // For unique parameters we can avoid parameter value cloning during parameter binding.
+    //
+    // XXX: Setting this value to true for non-unique parameters makes plan invalid.
+    //      Setting it to false is always safe, but can lead to redundant allocations.
+    pub unique: bool,
 }
 
 impl From<Parameter> for NodeAligned {

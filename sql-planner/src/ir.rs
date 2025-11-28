@@ -2023,7 +2023,10 @@ impl Plan {
         let mut parameter_types = vec![UnrestrictedType::Any; params_count];
 
         for node in self.nodes.iter32() {
-            if let Node32::Parameter(Parameter { param_type, index }) = node {
+            if let Node32::Parameter(Parameter {
+                param_type, index, ..
+            }) = node
+            {
                 let index = (*index - 1) as usize;
                 // TODO: We need to introduce ParameterType that cannot be unknown and store it in
                 // Parameter nodes making parameters with unknown type impossible.

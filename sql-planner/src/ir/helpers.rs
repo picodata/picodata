@@ -346,8 +346,15 @@ impl Plan {
                         writeln!(buf, "DateTime [precision = {precision}, include_timezone = {include_timezone}]")?;
                     }
                 },
-                Expression::Parameter(Parameter { param_type, index }) => {
-                    writeln!(buf, "Parameter [type = {param_type}, index = {index}]")?;
+                Expression::Parameter(Parameter {
+                    param_type,
+                    index,
+                    unique,
+                }) => {
+                    writeln!(
+                        buf,
+                        "Parameter [type = {param_type}, index = {index}, unique: {unique}]"
+                    )?;
                 }
             };
         }

@@ -17,24 +17,30 @@ use time::{OffsetDateTime, Time};
 
 use crate::ir;
 use crate::ir::options::{OptionParamValue, OptionSpec};
+use ahash::AHashMap;
 
-// Calculate the maximum parameter index value.
+// Calculate the total number of parameters and the maximum parameter index.
 // For example, the result for a query `SELECT $1, $1, $2` will be 2.
-fn count_max_parameter_index(plan: &Plan) -> Result<usize, SbroadError> {
-    let mut params_count = 0;
+fn calculate_max_parameter_index(plan: &Plan) -> Result<usize, SbroadError> {
+    let mut max_index = 0;
     for node in plan.nodes.iter32() {
         if let Node32::Parameter(Parameter { index, .. }) = node {
-            params_count = std::cmp::max(*index as usize, params_count);
+            max_index = std::cmp::max(*index as usize, max_index);
         }
     }
-    Ok(params_count)
+    Ok(max_index)
 }
 
 /// Replace parameters in the plan.
-fn bind_params(plan: &mut Plan, values: &[Value]) -> Result<(), SbroadError> {
+fn bind_params(plan: &mut Plan, mut values: Vec<Value>) -> Result<(), SbroadError> {
     for node in plan.nodes.iter32_mut() {
-        if let Node32::Parameter(Parameter { index, .. }) = node {
-            let value = values[(*index - 1) as usize].clone();
+        if let Node32::Parameter(Parameter { index, unique, .. }) = node {
+            let index = (*index - 1) as usize;
+            let value = match unique {
+                true => std::mem::take(&mut values[index]),
+                false => values[index].clone(),
+            };
+
             let constant = Constant { value };
             *node = Node32::Constant(constant);
         }
@@ -45,7 +51,14 @@ fn bind_params(plan: &mut Plan, values: &[Value]) -> Result<(), SbroadError> {
 
 impl Plan {
     pub fn add_param(&mut self, index: u16, param_type: DerivedType) -> NodeId {
-        self.nodes.push(Parameter { index, param_type }.into())
+        self.nodes.push(
+            Parameter {
+                index,
+                param_type,
+                unique: false,
+            }
+            .into(),
+        )
     }
 
     /// Replaces references to bound parameters in `raw_options` to concrete values.
@@ -173,34 +186,58 @@ impl Plan {
     #[allow(clippy::too_many_lines)]
     pub fn bind_params(
         &mut self,
-        values: &[Value],
+        values: Vec<Value>,
         default_options: ir::Options,
     ) -> Result<(), SbroadError> {
         // As parameter indexes are used as indexes in parameters array,
         // we expect that the number of parameters is not less than the max index.
-        let params_count = count_max_parameter_index(self)?;
+        let max_index = calculate_max_parameter_index(self)?;
 
         // Extra values are ignored.
-        if params_count > values.len() {
+        if max_index > values.len() {
             return Err(SbroadError::Invalid(
                 Entity::Query,
                 Some(format_smolstr!(
                     "expected {} values for parameters, got {}",
-                    params_count,
+                    max_index,
                     values.len(),
                 )),
             ));
         }
 
-        self.apply_raw_options(values, default_options)?;
+        self.apply_raw_options(&values, default_options)?;
 
         // you'd think that this is an optimization, but commenting this check out
         //   changes the result of type checking and fails some tests!
-        if params_count == 0 {
+        if max_index == 0 {
             return Ok(());
         }
 
         bind_params(self, values)
+    }
+
+    /// Marks parameter nodes as unique (appearing once) or non-unique (appearing multiple times).
+    ///
+    /// Example:
+    /// For `SELECT $1 + $1, $2`, all $1 nodes are non-unique and the only node for $2 is unique.
+    pub fn mark_unique_parameters(mut self) -> Result<Self, SbroadError> {
+        let mut mem = AHashMap::new();
+
+        for node in self.nodes.iter32_mut() {
+            if let Node32::Parameter(Parameter { index, .. }) = node {
+                mem.entry(*index).and_modify(|x| *x = false).or_insert(true);
+            }
+        }
+
+        for node in self.nodes.iter32_mut() {
+            if let Node32::Parameter(Parameter { index, unique, .. }) = node {
+                *unique = *mem
+                    .get(index)
+                    .expect("must be inserted in the previous loop");
+            }
+        }
+
+        Ok(self)
     }
 
     /// Replaces the timestamp functions with corresponding constants

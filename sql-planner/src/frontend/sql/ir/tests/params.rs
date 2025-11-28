@@ -1,5 +1,7 @@
+use crate::ir::node::{Node32, Parameter};
 use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use crate::ir::value::Value;
+use smol_str::format_smolstr;
 
 #[test]
 fn front_numeric_param_in_cast() {
@@ -179,4 +181,106 @@ fn front_params6() {
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
     "#);
+}
+
+#[test]
+fn mark_unique_parameters1() {
+    let pattern = "SELECT $1, $1, $2";
+    let is_unique = vec![false, true];
+    let plan = sql_to_optimized_ir(pattern, vec![Value::from(1_i64), Value::from(1_i64)]);
+    for node in plan.nodes.iter32() {
+        if let Node32::Parameter(Parameter { index, unique, .. }) = node {
+            assert_eq!(*unique, is_unique[*index as usize]);
+        }
+    }
+}
+
+#[test]
+fn mark_unique_parameters2() {
+    let pattern = "SELECT $1, $1, $3";
+    let is_unique = vec![false, false, true];
+    let plan = sql_to_optimized_ir(
+        pattern,
+        vec![Value::from(1_i64), Value::from(1_i64), Value::from(1_i64)],
+    );
+    for node in plan.nodes.iter32() {
+        if let Node32::Parameter(Parameter { index, unique, .. }) = node {
+            assert_eq!(*unique, is_unique[*index as usize]);
+        }
+    }
+}
+
+#[test]
+fn mark_unique_parameters3() {
+    let pattern = "SELECT a + $1 FROM t WHERE b = $2";
+    let is_unique = vec![true, true];
+    let plan = sql_to_optimized_ir(
+        pattern,
+        vec![Value::from(1_i64), Value::from(1_i64), Value::from(1_i64)],
+    );
+    for node in plan.nodes.iter32() {
+        if let Node32::Parameter(Parameter { index, unique, .. }) = node {
+            assert_eq!(*unique, is_unique[*index as usize]);
+        }
+    }
+}
+
+#[test]
+fn mark_unique_parameters4() {
+    let pattern = "INSERT INTO t VALUES ($1, $2, $3, $4)";
+    let is_unique = vec![true, true, true, true];
+    let plan = sql_to_optimized_ir(
+        pattern,
+        vec![
+            Value::from(1),
+            Value::from(1),
+            Value::from(1),
+            Value::from(1),
+        ],
+    );
+    for node in plan.nodes.iter32() {
+        if let Node32::Parameter(Parameter { index, unique, .. }) = node {
+            assert_eq!(*unique, is_unique[*index as usize]);
+        }
+    }
+}
+
+#[test]
+fn mark_unique_parameters5() {
+    let pattern = "INSERT INTO t VALUES ($1, $2, $3, $4), ($1 + $2, $2 + $3, $3 + $4, $4 + $1)";
+    let is_unique = vec![false, false, false, false];
+    let plan = sql_to_optimized_ir(
+        pattern,
+        vec![
+            Value::from(1),
+            Value::from(1),
+            Value::from(1),
+            Value::from(1),
+        ],
+    );
+    for node in plan.nodes.iter32() {
+        if let Node32::Parameter(Parameter { index, unique, .. }) = node {
+            assert_eq!(*unique, is_unique[*index as usize]);
+        }
+    }
+}
+
+#[test]
+fn mark_unique_parameters6() {
+    let count = u16::MAX as usize;
+    let mut params = Vec::with_capacity(u16::MAX as _);
+    for i in 0..count {
+        params.push(format_smolstr!("${}", i + 1))
+    }
+
+    let values = format!("VALUES ({})", params.join(","));
+    let plan = sql_to_optimized_ir(
+        &values,
+        std::iter::repeat_n(Value::from(0), count).collect(),
+    );
+    for node in plan.nodes.iter32() {
+        if let Node32::Parameter(Parameter { unique, .. }) = node {
+            assert_eq!(*unique, true);
+        }
+    }
 }

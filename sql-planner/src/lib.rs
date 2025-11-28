@@ -128,23 +128,25 @@ impl PreparedStatement {
     ) -> Result<BoundStatement, SbroadError> {
         let mut plan = Box::new(self.plan.as_ref().clone());
 
+        let params_for_audit = if self.query_for_audit.is_some() {
+            // TODO: Try to find a way to avoid this cloning.
+            Some(params.clone())
+        } else {
+            None
+        };
+
         if plan.is_empty() {
             // Empty query, do nothing
         } else if plan.is_block()? {
-            plan.bind_params(&params, default_options)?;
+            plan.bind_params(params, default_options)?;
         } else if plan.is_dql_or_dml()? {
-            plan.bind_params(&params, default_options)?;
+            plan.bind_params(params, default_options)?;
             *plan = plan
                 .update_timestamps()?
                 .cast_constants()?
                 .fold_boolean_tree()?;
         }
 
-        let params_for_audit = if self.query_for_audit.is_some() {
-            Some(params)
-        } else {
-            None
-        };
         Ok(BoundStatement {
             plan,
             params_for_audit,

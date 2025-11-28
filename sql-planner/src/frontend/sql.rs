@@ -6921,6 +6921,7 @@ impl Plan {
             if let Node32::Parameter(Parameter {
                 ref mut param_type,
                 ref index,
+                ..
             }) = node
             {
                 let could_not_determine_parameter_type =
