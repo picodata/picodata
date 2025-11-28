@@ -428,16 +428,16 @@ impl PgValue {
             T::from_str(s).map_err(|_| DecodingError::bad_lit_of_type(s, ty))
         }
 
-        let s = String::from_utf8(bytes.to_vec()).map_err(DecodingError::bad_utf8)?;
+        let s = str::from_utf8(bytes).map_err(DecodingError::bad_utf8)?;
         Ok(match ty {
-            Type::INT8 | Type::INT4 | Type::INT2 => PgValue::Integer(do_parse(ty, &s)?),
-            Type::FLOAT8 | Type::FLOAT4 => PgValue::Float(do_parse(ty, &s)?),
-            Type::TEXT | Type::VARCHAR => PgValue::Text(s),
-            Type::BOOL => PgValue::Boolean(do_parse(ty, &s)?),
-            Type::NUMERIC => PgValue::Numeric(do_parse(ty, &s)?),
-            Type::UUID => PgValue::Uuid(do_parse(ty, &s)?),
-            Type::JSON | Type::JSONB => PgValue::Json(do_parse(ty, &s)?),
-            Type::TIMESTAMPTZ => PgValue::Timestamptz(do_parse(ty, &s)?),
+            Type::INT8 | Type::INT4 | Type::INT2 => PgValue::Integer(do_parse(ty, s)?),
+            Type::FLOAT8 | Type::FLOAT4 => PgValue::Float(do_parse(ty, s)?),
+            Type::TEXT | Type::VARCHAR => PgValue::Text(s.to_owned()),
+            Type::BOOL => PgValue::Boolean(do_parse(ty, s)?),
+            Type::NUMERIC => PgValue::Numeric(do_parse(ty, s)?),
+            Type::UUID => PgValue::Uuid(do_parse(ty, s)?),
+            Type::JSON | Type::JSONB => PgValue::Json(do_parse(ty, s)?),
+            Type::TIMESTAMPTZ => PgValue::Timestamptz(do_parse(ty, s)?),
             _ => return Err(DecodingError::unsupported_type(ty)),
         })
     }
