@@ -54,7 +54,7 @@ use sql::executor::engine::helpers::{
     init_insert_tuple_builder, init_local_update_tuple_builder,
 };
 use sql::executor::engine::Router;
-use sql::executor::protocol::{RequiredData, SchemaInfo};
+use sql::executor::protocol::{OptionalData, RequiredData, SchemaInfo};
 use sql::executor::result::ConsumerResult;
 use sql::executor::ExecutingQuery;
 use sql::executor::{Port, PortType};
@@ -2582,7 +2582,7 @@ struct ExecArgs {
     sid: SmallVec<[u8; 36]>,
     rid: i64,
     required: RequiredData,
-    optional: Option<Vec<u8>>,
+    optional: Option<OptionalData>,
 }
 
 impl<'de> Decode<'de> for ExecArgs {
@@ -2616,7 +2616,15 @@ impl<'de> Decode<'de> for ExecArgs {
         let mut sid = smallvec::SmallVec::<[u8; 36]>::new();
         sid.extend_from_slice(args.sid.as_bytes());
 
-        let optional = args.optional.map(|slice| slice.to_vec());
+        let optional = args
+            .optional
+            .map(OptionalData::try_from)
+            .transpose()
+            .map_err(|e| {
+                TarantoolError::other(format!(
+                    "Failed to decode optional data for '.proc_sql_execute': {e}"
+                ))
+            })?;
         let timeout = args.timeout;
         let rid = args.rid;
 
@@ -2634,9 +2642,9 @@ unsafe fn proc_sql_execute_impl(mut args: ExecArgs, port: &mut PicoPortC) -> ::s
     // Safety: safe as the original args.sid is as valid UTF-8 string.
     let sid = unsafe { std::str::from_utf8_unchecked(args.sid.as_slice()) };
 
-    let mut pcall = || -> Result<(), Error> {
+    let pcall = || -> Result<(), Error> {
         let runtime = StorageRuntime::new();
-        runtime.execute_plan(&mut args.required, args.optional.as_deref(), port)?;
+        runtime.execute_plan(&mut args.required, args.optional, port)?;
         Ok(())
     };
 

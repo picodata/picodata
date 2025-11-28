@@ -1326,16 +1326,13 @@ impl FullPlanInfo for QueryInfo<'_> {
 }
 
 pub struct EncodedQueryInfo<'data> {
-    optional_bytes: Option<&'data [u8]>,
+    optional: Option<OptionalData>,
     required: &'data mut RequiredData,
 }
 
 impl<'data> EncodedQueryInfo<'data> {
-    pub fn new(raw_optional: Option<&'data [u8]>, required: &'data mut RequiredData) -> Self {
-        Self {
-            optional_bytes: raw_optional,
-            required,
-        }
+    pub fn new(optional: Option<OptionalData>, required: &'data mut RequiredData) -> Self {
+        Self { optional, required }
     }
 }
 
@@ -1367,13 +1364,12 @@ impl RequiredPlanInfo for EncodedQueryInfo<'_> {
 
 impl FullPlanInfo for EncodedQueryInfo<'_> {
     fn take_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError> {
-        let Some(opt_bytes) = self.optional_bytes else {
-            return Err(SbroadError::Invalid(
+        let optional = self.optional.take().ok_or_else(|| {
+            SbroadError::Invalid(
                 Entity::OptionalData,
                 Some("optional data is missing".into()),
-            ));
-        };
-        let optional = OptionalData::try_from(opt_bytes)?;
+            )
+        })?;
         let nodes = optional.ordered.to_syntax_data()?;
         let (local_sql, motion_ids) = optional.exec_plan.generate_sql(
             &nodes,

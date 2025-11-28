@@ -38,7 +38,7 @@ const LINE_WIDTH: usize = 80;
 pub(crate) fn dml_execute<'p, R: Vshard + QueryCache>(
     runtime: &R,
     required: &mut RequiredData,
-    raw_optional: &[u8],
+    mut optional: OptionalData,
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
@@ -50,7 +50,6 @@ where
             Some("Expected a DML plan.".to_smolstr()),
         ));
     }
-    let mut optional = OptionalData::try_from(raw_optional)?;
     let plan = optional.exec_plan.get_ir_plan();
     let top_id = plan.get_top()?;
     let top = plan.get_relation_node(top_id)?;

@@ -22,7 +22,9 @@ use sql::executor::engine::helpers::{
 use sql::executor::engine::{QueryCache, StorageCache, Vshard};
 use sql::executor::ir::{ExecutionPlan, QueryType};
 use sql::executor::lru::{Cache, EvictFn, LRUCache};
-use sql::executor::protocol::{EncodedVTables, RequiredData, SchemaInfo, VTablesMeta};
+use sql::executor::protocol::{
+    EncodedVTables, OptionalData, RequiredData, SchemaInfo, VTablesMeta,
+};
 use sql::executor::{Port, PortType};
 use sql::ir::options::Options;
 use sql::ir::ExplainType;
@@ -458,7 +460,7 @@ impl StorageRuntime {
     pub fn execute_plan<'p>(
         &self,
         required: &mut RequiredData,
-        raw_optional: Option<&[u8]>,
+        optional: Option<OptionalData>,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
         // Compare router's schema versions with storage's ones.
@@ -471,16 +473,14 @@ impl StorageRuntime {
         }
         match required.query_type {
             QueryType::DML => {
-                let Some(bytes) = raw_optional else {
-                    return Err(SbroadError::Other(
-                        "DML query must have a non-empty optional part".into(),
-                    ));
-                };
-                dml_execute(self, required, bytes, port)?;
+                let optional = optional.ok_or_else(|| {
+                    SbroadError::Other("DML query must have a non-empty optional part".into())
+                })?;
+                dml_execute(self, required, optional, port)?;
             }
             QueryType::DQL => {
-                let is_first_round = raw_optional.is_none();
-                let mut info: EncodedQueryInfo<'_> = EncodedQueryInfo::new(raw_optional, required);
+                let is_first_round = optional.is_none();
+                let mut info: EncodedQueryInfo<'_> = EncodedQueryInfo::new(optional, required);
                 if is_first_round {
                     dql_execute_first_round(self, &mut info, port)?;
                 } else {
