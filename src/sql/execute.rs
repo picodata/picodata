@@ -768,6 +768,7 @@ where
     let build_vtable_locally = !optional
         .exec_plan
         .contains_vtable_for_motion(insert_child_id);
+    // XXX: Keep this check in sync with `encode_vtables`.
     if build_vtable_locally {
         virtual_table_materialize(runtime, optional, required, insert_child_id)?;
     }

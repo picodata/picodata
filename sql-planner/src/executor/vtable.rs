@@ -14,7 +14,7 @@ use crate::executor::engine::helpers::{TupleBuilderCommand, TupleBuilderPattern}
 use crate::executor::protocol::{Binary, EncodedRows, EncodedVTables};
 use crate::executor::{bucket::Buckets, Vshard};
 use crate::ir::helpers::RepeatableState;
-use crate::ir::node::NodeId;
+use crate::ir::node::{Insert, NodeId};
 use crate::ir::relation::{Column, ColumnRole};
 use crate::ir::transformation::redistribution::{ColumnPosition, MotionKey, Target};
 use crate::ir::types::{DerivedType, UnrestrictedType};
@@ -24,6 +24,7 @@ use crate::utils::{write_u32_array_len, ByteCounter};
 use super::ir::ExecutionPlan;
 use super::Port;
 
+use crate::ir::node::relational::Relational;
 use tarantool::msgpack;
 use tarantool::tuple::TupleBuilder;
 
@@ -768,6 +769,24 @@ impl ExecutionPlan {
         let vtables = self.get_vtables();
         let mut encoded_tables = EncodedVTables::with_capacity(vtables.len());
 
+        let insert_child = {
+            let plan = self.get_ir_plan();
+            let top = plan.get_top().expect("top must be set during execution");
+            match plan.get_relation_node(top).expect("top cannot be missed") {
+                Relational::Insert(Insert { child, .. })
+                    // XXX: Keep this check in sync with `insert_execute`.
+                    //  This is the case of local VALUES materialization (see `materialize_values`),
+                    //  in which `insert_execute` doesn't use encoded vtables from the required
+                    //  data and inserts tuples directly from the vtable from the plan.
+                    if self.contains_vtable_for_motion(*child) =>
+                {
+                    Some(*child)
+                }
+                _ => None,
+            }
+        };
+
+        let vtables = vtables.iter().filter(|(id, _)| Some(**id) != insert_child);
         for (id, vtable) in vtables {
             let marking = vtable_marking(vtable);
             // Array marker (1 byte) + array length (4 bytes) + tuples.
