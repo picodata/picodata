@@ -1858,9 +1858,16 @@ pub struct AlterSystemParameters {
     /// the option is set to zero, the garbage collector does not delete old
     /// snapshots.
     ///
+    /// Unlike Tarantool, Picodata's default is 1 checkpoint,
+    /// since Picodata supports BACKUP command, and the user can
+    /// take extra checkpoints with it.  An extra checkpoint has
+    /// significant cost in space amplification, especially for
+    /// vinyl engine, which would keep old runs around after
+    /// compaction for as long as the checkpoint alive.
+    ///
     /// Corresponds to `box.cfg.checkpoint_count`.
     #[introspection(sbroad_type = SbroadType::Integer)]
-    #[introspection(config_default = 2)]
+    #[introspection(config_default = 1)]
     #[introspection(scope = tier)]
     pub memtx_checkpoint_count: i32,
 

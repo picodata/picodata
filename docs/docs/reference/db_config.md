@@ -251,7 +251,7 @@ not be processed until some time after delivery. -->
 этого параметра, старые снапшоты будут удалены. Если значение параметра
 равно `0`, старые снапшоты останутся нетронутыми.
 
-Значение по умолчанию: `2`
+Значение по умолчанию: `1`
 
 ### memtx_checkpoint_interval
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-checkpoint-daemon-checkpoint-interval -->

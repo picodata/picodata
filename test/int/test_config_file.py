@@ -315,7 +315,7 @@ cluster:
     assert box_cfg["log_format"] == "plain"
     assert box_cfg["memtx_memory"] == 67108864
     assert box_cfg["slab_alloc_factor"] == 1.05
-    assert box_cfg["checkpoint_count"] == 2
+    assert box_cfg["checkpoint_count"] == 1
     assert box_cfg["checkpoint_interval"] == 3600
 
     assert box_cfg["vinyl_memory"] == 134217728

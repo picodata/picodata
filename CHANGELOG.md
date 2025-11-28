@@ -12,6 +12,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### Features
 
+- Change the default memtx_checkpoint_count from 2 to 1. If a user needs a checkpoint, they can use SQL BACKUP statement, no need to occupy extra space by default.
 - Reduce the frequency of heartbeats sent to raft learners, reducing the cluster traffic.
 - Refactor SQL executor to reduce memory allocations.
 - Plugins and webUI now support scram-sha256 auth.

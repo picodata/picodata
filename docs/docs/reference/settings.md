@@ -802,7 +802,7 @@ table.legend {
         <tr>
             <td><span class="sql-tier">[memtx_checkpoint_count](db_config.md#memtx_checkpoint_count){.link}</span></td>
             <td>Максимальное количество снапшотов, хранящихся в директории `memtx_dir`</td>
-            <td>2</td>
+            <td>1</td>
             <td>
             ```sql
             ALTER SYSTEM SET memtx_checkpoint_count = 200 FOR TIER default;

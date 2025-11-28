@@ -9,7 +9,7 @@ def test_set_via_alter_system(cluster: Cluster):
     box_config = instance.eval("return box.cfg")
     assert box_config["net_msg_max"] == 768
     assert box_config["checkpoint_interval"] == 3600
-    assert box_config["checkpoint_count"] == 2
+    assert box_config["checkpoint_count"] == 1
     assert box_config["sql_cache_size"] == 5242880
 
     # picodata parameters names are slightly different from the tarantools
