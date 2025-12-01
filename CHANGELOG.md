@@ -16,6 +16,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Reduce the frequency of heartbeats sent to raft learners, reducing the cluster traffic.
 - Refactor SQL executor to reduce memory allocations.
 - Plugins and webUI now support scram-sha256 auth.
+- SQL optimizer may now select indices for comparison operators with mixed number
+  types (e.g. pk int < decimal) and datetime.
 
 ### Fixes
 - Fix compilation error on ARM architecture.
