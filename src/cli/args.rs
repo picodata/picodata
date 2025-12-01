@@ -29,7 +29,6 @@ pub enum Picodata {
     Config(Config),
     #[clap(subcommand)]
     Plugin(Plugin),
-    #[clap(subcommand)]
     Demo(Demo),
 }
 
@@ -839,17 +838,6 @@ pub struct ServiceConfigUpdate {
     pub tls: IprotoTlsArgs,
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// Demo
-////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Debug, clap::Subcommand)]
-#[clap(about = "Interactive demonstration")]
-pub enum Demo {
-    #[clap(about = "Start a cluster and connect to it using `psql`")]
-    Simple,
-}
-
 #[derive(Debug, PartialEq, clap::Args, tlua::Push)]
 #[group(requires_all = ["cert", "key", "ca"])]
 pub struct IprotoTlsArgs {
@@ -893,4 +881,73 @@ impl IprotoTlsArgs {
             ca_file: self.ca.as_ref(),
         }
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Demo
+////////////////////////////////////////////////////////////////////////////////
+
+/// See implementation in [`crate::cli::demo::main`].
+/// Used for quick technical validations and live feature demonstrations.
+#[derive(Debug, clap::Parser)]
+#[clap(about = "Run interactive Picodata demonstration scenario")]
+pub struct Demo {
+    /// Path to a working directory for the scenario.
+    ///
+    /// Used as base path for all cluster working directories and miscellaneous things.
+    ///
+    /// DEFAULT: $CWD/picodata_demo/
+    #[clap(long = "working-directory", value_name = "PATH")]
+    pub working_directory: Option<PathBuf>,
+
+    /// Number of replicasets to create in the demonstration cluster.
+    ///
+    /// Each replicaset is an independent fault-tolerance domain.
+    ///
+    /// DEFAULT: 2
+    ///
+    /// RESTRICTION: >0
+    #[clap(
+        long = "replicaset-count",
+        value_name = "NUMBER",
+        default_value = "2",
+        hide_default_value = true
+    )]
+    pub replicaset_count: u8,
+
+    /// Replication factor for each replicaset.
+    ///
+    /// The number of instances that store the same data set.
+    ///
+    /// DEFAULT: 2
+    ///
+    /// RESTRICTION: >0
+    #[clap(
+        long = "replication-factor",
+        value_name = "NUMBER",
+        default_value = "2",
+        hide_default_value = true
+    )]
+    pub replication_factor: u8,
+
+    /// Path to the Picodata executable used to spawn cluster instances.
+    ///
+    /// If omitted, the currently running executable is reused.
+    ///
+    /// DEFAULT: executable which you have used to get this help message
+    #[clap(long = "picodata-executable", value_name = "PATH")]
+    pub picodata_executable: Option<PathBuf>,
+
+    /// Remove the working directory after the demonstration exits.
+    ///
+    /// When disabled, all instance data directories and cluster artifacts
+    /// are deleted after shutdown. Enable this to inspect state on disk.
+    ///
+    /// DEFAULT: false
+    #[clap(
+        long = "clean-data",
+        default_value = "false",
+        default_missing_value = "true"
+    )]
+    pub clean_data: bool,
 }

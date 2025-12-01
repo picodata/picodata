@@ -19,6 +19,11 @@ use crate::error_injection;
 pub const PICODATA_COOKIE: &'static str = ".picodata-cookie";
 
 pub fn main(mut args: args::Run) -> ! {
+    // Used to handle parent death in `Demo`.
+    if std::env::var("PICODATA_DEMO_CHILD") == Ok("yes".to_string()) {
+        nix::sys::prctl::set_pdeathsig(nix::sys::signal::SIGKILL).expect("should not fail");
+    }
+
     // Save the argv before entering tarantool, because tarantool will fuss about with them
     let copied_argv: Vec<OsString> = std::env::args_os().skip(1).collect();
 

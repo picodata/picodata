@@ -48,7 +48,7 @@ ordered_hash_map = { version = "0.5.0", features = ["serde"] }
 pgwire = { version = "0.37", default-features = false, features = [
   "server-api",
 ] }
-picodata-pike = "2.5.0"
+picodata-pike = "3.0"
 postgres-types = { workspace = true }
 prometheus = "0.14.0"
 protobuf = { version = "3", features = ["bytes", "with-bytes"] }

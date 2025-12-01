@@ -24,7 +24,7 @@ __pycache__/
 !test/compat/**/*.index
 
 # interactive demo data
-.pico/
+picodata_demo/
 
 tmp/
 *.rustfmt

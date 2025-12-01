@@ -15,6 +15,13 @@ with the `YY.MINOR.MICRO` scheme.
 - Rework SQL execution protocol for DML queries to reduce data transfer.
 - Introduce non-blocking SQL execution to prevent fiber starvation.
 
+### CLI
+- Completely re-architected `picodata demo` subcommand:
+  - Fixed improper signal handling (SIGINT, SIGTERM) and process termination.
+  - Added graceful shutdown and guaranteed cleanup of child processes.
+  - Introduced cluster orchestration model for simplified lifecycle management.
+  - Added configurable command-line parameters and cluster information display.
+
 ### Fixes
 
 - Fixed that governor would hang indefinitely if an Offline replicaset had
