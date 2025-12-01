@@ -169,13 +169,13 @@ ouroboros:
     - kafka
     - storage
   disabled_spaces: # таблицы (спейсы) из указанных выше vshard-group, которые реплицировать НЕ следует
-    - notify_storage_vinyl
-    - distributed_index_queue_vinyl
-    - distributed_index_queue_memtx
-    - _repair_queue_v2
-    - _tmp_event_storage
-    - notify_storage_memtx
-    - event_storage
+    - disabled_space_1
+    - disabled_space_2
+    - disabled_space_3
+    - disabled_space_4
+    - disabled_space_5
+    - disabled_space_6
+    - disabled_space_7
   buckets_per_writer: 300 # степень параллелизации обработки. Не стоит изменять без консультации с разработчиками.
   reconnect_delay: 10 # задержка перед восстановлением коннекта к источнику
   skip_ddl_replication: false # отключить репликацию DDL
