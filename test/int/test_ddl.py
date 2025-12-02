@@ -2204,8 +2204,10 @@ cluster:
 
     leader.sql("CREATE TABLE glob (id INT PRIMARY KEY, value TEXT) DISTRIBUTED GLOBALLY")
     leader.sql("INSERT INTO glob VALUES (1, 'foo'), (2, 'bar'), (3, 'kek')")
+    latest_index = leader.raft_get_index()
 
     for i in [leader, storage_1_1, storage_1_2]:
+        i.raft_wait_index(latest_index)
         rows = i.call("box.space.glob:select")
         assert rows == [[1, "foo"], [2, "bar"], [3, "kek"]]
 
