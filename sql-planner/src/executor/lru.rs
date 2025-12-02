@@ -109,6 +109,8 @@ where
     }
 
     fn put(&mut self, key: Key, value: Value) -> Result<Option<Value>, SbroadError> {
+        // NOTE: `push` can return the same key as the one we are inserting
+        // if it is already in the cache.
         if let Some((k, mut v)) = self.lru.push(key, value) {
             if let Some(ref f) = self.evict_fn {
                 f(&k, &mut v)?;

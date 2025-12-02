@@ -110,10 +110,21 @@ where
 {
     use ExecutionInsight::*;
     let mut cache_guarded = runtime.cache().lock();
-    match sql_execute::<R>(&mut cache_guarded, info, port)? {
-        Nothing => report_storage_cache_miss("dql", "2nd", "true"),
-        BusyStmt => report_storage_cache_miss("dql", "2nd", "busy"),
-        StaleStmt => report_storage_cache_miss("dql", "2nd", "stale"),
+    if let Some((stmt, motion_ids)) = cache_guarded.get(info.id())? {
+        // Transaction rollbacks are very expensive in Tarantool, so we're going to
+        // avoid transactions for DQL queries. We can achieve atomicity by truncating
+        // temporary tables. Isolation is guaranteed by keeping a lock on the cache.
+        match stmt_execute(stmt, info, motion_ids, port)? {
+            Nothing => report_storage_cache_hit("dql", "2nd"),
+            BusyStmt => report_storage_cache_miss("dql", "2nd", "busy"),
+            StaleStmt => report_storage_cache_miss("dql", "2nd", "stale"),
+        }
+    } else {
+        match sql_execute::<R>(&mut cache_guarded, info, port)? {
+            Nothing => report_storage_cache_miss("dql", "2nd", "true"),
+            BusyStmt => report_storage_cache_miss("dql", "2nd", "busy"),
+            StaleStmt => report_storage_cache_miss("dql", "2nd", "stale"),
+        }
     }
 
     // We don't set port type here, because this code can be called
