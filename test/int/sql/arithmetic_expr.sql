@@ -886,3 +886,57 @@ could not resolve operator overload for %\(int, numeric\)
 SELECT 7.0 % 3.0;
 -- ERROR:
 could not resolve operator overload for %\(numeric, numeric\)
+
+-- TEST: num-division-1
+-- SQL:
+SELECT 5 / 2;
+-- EXPECTED:
+2
+
+-- TEST: num-division-2
+-- SQL:
+SELECT 5 / 2::double;
+-- EXPECTED:
+2.5
+
+-- TEST: num-division-3
+-- SQL:
+SELECT 5 / 2::decimal;
+-- EXPECTED:
+2.5
+
+-- TEST: num-division-4
+-- SQL:
+SELECT 5::double / 2::decimal;
+-- EXPECTED:
+2.5
+
+-- TEST: num-division-5
+-- SQL:
+SELECT 5::decimal / 2;
+-- EXPECTED:
+2.5
+
+-- TEST: num-division-6
+-- SQL:
+SELECT 5.0 / 2.0;
+-- EXPECTED:
+2.5
+
+-- TEST: num-division-7
+-- SQL:
+SELECT 5.0::int / 2.0::int;
+-- EXPECTED:
+2
+
+-- TEST: num-division-8
+-- SQL:
+SELECT 5 / CASE 1 WHEN 2 THEN 3.0 ELSE 2 END;
+-- EXPECTED:
+2.5
+
+-- TEST: num-division-9
+-- SQL:
+SELECT 5 / -2;
+-- EXPECTED:
+-2
