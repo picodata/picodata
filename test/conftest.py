@@ -1859,7 +1859,7 @@ Last governor error is:
         assert isinstance(log_to_file, bool)
 
         if log_to_file and log_to_console:
-            self.env["PICODATA_LOG"] = f"|tee {self.instance_dir}/picodata.log >&2"
+            self.env["PICODATA_LOG"] = f"|tee -a {self.instance_dir}/picodata.log >&2"
         elif log_to_file:
             self.env["PICODATA_LOG"] = f"{self.instance_dir}/picodata.log"
         elif not log_to_console:
