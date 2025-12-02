@@ -73,6 +73,18 @@ with the `YY.MINOR.MICRO` scheme.
     does not check whether the config exist, it will still return the initial path. If the instance was
     started without specifying an instance config, it will return `null`.
 - Support ALTER INDEX RENAME command to rename an existing index.
+- Introduced various optimizations reducing memory allocations and
+  eliminating unnecessary plan traversals and modifications.
+  Some highlights:
+  - Eliminated unnecessary parameter clones.
+  - Skipped optimizations for plans that cannot benefit from them.
+  - Cached results of some transformations.
+  - Eliminated allocations in various places.
+  - Avoided sending unused vtables for INSERT queries.
+
+  As a result:
+  - INSERT performance increased by 20%-70% depending on the size of the rows.
+  - TPC-B performance increased by ~10%.
 
 ### Pgproto
 - Add support for configuring pgproto TLS certificates via:
