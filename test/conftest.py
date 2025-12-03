@@ -1616,6 +1616,8 @@ class Instance:
                 last_error = leader_runtime_info["internal"].get("governor_loop_last_error")
                 governor_status = leader_runtime_info["internal"].get("governor_loop_status")
                 del leader_runtime_info
+        except ProcessDead as e:
+            raise e from e
         except Exception as e:
             log.warning(f"Failed getting governor info: {e}")
 
