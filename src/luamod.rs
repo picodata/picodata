@@ -646,7 +646,8 @@ pub(crate) fn setup() {
             (nil, string) in case of an error
         "},
         tlua::function2(|target: Vclock, timeout: f64| -> traft::Result<Vclock> {
-            sync::wait_vclock(target, duration_from_secs_f64_clamped(timeout))
+            let node = traft::node::global()?;
+            sync::wait_vclock(node, &target, duration_from_secs_f64_clamped(timeout))
         }),
     );
 

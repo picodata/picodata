@@ -33,13 +33,16 @@
 //! itself or wait for the tarantool replication.
 //!
 use crate::config::PicodataConfig;
+use crate::error_code::ErrorCode;
 #[allow(unused_imports)]
 use crate::governor;
 #[allow(unused_imports)]
 use crate::governor::plan;
 use crate::has_states;
+use crate::luamod::lua_function;
 #[allow(unused_imports)]
 use crate::rpc;
+use crate::sync::wait_vclock;
 use crate::tarantool::{box_ro_reason, set_cfg_field, ListenConfig};
 use crate::tlog;
 use crate::traft::error::Error;
@@ -50,8 +53,11 @@ use crate::traft::op::Op;
 use crate::traft::{node, RaftTerm, Result};
 use smol_str::SmolStr;
 use std::time::Duration;
+use tarantool::error::BoxError;
 use tarantool::index::IteratorType;
 use tarantool::space::{Space, SystemSpace};
+use tarantool::tlua::Object;
+use tarantool::tlua::StringInLua;
 use tarantool::transaction::transaction;
 use tarantool::vclock::Vclock;
 
@@ -75,9 +81,9 @@ crate::define_rpc_request! {
         // requestee. And if the new request has index less then the one in our
         // _schema, then we ignore it.
 
-        if is_replication_broken()? {
+        if check_if_replication_is_broken(node).is_err() {
             // reset replication if it is broken
-            tlog!(Error, "replication is broken, trying to restart it");
+            tlog!(Error, "replication is broken, trying to restart it...");
             let replication_cfg: Vec<String> = vec![];
             set_cfg_field("replication", &replication_cfg)?;
         }
@@ -143,7 +149,7 @@ crate::define_rpc_request! {
         crate::error_injection!("TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER" => return Err(Error::timeout()));
 
         // Wait until replication progresses.
-        crate::sync::wait_vclock(req.vclock, req.timeout)?;
+        wait_vclock(node, &req.vclock, req.timeout)?;
 
         Ok(ReplicationSyncResponse {})
     }
@@ -163,26 +169,42 @@ crate::define_rpc_request! {
     pub struct ReplicationSyncResponse {}
 }
 
-fn is_replication_broken() -> Result<bool> {
-    let lua = tarantool::lua_state();
-    let result: bool = lua.eval(
-        "for k, v in pairs(box.info.replication) do
-                if v.upstream ~= nil then
-                    if v.upstream.status == 'stopped' or v.upstream.status == 'disconnected' then
-                        return true
-                    end
-                end
-                if v.downstream ~= nil then
-                    if v.downstream.status == 'stopped' then
-                        return true
-                    end
-                end
-            end
+#[track_caller]
+pub fn check_if_replication_is_broken(node: &Node) -> Result<()> {
+    // `pico._check_if_replication_is_broken` is defined in `src/luamod.lua`
+    let func = lua_function("_check_if_replication_is_broken")?;
+    let result: Option<Object<_>> = func.into_call()?;
 
-            return false",
-    )?;
+    let Some(values) = result else {
+        return Ok(());
+    };
 
-    Ok(result)
+    let instance_uuid: StringInLua<_> = values.read(0)?;
+    let status: StringInLua<_> = values.read(1)?;
+    let message: StringInLua<_> = values.read(2)?;
+
+    let instance_id;
+    let topology_ref = node.topology_cache.get();
+    if let Ok(instance) = topology_ref.instance_by_uuid(&instance_uuid) {
+        instance_id = &*instance.name;
+    } else {
+        instance_id = &*instance_uuid;
+    }
+
+    let err = replication_broken(instance_id, &status, &message);
+
+    tlog!(Error, "replication is broken: {err}");
+
+    return Err(err.into());
+}
+
+#[track_caller]
+#[inline]
+fn replication_broken(instance_id: &str, status: &str, message: &str) -> BoxError {
+    return BoxError::new(
+        ErrorCode::ReplicationBroken,
+        format!("upstream from {instance_id} is {status}: {message}"),
+    );
 }
 
 // Updates space._cluster to remove expelled or non-existing instances.
