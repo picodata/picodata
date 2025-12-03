@@ -14,6 +14,7 @@ use ::tarantool::fiber;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
 use picodata_plugin::error_code::error_code_is_retriable_for_cas;
+use smol_str::SmolStr;
 use std::ops::ControlFlow;
 use std::rc::Rc;
 use std::time::Duration;
@@ -62,7 +63,7 @@ impl Loop {
         // Awoken during graceful shutdown.
         // Should change own target state to Offline and finish.
         if status.get() == SentinelStatus::ShuttingDown {
-            set_action_kind(&mut stats.borrow_mut(), ActionKind::Shutdown);
+            set_action_kind(&mut stats.borrow_mut(), ActionKind::Shutdown, None);
 
             let my_target_state = node.topology_cache.my_target_state();
             if my_target_state.variant == Expelled {
@@ -133,8 +134,11 @@ impl Loop {
             let unreachables = instance_reachability.borrow().get_unreachables();
             let mut instance_to_downgrade = None;
             for instance in instances {
-                if has_states!(instance, * -> Online) && unreachables.contains(&instance.raft_id) {
-                    instance_to_downgrade = Some(instance.name.clone());
+                if !has_states!(instance, * -> Online) {
+                    continue;
+                }
+                if let Some(reason) = unreachables.get(&instance.raft_id) {
+                    instance_to_downgrade = Some((instance.name.clone(), &**reason));
                     break;
                 }
             }
@@ -142,23 +146,27 @@ impl Loop {
             crate::error_injection!("FORCE_AUTO_OFFLINE" => |target_name| {
                 let target_instance = topology_ref.instance_by_name(target_name).unwrap();
                 if has_states!(target_instance, * -> Online) {
-                    instance_to_downgrade = Some(target_name.into());
+                    instance_to_downgrade = Some((target_name.into(), "Injected FORCE_AUTO_OFFLINE"));
                 }
             });
 
             // Must not hold across yields
             drop(topology_ref);
 
-            let Some(instance_name) = instance_to_downgrade else {
+            let Some((instance_name, reason)) = instance_to_downgrade else {
                 _ = status.changed().timeout(Self::SENTINEL_LONG_SLEEP).await;
                 return ControlFlow::Continue(());
             };
 
             // Topology cache state corresponds to this applied index.
             let index = node.get_index();
-            set_action_kind(&mut stats.borrow_mut(), ActionKind::AutoOfflineByLeader);
+            set_action_kind(
+                &mut stats.borrow_mut(),
+                ActionKind::AutoOfflineByLeader,
+                Some(reason.into()),
+            );
 
-            tlog!(Info, "setting target state Offline"; "instance_name" => %instance_name);
+            tlog!(Info, "setting target state Offline"; "instance_name" => %instance_name, "reason" => ?reason);
             let req = rpc::update_instance::Request::new(
                 instance_name.clone(),
                 cluster_name,
@@ -207,7 +215,7 @@ impl Loop {
                 }
             });
 
-            set_action_kind(&mut stats.borrow_mut(), ActionKind::AutoOnlineBySelf);
+            set_action_kind(&mut stats.borrow_mut(), ActionKind::AutoOnlineBySelf, None);
 
             if exponential_backoff_before_retry(&stats.borrow(), Self::SENTINEL_SHORT_RETRY)
                 && raft_log_barrier_is_passed(&stats.borrow(), node)
@@ -365,6 +373,9 @@ pub struct ContinuityTracker {
     /// Keeps track of the last action attempted for the purpose of fail streak handling.
     pub last_action_kind: Option<ActionKind>,
 
+    /// Reason for the `last_action_kind` if it makes sense.
+    pub last_action_reason: Option<SmolStr>,
+
     /// Applied index and timestamp at the moment when the last successful
     /// attempt was made. This is used for the raft log barrier before
     /// successive requests to prevent a storm of requests in case of asymmetric
@@ -375,10 +386,11 @@ pub struct ContinuityTracker {
 }
 
 #[inline(always)]
-fn set_action_kind(stats: &mut ContinuityTracker, kind: ActionKind) {
+fn set_action_kind(stats: &mut ContinuityTracker, kind: ActionKind, reason: Option<SmolStr>) {
     let Some(last_action_kind) = stats.last_action_kind else {
         // This is our first action
         stats.last_action_kind = Some(kind);
+        stats.last_action_reason = reason;
         debug_assert!(
             stats.last_successful_attempt.is_none(),
             "{:?}",

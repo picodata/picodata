@@ -479,6 +479,9 @@ pub struct InternalInfo<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sentinel_last_action: Option<ActionKind>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sentinel_last_action_reason: Option<SmolStr>,
+
     /// Applied index at the moment of last successful action by sentinel.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sentinel_index_of_last_success: Option<RaftIndex>,
@@ -520,6 +523,7 @@ impl InternalInfo<'static> {
 
         let sentinel = node.sentinel_loop.stats.borrow();
         info.sentinel_last_action = sentinel.last_action_kind;
+        info.sentinel_last_action_reason = sentinel.last_action_reason.clone();
 
         if let Some((index, time)) = sentinel.last_successful_attempt {
             info.sentinel_index_of_last_success = Some(index);

@@ -3,9 +3,10 @@ use crate::tlog;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::util::NoYieldsRefCell;
+use smol_str::format_smolstr;
+use smol_str::SmolStr;
 use std::cell::Cell;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::rc::Rc;
 use std::time::Duration;
@@ -101,8 +102,6 @@ impl InstanceReachabilityManager {
 
     /// Is called at the beginning of the raft main loop to get information
     /// about which instances should be reported as unreachable to the raft node.
-    ///
-    /// `applied` is the index of the last applied raft log entry of the current instance.
     pub fn take_unreachables_to_report(&mut self) -> Vec<RaftId> {
         let auto_offline_timeout = self.parameters.borrow().governor_auto_offline_timeout();
 
@@ -112,8 +111,8 @@ impl InstanceReachabilityManager {
                 // Don't report nodes repeatedly.
                 continue;
             }
-            let status = self.check_reachability(auto_offline_timeout, info);
-            if status == Unreachable {
+            let status = self.check_reachability(auto_offline_timeout, info, false);
+            if matches!(status, Unreachable(_)) {
                 res.push(raft_id);
                 info.is_reported.set(true);
             }
@@ -123,14 +122,16 @@ impl InstanceReachabilityManager {
 
     /// Is called by sentinel to get information about which instances should be
     /// automatically assigned a different state.
-    pub fn get_unreachables(&self) -> HashSet<RaftId> {
+    ///
+    /// Returns a mapping from `raft_id` to unreachability reason.
+    pub fn get_unreachables(&self) -> HashMap<RaftId, SmolStr> {
         let auto_offline_timeout = self.parameters.borrow().governor_auto_offline_timeout();
 
-        let mut res = HashSet::new();
+        let mut res = HashMap::new();
         for (&raft_id, info) in &self.infos {
-            let status = self.check_reachability(auto_offline_timeout, info);
-            if status == Unreachable {
-                res.insert(raft_id);
+            let status = self.check_reachability(auto_offline_timeout, info, true);
+            if let Unreachable(reason) = status {
+                res.insert(raft_id, reason);
             }
         }
         return res;
@@ -143,10 +144,12 @@ impl InstanceReachabilityManager {
         &self,
         auto_offline_timeout: Duration,
         info: &InstanceReachabilityInfo,
+        need_reason: bool,
     ) -> ReachabilityState {
-        let reachability = Self::check_reachability_via_rpc(auto_offline_timeout, info);
-        if reachability == Unreachable {
-            return Unreachable;
+        let reachability =
+            Self::check_reachability_via_rpc(auto_offline_timeout, info, need_reason);
+        if matches!(reachability, Unreachable(_)) {
+            return reachability;
         }
 
         let Some((their_applied, they_applied_at)) = info.last_applied_index else {
@@ -193,7 +196,12 @@ impl InstanceReachabilityManager {
         if info.rate_limit_broken_raft_error_message(now, their_applied) {
             tlog!(Warning, "broken raft main loop detected on instance: raft_id: {raft_id}, their_applied: {their_applied}, since_they_applied: {since_they_applied:?}, our_applied: {our_applied}, since_we_applied_next: {since_we_applied_next:?}");
         }
-        Unreachable
+        let reason = if need_reason {
+            format_smolstr!("Applied index {their_applied} hasn't changed for {since_they_applied:.3?} (expected {since_we_applied_next:.3?})")
+        } else {
+            "".into()
+        };
+        Unreachable(reason)
     }
 
     /// Make a decision on the given instance's reachability based on the
@@ -202,6 +210,7 @@ impl InstanceReachabilityManager {
     fn check_reachability_via_rpc(
         auto_offline_timeout: Duration,
         info: &InstanceReachabilityInfo,
+        need_reason: bool,
     ) -> ReachabilityState {
         if let Some(last_success) = info.last_success {
             if info.fail_streak == 0 {
@@ -209,8 +218,14 @@ impl InstanceReachabilityManager {
                 return Reachable;
             }
             let now = fiber::clock();
-            if now.duration_since(last_success) > auto_offline_timeout {
-                return Unreachable;
+            let since_success = now.duration_since(last_success);
+            if since_success > auto_offline_timeout {
+                let reason = if need_reason {
+                    format_smolstr!("No successful RPC for {since_success:.3?}")
+                } else {
+                    "".into()
+                };
+                return Unreachable(reason);
             } else {
                 return Reachable;
             }
@@ -218,8 +233,14 @@ impl InstanceReachabilityManager {
 
         if let Some(first_fail) = info.fail_streak_start {
             let now = fiber::clock();
-            if now.duration_since(first_fail) > auto_offline_timeout {
-                return Unreachable;
+            let since_start = now.duration_since(first_fail);
+            if since_start > auto_offline_timeout {
+                let reason = if need_reason {
+                    format_smolstr!("No successful RPC (at all) for {since_start:.3?}")
+                } else {
+                    "".into()
+                };
+                return Unreachable(reason);
             }
         }
 
@@ -370,11 +391,11 @@ impl InstanceReachabilityManager {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ReachabilityState {
     Undecided,
     Reachable,
-    Unreachable,
+    Unreachable(SmolStr),
 }
 use ReachabilityState::*;
 
