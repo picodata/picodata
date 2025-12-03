@@ -55,5 +55,18 @@ local TIMEOUT_INFINITY = 100 * 365 * 24 * 60 * 60
 
 pico.router = {}
 
+function pico._check_if_replication_is_broken()
+    for _, v in pairs(box.info.replication) do
+        local up = v.upstream
+        if up ~= nil then
+            if up.status == 'stopped' or up.status == 'disconnected' then
+                return v.uuid, up.status, up.message
+            end
+        end
+    end
+
+    return nil
+end
+
 _G.pico = pico
 package.loaded.pico = pico

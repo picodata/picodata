@@ -1,11 +1,13 @@
 //! Picodata synchronization primitives.
 
 use crate::instance::InstanceName;
+use crate::rpc::replication::check_if_replication_is_broken;
 use crate::rpc::RequestArgs;
 use crate::topology_cache::TopologyCache;
 use crate::traft::error::Error;
 #[allow(unused_imports)]
 use crate::traft::network::ConnectionPool;
+use crate::traft::node;
 use crate::traft::RaftIndex;
 use crate::util::duration_from_secs_f64_clamped;
 use crate::{proc_name, tlog};
@@ -17,6 +19,7 @@ use futures::stream::FuturesOrdered;
 use futures::{Future, StreamExt};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::time::Duration;
@@ -75,7 +78,8 @@ impl rpc::RequestArgs for WaitVclockRpc {
 /// See [`wait_vclock`]
 #[proc]
 fn proc_wait_vclock(target: Vclock, timeout: f64) -> traft::Result<Vclock> {
-    wait_vclock(target, duration_from_secs_f64_clamped(timeout))
+    let node = node::global()?;
+    wait_vclock(node, &target, duration_from_secs_f64_clamped(timeout))
 }
 
 /// Block current fiber until Tarantool [`Vclock`] reaches the `target`.
@@ -86,26 +90,42 @@ fn proc_wait_vclock(target: Vclock, timeout: f64) -> traft::Result<Vclock> {
 ///
 /// **This function yields**
 ///
-pub fn wait_vclock(target: Vclock, timeout: Duration) -> traft::Result<Vclock> {
-    let target = target.ignore_zero();
+pub fn wait_vclock(node: &node::Node, target: &Vclock, timeout: Duration) -> traft::Result<Vclock> {
     let deadline = fiber::clock().saturating_add(timeout);
     tlog!(Debug, "waiting for vclock {target:?}");
     loop {
-        let current = Vclock::current().ignore_zero();
-        if current >= target {
+        // FIXME: this loop is a bit disapointing. Ideally we would block the
+        // fiber on some kind of fiber_cond (or similar) which will be
+        // signaled when our vclock is updated or when a replication
+        // conflict is detected, but unfortunately we don't have that API
+        // yet. So at the moment we just check current vclock, check for
+        // replication conflict and then go to sleep on a timeout in a loop
+        let current = Vclock::current();
+        if vclock_is_ge_ignoring_local(&current, target) {
             #[rustfmt::skip]
             tlog!(Debug, "done waiting for vclock {target:?}, current: {current:?}");
             return Ok(current);
         }
 
-        if fiber::clock() < deadline {
-            fiber::sleep(traft::node::MainLoop::TICK);
-        } else {
+        // If replication is broken the vclock is unlikely to progress
+        check_if_replication_is_broken(node)?;
+
+        if fiber::clock() >= deadline {
             #[rustfmt::skip]
             tlog!(Debug, "failed waiting for vclock {target:?}: timeout, current: {current:?}");
             return Err(Error::timeout());
         }
+
+        // If this sleep is too short we can overwhelm the event loop with tasks
+        // which constantly wakeup just to check that nothing changed and go
+        // back to sleep
+        fiber::sleep(Duration::from_millis(500));
     }
+}
+
+#[inline]
+pub fn vclock_is_ge_ignoring_local(l: &Vclock, r: &Vclock) -> bool {
+    l.cmp_ignore_zero(r).map(Ordering::is_ge).unwrap_or(false)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -106,6 +106,9 @@ class ErrorCode:
     CasConfigNotAllowed = 10026
     RaftProposalDropped = 10027
     SbroadError = 10028
+    RaftSnapshotReadViewNotAvailable = 10029
+    LocalSchemaNotUpToDate = 10030
+    ReplicationBroken = 10031
 
     # Make sure this matches this list in
     # picodata_plugin::error_code::ErrorCode::is_retriable_for_cas
