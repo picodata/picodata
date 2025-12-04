@@ -3,6 +3,7 @@
 //! Parses an SQL statement to the abstract syntax tree (AST)
 //! and builds the intermediate representation (IR).
 
+use crate::ir::index::Index;
 use crate::ir::node::ddl::DdlOwned;
 use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
@@ -280,6 +281,17 @@ fn retrieve_string_literal(
     );
 
     Ok(str_ref[1..str_ref.len() - 1].into())
+}
+
+/// Parse node from which we want to get String value.
+fn parse_string_value(
+    ast: &AbstractSyntaxTree,
+    node_id: usize,
+) -> Result<Option<&SmolStr>, SbroadError> {
+    let string_value_node = ast.nodes.get_node(node_id)?;
+    let string_value = string_value_node.value.as_ref();
+
+    Ok(string_value)
 }
 
 /// Parse node from which we want to get String value.
@@ -1879,6 +1891,29 @@ fn parse_identifier(ast: &AbstractSyntaxTree, node_id: usize) -> Result<SmolStr,
     Ok(normalize_name_from_sql(parse_string_value_node(
         ast, node_id,
     )?))
+}
+
+fn parse_optional_identifier(
+    ast: &AbstractSyntaxTree,
+    node_id: usize,
+) -> Result<Option<SmolStr>, SbroadError> {
+    let string_value = parse_string_value(ast, node_id)?;
+
+    Ok(string_value.map(|val| normalize_name_from_sql(val)))
+}
+
+fn parse_indexed_by_expr(
+    ast: &AbstractSyntaxTree,
+    node_id: usize,
+) -> Result<Option<SmolStr>, SbroadError> {
+    let child_id = ast
+        .nodes
+        .get_node(node_id)?
+        .children
+        .first()
+        .expect("Child must exists");
+
+    parse_optional_identifier(ast, *child_id)
 }
 
 fn parse_normalized_identifier(
@@ -5773,10 +5808,35 @@ impl AbstractSyntaxTree {
                         .expect("could not find first child id in scan node");
                     let rel_child_id_plan = map.get(*rel_child_id_ast)?;
                     let rel_child_node = plan.get_relation_node(rel_child_id_plan)?;
-
                     map.add(id, rel_child_id_plan);
-                    if let Some(ast_alias_id) = node.children.get(1) {
-                        let alias_name = parse_normalized_identifier(self, *ast_alias_id)?;
+
+                    let alias = node
+                        .children
+                        .get(1)
+                        .map(|ast_id| parse_optional_identifier(self, *ast_id))
+                        .transpose()?
+                        .flatten();
+
+                    let indexed_by_id = if alias.is_some() {
+                        node.children.get(2)
+                    } else {
+                        node.children.get(1)
+                    };
+                    let indexed_by = indexed_by_id
+                        .map(|ast_id| parse_indexed_by_expr(self, *ast_id))
+                        .transpose()?
+                        .flatten();
+
+                    if indexed_by.is_some()
+                        && !matches!(rel_child_node, Relational::ScanRelation(_))
+                    {
+                        return Err(SbroadError::Invalid(
+                            Entity::Index,
+                            Some("INDEXED BY clause is only supported for tables".to_smolstr()),
+                        ));
+                    }
+
+                    if let Some(alias_name) = alias {
                         used_aliases.insert(alias_name.clone());
                         // CTE scans can have different aliases, so clone the CTE scan node,
                         // preserving its subtree.
@@ -5789,6 +5849,24 @@ impl AbstractSyntaxTree {
                         }
                     } else if matches!(rel_child_node, Relational::ScanSubQuery(_)) {
                         unnamed_subqueries.push(rel_child_id_plan);
+                    }
+
+                    if let Some(index_name) = indexed_by {
+                        let MutRelational::ScanRelation(ScanRelation {
+                            relation,
+                            indexed_by,
+                            ..
+                        }) = plan.get_mut_relation_node(rel_child_id_plan)?
+                        else {
+                            unreachable!();
+                        };
+                        let index_id = metadata.get_index_id(&index_name, relation)?;
+                        let table = metadata.table(relation)?;
+                        *indexed_by = Some(index_name.clone());
+
+                        let index = Index::from(table.id, index_id);
+                        plan.indexes.insert(index_name, index);
+                        plan.index_version_map.insert([table.id, index_id], 0);
                     }
                 }
                 Rule::ScanTable => {
@@ -6232,7 +6310,15 @@ impl AbstractSyntaxTree {
                                 unreachable!("Scan expected under ScanTable")
                             };
 
-                            (None, relation.clone())
+                            if let Some(indexed_by_id) = node.children.get(1) {
+                                let index_name = parse_indexed_by_expr(self, *indexed_by_id)?
+                                    .expect("INDEXED BY must exist");
+                                let index_id = metadata.get_index_id(&index_name, relation)?;
+                                let table = metadata.table(relation)?;
+                                plan.index_version_map.insert([table.id, index_id], 0);
+                            }
+
+                            (None, plan.get_scan_relation(plan_scan_id)?)
                         }
                         Rule::DeleteFilter => {
                             let ast_table_id = first_child_node
@@ -6240,16 +6326,6 @@ impl AbstractSyntaxTree {
                                 .first()
                                 .expect("Table not found among DeleteFilter children");
                             let plan_scan_id = map.get(*ast_table_id)?;
-                            let plan_scan_node = plan.get_relation_node(plan_scan_id)?;
-                            let relation_name =
-                                if let Relational::ScanRelation(ScanRelation { relation, .. }) =
-                                    plan_scan_node
-                                {
-                                    relation.clone()
-                                } else {
-                                    unreachable!("Scan expected under DeleteFilter")
-                                };
-
                             let ast_expr_id = first_child_node
                                 .children
                                 .get(1)
@@ -6268,7 +6344,37 @@ impl AbstractSyntaxTree {
                             let plan_select_id =
                                 plan.add_select(&[plan_scan_id], expr_plan_node_id)?;
                             plan.fix_subquery_rows(&mut worker, plan_select_id)?;
-                            (Some(plan_select_id), relation_name)
+
+                            let relation = if let Some(indexed_by_id) = node.children.get(1) {
+                                let index_name = parse_indexed_by_expr(self, *indexed_by_id)?
+                                    .expect("INDEXED BY must exist");
+                                let MutRelational::ScanRelation(ScanRelation {
+                                    relation,
+                                    indexed_by,
+                                    ..
+                                }) = plan.get_mut_relation_node(plan_scan_id)?
+                                else {
+                                    unreachable!("Scan expected under ScanTable")
+                                };
+                                let index_id = metadata.get_index_id(&index_name, relation)?;
+                                let table = metadata.table(relation)?;
+                                *indexed_by = Some(index_name.clone());
+                                let index = Index::from(table.id, index_id);
+                                plan.indexes.insert(index_name, index);
+                                plan.index_version_map.insert([table.id, index_id], 0);
+
+                                plan.get_scan_relation(plan_scan_id)?
+                            } else {
+                                let Relational::ScanRelation(ScanRelation { relation, .. }) =
+                                    plan.get_relation_node(plan_scan_id)?
+                                else {
+                                    unreachable!("Scan expected under ScanTable")
+                                };
+
+                                relation.as_str()
+                            };
+
+                            (Some(plan_select_id), relation)
                         }
                         _ => {
                             return Err(SbroadError::Invalid(
@@ -6281,7 +6387,7 @@ impl AbstractSyntaxTree {
                         }
                     };
 
-                    let table = metadata.table(&table_name)?;
+                    let table = metadata.table(table_name)?;
 
                     // In case of DELETE without filter we don't want to store
                     // it's Projection + Scan relational children.

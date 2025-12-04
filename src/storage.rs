@@ -924,10 +924,15 @@ impl Indexes {
         self.space.insert(index_def)?;
         Ok(())
     }
-    
+
     /// Change the field value of `schema_version` in the metadata of the specified index
     #[inline]
-    pub fn update_schema_version(&self, space_id: SpaceId, index_id: IndexId, schema_version: u64) -> tarantool::Result<()> {
+    pub fn update_schema_version(
+        &self,
+        space_id: SpaceId,
+        index_id: IndexId,
+        schema_version: u64,
+    ) -> tarantool::Result<()> {
         let mut ops = UpdateOps::with_capacity(1);
         ops.assign(column_name!(IndexDef, schema_version), schema_version)?;
         self.space.update(&(space_id, index_id), ops)?;

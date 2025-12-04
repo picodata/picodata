@@ -140,6 +140,10 @@ impl Metadata for RouterConfigurationMock {
         }
     }
 
+    fn get_index_id(&self, _index_name: &str, _table_name: &str) -> Result<u32, SbroadError> {
+        Err(SbroadError::DoSkip)
+    }
+
     fn function(&self, fn_name: &str) -> Result<&Function, SbroadError> {
         let name = normalize_name_from_sql(fn_name);
         match self.functions.get(&name) {
@@ -1581,6 +1585,10 @@ impl QueryCache for RouterRuntimeMock {
     }
 
     fn get_table_version(&self, _: &str) -> Result<u64, SbroadError> {
+        Err(SbroadError::DoSkip)
+    }
+
+    fn get_index_version_by_pk(&self, _: u32, _: u32) -> Result<u64, SbroadError> {
         Err(SbroadError::DoSkip)
     }
 

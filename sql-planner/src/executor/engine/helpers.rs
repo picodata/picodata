@@ -1,6 +1,7 @@
 use crate::{
     backend::sql::space::{TableGuard, ADMIN_ID},
-    ir::node::expression::MutExpression,
+    executor::engine::VersionMap,
+    ir::{helpers::RepeatableState, node::expression::MutExpression},
 };
 use ahash::AHashMap;
 
@@ -27,7 +28,7 @@ use std::{
 };
 use tarantool::space::Space;
 
-use super::{Metadata, Router, TableVersionMap, Vshard};
+use super::{Metadata, Router, Vshard};
 use crate::executor::engine::helpers::vshard::CacheInfo;
 use crate::executor::protocol::{EncodedVTables, SchemaInfo};
 use crate::executor::vtable::VirtualTableTupleEncoder;
@@ -161,10 +162,18 @@ pub struct ExecutionData {
 }
 
 impl DQLDataSource for ExecutionData {
-    fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
+    fn get_table_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
         self.plan
             .get_ir_plan()
-            .version_map
+            .table_version_map
+            .iter()
+            .map(|(k, v)| (*k, *v))
+    }
+
+    fn get_index_schema_info(&self) -> impl ExactSizeIterator<Item = ([u32; 2], u64)> {
+        self.plan
+            .get_ir_plan()
+            .index_version_map
             .iter()
             .map(|(k, v)| (*k, *v))
     }
@@ -210,10 +219,16 @@ impl DQLDataSource for ExecutionData {
     }
 }
 
+#[derive(Default)]
+pub struct PlanVersion {
+    pub table_version_map: VersionMap,
+    pub index_version_map: HashMap<[u32; 2], u64, RepeatableState>,
+}
+
 /// Data for handle dql cache miss
 #[derive(Default)]
 pub struct ExecutionCacheMissData {
-    pub schema_info: TableVersionMap,
+    pub schema_info: PlanVersion,
     pub vtables_meta: HashMap<SmolStr, Vec<(SmolStr, ColumnType)>>,
     pub sql: String,
 }
@@ -251,8 +266,13 @@ impl TryFrom<ExecutionData> for ExecutionCacheMissData {
                 .collect::<HashMap<_, _>>()
         };
 
+        let index_version_map = value.plan.plan.index_version_map;
+        let schema_info = PlanVersion {
+            table_version_map: value.plan.plan.table_version_map,
+            index_version_map,
+        };
         Ok(Self {
-            schema_info: value.plan.plan.version_map,
+            schema_info,
             vtables_meta,
             sql,
         })
@@ -260,8 +280,17 @@ impl TryFrom<ExecutionData> for ExecutionCacheMissData {
 }
 
 impl DQLCacheMissDataSource for ExecutionCacheMissData {
-    fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
-        self.schema_info.iter().map(|(k, v)| (*k, *v))
+    fn get_table_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
+        self.schema_info
+            .table_version_map
+            .iter()
+            .map(|(k, v)| (*k, *v))
+    }
+    fn get_index_schema_info(&self) -> impl ExactSizeIterator<Item = ([u32; 2], u64)> {
+        self.schema_info
+            .index_version_map
+            .iter()
+            .map(|(k, v)| (*k, *v))
     }
     fn get_vtables_metadata(
         &self,
@@ -363,8 +392,9 @@ pub fn build_required_binary(exec_plan: &mut ExecutionPlan) -> Result<Binary, Sb
     let sub_plan_id = sub_plan_id.unwrap_or_default();
     let params = exec_plan.to_params().to_vec();
     let vtables = exec_plan.encode_vtables();
-    let router_version_map = std::mem::take(&mut exec_plan.get_mut_ir_plan().version_map);
-    let schema_info = SchemaInfo::new(router_version_map);
+    let table_version_map = std::mem::take(&mut exec_plan.get_mut_ir_plan().table_version_map);
+    let index_version_map = std::mem::take(&mut exec_plan.get_mut_ir_plan().index_version_map);
+    let schema_info = SchemaInfo::new(table_version_map, index_version_map);
     let required = RequiredData::new(
         sub_plan_id,
         params,

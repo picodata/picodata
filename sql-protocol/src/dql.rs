@@ -18,7 +18,9 @@ pub fn write_dql_packet(
     write_request_header(w, DQL, data.get_request_id())?;
 
     write_array_len(w, DQL_PACKET_FIELD_COUNT as u32)?;
-    write_schema_info(w, data.get_schema_info())?;
+
+    write_schema_info(w, data.get_table_schema_info())?;
+    write_index_schema_info(w, data.get_index_schema_info())?;
 
     write_plan_id(w, data.get_plan_id())?;
 
@@ -43,6 +45,21 @@ pub(crate) fn write_schema_info(
     write_map_len(w, schema_info.len() as u32)?;
     for (key, value) in schema_info {
         write_uint(w, key as u64)?;
+        write_uint(w, value)?;
+    }
+
+    Ok(())
+}
+
+pub(crate) fn write_index_schema_info(
+    w: &mut impl Write,
+    schema_info: impl ExactSizeIterator<Item = ([u32; 2], u64)>,
+) -> Result<(), std::io::Error> {
+    write_map_len(w, schema_info.len() as u32)?;
+    for (key, value) in schema_info {
+        write_array_len(w, 2)?;
+        write_uint(w, key[0] as u64)?;
+        write_uint(w, key[1] as u64)?;
         write_uint(w, value)?;
     }
 
@@ -109,7 +126,8 @@ pub(crate) fn write_params(
 #[derive(PartialEq, Debug, Copy, Clone)]
 #[repr(u8)]
 enum DQLState {
-    SchemaInfo = 0,
+    TableSchemaInfo = 0,
+    IndexSchemaInfo,
     PlanId,
     SenderId,
     Vtables,
@@ -119,7 +137,8 @@ enum DQLState {
 }
 
 pub enum DQLResult<'a> {
-    SchemaInfo(MsgpackMapIterator<'a, u32, u64>),
+    TableSchemaInfo(MsgpackMapIterator<'a, u32, u64>),
+    IndexSchemaInfo(MsgpackMapIterator<'a, [u32; 2], u64>),
     PlanId(u64),
     SenderId(u64),
     Vtables(MsgpackMapIterator<'a, &'a str, TupleIterator<'a>>),
@@ -130,7 +149,8 @@ pub enum DQLResult<'a> {
 impl fmt::Display for DQLResult<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            DQLResult::SchemaInfo(_) => f.write_str("SchemaInfo"),
+            DQLResult::IndexSchemaInfo(_) => f.write_str("IndexSchemaInfo"),
+            DQLResult::TableSchemaInfo(_) => f.write_str("TableSchemaInfo"),
             DQLResult::PlanId(_) => f.write_str("PlanId"),
             DQLResult::SenderId(_) => f.write_str("SenderId"),
             DQLResult::Vtables(_) => f.write_str("Vtables"),
@@ -140,7 +160,7 @@ impl fmt::Display for DQLResult<'_> {
     }
 }
 
-const DQL_PACKET_FIELD_COUNT: usize = 6;
+const DQL_PACKET_FIELD_COUNT: usize = 7;
 pub struct DQLPacketPayloadIterator<'a> {
     raw_payload: Cursor<&'a [u8]>,
     state: DQLState,
@@ -159,27 +179,37 @@ impl<'a> DQLPacketPayloadIterator<'a> {
 
         Ok(Self {
             raw_payload: cursor,
-            state: DQLState::SchemaInfo,
+            state: DQLState::TableSchemaInfo,
         })
     }
 
-    fn get_schema_info(&mut self) -> Result<MsgpackMapIterator<'a, u32, u64>, ProtocolError> {
-        assert_eq!(self.state, DQLState::SchemaInfo);
+    fn get_table_schema_info(&mut self) -> Result<MsgpackMapIterator<'a, u32, u64>, ProtocolError> {
+        debug_assert_eq!(self.state, DQLState::TableSchemaInfo);
         let schema_info = get_schema_info(&mut self.raw_payload)?;
+        self.state = DQLState::IndexSchemaInfo;
+
+        Ok(schema_info)
+    }
+
+    fn get_index_schema_info(
+        &mut self,
+    ) -> Result<MsgpackMapIterator<'a, [u32; 2], u64>, ProtocolError> {
+        debug_assert_eq!(self.state, DQLState::IndexSchemaInfo);
+        let schema_info = get_index_schema_info(&mut self.raw_payload)?;
         self.state = DQLState::PlanId;
 
         Ok(schema_info)
     }
 
     fn get_plan_id(&mut self) -> Result<u64, ProtocolError> {
-        assert_eq!(self.state, DQLState::PlanId);
+        debug_assert_eq!(self.state, DQLState::PlanId);
         let plan_id = get_plan_id(&mut self.raw_payload)?;
         self.state = DQLState::SenderId;
         Ok(plan_id)
     }
 
     fn get_sender_id(&mut self) -> Result<u64, ProtocolError> {
-        assert_eq!(self.state, DQLState::SenderId);
+        debug_assert_eq!(self.state, DQLState::SenderId);
         let sender_id = get_sender_id(&mut self.raw_payload)?;
         self.state = DQLState::Vtables;
         Ok(sender_id)
@@ -188,21 +218,21 @@ impl<'a> DQLPacketPayloadIterator<'a> {
     fn get_vtables(
         &mut self,
     ) -> Result<MsgpackMapIterator<'a, &'a str, TupleIterator<'a>>, ProtocolError> {
-        assert_eq!(self.state, DQLState::Vtables);
+        debug_assert_eq!(self.state, DQLState::Vtables);
         let vtables = get_vtables(&mut self.raw_payload)?;
         self.state = DQLState::Options;
         Ok(vtables)
     }
 
     fn get_options(&mut self) -> Result<(u64, u64), ProtocolError> {
-        assert_eq!(self.state, DQLState::Options);
+        debug_assert_eq!(self.state, DQLState::Options);
         let options = get_options(&mut self.raw_payload)?;
         self.state = DQLState::Params;
         Ok(options)
     }
 
     fn get_params(&mut self) -> Result<&'a [u8], ProtocolError> {
-        assert_eq!(self.state, DQLState::Params);
+        debug_assert_eq!(self.state, DQLState::Params);
         let params = get_params(&mut self.raw_payload)?;
         self.state = DQLState::End;
         Ok(params)
@@ -224,6 +254,38 @@ pub(crate) fn get_schema_info<'a>(
         &raw_payload.get_ref()[start..end],
         l,
         |r| read_int(r).map_err(|err| ProtocolError::DecodeError(err.to_string())),
+        |r| read_int(r).map_err(|err| ProtocolError::DecodeError(err.to_string())),
+    ))
+}
+
+pub(crate) fn get_index_schema_info<'a>(
+    raw_payload: &mut Cursor<&'a [u8]>,
+) -> Result<MsgpackMapIterator<'a, [u32; 2], u64>, ProtocolError> {
+    let l = read_map_len(raw_payload)?;
+
+    let start = raw_payload.position() as usize;
+
+    // Skip all keys and values from map.
+    for _ in 0..l * 2 {
+        skip_value(raw_payload).map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+    }
+    let end = raw_payload.position() as usize;
+
+    let index_schema_decoder = |r: &mut Cursor<&'a [u8]>| -> Result<[u32; 2], ProtocolError> {
+        let l =
+            read_array_len(r).map_err(|err| ProtocolError::DecodeError(err.to_string()))? as usize;
+        debug_assert_eq!(l, 2);
+        let table_id = read_int(r).map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+        let index_id = read_int(r).map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+
+        let pk = [table_id, index_id];
+        Ok(pk)
+    };
+
+    Ok(MsgpackMapIterator::new(
+        &raw_payload.get_ref()[start..end],
+        l,
+        index_schema_decoder,
         |r| read_int(r).map_err(|err| ProtocolError::DecodeError(err.to_string())),
     ))
 }
@@ -303,7 +365,12 @@ impl<'a> Iterator for DQLPacketPayloadIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.state {
-            DQLState::SchemaInfo => Some(self.get_schema_info().map(DQLResult::SchemaInfo)),
+            DQLState::TableSchemaInfo => {
+                Some(self.get_table_schema_info().map(DQLResult::TableSchemaInfo))
+            }
+            DQLState::IndexSchemaInfo => {
+                Some(self.get_index_schema_info().map(DQLResult::IndexSchemaInfo))
+            }
             DQLState::PlanId => Some(self.get_plan_id().map(DQLResult::PlanId)),
             DQLState::SenderId => Some(self.get_sender_id().map(DQLResult::SenderId)),
             DQLState::Vtables => Some(self.get_vtables().map(DQLResult::Vtables)),
@@ -325,12 +392,11 @@ pub fn write_dql_cache_miss_packet(
 ) -> Result<(), std::io::Error> {
     write_array_len(w, DQL_CACHE_MISS_PACKET_FIELD_COUNT as u32)?;
 
-    let schema_info = data.get_schema_info();
-    write_map_len(w, schema_info.len() as u32)?;
-    for (key, value) in schema_info {
-        write_uint(w, key as u64)?;
-        write_uint(w, value)?;
-    }
+    let table_schema_info = data.get_table_schema_info();
+    write_schema_info(w, table_schema_info)?;
+
+    let index_schema_info = data.get_index_schema_info();
+    write_index_schema_info(w, index_schema_info)?;
 
     let vtables_metadata = data.get_vtables_metadata();
     write_map_len(w, vtables_metadata.len() as u32)?;
@@ -353,14 +419,16 @@ pub fn write_dql_cache_miss_packet(
 #[derive(PartialEq, Debug, Copy, Clone)]
 #[repr(u8)]
 enum DQLCacheMissState {
-    SchemaInfo = 0,
+    TableSchemaInfo = 0,
+    IndexSchemaInfo,
     VtablesMetadata,
     Sql,
     End,
 }
 
 pub enum DQLCacheMissResult<'a> {
-    SchemaInfo(MsgpackMapIterator<'a, u32, u64>),
+    TableSchemaInfo(MsgpackMapIterator<'a, u32, u64>),
+    IndexSchemaInfo(MsgpackMapIterator<'a, [u32; 2], u64>),
     VtablesMetadata(MsgpackMapIterator<'a, &'a str, Vec<(&'a str, ColumnType)>>),
     Sql(&'a str),
 }
@@ -368,14 +436,15 @@ pub enum DQLCacheMissResult<'a> {
 impl fmt::Display for DQLCacheMissResult<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            DQLCacheMissResult::SchemaInfo(_) => f.write_str("SchemaInfo"),
+            DQLCacheMissResult::TableSchemaInfo(_) => f.write_str("TableSchemaInfo"),
+            DQLCacheMissResult::IndexSchemaInfo(_) => f.write_str("IndexSchemaInfo"),
             DQLCacheMissResult::VtablesMetadata(_) => f.write_str("VtablesMetadata"),
             DQLCacheMissResult::Sql(_) => f.write_str("Sql"),
         }
     }
 }
 
-const DQL_CACHE_MISS_PACKET_FIELD_COUNT: usize = 3;
+const DQL_CACHE_MISS_PACKET_FIELD_COUNT: usize = 4;
 pub struct DQLCacheMissPayloadIterator<'a> {
     raw_payload: Cursor<&'a [u8]>,
     state: DQLCacheMissState,
@@ -394,13 +463,22 @@ impl<'a> DQLCacheMissPayloadIterator<'a> {
 
         Ok(Self {
             raw_payload: cursor,
-            state: DQLCacheMissState::SchemaInfo,
+            state: DQLCacheMissState::TableSchemaInfo,
         })
     }
 
-    fn get_schema_info(&mut self) -> Result<MsgpackMapIterator<'a, u32, u64>, ProtocolError> {
-        assert_eq!(self.state, DQLCacheMissState::SchemaInfo);
+    fn get_table_schema_info(&mut self) -> Result<MsgpackMapIterator<'a, u32, u64>, ProtocolError> {
+        debug_assert_eq!(self.state, DQLCacheMissState::TableSchemaInfo);
         let schema_info = get_schema_info(&mut self.raw_payload)?;
+        self.state = DQLCacheMissState::IndexSchemaInfo;
+        Ok(schema_info)
+    }
+
+    fn get_index_schema_info(
+        &mut self,
+    ) -> Result<MsgpackMapIterator<'a, [u32; 2], u64>, ProtocolError> {
+        debug_assert_eq!(self.state, DQLCacheMissState::IndexSchemaInfo);
+        let schema_info = get_index_schema_info(&mut self.raw_payload)?;
         self.state = DQLCacheMissState::VtablesMetadata;
         Ok(schema_info)
     }
@@ -409,7 +487,7 @@ impl<'a> DQLCacheMissPayloadIterator<'a> {
     fn get_vtables_metadata(
         &mut self,
     ) -> Result<MsgpackMapIterator<'a, &'a str, Vec<(&'a str, ColumnType)>>, ProtocolError> {
-        assert_eq!(self.state, DQLCacheMissState::VtablesMetadata);
+        debug_assert_eq!(self.state, DQLCacheMissState::VtablesMetadata);
         let l = read_map_len(&mut self.raw_payload)?;
         let start = self.raw_payload.position() as usize;
         for _ in 0..l * 2 {
@@ -467,7 +545,7 @@ impl<'a> DQLCacheMissPayloadIterator<'a> {
     }
 
     fn get_sql(&mut self) -> Result<&'a str, ProtocolError> {
-        assert_eq!(self.state, DQLCacheMissState::Sql);
+        debug_assert_eq!(self.state, DQLCacheMissState::Sql);
         let l = read_str_len(&mut self.raw_payload)?;
         let start = self.raw_payload.position() as usize;
         let end = start + l as usize;
@@ -484,8 +562,12 @@ impl<'a> Iterator for DQLCacheMissPayloadIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.state {
-            DQLCacheMissState::SchemaInfo => match self.get_schema_info() {
-                Ok(schema_info) => Some(Ok(DQLCacheMissResult::SchemaInfo(schema_info))),
+            DQLCacheMissState::TableSchemaInfo => match self.get_table_schema_info() {
+                Ok(schema_info) => Some(Ok(DQLCacheMissResult::TableSchemaInfo(schema_info))),
+                Err(err) => Some(Err(err)),
+            },
+            DQLCacheMissState::IndexSchemaInfo => match self.get_index_schema_info() {
+                Ok(schema_info) => Some(Ok(DQLCacheMissResult::IndexSchemaInfo(schema_info))),
                 Err(err) => Some(Err(err)),
             },
             DQLCacheMissState::VtablesMetadata => match self.get_vtables_metadata() {
@@ -522,7 +604,7 @@ mod tests {
         let data = TestDQLEncoderBuilder::new()
             .set_plan_id(5264743718663535479)
             .set_request_id("14e84334-71df-4e69-8c85-dc2707a390c6".to_string())
-            .set_schema_info(HashMap::from([(12, 138)]))
+            .set_schema_info((HashMap::from([(12, 138)]), HashMap::from([([12, 12], 138)])))
             .set_sender_id(42)
             .set_vtables(HashMap::from([(
                 "TMP_1302_".to_string(),
@@ -535,14 +617,14 @@ mod tests {
         let mut writer = Vec::new();
 
         write_dql_packet(&mut writer, &data).unwrap();
-        let expected: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x96\x81\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw*\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
+        let expected: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x97\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw\x2a\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
 
         assert_eq!(writer, expected);
     }
 
     #[test]
     fn test_execute_dql_cache_hit() {
-        let mut data: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x96\x81\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw*\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
+        let mut data: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x97\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw\x2a\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
 
         let l = read_array_len(&mut data).unwrap();
         assert_eq!(l, 3);
@@ -558,11 +640,19 @@ mod tests {
 
         for elem in package {
             match elem.unwrap() {
-                DQLResult::SchemaInfo(schema_info) => {
+                DQLResult::TableSchemaInfo(schema_info) => {
                     assert_eq!(schema_info.len(), 1);
                     for res in schema_info {
                         let (t_id, version) = res.unwrap();
                         assert_eq!(t_id, 12);
+                        assert_eq!(version, 138);
+                    }
+                }
+                DQLResult::IndexSchemaInfo(schema_info) => {
+                    assert_eq!(schema_info.len(), 1);
+                    for res in schema_info {
+                        let (t_id, version) = res.unwrap();
+                        assert_eq!(t_id, [12, 12]);
                         assert_eq!(version, 138);
                     }
                 }
@@ -601,7 +691,7 @@ mod tests {
     #[test]
     fn test_encode_dql_cache_miss() {
         let mut data = TestDQLEncoderBuilder::new()
-            .set_schema_info(HashMap::from([(12, 138)]))
+            .set_schema_info((HashMap::from([(12, 138)]), HashMap::from([([12, 12], 138)])))
             .set_meta(HashMap::from([(
                 "TMP_1302_".to_string(),
                 vec![
@@ -614,23 +704,31 @@ mod tests {
 
         let mut writer = Vec::new();
         write_dql_cache_miss_packet(&mut writer, &mut data).unwrap();
-        let expected: &[u8] = b"\x93\x81\x0c\xcc\x8a\x81\xa9TMP_1302_\x92\x92\xa1a\x05\x92\xa1b\x05\xb8select * from TMP_1302_;";
+        let expected: &[u8] = b"\x94\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\x81\xa9TMP_1302_\x92\x92\xa1a\x05\x92\xa1b\x05\xb8select * from TMP_1302_;";
         assert_eq!(writer, expected);
     }
 
     #[test]
     fn test_handle_dql_cache_miss() {
-        let data: &[u8] = b"\x93\x81\x0c\xcc\x8a\x81\xa9TMP_1302_\x92\x92\xa1a\x05\x92\xa1b\x05\xb8select * from TMP_1302_;";
+        let data: &[u8] = b"\x94\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\x81\xa9TMP_1302_\x92\x92\xa1a\x05\x92\xa1b\x05\xb8select * from TMP_1302_;";
 
         let package = DQLCacheMissPayloadIterator::new(data).unwrap();
 
         for elem in package {
             match elem.unwrap() {
-                DQLCacheMissResult::SchemaInfo(schema_info) => {
+                DQLCacheMissResult::TableSchemaInfo(schema_info) => {
                     assert_eq!(schema_info.len(), 1);
                     for res in schema_info {
                         let (t_id, ver) = res.unwrap();
                         assert_eq!(t_id, 12);
+                        assert_eq!(ver, 138);
+                    }
+                }
+                DQLCacheMissResult::IndexSchemaInfo(schema_info) => {
+                    assert_eq!(schema_info.len(), 1);
+                    for res in schema_info {
+                        let (t_id, ver) = res.unwrap();
+                        assert_eq!(t_id, [12, 12]);
                         assert_eq!(ver, 138);
                     }
                 }

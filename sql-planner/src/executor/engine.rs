@@ -5,10 +5,10 @@
 use base64ct::{Base64, Encoding};
 use smol_str::{SmolStr, ToSmolStr};
 
-use crate::frontend::sql::get_real_function_name;
 use crate::ir::node::NodeId;
 use crate::ir::types::DerivedType;
 use crate::utils::MutexLike;
+use crate::{frontend::sql::get_real_function_name, ir::helpers::RepeatableState};
 use std::any::Any;
 
 use std::collections::HashMap;
@@ -27,7 +27,6 @@ use crate::ir::value::Value;
 use super::Port;
 
 use crate::executor::vdbe::SqlStmt;
-use crate::ir::helpers::RepeatableState;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use tarantool::space::SpaceId;
 
@@ -45,6 +44,14 @@ pub trait Metadata: Sized {
     /// # Errors
     /// - Failed to get table by name from the metadata.
     fn table(&self, table_name: &str) -> Result<Table, SbroadError>;
+
+    /// Get index id with given name for given table.
+    ///
+    /// # Errors
+    /// - Failed to get table by name.
+    /// - Failed to get index by name.
+    /// - Failed to find index for specified table.
+    fn get_index_id(&self, index_name: &str, table_name: &str) -> Result<u32, SbroadError>;
 
     /// Lookup for a function in the metadata cache.
     ///
@@ -218,7 +225,7 @@ pub trait StorageCache<K, T> {
     fn get(&mut self, plan_id: &K) -> Result<Option<(&mut SqlStmt, &[T])>, SbroadError>;
 }
 
-pub type TableVersionMap = HashMap<u32, u64, RepeatableState>;
+pub type VersionMap = HashMap<u32, u64, RepeatableState>;
 
 pub trait QueryCache {
     type Cache;
@@ -242,6 +249,16 @@ pub trait QueryCache {
     /// - table was not found in system space
     /// - could not access the system space
     fn get_table_version(&self, _: &str) -> Result<u64, SbroadError>;
+
+    /// Return current schema version of given index.
+    ///
+    /// Must be called only if `provides_versions` returns
+    /// `true`.
+    ///
+    /// # Errors
+    /// - index was not found in system space
+    /// - could not access the system space
+    fn get_index_version_by_pk(&self, space_id: u32, index_id: u32) -> Result<u64, SbroadError>;
 
     /// Return current schema version of given table.
     ///

@@ -43,7 +43,9 @@ impl TryFrom<u8> for ColumnType {
 }
 
 pub trait DQLDataSource {
-    fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)>;
+    fn get_table_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)>;
+
+    fn get_index_schema_info(&self) -> impl ExactSizeIterator<Item = ([u32; 2], u64)>;
 
     fn get_plan_id(&self) -> u64;
 
@@ -61,7 +63,8 @@ pub trait DQLDataSource {
 }
 
 pub trait DQLCacheMissDataSource {
-    fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)>;
+    fn get_table_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)>;
+    fn get_index_schema_info(&self) -> impl ExactSizeIterator<Item = ([u32; 2], u64)>;
     fn get_vtables_metadata(
         &self,
     ) -> impl ExactSizeIterator<Item = (&str, impl ExactSizeIterator<Item = (&str, ColumnType)>)>;
@@ -138,7 +141,10 @@ pub(crate) mod test {
         }
 
         #[allow(dead_code)]
-        pub fn set_schema_info(mut self, schema_info: HashMap<u32, u64>) -> Self {
+        pub fn set_schema_info(
+            mut self,
+            schema_info: (HashMap<u32, u64>, HashMap<[u32; 2], u64>),
+        ) -> Self {
             self.encoder.schema_info = schema_info;
             self
         }
@@ -186,7 +192,7 @@ pub(crate) mod test {
 
     #[derive(Default)]
     pub struct TestDQLDataSource {
-        pub schema_info: HashMap<u32, u64>,
+        pub schema_info: (HashMap<u32, u64>, HashMap<[u32; 2], u64>),
         pub plan_id: u64,
         pub sender_id: u64,
         pub meta: HashMap<String, Vec<(String, ColumnType)>>,
@@ -198,8 +204,12 @@ pub(crate) mod test {
     }
 
     impl DQLDataSource for TestDQLDataSource {
-        fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
-            self.schema_info.iter().map(|(k, v)| (*k, *v))
+        fn get_table_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
+            self.schema_info.0.iter().map(|(k, v)| (*k, *v))
+        }
+
+        fn get_index_schema_info(&self) -> impl ExactSizeIterator<Item = ([u32; 2], u64)> {
+            self.schema_info.1.iter().map(|(k, v)| (*k, *v))
         }
 
         fn get_plan_id(&self) -> u64 {
@@ -238,8 +248,11 @@ pub(crate) mod test {
     }
 
     impl DQLCacheMissDataSource for TestDQLDataSource {
-        fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
-            self.schema_info.iter().map(|(k, v)| (*k, *v))
+        fn get_table_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
+            self.schema_info.0.iter().map(|(k, v)| (*k, *v))
+        }
+        fn get_index_schema_info(&self) -> impl ExactSizeIterator<Item = ([u32; 2], u64)> {
+            self.schema_info.1.iter().map(|(k, v)| (*k, *v))
         }
         fn get_vtables_metadata(
             &self,

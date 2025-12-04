@@ -47,7 +47,7 @@ fn like_invalid2() {
     let err = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap_err();
 
     assert_eq!(
-        "invalid expression: ESCAPE can go only after LIKE or SIMILAR expressions, got: PlanId { plan_id: NodeId { offset: 3, arena_type: Arena96 } }",
+        "invalid expression: ESCAPE can go only after LIKE or SIMILAR expressions, got: PlanId { plan_id: NodeId { offset: 4, arena_type: Arena96 } }",
         err.to_string()
     );
 }

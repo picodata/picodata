@@ -85,12 +85,13 @@ impl RelOwned {
             | RelOwned::Having(_)
             | RelOwned::ValuesRow(_)
             | RelOwned::OrderBy(_)
-            | RelOwned::ScanRelation(_)
             | RelOwned::Join(_)
             | RelOwned::Delete(_)
             | RelOwned::ScanSubQuery(_)
             | RelOwned::GroupBy(_) => ArenaType::Arena64,
-            RelOwned::Insert(_) | RelOwned::Projection(_) => ArenaType::Arena96,
+            RelOwned::Insert(_) | RelOwned::Projection(_) | RelOwned::ScanRelation(_) => {
+                ArenaType::Arena96
+            }
             RelOwned::Update(_) | RelOwned::Motion(_) => ArenaType::Arena136,
         }
     }

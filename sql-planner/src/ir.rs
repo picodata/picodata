@@ -1,5 +1,4 @@
 //! Contains the logical plan tree and helpers.
-use ahash::HashMapExt;
 use base64ct::{Base64, Encoding};
 use expression::Position;
 use node::acl::{Acl, MutAcl};
@@ -14,6 +13,7 @@ use relation::Table;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::cell::{RefCell, RefMut};
+use std::collections::HashMap;
 use std::hash::Hasher;
 use std::io::Write;
 use std::slice::{Iter, IterMut};
@@ -25,7 +25,9 @@ use self::relation::Relations;
 use self::transformation::redistribution::MotionPolicy;
 use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::engine::helpers::to_user;
-use crate::executor::engine::TableVersionMap;
+use crate::executor::engine::VersionMap;
+use crate::ir::helpers::RepeatableState;
+use crate::ir::index::Indexes;
 use crate::ir::node::plugin::{MutPlugin, Plugin};
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
@@ -52,6 +54,7 @@ pub mod distribution;
 pub mod expression;
 pub mod function;
 pub mod helpers;
+pub mod index;
 pub mod node;
 pub mod operator;
 pub mod options;
@@ -136,9 +139,6 @@ impl Nodes {
                 Node64::OrderBy(order_by) => Node::Relational(Relational::OrderBy(order_by)),
                 Node64::Procedure(proc) => Node::Block(Block::Procedure(proc)),
                 Node64::ScanCte(scan_cte) => Node::Relational(Relational::ScanCte(scan_cte)),
-                Node64::ScanRelation(scan_rel) => {
-                    Node::Relational(Relational::ScanRelation(scan_rel))
-                }
                 Node64::ScanSubQuery(scan_squery) => {
                     Node::Relational(Relational::ScanSubQuery(scan_squery))
                 }
@@ -162,6 +162,9 @@ impl Nodes {
                 Node96::EnablePlugin(enable) => Node::Plugin(Plugin::Enable(enable)),
                 Node96::DisablePlugin(disable) => Node::Plugin(Plugin::Disable(disable)),
                 Node96::DropPlugin(drop) => Node::Plugin(Plugin::Drop(drop)),
+                Node96::ScanRelation(scan_rel) => {
+                    Node::Relational(Relational::ScanRelation(scan_rel))
+                }
                 Node96::AuditPolicy(audit_policy) => Node::Acl(Acl::AuditPolicy(audit_policy)),
                 Node96::RenameIndex(rename) => Node::Ddl(Ddl::RenameIndex(rename)),
             }),
@@ -295,9 +298,6 @@ impl Nodes {
                     Node64::ScanCte(scan_cte) => {
                         MutNode::Relational(MutRelational::ScanCte(scan_cte))
                     }
-                    Node64::ScanRelation(scan_rel) => {
-                        MutNode::Relational(MutRelational::ScanRelation(scan_rel))
-                    }
                     Node64::ScanSubQuery(scan_squery) => {
                         MutNode::Relational(MutRelational::ScanSubQuery(scan_squery))
                     }
@@ -334,6 +334,9 @@ impl Nodes {
                         MutNode::Acl(MutAcl::AuditPolicy(audit_policy))
                     }
                     Node96::RenameIndex(rename) => MutNode::Ddl(MutDdl::RenameIndex(rename)),
+                    Node96::ScanRelation(scan_rel) => {
+                        MutNode::Relational(MutRelational::ScanRelation(scan_rel))
+                    }
                 }),
             ArenaType::Arena136 => {
                 self.arena136
@@ -635,6 +638,9 @@ pub struct Plan {
     /// Relations are stored in a hash-map, with a table name acting as a
     /// key to guarantee its uniqueness across the plan.
     pub relations: Relations,
+    /// Indexes are stored in a hash-map, with an index name acting as a
+    /// key to guarantee its uniqueness across the plan.
+    pub indexes: Indexes,
     /// Slice is a plan subtree under Motion node, that can be executed
     /// on a single db instance without data distribution problems (we add
     /// Motions to resolve them). Them we traverse the plan tree and collect
@@ -663,7 +669,8 @@ pub struct Plan {
     /// SQL options. Initialized to defaults upon IR creation.
     /// Then bound to their effective values resolved from `raw_options` when calling `bind_params`.
     pub effective_options: Options,
-    pub version_map: TableVersionMap,
+    pub table_version_map: VersionMap,
+    pub index_version_map: HashMap<[u32; 2], u64, RepeatableState>,
     /// Exists only on the router during plan build.
     /// RefCell is used because context can be mutated
     /// independently of the plan. It is just stored
@@ -815,6 +822,7 @@ impl Plan {
                 arena224: Vec::new(),
             },
             relations: Relations::new(),
+            indexes: Indexes::new(),
             slices: Slices { slices: vec![] },
             top: None,
             explain_type: None,
@@ -822,7 +830,8 @@ impl Plan {
             constants: Vec::new(),
             raw_options: vec![],
             effective_options: Options::default(),
-            version_map: TableVersionMap::new(),
+            table_version_map: VersionMap::with_hasher(RepeatableState),
+            index_version_map: HashMap::with_hasher(RepeatableState),
             context: Some(RefCell::new(BuildContext::default())),
             tier: None,
         }
@@ -2020,7 +2029,7 @@ impl Plan {
             hasher: XxHash3_64::default(),
         };
 
-        for (id, version) in &self.version_map {
+        for (id, version) in &self.table_version_map {
             hasher.write(id.to_be_bytes().as_slice()).map_err(|e| {
                 SbroadError::FailedTo(
                     Action::Serialize,
@@ -2028,6 +2037,36 @@ impl Plan {
                     format_smolstr!("plan nodes to binary: {e:?}"),
                 )
             })?;
+            hasher
+                .write(version.to_be_bytes().as_slice())
+                .map_err(|e| {
+                    SbroadError::FailedTo(
+                        Action::Serialize,
+                        None,
+                        format_smolstr!("plan nodes to binary: {e:?}"),
+                    )
+                })?;
+        }
+
+        for (index_id, version) in &self.index_version_map {
+            hasher
+                .write(index_id[0].to_be_bytes().as_slice())
+                .map_err(|e| {
+                    SbroadError::FailedTo(
+                        Action::Serialize,
+                        None,
+                        format_smolstr!("plan nodes to binary: {e:?}"),
+                    )
+                })?;
+            hasher
+                .write(index_id[1].to_be_bytes().as_slice())
+                .map_err(|e| {
+                    SbroadError::FailedTo(
+                        Action::Serialize,
+                        None,
+                        format_smolstr!("plan nodes to binary: {e:?}"),
+                    )
+                })?;
             hasher
                 .write(version.to_be_bytes().as_slice())
                 .map_err(|e| {

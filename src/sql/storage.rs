@@ -8,7 +8,8 @@ use crate::sql::execute::{
     old_sql_execute, stmt_execute,
 };
 use crate::sql::router::{
-    calculate_bucket_id, get_table_version, get_table_version_by_id, VersionMap,
+    calculate_bucket_id, get_index_version_by_pk, get_table_version, get_table_version_by_id,
+    VersionMap,
 };
 use crate::traft::node;
 use serde::{Deserialize, Serialize};
@@ -26,6 +27,7 @@ use sql::executor::protocol::{
     EncodedVTables, OptionalData, RequiredData, SchemaInfo, VTablesMeta,
 };
 use sql::executor::{Port, PortType};
+use sql::ir::helpers::RepeatableState;
 use sql::ir::options::Options;
 use sql::ir::ExplainType;
 use std::cell::OnceCell;
@@ -77,12 +79,17 @@ pub enum Tables {
     Old(Vec<NodeId>),
 }
 
-type StorageCacheValue = (SqlStmt, VersionMap, Tables);
+type StorageCacheValue = (
+    SqlStmt,
+    VersionMap,
+    HashMap<[u32; 2], u64, RepeatableState>,
+    Tables,
+);
 
 fn evict(plan_id: &SmolStr, val: &mut StorageCacheValue) -> Result<(), SbroadError> {
     STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL.inc();
     // Remove temporary tables from the instance.
-    match &val.2 {
+    match &val.3 {
         Tables::New(tables_names) => {
             for table in tables_names {
                 Space::find(table.as_str()).map(|space| {
@@ -180,17 +187,20 @@ impl PicoStorageCache {
         schema_info: &SchemaInfo,
         table_ids: Tables,
     ) -> Result<(), SbroadError> {
-        let mut version_map: HashMap<u32, u64> =
-            HashMap::with_capacity(schema_info.router_version_map.len());
+        let mut table_version_map =
+            HashMap::with_capacity_and_hasher(schema_info.table_version_map.len(), RepeatableState);
+        let mut index_version_map =
+            HashMap::with_capacity_and_hasher(schema_info.index_version_map.len(), RepeatableState);
         let node = node::global().map_err(|e| {
             SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
         })?;
         let pico_table = &node.storage.pico_table;
-        for table_id in schema_info.router_version_map.keys() {
-            let current_version = if let Some(table_def) =
+        for table_id in schema_info.table_version_map.keys() {
+            let current_version = if let Some(table_def) = with_su(ADMIN_ID, || {
                 pico_table.by_id(*table_id).map_err(|e| {
                     SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
-                })? {
+                })
+            })?? {
                 table_def.schema_version
             } else {
                 return Err(SbroadError::NotFound(
@@ -198,11 +208,20 @@ impl PicoStorageCache {
                     format_smolstr!("for space: {}", table_id),
                 ));
             };
-            version_map.insert(*table_id, current_version);
+
+            table_version_map.insert(*table_id, current_version);
+        }
+
+        for index in schema_info.index_version_map.keys() {
+            let current_version = get_index_version_by_pk(index[0], index[1])?;
+            index_version_map.insert(*index, current_version);
         }
 
         let mem_added = stmt.estimated_size();
-        let removed = self.cache.put(plan_id, (stmt, version_map, table_ids))?;
+        let removed = self.cache.put(
+            plan_id,
+            (stmt, table_version_map, index_version_map, table_ids),
+        )?;
         let mem_removed = removed.map(|x| x.0.estimated_size()).unwrap_or(0);
 
         self.mem_used += mem_added;
@@ -216,7 +235,9 @@ impl PicoStorageCache {
         &mut self,
         plan_id: &SmolStr,
     ) -> Result<Option<(&mut SqlStmt, &Tables)>, SbroadError> {
-        let Some((ir, version_map, table_ids)) = self.cache.get_mut(plan_id) else {
+        let Some((ir, table_version_map, index_version_map, table_ids)) =
+            self.cache.get_mut(plan_id)
+        else {
             return Ok(None);
         };
         // check Plan's tables have up to date schema
@@ -224,10 +245,12 @@ impl PicoStorageCache {
             SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
         })?;
         let pico_table = &node.storage.pico_table;
-        for (table_id, cached_version) in version_map {
-            let Some(table_def) = pico_table.by_id(*table_id).map_err(|e| {
-                SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
-            })?
+        for (table_id, cached_version) in table_version_map {
+            let Some(table_def) = with_su(ADMIN_ID, || {
+                pico_table.by_id(*table_id).map_err(|e| {
+                    SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
+                })
+            })??
             else {
                 return Ok(None);
             };
@@ -237,6 +260,13 @@ impl PicoStorageCache {
                 return Ok(None);
             }
         }
+        for (pk, cached_version) in index_version_map {
+            let version = get_index_version_by_pk(pk[0], pk[1])?;
+            if *cached_version != version {
+                return Ok(None);
+            }
+        }
+
         Ok(Some((ir, table_ids)))
     }
 }
@@ -316,6 +346,10 @@ impl QueryCache for StorageRuntime {
 
     fn get_table_version_by_id(&self, table_id: SpaceId) -> Result<u64, SbroadError> {
         get_table_version_by_id(table_id)
+    }
+
+    fn get_index_version_by_pk(&self, space_id: u32, index_id: u32) -> Result<u64, SbroadError> {
+        get_index_version_by_pk(space_id, index_id)
     }
 }
 
@@ -448,8 +482,9 @@ impl Vshard for StorageRuntime {
         let ordered = OrderedSyntaxNodes::try_from(sp)?;
         let nodes = ordered.to_syntax_data()?;
         let params = ex_plan.to_params().to_vec();
-        let version_map = ex_plan.get_ir_plan().version_map.clone();
-        let schema_info = SchemaInfo::new(version_map);
+        let table_version_map = ex_plan.get_ir_plan().table_version_map.clone();
+        let index_version_map = ex_plan.get_ir_plan().index_version_map.clone();
+        let schema_info = SchemaInfo::new(table_version_map, index_version_map);
         let mut info = LocalExecutionQueryInfo {
             exec_plan: ex_plan,
             plan_id,
@@ -546,7 +581,7 @@ impl StorageRuntime {
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
         // Compare router's schema versions with storage's ones.
-        for (table_id, version) in &required.schema_info.router_version_map {
+        for (table_id, version) in &required.schema_info.table_version_map {
             // TODO: if storage version is smaller than router's version
             // wait until state catches up.
             if *version != self.get_table_version_by_id(*table_id)? {

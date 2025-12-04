@@ -2,8 +2,8 @@ use crate::dml::dml_type::DMLType::Delete;
 use crate::dml::dml_type::{write_dml_header, write_dml_with_sql_header};
 use crate::dql::{
     get_options, get_params, get_plan_id, get_schema_info, get_sender_id, get_vtables,
-    write_options, write_params, write_plan_id, write_schema_info, write_sender_id, write_tuples,
-    write_vtables,
+    write_index_schema_info, write_options, write_params, write_plan_id, write_schema_info,
+    write_sender_id, write_tuples, write_vtables,
 };
 use crate::dql_encoder::{DQLDataSource, MsgpackEncode};
 use crate::error::ProtocolError;
@@ -46,12 +46,14 @@ pub fn write_delete_with_sql_package(
     data: impl DeleteEncoder + DQLDataSource,
 ) -> Result<(), std::io::Error> {
     write_dml_with_sql_header(w, Delete, DeleteEncoder::get_request_id(&data))?;
-    write_array_len(w, 8)?;
+    write_array_len(w, 9)?;
     write_uint(w, data.get_target_table_id() as u64)?;
     write_uint(w, data.get_target_table_version())?;
 
-    let schema_info = data.get_schema_info();
-    write_schema_info(w, schema_info)?;
+    let table_schema_info = data.get_table_schema_info();
+    write_schema_info(w, table_schema_info)?;
+    let index_schema_info = data.get_index_schema_info();
+    write_index_schema_info(w, index_schema_info)?;
 
     write_plan_id(w, data.get_plan_id())?;
 
@@ -112,14 +114,14 @@ impl<'a> DeletePackageIterator<'a> {
     }
 
     fn get_target_table_id(&mut self) -> Result<u64, ProtocolError> {
-        assert_eq!(self.state, DeleteStates::TableId);
+        debug_assert_eq!(self.state, DeleteStates::TableId);
         let target_table_id = read_int(&mut self.raw_payload)?;
         self.state = DeleteStates::TableVersion;
         Ok(target_table_id)
     }
 
     fn get_target_table_version(&mut self) -> Result<u64, ProtocolError> {
-        assert_eq!(self.state, DeleteStates::TableVersion);
+        debug_assert_eq!(self.state, DeleteStates::TableVersion);
         let target_table_version = read_int(&mut self.raw_payload)?;
         if self.have_tuples {
             self.state = DeleteStates::Tuples;
@@ -130,7 +132,7 @@ impl<'a> DeletePackageIterator<'a> {
     }
 
     fn get_tuples(&mut self) -> Result<TupleIterator<'a>, ProtocolError> {
-        assert_eq!(self.state, DeleteStates::Tuples);
+        debug_assert_eq!(self.state, DeleteStates::Tuples);
         let rows = read_array_len(&mut self.raw_payload)? as usize;
         let start = self.raw_payload.position() as usize;
         for _ in 0..rows {
@@ -223,35 +225,35 @@ impl<'a> LocalDeletePackageIterator<'a> {
     }
 
     fn get_target_table_id(&mut self) -> Result<u64, ProtocolError> {
-        assert_eq!(self.state, LocalDeleteStates::TableId);
+        debug_assert_eq!(self.state, LocalDeleteStates::TableId);
         let target_table_id = read_int(&mut self.raw_payload)?;
         self.state = LocalDeleteStates::TableVersion;
         Ok(target_table_id)
     }
 
     fn get_target_table_version(&mut self) -> Result<u64, ProtocolError> {
-        assert_eq!(self.state, LocalDeleteStates::TableVersion);
+        debug_assert_eq!(self.state, LocalDeleteStates::TableVersion);
         let target_table_version = read_int(&mut self.raw_payload)?;
         self.state = LocalDeleteStates::End;
         Ok(target_table_version)
     }
 
     fn get_schema_info(&mut self) -> Result<MsgpackMapIterator<'a, u32, u64>, ProtocolError> {
-        assert_eq!(self.state, LocalDeleteStates::SchemaInfo);
+        debug_assert_eq!(self.state, LocalDeleteStates::SchemaInfo);
         let schema_info = get_schema_info(&mut self.raw_payload)?;
         self.state = LocalDeleteStates::PlanId;
         Ok(schema_info)
     }
 
     fn get_plan_id(&mut self) -> Result<u64, ProtocolError> {
-        assert_eq!(self.state, LocalDeleteStates::PlanId);
+        debug_assert_eq!(self.state, LocalDeleteStates::PlanId);
         let plan_id = get_plan_id(&mut self.raw_payload)?;
         self.state = LocalDeleteStates::SenderId;
         Ok(plan_id)
     }
 
     fn get_sender_id(&mut self) -> Result<u64, ProtocolError> {
-        assert_eq!(self.state, LocalDeleteStates::SenderId);
+        debug_assert_eq!(self.state, LocalDeleteStates::SenderId);
         let sender_id = get_sender_id(&mut self.raw_payload)?;
         self.state = LocalDeleteStates::Vtables;
         Ok(sender_id)
@@ -260,21 +262,21 @@ impl<'a> LocalDeletePackageIterator<'a> {
     fn get_vtables(
         &mut self,
     ) -> Result<MsgpackMapIterator<'a, &'a str, TupleIterator<'a>>, ProtocolError> {
-        assert_eq!(self.state, LocalDeleteStates::Vtables);
+        debug_assert_eq!(self.state, LocalDeleteStates::Vtables);
         let vtables = get_vtables(&mut self.raw_payload)?;
         self.state = LocalDeleteStates::Options;
         Ok(vtables)
     }
 
     fn get_options(&mut self) -> Result<(u64, u64), ProtocolError> {
-        assert_eq!(self.state, LocalDeleteStates::Options);
+        debug_assert_eq!(self.state, LocalDeleteStates::Options);
         let options = get_options(&mut self.raw_payload)?;
         self.state = LocalDeleteStates::Params;
         Ok(options)
     }
 
     fn get_params(&mut self) -> Result<&'a [u8], ProtocolError> {
-        assert_eq!(self.state, LocalDeleteStates::Params);
+        debug_assert_eq!(self.state, LocalDeleteStates::Params);
         let params = get_params(&mut self.raw_payload)?;
         self.state = LocalDeleteStates::End;
         Ok(params)
@@ -358,8 +360,12 @@ mod tests {
     }
 
     impl DQLDataSource for TestDeleteEncoder {
-        fn get_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
-            self.dql_encoder.as_ref().unwrap().get_schema_info()
+        fn get_table_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
+            self.dql_encoder.as_ref().unwrap().get_table_schema_info()
+        }
+
+        fn get_index_schema_info(&self) -> impl ExactSizeIterator<Item = ([u32; 2], u64)> {
+            self.dql_encoder.as_ref().unwrap().get_index_schema_info()
         }
 
         fn get_plan_id(&self) -> u64 {
@@ -513,7 +519,7 @@ mod tests {
     fn test_encode_delete_with_dql() {
         let dql_encoder = TestDQLEncoderBuilder::new()
             .set_plan_id(14235593344027757343)
-            .set_schema_info(HashMap::from([(12, 138)]))
+            .set_schema_info((HashMap::from([(12, 138)]), HashMap::from([([12, 12], 138)])))
             .set_sender_id(42)
             .set_vtables(HashMap::from([(
                 "TMP_1302_".to_string(),
@@ -531,7 +537,7 @@ mod tests {
         };
 
         let expected: &[u8] =
-            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x02\x92\x02\x98\xcc\x80\x01\x81\x0c\xcc\x8a\xcf\xc5\x8e\xfc\xb9\x15\xb0\x8b\x1f*\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
+            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x02\x92\x02\x99\xcc\x80\x01\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\xcf\xc5\x8e\xfc\xb9\x15\xb0\x8b\x1f\x2a\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
         let mut actual = Vec::new();
 
         write_delete_with_sql_package(&mut actual, encoder).unwrap();

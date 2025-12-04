@@ -323,7 +323,7 @@ impl AbstractSyntaxTree {
             }
         };
         let node = self.nodes.get_node(update_id)?;
-        let table_id = *node
+        let update_table_scan_id = *node
             .children
             .first()
             .expect("expected Update AST node to have at least two children");
@@ -331,8 +331,11 @@ impl AbstractSyntaxTree {
             .children
             .get(1)
             .expect("expected Update AST node to have at least two children");
+
+        let table_scan = self.nodes.get_node(update_table_scan_id)?;
+        let table_id = *table_scan.children.first().expect("must exist");
         let upd_table_scan = ParseNode {
-            children: vec![table_id],
+            children: table_scan.children.clone(),
             rule: Rule::Scan,
             value: None,
         };
@@ -408,6 +411,28 @@ impl AbstractSyntaxTree {
         Ok(())
     }
 
+    fn transform_delete_children(
+        &mut self,
+        table_id: usize,
+        filter_id: usize,
+    ) -> Result<(), SbroadError> {
+        let filter_node = self.nodes.get_node(filter_id)?;
+        if filter_node.rule != Rule::DeleteFilter {
+            return Err(SbroadError::Invalid(
+                Entity::ParseNode,
+                Some(format_smolstr!(
+                    "expected delete filter as a second child, got: {filter_node:?}"
+                )),
+            ));
+        }
+        let mut new_filter_children = Vec::with_capacity(filter_node.children.len() + 1);
+        new_filter_children.push(table_id);
+        new_filter_children.extend(filter_node.children.iter().copied());
+        self.nodes.set_children(filter_id, new_filter_children)?;
+
+        Ok(())
+    }
+
     /// Put delete table under delete filter to support reference resolution.
     pub(super) fn transform_delete(&mut self) -> Result<(), SbroadError> {
         let arena_len = self.nodes.arena.len();
@@ -416,27 +441,31 @@ impl AbstractSyntaxTree {
             if node.rule != Rule::Delete {
                 continue;
             }
-            let (table_id, filter_id) = if let (Some(table_id), Some(filter_id)) =
-                (node.children.first(), node.children.get(1))
-            {
-                (*table_id, *filter_id)
+
+            let indexed_scan_id = node.child_n(0);
+            let indexed_scan = self.nodes.get_node(indexed_scan_id)?;
+            let table_id = indexed_scan.child_n(0);
+            let indexed_by_id = indexed_scan.children.get(1);
+
+            let delete_children = if let Some(filter_id) = node.children.get(1) {
+                let filter_id = *filter_id;
+                let mut children = vec![filter_id];
+                if let Some(indexed_by_id) = indexed_by_id {
+                    children.push(*indexed_by_id);
+                }
+                self.transform_delete_children(table_id, filter_id)?;
+
+                children
             } else {
-                continue;
+                let mut children = vec![table_id];
+                if let Some(indexed_by_id) = indexed_by_id {
+                    children.push(*indexed_by_id);
+                }
+
+                children
             };
-            let filter_node = self.nodes.get_node(filter_id)?;
-            if filter_node.rule != Rule::DeleteFilter {
-                return Err(SbroadError::Invalid(
-                    Entity::ParseNode,
-                    Some(format_smolstr!(
-                        "expected delete filter as a second child, got: {filter_node:?}"
-                    )),
-                ));
-            }
-            let mut new_filter_children = Vec::with_capacity(filter_node.children.len() + 1);
-            new_filter_children.push(table_id);
-            new_filter_children.extend(filter_node.children.iter().copied());
-            self.nodes.set_children(filter_id, new_filter_children)?;
-            self.nodes.set_children(id, vec![filter_id])?;
+
+            self.nodes.set_children(id, delete_children)?;
         }
         Ok(())
     }

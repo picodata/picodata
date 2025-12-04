@@ -274,6 +274,10 @@ impl ExecutionPlan {
                     sql.push_str("as ");
                     push_identifier(&mut sql, s);
                 }
+                SyntaxData::IndexedBy(name) => {
+                    sql.push_str("INDEXED BY ");
+                    push_identifier(&mut sql, name);
+                }
                 SyntaxData::CastType(s) => {
                     sql.push_str("as ");
                     sql.push_str(s);

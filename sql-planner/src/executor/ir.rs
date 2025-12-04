@@ -480,10 +480,11 @@ impl ExecutionPlan {
                             let undo_expr_id = ir_plan.undo.get_oldest(expr_id);
                             *expr_id = subtree_map.get_id(*undo_expr_id);
                         }
-                        RelOwned::ScanRelation(ScanRelation { relation, .. })
-                        | RelOwned::Insert(Insert { relation, .. })
-                        | RelOwned::Delete(Delete { relation, .. })
-                        | RelOwned::Update(Update { relation, .. }) => {
+                        RelOwned::ScanRelation(ScanRelation {
+                            relation,
+                            indexed_by,
+                            ..
+                        }) => {
                             let table = ir_plan
                                 .relations
                                 .get(relation)
@@ -493,6 +494,47 @@ impl ExecutionPlan {
                                     )
                                 })
                                 .clone();
+
+                            if cfg!(not(feature = "mock")) {
+                                if let Some(indexed_by) = indexed_by {
+                                    let index = ir_plan.indexes.get(indexed_by).ok_or(
+                                        SbroadError::NotFound(
+                                            Entity::Index,
+                                            format_smolstr!("with name {indexed_by}"),
+                                        ),
+                                    )?;
+                                    new_plan.index_version_map.insert(
+                                        [index.table_id, index.id],
+                                        *ir_plan
+                                            .index_version_map
+                                            .get(&[index.table_id, index.id])
+                                            .expect("index id and version must exist"),
+                                    );
+                                }
+                                new_plan.table_version_map.insert(
+                                    table.id,
+                                    ir_plan.table_version_map.get(&table.id).cloned().unwrap(),
+                                );
+                            }
+
+                            new_plan.add_rel(table);
+                        }
+                        RelOwned::Insert(Insert { relation, .. })
+                        | RelOwned::Delete(Delete { relation, .. })
+                        | RelOwned::Update(Update { relation, .. }) => {
+                            let table = ir_plan
+                                .relations
+                                .get(relation)
+                                .expect("relation must exist")
+                                .clone();
+
+                            if cfg!(not(feature = "mock")) {
+                                new_plan.table_version_map.insert(
+                                    table.id,
+                                    ir_plan.table_version_map.get(&table.id).cloned().unwrap(),
+                                );
+                            }
+
                             new_plan.add_rel(table);
                         }
                         RelOwned::Motion(Motion {

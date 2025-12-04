@@ -4,16 +4,17 @@ extern crate pest_derive;
 extern crate core;
 
 use crate::errors::SbroadError;
-use crate::executor::engine::{query_id, Metadata, Router, TableVersionMap};
+use crate::executor::engine::{query_id, Metadata, Router, VersionMap};
 use crate::executor::lru::Cache;
 use crate::frontend::Ast;
+use crate::ir::helpers::RepeatableState;
 use crate::ir::options::Options;
 use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use crate::utils::MutexLike;
-use ahash::HashMapExt;
 use smol_str::SmolStr;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 pub mod backend;
@@ -70,13 +71,27 @@ impl PreparedStatement {
             let metadata = router.metadata().lock();
             let mut plan = R::ParseTree::transform_into_plan(query_text, param_types, &*metadata)?;
             if router.provides_versions() {
-                let mut table_version_map =
-                    TableVersionMap::with_capacity(plan.relations.tables.len());
+                let mut table_version_map = VersionMap::with_capacity_and_hasher(
+                    plan.relations.tables.len(),
+                    RepeatableState,
+                );
+                let mut index_version_map = HashMap::with_capacity_and_hasher(
+                    plan.index_version_map.iter().len(),
+                    RepeatableState,
+                );
+
                 for table in plan.relations.tables.values() {
                     let version = router.get_table_version_by_id(table.id)?;
                     table_version_map.insert(table.id, version);
                 }
-                plan.version_map = table_version_map;
+
+                for (index_pk, _) in plan.index_version_map.iter() {
+                    let version = router.get_index_version_by_pk(index_pk[0], index_pk[1])?;
+                    index_version_map.insert(*index_pk, version);
+                }
+
+                plan.table_version_map = table_version_map;
+                plan.index_version_map = index_version_map;
             }
 
             if plan.is_dql_or_dml()? {

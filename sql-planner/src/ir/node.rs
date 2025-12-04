@@ -739,11 +739,13 @@ pub struct ScanRelation {
     pub output: NodeId,
     /// Relation name.
     pub relation: SmolStr,
+    /// Index name.
+    pub indexed_by: Option<SmolStr>,
 }
 
 impl From<ScanRelation> for NodeAligned {
     fn from(value: ScanRelation) -> Self {
-        Self::Node64(Node64::ScanRelation(value))
+        Self::Node96(Node96::ScanRelation(value))
     }
 }
 
@@ -1434,7 +1436,6 @@ pub enum Node64 {
     Join(Join),
     Row(Row),
     Delete(Delete),
-    ScanRelation(ScanRelation),
     ScanSubQuery(ScanSubQuery),
     DropRole(DropRole),
     DropUser(DropUser),
@@ -1472,9 +1473,6 @@ impl Node64 {
             Node64::Row(row) => NodeOwned::Expression(ExprOwned::Row(row)),
             Node64::Procedure(proc) => NodeOwned::Block(BlockOwned::Procedure(proc)),
             Node64::ScanCte(scan_cte) => NodeOwned::Relational(RelOwned::ScanCte(scan_cte)),
-            Node64::ScanRelation(scan_rel) => {
-                NodeOwned::Relational(RelOwned::ScanRelation(scan_rel))
-            }
             Node64::ScanSubQuery(scan_squery) => {
                 NodeOwned::Relational(RelOwned::ScanSubQuery(scan_squery))
             }
@@ -1495,6 +1493,7 @@ pub enum Node96 {
     Reference(Reference),
     Invalid(Invalid),
     ScalarFunction(ScalarFunction),
+    ScanRelation(ScanRelation),
     DropProc(DropProc),
     Insert(Insert),
     CreatePlugin(CreatePlugin),
@@ -1526,6 +1525,9 @@ impl Node96 {
             }
             Node96::RenameIndex(rename_index) => {
                 NodeOwned::Ddl(DdlOwned::RenameIndex(rename_index))
+            }
+            Node96::ScanRelation(scan_relation) => {
+                NodeOwned::Relational(RelOwned::ScanRelation(scan_relation))
             }
         }
     }

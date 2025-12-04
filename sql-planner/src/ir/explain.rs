@@ -883,12 +883,19 @@ struct Scan {
 
     /// Table alias
     alias: Option<SmolStr>,
+
+    /// Index used
+    indexed_by: Option<SmolStr>,
 }
 
 impl Scan {
     #[allow(dead_code)]
-    fn new(table: SmolStr, alias: Option<SmolStr>) -> Self {
-        Scan { table, alias }
+    fn new(table: SmolStr, alias: Option<SmolStr>, indexed_by: Option<SmolStr>) -> Self {
+        Scan {
+            table,
+            alias,
+            indexed_by,
+        }
     }
 }
 
@@ -900,6 +907,10 @@ impl Display for Scan {
 
         if let Some(a) = &self.alias {
             write!(s, " -> \"{a}\"")?;
+        }
+
+        if let Some(index_name) = &self.indexed_by {
+            write!(s, " (indexed by \"{index_name}\")")?;
         }
 
         write!(f, "{s}")
@@ -1500,11 +1511,15 @@ impl FullExplain {
                     Some(ExplainNode::Projection(p))
                 }
                 Relational::ScanRelation(ScanRelation {
-                    relation, alias, ..
+                    relation,
+                    alias,
+                    indexed_by,
+                    ..
                 }) => {
                     let s = Scan::new(
                         relation.to_smolstr(),
                         alias.as_ref().map(ToSmolStr::to_smolstr),
+                        indexed_by.as_ref().map(ToSmolStr::to_smolstr),
                     );
                     Some(ExplainNode::Scan(s))
                 }

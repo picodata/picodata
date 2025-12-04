@@ -15,6 +15,7 @@ use sql::executor::ir::ExecutionPlan;
 use sql::executor::lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY};
 use sql::executor::vtable::VirtualTable;
 use sql::frontend::sql::ast::AbstractSyntaxTree;
+use sql::ir::helpers::RepeatableState;
 use sql::ir::node::NodeId;
 use sql::ir::value::{MsgPackValue, Value};
 use sql::ir::Plan;
@@ -49,7 +50,7 @@ use tarantool::space::SpaceId;
 use super::dispatch::{custom_plan_dispatch, single_plan_dispatch};
 use super::port::PicoPortOwned;
 
-pub type VersionMap = HashMap<u32, u64>;
+pub type VersionMap = HashMap<u32, u64, RepeatableState>;
 
 thread_local! {
     static PLAN_CACHE: Rc<Mutex<PicoRouterCache>> = Rc::new(
@@ -98,6 +99,33 @@ impl Tier {
 }
 
 pub const DEFAULT_BUCKET_COLUMN: &str = "bucket_id";
+
+/// Get schema version of given index.
+///
+/// # Arguments:
+/// * `space_id` - id of the table.
+/// * `index_id` - id of the index.
+///
+/// # Errors:
+/// - errors on access to system table
+pub fn get_index_version_by_pk(space_id: u32, index_id: u32) -> Result<u64, SbroadError> {
+    let node = node::global().map_err(|e| {
+        SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
+    })?;
+    let indexes = &node.storage.indexes;
+    let index = indexes.get(space_id, index_id).map_err(|e| {
+        SbroadError::FailedTo(Action::Get, None, format_smolstr!("index_def: {}", e))
+    })?;
+
+    let Some(index) = index else {
+        return Err(SbroadError::NotFound(
+            Entity::Index,
+            format_smolstr!("with id: {}", index_id),
+        ));
+    };
+
+    Ok(index.schema_version)
+}
 
 /// Get the schema version for the given table.
 ///
@@ -149,6 +177,27 @@ pub fn get_table_version_by_id(id: SpaceId) -> Result<u64, SbroadError> {
             format_smolstr!("for table: {}", id),
         ))
     }
+}
+
+pub fn get_index_id(index_name: &str, table_name: &str) -> Result<u32, SbroadError> {
+    let storage = Catalog::try_get(false).expect("storage should be initialized");
+    let index = storage
+        .indexes
+        .by_name(index_name)?
+        .ok_or_else(|| SbroadError::NotFound(Entity::Index, index_name.to_smolstr()))?;
+
+    let table = storage.pico_table.by_id(index.table_id)?.ok_or_else(|| {
+        SbroadError::NotFound(Entity::Table, format_smolstr!("with id {}", index.table_id))
+    })?;
+
+    if table.name != table_name {
+        return Err(SbroadError::NotFound(
+            Entity::Index,
+            index_name.to_smolstr(),
+        ));
+    }
+
+    Ok(index.id)
 }
 
 type IsAuditEnabledFunc = fn(&Plan) -> Result<bool, SbroadError>;
@@ -232,7 +281,7 @@ impl Cache<SmolStr, Rc<Plan>> for PicoRouterCache {
                 if tbl.is_system() {
                     continue;
                 }
-                let cached_version = *ir.version_map.get(&tbl.id).ok_or_else(|| {
+                let cached_version = *ir.table_version_map.get(&tbl.id).ok_or_else(|| {
                     SbroadError::NotFound(
                         Entity::Table,
                         format_smolstr!("in version map with name: {}", tbl.name),
@@ -251,6 +300,18 @@ impl Cache<SmolStr, Rc<Plan>> for PicoRouterCache {
                     return Ok(None);
                 }
             }
+
+            for index in ir.indexes.indexes.values() {
+                let version = get_index_version_by_pk(index.table_id, index.id)?;
+                let Some(cached_version) = ir.index_version_map.get(&[index.table_id, index.id])
+                else {
+                    return Ok(None);
+                };
+                if *cached_version != version {
+                    return Ok(None);
+                }
+            }
+
             Ok(Some(ir))
         }
 
@@ -290,6 +351,10 @@ impl QueryCache for RouterRuntime {
 
     fn get_table_version_by_id(&self, table_id: SpaceId) -> Result<u64, SbroadError> {
         get_table_version_by_id(table_id)
+    }
+
+    fn get_index_version_by_pk(&self, space_id: u32, index_id: u32) -> Result<u64, SbroadError> {
+        get_index_version_by_pk(space_id, index_id)
     }
 }
 
@@ -621,6 +686,10 @@ impl Metadata for RouterMetadata {
                 format_smolstr!("explicitly by field '{field}'"),
             )),
         }
+    }
+
+    fn get_index_id(&self, index_name: &str, table_name: &str) -> Result<u32, SbroadError> {
+        get_index_id(index_name, table_name)
     }
 
     fn function(&self, fn_name: &str) -> Result<&Function, SbroadError> {

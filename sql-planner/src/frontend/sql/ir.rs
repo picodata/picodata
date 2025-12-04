@@ -365,6 +365,7 @@ impl SubtreeCloner {
                 alias: _,
                 output: _,
                 relation: _,
+                ..
             })
             | RelOwned::ScanCte(ScanCte {
                 alias: _,

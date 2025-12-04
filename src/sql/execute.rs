@@ -2,11 +2,10 @@ use crate::metrics::{
     report_storage_cache_hit, report_storage_cache_miss, STORAGE_2ND_REQUESTS_TOTAL,
 };
 use crate::sql::lua::{lua_decode_ibufs, lua_query_metadata};
-use crate::sql::router::get_table_version_by_id;
+use crate::sql::router::{get_index_version_by_pk, get_table_version_by_id, VersionMap};
 use crate::sql::PicoPortC;
 use crate::tlog;
 use crate::traft::node;
-use ahash::HashMapExt;
 use rmp::decode::read_array_len;
 use rmp::encode::{write_array_len, write_str, write_str_len, write_uint};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
@@ -18,7 +17,7 @@ use sql::executor::engine::helpers::{
     pk_name, table_name, truncate_tables, vtable_columns, FullPlanInfo, QueryInfo,
     RequiredPlanInfo, TupleBuilderCommand, TupleBuilderPattern,
 };
-use sql::executor::engine::{QueryCache, StorageCache, TableVersionMap, Vshard};
+use sql::executor::engine::{QueryCache, StorageCache, Vshard};
 use sql::executor::ir::QueryType;
 use sql::executor::protocol::{OptionalData, RequiredData, SchemaInfo};
 use sql::executor::result::ConsumerResult;
@@ -26,6 +25,7 @@ use sql::executor::vdbe::ExecutionInsight::{BusyStmt, Nothing, StaleStmt};
 use sql::executor::vdbe::{ExecutionInsight, SqlError, SqlStmt};
 use sql::executor::vtable::{VTableTuple, VirtualTable, VirtualTableMeta};
 use sql::executor::{Port, PortType};
+use sql::ir::helpers::RepeatableState;
 use sql::ir::node::relational::Relational;
 use sql::ir::operator::ConflictStrategy;
 use sql::ir::value::{EncodedValue, MsgPackValue, Value};
@@ -36,6 +36,7 @@ use sql_protocol::dql::{DQLCacheMissResult, DQLPacketPayloadIterator, DQLResult}
 use sql_protocol::dql_encoder::ColumnType;
 use sql_protocol::error::ProtocolError;
 use sql_protocol::iterators::TupleIterator;
+use std::collections::HashMap;
 use std::io::{Cursor, Write};
 use std::sync::OnceLock;
 use tarantool::error::{Error, TarantoolErrorCode};
@@ -310,15 +311,27 @@ where
     }
     let mut cache_miss_info = sql_protocol::dql::DQLCacheMissPayloadIterator::new(buf)?;
 
-    let schema_info = protocol_get!(cache_miss_info, DQLCacheMissResult::SchemaInfo);
+    let table_schema_info = protocol_get!(cache_miss_info, DQLCacheMissResult::TableSchemaInfo);
+    let index_schema_info = protocol_get!(cache_miss_info, DQLCacheMissResult::IndexSchemaInfo);
 
-    let mut table_versions = TableVersionMap::with_capacity(schema_info.len() as usize);
-    for schema in schema_info {
+    let mut table_versions =
+        VersionMap::with_capacity_and_hasher(table_schema_info.len() as usize, RepeatableState);
+    let mut index_versions =
+        HashMap::with_capacity_and_hasher(index_schema_info.len() as usize, RepeatableState);
+    for schema in table_schema_info {
         let (table, version) = schema?;
         if version != get_table_version_by_id(table)? {
             return Err(SbroadError::OutdatedStorageSchema);
         }
         table_versions.insert(table, version);
+    }
+
+    for index_schema in index_schema_info {
+        let (pk, version) = index_schema?;
+        if version != get_index_version_by_pk(pk[0], pk[1])? {
+            return Err(SbroadError::OutdatedStorageSchema);
+        }
+        index_versions.insert(pk, version);
     }
 
     let mut cache_guarded = runtime.cache().lock();
@@ -335,7 +348,7 @@ where
         match sql_execute::<R>(
             &mut cache_guarded,
             plan_id,
-            &SchemaInfo::new(table_versions),
+            &SchemaInfo::new(table_versions, index_versions),
             info,
             cache_miss_info,
             port,
@@ -404,11 +417,19 @@ where
         unreachable!("should be dql iterator")
     };
 
-    let schema_info = protocol_get!(info, DQLResult::SchemaInfo);
+    let table_schema_info = protocol_get!(info, DQLResult::TableSchemaInfo);
+    let index_schema_info = protocol_get!(info, DQLResult::IndexSchemaInfo);
 
-    for schema in schema_info {
+    for schema in table_schema_info {
         let (table, version) = schema?;
         if version != get_table_version_by_id(table)? {
+            return Err(SbroadError::OutdatedStorageSchema);
+        }
+    }
+
+    for index_schema in index_schema_info {
+        let (pk, version) = index_schema?;
+        if version != get_index_version_by_pk(pk[0], pk[1])? {
             return Err(SbroadError::OutdatedStorageSchema);
         }
     }

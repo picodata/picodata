@@ -37,8 +37,8 @@ fn scan_rel() {
         arena_type: ArenaType::Arena64,
     };
     let scan_node = NodeId {
-        offset: 1,
-        arena_type: ArenaType::Arena64,
+        offset: 4,
+        arena_type: ArenaType::Arena96,
     };
 
     let scan_id = plan.add_scan("t", None).unwrap();

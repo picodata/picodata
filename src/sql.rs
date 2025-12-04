@@ -124,21 +124,21 @@ fn find_data_access_nodes(plan: &IrPlan) -> impl Iterator<Item = NodeId> + use<'
         }
     }
 
-    let scan_and_delete = plan
+    let delete = plan
         .get_nodes()
         .iter64()
         .enumerate()
         .filter_map(|(i, n)| match n {
-            Node64::ScanRelation(_) => Some(node_id(i, ArenaType::Arena64)),
             Node64::Delete(_) => Some(node_id(i, ArenaType::Arena64)),
             _ => None,
         });
 
-    let insert = plan
+    let scan_and_insert = plan
         .get_nodes()
         .iter96()
         .enumerate()
         .filter_map(|(i, n)| match n {
+            Node96::ScanRelation(_) => Some(node_id(i, ArenaType::Arena96)),
             Node96::Insert(_) => Some(node_id(i, ArenaType::Arena96)),
             _ => None,
         });
@@ -152,7 +152,7 @@ fn find_data_access_nodes(plan: &IrPlan) -> impl Iterator<Item = NodeId> + use<'
             _ => None,
         });
 
-    scan_and_delete.chain(insert).chain(update)
+    delete.chain(scan_and_insert).chain(update)
 }
 
 fn check_table_privileges(plan: &IrPlan) -> traft::Result<()> {
@@ -2848,7 +2848,10 @@ fn create_dml_ops(
             table_name: table_name.clone(),
             plan_id,
             _params: vec![],
-            schema_info: SchemaInfo::new(plan.version_map.clone()),
+            schema_info: SchemaInfo::new(
+                plan.table_version_map.clone(),
+                plan.index_version_map.clone(),
+            ),
             options: plan.effective_options.clone(),
         };
         let op = Dml::delete(space.id(), &Vec::<u8>::new(), current_user, Some(info))?;

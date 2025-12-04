@@ -1576,7 +1576,7 @@ impl NodeImpl {
                             .indexes
                             .update_schema_version(space_id, index_id, schema_version)
                             .expect("storage shouldn't fail");
-                        
+
                         let initiator_def = user_by_id(initiator_id).expect("user must exist");
 
                         crate::audit!(

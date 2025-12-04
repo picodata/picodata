@@ -796,6 +796,7 @@ impl Plan {
                 output: output_id,
                 relation: SmolStr::from(table),
                 alias: alias.map(SmolStr::from),
+                indexed_by: None,
             };
 
             return self.add_relational(scan.into());

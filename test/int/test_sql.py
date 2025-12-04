@@ -6907,3 +6907,49 @@ def test_identifiers_with_semicolon(instance: Instance):
     for q in queries:
         with pytest.raises(TarantoolError, match="rule parsing error"):
             instance.sql(q)
+
+
+def test_gl2405(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    i1.sql(
+        """
+        CREATE TABLE warehouse (
+            id INTEGER NOT NULL,
+            s_key INTEGER NOT NULL,
+            PRIMARY KEY (id))
+            DISTRIBUTED BY (s_key);
+        """,
+    )
+    i1.sql(
+        """
+        CREATE INDEX w_s ON warehouse (s_key);
+        """,
+    )
+
+    rows = []
+    for i in range(8000):
+        rows.append((i, 1))
+
+        if len(rows) == 100:
+            placeholders = ", ".join(["(?::int, ?::int)"] * len(rows))
+            params = [x for row in rows for x in row]
+            print(params)
+            i1.sql(f"INSERT INTO warehouse(id, s_key) VALUES {placeholders}", *params)
+            rows.clear()
+
+    with pytest.raises(TarantoolError, match="Reached a limit on max executed vdbe opcodes. Limit: 45000"):
+        result = i1.sql(
+            """
+            SELECT id FROM warehouse WHERE s_key=1 AND id IN (SELECT id FROM warehouse LIMIT 1);
+            """
+        )
+
+    result = i1.sql(
+        """
+        SELECT id FROM warehouse INDEXED BY "1025_pkey" WHERE s_key=1 AND id IN (SELECT id FROM warehouse LIMIT 1);
+        """
+    )
+
+    assert result == [[0]]

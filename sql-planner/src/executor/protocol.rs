@@ -9,10 +9,11 @@ use tarantool::tuple::{Tuple, TupleBuilder};
 use crate::backend::sql::tree::OrderedSyntaxNodes;
 use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::ir::{ExecutionPlan, QueryType};
+use crate::ir::helpers::RepeatableState;
 use crate::ir::options::Options;
 use crate::ir::value::Value;
 
-use crate::executor::engine::TableVersionMap;
+use crate::executor::engine::VersionMap;
 use crate::ir::node::NodeId;
 
 use super::engine::helpers::vshard::CacheInfo;
@@ -183,13 +184,20 @@ impl FullMessage {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
 pub struct SchemaInfo {
-    pub router_version_map: TableVersionMap,
+    pub table_version_map: VersionMap,
+    pub index_version_map: HashMap<[u32; 2], u64, RepeatableState>,
 }
 
 impl SchemaInfo {
     #[must_use]
-    pub fn new(router_version_map: TableVersionMap) -> Self {
-        SchemaInfo { router_version_map }
+    pub fn new(
+        table_version_map: VersionMap,
+        index_version_map: HashMap<[u32; 2], u64, RepeatableState>,
+    ) -> Self {
+        SchemaInfo {
+            table_version_map,
+            index_version_map,
+        }
     }
 }
 

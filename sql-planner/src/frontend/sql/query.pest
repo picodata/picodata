@@ -8,6 +8,10 @@ Table     = @{ Identifier }
 ScanTable = { Table }
 ScanCteOrTable = @{ Table }
 
+IndexedByExpr = { (W ~ ^"indexed" ~ W ~ ^"by" ~ W ~ Identifier) }
+        
+IndexedTableScan = { ScanTable ~ IndexedByExpr? }
+
 PublicSchema = _{ (^"public" | ("\"public\"")) ~ "."}
 
 IfExists = @{ ^"if" ~ W ~ ^"exists" }
@@ -308,7 +312,8 @@ Query = { (SelectFull | Values | Insert | Update | Delete) ~ WO ~ DqlOption? }
         Asterisk = ${ (Identifier ~ ".")? ~ "*" }
     WhereClause = _{ ^"where" ~ W ~ Selection }
     Selection = { Expr }
-    Scan = ${ (((PublicSchema)? ~ ScanCteOrTable) | SubQuery) ~ (W ~ (^"as" ~ W)? ~ Identifier)? }
+    Scan = ${ (((PublicSchema)? ~ ScanCteOrTable) | SubQuery) ~ (W ~ (^"as" ~ W)? ~ !(^"indexed" ~ W ~ ^"by" ~ W) ~ Identifier)? ~
+                IndexedByExpr? }
     Join = { (JoinKind ~ W)? ~ ^"join" ~ W ~ Scan ~ W ~ ^"on" ~ W ~ Expr }
         JoinKind = _{ ( InnerJoinKind | LeftJoinKind ) }
             InnerJoinKind = { ^"inner" }
@@ -326,7 +331,7 @@ Query = { (SelectFull | Values | Insert | Update | Delete) ~ WO ~ DqlOption? }
         DoReplace = { ^"replace" }
         DoNothing = { ^"nothing" }
         DoFail = { ^"fail" }
-    Update = ${ ^"update" ~ W ~ (PublicSchema)? ~ ScanTable ~ W ~ ^"set" ~ W ~ UpdateList ~ (W ~ (UpdateFrom | WhereClause))? }
+    Update = ${ ^"update" ~ W ~ (PublicSchema)? ~ IndexedTableScan ~ W ~ ^"set" ~ W ~ UpdateList ~ (W ~ (UpdateFrom | WhereClause))? }
         UpdateList = { UpdateItem ~ (WO ~ "," ~ WO ~ UpdateItem)* }
         UpdateItem = !{ Identifier ~ "=" ~ Expr }
         UpdateFrom = _{ ^"from" ~ W ~ Scan ~ (W ~ ^"where" ~ W ~ Expr)? }
@@ -341,7 +346,7 @@ Query = { (SelectFull | Values | Insert | Update | Delete) ~ WO ~ DqlOption? }
     TimeoutOption = _{ ^"option" ~ WO ~ "(" ~ WO ~ Timeout ~ WO ~ ")" }
     VdbeOpcodeMax = { ^"sql_vdbe_opcode_max" ~ "=" ~ (Unsigned | Parameter) }
     MotionRowMax = { ^"sql_motion_row_max" ~ "=" ~ (Unsigned | Parameter) }
-    Delete = ${ ^"delete" ~ W ~ ^"from" ~ W ~ (PublicSchema)? ~ ScanTable ~ (W ~ ^"where" ~ W ~ DeleteFilter)? }
+    Delete = ${ ^"delete" ~ W ~ ^"from" ~ W ~ (PublicSchema)? ~ IndexedTableScan ~ (W ~ ^"where" ~ W ~ DeleteFilter)? }
     	DeleteFilter = { Expr }
 
 Identifier = @{ DelimitedIdentifier | RegularIdentifier  }

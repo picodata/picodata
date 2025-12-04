@@ -94,6 +94,7 @@ pub enum SyntaxData {
     WindowFrameBound(BoundType),
     // "window"
     Window,
+    IndexedBy(SmolStr),
     /// Inline sql string
     Inline(SmolStr),
     /// "from"
@@ -164,6 +165,14 @@ impl SyntaxNode {
     fn new_asterisk(relation_name: Option<SmolStr>) -> Self {
         SyntaxNode {
             data: SyntaxData::Asterisk(relation_name),
+            left: None,
+            right: Vec::new(),
+        }
+    }
+
+    fn new_indexed_by(name: SmolStr) -> Self {
+        SyntaxNode {
+            data: SyntaxData::IndexedBy(name),
             left: None,
             right: Vec::new(),
         }
@@ -1506,16 +1515,23 @@ impl<'p> SyntaxPlan<'p> {
 
     fn add_scan_relation(&mut self, id: NodeId) {
         let (_, scan) = self.prologue_rel(id);
-        let Relational::ScanRelation(ScanRelation { alias, .. }) = scan else {
+        let Relational::ScanRelation(ScanRelation {
+            alias, indexed_by, ..
+        }) = scan
+        else {
             panic!("Expected SCAN node");
         };
         let scan_alias = alias.clone();
+        let scan_index = indexed_by.clone();
         let arena = &mut self.nodes;
-        let children = if let Some(name) = scan_alias {
-            vec![arena.push_sn_non_plan(SyntaxNode::new_alias(name))]
-        } else {
-            Vec::new()
-        };
+        let mut children = Vec::new();
+        if let Some(name) = scan_alias {
+            children.push(arena.push_sn_non_plan(SyntaxNode::new_alias(name)));
+        }
+        if let Some(name) = scan_index {
+            children.push(arena.push_sn_non_plan(SyntaxNode::new_indexed_by(name)));
+        }
+
         let sn = SyntaxNode::new_pointer(id, None, children);
         arena.push_sn_plan(sn);
     }
