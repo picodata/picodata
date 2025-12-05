@@ -560,7 +560,7 @@ def test_governor_notices_restarts(instance: Instance):
     # vshard is configured after first start
     check_vshard_configured(instance)
 
-    assert instance.current_state() == dict(variant="Online", incarnation=1)
+    assert instance.current_state() == ("Online", 1)
 
     instance.restart()
     instance.wait_online()
@@ -568,7 +568,7 @@ def test_governor_notices_restarts(instance: Instance):
     # vshard is configured again after restart
     check_vshard_configured(instance)
 
-    assert instance.current_state() == dict(variant="Online", incarnation=2)
+    assert instance.current_state() == ("Online", 2)
 
 
 def test_proc_version_info(instance: Instance):

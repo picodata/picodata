@@ -686,13 +686,15 @@ class Instance:
             return None
         return f"{self.pg_host}:{self.pg_port}"
 
-    def current_state(self, target: "Instance | None" = None) -> dict[str, str | int]:
-        return self.instance_info(target)["current_state"]
+    def current_state(self, target: "Instance | None" = None) -> tuple[str, int]:
+        return self.states(target)[0]
 
-    def states(self, target: "Instance | None" = None) -> tuple[str, str]:
-        """Returns a pairs (current_state, target_state) but without the incarnation parts."""
-        info = self.instance_info(target)
-        return info["current_state"]["variant"], info["target_state"]["variant"]
+    def states(self, instance: "Instance | None" = None) -> tuple[tuple[str, int], tuple[str, int]]:
+        """Returns a pairs (current_state, target_state). State is pair (variant, incarnation)"""
+        info = self.instance_info(instance)
+        current = info["current_state"]
+        target = info["target_state"]
+        return (current["variant"], current["incarnation"]), (target["variant"], target["incarnation"])
 
     def get_tier(self):
         return "default" if self.tier is None else self.tier
@@ -1571,16 +1573,15 @@ class Instance:
 
             try:
                 # Fetch state
-                state = self.current_state()
-                if state != last_state:
-                    last_state = state
+                (state, incarnation), (target_state, _) = self.states()
+                if (state, incarnation) != last_state:
+                    last_state = (state, incarnation)
                     deadline = time.monotonic() + timeout
 
                 # Check state
-                actual_state: str = state["variant"]  # type: ignore
-                assert actual_state == "Online", self._wait_online_failure_message(actual_state)
+                assert state == "Online", self._wait_online_failure_message(state, target_state)
                 if expected_incarnation is not None:
-                    assert state["incarnation"] == expected_incarnation
+                    assert incarnation == expected_incarnation
 
                 # Success!
                 break
@@ -1604,7 +1605,7 @@ class Instance:
 
         log.info(f"{self} is online")
 
-    def _wait_online_failure_message(self, actual_state: str) -> str:
+    def _wait_online_failure_message(self, current_state: str, target_state: str) -> str:
         last_error = None
         governor_status = None
         leader = None
@@ -1621,9 +1622,11 @@ class Instance:
         except Exception as e:
             log.warning(f"Failed getting governor info: {e}")
 
+        state_repr = current_state if current_state == target_state else f"{current_state} -> {target_state}"
+
         message = f"""
 Timed out waiting for instance '{self.name_or_port()}' state 'Online'.
-Expected state 'Online', actual: '{actual_state}'
+Expected state 'Online', actual: '{state_repr}'
 """
 
         if self.log_file():
@@ -1664,8 +1667,8 @@ Last governor error is:
         )
 
         def check():
-            states = self.states(target)
-            assert states == (current_state, target_state)
+            (actual_current, _), (actual_target, _) = self.states(target)
+            assert (actual_current, actual_target) == (current_state, target_state)
 
         Retriable(timeout, rps, fatal=ProcessDead).call(check)
 
@@ -1892,7 +1895,8 @@ Last governor error is:
         return password
 
     def is_healthy(self) -> bool:
-        if self.current_state()["variant"] != "Online":
+        (current_state, _), _ = self.states()
+        if current_state != "Online":
             return False
 
         res_all = self.sql("SELECT COUNT(*) FROM _pico_governor_queue")

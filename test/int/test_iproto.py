@@ -162,7 +162,7 @@ def test_cross_cluster_isolation(cluster: Cluster):
 
     lc_cu = log_crawler(i3, "cluster UUID mismatch")
     lc_cu.wait_matched()
-    assert i3.current_state()["variant"] != "Online"
+    assert i3.current_state()[0] != "Online"
 
     assert i1.cluster_uuid != i3.cluster_uuid
 
