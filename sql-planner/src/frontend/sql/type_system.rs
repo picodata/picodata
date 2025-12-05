@@ -506,6 +506,7 @@ fn default_type_system() -> TypeSystem {
             [],
             Text,
         ),
+        Function::new_scalar("_pico_bucket", [Text], Array),
         Function::new_scalar("like", [Text, Text, Text], Boolean),
         Function::new_scalar("trim", [Text], Text),
         Function::new_scalar("trim", [Text, Text], Text),

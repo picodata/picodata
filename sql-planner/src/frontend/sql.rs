@@ -3969,19 +3969,24 @@ where
                                             let mut arg_pairs_to_parse = Vec::new();
                                             let mut volatile = false;
 
+                                            if let Ok(f) = worker.metadata.function(&function_name) {
+                                                if f.volatility == VolatilityType::Volatile {
+                                                    volatile = true;
+                                                }
+                                            }
+
                                             // Exposed by picodata scalar function name should be
                                             // transformed to real name of representing it stored procedure.
                                             if let Some(name) = get_real_function_name(&function_name) {
-                                                if !safe_for_volatile_function {
-                                                    return Err(SbroadError::NotImplemented(
-                                                        Entity::VolatileFunction, "is not allowed in filter clause".to_smolstr(),
-                                                        )
-                                                    );
-                                                }
-
                                                 function_name = name.to_string();
                                                 volatile = true;
+                                            }
 
+                                            if volatile && !safe_for_volatile_function {
+                                                return Err(SbroadError::NotImplemented(
+                                                    Entity::VolatileFunction, "is not allowed in filter clause".to_smolstr(),
+                                                    )
+                                                );
                                             }
 
                                             if let Some(first_arg_pair) = args_inner.next() {

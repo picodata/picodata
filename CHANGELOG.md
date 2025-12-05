@@ -20,6 +20,7 @@ with the `YY.MINOR.MICRO` scheme.
   types (e.g. pk int < decimal) and datetime.
 - Vinyl improvements to decrease in-memory page index size.
 - Add HTTPS support for metrics and WebUI
+- Add the _pico_bucket(tier_name) function to show vshard bucket distribution.
 
 ### Fixes
 - Fix compilation error on ARM architecture.

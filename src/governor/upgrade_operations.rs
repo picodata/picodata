@@ -53,11 +53,13 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("proc_name", "proc_replicaset_name"),
             ("proc_name", "proc_tier_name"),
             ("proc_name", "proc_query_metadata"),
-            ("exec_script", "alter_pico_replicaset_add_master_change_counter"),
-            ("exec_script", "alter_pico_replicaset_add_bucket_state_fields"),
-            ("exec_script", "alter_pico_tier_add_bucket_state_fields"),
+            ("exec_script", InternalScript::AlterPicoReplicasetAddMasterChangeCounter.as_str()),
+            ("exec_script", InternalScript::AlterPicoReplicasetAddBucketStateFields.as_str()),
+            ("exec_script", InternalScript::AlterPicoTierAddBucketStateFields.as_str()),
             ("sql", PicoBucket::SQL_CREATE),
             ("sql", PicoReshardingState::SQL_CREATE),
+            // We've added function `_pico_bucket` in this release.
+            ("exec_script", InternalScript::CreateIfNotExistSqlBuiltins.as_str()),
         ],
     ),
 ];
@@ -95,6 +97,15 @@ tarantool::define_str_enum! {
         ///     target_bucket_state_version  UNSIGNED NULL
         /// ```
         AlterPicoTierAddBucketStateFields = "alter_pico_tier_add_bucket_state_fields",
+
+        /// Schema upgrade operation equivalent to:
+        ///
+        /// ```ignore
+        /// crate::init_sbroad_builtins_lua();
+        /// ```
+        ///
+        /// This may be called again whenever we add a new function.
+        CreateIfNotExistSqlBuiltins = "create_if_not_exist_sql_builtins",
     }
 }
 
@@ -111,10 +122,22 @@ crate::define_rpc_request! {
         let lock = LOCK.with(Rc::clone);
         let _guard = lock.lock();
         match script_name {
-            InternalScript::AlterPicoTierAddIsDefault => execute_alter_pico_tier_add_is_default(),
-            InternalScript::AlterPicoReplicasetAddMasterChangeCounter => execute_alter_pico_replicaset_add_master_change_counter(),
-            InternalScript::AlterPicoReplicasetAddBucketStateFields => execute_alter_pico_replicaset_add_bucket_state_fields(),
-            InternalScript::AlterPicoTierAddBucketStateFields => execute_alter_pico_tier_add_bucket_state_fields(),
+            InternalScript::AlterPicoTierAddIsDefault =>
+                execute_alter_pico_tier_add_is_default(),
+
+            InternalScript::AlterPicoReplicasetAddMasterChangeCounter =>
+                execute_alter_pico_replicaset_add_master_change_counter(),
+
+            InternalScript::AlterPicoReplicasetAddBucketStateFields =>
+                execute_alter_pico_replicaset_add_bucket_state_fields(),
+
+            InternalScript::AlterPicoTierAddBucketStateFields =>
+                execute_alter_pico_tier_add_bucket_state_fields(),
+
+            InternalScript::CreateIfNotExistSqlBuiltins => {
+                crate::init_sbroad_builtins_lua();
+                Ok(Response {})
+            }
         }
     }
 
