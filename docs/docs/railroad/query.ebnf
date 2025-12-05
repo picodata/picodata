@@ -43,6 +43,7 @@ expression  ::= ('NOT'* (
                     | pico_raft_leader_uuid
                     | pico_replicaset_name
                     | pico_tier_name
+                    | _pico_bucket
                     | substr
                     | substring
                     | to_char
@@ -103,6 +104,7 @@ pico_instance_name    ::= 'PICO_INSTANCE_NAME' '(' text ')'
 pico_instance_uuid    ::= 'PICO_INSTANCE_UUID' '(' ')'
 pico_replicaset_name  ::= 'PICO_REPLICASET_NAME' '(' text ')'
 pico_tier_name        ::= 'PICO_TIER_NAME' '(' text ')'
+_pico_bucket          ::= '_PICO_BUCKET' '(' string ')'
 to_char     ::= 'TO_CHAR' '(' expression ',' format ')'
 to_date     ::= 'TO_DATE' '(' expression ',' format ')'
 trim        ::= 'TRIM' '('

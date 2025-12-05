@@ -136,6 +136,11 @@ pub fn get_builtin_functions() -> &'static [Function] {
             ),
             // volatile functions
             Function::new_volatile(
+                "_pico_bucket".into(),
+                DerivedType::new(UnrestrictedType::Array),
+                false,
+            ),
+            Function::new_volatile(
                 // TODO: deprecated, remove in future version
                 get_real_function_name("instance_uuid")
                     .expect("shouldn't fail")
