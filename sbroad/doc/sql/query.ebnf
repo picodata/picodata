@@ -238,7 +238,7 @@ truncate_table ::= 'TRUNCATE' ('TABLE')? table
                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 alter_table    ::= 'ALTER' 'TABLE' table
                    (
-                       ('RENAME' 'TO' table)
+                       ('RENAME' (('COLUMN' column 'TO' column)? | ('TO' table)?))
                        | (
                             ('ADD' 'COLUMN'? ('IF' 'NOT' 'EXISTS')? column type ('NOT' 'NULL')?)
                             (
