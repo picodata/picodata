@@ -256,7 +256,7 @@ backup         ::= 'BACKUP'
                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 alter_table    ::= 'ALTER' 'TABLE' table
                    (
-                       ('RENAME' 'TO' table)
+                       ('RENAME' (('COLUMN' column 'TO' column)? | ('TO' table)?))
                        | (
                             ('ADD' 'COLUMN'? ('IF' 'NOT' 'EXISTS')? column column_def_type ('NOT' 'NULL')?)
                             (
