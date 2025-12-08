@@ -102,7 +102,7 @@ impl Display for ComparisonOperator {
 }
 
 /// ExprKind represents expressions that define types.
-/// There are no parenthesis or aliaes, as they do not influence typing.
+/// There are no parenthesis or aliases, as they do not influence typing.
 #[derive(Debug)]
 pub enum ExprKind<Id> {
     /// NULL literal.
@@ -186,6 +186,9 @@ pub enum ExprKind<Id> {
         partition_by: Vec<Expr<Id>>,
         frame: Option<WindowFrame<Id>>,
     },
+    /// Json extract expression.
+    /// Examples: `json_extract_path(field, 'key', 'subkey')`.
+    JsonExtractPath(Vec<Expr<Id>>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

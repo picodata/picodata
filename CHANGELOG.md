@@ -8,6 +8,13 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+
+## [25.5.3] - Unreleased
+
+### Features
+
+- Support JSON_EXTRACT_PATH function.
+
 ## [25.5.2] - 2025-12-26
 
 ### Features
