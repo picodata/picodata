@@ -88,6 +88,28 @@ builtins.SUBSTRING_TO_REGEXP = function(string, pattern, expr)
     return builtins.SUBSTRING(string, new_pattern)
 end
 
+builtins.JSON_EXTRACT_PATH = function (mp)
+  local args = mp:decode()
+  if args == nil or #args == 0 then
+    return nil
+  end
+  local map = args[1]
+  local path = args[2]
+  if map == nil or path == nil then
+    return nil
+  end
+  local res = map[path]
+  for i, v in ipairs(args) do
+    if i > 2 then
+      if res == nil or type(res) ~= 'table' then
+        return nil
+      end
+      res = res[v]
+    end
+  end
+  return res
+end
+
 
 local function init()
     if rawget(_G, module) == nil then
@@ -160,6 +182,17 @@ local function create_functions()
         exports = { 'SQL' },
         is_deterministic = true,
         if_not_exists = true
+    })
+
+    body = string.format("function(...) return %s.builtins.JSON_EXTRACT_PATH(...) end",
+        module)
+    box.schema.func.create("json_extract_path", {
+        language = 'LUA',
+        body = body,
+        exports = {'SQL'},
+        is_deterministic = true,
+        if_not_exists = true,
+        takes_raw_args = true
     })
 end
 

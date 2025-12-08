@@ -136,6 +136,11 @@ pub fn get_builtin_functions() -> &'static [Function] {
                 DerivedType::new(UnrestrictedType::Any), // any numeric type
                 true,
             ),
+            Function::new_stable(
+                "json_extract_path".into(),
+                DerivedType::new(UnrestrictedType::Any),
+                false,
+            ),
             // volatile functions
             Function::new_volatile(
                 "_pico_bucket".into(),

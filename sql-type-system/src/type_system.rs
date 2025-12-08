@@ -527,6 +527,36 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 report.report(&expr.id, ty);
                 Ok(report)
             }
+            ExprKind::JsonExtractPath(ref args) => {
+                if args.len() < 2 {
+                    return Err(self.could_not_resolve_function_overload_error(
+                        FunctionKind::Scalar,
+                        "json_extract_path",
+                        args,
+                    ));
+                };
+
+                let mut report = TypeReport::new();
+                let arg_types = iter::once(Type::Map).chain(iter::repeat(Type::Text));
+                for (arg, ty) in args.iter().zip(arg_types) {
+                    let r = self.analyze(arg, ty)?;
+                    report.extend(r);
+                }
+
+                let arg_types = iter::once(Type::Map).chain(iter::repeat(Type::Text));
+                for (arg, ty) in args.iter().zip(arg_types) {
+                    if report.get_type(&arg.id) != ty {
+                        return Err(self.could_not_resolve_function_overload_error(
+                            FunctionKind::Scalar,
+                            "json_extract_path",
+                            args,
+                        ));
+                    }
+                }
+
+                report.report(&expr.id, Type::Any);
+                Ok(report)
+            }
             ExprKind::Comparison(op, left, right) => {
                 let mut report = self.analyze_comparison_operation(*op, left, right)?;
                 report.report(&expr.id, Type::Boolean);

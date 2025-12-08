@@ -297,6 +297,11 @@ pub fn to_type_expr(
                 let kind = TypeExprKind::Coalesce(args);
                 Ok(TypeExpr::new(node_id, kind))
             }
+            "json_extract_path" => {
+                let args = to_type_expr_many(children, plan, subquery_map)?;
+                let kind = TypeExprKind::JsonExtractPath(args);
+                Ok(TypeExpr::new(node_id, kind))
+            }
             name => {
                 let args = to_type_expr_many(children, plan, subquery_map)?;
                 let kind = TypeExprKind::Function(name.to_string(), args);

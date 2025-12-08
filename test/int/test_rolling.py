@@ -219,7 +219,8 @@ def test_upgrade_25_5_to_25_6_check_procs(factory: Factory):
 
     assert cluster.is_healthy()
 
-    proc_name = "_pico_bucket"
+    proc_names = ["_pico_bucket", "json_extract_path"]
     for i in cluster.instances:
-        res = i.call("box.space._func.index.name:select", [proc_name])
-        assert res[0][2] == proc_name
+        for p in proc_names:
+            res = i.call("box.space._func.index.name:select", [p])
+            assert res[0][2] == p

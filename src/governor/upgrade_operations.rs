@@ -70,6 +70,13 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("exec_script", InternalScript::CreateIfNotExistSqlBuiltins.as_str()),
         ],
     ),
+    (
+        "25.5.3",
+        &[
+            // Creation of Lua stored function JSON_EXTRACT_PATH.
+            ("exec_script", InternalScript::CreateIfNotExistSqlBuiltins.as_str()),
+        ],
+    ),
 ];
 
 tarantool::define_str_enum! {

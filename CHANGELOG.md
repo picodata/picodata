@@ -114,6 +114,7 @@ with the `YY.MINOR.MICRO` scheme.
     does not check whether the config exist, it will still return the initial path. If the instance was
     started without specifying an instance config, it will return `null`.
 - Support ALTER INDEX RENAME command to rename an existing index.
+- Support JSON_EXTRACT_PATH function.
 - Introduced various optimizations reducing memory allocations and
   eliminating unnecessary plan traversals and modifications.
   Some highlights:
