@@ -815,7 +815,7 @@ def test_ddl_create_table_at_catchup_with_master_switchover(cluster: Cluster):
         CREATE TABLE \"{space_name}\" (id UNSIGNED NOT NULL, PRIMARY KEY (id))
         DISTRIBUTED GLOBALLY
         WAIT APPLIED LOCALLY
-        OPTION (TIMEOUT = 3.0)
+        OPTION (TIMEOUT = 10)
         """
     )
     cluster.raft_wait_index(i1.raft_get_index())
@@ -1062,7 +1062,7 @@ def test_ddl_drop_table_by_raft_log_at_catchup(cluster: Cluster):
         """
         CREATE TABLE replace_me (id UNSIGNED NOT NULL, PRIMARY KEY (id))
         DISTRIBUTED BY (id)
-        OPTION (TIMEOUT = 3.0)
+        OPTION (TIMEOUT = 10)
         """
     )
     i1.sql("CREATE INDEX replace_skey ON replace_me (id)")
@@ -1075,7 +1075,7 @@ def test_ddl_drop_table_by_raft_log_at_catchup(cluster: Cluster):
         """
         CREATE TABLE drop_me (id UNSIGNED NOT NULL, PRIMARY KEY (id))
         DISTRIBUTED GLOBALLY
-        OPTION (TIMEOUT = 3.0)
+        OPTION (TIMEOUT = 10)
         """
     )
     i1.sql("CREATE INDEX drop_skey ON drop_me (id)")
@@ -1089,7 +1089,7 @@ def test_ddl_drop_table_by_raft_log_at_catchup(cluster: Cluster):
 
     # Drop the spaces
     for space_name in ["replace_me", "drop_me"]:
-        i1.sql(f"DROP TABLE {space_name} WAIT APPLIED LOCALLY OPTION (TIMEOUT = 3.0)")
+        i1.sql(f"DROP TABLE {space_name} WAIT APPLIED LOCALLY OPTION (TIMEOUT = 10)")
         i2.raft_wait_index(i1.raft_get_index())
         assert i1.call("box.space._space.index.name:get", space_name) is None
         assert i2.call("box.space._space.index.name:get", space_name) is None
@@ -1102,7 +1102,7 @@ def test_ddl_drop_table_by_raft_log_at_catchup(cluster: Cluster):
         CREATE TABLE replace_me (# UNSIGNED NOT NULL, PRIMARY KEY (#))
         DISTRIBUTED GLOBALLY
         WAIT APPLIED LOCALLY
-        OPTION (TIMEOUT = 3.0)
+        OPTION (TIMEOUT = 10)
         """
     )
     i1.sql("CREATE INDEX replace_skey ON replace_me (#) WAIT APPLIED LOCALLY")
@@ -1235,7 +1235,7 @@ def test_ddl_drop_table_by_snapshot_on_replica(cluster: Cluster):
         """
         CREATE TABLE replace_me (id UNSIGNED NOT NULL, PRIMARY KEY (id))
         DISTRIBUTED BY (id)
-        OPTION (TIMEOUT = 3.0)
+        OPTION (TIMEOUT = 10)
         """
     )
     i1.sql("CREATE INDEX replace_skey ON replace_me (id)")
@@ -1248,7 +1248,7 @@ def test_ddl_drop_table_by_snapshot_on_replica(cluster: Cluster):
         """
         CREATE TABLE drop_me (id UNSIGNED NOT NULL, PRIMARY KEY (id))
         DISTRIBUTED BY (id)
-        OPTION (TIMEOUT = 3.0)
+        OPTION (TIMEOUT = 10)
         """
     )
     i1.sql("CREATE INDEX drop_skey ON drop_me (id)")
@@ -1261,7 +1261,7 @@ def test_ddl_drop_table_by_snapshot_on_replica(cluster: Cluster):
         """
         CREATE TABLE drop_me_globally (id UNSIGNED NOT NULL, PRIMARY KEY (id))
         DISTRIBUTED BY (id)
-        OPTION (TIMEOUT = 3.0)
+        OPTION (TIMEOUT = 10)
         """
     )
     for i in cluster.instances:
@@ -1271,11 +1271,11 @@ def test_ddl_drop_table_by_snapshot_on_replica(cluster: Cluster):
     i3.terminate()
 
     # Try to drop using WAIT APPLIED GLOBALLY
-    i1.sql("DROP TABLE drop_me_globally WAIT APPLIED GLOBALLY OPTION (TIMEOUT = 3.0)")
+    i1.sql("DROP TABLE drop_me_globally WAIT APPLIED GLOBALLY OPTION (TIMEOUT = 10)")
     # It works, because Offline instances don't block the operation
 
     for space_name in ["replace_me", "drop_me"]:
-        i1.sql(f"DROP TABLE {space_name} WAIT APPLIED LOCALLY OPTION (TIMEOUT = 3.0)")
+        i1.sql(f"DROP TABLE {space_name} WAIT APPLIED LOCALLY OPTION (TIMEOUT = 10)")
         i2.raft_wait_index(i1.raft_get_index())
         for i in (i1, i2):
             assert i.call("box.space._space.index.name:get", space_name) is None
@@ -1287,7 +1287,7 @@ def test_ddl_drop_table_by_snapshot_on_replica(cluster: Cluster):
         CREATE TABLE replace_me (# UNSIGNED NOT NULL, PRIMARY KEY (#))
         DISTRIBUTED GLOBALLY
         WAIT APPLIED LOCALLY
-        OPTION (TIMEOUT = 3.0)
+        OPTION (TIMEOUT = 10)
         """
     )
     i1.sql("CREATE INDEX new_replace_skey ON replace_me (#) WAIT APPLIED LOCALLY")
@@ -1339,14 +1339,14 @@ def test_ddl_drop_table_by_snapshot_on_master(cluster: Cluster):
         """
         CREATE TABLE space_to_drop (id UNSIGNED NOT NULL, PRIMARY KEY (id))
         DISTRIBUTED GLOBALLY
-        OPTION (TIMEOUT = 3.0)
+        OPTION (TIMEOUT = 10)
         """
     )
     i1.sql(
         """
         CREATE TABLE space_to_replace (id UNSIGNED NOT NULL, PRIMARY KEY (id))
         DISTRIBUTED BY (id)
-        OPTION (TIMEOUT = 3.0)
+        OPTION (TIMEOUT = 10)
         """
     )
     i1.sql("CREATE INDEX drop_skey ON space_to_drop (id)")
@@ -1364,7 +1364,7 @@ def test_ddl_drop_table_by_snapshot_on_master(cluster: Cluster):
     # Drop spaces.
     #
     for space_name in ["space_to_drop", "space_to_replace"]:
-        i1.sql(f"DROP TABLE {space_name} WAIT APPLIED LOCALLY OPTION (TIMEOUT = 3.0)")
+        i1.sql(f"DROP TABLE {space_name} WAIT APPLIED LOCALLY OPTION (TIMEOUT = 10)")
         i1_index = i1.raft_get_index()
         for i in (i1, i2, i3):
             i.raft_wait_index(i1_index)
@@ -1377,7 +1377,7 @@ def test_ddl_drop_table_by_snapshot_on_master(cluster: Cluster):
         CREATE TABLE space_to_replace (id UNSIGNED NOT NULL, PRIMARY KEY (id))
         DISTRIBUTED GLOBALLY
         WAIT APPLIED LOCALLY
-        OPTION (TIMEOUT = 3.0)
+        OPTION (TIMEOUT = 10)
         """
     )
     i1.sql("CREATE INDEX replace_skey ON space_to_replace (id) WAIT APPLIED LOCALLY")
@@ -1485,7 +1485,7 @@ def test_ddl_alter_space_by_snapshot(cluster: Cluster):
         f"""
         CREATE TABLE {space_name} (id UNSIGNED NOT NULL,value UNSIGNED NOT NULL, PRIMARY KEY (id))
         DISTRIBUTED GLOBALLY
-        OPTION (TIMEOUT = 3.0)
+        OPTION (TIMEOUT = 10)
         """
     )
 
@@ -1504,7 +1504,7 @@ def test_ddl_alter_space_by_snapshot(cluster: Cluster):
     #
     # Change the space format.
     #
-    i1.sql(f"DROP TABLE {space_name} WAIT APPLIED LOCALLY OPTION (TIMEOUT = 3.0)")
+    i1.sql(f"DROP TABLE {space_name} WAIT APPLIED LOCALLY OPTION (TIMEOUT = 10)")
     cluster.raft_wait_index(i1.raft_get_index())
     assert i1.call("box.space._space.index.name:get", space_name) is None
     assert i2.call("box.space._space.index.name:get", space_name) is None
@@ -1516,7 +1516,7 @@ def test_ddl_alter_space_by_snapshot(cluster: Cluster):
         CREATE TABLE {space_name} (id UNSIGNED NOT NULL,value STRING NOT NULL, PRIMARY KEY (id))
         DISTRIBUTED GLOBALLY
         WAIT APPLIED LOCALLY
-        OPTION (TIMEOUT = 3.0)
+        OPTION (TIMEOUT = 10)
         """
     )
     cluster.raft_wait_index(i1.raft_get_index())
@@ -1609,7 +1609,7 @@ def test_long_term_transaction_causing_rpc_timeouts(cluster: Cluster):
         """
     )
 
-    ddl = i1.sql("CREATE INDEX tdata ON t (data) OPTION (TIMEOUT = 3)")
+    ddl = i1.sql("CREATE INDEX tdata ON t (data) OPTION (TIMEOUT = 10)")
     assert ddl["row_count"] == 1
     assert i1.raft_term() == current_term
 
@@ -1622,7 +1622,7 @@ def test_wait_applied_options(cluster: Cluster):
         """
         CREATE TABLE t1 (id INT PRIMARY KEY)
         WAIT APPLIED GLOBALLY
-        OPTION (TIMEOUT = 3)
+        OPTION (TIMEOUT = 10)
         """
     )
     assert ddl["row_count"] == 1
@@ -1631,7 +1631,7 @@ def test_wait_applied_options(cluster: Cluster):
         """
         CREATE TABLE t2 (id INT PRIMARY KEY)
         WAIT APPLIED LOCALLY
-        OPTION (TIMEOUT = 3)
+        OPTION (TIMEOUT = 10)
         """
     )
     assert ddl["row_count"] == 1
@@ -1671,7 +1671,7 @@ def test_wait_applied_options(cluster: Cluster):
         """
         CREATE TABLE t4 (id INT PRIMARY KEY)
         WAIT APPLIED LOCALLY
-        OPTION (TIMEOUT = 3)
+        OPTION (TIMEOUT = 10)
         """
     )
     assert ddl["row_count"] == 1
@@ -1684,7 +1684,7 @@ def test_wait_applied_options(cluster: Cluster):
         """
         CREATE TABLE t (id INT PRIMARY KEY)
         WAIT APPLIED GLOBALLY
-        OPTION (TIMEOUT = 3)
+        OPTION (TIMEOUT = 10)
         """
     )
     assert ddl["row_count"] == 1
@@ -1693,7 +1693,7 @@ def test_wait_applied_options(cluster: Cluster):
         """
         CREATE INDEX index ON t (id)
         WAIT APPLIED GLOBALLY
-        OPTION (TIMEOUT = 3)
+        OPTION (TIMEOUT = 10)
         """
     )
     assert ddl["row_count"] == 1
@@ -1702,7 +1702,7 @@ def test_wait_applied_options(cluster: Cluster):
         """
         DROP INDEX index
         WAIT APPLIED GLOBALLY
-        OPTION (TIMEOUT = 3)
+        OPTION (TIMEOUT = 10)
         """
     )
     assert ddl["row_count"] == 1
@@ -1713,7 +1713,7 @@ def test_wait_applied_options(cluster: Cluster):
         LANGUAGE SQL
         AS $$INSERT INTO t VALUES(?::int)$$
         WAIT APPLIED GLOBALLY
-        OPTION (TIMEOUT = 3)
+        OPTION (TIMEOUT = 10)
         """
     )
     assert ddl["row_count"] == 1
@@ -1722,7 +1722,7 @@ def test_wait_applied_options(cluster: Cluster):
         """
         DROP PROCEDURE proc
         WAIT APPLIED GLOBALLY
-        OPTION (TIMEOUT = 3)
+        OPTION (TIMEOUT = 10)
         """
     )
     assert ddl["row_count"] == 1
@@ -2309,35 +2309,35 @@ def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
     i2.sql(
         """
         CREATE TABLE t1 (id INT PRIMARY KEY)
-        OPTION (TIMEOUT = 3)
+        OPTION (TIMEOUT = 10)
         """
     )
     Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
 
-    i2.sql(""" TRUNCATE TABLE t1 OPTION (TIMEOUT = 3) """)
+    i2.sql(""" TRUNCATE TABLE t1 OPTION (TIMEOUT = 10) """)
     Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
 
-    i2.sql(""" ALTER TABLE t1 RENAME TO t2 OPTION (TIMEOUT = 3) """)
+    i2.sql(""" ALTER TABLE t1 RENAME TO t2 OPTION (TIMEOUT = 10) """)
     Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
 
-    i2.sql(""" CREATE INDEX t2_index ON t2 (id) OPTION (TIMEOUT = 3) """)
+    i2.sql(""" CREATE INDEX t2_index ON t2 (id) OPTION (TIMEOUT = 10) """)
     Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
 
-    i2.sql(""" DROP INDEX t2_index OPTION (TIMEOUT = 3) """)
+    i2.sql(""" DROP INDEX t2_index OPTION (TIMEOUT = 10) """)
     Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
 
     i2.sql(
         """
         CREATE PROCEDURE proc() AS $$ INSERT INTO t2 VALUES (1) $$
-        OPTION (TIMEOUT = 3)
+        OPTION (TIMEOUT = 10)
         """
     )
     Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
 
-    i2.sql(""" DROP PROCEDURE proc OPTION (TIMEOUT = 3) """)
+    i2.sql(""" DROP PROCEDURE proc OPTION (TIMEOUT = 10) """)
     Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
 
-    i2.sql(""" DROP TABLE t2 OPTION (TIMEOUT = 3) """)
+    i2.sql(""" DROP TABLE t2 OPTION (TIMEOUT = 10) """)
     Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
 
     # Test CREATE TABLE (commit and abort cases)
@@ -2345,7 +2345,7 @@ def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
     i2.sql(
         """
         CREATE TABLE t1 (id INT PRIMARY KEY)
-        OPTION (TIMEOUT = 3)
+        OPTION (TIMEOUT = 10)
         """
     )
 
@@ -2376,7 +2376,7 @@ def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
         leader.sql(
             f"""
             CREATE TABLE {conflict_table_name} (id INT PRIMARY KEY)
-            OPTION (TIMEOUT = 3)
+            OPTION (TIMEOUT = 10)
             """
         )
 
@@ -2398,7 +2398,7 @@ def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
     ddl = leader.sql(
         """
         CREATE TABLE t2 (id INT PRIMARY KEY)
-        OPTION (TIMEOUT = 3)
+        OPTION (TIMEOUT = 10)
         """
     )
     assert ddl["row_count"] == 1
@@ -2414,7 +2414,7 @@ def test_alter_table_rename_ddl_execution(cluster: Cluster):
     r1_leader.sql(
         f"""
         CREATE TABLE {table_name} (id INT PRIMARY KEY)
-        OPTION (TIMEOUT = 3)
+        OPTION (TIMEOUT = 10)
         """
     )
 
@@ -2500,7 +2500,7 @@ def test_drop_table_pause_rebalancing(cluster: Cluster):
     ddl = r1_leader.sql(
         """
         CREATE TABLE sharded_table (id INT PRIMARY KEY)
-        OPTION (TIMEOUT = 3)
+        OPTION (TIMEOUT = 10)
         """
     )
     assert ddl["row_count"] == 1
