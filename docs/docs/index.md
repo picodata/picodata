@@ -77,7 +77,7 @@ Picodata — это распределенная система промышле
 * [Sirin](plugins/sirin.md)
 * [Synapse](plugins/synapse.md)
 * [Ouroboros](plugins/ouroboros.md)
-* [Внешний модуль аудита](plugins/gostech_audit_log.md)
+* [Внешний аудит](plugins/gostech_audit_log.md)
 
 ### Справочные материалы {: #reference }
 
