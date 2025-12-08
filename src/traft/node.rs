@@ -919,6 +919,19 @@ impl NodeImpl {
                     );
                 }
 
+                // Update node's applied index
+                //
+                // NOTE: this must be done within the transaction and not after
+                // it, because the fiber will yield as soon as the transaction
+                // ends until the WAL entry is persisted to disk. During this
+                // yield the governor_loop may wake up and see a stale value in
+                // node.get_index() which doesn't correspond to other global
+                // state. This causes several different errors (multiple tests
+                // start failing).
+                self.applied
+                    .send(entry_index)
+                    .expect("applied shouldn't ever be borrowed across yields");
+
                 Ok(())
             })?;
 
@@ -936,11 +949,6 @@ impl NodeImpl {
                 debug_assert!(table == DbConfig::TABLE_ID);
                 apply_parameter(&self.alter_system_parameters, new_tuple, current_tier)?;
             }
-
-            // Update node's applied index
-            self.applied
-                .send(entry_index)
-                .expect("applied shouldn't ever be borrowed across yields");
 
             crate::error_injection!("BLOCK_AFTER_APPLIED_ENTRY_IF_OWN_TARGET_STATE_OFFLINE" => {
                 if self.topology_cache.my_target_state().variant == crate::instance::StateVariant::Offline {
