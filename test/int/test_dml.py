@@ -317,69 +317,101 @@ def test_global_dml_benchmark_5_instances_batching(cluster: Cluster):
 
 
 def test_vinyl_tmp_table(cluster: Cluster):
-    # Check insertion into temporary table for vinyl engine
+    """
+    Checks insertion into temporary table for vinyl engine.
+    """
     i1 = cluster.add_instance(wait_online=True, replicaset_name="r1")
     i2 = cluster.add_instance(wait_online=True, replicaset_name="r1")
 
-    ddl = i1.sql(
-        """
-        create table v1 (a int primary key, b int) using vinyl distributed by (a);
-"""
-    )
+    # STEP: initial test tables and data setup.
+
+    ddl = i1.sql("""
+        CREATE TABLE v1 (
+            a INT PRIMARY KEY,
+            b INT
+        ) USING vinyl
+        DISTRIBUTED BY (a);
+    """)
     assert ddl["row_count"] == 1
 
-    ddl = i1.sql(
-        """
-        create table v2 (a int primary key, b int) using vinyl distributed by (a);
-"""
-    )
+    ddl = i1.sql("""
+        CREATE TABLE v2 (
+            a INT PRIMARY KEY,
+            b INT
+        ) USING vinyl
+        DISTRIBUTED BY (a);
+    """)
     assert ddl["row_count"] == 1
 
-    dml = i1.sql(
-        """
-        insert into v1 values (1, 1), (3, 3), (5, 5), (7, 7), (9, 9);
-"""
-    )
+    dml = i1.sql("""
+        INSERT INTO v1
+        VALUES
+            (1, 1),
+            (3, 3),
+            (5, 5),
+            (7, 7),
+            (9, 9);
+    """)
     assert dml["row_count"] == 5
 
-    dml = i1.sql(
-        """
-        insert into v2 values (2, 2), (4, 4), (6, 6), (8, 8), (10, 10);
-"""
-    )
+    dml = i1.sql("""
+        INSERT INTO v2
+        VALUES
+            (2, 2),
+            (4, 4),
+            (6, 6),
+            (8, 8),
+            (10, 10);
+    """)
     assert dml["row_count"] == 5
 
-    ro_replica = i2
-    if not ro_replica.eval("return box.cfg.read_only"):
-        ro_replica = i1
-        # i1 became rw replica between i2.eval('return box.cfg.read_only') and i1.eval('return box.cfg.read_only')
-        assert ro_replica.eval("return box.cfg.read_only")
+    # STEP: determine correct replicaset master replica.
 
-    dml = ro_replica.sql(
-        """
-        insert into v1 (a, b) select * from v2;
-"""
-    )
+    master_replica_name = i1.replicaset_master_name()
+    if i1.name == master_replica_name:
+        master_replica, readonly_replica = i1, i2
+    else:
+        master_replica, readonly_replica = i2, i1
 
-    assert dml["row_count"] == 5
+    # NOTE: after the last DML query we must wait for a possible readonly
+    # replica to receive and apply DML changes from master.
+    readonly_replica.wait_vclock(master_replica.get_vclock())
+
+    # STEP: perform checked insertions into temporary table.
 
     def check_table_row_count(table_name, expected_count):
-        dql = ro_replica.sql(
-            f"""
-            select * from {table_name};
-"""
-        )
+        dql = readonly_replica.sql(f"SELECT * FROM {table_name}")
         assert len(dql) == expected_count
 
+    # NOTE: this request will be sent to master replica first,
+    # and then replicated back to the readonly replica.
+    dml = readonly_replica.sql("""
+        INSERT INTO v1 (a, b)
+        SELECT * FROM v2;
+    """)
+    assert dml["row_count"] == 5
+    readonly_replica.wait_vclock(master_replica.get_vclock())
     check_table_row_count("v1", 10)
 
-    dml = ro_replica.sql(
-        """
-        insert into v1 select a + 10, b + 10 from v1;
-"""
-    )
-
+    # NOTE: this request will be sent to master replica first,
+    # and then replicated back to the readonly replica.
+    dml = readonly_replica.sql("""
+        INSERT INTO v1
+        SELECT a + 10, b + 10
+        FROM v1;
+    """)
+    assert dml["row_count"] == 10
+    readonly_replica.wait_vclock(master_replica.get_vclock())
     check_table_row_count("v1", 20)
+
+    # STEP: check that replicaset master replica has not changed.
+    # NOTE: switchover/failover mechanism might transfer replicaset mastership
+    # from one replica to another which we want to avoid for this test.
+
+    assert master_replica_name == master_replica.name, (
+        "replicaset switchover/failover happened after determining the replicaset master "
+        "which caused a test to assume mastership of a wrong replica in a replicaset"
+    )
 
 
 def do_test_global_dml_contention_load(
