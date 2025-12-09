@@ -1305,6 +1305,10 @@ pub struct InstanceConfig {
 
     pub http_listen: Option<HttpAddress>,
 
+    #[serde(default)]
+    #[introspection(nested)]
+    pub https: crate::http_server::HttpsConfig,
+
     #[introspection(config_default = self.instance_dir.as_ref().map(|dir| dir.join("admin.sock")))]
     pub admin_socket: Option<PathBuf>,
 

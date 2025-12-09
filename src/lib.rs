@@ -16,6 +16,7 @@
 use crate::access_control::user_by_id;
 use crate::address::HttpAddress;
 use crate::error_code::ErrorCode;
+use crate::http_server::HttpsConfig;
 use crate::instance::Instance;
 use crate::instance::StateVariant::*;
 use crate::schema::system_table_definitions;
@@ -311,6 +312,7 @@ fn preload_http() {
     }
 
     preload!("http.server", "http/server.lua");
+    preload!("http.sslsocket", "http/sslsocket.lua");
     preload!("http.version", "http/version.lua");
     preload!("http.codes", "http/codes.lua");
     preload!("http.mime_types", "http/mime_types.lua");
@@ -318,19 +320,50 @@ fn preload_http() {
 
 fn start_http_server(
     HttpAddress { host, port, .. }: &HttpAddress,
+    https_config: HttpsConfig,
     registry: &'static prometheus::Registry,
 ) -> Result<(), Error> {
+    let (cert_path, key_path, password_file_path, ca_file_path) = if https_config.enabled() {
+        // Helper lambda to extract path as Option<String>
+        let extract_path = |option: &Option<PathBuf>| {
+            option
+                .as_ref()
+                .map(|path| path.to_string_lossy().into_owned())
+        };
+
+        let cert_path = extract_path(&https_config.cert_file);
+        let key_path = extract_path(&https_config.key_file);
+        let password_file_path = extract_path(&https_config.password_file);
+        let ca_file_path = extract_path(&https_config.ca_file);
+
+        (cert_path, key_path, password_file_path, ca_file_path)
+    } else {
+        (None, None, None, None)
+    };
+
     tlog!(Info, "starting http server at {host}:{port}");
     let lua = ::tarantool::lua_state();
 
     lua.exec_with(
         r#"
-        local host, port = ...;
-        local httpd = require('http.server').new(host, port);
+        local host, port, ssl_cert, ssl_key, ssl_password_file, ssl_ca_file_path = ...;
+        local httpd = require('http.server').new(host, port, {
+            ssl_cert_file = ssl_cert,
+            ssl_key_file = ssl_key,
+            ssl_password_file = ssl_password_file,
+            ssl_ca_file = ssl_ca_file_path
+        });
         httpd:start();
         _G.pico.httpd = httpd
         "#,
-        (host, port),
+        (
+            host,
+            port,
+            cert_path,
+            key_path,
+            password_file_path,
+            ca_file_path,
+        ),
     )
     .map_err(|err| {
         Error::other(format!(
@@ -1708,8 +1741,14 @@ fn setup_metrics_and_start_http_server(
         Box::leak(Box::new(reg))
     };
 
-    if let Some(addr) = &config.instance.http_listen {
-        start_http_server(addr, registry)?;
+    if let Some(addr) = config
+        .instance
+        .http_listen
+        .as_ref()
+        .or(config.instance.http_listen.as_ref())
+    {
+        start_http_server(addr, config.instance.https.clone(), registry)?;
+
         if cfg!(feature = "webui") {
             tlog!(Info, "Web UI is enabled");
         } else {

@@ -7,12 +7,13 @@ use crate::tier::Tier;
 use crate::traft::network::ConnectionPool;
 use crate::traft::{node, ConnectionType, Result};
 use crate::util::Uppercase;
-use crate::{has_states, tlog, unwrap_ok_or};
+use crate::{has_states, introspection::Introspection, tlog, unwrap_ok_or};
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use smol_str::format_smolstr;
 use smol_str::SmolStr;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tarantool::fiber;
 use tarantool::fiber::r#async::timeout::IntoTimeout;
@@ -21,6 +22,30 @@ use tarantool::session::with_su;
 const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 const AUTH_TOKEN_EXPIRY_HOURS: u64 = 24;
 const REFRESH_TOKEN_EXPIRY_DAYS: u64 = 365;
+
+#[derive(
+    Clone, Debug, Default, Eq, Introspection, PartialEq, serde::Deserialize, serde::Serialize,
+)]
+pub struct HttpsConfig {
+    #[introspection(config_default = false)]
+    pub enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cert_file: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_file: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ca_file: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub password_file: Option<PathBuf>,
+}
+
+impl HttpsConfig {
+    #[inline]
+    pub fn enabled(&self) -> bool {
+        self.enabled
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
+    }
+}
 
 fn as_admin<T>(f: impl FnOnce() -> T) -> T {
     with_su(1, f).expect("becoming admin should not fail")

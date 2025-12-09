@@ -1,4 +1,6 @@
+import ssl
 from typing import Dict, Any, Tuple, Optional
+from pathlib import Path
 
 from conftest import (
     Cluster,
@@ -595,6 +597,36 @@ def test_webui_can_vote_flag(cluster: Cluster):
             tier_blue,
             tier_red,
         ]
+
+
+@pytest.mark.webui
+def test_webui_https(cluster: Cluster):
+    https_certs_path = Path(__file__).parent.parent / "https_certs"
+    cluster_cfg = f"""
+    cluster:
+        name: test
+        tier:
+            red:
+                replication_factor: 1
+    instance:
+        https:
+            enabled: true
+            key_file: {https_certs_path / "key.pem"}
+            cert_file: {https_certs_path / "cert.pem"}
+            password_file: {https_certs_path / "password.txt"}
+    """
+    cluster.set_config_file(yaml=cluster_cfg)
+
+    i1 = cluster.add_instance(wait_online=True, tier="red", enable_http=True)
+
+    https_listen = i1.env["PICODATA_HTTP_LISTEN"]
+
+    # Create contxext to validate SSL over self-signed cert
+    context = ssl.create_default_context()
+    context.load_verify_locations(cafile=https_certs_path / "cert.pem")
+
+    with urlopen(f"https://{https_listen}/", context=context) as response:
+        assert response.headers.get("content-type") == "text/html"
 
 
 @pytest.mark.webui

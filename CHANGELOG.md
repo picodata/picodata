@@ -18,6 +18,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Plugins and webUI now support scram-sha256 auth.
 - SQL optimizer may now select indices for comparison operators with mixed number
   types (e.g. pk int < decimal) and datetime.
+- Add HTTPS support for metrics and WebUI
 
 ### Fixes
 - Fix compilation error on ARM architecture.

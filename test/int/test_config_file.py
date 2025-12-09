@@ -101,6 +101,7 @@ instance:
             instance_dir=dict(value=instance_dir, source="config_file"),
             backup_dir=dict(value=f"{instance_dir}/backup", source="default"),
             iproto_listen=dict(value=f"{host}:{port}", source="config_file"),
+            https=dict(enabled=dict(value=False, source="default")),
             log=dict(
                 level=dict(value="verbose", source="commandline_or_environment"),
                 format=dict(value="plain", source="default"),
