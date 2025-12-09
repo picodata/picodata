@@ -792,7 +792,7 @@ table.legend {
         <tr>
             <td><span class="sql-tier">[iproto_net_msg_max](db_config.md#iproto_net_msg_max){.link}</span></td>
             <td>Максимальное количество сообщений, которое Picodata обрабатывает параллельно</td>
-            <td>0x300</td>
+            <td>768</td>
             <td>
             ```sql
             ALTER SYSTEM SET iproto_net_msg_max = 0x400 FOR TIER default;

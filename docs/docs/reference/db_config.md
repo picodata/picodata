@@ -241,7 +241,7 @@ SQL). Данный параметр устанавливает лимит на �
 can be released as soon as they are delivered, while incoming requests might
 not be processed until some time after delivery. -->
 
-Значение по умолчанию: `0x300`
+Значение по умолчанию: `768`
 
 ### memtx_checkpoint_count
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-checkpoint-daemon-checkpoint-count -->

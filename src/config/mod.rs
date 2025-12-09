@@ -1910,7 +1910,7 @@ pub struct AlterSystemParameters {
     ///
     /// Corresponds to `box.cfg.net_msg_max`.
     #[introspection(sbroad_type = SbroadType::Unsigned)]
-    #[introspection(config_default = 0x300)]
+    #[introspection(config_default = 768)]
     #[introspection(scope = tier)]
     pub iproto_net_msg_max: u64,
 
