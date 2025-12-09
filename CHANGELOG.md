@@ -52,6 +52,7 @@ with the `YY.MINOR.MICRO` scheme.
   problem for anybody. NOTE also that this doesn't affect restarting already
   instances which already joined the cluster.
 - Fix pico_instance_state metric to report correct value on all instances
+- Fixed a bug where some queries that changed the table schema checked WRITE permissions instead of ALTER permissions.
 
 ### WebUI
 - Login form and simple session control

@@ -313,6 +313,78 @@ def test_acl_roles_basic(cluster: Cluster):
             i.call("box.space._pico_property:select", user=user, password=VALID_PASSWORD)
 
 
+def test_acl_alter(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=4, init_replication_factor=2)
+
+    user = "Steven"
+
+    # Create user.
+    i1.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{VALID_PASSWORD}' using chap-sha1")
+    index = i1.call(".proc_get_index")
+    cluster.raft_wait_index(index)
+
+    # Create a table to have something to grant privileges to.
+    cluster.create_table(
+        dict(
+            name="zoo",
+            format=[
+                dict(name="animal", type="string", is_nullable=False),
+                dict(name="age", type="integer", is_nullable=False),
+            ],
+            primary_key=["animal"],
+            distribution="sharded",
+            sharding_key=["animal"],
+            sharding_fn="murmur3",
+        )
+    )
+
+    # Assign useless role to user.
+    i1.grant_privilege(user, "write", "table")
+    index = i1.call(".proc_get_index")
+    cluster.raft_wait_index(index)
+
+    # Try mutating table schema.
+    with pytest.raises(TarantoolError, match="Alter access to space 'zoo' is denied for user 'Steven'"):
+        i1.sql("ALTER TABLE zoo ADD COLUMN price INT", user=user, password=VALID_PASSWORD)
+
+    # Try mutating system table schema.
+    with pytest.raises(TarantoolError, match="Alter access to space '_pico_table' is denied for user 'Steven'"):
+        i1.sql("ALTER TABLE _pico_table ADD COLUMN kek INT", user=user, password=VALID_PASSWORD)
+
+    # Try renaming table.
+    with pytest.raises(TarantoolError, match="Alter access to space 'zoo' is denied for user 'Steven'"):
+        i1.sql("ALTER TABLE zoo RENAME TO circus", user=user, password=VALID_PASSWORD)
+
+    # Try mutating table schema.
+    with pytest.raises(TarantoolError, match="Alter access to space 'zoo' is denied for user 'Steven'"):
+        i1.sql("ALTER TABLE zoo RENAME COLUMN age TO price", user=user, password=VALID_PASSWORD)
+
+    # Assign useful role to user.
+    i1.grant_privilege(user, "alter", "table")
+    index = i1.call(".proc_get_index")
+    cluster.raft_wait_index(index)
+
+    # Now mutating table schema works.
+    i1.sql("ALTER TABLE zoo ADD COLUMN geo STRING", user=user, password=VALID_PASSWORD)
+    index = i1.call(".proc_get_index")
+    cluster.raft_wait_index(index)
+
+    # Now mutating system table schema works.
+    i1.sql("ALTER TABLE _pico_table ADD COLUMN kek INT", user=user, password=VALID_PASSWORD)
+    index = i1.call(".proc_get_index")
+    cluster.raft_wait_index(index)
+
+    # Now renaming table works.
+    i1.sql("ALTER TABLE zoo RENAME TO circus", user=user, password=VALID_PASSWORD)
+    index = i1.call(".proc_get_index")
+    cluster.raft_wait_index(index)
+
+    # Now mutating table schema works.
+    i1.sql("ALTER TABLE circus RENAME COLUMN age TO price", user=user, password=VALID_PASSWORD)
+    index = i1.call(".proc_get_index")
+    cluster.raft_wait_index(index)
+
+
 def test_cas_permissions(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=4, init_replication_factor=2)
 

@@ -294,7 +294,7 @@ fn access_check_ddl(storage: &Catalog, ddl: &op::Ddl, as_user: UserId) -> tarant
                 *table_id,
                 meta.user_id,
                 TntSchemaObjectType::Space,
-                PrivType::Write,
+                PrivType::Alter,
                 as_user,
             )
         }
