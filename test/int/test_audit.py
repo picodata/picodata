@@ -717,16 +717,17 @@ def test_grant_revoke(auth_method: str, instance_with_audit_file: Instance):
     assert revoke_role["initiator"] == user
 
 
-def check_rotate(audit: AuditFile):
+def check_audit_log_rotate(audit: AuditFile):
     rotate = take_until_title(audit.events(), "audit_rotate")
     assert rotate is not None
     assert rotate["message"] == "log file has been reopened"
     assert rotate["severity"] == "low"
 
 
-def test_rotation(instance_with_audit_file: Instance):
-    instance = instance_with_audit_file
-    instance.start()
+def test_rotation(cluster: Cluster):
+    instance = cluster.add_instance(wait_online=False, log_to_file=True, log_to_console=False)
+    instance.audit = os.path.join(instance.instance_dir, "audit.log")
+    instance.start_and_wait()
 
     user = "ymir"
     password = "T0psecret"
@@ -736,13 +737,32 @@ def test_rotation(instance_with_audit_file: Instance):
         pass
 
     instance.create_user(with_name=user, with_password=password)
-
     instance.sql(f'GRANT CREATE ROLE TO "{user}"', sudo=True)
+
+    # NOTE: we have seen this test as flaky, which looked like it took more than
+    # 5 seconds to rotate audit logs which is suspicious. High load on CI server
+    # in theory might be the cause but we dont have all logs to prove that. So
+    # we now direct instance log to file instead of stdout, so "rotate" message
+    # appears there too and we can cross check timings of these two messages.
+    # To reduce probability of it spuriously failing again we first check
+    # instance log to first validate that it was rotated, and increase timeouts
+    # for checks.
+    # NOTE: log crawler by default works with stdout and does not work with
+    # files, but there is no need for now to modify it and make it work this
+    # way, because this test is a rare scenario when instance is running with
+    # the logs output to file, instead of stdout.
+    def check_instance_log_rotate(instance: Instance):
+        log_file = instance.log_file()
+        assert log_file, "instance log rotation check requires instance logs to be stored in a file"
+        with open(log_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            assert any("log file has been reopened" in line for line in lines)
 
     assert instance.process is not None
     instance.process.send_signal(sig=signal.SIGHUP)
 
-    Retriable(timeout=5, rps=1).call(check_rotate, audit)
+    Retriable(timeout=10, rps=1).call(check_instance_log_rotate, instance)
+    check_audit_log_rotate(audit)
 
 
 def test_rename_user(instance_with_audit_file: Instance):
