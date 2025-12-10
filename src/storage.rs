@@ -60,7 +60,7 @@ use tarantool::space::{FieldType, Space, SpaceId, SpaceType, SystemSpace};
 use tarantool::tlua;
 use tarantool::tuple::RawBytes;
 use tarantool::tuple::Tuple;
-use tarantool::tuple::{DecodeOwned, KeyDef, ToTupleBuffer};
+use tarantool::tuple::{DecodeOwned, KeyDef};
 
 pub mod schema;
 pub mod snapshot;
@@ -425,16 +425,15 @@ impl Catalog {
                 tuple,
                 conflict_strategy: DoNothing,
                 ..
-            } => {
-                let index = space.primary_key();
-                let metadata = index.meta()?;
-                let key_def = metadata.to_key_def();
-                let key = key_def.extract_key(&Tuple::from(&tuple.to_tuple_buffer()?))?;
-                match space.get(&key)? {
-                    Some(_) => Ok(None),
-                    None => space.replace(tuple).map(Some),
+            } => match space.insert(tuple) {
+                Ok(tuple) => Ok(Some(tuple)),
+                Err(TntError::Tarantool(e))
+                    if e.error_code() == TntErrorCode::TupleFound as u32 =>
+                {
+                    Ok(None)
                 }
-            }
+                Err(e) => Err(e),
+            },
             Dml::Replace { tuple, .. } => space.replace(tuple).map(Some),
             Dml::Update { key, ops, .. } => space.update(key, ops),
             Dml::Delete { key, metainfo, .. } => {

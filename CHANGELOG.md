@@ -53,6 +53,7 @@ with the `YY.MINOR.MICRO` scheme.
   instances which already joined the cluster.
 - Fix pico_instance_state metric to report correct value on all instances
 - Fixed a bug where some queries that changed the table schema checked WRITE permissions instead of ALTER permissions.
+- Fix `DO NOTHING` conflict policy error on unique indices for globally distributed tables.
 
 ### WebUI
 - Login form and simple session control
