@@ -92,6 +92,9 @@ with the `YY.MINOR.MICRO` scheme.
   - INSERT performance increased by 20%-70% depending on the size of the rows.
   - TPC-B performance increased by ~10%.
 
+- Add INDEXED BY clause. It is sqlite feature which allows to specify index for
+  table lookup.
+
 ### Pgproto
 - Add support for configuring pgproto TLS certificates via:
   - `instance.pg.ssl` (enable/disable TLS)
