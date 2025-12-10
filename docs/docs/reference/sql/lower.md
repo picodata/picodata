@@ -1,7 +1,9 @@
 # LOWER
 
-Выражение `LOWER` используется в [SELECT](select.md)-запросах для
+Функция `LOWER` используется в [SELECT](select.md)-запросах для
 получения [строковых данных](../sql_types.md#text) в нижнем регистре.
+
+Функция является [строгой](../../overview/glossary.md#strict_function).
 
 ## Синтаксис {: #syntax }
 

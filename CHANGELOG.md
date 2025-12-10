@@ -54,6 +54,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fix pico_instance_state metric to report correct value on all instances
 - Fixed a bug where some queries that changed the table schema checked WRITE permissions instead of ALTER permissions.
 - Fix `DO NOTHING` conflict policy error on unique indices for globally distributed tables.
+- Lua datetime functions `to_char` and `to_date` are now strict (returns `NULL` when at least one argument is `NULL`).
 
 ### WebUI
 - Login form and simple session control

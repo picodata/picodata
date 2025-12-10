@@ -1,7 +1,9 @@
 # UPPER
 
-Выражение `UPPER` используется в [SELECT](select.md)-запросах для
+Функция `UPPER` используется в [SELECT](select.md)-запросах для
 получения [строковых данных](../sql_types.md#text) в верхнем регистре.
+
+Функция является [строгой](../../overview/glossary.md#strict_function).
 
 ## Синтаксис {: #syntax }
 

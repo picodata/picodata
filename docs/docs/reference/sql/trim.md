@@ -2,6 +2,8 @@
 
 Функция `TRIM` удаляет наибольшую подстроку, содержащую символы строки *removal_chars*, в начале, в конце или с обеих сторон строки *string*.
 
+Функция является [строгой](../../overview/glossary.md#strict_function).
+
 !!! note "Примечание"
     *removal_chars* и *string* — результаты [выражений](#expression) типа [TEXT](../sql_types.md#text).
 

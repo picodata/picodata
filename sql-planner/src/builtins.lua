@@ -4,8 +4,11 @@ local dt = require('datetime')
 local builtins = {}
 
 builtins.TO_DATE = function (s, fmt)
+    if s == nil or fmt == nil then
+      return nil
+    end
     local opts = {}
-    if fmt and fmt ~= '' then
+    if fmt ~= '' then
       opts = { format = fmt }
     end
     -- ignore the second returned value
@@ -17,7 +20,7 @@ end
 
 builtins.TO_CHAR = function (date, fmt)
   local res
-  if fmt then
+  if date and fmt then
     res = date:format(fmt)
   else
     res = nil

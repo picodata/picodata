@@ -32,6 +32,8 @@
 * **STRING_AGG** — то же, что и `GROUP_CONCAT`. Данный алиас
   используется для совместимости с PostgreSQL.
 
+Функции `AVG`, `MIN`, `MAX`, `SUM` являются [строгими](../../overview/glossary.md#strict_function).
+
 ## Параметры {: #params }
 
 * **DISTINCT** — возвращает только уникальные значения выражений.

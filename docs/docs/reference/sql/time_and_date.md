@@ -110,11 +110,14 @@ sql> SELECT localtimestamp(6);
 Функция `TO_CHAR` преобразует объект *expression* типа [DATETIME] в строку
 типа [TEXT] согласно формату *format*.
 
+Функция является [строгой].
+
 Значение *format* должно соответствовать спецификации [strftime].
 
 [TEXT]: ../sql_types.md#text
 [DATETIME]: ../sql_types.md#datetime
 [strftime]: https://man.freebsd.org/cgi/man.cgi?query=strftime
+[строгой]: ../../overview/glossary.md#strict_function
 
 #### Синтаксис {: #to_char_syntax }
 
@@ -158,6 +161,8 @@ sql> SELECT to_char(since, 'In stock since: %d %b %Y') FROM orders;
 
 Функция `TO_DATE` преобразует строку *expression* типа [TEXT] в объект
 типа [DATETIME] согласно формату *format*.
+
+Функция является [строгой].
 
 Значение *format* должно соответствовать спецификации [strftime]. Если в
 качестве *format* передана пустая строка `''`, используется формат `%F`,

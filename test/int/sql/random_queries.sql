@@ -541,3 +541,15 @@ SELECT * FROM (SELECT 1 a);
 SELECT a FROM (SELECT 1 a);
 -- EXPECTED:
 1
+
+-- TEST: to-char-lua-func-is-strict-1
+-- SQL:
+SELECT to_char(NULL, '%Y-%m-%d');
+-- EXPECTED:
+NULL
+
+-- TEST: to-char-lua-func-is-strict-2
+-- SQL:
+SELECT to_char(to_date('1970-01-01T10:10:10', ''), NULL);
+-- EXPECTED:
+NULL
