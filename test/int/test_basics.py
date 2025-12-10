@@ -1,6 +1,7 @@
 import os
 import pytest
 import signal
+import difflib
 from pathlib import Path
 
 from conftest import (
@@ -537,14 +538,69 @@ Update(_pico_tier, ["default"], [["=","target_vshard_config_version",2]])
         _pico_bucket=space_id("_pico_bucket"),
         _pico_resharding_state=space_id("_pico_resharding_state"),
     )
-    try:
-        assert preprocess(raft_log) == preprocess(expected)
-    except AssertionError as e:
-        # hide the huge string variables from the verbose pytest output enabled
-        # by the `--showlocals` option
-        del raft_log
-        del expected
-        raise e from e
+    actual = preprocess(raft_log)
+    expected = preprocess(expected)
+    if actual != expected:
+        try:
+            # hide the huge string variables from the verbose pytest output enabled
+            # by the `--showlocals` option
+            raise AssertionError("pico.raft_log() output is wrong\n\n" + diff_pico_raft_log_output(actual, expected))
+        finally:
+            del raft_log
+            del actual
+            del expected
+
+
+def diff_pico_raft_log_output(actual: str, expected: str) -> str:
+    actual_lines = actual.splitlines()
+    expected_lines = expected.splitlines()
+    diff_lines = difflib.ndiff(expected_lines, actual_lines)
+
+    RED = "\x1b[31m"
+    GREEN = "\x1b[32m"
+    YELLOW = "\x1b[33m"
+    RESET = "\x1b[0m"
+
+    color_by_prefix = {"-": RED, "+": GREEN, "?": YELLOW}
+
+    context_size = 4
+
+    regular_batch = []
+    start = True
+    output = []
+    for line in diff_lines:
+        # Even though we call str.splitlines above, difflib.ndiff will sometimes
+        # add its own '\n', but we don't want them, so we strip the lines again...
+        line = line.rstrip("\n")
+        if not line or line[0] not in set(("-", "+", "?")):
+            regular_batch.append(f"{RESET}{line}\n")
+            continue
+
+        if regular_batch:
+            if len(regular_batch) <= 6:
+                output.extend(regular_batch)
+                regular_batch = []
+                continue
+
+            if not start:
+                output.extend(regular_batch[:context_size])
+
+            output.append(f"{RESET}  ...\n")
+            output.extend(regular_batch[-context_size:])
+            regular_batch = []
+
+        start = False
+
+        prefix = line[0]
+        color = color_by_prefix[prefix]
+        output.append(f"{color}{line}{RESET}\n")
+
+    if regular_batch:
+        output.extend(regular_batch[:context_size])
+        if len(regular_batch) > context_size:
+            output.append(f"{RESET}  ...\n")
+
+    return "".join(output)
 
 
 def test_governor_notices_restarts(instance: Instance):
