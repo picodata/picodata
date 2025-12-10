@@ -2481,7 +2481,7 @@ class Cluster:
                     timeout = 0
                 instance.raft_wait_index(index, timeout)
 
-    def create_table(self, params: dict, timeout: float = 3.0):
+    def create_table(self, params: dict, timeout: float = 10.0):
         """
         DEPRECATED: use Instance.sql(...) instead of this function.
 
@@ -2490,7 +2490,7 @@ class Cluster:
         index = self.leader().create_table(params, timeout)
         self.raft_wait_index(index, timeout)
 
-    def drop_table(self, space: int | str, timeout: float = 3.0):
+    def drop_table(self, space: int | str, timeout: float = 10.0):
         """
         DEPRECATED: use Instance.sql(...) instead of this function.
 
@@ -2499,7 +2499,7 @@ class Cluster:
         index = self.leader().drop_table(space, timeout)
         self.raft_wait_index(index, timeout)
 
-    def abort_ddl(self, timeout: float = 3.0):
+    def abort_ddl(self, timeout: float = 10.0):
         """
         Aborts a pending ddl. Waits for all peers to be aware of it.
         """
