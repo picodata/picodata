@@ -4,12 +4,12 @@ from typing import Any, Callable, Generator
 
 from conftest import (
     TarantoolError,
-    eprint,
     Cluster,
     Instance,
     Retriable,
     ReturnError,
 )
+from framework.util import eprint
 
 
 @pytest.fixture

@@ -4,11 +4,9 @@ import time
 from matplotlib import pyplot
 import matplotlib
 
-from conftest import (
-    Cluster,
-    eprint,
-    BASE_HOST,
-)
+from conftest import Cluster
+from framework.util import BASE_HOST
+from framework.util import eprint
 
 
 @funcy.retry(tries=30, timeout=10)

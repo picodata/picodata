@@ -1,29 +1,29 @@
 from __future__ import annotations
 
+import os
+import pytest
+import shutil
+
 from dataclasses import dataclass
+from framework.util.build import picodata_executable_path
+from framework.util.git import project_git_version
+from framework.rolling.version import RelativeVersion
 from packaging.version import Version as AbsoluteVersion
 from pathlib import Path
 from typing import Optional
-
-import os
-import shutil
-
-from framework.rolling.version import RelativeVersion
-
-import pytest
 
 
 @dataclass(init=False)
 class Runtime:
     absolute_version: AbsoluteVersion
     relative_version: RelativeVersion
-    runner_entity: Optional[Path]
+    executable_path: Optional[Path]
 
     def __init__(
         self,
         absolute_version: AbsoluteVersion,
         relative_version: RelativeVersion,
-        runner_entity: Optional[Path] = None,
+        executable_path: Optional[Path] = None,
     ) -> None:
         if absolute_version.micro == 0 and relative_version != RelativeVersion.CURRENT:
             # NOTE: this problem occurs when we branched new minor, but didnt make a release yet.
@@ -39,21 +39,22 @@ class Runtime:
 
         self.absolute_version = absolute_version
         self.relative_version = relative_version
-        self.runner_entity = runner_entity
+        self.executable_path = executable_path
 
     @classmethod
     def current(cls) -> Runtime:
-        from conftest import binary_path
-
-        return binary_path()
+        absolute_version = project_git_version()
+        relative_version = RelativeVersion.CURRENT
+        executable_path = picodata_executable_path()
+        return Runtime(absolute_version, relative_version, executable_path)
 
     @property
     def is_resolved(self) -> bool:
-        return self.runner_entity is not None
+        return self.executable_path is not None
 
     @property
     def command(self) -> str:
-        return str(self.runner_entity)
+        return str(self.executable_path)
 
     def resolve(self) -> None:
         if not self.is_resolved:
@@ -61,7 +62,7 @@ class Runtime:
 
             executable_path = shutil.which(executable_name)
             if executable_path is not None:
-                self.runner_entity = Path(executable_path)
+                self.executable_path = Path(executable_path)
                 return
 
             explain = f"which is needed to test against {self.relative_version.name.lower().replace('_', ' ')}"

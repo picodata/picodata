@@ -3,7 +3,6 @@ import io
 import json
 import os
 import re
-import filecmp
 import psycopg
 import shutil
 import stat
@@ -49,11 +48,12 @@ from pathlib import Path
 
 from framework import ldap
 from framework.log import log
-from framework.constants import BASE_HOST
 from framework.port_distributor import PortDistributor
 from framework.rolling.registry import Registry
 from framework.rolling.runtime import Runtime
 from framework.rolling.version import RelativeVersion, parse_picodata_version
+from framework.util.build import perform_cargo_build
+from framework.util import BASE_HOST
 
 pytest_plugins = "framework.sqltester"
 
@@ -125,10 +125,6 @@ class ErrorCode:
     @classmethod
     def is_retriable_for_cas(cls, code):
         return code in cls.retriable_for_cas
-
-
-def eprint(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
 
 
 def assert_starts_with(actual_string: str | bytes, expected_prefix: str | bytes):
@@ -2967,164 +2963,15 @@ class PgClient:
         return self.storage.parse(self.id, name, sql, param_oids)
 
 
-def build_profile() -> str:
-    return os.environ.get("BUILD_PROFILE", "dev")
-
-
-def get_test_dir():
-    test_dir = Path(__file__).parent
-    assert test_dir.name == "test"
-    return test_dir
-
-
-def target() -> str:
-    # get target triple like x86_64-unknown-linux-gnu
-    rustc_version = subprocess.check_output(["rustc", "-vV"]).decode()
-    for line in rustc_version.splitlines():
-        if line.startswith("host:"):
-            return line.split()[1]
-
-    raise Exception(f"cannot deduce target using rustc, version output: {rustc_version}")
-
-
 @pytest.fixture(scope="session")
-def binary_path_fixt(cargo_build_fixt: None) -> Runtime:
-    return binary_path()
-
-
-def binary_path() -> Runtime:
-    """Path to the picodata binary, e.g. "./target/debug/picodata"."""
-    metadata = subprocess.check_output(
-        [
-            "cargo",
-            "metadata",
-            "--format-version=1",
-            "--frozen",
-            "--no-deps",
-        ]
-    )
-    cargo_target_dir = json.loads(metadata)["target_directory"]
-    # This file is huge, hide it from pytest output in case there's an exception
-    # somewhere in this function.
-    del metadata
-
-    profile = build_profile()
-
-    # XXX: this is a hack for sanitizer-enabled builds (ASan etc).
-    # In order to disable that kind of instrumentation for build.rs,
-    # we have to pass --target=... or set CARGO_BUILD_TARGET,
-    # which will affect the binary path.
-    cargo_build_target = os.environ.get("CARGO_BUILD_TARGET")
-    if cargo_build_target is None and profile.startswith("asan"):
-        cargo_build_target = target()
-
-    if cargo_build_target:
-        cargo_target_dir = os.path.join(cargo_target_dir, cargo_build_target)
-
-    # Note: rust names the debug profile `dev`, but puts the binaries into the
-    # `debug` directory.
-    if profile == "dev":
-        profile = "debug"
-
-    binary_path = os.path.realpath(os.path.join(cargo_target_dir, f"{profile}/picodata"))
-
-    test_dir = get_test_dir()
-    # Copy the test plugin library into the appropriate location
-    # TODO: it's too messy to have all of these files being copied in one place.
-    # We should just remove this and call `copy_plugin_library` in each
-    # corresponding test directly. That way the tests would be more self
-    # contained and this function would be much simpler.
-    destinations = [
-        f"{test_dir}/testplug/testplug/0.1.0",
-        f"{test_dir}/testplug/testplug/0.2.0",
-        f"{test_dir}/testplug/testplug/0.3.0",
-        f"{test_dir}/testplug/testplug/0.4.0",
-        f"{test_dir}/testplug/testplug_small/0.1.0",
-        f"{test_dir}/testplug/testplug_small_svc2/0.1.0",
-        f"{test_dir}/testplug/testplug_w_migration/0.1.0",
-        f"{test_dir}/testplug/testplug_w_migration_2/0.1.0",
-        f"{test_dir}/testplug/testplug_w_migration/0.2.0",
-        f"{test_dir}/testplug/testplug_w_migration/0.2.0_changed",
-        f"{test_dir}/testplug/testplug_sdk/0.1.0",
-    ]
-
-    cargo_target_dir = Path(binary_path).parent
-    for dst_dir in destinations:
-        copy_plugin_library(cargo_target_dir, dst_dir, "libtestplug")
-
-    repository = Repository()
-
-    absolute_version = repository.current_version()
-    relative_version = RelativeVersion.CURRENT
-    runner_entity = Path(binary_path)
-    return Runtime(absolute_version, relative_version, runner_entity)
-
-
-# TODO: implement a proper plugin installation routine for tests
-def copy_plugin_library(from_dir: Path | str, share_dir: Path | str, lib_name: str):
-    ext = dynamic_library_extension()
-    file_name = f"{lib_name}.{ext}"
-
-    src = Path(from_dir) / file_name
-    dst = Path(share_dir) / file_name
-
-    if os.path.exists(dst) and filecmp.cmp(src, dst):
-        return
-
-    log.info(f"Copying '{src}' to '{dst}'")
-    shutil.copyfile(src, dst)
-
-
-def dynamic_library_extension() -> str:
-    match sys.platform:
-        case "linux":
-            return "so"
-        case "darwin":
-            return "dylib"
-    raise Exception("unsupported platform")
+def current_runtime(cargo_build_fixt: None) -> Runtime:
+    return Runtime.current()
 
 
 @pytest.fixture(scope="session")
 def cargo_build_fixt(pytestconfig: pytest.Config) -> None:
-    cargo_build(bool(pytestconfig.getoption("--with-webui")))
-
-
-def cargo_build(with_webui: bool = False) -> None:
-    """Run cargo build before tests. Skipped in CI"""
-
-    # Start test logs with a newline. This makes them prettier with
-    # `pytest -s` (a shortcut for `pytest --capture=no`)
-    eprint("")
-
-    if os.environ.get("CI") is not None:
-        log.info("Skipping cargo build")
-        return
-
-    features = ["error_injection"]
-    if with_webui:
-        features.append("webui")
-
-    # fmt: off
-    cmd = [
-        "cargo", "build",
-        "--profile", build_profile(),
-        "--features", ",".join(features),
-    ]
-    # fmt: on
-    log.info(f"Running {cmd}")
-    subprocess.check_call(cmd)
-
-    crates = ["gostech-audit-log", "testplug"]
-    for crate in crates:
-        cmd = ["cargo", "build", "-p", crate, "--profile", build_profile()]
-        log.info(f"Running {cmd}")
-        subprocess.check_call(cmd)
-
-    # XXX: plug_wrong_version is even more special than the other ones
-    plug_wrong_version_dir = get_test_dir() / "plug_wrong_version"
-    cmd = ["cargo", "build", "-p", "plug_wrong_version", "--profile=dev"]
-    log.info(f"Running {cmd}")
-    subprocess.check_call(cmd, cwd=plug_wrong_version_dir)
+    enable_webui = pytestconfig.getoption("--with-webui")
+    perform_cargo_build(bool(enable_webui))
 
 
 @pytest.fixture(scope="session")
@@ -3139,13 +2986,13 @@ def class_tmp_dir(tmpdir_factory):
 
 
 @pytest.fixture(scope="class")
-def cluster_factory(binary_path_fixt, class_tmp_dir, cluster_names, port_distributor):
+def cluster_factory(current_runtime, class_tmp_dir, cluster_names, port_distributor):
     def cluster_factory_():
         # FIXME: instead of os.getcwd() construct a path relative to os.path.realpath(__file__)
         # see how it's done in def binary_path()
         share_dir = os.getcwd() + "/test/testplug"
         cluster = Cluster(
-            runtime=binary_path_fixt,
+            runtime=current_runtime,
             id=next(cluster_names),
             data_dir=class_tmp_dir,
             share_dir=share_dir,
@@ -3168,12 +3015,12 @@ def cluster(cluster_factory) -> Generator[Cluster, None, None]:
 
 
 @pytest.fixture
-def second_cluster(binary_path_fixt, tmpdir, cluster_names, port_distributor):
+def second_cluster(current_runtime, tmpdir, cluster_names, port_distributor):
     cluster2_dir = os.path.join(tmpdir, "cluster2")
     os.makedirs(cluster2_dir, exist_ok=True)
 
     cluster = Cluster(
-        runtime=binary_path_fixt,
+        runtime=current_runtime,
         id=next(cluster_names),
         data_dir=cluster2_dir,
         base_host=BASE_HOST,
@@ -3397,7 +3244,7 @@ class AuditServer:
 class Postgres:
     cluster: Cluster
     port: int
-    host: str = "127.0.0.1"
+    host: str = BASE_HOST
     ssl: bool = False
     ssl_verify: bool = False
     cert_file: str | None = None

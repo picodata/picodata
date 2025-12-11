@@ -2,7 +2,7 @@ from contextlib import closing
 import socket
 import sys
 
-from framework.constants import BASE_HOST
+from framework.util import BASE_HOST
 
 
 def can_bind(port, host=BASE_HOST):

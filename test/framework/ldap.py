@@ -3,7 +3,9 @@ import hashlib
 import os
 import socket
 import time
+
 from dataclasses import dataclass
+from framework.util import BASE_HOST
 from pathlib import Path
 
 
@@ -29,8 +31,6 @@ def is_glauth_available():
 def configure_ldap_server(username: str, password: str, data_dir: str, port: int, tls: bool) -> LdapServer:
     subprocess.Popen(["glauth", "--version"])
 
-    LDAP_SERVER_HOST = "127.0.0.1"
-
     ldap_cfg_path = f"{data_dir}/ldap.cfg"
     with open(ldap_cfg_path, "x") as f:
         password_sha256 = hashlib.sha256(password.encode("utf8")).hexdigest()
@@ -42,7 +42,7 @@ def configure_ldap_server(username: str, password: str, data_dir: str, port: int
             f"""
             [ldap]
                 enabled = true
-                listen = "{LDAP_SERVER_HOST}:{port}"
+                listen = "{BASE_HOST}:{port}"
                 tls = {tls_value}
                 tlsCertPath = "{client_cert_path}"
                 tlsKeyPath = "{client_key_path}"
@@ -75,14 +75,14 @@ def configure_ldap_server(username: str, password: str, data_dir: str, port: int
     while deadline > time.time():
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect((LDAP_SERVER_HOST, port))
+            sock.connect((BASE_HOST, port))
             break
         except ConnectionRefusedError:
             sock.close()
             time.sleep(0.1)
 
     return LdapServer(
-        host=LDAP_SERVER_HOST,
+        host=BASE_HOST,
         port=port,
         process=process,
         user=username,
