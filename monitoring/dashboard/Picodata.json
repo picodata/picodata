@@ -198,7 +198,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "editorMode": "code",
           "expr": "up{job=~\"$job\"} * on(instance) group_left(alias) pico_info_uptime{job=~\"$job\"} or\r\non(instance) label_replace(up{job=~\"$job\"}, \"alias\", \"Down\", \"instance\", \".*\")",
@@ -329,7 +329,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "editorMode": "code",
           "expr": "sum(up{job=~\"$job\"})",
@@ -359,7 +359,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "${prometheus}"
       },
       "description": "Overall value of memory available for Tarantool items",
       "fieldConfig": {
@@ -459,7 +459,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "editorMode": "code",
           "expr": "tnt_slab_quota_size{job=~\"$job\"}",
@@ -470,7 +470,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "editorMode": "code",
           "expr": "tnt_slab_arena_used{job=~\"$job\"}",
@@ -487,7 +487,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "${prometheus}"
       },
       "description": "Send and Receive throughput in bytes/sec in the Cluster",
       "fieldConfig": {
@@ -578,7 +578,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "editorMode": "builder",
           "expr": "rate(tnt_net_received_total{instance=~\"$instance\", job=\"$job\"}[$__rate_interval])",
@@ -589,7 +589,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "editorMode": "code",
           "expr": "rate(tnt_net_sent_total{instance=~\"$instance\", job=\"$job\"}[5m])",
@@ -606,7 +606,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "${prometheus}"
       },
       "fieldConfig": {
         "defaults": {
@@ -699,7 +699,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "editorMode": "code",
           "expr": "( rate(tnt_cpu_user_time{instance=~\"$instance\", job=\"$job\"}[$__rate_interval]) \n  + rate(tnt_cpu_system_time{instance=~\"$instance\", job=\"$job\"}[$__rate_interval])\n)\n* 100",
@@ -725,7 +725,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "description": "Total number of governor transitions ",
           "fieldConfig": {
@@ -775,7 +775,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -900,7 +900,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_read_only{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -915,7 +915,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "description": "Current rate of operations submitted via CAS on global tables. This includes SQL inserts into global tables",
           "fieldConfig": {
@@ -1010,7 +1010,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -1032,7 +1032,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "description": "Error rate for CAS operations",
           "fieldConfig": {
@@ -1127,7 +1127,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -1149,7 +1149,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "description": "",
           "fieldConfig": {
@@ -1217,7 +1217,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -1239,7 +1239,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "description": "Total number of RPC requests",
           "fieldConfig": {
@@ -1333,7 +1333,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -1354,7 +1354,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "description": "Total number of RPC requests",
           "fieldConfig": {
@@ -1448,7 +1448,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -1469,7 +1469,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "description": "",
           "fieldConfig": {
@@ -1542,7 +1542,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -1563,7 +1563,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "description": "Total number of SQL queries",
           "fieldConfig": {
@@ -1650,7 +1650,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -1672,7 +1672,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "description": "Total number of SQL queries resulted in errors",
           "fieldConfig": {
@@ -1765,7 +1765,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -1787,7 +1787,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "description": "",
           "fieldConfig": {
@@ -1875,7 +1875,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -1911,7 +1911,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "fieldConfig": {
             "defaults": {
@@ -1981,7 +1981,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "expr": "sum(rate(pico_router_cache_hits_total{job=~\"$job\"}[5m])) / clamp_min(sum(rate(pico_router_cache_hits_total{job=~\"$job\"}[5m]) + rate(pico_router_cache_misses_total{job=~\"$job\"}[5m])), 1)",
@@ -1994,7 +1994,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -2013,7 +2013,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "fieldConfig": {
             "defaults": {
@@ -2109,7 +2109,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "fieldConfig": {
             "defaults": {
@@ -2203,7 +2203,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "fieldConfig": {
             "defaults": {
@@ -2270,7 +2270,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "expr": "(sum(pico_router_cache_statements_added_total{job=~\"$job\"}) - sum(pico_router_cache_statements_evicted_total{job=~\"$job\"}) ) / clamp_min(sum(rate(pico_router_cache_statements_evicted_total{job=~\"$job\"}[5m])), 1)",
@@ -2283,7 +2283,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -2302,7 +2302,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "fieldConfig": {
             "defaults": {
@@ -2368,7 +2368,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "expr": "sum(rate(pico_storage_cache_1st_requests_total{job=~\"$job\"}[5m]) - rate(pico_storage_cache_2nd_requests_total{job=~\"$job\"}[5m])) / clamp_min(sum(rate(pico_storage_cache_1st_requests_total{job=~\"$job\"}[5m])), 1)",
@@ -2380,7 +2380,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "expr": "sum(rate(pico_storage_cache_1st_requests_total{job=~\"$job\"}[20m]) - rate(pico_storage_cache_2nd_requests_total{job=~\"$job\"}[20m])) / clamp_min(sum(rate(pico_storage_cache_1st_requests_total{job=~\"$job\"}[20m])), 1)",
@@ -2396,7 +2396,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "fieldConfig": {
             "defaults": {
@@ -2492,7 +2492,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "fieldConfig": {
             "defaults": {
@@ -2586,7 +2586,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "fieldConfig": {
             "defaults": {
@@ -2653,7 +2653,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "expr": "(sum(pico_storage_cache_statements_added_total) - sum(pico_storage_cache_statements_evicted_total) ) / clamp_min(sum(rate(pico_storage_cache_statements_evicted_total[5m])), 1)",
@@ -2666,7 +2666,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -2685,7 +2685,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "fieldConfig": {
             "defaults": {
@@ -2779,7 +2779,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "fieldConfig": {
             "defaults": {
@@ -2873,7 +2873,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "fieldConfig": {
             "defaults": {
@@ -2967,7 +2967,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "fieldConfig": {
             "defaults": {
@@ -3061,7 +3061,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "fieldConfig": {
             "defaults": {
@@ -3155,7 +3155,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "fieldConfig": {
             "defaults": {
@@ -3369,7 +3369,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_replication_status{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -3473,7 +3473,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_replication_lag{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -3575,7 +3575,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_clock_delta{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -3678,7 +3678,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_synchro_queue_owner{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -3781,7 +3781,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_synchro_queue_owner{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -3885,7 +3885,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_synchro_queue_len{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -4006,7 +4006,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_synchro_queue_busy{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -4124,7 +4124,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_info_memory_net{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -4228,7 +4228,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_net_received_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -4332,7 +4332,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_net_sent_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -4436,7 +4436,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_net_requests_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -4542,7 +4542,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_net_requests_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -4646,7 +4646,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_net_requests_in_progress_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -4751,7 +4751,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_net_requests_in_progress_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -4855,7 +4855,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_net_requests_in_stream_queue_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -4960,7 +4960,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_net_requests_in_stream_queue_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -5064,7 +5064,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_net_connections_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -5169,7 +5169,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_net_connections_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -5273,7 +5273,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_net_per_thread_sent_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -5377,7 +5377,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_net_per_thread_received_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -5481,7 +5481,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_net_per_thread_connections_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -5586,7 +5586,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_net_per_thread_connections_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -5690,7 +5690,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_net_per_thread_requests_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -5794,7 +5794,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_net_per_thread_requests_in_progress_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -5898,7 +5898,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_net_per_thread_requests_in_stream_queue_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -6005,7 +6005,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_net_per_thread_requests_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -6110,7 +6110,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_net_per_thread_requests_in_progress_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -6215,7 +6215,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_net_per_thread_requests_in_stream_queue_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -6244,7 +6244,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "description": "Total number of pgproto connections.",
           "fieldConfig": {
@@ -6328,7 +6328,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "expr": "pico_pgproto_connections_opened_total{instance=~\"$instance\",job=~\"$job\"}",
@@ -6343,7 +6343,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "description": "Average number of new pgproto connections per second.",
           "fieldConfig": {
@@ -6431,7 +6431,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "expr": "rate(pico_pgproto_connections_opened_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
@@ -6446,7 +6446,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "description": "Number of current active pgproto connections.",
           "fieldConfig": {
@@ -6534,7 +6534,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "expr": "pico_pgproto_connections_opened_total{instance=~\"$instance\",job=~\"$job\"} - pico_pgproto_connections_closed_total{instance=~\"$instance\",job=~\"$job\"}",
@@ -6549,7 +6549,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "description": "Total number of pgproto prepared statements since restart.\n\nStatements are prepared on a client's behalf.",
           "fieldConfig": {
@@ -6633,7 +6633,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "expr": "pico_pgproto_statements_opened_total{instance=~\"$instance\",job=~\"$job\"}",
@@ -6648,7 +6648,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "description": "Average number of new pgproto prepared statements per second.\n\nStatements are prepared on a client's behalf.",
           "fieldConfig": {
@@ -6736,7 +6736,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "expr": "rate(pico_pgproto_statements_opened_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
@@ -6751,7 +6751,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "description": "Number of current active pgproto prepared statements.\n\nStatements are prepared on a client's behalf.",
           "fieldConfig": {
@@ -6839,7 +6839,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "expr": "pico_pgproto_statements_opened_total{instance=~\"$instance\",job=~\"$job\"} -\npico_pgproto_statements_closed_total{instance=~\"$instance\",job=~\"$job\"}",
@@ -6854,7 +6854,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "description": "Total number of pgproto portals since restart.\n\nPortal is created whenever we bind parameters to a prepared statement right before execution.",
           "fieldConfig": {
@@ -6938,7 +6938,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "expr": "pico_pgproto_portals_opened_total{instance=~\"$instance\",job=~\"$job\"}",
@@ -6953,7 +6953,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "description": "Average number of new pgproto portals per second.\n\nPortal is created whenever we bind parameters to a prepared statement right before execution.",
           "fieldConfig": {
@@ -7041,7 +7041,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "expr": "rate(pico_pgproto_portals_opened_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
@@ -7056,7 +7056,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "description": "Number of current active pgproto portals.\n\nPortal is created whenever we bind parameters to a prepared statement right before execution.",
           "fieldConfig": {
@@ -7144,7 +7144,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "expr": "pico_pgproto_portals_opened_total{instance=~\"$instance\",job=~\"$job\"} -\npico_pgproto_portals_closed_total{instance=~\"$instance\",job=~\"$job\"}",
@@ -7291,7 +7291,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "expr": "tnt_slab_arena_used{instance=~\"$instance\",job=~\"$job\"} / tnt_slab_quota_size {instance=~\"$instance\",job=~\"$job\"} * 100",
@@ -7397,7 +7397,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_slab_arena_used_ratio{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -7501,7 +7501,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_slab_items_used_ratio{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -7605,7 +7605,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_slab_quota_used_ratio{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -7708,7 +7708,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_slab_arena_used{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -7811,7 +7811,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_slab_items_used{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -7914,7 +7914,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_slab_quota_used{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -8017,7 +8017,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_slab_arena_size{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -8120,7 +8120,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_slab_items_size{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -8223,7 +8223,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_slab_quota_size{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -8341,7 +8341,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_tnx_statements{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -8445,7 +8445,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_tnx_statements{instance=~\"$instance\",job=~\"$job\",kind=\"average\"}",
               "format": "time_series",
@@ -8549,7 +8549,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_tnx_statements{instance=~\"$instance\",job=~\"$job\",kind=\"max\"}",
               "format": "time_series",
@@ -8653,7 +8653,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_tnx_user{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -8757,7 +8757,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_tnx_user{instance=~\"$instance\",job=~\"$job\",kind=\"average\"}",
               "format": "time_series",
@@ -8861,7 +8861,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_tnx_user{instance=~\"$instance\",job=~\"$job\",kind=\"max\"}",
               "format": "time_series",
@@ -8965,7 +8965,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_tnx_system{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -9069,7 +9069,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_tnx_system{instance=~\"$instance\",job=~\"$job\",kind=\"average\"}",
               "format": "time_series",
@@ -9173,7 +9173,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_tnx_system{instance=~\"$instance\",job=~\"$job\",kind=\"max\"}",
               "format": "time_series",
@@ -9277,7 +9277,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_mvcc_trackers{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -9381,7 +9381,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_mvcc_trackers{instance=~\"$instance\",job=~\"$job\",kind=\"average\"}",
               "format": "time_series",
@@ -9485,7 +9485,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_mvcc_trackers{instance=~\"$instance\",job=~\"$job\",kind=\"max\"}",
               "format": "time_series",
@@ -9583,7 +9583,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_mvcc_conflicts{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -9681,7 +9681,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_mvcc_conflicts{instance=~\"$instance\",job=~\"$job\",kind=\"average\"}",
               "format": "time_series",
@@ -9779,7 +9779,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_mvcc_conflicts{instance=~\"$instance\",job=~\"$job\",kind=\"max\"}",
               "format": "time_series",
@@ -9877,7 +9877,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_mvcc_tuples_used_stories{instance=~\"$instance\",job=~\"$job\",kind=\"count\"}",
               "format": "time_series",
@@ -9975,7 +9975,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_mvcc_tuples_used_stories{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -10073,7 +10073,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_mvcc_tuples_used_retained{instance=~\"$instance\",job=~\"$job\",kind=\"count\"}",
               "format": "time_series",
@@ -10171,7 +10171,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_mvcc_tuples_used_retained{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -10269,7 +10269,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_mvcc_tuples_read_view_stories{instance=~\"$instance\",job=~\"$job\",kind=\"count\"}",
               "format": "time_series",
@@ -10367,7 +10367,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_mvcc_tuples_read_view_stories{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -10465,7 +10465,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_mvcc_tuples_read_view_retained{instance=~\"$instance\",job=~\"$job\",kind=\"count\"}",
               "format": "time_series",
@@ -10563,7 +10563,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_mvcc_tuples_read_view_retained{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -10661,7 +10661,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_mvcc_tuples_tracking_stories{instance=~\"$instance\",job=~\"$job\",kind=\"count\"}",
               "format": "time_series",
@@ -10759,7 +10759,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_mvcc_tuples_tracking_stories{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -10857,7 +10857,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_mvcc_tuples_tracking_retained{instance=~\"$instance\",job=~\"$job\",kind=\"count\"}",
               "format": "time_series",
@@ -10955,7 +10955,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_memtx_mvcc_tuples_tracking_retained{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -11072,7 +11072,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "builder",
               "expr": "tnt_space_len{instance=~\"$instance\", engine=\"memtx\", job=~\"$job\"}",
@@ -11177,7 +11177,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_vinyl_tuples{instance=~\"$instance\",engine=\"vinyl\",job=~\"$job\"}",
               "format": "time_series",
@@ -11279,7 +11279,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_space_bsize{instance=~\"$instance\",engine=\"memtx\",job=~\"$job\"}",
               "format": "time_series",
@@ -11381,7 +11381,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_space_index_bsize{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -11483,7 +11483,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_space_total_bsize{instance=~\"$instance\",engine=\"memtx\",job=~\"$job\"}",
               "format": "time_series",
@@ -11599,7 +11599,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_vinyl_disk_data_size{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -11701,7 +11701,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_vinyl_disk_index_size{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -11805,7 +11805,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "expr": "tnt_vinyl_memory_tuple_cache{instance=~\"$instance\",job=~\"$job\"}",
@@ -11911,7 +11911,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_vinyl_memory_page_index{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -12015,7 +12015,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_vinyl_memory_bloom_filter{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -12119,7 +12119,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_vinyl_regulator_dump_bandwidth{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -12223,7 +12223,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_vinyl_regulator_write_rate{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -12327,7 +12327,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_vinyl_regulator_rate_limit{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -12430,7 +12430,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_vinyl_memory_level0{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -12532,7 +12532,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_vinyl_regulator_dump_watermark{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -12634,7 +12634,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_vinyl_regulator_blocked_writers{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -12738,7 +12738,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_vinyl_tx_commit{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -12842,7 +12842,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_vinyl_tx_rollback{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -12946,7 +12946,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_vinyl_tx_conflict{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -13051,7 +13051,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_vinyl_tx_read_views{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -13154,7 +13154,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_vinyl_scheduler_tasks{instance=~\"$instance\",job=~\"$job\",status=\"inprogress\"}",
               "format": "time_series",
@@ -13257,7 +13257,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_vinyl_scheduler_tasks{instance=~\"$instance\",job=~\"$job\",status=\"failed\"}[$__rate_interval])",
               "format": "time_series",
@@ -13361,7 +13361,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_vinyl_scheduler_dump_time{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -13465,7 +13465,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_vinyl_scheduler_dump_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -13586,7 +13586,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "editorMode": "code",
               "expr": "irate(tnt_cpu_user_time{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval]) + irate(tnt_cpu_system_time{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
@@ -13706,7 +13706,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_info_memory_lua{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -13808,7 +13808,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_runtime_used{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -13912,7 +13912,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_info_memory_tx{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -14016,7 +14016,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_fiber_csw{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -14120,7 +14120,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_ev_loop_time{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -14224,7 +14224,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_fiber_amount{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -14328,7 +14328,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_fiber_memused{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -14432,7 +14432,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "tnt_fiber_memalloc{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -14550,7 +14550,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(lj_jit_snap_restore_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -14654,7 +14654,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(lj_jit_trace_num{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -14758,7 +14758,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(lj_jit_trace_abort_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -14862,7 +14862,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "lj_jit_mcode_size{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -14966,7 +14966,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(lj_strhash_hit_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -15070,7 +15070,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(lj_strhash_miss_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -15174,7 +15174,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(lj_gc_steps_atomic_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -15278,7 +15278,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(lj_gc_steps_sweepstring_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -15382,7 +15382,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(lj_gc_steps_finalize_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -15486,7 +15486,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(lj_gc_steps_sweep_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -15590,7 +15590,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(lj_gc_steps_propagate_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -15694,7 +15694,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(lj_gc_steps_pause_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -15799,7 +15799,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "lj_gc_strnum{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -15904,7 +15904,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "lj_gc_tabnum{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -16009,7 +16009,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "lj_gc_cdatanum{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -16114,7 +16114,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "lj_gc_udatanum{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -16218,7 +16218,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "lj_gc_memory{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -16322,7 +16322,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(lj_gc_freed_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -16426,7 +16426,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(lj_gc_allocated_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -16545,7 +16545,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"select\"}[$__rate_interval])",
               "format": "time_series",
@@ -16650,7 +16650,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"insert\"}[$__rate_interval])",
               "format": "time_series",
@@ -16755,7 +16755,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"replace\"}[$__rate_interval])",
               "format": "time_series",
@@ -16860,7 +16860,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"upsert\"}[$__rate_interval])",
               "format": "time_series",
@@ -16965,7 +16965,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"update\"}[$__rate_interval])",
               "format": "time_series",
@@ -17070,7 +17070,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"delete\"}[$__rate_interval])",
               "format": "time_series",
@@ -17175,7 +17175,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"call\"}[$__rate_interval])",
               "format": "time_series",
@@ -17280,7 +17280,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"eval\"}[$__rate_interval])",
               "format": "time_series",
@@ -17385,7 +17385,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"error\"}[$__rate_interval])",
               "format": "time_series",
@@ -17490,7 +17490,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"auth\"}[$__rate_interval])",
               "format": "time_series",
@@ -17595,7 +17595,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"prepare\"}[$__rate_interval])",
               "format": "time_series",
@@ -17700,7 +17700,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"execute\"}[$__rate_interval])",
               "format": "time_series",
@@ -17805,7 +17805,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"begin\"}[$__rate_interval])",
               "format": "time_series",
@@ -17910,7 +17910,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"commit\"}[$__rate_interval])",
               "format": "time_series",
@@ -18015,7 +18015,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${prometheus}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"rollback\"}[$__rate_interval])",
               "format": "time_series",
@@ -18044,7 +18044,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${prometheus}"
           },
           "fieldConfig": {
             "defaults": {
@@ -18167,10 +18167,7 @@
   "templating": {
     "list": [
       {
-        "current": {
-          "text": "Prometheus",
-          "value": "PBFA97CFB590B2093"
-        },
+        "current": {},
         "includeAll": false,
         "label": "Datasource",
         "name": "prometheus",
@@ -18187,7 +18184,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "PBFA97CFB590B2093"
+          "uid": "${prometheus}"
         },
         "definition": "label_values(pico_info_uptime,job)",
         "description": "picodata",
@@ -18239,7 +18236,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "PBFA97CFB590B2093"
+          "uid": "${prometheus}"
         },
         "definition": "label_values(pico_sql_query_total{job=\"$job\"},replicaset)",
         "description": "",
