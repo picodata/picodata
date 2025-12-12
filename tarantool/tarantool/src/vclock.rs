@@ -19,17 +19,17 @@
 //! state of an instance.
 //!
 //! The zero vclock component is special, it's used for tracking local
-/// changes that aren't replicated.
-///
+//! changes that aren't replicated.
+//!
+use crate::lua_state;
+use crate::tlua::{AsLua, LuaRead, ReadResult};
+use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::num::NonZeroI32;
-
-use serde::{Deserialize, Serialize};
+use tlua::Index;
 use tlua::{Push, PushInto, PushOne, PushOneInto, Void};
-
-use crate::lua_state;
-use crate::tlua::{AsLua, LuaRead, ReadResult};
 
 /// Tarantool log sequence number.
 pub type Lsn = u64;
@@ -99,18 +99,24 @@ impl Vclock {
     ///
     #[inline(always)]
     pub fn current() -> Self {
-        lua_state()
-            .eval("return box.info.vclock")
-            .expect("this should be called after box.cfg")
+        Self::try_current().expect("this should be called after box.cfg")
     }
 
     /// Obtains current vclock from Tarantool `box.info.vclock` API.
     ///
     /// Returns an error if `box.cfg{ .. }` was not called yet.
     ///
-    #[inline(always)]
     pub fn try_current() -> Result<Self, tlua::LuaError> {
-        lua_state().eval("return box.info.vclock")
+        let lua = lua_state();
+        let Some(t) = lua.get("box") else {
+            return Err(tlua::LuaError::ExecutionError(Cow::Borrowed(
+                "_G.box anavailable",
+            )));
+        };
+        let the_box: tlua::LuaTable<_> = t;
+        let box_info: tlua::Indexable<_> = the_box.try_get("info")?;
+        let vclock = box_info.try_get("vclock")?;
+        Ok(vclock)
     }
 
     /// Sets zero component to 0. It's used for tracking local updates

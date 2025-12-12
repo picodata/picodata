@@ -444,6 +444,20 @@ impl BoxError {
     }
 }
 
+impl<'a> From<&'a BoxError> for std::borrow::Cow<'a, BoxError> {
+    #[inline]
+    fn from(e: &'a BoxError) -> Self {
+        Self::Borrowed(e)
+    }
+}
+
+impl From<BoxError> for std::borrow::Cow<'_, BoxError> {
+    #[inline]
+    fn from(e: BoxError) -> Self {
+        Self::Owned(e)
+    }
+}
+
 impl Display for BoxError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         // Vshard uses this error type and custom error codes which overlap with
