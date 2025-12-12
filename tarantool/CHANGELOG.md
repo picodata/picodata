@@ -1,5 +1,5 @@
 <!--
-<TEMPLATE START>
+<!-- <TEMPLATE START> -->
 
 # [?.?.?] Unreleased
 
@@ -38,7 +38,14 @@
 
 # Change Log
 
-# [10.1.0] Unreleased
+# [?.?.?] Unreleased
+
+### Fixed
+
+- `Vclock::current` will no longer invoke the lua parser.
+
+
+# [10.1.0] Dec 29 2025
 
 ### Added
 
