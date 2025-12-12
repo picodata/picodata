@@ -947,20 +947,18 @@ impl Plan {
         parent_id: NodeId,
         child_id: NodeId,
     ) -> Result<(), SbroadError> {
-        let child_rel = self.get_relation_node(child_id)?;
-        if !matches!(child_rel, Relational::Projection(_)) {
+        if matches!(self.get_relation_node(child_id)?, Relational::Projection(_)) {
+            Ok(())
+        } else {
             let (policy, program) = strategy
                 .children_policy
                 .get(&child_id)
                 .expect("Entry in strategy map is missing.");
             match policy {
                 MotionPolicy::Full | MotionPolicy::Segment(_) => {
-                    // We need a bucket_id column in the projection when a child node is a table
-                    // scan. Otherwise we'll break the references in the parent_id node.
-                    // TODO: it would be nice to replace columns with an asterisk in the projection.
-                    let proj_id = self.add_proj(child_id, vec![], &[], false, true)?;
-                    strategy.upsert_child(proj_id, policy.to_owned(), program.to_owned());
-                    strategy.remove_child(child_id);
+                    let (proj_id, col_pos_transforms) =
+                        self.add_proj_with_col_reduction(parent_id, child_id, false, true)?;
+
                     let old_parent_children = self.get_relation_children(parent_id)?;
                     let children: Vec<NodeId> = old_parent_children
                         .iter()
@@ -968,11 +966,29 @@ impl Plan {
                         .collect();
                     self.set_relational_children(parent_id, children);
                     self.replace_target_in_relational(parent_id, child_id, proj_id)?;
+
+                    let mut proj_policy = policy.to_owned();
+                    let proj_program = program.to_owned();
+
+                    if let Some(col_pos_transforms) = col_pos_transforms {
+                        if let MotionPolicy::Segment(motion_key) = &mut proj_policy {
+                            for target in motion_key.targets.iter_mut() {
+                                if let Target::Reference(position) = target {
+                                    *position = *col_pos_transforms
+                                        .get(position)
+                                        .expect("motion key position must exist in mapping");
+                                }
+                            }
+                        }
+                    }
+
+                    strategy.upsert_child(proj_id, proj_policy, proj_program);
+                    strategy.remove_child(child_id);
                 }
                 _ => {}
             }
+            Ok(())
         }
-        Ok(())
     }
 
     /// Calculate Motion strategies for `SubQueries`.

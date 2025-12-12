@@ -11,7 +11,7 @@ use crate::ir::expression::PlanExpr;
 use crate::ir::node::{
     Alias, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Motion, MutNode, NodeId,
     OrderBy, Projection, Reference, ReferenceTarget, Row, ScanCte, ScanRelation, ScanSubQuery,
-    Selection, Union, UnionAll, Update, Values, ValuesRow,
+    Selection, SubQueryReference, Union, UnionAll, Update, Values, ValuesRow,
 };
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
 use crate::ir::Plan;
@@ -37,6 +37,7 @@ use crate::ir::distribution::{Distribution, Key, KeySet};
 use crate::ir::helpers::RepeatableState;
 use crate::ir::relation::{Column, ColumnRole};
 use crate::ir::transformation::redistribution::ColumnPosition;
+use smallvec::SmallVec;
 
 /// Binary operator returning Bool expression.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Eq, Hash, Clone, Copy)]
@@ -332,6 +333,9 @@ pub struct OrderByElement {
 }
 
 impl Plan {
+    /// Expected number of references in Relational operator output
+    const REF_CAPACITY: usize = 16;
+
     /// Add relational node to plan arena and update shard columns info.
     ///
     /// # Errors
@@ -962,6 +966,142 @@ impl Plan {
         };
 
         self.add_relational(proj.into())
+    }
+
+    pub fn add_proj_with_col_reduction(
+        &mut self,
+        parent_rel_id: NodeId,
+        child_rel_id: NodeId,
+        is_distinct: bool,
+        needs_shard_col: bool,
+    ) -> Result<(NodeId, Option<HashMap<usize, usize>>), SbroadError> {
+        let filter = |node_id: NodeId| -> bool {
+            matches!(
+                self.get_node(node_id).expect("node in the plan must exist"),
+                Node::Expression(Expression::Reference { .. })
+                    | Node::Expression(Expression::SubQueryReference { .. })
+            )
+        };
+        let get_leaf_refs = |expr_id: NodeId| -> Vec<LevelNode<NodeId>> {
+            let mut post_tree = PostOrderWithFilter::with_capacity(
+                |node| self.nodes.expr_iter(node, false),
+                EXPR_CAPACITY,
+                Box::new(filter),
+            );
+            post_tree.populate_nodes(expr_id);
+            post_tree.take_nodes()
+        };
+
+        fn collect_columns(
+            plan: &Plan,
+            leaf_refs: &[LevelNode<NodeId>],
+        ) -> SmallVec<[usize; Plan::REF_CAPACITY]> {
+            let mut cols: SmallVec<[usize; Plan::REF_CAPACITY]> = SmallVec::new();
+
+            for LevelNode(_, ref_id) in leaf_refs {
+                let expr = plan.get_expression_node(*ref_id);
+
+                let pos = match expr {
+                    Ok(
+                        Expression::Reference(Reference { position, .. })
+                        | Expression::SubQueryReference(SubQueryReference { position, .. }),
+                    ) => *position,
+                    _ => unreachable!("expected only Reference and SubQueryReferences"),
+                };
+
+                cols.push(pos);
+            }
+
+            cols.sort_unstable();
+            cols.dedup();
+
+            if cols.is_empty() {
+                cols.push(0);
+            }
+
+            cols
+        }
+
+        fn transform_reference_positions(
+            plan: &mut Plan,
+            leaf_refs: &[LevelNode<NodeId>],
+            col_pos_transforms: &HashMap<usize, usize>,
+        ) {
+            leaf_refs.iter().for_each(|LevelNode(_, ref_id)| {
+                match plan.get_mut_expression_node(*ref_id) {
+                    Ok(
+                        MutExpression::Reference(Reference { position, .. })
+                        | MutExpression::SubQueryReference(SubQueryReference { position, .. }),
+                    ) => {
+                        *position = *col_pos_transforms
+                            .get(position)
+                            .expect("all of leaf references must be mapped");
+                    }
+                    _ => unreachable!("expected to find only Reference or SubqueryReference"),
+                }
+            });
+        }
+
+        let (output, col_pos_transforms) = match self.get_relation_node(parent_rel_id)? {
+            Relational::Projection(Projection { output, .. }) => {
+                let leaf_refs = get_leaf_refs(*output);
+
+                let necessary_col_indices: SmallVec<[usize; Self::REF_CAPACITY]> =
+                    collect_columns(self, &leaf_refs);
+
+                let col_pos_transforms: HashMap<usize, usize> = necessary_col_indices
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, &value)| (value, idx))
+                    .collect();
+
+                transform_reference_positions(self, &leaf_refs, &col_pos_transforms);
+
+                (
+                    self.add_row_by_indices(
+                        child_rel_id,
+                        necessary_col_indices.into_vec(),
+                        needs_shard_col,
+                        None,
+                    )?,
+                    Some(col_pos_transforms),
+                )
+            }
+            Relational::GroupBy(_) => {
+                // Since the output currently contains all columns (see `Plan::add_groupby`) from the source relation,
+                // reducing the column count is meaningless.
+                (
+                    self.add_row_for_output(child_rel_id, &[], needs_shard_col, None)?,
+                    None,
+                )
+            }
+            _ => {
+                unreachable!("expected either Projection or GroupBy node");
+            }
+        };
+
+        let (children, having_id, group_by_id) = match self.get_relation_node(child_rel_id)? {
+            Relational::GroupBy(_) => (vec![], None, Some(child_rel_id)),
+            Relational::Having(_) => {
+                let gb_id = self.get_first_rel_child(child_rel_id)?;
+                match self.get_relation_node(gb_id)? {
+                    Relational::GroupBy(_) => (vec![], Some(child_rel_id), Some(gb_id)),
+                    _ => (vec![], Some(child_rel_id), None),
+                }
+            }
+            _ => (vec![child_rel_id], None, None),
+        };
+
+        let proj = Projection {
+            children,
+            windows: vec![],
+            output,
+            is_distinct,
+            group_by: group_by_id,
+            having: having_id,
+        };
+
+        Ok((self.add_relational(proj.into())?, col_pos_transforms))
     }
 
     /// Adds projection node (use a list of expressions instead of alias names).

@@ -72,7 +72,7 @@ slog = { version = "2.7", features = [
   "max_level_trace",
   "release_max_level_trace",
 ] }
-smallvec = { version = "1.13", features = ["write"] }
+smallvec = { workspace = true, features = ["write"] }
 smol_str = { workspace = true }
 socket2 = "0.5"
 sql_protocol = { version = "25.4", path = "sql-protocol" }
@@ -147,6 +147,7 @@ smol_str = "0.2"
 tarantool = { path = "tarantool/tarantool", features = ["picodata"] }
 thiserror = "1.0"
 time = "0.3"
+smallvec = { version = "1.15" }
 
 [features]
 default = []

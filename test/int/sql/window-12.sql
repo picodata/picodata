@@ -128,7 +128,7 @@ WINDOW
 -- EXPECTED:
 projection (avg("x"::int) over (partition by ("x"::int + ROW($0)) ) -> "col_1", sum("x"::int) over (order by (("y"::int + (2::int * ROW($2))) + ROW($1)) ) -> "col_2")
     motion [policy: full]
-        projection ("t6"."x"::int -> "x", "t6"."bucket_id"::int -> "bucket_id", "t6"."y"::int -> "y")
+        projection ("t6"."x"::int -> "x", "t6"."y"::int -> "y")
             scan "t6"
 subquery $0:
 scan
@@ -165,7 +165,7 @@ WINDOW
 -- EXPECTED:
 projection (row_number() over (partition by ("x"::int + ROW($1)) ) -> "col_1", sum("y"::int) over (partition by ("x"::int + ROW($1)) ) -> "col_2", max("x"::int) over (order by ("x"::int + ROW($0)::int) ) -> "col_3")
     motion [policy: full]
-        projection ("t6"."x"::int -> "x", "t6"."bucket_id"::int -> "bucket_id", "t6"."y"::int -> "y")
+        projection ("t6"."x"::int -> "x", "t6"."y"::int -> "y")
             scan "t6"
 subquery $0:
 motion [policy: full]

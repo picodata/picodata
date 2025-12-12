@@ -112,9 +112,73 @@ with t(b) as (select true) select * from t t1 join t t2 on t1.b or 1;
 -- ERROR:
 could not resolve operator overload for or\(bool, int\)
 
--- TEST: tets-sq-in-join-condition
+-- TEST: test-sq-in-join-condition
 -- SQL:
 with t(a) as (values (1), (2), (3)) select * from t t1 join t t2 on (select true) and t1.a = t2.a;
 -- EXPECTED:
 1, 1, 2, 2, 3, 3
 
+-- TEST: test-join-output-reduced-1.0
+-- SQL:
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1 (
+	a int primary key,
+	b int
+);
+INSERT INTO t1 VALUES (1, 1), (2, 2), (3, 3);
+DROP TABLE IF EXISTS t2;
+CREATE TABLE t2 (
+	a int primary key,
+	b int
+);
+INSERT INTO t2 VALUES (1, 1), (2, 2), (3, 3);
+
+-- TEST: test-join-output-reduced-1.1
+-- SQL:
+EXPLAIN (RAW, FMT) SELECT
+	t1.a,
+	ROW_NUMBER() OVER (
+		PARTITION BY
+			t1.b
+		ORDER BY
+			t1.a
+	) AS rn
+FROM t1 JOIN t2 ON t1.a = t2.a;
+-- EXPECTED:
+1. Query (STORAGE):
+SELECT "t1"."a", "t1"."b" FROM "t1" INNER JOIN "t2" ON "t1"."a" = "t2"."a"
++----------+-------+------+--------------------------------------------------+
+| selectid | order | from | detail                                           |
++============================================================================+
+| 0        | 0     | 0    | SCAN TABLE t1 (~1048576 rows)                    |
+|----------+-------+------+--------------------------------------------------|
+| 0        | 1     | 1    | SEARCH TABLE t2 USING PRIMARY KEY (a=?) (~1 row) |
++----------+-------+------+--------------------------------------------------+
+''
+2. Query (FILTERED STORAGE):
+SELECT
+  "COL_0" as "a",
+  row_number () OVER (
+    PARTITION BY
+      "COL_1"
+    ORDER BY
+      "COL_0" ASC
+  ) as "rn"
+FROM
+  (
+    SELECT
+      "COL_0",
+      "COL_1"
+    FROM
+      "TMP_13226720736725519532_0136"
+  )
++----------+-------+------+----------------------------------------------------------+
+| selectid | order | from | detail                                                   |
++====================================================================================+
+| 1        | 0     | 0    | SCAN TABLE TMP_13226720736725519532_0136 (~1048576 rows) |
+|----------+-------+------+----------------------------------------------------------|
+| 1        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY                             |
+|----------+-------+------+----------------------------------------------------------|
+| 0        | 0     | 0    | SCAN SUBQUERY 1 (~1 row)                                 |
++----------+-------+------+----------------------------------------------------------+
+''

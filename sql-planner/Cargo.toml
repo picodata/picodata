@@ -37,6 +37,7 @@ tarantool = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["parsing", "formatting", "macros"] }
 uuid = { version = "1.1", features = ["v4", "fast-rng", "macro-diagnostics"] }
+smallvec = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

@@ -160,7 +160,7 @@ motion [policy: full]
     union
         projection (row_number() over () -> "col_1")
             motion [policy: full]
-                projection ("t"."a"::int -> "a", "t"."bucket_id"::int -> "bucket_id", "t"."b"::int -> "b")
+                projection ("t"."a"::int -> "a")
                     scan "t"
         projection (1::int -> "col_1")
 execution options:
@@ -176,7 +176,7 @@ motion [policy: full]
     union
         projection (count(*::int) over () -> "col_1")
             motion [policy: full]
-                projection ("t"."a"::int -> "a", "t"."bucket_id"::int -> "bucket_id", "t"."b"::int -> "b")
+                projection ("t"."a"::int -> "a")
                     scan "t"
         projection (1::int -> "col_1")
 execution options:
@@ -197,7 +197,7 @@ explain select row_number() over () from t union all select 1;
 union all
     projection (row_number() over () -> "col_1")
         motion [policy: full]
-            projection ("t"."a"::int -> "a", "t"."bucket_id"::int -> "bucket_id", "t"."b"::int -> "b")
+            projection ("t"."a"::int -> "a")
                 scan "t"
     projection (1::int -> "col_1")
 execution options:
