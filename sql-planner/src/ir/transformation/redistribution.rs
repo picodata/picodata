@@ -901,7 +901,7 @@ impl Plan {
                 },
                 Distribution::Segment { keys: child_keys },
             ) => {
-                if window_keys == child_keys {
+                if window_keys.intersection(child_keys) == *window_keys {
                     strategy.upsert_child(first_child_id, MotionPolicy::None, Program::default());
                 } else {
                     let key = window_keys
