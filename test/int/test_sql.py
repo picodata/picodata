@@ -706,6 +706,7 @@ def test_read_from_system_tables(cluster: Cluster):
         {"name": "failure_domain", "type": "map"},
         {"name": "tier", "type": "string"},
         {"name": "picodata_version", "type": "string"},
+        {"name": "sync_incarnation", "type": "int"},
     ]
     assert len(data["rows"]) == instance_count
 

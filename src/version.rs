@@ -2,7 +2,10 @@
 //! There are neither `PICODATA_VERSION`, nor `RPC_API_VERSION`,
 //! because Rust's capabilities in constant contexts are very poor.
 
+use smol_str::SmolStr;
 use std::{cmp::Ordering, fmt, str::FromStr};
+use tarantool::error::BoxError;
+use tarantool::error::TarantoolErrorCode;
 
 /// Macro to automatically implement methods to compare versions in
 /// [`Version`] struct considering the significance of each previous part.
@@ -107,12 +110,12 @@ macro_rules! impl_next {
 ///     Ordering::Greater
 /// );
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct Version {
     pub major: u64,
     pub minor: u64,
     pub patch: u64,
-    pub rest: Option<String>,
+    pub rest: Option<SmolStr>,
 }
 
 impl Version {
@@ -147,7 +150,7 @@ impl Version {
     /// assert_eq!(version.major, 25);
     /// assert_eq!(version.minor, 1);
     /// assert_eq!(version.patch, 3);
-    /// assert_eq!(version.rest, Some("-g989l1".to_owned()));
+    /// assert_eq!(version.rest.unwrap(), "-g989l1");
     /// ```
     #[inline(always)]
     pub fn new_dirty(major: u64, minor: u64, patch: u64, rest: &str) -> Self {
@@ -155,7 +158,7 @@ impl Version {
             major,
             minor,
             patch,
-            rest: Some(rest.to_owned()),
+            rest: Some(rest.into()),
         }
     }
 
@@ -185,29 +188,32 @@ impl fmt::Display for Version {
     }
 }
 
-#[derive(Debug)]
-pub enum VersionParseError {
-    BadMajor,
-    BadMinor,
-    BadPatch,
-}
-
 impl FromStr for Version {
-    type Err = VersionParseError;
+    type Err = BoxError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (major, rest) = s.split_once('.').ok_or(VersionParseError::BadMajor)?;
-        let (minor, rest) = rest.split_once('.').ok_or(VersionParseError::BadMinor)?;
+        let Some((major, rest)) = s.split_once('.') else {
+            return Err(invalid_version(s));
+        };
+        let Some((minor, rest)) = rest.split_once('.') else {
+            return Err(invalid_version(s));
+        };
 
-        let major: u64 = major.parse().map_err(|_| VersionParseError::BadMajor)?;
-        let minor: u64 = minor.parse().map_err(|_| VersionParseError::BadMinor)?;
+        let Ok(major) = major.parse() else {
+            return Err(invalid_version(s));
+        };
+        let Ok(minor) = minor.parse() else {
+            return Err(invalid_version(s));
+        };
 
         // find numeric part of the patch and split it from rest if exists
         let patch_end = rest
             .find(|c: char| !c.is_ascii_digit())
             .unwrap_or(rest.len());
         let patch = &rest[..patch_end];
-        let patch: u64 = patch.parse().map_err(|_| VersionParseError::BadPatch)?;
+        let Ok(patch) = patch.parse() else {
+            return Err(invalid_version(s));
+        };
         let rest = &rest[patch_end..];
 
         if rest.is_empty() {
@@ -219,11 +225,40 @@ impl FromStr for Version {
 }
 
 impl TryFrom<&str> for Version {
-    type Error = VersionParseError;
+    type Error = BoxError;
 
+    #[inline]
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         Self::from_str(value)
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// version_is_new_enough
+////////////////////////////////////////////////////////////////////////////////
+
+pub fn version_is_new_enough(
+    system_catalog_version: &str,
+    feature_implemented_in: &Version,
+) -> crate::traft::Result<bool> {
+    let system_catalog_version: Version = system_catalog_version.parse()?;
+    let res = system_catalog_version
+        .cmp_up_to_patch(feature_implemented_in)
+        .is_ge();
+    Ok(res)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ...
+////////////////////////////////////////////////////////////////////////////////
+
+#[track_caller]
+#[inline]
+fn invalid_version(actual: &str) -> BoxError {
+    BoxError::new(
+        TarantoolErrorCode::IllegalParams,
+        format!("invalid version string: '{actual}', expected format: MAJOR.MINOR.PATCH[-TAIL]"),
+    )
 }
 
 #[cfg(test)]

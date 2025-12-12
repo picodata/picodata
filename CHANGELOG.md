@@ -14,6 +14,13 @@ with the `YY.MINOR.MICRO` scheme.
 ### Features
 
 - Support JSON_EXTRACT_PATH function.
+- New column `sync_incarnation` is added to `_pico_instance` system table.
+
+### Fixes
+
+- Fixed that the whole replicaset would be broken if one instance get's a
+  replication conflict. (See also https://git.picodata.io/core/picodata/-/issues/2231).
+
 
 ## [25.5.2] - 2025-12-26
 

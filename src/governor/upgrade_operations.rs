@@ -1,7 +1,7 @@
 use crate::catalog::pico_bucket::PicoBucket;
 use crate::catalog::pico_resharding_state::PicoReshardingState;
 use crate::storage::schema::ddl_change_format_on_master;
-use crate::storage::{Replicasets, SystemTable, Tiers};
+use crate::storage::{Instances, Replicasets, SystemTable, Tiers};
 use crate::tier::DEFAULT_TIER;
 use crate::tlog;
 use crate::traft;
@@ -75,6 +75,7 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
         &[
             // Creation of Lua stored function JSON_EXTRACT_PATH.
             ("exec_script", InternalScript::CreateIfNotExistSqlBuiltins.as_str()),
+            ("exec_script", InternalScript::AlterPicoInstanceAddSyncIncarnationField.as_str()),
         ],
     ),
 ];
@@ -121,6 +122,13 @@ tarantool::define_str_enum! {
         ///
         /// This may be called again whenever we add a new function.
         CreateIfNotExistSqlBuiltins = "create_if_not_exist_sql_builtins",
+
+        /// Schema upgrade operation equivalent to:
+        /// ```ignore
+        /// ALTER TABLE _pico_instance ADD COLUMN
+        ///     sync_incarnation UNSIGNED NULL,
+        /// ```
+        AlterPicoInstanceAddSyncIncarnationField = "alter_pico_instance_add_sync_incarnation_field",
     }
 }
 
@@ -151,6 +159,9 @@ crate::define_rpc_request! {
 
             InternalScript::CreateIfNotExistSqlBuiltins =>
                 execute_create_lua_procs(),
+
+            InternalScript::AlterPicoInstanceAddSyncIncarnationField =>
+                execute_alter_pico_instance_add_sync_incarnation_field(),
         }
     }
 
@@ -199,6 +210,11 @@ fn execute_alter_pico_replicaset_add_bucket_state_fields() -> traft::Result<Resp
 
 fn execute_alter_pico_tier_add_bucket_state_fields() -> traft::Result<Response> {
     actualize_system_table_format::<Tiers>()?;
+    Ok(Response {})
+}
+
+fn execute_alter_pico_instance_add_sync_incarnation_field() -> traft::Result<Response> {
+    actualize_system_table_format::<Instances>()?;
     Ok(Response {})
 }
 

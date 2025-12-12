@@ -460,6 +460,7 @@ pub fn build_instance(
         failure_domain: failure_domain.clone(),
         tier: tier.name.clone(),
         picodata_version: picodata_version.into(),
+        sync_incarnation: 0,
     };
 
     Ok((instance, false))

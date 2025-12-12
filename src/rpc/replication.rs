@@ -148,10 +148,16 @@ crate::define_rpc_request! {
 
         crate::error_injection!("TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER" => return Err(Error::timeout()));
 
-        // Wait until replication progresses.
-        wait_vclock(node, &req.vclock, req.timeout)?;
+        // If replication is broken, we don't care about the vclock, exit ASAP
+        check_if_replication_is_broken(node)?;
 
-        Ok(ReplicationSyncResponse {})
+        // Wait until replication progresses.
+        let my_vclock = wait_vclock(node, &req.vclock, req.timeout)?;
+        let my_vclock = my_vclock.ignore_zero();
+
+        Ok(ReplicationSyncResponse {
+            vclock: Some(my_vclock),
+        })
     }
 
     /// Request to wait until instance synchronizes tarantool replication.
@@ -166,7 +172,10 @@ crate::define_rpc_request! {
         pub timeout: Duration,
     }
 
-    pub struct ReplicationSyncResponse {}
+    pub struct ReplicationSyncResponse {
+        #[serde(default)]
+        pub vclock: Option<Vclock>,
+    }
 }
 
 #[track_caller]

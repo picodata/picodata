@@ -7,6 +7,7 @@ use crate::catalog::governor_queue::GovernorOperationDef;
 use crate::column_name;
 use crate::governor::batch::get_next_batch;
 use crate::governor::batch::LastStepInfo;
+use crate::governor::replication::handle_replicaset_sync;
 use crate::has_states;
 use crate::instance::state::{State, StateVariant};
 use crate::instance::{Instance, InstanceName};
@@ -63,7 +64,7 @@ pub(super) fn action_plan<'i>(
     global_cluster_version: SmolStr,
     next_schema_version: u64,
     governor_operations: &'i [GovernorOperationDef],
-    global_catalog_version: Option<SmolStr>,
+    global_catalog_version: SmolStr,
     pending_catalog_version: Option<SmolStr>,
     last_step_info: &mut LastStepInfo,
 ) -> Result<Plan<'i>> {
@@ -257,6 +258,31 @@ pub(super) fn action_plan<'i>(
     }
 
     ////////////////////////////////////////////////////////////////////////////
+    // replication sync for waking up instances
+    //
+    // This must be done after
+    // - instances have (re)configured replication
+    // - replicaset master is actualized
+    if let Some(plan) = handle_replicaset_sync(
+        topology_ref,
+        term,
+        applied,
+        &global_catalog_version,
+        sync_timeout,
+    )? {
+        debug_assert!(
+            matches!(
+                plan,
+                Plan::ReplicationSync { .. } | Plan::ActualizeMasterSyncIncarnation { .. }
+            ),
+            "{:?}",
+            plan.kind(),
+        );
+
+        return Ok(plan);
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
     // proposing automatic replicaset state & weight change
     let to_change_weights = get_replicaset_state_change(instances, replicasets, tiers);
     if let Some((replicaset_name, tier, need_to_update_weight)) = to_change_weights {
@@ -275,6 +301,7 @@ pub(super) fn action_plan<'i>(
         let mut ops = vec![];
         ops.push(dml);
 
+        // Replicaset's weight may have changed, let vshard know about it so it starts rebalancing buckets
         let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op(tier)?;
         ops.push(vshard_config_version_bump);
 
@@ -429,6 +456,7 @@ pub(super) fn action_plan<'i>(
         )?;
         ops.push(dml);
 
+        // Replicaset's weight has changed, let vshard know about it so it starts rebalancing buckets
         let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op(tier)?;
         ops.push(vshard_config_version_bump);
 
@@ -819,6 +847,10 @@ pub(super) fn action_plan<'i>(
             continue;
         }
 
+        // FIXME: everytime governor does an iteration we parse each instance's
+        // version from string. We should instead store the parsed version in
+        // Instance which goes into topology cache.
+        // Same with global_cluster_version, global_catalog_version etc.
         let instance_version = &instance.picodata_version;
         match rpc::join::compare_picodata_versions(&global_cluster_version, instance_version) {
             Ok(0) => {
@@ -864,8 +896,7 @@ pub(super) fn action_plan<'i>(
                 &(PropertyName::ClusterVersion, new_version),
                 ADMIN_ID,
             )?);
-            if global_catalog_version.unwrap_or_default() != storage::LATEST_SYSTEM_CATALOG_VERSION
-            {
+            if global_catalog_version != storage::LATEST_SYSTEM_CATALOG_VERSION {
                 ops.push(Dml::replace(
                     storage::Properties::TABLE_ID,
                     &(
@@ -1103,6 +1134,50 @@ pub mod stage {
             pub replication_config_version_actualize: cas::Request,
         }
 
+        pub struct ActualizeMasterSyncIncarnation {
+            /// This replicaset is being synchronized. The name is only used for logging.
+            pub replicaset_name: ReplicasetName,
+
+            /// This is the current replicaset master. It needs it's `sync_incarnation`
+            /// actualized. This doesn't involve any RPCs because master is
+            /// always synchronized with itself.
+            pub master_name: InstanceName,
+
+            /// Operation to actualize master's `sync_incarnation`.
+            pub cas: cas::Request,
+        }
+
+        pub struct ReplicationSync {
+            /// This replicaset is being synchronized. The name is only used for logging.
+            pub replicaset_name: ReplicasetName,
+
+            /// This is the current replicaset master. We will get the latest vclock from it.
+            pub master_name: InstanceName,
+
+            /// Request to call [`proc_get_vclock`] the replicaset master. This
+            /// vclock is going to be persisted as `promotion_vclock` (if it's
+            /// not already equal) of the given replicaset.
+            ///
+            /// [`proc_get_vclock`]: crate::sync::proc_get_vclock
+            pub get_vclock_rpc: GetVclockRpc,
+
+            /// These instances need to synchronize replication before becoming online.
+            pub laggers: Vec<InstanceName>,
+
+            /// Raft ids of `laggers` one for each.
+            pub raft_ids: Vec<RaftId>,
+
+            /// Global DML into `_pico_instance` to actualize `sync_incarnation`.
+            /// One for each instance in `laggers`.
+            pub dmls: Vec<Dml>,
+
+            /// Request to call [`rpc::replication::proc_replication_sync`] on `laggers`.
+            pub sync_rpc: rpc::replication::ReplicationSyncRequest,
+
+            /// Operations to bump versions of replication and sharding configs.
+            pub bump_dml: Vec<Dml>,
+        }
+
         pub struct ShardingBoot<'i> {
             /// This instance will be initializing the bucket distribution.
             pub target: &'i InstanceName,
@@ -1282,9 +1357,10 @@ fn get_replicaset_to_configure<'i>(
         }
 
         let replicaset_name = &replicaset.name;
-        let mut rpc_targets = Vec::new();
-        let mut replication_peers = Vec::new();
+        let mut targets = Vec::new();
+        let mut replication_config = Vec::new();
         for instance in instances {
+            let instance_name = &instance.name;
             if has_states!(instance, Expelled -> *) {
                 // Expelled instances are ignored for everything,
                 // we only store them for history
@@ -1295,20 +1371,27 @@ fn get_replicaset_to_configure<'i>(
                 continue;
             }
 
-            let instance_name = &instance.name;
-            if let Some(address) = peer_addresses.get(&instance.raft_id) {
-                replication_peers.push(address.clone());
+            if !instance.may_respond() {
+                // Don't send RPC to instance who will probably not reply to it
+                continue;
+            }
+
+            targets.push(instance_name);
+
+            if instance.replication_sync_needed() {
+                // Don't add the waking up instance to other replica
+                // box.cfg.replication configs, until it synchronizes. This
+                // helps us isolate the healthy portion of the replicaset from
+                // potential replication conflicts from deposed masters.
+            } else if let Some(address) = peer_addresses.get(&instance.raft_id) {
+                replication_config.push(address.clone());
             } else {
                 warn_or_panic!("replica `{instance_name}` address unknown, will be excluded from box.cfg.replication of replicaset `{replicaset_name}`");
             }
-
-            if instance.may_respond() {
-                rpc_targets.push(instance_name);
-            }
         }
 
-        if !rpc_targets.is_empty() {
-            return Some((replicaset, rpc_targets, replication_peers));
+        if !targets.is_empty() {
+            return Some((replicaset, targets, replication_config));
         }
 
         #[rustfmt::skip]
