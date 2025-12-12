@@ -1147,6 +1147,10 @@ impl NodeImpl {
                     }
                 }
 
+                self.instance_reachability
+                    .borrow_mut()
+                    .update_instance(old.as_ref(), new.as_ref());
+
                 self.topology_cache.update_instance(old, new);
             }
 
