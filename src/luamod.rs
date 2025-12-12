@@ -32,6 +32,37 @@ use indoc::indoc;
 use smol_str::SmolStr;
 use std::time::Duration;
 
+////////////////////////////////////////////////////////////////////////////////
+// helper functions
+////////////////////////////////////////////////////////////////////////////////
+
+pub type PicoModule = tlua::LuaTable<tlua::PushGuard<tlua::LuaThread>>;
+
+/// Returns a lua table wrapper for the `pico` lua module.
+pub fn luamod() -> traft::Result<PicoModule> {
+    let lua = tarantool::lua_state();
+    let Ok(pico) = lua.into_get("pico") else {
+        return Err(Error::other("failed to access _G.pico lua variable"));
+    };
+    Ok(pico)
+}
+
+pub type PicoLuaFunction = tlua::LuaFunction<tlua::PushGuard<PicoModule>>;
+
+/// Returns a lua function wrapper for a function with given `name` from `pico` lua module.
+pub fn lua_function(name: &str) -> traft::Result<PicoLuaFunction> {
+    let pico = luamod()?;
+    let f: Option<tlua::LuaFunction<_>> = pico.into_get(name).ok();
+    let Some(f) = f else {
+        return Err(Error::other(format!("failed to get pico.{name}")));
+    };
+    Ok(f)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// _G.pico lua module setup
+////////////////////////////////////////////////////////////////////////////////
+
 #[inline(always)]
 fn luamod_set<V>(l: &LuaThread, name: &str, help: &str, value: V)
 where
