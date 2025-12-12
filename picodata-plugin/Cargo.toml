@@ -17,7 +17,7 @@ rmp-serde = "1.1"
 rmpv = { version = "1.0", features = ["with-serde"] }
 serde = "1.0"
 smol_str = "0.2"
-tarantool = { path = "../tarantool/tarantool", version = "10.1.1", features = ["picodata", "test", "tokio_components"] }
+tarantool = { path = "../tarantool/tarantool", version = "10.2", features = ["picodata", "test", "tokio_components"] }
 tarolog = "0.5"
 thiserror = "1.0"
 tros = { version = "0.5", features = ["picodata"] }

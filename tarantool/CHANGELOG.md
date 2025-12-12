@@ -40,6 +40,11 @@
 
 # [?.?.?] Unreleased
 
+### Added
+
+- `tlua::Object::read` function which is useful for getting borrowed access to
+  multiple values on the lua stack
+
 ### Fixed
 
 - `Vclock::current` will no longer invoke the lua parser.

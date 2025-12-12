@@ -33,6 +33,42 @@ impl<L: AsLua> Object<L> {
         }
     }
 
+    /// Read a lua value from the lua stack at the given `offset` from `self`.
+    ///
+    /// This is useful when returning multiple values from lua functions when
+    /// referenced access is required, because reading tuples only works with
+    /// values which don't reference the original lua stack guard.
+    ///
+    /// # Examples:
+    /// ```
+    /// # fn test(lua: tlua::StaticLua) {
+    /// use tlua::{Object, StringInLua, LuaTable};
+    ///
+    /// // Must use `Object<_>` here because `(StringInLua<_>, i32, LuaTable<_>)`
+    /// // will simply not compile
+    /// let object: Object<_> = lua.eval("return 'text', 420, {1, 2, 3}").unwrap();
+    ///
+    /// let s: StringInLua<_> = object.read(0).unwrap();
+    /// let n: i32            = object.read(1).unwrap();
+    /// let t: LuaTable<_>    = object.read(2).unwrap();
+    ///
+    /// assert_eq!(s, "text");
+    /// assert_eq!(n, 420);
+    ///
+    /// let values: Vec<_> =
+    ///     t.iter::<i32, i32>().map(Result::unwrap).map(|(k, v)| v).collect();
+    /// assert_eq!(values, [1, 2, 3]);
+    /// # }
+    /// ```
+    #[inline]
+    pub fn read<'l, T>(&'l self, offset: i32) -> Result<T, crate::LuaError>
+    where
+        T: LuaRead<&'l Self>,
+    {
+        let base = self.index.get() as i32;
+        T::lua_read_at_maybe_zero_position(self, base + offset).map_err(|(_, e)| e.into())
+    }
+
     #[inline(always)]
     pub fn guard(&self) -> &L {
         &self.guard
