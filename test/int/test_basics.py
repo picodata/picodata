@@ -372,7 +372,7 @@ def test_pico_raft_log(instance: Instance):
 |  0  | 1  |BatchDml(
 Replace(_pico_peer_address, [1,"127.0.0.1:{p}","iproto"]),
 Replace(_pico_peer_address, [1,"127.0.0.1:{pg_port}","pgproto"]),
-Insert(_pico_instance, ["default_1_1","{i1_uuid}",1,"default_1","{r1_uuid}",["Offline",0],["Offline",0],{b},"default","{picodata_version}"]),
+Insert(_pico_instance, ["default_1_1","{i1_uuid}",1,"default_1","{r1_uuid}",["Offline",0],["Offline",0],{b},"default","{picodata_version}",0]),
 Insert(_pico_replicaset, ["default_1","{r1_uuid}","default_1_1","default_1_1","default",0.0,"auto","not-ready",0,0,{{}},0,0,0]))|
 |  0  | 1  |BatchDml(Insert(_pico_tier, ["default",1,true,0,0,false,3000,true,0,0]))|
 |  0  | 1  |BatchDml(
@@ -446,7 +446,7 @@ Insert(_pico_index, [{_pico_index},0,"_pico_index_id","tree",[{{"unique":true}}]
 Insert(_pico_index, [{_pico_index},1,"_pico_index_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_peer_address},"_pico_peer_address",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"raft_id"}},{{"field_type":"string","is_nullable":false,"name":"address"}},{{"field_type":"string","is_nullable":false,"name":"connection_type"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_peer_address},0,"_pico_peer_address_raft_id","tree",[{{"unique":true}}],[["raft_id","unsigned",null,false,null],["connection_type","string",null,false,null]],true,0]),
-Insert(_pico_table, [{_pico_instance},"_pico_instance",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"string","is_nullable":false,"name":"uuid"}},{{"field_type":"unsigned","is_nullable":false,"name":"raft_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_name"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_uuid"}},{{"field_type":"array","is_nullable":false,"name":"current_state"}},{{"field_type":"array","is_nullable":false,"name":"target_state"}},{{"field_type":"map","is_nullable":false,"name":"failure_domain"}},{{"field_type":"string","is_nullable":false,"name":"tier"}},{{"field_type":"string","is_nullable":false,"name":"picodata_version"}}],0,true,"memtx",1,""]),
+Insert(_pico_table, [{_pico_instance},"_pico_instance",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"string","is_nullable":false,"name":"uuid"}},{{"field_type":"unsigned","is_nullable":false,"name":"raft_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_name"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_uuid"}},{{"field_type":"array","is_nullable":false,"name":"current_state"}},{{"field_type":"array","is_nullable":false,"name":"target_state"}},{{"field_type":"map","is_nullable":false,"name":"failure_domain"}},{{"field_type":"string","is_nullable":false,"name":"tier"}},{{"field_type":"string","is_nullable":false,"name":"picodata_version"}},{{"field_type":"unsigned","is_nullable":true,"name":"sync_incarnation"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_instance},0,"_pico_instance_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
 Insert(_pico_index, [{_pico_instance},1,"_pico_instance_uuid","tree",[{{"unique":true}}],[["uuid","string",null,false,null]],true,0]),
 Insert(_pico_index, [{_pico_instance},2,"_pico_instance_raft_id","tree",[{{"unique":true}}],[["raft_id","unsigned",null,false,null]],true,0]),
@@ -491,8 +491,8 @@ Insert(_pico_index, [{_pico_bucket},0,"_pico_bucket_index_primary","tree",[{{"un
 Insert(_pico_table, [{_pico_resharding_state},"_pico_resharding_state",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"tier_name"}},{{"field_type":"string","is_nullable":false,"name":"type"}},{{"field_type":"string","is_nullable":false,"name":"current_replicaset_name"}},{{"field_type":"string","is_nullable":false,"name":"target_replicaset_name"}},{{"field_type":"unsigned","is_nullable":true,"name":"bucket_id_start"}},{{"field_type":"unsigned","is_nullable":false,"name":"bucket_count"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_resharding_state},0,"_pico_resharding_state_index_primary","tree",[{{"unique":true}}],[["tier_name","string",null,false,null],["type","string",null,false,null],["current_replicaset_name","string",null,false,null],["target_replicaset_name","string",null,false,null]],true,0])
 )|
-|69|1|GrantPrivilege(2, 1, 2, table, Some(515), read)|
-|69|1|GrantPrivilege(3, 1, 2, table, Some(514), read)|
+|  0  | 1  |GrantPrivilege(2, 1, 2, table, Some(515), read)|
+|  0  | 1  |GrantPrivilege(3, 1, 2, table, Some(514), read)|
 |  0  | 1  |AddNode(1)|
 |  0  | 2  |-|
 |  0  | 2  |BatchDml(
@@ -502,12 +502,18 @@ Update(_pico_tier, ["default"], [["=","target_vshard_config_version",1]])
 )|
 |  0  | 2  |Update(_pico_replicaset, ["default_1"], [["=","current_config_version",1]])|
 |  0  | 2  |BatchDml(
-Update(_pico_replicaset, ["default_1"], [["=","weight",1.0], ["=","state","ready"]]),
-Update(_pico_tier, ["default"], [["=","target_vshard_config_version",2]])
+Update(_pico_replicaset, ["default_1"], [["=","target_config_version",2]]),
+Update(_pico_tier, ["default"], [["=","target_vshard_config_version",2]]),
+Update(_pico_instance, ["default_1_1"], [["=","sync_incarnation",1]])
 )|
-|  69 | 2  |Update(_pico_tier, ["default"], [["=","current_vshard_config_version",2]])|
-|  69 | 2  |Update(_pico_tier, ["default"], [["=","vshard_bootstrapped",true]])|
-|  69 | 2  |Update(_pico_instance, ["default_1_1"], [["=","current_state",["Online",1]]])|
+|  0  | 2  |Update(_pico_replicaset, ["default_1"], [["=","current_config_version",2]])|
+|  0  | 2  |BatchDml(
+Update(_pico_replicaset, ["default_1"], [["=","weight",1.0], ["=","state","ready"]]),
+Update(_pico_tier, ["default"], [["=","target_vshard_config_version",3]])
+)|
+|  0  | 2  |Update(_pico_tier, ["default"], [["=","current_vshard_config_version",3]])|
+|  0  | 2  |Update(_pico_tier, ["default"], [["=","vshard_bootstrapped",true]])|
+|  0  | 2  |Update(_pico_instance, ["default_1_1"], [["=","current_state",["Online",1]]])|
 +-----+----+--------+
 """.format(  # noqa: E501
         p=instance.port,
@@ -852,7 +858,7 @@ def test_proc_runtime_info(instance: Instance):
             governor_loop_status="idle",
             # This is a counter which increases each time governor successfully performs a step.
             # This value may change in the future if we add or remove some of those steps.
-            governor_step_counter=6,
+            governor_step_counter=8,
             main_loop_last_entry=dict(
                 index=420,
                 term=2,

@@ -54,6 +54,7 @@ use ::tarantool::fiber;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
 use ::tarantool::space::UpdateOps;
+use ::tarantool::vclock::Vclock;
 use bytes::Buf;
 use futures::future::try_join;
 use futures::future::try_join_all;
@@ -332,7 +333,8 @@ impl Loop {
         let global_catalog_version = storage
             .properties
             .system_catalog_version()
-            .expect("getting of system_catalog_version should never fail");
+            .expect("getting of system_catalog_version should never fail")
+            .expect("always available since 25.1.0");
         let pending_catalog_version = storage
             .properties
             .pending_catalog_version()
@@ -581,16 +583,7 @@ impl Loop {
 
                             // Note: we drop the master_actualize_dml because switchover is not finished yet.
                             // We just update the promotion_vclock value and retry synchronizing on next governor step.
-                            let mut replicaset_dml = UpdateOps::new();
-                            replicaset_dml.assign(
-                                column_name!(Replicaset, promotion_vclock), &new_promotion_vclock
-                            ).expect("shan't fail");
-                            let op = Dml::update(
-                                storage::Replicasets::TABLE_ID,
-                                &[&replicaset_name],
-                                replicaset_dml,
-                                ADMIN_ID,
-                            )?;
+                            let op = make_promotion_vclock_update_dml(&replicaset_name, &new_promotion_vclock)?;
                             ops.push(op);
 
                             let op = Op::single_dml_or_batch(ops);
@@ -698,6 +691,140 @@ impl Loop {
                     async {
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
                         cas::compare_and_swap_local(&replication_config_version_actualize, deadline)?.no_retries()?;
+                    }
+                }
+            }
+
+            Plan::ActualizeMasterSyncIncarnation(ActualizeMasterSyncIncarnation {
+                replicaset_name,
+                master_name,
+                cas,
+            }) => {
+                set_status!("actualize master sync_incarnation");
+                governor_substep! {
+                    "proposing replicaset master sync incarnation update" [
+                        "replicaset_name" => %replicaset_name,
+                        "master_name" => %master_name,
+                    ]
+                    async {
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                    }
+                }
+            }
+
+            Plan::ReplicationSync(ReplicationSync {
+                replicaset_name,
+                master_name,
+                get_vclock_rpc,
+                laggers,
+                raft_ids,
+                dmls,
+                sync_rpc,
+                bump_dml,
+            }) => {
+                set_status!("replicaset sync");
+
+                let mut new_promotion_vclock = None;
+                let mut synced_names = vec![];
+                let mut synced_dmls = vec![];
+                governor_substep! {
+                    "syncing replication" [
+                        "replicaset_name" => %replicaset_name,
+                        "master_name" => %master_name,
+                        "laggers" => ?laggers,
+                    ]
+                    async {
+                        tlog!(Info, "calling proc_get_vclock on current master: {master_name}");
+                        let f_vclock = pool.call(&master_name, proc_name!(proc_get_vclock), &get_vclock_rpc, rpc_timeout)?;
+
+                        let mut fs = vec![];
+                        debug_assert_eq!(laggers.len(), dmls.len());
+                        debug_assert_eq!(laggers.len(), raft_ids.len());
+                        for ((instance_name, dml), _raft_id) in laggers.clone().into_iter().zip(dmls).zip(raft_ids) {
+                            tlog!(Info, "calling proc_replication_sync on {instance_name}");
+
+                            let sync_timeout = rpc_timeout.saturating_add(Duration::from_secs(1));
+                            let resp = pool.call(&instance_name, proc_name!(proc_replication_sync), &sync_rpc, sync_timeout)?;
+                            fs.push(async move {
+                                let res = resp.await;
+
+                                match res {
+                                    Ok(resp) => {
+                                        tlog!(Info, "synchronized replication on instance";
+                                            "instance_name" => %instance_name,
+                                        );
+                                        Ok((instance_name, resp.vclock, dml))
+                                    }
+                                    Err(e) => {
+                                        tlog!(Warning, "failed calling proc_replication_sync: {e}";
+                                            "instance_name" => %instance_name
+                                        );
+                                        Err(e)
+                                    }
+                                }
+                            });
+                        }
+                        let fs_sync = try_join_all(fs);
+
+                        let (master_vclock, laggers) = try_join(f_vclock, fs_sync).await?;
+                        let master_vclock = master_vclock.ignore_zero();
+
+                        for (instance_name, vclock, dml) in laggers {
+                            let Some(vclock) = vclock else {
+                                // This is for backwards compatibility. Older
+                                // versions before 25.5 didn't return vclock, so
+                                // we'll just assume that `sync_vclock` is fresh
+                                // enough
+                                synced_names.push(instance_name);
+                                synced_dmls.push(dml);
+                                continue;
+                            };
+
+                            // proc_replication_sync returns vclock without local component
+                            debug_assert_eq!(vclock.get(0), 0);
+
+                            if vclock >= master_vclock {
+                                synced_names.push(instance_name);
+                                synced_dmls.push(dml);
+                            }
+                        }
+
+                        if master_vclock > sync_rpc.vclock {
+                            new_promotion_vclock = Some(master_vclock);
+                        } else {
+                            // Master vclock must be >= previous vclock, it cannot go down
+                            debug_assert_eq!(master_vclock, sync_rpc.vclock);
+                        }
+                    }
+                }
+
+                governor_substep! {
+                    "proposing replicaset promotion vclock and/or instance sync incarnations updates" [
+                        "promotion_vclock" => ?new_promotion_vclock,
+                        "synced_laggers" => ?synced_names,
+                    ]
+                    async {
+                        let mut ops = bump_dml;
+
+                        if let Some(vclock) = &new_promotion_vclock {
+                            // Local component was just cleared above
+                            debug_assert_eq!(vclock.get(0), 0);
+
+                            let op = make_promotion_vclock_update_dml(&replicaset_name, vclock)?;
+                            ops.push(op);
+                        }
+
+                        for dml in synced_dmls {
+                            ops.push(dml);
+                        }
+
+                        let op = Op::single_dml_or_batch(ops);
+                        // Implicit ranges are sufficient
+                        let predicate = cas::Predicate::new(applied, []);
+                        let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
                     }
                 }
             }
@@ -1613,4 +1740,17 @@ pub struct GovernorStatus {
     ///
     /// This value is only used for testing purposes.
     pub step_counter: u64,
+}
+
+fn make_promotion_vclock_update_dml(replicaset_name: &str, vclock: &Vclock) -> Result<Dml> {
+    let mut update_ops = UpdateOps::new();
+    update_ops.assign(column_name!(Replicaset, promotion_vclock), vclock)?;
+    let op = Dml::update(
+        storage::Replicasets::TABLE_ID,
+        &[replicaset_name],
+        update_ops,
+        ADMIN_ID,
+    )?;
+
+    Ok(op)
 }

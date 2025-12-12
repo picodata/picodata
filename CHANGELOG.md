@@ -15,6 +15,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Rework SQL execution protocol for DML queries to reduce data transfer.
 - Support JSON_EXTRACT_PATH function.
 - Introduce non-blocking SQL execution to prevent fiber starvation.
+- New column `sync_incarnation` is added to `_pico_instance` system table.
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:
@@ -48,6 +49,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed a memory leak in SQL API of plugin SDK
 - `picodata status` no longer panics when `stdout`, `stderr`,
   or both are redirected to a broken pipe.
+- Fixed that the whole replicaset would be broken if one instance get's a
+  replication conflict. (See also https://git.picodata.io/core/picodata/-/issues/2231).
 
 ## [25.5.1] - 2025-12-19
 

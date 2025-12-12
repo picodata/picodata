@@ -292,11 +292,15 @@ def test_sentinel_backoff(cluster: Cluster):
     old_index_of_attempt = Retriable().call(check_sentinel_succeeded_and_is_waiting)
 
     counter = i1.wait_governor_status("update current sharding configuration")
-    # Governor has performed 2 steps (updated sharding config and updated
-    # instance's current state). This is important, because it shows that there
-    # weren't a bunch of redundant state updates (regression test for the
-    # original bug report)
-    assert counter - old_counter == 2
+    # Governor has performed 4 steps:
+    # - change target_state=Online (also bump config versions)
+    # - configure replication within replicaset (with `i3` isolated from others)
+    # - synchornize replication on `i3`
+    # - configure replication within replicaset (now with `i3` same as on others)
+    #
+    # This is important, because it shows that there weren't a bunch of
+    # redundant state updates (regression test for the original bug report)
+    assert counter - old_counter == 4
     old_counter = counter
 
     # Now `i3` is trying to go back Online, but cannot yet, because it's raft loop is broken

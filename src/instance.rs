@@ -4,6 +4,7 @@ use crate::has_states;
 use crate::info::PICODATA_VERSION;
 use crate::traft::RaftId;
 use crate::util::Transition;
+use crate::version::Version;
 use ::serde::{Deserialize, Serialize};
 use ::tarantool::tuple::Encode;
 use smol_str::format_smolstr;
@@ -55,6 +56,12 @@ pub struct Instance {
     /// Version of picodata executable which running this instance.
     /// It should match the version returned by `.proc_version_info` on this instance.
     pub picodata_version: SmolStr,
+
+    /// This value keeps track of the moment when this instance has synchronized
+    /// with its replicaset's master. It is assigned `target_state.incarnation`
+    /// when the synchronization takes place.
+    #[serde(default)]
+    pub sync_incarnation: u64,
 }
 
 impl Encode for Instance {}
@@ -75,6 +82,9 @@ impl Instance {
     /// Index of first field is 0.
     pub const FIELD_FAILURE_DOMAIN: u32 = 7;
 
+    /// System catalog version in which `sync_incarnation` column was added to `_pico_instance`.
+    pub const SYNC_INCARNATION_AVAILABLE_SINCE: Version = Version::new_clean(25, 5, 3);
+
     /// Format of the _pico_instance global table.
     #[inline(always)]
     pub fn format() -> Vec<tarantool::space::Field> {
@@ -90,6 +100,7 @@ impl Instance {
             Field::from(("failure_domain", FieldType::Map)),
             Field::from(("tier", FieldType::String)),
             Field::from(("picodata_version", FieldType::String)),
+            Field::from(("sync_incarnation", FieldType::Unsigned)).is_nullable(true),
         ]
     }
 
@@ -111,6 +122,11 @@ impl Instance {
     #[inline]
     pub fn is_reincarnated(&self) -> bool {
         self.current_state.incarnation < self.target_state.incarnation
+    }
+
+    #[inline]
+    pub fn replication_sync_needed(&self) -> bool {
+        self.sync_incarnation < self.target_state.incarnation
     }
 }
 
@@ -180,6 +196,7 @@ mod tests {
             failure_domain: FailureDomain::default(),
             tier: DEFAULT_TIER.into(),
             picodata_version: PICODATA_VERSION.into(),
+            sync_incarnation: state.incarnation,
         }
     }
 
@@ -516,6 +533,7 @@ mod tests {
             failure_domain: FailureDomain::default(),
             tier: DEFAULT_TIER.into(),
             picodata_version: PICODATA_VERSION.into(),
+            sync_incarnation: 0,
         };
         add_instance(&storage, &expelled_instance).unwrap();
 

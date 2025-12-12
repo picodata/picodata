@@ -34,7 +34,7 @@ pub(super) fn handle_governor_queue<'i>(
     next_schema_version: u64,
     global_cluster_version: &str,
     pending_catalog_version: Option<SmolStr>,
-    current_catalog_version: Option<SmolStr>,
+    current_catalog_version: SmolStr,
     applied: RaftIndex,
     replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
     instances: &'i [Instance],
@@ -100,7 +100,7 @@ fn handle_catalog_upgrade<'i>(
     governor_operations: &'i [GovernorOperationDef],
     next_schema_version: u64,
     pending_catalog_version: SmolStr,
-    current_catalog_version: Option<SmolStr>,
+    current_catalog_version: SmolStr,
     applied: RaftIndex,
     replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
     instances: &'i [Instance],
@@ -119,7 +119,7 @@ fn handle_catalog_upgrade<'i>(
     }
 
     let versions_for_upgrade =
-        get_versions_for_upgrade(current_catalog_version.as_deref(), &pending_catalog_version);
+        get_versions_for_upgrade(&current_catalog_version, &pending_catalog_version);
 
     // count system catalog upgrade operations
     let mut has_upgrade_operations = false;
@@ -326,18 +326,11 @@ fn insert_catalog_upgrade_operations<'i>(
     Ok(Some(InsertUpgradeOperation { cas }.into()))
 }
 
-fn get_versions_for_upgrade(
-    current_version: Option<&str>,
-    target_version: &str,
-) -> Vec<&'static str> {
-    let start = 1 + if let Some(version) = current_version {
-        CATALOG_UPGRADE_LIST
-            .iter()
-            .position(|u| u.0 == version)
-            .unwrap_or(0)
-    } else {
-        0
-    };
+fn get_versions_for_upgrade(current_version: &str, target_version: &str) -> Vec<&'static str> {
+    let start = 1 + CATALOG_UPGRADE_LIST
+        .iter()
+        .position(|u| u.0 == current_version)
+        .unwrap_or(0);
     let end = CATALOG_UPGRADE_LIST
         .iter()
         .position(|u| u.0 == target_version)
