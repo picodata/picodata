@@ -1,5 +1,6 @@
 use crate::config::PicodataConfig;
 use crate::instance::InstanceName;
+use crate::luamod::lua_function;
 use crate::pico_service::pico_service_password;
 use crate::replicaset::Weight;
 use crate::rpc::ddl_apply::Response;
@@ -99,13 +100,8 @@ pub fn ddl_map_callrw<T>(
 where
     T: ToTupleBuffer + ?Sized,
 {
-    let lua = tarantool::lua_state();
-    let pico: tlua::LuaTable<_> = lua
-        .get("pico")
-        .ok_or_else(|| Error::other("pico lua module disappeared"))?;
-
     // `pico._ddl_map_callrw` is defined in `src/vshard_helpers.lua`
-    let func: tlua::LuaFunction<_> = pico.try_get("_ddl_map_callrw")?;
+    let func = lua_function("_ddl_map_callrw")?;
     let args = Tuple::new(req)?;
 
     let res_raw = func
@@ -134,13 +130,8 @@ pub fn get_replicaset_priority_list(
     #[cfg(debug_assertions)]
     let _guard = tarantool::fiber::safety::NoYieldsGuard::new();
 
-    let lua = tarantool::lua_state();
-    let pico: tlua::LuaTable<_> = lua
-        .get("pico")
-        .ok_or_else(|| Error::other("pico lua module disappeared"))?;
-
     // `pico._replicaset_priority_list` is defined in `src/vshard_helpers.lua`
-    let func: tlua::LuaFunction<_> = pico.try_get("_replicaset_priority_list")?;
+    let func = lua_function("_replicaset_priority_list")?;
     let res = func.call_with_args((tier, replicaset_uuid));
     if res.is_err() {
         // Check if tier exists, return corresponding error in that case
@@ -166,13 +157,8 @@ pub fn get_replicaset_uuid_by_bucket_id(tier: &str, bucket_id: u64) -> Result<Sm
         return Err(Error::other(format!("invalid bucket id: must be within 1..{max_bucket_id}, got {bucket_id}")));
     }
 
-    let lua = tarantool::lua_state();
-    let pico: tlua::LuaTable<_> = lua
-        .get("pico")
-        .ok_or_else(|| Error::other("pico lua module disappeared"))?;
-
     // `pico._replicaset_uuid_by_bucket_id` is defined in `src/vshard_helpers.lua`
-    let func: tlua::LuaFunction<_> = pico.try_get("_replicaset_uuid_by_bucket_id")?;
+    let func = lua_function("_replicaset_uuid_by_bucket_id")?;
     let res = func.call_with_args((tier, bucket_id));
     if res.is_err() {
         // Check if tier exists, return corresponding error in that case
