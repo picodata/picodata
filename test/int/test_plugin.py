@@ -13,7 +13,6 @@ import pytest
 import requests
 from conftest import (
     Cluster,
-    ErrorCode,
     Instance,
     ProcessDead,
     Retriable,
@@ -710,7 +709,7 @@ def test_drop_plugin_basics(cluster: Cluster):
     with pytest.raises(TarantoolError) as e:
         i1.sql(f"DROP PLUGIN {plugin} 0.1.0")
     assert e.value.args[:2] == (
-        ErrorCode.PluginError,
+        "PluginError",
         f"attempt to drop an enabled plugin '{plugin}'",
     )
 
@@ -738,7 +737,7 @@ def test_drop_plugin_basics(cluster: Cluster):
     with pytest.raises(TarantoolError) as e:
         i1.sql(f"DROP PLUGIN {plugin} 0.1.0")
     assert e.value.args[:2] == (
-        ErrorCode.PluginError,
+        "PluginError",
         f"no such plugin `{plugin}:0.1.0`",
     )
 
@@ -746,7 +745,7 @@ def test_drop_plugin_basics(cluster: Cluster):
     with pytest.raises(TarantoolError) as e:
         i1.sql(f"DROP PLUGIN {plugin} 0.69.0")
     assert e.value.args[:2] == (
-        ErrorCode.PluginError,
+        "PluginError",
         f"no such plugin `{plugin}:0.69.0`",
     )
 
@@ -897,7 +896,7 @@ def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
     with pytest.raises(TarantoolError) as e:
         i1.sql(f"ALTER PLUGIN {_PLUGIN} 0.1.0 ENABLE")
     assert e.value.args[:-1] == (
-        ErrorCode.Other,
+        "Other",
         f"Failed to enable plugin `{_PLUGIN}:0.1.0`: [instance name:default_2_1] Other: Callback: on_start: PluginError: error at `on_start`",  # noqa: E501
     )
 
@@ -1298,7 +1297,7 @@ def test_migration_lock(cluster: Cluster):
     with pytest.raises(TarantoolError) as e:
         i3.sql(f"ALTER PLUGIN {plugin} MIGRATE TO 0.1.0", timeout=10)
     assert e.value.args[:2] == (
-        ErrorCode.PluginError,
+        "PluginError",
         f"Another plugin migration is in progress, initiated by instance {i2.name}",
     )
 
@@ -1326,7 +1325,7 @@ def test_migration_lock(cluster: Cluster):
     with pytest.raises(TarantoolError) as e:
         thread.join()
     assert e.value.args[:2] == (
-        ErrorCode.PluginError,
+        "PluginError",
         "Migration got interrupted likely because connection to cluster was lost",
     )
 
@@ -2632,7 +2631,7 @@ cluster:
             service_info=("NO_SUCH_PLUGIN", service_name, _PLUGIN_VERSION_1),
         )
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
-    assert e.value.args[:2] == (ErrorCode.NoSuchService, f"service 'NO_SUCH_PLUGIN:0.1.0.{service_name}' not found")
+    assert e.value.args[:2] == ("NoSuchService", f"service 'NO_SUCH_PLUGIN:0.1.0.{service_name}' not found")
 
     # Check requesting RPC to unknown service
     with pytest.raises(
@@ -2658,7 +2657,7 @@ cluster:
             service_info=(plugin_name, "NO_SUCH_SERVICE", _PLUGIN_VERSION_1),
         )
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
-    assert e.value.args[:2] == (ErrorCode.NoSuchService, f"service '{plugin_name}:0.1.0.NO_SUCH_SERVICE' not found")
+    assert e.value.args[:2] == ("NoSuchService", f"service '{plugin_name}:0.1.0.NO_SUCH_SERVICE' not found")
 
     # Check requesting RPC to unknown instance
     with pytest.raises(TarantoolError) as e:
@@ -2670,7 +2669,7 @@ cluster:
         )
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
     assert e.value.args[:2] == (
-        ErrorCode.NoSuchInstance,
+        "NoSuchInstance",
         "instance with name 'NO_SUCH_INSTANCE' not found",
     )
 
@@ -2684,7 +2683,7 @@ cluster:
         )
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
     assert e.value.args[:2] == (
-        ErrorCode.NoSuchReplicaset,
+        "NoSuchReplicaset",
         'replicaset with name "NO_SUCH_REPLICASET" not found',
     )
 
@@ -2730,7 +2729,7 @@ cluster:
     with pytest.raises(TarantoolError) as e:
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
     assert e.value.args[:2] == (
-        ErrorCode.InstanceExpelled,
+        "InstanceExpelled",
         "instance named 'i3' was expelled",
     )
 
@@ -2768,7 +2767,7 @@ cluster:
     with pytest.raises(TarantoolError) as e:
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
     assert e.value.args[:2] == (
-        ErrorCode.ReplicasetExpelled,
+        "ReplicasetExpelled",
         f"replicaset with id {r2_uuid} was expelled",
     )
 
@@ -2785,7 +2784,7 @@ cluster:
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
 
     assert e.value.args[:2] == (
-        ErrorCode.InstanceUnavaliable,
+        "InstanceUnavaliable",
         "instance with instance_name 'i2' can't respond due it's state",
     )
 
@@ -3086,7 +3085,7 @@ def test_sql_interface_update_config(cluster: Cluster):
     with pytest.raises(TarantoolError) as e:
         i1.sql("ALTER PLUGIN no_such_plugin 0.1.0 SET testservice_1.foo = 'false'")
     assert e.value.args[:2] == (
-        ErrorCode.PluginError,
+        "PluginError",
         "no such plugin `no_such_plugin:0.1.0`",
     )
 
@@ -3096,7 +3095,7 @@ def test_sql_interface_update_config(cluster: Cluster):
     with pytest.raises(TarantoolError) as e:
         i1.sql(f"ALTER PLUGIN {plugin} 1.2.3 SET testservice_1.foo = 'false'")
     assert e.value.args[:2] == (
-        ErrorCode.PluginError,
+        "PluginError",
         f"no such plugin `{plugin}:1.2.3`",
     )
 
@@ -3104,7 +3103,7 @@ def test_sql_interface_update_config(cluster: Cluster):
     with pytest.raises(TarantoolError) as e:
         i1.sql(f"ALTER PLUGIN {plugin} 0.1.0 SET no_such_service.foo = 'false'")
     assert e.value.args[:2] == (
-        ErrorCode.NoSuchService,
+        "NoSuchService",
         f"no such service `{plugin}.no_such_service:v0.1.0`",
     )
 
@@ -3248,7 +3247,7 @@ def test_create_plugin_too_many_versions(cluster: Cluster):
     with pytest.raises(TarantoolError) as e:
         instance.sql("CREATE PLUGIN too_many_versions 0.1.2")
     assert e.value.args[:2] == (
-        ErrorCode.PluginError,
+        "PluginError",
         "too many versions of plugin 'too_many_versions', only 2 versions of the same plugin may exist at the same time",  # noqa: E501
     )
 
@@ -3266,7 +3265,7 @@ def test_create_plugin_too_many_versions(cluster: Cluster):
     with pytest.raises(TarantoolError) as e:
         instance.sql("CREATE PLUGIN too_many_versions 0.1.3")
     assert e.value.args[:2] == (
-        ErrorCode.PluginError,
+        "PluginError",
         "too many versions of plugin 'too_many_versions', only 2 versions of the same plugin may exist at the same time",  # noqa: E501
     )
 
@@ -3441,7 +3440,7 @@ DROP TABLE author;
     with pytest.raises(TarantoolError) as e:
         i1.sql(f'ALTER PLUGIN "{plugin}" MIGRATE TO 0.1.0')
     assert e.value.args[:2] == (
-        ErrorCode.PluginError,
+        "PluginError",
         "migration.sql:6: no key named bubba found in migration context",
     )
 

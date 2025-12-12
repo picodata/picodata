@@ -7,7 +7,6 @@ from conftest import (
     Instance,
     TarantoolError,
     log_crawler,
-    ErrorCode,
 )
 
 
@@ -1759,7 +1758,7 @@ def test_operability_of_global_and_sharded_table(cluster: Cluster):
             """
         )
     assert err.value.args[:2] == (
-        ErrorCode.CasTableNotOperable,
+        "CasTableNotOperable",
         "TableNotOperable: " + f"table {table_name} cannot be modified now as DDL operation is in progress",
     )
     lc.wait_matched()
@@ -1786,7 +1785,7 @@ def test_operability_of_global_and_sharded_table(cluster: Cluster):
             """
         )
     assert err.value.args[:2] == (
-        ErrorCode.CasTableNotOperable,
+        "CasTableNotOperable",
         "TableNotOperable: " + f"table {table_name} cannot be modified now as DDL operation is in progress",
     )
     lc.wait_matched()
