@@ -10,8 +10,6 @@ from conftest import (
     ProcessDead,
 )
 
-ER_OTHER = 10000
-
 
 @pytest.fixture
 def cluster2(cluster: Cluster):
@@ -219,7 +217,7 @@ def test_cluster_name_mismatch(instance: Instance):
             timeout_seconds=1,
         )
     assert e.value.args[:2] == (
-        ER_OTHER,
+        "Other",
         f'cluster_name mismatch: cluster_name of the instance = "wrong-cluster-name", cluster_name of the cluster = "{instance.cluster_name}"',  # noqa: E501
     )
 

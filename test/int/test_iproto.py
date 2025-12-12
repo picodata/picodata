@@ -1,6 +1,6 @@
 import pytest
 
-from conftest import Instance, Connection, MalformedAPI, TarantoolError, ErrorCode, Cluster, log_crawler
+from conftest import Instance, Connection, MalformedAPI, TarantoolError, Cluster, log_crawler
 
 
 USER_NAME = "kelthuzad"
@@ -85,7 +85,7 @@ def test_iproto_execute(instance: Instance):
     with pytest.raises(TarantoolError) as dql:  # type: ignore
         conn.execute(f"SELECT * FRUM {TABLE_NAME}")
     assert dql.value.args[:2] == (
-        ErrorCode.SbroadError,
+        "SbroadError",
         f"sbroad: rule parsing error:  --> 1:10\n  |\n1 | SELECT * FRUM {TABLE_NAME}\n  |          ^---\n  |\n  = expected EOI, OrderBy, Limit, UnionOp, ExceptOp, UnionAllOp, or DqlOption",  # noqa: E501
     )
 

@@ -11,7 +11,6 @@ from conftest import (
     Retriable,
     TarantoolError,
     ReturnError,
-    ErrorCode,
     MalformedAPI,
     log_crawler,
     pgrep_tree,
@@ -701,7 +700,7 @@ cluster:
     with pytest.raises(TarantoolError) as e:
         i1.call(".proc_instance_info", "i3")
     assert e.value.args[:2] == (
-        ErrorCode.NoSuchInstance,
+        "NoSuchInstance",
         'instance with name "i3" not found',
     )
 

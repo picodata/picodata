@@ -5,7 +5,6 @@ from conftest import (
     TarantoolError,
     ReturnError,
     CasRange,
-    ErrorCode,
     log_crawler,
 )
 
@@ -31,7 +30,7 @@ def test_cas_errors(instance: Instance):
             term=term + 1,
         )
     assert e1.value.args[:2] == (
-        ErrorCode.TermMismatch,
+        "TermMismatch",
         "operation request from different term 3, current term is 2",
     )
 
@@ -45,7 +44,7 @@ def test_cas_errors(instance: Instance):
             term=term - 1,
         )
     assert e2.value.args[:2] == (
-        ErrorCode.TermMismatch,
+        "TermMismatch",
         "operation request from different term 1, current term is 2",
     )
 
@@ -59,7 +58,7 @@ def test_cas_errors(instance: Instance):
             term=2,  # actually 1
         )
     assert e3.value.args[:2] == (
-        ErrorCode.CasEntryTermMismatch,
+        "CasEntryTermMismatch",
         "EntryTermMismatch: entry at index 1 has term 1, request implies term 2",
     )
 
@@ -72,7 +71,7 @@ def test_cas_errors(instance: Instance):
             index=2048,
         )
     assert e4.value.args[:2] == (
-        ErrorCode.CasNoSuchRaftIndex,
+        "CasNoSuchRaftIndex",
         f"NoSuchIndex: raft entry at index 2048 does not exist yet, the last is {index}",
     )
 
@@ -83,7 +82,7 @@ def test_cas_errors(instance: Instance):
     with pytest.raises(TarantoolError) as e5:
         instance.cas("insert", "_pico_property", ["foo", "420"], index=index - 1)
     assert e5.value.args[:2] == (
-        ErrorCode.RaftLogCompacted,
+        "RaftLogCompacted",
         f"Compacted: raft index {index - 1} is compacted at {index}",
     )
 
@@ -92,7 +91,7 @@ def test_cas_errors(instance: Instance):
         with pytest.raises(TarantoolError) as e5:
             instance.cas("insert", table, [0], ranges=[CasRange(eq=0)], user=1)
         assert e5.value.args[:2] == (
-            ErrorCode.CasTableNotAllowed,
+            "CasTableNotAllowed",
             f"TableNotAllowed: table {table} cannot be modified by DML Raft Operation directly",
         )
 
@@ -100,7 +99,7 @@ def test_cas_errors(instance: Instance):
     with pytest.raises(TarantoolError) as e5:
         instance.cas("insert", "_pico_db_config", ["shredding", "", True], ranges=[CasRange(eq=0)], user=1)
     assert e5.value.args[:2] == (
-        ErrorCode.CasConfigNotAllowed,
+        "CasConfigNotAllowed",
         "ConfigNotAllowed: config shredding cannot be modified",
     )
 
@@ -195,7 +194,7 @@ def test_cas_predicate(instance: Instance):
     with pytest.raises(TarantoolError) as e1:
         instance.cas("insert", "_pico_property", ["fruit", "orange"], index=read_index)
     assert e1.value.args[:2] == (
-        ErrorCode.CasConflictFound,
+        "CasConflictFound",
         f"ConflictFound: found a conflicting entry at index {read_index + 1}",
     )
 
@@ -209,7 +208,7 @@ def test_cas_predicate(instance: Instance):
             ranges=[CasRange(eq="vegetable")],
         )
     assert e2.value.args[:2] == (
-        ErrorCode.CasConflictFound,
+        "CasConflictFound",
         f"ConflictFound: found a conflicting entry at index {read_index + 1}",
     )
 
@@ -217,7 +216,7 @@ def test_cas_predicate(instance: Instance):
     with pytest.raises(TarantoolError) as e3:
         instance.cas("replace", "_pico_property", ["fruit", "orange"], index=read_index)
     assert e3.value.args[:2] == (
-        ErrorCode.CasConflictFound,
+        "CasConflictFound",
         f"ConflictFound: found a conflicting entry at index {read_index + 1}",
     )
 
@@ -225,7 +224,7 @@ def test_cas_predicate(instance: Instance):
     with pytest.raises(TarantoolError) as e4:
         instance.cas("delete", "_pico_property", key=["fruit"], index=read_index)
     assert e4.value.args[:2] == (
-        ErrorCode.CasConflictFound,
+        "CasConflictFound",
         f"ConflictFound: found a conflicting entry at index {read_index + 1}",
     )
 
@@ -239,7 +238,7 @@ def test_cas_predicate(instance: Instance):
             index=read_index,
         )
     assert e5.value.args[:2] == (
-        ErrorCode.CasConflictFound,
+        "CasConflictFound",
         f"ConflictFound: found a conflicting entry at index {read_index + 1}",
     )
 
@@ -253,7 +252,7 @@ def test_cas_predicate(instance: Instance):
             ranges=[CasRange(eq="fruit")],
         )
     assert e6.value.args[:2] == (
-        ErrorCode.CasConflictFound,
+        "CasConflictFound",
         f"ConflictFound: found a conflicting entry at index {read_index + 1}",
     )
 
@@ -436,7 +435,7 @@ def test_cas_lua_api(cluster: Cluster):
             ranges=[CasRange(eq="fruit")],
         )
     assert e.value.args[:2] == (
-        ErrorCode.CasConflictFound,
+        "CasConflictFound",
         f"ConflictFound: found a conflicting entry at index {read_index + 1}",
     )
 
@@ -463,7 +462,7 @@ def test_cas_operable_table(cluster: Cluster):
             ["1"],
         )
     assert e1.value.args[:2] == (
-        ErrorCode.CasTableNotOperable,
+        "CasTableNotOperable",
         "TableNotOperable: " + "table warehouse cannot be modified now as DDL operation is in progress",
     )
 
@@ -484,6 +483,6 @@ def test_cas_raft_proposal_drop(cluster: Cluster):
     with pytest.raises(TarantoolError) as err:
         i1.cas("insert", "_pico_property", ["foo", "420"], index=index)
     assert err.value.args[:2] == (
-        ErrorCode.RaftProposalDropped,
+        "RaftProposalDropped",
         "raft: proposal dropped",
     )

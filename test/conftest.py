@@ -109,21 +109,35 @@ class ErrorCode:
     # Make sure this matches this list in
     # picodata_plugin::error_code::ErrorCode::is_retriable_for_cas
     retriable_for_cas = set(
-        [
-            LeaderUnknown,
-            NotALeader,
-            TermMismatch,
-            RaftLogCompacted,
-            RaftLogUnavailable,
-            CasEntryTermMismatch,
-            CasConflictFound,
-            RaftProposalDropped,
-        ]
+        (
+            "LeaderUnknown",
+            "NotALeader",
+            "TermMismatch",
+            "RaftLogCompacted",
+            "RaftLogUnavailable",
+            "CasEntryTermMismatch",
+            "CasConflictFound",
+            "RaftProposalDropped",
+        )
     )
 
     @classmethod
     def is_retriable_for_cas(cls, code):
-        return code in cls.retriable_for_cas
+        error_name = None
+        match code:
+            case str(name):
+                error_name = name
+            case int(value):
+                error_name = cls.to_string(value)
+            case _:
+                raise ValueError(f"str or int expected, got {code}: {type(code)}")
+        return error_name in cls.retriable_for_cas
+
+    @classmethod
+    def to_string(cls, code):
+        for k, v in cls.__dict__.items():
+            if v == code:
+                return k
 
 
 def assert_starts_with(actual_string: str | bytes, expected_prefix: str | bytes):
@@ -294,11 +308,13 @@ def normalize_net_box_result(func):
                     error_info = tnt_strerror(code)
                     match error_info:
                         case (str(error_type), _):
-                            raise TarantoolError(error_type, arg, source_location) from exc
+                            code_or_name = error_type
                         case "UNDEFINED":
-                            raise TarantoolError(code, arg, source_location) from exc
-                        case _:
-                            raise RuntimeError("unreachable")
+                            code_or_name = ErrorCode.to_string(code)
+                    if not code_or_name:
+                        code_or_name = code
+                    raise TarantoolError(code_or_name, arg, source_location) from exc
+
                 case _:
                     raise exc from exc
 

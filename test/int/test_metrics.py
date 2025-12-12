@@ -4,7 +4,6 @@ from conftest import (
     Cluster,
     Instance,
     TarantoolError,
-    ErrorCode,
 )
 import pytest
 import requests  # type: ignore
@@ -33,12 +32,12 @@ def test_picodata_metrics(cluster: Cluster) -> None:
 
     with pytest.raises(TarantoolError) as e:
         i2.sql("INSERT INTO test VALUES (1, 'one')")
-        assert e.value.args[:2] == (ErrorCode.SbroadError, "sbroad: Lua error (IR dispatch)")
+        assert e.value.args[:2] == ("SbroadError", "sbroad: Lua error (IR dispatch)")
 
     i2.sql("INSERT INTO test VALUES (2, 'two')")
     with pytest.raises(TarantoolError) as e:
         instance.sql("INSERT INTO test VALUES (2, 'two')")
-        assert e.value.args[:2] == (ErrorCode.SbroadError, "sbroad: Lua error (IR dispatch)")
+        assert e.value.args[:2] == ("SbroadError", "sbroad: Lua error (IR dispatch)")
 
     http_listen = instance.env["PICODATA_HTTP_LISTEN"]
     url = f"http://{http_listen}/metrics"
