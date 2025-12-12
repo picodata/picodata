@@ -29,31 +29,32 @@ not_in_nav: |
 # Навигация
 # https://www.mkdocs.org/user-guide/configuration/#nav
 nav:
-  - Ознакомление с ПО Picodata:
+  - Знакомство с Picodata:
     - overview/description.md
     - overview/benefits.md
-    - overview/glossary.md
     - overview/feedback.md
     - overview/licensing.md
     - overview/versioning.md
-  - Инструкции и руководства:
+  - Установка и первые шаги:
     - tutorial/install.md
-    - Запуск и развёртывание:
-      - tutorial/run.md
-      - tutorial/deploy.md
-      - tutorial/node_add.md
-      - tutorial/node_expel.md
-    - Начало работы:
-      - tutorial/connecting.md
-      - tutorial/dbeaver.md
-      - tutorial/sql_examples.md
-      - tutorial/webui.md
+    - tutorial/run.md
+    - tutorial/deploy.md
+    - tutorial/node_add.md
+    - tutorial/node_expel.md
+    - tutorial/connecting.md
+    - tutorial/dbeaver.md
+    - tutorial/sql_examples.md
+    - tutorial/webui.md
   - Администрирование кластера:
-      - admin/server_setup.md
+      - Конфигурирование:
+        - admin/configure.md
+        - reference/cli.md
+        - reference/config.md
+        - reference/db_config.md
       - admin/deploy_ansible.md
       - admin/deploy_kubernetes.md
+      - admin/server_setup.md
       - admin/cluster_mgmt.md
-      - admin/configure.md
       - admin/monitoring.md
       - admin/backup_and_restore.md
       - admin/access_control.md
@@ -63,6 +64,71 @@ nav:
       - admin/sizing.md
       - admin/systemd.md
       - admin/troubleshooting.md
+      - Конфигурирование: admin/configure.md
+      - reference/cli.md
+      - reference/config.md
+      - reference/db_config.md
+  - Язык SQL:
+    - Команды и термины SQL: sql_index.md
+    - reference/sql/dcl.md
+    - reference/sql/ddl.md
+    - reference/sql/dml.md
+    - reference/sql/dql.md
+    - reference/sql/non_block.md
+    - reference/sql/object.md
+    - reference/sql_types.md
+    - reference/sql/parametrization.md
+    - reference/ansi_sql.md
+    - Команды:
+      - reference/sql/alter_index.md
+      - reference/sql/alter_plugin.md
+      - reference/sql/alter_procedure.md
+      - reference/sql/alter_system.md
+      - reference/sql/alter_table.md
+      - reference/sql/alter_user.md
+      - reference/sql/audit_policy.md
+      - reference/sql/backup.md
+      - reference/sql/call.md
+      - reference/sql/create_index.md
+      - reference/sql/create_plugin.md
+      - reference/sql/create_procedure.md
+      - reference/sql/create_role.md
+      - reference/sql/create_table.md
+      - reference/sql/create_user.md
+      - reference/sql/delete.md
+      - reference/sql/drop_index.md
+      - reference/sql/drop_plugin.md
+      - reference/sql/drop_procedure.md
+      - reference/sql/drop_role.md
+      - reference/sql/drop_table.md
+      - reference/sql/drop_user.md
+      - reference/sql/explain.md
+      - reference/sql/grant.md
+      - reference/sql/insert.md
+      - reference/sql/revoke.md
+      - reference/sql/select.md
+      - reference/sql/truncate_table.md
+      - reference/sql/update.md
+      - reference/sql/values.md
+      - reference/sql/with.md
+      - reference/sql/window.md
+      - reference/sql/join.md
+    - Функции и выражения:
+      - reference/sql/abs.md
+      - reference/sql/case.md
+      - reference/sql/cast.md
+      - reference/sql/coalesce.md
+      - reference/sql/ilike.md
+      - reference/sql/like.md
+      - reference/sql/lower.md
+      - reference/sql/substr.md
+      - reference/sql/substring.md
+      - reference/sql/trim.md
+      - reference/sql/upper.md
+      - reference/sql/aggregate.md
+      - reference/sql/window_builtin.md
+      - reference/sql/time_and_date.md
+      - reference/sql/system_functions.md
   - Разработка:
     - dev/developer_tools.md
     - Внешние коннекторы:
@@ -70,9 +136,11 @@ nav:
       - dev/connectors/go.md
       - dev/connectors/rust.md
     - Работа с плагинами:
+      - architecture/plugins.md
       - dev/plugin_create.md
       - dev/plugin_mgmt.md
-  - Плагины:
+  - Документация плагинов Picodata:
+    - plugins/plugin_list.md
     - plugins/argus.md
     - plugins/kirovets.md
     - plugins/radix.md
@@ -81,79 +149,13 @@ nav:
     - plugins/synapse.md
     - plugins/ouroboros.md
     - plugins/gostech_audit_log.md
-  - Справочные материалы:
-    - Язык SQL:
-      - Команды и термины SQL: sql_index.md
-      - reference/sql/dcl.md
-      - reference/sql/ddl.md
-      - reference/sql/dml.md
-      - reference/sql/dql.md
-      - reference/sql/non_block.md
-      - reference/sql/object.md
-      - reference/sql_types.md
-      - reference/sql/parametrization.md
-      - reference/ansi_sql.md
-      - reference/legend.md
-      - Команды:
-        - reference/sql/alter_plugin.md
-        - reference/sql/alter_procedure.md
-        - reference/sql/alter_system.md
-        - reference/sql/alter_table.md
-        - reference/sql/alter_index.md
-        - reference/sql/alter_user.md
-        - reference/sql/audit_policy.md
-        - reference/sql/backup.md
-        - reference/sql/call.md
-        - reference/sql/create_index.md
-        - reference/sql/create_plugin.md
-        - reference/sql/create_procedure.md
-        - reference/sql/create_role.md
-        - reference/sql/create_table.md
-        - reference/sql/create_user.md
-        - reference/sql/delete.md
-        - reference/sql/drop_index.md
-        - reference/sql/drop_plugin.md
-        - reference/sql/drop_procedure.md
-        - reference/sql/drop_role.md
-        - reference/sql/drop_table.md
-        - reference/sql/drop_user.md
-        - reference/sql/explain.md
-        - reference/sql/grant.md
-        - reference/sql/insert.md
-        - reference/sql/revoke.md
-        - reference/sql/select.md
-        - reference/sql/truncate_table.md
-        - reference/sql/update.md
-        - reference/sql/values.md
-      - Использование:
-        - reference/sql/with.md
-        - reference/sql/window.md
-        - reference/sql/join.md
-      - Функции и выражения:
-        - reference/sql/abs.md
-        - reference/sql/case.md
-        - reference/sql/cast.md
-        - reference/sql/coalesce.md
-        - reference/sql/ilike.md
-        - reference/sql/like.md
-        - reference/sql/lower.md
-        - reference/sql/substr.md
-        - reference/sql/substring.md
-        - reference/sql/trim.md
-        - reference/sql/upper.md
-        - reference/sql/aggregate.md
-        - reference/sql/window_builtin.md
-        - reference/sql/time_and_date.md
-        - reference/sql/system_functions.md
-    - reference/cli.md
-    - reference/config.md
+  - Обеспечение безопасности:
+    - security/os.md
+    - security/runtime.md
+    - security/audit_log.md
+    - security/integrity.md
     - reference/audit_events.md
-    - reference/db_config.md
-    - reference/ansible_variables.md
-    - reference/metrics.md
-    - reference/settings.md
-    - reference/limitations.md
-  - Архитектура:
+  - Внутреннее устройство:
     - architecture/distributed_sql.md
     - architecture/discovery.md
     - architecture/instance_lifecycle.md
@@ -163,12 +165,16 @@ nav:
     - architecture/system_tables.md
     - architecture/rpc_api.md
     - architecture/fibers.md
-    - architecture/plugins.md
-  - Обеспечение безопасности:
-    - security/os.md
-    - security/runtime.md
-    - security/audit_log.md
-    - security/integrity.md
+  - Приложения:
+    - reference/ansible_variables.md
+    - reference/limitations.md
+    - reference/metrics.md
+    - reference/settings.md
+    - reference/legend.md
+    - overview/glossary.md
+
+
+
 
 # Настройки темы Material
   ## name, custom_dir — https://squidfunk.github.io/mkdocs-material/customization/#setup-and-theme-structure

@@ -15,105 +15,103 @@ Picodata — это распределенная система промышле
 неструктурированных данных, транзакционное управление данными, язык
 запросов SQL, а также поддержку плагинов на языке Rust.
 
-На этом портале представлена документация по Picodata:
+Основные разделы документации Picodata:
 
-### Ознакомление с ПО Picodata {: #overview }
+<style>
+.tiles-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+}
 
-* [Общее описание продукта](overview/description.md)
-* [Преимущества использования Picodata](overview/benefits.md)
-* [Глоссарий](overview/glossary.md)
-* [Обратная связь и получение помощи](overview/feedback.md)
-* [Лицензирование](overview/licensing.md)
-* [Политика версионирования](overview/versioning.md)
+.tile {
+    flex: 1 0 250px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.76);
+    padding: 20px;
+    border-radius: 10px;
+    transition: transform 0.3s ease-in-out;
+}
 
-### Инструкции и руководства {: #tutorial }
+.tile:hover {
+    transform: scale(1.05);
+}
 
-* [Установка Picodata](tutorial/install.md)
+.tile h2  {
+  font-size: 18px;
+}
 
-#### Запуск и развёртывание {: #run_deploy }
+.tile h3 {
+  font-size: 16px;
+}
 
-* [Запуск Picodata](tutorial/run.md)
-* [Создание кластера](tutorial/deploy.md)
-* [Добавление узлов](tutorial/node_add.md)
-* [Удаление узлов](tutorial/node_expel.md)
+.tile a, .tile ul {
+  font-size: 14px;
+}
+</style>
 
-#### Начало работы {: #getting_started }
-
-* [Подключение и работа в консоли](tutorial/connecting.md)
-* [Подключение через DBeaver](tutorial/dbeaver.md)
-* [Работа с данными SQL](tutorial/sql_examples.md)
-* [Работа в веб-интерфейсе](tutorial/webui.md)
-
-### Администрирование кластера {: #administration }
-
-* [Настройка серверов для кластера Picodata](admin/server_setup.md)
-* [Развертывание кластера через Ansible](admin/deploy_ansible.md)
-* [Picodata в Kubernetes](admin/deploy_kubernetes.md)
-* [Управление кластером в промышленной среде с ограниченными привилегиями](admin/cluster_mgmt.md)
-* [Конфигурирование](admin/configure.md)
-* [Резервное копирование и восстановление](admin/backup_and_restore.md)
-* [Мониторинг](admin/monitoring.md)
-* [Управление доступом](admin/access_control.md)
-* [Аутентификация с помощью LDAP/LDAPS](admin/ldap.md)
-* [Безопасность кластера](admin/ssl.md)
-* [Использование журнала аудита](admin/audit_log.md)
-* [Рекомендации по сайзингу](admin/sizing.md)
-* [Настройка Systemd](admin/systemd.md)
-* [Устранение неполадок](admin/troubleshooting.md)
-
-### Разработка приложений {: #development }
-
-* [Инструментарий разработчика](dev/developer_tools.md)
-* [Внешние коннекторы](dev/connectors_index.md)
-* [Создание плагина](dev/plugin_create.md)
-* [Управление плагинами](dev/plugin_mgmt.md)
-
-### Плагины  {: #available_plugins }
-
-* [Argus](plugins/argus.md)
-* [Kirovets](plugins/kirovets.md)
-* [Radix](plugins/radix.md)
-* [Silver](plugins/silver.md)
-* [Sirin](plugins/sirin.md)
-* [Synapse](plugins/synapse.md)
-* [Ouroboros](plugins/ouroboros.md)
-* [Внешний аудит](plugins/gostech_audit_log.md)
-
-### Справочные материалы {: #reference }
-
-* [Язык SQL](sql_index.md)
-* [Аргументы командной строки](reference/cli.md)
-* [Файл конфигурации](reference/config.md)
-* [Регистрируемые события безопасности](reference/audit_events.md)
-* [Параметры конфигурации СУБД](reference/db_config.md)
-* [Переменные, используемые в роли Ansible](reference/ansible_variables.md)
-* [Справочник метрик](reference/metrics.md)
-* [Справочник настроек](reference/settings.md)
-* [Ограничения](reference/limitations.md)
-
-### Архитектура {: #architecture }
-
-* [Распределенный SQL](architecture/distributed_sql.md)
-* [Алгоритм discovery](architecture/discovery.md)
-* [Жизненный цикл инстанса](architecture/instance_lifecycle.md)
-* [Рабочие файлы инстанса](architecture/instance_runtime_files.md)
-* [Управление топологией](architecture/topology_management.md)
-* [Raft и отказоустойчивость](architecture/raft_failover.md)
-* [Описание системных таблиц](architecture/system_tables.md)
-* [Интерфейс RPC API](architecture/rpc_api.md)
-* [Файберы, потоки и многозадачность](architecture/fibers.md)
-* [Механизм плагинов](architecture/plugins.md)
-
-### Обеспечение безопасности {: #security }
-
-* [Работа в защищенной ОС](security/os.md)
-* [Ограничение программной среды](security/runtime.md)
-* [Журнал аудита в защищенной ОС](security/audit_log.md)
-* [Контроль целостности](security/integrity.md)
-
-На данном портале представлена техническая документация программного
-продукта Picodata. Информация о выгодах сотрудничества с компанией
-Picodata, корпоративных решениях и услугах, новостях, событиях находится
-на сайте [picodata.io](https://picodata.io).
+<main>
+    <section class="tiles-container">
+        <div class="tile">
+            <h2>Знакомство с Picodata</h2>
+            <h3>Основные сведения</h3>
+            <p><ul>
+            <li><a href="overview/description/">Общее описание продукта</a></li>
+            <li><a href="overview/benefits/">Преимущества Picodata</a></li>
+            <li><a href="overview/versioning/">Версионирование</a></li>
+            <li><a href="overview/licensing/">Лицензирование</a></li>
+            </ul></p>
+            <h3>Внутреннее устройство</h3>
+            <p><ul>
+            <li><a href="architecture/distributed_sql/">Распределенный SQL</a></li>
+            <li><a href="architecture/topology_management/">Управление топологией</a></li>
+            <li><a href="architecture/raft_failover/">Raft и отказоустойчивость</a></li>
+            </ul></p>
+        </div>
+            <div class="tile">
+            <h2>Первые шаги</h2>
+            <h3>Установка и запуск</h3>
+            <p><ul>
+            <li><a href="tutorial/install/">Установка Picodata</a></li>
+            <li><a href="tutorial/run/">Запуск Picodata</a></li>
+            <li><a href="tutorial/connecting/">Подключение и работа в консоли</a></li>
+            <li><a href="tutorial/webui/">Работа в веб-интерфейсе</a></li>
+            </ul></p>
+            <h3>Работа с кластером</h3>
+            <p><ul>
+            <li><a href="tutorial/deploy/">Создание кластера</a></li>
+            <li><a href="tutorial/node_add/">Добавление</a> и <a href="tutorial/node_expel/">удаление узлов</a></li>
+            <li><a href="tutorial/sql_examples/">Работа с данными SQL</a></li>
+            </ul></p>
+        </div>
+        <div class="tile">
+            <h2>Администрирование</h2>
+            <h3>Развёртывание</h3>
+            <p><ul>
+            <li><a href="admin/deploy_ansible/">Развёртывание в Ansible</a></li>
+            <li><a href="admin/deploy_kubernetes/">Развёртывание в Kubernetes</a></li>
+            <li><a href="admin/server_setup/">Настройка серверов для кластера</a></li>
+            </ul></p>
+            <h3>Настройка и обслуживание</h3>
+            <p><ul>
+            <li><a href="admin/configure/">Способы конфигурирования</a></li>
+            <li><a href="admin/monitoring/">Мониторинг</a></li>
+            <li><a href="admin/troubleshooting/">Устранение неполадок</a></li>
+            </ul></p>
+        </div>
+            <div class="tile">
+            <h2>Разработка с Picodata</h2>
+            <h3>Основные справочники</h3>
+            <p><ul>
+            <li><a href="sql_index/">Язык SQL</a></li>
+            <li><a href="reference/cli/">Аргументы командной строки</a></li>
+            <li><a href="dev/developer_tools">Инструментарий разработчика</a></li>
+            <h3>Работа с плагинами</h3>
+            <li><a href="architecture/plugins/">Механизм плагинов</a></li>
+            <li><a href="dev/plugin_create/">Создание</a> и <a href="dev/plugin_mgmt/">управление плагинами</a></li>
+            <li><a href="plugins/plugin_list">Обзор доступных плагинов</a></li>
+            </ul></p>
+        </div>
+    </section>
+</main>
 
 <a style="display: none" href="https://hits.seeyoufarm.com"><img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fdocs.picodata.io%2Fpicodata%2F&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=hits&edge_flat=false"/></a>
