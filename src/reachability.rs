@@ -1,4 +1,5 @@
 use crate::config::AlterSystemParametersRef;
+use crate::instance::Instance;
 use crate::tlog;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
@@ -48,6 +49,38 @@ impl InstanceReachabilityManager {
             infos: Default::default(),
             lagging_applied: VecDeque::new(),
             applied,
+        }
+    }
+
+    pub fn update_instance(&mut self, old: Option<&Instance>, new: Option<&Instance>) {
+        match (old, new) {
+            (Some(old), Some(new)) => {
+                if old.raft_id != new.raft_id {
+                    // Raft id changed (this is possible when old instance was
+                    // expelled and then we added another instance with old
+                    // instance name, because instance_name is the primary key)
+                    if let Some(info) = self.infos.remove(&old.raft_id) {
+                        tlog!(
+                            Debug,
+                            "dropped reachability info for instance {old:?}, {info:?}"
+                        );
+                    }
+                }
+            }
+
+            (Some(old), None) => {
+                // Instance was removed, let's clean up info about it
+                if let Some(info) = self.infos.remove(&old.raft_id) {
+                    tlog!(
+                        Debug,
+                        "dropped reachability info for instance {old:?}, {info:?}"
+                    );
+                }
+            }
+
+            _ => {
+                // Other cases do not concern reachability manager
+            }
         }
     }
 
