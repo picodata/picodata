@@ -3735,32 +3735,31 @@ mod tests {
             vec!["i1", "i2", "i3", "i4", "i5"]
         );
 
-        assert_err!(
-            storage.instances.put(&Instance {
-                raft_id: 1,
-                name: "i99".into(),
-                tier: DEFAULT_TIER.into(),
-                picodata_version: PICODATA_VERSION.into(),
-                ..Instance::default()
-            }),
-            format!(
-                concat!(
-                    "box error:",
-                    " TupleFound: Duplicate key exists",
-                    " in unique index \"_pico_instance_raft_id\"",
-                    " in space \"_pico_instance\"",
-                    " with old tuple",
-                    r#" - ["i1", "i1-uuid", 1, "r1", "r1-uuid", ["{gon}", 0], ["{tgon}", 0], {{"A": "B"}}, "default", "{picodata_version}"]"#,
-                    " and new tuple",
-                    r#" - ["i99", "", 1, "", "", ["{goff}", 0], ["{tgoff}", 0], {{}}, "default", "{picodata_version}"]"#,
-                ),
-                gon = Online,
-                goff = Offline,
-                tgon = Online,
-                tgoff = Offline,
-                picodata_version = PICODATA_VERSION.to_string(),
-            )
+        let res = storage.instances.put(&Instance {
+            raft_id: 1,
+            name: "i99".into(),
+            tier: DEFAULT_TIER.into(),
+            picodata_version: PICODATA_VERSION.into(),
+            ..Instance::default()
+        });
+        let expected = format!(
+            concat!(
+                "box error:",
+                " TupleFound: Duplicate key exists",
+                " in unique index \"_pico_instance_raft_id\"",
+                " in space \"_pico_instance\"",
+                " with old tuple",
+                r#" - ["i1", "i1-uuid", 1, "r1", "r1-uuid", ["{gon}", 0], ["{tgon}", 0], {{"A": "B"}}, "default", "{picodata_version}"]"#,
+                " and new tuple",
+                r#" - ["i99", "", 1, "", "", ["{goff}", 0], ["{tgoff}", 0], {{}}, "default", "{picodata_version}", 0, "", null]"#,
+            ),
+            gon = Online,
+            goff = Offline,
+            tgon = Online,
+            tgoff = Offline,
+            picodata_version = PICODATA_VERSION.to_string(),
         );
+        assert_eq!(expected, res.unwrap_err().to_string());
 
         {
             // Ensure traft storage doesn't impose restrictions

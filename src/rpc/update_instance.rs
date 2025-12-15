@@ -20,21 +20,42 @@ use crate::traft::op::{Dml, Op};
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
 use crate::util::Uppercase;
-use ::tarantool::error::BoxError;
-use ::tarantool::error::Error as TntError;
-use ::tarantool::error::IntoBoxError;
-use ::tarantool::fiber::r#async::timeout;
-use ::tarantool::fiber::r#async::timeout::IntoTimeout;
+use crate::version::version_is_new_enough;
 use smallvec::smallvec;
 use smallvec::SmallVec;
+use smol_str::format_smolstr;
 use smol_str::SmolStr;
 use std::collections::HashSet;
 use std::time::Duration;
+use tarantool::datetime::Datetime;
+use tarantool::error::BoxError;
+use tarantool::error::Error as TntError;
+use tarantool::error::IntoBoxError;
+use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
+use tarantool::fiber::r#async::timeout;
+use tarantool::fiber::r#async::timeout::IntoTimeout;
 use tarantool::space::UpdateOps;
 use tarantool::time::Instant;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
+
+////////////////////////////////////////////////////////////////////////////////
+// .proc_update_instance
+////////////////////////////////////////////////////////////////////////////////
+
+pub fn proc_update_instance_impl(req: Request) -> Result<Response> {
+    if req.current_state.is_some() {
+        tlog!(Warning, "invalid request to update current state: {req:?}");
+        return Err(Error::Other(
+            "Changing current state through Proc API is not allowed.".into(),
+        ));
+    }
+
+    tlog!(Debug, "got update instance request: {req:?}");
+    handle_update_instance_request_and_wait(req, TIMEOUT)?;
+    Ok(Response {})
+}
 
 crate::define_rpc_request! {
     /// Submits a request to update the specified instance. If successful
@@ -49,20 +70,46 @@ crate::define_rpc_request! {
     /// 3. Incorrect request (e.g. instance expelled or an error in validation of failure domains)
     /// 4. Compare and swap request to commit updated instance failed
     /// with an error that cannot be retried.
-    fn proc_update_instance(req: Request) -> Result<Response> {
-        if req.current_state.is_some() {
-            tlog!(Warning, "invalid request to update current state: {req:?}");
-            return Err(Error::Other("Changing current state through Proc API is not allowed.".into()));
-        }
-
-        tlog!(Debug, "got update instance request: {req:?}");
-        handle_update_instance_request_and_wait(req, TIMEOUT)?;
-        Ok(Response {})
+    fn proc_update_instance_v2(req: Request) -> Result<Response> {
+        proc_update_instance_impl(req)
     }
 
     /// Request to update the instance in the storage.
     #[derive(Default)]
     pub struct Request {
+        pub base: RequestV1,
+        #[serde(default)]
+        pub target_state_reason: Option<SmolStr>,
+    }
+
+    pub struct Response {}
+}
+
+impl std::ops::Deref for Request {
+    type Target = RequestV1;
+
+    fn deref(&self) -> &Self::Target {
+        &self.base
+    }
+}
+
+impl std::ops::DerefMut for Request {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.base
+    }
+}
+
+crate::define_rpc_request! {
+    #[deprecated(since="25.6.1", note="use `proc_update_instance_v2` instead")]
+    fn proc_update_instance(base: RequestV1) -> Result<ResponseV1> {
+        let req = Request::from_v1(base);
+        proc_update_instance_impl(req)?;
+        Ok(ResponseV1 {})
+    }
+
+    /// Request to update the instance in the storage.
+    #[derive(Default)]
+    pub struct RequestV1 {
         pub instance_name: InstanceName,
         pub cluster_name: SmolStr,
         pub cluster_uuid: SmolStr,
@@ -77,7 +124,7 @@ crate::define_rpc_request! {
         pub picodata_version: Option<SmolStr>,
     }
 
-    pub struct Response {}
+    pub struct ResponseV1 {}
 }
 
 impl Request {
@@ -87,14 +134,29 @@ impl Request {
         cluster_name: impl Into<SmolStr>,
         cluster_uuid: impl Into<SmolStr>,
     ) -> Self {
-        Self {
+        let base = RequestV1 {
             instance_name,
             cluster_name: cluster_name.into(),
             cluster_uuid: cluster_uuid.into(),
             dont_retry: false,
-            ..Request::default()
+            ..Default::default()
+        };
+        Self::from_v1(base)
+    }
+
+    #[inline]
+    pub fn from_v1(base: RequestV1) -> Self {
+        Self {
+            base,
+            ..Default::default()
         }
     }
+
+    #[inline]
+    pub fn into_v1(self) -> RequestV1 {
+        self.base
+    }
+
     #[inline]
     pub fn with_dont_retry(mut self, value: bool) -> Self {
         self.dont_retry = value;
@@ -112,6 +174,11 @@ impl Request {
             "target state can only be Online, Offline or Expelled"
         );
         self.target_state = Some(value);
+        self
+    }
+    #[inline]
+    pub fn with_target_state_reason(mut self, value: impl Into<SmolStr>) -> Self {
+        self.target_state_reason = Some(value.into());
         self
     }
     #[inline]
@@ -145,7 +212,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
 
     if req.cluster_uuid != cluster_uuid {
         return Err(Error::ClusterUuidMismatch {
-            instance_uuid: req.cluster_uuid,
+            instance_uuid: req.cluster_uuid.clone(),
             cluster_uuid,
         });
     }
@@ -154,6 +221,12 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
         .properties
         .cluster_version()
         .expect("storage should never fail");
+
+    let system_catalog_version = storage
+        .properties
+        .system_catalog_version()
+        .expect("storage should never fail")
+        .expect("always available since 25.1.0");
 
     let deadline = fiber::clock().saturating_add(timeout);
     loop {
@@ -181,6 +254,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
             &tier,
             Some(&existing_fds),
             &global_cluster_version,
+            &system_catalog_version,
         )?
         else {
             return Ok(());
@@ -217,12 +291,19 @@ pub fn prepare_update_instance_cas_request(
     tier: &Tier,
     existing_fds: Option<&HashSet<Uppercase>>,
     global_cluster_version: &str,
+    system_catalog_version: &str,
 ) -> Result<Option<(Vec3<Dml>, Vec3<cas::Range>)>> {
     debug_assert_eq!(instance.replicaset_name, replicaset.name);
     debug_assert_eq!(instance.tier, replicaset.tier);
     debug_assert_eq!(instance.tier, tier.name);
 
-    let dml = update_instance(instance, request, existing_fds, global_cluster_version)?;
+    let dml = update_instance(
+        instance,
+        request,
+        existing_fds,
+        global_cluster_version,
+        system_catalog_version,
+    )?;
     let Some((dml, version_bump_needed)) = dml else {
         // No point in proposing an operation which doesn't change anything.
         // Note: if the request tried setting target state Online while it
@@ -271,14 +352,18 @@ pub fn update_instance(
     req: &Request,
     existing_fds: Option<&HashSet<Uppercase>>,
     global_cluster_version: &str,
+    system_catalog_version: &str,
 ) -> Result<Option<(Dml, bool)>> {
     if instance.current_state.variant == Expelled
         && !matches!(
             req,
             Request {
-                target_state: None,
-                current_state: Some(current_state),
-                failure_domain: None,
+                base: RequestV1 {
+                    target_state: None,
+                    current_state: Some(current_state),
+                    failure_domain: None,
+                    ..
+                },
                 ..
             } if current_state.variant == Expelled
         )
@@ -321,6 +406,21 @@ pub fn update_instance(
         if state != instance.target_state {
             replication_config_version_bump_needed = true;
             ops.assign(column_name!(Instance, target_state), state)?;
+            if version_is_new_enough(
+                system_catalog_version,
+                &Instance::TARGET_STATE_CHANGE_TIME_AVAILABLE_SINCE,
+            )? {
+                ops.assign(
+                    column_name!(Instance, target_state_change_time),
+                    Datetime::now_utc(),
+                )?;
+            }
+        }
+    }
+
+    if let Some(reason) = &req.target_state_reason {
+        if reason != &instance.target_state_reason {
+            ops.assign(column_name!(Instance, target_state_reason), reason.clone())?;
         }
     }
 
@@ -344,6 +444,7 @@ pub fn update_instance(
 
 pub fn update_our_target_state_to_online(
     node: &node::Node,
+    reason: &str,
     failure_domain: &FailureDomain,
     deadline: Instant,
 ) -> Result<()> {
@@ -362,6 +463,9 @@ pub fn update_our_target_state_to_online(
     let election_timeout =
         Duration::from_secs_f64(BOOTSTRAP_ELECTION_TIMEOUT.as_secs_f64() * random_factor);
     let mut next_election_try = fiber::clock().saturating_add(election_timeout);
+
+    // See comments bellow
+    let mut use_old_proc_update_instance = false;
 
     // Activates instance
     loop {
@@ -400,7 +504,7 @@ pub fn update_our_target_state_to_online(
                 .try_get(id, &crate::traft::ConnectionType::Iproto)
                 .ok()
         });
-        let Some(leader_address) = leader_address else {
+        let Some((leader_address, leader_id)) = leader_address.zip(leader_id) else {
             // FIXME: don't hard code timeout
             let timeout = Duration::from_millis(250);
             tlog!(
@@ -434,7 +538,13 @@ pub fn update_our_target_state_to_online(
             fiber::sleep(timeout);
             continue;
         };
-        tlog!(Debug, "leader address is known: {leader_address}");
+
+        let leader_name;
+        if let Ok(instance) = node.storage.instances.get(&leader_id) {
+            leader_name = instance.name.0;
+        } else {
+            leader_name = format_smolstr!("raft_id:{leader_id}");
+        }
 
         #[allow(unused_mut)]
         let mut version = SmolStr::new_static(crate::info::PICODATA_VERSION);
@@ -445,20 +555,44 @@ pub fn update_our_target_state_to_online(
             }
         });
 
+        #[allow(deprecated)]
+        let proc_name = if use_old_proc_update_instance {
+            proc_name!(proc_update_instance)
+        } else {
+            proc_name!(proc_update_instance_v2)
+        };
+
         tlog!(
             Info,
-            "initiating self-activation of instance {} ({})",
+            "initiating self-activation of instance {} ({}) sending RPC {proc_name} to {leader_name} at {leader_address}",
             instance.name,
             instance.uuid
         );
+
         let req = Request::new(instance.name, cluster_name, cluster_uuid)
             .with_target_state(Online)
+            .with_target_state_reason(reason)
             .with_failure_domain(failure_domain.clone())
             .with_picodata_version(version);
-        let fut = crate::rpc::network_call(&leader_address, proc_name!(proc_update_instance), &req)
-            .timeout(deadline - now);
+
+        // During rolling upgrade instances on the latest picodata version will
+        // still not have the latest `proc_update_instance_v2` defined, because
+        // it will only be defined after every instance in cluster is updated.
+        // So we need to optionally fallback to the older RPC version.
+        let res;
+        if use_old_proc_update_instance {
+            let req = req.into_v1();
+            let fut =
+                crate::rpc::network_call(&leader_address, proc_name, &req).timeout(deadline - now);
+            res = fiber::block_on(fut).map(|_| Response {});
+        } else {
+            let fut =
+                crate::rpc::network_call(&leader_address, proc_name, &req).timeout(deadline - now);
+            res = fiber::block_on(fut);
+        }
+
         let error_message;
-        match fiber::block_on(fut) {
+        match res {
             Ok(Response {}) => {
                 // Leader has received our request to change target_state = Online
                 break;
@@ -480,6 +614,14 @@ pub fn update_our_target_state_to_online(
                 // The peer no longer knows who the raft leader is. This is
                 // possible for example if a leader election is in progress. We
                 // should just wait some more and try again later.
+                error_message = e.to_string();
+            }
+            Err(timeout::Error::Failed(e))
+                if e.error_code() == TarantoolErrorCode::NoSuchProc as u32
+                    && !use_old_proc_update_instance =>
+            {
+                // Newer stored procedure is not defined yet, fallback to the old version
+                use_old_proc_update_instance = true;
                 error_message = e.to_string();
             }
             Err(e) => {

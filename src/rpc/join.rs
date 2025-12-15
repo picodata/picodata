@@ -22,6 +22,7 @@ use smol_str::SmolStr;
 use smol_str::ToSmolStr;
 use std::collections::HashSet;
 use std::time::Duration;
+use tarantool::datetime::Datetime;
 use tarantool::fiber;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
@@ -461,6 +462,8 @@ pub fn build_instance(
         tier: tier.name.clone(),
         picodata_version: picodata_version.into(),
         sync_incarnation: 0,
+        target_state_reason: "".into(),
+        target_state_change_time: Some(Datetime::now_utc()),
     };
 
     Ok((instance, false))

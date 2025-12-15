@@ -59,7 +59,8 @@ crate::define_rpc_request! {
         let cluster_name = node.topology_cache.cluster_name;
         let cluster_uuid = node.topology_cache.cluster_uuid;
         let req = rpc::update_instance::Request::new(instance.name.clone(), cluster_name, cluster_uuid)
-            .with_target_state(Expelled);
+            .with_target_state(Expelled)
+            .with_target_state_reason("expel");
 
         // Must not hold this reference across yields
         drop(topology_ref);

@@ -33,6 +33,11 @@ pub struct Datetime {
 
 impl Datetime {
     #[inline(always)]
+    pub fn now_utc() -> Self {
+        Self::from_inner(Inner::now_utc())
+    }
+
+    #[inline(always)]
     pub fn from_inner(inner: Inner) -> Self {
         inner.into()
     }

@@ -1938,7 +1938,7 @@ Last governor error is:
         if res[0][0] not in ["25.3.7", "25.4.1", "25.5.1", "25.5.2", "25.5.3"]:
             return False
 
-        self.sql("AUDIT POLICY dml_default BY pico_service")
+        self.sql("AUDIT POLICY dml_default BY pico_service", timeout=30)
         res = self.sql("SELECT * FROM _pico_user_audit_policy")
         if res != [[32, 0]]:
             return False

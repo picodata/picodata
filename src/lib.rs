@@ -37,6 +37,7 @@ use ::raft::prelude as raft;
 use ::raft::Storage;
 use ::sql::frontend::sql::transform_to_regex_pattern;
 use ::sql::frontend::sql::FUNCTION_NAME_MAPPINGS;
+use ::tarantool::datetime::Datetime;
 use ::tarantool::error::Error as TntError;
 use ::tarantool::fiber::r#async::timeout::{self, IntoTimeout};
 use ::tarantool::time::Instant;
@@ -1271,7 +1272,13 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
             let instance_name = raft_storage
                 .instance_name()?
                 .expect("instance_name should be already set");
-            postjoin(config, storage, raft_storage, alter_system_parameters)?;
+            postjoin(
+                config,
+                storage,
+                raft_storage,
+                alter_system_parameters,
+                "wakeup",
+            )?;
 
             crate::audit!(
                 message: "local database recovered on `{instance_name}`",
@@ -1406,6 +1413,8 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
         tier: my_tier_name.into(),
         picodata_version: SmolStr::new_static(PICODATA_VERSION),
         sync_incarnation: 0,
+        target_state_reason: "".into(),
+        target_state_change_time: Some(Datetime::now_utc()),
     };
 
     assert!(
@@ -1472,7 +1481,13 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     tlog!(Info, "replicaset uuid: {}", instance.replicaset_uuid);
     tlog!(Info, "tier name: {}", instance.tier);
 
-    postjoin(config, storage, raft_storage, alter_system_parameters)?;
+    postjoin(
+        config,
+        storage,
+        raft_storage,
+        alter_system_parameters,
+        "boot",
+    )?;
     // In this case `create_local_db` is logged in postjoin
     crate::audit!(
         message: "local database connected on `{instance_name}`",
@@ -1820,6 +1835,7 @@ fn postjoin(
     storage: Catalog,
     raft_storage: RaftSpaceAccess,
     alter_system_parameters: AlterSystemParametersRef,
+    reason: &str,
 ) -> Result<(), Error> {
     tlog!(Info, "entering post-join phase");
 
@@ -1929,6 +1945,7 @@ fn postjoin(
     // Send proc_update_instance RPC to raft leader
     crate::rpc::update_instance::update_our_target_state_to_online(
         node,
+        reason,
         config.instance.failure_domain(),
         boot_timeout,
     )?;
@@ -2062,7 +2079,13 @@ fn start_join(
     reapply_dynamic_parameters(&alter_system_parameters, &storage, my_tier_name)?;
 
     let instance_name = resp.instance.name.clone();
-    postjoin(config, storage, raft_storage, alter_system_parameters)?;
+    postjoin(
+        config,
+        storage,
+        raft_storage,
+        alter_system_parameters,
+        "join",
+    )?;
     crate::audit!(
         message: "local database created on `{instance_name}`",
         title: "create_local_db",

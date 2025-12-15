@@ -646,6 +646,7 @@ def test_read_from_system_tables(cluster: Cluster):
         "auth_password_enforce_uppercase",
         "auth_password_length_min",
         "governor_auto_offline_timeout",
+        "governor_check_replication_error",
         "governor_common_rpc_timeout",
         "governor_plugin_rpc_timeout",
         "governor_raft_op_timeout",
@@ -707,6 +708,8 @@ def test_read_from_system_tables(cluster: Cluster):
         {"name": "tier", "type": "string"},
         {"name": "picodata_version", "type": "string"},
         {"name": "sync_incarnation", "type": "int"},
+        {"name": "target_state_reason", "type": "string"},
+        {"name": "target_state_change_time", "type": "datetime"},
     ]
     assert len(data["rows"]) == instance_count
 

@@ -164,6 +164,7 @@ pub(super) fn action_plan<'i>(
             tier,
             None,
             &global_cluster_version,
+            &global_catalog_version,
         )?;
 
         let (ops, ranges) = cas_parameters.expect("already check current state is different");
@@ -391,6 +392,7 @@ pub(super) fn action_plan<'i>(
             let incarnation = master.target_state.incarnation;
             req = req
                 .with_target_state(StateVariant::Expelled)
+                .with_target_state_reason("replicaset expel")
                 .with_current_state(State::new(StateVariant::Expelled, incarnation));
         }
 
@@ -401,6 +403,7 @@ pub(super) fn action_plan<'i>(
             tier,
             None,
             &global_cluster_version,
+            &global_catalog_version,
         )?;
         let (mut ops, ranges) = update_instance.expect("already checked target state != current");
 
@@ -504,6 +507,7 @@ pub(super) fn action_plan<'i>(
             tier,
             None,
             &global_cluster_version,
+            &global_catalog_version,
         )?;
 
         let (mut ops, ranges) = cas_parameters.expect("already check current state is different");
@@ -534,6 +538,7 @@ pub(super) fn action_plan<'i>(
         applied,
         sync_timeout,
         &global_cluster_version,
+        &global_catalog_version,
         cluster_name,
         cluster_uuid,
         batch_size,
@@ -1666,6 +1671,7 @@ pub fn handle_instances_becoming_online<'i>(
     applied: RaftIndex,
     sync_timeout: Duration,
     global_cluster_version: &SmolStr,
+    global_catalog_version: &SmolStr,
     cluster_name: &'static str,
     cluster_uuid: &'static str,
     batch_size: usize,
@@ -1758,6 +1764,7 @@ pub fn handle_instances_becoming_online<'i>(
             tier,
             None,
             global_cluster_version,
+            global_catalog_version,
         )?;
 
         let (ops, ranges) = cas_parameters.expect("already check current state is different");

@@ -3444,18 +3444,17 @@ impl MainLoopInfo {
     /// strategy.
     fn log_error_with_backoff(&mut self, error: BoxError) {
         let last_error = self.on_error(error);
+        let e = &last_error.error;
+        let loc = DisplayErrorLocation(e);
 
         if last_error.ok_to_log_error() {
-            let e = &last_error.error;
-            let loc = DisplayErrorLocation(&last_error.error);
-
             // NOTE: we're only doing exponential backoff for logging. We're
             // still going to be trying to apply the entry with the same
             // unchanged frequency. This is ok in this case because applying
             // raft entries is a purely local operation, no RPC to other
             // instances will be sent so there's no possibilty of DOS
             // atacking someone by mistake. Beware and be warned!
-            if last_error.error.error_code() == TarantoolErrorCode::Readonly as u32 {
+            if e.error_code() == TarantoolErrorCode::Readonly as u32 {
                 // We return this type of error when readonly replicas are
                 // blocked expecting DDL results from masters via tarantool
                 // replication. This is a completely expected situation, so
@@ -3465,6 +3464,9 @@ impl MainLoopInfo {
                 tlog!(Error, "error during raft main loop iteration: {loc}{e}");
             }
             last_error.on_log_error();
+        } else {
+            // Our verbose output is spammy anyway, this will not make it much worse
+            tlog!(Debug, "error during raft main loop iteration: {loc}{e}");
         }
     }
 
