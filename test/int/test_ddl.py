@@ -2749,6 +2749,11 @@ def test_create_table_with_conflicting_pk(cluster: Cluster):
         i1.sql("CREATE TABLE new_table2 (id int, text text, primary key (id)) DISTRIBUTED GLOBALLY")
 
 
+def target_state_reason(peer: Instance, target: Instance) -> str:
+    [[reason]] = peer.sql("SELECT target_state_reason FROM _pico_instance WHERE name = ?", target.name)
+    return reason
+
+
 def test_master_switchover_during_ddl(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
@@ -2796,6 +2801,8 @@ cluster:
 
     # Wait until the crashed master is made auto-offline by sentinel.
     cluster.wait_has_states(storage_1_1, "Offline", "Offline")
+    reason = target_state_reason(leader, target=storage_1_1)
+    assert reason.startswith("No successful RPC for")
 
     # `storage_1_2` was automatically chosen as new replicaset master
     [[master_name]] = leader.sql("SELECT current_master_name FROM _pico_replicaset WHERE tier = 'storage'")
@@ -2821,6 +2828,9 @@ cluster:
 
     # And the instance with broken replication will be Offline
     cluster.wait_has_states(storage_1_1, "Offline", "Offline")
+    reason = target_state_reason(leader, target=storage_1_1)
+    assert reason.startswith("Replication broken")
+    assert 'Duplicate key exists in unique index "primary" in space "_space"' in reason
 
     # Let's verify that there is in fact the replication conflict
     replication = storage_1_1.eval("return box.info.replication")
@@ -2863,6 +2873,8 @@ cluster:
 
     # Now all's well, instance successfully joins
     storage_1_1.wait_online()
+    reason = target_state_reason(leader, target=storage_1_1)
+    assert reason.startswith("wakeup")
 
     # Sanity check
     [[table_id]] = leader.sql("SELECT id FROM _pico_table WHERE name = 'test'")

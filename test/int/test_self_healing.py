@@ -1,6 +1,7 @@
 import pytest
 import time
 import random
+import re
 
 from conftest import Cluster, Instance, TarantoolError, Retriable, ErrorCode
 
@@ -167,6 +168,11 @@ def test_leader_disruption(cluster3: Cluster):
     Retriable(timeout=10, rps=5).call(lambda: i3.assert_raft_status("Follower", i1.raft_id))
 
 
+def target_state_reason(peer: Instance, target: Instance) -> str:
+    [[reason]] = peer.sql("SELECT target_state_reason FROM _pico_instance WHERE name = ?", target.name)
+    return reason
+
+
 def test_instance_automatic_offline_detection(cluster: Cluster):
     i1, i2, i3 = cluster.deploy(instance_count=3)
     rows = i1.sql("ALTER SYSTEM SET governor_auto_offline_timeout=0.5")
@@ -180,6 +186,8 @@ def test_instance_automatic_offline_detection(cluster: Cluster):
     time.sleep(2)
 
     cluster.wait_has_states(i3, "Offline", "Offline")
+    reason = target_state_reason(i1, target=i3)
+    assert reason.startswith("No successful RPC for ") or re.match(r"Applied index \d+ hasn't changed for ", reason)
 
     i3.start()
 
@@ -201,6 +209,12 @@ def test_instance_automatic_offline_after_leader_change(cluster: Cluster):
     # A new leader is chosen, it detects that instances are offline and changes their states eventually
     cluster.wait_has_states(i1, "Offline", "Offline")
     cluster.wait_has_states(i3, "Offline", "Offline")
+
+    leader = cluster.leader()
+    reason = target_state_reason(leader, target=i1)
+    assert reason.startswith("No successful RPC for ")
+    reason = target_state_reason(leader, target=i3)
+    assert reason.startswith("No successful RPC (at all) for ")
 
     # Just for clarity, the new leader is not the old one
     leader = cluster.leader()
@@ -253,7 +267,20 @@ def test_sentinel_backoff(cluster: Cluster):
     i3.call("pico._inject_error", connection_failure, True)
 
     # Make it so everybody thinks `i3` if Offline
-    i1.call(".proc_update_instance", i3.name, i3.cluster_name, i3.cluster_uuid, None, "Offline", None, False, None)
+    i1.call(
+        ".proc_update_instance_v2",
+        [
+            i3.name,
+            i3.cluster_name,
+            i3.cluster_uuid,
+            None,
+            "Offline",
+            None,
+            False,
+            None,
+        ],
+        "injected offline",
+    )
 
     def check_sentinel_failed_with_injection():
         info = i3.call(".proc_runtime_info")
@@ -269,6 +296,7 @@ def test_sentinel_backoff(cluster: Cluster):
     old_counter = i1.wait_governor_status("idle")
     # Everybody thinks `i3` is Offline
     i1.wait_has_states("Offline", "Offline", target=i3)
+    assert target_state_reason(i1, target=i3) == "injected offline"
 
     # Restore the sentinel's ability to send requests, but it will still not see
     # the result of it's requests because it's raft log update is broken, so it
@@ -305,12 +333,14 @@ def test_sentinel_backoff(cluster: Cluster):
 
     # Now `i3` is trying to go back Online, but cannot yet, because it's raft loop is broken
     i1.wait_has_states("Offline", "Online", target=i3)
+    assert target_state_reason(i1, target=i3) == "auto-online"
 
     # Fix `i3`'s raft loop
     i3.call("pico._inject_error", raft_failure, False)
 
     # It's finally online
     i1.wait_has_states("Online", "Online", target=i3)
+    assert target_state_reason(i1, target=i3) == "auto-online"
 
     counter = i1.wait_governor_status("idle")
     # Also just 2 steps, no spam
@@ -342,6 +372,7 @@ def test_automatic_offline_due_to_global_dml_conflict(cluster: Cluster):
     # Reduce the timeout so that the test doesn't take too long
     leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 3")
 
+    victims_applied = victim.raft_get_index()
     # Do an illegal operation which will break victim's raft_main_loop
     victim.eval("box.space.foo:put({1337, 'bad'})")
 
@@ -360,6 +391,8 @@ def test_automatic_offline_due_to_global_dml_conflict(cluster: Cluster):
 
     # And it's state is eventually turned Offline automatically
     cluster.wait_has_states(victim, "Offline", "Offline")
+    reason = target_state_reason(leader, target=victim)
+    assert reason.startswith(f"Applied index {victims_applied} hasn't changed for ")
 
     # Meanwhile the cluster keeps working fine
     leader.sql("INSERT INTO foo VALUES (69105, 'better')")
@@ -499,6 +532,9 @@ cluster:
     # After that auto offline by sentinel works rather quick
     counter = leader.wait_governor_status("idle")
     cluster.wait_has_states(storage_1_1, "Offline", "Offline")
+    reason = target_state_reason(leader, target=storage_1_1)
+    assert reason.startswith("Replication broken")
+    assert "Duplicate key exists in unique index" in reason
 
     # Just a sanity check, that restarting the instance doens't change anything
     # while it's broken

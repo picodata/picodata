@@ -10,6 +10,7 @@ use ::tarantool::tuple::Encode;
 use smol_str::format_smolstr;
 use smol_str::SmolStr;
 use smol_str::ToSmolStr;
+use tarantool::datetime::Datetime;
 
 pub mod state;
 pub use state::State;
@@ -62,6 +63,16 @@ pub struct Instance {
     /// when the synchronization takes place.
     #[serde(default)]
     pub sync_incarnation: u64,
+
+    /// The explanation for `target_state`. If the instance was automatically
+    /// made `Offline` then we will explain the reason for that in here.
+    #[serde(default)]
+    pub target_state_reason: SmolStr,
+
+    /// The UNIX timestamp of the last time when `target_state` was changed
+    /// (either state variant or state incarnation).
+    #[serde(default)]
+    pub target_state_change_time: Option<Datetime>,
 }
 
 impl Encode for Instance {}
@@ -85,6 +96,9 @@ impl Instance {
     /// System catalog version in which `sync_incarnation` column was added to `_pico_instance`.
     pub const SYNC_INCARNATION_AVAILABLE_SINCE: Version = Version::new_clean(25, 5, 3);
 
+    /// System catalog version in which `target_state_change_time` column was added to `_pico_instance`.
+    pub const TARGET_STATE_CHANGE_TIME_AVAILABLE_SINCE: Version = Version::new_clean(25, 5, 3);
+
     /// Format of the _pico_instance global table.
     #[inline(always)]
     pub fn format() -> Vec<tarantool::space::Field> {
@@ -101,6 +115,8 @@ impl Instance {
             Field::from(("tier", FieldType::String)),
             Field::from(("picodata_version", FieldType::String)),
             Field::from(("sync_incarnation", FieldType::Unsigned)).is_nullable(true),
+            Field::from(("target_state_reason", FieldType::String)).is_nullable(true),
+            Field::from(("target_state_change_time", FieldType::Datetime)).is_nullable(true),
         ]
     }
 
@@ -127,6 +143,25 @@ impl Instance {
     #[inline]
     pub fn replication_sync_needed(&self) -> bool {
         self.sync_incarnation < self.target_state.incarnation
+    }
+
+    /// Returns a dummy instance of the struct for use in tests
+    pub fn for_tests() -> Self {
+        Self {
+            name: "default_13_37".into(),
+            uuid: "ed7ba470-8e54-465e-825c-99712043e01c".into(),
+            raft_id: 1,
+            replicaset_name: "default_13".into(),
+            replicaset_uuid: "deadbeef-cafe-babe-0123-456789abcdef".into(),
+            current_state: State::new(StateVariant::Online, 13),
+            target_state: State::new(StateVariant::Online, 13),
+            failure_domain: FailureDomain::default(),
+            tier: "default".into(),
+            picodata_version: "22.07.0".into(),
+            sync_incarnation: 13,
+            target_state_reason: "wakeup".into(),
+            target_state_change_time: Some(Datetime::now_utc()),
+        }
     }
 }
 
@@ -163,7 +198,7 @@ mod tests {
     use crate::rpc::update_instance::update_instance;
     use crate::tier::Tier;
     use crate::traft::op::Dml;
-    use crate::version::Version;
+    use tarantool::tuple::TupleBuffer;
 
     use super::*;
 
@@ -197,6 +232,8 @@ mod tests {
             tier: DEFAULT_TIER.into(),
             picodata_version: PICODATA_VERSION.into(),
             sync_incarnation: state.incarnation,
+            target_state_reason: "".into(),
+            target_state_change_time: None,
         }
     }
 
@@ -378,6 +415,44 @@ mod tests {
         ).unwrap()
     }
 
+    fn check_update_instance(dml: &Dml, expected_name: impl Into<InstanceName>) -> &[TupleBuffer] {
+        let Dml::Update { table, key, ops, initiator } = dml else {
+            panic!("expected Dml::Update, got {dml:?}");
+        };
+
+        assert_eq!(*table, crate::storage::Instances::TABLE_ID);
+        assert_eq!(*initiator, crate::schema::ADMIN_ID);
+
+        let [name]: [InstanceName; 1] = rmp_serde::from_slice(key.as_ref()).unwrap();
+        assert_eq!(expected_name.into(), name);
+
+        ops
+    }
+
+    fn check_field_assignment<'a, T>(op: &'a TupleBuffer, expected_field: &str) -> T
+    where
+        T: serde::Deserialize<'a>,
+    {
+        let v = match rmp_serde::from_slice(op.as_ref()) {
+            Ok(v) => v,
+            Err(e) => {
+                let type_name = std::any::type_name::<T>();
+                let actual_msgpack = picodata_plugin::util::DisplayAsHexBytesLimitted(op.as_ref());
+                panic!(
+                    "unexpected field assignment
+expected ('=', '{expected_field}', {type_name})
+got msgpack '{actual_msgpack}'
+(aka {op:?})
+rmp_serde error: {e}"
+                );
+            }
+        };
+        let (op, field, value): (&str, &str, T) = v;
+        assert_eq!(op, "=");
+        assert_eq!(field, expected_field);
+        value
+    }
+
     #[::tarantool::test]
     fn test_update_state() {
         let storage = Catalog::for_tests();
@@ -385,6 +460,7 @@ mod tests {
         let instance = dummy_instance(1, "i1", "r1", &State::new(Online, 1));
         add_instance(&storage, &instance).unwrap();
         let global_cluster_version = PICODATA_VERSION.to_string();
+        let system_catalog_version = PICODATA_VERSION;
 
         //
         // Current state incarnation is allowed to go down,
@@ -392,7 +468,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "", "")
             .with_current_state(State::new(Offline, 0));
-        let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version, system_catalog_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("current_state", State::new(Offline, 0)).unwrap();
@@ -407,7 +483,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "", "")
             .with_current_state(State::new(Offline, 0));
-        let dml = update_instance(&instance, &req, None, &global_cluster_version).unwrap();
+        let dml = update_instance(&instance, &req, None, &global_cluster_version, system_catalog_version).unwrap();
         assert_eq!(dml, None);
 
         //
@@ -415,12 +491,13 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "", "")
             .with_target_state(Offline);
-        let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version, system_catalog_version).unwrap().unwrap();
 
-        let mut ops = UpdateOps::new();
-        ops.assign("target_state", State::new(Offline, 0)).unwrap();
-        assert_eq!(dml, update_instance_dml("i1", ops));
         assert_eq!(do_bump, true, "target state change requires replicaset config version bump");
+        let ops = check_update_instance(&dml, "i1");
+        assert_eq!(ops.len(), 1);
+        let target_state: State = check_field_assignment(&ops[0], "target_state");
+        assert_eq!(target_state, State::new(Offline, 0));
 
         storage.do_dml(&dml).unwrap();
         let instance = storage.instances.get(&InstanceName::from("i1")).unwrap();
@@ -430,12 +507,13 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "", "")
             .with_target_state(Online);
-        let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version, system_catalog_version).unwrap().unwrap();
 
-        let mut ops = UpdateOps::new();
-        ops.assign("target_state", State::new(Online, 1)).unwrap();
-        assert_eq!(dml, update_instance_dml("i1", ops));
         assert_eq!(do_bump, true, "target state change requires replicaset config version bump");
+        let ops = check_update_instance(&dml, "i1");
+        assert_eq!(ops.len(), 1);
+        let target_state: State = check_field_assignment(&ops[0], "target_state");
+        assert_eq!(target_state, State::new(Online, 1));
 
         storage.do_dml(&dml).unwrap();
         let instance = storage.instances.get(&InstanceName::from("i1")).unwrap();
@@ -445,12 +523,13 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "", "")
             .with_target_state(Online);
-        let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version, system_catalog_version).unwrap().unwrap();
 
-        let mut ops = UpdateOps::new();
-        ops.assign("target_state", State::new(Online, 2)).unwrap();
-        assert_eq!(dml, update_instance_dml("i1", ops));
         assert_eq!(do_bump, true, "target state change requires replicaset config version bump");
+        let ops = check_update_instance(&dml, "i1");
+        assert_eq!(ops.len(), 1);
+        let target_state: State = check_field_assignment(&ops[0], "target_state");
+        assert_eq!(target_state, State::new(Online, 2));
 
         storage.do_dml(&dml).unwrap();
         let instance = storage.instances.get(&InstanceName::from("i1")).unwrap();
@@ -460,12 +539,14 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "", "")
             .with_target_state(Expelled);
-        let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version, system_catalog_version).unwrap().unwrap();
 
-        let mut ops = UpdateOps::new();
-        ops.assign("target_state", State::new(Expelled, 0)).unwrap();
-        assert_eq!(dml, update_instance_dml("i1", ops));
         assert_eq!(do_bump, true, "target state change requires replicaset config version bump");
+        let ops = check_update_instance(&dml, "i1");
+        assert_eq!(ops.len(), 1);
+        let target_state: State = check_field_assignment(&ops[0], "target_state");
+        assert_eq!(target_state, State::new(Expelled, 0));
+
 
         storage.do_dml(&dml).unwrap();
         let instance = storage.instances.get(&InstanceName::from("i1")).unwrap();
@@ -475,7 +556,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "", "")
             .with_current_state(State::new(Expelled, 69));
-        let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version, system_catalog_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("current_state", State::new(Expelled, 69)).unwrap();
@@ -490,7 +571,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "", "")
             .with_target_state(Online);
-        let e = update_instance(&instance, &req, None, &global_cluster_version).unwrap_err();
+        let e = update_instance(&instance, &req, None, &global_cluster_version, system_catalog_version).unwrap_err();
         assert_eq!(e.to_string(), "cannot update expelled instance \"i1\"");
     }
 
@@ -499,6 +580,7 @@ mod tests {
         let storage = Catalog::for_tests();
         add_tier(&storage, DEFAULT_TIER, 1, true).unwrap();
         let global_cluster_version = PICODATA_VERSION;
+        let system_catalog_version = PICODATA_VERSION;
         let new_picodata_version = Version::try_from(global_cluster_version).expect("correct picodata version").next_by_minor().to_smolstr();
 
         let instance_name = "default_r1_1";
@@ -507,7 +589,7 @@ mod tests {
 
         let req = rpc::update_instance::Request::new(instance.name.clone(), "", "")
             .with_picodata_version(new_picodata_version.clone());
-        let (dml, do_bump) = update_instance(&instance, &req, None, global_cluster_version)
+        let (dml, do_bump) = update_instance(&instance, &req, None, global_cluster_version, system_catalog_version)
             .unwrap()
             .expect("expected update picodata version");
 
@@ -534,13 +616,15 @@ mod tests {
             tier: DEFAULT_TIER.into(),
             picodata_version: PICODATA_VERSION.into(),
             sync_incarnation: 0,
+            target_state_reason: "".into(),
+            target_state_change_time: None,
         };
         add_instance(&storage, &expelled_instance).unwrap();
 
         // Now try to update the picodata_version on the expelled instance.
         let req = rpc::update_instance::Request::new(expelled_instance.name.clone(), "", "")
             .with_picodata_version(new_picodata_version.clone());
-        let err = update_instance(&expelled_instance, &req, None, global_cluster_version)
+        let err = update_instance(&expelled_instance, &req, None, global_cluster_version, system_catalog_version)
             .unwrap_err();
 
         assert_eq!(
@@ -614,6 +698,7 @@ mod tests {
         let storage = Catalog::for_tests();
         add_tier(&storage, DEFAULT_TIER, 3, true).unwrap();
         let global_cluster_version = PICODATA_VERSION.to_string();
+        let system_catalog_version = PICODATA_VERSION;
 
         //
         // first instance
@@ -629,7 +714,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance1.name.clone(), "", "")
             .with_failure_domain(faildoms! {owner: Ivan});
-        let e = update_instance(&instance1, &req, Some(&existing_fds), &global_cluster_version).unwrap_err();
+        let e = update_instance(&instance1, &req, Some(&existing_fds), &global_cluster_version, system_catalog_version).unwrap_err();
         assert_eq!(e.to_string(), "missing failure domain names: PLANET");
 
         //
@@ -638,7 +723,7 @@ mod tests {
         let fd = faildoms! {planet: Mars, owner: Ivan};
         let req = rpc::update_instance::Request::new(instance1.name.clone(), "", "")
             .with_failure_domain(fd.clone());
-        let (dml, do_bump) = update_instance(&instance1, &req, Some(&existing_fds), &global_cluster_version).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance1, &req, Some(&existing_fds), &global_cluster_version, system_catalog_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("failure_domain", fd).unwrap();
@@ -672,7 +757,7 @@ mod tests {
         let fd = faildoms! {planet: Earth, owner: Mike};
         let req = rpc::update_instance::Request::new(instance2.name.clone(), "", "")
             .with_failure_domain(fd.clone());
-        let (dml, do_bump) = update_instance(&instance2, &req, Some(&existing_fds), &global_cluster_version).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance2, &req, Some(&existing_fds), &global_cluster_version, system_catalog_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("failure_domain", fd).unwrap();
@@ -761,7 +846,7 @@ mod test {
     #[test]
     #[rustfmt::skip]
     fn matches_format() {
-        let i = Instance::default();
+        let i = Instance::for_tests();
         let tuple_data = i.to_tuple_buffer().unwrap();
         let format = Instance::format();
         crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "Instance::format");

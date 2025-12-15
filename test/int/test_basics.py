@@ -276,6 +276,9 @@ def test_pico_raft_log(instance: Instance):
         import re
 
         re_jwt_secret = re.compile(r'Replace\(_pico_db_config, \["jwt_secret","","[^"]{16}"\]\)')
+        re_datetime = re.compile(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+ \+[0-9]{2}:[0-9]{2}:[0-9]{2}"
+        )
 
         res = []
         tail = s
@@ -322,6 +325,10 @@ def test_pico_raft_log(instance: Instance):
                 'Replace(_pico_db_config, ["jwt_secret","","<jwt_secret>"])',
                 contents,
             )
+
+            # Handle datetime values - replace with a pattern
+            contents = re_datetime.sub("<datetime>", contents)
+
             columns[3] = contents
 
             # now let's break up the gigantic raft log rows with long BatchDml
@@ -372,7 +379,7 @@ def test_pico_raft_log(instance: Instance):
 |  0  | 1  |BatchDml(
 Replace(_pico_peer_address, [1,"127.0.0.1:{p}","iproto"]),
 Replace(_pico_peer_address, [1,"127.0.0.1:{pg_port}","pgproto"]),
-Insert(_pico_instance, ["default_1_1","{i1_uuid}",1,"default_1","{r1_uuid}",["Offline",0],["Offline",0],{b},"default","{picodata_version}",0]),
+Insert(_pico_instance, ["default_1_1","{i1_uuid}",1,"default_1","{r1_uuid}",["Offline",0],["Offline",0],{b},"default","{picodata_version}",0,"","<datetime>"]),
 Insert(_pico_replicaset, ["default_1","{r1_uuid}","default_1_1","default_1_1","default",0.0,"auto","not-ready",0,0,{{}},0,0,0]))|
 |  0  | 1  |BatchDml(Insert(_pico_tier, ["default",1,true,0,0,false,3000,true,0,0]))|
 |  0  | 1  |BatchDml(
@@ -447,7 +454,7 @@ Insert(_pico_index, [{_pico_index},0,"_pico_index_id","tree",[{{"unique":true}}]
 Insert(_pico_index, [{_pico_index},1,"_pico_index_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_peer_address},"_pico_peer_address",{{"Global":null}},[{{"name":"raft_id","field_type":"unsigned","is_nullable":false}},{{"name":"address","field_type":"string","is_nullable":false}},{{"name":"connection_type","field_type":"string","is_nullable":false}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_peer_address},0,"_pico_peer_address_raft_id","tree",[{{"unique":true}}],[["raft_id","unsigned",null,false,null],["connection_type","string",null,false,null]],true,0]),
-Insert(_pico_table, [{_pico_instance},"_pico_instance",{{"Global":null}},[{{"name":"name","field_type":"string","is_nullable":false}},{{"name":"uuid","field_type":"string","is_nullable":false}},{{"name":"raft_id","field_type":"unsigned","is_nullable":false}},{{"name":"replicaset_name","field_type":"string","is_nullable":false}},{{"name":"replicaset_uuid","field_type":"string","is_nullable":false}},{{"name":"current_state","field_type":"array","is_nullable":false}},{{"name":"target_state","field_type":"array","is_nullable":false}},{{"name":"failure_domain","field_type":"map","is_nullable":false}},{{"name":"tier","field_type":"string","is_nullable":false}},{{"name":"picodata_version","field_type":"string","is_nullable":false}},{{"name":"sync_incarnation","field_type":"unsigned","is_nullable":true}}],0,true,"memtx",1,""]),
+Insert(_pico_table, [{_pico_instance},"_pico_instance",{{"Global":null}},[{{"name":"name","field_type":"string","is_nullable":false}},{{"name":"uuid","field_type":"string","is_nullable":false}},{{"name":"raft_id","field_type":"unsigned","is_nullable":false}},{{"name":"replicaset_name","field_type":"string","is_nullable":false}},{{"name":"replicaset_uuid","field_type":"string","is_nullable":false}},{{"name":"current_state","field_type":"array","is_nullable":false}},{{"name":"target_state","field_type":"array","is_nullable":false}},{{"name":"failure_domain","field_type":"map","is_nullable":false}},{{"name":"tier","field_type":"string","is_nullable":false}},{{"name":"picodata_version","field_type":"string","is_nullable":false}},{{"name":"sync_incarnation","field_type":"unsigned","is_nullable":true}},{{"name":"target_state_reason","field_type":"string","is_nullable":true}},{{"name":"target_state_change_time","field_type":"datetime","is_nullable":true}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_instance},0,"_pico_instance_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
 Insert(_pico_index, [{_pico_instance},1,"_pico_instance_uuid","tree",[{{"unique":true}}],[["uuid","string",null,false,null]],true,0]),
 Insert(_pico_index, [{_pico_instance},2,"_pico_instance_raft_id","tree",[{{"unique":true}}],[["raft_id","unsigned",null,false,null]],true,0]),
@@ -497,7 +504,7 @@ Insert(_pico_index, [{_pico_resharding_state},0,"_pico_resharding_state_index_pr
 |  0  | 1  |AddNode(1)|
 |  0  | 2  |-|
 |  0  | 2  |BatchDml(
-Update(_pico_instance, ["default_1_1"], [["=","target_state",["Online",1]]]),
+Update(_pico_instance, ["default_1_1"], [["=","target_state",["Online",1]], ["=","target_state_change_time","<datetime>"], ["=","target_state_reason","boot"]]),
 Update(_pico_replicaset, ["default_1"], [["=","target_config_version",1]]),
 Update(_pico_tier, ["default"], [["=","target_vshard_config_version",1]])
 )|

@@ -3,7 +3,7 @@ use crate::instance::StateVariant::*;
 use crate::proc_name;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
-use crate::rpc::update_instance::proc_update_instance;
+use crate::rpc::update_instance::proc_update_instance_v2;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::network::ConnectionPool;
@@ -81,7 +81,8 @@ impl Loop {
             let index = node.get_index();
             let instance_name = node.topology_cache.my_instance_name().into();
             let req = rpc::update_instance::Request::new(instance_name, cluster_name, cluster_uuid)
-                .with_target_state(Offline);
+                .with_target_state(Offline)
+                .with_target_state_reason("shutdown");
 
             let mut attempt_number = 0;
             loop {
@@ -99,8 +100,13 @@ impl Loop {
                     let Some(leader_id) = raft_status.get().leader_id else {
                         return Err(Error::LeaderUnknown);
                     };
-                    pool.call(&leader_id, proc_name!(proc_update_instance), &req, timeout)?
-                        .await?;
+                    pool.call(
+                        &leader_id,
+                        proc_name!(proc_update_instance_v2),
+                        &req,
+                        timeout,
+                    )?
+                    .await?;
                     Ok(())
                 }
                 .await;
@@ -182,7 +188,8 @@ impl Loop {
             // happens we should reassess the situation, because somebody
             // else could have changed this particular instance's target state.
             .with_dont_retry(true)
-            .with_target_state(Offline);
+            .with_target_state(Offline)
+            .with_target_state_reason(reason);
 
             let res = rpc::update_instance::handle_update_instance_request_and_wait(
                 req,
@@ -247,7 +254,8 @@ impl Loop {
                         // happens we should reassess the situation, because somebody
                         // else could have changed this particular instance's target state.
                         .with_dont_retry(true)
-                        .with_target_state(Online);
+                        .with_target_state(Online)
+                        .with_target_state_reason("auto-online");
                 let res = async {
                     let Some(leader_id) = raft_status.get().leader_id else {
                         return Err(Error::LeaderUnknown);
@@ -256,7 +264,7 @@ impl Loop {
                         return Err(BoxError::new(crate::error_code::ErrorCode::Other, "injected error").into()));
                     pool.call(
                         &leader_id,
-                        proc_name!(proc_update_instance),
+                        proc_name!(proc_update_instance_v2),
                         &req,
                         Self::UPDATE_INSTANCE_TIMEOUT,
                     )?

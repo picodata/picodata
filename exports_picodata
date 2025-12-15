@@ -72,6 +72,7 @@ proc_sql_dispatch
 proc_sql_execute
 proc_tier_name
 proc_update_instance
+proc_update_instance_v2
 proc_version_info
 proc_wait_bucket_count
 proc_wait_index

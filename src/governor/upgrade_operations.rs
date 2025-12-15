@@ -76,6 +76,8 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             // Creation of Lua stored function JSON_EXTRACT_PATH.
             ("exec_script", InternalScript::CreateIfNotExistSqlBuiltins.as_str()),
             ("exec_script", InternalScript::AlterPicoInstanceAddSyncIncarnationField.as_str()),
+            ("exec_script", InternalScript::AlterPicoInstanceAddTargetStateReasonAndChangeTime.as_str()),
+            ("proc_name", "proc_update_instance_v2"),
         ],
     ),
 ];
@@ -129,6 +131,14 @@ tarantool::define_str_enum! {
         ///     sync_incarnation UNSIGNED NULL,
         /// ```
         AlterPicoInstanceAddSyncIncarnationField = "alter_pico_instance_add_sync_incarnation_field",
+
+        /// Schema upgrade operation equivalent to:
+        /// ```ignore
+        /// ALTER TABLE _pico_instance ADD COLUMN
+        ///     target_state_reason TEXT NULL,
+        ///     target_state_change_time DATETIME NULL,
+        /// ```
+        AlterPicoInstanceAddTargetStateReasonAndChangeTime = "alter_pico_instance_add_target_state_reason_and_change_time",
     }
 }
 
@@ -162,6 +172,9 @@ crate::define_rpc_request! {
 
             InternalScript::AlterPicoInstanceAddSyncIncarnationField =>
                 execute_alter_pico_instance_add_sync_incarnation_field(),
+
+            InternalScript::AlterPicoInstanceAddTargetStateReasonAndChangeTime =>
+                execute_alter_pico_instance_add_target_state_reason_and_change_time(),
         }
     }
 
@@ -214,6 +227,12 @@ fn execute_alter_pico_tier_add_bucket_state_fields() -> traft::Result<Response> 
 }
 
 fn execute_alter_pico_instance_add_sync_incarnation_field() -> traft::Result<Response> {
+    actualize_system_table_format::<Instances>()?;
+    Ok(Response {})
+}
+
+fn execute_alter_pico_instance_add_target_state_reason_and_change_time() -> traft::Result<Response>
+{
     actualize_system_table_format::<Instances>()?;
     Ok(Response {})
 }
