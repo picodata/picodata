@@ -1,10 +1,10 @@
-use std::fmt::{Debug, Display, Formatter};
-
 use crate::error_code::ErrorCode;
 use crate::instance::InstanceName;
 use crate::plugin::PluginError;
 use crate::traft::{RaftId, RaftTerm};
 use smol_str::SmolStr;
+use std::borrow::Cow;
+use std::fmt::{Debug, Display, Formatter};
 use tarantool::error::IntoBoxError;
 use tarantool::error::{BoxError, TarantoolErrorCode};
 use tarantool::fiber::r#async::timeout;
@@ -162,6 +162,17 @@ pub enum Error {
 
     #[error("{0}")]
     Other(Box<dyn std::error::Error>),
+}
+
+impl Error {
+    pub fn to_box_error(&self) -> Cow<'_, BoxError> {
+        match self {
+            Self::BoxError(e) => Cow::Borrowed(e),
+            Self::Tarantool(tarantool::error::Error::Tarantool(e)) => Cow::Borrowed(e),
+            Self::Tarantool(tarantool::error::Error::Remote(e)) => Cow::Borrowed(e),
+            _ => BoxError::new(self.error_code(), self.to_string()).into(),
+        }
+    }
 }
 
 #[derive(Debug)]

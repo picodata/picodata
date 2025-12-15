@@ -1,11 +1,13 @@
 use self::upgrade_operations::proc_internal_script;
 use crate::cas;
 use crate::column_name;
+use crate::error_code::ErrorCode;
 use crate::governor::batch::LastStepInfo;
 use crate::instance::InstanceName;
 use crate::metrics;
 use crate::op::Op;
 use crate::proc_name;
+use crate::reachability::InstanceReachabilityManagerRef;
 use crate::replicaset::Replicaset;
 use crate::rpc;
 use crate::rpc::ddl_apply::proc_apply_schema_change;
@@ -44,6 +46,7 @@ use crate::traft::op::Ddl;
 use crate::traft::op::Dml;
 use crate::traft::op::PluginRaftOp;
 use crate::traft::raft_storage::RaftSpaceAccess;
+use crate::traft::RaftId;
 use crate::traft::{ConnectionType, Result};
 use crate::unwrap_ok_or;
 use crate::vshard;
@@ -235,6 +238,7 @@ impl Loop {
         }
 
         let node = global().expect("must be initialized");
+        let instance_reachability = &node.instance_reachability;
 
         let topology_ref = node.topology_cache.get();
 
@@ -538,6 +542,7 @@ impl Loop {
                 old_master_name,
                 demote_rpc,
                 new_master_name,
+                new_master_raft_id,
                 sync_rpc,
                 promotion_vclock,
                 master_actualize_dml,
@@ -564,6 +569,11 @@ impl Loop {
 
                         tlog!(Info, "calling proc_replication_sync on target master: {new_master_name}");
                         let f_sync = pool.call(&new_master_name, proc_name!(proc_replication_sync), &sync_rpc, rpc_timeout)?;
+                        let f_sync = async {
+                            let res = f_sync.await;
+                            update_replication_error(instance_reachability, new_master_raft_id, res.as_ref().err());
+                            res
+                        };
 
                         let (demote_response, _) = try_join(f_demote, f_sync).await?;
                         demotion_vclock = Some(demote_response.vclock);
@@ -656,7 +666,7 @@ impl Loop {
                             replicaset_peers,
                         };
 
-                        for instance_name in targets {
+                        for (instance_name, raft_id) in targets {
                             rpc.is_master = Some(instance_name) == master_name;
                             tlog!(Info, "calling proc_replication"; "instance_name" => %instance_name, "is_master" => rpc.is_master);
 
@@ -664,7 +674,10 @@ impl Loop {
 
                             let resp = pool.call(instance_name, proc_name!(proc_replication), &rpc, rpc_timeout)?;
                             fs.push(async move {
-                                match resp.await {
+                                let res = resp.await;
+                                update_replication_error(instance_reachability, raft_id, res.as_ref().err());
+
+                                match res {
                                     Ok(_) => {
                                         tlog!(Info, "configured replication with instance";
                                             "instance_name" => %instance_name,
@@ -741,13 +754,14 @@ impl Loop {
                         let mut fs = vec![];
                         debug_assert_eq!(laggers.len(), dmls.len());
                         debug_assert_eq!(laggers.len(), raft_ids.len());
-                        for ((instance_name, dml), _raft_id) in laggers.clone().into_iter().zip(dmls).zip(raft_ids) {
+                        for ((instance_name, dml), raft_id) in laggers.clone().into_iter().zip(dmls).zip(raft_ids) {
                             tlog!(Info, "calling proc_replication_sync on {instance_name}");
 
                             let sync_timeout = rpc_timeout.saturating_add(Duration::from_secs(1));
                             let resp = pool.call(&instance_name, proc_name!(proc_replication_sync), &sync_rpc, sync_timeout)?;
                             fs.push(async move {
                                 let res = resp.await;
+                                update_replication_error(instance_reachability, raft_id, res.as_ref().err());
 
                                 match res {
                                     Ok(resp) => {
@@ -1753,4 +1767,24 @@ fn make_promotion_vclock_update_dml(replicaset_name: &str, vclock: &Vclock) -> R
     )?;
 
     Ok(op)
+}
+
+pub fn update_replication_error(
+    instance_reachability: &InstanceReachabilityManagerRef,
+    raft_id: RaftId,
+    e: Option<&Error>,
+) {
+    if let Some(e) = e {
+        if e.error_code() == ErrorCode::ReplicationBroken as u32 {
+            instance_reachability
+                .borrow_mut()
+                .set_replication_error(raft_id, e.to_box_error());
+        } else {
+            // Other errors do not give us information in either direction
+        }
+    } else {
+        instance_reachability
+            .borrow_mut()
+            .reset_replication_error(raft_id);
+    }
 }

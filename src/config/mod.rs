@@ -1941,6 +1941,16 @@ pub struct AlterSystemParameters {
     #[introspection(scope = global)]
     pub plugin_check_migration_hash: bool,
 
+    /// If this is `true`, instance will be automatically made Offline if
+    /// governor detects that it has encountered a replication error.
+    ///
+    /// This will make it so such instances don't affect the liveliness of the
+    /// cluster as a whole.
+    #[introspection(sbroad_type = SbroadType::Boolean)]
+    #[introspection(config_default = true)]
+    #[introspection(scope = global)]
+    pub governor_check_replication_error: bool,
+
     #[introspection(sbroad_type = SbroadType::String)]
     #[introspection(config_default = generate_secure_token())]
     pub jwt_secret: String,

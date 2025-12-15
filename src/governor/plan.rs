@@ -1088,6 +1088,10 @@ pub mod stage {
             /// [`proc_get_vclock`]: crate::sync::proc_get_vclock
             pub new_master_name: InstanceName,
 
+            /// Raft id of the new master. This is used to update reachability
+            /// info about that instance if it's replication is broken.
+            pub new_master_raft_id: RaftId,
+
             /// Request to call [`rpc::replication::proc_replication_sync`] on new master.
             pub sync_rpc: rpc::replication::ReplicationSyncRequest,
 
@@ -1124,7 +1128,7 @@ pub mod stage {
             pub replicaset_name: &'i ReplicasetName,
             /// These instances belong to one replicaset and will be sent a
             /// request to call [`rpc::replication::proc_replication`].
-            pub targets: Vec<&'i InstanceName>,
+            pub targets: Vec<(&'i InstanceName, RaftId)>,
             /// This instance will also become the replicaset master.
             /// This will be `None` if replicaset's current_master_name != target_master_name.
             pub master_name: Option<&'i InstanceName>,
@@ -1345,11 +1349,16 @@ pub mod stage {
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn get_replicaset_to_configure<'i>(
     instances: &'i [Instance],
     peer_addresses: &'i HashMap<RaftId, SmolStr>,
     replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
-) -> Option<(&'i Replicaset, Vec<&'i InstanceName>, Vec<SmolStr>)> {
+) -> Option<(
+    &'i Replicaset,
+    Vec<(&'i InstanceName, RaftId)>,
+    Vec<SmolStr>,
+)> {
     for replicaset in replicasets.values() {
         if replicaset.current_config_version == replicaset.target_config_version {
             // Already configured
@@ -1376,7 +1385,7 @@ fn get_replicaset_to_configure<'i>(
                 continue;
             }
 
-            targets.push(instance_name);
+            targets.push((instance_name, instance.raft_id));
 
             if instance.replication_sync_needed() {
                 // Don't add the waking up instance to other replica

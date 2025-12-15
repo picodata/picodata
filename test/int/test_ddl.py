@@ -1,5 +1,6 @@
 import re
 import pytest
+import yaml
 from conftest import (
     PICO_SERVICE_ID,
     Cluster,
@@ -2793,11 +2794,78 @@ cluster:
     # Master crashes due to the injected error
     storage_1_1.wait_process_stopped()
 
+    # Wait until the crashed master is made auto-offline by sentinel.
+    cluster.wait_has_states(storage_1_1, "Offline", "Offline")
+
+    # `storage_1_2` was automatically chosen as new replicaset master
+    [[master_name]] = leader.sql("SELECT current_master_name FROM _pico_replicaset WHERE tier = 'storage'")
+    assert storage_1_2.name == master_name
+
+    # And governor has successfully applied the DDL
+    counter = leader.wait_governor_status("idle")
+
+    # Now let's restart the deposed master, it has also applied the DDL, but
+    # failed to replicate it to the replicas. After that `storage_1_2` applied
+    # the DDL in a conflicting manner (there will be a conflicting timestamp in
+    # the system table).
     storage_1_1.start()
+
+    # Governor will force `storage_1_1` to synchornize with `storage_1_2`, but
+    # this the replication conflict will prevent this from happening. Governor
+    # will detect the replication error on that instance and will report it to
+    # sentinel, who will change the instance's state back Offline.
+    #
+    # Thus governor will technically finish with it's responsibilities and go
+    # into `idle` state.
+    leader.wait_governor_status("idle", old_step_counter=counter, timeout=30)
+
+    # And the instance with broken replication will be Offline
+    cluster.wait_has_states(storage_1_1, "Offline", "Offline")
+
+    # Let's verify that there is in fact the replication conflict
+    replication = storage_1_1.eval("return box.info.replication")
+    assert isinstance(replication, dict)
+    for k, v in replication.items():
+        up = v.get("upstream")
+        if up:
+            assert up["status"] != "follow", yaml.dump({k: v})
+            assert up["message"].startswith('Duplicate key exists in unique index "primary" in space "_space"')
+
+    # But `storage_1_2` is ok, we have successfully isolated the problem
+    replication = storage_1_2.eval("return box.info.replication")
+    assert isinstance(replication, dict)
+    for k, v in replication.items():
+        up = v.get("upstream")
+        if up:
+            assert up["status"] == "follow", yaml.dump({k: v})
+
+    # Now let's try to fix the replication conflict manually
+    [[table_id]] = storage_1_2.sql("SELECT id FROM _pico_table WHERE name = 'test'")
+    storage_1_1.eval(
+        """
+        local table_id = ...
+        box.cfg { read_only = false }
+        box.space._index:delete({table_id, 1})
+        box.space._index:delete({table_id, 0})
+        box.space._space:delete(table_id)
+        box.cfg { read_only = true }
+        """,
+        table_id,
+    )
+
+    # The broken instance know's it's broken, so it will not try becoming Online
+    # for a while, so as not to bombrad the governor with requests destined to fail.
+    #
+    # But we now know that the conflict is fixed, and it's ok to try joining the
+    # cluster. This is easily achieved by simply restarting the broken instance.
+    storage_1_1.terminate()
+    storage_1_1.start()
+
+    # Now all's well, instance successfully joins
     storage_1_1.wait_online()
 
-    for i in [storage_1_1, storage_1_2]:
-        i.eval("""
-            local info = box.info.replication
-            require'log'.info(require'yaml'.encode(info))
-        """)
+    # Sanity check
+    [[table_id]] = leader.sql("SELECT id FROM _pico_table WHERE name = 'test'")
+    result = storage_1_1.call("box.execute", 'SELECT "id" FROM "_space" WHERE "name" = \'test\'')
+    [[space_id]] = result["rows"]
+    assert table_id == space_id

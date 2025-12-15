@@ -16,6 +16,9 @@ with the `YY.MINOR.MICRO` scheme.
 - Support JSON_EXTRACT_PATH function.
 - Introduce non-blocking SQL execution to prevent fiber starvation.
 - New column `sync_incarnation` is added to `_pico_instance` system table.
+- New ALTER SYSTEM parameter `governor_check_replication_error` (default: true)
+  enables the checking if replication is broken on any instance, in which case
+  the instance will be automatically made Offline.
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:

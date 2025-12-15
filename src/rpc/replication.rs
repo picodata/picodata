@@ -184,7 +184,10 @@ pub fn check_if_replication_is_broken(node: &Node) -> Result<()> {
     let func = lua_function("_check_if_replication_is_broken")?;
     let result: Option<Object<_>> = func.into_call()?;
 
+    let mut instance_reachability = node.instance_reachability.borrow_mut();
+
     let Some(values) = result else {
+        instance_reachability.reset_replication_error(node.raft_id);
         return Ok(());
     };
 
@@ -201,6 +204,7 @@ pub fn check_if_replication_is_broken(node: &Node) -> Result<()> {
     }
 
     let err = replication_broken(instance_id, &status, &message);
+    instance_reachability.set_replication_error(node.raft_id, &err);
 
     tlog!(Error, "replication is broken: {err}");
 

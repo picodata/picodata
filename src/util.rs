@@ -557,6 +557,16 @@ impl<T> NoYieldsRefCell<T> {
             NoYieldsGuard::with_message("yield detected while NoYieldsRefCell was borrowed");
         NoYieldsRefMut { inner, guard }
     }
+
+    #[inline]
+    #[track_caller]
+    pub fn with<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&T) -> R,
+        R: 'static,
+    {
+        f(&*self.borrow())
+    }
 }
 
 pub struct NoYieldsRef<'a, T> {

@@ -42,6 +42,11 @@ impl Loop {
     /// When doing an exponential backoff this is the maximum value.
     const SENTINEL_BACKOFF_MAX_DURATION: Duration = Duration::from_secs(10 * 60);
 
+    /// Whenever a replication conflict is detected governor will probably make
+    /// us Offline, and we will be trying to set our state back Online, but not
+    /// more often that once per this amount of time.
+    const SENTINEL_REPLICATION_BROKEN_WAIT: Duration = Duration::from_secs(10 * 60);
+
     async fn iter_fn(state: &mut State) -> ControlFlow<()> {
         let pool = &state.pool;
         let raft_status = &state.raft_status;
@@ -58,6 +63,7 @@ impl Loop {
         let node = node::global().expect("just checked it's ok");
         let cluster_name = node.topology_cache.cluster_name;
         let cluster_uuid = node.topology_cache.cluster_uuid;
+        let my_raft_id = node.raft_id;
 
         ////////////////////////////////////////////////////////////////////////
         // Awoken during graceful shutdown.
@@ -138,7 +144,7 @@ impl Loop {
                     continue;
                 }
                 if let Some(reason) = unreachables.get(&instance.raft_id) {
-                    instance_to_downgrade = Some((instance.name.clone(), &**reason));
+                    instance_to_downgrade = Some((instance.name.clone(), reason.clone()));
                     break;
                 }
             }
@@ -146,7 +152,7 @@ impl Loop {
             crate::error_injection!("FORCE_AUTO_OFFLINE" => |target_name| {
                 let target_instance = topology_ref.instance_by_name(target_name).unwrap();
                 if has_states!(target_instance, * -> Online) {
-                    instance_to_downgrade = Some((target_name.into(), "Injected FORCE_AUTO_OFFLINE"));
+                    instance_to_downgrade = Some((target_name.into(), "Injected FORCE_AUTO_OFFLINE".into()));
                 }
             });
 
@@ -163,7 +169,7 @@ impl Loop {
             set_action_kind(
                 &mut stats.borrow_mut(),
                 ActionKind::AutoOfflineByLeader,
-                Some(reason.into()),
+                Some(reason.clone()),
             );
 
             tlog!(Info, "setting target state Offline"; "instance_name" => %instance_name, "reason" => ?reason);
@@ -215,10 +221,20 @@ impl Loop {
                 }
             });
 
+            let replication_broken = instance_reachability
+                .borrow()
+                .get_replication_error(my_raft_id)
+                .is_some();
+
             set_action_kind(&mut stats.borrow_mut(), ActionKind::AutoOnlineBySelf, None);
 
             if exponential_backoff_before_retry(&stats.borrow(), Self::SENTINEL_SHORT_RETRY)
                 && raft_log_barrier_is_passed(&stats.borrow(), node)
+                && (!replication_broken
+                    || long_wait_before_retry(
+                        &stats.borrow(),
+                        Self::SENTINEL_REPLICATION_BROKEN_WAIT,
+                    ))
             {
                 // Topology cache state corresponds to this applied index.
                 let index = node.get_index();
@@ -385,6 +401,17 @@ pub struct ContinuityTracker {
     pub fail_streak: Option<FailStreakInfo>,
 }
 
+impl ContinuityTracker {
+    fn last_attempt(&self) -> Option<Instant> {
+        match (self.last_successful_attempt, &self.fail_streak) {
+            (None, None) => None,
+            (Some((_, success)), None) => Some(success),
+            (None, Some(fail)) => Some(fail.last_try),
+            (Some((_, success)), Some(fail)) => Some(success.max(fail.last_try)),
+        }
+    }
+}
+
 #[inline(always)]
 fn set_action_kind(stats: &mut ContinuityTracker, kind: ActionKind, reason: Option<SmolStr>) {
     let Some(last_action_kind) = stats.last_action_kind else {
@@ -490,6 +517,16 @@ fn current_fail_streak_timeout(stats: &ContinuityTracker, base_timeout: Duration
     };
 
     Loop::SENTINEL_BACKOFF_MAX_DURATION.min(base_timeout.saturating_mul(fail_streak.mult))
+}
+
+fn long_wait_before_retry(stats: &ContinuityTracker, long_timeout: Duration) -> bool {
+    let Some(last_attempt) = stats.last_attempt() else {
+        return true;
+    };
+
+    let next_attempt = last_attempt.saturating_add(long_timeout);
+    let now = fiber::clock();
+    now >= next_attempt
 }
 
 tarantool::define_str_enum! {

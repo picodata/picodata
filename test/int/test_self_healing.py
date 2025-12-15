@@ -450,3 +450,82 @@ cluster:
         instance.start()
 
     cluster.wait_online()
+
+
+def test_automatic_offline_due_to_sharded_dml_conflict(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            can_vote: true
+        storage:
+            can_vote: false
+            replication_factor: 2
+        """
+    )
+    leader = cluster.add_instance(tier="arbiter", wait_online=False)
+    storage_1_1 = cluster.add_instance(tier="storage", wait_online=False)
+    storage_1_2 = cluster.add_instance(tier="storage", wait_online=False)
+    cluster.wait_online()
+
+    # Create a sharded table
+    leader.sql("CREATE TABLE foo (bar INTEGER PRIMARY KEY, baz TEXT) DISTRIBUTED BY (bar) IN TIER storage")
+
+    # Disable the replication error check so that we know what we're missing and start valueing it
+    leader.sql("ALTER SYSTEM SET governor_check_replication_error = false")
+
+    # Put one of the instance to sleep...
+    storage_1_2.terminate()
+
+    leader.sql("INSERT INTO foo VALUES (1337, 'v1')")
+
+    storage_1_1.terminate()
+    storage_1_2.start()
+    storage_1_2.wait_online()
+
+    leader.sql("INSERT INTO foo VALUES (1337, 'v2')")
+
+    storage_1_1.start()
+    # Governor is stuck waiting until instance synchronizes with replicaset,
+    # which will never happen
+    leader.wait_governor_status("replicaset sync")
+    cluster.wait_has_states(storage_1_1, "Offline", "Online")
+
+    # Now let's enable auto offline due due to replication error
+    leader.sql("ALTER SYSTEM SET governor_check_replication_error = true")
+
+    # After that auto offline by sentinel works rather quick
+    counter = leader.wait_governor_status("idle")
+    cluster.wait_has_states(storage_1_1, "Offline", "Offline")
+
+    # Just a sanity check, that restarting the instance doens't change anything
+    # while it's broken
+    storage_1_1.terminate()
+    storage_1_1.start()
+    leader.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_has_states(storage_1_1, "Offline", "Offline")
+
+    # Instance is still actually alive, and we can go fix it manually, or
+    # recover the data if needed
+    #
+    # Note: `Retriable` is needed because wait_online doesn't work and there's
+    # no other good way to syncrhonize
+    Retriable(timeout=10).call(
+        storage_1_1.eval,
+        """
+        box.cfg{read_only = false}
+        box.space.foo:delete(1337)
+        """,
+    )
+
+    # Now let's restart the instance so it tries becoming online again and now
+    # succeeds
+    storage_1_1.terminate()
+    storage_1_1.start()
+    storage_1_1.wait_online()
+    leader.wait_governor_status("idle")
+
+    # This guy is also still online obviously
+    storage_1_2.wait_online()
