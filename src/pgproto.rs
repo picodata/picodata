@@ -6,8 +6,13 @@ use crate::{
     traft::error::Error,
 };
 use prometheus::IntCounter;
+use smol_str::SmolStr;
 use std::{
-    os::fd::{AsRawFd, BorrowedFd},
+    io,
+    os::{
+        fd::{AsRawFd, BorrowedFd},
+        linux::net::SocketAddrExt,
+    },
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -106,14 +111,38 @@ impl Config {
     }
 }
 
-fn enable_tcp_nodelay(raw: &CoIOStream) -> std::io::Result<()> {
+fn with_socket<F, T>(raw: &CoIOStream, f: F) -> io::Result<T>
+where
+    F: FnOnce(&socket2::SockRef) -> io::Result<T>,
+{
     let fd = raw.as_raw_fd();
     // SAFETY: stream contains a valid descriptor
     let fd = unsafe { BorrowedFd::borrow_raw(fd) };
     let socket = socket2::SockRef::from(&fd);
-    // FIXME: this blocks the event loop, as well as `CoioStream::new`
-    socket.set_nodelay(true)?;
-    Ok(())
+    f(&socket)
+}
+
+fn enable_tcp_nodelay(raw: &CoIOStream) -> std::io::Result<()> {
+    with_socket(raw, |socket| socket.set_nodelay(true))
+}
+
+fn get_peer_address(raw: &CoIOStream) -> io::Result<SmolStr> {
+    with_socket(raw, |socket| {
+        let addr = socket.peer_addr()?;
+        if let Some(sa) = addr.as_socket() {
+            Ok(sa.to_string().into())
+        } else if let Some(unix) = addr.as_unix() {
+            if let Some(path) = unix.as_pathname() {
+                Ok(format!("{path:?}").into())
+            } else if let Some(namespace) = unix.as_abstract_name() {
+                Ok(format!("{namespace:?}").into())
+            } else {
+                Ok("unnamed unix client".into())
+            }
+        } else {
+            Ok(format!("{addr:?}").into())
+        }
+    })
 }
 
 fn server_start(context: &'static Context) {
@@ -128,8 +157,15 @@ fn server_start(context: &'static Context) {
         if let Err(e) = enable_tcp_nodelay(&raw) {
             tlog!(Error, "failed to enable TCP_NODELAY on socket: {e:?}");
         }
+
+        let peer_addr = get_peer_address(&raw);
         let stream = PgStream::new(raw);
-        if let Err(e) = handle_client(stream, context.tls_acceptor.clone(), context.storage) {
+        if let Err(e) = handle_client(
+            stream,
+            context.tls_acceptor.clone(),
+            context.storage,
+            peer_addr,
+        ) {
             tlog!(Error, "failed to handle client {e}");
         }
     }
@@ -141,15 +177,18 @@ fn handle_client(
     client: PgStream<CoIOStream>,
     tls_acceptor: Option<TlsAcceptor>,
     storage: &'static Catalog,
+    peer_addr: io::Result<SmolStr>,
 ) -> tarantool::Result<()> {
-    tlog!(Info, "spawning a new fiber for postgres client connection");
+    // ошибка может быть только если соединение уже сдохло
+    let peer_addr = peer_addr?;
 
     tarantool::fiber::Builder::new()
-        .name("pgproto::client")
+        .name(format!("pgproto::client[{peer_addr}]"))
         .func(move || {
+            tlog!(Info, "spawned a fiber for postgres client connection");
             let res = do_handle_client(client, tls_acceptor, storage);
             if let Err(e) = res {
-                tlog!(Error, "{e}");
+                tlog!(Error, "connection has {e}");
             }
             tlog!(Info, "connection closed");
         })
