@@ -248,7 +248,7 @@ fn single_plan_dispatch_dql<'lua, 'p>(
     let raft_id = node::global()
         .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?
         .raft_id;
-    let data_source = build_dql_data_source(ex_plan, raft_id.to_string())
+    let data_source = build_dql_data_source(ex_plan, raft_id)
         .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
 
     let mut bc = ByteCounter::default();
@@ -312,7 +312,7 @@ fn custom_plan_dispatch_dql<'lua, 'p>(
         .raft_id;
     let mut exec_plan = None;
     for (rs, ex_plan) in rs_plan {
-        let temp_exec_plan = build_dql_data_source(ex_plan, raft_id.to_string())?;
+        let temp_exec_plan = build_dql_data_source(ex_plan, raft_id)?;
         let mut bc = ByteCounter::default();
         write_dql_packet(&mut bc, &temp_exec_plan)
             .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;

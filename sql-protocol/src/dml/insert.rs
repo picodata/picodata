@@ -218,7 +218,7 @@ pub enum LocalInsertResult<'a> {
     ConflictPolicy(ConflictPolicy),
     SchemaInfo(MsgpackMapIterator<'a, u32, u64>),
     PlanId(u64),
-    SenderId(&'a str),
+    SenderId(u64),
     Vtables(MsgpackMapIterator<'a, &'a str, TupleIterator<'a>>),
     Options((u64, u64)),
     Params(&'a [u8]),
@@ -299,7 +299,7 @@ impl<'a> LocalInsertPackageIterator<'a> {
         Ok(plan_id)
     }
 
-    fn get_sender_id(&mut self) -> Result<&'a str, ProtocolError> {
+    fn get_sender_id(&mut self) -> Result<u64, ProtocolError> {
         assert_eq!(self.state, LocalInsertStates::SenderId);
         let sender_id = get_sender_id(&mut self.raw_payload)?;
         self.state = LocalInsertStates::Vtables;
@@ -423,7 +423,7 @@ mod tests {
             self.dql_encoder.as_ref().unwrap().get_plan_id()
         }
 
-        fn get_sender_id(&self) -> &str {
+        fn get_sender_id(&self) -> u64 {
             self.dql_encoder.as_ref().unwrap().get_sender_id()
         }
 
@@ -521,7 +521,7 @@ mod tests {
         let dql_encoder = TestDQLEncoderBuilder::new()
             .set_plan_id(14235593344027757343)
             .set_schema_info(HashMap::from([(12, 138)]))
-            .set_sender_id("some".to_string())
+            .set_sender_id(42)
             .set_vtables(HashMap::from([(
                 "TMP_1302_".to_string(),
                 vec![vec![1, 2, 3], vec![3, 2, 1]],
@@ -540,7 +540,7 @@ mod tests {
         };
 
         let expected: &[u8] =
-            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x02\x92\x00\x9a\xcc\x80\x01\x92\x01\x02\x01\x81\x0c\xcc\x8a\xcf\xc5\x8e\xfc\xb9\x15\xb0\x8b\x1f\xc4\x04some\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
+            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x02\x92\x00\x9a\xcc\x80\x01\x92\x01\x02\x01\x81\x0c\xcc\x8a\xcf\xc5\x8e\xfc\xb9\x15\xb0\x8b\x1f*\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
         let mut actual = Vec::new();
 
         write_insert_with_sql_package(&mut actual, encoder).unwrap();
@@ -550,7 +550,7 @@ mod tests {
 
     #[test]
     fn test_decode_insert_with_sql() {
-        let mut data: &[u8] = b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x02\x92\x00\x9a\xcc\x80\x01\x92\x01\x02\x01\x81\x0c\xcc\x8a\xcf\xc5\x8e\xfc\xb9\x15\xb0\x8b\x1f\xc4\x04some\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
+        let mut data: &[u8] = b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x02\x92\x00\x9a\xcc\x80\x01\x92\x01\x02\x01\x81\x0c\xcc\x8a\xcf\xc5\x8e\xfc\xb9\x15\xb0\x8b\x1f*\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
 
         let l = read_array_len(&mut data).unwrap();
         assert_eq!(l, 3);
@@ -597,7 +597,7 @@ mod tests {
                     assert_eq!(plan_id, 14235593344027757343);
                 }
                 LocalInsertResult::SenderId(sender_id) => {
-                    assert_eq!(sender_id, "some");
+                    assert_eq!(sender_id, 42);
                 }
                 LocalInsertResult::Vtables(vtables) => {
                     assert_eq!(vtables.len(), 1);

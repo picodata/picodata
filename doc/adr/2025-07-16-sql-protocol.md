@@ -144,9 +144,9 @@ DQL payload выглядит так:
 
 | Field         | MsgPack Type            | Example Value                     |
 |---------------|-------------------------|-----------------------------------|
-| schema_info    | map (u32, u64)           | 10, [1..20]                       |
+| schema_info   | map (u32, u64)          | 10, [1..20]                       |
 | plan_id       | u64                     | 0                                 |
-| sender_id     | binary                  | 10, [0..10] (router address)      |
+| sender_id     | u64                     | 3 (router raft id)                |
 | vtables' data | map(str, EncodedTuples) | 10, ["TMP_13", EncodedTuples] ... |
 | options       | [u64, u64]              | [100, 200]                        |
 | params        | array of values         | 3, true, 1.0, 10                  |
@@ -173,7 +173,7 @@ sender_id и
 
 | Field         | MsgPack Type                   | Example Value                            |
 |---------------|--------------------------------|------------------------------------------|
-| schema_info    | map (u32, u64)                 | 10, [1..20]                              |
+| schema_info   | map (u32, u64)                 | 10, [1..20]                              |
 | vtables' meta | map (string, array of Columns) | 10, ["TMP_10321", 10, [Column, ...]] ... |
 | sql           | string                         | 10, "SELECT * FROM t"                    |
 
@@ -245,7 +245,7 @@ WHERE id in (select t_id from t2 where s_id = 2);
 | target table version | u64           | 1             |
 | tuples               | EncodedTuples | EncodedTuples |
 
-При удалении без условия будет только table_id и table_version. Потому что нам надо различать удаление без условия 
+При удалении без условия будет только table_id и table_version. Потому что нам надо различать удаление без условия
 и удаление, когда условие дало пустое множество.
 
 **Insert**
@@ -366,16 +366,16 @@ FROM target_table
 WHERE id in (select id from target_table where second_field > 2)
 ```
 
-| Field                | MsgPack Type    | Example Value                |
-|----------------------|-----------------|------------------------------|
-| target table         | u32             | 1                            |
-| target table version | u64             | 1                            |
-| schema_info           | map (u32, u64)  | 10, [1..20]                  |
-| plan_id              | u64             | 0                            |
-| sender_id            | binary          | 10, [0..10] (router address) |
-| vtable's data        | EncodedTuples   | EncodedTuples                |
-| options              | [u64, u64]      | [100, 200]                   |
-| params               | array of values | 3, true, 1.0, 10             |
+| Field                | MsgPack Type    | Example Value      |
+|----------------------|-----------------|--------------------|
+| target table         | u32             | 1                  |
+| target table version | u64             | 1                  |
+| schema_info          | map (u32, u64)  | 10, [1..20]        |
+| plan_id              | u64             | 0                  |
+| sender_id            | u64             | 3 (router raft id) |
+| vtable's data        | EncodedTuples   | EncodedTuples      |
+| options              | [u64, u64]      | [100, 200]         |
+| params               | array of values | 3, true, 1.0, 10   |
 
 **Insert**
 
@@ -389,19 +389,19 @@ VALUES (select * from target_table)
 columns в каком порядке выстраивать значения
 motion key - это значение из LocalSegment, используется для reshard.
 
-| Field                | MsgPack Type    | Example Value                |
-|----------------------|-----------------|------------------------------|
-| target table         | u64             | 1                            |
-| target table version | u64             | 1                            |
-| columns              | array of u8     | 3, [1, 2, 3]                 |
-| conflict_policy      | fixint          | 0 (DoNothing)                |
-| motion key           | array of Target | 10, [Target, ...]            |
-| schema_info           | map (u32, u64)  | 10, [1..20]                  |
-| plan_id              | u64             | 0                            |
-| sender_id            | binary          | 10, [0..10] (router address) |
-| vtable's data        | EncodedTuples   | EncodedTuples                |
-| options              | [u64, u64]      | [100, 200]                   |
-| params               | array of values | 3, true, 1.0, 10             |
+| Field                | MsgPack Type    | Example Value      |
+|----------------------|-----------------|--------------------|
+| target table         | u64             | 1                  |
+| target table version | u64             | 1                  |
+| columns              | array of u8     | 3, [1, 2, 3]       |
+| conflict_policy      | fixint          | 0 (DoNothing)      |
+| motion key           | array of Target | 10, [Target, ...]  |
+| schema_info          | map (u32, u64)  | 10, [1..20]        |
+| plan_id              | u64             | 0                  |
+| sender_id            | u64             | 3 (router raft id) |
+| vtable's data        | EncodedTuples   | EncodedTuples      |
+| options              | [u64, u64]      | [100, 200]         |
+| params               | array of values | 3, true, 1.0, 10   |
 
 Target
 
@@ -436,18 +436,18 @@ WHERE id = (select id from target_table where second_field = 2);
 
 mapping columns pos указывает в каком порядке в tuple брать значения
 
-| Field                | MsgPack Type    | Example Value                |
-|----------------------|-----------------|------------------------------|
-| target table         | u64             | 1                            |
-| target table version | u64             | 1                            |
-| mapping columns pos  | map (u64, u64)  | 3, [[1, 2], [2, 3], [3,4]]   |
-| primary keys pos     | aray of u64     | 3 [1, 3, 2]                  |
-| schema_info           | map (u32, u64)  | 10, [1..20]                  |
-| plan_id              | u64             | 0                            |
-| sender_id            | binary          | 10, [0..10] (router address) |
-| vtable's data        | EncodedTuples   | EncodedTuples                |
-| options              | [u64, u64]      | [100, 200]                   |
-| params               | array of values | 3, true, 1.0, 10             |
+| Field                | MsgPack Type    | Example Value              |
+|----------------------|-----------------|----------------------------|
+| target table         | u64             | 1                          |
+| target table version | u64             | 1                          |
+| mapping columns pos  | map (u64, u64)  | 3, [[1, 2], [2, 3], [3,4]] |
+| primary keys pos     | aray of u64     | 3 [1, 3, 2]                |
+| schema_info          | map (u32, u64)  | 10, [1..20]                |
+| plan_id              | u64             | 0                          |
+| sender_id            | u64             | 3 (router raft id)         |
+| vtable's data        | EncodedTuples   | EncodedTuples              |
+| options              | [u64, u64]      | [100, 200]                 |
+| params               | array of values | 3, true, 1.0, 10           |
 
 ### Итог
 

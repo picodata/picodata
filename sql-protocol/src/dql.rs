@@ -53,8 +53,10 @@ pub(crate) fn write_plan_id(w: &mut impl Write, plan_id: u64) -> Result<(), std:
     rmp::encode::write_u64(w, plan_id).map_err(std::io::Error::from)
 }
 
-pub(crate) fn write_sender_id(w: &mut impl Write, sender_id: &str) -> Result<(), std::io::Error> {
-    rmp::encode::write_bin(w, sender_id.as_bytes()).map_err(std::io::Error::from)
+pub(crate) fn write_sender_id(w: &mut impl Write, sender_id: u64) -> Result<(), std::io::Error> {
+    write_uint(w, sender_id)
+        .map(|_| ())
+        .map_err(std::io::Error::from)
 }
 pub(crate) fn write_vtables<'a>(
     w: &mut impl Write,
@@ -119,7 +121,7 @@ enum DQLState {
 pub enum DQLResult<'a> {
     SchemaInfo(MsgpackMapIterator<'a, u32, u64>),
     PlanId(u64),
-    SenderId(&'a str),
+    SenderId(u64),
     Vtables(MsgpackMapIterator<'a, &'a str, TupleIterator<'a>>),
     Options((u64, u64)),
     Params(&'a [u8]),
@@ -176,7 +178,7 @@ impl<'a> DQLPacketPayloadIterator<'a> {
         Ok(plan_id)
     }
 
-    fn get_sender_id(&mut self) -> Result<&'a str, ProtocolError> {
+    fn get_sender_id(&mut self) -> Result<u64, ProtocolError> {
         assert_eq!(self.state, DQLState::SenderId);
         let sender_id = get_sender_id(&mut self.raw_payload)?;
         self.state = DQLState::Vtables;
@@ -231,15 +233,8 @@ pub(crate) fn get_plan_id(raw_payload: &mut Cursor<&[u8]>) -> Result<u64, Protoc
     Ok(plan_id)
 }
 
-pub(crate) fn get_sender_id<'a>(
-    raw_payload: &mut Cursor<&'a [u8]>,
-) -> Result<&'a str, ProtocolError> {
-    let sender_id_len = rmp::decode::read_bin_len(raw_payload)?;
-    let start = raw_payload.position() as usize;
-    let end = start + sender_id_len as usize;
-    let sender_id = from_utf8(&raw_payload.get_ref()[start..end])
-        .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
-    raw_payload.set_position(end as u64);
+pub(crate) fn get_sender_id(raw_payload: &mut Cursor<&[u8]>) -> Result<u64, ProtocolError> {
+    let sender_id = read_int(raw_payload)?;
     Ok(sender_id)
 }
 
@@ -528,7 +523,7 @@ mod tests {
             .set_plan_id(5264743718663535479)
             .set_request_id("14e84334-71df-4e69-8c85-dc2707a390c6".to_string())
             .set_schema_info(HashMap::from([(12, 138)]))
-            .set_sender_id("some".to_string())
+            .set_sender_id(42)
             .set_vtables(HashMap::from([(
                 "TMP_1302_".to_string(),
                 vec![vec![1, 2, 3], vec![3, 2, 1]],
@@ -540,14 +535,14 @@ mod tests {
         let mut writer = Vec::new();
 
         write_dql_packet(&mut writer, &data).unwrap();
-        let expected: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x96\x81\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw\xc4\x04some\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
+        let expected: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x96\x81\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw*\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
 
         assert_eq!(writer, expected);
     }
 
     #[test]
     fn test_execute_dql_cache_hit() {
-        let mut data: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x96\x81\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw\xc4\x04some\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
+        let mut data: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x96\x81\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw*\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
 
         let l = read_array_len(&mut data).unwrap();
         assert_eq!(l, 3);
@@ -575,7 +570,7 @@ mod tests {
                     assert_eq!(plan_id, 5264743718663535479);
                 }
                 DQLResult::SenderId(sender_id) => {
-                    assert_eq!(sender_id, "some");
+                    assert_eq!(sender_id, 42);
                 }
                 DQLResult::Vtables(vtables) => {
                     for result in vtables {

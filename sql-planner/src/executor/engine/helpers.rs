@@ -155,7 +155,7 @@ impl<V: Encode> MsgpackEncode for ArrayMsgpackEncoder<'_, V> {
 
 pub struct ExecutionData {
     plan_id: u64,
-    sender_id: String,
+    sender_id: u64,
     vtables: HashMap<SmolStr, Rc<VirtualTable>>,
     plan: ExecutionPlan, // TODO: maybe Rc<> + top_id is better
 }
@@ -173,8 +173,8 @@ impl DQLDataSource for ExecutionData {
         self.plan_id
     }
 
-    fn get_sender_id(&self) -> &str {
-        self.sender_id.as_str()
+    fn get_sender_id(&self) -> u64 {
+        self.sender_id
     }
 
     fn get_request_id(&self) -> &str {
@@ -278,7 +278,7 @@ impl DQLCacheMissDataSource for ExecutionCacheMissData {
 
 pub fn build_dql_data_source(
     exec_plan: ExecutionPlan,
-    sender_id: String,
+    sender_id: u64,
 ) -> Result<ExecutionData, SbroadError> {
     let query_type = exec_plan.query_type()?;
     let mut sub_plan_id = None;

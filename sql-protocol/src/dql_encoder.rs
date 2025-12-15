@@ -47,7 +47,7 @@ pub trait DQLDataSource {
 
     fn get_plan_id(&self) -> u64;
 
-    fn get_sender_id(&self) -> &str;
+    fn get_sender_id(&self) -> u64;
 
     fn get_request_id(&self) -> &str;
 
@@ -148,7 +148,7 @@ pub(crate) mod test {
             self
         }
         #[allow(dead_code)]
-        pub fn set_sender_id(mut self, sender_id: String) -> Self {
+        pub fn set_sender_id(mut self, sender_id: u64) -> Self {
             self.encoder.sender_id = sender_id;
             self
         }
@@ -188,7 +188,7 @@ pub(crate) mod test {
     pub struct TestDQLDataSource {
         pub schema_info: HashMap<u32, u64>,
         pub plan_id: u64,
-        pub sender_id: String,
+        pub sender_id: u64,
         pub meta: HashMap<String, Vec<(String, ColumnType)>>,
         pub sql: String,
         pub request_id: String,
@@ -206,8 +206,8 @@ pub(crate) mod test {
             self.plan_id
         }
 
-        fn get_sender_id(&self) -> &str {
-            self.sender_id.as_str()
+        fn get_sender_id(&self) -> u64 {
+            self.sender_id
         }
 
         fn get_request_id(&self) -> &str {

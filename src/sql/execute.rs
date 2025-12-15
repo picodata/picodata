@@ -5,13 +5,12 @@ use crate::sql::lua::{lua_decode_ibufs, lua_query_metadata};
 use crate::sql::router::get_table_version_by_id;
 use crate::sql::PicoPortC;
 use crate::tlog;
-use crate::traft::{node, RaftId};
+use crate::traft::node;
 use ahash::HashMapExt;
 use rmp::decode::read_array_len;
 use rmp::encode::{write_array_len, write_str, write_str_len, write_uint};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql::backend::sql::space::ADMIN_ID;
-use sql::errors::Entity::MsgPack;
 use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::engine::helpers::{
     build_insert_args, init_delete_tuple_builder, init_insert_tuple_builder,
@@ -275,13 +274,9 @@ fn dql_cache_miss_execute<'p, 'b, R: Vshard + QueryCache>(
 where
     R::Cache: StorageCache<u64, SmolStr>,
 {
-    let sender_id = protocol_get!(info, DQLResult::SenderId);
+    let raft_id = protocol_get!(info, DQLResult::SenderId);
 
     let node = node::global().expect("should be init");
-    let raft_id: RaftId = sender_id.parse::<u64>().map_err(|e| {
-        SbroadError::Invalid(MsgPack, Some(format_smolstr!("Invalid sender id: {}", e)))
-    })?;
-
     let instance = with_su(ADMIN_ID, || node.storage.instances.get(&raft_id))?
         .map_err(|e| SbroadError::DispatchError(format_smolstr!("Failed to get instance: {e}")))?;
 
