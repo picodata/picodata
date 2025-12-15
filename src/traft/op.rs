@@ -397,7 +397,7 @@ impl std::fmt::Display for Op {
 
         impl std::fmt::Display for DisplayAsJson<&TupleBuffer> {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                if let Some(data) = rmp_serde::from_slice::<serde_json::Value>(self.0.as_ref())
+                if let Some(data) = rmp_serde::from_slice::<rmpv::Value>(self.0.as_ref())
                     .ok()
                     .and_then(|v| serde_json::to_string(&ValueWithTruncations(&v)).ok())
                 {
@@ -411,45 +411,52 @@ impl std::fmt::Display for Op {
         const TRUNCATION_THRESHOLD_FOR_STRING: usize = 100;
         const TRUNCATION_THRESHOLD_FOR_ARRAY: usize = 16;
         const TRUNCATION_THRESHOLD_FOR_MAP: usize = 10;
-        struct ValueWithTruncations<'a>(&'a serde_json::Value);
+        struct ValueWithTruncations<'a>(&'a rmpv::Value);
         impl Serialize for ValueWithTruncations<'_> {
             #[inline]
             fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
             where
                 S: ::serde::Serializer,
             {
-                use serde_json::Value;
+                use rmpv::Value;
 
                 match self.0 {
-                    Value::Null => serializer.serialize_unit(),
-                    Value::Bool(b) => serializer.serialize_bool(*b),
-                    Value::Number(n) => n.serialize(serializer),
                     Value::String(s) => {
                         let threshold = TRUNCATION_THRESHOLD_FOR_STRING;
-                        if s.len() > threshold {
-                            let s = format!("{}<TRUNCATED>...", &s[..threshold]);
-                            serializer.serialize_str(&s)
+                        if let Some(s) = s.as_str() {
+                            if s.len() > threshold {
+                                let s = format!("{}<TRUNCATED>...", &s[..threshold]);
+                                serializer.serialize_str(&s)
+                            } else {
+                                serializer.serialize_str(s)
+                            }
                         } else {
-                            serializer.serialize_str(s)
+                            let s = s.as_bytes();
+                            let s = picodata_plugin::util::DisplayAsHexBytesLimitted(s).to_string();
+                            serializer.serialize_str(&s)
                         }
                     }
                     Value::Array(v) => {
+                        use serde::ser::SerializeSeq;
                         let threshold = TRUNCATION_THRESHOLD_FOR_ARRAY;
-                        if v.len() > threshold {
-                            let mut t = Vec::with_capacity(threshold + 1);
-                            t.extend_from_slice(&v[..threshold]);
-                            t.push(Value::from("<TRUNCATED>"));
-                            t.serialize(serializer)
-                        } else {
-                            v.serialize(serializer)
+                        let mut seq = serializer.serialize_seq(Some(v.len()))?;
+                        for item in v.iter().take(threshold) {
+                            seq.serialize_element(&ValueWithTruncations(item))?;
                         }
+                        if v.len() > threshold {
+                            seq.serialize_element(&Value::from("<TRUNCATED>"))?;
+                        }
+                        seq.end()
                     }
-                    Value::Object(m) => {
+                    Value::Map(m) => {
                         use serde::ser::SerializeMap;
                         let mut map = serializer.serialize_map(Some(m.len()))?;
                         let threshold = TRUNCATION_THRESHOLD_FOR_MAP;
                         for (k, v) in m.iter().take(threshold) {
-                            map.serialize_entry(k, v)?;
+                            map.serialize_entry(
+                                &ValueWithTruncations(k),
+                                &ValueWithTruncations(v),
+                            )?;
                         }
                         if m.len() > threshold {
                             map.serialize_entry(
@@ -459,6 +466,7 @@ impl std::fmt::Display for Op {
                         }
                         map.end()
                     }
+                    other => other.serialize(serializer),
                 }
             }
         }
