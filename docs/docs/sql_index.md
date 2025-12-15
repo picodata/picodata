@@ -115,6 +115,7 @@ article.md-typeset.md-typeset ul {
 <b>J</b>
 
 * [JOIN](reference/sql/join.md)
+* [JSON_EXTRACT_PATH](reference/sql/json_extract_path.md)
 
 <b>L</b>
 
