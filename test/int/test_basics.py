@@ -275,6 +275,8 @@ def test_pico_raft_log(instance: Instance):
     def preprocess(s: str):
         import re
 
+        re_jwt_secret = re.compile(r'Replace\(_pico_db_config, \["jwt_secret","","[^"]{16}"\]\)')
+
         res = []
         tail = s
         while tail:
@@ -316,14 +318,11 @@ def test_pico_raft_log(instance: Instance):
                         columns[3] = contents
 
             # Handle jwt_secret - replace dynamic 16-character value with placeholder
-            jwt_pattern = r'Replace\(_pico_db_config, \["jwt_secret","","[^"]{16}"\]\)'
-            if re.search(jwt_pattern, contents):
-                contents = re.sub(
-                    r'Replace\(_pico_db_config, \["jwt_secret","","[^"]{16}"\]\)',
-                    'Replace(_pico_db_config, ["jwt_secret","","<jwt_secret>"])',
-                    contents,
-                )
-                columns[3] = contents
+            contents = re_jwt_secret.sub(
+                'Replace(_pico_db_config, ["jwt_secret","","<jwt_secret>"])',
+                contents,
+            )
+            columns[3] = contents
 
             # now let's break up the gigantic raft log rows with long BatchDml
             # entries into several lines, so that each sub operation is on it's
@@ -353,8 +352,9 @@ def test_pico_raft_log(instance: Instance):
                     cursor += 1
                 # append the rest, this is probably just ")|"
                 res.append(contents[op_start:].strip())
-            else:
-                res.append(str.join("|", columns))
+                continue
+
+            res.append(str.join("|", columns))
 
         return str.join("\n", res)
 
