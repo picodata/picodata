@@ -75,6 +75,10 @@ struct PreparedStatementMetadata {
    // Prepared Statement на клиенте.
    query: String,
 
+   // Имя тира, в котором
+   // лежат таблицы запроса.
+   tier: String,
+
    // Метаданные SQL запроса.
    // Содержит позиции ключей распределения 
    // в массиве параметров запроса.
