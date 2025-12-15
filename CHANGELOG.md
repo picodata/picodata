@@ -15,6 +15,9 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Support JSON_EXTRACT_PATH function.
 - New column `sync_incarnation` is added to `_pico_instance` system table.
+- New ALTER SYSTEM parameter `governor_check_replication_error` (default: true)
+  enables the checking if replication is broken on any instance, in which case
+  the instance will be automatically made Offline.
 
 ### Fixes
 

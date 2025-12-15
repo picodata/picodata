@@ -6,11 +6,13 @@ use crate::traft::RaftIndex;
 use crate::util::NoYieldsRefCell;
 use smol_str::format_smolstr;
 use smol_str::SmolStr;
+use std::borrow::Cow;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::rc::Rc;
 use std::time::Duration;
+use tarantool::error::BoxError;
 use tarantool::fiber;
 use tarantool::time::Instant;
 
@@ -66,6 +68,13 @@ impl InstanceReachabilityManager {
                         );
                     }
                 }
+
+                if old.target_state.incarnation < new.target_state.incarnation {
+                    // Instance attempts to change it's state to Online, let's
+                    // reset it's replication error and give it a chances to
+                    // come back (perhaps the admin has fixed the error manually)
+                    self.reset_replication_error(new.raft_id);
+                }
             }
 
             (Some(old), None) => {
@@ -103,7 +112,7 @@ impl InstanceReachabilityManager {
 
         // Even if it was previously reported as unreachable another message was
         // sent to it, so raft node state may have changed and another
-        // report_unreachable me be needed.
+        // report_unreachable may be needed.
         info.is_reported.set(false);
 
         if let Some(is_leader_unknown) = is_leader_unknown {
@@ -137,6 +146,7 @@ impl InstanceReachabilityManager {
     /// about which instances should be reported as unreachable to the raft node.
     pub fn take_unreachables_to_report(&mut self) -> Vec<RaftId> {
         let auto_offline_timeout = self.parameters.borrow().governor_auto_offline_timeout();
+        let check_replication_error = self.parameters.borrow().governor_check_replication_error;
 
         let mut res = Vec::new();
         for (&raft_id, info) in &self.infos {
@@ -144,7 +154,8 @@ impl InstanceReachabilityManager {
                 // Don't report nodes repeatedly.
                 continue;
             }
-            let status = self.check_reachability(auto_offline_timeout, info, false);
+            let status =
+                self.check_reachability(auto_offline_timeout, check_replication_error, info, false);
             if matches!(status, Unreachable(_)) {
                 res.push(raft_id);
                 info.is_reported.set(true);
@@ -159,10 +170,12 @@ impl InstanceReachabilityManager {
     /// Returns a mapping from `raft_id` to unreachability reason.
     pub fn get_unreachables(&self) -> HashMap<RaftId, SmolStr> {
         let auto_offline_timeout = self.parameters.borrow().governor_auto_offline_timeout();
+        let check_replication_error = self.parameters.borrow().governor_check_replication_error;
 
         let mut res = HashMap::new();
         for (&raft_id, info) in &self.infos {
-            let status = self.check_reachability(auto_offline_timeout, info, true);
+            let status =
+                self.check_reachability(auto_offline_timeout, check_replication_error, info, true);
             if let Unreachable(reason) = status {
                 res.insert(raft_id, reason);
             }
@@ -176,6 +189,7 @@ impl InstanceReachabilityManager {
     fn check_reachability(
         &self,
         auto_offline_timeout: Duration,
+        check_replication_error: bool,
         info: &InstanceReachabilityInfo,
         need_reason: bool,
     ) -> ReachabilityState {
@@ -183,6 +197,19 @@ impl InstanceReachabilityManager {
             Self::check_reachability_via_rpc(auto_offline_timeout, info, need_reason);
         if matches!(reachability, Unreachable(_)) {
             return reachability;
+        }
+
+        let now = fiber::clock();
+        if check_replication_error {
+            if let Some((err, start)) = info.replication_error.as_deref() {
+                let since_start = now.duration_since(*start);
+                let reason = if need_reason {
+                    format_smolstr!("Replication broken for {since_start:.3?}: {err}")
+                } else {
+                    "".into()
+                };
+                return Unreachable(reason);
+            }
         }
 
         let Some((their_applied, they_applied_at)) = info.last_applied_index else {
@@ -422,6 +449,33 @@ impl InstanceReachabilityManager {
             self.lagging_applied.pop_front();
         }
     }
+
+    pub fn set_replication_error<'a>(
+        &mut self,
+        raft_id: RaftId,
+        error: impl Into<Cow<'a, BoxError>>,
+    ) {
+        let info = self.infos.entry(raft_id).or_default();
+        if info.replication_error.is_some() {
+            // Only keep the first occurence of the error for the timestamp
+            return;
+        }
+
+        let now = fiber::clock();
+        let error = error.into().into_owned();
+        info.replication_error = Some(Box::new((error, now)));
+    }
+
+    pub fn reset_replication_error(&mut self, raft_id: RaftId) {
+        if let Some(info) = self.infos.get_mut(&raft_id) {
+            info.replication_error = None;
+        }
+    }
+
+    pub fn get_replication_error(&self, raft_id: RaftId) -> Option<&(BoxError, Instant)> {
+        let info = self.infos.get(&raft_id)?;
+        info.replication_error.as_deref()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -433,7 +487,7 @@ pub enum ReachabilityState {
 use ReachabilityState::*;
 
 /// Information about recent attempts to communicate with a single given instance.
-#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone)]
 pub struct InstanceReachabilityInfo {
     pub raft_id: RaftId,
 
@@ -451,6 +505,14 @@ pub struct InstanceReachabilityInfo {
     ///
     /// Do not delay heartbeats to it, so it can learn that we are the leader.
     pub is_leader_unknown: bool,
+
+    /// If this is `Some`, then we have detected a replication error (probably
+    /// conflict) which prevents this instance from synchronizing with the rest
+    /// of the replicaset.
+    pub replication_error: Option<Box<(BoxError, Instant)>>,
+
+    /// If this is true then this instance was reported to `raft-rs` as
+    /// unreachable. We keep this flag to avoid redundant reports.
     pub is_reported: Cell<bool>,
 
     /// Info needed for rate limiting error reports in logs

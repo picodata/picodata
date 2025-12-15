@@ -122,6 +122,8 @@ pub fn handle_replicaset_master_switchover<'i>(
             timeout: sync_timeout,
         };
 
+        let new_master_raft_id = topology_ref.instance_by_name(&new_master_name)?.raft_id;
+
         let master_actualize_dml = Dml::update(
             storage::Replicasets::TABLE_ID,
             &[&replicaset_name],
@@ -135,6 +137,7 @@ pub fn handle_replicaset_master_switchover<'i>(
                 old_master_name,
                 demote_rpc,
                 new_master_name,
+                new_master_raft_id,
                 sync_rpc,
                 promotion_vclock,
                 master_actualize_dml,
