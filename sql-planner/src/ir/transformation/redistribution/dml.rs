@@ -11,7 +11,7 @@ use smol_str::format_smolstr;
 use super::{MotionKey, Target};
 
 impl Plan {
-    /// Return first child of `Insert` node
+    /// Return first child of `Insert`, `Update` or `Delete` node
     pub fn dml_child_id(&self, dml_node_id: NodeId) -> Result<NodeId, SbroadError> {
         let dml_node = self.get_relation_node(dml_node_id)?;
         if let Relational::Insert(Insert { child, .. })

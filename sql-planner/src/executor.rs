@@ -196,7 +196,11 @@ where
                 let motion = self.exec_plan.get_ir_plan().get_relation_node(*motion_id)?;
                 if let Relational::Motion(Motion { policy, .. }) = motion {
                     match policy {
-                        MotionPolicy::Segment(_) => {
+                        MotionPolicy::Segment(_)
+                        // EXPLAIN(RAW) will be executed on the storage node
+                        // We don't want to materialize VALUES on router and lose them in the execution plan.
+                            if !self.exec_plan.get_ir_plan().is_raw_explain() =>
+                        {
                             // If child is values, then we can materialize it
                             // on the router.
                             let motion_child_id =

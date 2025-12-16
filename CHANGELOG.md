@@ -107,6 +107,7 @@ with the `YY.MINOR.MICRO` scheme.
   As a result:
   - INSERT performance increased by 20%-70% depending on the size of the rows.
   - TPC-B performance increased by ~10%.
+- Support `EXPLAIN (RAW)` for DML queries.
 
 - Add INDEXED BY clause. It is sqlite feature which allows to specify index for
   table lookup.

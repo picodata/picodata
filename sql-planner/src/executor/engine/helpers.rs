@@ -1,5 +1,6 @@
 use crate::{
     backend::sql::space::{TableGuard, ADMIN_ID},
+    ir::api::children::Children,
     ir::node::expression::MutExpression,
 };
 use ahash::AHashMap;
@@ -990,6 +991,33 @@ fn has_zero_limit_clause(plan: &ExecutionPlan) -> Result<bool, SbroadError> {
     Ok(false)
 }
 
+/// Return motion child of DML node if exists
+///
+/// # Errors
+/// - node is not a relational type
+fn dml_get_motion_child(
+    ex_plan: &ExecutionPlan,
+    dml_node_id: NodeId,
+) -> Result<Option<NodeId>, SbroadError> {
+    let ir_plan = ex_plan.get_ir_plan();
+    debug_assert!(matches!(
+        ir_plan.get_relation_node(dml_node_id)?,
+        Relational::Delete(_) | Relational::Update(_) | Relational::Insert(_)
+    ));
+    match ir_plan.children(dml_node_id) {
+        Children::None => Ok(None),
+        Children::Single(child_id) => {
+            let child = ir_plan.get_relation_node(*child_id)?;
+            if let Relational::Motion(Motion { child: Some(_), .. }) = child {
+                Ok(Some(ex_plan.get_motion_subtree_root(*child_id)?))
+            } else {
+                Ok(None)
+            }
+        }
+        _ => unreachable!("DML node can have no more than one child"),
+    }
+}
+
 /// A helper function to dispatch the execution plan from the router to the storages.
 ///
 /// # Errors
@@ -1006,7 +1034,7 @@ pub fn dispatch_impl<'p>(
         return Ok(());
     }
 
-    let sub_plan = plan.take_subtree(top_id)?;
+    let mut sub_plan = plan.take_subtree(top_id)?;
 
     let tier = {
         match sub_plan.get_ir_plan().tier.as_ref() {
@@ -1017,10 +1045,14 @@ pub fn dispatch_impl<'p>(
     let tier_runtime = coordinator.get_vshard_object_by_tier(tier.as_ref())?;
     if sub_plan.get_ir_plan().is_raw_explain() {
         if sub_plan.get_ir_plan().is_dml()? {
-            return Err(SbroadError::Unsupported(
-                Entity::Plan,
-                Some("EXPLAIN QUERY PLAN is not supported for DML queries".into()),
-            ));
+            let top_id = sub_plan.get_ir_plan().get_top()?;
+            let Some(dql_child_id) = dml_get_motion_child(&sub_plan, top_id)? else {
+                // Dispatch is called for each motion in `materialize_subtree`.
+                // Each dispatch unlinks the motion subtree due to the call to `take_subtree`.
+                // We should not return an error because the child motion may have been removed by a previous dispatch call.
+                return Ok(());
+            };
+            sub_plan.get_mut_ir_plan().set_top(dql_child_id)?;
         }
         tier_runtime.exec_ir_on_any_node(sub_plan, buckets, port)?;
         return Ok(());
