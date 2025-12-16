@@ -1954,7 +1954,8 @@ impl Plan {
 
     #[allow(clippy::too_many_lines)]
     fn resolve_update_conflicts(&mut self, update_id: NodeId) -> Result<Strategy, SbroadError> {
-        if self.dml_node_table(update_id)?.is_global() {
+        let table = self.dml_node_table(update_id)?;
+        if table.is_global() {
             return self.resolve_dml_node_conflict_for_global_table(update_id);
         }
 
@@ -1962,7 +1963,6 @@ impl Plan {
             self.get_relation_node(update_id)?
         {
             let mut map = Strategy::new(update_id);
-            let table = self.dml_node_table(update_id)?;
             let child_id = self.get_first_rel_child(update_id)?;
             if !matches!(self.get_relation_node(child_id)?, Relational::Projection(_)) {
                 return Err(SbroadError::Invalid(
@@ -2104,7 +2104,8 @@ impl Plan {
     }
 
     fn resolve_delete_conflicts(&mut self, rel_id: NodeId) -> Result<Strategy, SbroadError> {
-        if self.dml_node_table(rel_id)?.is_global() {
+        let table = self.dml_node_table(rel_id)?;
+        if table.is_global() {
             return self.resolve_dml_node_conflict_for_global_table(rel_id);
         }
 
@@ -2121,7 +2122,6 @@ impl Plan {
         }
         let child_id = children[0];
 
-        let table = self.dml_node_table(rel_id)?;
         let pk_len = table.primary_key.positions.len();
         if pk_len == 0 {
             return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
