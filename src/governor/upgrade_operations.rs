@@ -64,6 +64,14 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("sql", "ALTER SYSTEM SET sql_preemption_interval_us = 500"),
         ],
     ),
+    (
+        "25.5.2",
+        &[
+            // Creation of Lua stored function `_pico_bucket`.
+            // Do it again (because it was a bug to create function previous time).
+            ("exec_script", InternalScript::CreateIfNotExistSqlBuiltins.as_str()),
+        ],
+    ),
 ];
 
 tarantool::define_str_enum! {
@@ -103,7 +111,7 @@ tarantool::define_str_enum! {
         /// Schema upgrade operation equivalent to:
         ///
         /// ```ignore
-        /// crate::init_sbroad_builtins_lua();
+        /// require('sbroad.builtins').create_functions()
         /// ```
         ///
         /// This may be called again whenever we add a new function.
@@ -136,10 +144,8 @@ crate::define_rpc_request! {
             InternalScript::AlterPicoTierAddBucketStateFields =>
                 execute_alter_pico_tier_add_bucket_state_fields(),
 
-            InternalScript::CreateIfNotExistSqlBuiltins => {
-                crate::init_sbroad_builtins_lua();
-                Ok(Response {})
-            }
+            InternalScript::CreateIfNotExistSqlBuiltins =>
+                execute_create_lua_procs(),
         }
     }
 
@@ -233,4 +239,15 @@ fn actualize_system_table_format<T: SystemTable>() -> traft::Result<()> {
     })?;
 
     Ok(())
+}
+
+fn execute_create_lua_procs() -> traft::Result<Response> {
+    let node = traft::node::global()?;
+    let is_master = !node.is_readonly();
+    if !is_master {
+        return Ok(Response {});
+    }
+    let lua = tarantool::lua_state();
+    lua.exec(r#" require('sbroad.builtins').create_functions() "#)?;
+    Ok(Response {})
 }

@@ -2,6 +2,7 @@ local dt = require('datetime')
 
 -- Builtin sbroad funcs implemented in LUA
 local builtins = {}
+local module = 'pico'
 
 builtins._PICO_BUCKET = function(tier)
     local op = "_pico_bucket"
@@ -88,16 +89,15 @@ builtins.SUBSTRING_TO_REGEXP = function(string, pattern, expr)
 end
 
 
-
 local function init()
-    local module = 'pico'
-
     if rawget(_G, module) == nil then
         error('buitins must be initialized after app module was set!')
     end
 
     _G[module].builtins = builtins
+end
 
+local function create_functions()
     body = string.format("function(...) return %s.builtins._PICO_BUCKET(...) end",
         module)
     box.schema.func.create("_pico_bucket", {
@@ -165,4 +165,5 @@ end
 
 return {
     init = init,
+    create_functions = create_functions,
 }

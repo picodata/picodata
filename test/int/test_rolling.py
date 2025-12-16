@@ -210,3 +210,16 @@ def test_successful_upgrade_then_failed_downgrade(factory: Factory):
 
     assert cluster.is_healthy(exclude=[shutdown_instance])
     assert shutdown_instance.is_ceased()
+
+
+@pytest.mark.xdist_group(name="rolling")
+def test_upgrade_25_5_to_25_6_check_procs(factory: Factory):
+    cluster = factory(of=Version.PREVIOUS_MINOR)
+    cluster.change_version(to=Version.CURRENT)
+
+    assert cluster.is_healthy()
+
+    proc_name = "_pico_bucket"
+    for i in cluster.instances:
+        res = i.call("box.space._func.index.name:select", [proc_name])
+        assert res[0][2] == proc_name
