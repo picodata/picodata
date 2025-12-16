@@ -163,11 +163,8 @@ pub(crate) fn setup() {
             let Some(tier) = node.storage.tiers.by_name(&tier)? else {
                 return Err(Error::NoSuchTier(tier));
             };
-            let config = crate::vshard::VshardConfig::from_storage(
-                &node.storage,
-                &tier.name,
-                tier.bucket_count,
-            )?;
+            let config =
+                crate::vshard::VshardConfig::from_storage(node, &tier.name, tier.bucket_count)?;
             Ok(config)
         }),
     );

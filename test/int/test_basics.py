@@ -706,24 +706,24 @@ cluster:
     space_bucket_id = storage_instance.eval("return box.space._bucket.id")
     total_bucket_count = 3000
 
-    storage_vshard_config_explicit = storage_instance.call(".proc_get_vshard_config", "storage")
-    assert storage_vshard_config_explicit == dict(
+    vshard_config_common = dict(
         discovery_mode="on",
-        sharding=storage_sharding,
         space_bucket_id=space_bucket_id,
         bucket_count=total_bucket_count,
+        box_cfg_mode="manual",
+        connection_fetch_schema=False,
+        failover_interval=10.0,
+        failover_ping_timeout=10.0,
     )
+
+    storage_vshard_config_explicit = storage_instance.call(".proc_get_vshard_config", "storage")
+    assert storage_vshard_config_explicit == dict(sharding=storage_sharding, **vshard_config_common)
 
     storage_vshard_config_implicit = storage_instance.call(".proc_get_vshard_config", None)
     assert storage_vshard_config_explicit == storage_vshard_config_implicit
 
     router_vshard_config_explicit = router_instance_1.call(".proc_get_vshard_config", "router")
-    assert router_vshard_config_explicit == dict(
-        discovery_mode="on",
-        sharding=router_sharding,
-        space_bucket_id=space_bucket_id,
-        bucket_count=total_bucket_count,
-    )
+    assert router_vshard_config_explicit == dict(sharding=router_sharding, **vshard_config_common)
 
     router_vshard_config_implicit = router_instance_1.call(".proc_get_vshard_config", None)
     assert router_vshard_config_explicit == router_vshard_config_implicit

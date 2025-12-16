@@ -14,6 +14,8 @@ with the `YY.MINOR.MICRO` scheme.
 - DDL queries with WAIT APPLIED GLOBALLY option (on by default) will no longer
   be blocked by Offline instances.
 - Auto-populate default options on restore to avoid panics.
+- Fixed that vshard would consume non-negligible amount of resources when idling
+  on big cluster setups.
 
 
 ## [25.4.4] - 2025-11-12
