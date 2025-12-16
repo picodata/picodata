@@ -688,6 +688,9 @@ mod tests {
             .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
             .unwrap();
 
+        crate::luamod::setup();
+        crate::preload_vshard();
+        crate::init_sbroad();
         crate::init_stored_procedures();
 
         let result: u32 = fiber::block_on(
@@ -748,6 +751,9 @@ mod tests {
             .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
             .unwrap();
 
+        crate::luamod::setup();
+        crate::preload_vshard();
+        crate::init_sbroad();
         crate::init_stored_procedures();
 
         tlog!(Info, "TEST: connecting {listen}");
@@ -839,6 +845,10 @@ mod tests {
             .peer_addresses
             .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
             .unwrap();
+
+        crate::luamod::setup();
+        crate::preload_vshard();
+        crate::init_sbroad();
         crate::init_stored_procedures();
 
         tlog!(Info, "TEST: connecting {listen}");

@@ -578,7 +578,7 @@ fn stored_procedures_are_initialized(log_non_found: bool) -> Result<bool> {
 /// Initializes Tarantool stored procedures.
 ///
 /// Those are used for inter-instance communication
-/// (discovery, rpc, public proc api).
+/// (discovery, rpc, public proc api) and SQL.
 fn init_stored_procedures() {
     let lua = ::tarantool::lua_state();
     for proc in ::tarantool::proc::all_procs().iter() {
@@ -638,6 +638,9 @@ fn init_stored_procedures() {
         "#,
     )
     .expect(".proc_query_metadata registration should never fail");
+
+    lua.exec(r#" require('sbroad.builtins').create_functions() "#)
+        .expect("sbroad.builtins registration should never fail");
 }
 
 /// Sets interactive prompt to display `picodata>`.
