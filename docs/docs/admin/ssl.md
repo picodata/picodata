@@ -193,17 +193,17 @@ chmod 600 ca.key server.key client.key client.pk8
 # server1.int
 openssl genrsa -out server1.int.key 2048
 openssl req -new -key server1.int.key -out server1.int.csr -subj "/CN=pico_service@server1.int"
-openssl x509 -req -in server1.int.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server1.int.crt -days 3650 -sha256 <(echo subjectAltName="DNS:server1.int")
+openssl x509 -req -in server1.int.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server1.int.crt -days 3650 -sha256 < <(echo subjectAltName="DNS:server1.int")
 
 # server2.int
 openssl genrsa -out server2.int.key 2048
 openssl req -new -key server2.int.key -out server2.int.csr -subj "/CN=pico_service@server2.int"
-openssl x509 -req -in server2.int.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server2.int.crt -days 3650 -sha256 <(echo subjectAltName="DNS:server2.int")
+openssl x509 -req -in server2.int.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server2.int.crt -days 3650 -sha256 < <(echo subjectAltName="DNS:server2.int")
 
 # server3.int
 openssl genrsa -out server3.int.key 2048
 openssl req -new -key server3.int.key -out server3.int.csr -subj "/CN=pico_service@server3.int"
-openssl x509 -req -in server3.int.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server3.int.crt -days 3650 -sha256 <(echo subjectAltName="DNS:server3.int")
+openssl x509 -req -in server3.int.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server3.int.crt -days 3650 -sha256 < <(echo subjectAltName="DNS:server3.int")
 ```
 
 !!! note "Примечание"
@@ -289,3 +289,26 @@ configure].
 [picodata status]: ../reference/cli.md#status
 [picodata expel]: ../reference/cli.md#expel
 [picodata plugin configure]: ../reference/cli.md#plugin_configure
+
+## Настройка HTTPS для безопасного доступа к метрикам и веб-интерфейсу {: #setup_https }
+
+Для безопасного доступа к [метрикам] и [веб-интерфейсу] Picodata
+настройте шифрование протокола HTTP. Для этого следует указать в
+конфигурационных файлах инстансов соответствующий блок настроек:
+
+```yaml
+https:
+    enabled: true
+    ca_file: cert.pem
+    key_file: key.pem
+```
+
+[метрикам]: monitoring.md/#enable_metrics
+[веб-интерфейсу]: ../tutorial/webui.md
+
+Для генерации необходимых сертификатов и ключей используйте приведенные
+[выше](#create_certs_and_keys) инструкции.
+
+См. также:
+
+- [Настройка HTTPS в файле конфигурации](../reference/config.md#instance_https)

@@ -86,45 +86,47 @@ cluster:
   default_bucket_count: 3000 # (2)!
   shredding: false # (4)!
 instance:
-  instance_dir: . # (14)!
-  backup_dir: ./backup # (41)!
-  name: null # (22)!
-  replicaset_name: null # (28)!
-  tier: default # (29)!
+  instance_dir: . # (15)!
+  backup_dir: ./backup # (42)!
+  name: null # (23)!
+  replicaset_name: null # (29)!
+  tier: default # (30)!
   failure_domain: {} # (12)!
-  peer: # (23)!
+  peer: # (24)!
   - 127.0.0.1:3301
-  iproto_listen: 127.0.0.1:3301 # (15)!
+  iproto_listen: 127.0.0.1:3301 # (16)!
   iproto_advertise: 127.0.0.1:3301 # (9)!
   http_listen: null # (13)!
+  https:
+    enabled: true (14)!
   admin_socket: ./admin.sock # (8)!
-  share_dir: null # (27)!
+  share_dir: null # (28)!
   audit: null # (10)!
   log:
-    level: info # (19)!
-    destination: null # (17)!
-    format: plain # (18)!
+    level: info # (20)!
+    destination: null # (18)!
+    format: plain # (19)!
   memtx:
-    memory: 64M # (21)!
-    max_tuple_size: 1M # (20)!
+    memory: 64M # (22)!
+    max_tuple_size: 1M # (21)!
   vinyl:
-    memory: 128M # (31)!
-    cache: 128M # (30)!
-    bloom_fpr: 0.05 # (32)!
-    max_tuple_size: 1M # (33)!
-    page_size: 8K # (34)!
-    range_size: 1G # (35)!
-    run_count_per_level: 2 # (36)!
-    run_size_ratio: 3.5 # (37)!
-    read_threads: 1 # (38)!
-    write_threads: 4 # (39)!
-    timeout: 60.0 # (40)!
+    memory: 128M # (32)!
+    cache: 128M # (31)!
+    bloom_fpr: 0.05 # (33)!
+    max_tuple_size: 1M # (34)!
+    page_size: 8K # (35)!
+    range_size: 1G # (36)!
+    run_count_per_level: 2 # (37)!
+    run_size_ratio: 3.5 # (38)!
+    read_threads: 1 # (39)!
+    write_threads: 4 # (40)!
+    timeout: 60.0 # (41)!
   pg:
-    listen: 127.0.0.1:4327 # (25)!
-    advertise: 127.0.0.1:4327 # (24)!
-    ssl: false # (26)!
+    listen: 127.0.0.1:4327 # (26)!
+    advertise: 127.0.0.1:4327 # (25)!
+    ssl: false # (27)!
   iproto_tls:
-    enabled: false # (16)!
+    enabled: false # (17)!
   boot_timeout: 7200 # (11)!
 ```
 
@@ -141,34 +143,35 @@ instance:
 11. [instance.boot_timeout](#instance_boot_timeout)
 12. [instance.failure_domain](#instance_failure_domain)
 13. [instance.http_listen](#instance_http_listen)
-14. [instance.instance_dir](#instance_instance_dir)
-15. [instance.iproto_listen](#instance_iproto_listen)
-16. [instance.iproto_tls](#instance_iproto_tls)
-17. [instance.log.destination](#instance_log_destination)
-18. [instance.log.format](#instance_log_format)
-19. [instance.log.level](#instance_log_level)
-20. [instance.memtx.max_tuple_size](#instance_memtx_max_tuple_size)
-21. [instance.memtx.memory](#instance_memtx_memory)
-22. [instance.name](#instance_name)
-23. [instance.peer](#instance_peer)
-24. [instance.pg.advertise](#instance_pg_advertise)
-25. [instance.pg.listen](#instance_pg_listen)
-26. [instance.pg.ssl](#instance_pg_ssl)
-27. [instance.share_dir](#instance_share_dir)
-28. [instance.replicaset_name](#instance_replicaset_name)
-29. [instance.tier](#instance_tier)
-30. [instance.vinyl.cache](#instance_vinyl_cache)
-31. [instance.vinyl.memory](#instance_vinyl_memory)
-32. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
-33. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
-34. [instance.vinyl.page_size](#instance_vinyl_page_size)
-35. [instance.vinyl.range_size](#instance_vinyl_range_size)
-36. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
-37. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
-38. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
-39. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
-40. [instance.vinyl.timeout](#instance_vinyl_timeout)
-41. [instance.backup_dir](#instance_backup_dir)
+14. [instance.https](#instance_https)
+15. [instance.instance_dir](#instance_instance_dir)
+16. [instance.iproto_listen](#instance_iproto_listen)
+17. [instance.iproto_tls](#instance_iproto_tls)
+18. [instance.log.destination](#instance_log_destination)
+19. [instance.log.format](#instance_log_format)
+20. [instance.log.level](#instance_log_level)
+21. [instance.memtx.max_tuple_size](#instance_memtx_max_tuple_size)
+22. [instance.memtx.memory](#instance_memtx_memory)
+23. [instance.name](#instance_name)
+24. [instance.peer](#instance_peer)
+25. [instance.pg.advertise](#instance_pg_advertise)
+26. [instance.pg.listen](#instance_pg_listen)
+27. [instance.pg.ssl](#instance_pg_ssl)
+28. [instance.share_dir](#instance_share_dir)
+29. [instance.replicaset_name](#instance_replicaset_name)
+30. [instance.tier](#instance_tier)
+31. [instance.vinyl.cache](#instance_vinyl_cache)
+32. [instance.vinyl.memory](#instance_vinyl_memory)
+33. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
+34. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
+35. [instance.vinyl.page_size](#instance_vinyl_page_size)
+36. [instance.vinyl.range_size](#instance_vinyl_range_size)
+37. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
+38. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
+39. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
+40. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
+41. [instance.vinyl.timeout](#instance_vinyl_timeout)
+42. [instance.backup_dir](#instance_backup_dir)
 
 См. также:
 
@@ -198,7 +201,7 @@ instance:
 * Значение по умолчанию: `1`
 
 Аналогичная переменная окружения: `PICODATA_INIT_REPLICATION_FACTOR`<br>
-Аналогичная команда: [`picodata run --init-replication-factor`]
+Задание параметра в командной строке: [`picodata run --init-replication-factor`]
 
 [`picodata run --init-replication-factor`]: cli.md#run_init_replication_factor
 
@@ -212,7 +215,7 @@ instance:
 * Значение по умолчанию: `demo`
 
 Аналогичная переменная окружения: `PICODATA_CLUSTER_NAME`<br>
-Аналогичная команда: [`picodata run --cluster-name`]
+Задание параметра в командной строке: [`picodata run --cluster-name`]
 
 [`picodata run --cluster-name`]: cli.md#run_cluster_name
 
@@ -230,7 +233,7 @@ instance:
 * Значение по умолчанию: `false`
 
 Аналогичная переменная окружения: `PICODATA_SHREDDING`<br>
-Аналогичная команда: [`picodata run --shredding`]
+Задание параметра в командной строке: [`picodata run --shredding`]
 
 [`picodata run --shredding`]: cli.md#run_shredding
 
@@ -297,7 +300,7 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 * Значение по умолчанию: `./admin.sock`
 
 Аналогичная переменная окружения: `PICODATA_ADMIN_SOCK`<br>
-Аналогичная команда: [`picodata run --admin-sock`]
+Задание параметра в командной строке: [`picodata run --admin-sock`]
 
 [`picodata run --admin-sock`]: cli.md#run_admin_sock
 [пользовательской консоли]: ../tutorial/connecting.md#postgresql
@@ -316,7 +319,7 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 * Значение по умолчанию: `null`
 
 Аналогичная переменная окружения: `PICODATA_AUDIT_LOG`<br>
-Аналогичная команда: [`picodata run --audit`]
+Задание параметра в командной строке: [`picodata run --audit`]
 
 [`picodata run --audit`]: cli.md#run_audit
 
@@ -332,7 +335,7 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 * Значение по умолчанию: `<instance-dir>/backup`
 
 Аналогичная переменная окружения: `PICODATA_BACKUP_DIR`<br>
-Аналогичная команда: [`picodata run --backup-dir`]
+Задание параметра в командной строке: [`picodata run --backup-dir`]
 
 [`picodata run --backup-dir`]: cli.md#run_backup_dir
 
@@ -373,7 +376,7 @@ picodata run -c instance.boot_timeout=3600
 * Значение по умолчанию: `{}`
 
 Аналогичная переменная окружения: `PICODATA_FAILURE_DOMAIN`<br>
-Аналогичная команда: [`picodata run --failure-domain`]
+Задание параметра в командной строке: [`picodata run --failure-domain`]
 
 Синтаксис значений домена отказа различается при работе c файлом
 конфигурации (массив данных) и при использовании в командной строке
@@ -423,9 +426,47 @@ export PICODATA_FAILURE_DOMAIN=rack=12-90,server=srv_007,vm=rhel8
 * Значение по умолчанию: `null`
 
 Аналогичная переменная окружения: `PICODATA_HTTP_LISTEN`<br>
-Аналогичная команда: [`picodata run --http-listen`]
+Задание параметра в командной строке: [`picodata run --http-listen`]
 
 [`picodata run --http-listen`]: cli.md#run_http_listen
+
+### instance.https {: #instance_https }
+
+Конфигурация защищенного режима для работы с кластером по протоколу
+HTTPS. Используется для получения метрик и доступа к веб-интерфейсу.
+Основной параметр `instance.https.enabled` отвечает за
+включение/отключение режима шифрования.
+
+* Тип: *bool*
+* Значение по умолчанию: `false`
+
+При установке значения `true` требуется использовать 2 дополнительных параметра:
+
+- `ca_file` (*str*) — путь к файлу сертификата
+- `key_file` (*str*) — путь к файлу с закрытым ключом
+
+а также, опционально, укажите путь к файлу с паролем, если он был задан
+в настройках сертификата (пароль требуется для расшифровки закрытого
+ключа):
+
+- `pass_file` (*str*)
+
+При включенном HTTPS и использовании пароля, блок
+настроек файла конфигурации будет иметь следующий вид:
+
+```yaml
+https:
+    enabled: true
+    ca_file: cert.pem
+    key_file: key.pem
+    pass_file: pass.txt
+```
+
+Задание параметра в командной строке: [`picodata run --config-parameter`]. Пример:
+
+```shell
+picodata run -c instance.https.enabled=true -c instance.https.ca_file=https/cert.pem -c instance.https.key_file=https/key.pem -c instance.https.pass_file=https/pass.txt
+```
 
 ### instance.instance_dir {: #instance_instance_dir }
 
@@ -437,7 +478,7 @@ export PICODATA_FAILURE_DOMAIN=rack=12-90,server=srv_007,vm=rhel8
 * Значение по умолчанию: `.`
 
 Аналогичная переменная окружения: `PICODATA_INSTANCE_DIR`<br>
-Аналогичная команда: [`picodata run --instance-dir`]
+Задание параметра в командной строке: [`picodata run --instance-dir`]
 
 [`picodata run --instance-dir`]: cli.md#run_instance_dir
 
@@ -452,7 +493,7 @@ export PICODATA_FAILURE_DOMAIN=rack=12-90,server=srv_007,vm=rhel8
 * Значение по умолчанию: `127.0.0.1:3301`
 
 Аналогичная переменная окружения: `PICODATA_IPROTO_ADVERTISE`<br>
-Аналогичная команда: [`picodata run --iproto-advertise`]
+Задание параметра в командной строке: [`picodata run --iproto-advertise`]
 
 [`picodata run --iproto-advertise`]: cli.md#run_iproto_advertise
 
@@ -466,7 +507,7 @@ export PICODATA_FAILURE_DOMAIN=rack=12-90,server=srv_007,vm=rhel8
 * Значение по умолчанию: `127.0.0.1:3301`
 
 Аналогичная переменная окружения: `PICODATA_IPROTO_LISTEN`<br>
-Аналогичная команда: [`picodata run --iproto-listen`]
+Задание параметра в командной строке: [`picodata run --iproto-listen`]
 
 [`picodata run --iproto-listen`]: cli.md#run_iproto_listen
 
@@ -496,7 +537,7 @@ export PICODATA_FAILURE_DOMAIN=rack=12-90,server=srv_007,vm=rhel8
     ca_file: tls/ca.crt
 ```
 
-Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+Задание параметра в командной строке: [`picodata run --config-parameter`]. Пример:
 
 ```shell
 picodata run -c instance.iproto_tls.enabled=true -c instance.iproto_tls.cert_file=tls/server.crt -c instance.iproto_tls.key_file=tls/server.key -c instance.iproto_tls.ca_file=tls/ca.crt
@@ -522,7 +563,7 @@ picodata run -c instance.iproto_tls.enabled=true -c instance.iproto_tls.cert_fil
 * Значение по умолчанию: `null`
 
 Аналогичная переменная окружения: `PICODATA_LOG`<br>
-Аналогичная команда: [`picodata run --log`]
+Задание параметра в командной строке: [`picodata run --log`]
 
 [`picodata run --log`]: cli.md#run_log
 
@@ -558,7 +599,7 @@ picodata run -c instance.log.format=json
 * Значение по умолчанию: `info`
 
 Аналогичная переменная окружения: `PICODATA_LOG_LEVEL`<br>
-Аналогичная команда: [`picodata run --log-level`]
+Задание параметра в командной строке: [`picodata run --log-level`]
 
 [`picodata run --log-level`]: cli.md#run_log_level
 
@@ -581,7 +622,7 @@ picodata run -c instance.memtx.max_tuple_size=2M
 ```
 
 Аналогичная переменная окружения: `PICODATA_MEMTX_MAX_TUPLE_SIZE`<br>
-Аналогичная команда: [`picodata run --memtx-max-tuple-size`]
+Задание параметра в командной строке: [`picodata run --memtx-max-tuple-size`]
 
 [`picodata run --memtx-max-tuple-size`]: cli.md#run_memtx_max_tuple_size
 
@@ -611,7 +652,7 @@ picodata run -c instance.memtx.memory=128M
 ```
 
 Аналогичная переменная окружения: `PICODATA_MEMTX_MEMORY`<br>
-Аналогичная команда: [`picodata run --memtx-memory`]
+Задание параметра в командной строке: [`picodata run --memtx-memory`]
 
 [`picodata run --memtx-memory`]: cli.md#run_memtx_memory
 
@@ -641,7 +682,7 @@ picodata run -c instance.memtx.system_memory=128M
 ```
 
 Аналогичная переменная окружения: `PICODATA_MEMTX_SYSTEM_MEMORY`<br>
-Аналогичная команда: [`picodata run --memtx-system-memory`]
+Задание параметра в командной строке: [`picodata run --memtx-system-memory`]
 
 [`picodata run --memtx-system-memory`]: cli.md#run_memtx_system_memory
 
@@ -661,7 +702,7 @@ picodata run -c instance.memtx.system_memory=128M
 * Значение по умолчанию: `null`
 
 Аналогичная переменная окружения: `PICODATA_INSTANCE_NAME`<br>
-Аналогичная команда: [`picodata run --instance-name`]
+Задание параметра в командной строке: [`picodata run --instance-name`]
 
 [`picodata run --instance-name`]: cli.md#run_instance_name
 
@@ -684,7 +725,7 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 ```
 
 Аналогичная переменная окружения: `PICODATA_PEER`<br>
-Аналогичная команда: [`picodata run --peer`]
+Задание параметра в командной строке: [`picodata run --peer`]
 
 [`picodata run --peer`]: cli.md#run_peer
 
@@ -700,7 +741,7 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 * Значение по умолчанию: `127.0.0.1:4327`
 
 Аналогичная переменная окружения: `PICODATA_PG_ADVERTISE`<br>
-Аналогичная команда: [`picodata run --pg-advertise`]
+Задание параметра в командной строке: [`picodata run --pg-advertise`]
 
 [`picodata run --pg-advertise`]: cli.md#run_pg_advertise
 
@@ -715,7 +756,7 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 * Значение по умолчанию: `127.0.0.1:4327`
 
 Аналогичная переменная окружения: `PICODATA_PG_LISTEN`<br>
-Аналогичная команда: [`picodata run --pg-listen`]
+Задание параметра в командной строке: [`picodata run --pg-listen`]
 
 [`picodata run --pg-listen`]: cli.md#run_pg_listen
 
@@ -783,7 +824,7 @@ picodata run -c instance.pg_ssl.enabled=true -c instance.pg.cert_file=tls/server
 * Значение по умолчанию: `null`
 
 Аналогичная переменная окружения: `PICODATA_REPLICASET_NAME`<br>
-Аналогичная команда: [`picodata run --replicaset-name`]
+Задание параметра в командной строке: [`picodata run --replicaset-name`]
 
 [`picodata run --replicaset-name`]: cli.md#run_replicaset_name
 
@@ -797,7 +838,7 @@ picodata run -c instance.pg_ssl.enabled=true -c instance.pg.cert_file=tls/server
 * Значение по умолчанию: `null`
 
 Аналогичная переменная окружения: `PICODATA_SHARE_DIR`<br>
-Аналогичная команда: [`picodata run --share-dir`]
+Задание параметра в командной строке: [`picodata run --share-dir`]
 
 [`picodata run --share-dir`]: cli.md#run_share_dir
 
@@ -813,7 +854,7 @@ picodata run -c instance.pg_ssl.enabled=true -c instance.pg.cert_file=tls/server
 * Значение по умолчанию: `default`
 
 Аналогичная переменная окружения: `PICODATA_INSTANCE_TIER`<br>
-Аналогичная команда: [`picodata run --tier`]
+Задание параметра в командной строке: [`picodata run --tier`]
 
 [`picodata run --tier`]: cli.md#run_tier
 
