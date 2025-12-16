@@ -298,6 +298,14 @@ table.legend {
             <td>PICODATA_HTTP_LISTEN</td>
         </tr>
         <tr>
+            <td><span class="instance">https</span></td>
+            <td>Признак использования зашифрованного подключения (HTTPS) для работы с метриками и веб-интерфейсом</td>
+            <td>false</td>
+            <td></td>
+            <td>[instance.https.enabled](config.md#instance_https)</td>
+            <td></td>
+        </tr>
+        <tr>
             <td><span class="cluster">init-replication-factor</span></td>
             <td>Число реплик (инстансов с одинаковым набором хранимых данных) для каждого репликасета</td>
             <td>1</td>
