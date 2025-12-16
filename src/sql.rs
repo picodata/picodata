@@ -613,7 +613,7 @@ fn dispatch_bound_statement_impl<'p>(
             Ok::<(), Error>(())
         })??;
 
-        if plan.is_dml_on_global_table()? {
+        if plan.is_dml_on_global_table()? && !plan.is_raw_explain() {
             let ConsumerResult { row_count } =
                 do_dml_on_global_tbl(query, override_deadline, governor_op_id)?;
             port_write_dml_response(port, row_count);
