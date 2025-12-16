@@ -754,7 +754,7 @@ pub fn proc_get_vshard_config(tier_name: Option<SmolStr>) -> Result<RawByteBuf, 
         return Err(Error::NoSuchTier(tier_name));
     };
 
-    let config = VshardConfig::from_storage(&node.storage, &tier.name, tier.bucket_count)?;
+    let config = VshardConfig::from_storage(node, &tier.name, tier.bucket_count)?;
     let data = rmp_serde::to_vec_named(&config).map_err(Error::other)?;
     Ok(RawByteBuf::from(data))
 }

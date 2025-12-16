@@ -70,7 +70,7 @@ crate::define_rpc_request! {
                 continue;
             }
 
-            let mut config = VshardConfig::from_storage(storage, &tier.name, tier.bucket_count)?;
+            let mut config = VshardConfig::from_storage(node, &tier.name, tier.bucket_count)?;
 
             let tls_config = &PicodataConfig::get().instance.iproto_tls;
             let listen_config = crate::tarantool::ListenConfig::new(

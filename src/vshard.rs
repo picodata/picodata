@@ -1,17 +1,14 @@
 use crate::config::PicodataConfig;
-use crate::instance::Instance;
 use crate::instance::InstanceName;
 use crate::pico_service::pico_service_password;
-use crate::replicaset::Replicaset;
-use crate::replicaset::ReplicasetName;
 use crate::replicaset::Weight;
 use crate::rpc::ddl_apply::Response;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::sql::router;
-use crate::storage::Catalog;
 use crate::storage::ToEntryIter as _;
 use crate::storage::TABLE_ID_BUCKET;
 use crate::tarantool::ListenConfig;
+use crate::topology_cache::TopologyCacheRef;
 use crate::traft::error::Error as TraftError;
 use crate::traft::error::Error;
 use crate::traft::node;
@@ -24,6 +21,7 @@ use smol_str::SmolStr;
 use sql::executor::engine::Vshard;
 use std::collections::HashMap;
 use std::time::Duration;
+use tarantool::define_str_enum;
 use tarantool::space::SpaceId;
 use tarantool::tlua;
 use tarantool::tuple::ToTupleBuffer;
@@ -191,6 +189,7 @@ pub fn get_replicaset_uuid_by_bucket_id(tier: &str, bucket_id: u64) -> Result<Sm
 // VshardConfig
 ////////////////////////////////////////////////////////////////////////////////
 
+/// See `cfg_template` in `vshard/vshard/cfg.lua`
 #[rustfmt::skip]
 #[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Default, Clone, Debug, PartialEq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
@@ -204,12 +203,40 @@ pub struct VshardConfig {
     /// Total number of virtual buckets on each tier.
     bucket_count: u64,
 
-    /// This field is not stored in the global storage, instead
-    /// it is set right before the config is passed into vshard.*.cfg,
-    /// otherwise vshard will override it with an incorrect value.
+    /// Timeout value used when sending health check RPCs between replicas.
+    ///
+    /// Default in vshard is `5` seconds.
+    failover_ping_timeout: f64,
+
+    /// The period in seconds with which replicas are sending each other health checks.
+    ///
+    /// Default in vshard is `1` second.
+    failover_interval: f64,
+
+    /// If set to `manual` vshard will not call box.cfg when being reconfigured,
+    /// which is what we want.
+    box_cfg_mode: BoxCfgMode,
+
+    /// Passed to net.box. If `true` then net.box will fetch the schema upon
+    /// connection. We don't need that.
+    connection_fetch_schema: bool,
+
+    /// This field is different for each instance, so we don't set it when
+    /// generating the common config.
     #[serde(skip_serializing_if="Option::is_none")]
     #[serde(default)]
     pub listen: Option<ListenConfig>,
+}
+
+const VSHARD_FAILOVER_INTERVAL: f64 = 10.0;
+
+define_str_enum! {
+    #[derive(Default)]
+    pub enum BoxCfgMode {
+        #[default]
+        Auto = "auto",
+        Manual = "manual",
+    }
 }
 
 #[rustfmt::skip]
@@ -247,39 +274,31 @@ tarantool::define_str_enum! {
 
 impl VshardConfig {
     pub fn from_storage(
-        storage: &Catalog,
+        node: &node::Node,
         tier_name: &str,
         bucket_count: u64,
     ) -> Result<Self, Error> {
-        let instances = storage.instances.all_instances()?;
-        let peer_addresses: HashMap<_, _> = storage
+        let topology = node.topology_cache.get();
+        let peer_addresses: HashMap<_, _> = node
+            .storage
             .peer_addresses
             .iter()?
             .filter(|peer| peer.connection_type == ConnectionType::Iproto)
             .map(|pa| (pa.raft_id, pa.address))
             .collect();
-        let replicasets: Vec<_> = storage.replicasets.iter()?.collect();
-        let replicasets: HashMap<_, _> = replicasets.iter().map(|rs| (&rs.name, rs)).collect();
 
-        let result = Self::new(
-            &instances,
-            &peer_addresses,
-            &replicasets,
-            tier_name,
-            bucket_count,
-        );
+        let result = Self::new(topology, &peer_addresses, tier_name, bucket_count);
         Ok(result)
     }
 
     pub fn new(
-        instances: &[Instance],
+        topology: TopologyCacheRef,
         peer_addresses: &HashMap<RaftId, SmolStr>,
-        replicasets: &HashMap<&ReplicasetName, &Replicaset>,
         tier_name: &str,
         bucket_count: u64,
     ) -> Self {
         let mut sharding: HashMap<SmolStr, ReplicasetSpec> = HashMap::new();
-        for peer in instances {
+        for peer in topology.all_instances() {
             if !peer.may_respond() || peer.tier != tier_name {
                 continue;
             }
@@ -289,7 +308,7 @@ impl VshardConfig {
                 );
                 continue;
             };
-            let Some(r) = replicasets.get(&peer.replicaset_name) else {
+            let Ok(r) = topology.replicaset_by_name(&peer.replicaset_name) else {
                 crate::tlog!(Debug, "skipping instance: replicaset not initialized yet";
                     "instance_name" => %peer.name,
                 );
@@ -324,6 +343,13 @@ impl VshardConfig {
             sharding,
             discovery_mode: DiscoveryMode::On,
             space_bucket_id: TABLE_ID_BUCKET,
+            failover_ping_timeout: VSHARD_FAILOVER_INTERVAL,
+            failover_interval: VSHARD_FAILOVER_INTERVAL,
+            // We don't need vshard to be calling box.cfg() for us,
+            // governor always calls proc_replication before proc_sharding.
+            box_cfg_mode: BoxCfgMode::Manual,
+            // We don't need vshard net.box connections to have up-to-date schema definitions
+            connection_fetch_schema: false,
             bucket_count,
         }
     }
