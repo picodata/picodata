@@ -55,6 +55,7 @@ nav:
       - admin/deploy_kubernetes.md
       - admin/server_setup.md
       - admin/cluster_mgmt.md
+      - admin/cluster_update.md
       - admin/monitoring.md
       - admin/benchmarking.md
       - admin/backup_and_restore.md
