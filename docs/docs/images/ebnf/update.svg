@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="735" height="199" viewBox="0 0 735 199">
+<svg xmlns="http://www.w3.org/2000/svg" width="821" height="199" viewBox = "0 0 821 199">
    <defs>
       <style type="text/css">
     @namespace "http://www.w3.org/2000/svg";
@@ -46,76 +46,99 @@
       <rect x="123" y="45" width="52" height="32" class="nonterminal"/>
       <text class="nonterminal" x="133" y="65">table</text>
    </a>
-   <rect x="197" y="47" width="44" height="32" rx="10"/>
-   <rect x="195"
+   <rect x="217" y="79" width="82" height="32" rx="10"/>
+   <rect x="215"
+         y="77"
+         width="82"
+         height="32"
+         class="terminal"
+         rx="10"/>
+   <text class="terminal" x="225" y="97">INDEXED</text>
+   <rect x="319" y="79" width="38" height="32" rx="10"/>
+   <rect x="317"
+         y="77"
+         width="38"
+         height="32"
+         class="terminal"
+         rx="10"/>
+   <text class="terminal" x="327" y="97">BY</text>
+   <a xmlns:xlink="http://www.w3.org/1999/xlink"
+      xlink:href="../object"
+      xlink:title="index">
+      <rect x="377" y="79" width="54" height="32"/>
+      <rect x="375" y="77" width="54" height="32" class="nonterminal"/>
+      <text class="nonterminal" x="385" y="97">index</text>
+   </a>
+   <rect x="471" y="47" width="44" height="32" rx="10"/>
+   <rect x="469"
          y="45"
          width="44"
          height="32"
          class="terminal"
          rx="10"/>
-   <text class="terminal" x="205" y="65">SET</text>
+   <text class="terminal" x="479" y="65">SET</text>
    <a xmlns:xlink="http://www.w3.org/1999/xlink"
       xlink:href="../object"
       xlink:title="column">
-      <rect x="281" y="47" width="64" height="32"/>
-      <rect x="279" y="45" width="64" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="289" y="65">column</text>
+      <rect x="555" y="47" width="64" height="32"/>
+      <rect x="553" y="45" width="64" height="32" class="nonterminal"/>
+      <text class="nonterminal" x="563" y="65">column</text>
    </a>
-   <rect x="365" y="47" width="30" height="32" rx="10"/>
-   <rect x="363"
+   <rect x="639" y="47" width="30" height="32" rx="10"/>
+   <rect x="637"
          y="45"
          width="30"
          height="32"
          class="terminal"
          rx="10"/>
-   <text class="terminal" x="373" y="65">=</text>
+   <text class="terminal" x="647" y="65">=</text>
    <a xmlns:xlink="http://www.w3.org/1999/xlink"
       xlink:href="#expression"
       xlink:title="expression">
-      <rect x="415" y="47" width="90" height="32"/>
-      <rect x="413" y="45" width="90" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="423" y="65">expression</text>
+      <rect x="689" y="47" width="90" height="32"/>
+      <rect x="687" y="45" width="90" height="32" class="nonterminal"/>
+      <text class="nonterminal" x="697" y="65">expression</text>
    </a>
-   <rect x="281" y="3" width="24" height="32" rx="10"/>
-   <rect x="279"
+   <rect x="555" y="3" width="24" height="32" rx="10"/>
+   <rect x="553"
          y="1"
          width="24"
          height="32"
          class="terminal"
          rx="10"/>
-   <text class="terminal" x="289" y="21">,</text>
-   <rect x="565" y="79" width="60" height="32" rx="10"/>
-   <rect x="563"
-         y="77"
+   <text class="terminal" x="563" y="21">,</text>
+   <rect x="405" y="165" width="60" height="32" rx="10"/>
+   <rect x="403"
+         y="163"
          width="60"
          height="32"
          class="terminal"
          rx="10"/>
-   <text class="terminal" x="573" y="97">FROM</text>
+   <text class="terminal" x="413" y="183">FROM</text>
    <a xmlns:xlink="http://www.w3.org/1999/xlink"
       xlink:href="#scan"
       xlink:title="scan">
-      <rect x="645" y="79" width="48" height="32"/>
-      <rect x="643" y="77" width="48" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="653" y="97">scan</text>
+      <rect x="485" y="165" width="48" height="32"/>
+      <rect x="483" y="163" width="48" height="32" class="nonterminal"/>
+      <text class="nonterminal" x="493" y="183">scan</text>
    </a>
-   <rect x="507" y="165" width="70" height="32" rx="10"/>
-   <rect x="505"
+   <rect x="593" y="165" width="70" height="32" rx="10"/>
+   <rect x="591"
          y="163"
          width="70"
          height="32"
          class="terminal"
          rx="10"/>
-   <text class="terminal" x="515" y="183">WHERE</text>
+   <text class="terminal" x="601" y="183">WHERE</text>
    <a xmlns:xlink="http://www.w3.org/1999/xlink"
       xlink:href="#expression"
       xlink:title="expression">
-      <rect x="597" y="165" width="90" height="32"/>
-      <rect x="595" y="163" width="90" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="605" y="183">expression</text>
+      <rect x="683" y="165" width="90" height="32"/>
+      <rect x="681" y="163" width="90" height="32" class="nonterminal"/>
+      <text class="nonterminal" x="691" y="183">expression</text>
    </a>
    <path class="line"
-         d="m17 61 h2 m0 0 h10 m74 0 h10 m0 0 h10 m52 0 h10 m0 0 h10 m44 0 h10 m20 0 h10 m64 0 h10 m0 0 h10 m30 0 h10 m0 0 h10 m90 0 h10 m-264 0 l20 0 m-1 0 q-9 0 -9 -10 l0 -24 q0 -10 10 -10 m244 44 l20 0 m-20 0 q10 0 10 -10 l0 -24 q0 -10 -10 -10 m-244 0 h10 m24 0 h10 m0 0 h200 m40 44 h10 m0 0 h138 m-168 0 h20 m148 0 h20 m-188 0 q10 0 10 10 m168 0 q0 -10 10 -10 m-178 10 v12 m168 0 v-12 m-168 12 q0 10 10 10 m148 0 q10 0 10 -10 m-158 10 h10 m60 0 h10 m0 0 h10 m48 0 h10 m22 -32 l2 0 m2 0 l2 0 m2 0 l2 0 m-270 86 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m0 0 h190 m-220 0 h20 m200 0 h20 m-240 0 q10 0 10 10 m220 0 q0 -10 10 -10 m-230 10 v12 m220 0 v-12 m-220 12 q0 10 10 10 m200 0 q10 0 10 -10 m-210 10 h10 m70 0 h10 m0 0 h10 m90 0 h10 m23 -32 h-3"/>
-   <polygon points="725 147 733 143 733 151"/>
-   <polygon points="725 147 717 143 717 151"/>
+         d="m17 61 h2 m0 0 h10 m74 0 h10 m0 0 h10 m52 0 h10 m20 0 h10 m0 0 h224 m-254 0 h20 m234 0 h20 m-274 0 q10 0 10 10 m254 0 q0 -10 10 -10 m-264 10 v12 m254 0 v-12 m-254 12 q0 10 10 10 m234 0 q10 0 10 -10 m-244 10 h10 m82 0 h10 m0 0 h10 m38 0 h10 m0 0 h10 m54 0 h10 m20 -32 h10 m44 0 h10 m20 0 h10 m64 0 h10 m0 0 h10 m30 0 h10 m0 0 h10 m90 0 h10 m-264 0 l20 0 m-1 0 q-9 0 -9 -10 l0 -24 q0 -10 10 -10 m244 44 l20 0 m-20 0 q10 0 10 -10 l0 -24 q0 -10 -10 -10 m-244 0 h10 m24 0 h10 m0 0 h200 m22 44 l2 0 m2 0 l2 0 m2 0 l2 0 m-458 86 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m0 0 h138 m-168 0 h20 m148 0 h20 m-188 0 q10 0 10 10 m168 0 q0 -10 10 -10 m-178 10 v12 m168 0 v-12 m-168 12 q0 10 10 10 m148 0 q10 0 10 -10 m-158 10 h10 m60 0 h10 m0 0 h10 m48 0 h10 m40 -32 h10 m0 0 h190 m-220 0 h20 m200 0 h20 m-240 0 q10 0 10 10 m220 0 q0 -10 10 -10 m-230 10 v12 m220 0 v-12 m-220 12 q0 10 10 10 m200 0 q10 0 10 -10 m-210 10 h10 m70 0 h10 m0 0 h10 m90 0 h10 m23 -32 h-3"/>
+   <polygon points="811 147 819 143 819 151"/>
+   <polygon points="811 147 803 143 803 151"/>
 </svg>

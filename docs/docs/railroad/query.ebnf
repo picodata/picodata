@@ -20,7 +20,8 @@ from        ::= 'FROM' scan
                 (('UNION' 'ALL'? | 'EXCEPT' 'DISTINCT'?) select)?
                 ('LIMIT' (unsigned | 'ALL' | 'NULL'))?
 projection  ::= (table '.')? '*' | expression (('AS')? name)? | aggregate | window (('AS')? name)?
-scan        ::= (table | '(' dql ')') ('AS'? name)?
+scan_table  ::= (table ('AS'? name)? ('INDEXED' 'BY' index)?)
+scan        ::= (table ('AS'? name)? ('INDEXED BY' index)? | '(' dql ')' ('AS'? name)? )
 expression  ::= ('NOT'* (
                     (table '.')? column
                     | abs
@@ -137,10 +138,10 @@ dml         ::= (call | delete | insert | update)
                     (',' (('sql_motion_row_max' | 'sql_vdbe_opcode_max') '=' unsigned))*
                 ')')?
 call        ::= 'CALL' procedure '(' (literal (',' literal)*)? ')'
-delete      ::= 'DELETE' 'FROM' table ('WHERE' expression)?
+delete      ::= 'DELETE' 'FROM' table ('INDEXED' 'BY' index)? ('WHERE' expression)?
 insert      ::= 'INSERT' 'INTO' table ('(' column (',' column)* ')')? dql
                 ('ON' 'CONFLICT' 'DO' ('NOTHING' | 'REPLACE' | 'FAIL'))?
-update      ::= 'UPDATE' table 'SET'
+update      ::= 'UPDATE' table ('INDEXED' 'BY' index)? 'SET'
                 column '=' expression (',' column '=' expression)*
                 ('FROM' scan)? ('WHERE' expression)?
 acl         ::= (alter_user | create_role | create_user | drop_role | drop_user | grant | revoke | audit_policy)

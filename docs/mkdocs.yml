@@ -111,6 +111,7 @@ nav:
       - reference/sql/update.md
       - reference/sql/values.md
     - Использование:
+      - reference/sql/indexed_by.md
       - reference/sql/with.md
       - reference/sql/window.md
       - reference/sql/join.md
