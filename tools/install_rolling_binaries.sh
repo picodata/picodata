@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # NOTE(kbezuglyi):
-# 
+#
 # * This script is used for tests on rolling upgrades. It downloads needed
 #   executables to our Docker image for the CI.
-# 
+#
 # * We only need previous minor and major versions, as well as minor and major
 #   versions before previous ones.
-# 
+#
 # * It is not possible to use only `dnf`/`rpm`/`yum` with our repository, as these
 #   package managers does not allow to install two different versions of the same
 #   software alongside together.
@@ -42,3 +42,4 @@ function install {
 
 install "25.3"
 install "25.4"
+install "25.5"
