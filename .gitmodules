@@ -2,9 +2,12 @@
 	path = tarantool-sys
 	url = ../tarantool.git
 	ignore = dirty
+	branch = picodata-25.5
 [submodule "vshard"]
 	path = vshard
 	url = ../vshard.git
+	branch = picodata-25.5
 [submodule "http"]
 	path = http
 	url = ../http.git
+	branch = picodata-25.5
