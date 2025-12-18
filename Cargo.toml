@@ -75,7 +75,7 @@ slog = { version = "2.7", features = [
 smallvec = { workspace = true, features = ["write"] }
 smol_str = { workspace = true }
 socket2 = "0.5"
-sql_protocol = { version = "25.4", path = "sql-protocol" }
+sql_protocol = { workspace = true }
 sqlformat = "0.4"
 sqlparser = { version = "0.40", features = ["visitor"] }
 stringprep = "0.1"
@@ -144,6 +144,7 @@ serde = "1.0"
 serde_bytes = "0.11"
 serde_json = "1.0"
 smol_str = "0.2"
+sql_protocol = { path = "sql-protocol" }
 tarantool = { path = "tarantool/tarantool", features = ["picodata"] }
 thiserror = "1.0"
 time = "0.3"
