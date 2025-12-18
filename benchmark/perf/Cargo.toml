@@ -10,9 +10,9 @@ edition.workspace = true
 bincode = "1.3"
 pest = "2.0"
 pest_derive = "2.0"
-picodata = { path = "../..", version = "25" }
+picodata = { path = "../.." }
 postgres-types = { workspace = true }
-sql-core = { path = "../../sql-planner", version = "0.1" }
+sql-core = { path = "../../sql-planner" }
 
 [dev-dependencies]
 clap = { workspace = true }
