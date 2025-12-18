@@ -393,7 +393,10 @@ cluster:
     storage3 = cluster.add_instance(wait_online=False, tier="storage")
     storage4 = cluster.add_instance(wait_online=False, tier="storage")
 
-    cluster.wait_online()
+    storage3.start()
+    storage4.start()
+    storage3.wait_online()
+    storage4.wait_online()
 
     assert storage4.replicaset_name != storage1.replicaset_name
     assert storage4.replicaset_name == storage3.replicaset_name
@@ -406,10 +409,52 @@ cluster:
     storage5 = cluster.add_instance(wait_online=False, tier="storage")
     storage6 = cluster.add_instance(wait_online=False, tier="storage")
 
-    cluster.wait_online()
+    storage5.start()
+    storage6.start()
+    storage5.wait_online()
+    storage6.wait_online()
 
     assert storage5.replicaset_name != storage1.replicaset_name
     assert storage5.replicaset_name == storage6.replicaset_name
+
+    #
+    # Now let's see what happens when an offline replicaset has
+    # target_master_name != current_master_name
+    #
+
+    cluster.wait_has_states(storage1, "Offline", "Offline")
+    cluster.wait_has_states(storage2, "Offline", "Offline")
+
+    [[current_master, target_master]] = leader.sql(
+        "SELECT current_master_name, target_master_name FROM _pico_replicaset WHERE name = ?", storage1.replicaset_name
+    )
+    assert current_master == target_master
+
+    counter = leader.wait_governor_status("idle")
+
+    # Request a master switchover in an Offline replicaset
+    leader.sql(
+        """
+        UPDATE _pico_replicaset
+        SET target_master_name = new_master
+        FROM (
+            SELECT i.name AS new_master
+            FROM _pico_replicaset AS r
+            JOIN _pico_instance AS i ON i.replicaset_name = r.name
+            WHERE i.name != target_master_name AND r.name = ?
+        )
+        """,
+        storage1.replicaset_name,
+    )
+
+    # Bump a vshard config version to force governor do perform a step
+    leader.sql("UPDATE _pico_tier SET target_vshard_config_version = target_vshard_config_version + 1")
+    leader.wait_governor_status("idle", old_step_counter=counter)
+
+    [[current_master, target_master]] = leader.sql(
+        "SELECT current_master_name, target_master_name FROM _pico_replicaset WHERE name = ?", storage1.replicaset_name
+    )
+    assert current_master != target_master
 
 
 def test_replication_rpc_protection_from_old_governor(cluster: Cluster):
