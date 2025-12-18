@@ -69,6 +69,7 @@ use std::time::Duration;
 mod conf_change;
 pub(crate) mod plan;
 mod queue;
+mod replication;
 mod sharding;
 pub mod upgrade_operations;
 

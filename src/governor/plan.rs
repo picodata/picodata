@@ -1,5 +1,6 @@
 use super::conf_change::raft_conf_change;
 use super::queue::handle_governor_queue;
+use super::replication::handle_replicaset_master_switchover;
 use super::sharding::{handle_sharding, handle_sharding_bootstrap};
 use super::GovernorBackoffManager;
 use crate::cas;
@@ -237,85 +238,20 @@ pub(super) fn action_plan<'i>(
     //
     // This must be done after instances have (re)configured replication
     // because master switchover requires synchronizing via tarantool replication.
-    let new_current_master = replicasets
-        .values()
-        .find(|r| r.current_master_name != r.target_master_name);
-    if let Some(r) = new_current_master {
-        let replicaset_name = &r.name;
-        let old_master_name = &r.current_master_name;
-        let new_master_name = &r.target_master_name;
-        let promotion_vclock = &r.promotion_vclock;
+    if let Some(plan) =
+        handle_replicaset_master_switchover(instances, replicasets, tiers, term, sync_timeout)?
+    {
+        debug_assert!(
+            matches!(
+                plan,
+                Plan::ReplicasetMasterConsistentSwitchover { .. }
+                    | Plan::ReplicasetMasterFailover { .. }
+            ),
+            "{:?}",
+            plan.kind()
+        );
 
-        let mut replicaset_dml = UpdateOps::new();
-        replicaset_dml.assign(
-            column_name!(Replicaset, current_master_name),
-            new_master_name,
-        )?;
-
-        let mut bump_dml = vec![];
-
-        let replicaset_config_version_bump = get_replicaset_config_version_bump_op(r);
-        bump_dml.push(replicaset_config_version_bump);
-
-        let tier_name = &r.tier;
-        let tier = tiers
-            .get(tier_name.as_str())
-            .expect("tier for instance should exists");
-
-        let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op(tier)?;
-        bump_dml.push(vshard_config_version_bump);
-
-        let ranges = vec![
-            // We make a decision based on this instance's state so the operation
-            // should fail in case there's a change to it in the uncommitted log
-            cas::Range::new(storage::Instances::TABLE_ID).eq([old_master_name]),
-        ];
-
-        let old_master_may_respond = instances
-            .iter()
-            .find(|i| i.name == old_master_name)
-            .map(|i| i.may_respond());
-        if let Some(true) = old_master_may_respond {
-            let demote_rpc = rpc::replication::DemoteRequest { term };
-            let sync_rpc = rpc::replication::ReplicationSyncRequest {
-                term,
-                vclock: promotion_vclock.clone(),
-                timeout: sync_timeout,
-            };
-
-            let master_actualize_dml = Dml::update(
-                storage::Replicasets::TABLE_ID,
-                &[replicaset_name],
-                replicaset_dml,
-                ADMIN_ID,
-            )?;
-
-            return Ok(ReplicasetMasterConsistentSwitchover {
-                replicaset_name,
-                old_master_name,
-                demote_rpc,
-                new_master_name,
-                sync_rpc,
-                promotion_vclock,
-                master_actualize_dml,
-                bump_dml,
-                ranges,
-            }
-            .into());
-        } else {
-            let get_vclock_rpc = GetVclockRpc {};
-
-            return Ok(ReplicasetMasterFailover {
-                old_master_name,
-                new_master_name,
-                get_vclock_rpc,
-                replicaset_name,
-                replicaset_dml,
-                bump_dml,
-                ranges,
-            }
-            .into());
-        }
+        return Ok(plan);
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -1011,6 +947,25 @@ macro_rules! define_plan {
             )+
         }
 
+        impl Plan<'_> {
+            pub fn kind(&self) -> ActionKind {
+                match self {
+                    Self::GoIdle => ActionKind::GoIdle,
+                    $(
+                        Self::$stage { .. } => ActionKind::$stage,
+                    )+
+                }
+            }
+        }
+
+        #[derive(Default, Debug, PartialEq, Eq, Hash, Clone, Copy)]
+        pub enum ActionKind {
+            #[default]
+            GoIdle,
+            $(
+                $stage,
+            )+
+        }
     }
 }
 
@@ -1490,7 +1445,7 @@ pub fn get_first_ready_replicaset_in_tier<'r>(
 
 /// Constructs a global Dml operation to bump the target_config_version field
 /// in the given replicaset.
-fn get_replicaset_config_version_bump_op(replicaset: &Replicaset) -> Dml {
+pub(super) fn get_replicaset_config_version_bump_op(replicaset: &Replicaset) -> Dml {
     let mut ops = UpdateOps::new();
     ops.assign(
         column_name!(Replicaset, target_config_version),
