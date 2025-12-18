@@ -30,6 +30,9 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed that instances would be made Offline immediately after a raft entry is
   applied if there weren't any entries applied for a long time before that
 - Fixed that instances would randomly fail with ER_READONLY during bootstrap
+- Fixed that governor would send redundant proc_sharding RPCs which would make
+  it impossible to deploy huge clusters. Now RPCs from governor are split into
+  batches of configurable size (default 200, ALTER SYSTEM parameter `governor_rpc_batch_size`).
 
 
 ## [25.5.1] - 2025-12-19

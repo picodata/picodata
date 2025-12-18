@@ -649,6 +649,7 @@ def test_read_from_system_tables(cluster: Cluster):
         "governor_common_rpc_timeout",
         "governor_plugin_rpc_timeout",
         "governor_raft_op_timeout",
+        "governor_rpc_batch_size",
         "iproto_net_msg_max",
         "jwt_secret",
         "memtx_checkpoint_count",

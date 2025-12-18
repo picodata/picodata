@@ -2,10 +2,10 @@ use super::conf_change::raft_conf_change;
 use super::queue::handle_governor_queue;
 use super::replication::handle_replicaset_master_switchover;
 use super::sharding::{handle_sharding, handle_sharding_bootstrap};
-use super::GovernorBackoffManager;
 use crate::cas;
 use crate::catalog::governor_queue::GovernorOperationDef;
 use crate::column_name;
+use crate::governor::LastStepInfo;
 use crate::has_states;
 use crate::instance::state::{State, StateVariant};
 use crate::instance::{Instance, InstanceName};
@@ -33,7 +33,9 @@ use crate::util::Uppercase;
 use crate::warn_or_panic;
 use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
+use std::time::Duration;
 use tarantool::space::{SpaceId, UpdateOps};
+use tarantool::time::Instant;
 use tarantool::vclock::Vclock;
 
 #[allow(clippy::too_many_arguments)]
@@ -57,13 +59,14 @@ pub(super) fn action_plan<'i>(
     plugins: &HashMap<PluginIdentifier, PluginDef>,
     services: &HashMap<PluginIdentifier, Vec<&'i ServiceDef>>,
     plugin_op: Option<&'i PluginOp>,
-    sync_timeout: std::time::Duration,
+    sync_timeout: Duration,
+    batch_size: usize,
     global_cluster_version: SmolStr,
     next_schema_version: u64,
     governor_operations: &'i [GovernorOperationDef],
     global_catalog_version: Option<SmolStr>,
     pending_catalog_version: Option<SmolStr>,
-    backoff_manager: &GovernorBackoffManager,
+    last_step_info: &mut LastStepInfo,
 ) -> Result<Plan<'i>> {
     // This function is specifically extracted, to separate the task
     // construction from any IO and/or other yielding operations.
@@ -285,17 +288,22 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // sharding on each tier, update current vshard config
-    if let Some(plan) = handle_sharding(term, applied, tiers, instances, replicasets, sync_timeout)?
-    {
-        // Verifies if `proc_sharding` encountered a prior failure
-        // and the backoff timeout period has not yet elapsed.
-        // Returns error and retries governor cycle in such case.
-        if backoff_manager.sharding.should_try() {
-            return Ok(plan);
-        }
-        return Err(Error::Other(
-            "backoff manager prevented proc_sharding from running".into(),
-        ));
+    if let Some(plan) = handle_sharding(
+        last_step_info,
+        term,
+        applied,
+        tiers,
+        instances,
+        replicasets,
+        sync_timeout,
+        batch_size,
+    )? {
+        debug_assert!(
+            matches!(plan, Plan::UpdateCurrentVshardConfig { .. }),
+            "{:?}",
+            plan.kind()
+        );
+        return Ok(plan);
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -973,7 +981,6 @@ use stage::*;
 
 pub mod stage {
     use super::*;
-    use std::time::Duration;
 
     define_plan! {
         pub struct ConfChange {
@@ -981,14 +988,21 @@ pub mod stage {
         }
 
         pub struct UpdateCurrentVshardConfig<'i> {
-            /// Instances to send the `rpc` request to.
-            pub targets: Vec<&'i InstanceName>,
+            /// All instances which need to handle `rpc` request before `cas` can be applied.
+            pub targets_total: Vec<&'i InstanceName>,
+            /// A batch of instances to send the `rpc` request to on this iteration.
+            pub targets_batch: Vec<&'i InstanceName>,
             /// Request to call [`rpc::sharding::proc_sharding`] on `targets`.
             pub rpc: rpc::sharding::Request,
             /// Global DML operation which updates `current_vshard_config_version` in corresponding record of table `_pico_tier`.
             pub cas: cas::Request,
             /// Tier name to which the vshard configuration applies
             pub tier_name: SmolStr,
+            /// If `targets_batch` is empty then this means that all RPC targets
+            /// are in backoff at the moment and governor has nothing else to do
+            /// but wait. This is the next moment when backoff will end for at
+            /// least one of the targets.
+            pub next_try: Option<Instant>,
         }
 
         pub struct TransferLeadership<'i> {

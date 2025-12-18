@@ -35,6 +35,17 @@ crate::define_rpc_request! {
         node.status().check_term(req.term)?;
         let storage = &node.storage;
 
+        crate::error_injection!("PROC_SHARDING_RANDOM_FAILURE" => {
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+
+            fiber::sleep(Duration::from_secs_f64(rng.gen_range(0.0..3.0)));
+
+            if rng.gen_bool(0.05) {
+                return Err(Error::other("injected error"));
+            }
+        });
+
         let lua = ::tarantool::lua_state();
         let current_instance_tier = node.raft_storage.tier()?.expect("tier for instance should exists");
 
