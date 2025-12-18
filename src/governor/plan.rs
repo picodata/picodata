@@ -23,6 +23,7 @@ use crate::storage::{PropertyName, SystemTable};
 use crate::sync::GetVclockRpc;
 use crate::tier::Tier;
 use crate::tlog;
+use crate::topology_cache::TopologyCacheRef;
 use crate::traft::error::{Error, IdOfInstance};
 #[allow(unused_imports)]
 use crate::traft::op::PluginRaftOp;
@@ -42,6 +43,7 @@ pub(super) fn action_plan<'i>(
     cluster_name: &'static str,
     cluster_uuid: &'static str,
     sentinel_status: SentinelStatus,
+    topology_ref: &TopologyCacheRef,
     instances: &'i [Instance],
     existing_fds: &HashSet<Uppercase>,
     peer_addresses: &'i HashMap<RaftId, SmolStr>,
@@ -238,9 +240,7 @@ pub(super) fn action_plan<'i>(
     //
     // This must be done after instances have (re)configured replication
     // because master switchover requires synchronizing via tarantool replication.
-    if let Some(plan) =
-        handle_replicaset_master_switchover(instances, replicasets, tiers, term, sync_timeout)?
-    {
+    if let Some(plan) = handle_replicaset_master_switchover(topology_ref, term, sync_timeout)? {
         debug_assert!(
             matches!(
                 plan,
@@ -1006,12 +1006,12 @@ pub mod stage {
             pub cas: cas::Request,
         }
 
-        pub struct ReplicasetMasterFailover<'i> {
+        pub struct ReplicasetMasterFailover {
             /// This replicaset is changing it's master.
-            pub replicaset_name: &'i ReplicasetName,
+            pub replicaset_name: ReplicasetName,
 
             /// This instance was master, but is now non responsive. Name only used for logging.
-            pub old_master_name: &'i InstanceName,
+            pub old_master_name: InstanceName,
 
             /// Request to call [`proc_get_vclock`] on the new master. This
             /// vclock is going to be persisted as `promotion_vclock` (if it's
@@ -1024,7 +1024,7 @@ pub mod stage {
             /// promotion vclock in case the old master is not available.
             ///
             /// [`proc_get_vclock`]: crate::sync::proc_get_vclock
-            pub new_master_name: &'i InstanceName,
+            pub new_master_name: InstanceName,
 
             /// Part of the global DML operation which updates a `_pico_replicaset` record
             /// with the new values for `current_master_name` & `promotion_vclock`.
@@ -1038,12 +1038,12 @@ pub mod stage {
             pub ranges: Vec<cas::Range>,
         }
 
-        pub struct ReplicasetMasterConsistentSwitchover<'i> {
+        pub struct ReplicasetMasterConsistentSwitchover {
             /// This replicaset is changing it's master.
-            pub replicaset_name: &'i ReplicasetName,
+            pub replicaset_name: ReplicasetName,
 
             /// This instance will be demoted.
-            pub old_master_name: &'i InstanceName,
+            pub old_master_name: InstanceName,
 
             /// Request to call [`rpc::replication::proc_replication_demote`] on old master.
             pub demote_rpc: rpc::replication::DemoteRequest,
@@ -1052,13 +1052,13 @@ pub mod stage {
             /// promotion vclock in case the old master is not available.
             ///
             /// [`proc_get_vclock`]: crate::sync::proc_get_vclock
-            pub new_master_name: &'i InstanceName,
+            pub new_master_name: InstanceName,
 
             /// Request to call [`rpc::replication::proc_replication_sync`] on new master.
             pub sync_rpc: rpc::replication::ReplicationSyncRequest,
 
             /// Current `promotion_vclock` value of given replicaset.
-            pub promotion_vclock: &'i Vclock,
+            pub promotion_vclock: Vclock,
 
             /// Global DML operation which updates a `_pico_replicaset` record
             /// with the new values for `current_master_name`.
@@ -1524,6 +1524,10 @@ pub fn get_replicaset_being_expelled<'r>(
     tiers: &HashMap<&str, &'r Tier>,
 ) -> Option<(&'r Instance, &'r Replicaset, &'r Tier)> {
     for replicaset in replicasets.values() {
+        if replicaset.state != ReplicasetState::ToBeExpelled {
+            continue;
+        }
+
         let tier_id = &replicaset.tier;
         debug_assert_eq!(
             replicaset.current_master_name,
@@ -1531,10 +1535,6 @@ pub fn get_replicaset_being_expelled<'r>(
         );
         let master_name = &replicaset.current_master_name;
         let replicaset_name = &replicaset.name;
-
-        if replicaset.state != ReplicasetState::ToBeExpelled {
-            continue;
-        }
 
         let master = instances.iter().find(|i| i.name == master_name);
         let Some(master) = master else {

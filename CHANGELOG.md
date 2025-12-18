@@ -60,6 +60,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Fix name resolution in HAVING if projection contains a param.
 - Fixed that vshard would consume non-negligible amount of resources when idling
   on big cluster setups.
+- Fixed that governor would hang indefinitely if an Offline replicaset had
+  target_master_name != current_master_name.
 
 ### WebUI
 - Introduce display of used memory in terms of tier
