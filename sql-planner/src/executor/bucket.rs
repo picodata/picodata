@@ -105,7 +105,7 @@ where
         // See the logic of its handling below.
         let mut buckets: Vec<Buckets> = vec![];
         let ir_plan = self.exec_plan.get_ir_plan();
-        let tier = self.exec_plan.get_ir_plan().tier.as_ref();
+        let tier = ir_plan.tier.as_ref();
         let expr = ir_plan.get_expression_node(expr_id)?;
 
         // Try to collect buckets from expression of type `sharding_key = value`
@@ -311,7 +311,8 @@ where
     /// - Relational nodes contain invalid children.
     #[allow(clippy::too_many_lines)]
     pub fn bucket_discovery(&mut self, top_id: NodeId) -> Result<Buckets, SbroadError> {
-        let top_node = self.exec_plan.get_ir_plan().get_relation_node(top_id)?;
+        let ir_plan = self.exec_plan.get_ir_plan();
+        let top_node = ir_plan.get_relation_node(top_id)?;
         if top_node.is_dml() && !top_node.has_output() {
             // DML without output (e.g. DELETE without WHERE clause) should be executed on all buckets.
             return Ok(Buckets::All);
@@ -319,21 +320,17 @@ where
 
         // if top's output has Distribution::Single then the whole subtree must executed only on
         // a single node, no need to traverse the subtree
-        let top_output_id = self.exec_plan.get_ir_plan().get_relational_output(top_id)?;
+        let top_output_id = ir_plan.get_relational_output(top_id)?;
         if let Expression::Row(Row {
             distribution: Some(dist),
             ..
-        }) = self
-            .exec_plan
-            .get_ir_plan()
-            .get_expression_node(top_output_id)?
+        }) = ir_plan.get_expression_node(top_output_id)?
         {
             if *dist == Distribution::Single {
                 return Ok(Buckets::Any);
             }
         }
 
-        let ir_plan = self.exec_plan.get_ir_plan();
         let filter = |node_id: NodeId| -> bool {
             if let Ok(Node::Relational(..)) = ir_plan.get_node(node_id) {
                 return true;
@@ -353,7 +350,7 @@ where
                 continue;
             }
 
-            let rel = self.exec_plan.get_ir_plan().get_relation_node(node_id)?;
+            let rel = ir_plan.get_relation_node(node_id)?;
             match rel {
                 Relational::ScanRelation(ScanRelation {
                     output, relation, ..
@@ -426,8 +423,7 @@ where
                                 )
                             })?;
 
-                            let child_rel =
-                                self.exec_plan.get_ir_plan().get_relation_node(child_id)?;
+                            let child_rel = ir_plan.get_relation_node(child_id)?;
                             let child_buckets = self
                                 .bucket_map
                                 .get(&child_rel.output())
@@ -512,7 +508,7 @@ where
                     // first child by the motion or already located in the first
                     // child's bucket. So we don't need to worry about the second
                     // child's buckets here.
-                    let first_rel = self.exec_plan.get_ir_plan().get_relation_node(*left)?;
+                    let first_rel = ir_plan.get_relation_node(*left)?;
                     let first_buckets = self
                         .bucket_map
                         .get(&first_rel.output())
@@ -532,8 +528,8 @@ where
                     output,
                     ..
                 }) => {
-                    let first_rel = self.exec_plan.get_ir_plan().get_relation_node(*left)?;
-                    let second_rel = self.exec_plan.get_ir_plan().get_relation_node(*right)?;
+                    let first_rel = ir_plan.get_relation_node(*left)?;
+                    let second_rel = ir_plan.get_relation_node(*right)?;
                     let first_buckets = self
                         .bucket_map
                         .get(&first_rel.output())
@@ -551,8 +547,8 @@ where
                     output,
                     ..
                 }) => {
-                    let first_rel = self.exec_plan.get_ir_plan().get_relation_node(*left)?;
-                    let second_rel = self.exec_plan.get_ir_plan().get_relation_node(*right)?;
+                    let first_rel = ir_plan.get_relation_node(*left)?;
+                    let second_rel = ir_plan.get_relation_node(*right)?;
                     let first_buckets = self
                         .bucket_map
                         .get(&first_rel.output())
@@ -578,7 +574,7 @@ where
                         )
                     })?;
 
-                    let child_rel = self.exec_plan.get_ir_plan().get_relation_node(*child_id)?;
+                    let child_rel = ir_plan.get_relation_node(*child_id)?;
                     let child_buckets = self
                         .bucket_map
                         .get(&child_rel.output())
@@ -595,10 +591,7 @@ where
 
                     let filter_buckets = if let Expression::Constant(Constant {
                         value: Value::Boolean(false) | Value::Null,
-                    }) = self
-                        .get_exec_plan()
-                        .get_ir_plan()
-                        .get_expression_node(filter_id)?
+                    }) = ir_plan.get_expression_node(filter_id)?
                     {
                         Buckets::new_empty()
                     } else {
@@ -615,10 +608,8 @@ where
                     kind,
                 }) => {
                     if let (Some(inner_id), Some(outer_id)) = (children.first(), children.get(1)) {
-                        let inner_rel =
-                            self.exec_plan.get_ir_plan().get_relation_node(*inner_id)?;
-                        let outer_rel =
-                            self.exec_plan.get_ir_plan().get_relation_node(*outer_id)?;
+                        let inner_rel = ir_plan.get_relation_node(*inner_id)?;
+                        let outer_rel = ir_plan.get_relation_node(*outer_id)?;
                         let inner_buckets = self
                             .bucket_map
                             .get(&inner_rel.output())
@@ -671,7 +662,7 @@ where
             }
         }
 
-        let top_rel = self.exec_plan.get_ir_plan().get_relation_node(top_id)?;
+        let top_rel = ir_plan.get_relation_node(top_id)?;
         let top_buckets = self
             .bucket_map
             .get(&top_rel.output())
