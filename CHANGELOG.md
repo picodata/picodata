@@ -18,6 +18,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Plugins and webUI now support scram-sha256 auth.
 - SQL optimizer may now select indices for comparison operators with mixed number
   types (e.g. pk int < decimal) and datetime.
+- Vinyl improvements to decrease in-memory page index size.
 - Add HTTPS support for metrics and WebUI
 
 ### Fixes
@@ -55,6 +56,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed a bug where some queries that changed the table schema checked WRITE permissions instead of ALTER permissions.
 - Fix `DO NOTHING` conflict policy error on unique indices for globally distributed tables.
 - Lua datetime functions `to_char` and `to_date` are now strict (returns `NULL` when at least one argument is `NULL`).
+- Fix name resolution in HAVING if projection contains a param.
 - Fixed that vshard would consume non-negligible amount of resources when idling
   on big cluster setups.
 
