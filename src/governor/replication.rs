@@ -75,36 +75,7 @@ pub fn handle_replicaset_master_switchover<'i>(
             cas::Range::new(storage::Instances::TABLE_ID).eq([&new_master_name]),
         ];
 
-        if old_master.may_respond() {
-            let demote_rpc = rpc::replication::DemoteRequest { term };
-            let sync_rpc = rpc::replication::ReplicationSyncRequest {
-                term,
-                vclock: promotion_vclock.clone(),
-                timeout: sync_timeout,
-            };
-
-            let master_actualize_dml = Dml::update(
-                storage::Replicasets::TABLE_ID,
-                &[&replicaset_name],
-                replicaset_dml,
-                ADMIN_ID,
-            )?;
-
-            return Ok(Some(
-                ReplicasetMasterConsistentSwitchover {
-                    replicaset_name,
-                    old_master_name,
-                    demote_rpc,
-                    new_master_name,
-                    sync_rpc,
-                    promotion_vclock,
-                    master_actualize_dml,
-                    bump_dml,
-                    ranges,
-                }
-                .into(),
-            ));
-        } else {
+        if !old_master.may_respond() {
             let get_vclock_rpc = GetVclockRpc {};
 
             return Ok(Some(
@@ -120,6 +91,35 @@ pub fn handle_replicaset_master_switchover<'i>(
                 .into(),
             ));
         }
+
+        let demote_rpc = rpc::replication::DemoteRequest { term };
+        let sync_rpc = rpc::replication::ReplicationSyncRequest {
+            term,
+            vclock: promotion_vclock.clone(),
+            timeout: sync_timeout,
+        };
+
+        let master_actualize_dml = Dml::update(
+            storage::Replicasets::TABLE_ID,
+            &[&replicaset_name],
+            replicaset_dml,
+            ADMIN_ID,
+        )?;
+
+        return Ok(Some(
+            ReplicasetMasterConsistentSwitchover {
+                replicaset_name,
+                old_master_name,
+                demote_rpc,
+                new_master_name,
+                sync_rpc,
+                promotion_vclock,
+                master_actualize_dml,
+                bump_dml,
+                ranges,
+            }
+            .into(),
+        ));
     }
 
     Ok(None)
