@@ -3,99 +3,392 @@
   https://github.com/squidfunk/mkdocs-material/blob/9.4.8/src/templates/partials/header.html
 #}
 
-<!-- Determine classes -->
-{% set class = "md-header" %}
-{% if "navigation.tabs.sticky" in features %}
-  {% set class = class ~ " md-header--shadow md-header--lifted" %}
-{% elif "navigation.tabs" not in features %}
-  {% set class = class ~ " md-header--shadow" %}
-{% endif %}
+<header class="md-header md-grid" data-md-component="header">
+  <div class="picodata-header">
+    <div class="header__logo">
+      <a href="https://picodata.io/" class="custom-logo-link" rel="home" aria-current="page">
+        <img width="140" height="28" src="https://picodata.io/wp-content/uploads/2025/11/picodata-logo.svg" class="custom-logo img-responsive" alt="Picodata" decoding="async" />
+      </a>
+    </div>
+    <nav class="header__menu">
+      <li class="header-menu__menu-item--dropdown">
+        <a href="https://picodata.io" class="header-menu__link">Продукты</a>
+        <div class="header-menu__submenu-block">
+          <h3 class="submenu__headline">Продукты</h3>
+          <ul id="menu-podmenyu-produkty" class="header-submenu">
+            <li id="menu-item-4850" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4850">
+              <a href="https://picodata.io/picodata/">
+                <b>Picodata</b>
+                <br />
+                Распределённая СУБД,
+                <br />
+                совместимая с PostgreSQL
+              </a>
+            </li>
+            <li id="menu-item-4851" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4851">
+              <a href="https://picodata.io/redis-fstek/">
+                <b>Radix</b>
+                <br />
+                Сертифицированная ФСТЭК
+                <br />
+                замена Redis
+              </a>
+            </li>
+            <li id="menu-item-4853" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4853">
+              <a href="https://picodata.io/sirin/">
+                <b>Sirin</b>
+                <br />
+                СУБД для IIoT, совместимая
+                <br />
+                с Cassandra
+              </a>
+            </li>
+          </ul>
+        </div>
+      </li>
+      <li class="header-menu__menu-item--dropdown">
+        <a href="https://picodata.io/services/" class="header-menu__link">Услуги</a>
+        <div class="header-menu__submenu-block">
+          <h3 class="submenu__headline">Услуги</h3>
+          <ul id="menu-podmenyu-uslugi" class="header-submenu">
+            <li id="menu-item-4854" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-4854">
+              <a href="https://picodata.io/services/">Смарт Старт</a>
+            </li>
+            <li id="menu-item-4855" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-4855">
+              <a href="https://picodata.io/services/">DBA as a Service</a>
+            </li>
+            <li id="menu-item-4856" class="red-link menu-item menu-item-type-custom menu-item-object-custom menu-item-4856">
+              <a href="https://picodata.io/services/">Все услуги</a>
+            </li>
+          </ul>
+        </div>
+      </li>
+      <li class="header-menu__menu-item--dropdown">
+        <a href="https://picodata.io/solutions/" class="header-menu__link">Решения</a>
+        <div class="header-menu__submenu-block">
+          <h3 class="submenu__headline">Решения</h3>
+          <ul id="menu-podmenyu-resheniya" class="header-submenu">
+            <li id="menu-item-4877" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4877">
+              <a href="https://picodata.io/solutions/snizhenie-tso-obshhej-stoimosti-vladeniya/">
+                Снижение ТСО —
+                <br />
+                общей стоимости
+                <br />
+                владения
+              </a>
+            </li>
+            <li id="menu-item-4869" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4869">
+              <a href="https://picodata.io/solutions/besshovnaya-zamena-redis-i-cassandra/">
+                Бесшовная замена
+                <br />
+                Redis и Cassandra
+              </a>
+            </li>
+            <li id="menu-item-4875" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4875">
+              <a href="https://picodata.io/solutions/sistema-vizualnogo-setevogo-analiza/">
+                Cистема визуального
+                <br />
+                сетевого анализа
+              </a>
+            </li>
+            <li id="menu-item-4873" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4873">
+              <a href="https://picodata.io/solutions/edinyj-profil-klienta/">
+                Единый профиль
+                <br />
+                клиента
+              </a>
+            </li>
+            <li id="menu-item-4876" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4876">
+              <a href="https://picodata.io/solutions/snizhenie-nagruzki-na-avs/">
+                Снижение нагрузки
+                <br />
+                на АБС
+              </a>
+            </li>
+            <li id="menu-item-4878" class="red-link menu-item menu-item-type-custom menu-item-object-custom menu-item-4878">
+              <a href="https://picodata.io/solutions/">Все решения</a>
+            </li>
+          </ul>
+        </div>
+      </li>
+      <li class="header-menu__menu-item--dropdown">
+        <a href="https://docs.picodata.io/picodata" class="header-menu__link">Документация</a>
+        <div class="header-menu__submenu-block">
+          <h3 class="submenu__headline">Документация</h3>
+          <ul id="menu-podmenyu-dokumentacziya" class="header-submenu">
+            <li id="menu-item-4879" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-4879">
+              <a href="https://docs.picodata.io/picodata/stable/tutorial/run/">Запуск Picodata</a>
+            </li>
+            <li id="menu-item-4880" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-4880">
+              <a href="https://docs.picodata.io/picodata/stable/sql_index/">Команды SQL</a>
+            </li>
+            <li id="menu-item-4881" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-4881">
+              <a href="https://docs.picodata.io/picodata/stable/reference/settings/">Справочник настроек</a>
+            </li>
+            <li id="menu-item-4882" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-4882">
+              <a href="https://docs.picodata.io/picodata/devel/plugins/">Расширения</a>
+            </li>
+            <li id="menu-item-4883" class="red-link menu-item menu-item-type-custom menu-item-object-custom menu-item-4883">
+              <a href="https://docs.picodata.io/picodata">Вся документация</a>
+            </li>
+          </ul>
+        </div>
+      </li>
+      <li class="header-menu__menu-item--dropdown">
+        <a href="https://picodata.io/about/" class="header-menu__link">О компании</a>
+        <div class="header-menu__submenu-block">
+          <h3 class="submenu__headline">О компании</h3>
+          <ul id="menu-podmenyu-o-kompanii" class="header-submenu">
+            <li id="menu-item-4885" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4885">
+              <a href="https://picodata.io/about/">О нас</a>
+            </li>
+            <li id="menu-item-4887" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4887">
+              <a href="https://picodata.io/careers/">Работа</a>
+            </li>
+            <li id="menu-item-4886" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4886">
+              <a href="https://picodata.io/about/certificates/">Сертификаты</a>
+            </li>
+            <li id="menu-item-4888" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-4888">
+              <a href="https://picodata.io/news/">Новости</a>
+            </li>
+            <li id="menu-item-4884" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4884">
+              <a href="https://picodata.io/blog/">Блог</a>
+            </li>
+          </ul>
+        </div>
+      </li>
+    </nav>
 
-<!-- Header -->
-<header class="{{ class }}" data-md-component="header">
-  <nav
-    class="md-header__inner md-grid"
-    aria-label="{{ lang.t('header') }}"
-  >
+    <div class="header__bar">
+      <ul class="header-bar__social-buttons">
+        <li class="social-buttons__item">
+          <a href="https://git.picodata.io/core/picodata" class="social-buttons__link" target="_blank" rel="noopener">
+            <img src="https://picodata.io/wp-content/uploads/2025/06/gitlab-logo.svg" class="social-buttons__img" alt="GitLab Logo" />
+          </a>
+        </li>
+        <li class="social-buttons__item">
+          <a href="https://t.me/picodataru" class="social-buttons__link" target="_blank" rel="noopener">
+            <img src="https://picodata.io/wp-content/uploads/2025/06/tg-logo.svg" class="social-buttons__img" alt="Telegram Logo" />
+          </a>
+        </li>
+      </ul>
 
-    <!-- Link to home -->
-    <a
-      href="{{ config.extra.homepage | d(nav.homepage.url, true) | url }}"
-      title="{{ config.site_name | e }}"
-      class="md-header__button md-logo"
-      aria-label="{{ config.site_name }}"
-      data-md-component="logo"
-    >
-      {% include "partials/logo.html" %}
-    </a>
+      <div class="header-bar__translator translator">
+        <button class="translator__button" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Выбор языка">
+          <svg class="translator__icon" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none">
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M28 16C28 9.37258 22.6274 4 16 4C9.37258 4 4 9.37258 4 16C4 22.6274 9.37258 28 16 28C22.6274 28 28 22.6274 28 16ZM11.0427 17.5754C11.1944 20.3522 11.7417 22.8301 12.5443 24.6727C9.32739 23.3898 6.99189 20.3688 6.69798 16.7701C8.13361 17.1209 9.58419 17.3894 11.0427 17.5754ZM13.73 17.8245C13.8898 20.097 14.3387 22.0502 14.926 23.4596C15.2981 24.3526 15.6732 24.901 15.9535 25.1856C15.9699 25.2023 15.9854 25.2175 16 25.2313C16.0146 25.2175 16.0301 25.2023 16.0465 25.1856C16.3268 24.901 16.7019 24.3526 17.074 23.4596C17.6612 22.0502 18.1102 20.0971 18.27 17.8247C16.7579 17.9123 15.242 17.9123 13.73 17.8245ZM18.3198 15.1501C16.7748 15.2483 15.2252 15.2482 13.6803 15.1499C13.7666 12.4616 14.2564 10.1475 14.926 8.54036C15.2981 7.64744 15.6732 7.09895 15.9535 6.81444C15.9699 6.79774 15.9854 6.78252 16 6.76867C16.0146 6.78252 16.0301 6.79774 16.0465 6.81444C16.3268 7.09895 16.7019 7.64744 17.074 8.54036C17.7436 10.1475 18.2335 12.4617 18.3198 15.1501ZM20.9573 17.5758C20.8055 20.3524 20.2583 22.8302 19.4557 24.6727C22.6724 23.3899 25.0078 20.3693 25.302 16.7709C23.8663 17.1216 22.4158 17.3899 20.9573 17.5758ZM25.1323 14.064C23.7609 14.4181 22.374 14.6911 20.9786 14.883C20.8647 11.9209 20.3022 9.27071 19.4557 7.3273C22.3185 8.469 24.4832 10.9871 25.1323 14.064ZM11.0214 14.8826C9.62611 14.6906 8.23924 14.4174 6.86788 14.0632C7.51713 10.9867 9.68176 8.46891 12.5443 7.3273C11.6978 9.27062 11.1353 11.9207 11.0214 14.8826Z" fill="#2B2D2C" fill-opacity="0.3"></path>
+          </svg>
+        </button>
 
-    <!-- Button to open drawer -->
-    <label class="md-header__button md-icon" for="__drawer">
-      {% set icon = config.theme.icon.menu or "material/menu" %}
-      {% include ".icons/" ~ icon ~ ".svg" %}
-    </label>
+        <ul class="translator__list">
+          <li class="translator__item">
+            <a href="https://picodata.io/" class="translator__link translator__link--active">
+              <img src="https://picodata.io/wp-content/plugins/polylang/flags/ru.png" alt="" class="translator__flag" aria-hidden="true" />
+              <span class="translator__name">Русский</span>
+            </a>
+          </li>
+          <li class="translator__item">
+            <a href="https://picodata.io/en/" class="translator__link">
+              <img src="https://picodata.io/wp-content/plugins/polylang/flags/us.png" alt="" class="translator__flag" aria-hidden="true" />
+              <span class="translator__name">English</span>
+            </a>
+          </li>
+        </ul>
+      </div>
 
-    <!-- Header title -->
-    {% include ".custom/icon.html" %}
-    <div class="md-header__title" data-md-component="header-title">
-      <div class="md-header__ellipsis">
-        <div class="md-header__topic">
-          <span class="md-ellipsis">
-            {% if page.meta and page.meta.title %}
-              {{ page.meta.title }}
-            {% else %}
-              {{ page.title }}
-            {% endif %}
-          </span>
+      <div class="header-bar__download-btn">
+        <a href="https://picodata.io/download/" class="download-link">Скачать</a>
+      </div>
+    </div>
+
+    <div class="header__mobile-menu">
+      <button class="mobile-menu__burger-btn">
+        <img src="https://picodata.io/wp-content/uploads/2025/12/menu-icon.svg" class="burger-img" alt="Кнопка меню" />
+      </button>
+
+      <div class="mobile-menu__container">
+        <div class="mobile-menu__top-bar">
+          <div class="mobile-menu__logo">
+            <a href="https://picodata.io/" class="custom-logo-link" rel="home" aria-current="page">
+              <img width="140" height="28" src="https://picodata.io/wp-content/uploads/2025/11/picodata-logo.svg" class="custom-logo img-responsive" alt="Picodata" decoding="async" />
+            </a>
+          </div>
+          <button class="mobile-menu__close-btn">
+            <img src="https://picodata.io/wp-content/uploads/2025/12/close-icon.svg" class="cross-img" alt="Кнопка закрытия" />
+          </button>
+        </div>
+        <ul id="menu-mobilnoe-menyu" class="mobile-menu__list">
+          <li id="menu-item-4911" class="mobile-menu__menu-item--dropdown menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-4911">
+            <a href="#">Продукты</a>
+            <ul class="sub-menu" style="max-height: 0px; overflow: hidden; opacity: 0">
+              <li id="menu-item-4906" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4906">
+                <a href="https://picodata.io/picodata/">Picodata</a>
+              </li>
+              <li id="menu-item-4907" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4907">
+                <a href="https://picodata.io/redis-fstek/">Radix</a>
+              </li>
+              <li id="menu-item-4909" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4909">
+                <a href="https://picodata.io/sirin/">Sirin</a>
+              </li>
+            </ul>
+          </li>
+          <li id="menu-item-4912" class="mobile-menu__menu-item menu-item menu-item-type-post_type menu-item-object-page menu-item-4912">
+            <a href="https://picodata.io/services/">Услуги</a>
+          </li>
+          <li id="menu-item-4913" class="mobile-menu__menu-item--dropdown menu-item menu-item-type-post_type menu-item-object-page menu-item-has-children menu-item-4913">
+            <a href="https://picodata.io/solutions/">Решения</a>
+            <ul class="sub-menu" style="max-height: 0px; overflow: hidden; opacity: 0">
+              <li id="menu-item-4923" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4923">
+                <a href="https://picodata.io/solutions/snizhenie-tso-obshhej-stoimosti-vladeniya/">Снижение ТСО — общей стоимости владения</a>
+              </li>
+              <li id="menu-item-4918" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4918">
+                <a href="https://picodata.io/solutions/vysokoproizvoditelnyj-kesh-dlya-raboty-s-goryachimi-dannymi/">Высокопроизводительный кэш для работы с горячими данными</a>
+              </li>
+              <li id="menu-item-4921" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4921">
+                <a href="https://picodata.io/solutions/sistema-vizualnogo-setevogo-analiza/">Система визуального сетевого анализа</a>
+              </li>
+              <li id="menu-item-4916" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4916">
+                <a href="https://picodata.io/solutions/vysokonagruzhennye-sistemy-realnogo-vremeni/">Высоконагруженные системы реального времени</a>
+              </li>
+              <li id="menu-item-4917" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4917">
+                <a href="https://picodata.io/solutions/vysokoproizvoditelnoe-yadro-dlya-rascheta-sebestoimosti/">Высокопроизводительное ядро для расчета себестоимости</a>
+              </li>
+              <li id="menu-item-4914" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4914">
+                <a href="https://picodata.io/solutions/avtorizacziya-i-autentifikacziya/">Авторизация и аутентификация</a>
+              </li>
+              <li id="menu-item-4920" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4920">
+                <a href="https://picodata.io/solutions/podderzhka-iot-i-iiot/">Поддержка IoT и IIoT</a>
+              </li>
+              <li id="menu-item-4919" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4919">
+                <a href="https://picodata.io/solutions/edinyj-profil-klienta/">Единый профиль клиента</a>
+              </li>
+              <li id="menu-item-4922" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4922">
+                <a href="https://picodata.io/solutions/snizhenie-nagruzki-na-avs/">Снижение нагрузки на АБС</a>
+              </li>
+              <li id="menu-item-4915" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4915">
+                <a href="https://picodata.io/solutions/besshovnaya-zamena-redis-i-cassandra/">Бесшовная замена Redis и Cassandra</a>
+              </li>
+              <li id="menu-item-4932" class="red-link menu-item menu-item-type-post_type menu-item-object-page menu-item-4932">
+                <a href="https://picodata.io/solutions/">Все решения</a>
+              </li>
+            </ul>
+          </li>
+          <li id="menu-item-4924" class="mobile-menu__menu-item menu-item menu-item-type-custom menu-item-object-custom menu-item-4924">
+            <a href="https://docs.picodata.io/picodata">Документация</a>
+          </li>
+          <li id="menu-item-4926" class="mobile-menu__menu-item menu-item menu-item-type-post_type menu-item-object-page menu-item-4926">
+            <a href="https://picodata.io/blog/">Блог</a>
+          </li>
+          <li id="menu-item-4925" class="mobile-menu__menu-item menu-item menu-item-type-custom menu-item-object-custom menu-item-4925">
+            <a href="https://picodata.io/news/">Новости</a>
+          </li>
+          <li id="menu-item-4927" class="mobile-menu__menu-item--dropdown menu-item menu-item-type-post_type menu-item-object-page menu-item-has-children menu-item-4927">
+            <a href="https://picodata.io/about/">О компании</a>
+            <ul class="sub-menu" style="max-height: 0px; overflow: hidden; opacity: 0">
+              <li id="menu-item-4931" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4931">
+                <a href="https://picodata.io/about/">Сведения о Picodata</a>
+              </li>
+              <li id="menu-item-4930" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4930">
+                <a href="https://picodata.io/careers/">Работа</a>
+              </li>
+              <li id="menu-item-4928" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4928">
+                <a href="https://picodata.io/about/contacts/">Контакты</a>
+              </li>
+              <li id="menu-item-4929" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4929">
+                <a href="https://picodata.io/about/certificates/">Сертификаты</a>
+              </li>
+            </ul>
+          </li>
+        </ul>
+        <div class="mobile-menu__bottom-bar">
+          <div class="bottom-bar__left-column">
+            <div class="mobile-menu__download-btn">
+              <a href="https://picodata.io/download/" class="download-link">Скачать</a>
+            </div>
+
+            <div class="mobile-menu__translator translator">
+              <button class="translator__button" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Выбор языка">
+                <svg class="translator__icon" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none">
+                  <path fill-rule="evenodd" clip-rule="evenodd" d="M28 16C28 9.37258 22.6274 4 16 4C9.37258 4 4 9.37258 4 16C4 22.6274 9.37258 28 16 28C22.6274 28 28 22.6274 28 16ZM11.0427 17.5754C11.1944 20.3522 11.7417 22.8301 12.5443 24.6727C9.32739 23.3898 6.99189 20.3688 6.69798 16.7701C8.13361 17.1209 9.58419 17.3894 11.0427 17.5754ZM13.73 17.8245C13.8898 20.097 14.3387 22.0502 14.926 23.4596C15.2981 24.3526 15.6732 24.901 15.9535 25.1856C15.9699 25.2023 15.9854 25.2175 16 25.2313C16.0146 25.2175 16.0301 25.2023 16.0465 25.1856C16.3268 24.901 16.7019 24.3526 17.074 23.4596C17.6612 22.0502 18.1102 20.0971 18.27 17.8247C16.7579 17.9123 15.242 17.9123 13.73 17.8245ZM18.3198 15.1501C16.7748 15.2483 15.2252 15.2482 13.6803 15.1499C13.7666 12.4616 14.2564 10.1475 14.926 8.54036C15.2981 7.64744 15.6732 7.09895 15.9535 6.81444C15.9699 6.79774 15.9854 6.78252 16 6.76867C16.0146 6.78252 16.0301 6.79774 16.0465 6.81444C16.3268 7.09895 16.7019 7.64744 17.074 8.54036C17.7436 10.1475 18.2335 12.4617 18.3198 15.1501ZM20.9573 17.5758C20.8055 20.3524 20.2583 22.8302 19.4557 24.6727C22.6724 23.3899 25.0078 20.3693 25.302 16.7709C23.8663 17.1216 22.4158 17.3899 20.9573 17.5758ZM25.1323 14.064C23.7609 14.4181 22.374 14.6911 20.9786 14.883C20.8647 11.9209 20.3022 9.27071 19.4557 7.3273C22.3185 8.469 24.4832 10.9871 25.1323 14.064ZM11.0214 14.8826C9.62611 14.6906 8.23924 14.4174 6.86788 14.0632C7.51713 10.9867 9.68176 8.46891 12.5443 7.3273C11.6978 9.27062 11.1353 11.9207 11.0214 14.8826Z" fill="#2B2D2C" fill-opacity="0.3"></path>
+                </svg>
+              </button>
+
+              <ul class="translator__list">
+                <li class="translator__item">
+                  <a href="https://picodata.io/" class="translator__link translator__link--active">
+                    <img src="https://picodata.io/wp-content/plugins/polylang/flags/ru.png" alt="" class="translator__flag" aria-hidden="true" />
+                    <span class="translator__name">Русский</span>
+                  </a>
+                </li>
+                <li class="translator__item">
+                  <a href="https://picodata.io/en/" class="translator__link">
+                    <img src="https://picodata.io/wp-content/plugins/polylang/flags/us.png" alt="" class="translator__flag" aria-hidden="true" />
+                    <span class="translator__name">English</span>
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="bottom-bar__right-column">
+            <ul class="header-bar__social-buttons">
+              <li class="social-buttons__item">
+                <a href="https://git.picodata.io/core/picodata" class="social-buttons__link" target="_blank" rel="noopener">
+                  <img src="https://picodata.io/wp-content/uploads/2025/06/gitlab-logo.svg" class="social-buttons__img" alt="GitLab Logo" />
+                </a>
+              </li>
+              <li class="social-buttons__item">
+                <a href="https://t.me/picodataru" class="social-buttons__link" target="_blank" rel="noopener">
+                  <img src="https://picodata.io/wp-content/uploads/2025/06/tg-logo.svg" class="social-buttons__img" alt="Telegram Logo" />
+                </a>
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>
+  </div>
 
-    <!-- Color palette toggle -->
-    {% if config.theme.palette %}
-      {% if not config.theme.palette is mapping %}
-        {% include "partials/palette.html" %}
-      {% endif %}
-    {% endif %}
+  <nav class="md-header__inner md-grid" aria-label="{{ lang.t('header') }}">
+    <div class="md-header__button-wrapper">
+      <label class="md-header__button" for="__drawer">Содержание</label>
+    </div>
 
-    <!-- User preference: color palette -->
-    {% if not config.theme.palette is mapping %}
-      {% include "partials/javascripts/palette.html" %}
-    {% endif %}
+    <nav aria-label="breadcrumb" class="md-header__breadcrumb">
+      <span class="md-header__breadcrumb-nav">
+        <a href="{{ '/' | url }}">Главная</a>
 
-    <!-- Site language selector -->
-    {% if config.extra.alternate %}
-      {% include "partials/alternate.html" %}
-    {% endif %}
+        {% if page and page.ancestors %}
+          {% for ancestor in page.ancestors %}
+            <span class="md-header__breadcrumb-separator">/</span>
+            <a href="{{ ancestor.url | url }}">{{ ancestor.title }}</a>
+          {% endfor %}
+        {% endif %}
 
-    <!-- Button to open search modal -->
-    {% if "material/search" in config.plugins %}
-      <label class="md-header__button md-icon" for="__search">
-        {% set icon = config.theme.icon.search or "material/magnify" %}
-        {% include ".icons/" ~ icon ~ ".svg" %}
-      </label>
+        {% if page and page.title %}
+          <span class="md-header__breadcrumb-separator">/</span>
+          <span class="md-header__breadcrumb-current">{{ page.title }}</span>
+        {% endif %}
+      </span>
+    </nav>
 
-      <!-- Search interface -->
-      {% include "partials/search.html" %}
-    {% endif %}
-
-    <!-- Repository information -->
-    {% if config.repo_url %}
-      <div class="md-header__source">
-        {% include "partials/source.html" %}
+    <div class="md-header__bar">
+      <div class="md-header__title" data-md-component="header-title">
+        <div class="md-header__ellipsis">
+          <div class="md-header__topic" data-md-component="header-topic"></div>
+        </div>
       </div>
-    {% endif %}
 
-    <!-- Link to Picodata site -->
-    <div class="md-header__source picodata-link">
-      {% include ".custom/source-picodata.html" %}
+      <div class="md-header__custom-search">
+        {% if "material/search" in config.plugins %}
+          <label class="md-header__button md-icon" for="__search">
+            {% set icon = config.theme.icon.search or "material/magnify" %}
+            {% include ".icons/" ~ icon ~ ".svg" %}
+          </label>
+
+          {% include "partials/search.html" %}
+        {% endif %}
+      </div>
     </div>
   </nav>
-
-  <!-- Navigation tabs (sticky) -->
-  {% if "navigation.tabs.sticky" in features %}
-    {% if "navigation.tabs" in features %}
-      {% include "partials/tabs.html" %}
-    {% endif %}
-  {% endif %}
 </header>

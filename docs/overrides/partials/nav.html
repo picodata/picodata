@@ -15,37 +15,9 @@
 {% endif %}
 
 <!-- Navigation -->
-<nav
-  class="{{ class }}"
-  aria-label="{{ lang.t('nav') }}"
-  data-md-level="0"
->
+<nav class="{{ class }}" aria-label="{{ lang.t('nav') }}" data-md-level="0">
 
-  <!-- Site title -->
-  <label class="md-nav__title" for="__drawer">
-    <a
-      href="{{ config.extra.homepage | d(nav.homepage.url, true) | url }}"
-      title="{{ config.site_name | e }}"
-      class="md-nav__button md-logo"
-      aria-label="{{ config.site_name }}"
-      data-md-component="logo"
-    >
-      {% include "partials/logo.html" %}
-    </a>
-    {{ config.site_name }}
-  </label>
-
-  <!-- Repository information -->
-  {% if config.repo_url %}
-    <div class="md-nav__source">
-      {% include "partials/source.html" %}
-    </div>
-  {% endif %}
-
-  <!-- Link to Picodata site -->
-  <div class="md-nav__source">
-    {% include ".custom/source-picodata.html" %}
-  </div>
+  <h2 class="md-nav__custom-title">Содержание</h2>
 
   <!-- Navigation list -->
   <ul class="md-nav__list" data-md-scrollfix>
