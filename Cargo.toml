@@ -119,12 +119,6 @@ tarantool-proc = { path = "tarantool/tarantool-proc" }
 tlua = { path = "tarantool/tlua" }
 tlua-derive = { path = "tarantool/tlua-derive" }
 
-[patch."https://git.picodata.io/picodata/picodata/tarantool-module.git"]
-tarantool = { path = "tarantool/tarantool" }
-tarantool-proc = { path = "tarantool/tarantool-proc" }
-tlua = { path = "tarantool/tlua" }
-tlua-derive = { path = "tarantool/tlua-derive" }
-
 [workspace.dependencies]
 ahash = "0.8"
 build-rs-helpers = { path = "build-rs-helpers" }
