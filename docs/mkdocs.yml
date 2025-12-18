@@ -144,6 +144,7 @@ nav:
   - Документация плагинов Picodata:
       - plugins/plugin_list.md
       - plugins/argus.md
+      - plugins/franz.md
       - plugins/kirovets.md
       - plugins/radix.md
       - plugins/silver.md
