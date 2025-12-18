@@ -69,9 +69,10 @@ pub fn handle_replicaset_master_switchover<'i>(
         bump_dml.push(vshard_config_version_bump);
 
         let ranges = vec![
-            // We make a decision based on this instance's state so the operation
+            // We make a decision based on these instances' state so the operation
             // should fail in case there's a change to it in the uncommitted log
             cas::Range::new(storage::Instances::TABLE_ID).eq([&old_master_name]),
+            cas::Range::new(storage::Instances::TABLE_ID).eq([&new_master_name]),
         ];
 
         if old_master.may_respond() {
