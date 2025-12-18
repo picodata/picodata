@@ -2,9 +2,35 @@
 {# see: https://github.com/squidfunk/mkdocs-material/blob/9.4.8/src/templates/base.html #}
 
 {% block extrahead %}
-    <meta name="GIT_DESCRIBE" content="{{ config.env.GIT_DESCRIBE }}">
-    <meta name="PICODATA_DOC_VER" content="{{ config.env.PICODATA_DOC_VER }}">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+<meta name="GIT_DESCRIBE" content="{{ config.env.GIT_DESCRIBE }}" />
+<meta name="PICODATA_DOC_VER" content="{{ config.env.PICODATA_DOC_VER }}" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet" />
+{% endblock %}
+
+{% block header %}
+  {% include "partials/header.html" %}
+{% endblock %}
+
+{% block content %}
+  <nav aria-label="breadcrumb" class="md-header__breadcrumb">
+    <span class="md-header__breadcrumb-nav">
+      <a href="{{ '/' | url }}">Главная</a>
+
+      {% if page and page.ancestors %}
+        {% for ancestor in page.ancestors %}
+          <span class="md-header__breadcrumb-separator">/</span>
+          <a href="{{ ancestor.url | url }}">{{ ancestor.title }}</a>
+        {% endfor %}
+      {% endif %}
+
+      {% if page and page.title %}
+        <span class="md-header__breadcrumb-separator">/</span>
+        <span class="md-header__breadcrumb-current">{{ page.title }}</span>
+      {% endif %}
+    </span>
+  </nav>
+
+  {{ super() }}
 {% endblock %}
