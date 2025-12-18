@@ -2,6 +2,7 @@ import funcy  # type: ignore
 import time
 import pytest
 import random
+import os
 
 from conftest import (
     Cluster,
@@ -521,3 +522,31 @@ def test_bucket_rebalancing_5_replicasets(cluster: Cluster):
     cluster.wait_online()
     for instance in cluster.instances:
         cluster.wait_until_instance_has_this_many_active_buckets(instance, 600)
+
+
+def test_big_cluster(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            can_vote: true
+            replication_factor: 1
+        storage:
+            can_vote: false
+            replication_factor: 3
+        """
+    )
+
+    error_injection = "PROC_SHARDING_RANDOM_FAILURE"
+
+    leader = cluster.add_instance(wait_online=True, tier="arbiter", log_to_file=True, log_to_console=False)
+    leader.sql("ALTER SYSTEM SET governor_rpc_batch_size = 10")
+
+    size = int(os.environ.get("BIG_CLUSTER_SIZE", "100"))
+    for _ in range(size):
+        instance = cluster.add_instance(wait_online=False, tier="storage", log_to_file=True, log_to_console=False)
+        instance.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
+
+    cluster.wait_online(timeout=300)

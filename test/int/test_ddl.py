@@ -902,11 +902,15 @@ cluster:
 
     # Note: must notify the governor explicitly so that it updates the
     # replication & sharding configurations
-    voter_2.retriable_sql("UPDATE _pico_replicaset SET target_config_version = current_config_version + 1")
-    voter_2.sql("UPDATE _pico_tier SET target_vshard_config_version = current_vshard_config_version + 1")
+    voter_2.retriable_sql(
+        "UPDATE _pico_replicaset SET target_config_version = current_config_version + 1 WHERE tier = 'storage'"
+    )
+    voter_2.sql(
+        "UPDATE _pico_tier SET target_vshard_config_version = current_vshard_config_version + 1 WHERE name = 'storage'"
+    )
 
     # Wait until it catches up the raft state
-    voter_2.wait_governor_status("idle", old_step_counter=counter)
+    voter_2.wait_governor_status("idle", old_step_counter=counter, timeout=30)
 
     # Make sure the DDL was applied
     assert storage_2.call("box.space._space.index.name:get", "top_g") is not None

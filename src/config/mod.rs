@@ -1830,6 +1830,12 @@ pub struct AlterSystemParameters {
     #[introspection(config_default = 10.0)]
     pub governor_plugin_rpc_timeout: f64,
 
+    /// Maximum number of RPCs governor will send at once during one governor
+    /// step.
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = 200)]
+    pub governor_rpc_batch_size: usize,
+
     /// Value of `0` indicates that this limit is disabled.
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 45000)]
