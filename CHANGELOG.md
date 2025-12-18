@@ -8,6 +8,14 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [25.5.2] - Unreleased
+
+### Fixes
+
+- Fixed that governor would hang indefinitely if an Offline replicaset had
+  target_master_name != current_master_name.
+
+
 ## [25.5.1] - 2025-12-19
 
 ### Features

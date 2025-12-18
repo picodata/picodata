@@ -232,6 +232,8 @@ impl Loop {
 
         let node = global().expect("must be initialized");
 
+        let topology_ref = node.topology_cache.get();
+
         let raft_op_timeout = node
             .alter_system_parameters
             .borrow()
@@ -349,6 +351,7 @@ impl Loop {
             cluster_name,
             cluster_uuid,
             sentinel_status,
+            &topology_ref,
             &instances,
             &existing_fds,
             &peer_addresses,
@@ -370,6 +373,10 @@ impl Loop {
             pending_catalog_version,
             backoff_manager,
         );
+
+        // Must be dropped before yielding
+        drop(topology_ref);
+
         let plan = unwrap_ok_or!(plan,
             Err(e) => {
                 tlog!(Warning, "failed constructing an action plan: {e}");
@@ -479,7 +486,7 @@ impl Loop {
                         "replicaset_name" => %replicaset_name,
                     ]
                     async {
-                        let vclock = pool.call(new_master_name, proc_name!(proc_get_vclock), &get_vclock_rpc, rpc_timeout)?.await?;
+                        let vclock = pool.call(&new_master_name, proc_name!(proc_get_vclock), &get_vclock_rpc, rpc_timeout)?.await?;
                         promotion_vclock = Some(vclock);
                     }
                 }
@@ -498,7 +505,7 @@ impl Loop {
                         ).expect("shan't fail");
                         let op = Dml::update(
                             storage::Replicasets::TABLE_ID,
-                            &[replicaset_name],
+                            &[&replicaset_name],
                             replicaset_dml,
                             ADMIN_ID,
                         )?;
@@ -540,10 +547,10 @@ impl Loop {
                     async {
                         tlog!(Info, "calling proc_replication_demote on current master: {old_master_name}");
                         crate::error_injection!(block "BLOCK_REPLICATION_DEMOTE");
-                        let f_demote = pool.call(old_master_name, proc_name!(proc_replication_demote), &demote_rpc, rpc_timeout)?;
+                        let f_demote = pool.call(&old_master_name, proc_name!(proc_replication_demote), &demote_rpc, rpc_timeout)?;
 
                         tlog!(Info, "calling proc_replication_sync on target master: {new_master_name}");
-                        let f_sync = pool.call(new_master_name, proc_name!(proc_replication_sync), &sync_rpc, rpc_timeout)?;
+                        let f_sync = pool.call(&new_master_name, proc_name!(proc_replication_sync), &sync_rpc, rpc_timeout)?;
 
                         let (demote_response, _) = try_join(f_demote, f_sync).await?;
                         demotion_vclock = Some(demote_response.vclock);
@@ -551,7 +558,7 @@ impl Loop {
                 }
 
                 let demotion_vclock = demotion_vclock.expect("is always set on a previous step");
-                if &demotion_vclock > promotion_vclock {
+                if demotion_vclock > promotion_vclock {
                     let new_promotion_vclock = demotion_vclock;
                     governor_substep! {
                         "updating replicaset promotion vclock" [
@@ -569,7 +576,7 @@ impl Loop {
                             ).expect("shan't fail");
                             let op = Dml::update(
                                 storage::Replicasets::TABLE_ID,
-                                &[replicaset_name],
+                                &[&replicaset_name],
                                 replicaset_dml,
                                 ADMIN_ID,
                             )?;
