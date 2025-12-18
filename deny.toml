@@ -19,8 +19,8 @@
 # dependencies not shared by any other crates, would be ignored, as the target
 # list here is effectively saying which targets you are building for.
 targets = [
-    "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", 
-    "aarch64-unknown-linux-gnu", "aarch64-apple-darwin", 
+    "x86_64-unknown-linux-gnu", "x86_64-apple-darwin",
+    "aarch64-unknown-linux-gnu", "aarch64-apple-darwin",
 ]
 # If true, metadata will be collected with `--all-features`. Note that this can't
 # be toggled off if true, if you want to conditionally enable `--all-features` it
@@ -49,12 +49,14 @@ feature-depth = 1
 [advisories]
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
-# NOTE: We necessarily take responsibility for problems ourselves.
 ignore = [
+    # NOTE: These are crates marked as unmaintained. We dont really have any problems with them. Most commonly they're our transitive dependencies.
+    # Unless there is a real problem with them like discovered vulnerability we have no plans to do anything with them. We necessarily take responsibility for problems ourselves.
     { id = "RUSTSEC-2018-0015", reason = "`term`, transitive dependency from `tester` in `tarantool-module` (see <https://git.picodata.io/core/tarantool-module/issues/252>)" },
     { id = "RUSTSEC-2024-0014", reason = "`generational-arena`, transitive dependency from `abi_stable` in `picodata` (see <https://git.picodata.io/core/picodata/issues/2052>)" },
     { id = "RUSTSEC-2024-0436", reason = "`paste`, transitive dependency from `abi_stable` in `picodata` (see <https://git.picodata.io/core/picodata/issues/2052>)" },
     { id = "RUSTSEC-2025-0057", reason = "`fxhash`, transitive dependency from `raft` in `picodata`" },
+    { id = "RUSTSEC-2025-0119", reason = "`number_prefix` transitive dependency from `file_shred` in picodata" },
 ]
 
 # This section is considered when running `cargo deny check licenses`
