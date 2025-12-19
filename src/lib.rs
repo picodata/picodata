@@ -99,6 +99,7 @@ pub mod on_shutdown;
 pub mod pgproto;
 mod pico_service;
 pub mod plugin;
+pub mod preemption;
 pub mod reachability;
 pub mod replicaset;
 pub mod resharding_loop;
