@@ -62,7 +62,6 @@ with the `YY.MINOR.MICRO` scheme.
   on big cluster setups.
 
 ### WebUI
-- Login form and simple session control
 - Introduce display of used memory in terms of tier
 
 ### ACL
@@ -113,7 +112,57 @@ with the `YY.MINOR.MICRO` scheme.
 ### Configuration
 - Changed default value for `raft_wal_count_max` ALTER SYSTEM parameter from 64 to 16384.
 
-## [25.4.1] - 2025-10-03
+## [25.4.4] - 2025-11-12
+
+### Fixes
+- Fixed a bug where the raft snapshot would sometimes contain incorrect term
+  which would result in an unrecoverable failure of the receiving instance.
+- Resolve hang when using TLS (hang in `ssl_iostream_destroy` when fiber is cancelled).
+- Resolve hang when using TLS (fix infinite loop in coio_writev_timeout on SSL_ERROR_ZERO_RETURN).
+- DML to global tables no longer will fail with errors such as "Compacted"
+  (See also https://git.picodata.io/core/picodata/-/issues/2273).
+- Fix trigger execution and privilege initialization for scram-sha256 auth in pgproto.
+
+### SQL
+- Add IF NOT EXISTS support for ALTER TABLE ADD COLUMN.
+
+### Observability
+- Added metrics `pico_sql_global_dml_query` and `pico_sql_global_dml_query_retries`
+  which report respectively the total number of SQL DML operations on global
+  tables and number of times these operations had to be retried due to CAS conflicts.
+
+## [25.4.3] - 2025-10-15
+
+### Fixes
+- Fix possible crash when using TLS for iproto communication within cluster.
+- Specifying `instance.iproto_tls.enable` parameter via configuration file.
+- Prevent conflicts when creating tables with renamed table names.
+- Fix CREATE TABLE hanging on index conflict.
+- Fix Service::on_leader_change callbacks not being called after master goes Offline
+  due to sentinel auto-offline policy (See also https://git.picodata.io/core/picodata/-/issues/2303).
+
+### Pgproto
+- Add support for configuring pgproto TLS certificates via:
+  - `instance.pg.ssl` (enable/disable TLS)
+  - `instance.pg.cert_file` (client certificate path)
+  - `instance.pg.key_file` (private key path)
+  - `instance.pg.ca_file` (CA certificate path).
+
+## [25.4.2] - 2025-10-09
+
+### Fixes
+- Fix compilation error on ARM architecture.
+- Fix eliminate erroneous ER_READONLY message in logs when executing TRUNCATE on
+  global tables sometimes (See also https://git.picodata.io/core/picodata/-/issues/2274).
+
+### WebUI
+- Add a login form and JWT-based session management. The JWT secret is stored in
+  the `_pico_db_config` table as `jwt_secret`. Set `jwt_secret` to an empty string ("")
+  to disable authentication. On upgrade, Picodata leaves the existing `jwt_secret`
+  unchanged. To enable web authentication on existing clusters, reset `jwt_secret`
+  via the `ALTER SYSTEM` API.
+
+## [25.4.1] - 2025-10-02
 
 ### Features
 
