@@ -164,10 +164,12 @@ fn maybe_read_entrypoint_from_pipe(fd: Option<u32>) -> Result<Entrypoint, TntErr
 fn write_entrypoint_to_pipe(entrypoint: &Entrypoint) -> Result<ipc::Fd, TntError> {
     let (rx, mut tx) = ipc::pipe()?;
 
-    #[rustfmt::skip]
-    tlog!(Info, "saving entrypoint {entrypoint:?} to pipe '{tx:?}'");
+    let data = rmp_serde::to_vec(entrypoint)?;
+    let encoded_size = data.len();
 
-    let data = rmp_serde::to_vec_named(entrypoint)?;
+    #[rustfmt::skip]
+    tlog!(Info, "saving entrypoint (encoded size: {encoded_size}) {entrypoint:?} to pipe '{tx:?}'");
+
     tx.write_all(&data)?;
 
     // The write half of the pipe is closed here

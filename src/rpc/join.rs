@@ -13,8 +13,9 @@ use crate::storage::{self, Catalog, ToEntryIter as _};
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft::op::{Dml, Op};
+use crate::traft::RaftId;
 use crate::traft::{self};
-use crate::traft::{error::Error, node, Address, PeerAddress, Result};
+use crate::traft::{error::Error, node, Address, Result};
 use crate::version::Version;
 use smol_str::format_smolstr;
 use smol_str::SmolStr;
@@ -65,7 +66,7 @@ crate::define_rpc_request! {
         /// Addresses of other peers in a cluster.
         /// They are needed for Raft node to communicate with other nodes
         /// at startup.
-        pub peer_addresses: Vec<PeerAddress>,
+        pub peer_addresses: Vec<(RaftId, Address)>,
         /// Replication sources in a replica set that the joining instance will belong to.
         /// See [tarantool documentation](https://www.tarantool.io/en/doc/latest/reference/configuration/#confval-replication)
         pub box_replication: Vec<Address>,
@@ -154,6 +155,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
                 .peer_addresses
                 .iter()?
                 .filter(|peer| peer.connection_type == traft::ConnectionType::Iproto)
+                .map(|peer| (peer.raft_id, peer.address))
                 .collect();
 
             let replicas = storage
@@ -255,6 +257,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             .peer_addresses
             .iter()?
             .filter(|peer| peer.connection_type == traft::ConnectionType::Iproto)
+            .map(|peer| (peer.raft_id, peer.address))
             .collect();
         let replicas = storage
             .instances
