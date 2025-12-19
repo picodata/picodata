@@ -2137,15 +2137,10 @@ fn start_join(
     let raft_id = resp.instance.raft_id;
     transaction(|| -> Result<(), TntError> {
         storage.instances.put(&resp.instance).unwrap();
-        for traft::PeerAddress {
-            raft_id,
-            address,
-            connection_type,
-        } in &resp.peer_addresses
-        {
+        for (raft_id, address) in &resp.peer_addresses {
             storage
                 .peer_addresses
-                .put(*raft_id, address, connection_type)
+                .put(*raft_id, address, &traft::ConnectionType::Iproto)
                 .unwrap();
         }
         raft_storage.persist_raft_id(raft_id).unwrap();
