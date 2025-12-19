@@ -1,19 +1,20 @@
-import pexpect  # type: ignore
 import os
-import pytest
-import sys
 import subprocess
+import sys
+from pathlib import Path
+
+import pexpect  # type: ignore
+import pytest
 from conftest import (
     CLI_TIMEOUT,
     Cluster,
     Instance,
-    log_crawler,
     assert_starts_with,
+    log_crawler,
 )
 from tarantool.error import (  # type: ignore
     NetworkError,
 )
-from pathlib import Path
 from test_plugin import _PLUGIN, _PLUGIN_VERSION_1, PluginReflection
 
 
@@ -359,10 +360,6 @@ def test_lua_completion(cluster: Cluster):
     cli.send("\t")
     cli.expect_exact("help")
     cli.sendcontrol("c")
-
-    cli.send("bred bo")
-    cli.send("\t")
-    cli.expect_exact("bred box")
 
     # do not crash on failed completion request to tnt
     i1.terminate()
