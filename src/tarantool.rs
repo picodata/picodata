@@ -3,6 +3,7 @@ use crate::config_parameter_path;
 use crate::instance::Instance;
 use crate::introspection::Introspection;
 use crate::pico_service::pico_service_password;
+use crate::preemption::vdbe_yield_handler;
 use crate::rpc::join;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::sql::port::{dispatch_dump_mp, PicoPortOwned};
@@ -1270,6 +1271,22 @@ pub fn set_use_system_alloc() {
 
 extern "C" fn use_system_alloc_cb(space_id: u32) -> bool {
     space_id <= crate::storage::SPACE_ID_INTERNAL_MAX
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub(crate) struct VdbeYieldArgs {
+    pub(crate) start: *mut i64,
+    pub(crate) current: i64,
+}
+
+unsafe extern "C" {
+    pub(crate) unsafe static mut vdbe_yield_cb:
+        extern "C" fn(args: *mut VdbeYieldArgs) -> libc::c_int;
+}
+
+pub(crate) fn set_vdbe_yield_cb() {
+    unsafe { vdbe_yield_cb = vdbe_yield_handler };
 }
 
 /// Set global cluster UUID for iproto connections (see IPROTO_ID).

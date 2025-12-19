@@ -10,6 +10,7 @@ use crate::column_name;
 use crate::config::{AlterSystemParameters, DYNAMIC_CONFIG};
 use crate::metrics::{self, STORAGE_1ST_REQUESTS_TOTAL, STORAGE_2ND_REQUESTS_TOTAL};
 use crate::plugin::{InheritOpts, PluginIdentifier, TopologyUpdateOpKind};
+use crate::preemption::with_sql_execution_guard;
 use crate::schema::{
     wait_for_ddl_commit, CreateIndexParams, CreateProcParams, CreateTableParams, DdlError,
     DistributionParam, Field, IndexOption, PrivilegeDef, PrivilegeType, RenameRoutineParams,
@@ -725,8 +726,14 @@ pub unsafe extern "C" fn proc_sql_dispatch(
         Ok(v) => v,
         Err(e) => return report("", Error::from(e)),
     };
-    let mut port = PicoPortC::from(ctx.mut_port_c());
-    let result = parse_and_dispatch(&bind_args.pattern, bind_args.params, None, None, &mut port);
+
+    // All arguments should be copied into the rust memory to
+    // survive possible fiber switch.
+    let result = with_sql_execution_guard(|| {
+        let mut port = PicoPortC::from(ctx.mut_port_c());
+        parse_and_dispatch(&bind_args.pattern, bind_args.params, None, None, &mut port)
+    });
+
     match result {
         Ok(_) => return 0,
         Err(e) => {
@@ -2722,53 +2729,57 @@ pub unsafe extern "C" fn proc_sql_execute(
         Err(e) => return report("", Error::from(e)),
     };
 
-    let mut port = PicoPortC::from(ctx.mut_port_c());
+    // All arguments should be copied into the rust memory to
+    // survive possible fiber switch.
+    with_sql_execution_guard(|| {
+        let mut port = PicoPortC::from(ctx.mut_port_c());
 
-    #[allow(deprecated)]
-    let (is_old, is_first_req, query_type) = match &args.data {
-        ExecArgsData::New(data) => {
-            // TODO: can we reuse it?
-            match ProtocolMessage::decode_from_bytes(data.as_slice()) {
-                Ok(msg) => {
-                    let query_type = match msg.msg_type {
-                        ProtocolMessageType::Dql => "dql",
-                        ProtocolMessageType::Dml(_) | ProtocolMessageType::LocalDml(_) => "dml",
-                    };
-                    (false, true, query_type)
+        #[allow(deprecated)]
+        let (is_old, is_first_req, query_type) = match &args.data {
+            ExecArgsData::New(data) => {
+                // TODO: can we reuse it?
+                match ProtocolMessage::decode_from_bytes(data.as_slice()) {
+                    Ok(msg) => {
+                        let query_type = match msg.msg_type {
+                            ProtocolMessageType::Dql => "dql",
+                            ProtocolMessageType::Dml(_) | ProtocolMessageType::LocalDml(_) => "dml",
+                        };
+                        (false, true, query_type)
+                    }
+                    Err(e) => return report("", Error::other(e)),
                 }
-                Err(e) => return report("", Error::other(e)),
             }
-        }
-        ExecArgsData::Old(args) => {
-            let is_first_req = args.optional.is_none();
-            let query_type = match args.required.query_type {
-                QueryType::DQL => "dql",
-                QueryType::DML => "dml",
-            };
-            (true, is_first_req, query_type)
-        }
-    };
+            ExecArgsData::Old(args) => {
+                let is_first_req = args.optional.is_none();
+                let query_type = match args.required.query_type {
+                    QueryType::DQL => "dql",
+                    QueryType::DML => "dml",
+                };
+                (true, is_first_req, query_type)
+            }
+        };
 
-    let ret = proc_sql_execute_impl(args, &mut port);
+        let rc = proc_sql_execute_impl(args, &mut port);
 
-    let result = if ret == 0 { "ok" } else { "err" };
-    if is_old {
-        if is_first_req {
+        let result = if rc == 0 { "ok" } else { "err" };
+        if is_old {
+            if is_first_req {
+                STORAGE_1ST_REQUESTS_TOTAL
+                    .with_label_values(&[query_type, result])
+                    .inc();
+            } else {
+                STORAGE_2ND_REQUESTS_TOTAL
+                    .with_label_values(&[query_type, result])
+                    .inc();
+            }
+        } else {
             STORAGE_1ST_REQUESTS_TOTAL
                 .with_label_values(&[query_type, result])
                 .inc();
-        } else {
-            STORAGE_2ND_REQUESTS_TOTAL
-                .with_label_values(&[query_type, result])
-                .inc();
         }
-    } else {
-        STORAGE_1ST_REQUESTS_TOTAL
-            .with_label_values(&[query_type, result])
-            .inc();
-    }
 
-    ret
+        rc
+    })
 }
 
 struct QueryMetaRequest<'q> {
