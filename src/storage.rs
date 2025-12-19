@@ -48,6 +48,7 @@ use std::marker::PhantomData;
 use std::ops::RangeInclusive;
 use std::rc::Rc;
 use tarantool::auth::AuthDef;
+use tarantool::error::BoxError;
 use tarantool::error::{Error as TntError, TarantoolErrorCode as TntErrorCode};
 use tarantool::ffi::sql::Port as TarantoolPort;
 use tarantool::index::FieldType as IndexFieldType;
@@ -85,30 +86,29 @@ pub fn space_by_id_unchecked(space_id: SpaceId) -> Space {
     unsafe { Space::from_id_unchecked(space_id) }
 }
 
+#[track_caller]
 pub fn space_by_id(space_id: SpaceId) -> tarantool::Result<Space> {
     let sys_space = Space::from(SystemSpace::Space);
     if sys_space.get(&[space_id])?.is_none() {
-        tarantool::set_error!(
-            tarantool::error::TarantoolErrorCode::NoSuchSpace,
-            "no such space #{}",
-            space_id
-        );
-        return Err(tarantool::error::TarantoolError::last().into());
+        return Err(no_such_space(format!("no such space #{space_id}")).into());
     }
 
     Ok(space_by_id_unchecked(space_id))
 }
 
+#[track_caller]
 pub fn space_by_name(space_name: &str) -> tarantool::Result<Space> {
-    let space = Space::find(space_name).ok_or_else(|| {
-        tarantool::set_error!(
-            tarantool::error::TarantoolErrorCode::NoSuchSpace,
-            "no such space \"{}\"",
-            space_name
-        );
-        tarantool::error::TarantoolError::last()
-    })?;
+    let Some(space) = Space::find(space_name) else {
+        return Err(no_such_space(format!("no such space \"{space_name}\"")).into());
+    };
+
     Ok(space)
+}
+
+#[inline]
+#[track_caller]
+fn no_such_space(message: impl Into<String>) -> BoxError {
+    BoxError::new(TntErrorCode::NoSuchSpace, message)
 }
 
 #[inline]
@@ -2652,12 +2652,13 @@ impl ToEntryIter<MP_SERDE> for Routines {
     }
 }
 
-pub fn make_routine_not_found(routine_id: RoutineId) -> tarantool::error::TarantoolError {
-    tarantool::set_error!(
-        tarantool::error::TarantoolErrorCode::TupleNotFound,
-        "routine with id {routine_id} not found",
-    );
-    tarantool::error::TarantoolError::last()
+#[inline]
+#[track_caller]
+pub fn make_routine_not_found(routine_id: RoutineId) -> BoxError {
+    BoxError::new(
+        TntErrorCode::TupleNotFound,
+        format!("routine with id {routine_id} not found"),
+    )
 }
 
 pub type RoutineId = u32;
