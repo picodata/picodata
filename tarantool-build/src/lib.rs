@@ -362,8 +362,11 @@ impl TarantoolBuildRoot {
             rustc::link_lib_dynamic("readline");
         }
 
-        // libiconv (macos adds -liconv automatically; not needed on linux)
+        // libiconv (macos adds -liconv automatically; not needed on linux but needed on freebsd)
         rustc::link_search(tarantool_root.join("iconv-prefix/lib"));
+        if cfg!(target_os = "freebsd") {
+            rustc::link_lib_static_whole_archive("iconv");
+        }
 
         // libicu
         if use_static_build {
@@ -451,6 +454,8 @@ impl TarantoolBuildRoot {
 
         if cfg!(target_os = "macos") {
             rustc::link_lib_dynamic("resolv");
+            rustc::link_lib_dynamic("c++");
+        } else if cfg!(target_os = "freebsd") {
             rustc::link_lib_dynamic("c++");
         } else {
             rustc::link_lib_dynamic("stdc++");

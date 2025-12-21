@@ -415,7 +415,7 @@ pub fn inject_with_packed() {
 }
 
 #[::tarantool::test]
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 fn module_path() {
     let path = ::tarantool::proc::module_path(module_path as _).unwrap();
     assert_eq!(

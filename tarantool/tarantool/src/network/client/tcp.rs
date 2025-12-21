@@ -539,7 +539,7 @@ unsafe fn connect_socket(addr_info: &AddrInfo<'_>) -> io::Result<AutoCloseFd> {
     Ok(fd)
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 #[inline(always)]
 fn nonblocking_socket(kind: libc::c_int) -> io::Result<AutoCloseFd> {
     // SAFETY: This is safe because `libc::socket` doesn't do undefined behavior

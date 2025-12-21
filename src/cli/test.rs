@@ -47,11 +47,22 @@ pub fn main(args: args::Test) -> ! {
         let pid = unsafe { fork() };
         match pid.expect("fork failed") {
             ForkResult::Child => {
-                // On linux, kill child if the test runner has died.
+                // On linux/freebsd, kill child if the test runner has died.
                 // Perhaps it's the easiest way to implement this.
                 #[cfg(target_os = "linux")]
                 unsafe {
                     libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+                }
+
+                #[cfg(target_os = "freebsd")]
+                unsafe {
+                    let sig: libc::c_int = libc::SIGKILL;
+                    libc::procctl(
+                        libc::P_PID,
+                        0,
+                        libc::PROC_PDEATHSIG_CTL,
+                        &sig as *const _ as *mut _,
+                    );
                 }
 
                 drop(rx);
