@@ -3,6 +3,7 @@ use crate::column_name;
 use crate::governor::plan::get_replicaset_config_version_bump_op;
 use crate::governor::plan::stage::Plan;
 use crate::governor::plan::stage::*;
+use crate::has_states;
 use crate::replicaset::Replicaset;
 use crate::rpc;
 use crate::schema::ADMIN_ID;
@@ -33,18 +34,28 @@ pub fn handle_replicaset_master_switchover<'i>(
             continue;
         };
 
-        if !new_master.may_respond() {
-            // Target master is not going to respond, so there's no point in
-            // trying. Note that if it were possible to choose a better
-            // target_master_name this would've happened on another governor step.
-            continue;
-        }
-
         let old_master_name = replicaset.current_master_name.clone();
         let Ok(old_master) = topology_ref.instance_by_name(&old_master_name) else {
             warn_or_panic!("No info for instance {old_master_name}");
             continue;
         };
+
+        let new_master_may_respond = new_master.may_respond();
+        let old_master_going_expelled = has_states!(old_master, * -> Expelled);
+        if !new_master_may_respond && !old_master_going_expelled {
+            // Target master is not going to respond, so there's no point in
+            // trying. Note that if it were possible to choose a better
+            // target_master_name this would've happened on another governor step.
+            //
+            // XXX The exception is the case when old master is getting
+            // Expelled. If there is still an instance of the replicaset we must
+            // make sure it synchronizes with the old master. And if the new
+            // master is Offline we just wait until it wakes up.
+            //
+            // This is needed to avoid a case when new master temporarily goes
+            // Offline while synchronizing with the old master.
+            continue;
+        }
 
         let Ok(tier) = topology_ref.tier_by_name(&replicaset.tier) else {
             warn_or_panic!("No info for tier {}", replicaset.tier);
