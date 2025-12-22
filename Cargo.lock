@@ -2973,6 +2973,7 @@ dependencies = [
  "diff",
  "either",
  "file_shred",
+ "flate2",
  "futures",
  "git-version",
  "hmac",

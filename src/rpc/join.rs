@@ -609,3 +609,33 @@ fn choose_replicaset(
         instances: Vec<Instance>,
     }
 }
+
+pub fn compress_join_response(join_response: &Response) -> Result<Vec<u8>> {
+    let res = rmp_serde::to_vec(&join_response);
+    let encoded = match res {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(Error::other(format!(
+                "failed to encode proc_raft_join response for the self-pipe message: {e}"
+            )));
+        }
+    };
+    let compressed = crate::util::gzip_compress(&encoded)?;
+
+    Ok(compressed)
+}
+
+pub fn decompress_join_response(compressed: &[u8]) -> Result<Response> {
+    let encoded = crate::util::gzip_decompress(compressed)?;
+    let res = rmp_serde::from_slice(&encoded);
+    let join_response = match res {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(Error::other(format!(
+                "failed to decode proc_raft_join response from the self-pipe message: {e}"
+            )));
+        }
+    };
+
+    Ok(join_response)
+}

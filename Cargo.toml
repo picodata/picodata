@@ -26,6 +26,7 @@ comfy-table = { workspace = true }
 diff = "0.1"
 either = "1.13"
 file_shred = "1.2"
+flate2 = "1.1"
 futures = "0.3"
 hmac = { version = "0.12", features = ["reset"] }
 indoc = "2.0"

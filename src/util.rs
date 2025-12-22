@@ -1167,6 +1167,27 @@ pub fn edit_distance(lhs: &str, rhs: &str) -> usize {
     current_row[current_row.len() - 1]
 }
 
+pub fn gzip_compress(decompressed: &[u8]) -> std::io::Result<Vec<u8>> {
+    use std::io::Write;
+
+    let mut encoder = flate2::write::GzEncoder::new(vec![], flate2::Compression::best());
+    encoder.write_all(decompressed)?;
+    encoder.flush()?;
+    let compressed = encoder.finish()?;
+
+    Ok(compressed)
+}
+
+pub fn gzip_decompress(compressed: &[u8]) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+
+    let mut decoder = flate2::read::GzDecoder::new(compressed);
+    let mut decompressed = vec![];
+    decoder.read_to_end(&mut decompressed)?;
+
+    Ok(decompressed)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /// tests
 #[cfg(test)]

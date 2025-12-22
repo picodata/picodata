@@ -19,6 +19,8 @@ use crate::error_code::ErrorCode;
 use crate::http_server::HttpsConfig;
 use crate::instance::Instance;
 use crate::instance::StateVariant::*;
+use crate::rpc::join::compress_join_response;
+use crate::rpc::join::decompress_join_response;
 use crate::schema::system_table_definitions;
 use crate::schema::TableDef;
 use crate::schema::ADMIN_ID;
@@ -923,7 +925,9 @@ pub enum Entrypoint {
         instance_uuid: Option<String>,
     },
     StartJoin {
-        join_response: rpc::join::Response,
+        /// A compressed and msgpack encoded instance of [`rpc::join::Response`].
+        #[serde(with = "serde_bytes")]
+        join_response: Vec<u8>,
     },
 }
 
@@ -958,10 +962,13 @@ pub fn start(config: &PicodataConfig, entrypoint: Entrypoint) -> Result<Option<E
             tarantool::rm_tarantool_files(config.instance.instance_dir())?;
             next_entrypoint = start_pre_join(config, leader_address, instance_uuid)?;
         }
-        StartJoin { ref join_response } => {
+        StartJoin {
+            join_response: compressed,
+        } => {
             // Cleanup the instance directory with WALs from the previous StartJoin run
             tarantool::rm_tarantool_files(config.instance.instance_dir())?;
-            start_join(config, join_response)?;
+            let join_response = decompress_join_response(&compressed)?;
+            start_join(config, &join_response)?;
         }
     }
 
@@ -1738,8 +1745,10 @@ fn start_pre_join(
         }
     };
 
+    let compressed = compress_join_response(&resp)?;
+
     return Ok(Some(Entrypoint::StartJoin {
-        join_response: resp,
+        join_response: compressed,
     }));
 }
 
