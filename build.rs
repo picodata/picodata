@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
-use tarantool_build::TarantoolBuildRoot;
+use tarantool_build::{TarantoolBuildRoot, TarantoolBuildRootOptions};
 
 fn main() {
     // Prevent linkage problems due to non-pie static archives.
@@ -20,11 +20,16 @@ fn main() {
     let use_static_build = !cargo::get_feature("dynamic_build");
     let use_debug_build = cargo::get_feature("debug_tarantool");
 
-    insert_build_metadata();
-
+    let tarantool_build_root = TarantoolBuildRoot::new(
+        &build_root,
+        TarantoolBuildRootOptions {
+            use_static_build,
+            use_debug_build,
+        },
+    );
     // Build and link all the relevant tarantool libraries.
     // For more info, read the comments in tarantool-build.
-    TarantoolBuildRoot::new(&build_root, use_static_build, use_debug_build)
+    tarantool_build_root
         .build_libraries(jobserver)
         .link_libraries();
 
@@ -35,26 +40,82 @@ fn main() {
     if cfg!(feature = "webui") {
         build_webui(&build_root);
     }
+
+    // XXX: Currently, picodata's linkage is defined by tarantool.
+    rustc::env("PICO_LINKAGE", tarantool_build_root.options().linkage());
+
+    rustc::env("PICO_BUILD_PROFILE", std::env::var("PROFILE").unwrap());
+    rustc::env(
+        "TNT_BUILD_PROFILE",
+        tarantool_build_root.options().build_profile(),
+    );
+
+    let rustflags_file = save_rustflags();
+    rustc::env("RUSTFLAGS_FILE", rustflags_file);
+
+    let cargo_cfg_file = save_cargo_cfg();
+    rustc::env("CARGO_CFG_FILE", cargo_cfg_file);
+
+    let cargo_feature_file = save_cargo_feature();
+    rustc::env("CARGO_FEATURE_FILE", cargo_feature_file);
 }
 
-fn insert_build_metadata() {
-    let build_type: &str = if cfg!(feature = "dynamic_build") {
-        "dynamic"
-    } else {
-        "static"
-    };
-    rustc::env("BUILD_TYPE", build_type);
+fn save_rustflags() -> PathBuf {
+    let mut data = Vec::new();
+    for flag in rustflags::from_env() {
+        match flag {
+            // E.g. `#[cfg(target_os = "macos")]`.
+            rustflags::Flag::Cfg { name, value } => match value {
+                Some(value) => data.push(format!("--cfg {name}={value}")),
+                None => data.push(format!("--cfg {name}")),
+            },
+            // E.g. `-C opt-level=3`.
+            rustflags::Flag::Codegen { opt, value } => match value {
+                Some(value) => data.push(format!("-C {opt}={value}")),
+                None => data.push(format!("-C {opt}")),
+            },
+            // E.g. `-Z sanitizer=address`.
+            rustflags::Flag::Z(opt) => data.push(format!("-Z {opt}")),
+            // Currently, we're not interested in other kinds of flags.
+            // Consider taking a look at `rustflags::Flag` for more info.
+            _ => {}
+        };
+    }
 
-    let build_profile = std::env::var("PROFILE").expect("always set");
-    rustc::env("BUILD_PROFILE", build_profile);
+    let contents = serde_json::to_string(&data).unwrap();
+    let file = cargo::get_out_dir().join("rustflags");
+    std::fs::write(&file, contents).unwrap();
+    file
+}
 
-    let os_version = std::process::Command::new("uname")
-        .args(["-sm"])
-        .output()
-        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
-        .unwrap_or_else(|_| "unknown".to_string());
+fn save_env_matching(file: &str, prefix: &str) -> PathBuf {
+    let mut data = HashMap::new();
 
-    rustc::env("OS_VERSION", os_version);
+    for (name, value) in std::env::vars_os() {
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        let Some(value) = value.to_str() else {
+            continue;
+        };
+
+        if name.starts_with(prefix) {
+            data.insert(name.to_owned(), value.to_owned());
+        }
+    }
+
+    let contents = serde_json::to_string(&data).unwrap();
+    let file = cargo::get_out_dir().join(file);
+    std::fs::write(&file, contents).unwrap();
+    file
+}
+
+fn save_cargo_cfg() -> PathBuf {
+    save_env_matching("cargo_cfg", "CARGO_CFG_")
+}
+
+fn save_cargo_feature() -> PathBuf {
+    save_env_matching("cargo_feature", "CARGO_FEATURE_")
 }
 
 fn generate_git_version() {

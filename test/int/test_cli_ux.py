@@ -1,9 +1,11 @@
 import os
 import subprocess
 import sys
+from typing import Any, List, Optional
 
 import pexpect  # type: ignore
 import pytest
+import yaml
 from conftest import (
     CLI_TIMEOUT,
     Cluster,
@@ -11,13 +13,11 @@ from conftest import (
     assert_starts_with,
     log_crawler,
 )
+from test_plugin import _PLUGIN, _PLUGIN_VERSION_1, PluginReflection
+
 from tarantool.error import (  # type: ignore
     NetworkError,
 )
-from test_plugin import _PLUGIN, _PLUGIN_VERSION_1, PluginReflection
-from typing import Any
-from typing import List
-from typing import Optional
 
 
 def test_connect_ux(cluster: Cluster):
@@ -1061,11 +1061,27 @@ def test_command_history_with_delimiter(cluster: Cluster):
 
 
 def test_picodata_version(cluster: Cluster):
-    stdout = subprocess.check_output([cluster.runtime.command, "--version"])
+    stdout = subprocess.check_output([cluster.runtime.command, "-V"])
     lines = iter(stdout.splitlines())
     assert_starts_with(next(lines), b"picodata ")
-    assert_starts_with(next(lines), b"tarantool (fork) version")
-    assert_starts_with(next(lines), b"Linux")
+    assert_starts_with(next(lines), b"tarantool ")
+
+
+def test_picodata_long_version(cluster: Cluster):
+    stdout = subprocess.check_output([cluster.runtime.command, "-VV"])
+    info = yaml.safe_load(stdout)
+
+    assert "linkage" in info
+
+    assert "picodata" in info
+    info_picodata = info["picodata"]
+    assert "version" in info_picodata
+    assert "build_profile" in info_picodata
+
+    assert "tarantool" in info
+    info_tarantool = info["tarantool"]
+    assert "version" in info_tarantool
+    assert "build_profile" in info_tarantool
 
 
 def test_admin_cli_exit_code(cluster: Cluster):

@@ -49,6 +49,7 @@ with the `YY.MINOR.MICRO` scheme.
   - Introduced cluster orchestration model for simplified lifecycle management.
   - Added configurable command-line parameters and cluster information display.
   - Add machine-readable output formats to `picodata admin`
+  - Add long version output (-VV) with more info
 
 ### WebUI
 - Webui now displays the value of `cluster_version` instead of current

@@ -25,27 +25,47 @@ pub const PICODATA_VERSION: &'static str = std::env!("GIT_DESCRIBE");
 pub const RPC_API_VERSION: &'static str = "1.0.0";
 const REDIRECT_RPC_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Note: this returns a `&'static str` because of clap's requirements.
-pub fn version_for_help() -> &'static str {
-    static VERSION_OUTPUT: std::sync::OnceLock<SmolStr> = std::sync::OnceLock::new();
+/// Render a message for `picodata -v`.
+pub fn render_version() -> String {
+    format!(
+        "picodata {}, {}, {}\ntarantool {}, {}\n",
+        PICODATA_VERSION.to_string(),
+        env!("PICO_LINKAGE"),
+        env!("PICO_BUILD_PROFILE"),
+        crate::tarantool::version(),
+        env!("TNT_BUILD_PROFILE"),
+    )
+}
 
-    VERSION_OUTPUT.get_or_init(|| {
-        let mut result = PICODATA_VERSION.to_string();
-        result.push_str(", ");
+/// Render a message for `picodata -VV`.
+pub fn render_long_version() -> String {
+    // XXX: explicit type lets us define the order of fields.
+    #[derive(serde::Serialize)]
+    struct Info {
+        cargo_cfg: serde_json::Value,
+        cargo_feature: serde_json::Value,
+        rustflags: serde_json::Value,
+        linkage: &'static str,
+        tarantool: serde_json::Value,
+        picodata: serde_json::Value,
+    }
 
-        result.push_str(env!("BUILD_TYPE"));
-        result.push_str(", ");
+    let info = Info {
+        cargo_cfg: serde_json::from_str(include_str!(env!("CARGO_CFG_FILE"))).unwrap(),
+        cargo_feature: serde_json::from_str(include_str!(env!("CARGO_FEATURE_FILE"))).unwrap(),
+        rustflags: serde_json::from_str(include_str!(env!("RUSTFLAGS_FILE"))).unwrap(),
+        linkage: env!("PICO_LINKAGE"),
+        tarantool: serde_json::json!({
+            "build_profile": env!("TNT_BUILD_PROFILE"),
+            "version": crate::tarantool::version(),
+        }),
+        picodata: serde_json::json!({
+            "build_profile": env!("PICO_BUILD_PROFILE"),
+            "version": PICODATA_VERSION.to_string(),
+        }),
+    };
 
-        result.push_str(env!("BUILD_PROFILE"));
-        result.push('\n');
-
-        result.push_str("tarantool (fork) version: ");
-        result.push_str(crate::tarantool::version());
-        result.push('\n');
-
-        result.push_str(env!("OS_VERSION"));
-        SmolStr::new(result)
-    })
+    serde_yaml::to_string(&info).unwrap()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -83,8 +103,8 @@ impl VersionInfo {
             GLOBAL.get_or_init(|| Self {
                 picodata_version: SmolStr::new_static(PICODATA_VERSION),
                 rpc_api_version: SmolStr::new_static(RPC_API_VERSION),
-                build_type: SmolStr::new_static(env!("BUILD_TYPE")),
-                build_profile: SmolStr::new_static(env!("BUILD_PROFILE")),
+                build_type: SmolStr::new_static(env!("PICO_LINKAGE")),
+                build_profile: SmolStr::new_static(env!("PICO_BUILD_PROFILE")),
                 tarantool_version: SmolStr::new_static(crate::tarantool::version()),
             })
         }

@@ -5,49 +5,65 @@ use build_rs_helpers::{
 };
 use std::{path::PathBuf, process::Command};
 
+pub struct TarantoolBuildRootOptions {
+    /// In static build mode we build not only Tarantool, but also many
+    /// of its dependencies, e.g. readline, curl, unwind, etc.
+    pub use_static_build: bool,
+    /// Should we use Debug or RelWithDebInfo?
+    pub use_debug_build: bool,
+}
+
+impl TarantoolBuildRootOptions {
+    pub fn build_profile(&self) -> &'static str {
+        match self.use_debug_build {
+            false => "RelWithDebInfo",
+            true => "Debug",
+        }
+    }
+
+    pub fn linkage(&self) -> &'static str {
+        match self.use_static_build {
+            false => "dynamic",
+            true => "static",
+        }
+    }
+}
+
 /// This struct represents Tarantool's build directory.
 /// NOTE: please **do not** add irrelevant fields here.
 pub struct TarantoolBuildRoot {
     /// Path to Tarantool's topmost build directory.
     root: PathBuf,
-    /// In static build mode we build not only Tarantool, but also many
-    /// of its dependencies, e.g. readline, curl, unwind, etc.
-    use_static_build: bool,
-    /// Should we use Debug or RelWithDebInfo?
-    use_debug_build: bool,
+    options: TarantoolBuildRootOptions,
 }
 
 impl TarantoolBuildRoot {
-    pub fn new(
-        build_root: impl Into<PathBuf>,
-        use_static_build: bool,
-        use_debug_build: bool,
-    ) -> Self {
+    pub fn new(build_root: impl Into<PathBuf>, options: TarantoolBuildRootOptions) -> Self {
         // The distinction between static & dynamic build paths
         // lets us keep both builds intact when we toggle
         // the "use_static_build" option.
-        let root = build_root
-            .into()
-            .join("tarantool-sys")
-            .join(match use_static_build {
-                false => "dynamic",
-                true => "static",
-            })
-            .with_extension(match use_debug_build {
-                false => "release",
-                true => "debug",
-            });
-
-        // Thus, the current variants are:
+        //
+        // The current variants are:
         // - static.debug
         // - static.release
         // - dynamic.debug
         // - dynamic.release
-        Self {
-            root,
-            use_static_build,
-            use_debug_build,
-        }
+        let root = build_root
+            .into()
+            .join("tarantool-sys")
+            .join(options.linkage())
+            // We don't want to use otions.build_profile() here just yet.
+            // That would cause unnecessary rebuilds due to path changes.
+            .with_extension(match options.use_debug_build {
+                false => "release",
+                true => "debug",
+            });
+
+        Self { root, options }
+    }
+
+    pub fn options(&self) -> &TarantoolBuildRootOptions {
+        &self.options
     }
 
     /// A prefix for Tarantool's http server.
@@ -63,7 +79,7 @@ impl TarantoolBuildRoot {
     /// - zlib-prefix
     /// - ...
     pub fn tarantool_prefix_dir(&self) -> PathBuf {
-        if self.use_static_build {
+        if self.options.use_static_build {
             self.root.join("tarantool-prefix")
         } else {
             self.root.clone()
@@ -74,7 +90,7 @@ impl TarantoolBuildRoot {
     /// contains the **actual** tarantool build directory.
     pub fn tarantool_build_dir(&self) -> PathBuf {
         let prefix = self.tarantool_prefix_dir();
-        if self.use_static_build {
+        if self.options.use_static_build {
             prefix.join("src/tarantool-build")
         } else {
             prefix
@@ -137,7 +153,7 @@ impl TarantoolBuildRoot {
     fn build_tarantool(&self, jsc: Option<&cargo::MakeJobserverClient>) -> &Self {
         cargo::rerun_if_changed("tarantool-sys");
 
-        let use_static_build = self.use_static_build;
+        let use_static_build = self.options.use_static_build;
         let tarantool_build = self.tarantool_build_dir();
         let tarantool_root = &self.root;
 
@@ -147,13 +163,7 @@ impl TarantoolBuildRoot {
             configure_cmd.arg("-B").arg(tarantool_root);
 
             let mut common_args = vec![
-                format!(
-                    "-DCMAKE_BUILD_TYPE={}",
-                    match self.use_debug_build {
-                        false => "RelWithDebInfo",
-                        true => "Debug",
-                    }
-                ),
+                format!("-DCMAKE_BUILD_TYPE={}", self.options.build_profile()),
                 "-DBUILD_TESTING=FALSE".to_string(),
                 "-DBUILD_DOC=FALSE".to_string(),
             ];
@@ -273,7 +283,7 @@ impl TarantoolBuildRoot {
 
     /// Refer to `build.rs` for tarantool's build steps.
     fn link_tarantool(&self) {
-        let use_static_build = self.use_static_build;
+        let use_static_build = self.options.use_static_build;
         let tarantool_build = self.tarantool_build_dir();
         let tarantool_root = &self.root;
 

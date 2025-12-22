@@ -1,21 +1,37 @@
 use crate::address::{HttpAddress, IprotoAddress, PgprotoAddress};
 use crate::config::{ByteSize, DEFAULT_USERNAME};
-use crate::info::version_for_help;
 use crate::util::Uppercase;
 
 use std::borrow::Cow;
 use std::ffi::{CStr, CString};
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use tarantool::auth::AuthMethod;
 use tarantool::log::SayLevel;
 use tarantool::network::client::tls;
 use tarantool::tlua;
 
 #[derive(Debug, Parser)]
-#[clap(name = "picodata", version = version_for_help())]
-pub enum Picodata {
+#[clap(disable_version_flag = true)]
+pub struct Picodata {
+    // XXX: we don't use clap's default version flag handler because
+    // it forcefully prepends binary's name to the output, ruining yaml.
+    #[clap(
+        long,
+        short = 'V',
+        global = true,
+        action = clap::ArgAction::Count,
+        help = "Print version (-VV for long version)"
+    )]
+    pub version: u8,
+
+    #[clap(subcommand)]
+    pub command: Option<Command>,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum Command {
     Restore(Restore),
     Run(Box<Run>),
     #[clap(hide = true)]
