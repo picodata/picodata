@@ -476,7 +476,6 @@ fn port_read_changed<'bytes>(mut port: impl Iterator<Item = &'bytes [u8]>) -> Pg
     Ok(changed)
 }
 
-#[derive(Debug)]
 enum PortalState {
     /// Portal has just been created.
     /// Ideally, it should've been `Box<Plan>`, but we need to move it
@@ -523,7 +522,6 @@ pub static PGPROTO_PORTALS_CLOSED_TOTAL: LazyLock<IntCounter> = LazyLock::new(||
     .unwrap()
 });
 
-#[derive(Debug)]
 struct PortalInner {
     key: Key,
     statement: Statement,
@@ -677,7 +675,7 @@ impl PortalInner {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Portal(Rc<PortalInner>);
 
 impl Portal {

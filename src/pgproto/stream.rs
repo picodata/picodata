@@ -1,13 +1,11 @@
 use super::tls::{TlsAcceptor, TlsStream};
 use crate::tlog;
 use bytes::{BufMut, BytesMut};
-use pgwire::messages::startup::SslRequest;
+use pgwire::messages::{DecodeContext, SslNegotiationMetaMessage};
 use std::io::{self, ErrorKind::UnexpectedEof, Write};
 
 // Public re-exports.
-pub use pgwire::messages::{
-    self, PgWireBackendMessage as BeMessage, PgWireFrontendMessage as FeMessage,
-};
+pub use pgwire::messages::{PgWireBackendMessage as BeMessage, PgWireFrontendMessage as FeMessage};
 
 fn read_into_buf(reader: &mut impl io::Read, buf: &mut impl BufMut) -> io::Result<usize> {
     // TODO: check if it's empty (+ resize).
@@ -86,20 +84,45 @@ impl<S: io::Read + io::Write> PgStream<S> {
     /// Try decoding an incoming message considering the connection's state.
     /// Return `None` if the packet is not complete for parsing.
     fn try_decode_message(&mut self) -> io::Result<Option<FeMessage>> {
-        use messages::{startup::Startup, Message};
+        use pgwire::messages::{startup::SslRequest, startup::Startup, Message};
+
+        // Define context that enables parsing of all messages except Startup and Ssl.
+        //
+        // For parsing Startup and Ssl messages we call corresponding decode methods that ignore
+        // context, so there is no need for a separate context for them.
+        //
+        // We don't use pgwire's context because there is no reasonable value for awaiting_startup.
+        // Consider server with disabled ssl, there are 2 possible values for this flag:
+        //
+        // 1) awaiting_ssl = true: Pgwire tries to parse the first message only as `SslRequest`.
+        //    If a client connects with `sslmode=disabled`, it sends `Startup` message
+        //    first resulting in "Invalid ssl request message" error.
+        //
+        // 2) awaiting_ssl = false: Pgwire tries to parse the first message only as `Startup`.
+        //    If a client connects with `sslmode=prefer`, it sends `SslRequest` message first,
+        //    resulting in "Invalid Startup message" error, which shouldn't be an error, as the
+        //    server can send `SslRefuse` message and the client will accept to continue
+        //    initialization without securing the connection.
+        let mut context = DecodeContext::default();
+        context.awaiting_ssl = false;
+        context.awaiting_startup = false;
 
         if self.startup_processed {
-            return FeMessage::decode(&mut self.ibuf).map_err(io::Error::other);
+            return FeMessage::decode(&mut self.ibuf, &context).map_err(io::Error::other);
         }
 
         // Try to decode SslRequest first, as it fits the Startup format with an invalid version.
-        let res = SslRequest::decode(&mut self.ibuf).map_err(io::Error::other)?;
-        if let Some(ssl_request) = res {
-            return Ok(Some(FeMessage::SslRequest(ssl_request)));
+        if SslRequest::is_ssl_request_packet(&self.ibuf) {
+            let res = SslRequest::decode(&mut self.ibuf, &context).map_err(io::Error::other)?;
+            if let Some(ssl_request) = res {
+                return Ok(Some(FeMessage::SslNegotiation(
+                    SslNegotiationMetaMessage::PostgresSsl(ssl_request),
+                )));
+            }
         }
 
         // This is done once at connection startup.
-        let res = Startup::decode(&mut self.ibuf).map_err(io::Error::other)?;
+        let res = Startup::decode(&mut self.ibuf, &context).map_err(io::Error::other)?;
         let startup = res.map(|x| {
             tlog!(Debug, "received StartupPacket from client");
             self.startup_processed = true;

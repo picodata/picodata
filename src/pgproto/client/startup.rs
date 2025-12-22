@@ -7,7 +7,7 @@ use crate::{
     },
     tlog,
 };
-use pgwire::messages::startup::Startup;
+use pgwire::messages::{startup::Startup, SslNegotiationMetaMessage};
 use smol_str::format_smolstr;
 use sql::ir::options::PartialOptions;
 use std::{
@@ -131,7 +131,7 @@ pub fn handshake<S: Read + Write>(
 
                 return Ok((stream, parse_startup(startup)?));
             }
-            FeMessage::SslRequest(_) => {
+            FeMessage::SslNegotiation(SslNegotiationMetaMessage::PostgresSsl(_)) => {
                 if client_attempted_ssl {
                     // ssl handshake was already attempted
                     return Err(PgError::ProtocolViolation(format_smolstr!(

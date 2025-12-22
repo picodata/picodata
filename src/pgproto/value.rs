@@ -1,7 +1,7 @@
 use super::error::DynError;
 use crate::pgproto::error::{DecodingError, EncodingError, PgError, PgResult};
 use bytes::{BufMut, BytesMut};
-use pgwire::{api::results::DataRowEncoder, types::ToSqlText};
+use pgwire::types::{format::FormatOptions, ToSqlText};
 use postgres_types::{FromSql, IsNull, Oid, ToSql, Type};
 use smol_str::{format_smolstr, ToSmolStr};
 use sql::{
@@ -45,8 +45,13 @@ impl<'a> FromSql<'a> for Bool {
 
 impl ToSqlText for Bool {
     #[inline(always)]
-    fn to_sql_text(&self, _ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<DynError>> {
-        self.0.to_sql_text(&Type::TEXT, out)
+    fn to_sql_text(
+        &self,
+        _ty: &Type,
+        out: &mut BytesMut,
+        options: &FormatOptions,
+    ) -> Result<IsNull, Box<DynError>> {
+        self.0.to_sql_text(&Type::TEXT, out, options)
     }
 }
 
@@ -86,8 +91,14 @@ impl<'a> FromSql<'a> for Uuid {
 
 impl ToSqlText for Uuid {
     #[inline(always)]
-    fn to_sql_text(&self, _ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<DynError>> {
-        self.0.to_string().to_sql_text(&Type::TEXT, out)
+    fn to_sql_text(
+        &self,
+        _ty: &Type,
+        out: &mut BytesMut,
+        options: &FormatOptions,
+    ) -> Result<IsNull, Box<DynError>> {
+        // TODO: dont to_string
+        self.0.to_string().to_sql_text(&Type::TEXT, out, options)
     }
 }
 
@@ -130,8 +141,14 @@ impl<'a> FromSql<'a> for Decimal {
 
 impl ToSqlText for Decimal {
     #[inline(always)]
-    fn to_sql_text(&self, _ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<DynError>> {
-        self.0.to_string().to_sql_text(&Type::TEXT, out)
+    fn to_sql_text(
+        &self,
+        _ty: &Type,
+        out: &mut BytesMut,
+        options: &FormatOptions,
+    ) -> Result<IsNull, Box<DynError>> {
+        // TODO: dont to_string
+        self.0.to_string().to_sql_text(&Type::TEXT, out, options)
     }
 }
 
@@ -182,7 +199,12 @@ impl<'a> FromSql<'a> for Json {
 
 impl ToSqlText for Json {
     #[inline(always)]
-    fn to_sql_text(&self, _ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<DynError>> {
+    fn to_sql_text(
+        &self,
+        _ty: &Type,
+        out: &mut BytesMut,
+        _options: &FormatOptions,
+    ) -> Result<IsNull, Box<DynError>> {
         // Note: json text representation is the same as binary
         self.to_sql(&Type::JSON, out)
     }
@@ -225,7 +247,12 @@ impl<'a> FromSql<'a> for Timestamptz {
 
 impl ToSqlText for Timestamptz {
     /// Date formats based on [EncodeDateTime](https://github.com/postgres/postgres/blob/ba8f00eef6d/src/interfaces/ecpg/pgtypeslib/dt_common.c#L767-L798) from PostgreSQL.
-    fn to_sql_text(&self, _ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<DynError>> {
+    fn to_sql_text(
+        &self,
+        _ty: &Type,
+        out: &mut BytesMut,
+        _options: &FormatOptions,
+    ) -> Result<IsNull, Box<DynError>> {
         let datetime = self.0.into_inner();
         let fmt = match (datetime.microsecond(), datetime.offset().minutes_past_hour()) {
             (0, 0) => format_description!(
@@ -381,39 +408,6 @@ impl PgValue {
             (value, ty) => Err(PgError::FeatureNotSupported(format_smolstr!(
                 "{value:?} cannot be represented as a value of type {ty:?}"
             ))),
-        }
-    }
-
-    pub fn encode(
-        &self,
-        format: FieldFormat,
-        encoder: &mut DataRowEncoder,
-    ) -> Result<(), EncodingError> {
-        // TODO: rewrite this once rust supports generic closures
-        pub fn do_encode<T: ToSql + ToSqlText>(
-            encoder: &mut DataRowEncoder,
-            value: &T,
-            ty: Type,
-            format: FieldFormat,
-        ) -> Result<(), EncodingError> {
-            encoder
-                .encode_field_with_type_and_format(value, &ty, format)
-                .map_err(EncodingError::new)
-        }
-
-        match self {
-            PgValue::Float(v) => do_encode(encoder, v, Type::FLOAT8, format),
-            PgValue::Integer(v) => do_encode(encoder, v, Type::INT8, format),
-            PgValue::Boolean(v) => do_encode(encoder, v, Type::BOOL, format),
-            PgValue::Text(v) => do_encode(encoder, v, Type::TEXT, format),
-            PgValue::Json(v) => do_encode(encoder, v, Type::JSON, format),
-            PgValue::Uuid(v) => do_encode(encoder, v, Type::UUID, format),
-            PgValue::Numeric(v) => do_encode(encoder, v, Type::NUMERIC, format),
-            PgValue::Timestamptz(v) => do_encode(encoder, v, Type::TIMESTAMPTZ, format),
-            PgValue::Null => {
-                // XXX: one could call this a clever hack...
-                do_encode(encoder, &None::<i64>, Type::INT8, format)
-            }
         }
     }
 
