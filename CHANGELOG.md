@@ -8,7 +8,14 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-## [25.5.0] - Unreleased
+## [25.6.0] - Unreleased
+
+### Fixes
+
+- Fixed that governor would hang indefinitely if an Offline replicaset had
+  target_master_name != current_master_name.
+
+## [25.5.1] - 2025-12-19
 
 ### Features
 
@@ -60,8 +67,6 @@ with the `YY.MINOR.MICRO` scheme.
 - Fix name resolution in HAVING if projection contains a param.
 - Fixed that vshard would consume non-negligible amount of resources when idling
   on big cluster setups.
-- Fixed that governor would hang indefinitely if an Offline replicaset had
-  target_master_name != current_master_name.
 
 ### WebUI
 - Introduce display of used memory in terms of tier
