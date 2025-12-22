@@ -782,3 +782,42 @@ def test_ER_BOOTSTRAP_CONNECTION_NOT_TO_ALL(cluster: Cluster):
 
     # cannot reach this if we get error ER_BOOTSTRAP_CONNECTION_NOT_TO_ALL
     lagger.wait_online()
+
+
+def test_self_pipe_message_size(cluster: Cluster):
+    leader = cluster.add_instance(wait_online=True)
+
+    N = 5000
+
+    # Simulate having a huge cluster of 5000 instances
+    leader.eval(
+        """
+        local N = ...
+        -- Start a 3, because 1 and 2 are the real instances
+        for i = 3,N do
+            box.space._pico_peer_address:put {i, string.format("prefix-%d-postfix.some.domains.su", i), "iproto"}
+        end
+        """,
+        N,
+    )
+
+    # When a new instance is joined we send it the whole dump of
+    # _pico_peer_address table. That response is then written into the self-pipe
+    # and used after we restart with a clean slate. From this follows that if
+    # the _pico_peer_address becomes large enough we will stop fitting into the
+    # OS buffer of the unnamed pipe and the process will simply block trying to
+    # write to the pipe.
+    #
+    # This test checks that we can handle at least `N` entries in _pico_peer_address.
+    #
+    # However we really should just stop dumping the whole _pico_peer_address
+    # into the self-pipe. See https://git.picodata.io/core/picodata/-/issues/2349
+    joiner = cluster.add_instance(wait_online=True)
+
+    # Sanity check
+    # NOTE: using tarantool SQL (box.execute) instead of picodata SQL because
+    # data was inserted circumventing picodata's SQL engine
+    response = joiner.call(
+        "box.execute", 'SELECT COUNT(*) FROM "_pico_peer_address" WHERE "connection_type" = \'iproto\''
+    )
+    assert response["rows"] == [[5000]]
