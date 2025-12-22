@@ -90,7 +90,7 @@ overview](https://docs.docker.com/compose/)
 [docker-compose.yml]: https://git.picodata.io/core/picodata/-/raw/master/docker/docker-compose.yml?inline=false
 
 ```bash
-curl -O https://git.picodata.io/core/picodata/-/raw/master/docker/docker-compose.yml?inline=false
+curl -O https://git.picodata.io/core/picodata/-/raw/master/docker/docker-compose.yml
 ```
 
 Создайте директорию для рабочих файлов проекта и
