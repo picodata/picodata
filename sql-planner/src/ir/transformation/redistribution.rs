@@ -2659,8 +2659,8 @@ impl Plan {
 
                     match child_dist {
                         Distribution::Single | Distribution::Global => {
-                            // All rows on a single node, no motion needed.
                             self.set_dist(output, child_dist)?;
+                            self.pushdown_limit(id)?;
                         }
                         Distribution::Any | Distribution::Segment { .. } => {
                             // Rows are distributed, so motion needed with full policy to

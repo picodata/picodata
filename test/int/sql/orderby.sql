@@ -201,3 +201,65 @@ with t(a) as (values (1), (2), (3)) select a from t order by (select 1), a desc;
 -- EXPECTED:
 3, 2, 1
 
+-- TEST: test-orderby-limit-pushdown-1.0
+-- SQL:
+drop table if exists t1;
+create table t1(
+    a int primary key,
+    b int
+);
+insert into t1 values (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
+
+-- TEST: test-orderby-limit-pushdown-1.1
+-- SQL:
+SELECT DISTINCT t0.a AS c0, t0.a AS c1 FROM t1 AS t0 ORDER BY c0 ASC, c1 ASC LIMIT 2;
+-- EXPECTED:
+1, 1, 2, 2
+
+-- TEST: test-orderby-limit-pushdown-1.2
+-- SQL:
+SELECT DISTINCT t0.a AS c0, t0.a + 1 AS c1 FROM t1 AS t0 ORDER BY c0 ASC, c1 ASC LIMIT 2;
+-- EXPECTED:
+1, 2, 2, 3
+
+-- TEST: test-orderby-limit-pushdown-1.3
+-- SQL:
+SELECT t0.a AS c0, t0.a AS c1, sum(t0.b) as b_sum_0, sum(t0.b) as b_sum_1 FROM t1 AS t0 GROUP BY c0, c1 ORDER BY c0 DESC, c1 ASC LIMIT 1;
+-- EXPECTED:
+5, 5, 5, 5
+
+-- TEST: test-orderby-limit-pushdown-1.4
+-- SQL:
+SELECT t0.a AS c0, t0.a AS c1, avg(t0.b) as b_avg_0, avg(t0.b) as b_avg_1 FROM t1 AS t0 GROUP BY c0, c1 ORDER BY c0 ASC, c1 DESC LIMIT 1;
+-- EXPECTED:
+1, 1, 1, 1
+
+-- TEST: test-orderby-limit-pushdown-1.5
+-- SQL:
+select distinct t0.a as c0, t0.b as c1, t0.a as c2 from t1 as t0 order by c0 + c2 desc limit 2;
+-- EXPECTED:
+5, 5, 5, 4, 4, 4
+
+-- TEST: test-orderby-limit-pushdown-1.6
+-- SQL:
+select t0.a as c0, sum(t0.b) as c1, t0.a as c2 from t1 AS t0 group by c0, c2 order by c0 + c2 desc limit 2;
+-- EXPECTED:
+5, 5, 5, 4, 4, 4
+
+-- TEST: test-orderby-limit-pushdown-1.7
+-- SQL:
+select distinct t0.a as c0, t0.b as c1, t0.a as c2 from t1 as t0 order by 3 desc limit 2;
+-- EXPECTED:
+5, 5, 5, 4, 4, 4
+
+-- TEST: test-orderby-limit-pushdown-1.8
+-- SQL:
+select t0.a as c0, sum(t0.b) as c1, t0.a as c2 from t1 as t0 group by c0, c2 order by 3 desc limit 2;
+-- EXPECTED:
+5, 5, 5, 4, 4, 4
+
+-- TEST: test-orderby-limit-pushdown-1.9
+-- SQL:
+with cte(a) as (select a from t1) select (select count(*) from cte), (select a from cte order by a limit 1);
+-- EXPECTED:
+5, 1

@@ -59,7 +59,10 @@ fn exec_plan_subtree_test() {
     let exec_plan = query.get_mut_exec_plan();
     exec_plan.set_vtables(vtables);
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
-    let motion_child_id = exec_plan.get_motion_subtree_root(motion_id).unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
 
     // Check sub-query
     let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
@@ -99,7 +102,10 @@ fn exec_plan_subtree_two_stage_groupby_test() {
     let exec_plan = query.get_mut_exec_plan();
     exec_plan.set_vtables(vtables);
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
-    let motion_child_id = exec_plan.get_motion_subtree_root(motion_id).unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
     if let MotionPolicy::Full = exec_plan.get_motion_policy(motion_id).unwrap() {
     } else {
         panic!("Expected MotionPolicy::Full for local aggregation stage");
@@ -145,7 +151,10 @@ fn exec_plan_subtree_two_stage_groupby_test_2() {
     let exec_plan = query.get_mut_exec_plan();
     exec_plan.set_vtables(vtables);
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
-    let motion_child_id = exec_plan.get_motion_subtree_root(motion_id).unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
 
     // Check groupby local stage
     let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
@@ -212,7 +221,10 @@ fn exec_plan_subtree_aggregates() {
     let exec_plan = query.get_mut_exec_plan();
     exec_plan.set_vtables(vtables);
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
-    let motion_child_id = exec_plan.get_motion_subtree_root(motion_id).unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
 
     // Check groupby local stage
     let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
@@ -247,7 +259,10 @@ fn exec_plan_subtree_aggregates_no_groupby() {
     let exec_plan = query.get_mut_exec_plan();
     exec_plan.set_vtables(vtables);
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
-    let motion_child_id = exec_plan.get_motion_subtree_root(motion_id).unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
 
     // Check groupby local stage
     let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
@@ -408,7 +423,10 @@ fn exec_plan_subtree_count_asterisk() {
     let exec_plan = query.get_mut_exec_plan();
     exec_plan.set_vtables(vtables);
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
-    let motion_child_id = exec_plan.get_motion_subtree_root(motion_id).unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
 
     // Check groupby local stage
     let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
@@ -462,7 +480,10 @@ fn exec_plan_subtree_having() {
     let exec_plan = query.get_mut_exec_plan();
     exec_plan.set_vtables(vtables);
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
-    let motion_child_id = exec_plan.get_motion_subtree_root(motion_id).unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
 
     // Check groupby local stage
     let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
@@ -525,7 +546,10 @@ fn exec_plan_subtree_having_without_groupby() {
     let exec_plan = query.get_mut_exec_plan();
     exec_plan.set_vtables(vtables);
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
-    let motion_child_id = exec_plan.get_motion_subtree_root(motion_id).unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
 
     // Check groupby local stage
     let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
@@ -685,6 +709,7 @@ fn global_union_all3() {
     let sq_motion_id = *slices.slice(0).unwrap().position(0).unwrap();
     let sq_motion_child = query
         .exec_plan
+        .get_ir_plan()
         .get_motion_subtree_root(sq_motion_id)
         .unwrap();
 
@@ -705,6 +730,7 @@ fn global_union_all3() {
     let groupby_motion_id = *slices.slice(0).unwrap().position(1).unwrap();
     let groupby_motion_child = query
         .exec_plan
+        .get_ir_plan()
         .get_motion_subtree_root(groupby_motion_id)
         .unwrap();
     query
@@ -788,6 +814,7 @@ fn global_except() {
         // check map stage
         let motion_child = query
             .exec_plan
+            .get_ir_plan()
             .get_motion_subtree_root(intersect_motion_id)
             .unwrap();
         let sql = get_sql_from_execution_plan(
@@ -929,7 +956,10 @@ fn exec_plan_order_by() {
     let exec_plan = query.get_mut_exec_plan();
     exec_plan.set_vtables(vtables);
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
-    let motion_child_id = exec_plan.get_motion_subtree_root(motion_id).unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
 
     // Check sub-query
     let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
@@ -949,6 +979,179 @@ fn exec_plan_order_by() {
             r#"SELECT "COL_1" as "identification_number" FROM (SELECT "COL_1" FROM "TMP_0_0136") as "hash_testing" ORDER BY "COL_1""#.to_string(),
             vec![]
         ));
+}
+
+#[test]
+fn exec_plan_order_by_limit_pushdown() {
+    let sql = r#"SELECT "a", "b" FROM "t" ORDER BY "b" LIMIT 5"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let exec_plan = query.get_mut_exec_plan();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert!(sql.params.is_empty());
+    assert!(sql.pattern.contains(r#"ORDER BY "b""#), "{}", sql.pattern);
+    assert!(sql.pattern.contains("LIMIT 5"), "{}", sql.pattern);
+}
+
+#[test]
+fn exec_plan_distinct_order_by_limit_pushdown_alias() {
+    let sql = r#"SELECT DISTINCT "a" AS "x" FROM "t" ORDER BY "x" LIMIT 5"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let exec_plan = query.get_mut_exec_plan();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert!(sql.params.is_empty());
+    assert!(
+        sql.pattern.contains(r#"ORDER BY "gr_expr_1""#),
+        "{}",
+        sql.pattern
+    );
+    assert!(sql.pattern.contains("LIMIT 5"), "{}", sql.pattern);
+    insta::assert_snapshot!(sql.pattern, @r#" SELECT "gr_expr_1" FROM (SELECT "t"."a" as "gr_expr_1" FROM "t" GROUP BY "t"."a") ORDER BY "gr_expr_1" LIMIT 5"#);
+}
+
+#[test]
+fn exec_plan_distinct_order_by_limit_pushdown_expr_over_duplicated_aliases() {
+    let sql = r#"
+        SELECT DISTINCT "a" AS "c0", "b" AS "c1", "a" AS "c2"
+        FROM "t"
+        ORDER BY "c0" + "c2" LIMIT 5
+    "#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let exec_plan = query.get_mut_exec_plan();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert!(sql.params.is_empty());
+    assert!(
+        sql.pattern
+            .contains(r#"ORDER BY "gr_expr_1" + "gr_expr_1""#),
+        "{}",
+        sql.pattern
+    );
+    assert!(sql.pattern.contains("LIMIT 5"), "{}", sql.pattern);
+    insta::assert_snapshot!(sql.pattern, @r#" SELECT "gr_expr_1", "gr_expr_2" FROM (SELECT "t"."a" as "gr_expr_1", "t"."b" as "gr_expr_2" FROM "t" GROUP BY "t"."a", "t"."b") ORDER BY "gr_expr_1" + "gr_expr_1" LIMIT 5"#);
+}
+
+#[test]
+fn exec_plan_distinct_order_by_limit_pushdown_ordinal_position() {
+    let sql = r#"
+        SELECT DISTINCT "a" AS "c0", "b" AS "c1", "a" AS "c2"
+        FROM "t"
+        ORDER BY 3 DESC LIMIT 5
+    "#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let exec_plan = query.get_mut_exec_plan();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert!(sql.params.is_empty());
+    assert!(sql.pattern.contains("ORDER BY 1 DESC"), "{}", sql.pattern);
+    assert!(sql.pattern.contains("LIMIT 5"), "{}", sql.pattern);
+    insta::assert_snapshot!(sql.pattern, @r#" SELECT "gr_expr_1", "gr_expr_2" FROM (SELECT "t"."a" as "gr_expr_1", "t"."b" as "gr_expr_2" FROM "t" GROUP BY "t"."a", "t"."b") ORDER BY 1 DESC LIMIT 5"#);
+}
+
+#[test]
+fn exec_plan_order_by_subquery_limit_no_pushdown() {
+    let sql = r#"SELECT "a" FROM "t" ORDER BY (SELECT 1), "a" LIMIT 5"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let exec_plan = query.get_mut_exec_plan();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert!(sql.params.is_empty());
+    assert!(!sql.pattern.contains("ORDER BY"), "{}", sql.pattern);
+    assert!(!sql.pattern.contains("LIMIT "), "{}", sql.pattern);
+    insta::assert_snapshot!(sql.pattern, @r#"SELECT "t"."a" FROM "t""#);
+}
+
+#[test]
+fn exec_plan_aggregate_limit_no_pushdown() {
+    let sql = r#"SELECT min("b"), min(distinct "b") FROM "t" LIMIT 1"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let exec_plan = query.get_mut_exec_plan();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert!(sql.pattern.contains("GROUP BY"), "{}", sql.pattern);
+    assert!(!sql.pattern.contains("LIMIT "), "{}", sql.pattern);
+}
+
+#[test]
+fn exec_plan_window_limit_no_pushdown() {
+    let sql = r#"SELECT count(*) OVER () AS "c" FROM "t" LIMIT 1"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let exec_plan = query.get_mut_exec_plan();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert_eq!(
+        sql,
+        PatternWithParams::new(r#"SELECT "t"."a" FROM "t""#.to_string(), vec![])
+    );
+}
+
+#[test]
+fn exec_plan_aggregate_in_order_by_limit_no_pushdown() {
+    let sql = r#"SELECT "b" FROM "t" GROUP BY "b" ORDER BY sum("b") LIMIT 5"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let exec_plan = query.get_mut_exec_plan();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert!(sql.pattern.contains("GROUP BY"), "{}", sql.pattern);
+    assert!(!sql.pattern.contains("ORDER BY"), "{}", sql.pattern);
+    assert!(!sql.pattern.contains("LIMIT "), "{}", sql.pattern);
 }
 
 #[test]
@@ -978,7 +1181,10 @@ fn exec_plan_order_by_with_subquery() {
     let exec_plan = query.get_mut_exec_plan();
     exec_plan.set_vtables(vtables);
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
-    let motion_child_id = exec_plan.get_motion_subtree_root(motion_id).unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
 
     // Check sub-query
     let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
@@ -1043,7 +1249,10 @@ fn exec_plan_order_by_with_join() {
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
 
     // Check sub-query.
-    let sq_motion_child_id = exec_plan.get_motion_subtree_root(sq_motion_id).unwrap();
+    let sq_motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(sq_motion_id)
+        .unwrap();
     let sql =
         get_sql_from_execution_plan(exec_plan, sq_motion_child_id, Snapshot::Oldest, TEMPLATE);
     assert_eq!(
@@ -1053,6 +1262,7 @@ fn exec_plan_order_by_with_join() {
 
     // Check order by subtree.
     let order_by_motion_child_id = exec_plan
+        .get_ir_plan()
         .get_motion_subtree_root(order_by_motion_id)
         .unwrap();
     let sql = get_sql_from_execution_plan(

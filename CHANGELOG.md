@@ -63,6 +63,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Add suppoort for anonymous blocks. An anonymous block is a sequence of statements that execute
   queries transactionally. Blocks are single-bucket, meaning that all the queries within the
   block must be executed on the same bucket (or have distribution any).
+- Add optimization for Limit + Distinct and Limit + OrderBy.
+  When certain conditions are met, the Limit node is added to the local stage of SQL query plan.
 
   Supported statements are:
   - QUERY: execute the given query;

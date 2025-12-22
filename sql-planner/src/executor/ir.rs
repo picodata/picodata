@@ -137,7 +137,8 @@ impl ExecutionPlan {
                         ..
                     }) = ir.get_relation_node(child_id)?
                     {
-                        let cacheable_subtree_root_id = self.get_motion_subtree_root(child_id)?;
+                        let cacheable_subtree_root_id =
+                            self.plan.get_motion_subtree_root(child_id)?;
                         Some(cacheable_subtree_root_id)
                     } else {
                         None
@@ -326,57 +327,6 @@ impl ExecutionPlan {
             Entity::Relational,
             Some("invalid motion".into()),
         ))
-    }
-
-    /// Get root from motion sub tree
-    ///
-    /// # Errors
-    /// - node is not valid
-    pub fn get_motion_subtree_root(&self, node_id: NodeId) -> Result<NodeId, SbroadError> {
-        let top_id = &self.get_motion_child(node_id)?;
-        let rel = self.get_ir_plan().get_relation_node(*top_id)?;
-        match rel {
-            Relational::ScanSubQuery { .. } | Relational::ScanCte { .. } => {
-                self.get_ir_plan().get_first_rel_child(*top_id)
-            }
-            Relational::Except { .. }
-            | Relational::GroupBy { .. }
-            | Relational::OrderBy { .. }
-            | Relational::Intersect { .. }
-            | Relational::Join { .. }
-            | Relational::Projection { .. }
-            | Relational::ScanRelation { .. }
-            | Relational::Selection { .. }
-            | Relational::SelectWithoutScan { .. }
-            | Relational::Union { .. }
-            | Relational::UnionAll { .. }
-            | Relational::Update { .. }
-            | Relational::Values { .. }
-            | Relational::Having { .. }
-            | Relational::ValuesRow { .. }
-            | Relational::Limit { .. } => Ok(*top_id),
-            Relational::Motion { .. } | Relational::Insert { .. } | Relational::Delete { .. } => {
-                Err(SbroadError::Invalid(
-                    Entity::Relational,
-                    Some(format_smolstr!("invalid motion child node: {rel:?}.")),
-                ))
-            }
-        }
-    }
-
-    /// Extract the child from the Motion node.
-    ///
-    /// # Panics:
-    /// - `motion_id` is not Motion IR node
-    ///
-    /// # Errors
-    /// - `motion_id` is not `Relational` type
-    /// - Node `motion_id` does not contain child
-    pub(crate) fn get_motion_child(&self, motion_id: NodeId) -> Result<NodeId, SbroadError> {
-        let Relational::Motion(_) = self.get_ir_plan().get_relation_node(motion_id)? else {
-            unreachable!("expected Motion IR node");
-        };
-        self.plan.get_first_rel_child(motion_id)
     }
 
     /// Unlink the subtree of the motion node.

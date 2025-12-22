@@ -153,3 +153,87 @@ fn union_under_insert1() {
         sql_motion_row_max = 5000
     "#);
 }
+
+#[test]
+fn limit_pushdown_with_union() {
+    let sql = r#"
+        select * from t union select * from t order by a limit 1;
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    limit 1
+        projection ("a"::int -> "a", "b"::int -> "b", "c"::int -> "c", "d"::int -> "d")
+            order by ("a"::int)
+                scan
+                    motion [policy: full, program: RemoveDuplicates]
+                        limit 1
+                            projection ("a"::int -> "a", "b"::int -> "b", "c"::int -> "c", "d"::int -> "d")
+                                order by ("a"::int)
+                                    scan
+                                        union
+                                            projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+                                                scan "t"
+                                            projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+                                                scan "t"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+
+    let sql = r#"
+        select * from t union all select * from t order by a limit 1;
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    limit 1
+        projection ("a"::int -> "a", "b"::int -> "b", "c"::int -> "c", "d"::int -> "d")
+            order by ("a"::int)
+                motion [policy: full, program: ReshardIfNeeded]
+                    limit 1
+                        projection ("a"::int -> "a", "b"::int -> "b", "c"::int -> "c", "d"::int -> "d")
+                            order by ("a"::int)
+                                scan
+                                    union all
+                                        projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+                                            scan "t"
+                                        projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+                                            scan "t"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn limit_pushdown_with_union_and_group_by() {
+    let sql = r#"
+        select a as a1, a as a2 from t union all select a as a1, a as a2 from t group by a1, a2 order by a1 limit 1;
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    limit 1
+        projection ("a1"::int -> "a1", "a2"::int -> "a2")
+            order by ("a1"::int)
+                motion [policy: full, program: ReshardIfNeeded]
+                    limit 1
+                        projection ("a1"::int -> "a1", "a2"::int -> "a2")
+                            order by ("a1"::int)
+                                scan
+                                    union all
+                                        projection ("t"."a"::int -> "a1", "t"."a"::int -> "a2")
+                                            scan "t"
+                                        motion [policy: segment([ref("a1")]), program: ReshardIfNeeded]
+                                            projection ("gr_expr_1"::int -> "a1", "gr_expr_1"::int -> "a2")
+                                                group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1")
+                                                    motion [policy: full, program: ReshardIfNeeded]
+                                                        projection ("t"."a"::int -> "gr_expr_1")
+                                                            group by ("t"."a"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
+                                                                scan "t"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}

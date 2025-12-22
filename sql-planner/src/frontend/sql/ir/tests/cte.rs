@@ -204,6 +204,86 @@ fn agg_cte() {
 }
 
 #[test]
+fn limit_pushdown_does_not_mutate_cte() {
+    let sql = r#"
+        WITH cte (a) AS (SELECT a FROM t)
+        SELECT (SELECT * FROM cte), (SELECT a FROM cte ORDER BY a LIMIT 1)
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    projection (ROW($2) -> "col_1", ROW($1) -> "col_2")
+    subquery $0:
+    motion [policy: full, program: ReshardIfNeeded]
+                        projection ("t"."a"::int -> "a")
+                            scan "t"
+    subquery $1:
+    motion [policy: full, program: ReshardIfNeeded]
+            scan
+                limit 1
+                    projection ("a"::int -> "a")
+                        order by ("a"::int)
+                            scan
+                                projection ("cte"."a"::int -> "a")
+                                    scan cte cte($0)
+    subquery $2:
+    scan
+            projection ("cte"."a"::int -> "a")
+                scan cte cte($0)
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn limit_pushdown_does_not_mutate_used_once_cte() {
+    let sql = r#"
+        WITH cte (a) AS (SELECT a FROM t)
+        SELECT a FROM cte ORDER BY a LIMIT 1
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    limit 1
+        projection ("a"::int -> "a")
+            order by ("a"::int)
+                scan
+                    projection ("cte"."a"::int -> "a")
+                        scan cte cte($0)
+    subquery $0:
+    motion [policy: full, program: ReshardIfNeeded]
+                                projection ("t"."a"::int -> "a")
+                                    scan "t"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn limit_pushdown_does_not_mutate_used_once_cte_with_aggr_over_it() {
+    let sql = r#"
+        WITH cte (a) AS (SELECT a FROM t)
+        SELECT count(*) FROM cte LIMIT 1
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    limit 1
+        projection (count((*::int))::int -> "col_1")
+            scan cte cte($0)
+    subquery $0:
+    motion [policy: full, program: ReshardIfNeeded]
+                    projection ("t"."a"::int -> "a")
+                        scan "t"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
 fn sq_cte() {
     let sql = r#"
         WITH cte (a) AS (SELECT "FIRST_NAME" FROM "test_space" WHERE "FIRST_NAME" = 'hi')

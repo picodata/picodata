@@ -24,6 +24,8 @@ use self::transformation::redistribution::MotionPolicy;
 use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::engine::helpers::to_user;
 use crate::executor::engine::VersionMap;
+use crate::frontend::sql::ir::SubtreeCloner;
+use crate::ir::expression::{Comparator, VolatilityType};
 use crate::ir::helpers::RepeatableState;
 use crate::ir::index::Indexes;
 use crate::ir::node::plugin::{MutPlugin, Plugin};
@@ -31,10 +33,10 @@ use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
     Alias, ArenaType, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, GroupBy, Having,
     IndexExpr, Insert, Limit, Motion, MutNode, Node, Node136, Node232, Node32, Node64, Node96,
-    NodeId, NodeOwned, OrderBy, Projection, Reference, Row, ScalarFunction, ScanRelation,
-    Selection, SubQueryReference, Trim, UnaryExpr,
+    NodeId, NodeOwned, OrderBy, Projection, Reference, ReferenceTarget, Row, ScalarFunction,
+    ScanRelation, Selection, SubQueryReference, Trim, UnaryExpr,
 };
-use crate::ir::operator::{Bool, OrderByEntity};
+use crate::ir::operator::{Bool, OrderByElement, OrderByEntity};
 use crate::ir::relation::Column;
 use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
 use crate::ir::undo::TransformationLog;
@@ -1072,18 +1074,23 @@ impl Plan {
             })
     }
 
-    /// Check whether given expression contains aggregates.
-    /// If `check_top` is false, the root expression node is not
-    /// checked.
+    /// Check whether the expression subtree contains a scalar function
+    /// accepted by `check_function`.
+    ///
+    /// If `check_top` is false, the root expression node itself is skipped.
     ///
     /// # Errors
     /// - node is not an expression
     /// - invalid expression tree
-    pub fn contains_aggregates(
+    fn contains_function<F>(
         &self,
         expr_id: NodeId,
         check_top: bool,
-    ) -> Result<bool, SbroadError> {
+        check_function: F,
+    ) -> Result<bool, SbroadError>
+    where
+        F: Fn(&ScalarFunction) -> bool,
+    {
         let dfs = PostOrderWithFilter::new(
             |node| self.nodes.expr_iter(node, false),
             |node| {
@@ -1099,16 +1106,42 @@ impl Plan {
             if !check_top && id == expr_id {
                 continue;
             }
-            if let Node::Expression(Expression::ScalarFunction(ScalarFunction { name, .. })) =
+            if let Node::Expression(Expression::ScalarFunction(scalar_function)) =
                 self.get_node(id)?
             {
-                if Expression::is_aggregate_name(name) {
+                if check_function(scalar_function) {
                     return Ok(true);
                 }
             }
         }
 
         Ok(false)
+    }
+
+    /// Check whether given expression contains aggregates.
+    /// If `check_top` is false, the root expression node is not
+    /// checked.
+    pub fn contains_aggregates(
+        &self,
+        expr_id: NodeId,
+        check_top: bool,
+    ) -> Result<bool, SbroadError> {
+        self.contains_function(expr_id, check_top, |scalar_function| {
+            Expression::is_aggregate_name(&scalar_function.name)
+        })
+    }
+
+    /// Check whether given expression contains volatile functions.
+    /// If `check_top` is false, the root expression node is not
+    /// checked.
+    ///
+    /// # Errors
+    /// - node is not an expression
+    /// - invalid expression tree
+    pub fn contains_volatile(&self, expr_id: NodeId, check_top: bool) -> Result<bool, SbroadError> {
+        self.contains_function(expr_id, check_top, |scalar_function| {
+            matches!(scalar_function.volatility_type, VolatilityType::Volatile)
+        })
     }
 
     /// Get relational node and produce a new row without aliases from its output (row with aliases).
@@ -1622,6 +1655,20 @@ impl Plan {
         Ok(child_id)
     }
 
+    /// Return the child of an `Alias` node.
+    ///
+    /// # Errors
+    /// - node is not an `Alias`
+    fn get_alias_child(&self, alias_id: NodeId) -> Result<NodeId, SbroadError> {
+        match self.get_expression_node(alias_id)? {
+            Expression::Alias(Alias { child, .. }) => Ok(*child),
+            _ => Err(SbroadError::Invalid(
+                Entity::Node,
+                Some("node is not Alias type".into()),
+            )),
+        }
+    }
+
     pub fn get_child_under_cast(&self, child_id: NodeId) -> Result<NodeId, SbroadError> {
         let mut id = child_id;
         let mut node = self.get_expression_node(child_id)?;
@@ -2044,6 +2091,1039 @@ impl Plan {
         );
 
         Ok(!should_not_cover)
+    }
+
+    /// Replace the plan slices with `slices`.
+    ///
+    /// This is used when rebuilding the execution layout after planner
+    /// transformations that add or remove stage boundaries.
+    pub fn set_slices(&mut self, slices: Vec<Vec<NodeId>>) {
+        self.slices = slices.into();
+    }
+
+    /// Return the root of the executable subtree located under a `Motion` node.
+    ///
+    /// When the direct child is `ScanSubQuery` or `ScanCte`, the helper unwraps
+    /// that wrapper and returns its relational child instead.
+    ///
+    /// # Errors
+    /// - `node_id` is not a valid relational node
+    /// - `node_id` is not a `Motion`
+    /// - the `Motion` child is not supported as a local-stage root
+    pub fn get_motion_subtree_root(&self, node_id: NodeId) -> Result<NodeId, SbroadError> {
+        let top_id = &self.get_motion_child(node_id)?;
+        let rel = self.get_relation_node(*top_id)?;
+        match rel {
+            Relational::ScanSubQuery { .. } | Relational::ScanCte { .. } => {
+                self.get_first_rel_child(*top_id)
+            }
+            Relational::Except { .. }
+            | Relational::GroupBy { .. }
+            | Relational::OrderBy { .. }
+            | Relational::Intersect { .. }
+            | Relational::Join { .. }
+            | Relational::Projection { .. }
+            | Relational::ScanRelation { .. }
+            | Relational::Selection { .. }
+            | Relational::SelectWithoutScan { .. }
+            | Relational::Union { .. }
+            | Relational::UnionAll { .. }
+            | Relational::Update { .. }
+            | Relational::Values { .. }
+            | Relational::Having { .. }
+            | Relational::ValuesRow { .. }
+            | Relational::Limit { .. } => Ok(*top_id),
+            Relational::Motion { .. } | Relational::Insert { .. } | Relational::Delete { .. } => {
+                Err(SbroadError::Invalid(
+                    Entity::Relational,
+                    Some(format_smolstr!("invalid motion child node: {rel:?}.")),
+                ))
+            }
+        }
+    }
+
+    /// Extract the child from the Motion node.
+    ///
+    /// # Errors
+    /// - `motion_id` is not a valid relational node
+    /// - `motion_id` is not a `Motion`
+    /// - `motion_id` does not contain a child
+    pub(crate) fn get_motion_child(&self, motion_id: NodeId) -> Result<NodeId, SbroadError> {
+        match self.get_relation_node(motion_id)? {
+            Relational::Motion(_) => self.get_first_rel_child(motion_id),
+            rel => Err(SbroadError::Invalid(
+                Entity::Relational,
+                Some(format_smolstr!("node ({motion_id}) is not motion: {rel:?}")),
+            )),
+        }
+    }
+
+    /// Translate a zero-based output position from the final stage to the
+    /// corresponding position in the local pushed-down stage.
+    ///
+    /// # Errors
+    /// - `position` is outside `position_mapping`
+    fn get_order_by_output_position(
+        &self,
+        position_mapping: &[usize],
+        position: usize,
+        context: &str,
+    ) -> Result<usize, SbroadError> {
+        position_mapping.get(position).copied().ok_or_else(|| {
+            SbroadError::Invalid(
+                Entity::Expression,
+                Some(format_smolstr!(
+                    "{context} position ({position}) is out of bounds"
+                )),
+            )
+        })
+    }
+
+    /// Translate a one-based `ORDER BY` index from the final stage to the
+    /// corresponding one-based index in the local pushed-down stage.
+    ///
+    /// # Errors
+    /// - the index is zero
+    /// - the referenced final output column is out of bounds
+    fn get_order_by_index_value(
+        &self,
+        position_mapping: &[usize],
+        value: usize,
+    ) -> Result<usize, SbroadError> {
+        let output_idx = value.checked_sub(1).ok_or_else(|| {
+            SbroadError::Invalid(
+                Entity::Expression,
+                Some("invalid ORDER BY index (0) for final projection output".into()),
+            )
+        })?;
+
+        Ok(self.get_order_by_output_position(position_mapping, output_idx, "ORDER BY index")? + 1)
+    }
+
+    /// Compare two `ORDER BY` expressions after accounting for final-to-local
+    /// output position remapping.
+    ///
+    /// This is used to deduplicate equivalent `ORDER BY` expressions before
+    /// cloning them into the local stage.
+    ///
+    /// # Errors
+    /// - either expression subtree is invalid
+    /// - an expression contains a reference shape unsupported by limit pushdown
+    /// - a remapped output position is out of bounds
+    fn are_order_by_exprs_equal(
+        &self,
+        lhs: NodeId,
+        rhs: NodeId,
+        position_mapping: &[usize],
+    ) -> Result<bool, SbroadError> {
+        let lhs_expr = self.get_expression_node(lhs)?;
+        let rhs_expr = self.get_expression_node(rhs)?;
+
+        let cmp_expr_vec = |left: &[NodeId], right: &[NodeId]| -> Result<bool, SbroadError> {
+            if left.len() != right.len() {
+                return Ok(false);
+            }
+
+            for (left_id, right_id) in left.iter().zip(right.iter()) {
+                if !self.are_order_by_exprs_equal(*left_id, *right_id, position_mapping)? {
+                    return Ok(false);
+                }
+            }
+
+            Ok(true)
+        };
+
+        match (lhs_expr, rhs_expr) {
+            (
+                Expression::Alias(Alias {
+                    name: lhs_name,
+                    child: lhs_child,
+                }),
+                Expression::Alias(Alias {
+                    name: rhs_name,
+                    child: rhs_child,
+                }),
+            ) => Ok(lhs_name == rhs_name
+                && self.are_order_by_exprs_equal(*lhs_child, *rhs_child, position_mapping)?),
+            (
+                Expression::Bool(BoolExpr {
+                    left: lhs_left,
+                    op: lhs_op,
+                    right: lhs_right,
+                }),
+                Expression::Bool(BoolExpr {
+                    left: rhs_left,
+                    op: rhs_op,
+                    right: rhs_right,
+                }),
+            ) => Ok(lhs_op == rhs_op
+                && self.are_order_by_exprs_equal(*lhs_left, *rhs_left, position_mapping)?
+                && self.are_order_by_exprs_equal(*lhs_right, *rhs_right, position_mapping)?),
+            (
+                Expression::Arithmetic(ArithmeticExpr {
+                    left: lhs_left,
+                    op: lhs_op,
+                    right: lhs_right,
+                }),
+                Expression::Arithmetic(ArithmeticExpr {
+                    left: rhs_left,
+                    op: rhs_op,
+                    right: rhs_right,
+                }),
+            ) => Ok(lhs_op == rhs_op
+                && self.are_order_by_exprs_equal(*lhs_left, *rhs_left, position_mapping)?
+                && self.are_order_by_exprs_equal(*lhs_right, *rhs_right, position_mapping)?),
+            (
+                Expression::Index(IndexExpr {
+                    child: lhs_child,
+                    which: lhs_which,
+                }),
+                Expression::Index(IndexExpr {
+                    child: rhs_child,
+                    which: rhs_which,
+                }),
+            ) => Ok(
+                self.are_order_by_exprs_equal(*lhs_child, *rhs_child, position_mapping)?
+                    && self.are_order_by_exprs_equal(*lhs_which, *rhs_which, position_mapping)?,
+            ),
+            (
+                Expression::Cast(Cast {
+                    child: lhs_child,
+                    to: lhs_to,
+                }),
+                Expression::Cast(Cast {
+                    child: rhs_child,
+                    to: rhs_to,
+                }),
+            ) => Ok(lhs_to == rhs_to
+                && self.are_order_by_exprs_equal(*lhs_child, *rhs_child, position_mapping)?),
+            (
+                Expression::Concat(Concat {
+                    left: lhs_left,
+                    right: lhs_right,
+                }),
+                Expression::Concat(Concat {
+                    left: rhs_left,
+                    right: rhs_right,
+                }),
+            ) => Ok(
+                self.are_order_by_exprs_equal(*lhs_left, *rhs_left, position_mapping)?
+                    && self.are_order_by_exprs_equal(*lhs_right, *rhs_right, position_mapping)?,
+            ),
+            (Expression::Constant(lhs_constant), Expression::Constant(rhs_constant)) => {
+                Ok(lhs_constant == rhs_constant)
+            }
+            (
+                Expression::Like(Like {
+                    left: lhs_left,
+                    right: lhs_right,
+                    escape: lhs_escape,
+                }),
+                Expression::Like(Like {
+                    left: rhs_left,
+                    right: rhs_right,
+                    escape: rhs_escape,
+                }),
+            ) => Ok(
+                self.are_order_by_exprs_equal(*lhs_left, *rhs_left, position_mapping)?
+                    && self.are_order_by_exprs_equal(*lhs_right, *rhs_right, position_mapping)?
+                    && self.are_order_by_exprs_equal(*lhs_escape, *rhs_escape, position_mapping)?,
+            ),
+            (Expression::Reference(lhs_ref), Expression::Reference(rhs_ref)) => {
+                if !matches!(lhs_ref.target, ReferenceTarget::Single(_))
+                    || !matches!(rhs_ref.target, ReferenceTarget::Single(_))
+                {
+                    return Err(SbroadError::Invalid(
+                        Entity::Expression,
+                        Some("ORDER BY pushdown supports only single-target references".into()),
+                    ));
+                }
+
+                Ok(self.get_order_by_output_position(
+                    position_mapping,
+                    lhs_ref.position,
+                    "ORDER BY reference",
+                )? == self.get_order_by_output_position(
+                    position_mapping,
+                    rhs_ref.position,
+                    "ORDER BY reference",
+                )? && lhs_ref.col_type == rhs_ref.col_type
+                    && lhs_ref.asterisk_source == rhs_ref.asterisk_source
+                    && lhs_ref.is_system == rhs_ref.is_system)
+            }
+            (
+                Expression::SubQueryReference(SubQueryReference {
+                    rel_id: lhs_rel_id,
+                    position: lhs_position,
+                    col_type: lhs_col_type,
+                }),
+                Expression::SubQueryReference(SubQueryReference {
+                    rel_id: rhs_rel_id,
+                    position: rhs_position,
+                    col_type: rhs_col_type,
+                }),
+            ) => Ok(lhs_rel_id == rhs_rel_id
+                && lhs_position == rhs_position
+                && lhs_col_type == rhs_col_type),
+            (
+                Expression::Row(Row { list: lhs_list, .. }),
+                Expression::Row(Row { list: rhs_list, .. }),
+            ) => cmp_expr_vec(lhs_list, rhs_list),
+            (
+                Expression::ScalarFunction(ScalarFunction {
+                    name: lhs_name,
+                    children: lhs_children,
+                    feature: lhs_feature,
+                    func_type: lhs_func_type,
+                    is_system: lhs_is_system,
+                    volatility_type: lhs_volatility_type,
+                    is_window: lhs_is_window,
+                }),
+                Expression::ScalarFunction(ScalarFunction {
+                    name: rhs_name,
+                    children: rhs_children,
+                    feature: rhs_feature,
+                    func_type: rhs_func_type,
+                    is_system: rhs_is_system,
+                    volatility_type: rhs_volatility_type,
+                    is_window: rhs_is_window,
+                }),
+            ) => Ok(lhs_name == rhs_name
+                && lhs_feature == rhs_feature
+                && lhs_func_type == rhs_func_type
+                && lhs_is_system == rhs_is_system
+                && lhs_volatility_type == rhs_volatility_type
+                && lhs_is_window == rhs_is_window
+                && cmp_expr_vec(lhs_children, rhs_children)?),
+            (
+                Expression::Trim(Trim {
+                    kind: lhs_kind,
+                    pattern: lhs_pattern,
+                    target: lhs_target,
+                }),
+                Expression::Trim(Trim {
+                    kind: rhs_kind,
+                    pattern: rhs_pattern,
+                    target: rhs_target,
+                }),
+            ) => {
+                let patterns_equal = match (lhs_pattern, rhs_pattern) {
+                    (Some(lhs_pattern), Some(rhs_pattern)) => {
+                        self.are_order_by_exprs_equal(*lhs_pattern, *rhs_pattern, position_mapping)?
+                    }
+                    (None, None) => true,
+                    _ => false,
+                };
+
+                Ok(lhs_kind == rhs_kind
+                    && patterns_equal
+                    && self.are_order_by_exprs_equal(*lhs_target, *rhs_target, position_mapping)?)
+            }
+            (
+                Expression::Unary(UnaryExpr {
+                    op: lhs_op,
+                    child: lhs_child,
+                }),
+                Expression::Unary(UnaryExpr {
+                    op: rhs_op,
+                    child: rhs_child,
+                }),
+            ) => Ok(lhs_op == rhs_op
+                && self.are_order_by_exprs_equal(*lhs_child, *rhs_child, position_mapping)?),
+            (Expression::CountAsterisk(lhs_count), Expression::CountAsterisk(rhs_count)) => {
+                Ok(lhs_count == rhs_count)
+            }
+            (
+                Expression::Case(Case {
+                    search_expr: lhs_search_expr,
+                    when_blocks: lhs_when_blocks,
+                    else_expr: lhs_else_expr,
+                }),
+                Expression::Case(Case {
+                    search_expr: rhs_search_expr,
+                    when_blocks: rhs_when_blocks,
+                    else_expr: rhs_else_expr,
+                }),
+            ) => {
+                if lhs_when_blocks.len() != rhs_when_blocks.len() {
+                    return Ok(false);
+                }
+
+                let search_expr_equal = match (lhs_search_expr, rhs_search_expr) {
+                    (Some(lhs_search_expr), Some(rhs_search_expr)) => self
+                        .are_order_by_exprs_equal(
+                            *lhs_search_expr,
+                            *rhs_search_expr,
+                            position_mapping,
+                        )?,
+                    (None, None) => true,
+                    _ => false,
+                };
+
+                let else_expr_equal = match (lhs_else_expr, rhs_else_expr) {
+                    (Some(lhs_else_expr), Some(rhs_else_expr)) => self.are_order_by_exprs_equal(
+                        *lhs_else_expr,
+                        *rhs_else_expr,
+                        position_mapping,
+                    )?,
+                    (None, None) => true,
+                    _ => false,
+                };
+
+                if !search_expr_equal || !else_expr_equal {
+                    return Ok(false);
+                }
+
+                for ((lhs_cond, lhs_res), (rhs_cond, rhs_res)) in
+                    lhs_when_blocks.iter().zip(rhs_when_blocks.iter())
+                {
+                    if !self.are_order_by_exprs_equal(*lhs_cond, *rhs_cond, position_mapping)?
+                        || !self.are_order_by_exprs_equal(*lhs_res, *rhs_res, position_mapping)?
+                    {
+                        return Ok(false);
+                    }
+                }
+
+                Ok(true)
+            }
+            (Expression::Timestamp(lhs_timestamp), Expression::Timestamp(rhs_timestamp)) => {
+                Ok(lhs_timestamp == rhs_timestamp)
+            }
+            (
+                Expression::Over(Over {
+                    stable_func: lhs_stable_func,
+                    filter: lhs_filter,
+                    window: lhs_window,
+                }),
+                Expression::Over(Over {
+                    stable_func: rhs_stable_func,
+                    filter: rhs_filter,
+                    window: rhs_window,
+                }),
+            ) => {
+                let filters_equal = match (lhs_filter, rhs_filter) {
+                    (Some(lhs_filter), Some(rhs_filter)) => {
+                        self.are_order_by_exprs_equal(*lhs_filter, *rhs_filter, position_mapping)?
+                    }
+                    (None, None) => true,
+                    _ => false,
+                };
+
+                Ok(filters_equal
+                    && self.are_order_by_exprs_equal(
+                        *lhs_stable_func,
+                        *rhs_stable_func,
+                        position_mapping,
+                    )?
+                    && self.are_order_by_exprs_equal(*lhs_window, *rhs_window, position_mapping)?)
+            }
+            (
+                Expression::Window(Window {
+                    partition: lhs_partition,
+                    ordering: lhs_ordering,
+                    frame: lhs_frame,
+                }),
+                Expression::Window(Window {
+                    partition: rhs_partition,
+                    ordering: rhs_ordering,
+                    frame: rhs_frame,
+                }),
+            ) => {
+                let partitions_equal = match (lhs_partition, rhs_partition) {
+                    (Some(lhs_partition), Some(rhs_partition)) => {
+                        cmp_expr_vec(lhs_partition, rhs_partition)?
+                    }
+                    (None, None) => true,
+                    _ => false,
+                };
+
+                let ordering_equal = match (lhs_ordering, rhs_ordering) {
+                    (Some(lhs_ordering), Some(rhs_ordering)) => {
+                        if lhs_ordering.len() != rhs_ordering.len() {
+                            return Ok(false);
+                        }
+
+                        let mut ordering_equal = true;
+                        for (lhs_elem, rhs_elem) in lhs_ordering.iter().zip(rhs_ordering.iter()) {
+                            if lhs_elem.order_type != rhs_elem.order_type {
+                                return Ok(false);
+                            }
+
+                            ordering_equal &= match (&lhs_elem.entity, &rhs_elem.entity) {
+                                (
+                                    OrderByEntity::Expression {
+                                        expr_id: lhs_expr_id,
+                                    },
+                                    OrderByEntity::Expression {
+                                        expr_id: rhs_expr_id,
+                                    },
+                                ) => self.are_order_by_exprs_equal(
+                                    *lhs_expr_id,
+                                    *rhs_expr_id,
+                                    position_mapping,
+                                )?,
+                                _ => lhs_elem.entity == rhs_elem.entity,
+                            };
+                        }
+
+                        ordering_equal
+                    }
+                    (None, None) => true,
+                    _ => false,
+                };
+
+                let frames_equal = match (lhs_frame, rhs_frame) {
+                    (Some(lhs_frame), Some(rhs_frame)) => {
+                        if lhs_frame.ty != rhs_frame.ty {
+                            return Ok(false);
+                        }
+
+                        match (&lhs_frame.bound, &rhs_frame.bound) {
+                            (Bound::Single(lhs_bound), Bound::Single(rhs_bound)) => {
+                                match (lhs_bound, rhs_bound) {
+                                    (
+                                        BoundType::PrecedingOffset(lhs_offset),
+                                        BoundType::PrecedingOffset(rhs_offset),
+                                    )
+                                    | (
+                                        BoundType::FollowingOffset(lhs_offset),
+                                        BoundType::FollowingOffset(rhs_offset),
+                                    ) => self.are_order_by_exprs_equal(
+                                        *lhs_offset,
+                                        *rhs_offset,
+                                        position_mapping,
+                                    )?,
+                                    _ => lhs_bound == rhs_bound,
+                                }
+                            }
+                            (
+                                Bound::Between(lhs_lower, lhs_upper),
+                                Bound::Between(rhs_lower, rhs_upper),
+                            ) => {
+                                let lowers_equal = match (lhs_lower, rhs_lower) {
+                                    (
+                                        BoundType::PrecedingOffset(lhs_offset),
+                                        BoundType::PrecedingOffset(rhs_offset),
+                                    )
+                                    | (
+                                        BoundType::FollowingOffset(lhs_offset),
+                                        BoundType::FollowingOffset(rhs_offset),
+                                    ) => self.are_order_by_exprs_equal(
+                                        *lhs_offset,
+                                        *rhs_offset,
+                                        position_mapping,
+                                    )?,
+                                    _ => lhs_lower == rhs_lower,
+                                };
+                                let uppers_equal = match (lhs_upper, rhs_upper) {
+                                    (
+                                        BoundType::PrecedingOffset(lhs_offset),
+                                        BoundType::PrecedingOffset(rhs_offset),
+                                    )
+                                    | (
+                                        BoundType::FollowingOffset(lhs_offset),
+                                        BoundType::FollowingOffset(rhs_offset),
+                                    ) => self.are_order_by_exprs_equal(
+                                        *lhs_offset,
+                                        *rhs_offset,
+                                        position_mapping,
+                                    )?,
+                                    _ => lhs_upper == rhs_upper,
+                                };
+
+                                lowers_equal && uppers_equal
+                            }
+                            _ => false,
+                        }
+                    }
+                    (None, None) => true,
+                    _ => false,
+                };
+
+                Ok(partitions_equal && ordering_equal && frames_equal)
+            }
+            (Expression::Parameter(lhs_parameter), Expression::Parameter(rhs_parameter)) => {
+                Ok(lhs_parameter == rhs_parameter)
+            }
+            _ => Ok(false),
+        }
+    }
+
+    /// Clone a final-stage `ORDER BY` expression for the local stage and retarget
+    /// its references to `target_sq_id`.
+    ///
+    /// Reference positions are remapped using `position_mapping`, which maps final
+    /// projection output positions to local projection output positions.
+    ///
+    /// # Errors
+    /// - the expression subtree cannot be cloned
+    /// - the cloned subtree contains a reference shape unsupported by limit pushdown
+    /// - a remapped output position is out of bounds
+    fn translate_order_by_expr(
+        &mut self,
+        expr_id: NodeId,
+        target_sq_id: NodeId,
+        position_mapping: &[usize],
+    ) -> Result<NodeId, SbroadError> {
+        let expr_id = SubtreeCloner::clone_subtree(self, expr_id)?;
+        let references = {
+            let dfs = PostOrderWithFilter::new(
+                |x| self.nodes.expr_iter(x, false),
+                |node_id| {
+                    matches!(
+                        self.get_node(node_id),
+                        Ok(Node::Expression(Expression::Reference(_)))
+                    )
+                },
+                EXPR_CAPACITY,
+            );
+            dfs.traverse_into_vec(expr_id)
+        };
+
+        for LevelNode(_, ref_id) in references {
+            let current_position = match self.get_expression_node(ref_id)? {
+                Expression::Reference(Reference {
+                    target, position, ..
+                }) => {
+                    if !matches!(target, ReferenceTarget::Single(_)) {
+                        return Err(SbroadError::Invalid(
+                            Entity::Expression,
+                            Some("ORDER BY pushdown supports only single-target references".into()),
+                        ));
+                    }
+                    *position
+                }
+                _ => unreachable!("expected Reference IR node"),
+            };
+            let new_position = self.get_order_by_output_position(
+                position_mapping,
+                current_position,
+                "ORDER BY reference",
+            )?;
+
+            let MutExpression::Reference(Reference {
+                target, position, ..
+            }) = self.get_mut_expression_node(ref_id)?
+            else {
+                unreachable!("expected Reference IR node");
+            };
+
+            if !matches!(target, ReferenceTarget::Single(_)) {
+                return Err(SbroadError::Invalid(
+                    Entity::Expression,
+                    Some("ORDER BY pushdown supports only single-target references".into()),
+                ));
+            }
+
+            *position = new_position;
+            *target = ReferenceTarget::Single(target_sq_id);
+        }
+
+        Ok(expr_id)
+    }
+
+    /// Translate `OrderBy` elements from the final stage to the local stage.
+    ///
+    /// # Arguments
+    /// * `order_by_id` - original `OrderBy` node from the final stage
+    /// * `final_proj_id` - `Projection` node in the final stage (above `Motion`)
+    /// * `target_sq_id` - `ScanSubQuery` target in the local stage
+    ///
+    /// # Errors
+    /// - `order_by_id` is not an `OrderBy`
+    /// - `final_proj_id` is invalid
+    /// - expression cloning or reference remapping fails
+    /// - an `ORDER BY` index or translated reference points outside the final output
+    fn translate_order_by_elements(
+        &mut self,
+        order_by_id: NodeId,
+        final_proj_id: NodeId,
+        target_sq_id: NodeId,
+    ) -> Result<Vec<OrderByElement>, SbroadError> {
+        let final_proj_output_list = {
+            let final_proj_output = self.get_relation_node(final_proj_id)?.output();
+            self.get_row_list(final_proj_output)?
+        };
+
+        let position_mapping = {
+            let mut position_mapping = vec![0; final_proj_output_list.len()];
+            let mut unique_output_exprs = Vec::with_capacity(final_proj_output_list.len());
+            for (final_proj_output_idx, alias_id) in final_proj_output_list.iter().enumerate() {
+                let expr_id = self.get_alias_child(*alias_id)?;
+                let mapped_position = {
+                    let comparator = Comparator::new(self);
+                    let mut mapped_position = None;
+                    for (local_proj_output_idx, seen_expr_id) in
+                        unique_output_exprs.iter().enumerate()
+                    {
+                        if comparator.are_subtrees_equal(*seen_expr_id, expr_id)? {
+                            mapped_position = Some(local_proj_output_idx);
+                            break;
+                        }
+                    }
+                    mapped_position
+                };
+
+                if let Some(mapped_position) = mapped_position {
+                    position_mapping[final_proj_output_idx] = mapped_position;
+                } else {
+                    position_mapping[final_proj_output_idx] = unique_output_exprs.len();
+                    unique_output_exprs.push(expr_id);
+                }
+            }
+            position_mapping
+        };
+
+        let order_by_len = match self.get_relation_node(order_by_id)? {
+            Relational::OrderBy(OrderBy {
+                order_by_elements, ..
+            }) => order_by_elements.len(),
+            rel => {
+                return Err(SbroadError::Invalid(
+                    Entity::Relational,
+                    Some(format_smolstr!("expected OrderBy node, got: {rel:?}")),
+                ))
+            }
+        };
+
+        let mut translated_order_by_elems = Vec::with_capacity(order_by_len);
+        let mut exprs = Vec::with_capacity(order_by_len);
+        let mut indexes = HashSet::with_capacity(order_by_len);
+
+        for idx in 0..order_by_len {
+            let order_by_elem = match self.get_relation_node(order_by_id)? {
+                Relational::OrderBy(OrderBy {
+                    order_by_elements, ..
+                }) => order_by_elements[idx].clone(),
+                rel => {
+                    return Err(SbroadError::Invalid(
+                        Entity::Relational,
+                        Some(format_smolstr!("expected OrderBy node, got: {rel:?}")),
+                    ))
+                }
+            };
+
+            match order_by_elem.entity {
+                OrderByEntity::Expression { expr_id } => {
+                    let mut seen = false;
+                    for seen_expr_id in &exprs {
+                        if self.are_order_by_exprs_equal(
+                            *seen_expr_id,
+                            expr_id,
+                            &position_mapping,
+                        )? {
+                            seen = true;
+                            break;
+                        }
+                    }
+                    if seen {
+                        continue;
+                    }
+
+                    exprs.push(expr_id);
+                    translated_order_by_elems.push(OrderByElement {
+                        entity: OrderByEntity::Expression {
+                            expr_id: self.translate_order_by_expr(
+                                expr_id,
+                                target_sq_id,
+                                &position_mapping,
+                            )?,
+                        },
+                        order_type: order_by_elem.order_type,
+                    });
+                }
+                OrderByEntity::Index { value } => {
+                    let value = self.get_order_by_index_value(&position_mapping, value)?;
+                    if indexes.insert(value) {
+                        translated_order_by_elems.push(OrderByElement {
+                            entity: OrderByEntity::Index { value },
+                            order_type: order_by_elem.order_type,
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(translated_order_by_elems)
+    }
+
+    /// Clone an `OrderBy` node for the local stage.
+    ///
+    /// # Arguments
+    /// * `old_order_by_id` - source `OrderBy` node id
+    /// * `target_rel_id` - child of the new local `OrderBy` node
+    /// * `final_proj_id` - final-stage `Projection` used for position remapping
+    ///
+    /// # Errors
+    /// - `old_order_by_id` is invalid or not an `OrderBy`
+    /// - the target local stage cannot be wrapped into a subquery
+    /// - `ORDER BY` translation fails
+    fn create_local_order_by(
+        &mut self,
+        old_order_by_id: NodeId,
+        target_rel_id: NodeId,
+        final_proj_id: NodeId,
+    ) -> Result<(NodeId, NodeId), SbroadError> {
+        let target_sq_id =
+            if let Relational::ScanSubQuery(_) = self.get_relation_node(target_rel_id)? {
+                target_rel_id
+            } else {
+                self.add_sub_query(target_rel_id, None)?
+            };
+        let new_order_by_elements =
+            self.translate_order_by_elements(old_order_by_id, final_proj_id, target_sq_id)?;
+
+        self.add_order_by(target_sq_id, new_order_by_elements)
+    }
+
+    /// Check whether `OrderBy` elements contain aggregates.
+    ///
+    /// This includes direct aggregate expressions and index-based ordering that
+    /// points to an aggregate expression in the final projection.
+    ///
+    /// # Errors
+    /// - `order_by_id` is invalid or not an `OrderBy`
+    /// - `final_proj_id` is invalid
+    /// - an `ORDER BY` index points outside the final projection output
+    fn order_by_contains_aggregates_or_volatile(
+        &self,
+        order_by_id: NodeId,
+        final_proj_id: NodeId,
+    ) -> Result<bool, SbroadError> {
+        let order_by_elements = match self.get_relation_node(order_by_id)? {
+            Relational::OrderBy(OrderBy {
+                order_by_elements, ..
+            }) => order_by_elements,
+            rel => {
+                return Err(SbroadError::Invalid(
+                    Entity::Relational,
+                    Some(format_smolstr!("expected OrderBy node, got: {rel:?}")),
+                ))
+            }
+        };
+
+        let final_proj_output = self.get_relation_node(final_proj_id)?.output();
+        let final_proj_output_list = self.get_row_list(final_proj_output)?;
+
+        for order_by_elem in order_by_elements {
+            match order_by_elem.entity {
+                OrderByEntity::Expression { expr_id } => {
+                    if self.contains_aggregates(expr_id, true)?
+                        || self.contains_volatile(expr_id, true)?
+                    {
+                        return Ok(true);
+                    }
+                }
+                OrderByEntity::Index { value } => {
+                    let output_idx = value.checked_sub(1).ok_or_else(|| {
+                        SbroadError::Invalid(
+                            Entity::Expression,
+                            Some("invalid ORDER BY index (0) for final projection output".into()),
+                        )
+                    })?;
+                    let Some(alias_id) = final_proj_output_list.get(output_idx) else {
+                        return Err(SbroadError::Invalid(
+                            Entity::Expression,
+                            Some(format_smolstr!(
+                                "invalid ORDER BY index ({value}) for final projection output"
+                            )),
+                        ));
+                    };
+                    let expr_id = self.get_alias_child(*alias_id)?;
+                    if self.contains_aggregates(expr_id, true)?
+                        || self.contains_volatile(expr_id, true)?
+                    {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+
+        Ok(false)
+    }
+
+    /// Push down a `Limit` node to the nearest local stage.
+    ///
+    /// # Arguments
+    /// * `limit_id` - source `Limit` node id
+    ///
+    /// # Errors
+    /// - `limit_id` or one of the traversed relational nodes is invalid
+    /// - local `ORDER BY` cloning or reference remapping fails
+    /// - distribution metadata needed for pushdown is inconsistent
+    ///
+    /// # Panics
+    /// - `limit_id` is not a `Limit` node
+    pub(crate) fn pushdown_limit(&mut self, limit_id: NodeId) -> Result<(), SbroadError> {
+        let Relational::Limit(Limit { child, limit, .. }) = self.get_relation_node(limit_id)?
+        else {
+            unreachable!("expected LIMIT IR Plan node");
+        };
+
+        let limit = *limit;
+        let mut curr_node = *child;
+        let mut order_by_id: Option<NodeId> = None;
+        let mut final_proj_id: Option<NodeId> = None;
+        let mut met_aggregates = false;
+        // Suggested that all paths from Limit IR node to the nearest downward Motion IR node are the following:
+        // Same query block:
+        // - Limit -> Motion
+        //     - Plain distributed query where the gather is the top relational step under LIMIT.
+        // - Limit -> Projection -> Motion
+        //     - Final reduce projection for aggregate queries without final HAVING/final GROUP BY.
+        // - Limit -> Projection -> Having -> Motion
+        //     - Final reduce stage with HAVING, no final GROUP BY.
+        // - Limit -> Projection -> GroupBy -> Motion
+        //     - Final grouped reduce stage, no HAVING.
+        // - Limit -> Projection -> Having -> GroupBy -> Motion
+        //     - Final grouped reduce stage with HAVING.
+        // - Limit -> Projection -> OrderBy -> Motion
+        //     - ORDER BY itself forces a gather.
+        // - Limit -> Projection -> OrderBy -> ScanSubQuery -> Projection -> Motion
+        //     - ORDER BY wrapper above a subtree whose nearest gather belongs to a lower final stage.
+        // - Limit -> Projection -> OrderBy -> ScanSubQuery -> Projection -> Having -> Motion
+        // - Limit -> Projection -> OrderBy -> ScanSubQuery -> Projection -> GroupBy -> Motion
+        // - Limit -> Projection -> OrderBy -> ScanSubQuery -> Projection -> Having -> GroupBy -> Motion
+        loop {
+            match self.get_relation_node(curr_node)? {
+                Relational::Projection(Projection {
+                    windows,
+                    group_by,
+                    having,
+                    output,
+                    ..
+                }) => {
+                    if !windows.is_empty() || (order_by_id.is_some() && having.is_some()) {
+                        break;
+                    }
+                    met_aggregates |= self.contains_aggregates(*output, false)?;
+                    if let Some(group_by) = group_by {
+                        met_aggregates |= self
+                            .contains_aggregates(self.get_relational_output(*group_by)?, false)?;
+                    }
+                    if let Some(having) = having {
+                        if let Relational::Having(Having { filter, output, .. }) =
+                            self.get_relation_node(*having)?
+                        {
+                            met_aggregates |= self.contains_aggregates(*filter, true)?;
+                            met_aggregates |= self.contains_aggregates(*output, false)?;
+                        }
+                    }
+                    final_proj_id = Some(curr_node);
+                }
+                Relational::ScanCte(_) => {
+                    break;
+                }
+                Relational::Motion(_) => {
+                    let upper_local_node_id = self.get_motion_subtree_root(curr_node)?;
+                    match self.get_relation_node(upper_local_node_id)? {
+                        Relational::Projection(_)
+                        | Relational::Except { .. }
+                        | Relational::Union { .. }
+                        | Relational::UnionAll { .. } => {}
+                        _ => {
+                            // Limit pushdown is not supported for other relational node types as the local stage root.
+                            break;
+                        }
+                    }
+                    if met_aggregates {
+                        break;
+                    }
+
+                    let Some(final_proj_id) = final_proj_id else {
+                        break;
+                    };
+
+                    // If there is no distribution under `Motion`, this `Limit`
+                    // cannot be pushed down.
+                    // E.g.
+                    // SELECT emp, region, CAST((
+                    // SELECT sum(total) OVER (
+                    //     ORDER BY total RANGE BETWEEN UNBOUNDED PRECEDING
+                    //     AND UNBOUNDED FOLLOWING
+                    //     ) FROM sales LIMIT 1
+                    // ) AS TEXT) || emp FROM sales
+                    // ORDER BY emp;
+                    let child_dist =
+                        if let Ok(dist) = self.get_rel_distribution(upper_local_node_id) {
+                            dist.clone()
+                        } else {
+                            break;
+                        };
+
+                    let new_limit_node_child = if let Some(order_by_id) = order_by_id {
+                        // If `OrderBy::order_by_elements` contains no subqueries,
+                        // clone it and adjust the subtree under `Motion`:
+                        // Projection -> OrderBy -> ScanSubQuery -> <existing nodes>
+                        if !self.get_relation_subqueries(order_by_id)?.is_empty() {
+                            break;
+                        }
+
+                        let target_rel_id = self.get_motion_child(curr_node)?;
+
+                        // The subtree under `Motion` is copied while preserving
+                        // target positions, so we remap `Reference` positions in
+                        // `OrderBy::order_by_elements` accordingly.
+                        // This is consistent with the two-stage aggregation algorithm.
+                        let (new_order_by, new_proj) =
+                            self.create_local_order_by(order_by_id, target_rel_id, final_proj_id)?;
+                        self.set_dist(
+                            self.get_relational_output(new_order_by)?,
+                            child_dist.clone(),
+                        )?;
+                        self.set_dist(self.get_relational_output(new_proj)?, child_dist.clone())?;
+
+                        new_proj
+                    } else {
+                        upper_local_node_id
+                    };
+
+                    let local_limit_id = self.add_limit(new_limit_node_child, limit)?;
+                    self.set_dist(
+                        self.get_relational_output(local_limit_id)?,
+                        child_dist.clone(),
+                    )?;
+
+                    let motion_output = self.get_relational_output(curr_node)?;
+                    self.set_target_in_subtree(motion_output, local_limit_id)?;
+
+                    if let MutRelational::Motion(Motion { child, .. }) =
+                        self.get_mut_relation_node(curr_node)?
+                    {
+                        *child = Some(local_limit_id);
+                    };
+                    // Push the limit down only to the nearest local stage.
+                    break;
+                }
+                Relational::OrderBy(_) => {
+                    if let Some(final_proj_id) = final_proj_id {
+                        met_aggregates |= self
+                            .order_by_contains_aggregates_or_volatile(curr_node, final_proj_id)?;
+                    }
+                    order_by_id = Some(curr_node);
+                }
+                Relational::Having(_) | Relational::GroupBy(_) | Relational::ScanSubQuery(_) => {}
+                Relational::Join(_)
+                | Relational::Union(_)
+                | Relational::UnionAll(_)
+                | Relational::Except(_)
+                | Relational::ScanRelation(_)
+                | Relational::Values(_)
+                | Relational::ValuesRow(_)
+                | Relational::Intersect(_)
+                | Relational::Selection(_)
+                | Relational::SelectWithoutScan(_)
+                | Relational::Update(_)
+                | Relational::Insert(_)
+                | Relational::Limit(_)
+                | Relational::Delete(_) => {
+                    // Do not push down if nodes above met before motion.
+                    break;
+                }
+            }
+            curr_node = self.get_first_rel_child(curr_node)?;
+        }
+        Ok(())
     }
 }
 

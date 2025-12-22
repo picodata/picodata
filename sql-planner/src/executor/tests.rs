@@ -749,7 +749,11 @@ fn groupby_linker_test() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
 
     let motion_id = query.get_motion_id(0, 0);
-    let top_id = query.exec_plan.get_motion_subtree_root(motion_id).unwrap();
+    let top_id = query
+        .exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
     assert!(
         !(Buckets::All != query.bucket_discovery(top_id).unwrap()),
         "Expected Buckets::All for local groupby"

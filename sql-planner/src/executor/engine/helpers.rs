@@ -703,7 +703,7 @@ fn dml_get_motion_child(
         Children::Single(child_id) => {
             let child = ir_plan.get_relation_node(*child_id)?;
             if let Relational::Motion(Motion { child: Some(_), .. }) = child {
-                Ok(Some(ex_plan.get_motion_subtree_root(*child_id)?))
+                Ok(Some(ir_plan.get_motion_subtree_root(*child_id)?))
             } else {
                 Ok(None)
             }
@@ -1140,7 +1140,7 @@ pub fn materialize_motion(
     motion_node_id: NodeId,
     buckets: &Buckets,
 ) -> Result<VirtualTable, SbroadError> {
-    let top_id = plan.get_motion_subtree_root(motion_node_id)?;
+    let top_id = plan.get_ir_plan().get_motion_subtree_root(motion_node_id)?;
 
     let ir = plan.get_ir_plan();
     let top_node = ir.get_relation_node(top_id)?;

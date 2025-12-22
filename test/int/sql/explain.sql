@@ -314,7 +314,7 @@ SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_un
 EXPLAIN (RAW) SELECT * from testing_space WHERE "id" = 1 ORDER BY 1 LIMIT 1;
 -- EXPECTED:
 1. Query (FILTERED STORAGE):
-SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = CAST(1 AS int)
+SELECT "id", "name", "product_units" FROM ( SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = CAST(1 AS int) ) ORDER BY 1 LIMIT 1
 +----------+-------+------+--------------------------------------------------------------+
 | selectid | order | from | detail                                                       |
 +========================================================================================+
@@ -337,11 +337,13 @@ SELECT "COL_0" as "id", "COL_1" as "name", "COL_2" as "product_units" FROM ( SEL
 EXPLAIN (RAW) SELECT * from testing_space WHERE "id" = 1 GROUP BY 1, 2, 3 ORDER BY 1 LIMIT 1;
 -- EXPECTED:
 1. Query (FILTERED STORAGE):
-SELECT "testing_space"."id" as "gr_expr_1", "testing_space"."name" as "gr_expr_2", "testing_space"."product_units" as "gr_expr_3" FROM "testing_space" WHERE "testing_space"."id" = CAST(1 AS int) GROUP BY "testing_space"."id", "testing_space"."name", "testing_space"."product_units"
+SELECT "gr_expr_1", "gr_expr_2", "gr_expr_3" FROM ( SELECT "testing_space"."id" as "gr_expr_1", "testing_space"."name" as "gr_expr_2", "testing_space"."product_units" as "gr_expr_3" FROM "testing_space" WHERE "testing_space"."id" = CAST(1 AS int) GROUP BY "testing_space"."id", "testing_space"."name", "testing_space"."product_units" ) ORDER BY 1 LIMIT 1
 +----------+-------+------+--------------------------------------------------------------+
 | selectid | order | from | detail                                                       |
 +========================================================================================+
 | 0        | 0     | 0    | SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row) |
+|----------+-------+------+--------------------------------------------------------------|
+| 0        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY                                 |
 +----------+-------+------+--------------------------------------------------------------+
 ''
 2. Query (ROUTER):
@@ -377,39 +379,55 @@ FROM
 ''
 2. Query (STORAGE):
 SELECT
-  "testing_space"."id" as "gr_expr_1",
-  "testing_space"."name" as "gr_expr_2",
-  "testing_space"."product_units" as "gr_expr_3",
-  "testing_space"."COL_0" as "gr_expr_4",
-  "testing_space"."COL_2" as "gr_expr_5",
-  "testing_space"."COL_3" as "gr_expr_6"
+  "gr_expr_1",
+  "gr_expr_2",
+  "gr_expr_3",
+  "gr_expr_4",
+  "gr_expr_5",
+  "gr_expr_6"
 FROM
-  "testing_space"
-  INNER JOIN (
+  (
     SELECT
-      "COL_0",
-      "COL_1",
-      "COL_2",
-      "COL_3"
+      "testing_space"."id" as "gr_expr_1",
+      "testing_space"."name" as "gr_expr_2",
+      "testing_space"."product_units" as "gr_expr_3",
+      "testing_space"."COL_0" as "gr_expr_4",
+      "testing_space"."COL_2" as "gr_expr_5",
+      "testing_space"."COL_3" as "gr_expr_6"
     FROM
-      "TMP_17451312393305413679_0136"
-  ) as "testing_space" ON CAST(true AS bool)
-GROUP BY
-  "testing_space"."id",
-  "testing_space"."name",
-  "testing_space"."product_units",
-  "testing_space"."COL_0",
-  "testing_space"."COL_2",
-  "testing_space"."COL_3"
-+----------+-------+------+----------------------------------------------------------+
-| selectid | order | from | detail                                                   |
-+====================================================================================+
-| 0        | 0     | 0    | SCAN TABLE testing_space (~1048576 rows)                 |
-|----------+-------+------+----------------------------------------------------------|
-| 0        | 1     | 1    | SCAN TABLE TMP_17451312393305413679_0136 (~1048576 rows) |
-|----------+-------+------+----------------------------------------------------------|
-| 0        | 0     | 0    | USE TEMP B-TREE FOR GROUP BY                             |
-+----------+-------+------+----------------------------------------------------------+
+      "testing_space"
+      INNER JOIN (
+        SELECT
+          "COL_0",
+          "COL_1",
+          "COL_2",
+          "COL_3"
+        FROM
+          "TMP_795443537505424829_0136"
+      ) as "testing_space" ON CAST(true AS bool)
+    GROUP BY
+      "testing_space"."id",
+      "testing_space"."name",
+      "testing_space"."product_units",
+      "testing_space"."COL_0",
+      "testing_space"."COL_2",
+      "testing_space"."COL_3"
+  )
+ORDER BY
+'  1'
+LIMIT
+'  1'
++----------+-------+------+--------------------------------------------------------+
+| selectid | order | from | detail                                                 |
++==================================================================================+
+| 0        | 0     | 0    | SCAN TABLE testing_space (~1048576 rows)               |
+|----------+-------+------+--------------------------------------------------------|
+| 0        | 1     | 1    | SCAN TABLE TMP_795443537505424829_0136 (~1048576 rows) |
+|----------+-------+------+--------------------------------------------------------|
+| 0        | 0     | 0    | USE TEMP B-TREE FOR GROUP BY                           |
+|----------+-------+------+--------------------------------------------------------|
+| 0        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY                           |
++----------+-------+------+--------------------------------------------------------+
 ''
 3. Query (ROUTER):
 SELECT
@@ -809,11 +827,13 @@ WHERE
 EXPLAIN (RAW) INSERT INTO testing_space_global VALUES ((SELECT 1), (SELECT name FROM testing_space ORDER BY name LIMIT 1), 42 + 67);
 -- EXPECTED:
 1. Query (STORAGE):
-SELECT "testing_space"."name" FROM "testing_space"
+SELECT "name" FROM ( SELECT "testing_space"."name" FROM "testing_space" ) ORDER BY "name" LIMIT 1
 +----------+-------+------+------------------------------------------+
 | selectid | order | from | detail                                   |
 +====================================================================+
 | 0        | 0     | 0    | SCAN TABLE testing_space (~1048576 rows) |
+|----------+-------+------+------------------------------------------|
+| 0        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY             |
 +----------+-------+------+------------------------------------------+
 ''
 2. Query (ROUTER):

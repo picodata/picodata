@@ -47,3 +47,23 @@ WITH cte (b) AS (SELECT "a" FROM "t" ORDER BY "a" LIMIT 2)
 SELECT "a" FROM (SELECT "a" FROM "t" LIMIT 1);
 -- EXPECTED:
 1
+
+-- TEST: limit_pushdown-1.0
+-- SQL:
+DROP TABLE IF EXISTS "lpd";
+CREATE TABLE "lpd" ("id" int primary key, "n" int) DISTRIBUTED BY ("id");
+INSERT INTO "lpd" VALUES
+    (1, 30), (2, 10), (3, 20), (4, 5), (5, 5),
+    (6, 10), (7, 30), (8, 1), (9, 1), (10, 20);
+
+-- TEST: limit_pushdown-1.1
+-- SQL:
+SELECT count(*) FROM (SELECT DISTINCT "id", "n" FROM "lpd" LIMIT 5);
+-- EXPECTED:
+5
+
+-- TEST: limit_pushdown-1.2
+-- SQL:
+SELECT "id", "n" FROM "lpd" ORDER BY "n", "id" LIMIT 5;
+-- EXPECTED:
+8, 1, 9, 1, 4, 5, 5, 5, 2, 10

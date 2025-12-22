@@ -624,7 +624,7 @@ impl TryFrom<ExecutionData> for ExecutionCacheMissData {
             let plan = value.plan.get_ir_plan();
             let top_id = if plan.is_dml()? {
                 let child_id = plan.children(plan.get_top()?)[0];
-                value.plan.get_motion_child(child_id)?
+                plan.get_motion_child(child_id)?
             } else {
                 plan.get_top()?
             };

@@ -980,6 +980,17 @@ impl Plan {
         self.add_relational(proj.into())
     }
 
+    /// Add a projection with the default planner settings.
+    ///
+    /// This is a shorthand for `add_proj(child, vec![], &[], false, false)`.
+    ///
+    /// # Errors
+    /// - `child` is not a relational node
+    /// - the child output cannot be converted into a projection output row
+    pub fn add_proj_with_default(&mut self, child: NodeId) -> Result<NodeId, SbroadError> {
+        self.add_proj(child, vec![], &[], false, false)
+    }
+
     pub fn add_proj_with_col_reduction(
         &mut self,
         parent_rel_id: NodeId,
@@ -1448,7 +1459,7 @@ impl Plan {
             child,
             subqueries: vec![],
             output,
-            order_by_elements: order_by_elements.clone(),
+            order_by_elements,
         };
 
         let plan_order_by_id = self.add_relational(order_by.into())?;

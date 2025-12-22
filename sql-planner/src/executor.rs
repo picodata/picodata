@@ -324,8 +324,10 @@ where
                         {
                             // If child is values, then we can materialize it
                             // on the router.
-                            let motion_child_id =
-                                self.get_exec_plan().get_motion_child(*motion_id)?;
+                            let motion_child_id = self
+                                .get_exec_plan()
+                                .get_ir_plan()
+                                .get_motion_child(*motion_id)?;
                             let motion_child = self
                                 .get_exec_plan()
                                 .get_ir_plan()
@@ -359,7 +361,10 @@ where
                     }
                 }
 
-                let top_id = self.exec_plan.get_motion_subtree_root(*motion_id)?;
+                let top_id = self
+                    .exec_plan
+                    .get_ir_plan()
+                    .get_motion_subtree_root(*motion_id)?;
 
                 let buckets = self.bucket_discovery(top_id)?;
                 let mut virtual_table = self.coordinator.materialize_motion(
