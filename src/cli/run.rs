@@ -81,6 +81,15 @@ pub fn main(mut args: args::Run) -> ! {
             // logical error on bootstraping cluster members.
             debug_assert!(!matches!(next_entrypoint, Entrypoint::StartDiscover));
 
+            {
+                let mut path = config.instance.instance_dir().clone();
+                path.push("entrypoint.data");
+
+                let data = rmp_serde::to_vec(&next_entrypoint).unwrap();
+
+                std::fs::write(&path, data).unwrap();
+            }
+
             let pipe = write_entrypoint_to_pipe(next_entrypoint)?;
             output_entrypoint_pipe = Some(pipe);
 

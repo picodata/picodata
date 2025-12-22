@@ -18,6 +18,14 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixed that governor would hang indefinitely if an Offline replicaset had
   target_master_name != current_master_name.
+- Fixed that instance would hang indefinitely when trying to join the cluster if
+  the cluster becomes too big.
+  NOTE: The fix requires modifying the proc_raft_join RPC response format
+  which technically breaks compatibility with previous versions of picodata.
+  However picodata explicitly doesn't support heterogeneous joins (when version
+  of joining instances mismatches version of cluster), so this shouldn't be a
+  problem for anybody. NOTE also that this doesn't affect restarting instances
+  which already joined the cluster.
 
 
 ## [25.5.1] - 2025-12-19
