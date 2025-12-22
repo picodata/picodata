@@ -157,19 +157,17 @@ fn explain_except1() {
     let top = &plan.get_top().unwrap();
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
-    let expected = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
-        r#"except"#,
-        r#"    projection ("t"."product_code"::string -> "pc")"#,
-        r#"        scan "hash_testing" -> "t""#,
-        r#"    motion [policy: full]"#,
-        r#"        projection ("hash_testing_hist"."identification_number"::int::string -> "col_1")"#,
-        r#"            scan "hash_testing_hist""#,
-        r#"execution options:"#,
-        r#"    sql_vdbe_opcode_max = 45000"#,
-        r#"    sql_motion_row_max = 5000"#,
-    );
-    assert_eq!(expected, explain_tree.to_string());
+    insta::assert_snapshot!(explain_tree.to_string(), @r#"
+    except
+        projection ("t"."product_code"::string -> "pc")
+            scan "hash_testing" -> "t"
+        motion [policy: full, program: ReshardIfNeeded]
+            projection ("hash_testing_hist"."identification_number"::int::string -> "col_1")
+                scan "hash_testing_hist"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
@@ -211,7 +209,7 @@ fn motion_subquery_plan() {
                         selection "test_space_hist"."sys_op"::int < 0::int
                             scan "test_space_hist"
     subquery $0:
-    motion [policy: segment([ref("identification_number")])]
+    motion [policy: segment([ref("identification_number")]), program: ReshardIfNeeded]
                 scan
                     projection ("hash_testing"."identification_number"::int -> "identification_number")
                         selection ("hash_testing"."identification_number"::int = 5::int) and ("hash_testing"."product_code"::string = '123'::string)
@@ -254,7 +252,7 @@ WHERE "t2"."product_code" = '123'"#;
                     projection ("test_space"."id"::int -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
                         selection "test_space"."id"::int = 3::int
                             scan "test_space"
-                motion [policy: segment([ref("identification_number")])]
+                motion [policy: segment([ref("identification_number")]), program: ReshardIfNeeded]
                     scan "t2"
                         projection ("hash_testing"."identification_number"::int -> "identification_number", "hash_testing"."product_code"::string -> "product_code")
                             scan "hash_testing"
@@ -282,11 +280,11 @@ FROM (SELECT "id", "FIRST_NAME" FROM "test_space" WHERE "id" = 3) as "t1"
                 projection ("test_space"."id"::int -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
                     selection "test_space"."id"::int = 3::int
                         scan "test_space"
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 projection ("hash_testing"."identification_number"::int -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::bool -> "product_units", "hash_testing"."sys_op"::int -> "sys_op", "hash_testing"."bucket_id"::int -> "bucket_id")
                     scan "hash_testing"
     subquery $0:
-    motion [policy: segment([ref("identification_number")])]
+    motion [policy: segment([ref("identification_number")]), program: ReshardIfNeeded]
                 scan
                     projection ("hash_testing"."identification_number"::int -> "identification_number")
                         scan "hash_testing"
@@ -324,19 +322,15 @@ fn insert_plan() {
     let top = &plan.get_top().unwrap();
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
-    let mut actual_explain = String::new();
-    actual_explain.push_str(
-        r#"insert "test_space" on conflict: fail
-    motion [policy: segment([ref("COLUMN_1")])]
-        values
-            value row (data=ROW(1::int, '123'::string))
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#,
-    );
-
-    assert_eq!(actual_explain, explain_tree.to_string());
+    insta::assert_snapshot!(explain_tree.to_string(), @r#"
+    insert "test_space" on conflict: fail
+        motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
+            values
+                value row (data=ROW(1::int, '123'::string))
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
@@ -348,21 +342,17 @@ fn multiply_insert_plan() {
     let top = &plan.get_top().unwrap();
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
-    let mut actual_explain = String::new();
-    actual_explain.push_str(
-        r#"insert "test_space" on conflict: fail
-    motion [policy: segment([ref("COLUMN_5")])]
-        values
-            value row (data=ROW(1::int, '123'::string))
-            value row (data=ROW(2::int, '456'::string))
-            value row (data=ROW(3::int, '789'::string))
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#,
-    );
-
-    assert_eq!(actual_explain, explain_tree.to_string());
+    insta::assert_snapshot!(explain_tree.to_string(), @r#"
+    insert "test_space" on conflict: fail
+        motion [policy: segment([ref("COLUMN_5")]), program: ReshardIfNeeded]
+            values
+                value row (data=ROW(1::int, '123'::string))
+                value row (data=ROW(2::int, '456'::string))
+                value row (data=ROW(3::int, '789'::string))
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
@@ -375,19 +365,15 @@ SELECT "identification_number", "product_code" FROM "hash_testing""#;
     let top = &plan.get_top().unwrap();
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
-    let mut actual_explain = String::new();
-    actual_explain.push_str(
-        r#"insert "test_space" on conflict: fail
-    motion [policy: segment([ref("identification_number")])]
-        projection ("hash_testing"."identification_number"::int -> "identification_number", "hash_testing"."product_code"::string -> "product_code")
-            scan "hash_testing"
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#,
-    );
-
-    assert_eq!(actual_explain, explain_tree.to_string());
+    insta::assert_snapshot!(explain_tree.to_string(), @r#"
+    insert "test_space" on conflict: fail
+        motion [policy: segment([ref("identification_number")]), program: ReshardIfNeeded]
+            projection ("hash_testing"."identification_number"::int -> "identification_number", "hash_testing"."product_code"::string -> "product_code")
+                scan "hash_testing"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
@@ -402,7 +388,7 @@ fn select_value_plan() {
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1")
         scan "unnamed_subquery"
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 values
                     value row (data=ROW(1::int))
     execution options:

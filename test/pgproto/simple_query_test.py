@@ -112,7 +112,7 @@ def test_explain(postgres: Postgres):
     cur.execute("explain " + query)
     plan = cur.fetchall()
     assert 'insert "explain" on conflict: fail' in plan[0]
-    assert '    motion [policy: segment([ref("COLUMN_1")])]' in plan[1]
+    assert '    motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]' in plan[1]
     assert "        values" in plan[2]
     assert "            value row (data=ROW(0::int))" in plan[3]
     assert "execution options:" in plan[4]
@@ -121,7 +121,7 @@ def test_explain(postgres: Postgres):
     cur.execute("explain " + query)
     plan = cur.fetchall()
     assert 'insert "explain" on conflict: fail' in plan[0]
-    assert '    motion [policy: segment([ref("COLUMN_1")])]' in plan[1]
+    assert '    motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]' in plan[1]
     assert "        values" in plan[2]
     assert "            value row (data=ROW(0::int))" in plan[3]
     assert "execution options:" in plan[4]

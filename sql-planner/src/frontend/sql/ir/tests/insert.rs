@@ -8,7 +8,7 @@ fn insert1() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     insert "test_space" on conflict: fail
-        motion [policy: segment([ref("COLUMN_1")])]
+        motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
             values
                 value row (data=ROW(1::int, 'test'::string))
     execution options:
@@ -24,7 +24,7 @@ fn insert2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     insert "test_space" on conflict: fail
-        motion [policy: segment([ref("COLUMN_1")])]
+        motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
             values
                 value row (data=ROW(1::int, 'test'::string))
     execution options:
@@ -41,7 +41,7 @@ fn insert3() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     insert "test_space" on conflict: fail
-        motion [policy: local segment([ref("id")])]
+        motion [policy: local segment([ref("id")]), program: ReshardIfNeeded]
             projection ("test_space"."id"::int -> "id", "test_space"."id"::int -> "id")
                 scan "test_space"
     execution options:

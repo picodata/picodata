@@ -147,7 +147,7 @@ projection ("t3"."id"::int -> "id", "t3"."a"::int -> "a", "t8"."id1"::int -> "id
                     projection ("arithmetic_space"."id"::int -> "id", "arithmetic_space"."a"::int -> "a")
                         selection "arithmetic_space"."c"::int > 0::int
                             scan "arithmetic_space"
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 scan "t8"
                     projection ("arithmetic_space2"."id"::int -> "id1")
                         selection "arithmetic_space2"."c"::int < 0::int
@@ -180,7 +180,7 @@ projection ("t3"."id"::int -> "id", "t3"."a"::int -> "a", "t8"."id1"::int -> "id
                     projection ("arithmetic_space"."id"::int -> "id", "arithmetic_space"."a"::int -> "a")
                         selection "arithmetic_space"."c"::int > 0::int
                             scan "arithmetic_space"
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 scan "t8"
                     projection ("arithmetic_space2"."id"::int -> "id1")
                         selection "arithmetic_space2"."c"::int < 0::int

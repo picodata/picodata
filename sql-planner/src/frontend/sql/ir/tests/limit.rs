@@ -7,7 +7,7 @@ fn select() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     limit 100
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             limit 100
                 projection ("test_space"."id"::int -> "id")
                     scan "test_space"
@@ -29,7 +29,7 @@ fn union_all() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     limit 100
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             limit 100
                 union all
                     projection ("hash_testing"."product_code"::string -> "product_code")
@@ -51,7 +51,7 @@ fn aggregate() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     limit 1
         projection (min(("min_1"::int))::int -> "col_1", min(distinct ("gr_expr_1"::int))::int -> "col_2")
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 projection ("t"."b"::int -> "gr_expr_1", min(("t"."b"::int))::int -> "min_1")
                     group by ("t"."b"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                         scan "t"
@@ -71,7 +71,7 @@ fn group_by() {
     limit 555
         projection (sum(("count_1"::int))::int -> "col_1", "gr_expr_1"::int -> "b")
             group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "count_1"::int -> "count_1")
-                motion [policy: full]
+                motion [policy: full, program: ReshardIfNeeded]
                     projection ("t"."b"::int -> "gr_expr_1", count((*::int))::int -> "count_1")
                         group by ("t"."b"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                             scan "t"
@@ -91,7 +91,7 @@ fn single_limit() {
         projection ("unnamed_subquery"."id"::int -> "id")
             scan "unnamed_subquery"
                 limit 1
-                    motion [policy: full]
+                    motion [policy: full, program: ReshardIfNeeded]
                         limit 1
                             projection ("test_space"."id"::int -> "id")
                                 scan "test_space"
@@ -111,20 +111,20 @@ fn join() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     limit 128
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             limit 128
                 projection ("t1"."a"::string -> "a", "t1"."b"::int -> "b", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t3"."a"::string -> "a", "t3"."b"::int -> "b", "t4"."c"::string -> "c", "t4"."d"::int -> "d")
                     join on "t2"."f"::int = "t4"."d"::int
                         join on "t1"."a"::string = "t3"."a"::string
                             left join on "t1"."b"::int = "t2"."e"::int
                                 scan "t1"
-                                motion [policy: full]
+                                motion [policy: full, program: ReshardIfNeeded]
                                     projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                                         scan "t2"
-                            motion [policy: full]
+                            motion [policy: full, program: ReshardIfNeeded]
                                 projection ("t3"."bucket_id"::int -> "bucket_id", "t3"."a"::string -> "a", "t3"."b"::int -> "b")
                                     scan "t3"
-                        motion [policy: full]
+                        motion [policy: full, program: ReshardIfNeeded]
                             projection ("t4"."bucket_id"::int -> "bucket_id", "t4"."c"::string -> "c", "t4"."d"::int -> "d")
                                 scan "t4"
     execution options:
@@ -173,7 +173,7 @@ fn explicit_select_bucket_id_from_subquery_under_limit() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     limit 1
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             limit 1
                 projection ("x"."bucket_id"::int -> "bucket_id", "x"."id"::int -> "id")
                     scan "x"
@@ -201,7 +201,7 @@ fn explicit_select_bucket_id_from_cte_under_limit() {
         projection ("x"."bucket_id"::int -> "bucket_id", "x"."id"::int -> "id")
             scan cte x($0)
     subquery $0:
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
                     projection ("test_space"."bucket_id"::int -> "bucket_id", "test_space"."id"::int -> "id")
                         scan "test_space"
     execution options:

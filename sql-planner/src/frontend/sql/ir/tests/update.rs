@@ -9,7 +9,7 @@ fn update1() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     update "test_space"
     "FIRST_NAME" = "col_0"
-        motion [policy: local]
+        motion [policy: local, program: ReshardIfNeeded]
             projection ('test'::string -> "col_0", "test_space"."id"::int -> "col_1")
                 scan "test_space"
     execution options:
@@ -26,7 +26,7 @@ fn update2() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     update "test_space"
     "FIRST_NAME" = "col_0"
-        motion [policy: local]
+        motion [policy: local, program: ReshardIfNeeded]
             projection ('test'::string -> "col_0", "test_space"."id"::int -> "col_1")
                 scan "test_space"
     execution options:

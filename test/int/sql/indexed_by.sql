@@ -132,7 +132,7 @@ invalid index: INDEXED BY clause is only supported for tables
 explain DELETE FROM t INDEXED by aaa WHERE true
 -- EXPECTED:
 delete "t"
-    motion [policy: local]
+    motion [policy: local, program: [PrimaryKey(0), ReshardIfNeeded]]
         projection ("t"."a"::int -> "pk_col_0")
             selection true::bool
                 scan "t" (indexed by "aaa")
@@ -147,11 +147,11 @@ explain UPDATE t INDEXED BY aaa SET b = d FROM s INDEXED BY bbb WHERE TRUE
 -- EXPECTED:
 update "t"
 "b" = "col_0"
-    motion [policy: local]
+    motion [policy: local, program: ReshardIfNeeded]
         projection ("s"."d"::int -> "col_0", "t"."a"::int -> "col_1")
             join on true::bool
                 scan "t" (indexed by "aaa")
-                motion [policy: full]
+                motion [policy: full, program: ReshardIfNeeded]
                     projection ("s"."d"::int -> "d", "s"."bucket_id"::int -> "bucket_id", "s"."e"::int -> "e", "s"."f"::int -> "f")
                         scan "s" (indexed by "bbb")
 execution options:

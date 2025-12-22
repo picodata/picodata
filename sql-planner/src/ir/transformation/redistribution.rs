@@ -1,5 +1,13 @@
 //! Resolve distribution conflicts and insert motion nodes to IR.
 
+use ahash::{AHashMap, AHashSet, RandomState};
+use itertools::Itertools;
+use serde::{Deserialize, Serialize};
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
+use std::fmt::Display;
+
 use crate::errors::{Entity, SbroadError};
 use crate::frontend::sql::ir::SubtreeCloner;
 use crate::ir::api::children::Children;
@@ -8,11 +16,6 @@ use crate::ir::expression::ColumnPositionMap;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::operator::{Bool, JoinKind, OrderByEntity, Unary, UpdateStrategy};
-use ahash::{AHashMap, AHashSet, RandomState};
-use serde::{Deserialize, Serialize};
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
-use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use tarantool::msgpack::{Context, Decode, DecodeError, Encode, EncodeError};
 
@@ -197,6 +200,39 @@ pub enum MotionOpcode {
     RemoveDuplicates,
 }
 
+impl Display for MotionOpcode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PrimaryKey(positions) => {
+                let key_positions = positions.iter().map(ToString::to_string).join(", ");
+                write!(f, "PrimaryKey({key_positions})")
+            }
+            Self::AddMissingRowsForLeftJoin { .. } => {
+                write!(f, "AddMissingRowsForLeftJoin")
+            }
+            Self::RearrangeForShardedUpdate {
+                new_shard_columns_positions,
+                ..
+            } => {
+                let column_positions = new_shard_columns_positions
+                    .iter()
+                    .map(ToString::to_string)
+                    .join(", ");
+                write!(f, "RearrangeForShardedUpdate({column_positions})")
+            }
+            Self::RemoveDuplicates => {
+                write!(f, "RemoveDuplicates")
+            }
+            Self::ReshardIfNeeded => {
+                write!(f, "ReshardIfNeeded")
+            }
+            Self::SerializeAsEmptyTable(flag) => {
+                write!(f, "SerializeAsEmptyTable({flag})")
+            }
+        }
+    }
+}
+
 /// Helper struct that unwraps `Expression::Bool` fields.
 struct BoolOp {
     left: NodeId,
@@ -229,6 +265,18 @@ pub struct Program(pub Vec<MotionOpcode>);
 impl Default for Program {
     fn default() -> Self {
         Program(vec![MotionOpcode::ReshardIfNeeded])
+    }
+}
+
+impl Display for Program {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.0.len() > 1 {
+            let opcodes = self.0.iter().map(ToString::to_string).join(", ");
+            write!(f, "[{opcodes}]")
+        } else {
+            let opcode = self.0.first().unwrap();
+            write!(f, "{opcode}")
+        }
     }
 }
 

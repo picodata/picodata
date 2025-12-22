@@ -8,7 +8,7 @@ fn select_values_rows() {
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1", "unnamed_subquery"."COLUMN_2"::int -> "COLUMN_2", "unnamed_subquery"."COLUMN_3"::string -> "COLUMN_3")
         scan "unnamed_subquery"
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 values
                     value row (data=ROW(1::int, 2::int, 'txt'::string))
     execution options:
@@ -26,7 +26,7 @@ fn insert_values_rows() {
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     insert "t1" on conflict: fail
-        motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")])]
+        motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
             values
                 value row (data=ROW('txt'::string, 2::int))
     execution options:
@@ -60,7 +60,7 @@ fn update_selection() {
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     update "t"
     "c" = "col_0"
-        motion [policy: local]
+        motion [policy: local, program: ReshardIfNeeded]
             projection (2::int -> "col_0", "t"."b"::int -> "col_1")
                 selection ("t"."a"::int = 1::int) and ("t"."b"::int = 2::decimal)
                     scan "t"
@@ -78,7 +78,7 @@ fn delete_selection() {
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     delete "t2"
-        motion [policy: local]
+        motion [policy: local, program: [PrimaryKey(0, 1), ReshardIfNeeded]]
             projection ("t2"."g"::int -> "pk_col_0", "t2"."h"::int -> "pk_col_1")
                 selection ("t2"."e"::int = 3::int) and ("t2"."f"::int = 2::decimal)
                     scan "t2"

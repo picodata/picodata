@@ -21,7 +21,7 @@ use crate::ir::node::{
 use crate::ir::operator::{ConflictStrategy, JoinKind, OrderByElement, OrderByEntity, OrderByType};
 use crate::ir::options::OptionKind;
 use crate::ir::transformation::redistribution::{
-    MotionKey as IrMotionKey, MotionPolicy as IrMotionPolicy, Target as IrTarget,
+    MotionKey as IrMotionKey, MotionPolicy as IrMotionPolicy, Program, Target as IrTarget,
 };
 use crate::ir::{node, Plan};
 use crate::utils::OrderedMap;
@@ -1052,17 +1052,22 @@ impl Display for SubQuery {
 #[derive(Debug, PartialEq, Serialize, Clone)]
 struct Motion {
     policy: MotionPolicy,
+    program: Program,
 }
 
 impl Motion {
-    fn new(policy: MotionPolicy) -> Self {
-        Motion { policy }
+    fn new(policy: MotionPolicy, program: Program) -> Self {
+        Motion { policy, program }
     }
 }
 
 impl Display for Motion {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "motion [policy: {}]", &self.policy)
+        write!(
+            f,
+            "motion [policy: {}, program: {}]",
+            self.policy, self.program
+        )
     }
 }
 
@@ -1580,6 +1585,7 @@ impl FullExplain {
                 Relational::Motion(MotionRel {
                     child: child_id,
                     policy,
+                    program,
                     ..
                 }) => {
                     let child = stack.pop().ok_or_else(|| {
@@ -1636,7 +1642,7 @@ impl FullExplain {
                         }
                     };
 
-                    let m = Motion::new(p);
+                    let m = Motion::new(p, program.clone());
                     Some(ExplainNode::Motion(m))
                 }
                 Relational::Join(Join {

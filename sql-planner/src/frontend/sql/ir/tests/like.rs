@@ -92,7 +92,7 @@ fn like_explain3() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::bool -> "col_1")
         group by ("gr_expr_1"::bool) output: ("gr_expr_1"::bool -> "gr_expr_1")
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 projection ("t1"."a"::string LIKE "t1"."a"::string ESCAPE '\'::string -> "gr_expr_1")
                     group by ("t1"."a"::string LIKE "t1"."a"::string ESCAPE '\'::string) output: ("t1"."a"::string -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
                         scan "t1"
@@ -113,17 +113,17 @@ fn like_explain4() {
         selection ROW($2) LIKE ROW($1) ESCAPE ROW($0)
             scan "t1"
     subquery $0:
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
                 scan
                     projection ('\'::string -> "col_1")
                         scan "t1"
     subquery $1:
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
                 scan
                     projection ('hi'::string -> "col_1")
                         scan "t1"
     subquery $2:
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
                 scan
                     projection ('hi'::string -> "col_1")
                         scan "t1"
@@ -142,7 +142,7 @@ fn ilike_explain() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::bool -> "col_1")
         group by ("gr_expr_1"::bool) output: ("gr_expr_1"::bool -> "gr_expr_1")
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 projection (lower(("t1"."a"::string))::string LIKE lower(("t1"."a"::string))::string ESCAPE 'x'::string -> "gr_expr_1")
                     group by (lower(("t1"."a"::string))::string LIKE lower(("t1"."a"::string))::string ESCAPE 'x'::string) output: ("t1"."a"::string -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
                         scan "t1"

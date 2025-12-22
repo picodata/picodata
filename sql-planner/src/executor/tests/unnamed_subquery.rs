@@ -35,7 +35,7 @@ fn unnamed_subquery2_test() {
             scan "unnamed_subquery"
                 projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
                     scan "t"
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 scan "unnamed_subquery_1"
                     projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
                         scan "t"
@@ -57,7 +57,7 @@ fn unnamed_subquery_name_conflict1_test() {
             scan "unnamed_subquery_1"
                 projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
                     scan "t"
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 scan "unnamed_subquery"
                     projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
                         scan "t"
@@ -80,7 +80,7 @@ fn unnamed_subquery_name_conflict2_test() {
                     scan "t"
             scan cte unnamed_subquery($0)
     subquery $0:
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
                     projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
                         scan "t"
     execution options:

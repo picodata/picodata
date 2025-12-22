@@ -422,7 +422,7 @@ mod tests {
             selection true::bool
                 join on true::bool
                     scan "t"
-                    motion [policy: full]
+                    motion [policy: full, program: ReshardIfNeeded]
                         projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                             scan "t"
         execution options:

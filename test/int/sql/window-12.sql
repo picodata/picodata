@@ -127,7 +127,7 @@ WINDOW
     win1 AS (PARTITION BY x + (SELECT 3));
 -- EXPECTED:
 projection (avg("x"::int) over (partition by ("x"::int + ROW($0)) ) -> "col_1", sum("x"::int) over (order by (("y"::int + (2::int * ROW($2))) + ROW($1)) ) -> "col_2")
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
         projection ("t6"."x"::int -> "x", "t6"."y"::int -> "y")
             scan "t6"
 subquery $0:
@@ -164,16 +164,16 @@ WINDOW
     )::int);
 -- EXPECTED:
 projection (row_number() over (partition by ("x"::int + ROW($1)) ) -> "col_1", sum("y"::int) over (partition by ("x"::int + ROW($1)) ) -> "col_2", max("x"::int) over (order by ("x"::int + ROW($0)::int) ) -> "col_3")
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
         projection ("t6"."x"::int -> "x", "t6"."y"::int -> "y")
             scan "t6"
 subquery $0:
-motion [policy: full]
+motion [policy: full, program: ReshardIfNeeded]
         scan
             projection (count(*::int) over (rows between current row and unbounded following) -> "col_1")
                 scan "unnamed_subquery"
                     limit 1
-                        motion [policy: full]
+                        motion [policy: full, program: ReshardIfNeeded]
                             limit 1
                                 projection ("t6"."x"::int -> "x", "t6"."y"::int -> "y")
                                     scan "t6"

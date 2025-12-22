@@ -87,11 +87,11 @@ fn front_sql_global_tbl_sq1() {
     subquery $0:
     scan
                 projection (sum(("sum_1"::decimal))::decimal -> "col_1")
-                    motion [policy: full]
+                    motion [policy: full, program: ReshardIfNeeded]
                         projection (sum(("t"."a"::int))::decimal -> "sum_1")
                             scan "t"
     subquery $1:
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
                 scan
                     projection ("t"."a"::int -> "a1")
                         scan "t"
@@ -121,11 +121,11 @@ fn front_sql_global_tbl_multiple_sqs1() {
     subquery $0:
     scan
                 projection (sum(("sum_1"::decimal))::decimal -> "col_1")
-                    motion [policy: full]
+                    motion [policy: full, program: ReshardIfNeeded]
                         projection (sum(("t"."a"::int))::decimal -> "sum_1")
                             scan "t"
     subquery $1:
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
                 scan
                     projection ("t"."a"::int -> "a1", "t"."b"::int -> "b1")
                         scan "t"
@@ -157,11 +157,11 @@ fn front_sql_global_tbl_multiple_sqs2() {
     subquery $0:
     scan
                 projection (sum(("sum_1"::decimal))::decimal -> "col_1")
-                    motion [policy: full]
+                    motion [policy: full, program: ReshardIfNeeded]
                         projection (sum(("t"."a"::int))::decimal -> "sum_1")
                             scan "t"
     subquery $1:
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
                 scan
                     projection ("t"."a"::int -> "a1", "t"."b"::int -> "b1")
                         scan "t"
@@ -186,7 +186,7 @@ fn front_sql_global_tbl_sq2() {
         selection ROW("global_t"."a"::int, "global_t"."b"::int) in ROW($0, $0)
             scan "global_t"
     subquery $0:
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
                 scan
                     projection ("t"."a"::int -> "a1", "t"."b"::int -> "b1")
                         scan "t"
@@ -212,12 +212,12 @@ fn front_sql_global_tbl_sq3() {
         selection (not (ROW("global_t"."a"::int, "global_t"."b"::int) in ROW($1, $1))) or (ROW("global_t"."a"::int, "global_t"."b"::int) < ROW($0, $0))
             scan "global_t"
     subquery $0:
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
                 scan
                     projection ("t"."a"::int -> "a1", "t"."b"::int -> "b1")
                         scan "t"
     subquery $1:
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
                 scan
                     projection ("t"."a"::int -> "a1", "t"."b"::int -> "b1")
                         scan "t"
@@ -242,7 +242,7 @@ fn front_sql_global_tbl_sq4() {
     projection ("hash_testing"."product_code"::string -> "product_code")
         join on ("t"."a"::int = "hash_testing"."identification_number"::int) and ("hash_testing"."product_code"::string in ROW($0))
             scan "t"
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 projection ("hash_testing"."identification_number"::int -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::bool -> "product_units", "hash_testing"."sys_op"::int -> "sys_op", "hash_testing"."bucket_id"::int -> "bucket_id")
                     scan "hash_testing"
     subquery $0:
@@ -299,7 +299,7 @@ fn front_sql_global_tbl_sq6() {
         selection "t2"."e"::int in ROW($3)
             join on ((ROW("t"."a"::int, "t"."b"::int) = ROW("t2"."e"::int, "t2"."f"::int)) or ("t"."c"::int in ROW($2))) or (exists ROW($0) and (not ("t"."d"::int in ROW($1))))
                 scan "t"
-                motion [policy: full]
+                motion [policy: full, program: ReshardIfNeeded]
                     projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                         scan "t2"
     subquery $0:
@@ -340,7 +340,7 @@ fn front_sql_global_tbl_sq7() {
     projection ("t"."a"::int -> "a", "t2"."f"::int -> "f")
         join on ((ROW("t"."a"::int, "t"."b"::int) = ROW("t2"."e"::int, "t2"."f"::int)) or ("t"."c"::int in ROW($1))) or (not ("t"."d"::int in ROW($0)))
             scan "t"
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                     scan "t2"
     subquery $0:
@@ -447,7 +447,7 @@ fn front_sql_global_join4() {
         left join on true::bool
             scan "s"
                 projection (sum(("sum_1"::decimal))::decimal -> "e")
-                    motion [policy: full]
+                    motion [policy: full, program: ReshardIfNeeded]
                         projection (sum(("t2"."e"::int))::decimal -> "sum_1")
                             scan "t2"
             scan "global_t"
@@ -474,7 +474,7 @@ fn front_sql_global_join5() {
             scan "global_t"
             scan "s"
                 projection (sum(("sum_1"::decimal))::decimal -> "e")
-                    motion [policy: full]
+                    motion [policy: full, program: ReshardIfNeeded]
                         projection (sum(("t2"."e"::int))::decimal -> "sum_1")
                             scan "t2"
     execution options:
@@ -598,7 +598,7 @@ fn front_sql_global_join10() {
                     scan "global_t"
             scan "global_t"
     subquery $0:
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
                 scan
                     projection ("t2"."e"::int -> "e")
                         scan "t2"
@@ -627,7 +627,7 @@ fn front_sql_global_join11() {
                     scan "global_t"
             scan "global_t"
     subquery $0:
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
                 scan
                     projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f")
                         scan "t2"
@@ -729,7 +729,7 @@ fn front_sql_global_aggregate5() {
                 selection ROW("global_t"."a"::int, "global_t"."b"::int) in ROW($0, $0)
                     scan "global_t"
     subquery $0:
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
                         scan
                             projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f")
                                 scan "t2"
@@ -750,10 +750,10 @@ fn front_sql_global_left_join1() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("e"::int -> "e", "b"::int -> "b")
-        motion [policy: full]
+        motion [policy: full, program: AddMissingRowsForLeftJoin]
             projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                 join on true::bool
-                    motion [policy: full]
+                    motion [policy: full, program: ReshardIfNeeded]
                         projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                             scan "global_t"
                     scan "t2"
@@ -776,10 +776,10 @@ fn front_sql_global_left_join2() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("e"::int -> "e", sum(("b"::int))::decimal -> "col_1")
         group by ("e"::int) output: ("a"::int -> "a", "b"::int -> "b", "e"::int -> "e", "f"::int -> "f", "g"::int -> "g", "h"::int -> "h", "bucket_id"::int -> "bucket_id")
-            motion [policy: full]
+            motion [policy: full, program: AddMissingRowsForLeftJoin]
                 projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                     join on true::bool
-                        motion [policy: full]
+                        motion [policy: full, program: ReshardIfNeeded]
                             projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                                 scan "global_t"
                         scan "t2"
@@ -801,10 +801,10 @@ fn front_sql_global_left_join3() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("e"::int -> "e", "b"::int -> "b")
-        motion [policy: full]
+        motion [policy: full, program: AddMissingRowsForLeftJoin]
             projection ("unnamed_subquery"."b"::int -> "b", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                 join on true::bool
-                    motion [policy: full]
+                    motion [policy: full, program: ReshardIfNeeded]
                         scan "unnamed_subquery"
                             projection ("global_t"."b"::int * "global_t"."b"::int -> "b")
                                 scan "global_t"
@@ -829,10 +829,10 @@ fn front_sql_global_left_join4() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("e"::int -> "e", "b"::int -> "b")
-        motion [policy: full]
+        motion [policy: full, program: AddMissingRowsForLeftJoin]
             projection ("unnamed_subquery"."b"::int -> "b", "unnamed_subquery_1"."e"::int -> "e")
                 join on true::bool
-                    motion [policy: full]
+                    motion [policy: full, program: ReshardIfNeeded]
                         scan "unnamed_subquery"
                             projection ("global_t"."b"::int * "global_t"."b"::int -> "b")
                                 scan "global_t"
@@ -886,7 +886,7 @@ fn front_sql_global_union_all1() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     union all
-        motion [policy: local]
+        motion [policy: local, program: SerializeAsEmptyTable(true)]
             projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                 scan "global_t"
         projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f")
@@ -911,7 +911,7 @@ fn front_sql_global_union_all2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     union all
-        motion [policy: local]
+        motion [policy: local, program: SerializeAsEmptyTable(true)]
             projection ("global_t"."a"::int -> "a")
                 scan "global_t"
         projection ("t2"."e"::int -> "e")
@@ -944,7 +944,7 @@ fn front_sql_global_union_all3() {
                     projection ("global_t"."a"::int -> "a")
                         scan "global_t"
                     projection (sum(("sum_1"::decimal))::decimal -> "col_1")
-                        motion [policy: full]
+                        motion [policy: full, program: ReshardIfNeeded]
                             projection (sum(("t2"."e"::int))::decimal -> "sum_1")
                                 scan "t2"
         projection ("global_t"."b"::int -> "b")
@@ -992,7 +992,7 @@ fn front_sql_global_union() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    motion [policy: full]
+    motion [policy: full, program: RemoveDuplicates]
         union
             projection ("global_t"."a"::int -> "a")
                 scan "global_t"
@@ -1015,9 +1015,9 @@ fn front_sql_global_union1() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    motion [policy: full]
+    motion [policy: full, program: RemoveDuplicates]
         union
-            motion [policy: local]
+            motion [policy: local, program: SerializeAsEmptyTable(true)]
                 projection ("global_t"."a"::int -> "a")
                     scan "global_t"
             projection ("t2"."e"::int -> "e")
@@ -1038,12 +1038,12 @@ fn front_sql_global_union2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    motion [policy: full]
+    motion [policy: full, program: RemoveDuplicates]
         union
             projection ("global_t"."a"::int -> "a")
                 scan "global_t"
             projection (sum(("sum_1"::decimal))::decimal -> "col_1")
-                motion [policy: full]
+                motion [policy: full, program: ReshardIfNeeded]
                     projection (sum(("t2"."e"::int))::decimal -> "sum_1")
                         scan "t2"
     execution options:
@@ -1066,14 +1066,14 @@ fn front_sql_union() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    motion [policy: full]
+    motion [policy: full, program: RemoveDuplicates]
         union
-            motion [policy: local]
+            motion [policy: local, program: SerializeAsEmptyTable(true)]
                 projection ("unnamed_subquery"."a"::int -> "a")
                     scan "unnamed_subquery"
-                        motion [policy: full]
+                        motion [policy: full, program: RemoveDuplicates]
                             union
-                                motion [policy: local]
+                                motion [policy: local, program: SerializeAsEmptyTable(true)]
                                     projection ("global_t"."a"::int -> "a")
                                         scan "global_t"
                                 projection ("t2"."e"::int -> "e")
@@ -1104,7 +1104,7 @@ fn check_plan_except_global_vs_segment() {
         projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
             selection "global_t"."a"::int = 1::int
                 scan "global_t"
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             intersect
                 projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f")
                     scan "t2"
@@ -1133,7 +1133,7 @@ fn check_plan_except_global_vs_any() {
     except
         projection ("global_t"."a"::int -> "a")
             scan "global_t"
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             intersect
                 projection ("t2"."e"::int -> "e")
                     scan "t2"
@@ -1182,7 +1182,7 @@ fn check_plan_except_global_vs_single() {
         projection ("global_t"."a"::int -> "a")
             scan "global_t"
         projection (sum(("sum_1"::decimal))::decimal -> "col_1")
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 projection (sum(("t2"."e"::int))::decimal -> "sum_1")
                     scan "t2"
     execution options:
@@ -1204,7 +1204,7 @@ fn check_plan_except_single_vs_global() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     except
         projection (sum(("sum_1"::decimal))::decimal -> "col_1")
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 projection (sum(("t2"."e"::int))::decimal -> "sum_1")
                     scan "t2"
         projection ("global_t"."a"::int -> "a")
@@ -1284,7 +1284,7 @@ fn check_plan_except_non_trivial_global_subtree_vs_any() {
                     scan "unnamed_subquery"
                         projection ("global_t"."b"::int -> "B")
                             scan "global_t"
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             intersect
                 projection ("t2"."e"::int -> "e")
                     scan "t2"

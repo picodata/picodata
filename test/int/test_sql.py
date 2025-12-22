@@ -6328,7 +6328,7 @@ buckets = []"""
     expected_explain = """projection ("t"."a"::int -> "a")
     join on "t"."a"::int = "t2"."b"::int
         scan "t"
-        motion [policy: segment([ref("b")])]
+        motion [policy: segment([ref("b")]), program: ReshardIfNeeded]
             projection ("t2"."a"::int -> "a", "t2"."bucket_id"::int -> "bucket_id", "t2"."b"::int -> "b")
                 scan "t" -> "t2"
 execution options:
@@ -6349,9 +6349,9 @@ buckets = any"""
 
     # Special case: motion node at the top
     lines = i1.sql("explain select id from _pico_table union select a from t")
-    expected_explain = """motion [policy: full]
+    expected_explain = """motion [policy: full, program: RemoveDuplicates]
     union
-        motion [policy: local]
+        motion [policy: local, program: SerializeAsEmptyTable(true)]
             projection ("_pico_table"."id"::int -> "id")
                 scan "_pico_table"
         projection ("t"."a"::int -> "a")
@@ -6367,7 +6367,7 @@ buckets = [1-3000]"""
     # buckets.
     lines = i1.sql("explain insert into t values (1, 2)")
     expected_explain = """insert "t" on conflict: fail
-    motion [policy: segment([ref("COLUMN_1")])]
+    motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
         values
             value row (data=ROW(1::int, 2::int))
 execution options:
@@ -6379,7 +6379,7 @@ buckets = unknown"""
     # For local motion: we can
     lines = i1.sql("explain insert into t select a, b from t")
     expected_explain = """insert "t" on conflict: fail
-    motion [policy: local segment([ref("a")])]
+    motion [policy: local segment([ref("a")]), program: ReshardIfNeeded]
         projection ("t"."a"::int -> "a", "t"."b"::int -> "b")
             scan "t"
 execution options:
@@ -6392,7 +6392,7 @@ buckets = [1-3000]"""
     lines = i1.sql("explain update t set b = 1 where b = 3")
     expected_explain = """update "t"
 "b" = "col_0"
-    motion [policy: local]
+    motion [policy: local, program: ReshardIfNeeded]
         projection (1::int -> "col_0", "t"."a"::int -> "col_1")
             selection "t"."b"::int = 3::int
                 scan "t"
@@ -6406,11 +6406,10 @@ buckets = [1-3000]"""
     ddl = i1.sql("create table t2 (c int primary key, d int) distributed by (d)")
     assert ddl["row_count"] == 1
     lines = i1.sql("explain update t2 set d = 1 where d = 2 or d = 2002")
-    print("\n".join(lines))
     expected_explain = """update "t2"
 "c" = "col_0"
 "d" = "col_1"
-    motion [policy: segment([])]
+    motion [policy: segment([]), program: [PrimaryKey(0), RearrangeForShardedUpdate(1)]]
         projection ("t2"."c"::int -> "col_0", 1::int -> "col_1", "t2"."d"::int -> "col_2")
             selection ("t2"."d"::int = 2::int) or ("t2"."d"::int = 2002::int)
                 scan "t2"
@@ -6434,7 +6433,7 @@ buckets = [1-3000]"""
     assert ddl["row_count"] == 1
     lines = i1.sql("explain insert into g select a, b from t")
     expected_explain = """insert "g" on conflict: fail
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
         projection ("t"."a"::int -> "a", "t"."b"::int -> "b")
             scan "t"
 execution options:
@@ -6445,7 +6444,7 @@ buckets = [1-3000]"""
 
     lines = i1.sql("explain insert into g select u, v from g")
     expected_explain = """insert "g" on conflict: fail
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
         projection ("g"."u"::int -> "u", "g"."v"::int -> "v")
             scan "g"
 execution options:

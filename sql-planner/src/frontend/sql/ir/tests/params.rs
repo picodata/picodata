@@ -134,7 +134,7 @@ fn front_params5() {
         selection ("test_space"."sys_op"::int = 0::int) or ("test_space"."id"::int in ROW($0))
             scan "test_space"
     subquery $0:
-    motion [policy: segment([ref("sysFrom")])]
+    motion [policy: segment([ref("sysFrom")]), program: ReshardIfNeeded]
                 scan
                     projection ("test_space_hist"."sysFrom"::int -> "sysFrom")
                         selection "test_space_hist"."sys_op"::int = 1::int
@@ -168,7 +168,7 @@ fn front_params6() {
         selection ("test_space"."sys_op"::int = 0::int) or (not ("test_space"."id"::int in ROW($0)))
             scan "test_space"
     subquery $0:
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
                 scan
                     union all
                         projection ("test_space"."id"::int -> "id")

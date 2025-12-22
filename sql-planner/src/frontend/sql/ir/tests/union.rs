@@ -43,7 +43,7 @@ fn front_select_chaining_2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     except
-        motion [policy: full]
+        motion [policy: full, program: RemoveDuplicates]
             union
                 union all
                     projection ("hash_testing"."product_code"::string -> "product_code")
@@ -52,11 +52,11 @@ fn front_select_chaining_2() {
                         scan "t2"
                 projection ("t3"."a"::string -> "a")
                     scan "t3"
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             intersect
                 projection ("t3"."b"::int::string -> "col_1")
                     scan "t3"
-                motion [policy: full]
+                motion [policy: full, program: RemoveDuplicates]
                     union
                         union all
                             projection ("hash_testing"."product_code"::string -> "product_code")
@@ -85,7 +85,7 @@ fn front_select_chaining_3() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("product_code"::string -> "product_code")
         order by (1)
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 scan
                     union all
                         projection ("hash_testing"."product_code"::string -> "product_code")
@@ -111,7 +111,7 @@ fn union_under_insert() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     insert "t2" on conflict: fail
-        motion [policy: segment([ref("e"), ref("f")])]
+        motion [policy: segment([ref("e"), ref("f")]), program: [RemoveDuplicates, ReshardIfNeeded]]
             union
                 projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", 1::int -> "col_1", 1::int -> "col_2")
                     scan "t2"
@@ -136,16 +136,16 @@ fn union_under_insert1() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     insert "TBL" on conflict: fail
-        motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")])]
+        motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: [RemoveDuplicates, ReshardIfNeeded]]
             union
                 projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1", "unnamed_subquery"."COLUMN_2"::int -> "COLUMN_2")
                     scan "unnamed_subquery"
-                        motion [policy: full]
+                        motion [policy: full, program: ReshardIfNeeded]
                             values
                                 value row (data=ROW(1::int, 1::int))
                 projection ("unnamed_subquery_1"."COLUMN_3"::int -> "COLUMN_3", "unnamed_subquery_1"."COLUMN_4"::int -> "COLUMN_4")
                     scan "unnamed_subquery_1"
-                        motion [policy: full]
+                        motion [policy: full, program: ReshardIfNeeded]
                             values
                                 value row (data=ROW(2::int, 2::int))
     execution options:

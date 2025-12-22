@@ -20,11 +20,11 @@ fn milti_join1() {
                     scan "t1"
                         projection ("hash_testing"."identification_number"::int -> "identification_number", "hash_testing"."product_code"::string -> "product_code")
                             scan "hash_testing"
-                    motion [policy: full]
+                    motion [policy: full, program: ReshardIfNeeded]
                         scan "t2"
                             projection ("test_space"."id"::int -> "id")
                                 scan "test_space"
-                motion [policy: full]
+                motion [policy: full, program: ReshardIfNeeded]
                     scan "t3"
                         projection ("test_space"."id"::int -> "id")
                             scan "test_space"
@@ -46,10 +46,10 @@ fn milti_join2() {
         left join on true::bool
             left join on "t1"."a"::int = "t2"."e"::int
                 scan "t1_2" -> "t1"
-                motion [policy: full]
+                motion [policy: full, program: ReshardIfNeeded]
                     projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                         scan "t2"
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 projection ("t4"."bucket_id"::int -> "bucket_id", "t4"."c"::string -> "c", "t4"."d"::int -> "d")
                     scan "t4"
     execution options:
@@ -71,13 +71,13 @@ fn milti_join3() {
             join on "t1"."a"::int = "t3"."a"::int
                 left join on "t1"."a"::int = "t2"."e"::int
                     scan "t1_2" -> "t1"
-                    motion [policy: full]
+                    motion [policy: full, program: ReshardIfNeeded]
                         projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                             scan "t2"
-                motion [policy: full]
+                motion [policy: full, program: ReshardIfNeeded]
                     projection ("t3"."bucket_id"::int -> "bucket_id", "t3"."a"::int -> "a", "t3"."b"::int -> "b")
                         scan "t3_2" -> "t3"
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 projection ("t4"."bucket_id"::int -> "bucket_id", "t4"."c"::string -> "c", "t4"."d"::int -> "d")
                     scan "t4"
     execution options:
@@ -98,10 +98,10 @@ fn milti_join4() {
         join on "t1"."a"::string = "t3"."a"::string
             join on "t1"."a"::string = "t2"."a"::string
                 scan "t1"
-                motion [policy: full]
+                motion [policy: full, program: ReshardIfNeeded]
                     projection ("t2"."a"::string -> "a", "t2"."bucket_id"::int -> "bucket_id", "t2"."b"::int -> "b")
                         scan "t1" -> "t2"
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 projection ("t3"."bucket_id"::int -> "bucket_id", "t3"."a"::string -> "a", "t3"."b"::int -> "b")
                     scan "t3"
     execution options:

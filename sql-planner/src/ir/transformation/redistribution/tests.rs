@@ -294,10 +294,10 @@ fn test_slices_1() {
                 projection ("t2"."f"::int -> "f")
                     join on true::bool
                         scan "t2"
-                        motion [policy: full]
+                        motion [policy: full, program: ReshardIfNeeded]
                             projection ("t3"."e"::int -> "e", "t3"."f"::int -> "f", "t3"."g"::int -> "g", "t3"."h"::int -> "h", "t3"."bucket_id"::int -> "bucket_id")
                                 scan "t2" -> "t3"
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                     scan "t2"
     execution options:
@@ -322,17 +322,17 @@ fn test_slices_2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(("count_1"::int))::int -> "col_1")
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             projection (count(("t2"."e"::int))::int -> "count_1")
                 join on true::bool
                     scan "unnamed_subquery"
                         projection ("t2"."f"::int -> "f")
                             join on true::bool
                                 scan "t2"
-                                motion [policy: full]
+                                motion [policy: full, program: ReshardIfNeeded]
                                     projection ("t3"."e"::int -> "e", "t3"."f"::int -> "f", "t3"."g"::int -> "g", "t3"."h"::int -> "h", "t3"."bucket_id"::int -> "bucket_id")
                                         scan "t2" -> "t3"
-                    motion [policy: full]
+                    motion [policy: full, program: ReshardIfNeeded]
                         projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                             scan "t2"
     execution options:

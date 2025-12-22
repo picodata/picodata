@@ -18,7 +18,7 @@ fn delete2_test() {
     let plan = sql_to_optimized_ir(sql, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     delete "t1"
-        motion [policy: local]
+        motion [policy: local, program: [PrimaryKey(0, 1), ReshardIfNeeded]]
             projection ("t1"."a"::string -> "pk_col_0", "t1"."b"::int -> "pk_col_1")
                 selection "t1"."b"::int > 3::int
                     scan "t1"
@@ -34,12 +34,12 @@ fn delete3_test() {
     let plan = sql_to_optimized_ir(sql, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     delete "t1"
-        motion [policy: local]
+        motion [policy: local, program: [PrimaryKey(0, 1), ReshardIfNeeded]]
             projection ("t1"."a"::string -> "pk_col_0", "t1"."b"::int -> "pk_col_1")
                 selection "t1"."a"::string in ROW($0)
                     scan "t1"
     subquery $0:
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
                         scan
                             projection ("t1"."b"::int::string -> "col_1")
                                 scan "t1"

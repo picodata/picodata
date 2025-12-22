@@ -145,7 +145,7 @@ projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
         scan "T1"
             projection ("arithmetic_space"."id"::int -> "A")
                 scan "arithmetic_space"
-        motion [policy: segment([ref("B")])]
+        motion [policy: segment([ref("B")]), program: ReshardIfNeeded]
             scan "T2"
                 projection ("arithmetic_space2"."a"::int -> "B")
                     scan "arithmetic_space2"
@@ -177,7 +177,7 @@ projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
         scan "T1"
             projection ("arithmetic_space"."id"::int -> "A")
                 scan "arithmetic_space"
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             scan "T2"
                 projection ("arithmetic_space2"."a"::int -> "B")
                     scan "arithmetic_space2"
@@ -238,12 +238,12 @@ projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
         scan "T1"
             projection ("arithmetic_space"."a"::int -> "A")
                 scan "arithmetic_space"
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             scan "T2"
                 projection ("arithmetic_space2"."id"::int -> "B")
                     scan "arithmetic_space2"
 subquery $0:
-motion [policy: full]
+motion [policy: full, program: ReshardIfNeeded]
             scan
                 projection ("arithmetic_space"."a"::int + 1::int -> "col_1")
                     scan "arithmetic_space"
@@ -277,12 +277,12 @@ projection ("t1"."A"::int -> "A", "t2"."B"::int -> "B")
         scan "t1"
             projection ("arithmetic_space"."id"::int -> "A")
                 scan "arithmetic_space"
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             scan "t2"
                 projection ("arithmetic_space2"."id"::int -> "B")
                     scan "arithmetic_space2"
 subquery $0:
-motion [policy: segment([ref("c")])]
+motion [policy: segment([ref("c")]), program: ReshardIfNeeded]
             scan
                 projection ("arithmetic_space"."c"::int -> "c")
                     scan "arithmetic_space"

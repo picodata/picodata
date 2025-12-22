@@ -156,10 +156,10 @@ select count(*) over win from t WINDOW win as () union select 1;
 -- SQL:
 explain select row_number() over () from t union select 1;
 -- EXPECTED:
-motion [policy: full]
+motion [policy: full, program: RemoveDuplicates]
     union
         projection (row_number() over () -> "col_1")
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 projection ("t"."a"::int -> "a")
                     scan "t"
         projection (1::int -> "col_1")
@@ -172,10 +172,10 @@ buckets = [1-3000]
 -- SQL:
 explain select count(*) over win from t WINDOW win as () union select 1;
 -- EXPECTED:
-motion [policy: full]
+motion [policy: full, program: RemoveDuplicates]
     union
         projection (count(*::int) over () -> "col_1")
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 projection ("t"."a"::int -> "a")
                     scan "t"
         projection (1::int -> "col_1")
@@ -196,7 +196,7 @@ explain select row_number() over () from t union all select 1;
 -- EXPECTED:
 union all
     projection (row_number() over () -> "col_1")
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             projection ("t"."a"::int -> "a")
                 scan "t"
     projection (1::int -> "col_1")

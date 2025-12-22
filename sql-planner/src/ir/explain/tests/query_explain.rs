@@ -59,7 +59,7 @@ fn test_query_explain_4() {
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection (sum(("count_1"::int))::int -> "col_1")
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             projection (count((*::int))::int -> "count_1")
                 scan "t2"
     execution options:
@@ -93,7 +93,7 @@ fn test_query_explain_6() {
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     insert "t1" on conflict: fail
-        motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")])]
+        motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
             values
                 value row (data=ROW('1'::string, 1::int))
     execution options:
@@ -111,7 +111,7 @@ fn test_query_explain_7() {
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     insert "t1" on conflict: fail
-        motion [policy: local segment([ref("a"), ref("b")])]
+        motion [policy: local segment([ref("a"), ref("b")]), program: ReshardIfNeeded]
             projection ("t1"."a"::string -> "a", "t1"."b"::int -> "b")
                 scan "t1"
     execution options:
@@ -129,7 +129,7 @@ fn test_query_explain_8() {
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     insert "global_t" on conflict: fail
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             values
                 value row (data=ROW(1::int, 1::int))
     execution options:
@@ -166,7 +166,7 @@ fn test_query_explain_10() {
     "h" = "col_3"
     "e" = "col_0"
     "g" = "col_2"
-        motion [policy: segment([])]
+        motion [policy: segment([]), program: [PrimaryKey(2, 3), RearrangeForShardedUpdate(0, 1)]]
             projection (20::int -> "col_0", "t2"."f"::int -> "col_1", "t2"."g"::int -> "col_2", "t2"."h"::int -> "col_3", "t2"."e"::int -> "col_4", "t2"."f"::int -> "col_5")
                 selection ROW("t2"."e"::int, "t2"."f"::int) = ROW(10::int, 10::int)
                     scan "t2"
@@ -195,7 +195,7 @@ fn test_query_explain_11() {
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection ("gr_expr_1"::string -> "a", sum(("count_1"::int))::int -> "col_1")
         group by ("gr_expr_1"::string) output: ("gr_expr_1"::string -> "gr_expr_1", "count_1"::int -> "count_1")
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 projection ("unnamed_subquery_1"."a"::string -> "gr_expr_1", count(("unnamed_subquery_1"."b"::int))::int -> "count_1")
                     group by ("unnamed_subquery_1"."a"::string) output: ("unnamed_subquery"."e"::int -> "e", "unnamed_subquery"."f"::int -> "f", "unnamed_subquery_1"."a"::string -> "a", "unnamed_subquery_1"."b"::int -> "b")
                         join on "unnamed_subquery"."e"::int = "unnamed_subquery_1"."b"::int
@@ -203,7 +203,7 @@ fn test_query_explain_11() {
                                 projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f")
                                     selection ROW("t2"."e"::int, "t2"."f"::int) = ROW(10::int, 10::int)
                                         scan "t2"
-                            motion [policy: full]
+                            motion [policy: full, program: ReshardIfNeeded]
                                 scan "unnamed_subquery_1"
                                     projection ("t1"."a"::string -> "a", "t1"."b"::int -> "b")
                                         selection ROW("t1"."a"::string, "t1"."b"::int) = ROW('20'::string, 20::int)
@@ -236,7 +236,7 @@ fn test_query_explain_12() {
                 projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f")
                     selection ROW("t2"."e"::int, "t2"."f"::int) = ROW(10::int, 10::int)
                         scan "t2"
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 scan "unnamed_subquery_1"
                     projection ("t1"."a"::string -> "a", "t1"."b"::int -> "b")
                         selection ROW("t1"."a"::string, "t1"."b"::int) = ROW('20'::string, 20::int)
@@ -256,7 +256,7 @@ fn test_query_explain_13() {
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     insert "global_t" on conflict: fail
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             projection ("t1"."a"::string -> "a", "t1"."b"::int -> "b")
                 selection ROW("t1"."a"::string, "t1"."b"::int) = ROW('1'::string, 1::int)
                     scan "t1"
@@ -328,7 +328,7 @@ fn test_query_explain_17() {
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     update "t"
     "c" = "col_0"
-        motion [policy: local]
+        motion [policy: local, program: ReshardIfNeeded]
             projection (1::int -> "col_0", "t"."b"::int -> "col_1")
                 scan "t"
     execution options:

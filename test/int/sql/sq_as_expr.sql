@@ -328,7 +328,7 @@ projection (ROW($0) -> "col_1")
     scan "testing_space"
 subquery $0:
 scan
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             values
                 value row (data=ROW(1::int))
 execution options:
@@ -342,13 +342,13 @@ EXPLAIN SELECT "id" FROM "testing_space" ORDER BY "id" + (VALUES (1));
 -- EXPECTED:
 projection ("id"::int -> "id")
     order by ("id"::int + ROW($0))
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             scan
                 projection ("testing_space"."id"::int -> "id")
                     scan "testing_space"
 subquery $0:
 scan
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 values
                     value row (data=ROW(1::int))
 execution options:
@@ -364,12 +364,12 @@ projection (ROW($1) -> "col_1")
     scan "testing_space"
 subquery $0:
 scan
-                        motion [policy: full]
+                        motion [policy: full, program: ReshardIfNeeded]
                             values
                                 value row (data=ROW(1::int))
 subquery $1:
 scan
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             values
                 value row (data=ROW(ROW($0)))
 execution options:
@@ -385,12 +385,12 @@ projection (ROW($1) -> "col_1")
     scan "testing_space"
 subquery $0:
 scan
-                        motion [policy: full]
+                        motion [policy: full, program: ReshardIfNeeded]
                             values
                                 value row (data=ROW(1::int))
 subquery $1:
 scan
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             values
                 value row (data=ROW(ROW($0)))
 execution options:
@@ -407,7 +407,7 @@ projection ("testing_space"."id"::int -> "id")
         scan "testing_space"
 subquery $0:
 scan
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 values
                     value row (data=ROW(true::bool))
 execution options:
@@ -423,12 +423,12 @@ projection (ROW($1) -> "col_1", ROW($0) -> "col_2")
     scan "testing_space"
 subquery $0:
 scan
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             values
                 value row (data=ROW(2::int))
 subquery $1:
 scan
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             values
                 value row (data=ROW(1::int))
 execution options:

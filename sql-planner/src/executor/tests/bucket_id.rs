@@ -91,7 +91,7 @@ fn bucket_id_from_join() {
     projection ("t1"."bucket_id"::int -> "bucket_id")
         join on true::bool
             scan "t" -> "t1"
-            motion [policy: full]
+            motion [policy: full, program: ReshardIfNeeded]
                 projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                     scan "t"
     execution options:
@@ -122,7 +122,7 @@ fn explicit_select_bucket_id_from_subquery_under_limit() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     limit 1
-        motion [policy: full]
+        motion [policy: full, program: ReshardIfNeeded]
             limit 1
                 projection ("x"."bucket_id"::int -> "bucket_id", "x"."id"::int -> "id")
                     scan "x"
@@ -150,7 +150,7 @@ fn explicit_select_bucket_id_from_cte_under_limit() {
         projection ("x"."bucket_id"::int -> "bucket_id", "x"."id"::int -> "id")
             scan cte x($0)
     subquery $0:
-    motion [policy: full]
+    motion [policy: full, program: ReshardIfNeeded]
                     projection ("test_space"."bucket_id"::int -> "bucket_id", "test_space"."id"::int -> "id")
                         scan "test_space"
     execution options:
