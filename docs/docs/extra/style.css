@@ -207,13 +207,15 @@ h6 {
 .md-header__breadcrumb-current {
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
-  -o-text-overflow: ellipsis;
-     text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+    -o-text-overflow: clip;
+       text-overflow: clip;
 }
 
 @media (max-width: 768px) {
   .md-header__breadcrumb-nav {
+    flex-wrap: wrap;
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
@@ -227,6 +229,7 @@ h6 {
   .md-header__breadcrumb-current {
     -o-text-overflow: clip;
        text-overflow: clip;
+    white-space: normal;
   }
 }
 
