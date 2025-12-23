@@ -251,7 +251,7 @@ plugins:
   - search:
       lang:
         - en
-        - r
+        - ru
 
 # Расширения Python Markdown
 # https://squidfunk.github.io/mkdocs-material/setup/extensions/python-markdown/
