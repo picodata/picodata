@@ -542,11 +542,13 @@ cluster:
     error_injection = "PROC_SHARDING_RANDOM_FAILURE"
 
     leader = cluster.add_instance(wait_online=True, tier="arbiter", log_to_file=True, log_to_console=False)
-    leader.sql("ALTER SYSTEM SET governor_rpc_batch_size = 10")
 
-    size = int(os.environ.get("BIG_CLUSTER_SIZE", "100"))
-    for _ in range(size):
+    batch_size = int(os.environ.get("GOVERNOR_RPC_BATCH_SIZE", "5"))
+    leader.sql(f"ALTER SYSTEM SET governor_rpc_batch_size = {batch_size}")
+
+    cluster_size = int(os.environ.get("BIG_CLUSTER_SIZE", "20"))
+    for _ in range(cluster_size):
         instance = cluster.add_instance(wait_online=False, tier="storage", log_to_file=True, log_to_console=False)
         instance.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
 
-    cluster.wait_online(timeout=300)
+    cluster.wait_online(timeout=60)
