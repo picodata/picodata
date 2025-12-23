@@ -5,7 +5,7 @@ use super::sharding::{handle_sharding, handle_sharding_bootstrap};
 use crate::cas;
 use crate::catalog::governor_queue::GovernorOperationDef;
 use crate::column_name;
-use crate::governor::LastStepInfo;
+use crate::governor::batch::LastStepInfo;
 use crate::has_states;
 use crate::instance::state::{State, StateVariant};
 use crate::instance::{Instance, InstanceName};
@@ -299,7 +299,14 @@ pub(super) fn action_plan<'i>(
         batch_size,
     )? {
         debug_assert!(
-            matches!(plan, Plan::UpdateCurrentVshardConfig { .. }),
+            matches!(
+                plan,
+                Plan::UpdateCurrentVshardConfig { .. }
+                    | Plan::SleepDueToBackoff(SleepDueToBackoff {
+                        step_kind: ActionKind::UpdateCurrentVshardConfig,
+                        ..
+                    })
+            ),
             "{:?}",
             plan.kind()
         );
@@ -987,22 +994,24 @@ pub mod stage {
             pub conf_change: raft::prelude::ConfChangeV2,
         }
 
-        pub struct UpdateCurrentVshardConfig<'i> {
+        pub struct SleepDueToBackoff {
+            /// We would want to execute this step kind, but can't at the moment because of back-off.
+            pub step_kind: ActionKind,
+            /// We will be able to execute `step_kind` at this moment in the future.
+            pub next_try: Instant,
+        }
+
+        pub struct UpdateCurrentVshardConfig {
             /// All instances which need to handle `rpc` request before `cas` can be applied.
-            pub targets_total: Vec<&'i InstanceName>,
+            pub targets_total: Vec<InstanceName>,
             /// A batch of instances to send the `rpc` request to on this iteration.
-            pub targets_batch: Vec<&'i InstanceName>,
+            pub targets_batch: Vec<InstanceName>,
             /// Request to call [`rpc::sharding::proc_sharding`] on `targets`.
             pub rpc: rpc::sharding::Request,
             /// Global DML operation which updates `current_vshard_config_version` in corresponding record of table `_pico_tier`.
             pub cas: cas::Request,
             /// Tier name to which the vshard configuration applies
             pub tier_name: SmolStr,
-            /// If `targets_batch` is empty then this means that all RPC targets
-            /// are in backoff at the moment and governor has nothing else to do
-            /// but wait. This is the next moment when backoff will end for at
-            /// least one of the targets.
-            pub next_try: Option<Instant>,
         }
 
         pub struct TransferLeadership<'i> {

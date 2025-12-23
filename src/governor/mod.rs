@@ -1,6 +1,7 @@
 use self::upgrade_operations::proc_internal_script;
 use crate::cas;
 use crate::column_name;
+use crate::governor::batch::LastStepInfo;
 use crate::instance::InstanceName;
 use crate::metrics;
 use crate::op::Op;
@@ -32,7 +33,6 @@ use crate::storage::Catalog;
 use crate::storage::SystemTable;
 use crate::storage::ToEntryIter;
 use crate::sync::proc_get_vclock;
-use crate::tier::Tier;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::error::Error as TraftError;
@@ -54,24 +54,21 @@ use ::tarantool::fiber;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
 use ::tarantool::space::UpdateOps;
-use ::tarantool::time::Instant;
 use bytes::Buf;
 use futures::future::try_join;
 use futures::future::try_join_all;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use plan::action_plan;
-use plan::stage::ActionKind;
 use plan::stage::*;
 use smol_str::SmolStr;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
+mod batch;
 mod conf_change;
 pub(crate) mod plan;
 mod queue;
@@ -227,11 +224,9 @@ impl Loop {
             raft_status,
             waker,
             pool,
-            backoff_manager,
             last_step_info,
         }: &mut State,
     ) -> ControlFlow<()> {
-        _ = backoff_manager;
         if !raft_status.get().raft_state.is_leader() {
             set_status(governor_status, "not a leader");
             raft_status.changed().await.unwrap();
@@ -262,10 +257,7 @@ impl Loop {
             .borrow()
             .governor_rpc_batch_size;
 
-        let instances = storage
-            .instances
-            .all_instances()
-            .expect("storage should never fail");
+        let instances: Vec<_> = topology_ref.all_instances().cloned().collect();
         let existing_fds = storage
             .instances
             .failure_domain_names()
@@ -279,18 +271,10 @@ impl Loop {
             .collect();
         let voters = raft_storage.voters().expect("storage should never fail");
         let learners = raft_storage.learners().expect("storage should never fail");
-        let replicasets: Vec<_> = storage
-            .replicasets
-            .iter()
-            .expect("storage should never fail")
-            .collect();
+        let replicasets: Vec<_> = topology_ref.all_replicasets().cloned().collect();
         let replicasets: HashMap<_, _> = replicasets.iter().map(|rs| (&rs.name, rs)).collect();
 
-        let tiers: Vec<_> = storage
-            .tiers
-            .iter()
-            .expect("storage should never fail")
-            .collect();
+        let tiers: Vec<_> = topology_ref.all_tiers().cloned().collect();
         let tiers: HashMap<_, _> = tiers
             .iter()
             .map(|tier| (tier.name.as_str(), tier))
@@ -399,7 +383,7 @@ impl Loop {
                 return ControlFlow::Continue(());
             }
         );
-        last_step_info.update_kind(plan.kind());
+        last_step_info.on_next_step(&plan);
 
         // Flag used to indicate whether ApplySchemaChange application for
         // BACKUP has failed and we should abort it.
@@ -436,6 +420,23 @@ impl Loop {
         }
 
         match plan {
+            Plan::SleepDueToBackoff(SleepDueToBackoff {
+                step_kind,
+                next_try,
+            }) => {
+                // Don't set_status!(), so that the last step status is preserved
+                let timeout = next_try.duration_since(fiber::clock());
+                governor_substep! {
+                    "sleeping due to backoff" [
+                        "step_kind" => ?step_kind,
+                        "timeout" => ?timeout
+                    ]
+                    async {
+                        _ = waker.changed().timeout(timeout).await;
+                    }
+                }
+            }
+
             Plan::ConfChange(ConfChange { conf_change }) => {
                 set_status!("conf change");
                 // main_loop gives the warranty that every ProposeConfChange
@@ -1217,27 +1218,10 @@ impl Loop {
                 rpc,
                 cas,
                 tier_name,
-                next_try,
             }) => {
                 set_status(governor_status, "update current sharding configuration");
 
                 last_step_info.set_pending(&targets_total);
-
-                if targets_batch.is_empty() {
-                    if let Some(next_try) = next_try {
-                        let timeout = next_try.duration_since(fiber::clock());
-                        governor_substep! {
-                            "sleeping due to backoff before vshard config changes" [
-                                "timeout" => ?timeout
-                            ]
-                            async {
-                                _ = waker.changed().timeout(timeout).await;
-                            }
-                        }
-                    } else {
-                        crate::warn_or_panic!("If batch is empty next_try must be chosen!");
-                    }
-                }
 
                 governor_substep! {
                     "applying vshard config changes" [
@@ -1247,7 +1231,7 @@ impl Loop {
                         let mut fs = FuturesUnordered::new();
                         for instance_name in targets_batch {
                             tlog!(Info, "calling proc_sharding"; "instance_name" => %instance_name);
-                            let resp = pool.call(instance_name, proc_name!(proc_sharding), &rpc, rpc_timeout)?;
+                            let resp = pool.call(&instance_name, proc_name!(proc_sharding), &rpc, rpc_timeout)?;
                             fs.push(async move { (instance_name, resp.await) });
                         }
 
@@ -1255,10 +1239,10 @@ impl Loop {
                         while let Some((instance_name, res)) = fs.next().await {
                             match res {
                                 Ok(_) => {
-                                    last_step_info.on_ok_instance(instance_name.clone());
+                                    last_step_info.on_ok_instance(instance_name);
                                 }
                                 Err(e) => {
-                                    let info = last_step_info.on_err_instance(instance_name.clone());
+                                    let info = last_step_info.on_err_instance(&instance_name);
                                     let streak = info.streak;
                                     tlog!(Warning, "failed calling proc_sharding (fail streak: {streak}): {e}"; "instance_name" => %instance_name);
                                     if first_error.is_none() {
@@ -1516,7 +1500,6 @@ impl Loop {
             raft_status,
             waker: waker_rx,
             pool,
-            backoff_manager: GovernorBackoffManager::new(),
             last_step_info: LastStepInfo::new(),
         };
 
@@ -1584,7 +1567,6 @@ struct State {
     raft_status: watch::Receiver<Status>,
     waker: watch::Receiver<()>,
     pool: Rc<ConnectionPool>,
-    backoff_manager: GovernorBackoffManager,
     last_step_info: LastStepInfo,
 }
 
@@ -1606,169 +1588,4 @@ pub struct GovernorStatus {
     ///
     /// This value is only used for testing purposes.
     pub step_counter: u64,
-}
-
-/// Manages backoff strategies and timeouts for the different stages of the governor.
-struct GovernorBackoffManager {}
-
-impl GovernorBackoffManager {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-struct LastStepInfo {
-    step_kind: ActionKind,
-    ok_instances: HashSet<InstanceName>,
-    err_instances: HashMap<InstanceName, ErrorTracker>,
-    all_instances: HashSet<InstanceName>,
-    target_vshard_config_versions: HashMap<SmolStr, u64>,
-}
-
-impl LastStepInfo {
-    fn new() -> Self {
-        Self {
-            step_kind: ActionKind::GoIdle,
-            ok_instances: HashSet::new(),
-            err_instances: HashMap::new(),
-            all_instances: HashSet::new(),
-            target_vshard_config_versions: HashMap::new(),
-        }
-    }
-
-    fn update_kind(&mut self, kind: ActionKind) {
-        if self.step_kind == kind {
-            return;
-        }
-
-        self.reset_rpc_results();
-        self.target_vshard_config_versions.clear();
-
-        self.step_kind = kind;
-    }
-
-    fn reset_rpc_results(&mut self) {
-        self.ok_instances.clear();
-        self.err_instances.clear();
-        self.all_instances.clear();
-    }
-
-    fn on_ok_instance(&mut self, instance_name: InstanceName) {
-        self.err_instances.remove(&instance_name);
-        self.ok_instances.insert(instance_name);
-    }
-
-    fn on_err_instance(&mut self, instance_name: InstanceName) -> &ErrorTracker {
-        self.err_instances
-            .entry(instance_name)
-            .and_modify(ErrorTracker::on_error)
-            .or_insert_with(ErrorTracker::new)
-    }
-
-    fn set_pending(&mut self, instances: &[&InstanceName]) {
-        self.all_instances.clear();
-        for &instance in instances {
-            self.all_instances.insert(instance.clone());
-        }
-    }
-
-    fn report_stats(&self) {
-        tlog!(
-            Info,
-            "RPC batching stats for step {:?}: total: {}, ok: {}, err: {}",
-            self.step_kind,
-            self.all_instances.len(),
-            self.ok_instances.len(),
-            self.err_instances.len(),
-        )
-    }
-
-    fn update_vshard_config_versions(&mut self, tiers: &HashMap<&str, &Tier>) {
-        let mut something_changed = false;
-
-        for tier in tiers.values() {
-            match self.target_vshard_config_versions.entry(tier.name.clone()) {
-                Entry::Occupied(mut entry) => {
-                    if entry.get() != &tier.target_vshard_config_version {
-                        entry.insert(tier.target_vshard_config_version);
-                        something_changed = true;
-                    } else {
-                        // Config version of this tier didn't change since last time
-                    }
-                }
-                Entry::Vacant(entry) => {
-                    entry.insert(tier.target_vshard_config_version);
-                    something_changed = true;
-                }
-            }
-        }
-
-        // Cleanup info about tiers which have been removed
-        self.target_vshard_config_versions.retain(|tier_name, _| {
-            let retained = tiers.contains_key(&**tier_name);
-            something_changed |= !retained;
-            retained
-        });
-
-        if something_changed {
-            // One of the tier's configurations changed, must notify every
-            // instance about it
-            self.reset_rpc_results();
-        }
-    }
-
-    #[inline]
-    fn instance_ok(&self, instance_name: &InstanceName) -> bool {
-        self.ok_instances.contains(instance_name)
-    }
-
-    #[inline]
-    fn backoff_for_instance_will_end_at(&self, instance_name: &InstanceName) -> Option<Instant> {
-        Some(self.err_instances.get(instance_name)?.next_try())
-    }
-
-    fn all_instances_ok(&self, all_instances: &[&InstanceName]) -> bool {
-        for &instance in all_instances {
-            if !self.ok_instances.contains(instance) {
-                return false;
-            }
-        }
-
-        true
-    }
-}
-
-struct ErrorTracker {
-    last_try: Instant,
-    streak: u32,
-    current_timeout: Duration,
-}
-
-impl ErrorTracker {
-    const BACKOFF_TIMEOUT_BASE: Duration = Duration::from_secs(1);
-    const BACKOFF_TIMEOUT_MAX: Duration = Duration::from_secs(60);
-    const BACKOFF_TIMEOUT_MULT: f64 = 2.0;
-
-    fn new() -> Self {
-        let now = fiber::clock();
-        Self {
-            last_try: now,
-            streak: 1,
-            current_timeout: Self::BACKOFF_TIMEOUT_BASE,
-        }
-    }
-
-    fn on_error(&mut self) {
-        self.last_try = fiber::clock();
-        self.streak += 1;
-
-        let old_secs = self.current_timeout.as_secs_f64();
-        let new_secs = old_secs * Self::BACKOFF_TIMEOUT_MULT;
-        let new_timeout = Duration::from_secs_f64(new_secs);
-        self.current_timeout = new_timeout.min(Self::BACKOFF_TIMEOUT_MAX);
-    }
-
-    fn next_try(&self) -> Instant {
-        self.last_try + self.current_timeout
-    }
 }
