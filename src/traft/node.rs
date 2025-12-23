@@ -237,13 +237,16 @@ impl Node {
             crate::iproto::get_tls_connector()
         };
 
+        let applied = raft_storage.applied()?;
+
         let opts = WorkerOptions {
             raft_msg_handler: proc_name!(proc_raft_interact),
             tls_connector: tls_connector.cloned(),
             ..Default::default()
         };
         let mut pool = ConnectionPool::new(storage.clone(), opts);
-        let instance_reachability = instance_reachability_manager(alter_system_parameters.clone());
+        let instance_reachability =
+            instance_reachability_manager(alter_system_parameters.clone(), applied);
         pool.instance_reachability = Some(instance_reachability.clone());
         let pool = Rc::new(pool);
         let plugin_manager = Rc::new(PluginManager::new(storage.clone(), tls_connector.cloned()));
@@ -890,6 +893,10 @@ impl NodeImpl {
 
         let next_applied = applied + 1;
 
+        crate::error_injection!("DELAY_BEFORE_APPLYING_RAFT_ENTRY" => |timeout| {
+            fiber::sleep(Duration::from_secs_f64(timeout.parse().unwrap()));
+        });
+
         let traft_entries;
         if entries.is_empty() || entries[0].index > next_applied {
             // This happens when we failed to apply an entry on last iteration.
@@ -987,6 +994,10 @@ impl NodeImpl {
                     crate::error_injection!(block "BLOCK_AFTER_APPLIED_ENTRY_IF_OWN_TARGET_STATE_OFFLINE");
                 }
             });
+
+            self.instance_reachability
+                .borrow_mut()
+                .on_applied(entry_index);
 
             last_applied = Some(entry_index);
         }
@@ -2832,7 +2843,7 @@ impl NodeImpl {
         let unreachables = self
             .instance_reachability
             .borrow_mut()
-            .take_unreachables_to_report(self.applied.get());
+            .take_unreachables_to_report();
         for raft_id in unreachables {
             self.raw_node.report_unreachable(raft_id);
 
