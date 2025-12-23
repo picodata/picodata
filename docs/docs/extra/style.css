@@ -285,10 +285,6 @@ h6 {
 @media screen and (max-width: 1080px) {
   [dir="ltr"] .md-header__title {
     margin-right: 0.4rem;
-    max-width: 120px;
-    width: 100%;
-    overflow: hidden;
-    overflow-x: scroll;
   }
 }
 
@@ -341,6 +337,16 @@ h6 {
 [dir="ltr"] .md-version__current {
   margin-left: 0 !important;
   margin-right: 0 !important;
+}
+
+
+@media screen and (max-width: 1080px) {
+  [dir="ltr"] .md-version__current {
+    max-width: 120px;
+    width: 100%;
+    overflow: hidden;
+    overflow-x: scroll;
+  }
 }
 
 .md-version__list {
