@@ -29,10 +29,9 @@ use crate::traft::error::{Error, IdOfInstance};
 use crate::traft::op::PluginRaftOp;
 use crate::traft::op::{Ddl, Dml, Op};
 use crate::traft::{RaftId, RaftIndex, RaftTerm, Result};
-use crate::util::Uppercase;
 use crate::warn_or_panic;
 use smol_str::SmolStr;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::time::Duration;
 use tarantool::space::{SpaceId, UpdateOps};
 use tarantool::time::Instant;
@@ -47,7 +46,6 @@ pub(super) fn action_plan<'i>(
     sentinel_status: SentinelStatus,
     topology_ref: &TopologyCacheRef,
     instances: &'i [Instance],
-    existing_fds: &HashSet<Uppercase>,
     peer_addresses: &'i HashMap<RaftId, SmolStr>,
     voters: &[RaftId],
     learners: &[RaftId],
@@ -162,13 +160,13 @@ pub(super) fn action_plan<'i>(
             instance,
             replicaset,
             tier,
-            existing_fds,
+            None,
             &global_cluster_version,
         )?;
 
         let (ops, ranges) = cas_parameters.expect("already check current state is different");
-        let predicate = cas::Predicate::new(applied, ranges);
-        let op = Op::single_dml_or_batch(ops);
+        let predicate = cas::Predicate::new(applied, ranges.into_vec());
+        let op = Op::single_dml_or_batch(ops.into_vec());
         let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
         return Ok(Downgrade {
             instance_name,
@@ -367,7 +365,7 @@ pub(super) fn action_plan<'i>(
             master,
             replicaset,
             tier,
-            existing_fds,
+            None,
             &global_cluster_version,
         )?;
         let (mut ops, ranges) = update_instance.expect("already checked target state != current");
@@ -388,8 +386,8 @@ pub(super) fn action_plan<'i>(
         )?;
         ops.push(dml);
 
-        let predicate = cas::Predicate::new(applied, ranges);
-        let dml = Op::BatchDml { ops };
+        let predicate = cas::Predicate::new(applied, ranges.into_vec());
+        let dml = Op::single_dml_or_batch(ops.into_vec());
         let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
         return Ok(ExpelReplicaset {
             replicaset_name,
@@ -469,7 +467,7 @@ pub(super) fn action_plan<'i>(
             instance,
             replicaset,
             tier,
-            existing_fds,
+            None,
             &global_cluster_version,
         )?;
 
@@ -481,8 +479,8 @@ pub(super) fn action_plan<'i>(
         let replicaset_config_version_bump = get_replicaset_config_version_bump_op(replicaset);
         ops.push(replicaset_config_version_bump);
 
-        let predicate = cas::Predicate::new(applied, ranges);
-        let op = Op::single_dml_or_batch(ops);
+        let predicate = cas::Predicate::new(applied, ranges.into_vec());
+        let op = Op::single_dml_or_batch(ops.into_vec());
         let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
         return Ok(Downgrade {
             instance_name,
@@ -528,13 +526,13 @@ pub(super) fn action_plan<'i>(
             instance,
             replicaset,
             tier,
-            existing_fds,
+            None,
             &global_cluster_version,
         )?;
 
         let (ops, ranges) = cas_parameters.expect("already check current state is different");
-        let predicate = cas::Predicate::new(applied, ranges);
-        let op = Op::single_dml_or_batch(ops);
+        let predicate = cas::Predicate::new(applied, ranges.to_vec());
+        let op = Op::single_dml_or_batch(ops.to_vec());
         let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
 
         return Ok(ToOnline {

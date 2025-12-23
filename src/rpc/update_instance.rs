@@ -16,6 +16,8 @@ use crate::traft::op::{Dml, Op};
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
 use crate::util::Uppercase;
+use smallvec::smallvec;
+use smallvec::SmallVec;
 use smol_str::SmolStr;
 use std::collections::HashSet;
 use std::time::Duration;
@@ -163,15 +165,15 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
             &instance,
             &replicaset,
             &tier,
-            &existing_fds,
+            Some(&existing_fds),
             &global_cluster_version,
         )?
         else {
             return Ok(());
         };
 
-        let predicate = cas::Predicate::with_applied_index(ranges);
-        let op = Op::single_dml_or_batch(ops);
+        let predicate = cas::Predicate::with_applied_index(ranges.into_vec());
+        let op = Op::single_dml_or_batch(ops.into_vec());
         let cas = crate::cas::Request::new(op, predicate, ADMIN_ID)?;
         let res = cas::compare_and_swap_local(&cas, deadline)?;
         if req.dont_retry {
@@ -188,14 +190,16 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
     }
 }
 
+type Vec3<T> = SmallVec<[T; 3]>;
+
 pub fn prepare_update_instance_cas_request(
     request: &Request,
     instance: &Instance,
     replicaset: &Replicaset,
     tier: &Tier,
-    existing_fds: &HashSet<Uppercase>,
+    existing_fds: Option<&HashSet<Uppercase>>,
     global_cluster_version: &str,
-) -> Result<Option<(Vec<Dml>, Vec<cas::Range>)>> {
+) -> Result<Option<(Vec3<Dml>, Vec3<cas::Range>)>> {
     debug_assert_eq!(instance.replicaset_name, replicaset.name);
     debug_assert_eq!(instance.tier, replicaset.tier);
     debug_assert_eq!(instance.tier, tier.name);
@@ -211,7 +215,7 @@ pub fn prepare_update_instance_cas_request(
     debug_assert!(matches!(dml, Dml::Update { .. }), "{dml:?}");
     debug_assert_eq!(dml.table_id(), storage::Instances::TABLE_ID);
 
-    let mut ops = vec![];
+    let mut ops = SmallVec::new();
     ops.push(dml);
 
     if version_bump_needed {
@@ -228,7 +232,7 @@ pub fn prepare_update_instance_cas_request(
         ops.push(vshard_bump_dml);
     }
 
-    let ranges = vec![
+    let ranges = smallvec![
         cas::Range::new(storage::Instances::TABLE_ID),
         cas::Range::new(storage::PeerAddresses::TABLE_ID),
         cas::Range::new(storage::Tiers::TABLE_ID),
@@ -243,7 +247,7 @@ pub fn prepare_update_instance_cas_request(
 pub fn update_instance(
     instance: &Instance,
     req: &Request,
-    existing_fds: &HashSet<Uppercase>,
+    existing_fds: Option<&HashSet<Uppercase>>,
     global_cluster_version: &str,
 ) -> Result<Option<(Dml, bool)>> {
     if instance.current_state.variant == Expelled
@@ -263,6 +267,8 @@ pub fn update_instance(
 
     let mut ops = UpdateOps::new();
     if let Some(fd) = req.failure_domain.as_ref() {
+        let existing_fds =
+            existing_fds.expect("must be provided if request changes failure domains");
         fd.check(existing_fds)?;
         if fd != &instance.failure_domain {
             ops.assign(column_name!(Instance, failure_domain), fd)?;
