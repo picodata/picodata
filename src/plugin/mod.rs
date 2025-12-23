@@ -500,6 +500,9 @@ fn reenterable_plugin_cas_request(
     }
 }
 
+// We don't care about `large_enum_variant` here because the values of this
+// type are only stored on stack temporary.
+#[allow(clippy::large_enum_variant)]
 enum PreconditionCheckResult {
     AlreadyApplied,
     WaitIndexAndRetry,

@@ -359,12 +359,8 @@ impl<'t> InsertTupleEncoder<'t> {
 impl MsgpackEncode for InsertTupleEncoder<'_> {
     fn encode_into(&self, w: &mut impl Write) -> std::io::Result<()> {
         write_array_len(w, self.pattern.len() as u32)?;
-        write_insert_args(self.tuple, self.pattern, self.bucket_id.as_ref(), w).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("failed to build insert args: {e}"),
-            )
-        })?;
+        write_insert_args(self.tuple, self.pattern, self.bucket_id.as_ref(), w)
+            .map_err(|e| std::io::Error::other(format!("failed to build insert args: {e}")))?;
 
         Ok(())
     }
@@ -762,11 +758,11 @@ pub trait PlanInfo {
 
     fn plan_id(&self) -> u64;
 
-    fn get_cache_hit_iter(&self) -> impl Iterator<Item = Result<DQLResult, ProtocolError>>;
+    fn get_cache_hit_iter(&self) -> impl Iterator<Item = Result<DQLResult<'_>, ProtocolError>>;
 
     fn get_cache_miss_iter(
         &self,
-    ) -> impl Iterator<Item = Result<DQLCacheMissResult, ProtocolError>>;
+    ) -> impl Iterator<Item = Result<DQLCacheMissResult<'_>, ProtocolError>>;
 }
 
 pub struct FullDeletePlanInfo {
@@ -796,13 +792,13 @@ impl PlanInfo for FullDeletePlanInfo {
         self.plan_id
     }
 
-    fn get_cache_hit_iter(&self) -> impl Iterator<Item = Result<DQLResult, ProtocolError>> {
+    fn get_cache_hit_iter(&self) -> impl Iterator<Item = Result<DQLResult<'_>, ProtocolError>> {
         FullDeleteCacheHitIter::new(self.options)
     }
 
     fn get_cache_miss_iter(
         &self,
-    ) -> impl Iterator<Item = Result<DQLCacheMissResult, ProtocolError>> {
+    ) -> impl Iterator<Item = Result<DQLCacheMissResult<'_>, ProtocolError>> {
         FullDeleteCacheMissIter::new(&self.sql)
     }
 }
