@@ -258,10 +258,6 @@ impl Loop {
             .governor_rpc_batch_size;
 
         let instances: Vec<_> = topology_ref.all_instances().cloned().collect();
-        let existing_fds = storage
-            .instances
-            .failure_domain_names()
-            .expect("storage ain't bouta fail");
         let peer_addresses: HashMap<_, _> = storage
             .peer_addresses
             .iter()
@@ -350,7 +346,6 @@ impl Loop {
             sentinel_status,
             &topology_ref,
             &instances,
-            &existing_fds,
             &peer_addresses,
             &voters,
             &learners,

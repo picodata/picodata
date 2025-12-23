@@ -367,7 +367,6 @@ mod tests {
         add_tier(&storage, DEFAULT_TIER, 1, true).unwrap();
         let instance = dummy_instance(1, "i1", "r1", &State::new(Online, 1));
         add_instance(&storage, &instance).unwrap();
-        let existing_fds = HashSet::new();
         let global_cluster_version = PICODATA_VERSION.to_string();
 
         //
@@ -376,7 +375,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "", "")
             .with_current_state(State::new(Offline, 0));
-        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("current_state", State::new(Offline, 0)).unwrap();
@@ -391,7 +390,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "", "")
             .with_current_state(State::new(Offline, 0));
-        let dml = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap();
+        let dml = update_instance(&instance, &req, None, &global_cluster_version).unwrap();
         assert_eq!(dml, None);
 
         //
@@ -399,7 +398,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "", "")
             .with_target_state(Offline);
-        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Offline, 0)).unwrap();
@@ -414,7 +413,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "", "")
             .with_target_state(Online);
-        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Online, 1)).unwrap();
@@ -429,7 +428,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "", "")
             .with_target_state(Online);
-        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Online, 2)).unwrap();
@@ -444,7 +443,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "", "")
             .with_target_state(Expelled);
-        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Expelled, 0)).unwrap();
@@ -459,7 +458,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "", "")
             .with_current_state(State::new(Expelled, 69));
-        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("current_state", State::new(Expelled, 69)).unwrap();
@@ -474,7 +473,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "", "")
             .with_target_state(Online);
-        let e = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap_err();
+        let e = update_instance(&instance, &req, None, &global_cluster_version).unwrap_err();
         assert_eq!(e.to_string(), "cannot update expelled instance \"i1\"");
     }
 
@@ -488,11 +487,10 @@ mod tests {
         let instance_name = "default_r1_1";
         let instance = dummy_instance(1, instance_name, "r1", &State::new(Online, 1));
         add_instance(&storage, &instance).unwrap();
-        let existing_fds = HashSet::new();
 
         let req = rpc::update_instance::Request::new(instance.name.clone(), "", "")
             .with_picodata_version(new_picodata_version.clone());
-        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, global_cluster_version)
+        let (dml, do_bump) = update_instance(&instance, &req, None, global_cluster_version)
             .unwrap()
             .expect("expected update picodata version");
 
@@ -524,7 +522,7 @@ mod tests {
         // Now try to update the picodata_version on the expelled instance.
         let req = rpc::update_instance::Request::new(expelled_instance.name.clone(), "", "")
             .with_picodata_version(new_picodata_version.clone());
-        let err = update_instance(&expelled_instance, &req, &existing_fds, global_cluster_version)
+        let err = update_instance(&expelled_instance, &req, None, global_cluster_version)
             .unwrap_err();
 
         assert_eq!(
@@ -613,7 +611,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance1.name.clone(), "", "")
             .with_failure_domain(faildoms! {owner: Ivan});
-        let e = update_instance(&instance1, &req, &existing_fds, &global_cluster_version).unwrap_err();
+        let e = update_instance(&instance1, &req, Some(&existing_fds), &global_cluster_version).unwrap_err();
         assert_eq!(e.to_string(), "missing failure domain names: PLANET");
 
         //
@@ -622,7 +620,7 @@ mod tests {
         let fd = faildoms! {planet: Mars, owner: Ivan};
         let req = rpc::update_instance::Request::new(instance1.name.clone(), "", "")
             .with_failure_domain(fd.clone());
-        let (dml, do_bump) = update_instance(&instance1, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance1, &req, Some(&existing_fds), &global_cluster_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("failure_domain", fd).unwrap();
@@ -656,7 +654,7 @@ mod tests {
         let fd = faildoms! {planet: Earth, owner: Mike};
         let req = rpc::update_instance::Request::new(instance2.name.clone(), "", "")
             .with_failure_domain(fd.clone());
-        let (dml, do_bump) = update_instance(&instance2, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance2, &req, Some(&existing_fds), &global_cluster_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("failure_domain", fd).unwrap();
