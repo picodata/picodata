@@ -2,7 +2,6 @@ use std::time::{Duration, Instant};
 use tarantool::error::TarantoolError;
 use tarantool::transaction::{begin, commit, is_in_transaction, TransactionError};
 
-pub const YIELD_INTERVAL_NS: u64 = 500_000;
 const YIELD_ITERATION_COUNT: usize = 1024;
 
 pub struct Scheduler {
@@ -21,10 +20,18 @@ impl Default for Scheduler {
 
 impl Scheduler {
     #[inline(always)]
-    pub fn maybe_yield<F>(&mut self, yield_impl: F) -> Result<(), TransactionError<TarantoolError>>
+    pub fn maybe_yield<F>(
+        &mut self,
+        options: &SchedulerOptions,
+        yield_impl: F,
+    ) -> Result<(), TransactionError<TarantoolError>>
     where
         F: Fn(),
     {
+        if !options.enabled {
+            return Ok(());
+        }
+
         // Check iteration counter.
         debug_assert_ne!(YIELD_ITERATION_COUNT, 0);
         self.ops_left -= 1;
@@ -34,7 +41,7 @@ impl Scheduler {
         self.ops_left = YIELD_ITERATION_COUNT;
 
         // Check time interval.
-        if self.start_time.elapsed() < Duration::from_nanos(YIELD_INTERVAL_NS) {
+        if self.start_time.elapsed() < Duration::from_micros(options.yield_interval_us) {
             return Ok(());
         }
 
@@ -57,4 +64,9 @@ impl Scheduler {
 
         Ok(())
     }
+}
+
+pub struct SchedulerOptions {
+    pub enabled: bool,
+    pub yield_interval_us: u64,
 }

@@ -13,6 +13,7 @@ use sql::executor::engine::helpers::{sharding_key_from_map, sharding_key_from_tu
 use sql::executor::engine::{get_builtin_functions, QueryCache, Router, Vshard};
 use sql::executor::ir::ExecutionPlan;
 use sql::executor::lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY};
+use sql::executor::preemption::SchedulerOptions;
 use sql::executor::vtable::VirtualTable;
 use sql::frontend::sql::ast::AbstractSyntaxTree;
 use sql::ir::helpers::RepeatableState;
@@ -27,7 +28,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::audit;
-use crate::preemption::yield_sql_execution;
+use crate::preemption::{scheduler_options, yield_sql_execution};
 use crate::schema::{Distribution, ShardingFn, ADMIN_ID};
 use crate::storage::{self, Catalog};
 
@@ -473,6 +474,10 @@ impl Router for RouterRuntime {
 
     fn yield_execution(&self) {
         yield_sql_execution();
+    }
+
+    fn get_scheduler_options(&self) -> SchedulerOptions {
+        scheduler_options()
     }
 }
 

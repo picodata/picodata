@@ -1046,6 +1046,14 @@ impl EncodedValue<'_> {
             _ => None,
         }
     }
+
+    pub fn bool(&self) -> Option<bool> {
+        match &self {
+            EncodedValue::Ref(MsgPackValue::Boolean(value)) => Some(**value),
+            EncodedValue::Owned(Value::Boolean(value)) => Some(*value),
+            _ => None,
+        }
+    }
 }
 
 impl<'v> From<MsgPackValue<'v>> for EncodedValue<'v> {

@@ -24,6 +24,7 @@ use crate::ir::relation::Table;
 use crate::ir::types::UnrestrictedType;
 use crate::ir::value::Value;
 
+use super::preemption::SchedulerOptions;
 use super::Port;
 
 use crate::executor::vdbe::SqlStmt;
@@ -409,6 +410,9 @@ pub trait Router: QueryCache {
 
     /// Implementation of the execution yield.
     fn yield_execution(&self);
+
+    /// Get scheduler options from the runtime.
+    fn get_scheduler_options(&self) -> SchedulerOptions;
 }
 
 pub trait Vshard {

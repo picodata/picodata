@@ -17,6 +17,7 @@ use crate::executor::engine::{
 use crate::executor::hash::bucket_id_by_tuple;
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::lru::{Cache as _, LRUCache, DEFAULT_CAPACITY};
+use crate::executor::preemption::SchedulerOptions;
 use crate::executor::vtable::VirtualTable;
 use crate::executor::{Port, PortType};
 use crate::frontend::sql::ast::AbstractSyntaxTree;
@@ -1883,4 +1884,11 @@ impl Router for RouterRuntimeMock {
     }
 
     fn yield_execution(&self) {}
+
+    fn get_scheduler_options(&self) -> SchedulerOptions {
+        SchedulerOptions {
+            enabled: false,
+            yield_interval_us: 500,
+        }
+    }
 }
