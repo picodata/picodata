@@ -123,10 +123,14 @@ impl Loop {
         // When running on leader, find any unreachable instances which need to
         // have their state automatically changed.
         if raft_status.get().raft_state.is_leader() {
+            let now = fiber::clock();
+            instance_reachability
+                .borrow_mut()
+                .cleanup_applied_index_history(now);
+
             let topology_ref = node.topology_cache.get();
             let instances = topology_ref.all_instances();
-            let index = node.get_index();
-            let unreachables = instance_reachability.borrow().get_unreachables(index);
+            let unreachables = instance_reachability.borrow().get_unreachables();
             let mut instance_to_downgrade = None;
             for instance in instances {
                 if has_states!(instance, * -> Online) && unreachables.contains(&instance.raft_id) {

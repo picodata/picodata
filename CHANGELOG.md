@@ -27,6 +27,9 @@ with the `YY.MINOR.MICRO` scheme.
   problem for anybody. NOTE also that this doesn't affect restarting instances
   which already joined the cluster.
 - Fixed a crash when SQL request arrives before instance is properly initialized
+- Fixed that instances would be made Offline immediately after a raft entry is
+  applied if there weren't any entries applied for a long time before that
+
 
 ## [25.5.1] - 2025-12-19
 

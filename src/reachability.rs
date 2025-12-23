@@ -1,9 +1,12 @@
 use crate::config::AlterSystemParametersRef;
+use crate::tlog;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::util::NoYieldsRefCell;
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::rc::Rc;
 use std::time::Duration;
 use tarantool::fiber;
@@ -19,6 +22,8 @@ use tarantool::time::Instant;
 pub struct InstanceReachabilityManager {
     parameters: AlterSystemParametersRef,
     infos: HashMap<RaftId, InstanceReachabilityInfo>,
+    lagging_applied: VecDeque<(RaftIndex, Instant)>,
+    applied: RaftIndex,
 }
 
 pub type InstanceReachabilityManagerRef = Rc<NoYieldsRefCell<InstanceReachabilityManager>>;
@@ -26,19 +31,22 @@ pub type InstanceReachabilityManagerRef = Rc<NoYieldsRefCell<InstanceReachabilit
 #[inline(always)]
 pub fn instance_reachability_manager(
     parameters: AlterSystemParametersRef,
+    applied: RaftIndex,
 ) -> InstanceReachabilityManagerRef {
     Rc::new(NoYieldsRefCell::new(InstanceReachabilityManager::new(
-        parameters,
+        parameters, applied,
     )))
 }
 
 impl InstanceReachabilityManager {
     const MAX_HEARTBEAT_PERIOD: Duration = Duration::from_secs(5);
 
-    pub fn new(parameters: AlterSystemParametersRef) -> Self {
+    pub fn new(parameters: AlterSystemParametersRef, applied: RaftIndex) -> Self {
         Self {
             parameters,
             infos: Default::default(),
+            lagging_applied: VecDeque::new(),
+            applied,
         }
     }
 
@@ -56,12 +64,13 @@ impl InstanceReachabilityManager {
     ) {
         let now = fiber::clock();
         let info = self.infos.entry(raft_id).or_default();
+        info.raft_id = raft_id;
         info.last_attempt = Some(now);
 
         // Even if it was previously reported as unreachable another message was
         // sent to it, so raft node state may have changed and another
         // report_unreachable me be needed.
-        info.is_reported = false;
+        info.is_reported.set(false);
 
         if let Some(is_leader_unknown) = is_leader_unknown {
             info.is_leader_unknown = is_leader_unknown;
@@ -94,19 +103,19 @@ impl InstanceReachabilityManager {
     /// about which instances should be reported as unreachable to the raft node.
     ///
     /// `applied` is the index of the last applied raft log entry of the current instance.
-    pub fn take_unreachables_to_report(&mut self, applied: RaftIndex) -> Vec<RaftId> {
+    pub fn take_unreachables_to_report(&mut self) -> Vec<RaftId> {
         let auto_offline_timeout = self.parameters.borrow().governor_auto_offline_timeout();
 
         let mut res = Vec::new();
-        for (&raft_id, info) in &mut self.infos {
-            if info.is_reported {
+        for (&raft_id, info) in &self.infos {
+            if info.is_reported.get() {
                 // Don't report nodes repeatedly.
                 continue;
             }
-            let status = Self::check_reachability(auto_offline_timeout, applied, info);
+            let status = self.check_reachability(auto_offline_timeout, info);
             if status == Unreachable {
                 res.push(raft_id);
-                info.is_reported = true;
+                info.is_reported.set(true);
             }
         }
         res
@@ -114,14 +123,12 @@ impl InstanceReachabilityManager {
 
     /// Is called by sentinel to get information about which instances should be
     /// automatically assigned a different state.
-    ///
-    /// `applied` is the index of the last applied raft log entry of the current instance.
-    pub fn get_unreachables(&self, applied: RaftIndex) -> HashSet<RaftId> {
+    pub fn get_unreachables(&self) -> HashSet<RaftId> {
         let auto_offline_timeout = self.parameters.borrow().governor_auto_offline_timeout();
 
         let mut res = HashSet::new();
         for (&raft_id, info) in &self.infos {
-            let status = Self::check_reachability(auto_offline_timeout, applied, info);
+            let status = self.check_reachability(auto_offline_timeout, info);
             if status == Unreachable {
                 res.insert(raft_id);
             }
@@ -131,12 +138,10 @@ impl InstanceReachabilityManager {
 
     /// Make a decision on the given instance's reachability based on the `info`.
     ///
-    /// `applied` is the index of the last applied raft log entry of the current instance.
-    ///
     /// This is an internal function.
     fn check_reachability(
+        &self,
         auto_offline_timeout: Duration,
-        our_applied: RaftIndex,
         info: &InstanceReachabilityInfo,
     ) -> ReachabilityState {
         let reachability = Self::check_reachability_via_rpc(auto_offline_timeout, info);
@@ -144,10 +149,13 @@ impl InstanceReachabilityManager {
             return Unreachable;
         }
 
-        let Some((their_applied, applied_changed)) = info.last_applied_index else {
+        let Some((their_applied, they_applied_at)) = info.last_applied_index else {
             // Applied index not known yet, can't make a decision based on that info
             return reachability;
         };
+
+        let raft_id = info.raft_id;
+        let our_applied = self.applied;
 
         if their_applied >= our_applied {
             // Applied index is up to date with ours, all good
@@ -155,18 +163,37 @@ impl InstanceReachabilityManager {
         }
 
         let now = fiber::clock();
-        if now.duration_since(applied_changed) > auto_offline_timeout {
-            // Applied index is lagging and hasn't changed for too long, this
-            // means that the instance's raft_main_loop is probably stuck and
-            // can't progress for some reason. This could be caused by storage
-            // corruption because of an admin's mistake or a bug in our code.
-            // Anyway we want to mark such instances as 'Offline' so that it's
-            // easier to notice them and also so that they don't affect the
-            // cluster in a negative way.
-            return Unreachable;
+        let since_they_applied = now.duration_since(they_applied_at);
+        if since_they_applied < auto_offline_timeout {
+            // They have applied their latest entry recently enough,
+            // assume they still have ability to apply other entries
+            return reachability;
         }
 
-        reachability
+        // Their applied index is lagging behind ours
+
+        let Some(since_we_applied_next) = self.since_we_applied_this(now, their_applied + 1) else {
+            // We don't have history yet. Let's not make a decision yet
+            return reachability;
+        };
+
+        if since_we_applied_next < auto_offline_timeout {
+            // The next entry which they haven't yet applied has been added
+            // not so long ago. Let's give them some time to catch up
+            return reachability;
+        }
+
+        // Applied index is lagging and hasn't changed for too long, this
+        // means that the instance's raft_main_loop is probably stuck and
+        // can't progress for some reason. This could be caused by storage
+        // corruption because of an admin's mistake or a bug in our code.
+        // Anyway we want to mark such instances as 'Offline' so that it's
+        // easier to notice them and also so that they don't affect the
+        // cluster in a negative way.
+        if info.rate_limit_broken_raft_error_message(now, their_applied) {
+            tlog!(Warning, "broken raft main loop detected on instance: raft_id: {raft_id}, their_applied: {their_applied}, since_they_applied: {since_they_applied:?}, our_applied: {our_applied}, since_we_applied_next: {since_we_applied_next:?}");
+        }
+        Unreachable
     }
 
     /// Make a decision on the given instance's reachability based on the
@@ -270,6 +297,77 @@ impl InstanceReachabilityManager {
 
         return false;
     }
+
+    /// Called each time our applied index changes. Keeps track of times when
+    /// raft entries were applied for some amount of entries in the past.
+    ///
+    /// This info then used in [`Self::since_we_applied_this`].
+    pub fn on_applied(&mut self, new_applied: RaftIndex) {
+        let now = fiber::clock();
+        self.applied = new_applied;
+        self.lagging_applied.push_back((new_applied, now));
+        self.cleanup_applied_index_history(now);
+
+        debug_assert!(
+            self.lagging_applied
+                .iter()
+                .is_sorted_by(|(li, lt), (ri, rt)| li < ri && lt < rt),
+            "{:?}",
+            self.lagging_applied
+        );
+    }
+
+    /// Returns the duration since we have applied the given `index`.
+    /// This is used to determine instances which are lagging behind our
+    /// raft main loop.
+    ///
+    /// See usage in [`Self::check_reachability`] for more details.
+    pub fn since_we_applied_this(&self, now: Instant, index: RaftIndex) -> Option<Duration> {
+        let Some(&(oldest_known, _)) = self.lagging_applied.front() else {
+            // We don't have the history yet. This is possible right after
+            // restart. In this case we probably don't want to make any
+            // decisitions about other people's raft main loop viability
+            return None;
+        };
+
+        if index < oldest_known {
+            // We applied this index too long ago to remember
+            return Some(Duration::MAX);
+        }
+
+        for &(old_index, time) in &self.lagging_applied {
+            if index == old_index {
+                return Some(now.duration_since(time));
+            }
+        }
+
+        // This shouldn't be happening, but I don't want to add an avoidable panic.
+        // Just pretend we've just applied that entry
+        Some(Duration::ZERO)
+    }
+
+    pub fn cleanup_applied_index_history(&mut self, now: Instant) {
+        let auto_offline_timeout = self.parameters.borrow().governor_auto_offline_timeout();
+        let too_far_back = now.saturating_sub(auto_offline_timeout);
+
+        // NOTE: I wanted to use `retain` at first, but it's optimized for some
+        // other case, and this is better
+        while let Some(&(_, time)) = self.lagging_applied.front() {
+            if time > too_far_back {
+                // Keep a recent history of applied indexes
+                break;
+            }
+
+            if self.lagging_applied.len() <= 2 {
+                // Want to keep track of at least one index behind the latest
+                // one, so that if there's no raft entries for a long time we
+                // don't immediately make everyone Offline.
+                break;
+            }
+
+            self.lagging_applied.pop_front();
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -281,8 +379,10 @@ pub enum ReachabilityState {
 use ReachabilityState::*;
 
 /// Information about recent attempts to communicate with a single given instance.
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct InstanceReachabilityInfo {
+    pub raft_id: RaftId,
+
     pub last_success: Option<Instant>,
     pub last_attempt: Option<Instant>,
 
@@ -297,5 +397,33 @@ pub struct InstanceReachabilityInfo {
     ///
     /// Do not delay heartbeats to it, so it can learn that we are the leader.
     pub is_leader_unknown: bool,
-    pub is_reported: bool,
+    pub is_reported: Cell<bool>,
+
+    /// Info needed for rate limiting error reports in logs
+    pub last_warning: Cell<Option<(Instant, RaftIndex)>>,
+}
+
+impl InstanceReachabilityInfo {
+    /// This functions helps reduce spamming of messages about broken raft main loop
+    fn rate_limit_broken_raft_error_message(&self, now: Instant, applied: RaftIndex) -> bool {
+        // If didn't report once, then should report
+        let Some((reported_at, reported_applied)) = self.last_warning.get() else {
+            self.last_warning.set(Some((now, applied)));
+            return true;
+        };
+
+        // Should report if their applied index changed, but they're still broken
+        if reported_applied != applied {
+            self.last_warning.set(Some((now, applied)));
+            return true;
+        }
+
+        // Don't report more often than once per minute
+        if now.duration_since(reported_at) > Duration::from_secs(60) {
+            self.last_warning.set(Some((now, applied)));
+            return true;
+        }
+
+        false
+    }
 }
