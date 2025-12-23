@@ -11,7 +11,7 @@ license-file.workspace = true
 [workspace.package]
 version = "25.5.4"
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.89"
 license-file = "LICENSE"
 
 [dependencies]

@@ -2601,7 +2601,7 @@ struct ExecArgs {
 #[allow(deprecated)]
 enum ExecArgsData {
     New(Vec<u8>),
-    Old(OldExecArgs),
+    Old(Box<OldExecArgs>),
 }
 
 #[deprecated(note = "Remove in next release. Used for smooth upgrade")]
@@ -2669,7 +2669,7 @@ impl<'de> Decode<'de> for ExecArgs {
                     need_ref,
                     sid,
                     rid,
-                    data: ExecArgsData::Old(OldExecArgs { required, optional }),
+                    data: ExecArgsData::Old(Box::new(OldExecArgs { required, optional })),
                 })
             }
         }
