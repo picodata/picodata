@@ -1,6 +1,6 @@
 use crate::{
     backend::sql::space::{TableGuard, ADMIN_ID},
-    executor::preemption::Scheduler,
+    executor::preemption::{Scheduler, SchedulerOptions},
     ir::api::children::Children,
     ir::node::expression::MutExpression,
 };
@@ -1238,8 +1238,10 @@ pub fn materialize_values(
         let mut vtable = VirtualTable::with_columns(columns);
         let mut ys = Scheduler::default();
         for mp in port.iter().skip(1) {
-            ys.maybe_yield(|| runtime.yield_execution())
-                .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
+            ys.maybe_yield(&runtime.get_scheduler_options(), || {
+                runtime.yield_execution()
+            })
+            .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             vtable.write_all(mp).map_err(|e| {
                 SbroadError::FailedTo(
                     Action::Create,
@@ -1325,8 +1327,10 @@ pub fn materialize_motion(
     } else {
         let mut ys = Scheduler::default();
         for mp in port.iter().skip(1) {
-            ys.maybe_yield(|| runtime.yield_execution())
-                .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
+            ys.maybe_yield(&runtime.get_scheduler_options(), || {
+                runtime.yield_execution()
+            })
+            .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             vtable.write_all(mp).map_err(|e| {
                 SbroadError::FailedTo(
                     Action::Create,
@@ -1438,6 +1442,7 @@ pub fn old_populate_table(
     motion_id: &NodeId,
     plan_id: &SmolStr,
     vtables: &EncodedVTables,
+    options: &SchedulerOptions,
 ) -> Result<(), SbroadError> {
     let data = vtables.get(motion_id).ok_or_else(|| {
         SbroadError::NotFound(
@@ -1466,7 +1471,7 @@ pub fn old_populate_table(
             // yield_execution implementation. Since it is deprecated and planned
             // for removal, it is preferable to call fiber_sleep(0) directly
             // rather than refactor this code.
-            ys.maybe_yield(|| tarantool::fiber::sleep(Duration::ZERO))
+            ys.maybe_yield(options, || tarantool::fiber::sleep(Duration::ZERO))
                 .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             match space.insert(&tuple) {
                 Ok(_) => {}

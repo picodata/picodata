@@ -52,6 +52,8 @@ pub use crate::address::{
 };
 
 pub const DEFAULT_CONFIG_FILE_NAME: &str = "picodata.yaml";
+pub(crate) const DEFAULT_SQL_PREEMPTION: bool = false;
+pub(crate) const DEFAULT_SQL_PREEMPTION_INTERVAL_US: u64 = 500;
 
 pub use ::sql::ir::types::DomainType as SbroadType;
 
@@ -1848,6 +1850,17 @@ pub struct AlterSystemParameters {
     #[introspection(config_default = 5000)]
     pub sql_motion_row_max: u64,
 
+    /// Enables non-blocking SQL execution.
+    #[introspection(sbroad_type = SbroadType::Boolean)]
+    #[introspection(config_default = DEFAULT_SQL_PREEMPTION)]
+    pub sql_preemption: bool,
+
+    /// Fiber yield interval in microseconds for non-blocking
+    /// SQL execution.
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = DEFAULT_SQL_PREEMPTION_INTERVAL_US)]
+    pub sql_preemption_interval_us: u64,
+
     /// Picodata statement cache size capacity in bytes.
     ///
     /// Corresponds to `box.cfg.sql_cache_size`.
@@ -2066,6 +2079,8 @@ pub struct DynamicConfigProviders {
     pub pg_portal_max: AtomicObserverProvider<usize>,
     pub sql_vdbe_opcode_max: AtomicObserverProvider<i64>,
     pub sql_motion_row_max: AtomicObserverProvider<i64>,
+    pub sql_preemption: AtomicObserverProvider<bool>,
+    pub sql_preemption_interval_us: AtomicObserverProvider<u64>,
 }
 
 impl DynamicConfigProviders {
@@ -2075,6 +2090,8 @@ impl DynamicConfigProviders {
             pg_portal_max: AtomicObserverProvider::new(),
             sql_vdbe_opcode_max: AtomicObserverProvider::new(),
             sql_motion_row_max: AtomicObserverProvider::new(),
+            sql_preemption: AtomicObserverProvider::new(),
+            sql_preemption_interval_us: AtomicObserverProvider::new(),
         }
     }
 
@@ -2177,6 +2194,25 @@ pub fn validate_alter_system_parameter_value<'v>(
             return Err(Error::other(format!(
                 "invalid value for '{name}': value must be between 1 and {}",
                 i64::MAX,
+            )));
+        }
+    }
+
+    if name == system_parameter_name!(sql_preemption) {
+        let _ = casted_value
+            .bool()
+            .expect("invalid value for sql_preemption");
+    }
+
+    if name == system_parameter_name!(sql_preemption_interval_us) {
+        let interval = casted_value
+            .integer()
+            .expect("invalid value for sql_preemption_interval_us");
+
+        let max = u64::MAX / 1000;
+        if interval < 1 || interval as u64 > max {
+            return Err(Error::other(format!(
+                "invalid value for '{name}': value must be between 1 and {max}",
             )));
         }
     }
@@ -2367,6 +2403,14 @@ pub fn apply_parameter(
         let value = value as i64;
         // Cache the value.
         DYNAMIC_CONFIG.sql_motion_row_max.update(value);
+    } else if name == system_parameter_name!(sql_preemption) {
+        let value = v.as_bool().expect("type is already checked");
+        // Cache the value.
+        DYNAMIC_CONFIG.sql_preemption.update(value);
+    } else if name == system_parameter_name!(sql_preemption_interval_us) {
+        let value = v.as_u64().expect("type already checked");
+        // Cache the value.
+        DYNAMIC_CONFIG.sql_preemption_interval_us.update(value);
     } else if name == system_parameter_name!(sql_storage_cache_count_max) {
         let value = v.as_u64().expect("type is already checked") as _;
 

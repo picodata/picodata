@@ -1,7 +1,7 @@
 use crate::metrics::{
     report_storage_cache_hit, report_storage_cache_miss, STORAGE_2ND_REQUESTS_TOTAL,
 };
-use crate::preemption::yield_sql_execution;
+use crate::preemption::{scheduler_options, yield_sql_execution};
 use crate::sql::lua::{lua_decode_ibufs, lua_query_metadata};
 use crate::sql::router::{get_index_version_by_pk, get_table_version_by_id, VersionMap};
 use crate::sql::PicoPortC;
@@ -107,7 +107,7 @@ fn populate_table(table_name: &str, tuples: TupleIterator) -> Result<(), SbroadE
         })?;
         let mut ys = Scheduler::default();
         for tuple in tuples {
-            ys.maybe_yield(yield_sql_execution)
+            ys.maybe_yield(&scheduler_options(), yield_sql_execution)
                 .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             let tuple = tuple?;
             space.insert(RawBytes::new(tuple)).map_err(|e|
@@ -770,7 +770,7 @@ pub fn old_stmt_execute<'p>(
 
     let has_metadata = port.size() == 1;
     for motion_id in motion_ids {
-        old_populate_table(motion_id, info.id(), &vtables)?;
+        old_populate_table(motion_id, info.id(), &vtables, &scheduler_options())?;
     }
 
     let res = port.process_stmt(stmt, info.params(), info.sql_vdbe_opcode_max())?;
@@ -898,7 +898,7 @@ where
     let mut vtable = VirtualTable::with_columns(vcolumns);
     let mut ys = Scheduler::default();
     for tuple in pico_port.iter() {
-        ys.maybe_yield(yield_sql_execution)
+        ys.maybe_yield(&scheduler_options(), yield_sql_execution)
             .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
         vtable.write_all(tuple).map_err(|e| {
             SbroadError::Invalid(
@@ -1007,7 +1007,7 @@ fn sharded_update_execute(
     let mut ys = Scheduler::default();
     for (bucket_id, positions) in vtable.get_bucket_index() {
         for pos in positions {
-            ys.maybe_yield(yield_sql_execution)
+            ys.maybe_yield(&scheduler_options(), yield_sql_execution)
                 .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             let vt_tuple = vtable.get_tuples().get(*pos).ok_or_else(|| {
                 SbroadError::Invalid(
@@ -1177,7 +1177,7 @@ fn old_local_update_execute(
 ) -> Result<(), SbroadError> {
     let mut ys = Scheduler::default();
     for vt_tuple in vtable.get_tuples() {
-        ys.maybe_yield(yield_sql_execution)
+        ys.maybe_yield(&scheduler_options(), yield_sql_execution)
             .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
         let args = update_args(vt_tuple, builder)?;
         let update_res = space.update(&args.key_tuple, &args.ops);
@@ -1261,7 +1261,7 @@ where
     transaction(|| -> Result<(), SbroadError> {
         let mut ys = Scheduler::default();
         for vt_tuple in vtable.get_tuples() {
-            ys.maybe_yield(yield_sql_execution)
+            ys.maybe_yield(&scheduler_options(), yield_sql_execution)
                 .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             let delete_tuple = delete_args(vt_tuple, &builder)?;
             if let Err(Error::Tarantool(tnt_err)) = space.delete(&delete_tuple) {
@@ -1334,7 +1334,7 @@ where
         let mut ys = Scheduler::default();
         for (bucket_id, positions) in vtable.get_bucket_index() {
             for pos in positions {
-                ys.maybe_yield(yield_sql_execution)
+                ys.maybe_yield(&scheduler_options(), yield_sql_execution)
                     .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
                 let vt_tuple = vtable.get_tuples().get(*pos).ok_or_else(|| {
                     SbroadError::Invalid(

@@ -1,5 +1,6 @@
+use crate::config::{DEFAULT_SQL_PREEMPTION, DEFAULT_SQL_PREEMPTION_INTERVAL_US, DYNAMIC_CONFIG};
 use crate::tarantool::VdbeYieldArgs;
-use sql::executor::preemption::YIELD_INTERVAL_NS;
+use sql::executor::preemption::SchedulerOptions;
 use std::cell::Cell;
 use std::time::Duration;
 use tarantool::fiber;
@@ -40,13 +41,26 @@ pub(crate) fn yield_sql_execution() {
     fiber::sleep(Duration::ZERO);
 }
 
+#[inline(always)]
+pub(crate) fn scheduler_options() -> SchedulerOptions {
+    SchedulerOptions {
+        enabled: sql_preemption(),
+        yield_interval_us: sql_preemption_interval_us(),
+    }
+}
+
 pub(crate) extern "C" fn vdbe_yield_handler(args: *mut VdbeYieldArgs) -> libc::c_int {
+    if !sql_preemption() {
+        return 0;
+    }
+
     let current = unsafe { (*args).current };
     let start_mut = unsafe { (*args).start };
     let start = unsafe { *start_mut };
+    let yield_interval_ns = sql_preemption_interval_us() * 1000;
 
     // Do nothing if the deadline has not been reached yet.
-    if current.abs_diff(start) < YIELD_INTERVAL_NS {
+    if current.abs_diff(start) < yield_interval_ns {
         return 0;
     }
 
@@ -58,4 +72,20 @@ pub(crate) extern "C" fn vdbe_yield_handler(args: *mut VdbeYieldArgs) -> libc::c
     }
 
     return 0;
+}
+
+#[inline(always)]
+fn sql_preemption() -> bool {
+    DYNAMIC_CONFIG
+        .sql_preemption
+        .try_current_value()
+        .unwrap_or(DEFAULT_SQL_PREEMPTION)
+}
+
+#[inline(always)]
+fn sql_preemption_interval_us() -> u64 {
+    DYNAMIC_CONFIG
+        .sql_preemption_interval_us
+        .try_current_value()
+        .unwrap_or(DEFAULT_SQL_PREEMPTION_INTERVAL_US)
 }

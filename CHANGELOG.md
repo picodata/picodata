@@ -13,6 +13,7 @@ with the `YY.MINOR.MICRO` scheme.
 ### Features
 
 - Rework SQL execution protocol for DML queries to reduce data transfer.
+- Introduce non-blocking SQL execution to prevent fiber starvation.
 
 ### Fixes
 

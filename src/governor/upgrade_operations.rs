@@ -60,6 +60,8 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("sql", PicoReshardingState::SQL_CREATE),
             // We've added function `_pico_bucket` in this release.
             ("exec_script", InternalScript::CreateIfNotExistSqlBuiltins.as_str()),
+            ("sql", "ALTER SYSTEM SET sql_preemption = false"),
+            ("sql", "ALTER SYSTEM SET sql_preemption_interval_us = 500"),
         ],
     ),
 ];
