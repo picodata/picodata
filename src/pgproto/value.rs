@@ -10,6 +10,7 @@ use sql::{
 };
 use std::{
     fmt::Debug,
+    fmt::Write,
     str::{self, FromStr},
 };
 use time::macros::format_description;
@@ -95,10 +96,10 @@ impl ToSqlText for Uuid {
         &self,
         _ty: &Type,
         out: &mut BytesMut,
-        options: &FormatOptions,
+        _options: &FormatOptions,
     ) -> Result<IsNull, Box<DynError>> {
-        // TODO: dont to_string
-        self.0.to_string().to_sql_text(&Type::TEXT, out, options)
+        write!(out, "{}", self.0)?;
+        Ok(IsNull::No)
     }
 }
 
@@ -145,10 +146,10 @@ impl ToSqlText for Decimal {
         &self,
         _ty: &Type,
         out: &mut BytesMut,
-        options: &FormatOptions,
+        _options: &FormatOptions,
     ) -> Result<IsNull, Box<DynError>> {
-        // TODO: dont to_string
-        self.0.to_string().to_sql_text(&Type::TEXT, out, options)
+        write!(out, "{}", self.0)?;
+        Ok(IsNull::No)
     }
 }
 
