@@ -5,6 +5,7 @@ use super::sharding::{handle_sharding, handle_sharding_bootstrap};
 use crate::cas;
 use crate::catalog::governor_queue::GovernorOperationDef;
 use crate::column_name;
+use crate::governor::batch::get_next_batch;
 use crate::governor::batch::LastStepInfo;
 use crate::has_states;
 use crate::instance::state::{State, StateVariant};
@@ -316,6 +317,12 @@ pub(super) fn action_plan<'i>(
     if let Some(plan) =
         handle_sharding_bootstrap(term, applied, tiers, instances, replicasets, sync_timeout)?
     {
+        debug_assert!(
+            matches!(plan, Plan::ShardingBoot { .. }),
+            "{:?}",
+            plan.kind(),
+        );
+
         return Ok(plan);
     }
 
@@ -492,56 +499,31 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // to online
-    let to_online = instances
-        .iter()
-        .find(|instance| has_states!(instance, not Online -> Online) || instance.is_reincarnated());
+    if let Some(plan) = handle_instances_becoming_online(
+        last_step_info,
+        topology_ref,
+        term,
+        applied,
+        sync_timeout,
+        &global_cluster_version,
+        cluster_name,
+        cluster_uuid,
+        batch_size,
+    )? {
+        debug_assert!(
+            matches!(
+                plan,
+                Plan::ToOnline { .. }
+                    | Plan::SleepDueToBackoff(SleepDueToBackoff {
+                        step_kind: ActionKind::ToOnline,
+                        ..
+                    })
+            ),
+            "{:?}",
+            plan.kind(),
+        );
 
-    if let Some(instance) = to_online {
-        let instance_name = &instance.name;
-        let target_state = instance.target_state;
-        debug_assert_eq!(target_state.variant, StateVariant::Online);
-        let new_current_state = target_state.variant.as_str();
-
-        let replicaset = *replicasets
-            .get(&instance.replicaset_name)
-            .expect("replicaset info is always present");
-        let tier = *tiers
-            .get(&*instance.tier)
-            .expect("tier info is always present");
-
-        // rpc params are wrapped into another rpc params because
-        // `proc_enable_all_plugins` is considered softly deprecated
-        let plugin_rpc = rpc::enable_all_plugins::Request(rpc::before_online::Request {
-            term,
-            applied,
-            timeout: sync_timeout,
-        });
-
-        let req =
-            rpc::update_instance::Request::new(instance_name.clone(), cluster_name, cluster_uuid)
-                .with_current_state(target_state);
-
-        let cas_parameters = prepare_update_instance_cas_request(
-            &req,
-            instance,
-            replicaset,
-            tier,
-            None,
-            &global_cluster_version,
-        )?;
-
-        let (ops, ranges) = cas_parameters.expect("already check current state is different");
-        let predicate = cas::Predicate::new(applied, ranges.to_vec());
-        let op = Op::single_dml_or_batch(ops.to_vec());
-        let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
-
-        return Ok(ToOnline {
-            instance_name,
-            new_current_state,
-            plugin_rpc,
-            cas,
-        }
-        .into());
+        return Ok(plan);
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -1166,17 +1148,19 @@ pub mod stage {
             pub cas: cas::Request,
         }
 
-        pub struct ToOnline<'i> {
-            /// This instance's is becoming online. Name is only used for logging.
-            pub instance_name: &'i InstanceName,
-            /// This is going to be the new current state of the instance. Only used for logging.
-            pub new_current_state: &'i str,
-            /// Request to call [`rpc::enable_all_plugins::proc_enable_all_plugins`] on `target`.
-            /// It is not optional, although it probably should be.
-            pub plugin_rpc: rpc::enable_all_plugins::Request,
+        pub struct ToOnline {
+            /// This is all the instances that are ready to become online.
+            pub targets_total: Vec<InstanceName>,
+            /// This is batch of `targets_total`. Names are only used for logging.
+            /// Dmls are updates for instance current states.
+            pub targets_batch: Vec<(InstanceName, Dml)>,
+            /// This is going to be the new current state of the instances. Only used for logging.
+            pub new_current_state: &'static str,
+            /// Request to call [`rpc::enable_all_plugins::proc_enable_all_plugins`] on `targets`.
+            pub rpc: rpc::enable_all_plugins::Request,
             /// Update instance request which translates into a global DML operation
             /// which updates `current_state` to `Online` in table `_pico_instance` for a given instance.
-            pub cas: cas::Request,
+            pub predicate: cas::Predicate,
         }
 
         pub struct ApplySchemaChange<'i> {
@@ -1581,6 +1565,153 @@ pub fn get_replicaset_being_expelled<'r>(
     }
 
     None
+}
+
+pub fn handle_instances_becoming_online<'i>(
+    last_step_info: &mut LastStepInfo,
+    topology_ref: &TopologyCacheRef,
+    term: RaftTerm,
+    applied: RaftIndex,
+    sync_timeout: Duration,
+    global_cluster_version: &SmolStr,
+    cluster_name: &'static str,
+    cluster_uuid: &'static str,
+    batch_size: usize,
+) -> Result<Option<Plan<'i>>> {
+    let mut targets_total = vec![];
+    let mut new_current_state = None;
+
+    //
+    // Find all instances which want to become Online
+    //
+    for instance in topology_ref.all_instances() {
+        if !(has_states!(instance, not Online -> Online) || instance.is_reincarnated()) {
+            continue;
+        }
+
+        let target_state = instance.target_state;
+        debug_assert_eq!(target_state.variant, StateVariant::Online);
+
+        #[allow(clippy::unnecessary_unwrap)]
+        if new_current_state.is_none() {
+            new_current_state = Some(target_state.variant);
+        } else if new_current_state.expect("just checked") != target_state.variant {
+            continue;
+        };
+
+        targets_total.push(instance.name.clone());
+    }
+
+    // No such instances
+    if targets_total.is_empty() {
+        return Ok(None);
+    }
+
+    //
+    // Pick a batch to send RPCs to
+    //
+    // NOTE: must not skip instances which were already seen as OK, because in
+    // this case each successful RPC must be finalized by a CAS, which may fail
+    // due to CAS conflict even after successful RPC, in which case we'll just
+    // send the RPC again, no problem. After the finalizing CAS is applied
+    // successfully the instance's state changes and next time around in this
+    // function that instance will not be in `targets_total` anymore.
+    let skip_if_already_ok = false;
+    let res = get_next_batch(
+        &targets_total,
+        last_step_info,
+        batch_size,
+        skip_if_already_ok,
+    );
+    let names_batch = match res {
+        Ok(v) => v,
+        Err(next_try) => {
+            return Ok(Some(
+                SleepDueToBackoff {
+                    next_try,
+                    step_kind: ActionKind::ToOnline,
+                }
+                .into(),
+            ));
+        }
+    };
+
+    debug_assert!(!names_batch.is_empty());
+
+    let mut targets_batch = Vec::with_capacity(names_batch.len());
+    let mut common_ranges = None;
+
+    //
+    // Prepare global DMLs in case of successful RPCs
+    //
+    for instance_name in names_batch {
+        let instance = topology_ref
+            .instance_by_name(&instance_name)
+            .expect("instance name came from here");
+        let replicaset = topology_ref
+            .replicaset_by_name(&instance.replicaset_name)
+            .expect("replicaset info is always present");
+        let tier = topology_ref
+            .tier_by_name(&instance.tier)
+            .expect("tier info is always present");
+
+        let req =
+            rpc::update_instance::Request::new(instance.name.clone(), cluster_name, cluster_uuid)
+                .with_current_state(instance.target_state);
+
+        let cas_parameters = prepare_update_instance_cas_request(
+            &req,
+            instance,
+            replicaset,
+            tier,
+            None,
+            global_cluster_version,
+        )?;
+
+        let (ops, ranges) = cas_parameters.expect("already check current state is different");
+        if common_ranges.is_none() {
+            common_ranges = Some(ranges);
+        } else {
+            debug_assert_eq!(common_ranges.as_ref(), Some(&ranges));
+        }
+
+        // When changing current state only one DML operation is needed
+        assert_eq!(ops.len(), 1, "{ops:?}");
+        let op = ops.into_iter().next().expect("just checked");
+
+        targets_batch.push((instance.name.clone(), op));
+        if targets_batch.len() >= batch_size {
+            break;
+        }
+    }
+
+    // Must not be empty if targets_total wasn't empty
+    debug_assert!(!targets_batch.is_empty());
+
+    let new_current_state = new_current_state.expect("is set if targets not empty");
+    let new_current_state = new_current_state.as_str();
+    let common_ranges = common_ranges.expect("is set if targets not empty");
+
+    // rpc params are wrapped into another rpc params because
+    // `proc_enable_all_plugins` is considered softly deprecated
+    let rpc = rpc::enable_all_plugins::Request(rpc::before_online::Request {
+        term,
+        applied,
+        timeout: sync_timeout,
+    });
+
+    let predicate = cas::Predicate::new(applied, common_ranges.into_vec());
+
+    return Ok(Some(
+        ToOnline {
+            targets_total,
+            targets_batch,
+            new_current_state,
+            rpc,
+            predicate,
+        }
+        .into(),
+    ));
 }
 
 #[inline(always)]

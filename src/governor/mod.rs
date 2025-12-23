@@ -777,27 +777,57 @@ impl Loop {
             }
 
             Plan::ToOnline(ToOnline {
-                instance_name,
+                targets_total,
+                targets_batch,
                 new_current_state,
-                plugin_rpc,
-                cas,
+                rpc,
+                predicate,
             }) => {
                 set_status!("update instance state to online");
+
+                debug_assert!(!targets_batch.is_empty());
+
+                last_step_info.set_pending(&targets_total);
+
+                let mut ok_instances = vec![];
+                let mut ok_dmls = vec![];
                 governor_substep! {
-                    "finalizing instance initialization" [
-                        "instance_name" => %instance_name,
-                    ]
+                    "finalizing instance initialization"
                     async {
-                        pool.call(instance_name, proc_name!(proc_enable_all_plugins), &plugin_rpc, plugin_rpc_timeout)?.await?
+                        let mut fs = FuturesUnordered::new();
+                        for (instance_name, dml) in targets_batch {
+                            tlog!(Info, "calling proc_enable_all_plugins"; "instance_name" => %instance_name);
+                            let resp = pool.call(&instance_name, proc_name!(proc_enable_all_plugins), &rpc, plugin_rpc_timeout)?;
+                            fs.push(async move { (instance_name, dml, resp.await) });
+                        }
+
+                        while let Some((instance_name, dml, res)) = fs.next().await {
+                            match res {
+                                Ok(_) => {
+                                    last_step_info.on_ok_instance(instance_name.clone());
+                                    ok_instances.push(instance_name);
+                                    ok_dmls.push(dml);
+                                }
+                                Err(e) => {
+                                    let info = last_step_info.on_err_instance(&instance_name);
+                                    let streak = info.streak;
+                                    tlog!(Warning, "failed calling proc_enable_all_plugins (fail streak: {streak}): {e}"; "instance_name" => %instance_name);
+                                }
+                            }
+                        }
+
+                        last_step_info.report_stats();
                     }
                 }
 
                 governor_substep! {
                     "handling instance state change" [
-                        "instance_name" => %instance_name,
+                        "instances" => ?ok_instances,
                         "current_state" => %new_current_state,
                     ]
                     async {
+                        let ops = Op::single_dml_or_batch(ok_dmls);
+                        let cas = cas::Request::new(ops, predicate, ADMIN_ID)?;
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
                         cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
                     }
