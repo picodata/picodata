@@ -1,5 +1,6 @@
 from framework.sqltester import (
     ClusterSingleInstance,
+    ClusterTwoInstances,
     sql_test_file,
 )
 
@@ -11,4 +12,9 @@ class TestTargetQueries1(ClusterSingleInstance):
 
 @sql_test_file("random_queries.sql")
 class TestTargetQueries2(ClusterSingleInstance):
+    pass
+
+
+@sql_test_file("test_gl2527.sql")
+class TestUpdate(ClusterTwoInstances):
     pass

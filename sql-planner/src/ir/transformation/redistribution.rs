@@ -1724,6 +1724,7 @@ impl Plan {
             JoinChild::Outer => (MotionPolicy::None, MotionPolicy::Full),
             JoinChild::Inner => (MotionPolicy::Full, MotionPolicy::None),
         };
+        let mut policy_to_update = None;
         if let Some(eq_cols) = condition_eq_cols {
             for key in keys.iter() {
                 if key.positions.len() == eq_cols.len()
@@ -1736,11 +1737,11 @@ impl Plan {
                         })
                     })
                 {
-                    let policy_to_update = match segmented_child {
+                    let policy = match segmented_child {
                         JoinChild::Outer => &mut inner_policy,
                         JoinChild::Inner => &mut outer_policy,
                     };
-                    *policy_to_update = MotionPolicy::Segment(MotionKey {
+                    *policy = MotionPolicy::Segment(MotionKey {
                         targets: eq_cols
                             .iter()
                             .map(|(i_col, o_col)| -> Target {
@@ -1752,10 +1753,15 @@ impl Plan {
                             })
                             .collect::<Vec<Target>>(),
                     });
+
+                    policy_to_update = Some(policy);
+
                     break;
                 }
             }
-        } else if let JoinKind::LeftOuter = join_kind {
+        }
+
+        if matches!(join_kind, JoinKind::LeftOuter) && policy_to_update.is_none() {
             // if we can't perform repartition join (no equality columns),
             // and left join is performed, we can't broadcast left (outer) table.
             // in this case we broadcast the inner table and rehash outer table
@@ -1765,6 +1771,7 @@ impl Plan {
             });
             inner_policy = MotionPolicy::Full;
         }
+
         (outer_policy, inner_policy)
     }
 
