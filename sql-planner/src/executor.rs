@@ -46,6 +46,7 @@ pub mod engine;
 pub mod hash;
 pub mod ir;
 pub mod lru;
+pub mod preemption;
 pub mod protocol;
 pub mod result;
 pub mod vdbe;

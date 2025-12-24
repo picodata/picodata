@@ -1,6 +1,7 @@
 use crate::metrics::{
     report_storage_cache_hit, report_storage_cache_miss, STORAGE_2ND_REQUESTS_TOTAL,
 };
+use crate::preemption::yield_sql_execution;
 use crate::sql::lua::{lua_decode_ibufs, lua_query_metadata};
 use crate::sql::router::{get_index_version_by_pk, get_table_version_by_id, VersionMap};
 use crate::sql::PicoPortC;
@@ -21,6 +22,7 @@ use sql::executor::engine::helpers::{
 use sql::executor::engine::protocol::{FullDeletePlanInfo, PlanInfo};
 use sql::executor::engine::{QueryCache, StorageCache, Vshard};
 use sql::executor::ir::QueryType;
+use sql::executor::preemption::Scheduler;
 use sql::executor::protocol::{OptionalData, RequiredData, SchemaInfo};
 use sql::executor::result::ConsumerResult;
 use sql::executor::vdbe::ExecutionInsight::{BusyStmt, Nothing, StaleStmt};
@@ -103,7 +105,10 @@ fn populate_table(table_name: &str, tuples: TupleIterator) -> Result<(), SbroadE
                 )),
             )
         })?;
+        let mut ys = Scheduler::default();
         for tuple in tuples {
+            ys.maybe_yield(yield_sql_execution)
+                .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             let tuple = tuple?;
             space.insert(RawBytes::new(tuple)).map_err(|e|
                 // It is possible that the temporary table was recreated by admin
@@ -891,7 +896,10 @@ where
         });
     }
     let mut vtable = VirtualTable::with_columns(vcolumns);
+    let mut ys = Scheduler::default();
     for tuple in pico_port.iter() {
+        ys.maybe_yield(yield_sql_execution)
+            .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
         vtable.write_all(tuple).map_err(|e| {
             SbroadError::Invalid(
                 Entity::VirtualTable,
@@ -996,8 +1004,11 @@ fn sharded_update_execute(
             }
         }
     }
+    let mut ys = Scheduler::default();
     for (bucket_id, positions) in vtable.get_bucket_index() {
         for pos in positions {
+            ys.maybe_yield(yield_sql_execution)
+                .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             let vt_tuple = vtable.get_tuples().get(*pos).ok_or_else(|| {
                 SbroadError::Invalid(
                     Entity::VirtualTable,
@@ -1164,7 +1175,10 @@ fn old_local_update_execute(
     vtable: &VirtualTable,
     space: &Space,
 ) -> Result<(), SbroadError> {
+    let mut ys = Scheduler::default();
     for vt_tuple in vtable.get_tuples() {
+        ys.maybe_yield(yield_sql_execution)
+            .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
         let args = update_args(vt_tuple, builder)?;
         let update_res = space.update(&args.key_tuple, &args.ops);
         update_res.map_err(|e| {
@@ -1245,7 +1259,10 @@ where
         )
     })?;
     transaction(|| -> Result<(), SbroadError> {
+        let mut ys = Scheduler::default();
         for vt_tuple in vtable.get_tuples() {
+            ys.maybe_yield(yield_sql_execution)
+                .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             let delete_tuple = delete_args(vt_tuple, &builder)?;
             if let Err(Error::Tarantool(tnt_err)) = space.delete(&delete_tuple) {
                 return Err(SbroadError::FailedTo(
@@ -1314,8 +1331,11 @@ where
         .get_ir_plan()
         .insert_conflict_strategy(insert_id)?;
     transaction(|| -> Result<(), SbroadError> {
+        let mut ys = Scheduler::default();
         for (bucket_id, positions) in vtable.get_bucket_index() {
             for pos in positions {
+                ys.maybe_yield(yield_sql_execution)
+                    .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
                 let vt_tuple = vtable.get_tuples().get(*pos).ok_or_else(|| {
                     SbroadError::Invalid(
                         Entity::VirtualTable,

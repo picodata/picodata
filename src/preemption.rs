@@ -1,10 +1,9 @@
 use crate::tarantool::VdbeYieldArgs;
+use sql::executor::preemption::YIELD_INTERVAL_NS;
 use std::cell::Cell;
 use std::time::Duration;
 use tarantool::fiber;
 use tarantool::transaction::is_in_transaction;
-
-const VDBE_YIELD_INTERVAL_NS: u64 = 500_000;
 
 thread_local!(static SQL_EXECUTION_GUARD: Cell<Option<fiber::FiberId>> = const { Cell::new(None) });
 
@@ -36,6 +35,8 @@ where
 
 #[inline(always)]
 pub(crate) fn yield_sql_execution() {
+    // Yield the fiber execution, collect all IO events and reschedule the fiber
+    // to the tail of the event loop queue.
     fiber::sleep(Duration::ZERO);
 }
 
@@ -45,7 +46,7 @@ pub(crate) extern "C" fn vdbe_yield_handler(args: *mut VdbeYieldArgs) -> libc::c
     let start = unsafe { *start_mut };
 
     // Do nothing if the deadline has not been reached yet.
-    if current.abs_diff(start) < VDBE_YIELD_INTERVAL_NS {
+    if current.abs_diff(start) < YIELD_INTERVAL_NS {
         return 0;
     }
 

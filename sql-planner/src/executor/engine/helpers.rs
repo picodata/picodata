@@ -1,5 +1,6 @@
 use crate::{
     backend::sql::space::{TableGuard, ADMIN_ID},
+    executor::preemption::Scheduler,
     ir::api::children::Children,
     ir::node::expression::MutExpression,
 };
@@ -24,6 +25,7 @@ use std::{
     rc::Rc,
     str::{from_utf8, FromStr},
     sync::OnceLock,
+    time::Duration,
 };
 use tarantool::space::Space;
 
@@ -1234,7 +1236,10 @@ pub fn materialize_values(
         runtime.dispatch(exec_plan, values_id, &Buckets::Any, &mut port)?;
 
         let mut vtable = VirtualTable::with_columns(columns);
+        let mut ys = Scheduler::default();
         for mp in port.iter().skip(1) {
+            ys.maybe_yield(|| runtime.yield_execution())
+                .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             vtable.write_all(mp).map_err(|e| {
                 SbroadError::FailedTo(
                     Action::Create,
@@ -1318,7 +1323,10 @@ pub fn materialize_motion(
             })?;
         }
     } else {
+        let mut ys = Scheduler::default();
         for mp in port.iter().skip(1) {
+            ys.maybe_yield(|| runtime.yield_execution())
+                .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             vtable.write_all(mp).map_err(|e| {
                 SbroadError::FailedTo(
                     Action::Create,
@@ -1452,7 +1460,14 @@ pub fn old_populate_table(
                 )),
             )
         })?;
+        let mut ys = Scheduler::default();
         for tuple in data.iter() {
+            // This function does not have access to the runtime to obtain a
+            // yield_execution implementation. Since it is deprecated and planned
+            // for removal, it is preferable to call fiber_sleep(0) directly
+            // rather than refactor this code.
+            ys.maybe_yield(|| tarantool::fiber::sleep(Duration::ZERO))
+                .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             match space.insert(&tuple) {
                 Ok(_) => {}
                 Err(e) => {

@@ -27,6 +27,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::audit;
+use crate::preemption::yield_sql_execution;
 use crate::schema::{Distribution, ShardingFn, ADMIN_ID};
 use crate::storage::{self, Catalog};
 
@@ -468,6 +469,10 @@ impl Router for RouterRuntime {
 
     fn is_audit_enabled(&self, plan: &Plan) -> Result<bool, SbroadError> {
         (self.is_audit_enabled_func)(plan)
+    }
+
+    fn yield_execution(&self) {
+        yield_sql_execution();
     }
 }
 
