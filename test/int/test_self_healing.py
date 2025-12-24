@@ -377,6 +377,36 @@ def test_automatic_offline_due_to_global_dml_conflict(cluster: Cluster):
     ]
 
 
+def test_automatic_offline_by_applied_index_is_not_too_eager(cluster: Cluster):
+    leader, follower = cluster.deploy(instance_count=2)
+
+    leader.promote_or_fail()
+    # Reduce the timeout so that the test doesn't take too long
+    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 10")
+    leader.sql("CREATE TABLE global_table (id INT PRIMARY KEY) DISTRIBUTED GLOBALLY")
+
+    # Inject a tiny delay but no longer that governor_auto_offline_timeout
+    error_injection = "DELAY_BEFORE_APPLYING_RAFT_ENTRY"
+    follower.call("pico._inject_error", error_injection, "5")
+
+    # I wish we could speed up the time, but unfortunately I don't see any
+    # better way to check what happens when we haven't applied any raft log
+    # entries in a long time other then not applying any raft log entries in a
+    # long time
+    time.sleep(10)
+
+    # Propose a raft log entry
+    leader.sql("INSERT INTO global_table VALUES (1)")
+
+    # Wait until the lagger catches up
+    follower.raft_wait_index(leader.raft_get_index())
+
+    # Make sure auto offline wasn't triggered
+    runtime_info = leader.call(".proc_runtime_info")
+    internal = runtime_info["internal"]
+    assert "sentinel_last_action" not in internal
+
+
 @pytest.mark.xfail(
     reason=(
         """The following issues should be fixed before this test is stable:
