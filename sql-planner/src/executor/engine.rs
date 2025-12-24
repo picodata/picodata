@@ -406,6 +406,9 @@ pub trait Router: QueryCache {
     /// This function evaluates the query plan against configured audit policies
     /// of current user to decide if the operation requires audit trail generation.
     fn is_audit_enabled(&self, plan: &crate::ir::Plan) -> Result<bool, SbroadError>;
+
+    /// Implementation of the execution yield.
+    fn yield_execution(&self);
 }
 
 pub trait Vshard {

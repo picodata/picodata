@@ -1881,4 +1881,6 @@ impl Router for RouterRuntimeMock {
     fn is_audit_enabled(&self, _plan: &Plan) -> Result<bool, SbroadError> {
         Ok(false)
     }
+
+    fn yield_execution(&self) {}
 }
