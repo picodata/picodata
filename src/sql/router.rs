@@ -200,6 +200,31 @@ pub fn get_index_id(index_name: &str, table_name: &str) -> Result<u32, SbroadErr
     Ok(index.id)
 }
 
+/// Get the name and the schema version for the given table.
+///
+/// # Arguments:
+/// * `id` - id of the table
+///
+/// # Errors:
+/// - errors on access to system table
+/// - table with given id not found
+pub fn get_table_name_and_version(id: SpaceId) -> Result<(SmolStr, u64), SbroadError> {
+    let node = node::global().map_err(|e| {
+        SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
+    })?;
+    let storage_tables = &node.storage.pico_table;
+    if let Some(table_def) = storage_tables.by_id(id).map_err(|e| {
+        SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
+    })? {
+        Ok((table_def.name, table_def.schema_version))
+    } else {
+        Err(SbroadError::NotFound(
+            Entity::SpaceMetadata,
+            format_smolstr!("for table: {}", id),
+        ))
+    }
+}
+
 type IsAuditEnabledFunc = fn(&Plan) -> Result<bool, SbroadError>;
 
 #[allow(clippy::module_name_repetitions)]
@@ -355,6 +380,10 @@ impl QueryCache for RouterRuntime {
 
     fn get_index_version_by_pk(&self, space_id: u32, index_id: u32) -> Result<u64, SbroadError> {
         get_index_version_by_pk(space_id, index_id)
+    }
+
+    fn get_table_name_and_version(&self, table_id: SpaceId) -> Result<(SmolStr, u64), SbroadError> {
+        get_table_name_and_version(table_id)
     }
 }
 

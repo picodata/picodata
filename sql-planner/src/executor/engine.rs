@@ -33,6 +33,7 @@ use tarantool::space::SpaceId;
 pub mod helpers;
 #[cfg(feature = "mock")]
 pub mod mock;
+pub mod protocol;
 
 /// A metadata trait of the cluster (getters for tables, functions, etc.).
 pub trait Metadata: Sized {
@@ -274,6 +275,8 @@ pub trait QueryCache {
     /// - table was not found in system space
     /// - could not access the system space
     fn get_table_version_by_id(&self, _: SpaceId) -> Result<u64, SbroadError>;
+
+    fn get_table_name_and_version(&self, _: SpaceId) -> Result<(SmolStr, u64), SbroadError>;
 }
 
 /// Compute a query cache key from the query pattern and parameter types.

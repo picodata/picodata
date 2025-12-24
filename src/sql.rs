@@ -81,7 +81,9 @@ use sql::ir::operator::ConflictStrategy;
 use sql::ir::types::UnrestrictedType;
 use sql::ir::value::Value;
 use sql::ir::Plan as IrPlan;
-use sql_protocol::decode::{execute_args_split, query_meta_args_split, QueryMetaArgs};
+use sql_protocol::decode::{
+    execute_args_split, query_meta_args_split, ProtocolMessage, ProtocolMessageType, QueryMetaArgs,
+};
 use sql_protocol::encode::write_metadata;
 use std::cmp::max;
 use std::collections::BTreeMap;
@@ -2588,11 +2590,13 @@ struct ExecArgs {
 /// Temporary enum for protocol migration (remove after old protocol deprecation).
 /// New: raw payload vector for new protocol
 /// Old: parsed legacy protocol data
+#[deprecated(note = "Remove in next release, Change to Vec<u8>. Used for smooth upgrade")]
 enum ExecArgsData {
     New(Vec<u8>),
     Old(OldExecArgs),
 }
 
+#[deprecated(note = "Remove in next release. Used for smooth upgrade")]
 struct OldExecArgs {
     required: RequiredData,
     optional: Option<OptionalData>,
@@ -2718,7 +2722,19 @@ pub unsafe extern "C" fn proc_sql_execute(
     let mut port = PicoPortC::from(ctx.mut_port_c());
 
     let (is_old, is_first_req, query_type) = match &args.data {
-        ExecArgsData::New(_) => (false, true, "dql"),
+        ExecArgsData::New(data) => {
+            // TODO: can we reuse it?
+            match ProtocolMessage::decode_from_bytes(data.as_slice()) {
+                Ok(msg) => {
+                    let query_type = match msg.msg_type {
+                        ProtocolMessageType::Dql => "dql",
+                        ProtocolMessageType::Dml(_) | ProtocolMessageType::LocalDml(_) => "dml",
+                    };
+                    (false, true, query_type)
+                }
+                Err(e) => return report("", Error::other(e)),
+            }
+        }
         ExecArgsData::Old(args) => {
             let is_first_req = args.optional.is_none();
             let query_type = match args.required.query_type {
@@ -2895,8 +2911,8 @@ fn create_dml_ops(
     let ir = query.get_exec_plan().get_ir_plan();
     let top = ir.get_top()?;
     let builder = match dml_kind {
-        DmlKind::Insert => init_insert_tuple_builder(ir, &vtable, top)?,
-        DmlKind::Update => init_local_update_tuple_builder(ir, &vtable, top)?,
+        DmlKind::Insert => init_insert_tuple_builder(ir, vtable.get_columns(), top)?,
+        DmlKind::Update => init_local_update_tuple_builder(ir, vtable.get_columns(), top)?,
         DmlKind::Delete => init_delete_tuple_builder(ir, top)?,
         DmlKind::Replace => unreachable!("SQL does not support replace"),
     };

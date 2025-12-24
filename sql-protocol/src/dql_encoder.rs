@@ -76,7 +76,7 @@ pub(crate) mod test {
     use std::collections::HashMap;
     use std::io::Write;
 
-    struct TestParamEncoder<'e> {
+    pub(crate) struct TestParamEncoder<'e> {
         data: &'e [u64],
     }
 

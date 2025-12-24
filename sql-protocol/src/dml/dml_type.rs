@@ -2,7 +2,7 @@ use crate::message_type::write_request_header;
 use crate::message_type::MessageType::{LocalDML, DML};
 
 #[repr(u8)]
-pub(crate) enum DMLType {
+pub enum DMLType {
     Insert = 0,
     Update,
     Delete,

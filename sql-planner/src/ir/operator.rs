@@ -17,27 +17,27 @@ use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY, 
 use crate::ir::Plan;
 use ahash::RandomState;
 
-use crate::collection;
-use serde::{Deserialize, Serialize};
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
-use std::borrow::BorrowMut;
-use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Display, Formatter};
-
-use crate::errors::{Action, Entity, SbroadError};
-
 use super::expression::{ColumnPositionMap, ExpressionId};
 use super::node::expression::{Expression, MutExpression};
 use super::node::relational::{MutRelational, Relational};
 use super::node::{ArenaType, Limit, Node, NodeAligned, SelectWithoutScan};
 use super::transformation::redistribution::{MotionPolicy, Program};
 use super::types::DerivedType;
+use crate::collection;
+use crate::errors::{Action, Entity, SbroadError};
 use crate::ir::distribution::{Distribution, Key, KeySet};
 use crate::ir::helpers::RepeatableState;
 use crate::ir::relation::{Column, ColumnRole};
 use crate::ir::transformation::redistribution::ColumnPosition;
+use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use sql_protocol::dml::insert::ConflictPolicy;
+use sql_protocol::dml::update::UpdateType;
+use std::borrow::BorrowMut;
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Display, Formatter};
 
 /// Binary operator returning Bool expression.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Eq, Hash, Clone, Copy)]
@@ -239,6 +239,16 @@ impl Display for ConflictStrategy {
     }
 }
 
+impl From<&ConflictStrategy> for ConflictPolicy {
+    fn from(value: &ConflictStrategy) -> Self {
+        match value {
+            ConflictStrategy::DoNothing => ConflictPolicy::DoNothing,
+            ConflictStrategy::DoReplace => ConflictPolicy::DoReplace,
+            ConflictStrategy::DoFail => ConflictPolicy::DoFail,
+        }
+    }
+}
+
 /// Execution strategy for update node.
 ///
 /// Depending on whether some sharding column
@@ -303,6 +313,15 @@ pub enum UpdateStrategy {
     /// select c + d, d, e
     /// ```
     LocalUpdate,
+}
+
+impl From<&UpdateStrategy> for UpdateType {
+    fn from(value: &UpdateStrategy) -> Self {
+        match value {
+            UpdateStrategy::ShardedUpdate { .. } => UpdateType::Shared,
+            UpdateStrategy::LocalUpdate => UpdateType::Local,
+        }
+    }
 }
 
 #[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash, Serialize)]

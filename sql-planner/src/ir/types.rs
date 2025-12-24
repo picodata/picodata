@@ -1,9 +1,12 @@
 use core::fmt;
-use std::fmt::Formatter;
-
 use serde::{Deserialize, Serialize};
 use smol_str::format_smolstr;
+use sql_protocol::dql_encoder::ColumnType;
 use sql_type_system::expr::Type as TypeSystemType;
+use std::fmt::Formatter;
+use std::io::Write;
+use tarantool::msgpack;
+use tarantool::msgpack::{Context, DecodeError, EncodeError};
 use tarantool::space::FieldType as SpaceFieldType;
 use tarantool::tuple::FieldType;
 
@@ -411,5 +414,73 @@ impl fmt::Display for DerivedType {
             None => write!(f, "unknown"),
             Some(t) => t.fmt(f),
         }
+    }
+}
+
+impl From<ColumnType> for DerivedType {
+    fn from(value: ColumnType) -> Self {
+        (&value).into()
+    }
+}
+
+impl From<&ColumnType> for DerivedType {
+    fn from(value: &ColumnType) -> Self {
+        match value {
+            ColumnType::Map => Self::new(UnrestrictedType::Map),
+            ColumnType::Boolean => Self::new(UnrestrictedType::Boolean),
+            ColumnType::Datetime => Self::new(UnrestrictedType::Datetime),
+            ColumnType::Decimal => Self::new(UnrestrictedType::Decimal),
+            ColumnType::Double => Self::new(UnrestrictedType::Double),
+            ColumnType::Integer => Self::new(UnrestrictedType::Integer),
+            ColumnType::String => Self::new(UnrestrictedType::String),
+            ColumnType::Uuid => Self::new(UnrestrictedType::Uuid),
+            ColumnType::Any => Self::new(UnrestrictedType::Any),
+            ColumnType::Array => Self::new(UnrestrictedType::Array),
+            ColumnType::Scalar => Self::unknown(),
+        }
+    }
+}
+
+impl From<DerivedType> for ColumnType {
+    fn from(value: DerivedType) -> Self {
+        (&value).into()
+    }
+}
+
+impl From<&DerivedType> for ColumnType {
+    fn from(value: &DerivedType) -> Self {
+        let Some(ty) = &value.get() else {
+            return ColumnType::Scalar;
+        };
+
+        match ty {
+            UnrestrictedType::Map => ColumnType::Map,
+            UnrestrictedType::Boolean => ColumnType::Boolean,
+            UnrestrictedType::Datetime => ColumnType::Datetime,
+            UnrestrictedType::Decimal => ColumnType::Decimal,
+            UnrestrictedType::Double => ColumnType::Double,
+            UnrestrictedType::Integer => ColumnType::Integer,
+            UnrestrictedType::String => ColumnType::String,
+            UnrestrictedType::Uuid => ColumnType::Uuid,
+            UnrestrictedType::Any => ColumnType::Any,
+            UnrestrictedType::Array => ColumnType::Array,
+        }
+    }
+}
+
+impl msgpack::Encode for DerivedType {
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<(), EncodeError> {
+        let column_type: ColumnType = self.into();
+        rmp::encode::write_pfix(w, column_type as u8).map_err(Into::into)
+    }
+}
+
+impl<'de> msgpack::Decode<'de> for DerivedType {
+    fn decode(r: &mut &'de [u8], _context: &Context) -> Result<Self, DecodeError> {
+        let column_type: ColumnType = rmp::decode::read_pfix(r)
+            .map_err(DecodeError::from_vre::<Self>)?
+            .try_into()
+            .map_err(DecodeError::new::<Self>)?;
+        Ok(column_type.into())
     }
 }

@@ -1020,6 +1020,15 @@ impl Serialize for EncodedValue<'_> {
     }
 }
 
+impl Encode for EncodedValue<'_> {
+    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
+        match self {
+            EncodedValue::Ref(v) => v.encode(w, context),
+            EncodedValue::Owned(v) => v.encode(w, context),
+        }
+    }
+}
+
 impl EncodedValue<'_> {
     /// Try to convert to double underlying value.
     pub fn double(&self) -> Option<f64> {
@@ -1084,6 +1093,22 @@ impl<'v> From<&'v Value> for MsgPackValue<'v> {
             Value::String(v) => MsgPackValue::String(v),
             Value::Tuple(v) => MsgPackValue::Tuple(v),
             Value::Uuid(v) => MsgPackValue::Uuid(v),
+        }
+    }
+}
+
+impl Encode for MsgPackValue<'_> {
+    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
+        match self {
+            MsgPackValue::Boolean(v) => v.encode(w, context),
+            MsgPackValue::Datetime(v) => v.encode(w, context),
+            MsgPackValue::Decimal(v) => v.encode(w, context),
+            MsgPackValue::Double(v) => v.encode(w, context),
+            MsgPackValue::Integer(v) => v.encode(w, context),
+            MsgPackValue::String(v) => v.encode(w, context),
+            MsgPackValue::Tuple(v) => v.encode(w, context),
+            MsgPackValue::Uuid(v) => v.encode(w, context),
+            MsgPackValue::Null(v) => v.encode(w, context),
         }
     }
 }

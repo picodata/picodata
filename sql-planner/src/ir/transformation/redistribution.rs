@@ -1,11 +1,5 @@
 //! Resolve distribution conflicts and insert motion nodes to IR.
 
-use ahash::{AHashMap, AHashSet, RandomState};
-use serde::{Deserialize, Serialize};
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
-use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
-
 use crate::errors::{Entity, SbroadError};
 use crate::frontend::sql::ir::SubtreeCloner;
 use crate::ir::api::children::Children;
@@ -14,6 +8,13 @@ use crate::ir::expression::ColumnPositionMap;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::operator::{Bool, JoinKind, OrderByEntity, Unary, UpdateStrategy};
+use ahash::{AHashMap, AHashSet, RandomState};
+use serde::{Deserialize, Serialize};
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
+use std::io::Write;
+use tarantool::msgpack::{Context, Decode, DecodeError, Encode, EncodeError};
 
 use crate::ir::node::ReferenceTarget::Single;
 use crate::ir::node::{
@@ -56,7 +57,42 @@ pub enum Target {
     Value(Value),
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Debug, Clone)]
+impl Encode for Target {
+    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
+        rmp::encode::write_array_len(w, 2)?;
+        match self {
+            Target::Reference(pos) => {
+                rmp::encode::write_pfix(w, 0u8)?;
+                pos.encode(w, context)
+            }
+            Target::Value(val) => {
+                rmp::encode::write_pfix(w, 1u8)?;
+                val.encode(w, context)
+            }
+        }
+    }
+}
+
+impl<'de> Decode<'de> for Target {
+    fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError> {
+        let len = rmp::decode::read_array_len(r).map_err(DecodeError::from_vre::<Self>)?;
+        if len != 2 {
+            return Err(DecodeError::new::<Self>(format!(
+                "should be 2, got {}",
+                len
+            )));
+        }
+
+        let ty = rmp::decode::read_pfix(r).map_err(DecodeError::from_vre::<Self>)?;
+        match ty {
+            0 => usize::decode(r, context).map(Target::Reference),
+            1 => Value::decode(r, context).map(Target::Value),
+            _ => Err(DecodeError::new::<Self>(format!("unknown type {}", ty))),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Debug, Clone, Encode, Decode)]
 pub struct MotionKey {
     pub targets: Vec<Target>,
 }

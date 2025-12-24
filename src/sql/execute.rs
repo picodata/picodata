@@ -14,37 +14,53 @@ use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::engine::helpers::{
     build_insert_args, init_delete_tuple_builder, init_insert_tuple_builder,
     init_local_update_tuple_builder, init_sharded_update_tuple_builder, old_populate_table,
-    pk_name, table_name, truncate_tables, vtable_columns, FullPlanInfo, QueryInfo,
+    old_truncate_tables, pk_name, table_name, vtable_columns, FullPlanInfo, QueryInfo,
     RequiredPlanInfo, TupleBuilderCommand, TupleBuilderPattern,
 };
+use sql::executor::engine::protocol::{FullDeletePlanInfo, PlanInfo};
 use sql::executor::engine::{QueryCache, StorageCache, Vshard};
 use sql::executor::ir::QueryType;
 use sql::executor::protocol::{OptionalData, RequiredData, SchemaInfo};
 use sql::executor::result::ConsumerResult;
 use sql::executor::vdbe::ExecutionInsight::{BusyStmt, Nothing, StaleStmt};
 use sql::executor::vdbe::{ExecutionInsight, SqlError, SqlStmt};
-use sql::executor::vtable::{VTableTuple, VirtualTable, VirtualTableMeta};
+use sql::executor::vtable::{
+    vtable_indexed_column_name, VTableTuple, VirtualTable, VirtualTableMeta,
+};
 use sql::executor::{Port, PortType};
 use sql::ir::helpers::RepeatableState;
 use sql::ir::node::relational::Relational;
 use sql::ir::operator::ConflictStrategy;
+use sql::ir::relation::{Column, ColumnRole};
 use sql::ir::value::{EncodedValue, MsgPackValue, Value};
 use sql::ir::{node::NodeId, relation::SpaceEngine};
 use sql::utils::MutexLike;
 use sql_protocol::decode::{ProtocolMessage, ProtocolMessageIter};
+use sql_protocol::dml::delete::{
+    DeleteFilteredIterator, DeleteFilteredResult, DeleteFullIterator, DeleteFullResult,
+};
+use sql_protocol::dml::insert::{
+    ConflictPolicy, InsertIterator, InsertMaterializedIterator, InsertMaterializedResult,
+    InsertResult,
+};
+use sql_protocol::dml::update::{
+    UpdateIterator, UpdateResult, UpdateSharedKeyIterator, UpdateSharedKeyResult,
+};
 use sql_protocol::dql::{DQLCacheMissResult, DQLPacketPayloadIterator, DQLResult};
 use sql_protocol::dql_encoder::ColumnType;
 use sql_protocol::error::ProtocolError;
-use sql_protocol::iterators::TupleIterator;
+use sql_protocol::iterators::{MsgpackArrayIterator, TupleIterator};
 use std::collections::HashMap;
 use std::io::{Cursor, Write};
 use std::sync::OnceLock;
 use tarantool::error::{Error, TarantoolErrorCode};
 use tarantool::ffi::sql::Port as TarantoolPort;
 use tarantool::index::{FieldType, IndexOptions, IndexType, Part};
+use tarantool::msgpack;
 use tarantool::session::with_su;
 use tarantool::space::{Field, Space, SpaceCreateOptions, SpaceType};
 use tarantool::transaction::transaction;
+use tarantool::tuple::RawBytes;
 
 const LINE_WIDTH: usize = 80;
 
@@ -88,7 +104,7 @@ fn populate_table(table_name: &str, tuples: TupleIterator) -> Result<(), SbroadE
         })?;
         for tuple in tuples {
             let tuple = tuple?;
-            unsafe { space.insert_unchecked(tuple) }.map_err(|e|
+            space.insert(RawBytes::new(tuple)).map_err(|e|
                 // It is possible that the temporary table was recreated by admin
                 // user with a different format. We should not panic in this case.
                 SbroadError::FailedTo(
@@ -103,7 +119,8 @@ fn populate_table(table_name: &str, tuples: TupleIterator) -> Result<(), SbroadE
 }
 
 /// Execute a DML query on the storage.
-pub(crate) fn dml_execute<'p, R: Vshard + QueryCache>(
+#[deprecated(note = "Remove in next release. Used for smooth upgrade")]
+pub(crate) fn old_dml_execute<'p, R: Vshard + QueryCache>(
     runtime: &R,
     required: &mut RequiredData,
     mut optional: OptionalData,
@@ -122,9 +139,9 @@ where
     let top_id = plan.get_top()?;
     let top = plan.get_relation_node(top_id)?;
     match top {
-        Relational::Insert(_) => insert_execute(runtime, &mut optional, required, port),
-        Relational::Delete(_) => delete_execute(runtime, &mut optional, required, port),
-        Relational::Update(_) => update_execute(runtime, &mut optional, required, port),
+        Relational::Insert(_) => old_insert_execute(runtime, &mut optional, required, port),
+        Relational::Delete(_) => old_delete_execute(runtime, &mut optional, required, port),
+        Relational::Update(_) => old_update_execute(runtime, &mut optional, required, port),
         _ => Err(SbroadError::Invalid(
             Entity::Plan,
             Some(format_smolstr!(
@@ -136,8 +153,45 @@ where
     Ok(())
 }
 
+/// Execute a DML query on the storage.
+pub(crate) fn dml_execute<'p, R: Vshard + QueryCache>(
+    runtime: &R,
+    msg: &ProtocolMessage,
+    port: &mut impl Port<'p>,
+    timeout: f64,
+) -> Result<(), SbroadError>
+where
+    R::Cache: StorageCache<u64, SmolStr>,
+{
+    let iter = msg.get_iter()?;
+
+    match iter {
+        ProtocolMessageIter::DmlInsert(iter) => insert_execute(runtime, iter, port)?,
+        ProtocolMessageIter::DmlUpdate(iter) => update_execute(runtime, iter, port)?,
+        ProtocolMessageIter::DmlDelete(iter) => delete_execute(runtime, iter, port)?,
+        ProtocolMessageIter::LocalDmlInsert(iter) => {
+            local_insert_execute(runtime, msg.request_id, iter, port, timeout)?
+        }
+        ProtocolMessageIter::LocalDmlUpdate(iter) => {
+            local_update_execute(runtime, msg.request_id, iter, port, timeout)?
+        }
+        ProtocolMessageIter::LocalDmlDelete(iter) => {
+            local_delete_execute(runtime, msg.request_id, iter, port, timeout)?
+        }
+        _ => {
+            return Err(SbroadError::Invalid(
+                Entity::Plan,
+                Some("Expected a DML plan.".to_smolstr()),
+            ))
+        }
+    }
+    port.set_type(PortType::ExecuteDml);
+    Ok(())
+}
+
 /// Execute the first round request for DQL query on storage
 /// with an attempt to hit the cache.
+#[deprecated(note = "Remove in next release. Used for smooth upgrade")]
 pub(crate) fn dql_execute_first_round<'p, R: Vshard + QueryCache>(
     runtime: &R,
     info: &mut impl RequiredPlanInfo,
@@ -152,7 +206,7 @@ where
         // avoid transactions for DQL queries. We can achieve atomicity by truncating
         // temporary tables. Isolation is guaranteed by keeping a lock on the cache.
         use ExecutionInsight::*;
-        match stmt_execute(stmt, info, motion_ids, port)? {
+        match old_stmt_execute(stmt, info, motion_ids, port)? {
             Nothing => report_storage_cache_hit("dql", "1st"),
             BusyStmt => report_storage_cache_miss("dql", "1st", "busy"),
             StaleStmt => report_storage_cache_miss("dql", "1st", "stale"),
@@ -168,6 +222,7 @@ where
     Ok(())
 }
 
+#[deprecated(note = "Remove in next release. Used for smooth upgrade")]
 pub(crate) fn dql_execute_second_round<'p, R: QueryCache>(
     runtime: &R,
     info: &mut impl FullPlanInfo,
@@ -182,7 +237,7 @@ where
         // Transaction rollbacks are very expensive in Tarantool, so we're going to
         // avoid transactions for DQL queries. We can achieve atomicity by truncating
         // temporary tables. Isolation is guaranteed by keeping a lock on the cache.
-        match stmt_execute(stmt, info, motion_ids, port)? {
+        match old_stmt_execute(stmt, info, motion_ids, port)? {
             Nothing => report_storage_cache_hit("dql", "2nd"),
             BusyStmt => report_storage_cache_miss("dql", "2nd", "busy"),
             StaleStmt => report_storage_cache_miss("dql", "2nd", "stale"),
@@ -404,19 +459,16 @@ where
 ///
 /// The query is checked for presence in the cache. If not found, a cache miss
 /// request is performed and the query is added to the cache for future use.
-pub(crate) fn dql_execute<'p, R: Vshard + QueryCache>(
+pub(crate) fn dql_execute<'p, 'b, R: Vshard + QueryCache>(
     runtime: &R,
-    msg: &ProtocolMessage,
+    request_id: &str,
+    mut info: DQLPacketPayloadIterator<'b>,
     port: &mut impl Port<'p>,
     timeout: f64,
 ) -> Result<(), SbroadError>
 where
     R::Cache: StorageCache<u64, SmolStr>,
 {
-    let ProtocolMessageIter::Dql(mut info) = msg.get_iter()? else {
-        unreachable!("should be dql iterator")
-    };
-
     let table_schema_info = protocol_get!(info, DQLResult::TableSchemaInfo);
     let index_schema_info = protocol_get!(info, DQLResult::IndexSchemaInfo);
 
@@ -453,7 +505,7 @@ where
         drop(cache_guarded);
         report_storage_cache_miss("dql", "1st", "true");
 
-        let res = dql_cache_miss_execute(runtime, msg.request_id, plan_id, info, port, timeout);
+        let res = dql_cache_miss_execute(runtime, request_id, plan_id, info, port, timeout);
         port.set_type(PortType::ExecuteDql);
         let result = if res.is_err() { "err" } else { "ok" };
         STORAGE_2ND_REQUESTS_TOTAL
@@ -550,6 +602,30 @@ where
 
 fn plan_execute<'p, R: QueryCache>(
     runtime: &R,
+    info: impl PlanInfo,
+    port: &mut impl Port<'p>,
+) -> Result<ExecutionInsight, SbroadError>
+where
+    R::Cache: StorageCache<u64, SmolStr>,
+{
+    let mut cache_guarded: <<R as QueryCache>::Mutex as MutexLike<<R as QueryCache>::Cache>>::Guard<'_> = runtime.cache().lock();
+    if let Some((stmt, _motion_ids)) = cache_guarded.get(&info.plan_id())? {
+        dql_execute_impl(stmt, info.get_cache_hit_iter(), port)
+    } else {
+        sql_execute::<R>(
+            &mut cache_guarded,
+            info.plan_id(),
+            info.schema_info(),
+            info.get_cache_hit_iter(),
+            info.get_cache_miss_iter(),
+            port,
+        )
+    }
+}
+
+#[deprecated(note = "Remove in next release. Used for smooth upgrade")]
+fn old_plan_execute<'p, R: QueryCache>(
+    runtime: &R,
     info: &mut impl FullPlanInfo,
     port: &mut impl Port<'p>,
 ) -> Result<ExecutionInsight, SbroadError>
@@ -561,7 +637,7 @@ where
         // Transaction rollbacks are very expensive in Tarantool, so we're going to
         // avoid transactions for DQL queries. We can achieve atomicity by truncating
         // temporary tables. Isolation is guaranteed by keeping a lock on the cache.
-        stmt_execute(stmt, info, motion_ids, port)
+        old_stmt_execute(stmt, info, motion_ids, port)
     } else {
         old_sql_execute::<R>(&mut cache_guarded, info, port)
     }
@@ -623,6 +699,7 @@ fn table_create_impl(name: &str, pk_name: &str, fields: Vec<Field>) -> Result<()
 
 /// Create a temporary table. It wraps all Space API with `with_su`
 /// since user may have no permissions to read/write tables.
+#[deprecated(note = "Remove in next release. Used for smooth upgrade")]
 fn old_table_create(name: &str, pk_name: &str, meta: &VirtualTableMeta) -> Result<(), SbroadError> {
     let mut fields: Vec<Field> = meta
         .columns
@@ -667,7 +744,8 @@ fn table_create(
 }
 
 // Requires the cache to be locked.
-pub fn stmt_execute<'p>(
+#[deprecated(note = "Remove in next release. Used for smooth upgrade")]
+pub fn old_stmt_execute<'p>(
     stmt: &mut SqlStmt,
     info: &mut impl RequiredPlanInfo,
     motion_ids: &[NodeId],
@@ -675,7 +753,7 @@ pub fn stmt_execute<'p>(
 ) -> Result<ExecutionInsight, SbroadError> {
     let vtables = info.extract_data();
     scopeguard::defer!(
-        truncate_tables(motion_ids, info.id());
+        old_truncate_tables(motion_ids, info.id());
     );
 
     let has_metadata = port.size() == 1;
@@ -701,7 +779,44 @@ pub fn stmt_execute<'p>(
     Ok(res)
 }
 
+/// Helper function to materialize a virtual table on storage.
+#[deprecated(note = "Remove in next release. Used for smooth upgrade")]
+fn old_virtual_table_materialize<R: Vshard + QueryCache>(
+    runtime: &R,
+    optional: &mut OptionalData,
+    required: &mut RequiredData,
+    child_id: NodeId,
+) -> Result<(), SbroadError>
+where
+    R::Cache: StorageCache<SmolStr, NodeId>,
+{
+    let mut info = QueryInfo::new(optional, required);
+    let mut port = TarantoolPort::new_port_c();
+    let mut pico_port = PicoPortC::from(unsafe { port.as_mut_port_c() });
+    old_plan_execute::<R>(runtime, &mut info, &mut pico_port)?;
+    let ir_plan = optional.exec_plan.get_ir_plan();
+    let columns = vtable_columns(ir_plan, child_id)?;
+
+    let mut vtable = VirtualTable::with_columns(columns);
+    for tuple in pico_port.iter() {
+        vtable.write_all(tuple).map_err(|e| {
+            SbroadError::Invalid(
+                Entity::VirtualTable,
+                Some(format_smolstr!(
+                    "failed to write a tuple to the virtual table: {e}"
+                )),
+            )
+        })?;
+    }
+
+    optional
+        .exec_plan
+        .set_motion_vtable(&child_id, vtable, runtime)?;
+    Ok(())
+}
+
 // Requires the cache to be locked.
+#[deprecated(note = "Remove in next release. Used for smooth upgrade")]
 pub fn old_sql_execute<'p, R: QueryCache>(
     cache_guarded: &mut <<R as QueryCache>::Mutex as MutexLike<R::Cache>>::Guard<'_>,
     info: &mut impl FullPlanInfo,
@@ -737,27 +852,36 @@ where
     )?;
 
     let (stmt, motion_ids) = cache_guarded.get(info.id())?.unwrap();
-    stmt_execute(stmt, info, motion_ids, port)
+    old_stmt_execute(stmt, info, motion_ids, port)
 }
 
 /// Helper function to materialize a virtual table on storage.
-fn virtual_table_materialize<R: Vshard + QueryCache>(
+fn virtual_table_materialize<'a, R: Vshard + QueryCache>(
     runtime: &R,
-    optional: &mut OptionalData,
-    required: &mut RequiredData,
-    child_id: NodeId,
-) -> Result<(), SbroadError>
+    request_id: &str,
+    columns: MsgpackArrayIterator<'a, ColumnType>,
+    builder: &TupleBuilderPattern,
+    info: DQLPacketPayloadIterator<'a>,
+    timeout: f64,
+) -> Result<VirtualTable, SbroadError>
 where
-    R::Cache: StorageCache<SmolStr, NodeId>,
+    R::Cache: StorageCache<u64, SmolStr>,
 {
-    let mut info = QueryInfo::new(optional, required);
     let mut port = TarantoolPort::new_port_c();
     let mut pico_port = PicoPortC::from(unsafe { port.as_mut_port_c() });
-    plan_execute::<R>(runtime, &mut info, &mut pico_port)?;
-    let ir_plan = optional.exec_plan.get_ir_plan();
-    let columns = vtable_columns(ir_plan, child_id)?;
+    dql_execute(runtime, request_id, info, &mut pico_port, timeout)?;
 
-    let mut vtable = VirtualTable::with_columns(columns);
+    let mut vcolumns = Vec::with_capacity(columns.len() as usize);
+    for (i, column) in columns.enumerate() {
+        let column_type = column?;
+        vcolumns.push(Column {
+            name: vtable_indexed_column_name(i),
+            r#type: column_type.into(),
+            role: ColumnRole::User,
+            is_nullable: false,
+        });
+    }
+    let mut vtable = VirtualTable::with_columns(vcolumns);
     for tuple in pico_port.iter() {
         vtable.write_all(tuple).map_err(|e| {
             SbroadError::Invalid(
@@ -769,13 +893,24 @@ where
         })?;
     }
 
-    optional
-        .exec_plan
-        .set_motion_vtable(&child_id, vtable, runtime)?;
-    Ok(())
+    for elem in builder.iter() {
+        let TupleBuilderCommand::CalculateBucketId(motion_key) = elem else {
+            continue;
+        };
+
+        if motion_key.targets.is_empty() {
+            continue;
+        }
+
+        vtable.reshard(motion_key, runtime)?;
+        break;
+    }
+
+    Ok(vtable)
 }
 
-fn update_execute<'p, R: Vshard + QueryCache>(
+#[deprecated(note = "Remove in next release. Used for smooth upgrade")]
+fn old_update_execute<'p, R: Vshard + QueryCache>(
     runtime: &R,
     optional: &mut OptionalData,
     required: &mut RequiredData,
@@ -801,7 +936,7 @@ where
                 Some("sharded Update's vtable must be already materialized".into()),
             ));
         }
-        virtual_table_materialize(runtime, optional, required, update_child_id)?;
+        old_virtual_table_materialize(runtime, optional, required, update_child_id)?;
     }
     let vtable = optional.exec_plan.get_motion_vtable(update_child_id)?;
     let space = Space::find(&space_name).ok_or_else(|| {
@@ -814,11 +949,11 @@ where
         let plan = optional.exec_plan.get_ir_plan();
         if is_sharded {
             let delete_tuple_len = plan.get_update_delete_tuple_len(update_id)?;
-            let builder = init_sharded_update_tuple_builder(plan, &vtable, update_id)?;
+            let builder = init_sharded_update_tuple_builder(plan, vtable.get_columns(), update_id)?;
             sharded_update_execute(&mut result, &vtable, &space, &builder, delete_tuple_len)?;
         } else {
-            let builder = init_local_update_tuple_builder(plan, &vtable, update_id)?;
-            local_update_execute(&mut result, &builder, &vtable, &space)?;
+            let builder = init_local_update_tuple_builder(plan, vtable.get_columns(), update_id)?;
+            old_local_update_execute(&mut result, &builder, &vtable, &space)?;
         }
         Ok(())
     })?;
@@ -1013,7 +1148,7 @@ fn update_args<'t>(
 
 /// A working horse for `execute_update_on_storage` in case we're dealing with
 /// nonsharded update.
-fn local_update_execute(
+fn old_local_update_execute(
     result: &mut ConsumerResult,
     builder: &TupleBuilderPattern,
     vtable: &VirtualTable,
@@ -1058,7 +1193,8 @@ fn delete_args<'t>(
     Ok(delete_tuple)
 }
 
-fn delete_execute<'p, R: Vshard + QueryCache>(
+#[deprecated(note = "Remove in next release. Used for smooth upgrade")]
+fn old_delete_execute<'p, R: Vshard + QueryCache>(
     runtime: &R,
     optional: &mut OptionalData,
     required: &mut RequiredData,
@@ -1076,7 +1212,7 @@ where
         // and want to execute local SQL instead of space api.
 
         let mut info = QueryInfo::new(optional, required);
-        plan_execute::<R>(runtime, &mut info, port)?;
+        old_plan_execute::<R>(runtime, &mut info, port)?;
         return Ok(());
     }
 
@@ -1088,7 +1224,7 @@ where
         .exec_plan
         .contains_vtable_for_motion(delete_child_id);
     if build_vtable_locally {
-        virtual_table_materialize(runtime, optional, required, delete_child_id)?;
+        old_virtual_table_materialize(runtime, optional, required, delete_child_id)?;
     }
     let vtable = optional.exec_plan.get_motion_vtable(delete_child_id)?;
     let space = Space::find(&space_name).ok_or_else(|| {
@@ -1116,7 +1252,8 @@ where
     Ok(())
 }
 
-fn insert_execute<'p, R: Vshard + QueryCache>(
+#[deprecated(note = "Remove in next release. Used for smooth upgrade")]
+fn old_insert_execute<'p, R: Vshard + QueryCache>(
     runtime: &R,
     optional: &mut OptionalData,
     required: &mut RequiredData,
@@ -1147,7 +1284,7 @@ where
         .contains_vtable_for_motion(insert_child_id);
     // XXX: Keep this check in sync with `encode_vtables`.
     if build_vtable_locally {
-        virtual_table_materialize(runtime, optional, required, insert_child_id)?;
+        old_virtual_table_materialize(runtime, optional, required, insert_child_id)?;
     }
 
     // Check if the virtual table have been dispatched (case 2) or built locally (case 1).
@@ -1159,7 +1296,7 @@ where
         )
     })?;
     let plan = optional.exec_plan.get_ir_plan();
-    let builder = init_insert_tuple_builder(plan, vtable.as_ref(), insert_id)?;
+    let builder = init_insert_tuple_builder(plan, vtable.get_columns(), insert_id)?;
     let conflict_strategy = optional
         .exec_plan
         .get_ir_plan()
@@ -1228,6 +1365,368 @@ where
         Ok(())
     })?;
     port_write_execute_dml(port, result.row_count);
+
+    Ok(())
+}
+
+fn insert_execute<'p, 'ip, R: Vshard + QueryCache>(
+    runtime: &R,
+    mut iter: InsertIterator<'ip>,
+    port: &mut impl Port<'p>,
+) -> Result<(), SbroadError>
+where
+    R::Cache: StorageCache<u64, SmolStr>,
+{
+    let mut result = ConsumerResult::default();
+
+    let space_id = protocol_get!(iter, InsertResult::TableId);
+    let version = protocol_get!(iter, InsertResult::TableVersion);
+
+    if runtime.get_table_version_by_id(space_id)? != version {
+        return Err(SbroadError::OutdatedStorageSchema);
+    }
+
+    // SAFETY: space_id already exists. Checked by get_table_version_by_id
+    let space = unsafe { Space::from_id_unchecked(space_id) };
+
+    let conflict_strategy = protocol_get!(iter, InsertResult::ConflictPolicy);
+    let tuples = protocol_get!(iter, InsertResult::Tuples);
+    transaction(|| -> Result<(), SbroadError> {
+        for tuple in tuples {
+            let insert_tuple = RawBytes::new(tuple?);
+            // TODO: should we care of default and so on
+            let insert_result = space.insert(insert_tuple);
+            if let Err(Error::Tarantool(tnt_err)) = &insert_result {
+                if tnt_err.error_code() == TarantoolErrorCode::TupleFound as u32 {
+                    match conflict_strategy {
+                        ConflictPolicy::DoNothing => {
+                            tlog!(
+                                    Debug,
+                                    "failed to insert tuple: {insert_tuple:?}. Skipping according to conflict strategy",
+                                );
+                        }
+                        ConflictPolicy::DoReplace => {
+                            tlog!(
+                                    Debug,
+                                    "failed to insert tuple: {insert_tuple:?}. Trying to replace according to conflict strategy"
+                                );
+                            space.replace(insert_tuple).map_err(|e| {
+                                SbroadError::FailedTo(
+                                    Action::ReplaceOnConflict,
+                                    Some(Entity::Space),
+                                    format_smolstr!("{e}"),
+                                )
+                            })?;
+                            result.row_count += 1;
+                        }
+                        ConflictPolicy::DoFail => {
+                            return Err(SbroadError::FailedTo(
+                                Action::Insert,
+                                Some(Entity::Space),
+                                format_smolstr!("{tnt_err}"),
+                            ));
+                        }
+                    }
+                    // if either DoReplace or DoNothing was done,
+                    // jump to next tuple iteration. Otherwise
+                    // the error is not DuplicateKey, and we
+                    // should throw it back to user.
+                    continue;
+                };
+            }
+            insert_result.map_err(|e| {
+                SbroadError::FailedTo(Action::Insert, Some(Entity::Space), format_smolstr!("{e}"))
+            })?;
+            result.row_count += 1;
+        }
+        Ok(())
+    })?;
+    port_write_execute_dml(port, result.row_count);
+
+    Ok(())
+}
+
+fn update_execute<'p, 'ip, R: Vshard + QueryCache>(
+    runtime: &R,
+    mut iter: UpdateSharedKeyIterator<'ip>,
+    port: &mut impl Port<'p>,
+) -> Result<(), SbroadError>
+where
+    R::Cache: StorageCache<u64, SmolStr>,
+{
+    let mut result = ConsumerResult::default();
+
+    let table_id = protocol_get!(iter, UpdateSharedKeyResult::TableId);
+    let version = protocol_get!(iter, UpdateSharedKeyResult::TableVersion);
+
+    if runtime.get_table_version_by_id(table_id)? != version {
+        return Err(SbroadError::OutdatedStorageSchema);
+    }
+
+    // SAFETY: space_id already exists. Checked by get_table_version_by_id
+    let space = unsafe { Space::from_id_unchecked(table_id) };
+
+    let _ = protocol_get!(iter, UpdateSharedKeyResult::UpdateType);
+
+    transaction(|| -> Result<(), SbroadError> {
+        let del_tuples = protocol_get!(iter, UpdateSharedKeyResult::DelTuples);
+        for tuple in del_tuples {
+            let tuple = RawBytes::new(tuple?);
+            space.delete(tuple).map_err(|e| {
+                SbroadError::FailedTo(
+                    Action::Delete,
+                    Some(Entity::Tuple),
+                    format_smolstr!("{e:?}"),
+                )
+            })?;
+        }
+
+        let tuples = protocol_get!(iter, UpdateSharedKeyResult::Tuples);
+
+        for tuple in tuples {
+            let tuple = RawBytes::new(tuple?);
+            space.replace(tuple).map_err(|e| {
+                SbroadError::FailedTo(
+                    Action::Insert,
+                    Some(Entity::Tuple),
+                    format_smolstr!("{e:?}"),
+                )
+            })?;
+            result.row_count += 1;
+        }
+
+        Ok(())
+    })?;
+    port_write_execute_dml(port, result.row_count);
+
+    Ok(())
+}
+
+fn local_insert_execute<'p, 'ip, R: Vshard + QueryCache>(
+    runtime: &R,
+    request_id: &str,
+    mut iter: InsertMaterializedIterator<'ip>,
+    port: &mut impl Port<'p>,
+    timeout: f64,
+) -> Result<(), SbroadError>
+where
+    R::Cache: StorageCache<u64, SmolStr>,
+{
+    let mut result = ConsumerResult::default();
+
+    let table_id = protocol_get!(iter, InsertMaterializedResult::TableId);
+    let version = protocol_get!(iter, InsertMaterializedResult::TableVersion);
+
+    if runtime.get_table_version_by_id(table_id)? != version {
+        return Err(SbroadError::OutdatedStorageSchema);
+    }
+
+    // SAFETY: space_id already exists. Checked by get_table_version_by_id
+    let space = unsafe { Space::from_id_unchecked(table_id) };
+
+    let conflict_strategy = protocol_get!(iter, InsertMaterializedResult::ConflictPolicy);
+    let columns = protocol_get!(iter, InsertMaterializedResult::Columns);
+    let raw_builder = protocol_get!(iter, InsertMaterializedResult::Builder);
+    let builder: TupleBuilderPattern = msgpack::decode(raw_builder).map_err(|e| {
+        SbroadError::DispatchError(format_smolstr!("failed to decode tuple builder: {e}"))
+    })?;
+
+    let dql = protocol_get!(iter, InsertMaterializedResult::DqlInfo);
+
+    let vtable = virtual_table_materialize(runtime, request_id, columns, &builder, dql, timeout)?;
+
+    transaction(|| -> Result<(), SbroadError> {
+        for (bucket_id, positions) in vtable.get_bucket_index() {
+            for pos in positions {
+                let vt_tuple = vtable.get_tuples().get(*pos).ok_or_else(|| {
+                    SbroadError::Invalid(
+                        Entity::VirtualTable,
+                        Some(format_smolstr!(
+                            "tuple at position {pos} not found in virtual table"
+                        )),
+                    )
+                })?;
+                let insert_tuple = build_insert_args(vt_tuple, &builder, Some(bucket_id))?;
+                let insert_result = space.insert(&insert_tuple);
+                if let Err(Error::Tarantool(tnt_err)) = &insert_result {
+                    if tnt_err.error_code() == TarantoolErrorCode::TupleFound as u32 {
+                        match conflict_strategy {
+                            ConflictPolicy::DoNothing => {
+                                tlog!(
+                                    Debug,
+                                    "failed to insert tuple: {insert_tuple:?}. Skipping according to conflict strategy",
+                                );
+                            }
+                            ConflictPolicy::DoReplace => {
+                                tlog!(
+                                    Debug,
+                                    "failed to insert tuple: {insert_tuple:?}. Trying to replace according to conflict strategy"
+                                );
+                                space.replace(&insert_tuple).map_err(|e| {
+                                    SbroadError::FailedTo(
+                                        Action::ReplaceOnConflict,
+                                        Some(Entity::Space),
+                                        format_smolstr!("{e}"),
+                                    )
+                                })?;
+                                result.row_count += 1;
+                            }
+                            ConflictPolicy::DoFail => {
+                                return Err(SbroadError::FailedTo(
+                                    Action::Insert,
+                                    Some(Entity::Space),
+                                    format_smolstr!("{tnt_err}"),
+                                ));
+                            }
+                        }
+                        // if either DoReplace or DoNothing was done,
+                        // jump to next tuple iteration. Otherwise
+                        // the error is not DuplicateKey, and we
+                        // should throw it back to user.
+                        continue;
+                    };
+                }
+                insert_result.map_err(|e| {
+                    SbroadError::FailedTo(
+                        Action::Insert,
+                        Some(Entity::Space),
+                        format_smolstr!("{e}"),
+                    )
+                })?;
+                result.row_count += 1;
+            }
+        }
+        Ok(())
+    })?;
+    port_write_execute_dml(port, result.row_count);
+
+    Ok(())
+}
+
+fn local_update_execute<'p, 'ip, R: Vshard + QueryCache>(
+    runtime: &R,
+    request_id: &str,
+    mut iter: UpdateIterator<'ip>,
+    port: &mut impl Port<'p>,
+    timeout: f64,
+) -> Result<(), SbroadError>
+where
+    R::Cache: StorageCache<u64, SmolStr>,
+{
+    let mut result = ConsumerResult::default();
+
+    let table_id = protocol_get!(iter, UpdateResult::TableId);
+    let version = protocol_get!(iter, UpdateResult::TableVersion);
+
+    if runtime.get_table_version_by_id(table_id)? != version {
+        return Err(SbroadError::OutdatedStorageSchema);
+    }
+
+    // SAFETY: space_id already exists. Checked by get_table_version_by_id
+    let space = unsafe { Space::from_id_unchecked(table_id) };
+
+    let columns = protocol_get!(iter, UpdateResult::Columns);
+    let raw_builder = protocol_get!(iter, UpdateResult::Builder);
+    let builder: TupleBuilderPattern = msgpack::decode(raw_builder).map_err(|e| {
+        SbroadError::DispatchError(format_smolstr!("failed to decode tuple builder: {e}"))
+    })?;
+
+    let dql = protocol_get!(iter, UpdateResult::DqlInfo);
+
+    let vtable = virtual_table_materialize(runtime, request_id, columns, &builder, dql, timeout)?;
+
+    transaction(|| -> Result<(), SbroadError> {
+        for vt_tuple in vtable.get_tuples() {
+            let args = update_args(vt_tuple, &builder)?;
+            let update_res = space.update(&args.key_tuple, &args.ops);
+            update_res.map_err(|e| {
+                SbroadError::FailedTo(Action::Update, Some(Entity::Space), format_smolstr!("{e}"))
+            })?;
+            result.row_count += 1;
+        }
+
+        Ok(())
+    })?;
+    port_write_execute_dml(port, result.row_count);
+
+    Ok(())
+}
+
+fn local_delete_execute<'p, 'ip, R: Vshard + QueryCache>(
+    runtime: &R,
+    request_id: &str,
+    mut iter: DeleteFilteredIterator<'ip>,
+    port: &mut impl Port<'p>,
+    timeout: f64,
+) -> Result<(), SbroadError>
+where
+    R::Cache: StorageCache<u64, SmolStr>,
+{
+    let mut result = ConsumerResult::default();
+
+    let table_id = protocol_get!(iter, DeleteFilteredResult::TableId);
+    let version = protocol_get!(iter, DeleteFilteredResult::TableVersion);
+
+    if runtime.get_table_version_by_id(table_id)? != version {
+        return Err(SbroadError::OutdatedStorageSchema);
+    }
+
+    // SAFETY: space_id already exists. Checked by get_table_version_by_id
+    let space = unsafe { Space::from_id_unchecked(table_id) };
+
+    let columns = protocol_get!(iter, DeleteFilteredResult::Columns);
+    let raw_builder = protocol_get!(iter, DeleteFilteredResult::Builder);
+    let builder: TupleBuilderPattern = msgpack::decode(raw_builder).map_err(|e| {
+        SbroadError::DispatchError(format_smolstr!("failed to decode tuple builder: {e}"))
+    })?;
+
+    let dql = protocol_get!(iter, DeleteFilteredResult::DqlInfo);
+
+    let vtable = virtual_table_materialize(runtime, request_id, columns, &builder, dql, timeout)?;
+
+    transaction(|| -> Result<(), SbroadError> {
+        for vt_tuple in vtable.get_tuples() {
+            let delete_tuple = delete_args(vt_tuple, &builder)?;
+            if let Err(Error::Tarantool(tnt_err)) = space.delete(&delete_tuple) {
+                return Err(SbroadError::FailedTo(
+                    Action::Delete,
+                    Some(Entity::Tuple),
+                    format_smolstr!("{tnt_err:?}"),
+                ));
+            }
+            result.row_count += 1;
+        }
+        Ok(())
+    })?;
+    port_write_execute_dml(port, result.row_count);
+
+    Ok(())
+}
+
+fn delete_execute<'p, 'ip, R: Vshard + QueryCache>(
+    runtime: &R,
+    mut iter: DeleteFullIterator<'ip>,
+    port: &mut impl Port<'p>,
+) -> Result<(), SbroadError>
+where
+    R::Cache: StorageCache<u64, SmolStr>,
+{
+    let table_id = protocol_get!(iter, DeleteFullResult::TableId);
+    let version = protocol_get!(iter, DeleteFullResult::TableVersion);
+
+    let (table_name, current_version) = runtime.get_table_name_and_version(table_id)?;
+
+    if current_version != version {
+        return Err(SbroadError::OutdatedStorageSchema);
+    }
+
+    let plan_id = protocol_get!(iter, DeleteFullResult::PlanId);
+    let options = protocol_get!(iter, DeleteFullResult::Options);
+
+    // We have a deal with a DELETE without WHERE filter
+    // and want to execute local SQL instead of space api.
+    let info = FullDeletePlanInfo::new(plan_id, &table_name, options);
+    plan_execute::<R>(runtime, info, port)?;
 
     Ok(())
 }
