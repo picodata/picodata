@@ -28,6 +28,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::audit;
+use crate::catalog::pico_bucket::DEFAULT_BUCKET_ID_COLUMN_NAME;
 use crate::preemption::scheduler_options;
 use crate::schema::{Distribution, ShardingFn, ADMIN_ID};
 use crate::storage::{self, Catalog};
@@ -99,8 +100,6 @@ impl Tier {
         Some(self.name.clone())
     }
 }
-
-pub const DEFAULT_BUCKET_COLUMN: &str = "bucket_id";
 
 /// Get schema version of given index.
 ///
@@ -631,7 +630,7 @@ impl RouterMetadata {
         RouterMetadata {
             waiting_timeout: DEFAULT_QUERY_TIMEOUT,
             cache_capacity: DEFAULT_CAPACITY,
-            sharding_column: DEFAULT_BUCKET_COLUMN.to_string(),
+            sharding_column: DEFAULT_BUCKET_ID_COLUMN_NAME.to_string(),
             functions,
         }
     }
@@ -656,7 +655,7 @@ impl Metadata for RouterMetadata {
             let col_name = &column_meta.name;
             let is_nullable = column_meta.is_nullable;
             let col_type = UnrestrictedType::new(column_meta.field_type.as_str())?;
-            let role = if col_name == DEFAULT_BUCKET_COLUMN {
+            let role = if col_name == DEFAULT_BUCKET_ID_COLUMN_NAME {
                 ColumnRole::Sharding
             } else {
                 ColumnRole::User

@@ -1,3 +1,4 @@
+use crate::catalog::pico_bucket::DEFAULT_BUCKET_ID_COLUMN_NAME;
 use crate::cli::run::PICODATA_COOKIE;
 use crate::config::InstanceConfig;
 use crate::schema::{fields_to_format, Distribution, PrivilegeType, SchemaObjectType};
@@ -421,10 +422,10 @@ pub fn ddl_create_space_on_master(
             let index = IndexDef {
                 table_id: pico_table_def.id,
                 id: 1,
-                name: "bucket_id".into(),
+                name: DEFAULT_BUCKET_ID_COLUMN_NAME.into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(false)],
-                parts: vec![Part::field("bucket_id")
+                parts: vec![Part::field(DEFAULT_BUCKET_ID_COLUMN_NAME)
                     .field_type(IndexFieldType::Unsigned)
                     .is_nullable(false)],
                 operable: false,

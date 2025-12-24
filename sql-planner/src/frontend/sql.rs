@@ -1770,7 +1770,7 @@ fn parse_insert<M: Metadata>(
         // insert into t ...
         let mut column_types = Vec::with_capacity(rel.columns.len());
         for column in &rel.columns {
-            if column.name != "bucket_id" {
+            if column.role != ColumnRole::Sharding {
                 let col_type = column.r#type.get().expect("column type must be known");
                 column_types.push(col_type);
             }

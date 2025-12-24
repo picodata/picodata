@@ -1,5 +1,6 @@
 use crate::access_control::UserMetadataKind;
 use crate::cas;
+use crate::catalog::pico_bucket::DEFAULT_BUCKET_ID_COLUMN_NAME;
 use crate::config::DEFAULT_USERNAME;
 use crate::instance::InstanceName;
 use crate::pico_service::pico_service_password;
@@ -264,8 +265,8 @@ impl Distribution {
     }
 }
 
-fn default_bucket_id_field() -> SmolStr {
-    SmolStr::new_static("bucket_id")
+const fn default_bucket_id_field() -> SmolStr {
+    SmolStr::new_static(DEFAULT_BUCKET_ID_COLUMN_NAME)
 }
 
 ::tarantool::define_str_enum! {
