@@ -68,6 +68,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fix name resolution in HAVING if projection contains a param.
 - Fixed that vshard would consume non-negligible amount of resources when idling
   on big cluster setups.
+- Fix single motion policy handling for left join.
 
 ### WebUI
 - Introduce display of used memory in terms of tier
