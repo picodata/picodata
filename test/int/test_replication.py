@@ -72,11 +72,9 @@ def test_2_of_3_writable(cluster: Cluster):
     assert i3.replicaset_master_name() == master_name
 
     old_leader = master
-    master, i3 = sorted(
-        [i2, i3],
-        key=lambda i: i.eval("return box.info.id") == master_name,
-        reverse=True
-    )
+    master = i2
+    if i2.name != master_name:
+        master, i3 = i3, i2
 
     rl_vclock = master.eval("return box.info.vclock")
     del rl_vclock[0]
