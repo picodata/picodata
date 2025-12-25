@@ -461,8 +461,8 @@ def test_backoff_proc_sharding(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
     i1.wait_governor_status("idle")
 
-    lc1 = log_crawler(i1, "backoff manager: sharding should wait 500 ms")
-    lc2 = log_crawler(i1, "backoff manager: sharding should wait 1000 ms")
+    lc1 = log_crawler(i1, "sleeping due to backoff, timeout: 1")
+    lc2 = log_crawler(i1, "sleeping due to backoff, timeout: 3")
 
     # Enable error injection so that .proc_sharding fails after configuring the vshard
     i1.call("pico._inject_error", "PROC_SHARDING_SPURIOUS_FAILURE", True)
