@@ -49,24 +49,34 @@ impl Scheduler {
         // Check time interval.
         let start_time =
             SCHEDULER_START_TIME.with(|timer| timer.get().expect("timer must be initialized"));
-        if start_time.elapsed() < Duration::from_micros(options.yield_interval_us) {
+        let run_interval = start_time.elapsed();
+        if run_interval < Duration::from_micros(options.yield_interval_us) {
             return Ok(());
         }
 
         // Commit current progress and yield.
-        let mut tx_need_restart = false;
+        let mut tx_need_split = false;
         if is_in_transaction() {
             commit().map_err(TransactionError::FailedToCommit)?;
-            tx_need_restart = true;
+            tx_need_split = true;
+            (options.metrics.record_tx_splits_total)();
         }
 
         yield_impl();
 
         // Resume after yield and restart the timer.
-        SCHEDULER_START_TIME.with(|timer| timer.set(Some(Instant::now())));
+        (options.metrics.record_yields_total)();
+        SCHEDULER_START_TIME.with(|timer| {
+            let new_time = Instant::now();
+            timer.set(Some(new_time));
+            let sleep_interval = new_time.saturating_duration_since(
+                start_time.checked_add(run_interval).expect("invalid time"),
+            );
+            (options.metrics.record_yield_sleep_duration)(sleep_interval.as_millis() as f64);
+        });
 
         // Open new transaction.
-        if tx_need_restart {
+        if tx_need_split {
             begin().map_err(TransactionError::RolledBack)?;
         }
 
@@ -77,4 +87,21 @@ impl Scheduler {
 pub struct SchedulerOptions {
     pub enabled: bool,
     pub yield_interval_us: u64,
+    pub metrics: SchedulerMetrics,
+}
+
+pub struct SchedulerMetrics {
+    pub record_tx_splits_total: fn(),
+    pub record_yield_sleep_duration: fn(f64),
+    pub record_yields_total: fn(),
+}
+
+impl SchedulerMetrics {
+    pub const fn noop() -> Self {
+        Self {
+            record_tx_splits_total: || {},
+            record_yield_sleep_duration: |_| {},
+            record_yields_total: || {},
+        }
+    }
 }

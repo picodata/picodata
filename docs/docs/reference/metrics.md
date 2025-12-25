@@ -121,6 +121,26 @@ search:
 
 Тип: counter
 
+### pico_sql_tx_splits_total
+
+Общее количество разбиений транзакций в DML-запросах при выполнении в режиме
+неблокирующего SQL.
+
+Тип: counter
+
+### pico_sql_yield_sleep_duration
+
+Гистограмма времени ожидания SQL-запроса во время переключения выполнения
+в режиме неблокирующего SQL.
+
+Тип: histogram
+
+### pico_sql_yields_total
+
+Общее количество переключений выполнения в режиме неблокирующего SQL.
+
+Тип: counter
+
 ## Метрики Tarantool {: #tarantool_metrics }
 
 ### lj_gc_allocated_total

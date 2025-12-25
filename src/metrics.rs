@@ -25,6 +25,39 @@ static GOVERNOR_CHANGE_COUNTER: LazyLock<IntCounter> = LazyLock::new(|| {
     .expect("Failed to create pico_governor_changes_total counter")
 });
 
+static SQL_TX_SPLITS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    IntCounterVec::new(
+        Opts::new(
+            "pico_sql_tx_splits_total",
+            "Total number of SQL transaction splits caused by execution yields",
+        ),
+        &["tier", "replicaset"],
+    )
+    .expect("Failed to create pico_sql_tx_splits_total counter")
+});
+
+static SQL_YIELD_SLEEP_DURATION: LazyLock<HistogramVec> = LazyLock::new(|| {
+    HistogramVec::new(
+        HistogramOpts::new(
+            "pico_sql_yield_sleep_duration",
+            "Histogram of the time spent sleeping during SQL execution yields (in milliseconds)",
+        ),
+        &["tier", "replicaset"],
+    )
+    .expect("Failed to create pico_sql_yield_sleep_duration counter")
+});
+
+static SQL_YIELDS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    IntCounterVec::new(
+        Opts::new(
+            "pico_sql_yields_total",
+            "Total number of SQL execution yield events",
+        ),
+        &["tier", "replicaset"],
+    )
+    .expect("Failed to create pico_sql_yields_total counter")
+});
+
 static SQL_QUERY_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     IntCounterVec::new(
         Opts::new(
@@ -314,6 +347,24 @@ pub fn record_governor_change() {
     GOVERNOR_CHANGE_COUNTER.inc();
 }
 
+pub fn record_sql_tx_splits_total() {
+    SQL_TX_SPLITS_TOTAL
+        .with_label_values(&[my_tier(), my_replicaset()])
+        .inc();
+}
+
+pub fn record_sql_yields_total() {
+    SQL_YIELDS_TOTAL
+        .with_label_values(&[my_tier(), my_replicaset()])
+        .inc();
+}
+
+pub fn record_sql_yield_sleep_duration(duration_ms: f64) {
+    SQL_YIELD_SLEEP_DURATION
+        .with_label_values(&[my_tier(), my_replicaset()])
+        .observe(duration_ms);
+}
+
 pub fn record_sql_query_total(tier: &str, replicaset: &str) {
     SQL_QUERY_TOTAL.with_label_values(&[tier, replicaset]).inc();
 }
@@ -431,6 +482,9 @@ pub fn register_metrics(registry: &prometheus::Registry) -> prometheus::Result<(
     registry.register(Box::new(RPC_REQUEST_DURATION.clone()))?;
     registry.register(Box::new(RPC_REQUEST_ERRORS_TOTAL.clone()))?;
     registry.register(Box::new(RPC_REQUEST_TOTAL.clone()))?;
+    registry.register(Box::new(SQL_TX_SPLITS_TOTAL.clone()))?;
+    registry.register(Box::new(SQL_YIELD_SLEEP_DURATION.clone()))?;
+    registry.register(Box::new(SQL_YIELDS_TOTAL.clone()))?;
     registry.register(Box::new(SQL_QUERY_DURATION.clone()))?;
     registry.register(Box::new(SQL_QUERY_ERRORS_TOTAL.clone()))?;
     registry.register(Box::new(SQL_QUERY_TOTAL.clone()))?;
@@ -561,15 +615,6 @@ pub fn get_op_type_and_table(op: &Op) -> Vec<(&str, SmolStr)> {
 fn update_pico_info_uptime() {
     let uptime: f64 = unsafe { tarantool_uptime() };
 
-    let mut replicaset = "unknown";
-    let mut tier = "unknown";
-    let mut cluster_name = "unknown";
-    if let Ok(node) = node::global() {
-        replicaset = node.topology_cache.my_replicaset_name();
-        tier = node.topology_cache.my_tier_name();
-        cluster_name = node.topology_cache.cluster_name;
-    }
-
     let instance_dir_name = PicodataConfig::get()
         .instance
         .instance_dir()
@@ -578,6 +623,38 @@ fn update_pico_info_uptime() {
         .unwrap_or_else(|| Cow::Owned(String::from("unknown")));
 
     INFO_UPTIME
-        .with_label_values(&[instance_dir_name.as_ref(), replicaset, tier, cluster_name])
+        .with_label_values(&[
+            instance_dir_name.as_ref(),
+            my_replicaset(),
+            my_tier(),
+            my_cluster(),
+        ])
         .set(uptime);
+}
+
+#[inline(always)]
+fn my_replicaset() -> &'static str {
+    let mut replicaset = "unknown";
+    if let Ok(node) = node::global() {
+        replicaset = node.topology_cache.my_replicaset_name();
+    }
+    replicaset
+}
+
+#[inline(always)]
+fn my_tier() -> &'static str {
+    let mut tier = "unknown";
+    if let Ok(node) = node::global() {
+        tier = node.topology_cache.my_tier_name();
+    }
+    tier
+}
+
+#[inline(always)]
+fn my_cluster() -> &'static str {
+    let mut cluster = "unknown";
+    if let Ok(node) = node::global() {
+        cluster = node.topology_cache.cluster_name;
+    }
+    cluster
 }
