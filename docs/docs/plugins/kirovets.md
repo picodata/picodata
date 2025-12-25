@@ -75,6 +75,10 @@ Kirovets — это платформа виртуализации данных, 
       - витрина данных
       - триггер
       - фильтр
+      - мутатор
+
+      **Мутатор (Mutator)** — это пользовательская Lua-функция, выпоняемая непосредственно перед фильтрацией,
+      позволяющая тем или иным образом изменить поля, которые содержит операция.
 
       **SQL-витрина** — это SQL-запрос, находящийся в файле конфигурации, который может выступать как обработчик витрины данных.
 
@@ -176,24 +180,24 @@ zip -r ../config.zip *
 #### Загрузка конфигурации с помощью `curl` {: #load_via_curl }
 
 Для загрузки конфигурации через API выполните POST-запрос к конечной
-точке `api/v1/config` платформы "Кировец". Если у вас включена
+точке `kirovets/api/v1/config` платформы "Кировец". Если у вас включена
 авторизация, не забудьте включить соответствующие авторизационные
 заголовки в ваш запрос.
 
 Пример команды `curl`:
 ```shell
-curl -X POST kirovets.local/api/v1/config -F 'file=@config.zip'
+curl -X POST kirovets.local/kirovets/api/v1/config -F 'file=@config.zip'
 ```
 
-- `kirovets.local/api/v1/config`: URL-адрес вашей платформы "Кировец" и конечная точка для загрузки конфигурации.
+- `kirovets.local/kirovets/api/v1/config`: URL-адрес вашей платформы "Кировец" и конечная точка для загрузки конфигурации.
   Замените `kirovets.local` на актуальный адрес вашей системы.
 
 ??? example "Пример с авторизацией:"
       ```shell
       # Получение `access_token`
       http -a kirovets-dev:QmM4gvSI4ENfZwBjzCdv6Dr4RxBxcDlM -f POST keycloak:8989/realms/kirovets_dev/protocol/openid-connect/token grant_type=client_credentials
-      
-      curl -X POST kirovets.local/api/v1/config \                                                                                                                 
+
+      curl -X POST kirovets.local/kirovets/api/v1/config \
         -H 'Authorization: Bearer ACCESS_TOKEN' \
         -F 'file=@config.zip'
       ```
@@ -223,6 +227,7 @@ curl -X POST kirovets.local/api/v1/config -F 'file=@config.zip'
 - `affinity`: определяет стратегию распределения данных таблицы по узлам кластера
 - `triggers`: Lua-функции, выполняемые после применения изменений
 - `filter`: Lua-функция, определяющая применение изменений
+- `mutator`: Lua-функция, определяющая применение изменений
 
 Пример:
 
@@ -245,6 +250,7 @@ schema:
     sources:
       ogg:
         table: TABLE1
+    mutator: mutators.table1
 ```
 
 #### Определение полей (fields) {: #fields_def }
@@ -267,7 +273,7 @@ schema:
 
 - `unsigned` — целые неотрицательные числа
 - `string` — строка любой длины
-- `number` — число, в том числе и с дробной частью
+- `double` — вещественное число
 - `integer` — целые числа со знаком
 - `boolean` — булево значение
 - `decimal` — используется для хранения точных числовых значений с заданной точностью и масштабом
@@ -327,6 +333,13 @@ schema:
 изменения отменить. Как и у триггера, имя функции-фильтра формируется из
 имени файла, где она объявлена и имени самой функции, объединенных через
 точку. Подробнее о написании функций см. ниже.
+
+#### Определение мутатора (mutator) {: #mutator_def }
+
+Объект `mutator` — это строка, содержащая имя мутатора, который
+будет применен до попадания оперции в механизм фильтрации. Имя функции-мутатора формируется из
+имени файла, где она объявлена и имени самой функции, объединенных через
+точку. Подробнее о написании функций см. [ниже](#mutators_conf).
 
 #### Определение источников данных для таблицы (sources) {: #sources_def }
 
@@ -671,6 +684,90 @@ end
 данных в основной таблице автоматически создается или обновляется
 соответствующий объект в зависимой таблице.
 
+
+### Пользовательские мутаторы {: #custom_mutators}
+
+Пользовательский мутатор — это функция, написанная на языке Lua, которая позволяет модифицировать поля объекта перед его дальнейшей обработкой в системе. Основная задача мутатора — обогатить или преобразовать данные, которые отсутствуют или представлены в нежелательном формате в исходном источнике. **Мутаторы** выполняются **до** применения механизма фильтрации, что позволяет привести данные к единому виду перед принятием решения о применении операции.
+
+#### Конфигурация мутаторов {: #mutators_conf }
+
+Для использования пользовательских мутаторов необходимо создать Lua-модуль и разместить файл (например, `sample.lua`) в директории `datamarts`, которая находится в корневом каталоге конфигурации (`<корневой_каталог_конфигурации>/datamarts/sample.lua`).
+Модуль должен возвращать таблицу, содержащую все доступные в нём функции-мутаторы.
+
+Пример модуля с пользовательскими мутаторами:
+
+```lua
+local function mutator1(new)
+    if new.price ~= nil and new.quantity ~= nil then
+        new.total = new.price * new.quantity
+    end
+
+    return new
+end
+
+local function mutator2(new)
+    if new.ts ~= nil then
+        new.ts = meta.changed_at
+    end
+
+    return new
+end
+
+return {
+    mutator1 = mutator1,
+    mutator2 = mutator2,
+}
+```
+
+Мутаторы необходимо указать в конфигурации системы. Для каждой таблицы можно определлить свой мутатор,
+который задается в секции `schema.<имя_таблицы>` с помщью параметра `mutator`.
+Имя мутатора задается в формате `<имя_модуля>.<имя_функции>`.
+
+Пример конфигурации:
+
+```yaml
+schema:
+  TBL:
+    mutator: sample.mutator1 # Используется функция mutator1 из модуля sample.lua
+```
+
+#### Сигнатура пользовательской функции {: #mutators_custom_function_signature }
+
+Функция-мутатор должна иметь следующую сигнатуру:
+
+```lua
+local function mutator(new)
+    -- Логика изменения объекта
+    return new
+end
+```
+
+где `new` — таблица, представляющая новый объект.
+Содержит как основные данные, так и метаинформацию в поле `new.meta`.
+Функция-мутатор **должна** возращаться измененный объект `new`.
+
+Примеры пользовательских мутаторов:
+
+```lua
+local function add_discr(new)
+    if new.discr == nil then
+        new.discr = 'Description'
+    end
+
+    return new
+end
+```
+
+```lua
+local function add_ts(new)
+    if new.ts == nil then
+        new.ts = new.meta.changed_at
+    end
+
+    return new
+end
+```
+
 ### Импортеры (`importers`) {: #triggers_importers }
 
 Импортеры являются элементом платформы "Кировец" для загрузки данных из внешних источников в ваши таблицы. В разделе `importers`
@@ -698,8 +795,9 @@ end
 
 Существуют следующие потоковые импортеры:
 
-- `ogg`: импортирует данные, предоставляемые Oracle Golden Gate через flat files
+- `ogg`: импортирует данные, предоставляемые Oracle Golden Gate через flat files.
 - `kafka_debezium`: импортирует сгенерированные Debezium данные,используя Kafka в качестве брокера сообщений.
+- `dataflot`: импортирует данные, предоставляемые Датафлот через flat files.
 
 Секция `importers` определяет, откуда платформа будет получать данные. Это словарь, где:
 
@@ -778,7 +876,7 @@ importers:
 Привер:
 
 ```yaml
-importers:                                    
+importers:
   kafka_debezium:
     type: kafkadebezium
     broker: localhost:9092
@@ -788,6 +886,87 @@ importers:
     opts:
       message.max.bytes: 3145728
     max_batch_size: 100
+```
+
+#### Dataflot {: #datflot }
+
+Импортёр данных из плоских файлов
+
+Импортер предназначен для загрузки данных из текстовых файлов (.txt), организованных в заданную иерархическую структуру каталогов. Импортёр интерпретирует операции из журналы изменений (CDC), применяя их к целевой системе.
+
+Файлы содержат последовательность операций изменения данных (Insert, Update, Delete), сгруппированных по транзакциям.
+Каждая строка файла представляет собой одну операцию и состоит из двух логических частей:
+
+  - Метаданные операции (первые 6 полей)
+
+    1. Время операции на источнике: `2025-06-10 15:55:14`. Стоит отметить, что значение этого поля может использоваться в коде пользовательских функций ([триггеров](#custom_triggers), [фильтров](#custom_filters) и [мутаторов](#custom_mutators)). Временная метка содержится в новом объекте (`new.meta.changed_at`).
+
+    2. Тип операции:
+
+        `I` — INSERT (вставка новой записи).
+
+        `U` — UPDATE (обновление существующей записи).
+
+        `D` — DELETE (удаление записи).
+
+    3. LSN (Log Sequence Number): Уникальный идентификатор записи в журнале источника. Пример: `3147828892984`.
+
+    4. Время коммита транзакции: `2025-06-10 15:55:14`
+
+    5. ID транзакции: `231142606`
+
+    6. Порядковый номер операции в транзакции: `1`
+
+  - Значения полей
+
+    Имена полей в файле отсутствуют, поэтому для работы импортера требуется описать схему данных в конфигурации.
+
+    Для операций INSERT (`I`) и DELETE (`D`) передаются только актуальные значения полей (новые для `I`, старые для `D`). Пустые значения обозначаются пустой строкой между разделителями (`;;`).
+
+    Для операции UPDATE (`U`) для каждого поля передается пара значений: старое значение (до изменения) и новое значение (после изменения), разделённые точкой с запятой.
+
+Пример:
+```
+2025-06-10 15:55:14;I;3147828892984;2025-06-10 15:55:14;231142606;1;;1;;"A";;"B";;"test3";;"2НКю2ю";;"12345.67891";;9.99998984e+04;;1.234567891234560e+09;;"9223372036854775807";;"563.45";;2025-06-10 00:00:00;;2025-06-10 15:55:14.224222000;
+2025-06-10 15:55:17;U;3147828893296;2025-06-10 15:55:17;231142607;2;1;1;"A";"U";"B";"U";"test3";"UPDATE";"2НКю2ю";"2НКю2ю";"12345.67891";"12345.67891";9.99998984e+04;9.99998984e+04;1.234567891234560e+09;1.234567891234560e+09;"9223372036854775807";"9223372036854775807";"563.45";"563.45";2025-06-10 00:00:00;2025-06-10 00:00:00;2025-06-10 15:55:14.224222000;2025-06-10 15:55:14.224222000;
+2025-06-10 15:55:20;D;3147828893656;2025-06-10 15:55:20;231142608;3;1;;"U";;"U";;"UPDATE";;"2НКю2ю";;"12345.67891";;9.99998984e+04;;1.234567891234560e+09;;"9223372036854775807";;"563.45";;2025-06-10 00:00:00;;2025-06-10 15:55:14.224222000;;
+```
+
+Доступные параметры для настройки импортёра:
+
+- `type` (обязательный) - тип импортера, необходимо установитиь значение dataflot.
+- `file_dir` (обязательный) - путь к корневой директории, где хранятся данные сгрупированный по циклу применения.
+
+Пример структуры корневого каталога:
+```shell
+  .
+  └── data
+      └── cycle_1.work
+          └── cycle_1
+              └── source_table.txt
+      └── cycle_2.work
+          └── cycle_2
+              └── source_table.txt
+```
+
+- `schema` (обязательный) - cхема данных, описывающая таблицы и их поля. Ключ объекта — название таблицы в источнике данных, значение — список столбцов этой таблицы. **Порядок столбцов должен соответствовать порядку данных в исходных файлах**.
+- `max_batch_size` - (необязательный, значение по умолчанию 10000) — задает размер пакета с записями, которые будут отправлены из импортера в слой хранения за один раз.
+
+Пример:
+```yaml
+  dataflot:
+    type: dataflot
+    file_dir: dev/dataflot
+    schema:
+      source_table_1:
+        - id
+        - name
+        - is_active
+        - balance
+      source_table_2:
+        - id
+        - name
+    max_batch_size: 1000
 ```
 
 ### Задачи (`tasks`) {: #triggers_tasks }
@@ -825,6 +1004,7 @@ importers:
   - `interval` — доступен и обязателен при указании типа расписания `continuous`. Представляет собой человекочитаемое количество
       времени, которое пройдет между окончанием предыдущего запуска задачи и началом следующего. Пример: `1s` — для одной секунды,
       `1m` — для одной минуты, `1h30m` — для 90 минут
+  - `enabled` — включает (`true`) или отключает (`false`) автоматический запуск задачи по расписанию. Отключённая задача остаётся в конфигурации и доступна для [API](#tasks_api). По умолчанию: `true`.
 
 Пример:
 
@@ -870,7 +1050,7 @@ SQL-запрос, так и написанный на языке Lua.
 витрины данных состоит из следующих атрибутов:
 
 - `path` (обязательно) — относительный URI конечной точки. Например:
-  `/v1/app/mydata`
+  `kirovets/v1/app/mydata`
 - `method` (обязательно) — HTTP-метод запроса. Доступны: `GET`, `POST`,
   `PUT` и `DELETE`
 - `handler` (обязательно) — настройки обработчика запроса. Представляет
@@ -898,13 +1078,13 @@ SQL-запрос, так и написанный на языке Lua.
 
 ```yaml
 api:
-  - path: /v1/app/lua
+  - path: kirovets/v1/app/lua
     method: GET
     handler:
       type: lua
       name: datamarts.get_destination
 
-  - path: /v1/app/relations
+  - path: kirovets/v1/app/relations
     method: GET
     handler:
       type: sql
@@ -986,7 +1166,7 @@ Lua-обработчик для витрины — это файл, написа
 Запрос с аргументами:
 
 ```shell
-curl http://kirovets.loc/v1/app/relations?id=id_35
+curl http://kirovets.loc/kirovets/v1/app/relations?id=id_35
 
 HTTP/1.1 200 Ok
 Connection: keep-alive
@@ -1053,7 +1233,7 @@ auth:
 
 ### Управление задачами {: #tasks_api }
 
-**Базовый URL:** `https://<router-host>:<port>/api/v1/tasks`
+**Базовый URL:** `https://<router-host>:<port>/kirovets/api/v1/tasks`
 
 #### Получить информацию о задаче {: #tasks_api_info }
 
@@ -1066,7 +1246,7 @@ auth:
 - **Пример запроса:**
 
   ```shell
-  curl -X GET "http://localhost:8002/api/v1/tasks/parquet"
+  curl -X GET "http://localhost:8002/kirovets/api/v1/tasks/parquet"
   ```
 
 - **Пример ответа:**
@@ -1107,7 +1287,7 @@ auth:
 - **Пример запроса:**
 
   ```shell
-  curl -X POST "http://localhost:8002/api/v1/tasks/parquet/disable"
+  curl -X POST "http://localhost:8002/kirovets/api/v1/tasks/parquet/disable"
   ```
 
 - **Пример ответа:**
@@ -1133,7 +1313,7 @@ auth:
 - **Пример запроса:**
 
   ```shell
-  curl -X POST "http://localhost:8002/api/v1/tasks/parquet/enable"
+  curl -X POST "http://localhost:8002/kirovets/api/v1/tasks/parquet/enable"
   ```
 
 - **Пример ответа:**
@@ -1160,7 +1340,7 @@ auth:
 - **Пример запроса:**
 
   ```shell
-  curl -X POST "http://localhost:8002/api/v1/tasks/parquet"
+  curl -X POST "http://localhost:8002/kirovets/api/v1/tasks/parquet"
   ```
 
 - **Примеры ответов:**
@@ -1180,7 +1360,7 @@ auth:
 
 ### Управления таблицами {: #tables_api }
 
-**Базовый URL:** `https://<router-host>:<port>/api/v1/tables`
+**Базовый URL:** `https://<router-host>:<port>/kirovets/api/v1/tables`
 
 #### Получить информацию о таблицах {: #tables_api_info }
 
@@ -1194,8 +1374,8 @@ auth:
 - **Примеры запроса:**
 
   ```shell
-  curl -X GET "http://localhost:8002/api/v1/tables/"
-  curl -X GET "http://localhost:8002/api/v1/tables/users"
+  curl -X GET "http://localhost:8002/kirovets/api/v1/tables/"
+  curl -X GET "http://localhost:8002/kirovets/api/v1/tables/users"
   ```
 
 - **Пример ответа:**
@@ -1259,7 +1439,7 @@ auth:
 - **Пример запроса:**
 
   ```shell
-  curl -X DELETE "http://localhost:8002/api/v1/tables/users"
+  curl -X DELETE "http://localhost:8002/kirovets/api/v1/tables/users"
   ```
 
 - **Пример ответа:**
@@ -1278,7 +1458,7 @@ auth:
 
 ### Управления импортерами {: #importers_api }
 
-**Базовый URL:** `https://<router-host>:<port>/api/v1/importers`
+**Базовый URL:** `https://<router-host>:<port>/kirovets/api/v1/importers`
 
 Указанные ниже эндпоинты используются только для управления потоковыми
 импортерами, для манипуляций с пакетными импортерами следует
@@ -1297,7 +1477,7 @@ auth:
 - **Пример запроса:**
 
   ```shell
-  curl -X GET "http://localhost:8002/api/v1/importers/ogg/table1"
+  curl -X GET "http://localhost:8002/kirovets/api/v1/importers/ogg/table1"
   ```
 
 - **Пример ответа:**
@@ -1334,7 +1514,7 @@ auth:
 - **Пример запроса:**
 
   ```shell
-  curl -X DELETE "http://localhost:8002/api/v1/importers/ogg/table1"
+  curl -X DELETE "http://localhost:8002/kirovets/api/v1/importers/ogg/table1"
   ```
 
 - **Пример ответа:**
@@ -1364,7 +1544,7 @@ auth:
 - **Пример запроса:**
 
   ```shell
-  curl -X POST "http://localhost:8002/api/v1/importers/ogg/table1"
+  curl -X POST "http://localhost:8002/kirovets/api/v1/importers/ogg/table1"
   ```
 
 - **Пример ответа:**
@@ -1397,7 +1577,7 @@ auth:
 - **Пример запроса:**
 
   ```shell
-  curl -X POST "http://localhost:8002/api/v1/importers/ogg/table1/reset"
+  curl -X POST "http://localhost:8002/kirovets/api/v1/importers/ogg/table1/reset"
   ```
 
 - **Коды ответов:**
@@ -1615,8 +1795,8 @@ writer.dsv.quotes.chars="
 ADD SCHEMATRANDATA <YOUR_SCHEMA_NAME>
 ```
 
-Если же ключи теряются в середине цепочки экспортеров, используйте `logdump` для пошаговой диагностики, включая при этом конфигурацию `DETAIL DATA`.   
-Ссылки на документацию Oracle:   
+Если же ключи теряются в середине цепочки экспортеров, используйте `logdump` для пошаговой диагностики, включая при этом конфигурацию `DETAIL DATA`.
+Ссылки на документацию Oracle:
 * [Using logdump utility](https://docs.oracle.com/goldengate/c1230/gg-winux/GLOGD/using-logdump-utility.htm)
 * [Logdump reference](https://docs.oracle.com/en/middleware/goldengate/core/19.1/logdump-ref/logdump-reference-oracle-goldengate.pdf)
 
@@ -1731,7 +1911,7 @@ basic-аутентификация с логином `client_id` и пароле
 Пример обращения стороннего сервиса к "Кировцу" используя выданный
 токен:
 
-`http http://localhost:8081/v1/application/crud\?x_cdi_id\=5 'Authorization:Bearer ey...qw'`
+`http http://localhost:8081/kirovets/api/v1/application/crud\?x_cdi_id\=5 'Authorization:Bearer ey...qw'`
 
 Получение access_token через сервисный аккаунт подробно описано в
 [документации
@@ -1911,7 +2091,7 @@ Keycloak](https://www.keycloak.org/docs/latest/server_admin/index.html#_service_
                                                       # состоит из следующих полей: sec, min, hour, day of month, month, day of week, year
 
       api:                                            # список конечных точек API, доступных пользователям
-        - path: /v1/app/lua                           # путь конечной точки. Может быть произвольным за исключением
+        - path: kirovets/api/v1/app/lua                           # путь конечной точки. Может быть произвольным за исключением
                                                       # нескольких зарезервированных путей.
 
           method: GET                                 # HTTP-метод, которым можно вызвать витрину через конечную точку.
@@ -1922,7 +2102,7 @@ Keycloak](https://www.keycloak.org/docs/latest/server_admin/index.html#_service_
                                                       # (см. пример файоа datamarts.lua ниже)
 
 
-        - path: /v1/app/relations
+        - path: kirovets/api/v1/app/relations
           method: GET
           handler:
             type: sql
