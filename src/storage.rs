@@ -40,6 +40,7 @@ use crate::util::Uppercase;
 use chrono::DateTime;
 use smol_str::SmolStr;
 use sql::ir::operator::ConflictStrategy;
+use sql::ir::options::ReadPreference;
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -3557,14 +3558,22 @@ impl DbConfig {
         config::DYNAMIC_CONFIG.sql_vdbe_opcode_max.current_value()
     }
 
-    /// Gets `sql_vdbe_opcode_max` and `sql_motion_row_max` options as [`sql::ir::options::Options`] struct
+    #[inline]
+    pub fn read_preference(&self) -> ReadPreference {
+        let raw = config::DYNAMIC_CONFIG.read_preference.current_value();
+        ReadPreference::try_from(raw).expect("invalid read_preference value")
+    }
+
+    /// Gets sql options as [`sql::ir::options::Options`] struct.
     #[inline]
     pub fn sql_query_options(&self) -> sql::ir::options::Options {
         let sql_vdbe_opcode_max = self.sql_vdbe_opcode_max();
         let sql_motion_row_max = self.sql_motion_row_max();
+        let read_preference = self.read_preference();
         sql::ir::options::Options {
             sql_motion_row_max,
             sql_vdbe_opcode_max,
+            read_preference,
         }
     }
 

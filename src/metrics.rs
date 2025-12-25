@@ -69,6 +69,17 @@ static SQL_QUERY_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     .expect("Failed to create pico_sql_query_total counter")
 });
 
+static SQL_REPLICAS_READ_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    IntCounterVec::new(
+        Opts::new(
+            "pico_sql_replicas_read_total",
+            "Total number of DQL executions on read-only replicas",
+        ),
+        &["tier", "replicaset"],
+    )
+    .expect("Failed to create pico_sql_replicas_read_total counter")
+});
+
 static SQL_QUERY_ERRORS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     IntCounterVec::new(
         Opts::new(
@@ -369,6 +380,12 @@ pub fn record_sql_query_total(tier: &str, replicaset: &str) {
     SQL_QUERY_TOTAL.with_label_values(&[tier, replicaset]).inc();
 }
 
+pub fn record_sql_replicas_read_total() {
+    SQL_REPLICAS_READ_TOTAL
+        .with_label_values(&[my_tier(), my_replicaset()])
+        .inc();
+}
+
 pub fn record_sql_global_dml_query_total() {
     SQL_GLOBAL_DML_QUERY_TOTAL.inc();
 }
@@ -488,6 +505,7 @@ pub fn register_metrics(registry: &prometheus::Registry) -> prometheus::Result<(
     registry.register(Box::new(SQL_QUERY_DURATION.clone()))?;
     registry.register(Box::new(SQL_QUERY_ERRORS_TOTAL.clone()))?;
     registry.register(Box::new(SQL_QUERY_TOTAL.clone()))?;
+    registry.register(Box::new(SQL_REPLICAS_READ_TOTAL.clone()))?;
     registry.register(Box::new(SQL_GLOBAL_DML_QUERY_TOTAL.clone()))?;
     registry.register(Box::new(SQL_GLOBAL_DML_QUERY_RETRIES_TOTAL.clone()))?;
     registry.register(Box::new(INFO_UPTIME.clone()))?;

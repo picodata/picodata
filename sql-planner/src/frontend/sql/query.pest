@@ -9,7 +9,7 @@ ScanTable = { Table }
 ScanCteOrTable = @{ Table }
 
 IndexedByExpr = { (W ~ ^"indexed" ~ W ~ ^"by" ~ W ~ Identifier) }
-        
+
 IndexedTableScan = { ScanTable ~ IndexedByExpr? }
 
 PublicSchema = _{ (^"public" | ("\"public\"")) ~ "."}
@@ -340,12 +340,16 @@ Query = { (SelectFull | Values | Insert | Update | Delete) ~ WO ~ DqlOption? }
 
     DqlOption = !{ ^"option" ~ "(" ~ OprionParams ~ ")" }
         OprionParams = _{ OptionParam ~ (WO ~ "," ~ WO ~ OptionParam)* }
-    OptionParam = _{ VdbeOpcodeMax | MotionRowMax }
+    OptionParam = _{ VdbeOpcodeMax | MotionRowMax | ReadPreference }
     Timeout = !{ ^"timeout" ~ "=" ~ Duration }
        Duration = @{ Unsigned ~ ("." ~ Unsigned)? }
     TimeoutOption = _{ ^"option" ~ WO ~ "(" ~ WO ~ Timeout ~ WO ~ ")" }
     VdbeOpcodeMax = { ^"sql_vdbe_opcode_max" ~ "=" ~ (Unsigned | Parameter) }
     MotionRowMax = { ^"sql_motion_row_max" ~ "=" ~ (Unsigned | Parameter) }
+    ReadPreference = { ^"read_preference" ~ "=" ~ (Leader | Replica | Any | Parameter) }
+        Leader = { ^"leader" }
+        Replica = { ^"replica" }
+        Any = { ^"any" }
     Delete = ${ ^"delete" ~ W ~ ^"from" ~ W ~ (PublicSchema)? ~ IndexedTableScan ~ (W ~ ^"where" ~ W ~ DeleteFilter)? }
     	DeleteFilter = { Expr }
 
@@ -503,7 +507,7 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
                 CaseWhenBlock = ${ ^"when" ~ W ~ Expr ~ W ~ ^"then" ~ W ~ Expr }
                 CaseElseBlock = ${ ^"else" ~ W ~ Expr }
             CastOp = ${ ^"cast" ~ WO ~ "(" ~ WO ~ Expr ~ W ~ ^"as" ~ W ~ Type ~ WO ~ ")" }
-                
+
                 ColumnDefType = { DomainType | Type }
 
                 // Additional special types availiable only for DDL statements (CREATE TABLE, ALTER TABLE)

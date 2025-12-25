@@ -211,7 +211,11 @@ local function two_step_dispatch(uuid_to_args, opts, tier)
     for uuid, rs_args in pairs(uuid_to_args) do
         local rs = replicasets[uuid]
         opts_map['buffer'] = res_map[uuid]
-        res, err = rs:callrw('.proc_sql_execute', prepare_args(rs_args, rid, sid, timeout, false), opts_map)
+        res, err = rs:callrw(
+            '.proc_sql_execute',
+            prepare_args(rs_args, rid, sid, timeout, false),
+            opts_map
+        )
         if res == nil then
             err_uuid = uuid
             goto fail
@@ -276,23 +280,54 @@ local function one_step_dispatch(uuid_to_args, opts, tier)
     local rid = ref_new()
     local sid = session_current()
     local deadline = fiber.clock() + timeout
+    local read_preference = opts.read_preference;
     -- Nil checks are done explicitly here (== nil instead of 'not'), because
     -- netbox requests return box.NULL instead of nils.
 
     -- Wait for all masters to connect.
     vrs.wait_masters_connect(replicasets, timeout)
     timeout = deadline - fiber.clock()
+    if read_preference == "replica" or read_preference == "any" then
+        -- Wait for all replicas to connect. Usually it is a cheap operation.
+        for uuid in pairs(uuid_to_args) do
+            local rs = replicasets[uuid]
+            timeout, err, err_uuid = rs:wait_connected_all({
+                timeout = timeout,
+                except = opts.except,
+            })
+            if not timeout then
+                goto fail
+            end
+            timeout = deadline - fiber.clock()
+        end
+    end
 
     -- Send.
     --
     for uuid, rs_args in pairs(uuid_to_args) do
         local rs = replicasets[uuid]
         opts_map['buffer'] = res_map[uuid]
-        res, err = rs:callrw(
-          '.proc_sql_execute',
-          prepare_args(rs_args, rid, sid, timeout, true),
-          opts_map
-        )
+        if read_preference == "leader" then
+            res, err = rs:callrw(
+                '.proc_sql_execute',
+                prepare_args(rs_args, rid, sid, timeout, true),
+                opts_map
+            )
+        elseif read_preference == "any" then
+            -- `need_ref = true` is for the leader fallback only
+            res, err = rs:callbre(
+                '.proc_sql_execute',
+                prepare_args(rs_args, rid, sid, timeout, true),
+                opts_map
+            )
+        elseif read_preference == "replica" then
+            opts_map['force_replica'] = true
+            res, err = rs:callbre(
+                '.proc_sql_execute',
+                prepare_args(rs_args, rid, sid, timeout, false),
+                opts_map
+            )
+        end
         if res == nil then
             err_uuid = uuid
             goto fail
@@ -345,8 +380,8 @@ dispatch.bucket_into_rs = function(bucket_id, tier)
     return rs.uuid
 end
 
-dispatch.custom_plan_dispatch = function(uuid_to_args, timeout, tier, do_two_step)
-    local opts = { timeout = timeout }
+dispatch.custom_plan_dispatch = function(uuid_to_args, timeout, tier, read_preference, do_two_step)
+    local opts = { timeout = timeout, read_preference = read_preference }
 
     if do_two_step then
         return two_step_dispatch(uuid_to_args, opts, tier)
@@ -366,7 +401,7 @@ end
 --
 -- @return mapping between a replicaset UUID and am ibuf with result.
 --
-dispatch.single_plan_dispatch = function(args, uuids, timeout, tier, do_two_step)
+dispatch.single_plan_dispatch = function(args, uuids, timeout, tier, read_preference, do_two_step)
     if not next(uuids) then
         -- An empty list of UUIDs means execution on all replicasets.
         local uuid_to_rs = get_replicasets_from_tier(tier)
@@ -380,7 +415,7 @@ dispatch.single_plan_dispatch = function(args, uuids, timeout, tier, do_two_step
         uuid_to_args[uuid] = args
     end
 
-    local opts = { timeout = timeout }
+    local opts = { timeout = timeout, read_preference = read_preference }
 
     if do_two_step then
         return two_step_dispatch(uuid_to_args, opts, tier)
@@ -417,7 +452,7 @@ dispatch.query_metadata = function(tier, replicaset, instance, req_id, plan_id, 
     end
     res = buffer.ibuf();
     opts_map = { is_async = true, skip_header = true, buffer = res, timeout = inst.net_timeout }
-    ok, future, err = inst:call('.proc_query_metadata', {timeout, req_id, plan_id}, opts_map)
+    ok, future, err = inst:call('.proc_query_metadata', { timeout, req_id, plan_id }, opts_map)
     if not ok and err ~= nil then
         goto fail
     end

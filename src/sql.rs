@@ -2698,18 +2698,27 @@ unsafe fn proc_sql_execute_impl(args: ExecArgs, port: &mut PicoPortC) -> ::std::
         Ok(())
     };
 
-    if args.need_ref {
-        if let Err(e) = reference_add(args.rid, sid, args.timeout) {
-            return report("Failed to add a storage reference: ", e.into());
+    // References are useless on replicas, so skip ref operations there.
+    let is_replica = node::global()
+        .map(|node| node.is_readonly())
+        .unwrap_or(false);
+    if !is_replica {
+        if args.need_ref {
+            if let Err(e) = reference_add(args.rid, sid, args.timeout) {
+                return report("Failed to add a storage reference: ", e.into());
+            };
+        }
+
+        if let Err(e) = reference_use(args.rid, sid) {
+            return report("Failed to use a storage reference: ", e.into());
         };
     }
 
-    if let Err(e) = reference_use(args.rid, sid) {
-        return report("Failed to use a storage reference: ", e.into());
-    };
     let rc = pcall();
-    // We should always unref the storage reference before exit.
-    reference_del(args.rid, sid).expect("Failed to remove reference from the storage");
+    if !is_replica {
+        // We should always unref the storage reference before exit.
+        reference_del(args.rid, sid).expect("Failed to remove reference from the storage");
+    }
 
     match rc {
         Ok(()) => 0,
@@ -2776,6 +2785,13 @@ pub unsafe extern "C" fn proc_sql_execute(
             STORAGE_1ST_REQUESTS_TOTAL
                 .with_label_values(&[query_type, result])
                 .inc();
+        }
+
+        let is_replica = node::global()
+            .map(|node| node.is_readonly())
+            .unwrap_or(false);
+        if is_replica {
+            metrics::record_sql_replicas_read_total();
         }
 
         rc

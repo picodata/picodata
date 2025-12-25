@@ -9,10 +9,11 @@ use crate::{
 };
 use pgwire::messages::{startup::Startup, SslNegotiationMetaMessage};
 use smol_str::format_smolstr;
-use sql::ir::options::PartialOptions;
+use sql::ir::options::{PartialOptions, ReadPreference};
 use std::{
     collections::BTreeMap,
     io::{self, Read, Write},
+    str::FromStr,
 };
 
 #[derive(Clone, Debug)]
@@ -66,6 +67,14 @@ impl ClientParams {
                     option_name @ "sql_vdbe_opcode_max" => {
                         let value = validate_value_for_option(val, option_name)?;
                         options_accumulator.sql_vdbe_opcode_max = Some(value)
+                    }
+                    "read_preference" => {
+                        let value = ReadPreference::from_str(val).map_err(|_| {
+                            PgError::other(format!(
+                                "unknown read_preference value: '{val}', expected one of leader, replica, any"
+                            ))
+                        })?;
+                        options_accumulator.read_preference = Some(value)
                     }
                     _ => {
                         // We prefer using warnings instead of errors for these reasons:

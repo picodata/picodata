@@ -20,6 +20,7 @@ with the `YY.MINOR.MICRO` scheme.
   enables the checking if replication is broken on any instance, in which case
   the instance will be automatically made Offline.
 - New columns `target_state_reason` & `target_state_change_time` in `_pico_instance` system table
+- Introduce `read_preference` option for routing DQL queries to replicas in specific scenarios.
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:

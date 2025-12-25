@@ -1909,6 +1909,13 @@ pub struct AlterSystemParameters {
     #[introspection(config_default = 5000)]
     pub sql_motion_row_max: u64,
 
+    /// DQL replicaset data reading strategy.
+    /// Allowed values: "leader", "replica", "any".
+    /// Default value: "leader".
+    #[introspection(sbroad_type = SbroadType::String)]
+    #[introspection(config_default = options::ReadPreference::default().to_string())]
+    pub read_preference: String,
+
     /// Enables non-blocking SQL execution.
     #[introspection(sbroad_type = SbroadType::Boolean)]
     #[introspection(config_default = DEFAULT_SQL_PREEMPTION)]
@@ -2148,6 +2155,7 @@ pub struct DynamicConfigProviders {
     pub pg_portal_max: AtomicObserverProvider<usize>,
     pub sql_vdbe_opcode_max: AtomicObserverProvider<i64>,
     pub sql_motion_row_max: AtomicObserverProvider<i64>,
+    pub read_preference: AtomicObserverProvider<u8>,
     pub sql_preemption: AtomicObserverProvider<bool>,
     pub sql_preemption_interval_us: AtomicObserverProvider<u64>,
 }
@@ -2159,6 +2167,7 @@ impl DynamicConfigProviders {
             pg_portal_max: AtomicObserverProvider::new(),
             sql_vdbe_opcode_max: AtomicObserverProvider::new(),
             sql_motion_row_max: AtomicObserverProvider::new(),
+            read_preference: AtomicObserverProvider::new(),
             sql_preemption: AtomicObserverProvider::new(),
             sql_preemption_interval_us: AtomicObserverProvider::new(),
         }
@@ -2168,6 +2177,13 @@ impl DynamicConfigProviders {
         Some(options::Options {
             sql_motion_row_max: self.sql_motion_row_max.try_current_value()?,
             sql_vdbe_opcode_max: self.sql_vdbe_opcode_max.try_current_value()?,
+            read_preference: self
+                .read_preference
+                .try_current_value()
+                .map(|raw| {
+                    options::ReadPreference::try_from(raw).expect("invalid read_preference value")
+                })
+                .unwrap_or_default(),
         })
     }
 }
@@ -2264,6 +2280,18 @@ pub fn validate_alter_system_parameter_value<'v>(
                 "invalid value for '{name}': value must be between 1 and {}",
                 i64::MAX,
             )));
+        }
+    }
+
+    if name == system_parameter_name!(read_preference) {
+        if let Value::String(s) = value {
+            let _ = options::ReadPreference::from_str(s).map_err(|_| {
+                Error::other(format!(
+                    "invalid value for '{name}': expected 'leader', 'replica' or 'any'"
+                ))
+            })?;
+        } else {
+            panic!("invalid value for '{name}'")
         }
     }
 
@@ -2472,6 +2500,11 @@ pub fn apply_parameter(
         let value = value as i64;
         // Cache the value.
         DYNAMIC_CONFIG.sql_motion_row_max.update(value);
+    } else if name == system_parameter_name!(read_preference) {
+        let value = v.as_str().expect("type is already checked");
+        let value = options::ReadPreference::from_str(value).expect("value is already checked");
+        // Cache the value.
+        DYNAMIC_CONFIG.read_preference.update(value as u8);
     } else if name == system_parameter_name!(sql_preemption) {
         let value = v.as_bool().expect("type is already checked");
         // Cache the value.

@@ -121,6 +121,12 @@ search:
 
 Тип: counter
 
+### pico_sql_replicas_read_total
+
+Общее количество исполнений DQL-запросов на репликах (см. [read_preference](./db_config.md#read_preference))
+
+Тип: counter
+
 ### pico_sql_tx_splits_total
 
 Общее количество разбиений запросов на части, произошедших при фиксации

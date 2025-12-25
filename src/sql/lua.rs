@@ -576,6 +576,7 @@ pub(crate) fn lua_single_plan_dispatch<'lua, T>(
     replicasets: &[String],
     timeout: u64,
     tier: Option<&str>,
+    read_preference: String,
     do_two_step: bool,
 ) -> Result<Rc<IbufTable<'lua>>>
 where
@@ -587,8 +588,14 @@ where
     let tier = tier.map(|s| s.to_string());
     let func = dispatch_get_func(lua, name)?;
 
-    let call_res =
-        func.into_call_with_args::<LuaTable<_>, _>((args, replicasets, timeout, tier, do_two_step));
+    let call_res = func.into_call_with_args::<LuaTable<_>, _>((
+        args,
+        replicasets,
+        timeout,
+        tier,
+        read_preference,
+        do_two_step,
+    ));
     match call_res {
         Ok(v) => Ok(Rc::new(v)),
         Err(e) => Err(TarantoolError::new(
@@ -604,6 +611,7 @@ pub(crate) fn lua_custom_plan_dispatch<'lua, T>(
     args: T,
     timeout: u64,
     tier: Option<&str>,
+    read_preference: String,
     do_two_step: bool,
 ) -> Result<Rc<IbufTable<'lua>>>
 where
@@ -615,7 +623,13 @@ where
     let tier = tier.map(|s| s.to_string());
     let func = dispatch_get_func(lua, name)?;
 
-    let call_res = func.into_call_with_args::<IbufTable, _>((args, timeout, tier, do_two_step));
+    let call_res = func.into_call_with_args::<IbufTable, _>((
+        args,
+        timeout,
+        tier,
+        read_preference,
+        do_two_step,
+    ));
     match call_res {
         Ok(v) => Ok(Rc::new(v)),
         Err(e) => Err(TarantoolError::new(

@@ -2173,7 +2173,10 @@ fn parse_option<M: Metadata>(
             };
 
             OptionParamValue::Parameter {
-                index: index as usize - 1,
+                index: index.checked_sub(1).ok_or(SbroadError::Invalid(
+                    AST,
+                    Some("Parameter position 0 is not allowed".into()),
+                ))? as usize,
             }
         }
         Rule::Unsigned => {
@@ -2191,6 +2194,64 @@ fn parse_option<M: Metadata>(
             ))
         }
     };
+    Ok(value)
+}
+
+fn parse_read_preference_option<M: Metadata>(
+    ast: &AbstractSyntaxTree,
+    type_analyzer: &mut TypeAnalyzer,
+    option_node_id: usize,
+    pairs_map: &mut ParsingPairsMap,
+    worker: &mut ExpressionsWorker<M>,
+    plan: &mut Plan,
+) -> Result<OptionParamValue, SbroadError> {
+    let ast_node = ast.nodes.get_node(option_node_id)?;
+    let value = match ast_node.rule {
+        Rule::Parameter => {
+            let plan_id = parse_scalar_expr(
+                Pairs::single(pairs_map.remove_pair(option_node_id)),
+                type_analyzer,
+                DerivedType::new(UnrestrictedType::String),
+                &[],
+                worker,
+                plan,
+                true,
+            )?;
+
+            let Expression::Parameter(&Parameter { index, .. }) =
+                plan.get_expression_node(plan_id)?
+            else {
+                unreachable!("Expected Parameter expression under Parameter node");
+            };
+
+            OptionParamValue::Parameter {
+                index: index.checked_sub(1).ok_or(SbroadError::Invalid(
+                    AST,
+                    Some("Parameter position 0 is not allowed".into()),
+                ))? as usize,
+            }
+        }
+        Rule::Leader | Rule::Replica | Rule::Any => {
+            let value = match ast_node.rule {
+                Rule::Leader => "leader",
+                Rule::Replica => "replica",
+                Rule::Any => "any",
+                _ => unreachable!(),
+            };
+            OptionParamValue::Value {
+                val: Value::String(value.into()),
+            }
+        }
+        _ => {
+            return Err(SbroadError::Invalid(
+                AST,
+                Some(format_smolstr!(
+                    "unexpected child of read_preference option. id: {option_node_id}"
+                )),
+            ))
+        }
+    };
+
     Ok(value)
 }
 
@@ -5956,6 +6017,24 @@ impl AbstractSyntaxTree {
                     )?;
                     plan.raw_options.push(OptionSpec {
                         kind: OptionKind::MotionRowMax,
+                        val,
+                    });
+                }
+                Rule::ReadPreference => {
+                    let ast_child_id = node
+                        .children
+                        .first()
+                        .expect("no children for read_preference option");
+                    let val = parse_read_preference_option(
+                        self,
+                        &mut type_analyzer,
+                        *ast_child_id,
+                        pairs_map,
+                        &mut worker,
+                        &mut plan,
+                    )?;
+                    plan.raw_options.push(OptionSpec {
+                        kind: OptionKind::ReadPreference,
                         val,
                     });
                 }

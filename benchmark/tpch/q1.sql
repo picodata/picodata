@@ -12,7 +12,7 @@ select
 from
     lineitem
 where
-    l_shipdate <= '1998-09-02' :: datetime
+    l_shipdate <= to_date('1998-09-02', '%Y-%m-%d')
 group by
     l_returnflag,
     l_linestatus

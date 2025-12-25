@@ -42,6 +42,13 @@ impl TryFrom<u8> for ColumnType {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct DQLOptions {
+    pub sql_motion_row_max: u64,
+    pub sql_vdbe_opcode_max: u64,
+    pub read_preference: u8,
+}
+
 pub trait DQLDataSource {
     fn get_table_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)>;
 
@@ -57,7 +64,7 @@ pub trait DQLDataSource {
         &self,
     ) -> impl ExactSizeIterator<Item = (&str, impl ExactSizeIterator<Item = impl MsgpackEncode>)>;
 
-    fn get_options(&self) -> [u64; 2];
+    fn get_options(&self) -> DQLOptions;
 
     fn get_params(&self) -> impl MsgpackEncode;
 }
@@ -179,7 +186,7 @@ pub(crate) mod test {
             self
         }
         #[allow(dead_code)]
-        pub fn set_options(mut self, options: [u64; 2]) -> Self {
+        pub fn set_options(mut self, options: DQLOptions) -> Self {
             self.encoder.options = options;
             self
         }
@@ -199,7 +206,7 @@ pub(crate) mod test {
         pub sql: String,
         pub request_id: String,
         pub vtables: HashMap<String, Vec<Vec<u64>>>,
-        pub options: [u64; 2],
+        pub options: DQLOptions,
         pub params: Vec<u64>,
     }
 
@@ -238,7 +245,7 @@ pub(crate) mod test {
             })
         }
 
-        fn get_options(&self) -> [u64; 2] {
+        fn get_options(&self) -> DQLOptions {
             self.options
         }
 

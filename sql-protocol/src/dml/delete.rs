@@ -1,7 +1,7 @@
 use crate::dml::dml_type::DMLType::Delete;
 use crate::dml::dml_type::{write_dml_header, write_dml_with_sql_header};
 use crate::dql::{get_options, write_dql_packet_data, write_options, DQLPacketPayloadIterator};
-use crate::dql_encoder::{ColumnType, DQLDataSource, MsgpackEncode};
+use crate::dql_encoder::{ColumnType, DQLDataSource, DQLOptions, MsgpackEncode};
 use crate::error::ProtocolError;
 use crate::iterators::MsgpackArrayIterator;
 use crate::msgpack::skip_value;
@@ -20,7 +20,7 @@ pub trait CoreDeleteDataSource {
 
 pub trait DeleteFullDataSource: CoreDeleteDataSource {
     fn get_plan_id(&self) -> u64;
-    fn get_options(&self) -> [u64; 2];
+    fn get_options(&self) -> DQLOptions;
 }
 
 pub fn write_delete_full_packet(
@@ -34,7 +34,7 @@ pub fn write_delete_full_packet(
     write_uint(w, data.get_target_table_id() as u64)?;
     write_uint(w, data.get_target_table_version())?;
     write_uint(w, data.get_plan_id())?;
-    write_options(w, data.get_options().iter())?;
+    write_options(w, data.get_options())?;
 
     Ok(())
 }
@@ -53,7 +53,7 @@ pub enum DeleteFullResult {
     TableId(u32),
     TableVersion(u64),
     PlanId(u64),
-    Options((u64, u64)),
+    Options(DQLOptions),
 }
 
 impl fmt::Display for DeleteFullResult {
@@ -110,7 +110,7 @@ impl<'a> DeleteFullIterator<'a> {
         self.state = DeleteFullState::Options;
         Ok(plan_id)
     }
-    fn get_options(&mut self) -> Result<(u64, u64), ProtocolError> {
+    fn get_options(&mut self) -> Result<DQLOptions, ProtocolError> {
         debug_assert_eq!(self.state, DeleteFullState::Options);
         let options = get_options(&mut self.raw_payload)?;
         self.state = DeleteFullState::End;
@@ -336,7 +336,7 @@ mod tests {
 
         // Full delete
         plan_id: u64,
-        options: (u64, u64),
+        options: DQLOptions,
 
         // Local delete
         columns: Vec<ColumnType>,
@@ -362,8 +362,8 @@ mod tests {
         fn get_plan_id(&self) -> u64 {
             self.plan_id
         }
-        fn get_options(&self) -> [u64; 2] {
-            [self.options.0, self.options.1]
+        fn get_options(&self) -> DQLOptions {
+            self.options
         }
     }
 
@@ -388,7 +388,11 @@ mod tests {
             table_version: 1,
             table_id: 128,
             plan_id: 14235593344027757343,
-            options: (123, 456),
+            options: DQLOptions {
+                sql_motion_row_max: 123,
+                sql_vdbe_opcode_max: 456,
+                read_preference: 0,
+            },
 
             columns: vec![],
             builder: vec![],
@@ -396,7 +400,7 @@ mod tests {
         };
 
         let expected: &[u8] =
-            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x01\x92\x02\x94\xcc\x80\x01\xcf\xc5\x8e\xfc\xb9\x15\xb0\x8b\x1f\x92{\xcd\x01\xc8";
+            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x01\x92\x02\x94\xcc\x80\x01\xcf\xc5\x8e\xfc\xb9\x15\xb0\x8b\x1f\x93{\xcd\x01\xc8\x00";
         let mut actual = Vec::new();
 
         write_delete_full_packet(&mut actual, &encoder).unwrap();
@@ -407,7 +411,7 @@ mod tests {
     #[test]
     fn test_decode_delete_full() {
         let mut data: &[u8] =
-            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x01\x92\x02\x94\xcc\x80\x01\xcf\xc5\x8e\xfc\xb9\x15\xb0\x8b\x1f\x92{\xcd\x01\xc8";
+            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x01\x92\x02\x94\xcc\x80\x01\xcf\xc5\x8e\xfc\xb9\x15\xb0\x8b\x1f\x93{\xcd\x01\xc8\x00";
 
         let l = read_array_len(&mut data).unwrap();
         assert_eq!(l, 3);
@@ -438,9 +442,10 @@ mod tests {
                 DeleteFullResult::PlanId(plan_id) => {
                     assert_eq!(plan_id, 14235593344027757343);
                 }
-                DeleteFullResult::Options((rows, codes)) => {
-                    assert_eq!(rows, 123);
-                    assert_eq!(codes, 456);
+                DeleteFullResult::Options(options) => {
+                    assert_eq!(options.sql_motion_row_max, 123);
+                    assert_eq!(options.sql_vdbe_opcode_max, 456);
+                    assert_eq!(options.read_preference, 0);
                 }
             }
         }
@@ -456,7 +461,11 @@ mod tests {
                 "TMP_1302_".to_string(),
                 vec![vec![1, 2, 3], vec![3, 2, 1]],
             )]))
-            .set_options([123, 456])
+            .set_options(DQLOptions {
+                sql_motion_row_max: 123,
+                sql_vdbe_opcode_max: 456,
+                read_preference: 0,
+            })
             .set_params(vec![138, 123, 432])
             .build();
         let encoder = TestDeleteEncoder {
@@ -468,11 +477,11 @@ mod tests {
             dql_encoder: Some(dql_encoder),
 
             plan_id: 0,
-            options: (0, 0),
+            options: DQLOptions::default(),
         };
 
         let expected: &[u8] =
-            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x02\x92\x02\x95\xcc\x80\x01\x91\x05\x92\x0c\x0e\x97\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\xcf\xc5\x8e\xfc\xb9\x15\xb0\x8b\x1f*\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
+            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x02\x92\x02\x95\xcc\x80\x01\x91\x05\x92\x0c\x0e\x97\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\xcf\xc5\x8e\xfc\xb9\x15\xb0\x8b\x1f*\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x93{\xcd\x01\xc8\x00\x93\xcc\x8a{\xcd\x01\xb0";
         let mut actual = Vec::new();
 
         write_delete_filtered_packet(&mut actual, &encoder).unwrap();
@@ -483,7 +492,7 @@ mod tests {
     #[test]
     fn test_decode_delete_filtered() {
         let mut data: &[u8] =
-            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x02\x92\x02\x95\xcc\x80\x01\x91\x05\x92\x0c\x0e\x97\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\xcf\xc5\x8e\xfc\xb9\x15\xb0\x8b\x1f*\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
+            b"\x93\xd9$d3763996-6d21-418d-987f-d7349d034da9\x02\x92\x02\x95\xcc\x80\x01\x91\x05\x92\x0c\x0e\x97\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\xcf\xc5\x8e\xfc\xb9\x15\xb0\x8b\x1f*\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x93{\xcd\x01\xc8\x00\x93\xcc\x8a{\xcd\x01\xb0";
 
         let l = read_array_len(&mut data).unwrap();
         assert_eq!(l, 3);
@@ -557,7 +566,9 @@ mod tests {
                                 }
                             }
                             DQLResult::Options(options) => {
-                                assert_eq!(options, (123, 456));
+                                assert_eq!(options.sql_motion_row_max, 123);
+                                assert_eq!(options.sql_vdbe_opcode_max, 456);
+                                assert_eq!(options.read_preference, 0);
                             }
                             DQLResult::Params(params) => {
                                 assert_eq!(params, vec![147, 204, 138, 123, 205, 1, 176]);

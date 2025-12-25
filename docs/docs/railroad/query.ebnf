@@ -2,8 +2,16 @@ statement   ::= explain | ddl | dml | dql | acl | call
 explain     ::= 'EXPLAIN' (dml | ('(' 'RAW' (',' 'FMT')? ')')? dql )
 dql         ::= (with? select | values)
                 ('OPTION' '('
-                    (('sql_motion_row_max' | 'sql_vdbe_opcode_max') '=' unsigned)
-                    (',' (('sql_motion_row_max' | 'sql_vdbe_opcode_max') '=' unsigned))*
+                    (
+                        'read_preference' '=' ('LEADER' | 'REPLICA' | 'ANY')
+                        | ('sql_motion_row_max' | 'sql_vdbe_opcode_max') '=' unsigned
+                    )
+                    (','
+                        (
+                            'read_preference' '=' ('LEADER' | 'REPLICA' | 'ANY')
+                            | ('sql_motion_row_max' | 'sql_vdbe_opcode_max') '=' unsigned
+                        )
+                    )*
                 ')')?
 with        ::= 'WITH'
                 cte ('(' column (',' column)* ')')? 'AS' '(' (select | values) ')'

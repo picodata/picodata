@@ -4,10 +4,58 @@ use crate::ir::value::Value;
 use crate::ir::Plan;
 use serde::{Deserialize, Serialize};
 use smol_str::format_smolstr;
+use sql_protocol::dql_encoder::DQLOptions;
 use std::fmt::{Display, Formatter};
+use std::str::FromStr;
 
 pub const DEFAULT_SQL_MOTION_ROW_MAX: u64 = 5000;
 pub const DEFAULT_SQL_VDBE_OPCODE_MAX: u64 = 45000;
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize, Hash)]
+#[repr(u8)]
+pub enum ReadPreference {
+    #[default]
+    Leader = 0,
+    Replica = 1,
+    Any = 2,
+}
+
+impl Display for ReadPreference {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let value = match self {
+            ReadPreference::Leader => "leader",
+            ReadPreference::Replica => "replica",
+            ReadPreference::Any => "any",
+        };
+        write!(f, "{value}")
+    }
+}
+
+impl FromStr for ReadPreference {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "leader" => Ok(ReadPreference::Leader),
+            "replica" => Ok(ReadPreference::Replica),
+            "any" => Ok(ReadPreference::Any),
+            _ => Err(()),
+        }
+    }
+}
+
+impl TryFrom<u8> for ReadPreference {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(ReadPreference::Leader),
+            1 => Ok(ReadPreference::Replica),
+            2 => Ok(ReadPreference::Any),
+            _ => Err(()),
+        }
+    }
+}
 
 /// SQL options specified by user in `option(..)` clause.
 ///
@@ -26,6 +74,17 @@ pub struct Options {
     /// Options passed to `box.execute` function on storages. Currently there is only one option
     /// `sql_vdbe_opcode_max`.
     pub sql_vdbe_opcode_max: i64,
+    /// By default, reading in DQL queries only occurs from replicaset leaders.
+    /// This is because references do not appear on replicas.
+    /// This option can be used to change this behavior.
+    /// If the write load does not intersect with the read load and the topology does not change during reading,
+    /// reading from replicas can be enabled for better resource utilization.
+    ///
+    /// - `Leader` reading is performed only from the replicaset leader (default behavior)
+    /// - `Replica` reading is performed only from replicas;
+    ///   if there is only one node in the replicaset (leader), an error will be returned
+    /// - `Any` reading is performed from any node in the replicaset
+    pub read_preference: ReadPreference,
 }
 
 impl Default for Options {
@@ -33,6 +92,41 @@ impl Default for Options {
         Options {
             sql_motion_row_max: DEFAULT_SQL_MOTION_ROW_MAX as i64,
             sql_vdbe_opcode_max: DEFAULT_SQL_VDBE_OPCODE_MAX as i64,
+            read_preference: ReadPreference::default(),
+        }
+    }
+}
+
+impl Options {
+    #[must_use]
+    pub fn to_protocol_options(&self) -> DQLOptions {
+        DQLOptions {
+            sql_motion_row_max: self.sql_motion_row_max as u64,
+            sql_vdbe_opcode_max: self.sql_vdbe_opcode_max as u64,
+            read_preference: self.read_preference as u8,
+        }
+    }
+}
+
+impl TryFrom<&Value> for ReadPreference {
+    type Error = SbroadError;
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::String(ref s) => ReadPreference::from_str(s).map_err(|_| {
+                SbroadError::Invalid(
+                    Entity::OptionSpec,
+                    Some(format_smolstr!(
+                        "expected read_preference to be one of [leader, replica, any], got: {s:?}"
+                    )),
+                )
+            }),
+            other => Err(SbroadError::Invalid(
+                Entity::OptionSpec,
+                Some(format_smolstr!(
+                    "expected read_preference to be one of [leader, replica, any], got: {other:?}"
+                )),
+            )),
         }
     }
 }
@@ -42,6 +136,7 @@ impl Default for Options {
 pub struct PartialOptions {
     pub sql_motion_row_max: Option<i64>,
     pub sql_vdbe_opcode_max: Option<i64>,
+    pub read_preference: Option<ReadPreference>,
 }
 
 impl PartialOptions {
@@ -57,6 +152,7 @@ impl PartialOptions {
             sql_vdbe_opcode_max: self
                 .sql_vdbe_opcode_max
                 .unwrap_or(defaults.sql_vdbe_opcode_max),
+            read_preference: self.read_preference.unwrap_or(defaults.read_preference),
         }
     }
 }
@@ -90,6 +186,8 @@ pub enum OptionKind {
     VdbeOpcodeMax,
     /// `sql_motion_row_max`
     MotionRowMax,
+    /// `read_preference`
+    ReadPreference,
 }
 
 impl Display for OptionKind {
@@ -97,6 +195,7 @@ impl Display for OptionKind {
         let s = match self {
             OptionKind::VdbeOpcodeMax => "sql_vdbe_opcode_max",
             OptionKind::MotionRowMax => "sql_motion_row_max",
+            OptionKind::ReadPreference => "read_preference",
         };
         write!(f, "{s}")
     }
@@ -161,6 +260,7 @@ impl<T> LoweredOptionValue<T> {
 pub(super) struct LoweredOptions {
     sql_motion_row_max: LoweredOptionValue<i64>,
     sql_vdbe_opcode_max: LoweredOptionValue<i64>,
+    read_preference: LoweredOptionValue<ReadPreference>,
 }
 
 impl LoweredOptions {
@@ -168,6 +268,7 @@ impl LoweredOptions {
         Options {
             sql_motion_row_max: self.sql_motion_row_max.unwrap(default.sql_motion_row_max),
             sql_vdbe_opcode_max: self.sql_vdbe_opcode_max.unwrap(default.sql_vdbe_opcode_max),
+            read_preference: self.read_preference.unwrap(default.read_preference),
         }
     }
 }
@@ -197,21 +298,35 @@ pub(super) fn lower_options(
         }
     }
 
+    fn lower_read_preference(val: &Value) -> Result<ReadPreference, SbroadError> {
+        ReadPreference::try_from(val)
+    }
+
     let mut result = LoweredOptions::default();
 
     for &OptionSpec { kind, ref val } in resolved_options {
         // for better UX we _could_ collect all the possible errors before short-circuiting to an error condition
         // but there are no primitives in sbroad to support this :(
 
-        // all the options use `Unsigned` type for now, so we can lower the type immediately
-        let value = val
-            .as_ref()
-            .map(|val| lower_unsigned(kind, val))
-            .transpose()?;
-
         match kind {
-            OptionKind::VdbeOpcodeMax => result.sql_vdbe_opcode_max.specify_opt(value),
-            OptionKind::MotionRowMax => result.sql_motion_row_max.specify_opt(value),
+            OptionKind::VdbeOpcodeMax => {
+                let value = val
+                    .as_ref()
+                    .map(|val| lower_unsigned(kind, val))
+                    .transpose()?;
+                result.sql_vdbe_opcode_max.specify_opt(value);
+            }
+            OptionKind::MotionRowMax => {
+                let value = val
+                    .as_ref()
+                    .map(|val| lower_unsigned(kind, val))
+                    .transpose()?;
+                result.sql_motion_row_max.specify_opt(value);
+            }
+            OptionKind::ReadPreference => {
+                let value = val.as_ref().map(lower_read_preference).transpose()?;
+                result.read_preference.specify_opt(value);
+            }
         }
     }
 
@@ -249,6 +364,15 @@ impl Plan {
         &self,
         lowered: &LoweredOptions,
     ) -> Result<(), SbroadError> {
+        let read_preference_specified =
+            !matches!(lowered.read_preference, LoweredOptionValue::Default);
+        if read_preference_specified && !self.is_dql()? {
+            return Err(SbroadError::Invalid(
+                Entity::OptionSpec,
+                Some("read_preference option is supported only for DQL queries".into()),
+            ));
+        }
+
         // We need to check if the plan has a top node and if it is an Insert with Values.
         // If it is, we can determine the number of values in the Values node and use it
         // to make an early decision about the maximum number of rows we can handle.

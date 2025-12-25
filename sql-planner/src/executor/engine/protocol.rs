@@ -27,7 +27,9 @@ use sql_protocol::dml::update::{
 use sql_protocol::dql::DQLCacheMissResult::{Sql, VtablesMetadata};
 use sql_protocol::dql::DQLResult::{Options, Params, Vtables};
 use sql_protocol::dql::{DQLCacheMissResult, DQLResult};
-use sql_protocol::dql_encoder::{ColumnType, DQLCacheMissDataSource, DQLDataSource, MsgpackEncode};
+use sql_protocol::dql_encoder::{
+    ColumnType, DQLCacheMissDataSource, DQLDataSource, DQLOptions, MsgpackEncode,
+};
 use sql_protocol::error::ProtocolError;
 use sql_protocol::iterators::MsgpackMapIterator;
 use std::collections::{HashMap, HashSet};
@@ -115,12 +117,11 @@ impl DQLDataSource for ExecutionData {
         })
     }
 
-    fn get_options(&self) -> [u64; 2] {
-        let options = &self.plan.get_ir_plan().effective_options;
-        [
-            options.sql_motion_row_max as u64,
-            options.sql_vdbe_opcode_max as u64,
-        ]
+    fn get_options(&self) -> DQLOptions {
+        self.plan
+            .get_ir_plan()
+            .effective_options
+            .to_protocol_options()
     }
 
     fn get_params(&self) -> impl MsgpackEncode {
@@ -137,11 +138,11 @@ pub struct DeleteCoreData {
 pub struct FullDeleteData {
     core: DeleteCoreData,
     plan_id: u64,
-    options: (u64, u64),
+    options: DQLOptions,
 }
 
 impl FullDeleteData {
-    pub fn new(core: DeleteCoreData, plan_id: u64, options: (u64, u64)) -> Self {
+    pub fn new(core: DeleteCoreData, plan_id: u64, options: DQLOptions) -> Self {
         Self {
             core,
             plan_id,
@@ -167,8 +168,8 @@ impl DeleteFullDataSource for FullDeleteData {
         self.plan_id
     }
 
-    fn get_options(&self) -> [u64; 2] {
-        [self.options.0, self.options.1]
+    fn get_options(&self) -> DQLOptions {
+        self.options
     }
 }
 
@@ -768,12 +769,12 @@ pub trait PlanInfo {
 pub struct FullDeletePlanInfo {
     plan_id: u64,
     schema_info: SchemaInfo,
-    options: (u64, u64),
+    options: DQLOptions,
     sql: String,
 }
 
 impl FullDeletePlanInfo {
-    pub fn new(plan_id: u64, table_name: &str, options: (u64, u64)) -> Self {
+    pub fn new(plan_id: u64, table_name: &str, options: DQLOptions) -> Self {
         Self {
             plan_id,
             options,
@@ -814,12 +815,12 @@ enum FullDeleteState {
 
 struct FullDeleteCacheHitIter<'a> {
     state: FullDeleteState,
-    options: (u64, u64),
+    options: DQLOptions,
     phantom: PhantomData<&'a str>,
 }
 
 impl FullDeleteCacheHitIter<'_> {
-    fn new(options: (u64, u64)) -> Self {
+    fn new(options: DQLOptions) -> Self {
         Self {
             state: FullDeleteState::Vtables,
             options,

@@ -74,7 +74,7 @@ expected Unsigned or Parameter
 -- SQL:
 select * from "testing_space" option(bad_option = 1);
 -- ERROR:
-expected VdbeOpcodeMax or MotionRowMax
+expected VdbeOpcodeMax, MotionRowMax, or ReadPreference
 
 -- TEST: test_sql_motion_row_max_on_storage-1
 -- SQL:

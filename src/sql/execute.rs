@@ -283,14 +283,14 @@ fn dql_execute_impl<'p, 'b>(
             tables_names.push(vtable);
         }
 
-        let (sql_motion_row_max, sql_vdbe_opcode_max) = protocol_get!(info, DQLResult::Options);
+        let options = protocol_get!(info, DQLResult::Options);
 
-        max_rows = sql_motion_row_max;
+        max_rows = options.sql_motion_row_max;
 
         let params = protocol_get!(info, DQLResult::Params);
 
         with_su(ADMIN_ID, || -> Result<ExecutionInsight, SqlError> {
-            port.process_stmt_with_raw_params(stmt, params, sql_vdbe_opcode_max)
+            port.process_stmt_with_raw_params(stmt, params, options.sql_vdbe_opcode_max)
         })?
         .map_err(SbroadError::from)
     };

@@ -1,3 +1,4 @@
+use crate::config::{DEFAULT_SQL_PREEMPTION, DYNAMIC_CONFIG};
 use crate::sql::lua::{
     bucket_into_rs, escape_bytes, lua_custom_plan_dispatch, lua_decode_rs_ibufs,
     lua_single_plan_dispatch, IbufTable,
@@ -26,6 +27,7 @@ use sql::ir::api::children::Children;
 use sql::ir::node::relational::Relational;
 use sql::ir::node::{Delete, Insert, Motion, Update};
 use sql::ir::operator::UpdateStrategy;
+use sql::ir::options::ReadPreference;
 use sql::ir::transformation::redistribution::MotionPolicy;
 use sql::ir::Plan;
 use sql::utils::ByteCounter;
@@ -152,7 +154,11 @@ pub(crate) fn single_plan_dispatch<'p>(
         QueryType::DQL => {
             port_write_metadata(port, &ex_plan)?;
             let max_rows = ex_plan.get_sql_motion_row_max();
-            let do_two_step = replicasets.len() != 1;
+            // For read_preference = 'replica' | 'any', we follow an optimistic scenario.
+            // Plan will be routed to RO replica, so references from vshard will not help.
+            let is_on_leader =
+                ex_plan.get_ir_plan().effective_options.read_preference == ReadPreference::Leader;
+            let do_two_step = replicasets.len() != 1 && is_on_leader;
             single_plan_dispatch_dql(
                 port,
                 &lua,
@@ -193,7 +199,11 @@ pub(crate) fn custom_plan_dispatch<'p>(
             // so we can use the original plan to write it to the port.
             port_write_metadata(port, &ex_plan)?;
             let max_rows = ex_plan.get_sql_motion_row_max();
-            let do_two_step = rs_buckets.len() != 1;
+            // For read_preference = 'replica' | 'any', we follow an optimistic scenario.
+            // Plan will be routed to RO replica, so references from vshard will not help.
+            let is_on_leader =
+                ex_plan.get_ir_plan().effective_options.read_preference == ReadPreference::Leader;
+            let do_two_step = rs_buckets.len() != 1 && is_on_leader;
             custom_plan_dispatch_dql(
                 port,
                 &lua,
@@ -235,6 +245,24 @@ pub(crate) fn port_write_metadata<'p>(
     Ok(())
 }
 
+/// If `sql_preemption` is enabled, `read_preference` should be equal `leader`.
+fn effective_read_preference(ex_plan: &ExecutionPlan) -> SqlResult<String> {
+    let sql_preemption = DYNAMIC_CONFIG
+        .sql_preemption
+        .try_current_value()
+        .unwrap_or(DEFAULT_SQL_PREEMPTION);
+    let read_preference = ex_plan.get_ir_plan().effective_options.read_preference;
+
+    if sql_preemption && read_preference != ReadPreference::Leader {
+        Err(SbroadError::Invalid(
+            Entity::Option,
+            Some("read_preference must be set to 'leader' when read_preference is enabled".into()),
+        ))
+    } else {
+        Ok(read_preference.to_string())
+    }
+}
+
 fn single_plan_dispatch_dql<'lua, 'p>(
     port: &mut impl Port<'p>,
     lua: &'lua LuaThread,
@@ -246,6 +274,7 @@ fn single_plan_dispatch_dql<'lua, 'p>(
     do_two_step: bool,
 ) -> SqlResult<()> {
     let row_len = row_len(&ex_plan)?;
+    let read_preference = effective_read_preference(&ex_plan)?;
     let raft_id = node::global()
         .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?
         .raft_id;
@@ -267,8 +296,16 @@ fn single_plan_dispatch_dql<'lua, 'p>(
     let query_meta_storage = QueryMetaStorage::new();
     let _guard = query_meta_storage.put(key, data_source)?;
 
-    let lua_table = lua_single_plan_dispatch(lua, &tuple, replicasets, timeout, tier, do_two_step)
-        .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
+    let lua_table = lua_single_plan_dispatch(
+        lua,
+        &tuple,
+        replicasets,
+        timeout,
+        tier,
+        read_preference,
+        do_two_step,
+    )
+    .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
 
     dql_execution_result_process(port, lua_table, replicasets.len(), row_len, max_rows)?;
 
@@ -305,6 +342,7 @@ fn custom_plan_dispatch_dql<'lua, 'p>(
     do_two_step: bool,
 ) -> SqlResult<()> {
     let row_len = row_len(&ex_plan)?;
+    let read_preference = effective_read_preference(&ex_plan)?;
     let rs_plan = prepare_rs_to_ir_map(&rs_buckets, ex_plan)?;
     let plans = rs_plan.len();
     let mut first_args = HashMap::with_capacity(rs_plan.len());
@@ -336,8 +374,15 @@ fn custom_plan_dispatch_dql<'lua, 'p>(
     let key = exec_plan.get_plan_id();
     let _guard = query_meta_storage.put(key, exec_plan)?;
 
-    let lua_table = lua_custom_plan_dispatch(lua, &first_args, timeout, tier, do_two_step)
-        .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
+    let lua_table = lua_custom_plan_dispatch(
+        lua,
+        &first_args,
+        timeout,
+        tier,
+        read_preference,
+        do_two_step,
+    )
+    .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
 
     dql_execution_result_process(port, lua_table, plans, row_len, max_rows)?;
 
@@ -658,15 +703,8 @@ fn build_dml_message(ex_plan: ExecutionPlan) -> SqlResult<(Tuple, Option<Executi
                 None => {
                     debug_assert!(!with_dql, "Delete full works only without DQL");
                     let plan_id = plan.new_pattern_id(top_id)?;
-                    let options = &plan.effective_options;
-                    let data = FullDeleteData::new(
-                        core,
-                        plan_id,
-                        (
-                            options.sql_motion_row_max as u64,
-                            options.sql_vdbe_opcode_max as u64,
-                        ),
-                    );
+                    let options = plan.effective_options.to_protocol_options();
+                    let data = FullDeleteData::new(core, plan_id, options);
                     let tuple = encode_with_reservation!(&data, write_delete_full_packet);
                     Ok((tuple, None))
                 }
@@ -761,6 +799,8 @@ fn single_plan_dispatch_dml<'lua, 'p>(
     timeout: u64,
     tier: Option<&str>,
 ) -> SqlResult<()> {
+    // This option is available only for DQL.
+    let read_preference = ReadPreference::default().to_string();
     let (message, new_plan) = build_dml_message(ex_plan)?;
 
     let _guard = if let Some(new_plan) = new_plan {
@@ -771,8 +811,16 @@ fn single_plan_dispatch_dml<'lua, 'p>(
         None
     };
 
-    let lua_table = lua_single_plan_dispatch(lua, message, replicasets, timeout, tier, false)
-        .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
+    let lua_table = lua_single_plan_dispatch(
+        lua,
+        message,
+        replicasets,
+        timeout,
+        tier,
+        read_preference,
+        false,
+    )
+    .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
     // TODO: all buckets will allocate nothing, because it is empty
     dml_process(port, lua_table, replicasets.len())?;
     Ok(())
@@ -786,6 +834,7 @@ fn custom_plan_dispatch_dml<'lua, 'p>(
     timeout: u64,
     tier: Option<&str>,
 ) -> SqlResult<()> {
+    let read_preference = ReadPreference::default().to_string();
     let rs_plan = prepare_rs_to_ir_map(&rs_buckets, ex_plan)?;
     let mut dql_encoder = None;
     let mut args = HashMap::with_capacity(rs_plan.len());
@@ -802,7 +851,7 @@ fn custom_plan_dispatch_dml<'lua, 'p>(
         None
     };
     let len = args.len();
-    let lua_table = lua_custom_plan_dispatch(lua, args, timeout, tier, false)
+    let lua_table = lua_custom_plan_dispatch(lua, args, timeout, tier, read_preference, false)
         .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
     dml_process(port, lua_table, len)?;
     Ok(())
