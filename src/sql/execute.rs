@@ -11,6 +11,7 @@ use rmp::encode::{write_array_len, write_str, write_str_len, write_uint};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql::backend::sql::space::ADMIN_ID;
 use sql::errors::{Action, Entity, SbroadError};
+#[allow(deprecated)]
 use sql::executor::engine::helpers::{
     build_insert_args, init_delete_tuple_builder, init_insert_tuple_builder,
     init_local_update_tuple_builder, init_sharded_update_tuple_builder, old_populate_table,
@@ -120,6 +121,7 @@ fn populate_table(table_name: &str, tuples: TupleIterator) -> Result<(), SbroadE
 
 /// Execute a DML query on the storage.
 #[deprecated(note = "Remove in next release. Used for smooth upgrade")]
+#[allow(deprecated)]
 pub(crate) fn old_dml_execute<'p, R: Vshard + QueryCache>(
     runtime: &R,
     required: &mut RequiredData,
@@ -192,6 +194,7 @@ where
 /// Execute the first round request for DQL query on storage
 /// with an attempt to hit the cache.
 #[deprecated(note = "Remove in next release. Used for smooth upgrade")]
+#[allow(deprecated)]
 pub(crate) fn dql_execute_first_round<'p, R: Vshard + QueryCache>(
     runtime: &R,
     info: &mut impl RequiredPlanInfo,
@@ -223,6 +226,7 @@ where
 }
 
 #[deprecated(note = "Remove in next release. Used for smooth upgrade")]
+#[allow(deprecated)]
 pub(crate) fn dql_execute_second_round<'p, R: QueryCache>(
     runtime: &R,
     info: &mut impl FullPlanInfo,
@@ -592,6 +596,7 @@ where
                 Some(format_smolstr!("missing metadata for motion {motion_id}")),
             )
         })?;
+        #[allow(deprecated)]
         old_table_create(&table_name, &pk_name, meta)?;
     }
 
@@ -624,6 +629,7 @@ where
 }
 
 #[deprecated(note = "Remove in next release. Used for smooth upgrade")]
+#[allow(deprecated)]
 fn old_plan_execute<'p, R: QueryCache>(
     runtime: &R,
     info: &mut impl FullPlanInfo,
@@ -745,6 +751,7 @@ fn table_create(
 
 // Requires the cache to be locked.
 #[deprecated(note = "Remove in next release. Used for smooth upgrade")]
+#[allow(deprecated)]
 pub fn old_stmt_execute<'p>(
     stmt: &mut SqlStmt,
     info: &mut impl RequiredPlanInfo,
@@ -781,6 +788,7 @@ pub fn old_stmt_execute<'p>(
 
 /// Helper function to materialize a virtual table on storage.
 #[deprecated(note = "Remove in next release. Used for smooth upgrade")]
+#[allow(deprecated)]
 fn old_virtual_table_materialize<R: Vshard + QueryCache>(
     runtime: &R,
     optional: &mut OptionalData,
@@ -817,6 +825,7 @@ where
 
 // Requires the cache to be locked.
 #[deprecated(note = "Remove in next release. Used for smooth upgrade")]
+#[allow(deprecated)]
 pub fn old_sql_execute<'p, R: QueryCache>(
     cache_guarded: &mut <<R as QueryCache>::Mutex as MutexLike<R::Cache>>::Guard<'_>,
     info: &mut impl FullPlanInfo,
@@ -910,6 +919,7 @@ where
 }
 
 #[deprecated(note = "Remove in next release. Used for smooth upgrade")]
+#[allow(deprecated)]
 fn old_update_execute<'p, R: Vshard + QueryCache>(
     runtime: &R,
     optional: &mut OptionalData,
@@ -1194,6 +1204,7 @@ fn delete_args<'t>(
 }
 
 #[deprecated(note = "Remove in next release. Used for smooth upgrade")]
+#[allow(deprecated)]
 fn old_delete_execute<'p, R: Vshard + QueryCache>(
     runtime: &R,
     optional: &mut OptionalData,
@@ -1253,6 +1264,7 @@ where
 }
 
 #[deprecated(note = "Remove in next release. Used for smooth upgrade")]
+#[allow(deprecated)]
 fn old_insert_execute<'p, R: Vshard + QueryCache>(
     runtime: &R,
     optional: &mut OptionalData,

@@ -1017,7 +1017,7 @@ impl ExecutionPlan {
                 ));
             }
         }
-        Ok(engine.map_or_else(|| SpaceEngine::Memtx, |e| e))
+        Ok(engine.unwrap_or(SpaceEngine::Memtx))
     }
 
     /// # Errors

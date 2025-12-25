@@ -91,7 +91,7 @@ pub fn main(mut args: args::Run) -> ! {
             }
 
             let pipe = write_entrypoint_to_pipe(next_entrypoint)?;
-            output_entrypoint_pipe = Some(pipe);
+            let _ = output_entrypoint_pipe.insert(pipe);
 
             #[rustfmt::skip]
             tlog!(Info, "restarting process to proceed with next entrypoint {next_entrypoint:?}");

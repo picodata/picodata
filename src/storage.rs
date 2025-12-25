@@ -21,6 +21,7 @@ use crate::schema::ServiceRouteKey;
 use crate::schema::{IndexDef, IndexOption, TableDef};
 use crate::schema::{PluginDef, INITIAL_SCHEMA_VERSION};
 use crate::schema::{PrivilegeDef, RoutineDef, UserDef};
+#[allow(deprecated)]
 use crate::sql::execute::dql_execute_second_round;
 use crate::sql::port::PicoPortC;
 use crate::sql::storage::StorageRuntime;
@@ -442,6 +443,7 @@ impl Catalog {
                     let mut info = info.clone();
                     let mut port = TarantoolPort::new_port_c();
                     let mut pico_port = PicoPortC::from(unsafe { port.as_mut_port_c() });
+                    #[allow(deprecated)]
                     dql_execute_second_round(&rt, &mut info, &mut pico_port)
                         .map_err(|sbroad_err| TntError::Other(format!("{}", sbroad_err).into()))?;
 

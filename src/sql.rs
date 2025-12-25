@@ -107,6 +107,7 @@ use crate::sql::dispatch::build_cache_miss_dql_packet;
 use serde::Serialize;
 use sql::executor::ir::QueryType;
 use sql::BoundStatement;
+#[allow(deprecated)]
 use sql_protocol::decode::ExecuteArgsData::{New, Old};
 
 pub const DEFAULT_BUCKET_COUNT: u64 = 3000;
@@ -2580,6 +2581,7 @@ fn report(msg: &str, e: Error) -> i32 {
     TarantoolErrorCode::ProcC as i32
 }
 
+#[allow(deprecated)]
 struct ExecArgs {
     timeout: f64,
     need_ref: bool,
@@ -2591,6 +2593,7 @@ struct ExecArgs {
 /// New: raw payload vector for new protocol
 /// Old: parsed legacy protocol data
 #[deprecated(note = "Remove in next release, Change to Vec<u8>. Used for smooth upgrade")]
+#[allow(deprecated)]
 enum ExecArgsData {
     New(Vec<u8>),
     Old(Box<OldExecArgs>),
@@ -2630,6 +2633,7 @@ impl<'de> Decode<'de> for ExecArgs {
         let rid = args.rid;
         let need_ref = args.need_ref;
 
+        #[allow(deprecated)]
         match args.data {
             New(data) => Ok(ExecArgs {
                 timeout,
@@ -2671,6 +2675,7 @@ unsafe fn proc_sql_execute_impl(args: ExecArgs, port: &mut PicoPortC) -> ::std::
     // Safety: safe as the original args.sid is as valid UTF-8 string.
     let sid = unsafe { std::str::from_utf8_unchecked(args.sid.as_slice()) };
 
+    #[allow(deprecated)]
     let pcall = || -> Result<(), Error> {
         match args.data {
             ExecArgsData::New(data) => {
@@ -2721,6 +2726,7 @@ pub unsafe extern "C" fn proc_sql_execute(
 
     let mut port = PicoPortC::from(ctx.mut_port_c());
 
+    #[allow(deprecated)]
     let (is_old, is_first_req, query_type) = match &args.data {
         ExecArgsData::New(data) => {
             // TODO: can we reuse it?

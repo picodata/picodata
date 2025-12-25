@@ -3,6 +3,7 @@
 //! for execution of the dispatched query plan subtrees.
 
 use crate::sql::dispatch::port_write_metadata;
+#[allow(deprecated)]
 use crate::sql::execute::{
     dml_execute, dql_execute, dql_execute_first_round, dql_execute_second_round, explain_execute,
     old_dml_execute, old_sql_execute, old_stmt_execute,
@@ -496,6 +497,7 @@ impl Vshard for StorageRuntime {
             schema_info,
         };
 
+        #[allow(deprecated)]
         match explain_type {
             None => {
                 if let QueryType::DML = query_type {
@@ -576,7 +578,7 @@ impl StorageRuntime {
     ///
     /// # Errors
     /// - Something went wrong while executing the plan.
-    #[allow(unused_variables)]
+    #[allow(unused_variables, deprecated)]
     #[deprecated(note = "Remove in next release. Used for smooth upgrade")]
     pub fn old_execute_plan<'p>(
         &self,
