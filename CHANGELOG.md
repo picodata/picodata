@@ -34,7 +34,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed that governor would send redundant proc_sharding RPCs which would make
   it impossible to deploy huge clusters. Now RPCs from governor are split into
   batches of configurable size (default 200, ALTER SYSTEM parameter `governor_rpc_batch_size`).
-
+- Node construction is now deferred until actually needed, avoiding unnecessary 
+  work for cached queries on any instance execution
 
 ## [25.5.1] - 2025-12-19
 
