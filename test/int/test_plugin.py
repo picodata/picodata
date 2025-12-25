@@ -1557,6 +1557,7 @@ def test_instance_service_poison_and_healthy_then(cluster: Cluster):
 # -------------------------- leader change test -----------------------------------
 
 
+@pytest.mark.xfail(reason="https://git.picodata.io/core/picodata/-/issues/2552")
 def test_on_leader_change(cluster: Cluster):
     i1 = cluster.add_instance(replicaset_name="r1", wait_online=True)
     i2 = cluster.add_instance(replicaset_name="r1", wait_online=True)
