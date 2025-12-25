@@ -29,6 +29,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed a crash when SQL request arrives before instance is properly initialized
 - Fixed that instances would be made Offline immediately after a raft entry is
   applied if there weren't any entries applied for a long time before that
+- Fixed that instances would randomly fail with ER_READONLY during bootstrap
 
 
 
@@ -70,7 +71,6 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed a bug which made the effective value of `pg_portal_max` be the same as `pg_statement_max`
 - Fix trigger execution and privilege initialization for scram-sha256 auth in pgproto.
 - Fixed possible ER_BOOTSTRAP_READONLY failure during instance bootstrap.
-- Fixed ER_BOOTSTRAP_CONNECTION_NOT_TO_ALL failure during instance join stage.
 - Fixed a possible bootstrap failure when joining multiple instances at the same
   time. NOTE: The fix requires modifying the proc_raft_join RPC response format
   which technically breaks compatibility with previous versions of picodata.

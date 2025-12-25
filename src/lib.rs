@@ -2121,7 +2121,6 @@ fn start_join(
     let cfg = tarantool::Cfg::for_instance_join(config, resp)?;
 
     crate::error_injection!(exit "EXIT_AFTER_REBOOTSTRAP_BEFORE_STORAGE_INIT_IN_START_JOIN");
-    crate::error_injection!("STALL_BEFORE_STORAGE_INIT_IN_START_JOIN" => { fiber::sleep(Duration::from_secs(10)); });
 
     // XXX: Initialize cluster uuid before opening any iproto connections.
     let uuid = resp
