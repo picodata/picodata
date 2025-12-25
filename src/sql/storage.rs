@@ -14,7 +14,7 @@ use crate::sql::router::{
 };
 use crate::traft::node;
 use serde::{Deserialize, Serialize};
-use sql::backend::sql::tree::{OrderedSyntaxNodes, SyntaxData, SyntaxPlan};
+use sql::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::bucket::Buckets;
 use sql::executor::engine::helpers::vshard::get_random_bucket;
@@ -399,15 +399,14 @@ impl FullPlanInfo for GlobalDeleteInfo {
     }
 }
 
-struct LocalExecutionQueryInfo<'sn> {
+struct LocalExecutionQueryInfo {
     exec_plan: ExecutionPlan,
     plan_id: SmolStr,
-    nodes: Vec<&'sn SyntaxData>,
     params: Vec<Value>,
     schema_info: SchemaInfo,
 }
 
-impl RequiredPlanInfo for LocalExecutionQueryInfo<'_> {
+impl RequiredPlanInfo for LocalExecutionQueryInfo {
     fn id(&self) -> &SmolStr {
         &self.plan_id
     }
@@ -420,10 +419,6 @@ impl RequiredPlanInfo for LocalExecutionQueryInfo<'_> {
         &self.schema_info
     }
 
-    fn extract_data(&mut self) -> EncodedVTables {
-        self.exec_plan.encode_vtables()
-    }
-
     fn sql_vdbe_opcode_max(&self) -> u64 {
         self.exec_plan
             .get_ir_plan()
@@ -434,9 +429,13 @@ impl RequiredPlanInfo for LocalExecutionQueryInfo<'_> {
     fn sql_motion_row_max(&self) -> u64 {
         self.exec_plan.get_sql_motion_row_max()
     }
+
+    fn extract_data(&mut self) -> EncodedVTables {
+        self.exec_plan.encode_vtables()
+    }
 }
 
-impl FullPlanInfo for LocalExecutionQueryInfo<'_> {
+impl FullPlanInfo for LocalExecutionQueryInfo {
     fn take_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError> {
         let vtables = self.exec_plan.get_vtables();
         let mut meta = VTablesMeta::with_capacity(vtables.len());
@@ -444,8 +443,13 @@ impl FullPlanInfo for LocalExecutionQueryInfo<'_> {
             meta.insert(*id, table.metadata());
         }
 
+        let top_id = self.exec_plan.get_ir_plan().get_top()?;
+        let sp = SyntaxPlan::new(&self.exec_plan, top_id, Snapshot::Oldest)?;
+        let ordered = OrderedSyntaxNodes::try_from(sp)?;
+        let nodes = ordered.to_syntax_data()?;
+
         let (local_sql, motion_ids) = self.exec_plan.generate_sql(
-            &self.nodes,
+            &nodes,
             self.plan_id.as_str(),
             Some(&meta),
             |name: &str, id| table_name(name, id),
@@ -482,9 +486,6 @@ impl Vshard for StorageRuntime {
         let top_id = plan.get_top()?;
         let explain_type = plan.get_explain_type();
         let plan_id = plan.pattern_id(top_id)?;
-        let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Oldest)?;
-        let ordered = OrderedSyntaxNodes::try_from(sp)?;
-        let nodes = ordered.to_syntax_data()?;
         let params = ex_plan.to_params().to_vec();
         let table_version_map = ex_plan.get_ir_plan().table_version_map.clone();
         let index_version_map = ex_plan.get_ir_plan().index_version_map.clone();
@@ -492,7 +493,6 @@ impl Vshard for StorageRuntime {
         let mut info = LocalExecutionQueryInfo {
             exec_plan: ex_plan,
             plan_id,
-            nodes,
             params,
             schema_info,
         };

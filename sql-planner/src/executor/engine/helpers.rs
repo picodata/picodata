@@ -1137,37 +1137,14 @@ pub fn materialize_values(
 ) -> Result<VirtualTable, SbroadError> {
     let child_node = exec_plan.get_ir_plan().get_node(values_id)?;
 
-    let Node::Relational(Relational::Values(Values {
-        ref children,
-        output,
-    })) = child_node
-    else {
+    let Node::Relational(Relational::Values(Values { ref children, .. })) = child_node else {
         panic!("Values node expected. Got {child_node:?}.")
     };
-
-    let children = children.clone();
-    let output = *output;
-
-    let mut vtable = VirtualTable::new();
-    vtable.get_mut_tuples().reserve(children.len());
-
-    let first_row_id = children
-        .first()
-        .expect("Values node must contain children.");
-    let row_node = exec_plan.get_ir_plan().get_relation_node(*first_row_id)?;
-    let Relational::ValuesRow(ValuesRow { data, .. }) = row_node else {
-        panic!("Expected ValuesRow, got {row_node:?}.")
-    };
-    let columns_len = exec_plan
-        .get_ir_plan()
-        .get_expression_node(*data)?
-        .get_row_list()?
-        .len();
 
     // Check if there is only constant children, e.g. `VALUES (1,2,3)`. In that case we can
     // materialize VALUES locally avoiding expensive `dispatch()` call.
     let mut only_constants = true;
-    'rows_loop: for row_id in &children {
+    'rows_loop: for row_id in children {
         let row_node = exec_plan.get_ir_plan().get_relation_node(*row_id)?;
         let Relational::ValuesRow(ValuesRow { data, .. }) = row_node else {
             panic!("Expected ValuesRow under Values. Got {row_node:?}.")
@@ -1181,53 +1158,7 @@ pub fn materialize_values(
         }
     }
 
-    if only_constants {
-        // All children are constants, can materialize VALUES locally and take all constants.
-        vtable.get_mut_columns().reserve(children.len());
-        for row_id in &children {
-            let row_node = exec_plan.get_mut_ir_plan().get_relation_node(*row_id)?;
-            let Relational::ValuesRow(ValuesRow { data, .. }) = row_node else {
-                panic!("Expected ValuesRow under Values. Got {row_node:?}.")
-            };
-
-            let data = *data;
-            let mut row: VTableTuple = Vec::with_capacity(columns_len);
-            for idx in 0..columns_len {
-                let plan = exec_plan.get_mut_ir_plan();
-                let column_id = plan.get_row_list(data)?[idx];
-                let column_node = plan.get_mut_expression_node(column_id)?;
-                let MutExpression::Constant(Constant { ref mut value, .. }) = column_node else {
-                    unreachable!("checked before that there can be only constants");
-                };
-                // Take the value avoiding cloning.
-                row.push(std::mem::replace(value, Value::Null));
-            }
-
-            vtable.add_tuple(row);
-        }
-    }
-
-    let mut column_names: Vec<SmolStr> = Vec::new();
-    let output_cols = exec_plan.get_ir_plan().get_row_list(output)?;
-    for column_id in output_cols {
-        let alias = exec_plan.get_ir_plan().get_expression_node(*column_id)?;
-        if let Expression::Alias(Alias { name, .. }) = alias {
-            column_names.push(name.clone());
-        } else {
-            panic!("Output column ({column_id}) is not an alias node.")
-        }
-    }
-
-    let mut vtable = if only_constants {
-        // Create vtable columns with default column field (that will be fixed later).
-        let columns = vtable.get_mut_columns();
-        columns.reserve(column_names.len());
-        for _ in 0..columns_len {
-            let column = Column::default();
-            columns.push(column);
-        }
-        vtable
-    } else {
+    let mut vtable = if !only_constants {
         // We need to execute VALUES as a local SQL.
         let columns = vtable_columns(exec_plan.get_ir_plan(), values_id)?;
 
@@ -1246,6 +1177,46 @@ pub fn materialize_values(
                     format_smolstr!("{e}"),
                 )
             })?;
+        }
+        vtable
+    } else {
+        let first_row_id = children
+            .first()
+            .expect("Values node must contain children.");
+        let row_node = exec_plan.get_ir_plan().get_relation_node(*first_row_id)?;
+        let Relational::ValuesRow(ValuesRow { data, .. }) = row_node else {
+            panic!("Expected ValuesRow, got {row_node:?}.")
+        };
+        let columns_len = exec_plan
+            .get_ir_plan()
+            .get_expression_node(*data)?
+            .get_row_list()?
+            .len();
+
+        // Create vtable columns with default column field (that will be fixed later).
+        let mut vtable = VirtualTable::with_columns(vec![Column::default(); columns_len]);
+        // All children are constants, can materialize VALUES locally and take all constants.
+        vtable.get_mut_tuples().reserve(children.len());
+        for row_id in children.clone() {
+            let row_node = exec_plan.get_mut_ir_plan().get_relation_node(row_id)?;
+            let Relational::ValuesRow(ValuesRow { data, .. }) = row_node else {
+                panic!("Expected ValuesRow under Values. Got {row_node:?}.")
+            };
+
+            let data = *data;
+            let mut row: VTableTuple = Vec::with_capacity(columns_len);
+            for idx in 0..columns_len {
+                let plan = exec_plan.get_mut_ir_plan();
+                let column_id = plan.get_row_list(data)?[idx];
+                let column_node = plan.get_mut_expression_node(column_id)?;
+                let MutExpression::Constant(Constant { ref mut value, .. }) = column_node else {
+                    unreachable!("checked before that there can be only constants");
+                };
+                // Take the value avoiding cloning.
+                row.push(std::mem::replace(value, Value::Null));
+            }
+
+            vtable.add_tuple(row);
         }
         vtable
     };
