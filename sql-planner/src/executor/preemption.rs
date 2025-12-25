@@ -1,18 +1,24 @@
+use std::cell::Cell;
 use std::time::{Duration, Instant};
 use tarantool::error::TarantoolError;
 use tarantool::transaction::{begin, commit, is_in_transaction, TransactionError};
 
 const YIELD_ITERATION_COUNT: usize = 1024;
 
+thread_local!(static SCHEDULER_START_TIME: Cell<Option<Instant>> = const { Cell::new(None) });
+
 pub struct Scheduler {
-    start_time: Instant,
     ops_left: usize,
 }
 
 impl Default for Scheduler {
     fn default() -> Self {
+        SCHEDULER_START_TIME.with(|timer| {
+            if timer.get().is_none() {
+                timer.set(Some(Instant::now()))
+            }
+        });
         Self {
-            start_time: Instant::now(),
             ops_left: YIELD_ITERATION_COUNT,
         }
     }
@@ -41,7 +47,9 @@ impl Scheduler {
         self.ops_left = YIELD_ITERATION_COUNT;
 
         // Check time interval.
-        if self.start_time.elapsed() < Duration::from_micros(options.yield_interval_us) {
+        let start_time =
+            SCHEDULER_START_TIME.with(|timer| timer.get().expect("timer must be initialized"));
+        if start_time.elapsed() < Duration::from_micros(options.yield_interval_us) {
             return Ok(());
         }
 
@@ -55,7 +63,7 @@ impl Scheduler {
         yield_impl();
 
         // Resume after yield and restart the timer.
-        self.start_time = Instant::now();
+        SCHEDULER_START_TIME.with(|timer| timer.set(Some(Instant::now())));
 
         // Open new transaction.
         if tx_need_restart {
