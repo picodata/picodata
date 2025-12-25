@@ -1,3 +1,4 @@
+#[allow(deprecated)]
 use crate::decode::ExecuteArgsData::{New, Old};
 use crate::dml::delete::{DeleteFilteredIterator, DeleteFullIterator};
 use crate::dml::dml_type::DMLType;
@@ -22,6 +23,7 @@ pub struct QueryMetaArgs<'bytes> {
     pub plan_id: u64,
 }
 
+#[allow(deprecated)]
 pub struct ExecuteArgs<'bytes> {
     pub timeout: f64,
     pub need_ref: bool,
@@ -33,6 +35,7 @@ pub struct ExecuteArgs<'bytes> {
 /// New: raw payload bytes for new protocol
 /// Old: raw legacy protocol data
 #[deprecated(note = "Remove in next release. Change to &[u8]. Used for smooth upgrade")]
+#[allow(deprecated)]
 pub enum ExecuteArgsData<'bytes> {
     New(&'bytes [u8]),
     Old(OldExecuteArgs<'bytes>),
@@ -150,6 +153,7 @@ impl<'bytes> ProtocolMessage<'bytes> {
     }
 }
 
+#[allow(deprecated)]
 pub fn execute_args_split(mp: &[u8]) -> IoResult<ExecuteArgs<'_>> {
     let mut stream = Cursor::new(mp);
     let elems = read_array_len(&mut stream)

@@ -16,7 +16,6 @@ use crate::sql::storage::STATEMENT_CACHE;
 use crate::sql::value_type_str;
 use crate::static_ref;
 use crate::storage::{self, DbConfig, SystemTable};
-use crate::system_parameter_name;
 use crate::tarantool::set_cfg_field_from_rmpv;
 use crate::tier::Tier;
 use crate::tier::TierConfig;
