@@ -1,8 +1,10 @@
 use crate::config::{DEFAULT_SQL_PREEMPTION, DEFAULT_SQL_PREEMPTION_INTERVAL_US, DYNAMIC_CONFIG};
+use crate::metrics;
 use crate::tarantool::VdbeYieldArgs;
-use sql::executor::preemption::SchedulerOptions;
+use sql::executor::preemption::{SchedulerMetrics, SchedulerOptions};
 use std::cell::Cell;
 use std::time::Duration;
+use tarantool::clock::monotonic64;
 use tarantool::fiber;
 use tarantool::transaction::is_in_transaction;
 
@@ -46,6 +48,11 @@ pub(crate) fn scheduler_options() -> SchedulerOptions {
     SchedulerOptions {
         enabled: sql_preemption(),
         yield_interval_us: sql_preemption_interval_us(),
+        metrics: SchedulerMetrics {
+            record_tx_splits_total: metrics::record_sql_tx_splits_total,
+            record_yield_sleep_duration: metrics::record_sql_yield_sleep_duration,
+            record_yields_total: metrics::record_sql_yields_total,
+        },
     }
 }
 
@@ -60,7 +67,8 @@ pub(crate) extern "C" fn vdbe_yield_handler(args: *mut VdbeYieldArgs) -> libc::c
     let yield_interval_ns = sql_preemption_interval_us() * 1000;
 
     // Do nothing if the deadline has not been reached yet.
-    if current.abs_diff(start) < yield_interval_ns {
+    let run_interval_ns = current.abs_diff(start);
+    if run_interval_ns < yield_interval_ns {
         return 0;
     }
 
@@ -69,6 +77,10 @@ pub(crate) extern "C" fn vdbe_yield_handler(args: *mut VdbeYieldArgs) -> libc::c
     if !is_in_transaction() {
         unsafe { *start_mut = current };
         yield_sql_execution();
+
+        metrics::record_sql_yields_total();
+        let sleep_interval_ms = monotonic64().abs_diff(current as u64) as f64 / 1_000_000.0;
+        metrics::record_sql_yield_sleep_duration(sleep_interval_ms);
     }
 
     return 0;
