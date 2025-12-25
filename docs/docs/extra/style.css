@@ -324,6 +324,14 @@ h6 {
   position: relative;
 }
 
+.md-header__title--active .md-header__topic {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: translateX(0) !important;
+  z-index: 1 !important;
+  transition: transform .4s cubic-bezier(1, .7, .1, .1), opacity .15s !important;
+}
+
 .md-version {
   display: -webkit-box;
   display: -ms-flexbox;
