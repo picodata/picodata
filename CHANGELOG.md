@@ -26,6 +26,7 @@ with the `YY.MINOR.MICRO` scheme.
   of joining instances mismatches version of cluster), so this shouldn't be a
   problem for anybody. NOTE also that this doesn't affect restarting instances
   which already joined the cluster.
+- Fixed a crash when SQL request arrives before instance is properly initialized
 
 ## [25.5.1] - 2025-12-19
 

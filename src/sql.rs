@@ -746,12 +746,10 @@ pub fn parse_and_dispatch<'p>(
 ) -> traft::Result<()> {
     let router = RouterRuntime::new();
 
-    let bound_statement = BoundStatement::parse_and_bind(
-        &router,
-        query_text,
-        params,
-        DYNAMIC_CONFIG.current_sql_options(),
-    )?;
+    let Some(sql_options) = DYNAMIC_CONFIG.current_sql_options() else {
+        return Err(Error::Uninitialized);
+    };
+    let bound_statement = BoundStatement::parse_and_bind(&router, query_text, params, sql_options)?;
     if bound_statement.params_for_audit().is_some() {
         audit::policy::log_dml_for_user(query_text, bound_statement.params_for_audit());
     }

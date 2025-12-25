@@ -89,6 +89,11 @@ impl<T: TypeWithAtomic> AtomicObserverProvider<T> {
         self.get_noinit().load(Ordering::Relaxed)
     }
 
+    #[inline]
+    pub fn try_current_value(&self) -> Option<T> {
+        self.shared.get().map(|a| a.load(Ordering::Relaxed))
+    }
+
     /// Makes an observer that can be used to get the value stored in the provider. Panics if the provider is not initialized.
     pub fn make_observer(&self) -> AtomicObserver<T> {
         AtomicObserver {
