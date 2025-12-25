@@ -2072,11 +2072,11 @@ impl DynamicConfigProviders {
         }
     }
 
-    pub fn current_sql_options(&self) -> options::Options {
-        options::Options {
-            sql_motion_row_max: self.sql_motion_row_max.current_value(),
-            sql_vdbe_opcode_max: self.sql_vdbe_opcode_max.current_value(),
-        }
+    pub fn current_sql_options(&self) -> Option<options::Options> {
+        Some(options::Options {
+            sql_motion_row_max: self.sql_motion_row_max.try_current_value()?,
+            sql_vdbe_opcode_max: self.sql_vdbe_opcode_max.try_current_value()?,
+        })
     }
 }
 
