@@ -26,14 +26,10 @@ impl Default for Scheduler {
 
 impl Scheduler {
     #[inline(always)]
-    pub fn maybe_yield<F>(
+    pub fn maybe_yield(
         &mut self,
         options: &SchedulerOptions,
-        yield_impl: F,
-    ) -> Result<(), TransactionError<TarantoolError>>
-    where
-        F: Fn(),
-    {
+    ) -> Result<(), TransactionError<TarantoolError>> {
         if !options.enabled {
             return Ok(());
         }
@@ -62,7 +58,7 @@ impl Scheduler {
             (options.metrics.record_tx_splits_total)();
         }
 
-        yield_impl();
+        (options.yield_impl)();
 
         // Resume after yield and restart the timer.
         (options.metrics.record_yields_total)();
@@ -87,6 +83,7 @@ impl Scheduler {
 pub struct SchedulerOptions {
     pub enabled: bool,
     pub yield_interval_us: u64,
+    pub yield_impl: fn(),
     pub metrics: SchedulerMetrics,
 }
 

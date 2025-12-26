@@ -25,7 +25,6 @@ use std::{
     rc::Rc,
     str::{from_utf8, FromStr},
     sync::OnceLock,
-    time::Duration,
 };
 use tarantool::space::Space;
 
@@ -1238,10 +1237,8 @@ pub fn materialize_values(
         let mut vtable = VirtualTable::with_columns(columns);
         let mut ys = Scheduler::default();
         for mp in port.iter().skip(1) {
-            ys.maybe_yield(&runtime.get_scheduler_options(), || {
-                runtime.yield_execution()
-            })
-            .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
+            ys.maybe_yield(&runtime.get_scheduler_options())
+                .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             vtable.write_all(mp).map_err(|e| {
                 SbroadError::FailedTo(
                     Action::Create,
@@ -1327,10 +1324,8 @@ pub fn materialize_motion(
     } else {
         let mut ys = Scheduler::default();
         for mp in port.iter().skip(1) {
-            ys.maybe_yield(&runtime.get_scheduler_options(), || {
-                runtime.yield_execution()
-            })
-            .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
+            ys.maybe_yield(&runtime.get_scheduler_options())
+                .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             vtable.write_all(mp).map_err(|e| {
                 SbroadError::FailedTo(
                     Action::Create,
@@ -1467,11 +1462,7 @@ pub fn old_populate_table(
         })?;
         let mut ys = Scheduler::default();
         for tuple in data.iter() {
-            // This function does not have access to the runtime to obtain a
-            // yield_execution implementation. Since it is deprecated and planned
-            // for removal, it is preferable to call fiber_sleep(0) directly
-            // rather than refactor this code.
-            ys.maybe_yield(options, || tarantool::fiber::sleep(Duration::ZERO))
+            ys.maybe_yield(options)
                 .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             match space.insert(&tuple) {
                 Ok(_) => {}
