@@ -1285,6 +1285,28 @@ def test_picodata_status_exit_code(cluster: Cluster):
 
     assert process.returncode == 0
 
+    # STEP: verify that broken pipe for both stdout and stderr will not panic.
+    # NOTE: see <https://git.picodata.io/core/picodata/-/issues/2520>.
+
+    broken_pipe_reader, broken_pipe_writer = os.pipe()
+    os.close(broken_pipe_reader)
+
+    process = subprocess.run(
+        [
+            cluster.runtime.command,
+            "status",
+            "--peer",
+            f"{i1_address}",
+            "--service-password-file",
+            i1.service_password_file,
+        ],
+        stdout=broken_pipe_writer,
+        stderr=broken_pipe_writer,
+        encoding="utf-8",
+        timeout=CLI_TIMEOUT,
+    )
+    assert process.returncode == 1
+
 
 def test_picodata_status_doesnt_show_expelled_instances(cluster: Cluster):
     cluster.set_config_file(

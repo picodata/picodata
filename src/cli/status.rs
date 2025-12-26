@@ -1,6 +1,5 @@
-use crate::cli;
 use crate::cli::args;
-use crate::cli::util::{Credentials, RowSet};
+use crate::cli::util::{is_broken_pipe, Credentials, RowSet};
 use crate::info::{proc_instance_info, InstanceInfo};
 use crate::instance::StateVariant;
 use crate::sql::proc_sql_dispatch;
@@ -8,6 +7,7 @@ use crate::traft;
 
 use std::cmp::max;
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::time::Duration;
 
 use comfy_table::{ContentArrangement, Table};
@@ -16,12 +16,17 @@ use tarantool::network::AsClient;
 
 pub fn main(args: args::Status) -> ! {
     let tt_args = args.tt_args().unwrap();
-    super::tarantool::main_cb(&tt_args, || -> cli::Result<()> {
-        if let Err(error) = main_impl(args) {
-            eprintln!("{error}");
-            std::process::exit(1);
+    super::tarantool::main_cb(&tt_args, || -> traft::Result<()> {
+        match main_impl(args) {
+            Ok(_) => std::process::exit(0),
+            // NOTE: no output possible - exit immediately.
+            // NOTE: treat broken pipe errors like any other - return the same code.
+            Err(error) if is_broken_pipe(&error) => std::process::exit(1),
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(1);
+            }
         }
-        std::process::exit(0)
     })
 }
 
@@ -77,7 +82,9 @@ fn set_width_for_columns(table: &mut Table, name_length: usize, state_length: us
     }
 }
 
-fn main_impl(args: args::Status) -> cli::Result<()> {
+fn main_impl(args: args::Status) -> traft::Result<()> {
+    let mut stdout = std::io::stdout();
+
     // setup credentials and options for the connection
     let credentials = Credentials::try_from(&args)?;
     let timeout = Some(Duration::from_secs(args.timeout));
@@ -91,11 +98,11 @@ fn main_impl(args: args::Status) -> cli::Result<()> {
 
     // Response always wrapped in MP_ARRAY
     let Some(instance_info) = instance_info.first() else {
-        return Err("Invalid form of response".to_string().into());
+        return Err(traft::error::Error::other("Invalid form of response"));
     };
 
-    println!(" CLUSTER NAME: {}", instance_info.cluster_name);
-    println!(" CLUSTER UUID: {}", instance_info.cluster_uuid);
+    writeln!(stdout, " CLUSTER NAME: {}", instance_info.cluster_name)?;
+    writeln!(stdout, " CLUSTER UUID: {}", instance_info.cluster_uuid)?;
 
     let mut response = ::tarantool::fiber::block_on(client.call(
         crate::proc_name!(proc_sql_dispatch),
@@ -122,12 +129,12 @@ fn main_impl(args: args::Status) -> cli::Result<()> {
 
     // Response always wrapped in MP_ARRAY
     let Some(response) = response.first_mut() else {
-        return Err("Invalid form of response".to_string().into());
+        return Err(traft::error::Error::other("Invalid form of response"));
     };
 
     // There is only one query
     let Some(response) = response.first_mut() else {
-        return Err("Invalid form of respone".to_string().into());
+        return Err(traft::error::Error::other("Invalid form of response"));
     };
 
     let find_idx_of_column = |column_name: &str| {
@@ -311,10 +318,10 @@ fn main_impl(args: args::Status) -> cli::Result<()> {
 
         let table = splitted.join("\n");
 
-        println!(" TIER/DOMAIN: {tier_and_fd}");
-        println!();
-        println!("{table}");
-        println!();
+        writeln!(stdout, " TIER/DOMAIN: {tier_and_fd}")?;
+        writeln!(stdout,)?;
+        writeln!(stdout, "{table}")?;
+        writeln!(stdout,)?;
     }
 
     Ok(())

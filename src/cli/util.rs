@@ -412,3 +412,12 @@ fn prompt_password(prompt: &str) -> std::io::Result<String> {
 
     result
 }
+
+pub fn is_broken_pipe(error: &traft::error::Error) -> bool {
+    if let traft::error::Error::Tarantool(tarantool::error::Error::IO(error)) = error {
+        if error.kind() == std::io::ErrorKind::BrokenPipe {
+            return true;
+        }
+    }
+    false
+}
