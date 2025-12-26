@@ -1883,12 +1883,11 @@ impl Router for RouterRuntimeMock {
         Ok(false)
     }
 
-    fn yield_execution(&self) {}
-
     fn get_scheduler_options(&self) -> SchedulerOptions {
         SchedulerOptions {
             enabled: false,
             yield_interval_us: 500,
+            yield_impl: || {},
             metrics: SchedulerMetrics::noop(),
         }
     }

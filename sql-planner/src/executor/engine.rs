@@ -408,9 +408,6 @@ pub trait Router: QueryCache {
     /// of current user to decide if the operation requires audit trail generation.
     fn is_audit_enabled(&self, plan: &crate::ir::Plan) -> Result<bool, SbroadError>;
 
-    /// Implementation of the execution yield.
-    fn yield_execution(&self);
-
     /// Get scheduler options from the runtime.
     fn get_scheduler_options(&self) -> SchedulerOptions;
 }

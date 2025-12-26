@@ -37,7 +37,7 @@ where
 }
 
 #[inline(always)]
-pub(crate) fn yield_sql_execution() {
+fn yield_sql_execution() {
     // Yield the fiber execution, collect all IO events and reschedule the fiber
     // to the tail of the event loop queue.
     fiber::sleep(Duration::ZERO);
@@ -48,6 +48,7 @@ pub(crate) fn scheduler_options() -> SchedulerOptions {
     SchedulerOptions {
         enabled: sql_preemption(),
         yield_interval_us: sql_preemption_interval_us(),
+        yield_impl: yield_sql_execution,
         metrics: SchedulerMetrics {
             record_tx_splits_total: metrics::record_sql_tx_splits_total,
             record_yield_sleep_duration: metrics::record_sql_yield_sleep_duration,
