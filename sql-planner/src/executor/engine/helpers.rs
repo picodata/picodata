@@ -1435,7 +1435,7 @@ pub fn old_populate_table(
         for tuple in data.iter() {
             ys.maybe_yield(options)
                 .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
-            match space.insert(&tuple) {
+            match space.insert(tuple) {
                 Ok(_) => {}
                 Err(e) => {
                     // It is possible that the temporary table was recreated by admin
