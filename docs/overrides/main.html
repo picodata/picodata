@@ -19,7 +19,7 @@
       <a href="{{ '/' | url }}">Главная</a>
 
       {% if page and page.ancestors %}
-        {% for ancestor in page.ancestors %}
+        {% for ancestor in page.ancestors[::-1] %}
           <span class="md-header__breadcrumb-separator">/</span>
           <a href="{{ ancestor.url | url }}">{{ ancestor.title }}</a>
         {% endfor %}
