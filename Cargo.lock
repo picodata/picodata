@@ -2958,7 +2958,7 @@ dependencies = [
 
 [[package]]
 name = "picodata"
-version = "25.5.1"
+version = "25.5.2"
 dependencies = [
  "abi_stable",
  "ahash 0.8.12",
@@ -3068,7 +3068,7 @@ dependencies = [
 
 [[package]]
 name = "picodata-plugin"
-version = "25.5.1"
+version = "25.5.2"
 dependencies = [
  "abi_stable",
  "log",
@@ -3089,7 +3089,7 @@ dependencies = [
 
 [[package]]
 name = "picodata-plugin-proc-macro"
-version = "25.5.1"
+version = "25.5.2"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -4285,7 +4285,7 @@ dependencies = [
 
 [[package]]
 name = "sql_protocol"
-version = "25.5.1"
+version = "25.5.2"
 dependencies = [
  "comfy-table",
  "rmp",

@@ -8,7 +8,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-## [25.5.2] - Unreleased
+## [25.5.2] - 2025-12-26
 
 ### Features
 
@@ -35,7 +35,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed that governor would send redundant proc_sharding RPCs which would make
   it impossible to deploy huge clusters. Now RPCs from governor are split into
   batches of configurable size (default 200, ALTER SYSTEM parameter `governor_rpc_batch_size`).
-- Node construction is now deferred until actually needed, avoiding unnecessary 
+- Node construction is now deferred until actually needed, avoiding unnecessary
   work for cached queries on any instance execution
 - Fixed a memory leak in SQL API of plugin SDK
 
@@ -51,7 +51,7 @@ with the `YY.MINOR.MICRO` scheme.
   types (e.g. pk int < decimal) and datetime.
 - Vinyl improvements to decrease in-memory page index size.
 - Add HTTPS support for metrics and WebUI
-- Add the _pico_bucket(tier_name) function to show vshard bucket distribution. 
+- Add the _pico_bucket(tier_name) function to show vshard bucket distribution.
 - Rework SQL execution protocol for DQL queries to reduce data transfer.
 
 ### Fixes
