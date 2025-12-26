@@ -4,7 +4,7 @@ use smol_str::{format_smolstr, SmolStr};
 use std::collections::HashMap;
 use std::io::Cursor;
 use tarantool::tlua::{self, AsLua, Push, PushGuard, PushInto, PushOne, PushOneInto, Void};
-use tarantool::tuple::{Tuple, TupleBuilder};
+use tarantool::tuple::{RawBytes, Tuple, TupleBuilder};
 
 use crate::backend::sql::tree::OrderedSyntaxNodes;
 use crate::errors::{Action, Entity, SbroadError};
@@ -222,7 +222,7 @@ impl EncodedRows {
 }
 
 impl<'e> IntoIterator for &'e EncodedRows {
-    type Item = Tuple;
+    type Item = &'e RawBytes;
     type IntoIter = EncodedRowsIter<'e>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -243,8 +243,8 @@ pub struct EncodedRowsIter<'e> {
     position: usize,
 }
 
-impl Iterator for EncodedRowsIter<'_> {
-    type Item = Tuple;
+impl<'a> Iterator for EncodedRowsIter<'a> {
+    type Item = &'a RawBytes;
 
     fn next(&mut self) -> Option<Self::Item> {
         let cur_pos = self.position;
@@ -255,17 +255,11 @@ impl Iterator for EncodedRowsIter<'_> {
         }
         let row_len = self.marking.get(cur_pos)?;
         assert!(*row_len <= u32::MAX as usize);
-        let mut builder = TupleBuilder::rust_allocated();
-        // We don't need reserve here, because append will do it for us.
         let pos = self.stream.position() as usize;
         let new_pos = pos + *row_len;
         let mp = &self.stream.get_ref()[pos..new_pos];
-        builder.append(mp);
         self.stream.set_position(new_pos as u64);
-        let tuple = builder
-            .into_tuple()
-            .expect("failed to create rust-allocated tuple");
-        Some(tuple)
+        Some(RawBytes::new(mp))
     }
 }
 
