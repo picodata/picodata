@@ -37,10 +37,20 @@ pub fn query_raw(query: &str, params: Vec<SqlValue>) -> Result<Tuple, BoxError> 
     let query_len = query.len();
     let query_ptr = query.as_ptr();
 
-    match unsafe { ffi::pico_ffi_sql_query(query_ptr, query_len, RVec::from(params)) } {
-        ROk(ptr) => Ok(Tuple::try_from_ptr(ptr).expect("should not be null")),
-        RResult::RErr(_) => Err(BoxError::last()),
-    }
+    // `pico_ffi_sql_query` is defined in `src/plugin/ffi.rs`
+    let res = unsafe { ffi::pico_ffi_sql_query(query_ptr, query_len, RVec::from(params)) };
+    let ptr = match res {
+        ROk(v) => v,
+        RResult::RErr(_) => return Err(BoxError::last()),
+    };
+
+    // SAFETY: `pico_ffi_sql_query` doesn't unref the returned tuple, so it
+    // always has at least 1 ref. If we add another ref here, then that would be
+    // a memory leak
+    let tuple = unsafe { Tuple::try_from_ptr_dont_ref(ptr) };
+    let tuple = tuple.expect("always non null");
+
+    Ok(tuple)
 }
 
 pub struct Query<'a> {

@@ -37,6 +37,7 @@ with the `YY.MINOR.MICRO` scheme.
   batches of configurable size (default 200, ALTER SYSTEM parameter `governor_rpc_batch_size`).
 - Node construction is now deferred until actually needed, avoiding unnecessary 
   work for cached queries on any instance execution
+- Fixed a memory leak in SQL API of plugin SDK
 
 ## [25.5.1] - 2025-12-19
 

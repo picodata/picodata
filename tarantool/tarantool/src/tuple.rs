@@ -93,6 +93,24 @@ impl Tuple {
         NonNull::new(ptr).map(Self::from_ptr)
     }
 
+    /// Wraps the `ptr` in a `Tuple` without adding a new reference.
+    ///
+    /// # Safety
+    /// `ptr` must be a valid pointer.
+    ///
+    /// Tuple pointed to by `ptr` must have at least one reference.
+    /// When `self` is dropped it will call `box_tuple_unref` which expects
+    /// there to be at least one reference.
+    #[inline]
+    pub unsafe fn try_from_ptr_dont_ref(ptr: *mut ffi::BoxTuple) -> Option<Self> {
+        let ptr = NonNull::new(ptr)?;
+
+        #[cfg(feature = "picodata")]
+        debug_assert_ne!(ptr.as_ref().refs, 0);
+
+        Some(Self { ptr })
+    }
+
     /// Return the number of fields in tuple (the size of MsgPack Array).
     #[inline(always)]
     pub fn len(&self) -> u32 {
