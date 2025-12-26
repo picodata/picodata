@@ -58,6 +58,8 @@
 - impl proc::Return for SmolStr (optionally under `extra_impls` feature flag)
 - impl const methods to_smolstr for enums defined with define_str_enum! macro
   (optionally under `extra_impls` feature flag)
+- `Tuple::try_from_ptr_dont_ref` constructor which wraps the `box_tuple_t *`
+  without calling `box_tuple_ref`
 
 ### Fixed
 
