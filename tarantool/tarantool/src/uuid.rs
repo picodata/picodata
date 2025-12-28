@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 type Inner = ::uuid::Uuid;
 
-#[derive(Debug, Copy, Clone, Eq, Hash, Ord, PartialEq, PartialOrd, Default)]
+#[derive(Copy, Clone, Eq, Hash, Ord, PartialEq, PartialOrd, Default)]
 pub struct Uuid {
     inner: Inner,
 }
@@ -204,6 +204,12 @@ impl From<Uuid> for Inner {
     #[inline(always)]
     fn from(uuid: Uuid) -> Self {
         uuid.inner
+    }
+}
+
+impl std::fmt::Debug for Uuid {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.inner.fmt(f)
     }
 }
 
