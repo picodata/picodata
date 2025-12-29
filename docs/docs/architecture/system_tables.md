@@ -240,6 +240,14 @@ SYSTEM].
 * `vshard_bootstrapped`: (_boolean_)
 * `bucket_count`: (_unsigned_)
 * `is_default`: (_boolean_)
+* `current_bucket_state_version`: (_unsigned_)
+* `target_bucket_state_version`: (_unsigned_)
+
+!!! note "Примечание"
+    Поля `current_bucket_state_version` (текущая
+    версия распределения бакетов) и `target_bucket_state_version`
+    (целевая версия распределения бакетов) на данный момент не
+    используются, их значения всегда содержат 0.
 
 Индексы:
 
