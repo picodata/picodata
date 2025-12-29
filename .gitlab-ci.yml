@@ -197,6 +197,24 @@ tarantool-module-trigger:
     - when: manual
       allow_failure: true
 
+svace:
+  stage: test
+  needs: []
+  rules:
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH && $CI_PIPELINE_SOURCE != "schedule"
+    - when: manual
+      allow_failure: true
+  variables:
+    PROJECT_TARGET: "picodata"
+    BRANCH_TARGET: $CI_COMMIT_REF_NAME
+    SVACE: "true"
+    BUILD: "false"
+    DEPLOY: "false"
+  inherit:
+    variables: false
+  trigger:
+    project: "picodata/devops/builder"
+
 build-base-image:
   stage: build-base-image
   <<: *kaniko_image
