@@ -7,7 +7,7 @@ The following scenario is based on TPC-B used by default in pgbench.
 
 #### 1. **Build Picodata**
 
-First, build picodata in release mode:
+First, build Picodata in release mode:
 
 ```bash
 cargo build --release
@@ -16,7 +16,7 @@ cargo build --release
 Run picodata with the `-i` for interactive mode:
 
 ```bash
-./target/release/picodata run -i
+./target/release/picodata run -i --memtx-memory 2G
 ```
 
 #### 2. **Create a Test User**
@@ -36,7 +36,7 @@ This will create a user named `postgres` with necessary permissions for benchmar
 
 #### 3. **Initialize the Database**
 
-Initialize the database with using the `init.py` script. Scale is used as a multiplier for table sizes (1, 10 and 100000).
+Fire up another terminal window/tab and initialize the database with using the `init.py` script. Scale is used as a multiplier for table sizes (1, 10 and 100000).
 
 ```bash
 poetry run python init.py \
@@ -71,7 +71,7 @@ pgbench \
 #### 5. **Collect Performance Info**
 
 During the benchmark performance info can be collected for future analyzes. It can be done
-using [cargo flamegraph](https://github.com/flamegraph-rs/flamegraph) tool based on `perf`.
+using [cargo flamegraph](https://github.com/flamegraph-rs/flamegraph) tool based on `perf`. Get it with `cargo install flamegraph`.
 
 First, start recording during the benchmark using the following command:
 
