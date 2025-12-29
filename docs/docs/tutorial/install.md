@@ -25,7 +25,7 @@ IMPORTANT
 https://git.picodata.io/core/picodata/-/blob/master/Cargo.toml#L6
 -->
 
-- [Rust и Cargo](http://www.rustup.rs) 1.85 или новее
+- [Rust и Cargo](http://www.rustup.rs) 1.89 или новее
 - cmake 3.16 или новее
 - gcc, g++
 - libstdc++-static
@@ -41,7 +41,7 @@ source "$HOME/.cargo/env"
 
 Далее приведены команды для установки остальных зависимостей под разные ОС.
 
-#### RHEL 8/9 и деривативы, Fedora 40-42 {: #rhel_fedora }
+#### RHEL 8/9 и деривативы, Fedora 41-43 {: #rhel_fedora }
 
 Только для ОС, основанных на RHEL 8/9:
 

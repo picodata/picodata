@@ -56,6 +56,7 @@ nav:
       - admin/server_setup.md
       - admin/cluster_mgmt.md
       - admin/monitoring.md
+      - admin/benchmarking.md
       - admin/backup_and_restore.md
       - admin/access_control.md
       - admin/ldap.md
