@@ -15,7 +15,6 @@
 
 use crate::access_control::user_by_id;
 use crate::address::HttpAddress;
-use crate::error_code::ErrorCode;
 use crate::http_server::HttpsConfig;
 use crate::instance::Instance;
 use crate::instance::StateVariant::*;
@@ -38,9 +37,7 @@ use ::raft::prelude as raft;
 use ::raft::Storage;
 use ::sql::frontend::sql::transform_to_regex_pattern;
 use ::sql::frontend::sql::FUNCTION_NAME_MAPPINGS;
-use ::tarantool::error::BoxError;
 use ::tarantool::error::Error as TntError;
-use ::tarantool::error::IntoBoxError;
 use ::tarantool::fiber::r#async::timeout::{self, IntoTimeout};
 use ::tarantool::time::Instant;
 use ::tarantool::tlua;
@@ -1929,161 +1926,12 @@ fn postjoin(
     let boot_timeout =
         Instant::now_fiber().saturating_add(Duration::from_secs(config.instance.boot_timeout()));
 
-    // This will be doubled on each retry, until max_retry_timeout is reached.
-    let base_timeout = Duration::from_millis(250);
-    let max_timeout = Duration::from_secs(5);
-    let mut backoff =
-        SimpleBackoffManager::new("proc_update_instance RPC", base_timeout, max_timeout);
-
-    // When the whole cluster is restarting we use a smaller election timeout so
-    // that we don't wait too long.
-    const BOOTSTRAP_ELECTION_TIMEOUT: Duration = Duration::from_secs(3);
-    // Use a random factor so that hopefully everybody doesn't start the
-    // election at the same time.
-    let random_factor = 1.0 + rand::random::<f64>();
-    let election_timeout =
-        Duration::from_secs_f64(BOOTSTRAP_ELECTION_TIMEOUT.as_secs_f64() * random_factor);
-    let mut next_election_try = fiber::clock().saturating_add(election_timeout);
-
-    // Activates instance
-    loop {
-        let now = fiber::clock();
-        if now > boot_timeout {
-            return Err(Error::other(
-                "failed to activate myself: timeout, shutting down...",
-            ));
-        }
-
-        let Ok(instance) = storage.instances.get(&raft_id) else {
-            // This can happen if for example a snapshot arrives
-            // and we truncate _pico_instance (read uncommitted btw).
-            // In this case we also just wait some more.
-            let timeout = Duration::from_millis(100);
-            fiber::sleep(timeout);
-            continue;
-        };
-
-        if has_states!(instance, Expelled -> *) {
-            return Err(BoxError::new(
-                ErrorCode::InstanceExpelled,
-                "current instance is expelled from the cluster",
-            )
-            .into());
-        }
-
-        let cluster_name = raft_storage
-            .cluster_name()
-            .expect("storage should never fail");
-        let cluster_uuid = raft_storage
-            .cluster_uuid()
-            .expect("storage should never fail");
-        // Doesn't have to be leader - can be any online peer
-        let leader_id = node.status().leader_id;
-        let leader_address = leader_id.and_then(|id| {
-            storage
-                .peer_addresses
-                .try_get(id, &traft::ConnectionType::Iproto)
-                .ok()
-        });
-        let Some(leader_address) = leader_address else {
-            // FIXME: don't hard code timeout
-            let timeout = Duration::from_millis(250);
-            tlog!(
-                Debug,
-                "leader address is still unknown, retrying in {timeout:?}"
-            );
-
-            // Leader has been unknown for too long
-            if fiber::clock() >= next_election_try {
-                // Normally we should get here only if the whole cluster of
-                // several instances is restarting at the same time, because
-                // otherwise the raft leader should be known and the waking up
-                // instance should find out about them via raft_main_loop.
-                //
-                // Note that everybody will not start the election at the same
-                // time because of `random_factor` applied to the
-                // `election_timeout` above.
-                //
-                // Also note that even if the raft leader is chosen in a cluster
-                // a mulfanctioning instance trying to become the new leader
-                // will not affect the healthy portion of the cluster thanks to
-                // the pre_vote extension to the raft algorithm which is used in
-                // picodata.
-                tlog!(Info, "leader not known for too long, trying to promote");
-                if let Err(e) = node.campaign_and_yield() {
-                    tlog!(Warning, "failed to start raft election: {e}");
-                }
-                next_election_try = fiber::clock().saturating_add(election_timeout);
-            }
-
-            fiber::sleep(timeout);
-            continue;
-        };
-        tlog!(Debug, "leader address is known: {leader_address}");
-
-        #[allow(unused_mut)]
-        let mut version = SmolStr::new_static(info::PICODATA_VERSION);
-        #[cfg(feature = "error_injection")]
-        crate::error_injection!("UPDATE_PICODATA_VERSION" => {
-            if let Ok(v) = std::env::var("PICODATA_INTERNAL_VERSION_OVERRIDE") {
-                version = v.into();
-            }
-        });
-
-        tlog!(
-            Info,
-            "initiating self-activation of instance {} ({})",
-            instance.name,
-            instance.uuid
-        );
-        let req = rpc::update_instance::Request::new(instance.name, cluster_name, cluster_uuid)
-            .with_target_state(Online)
-            .with_failure_domain(config.instance.failure_domain().clone())
-            .with_picodata_version(version);
-        let fut = rpc::network_call(
-            &leader_address,
-            proc_name!(rpc::update_instance::proc_update_instance),
-            &req,
-        )
-        .timeout(boot_timeout - now);
-        let error_message;
-        match fiber::block_on(fut) {
-            Ok(rpc::update_instance::Response {}) => {
-                break;
-            }
-            Err(timeout::Error::Failed(TntError::Tcp(e))) => {
-                // A network error happened. Try again later.
-                error_message = e.to_string();
-            }
-            Err(timeout::Error::Failed(TntError::IO(e))) => {
-                // Hopefully a network error happened? Try again later.
-                error_message = e.to_string();
-            }
-            Err(timeout::Error::Failed(e)) if e.error_code() == ErrorCode::NotALeader as u32 => {
-                // Our info about raft leader is outdated, just wait a while for
-                // it to update and send a request to hopefully the new leader.
-                error_message = e.to_string();
-            }
-            Err(timeout::Error::Failed(e)) if e.error_code() == ErrorCode::LeaderUnknown as u32 => {
-                // The peer no longer knows who the raft leader is. This is
-                // possible for example if a leader election is in progress. We
-                // should just wait some more and try again later.
-                error_message = e.to_string();
-            }
-            Err(e) => {
-                // Other kinds of errors, which can't/shouldn't be fixed by a "try again later" strategy
-                return Err(Error::other(format!(
-                    "failed to activate myself: {e}, shutting down..."
-                )));
-            }
-        }
-
-        backoff.handle_failure();
-        let timeout = backoff.timeout();
-        #[rustfmt::skip]
-        tlog!(Warning, "failed to activate myself: {error_message}, retrying in {timeout:.02?}...");
-        fiber::sleep(timeout);
-    }
+    // Send proc_update_instance RPC to raft leader
+    crate::rpc::update_instance::update_our_target_state_to_online(
+        node,
+        config.instance.failure_domain(),
+        boot_timeout,
+    )?;
 
     // Wait for target state to change to Online, so that sentinel doesn't send
     // a redundant update instance request.
@@ -2091,7 +1939,8 @@ fn postjoin(
     let timeout = Duration::from_secs(10);
     let deadline = fiber::clock().saturating_add(timeout);
     loop {
-        if let Ok(instance) = storage.instances.get(&raft_id) {
+        let instance = node.topology_cache.get().try_this_instance().cloned();
+        if let Some(instance) = instance {
             if has_states!(instance, * -> Online) {
                 tlog!(Info, "self-activated successfully");
                 break;
