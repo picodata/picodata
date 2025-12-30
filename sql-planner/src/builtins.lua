@@ -120,7 +120,11 @@ local function init()
 end
 
 local function create_functions()
-    body = string.format("function(...) return %s.builtins._PICO_BUCKET(...) end",
+    -- We don't want to make builtin functions global,
+    -- so we put them in module. But for function
+    -- to be callable from sql it should have a simple
+    -- name, so for each func we provide a body.
+    local body = string.format("function(...) return %s.builtins._PICO_BUCKET(...) end",
         module)
     box.schema.func.create("_pico_bucket", {
         language = 'LUA',
@@ -132,11 +136,7 @@ local function create_functions()
         if_not_exists = true
     })
 
-    -- We don't want to make builtin functions global,
-    -- so we put them in module. But for function
-    -- to be callable from sql it should have a simple
-    -- name, so for each func we provide a body.
-    local body = string.format("function(...) return %s.builtins.TO_DATE(...) end",
+    body = string.format("function(...) return %s.builtins.TO_DATE(...) end",
         module)
     box.schema.func.create("to_date", {
         language = 'LUA',
