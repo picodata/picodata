@@ -1272,6 +1272,7 @@ mod tests {
             distribution: Distribution::Global,
             engine: SpaceEngineType::Memtx,
             owner: ADMIN_ID,
+            opts: vec![],
         });
         let drop_space = builder.with_op(Ddl::DropTable {
             id: space_id,

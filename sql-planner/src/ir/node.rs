@@ -992,6 +992,7 @@ pub struct CreateTable {
     pub sharding_key: Option<Vec<SmolStr>>,
     /// Vinyl is supported only for sharded tables.
     pub engine_type: SpaceEngineType,
+    pub unlogged: bool,
     pub if_not_exists: bool,
     pub wait_applied_globally: bool,
     pub timeout: Decimal,

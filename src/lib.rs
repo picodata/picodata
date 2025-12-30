@@ -1255,7 +1255,8 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
             let cluster_uuid =
                 ::uuid::Uuid::parse_str(&cluster_uuid).expect("invalid cluster_uuid in storage");
             tarantool::init_cluster_uuid(cluster_uuid);
-            // This is a restart, go to postjoin immediately.
+            // This is a restart, go to postjoin immediately. No need to truncate the
+            // unlogged tables, because the instance just started.
             tarantool::set_cfg_field("read_only", true)?;
 
             let alter_system_parameters = AlterSystemParametersRef::default();

@@ -196,6 +196,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
         "memtx",
         initiator_id,
         "",
+        [],
     ]
     assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i2.call("box.space._pico_table:get", space_id) == pico_space_def
@@ -315,6 +316,7 @@ def test_ddl_create_sharded_space(cluster: Cluster):
         "memtx",
         initiator_id,
         "",
+        [],
     ]
     assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i2.call("box.space._pico_table:get", space_id) == pico_space_def

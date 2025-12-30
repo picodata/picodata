@@ -1,3 +1,4 @@
+use crate::catalog::pico_table::PicoTable;
 use crate::config::{DEFAULT_SQL_PREEMPTION, DYNAMIC_CONFIG};
 use crate::sql::lua::{
     bucket_into_rs, escape_bytes, lua_custom_plan_dispatch, lua_decode_rs_ibufs,
@@ -245,22 +246,50 @@ pub(crate) fn port_write_metadata<'p>(
     Ok(())
 }
 
-/// If `sql_preemption` is enabled, `read_preference` should be equal `leader`.
+/// Get all unlogged tables and check if any of them are present in the plan tables.
+fn plan_has_unlogged_tables(plan: &Plan) -> SqlResult<bool> {
+    let unlogged_tables = PicoTable::new().get_unlogged_tables()?;
+
+    for table in unlogged_tables {
+        if plan.relations.tables.contains_key(&table.name) {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+/// If `sql_preemption` is enabled, `read_preference` should be equal to `leader`.
+///
+/// If the plan has unlogged tables `read_preference` should be equal to `leader`.
 fn effective_read_preference(ex_plan: &ExecutionPlan) -> SqlResult<String> {
+    let plan = ex_plan.get_ir_plan();
+    let read_preference = plan.effective_options.read_preference;
+
+    if read_preference == ReadPreference::Leader {
+        return Ok(read_preference.to_string());
+    }
+
+    if plan_has_unlogged_tables(plan)? {
+        return Err(SbroadError::Invalid(
+            Entity::Option,
+            Some("read_preference must be set to 'leader' when querying unlogged tables".into()),
+        ));
+    };
+
     let sql_preemption = DYNAMIC_CONFIG
         .sql_preemption
         .try_current_value()
         .unwrap_or(DEFAULT_SQL_PREEMPTION);
-    let read_preference = ex_plan.get_ir_plan().effective_options.read_preference;
 
-    if sql_preemption && read_preference != ReadPreference::Leader {
-        Err(SbroadError::Invalid(
+    if sql_preemption {
+        return Err(SbroadError::Invalid(
             Entity::Option,
-            Some("read_preference must be set to 'leader' when read_preference is enabled".into()),
-        ))
-    } else {
-        Ok(read_preference.to_string())
+            Some("read_preference must be set to 'leader' when sql_preemption is enabled".into()),
+        ));
     }
+
+    Ok(read_preference.to_string())
 }
 
 fn single_plan_dispatch_dql<'lua, 'p>(

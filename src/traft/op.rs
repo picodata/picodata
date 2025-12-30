@@ -2,8 +2,8 @@ use crate::audit::policy::AuditPolicyId;
 use crate::plugin::PluginIdentifier;
 use crate::schema::{
     Distribution, IndexDef, IndexOption, PrivilegeDef, RoutineLanguage, RoutineParams,
-    RoutineSecurity, UserDef, ADMIN_ID, GUEST_ID, PICO_SERVICE_ID, PUBLIC_ID, ROLE_REPLICATION_ID,
-    SUPER_ID,
+    RoutineSecurity, TableOption, UserDef, ADMIN_ID, GUEST_ID, PICO_SERVICE_ID, PUBLIC_ID,
+    ROLE_REPLICATION_ID, SUPER_ID,
 };
 use crate::sql::storage::FullDeleteInfo;
 use crate::storage::{self, Catalog};
@@ -825,6 +825,8 @@ pub enum Ddl {
         distribution: Distribution,
         engine: SpaceEngineType,
         owner: UserId,
+        #[serde(default)]
+        opts: Vec<TableOption>,
     },
     DropTable {
         id: SpaceId,

@@ -15,7 +15,7 @@ use crate::schema::{
     wait_for_ddl_commit, CreateIndexParams, CreateProcParams, CreateTableParams, DdlError,
     DistributionParam, Field, IndexOption, PrivilegeDef, PrivilegeType, RenameRoutineParams,
     RoutineDef, RoutineLanguage, RoutineParamDef, RoutineParams, RoutineSecurity, SchemaObjectType,
-    ShardingFn, UserDef, ADMIN_ID,
+    ShardingFn, TableOption, UserDef, ADMIN_ID,
 };
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::{FullDeleteInfo, StorageRuntime};
@@ -1487,6 +1487,7 @@ fn ddl_ir_node_to_op_or_result(
             engine_type,
             tier,
             if_not_exists,
+            unlogged,
             ..
         }) => {
             let format = format
@@ -1505,6 +1506,10 @@ fn ddl_ir_node_to_op_or_result(
 
             let primary_key = primary_key.clone();
             let sharding_key = sharding_key.clone();
+            let mut opts = vec![];
+            if *unlogged {
+                opts.push(TableOption::Unlogged(true));
+            }
 
             let mut params = CreateTableParams {
                 id: None,
@@ -1519,6 +1524,7 @@ fn ddl_ir_node_to_op_or_result(
                 timeout: None,
                 owner: current_user,
                 tier: tier.clone(),
+                opts,
             };
             params.validate()?;
 

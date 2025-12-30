@@ -2161,6 +2161,7 @@ impl NodeImpl {
                 distribution,
                 engine,
                 owner,
+                opts,
             } => {
                 for pk_part in &mut primary_key {
                     let name = &pk_part.field;
@@ -2247,6 +2248,7 @@ impl NodeImpl {
                     owner,
                     // TODO: add description field into Ddl::CreateTable
                     description: "".into(),
+                    opts,
                 };
                 let res = self.storage.pico_table.insert(&table_def);
                 if let Err(e) = res {

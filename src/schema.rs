@@ -61,6 +61,31 @@ pub const INITIAL_SCHEMA_VERSION: u64 = 0;
 // TableDef
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Picodata table options
+#[derive(
+    Clone,
+    Debug,
+    msgpack::Encode,
+    msgpack::Decode,
+    Serialize,
+    Deserialize,
+    Hash,
+    PartialEq,
+    Eq,
+    LuaRead,
+)]
+pub enum TableOption {
+    /// Data written to unlogged tables is not written to the write-ahead log, hence
+    /// such tables are not replicated.
+    ///
+    /// These tables are implemented as data-temporary tarantool spaces.
+    ///
+    /// Unlogged tables are truncated on setting an instance read-only.
+    #[serde(rename = "unlogged")]
+    #[encode(rename = "unlogged")]
+    Unlogged(bool),
+}
+
 /// Database table definition.
 ///
 /// Describes a user-defined table.
@@ -75,6 +100,8 @@ pub struct TableDef {
     pub engine: SpaceEngineType,
     pub owner: UserId,
     pub description: String,
+    #[encode(default)]
+    pub opts: Vec<TableOption>,
 }
 
 impl TableDef {
@@ -95,6 +122,7 @@ impl TableDef {
             Field::from(("engine", FieldType::String)).is_nullable(false),
             Field::from(("owner", FieldType::Unsigned)).is_nullable(false),
             Field::from(("description", FieldType::String)).is_nullable(false),
+            Field::from(("opts", FieldType::Array)).is_nullable(true),
         ]
     }
 
@@ -115,6 +143,7 @@ impl TableDef {
             engine: SpaceEngineType::Blackhole,
             owner: 42,
             description: "A table for tests".into(),
+            opts: vec![],
         }
     }
 
@@ -124,6 +153,9 @@ impl TableDef {
         let mut flags = BTreeMap::new();
         if matches!(self.distribution, Distribution::Global) {
             flags.insert("group_id".into(), 1.into());
+        }
+        if self.is_unlogged() {
+            flags.insert("temporary".into(), true.into());
         }
 
         let space_def = SpaceMetadata {
@@ -137,6 +169,11 @@ impl TableDef {
         };
 
         Ok(space_def)
+    }
+
+    #[inline(always)]
+    pub fn is_unlogged(&self) -> bool {
+        self.opts.contains(&TableOption::Unlogged(true))
     }
 }
 
@@ -159,6 +196,7 @@ pub fn system_table_definitions() -> Vec<(TableDef, Vec<IndexDef>)> {
                     engine: SpaceEngineType::Memtx,
                     owner: ADMIN_ID,
                     description: $table::DESCRIPTION.into(),
+                    opts: vec![],
                 };
                 let index_defs = $table::index_definitions();
                 $result.push((table_def, index_defs));
@@ -2193,6 +2231,7 @@ pub struct CreateTableParams {
     pub(crate) engine: Option<SpaceEngineType>,
     pub(crate) owner: UserId,
     pub(crate) tier: Option<SmolStr>,
+    pub(crate) opts: Vec<TableOption>,
     /// Timeout in seconds.
     ///
     /// Specifying the timeout identifies how long user is ready to wait for ddl to be applied.
@@ -2390,6 +2429,12 @@ impl CreateTableParams {
             return is_ro",
         )?;
 
+        let space_type = if self.is_unlogged() {
+            SpaceType::DataTemporary
+        } else {
+            SpaceType::Normal
+        };
+
         let err = transaction(|| -> Result<(), Option<tarantool::error::Error>> {
             // TODO: allow create_space to accept user by id
             ::tarantool::schema::space::create_space(
@@ -2400,7 +2445,7 @@ impl CreateTableParams {
                     id: Some(id),
                     field_count: self.format.len() as u32,
                     user: Some(user.to_string()),
-                    space_type: SpaceType::Normal,
+                    space_type,
                     format: Some(
                         self.format
                             .iter()
@@ -2528,8 +2573,14 @@ impl CreateTableParams {
             distribution,
             engine: self.engine.unwrap_or_default(),
             owner: self.owner,
+            opts: self.opts,
         };
         Ok(res)
+    }
+
+    #[inline(always)]
+    fn is_unlogged(&self) -> bool {
+        self.opts.contains(&TableOption::Unlogged(true))
     }
 }
 
@@ -2673,6 +2724,7 @@ mod tests {
             timeout: None,
             owner: ADMIN_ID,
             tier: None,
+            opts: vec![],
         }
         .test_create_space(&storage)
         .unwrap();
@@ -2691,6 +2743,7 @@ mod tests {
             timeout: None,
             owner: ADMIN_ID,
             tier: None,
+            opts: vec![],
         }
         .test_create_space(&storage)
         .unwrap();
@@ -2709,6 +2762,7 @@ mod tests {
             timeout: None,
             owner: ADMIN_ID,
             tier: None,
+            opts: vec![],
         }
         .test_create_space(&storage)
         .unwrap_err();
@@ -2746,6 +2800,7 @@ mod tests {
             timeout: None,
             owner: ADMIN_ID,
             tier: None,
+            opts: vec![],
         }
         .validate()
         .unwrap_err();
@@ -2764,6 +2819,7 @@ mod tests {
             timeout: None,
             owner: ADMIN_ID,
             tier: None,
+            opts: vec![],
         }
         .validate()
         .unwrap_err();
@@ -2782,6 +2838,7 @@ mod tests {
             timeout: None,
             owner: ADMIN_ID,
             tier: None,
+            opts: vec![],
         }
         .validate()
         .unwrap_err();
@@ -2800,6 +2857,7 @@ mod tests {
             timeout: None,
             owner: ADMIN_ID,
             tier: None,
+            opts: vec![],
         }
         .validate()
         .unwrap_err();
@@ -2818,6 +2876,7 @@ mod tests {
             timeout: None,
             owner: ADMIN_ID,
             tier: None,
+            opts: vec![],
         }
         .validate()
         .unwrap_err();
@@ -2836,6 +2895,7 @@ mod tests {
             timeout: None,
             owner: ADMIN_ID,
             tier: None,
+            opts: vec![],
         }
         .validate()
         .unwrap_err();
@@ -2857,6 +2917,7 @@ mod tests {
             timeout: None,
             owner: ADMIN_ID,
             tier: None,
+            opts: vec![],
         }
         .validate()
         .unwrap_err();
@@ -2878,6 +2939,7 @@ mod tests {
             timeout: None,
             owner: ADMIN_ID,
             tier: None,
+            opts: vec![],
         }
         .validate()
         .unwrap();
@@ -2895,6 +2957,7 @@ mod tests {
             timeout: None,
             owner: ADMIN_ID,
             tier: None,
+            opts: vec![],
         }
         .validate()
         .unwrap_err();

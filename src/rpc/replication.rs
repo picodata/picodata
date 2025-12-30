@@ -32,6 +32,7 @@
 //! because otherwise the instance would not know if it should apply the DDL
 //! itself or wait for the tarantool replication.
 //!
+use crate::catalog::pico_table::PicoTable;
 use crate::config::PicodataConfig;
 use crate::error_code::ErrorCode;
 #[allow(unused_imports)]
@@ -309,6 +310,9 @@ pub fn set_read_only(new_read_only: bool) -> Result<()> {
             tlog!(Warning, "failed to promote self to replication leader, reason = {ro_reason}");
             return Err(Error::other(format!("instance is still in read only mode: {ro_reason}")));
         };
+    } else {
+        let pico_table = PicoTable::new();
+        pico_table.truncate_unlogged_tables()?;
     }
 
     if old_read_only != new_read_only {

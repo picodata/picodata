@@ -8,6 +8,11 @@ def init_table(i: Instance):
     i.sql("insert into wonderland values (1, 'alice', 1), (2, 'krolik', 1), (3, 'gorilla', 0)")
 
 
+def init_unlogged_table(i: Instance):
+    i.sql("create unlogged table wonderland (id int primary key, creature string, count int)")
+    i.sql("insert into wonderland values (1, 'alice', 1), (2, 'krolik', 1), (3, 'gorilla', 0)")
+
+
 def test_default(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=True, replicaset_name="r99")
     i2 = cluster.add_instance(wait_online=True, replicaset_name="r99")
@@ -93,7 +98,7 @@ def test_replica_sql_preemption_error(cluster: Cluster):
     """
 
     # only 'leader' is supported
-    with pytest.raises(TarantoolError, match="read_preference must be set to 'leader' when read_preference is enabled"):
+    with pytest.raises(TarantoolError, match="read_preference must be set to 'leader' when sql_preemption is enabled"):
         i1.sql(dql_query)
 
 
@@ -234,3 +239,85 @@ def test_replica_custom_plan(cluster: Cluster):
     assert dql == [[i1.name, 3]]
     dql = i2.sql(dql_query)
     assert dql == [[i2.name, 3]]
+
+
+@pytest.mark.parametrize(
+    "should_succeed, read_preference",
+    [
+        (True, "leader"),
+        (False, "replica"),
+        (False, "any"),
+    ],
+)
+def test_replica_alter_system_unlogged(cluster: Cluster, should_succeed: bool, read_preference: str):
+    """
+    Test that unlogged tables are forbidden to read from replicas when read_preference is not set to leader system-wise
+    """
+    i1 = cluster.add_instance(wait_online=True, replicaset_name="unlogged_rs")
+    i2 = cluster.add_instance(wait_online=True, replicaset_name="unlogged_rs")
+    # i1 is leader as the first member of the replicaset
+    assert i2.replicaset_master_name() == i1.name
+
+    # prepare data for DQL
+    init_unlogged_table(i1)
+    dql_query = """
+        select pico_instance_name(pico_instance_uuid()), creature
+        from wonderland
+        order by creature
+    """
+
+    i1.sql(f"alter system set read_preference = '{read_preference}'")
+    if should_succeed:
+        dql_expect = [[i1.name, "alice"], [i1.name, "gorilla"], [i1.name, "krolik"]]
+
+        dql = i1.sql(dql_query)
+        assert dql == dql_expect
+        dql = i2.sql(dql_query)
+        assert dql == dql_expect
+    else:
+        error_message = "read_preference must be set to 'leader' when querying unlogged tables"
+        with pytest.raises(TarantoolError, match=error_message):
+            i1.sql(dql_query)
+        with pytest.raises(TarantoolError, match=error_message):
+            i2.sql(dql_query)
+
+
+@pytest.mark.parametrize(
+    "should_succeed, read_preference_option",
+    [
+        (True, ""),
+        (True, "option(read_preference = leader)"),
+        (False, "option(read_preference = replica)"),
+        (False, "option(read_preference = any)"),
+    ],
+)
+def test_unlogged_table_read_preference(cluster: Cluster, should_succeed: bool, read_preference_option: str):
+    """
+    Test that unlogged tables are forbidden to read from replicas when read_preference is not set to leader as a DQL option
+    """
+    i1 = cluster.add_instance(wait_online=True, replicaset_name="unlogged_rs")
+    i2 = cluster.add_instance(wait_online=True, replicaset_name="unlogged_rs")
+    assert i2.replicaset_master_name() == i1.name
+
+    init_unlogged_table(i1)
+
+    dql_query = f"""
+        select pico_instance_name(pico_instance_uuid()), creature
+        from wonderland
+        order by creature
+        {read_preference_option}
+    """
+
+    if should_succeed:
+        dql_expect = [[i1.name, "alice"], [i1.name, "gorilla"], [i1.name, "krolik"]]
+
+        dql = i1.sql(dql_query)
+        assert dql == dql_expect
+        dql = i2.sql(dql_query)
+        assert dql == dql_expect
+    else:
+        error_message = "read_preference must be set to 'leader' when querying unlogged tables"
+        with pytest.raises(TarantoolError, match=error_message):
+            i1.sql(dql_query)
+        with pytest.raises(TarantoolError, match=error_message):
+            i2.sql(dql_query)

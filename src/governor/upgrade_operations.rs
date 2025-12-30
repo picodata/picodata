@@ -1,5 +1,6 @@
 use crate::catalog::pico_bucket::PicoBucket;
 use crate::catalog::pico_resharding_state::PicoReshardingState;
+use crate::catalog::pico_table::PicoTable;
 use crate::storage::schema::ddl_change_format_on_master;
 use crate::storage::{Instances, Replicasets, SystemTable, Tiers};
 use crate::tier::DEFAULT_TIER;
@@ -91,6 +92,12 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("proc_name", "proc_query_metadata"),
         ]
     ),
+    (
+        "26.1.0",
+        &[
+            ("exec_script", InternalScript::AlterPicoTableAddOptsField.as_str()),
+        ]
+    )
 ];
 
 tarantool::define_str_enum! {
@@ -150,6 +157,12 @@ tarantool::define_str_enum! {
         ///     target_state_change_time DATETIME NULL,
         /// ```
         AlterPicoInstanceAddTargetStateReasonAndChangeTime = "alter_pico_instance_add_target_state_reason_and_change_time",
+
+        /// Schema upgrade operation equivalent to:
+        /// ```ignore
+        /// ALTER TABLE _pico_table ADD COLUMN opts ARRAY NULL;
+        /// ```
+        AlterPicoTableAddOptsField = "alter_pico_table_add_opts_field",
     }
 }
 
@@ -186,6 +199,9 @@ crate::define_rpc_request! {
 
             InternalScript::AlterPicoInstanceAddTargetStateReasonAndChangeTime =>
                 execute_alter_pico_instance_add_target_state_reason_and_change_time(),
+
+            InternalScript::AlterPicoTableAddOptsField =>
+                execute_alter_pico_table_add_opts_field(),
         }
     }
 
@@ -245,6 +261,11 @@ fn execute_alter_pico_instance_add_sync_incarnation_field() -> traft::Result<Res
 fn execute_alter_pico_instance_add_target_state_reason_and_change_time() -> traft::Result<Response>
 {
     actualize_system_table_format::<Instances>()?;
+    Ok(Response {})
+}
+
+fn execute_alter_pico_table_add_opts_field() -> traft::Result<Response> {
+    actualize_system_table_format::<PicoTable>()?;
     Ok(Response {})
 }
 

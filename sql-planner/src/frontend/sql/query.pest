@@ -111,7 +111,7 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable
                             MaxValue = { ^"maxvalue" }
                 ForValuesSpecWith = ${ ^"with" ~ WO ~ "(" ~ ^"modulus" ~ W ~ Literal ~ WO ~ "," ~ WO ~ ^"remainder" ~ W ~  Literal ~ WO ~ ")" }
     CreateTable = ${
-        ^"create" ~ W ~ ^"table" ~ W ~ (IfNotExists ~ W)? ~ (PublicSchema)? ~ NewTable ~ WO ~
+        ^"create" ~ (W ~ Unlogged)? ~ W ~ ^"table" ~ W ~ (IfNotExists ~ W)? ~ (PublicSchema)? ~ NewTable ~ WO ~
         "(" ~ WO ~ Columns ~ WO ~ ("," ~ WO ~ PrimaryKey)? ~ WO ~ ")" ~
         (W ~ Engine)? ~ (W ~ Distribution)? ~ (W ~ WaitApplied)? ~ (W ~ Partition)? ~ (W ~ TimeoutOption)?
     }
@@ -139,6 +139,7 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable
                 PartitionList = { ^"list" }
                 PartitionHash = { ^"hash" }
             PartitionBySpec = !{ "(" ~ Identifier ~ ("," ~ Identifier)* ~ ")" }
+        Unlogged = @{ ^"unlogged" } 
     DropTable = ${ ^"drop" ~ W ~ ^"table" ~ W ~ (IfExists ~ W)? ~ (PublicSchema)? ~ Table ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
     TruncateTable = ${ ^"truncate" ~ W ~ (^"table" ~ W)? ~ (PublicSchema)? ~ Table ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
     AlterTable = ${ ^"alter" ~ W ~ ^"table" ~ W ~ (PublicSchema)? ~ TableNameIdentifier ~ W ~ AlterTableAction ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)?}

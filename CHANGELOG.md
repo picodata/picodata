@@ -35,6 +35,12 @@ with the `YY.MINOR.MICRO` scheme.
 - Introduce `sql_preemption_opcode_max` to control the VDBE opcode interval
   between execution time checks when `sql_preemption` is enabled.
 - Add support for `EXPLAIN (RAW)` for queries that fail at local sql execution stage.
+- Add unlogged tables to SQL:
+  - Unlogged tables' updates are not writeen into the WAL, so they are not persisted on restarts of
+    an instance and are not replicated. On leader change, all unlogged tables are truncated to
+    prevent inconsistencies. Creating unlogged tables is possible with the `CREATE UNLOGGED TABLE ...`
+    syntax. Unlogged tables are implemented as Tarantool data-temporary spaces, so it is not possible to
+    store them using the vinyl engine.
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:

@@ -92,6 +92,7 @@ const DEFAULT_AUTH_METHOD: AuthMethod = AuthMethod::Md5;
 
 const DEFAULT_IF_EXISTS: bool = false;
 const DEFAULT_IF_NOT_EXISTS: bool = false;
+const DEFAULT_UNLOGGED: bool = false;
 
 const DEFAULT_WAIT_APPLIED_GLOBALLY: bool = true;
 
@@ -879,6 +880,7 @@ fn parse_create_table(
     let mut tier = None;
     let mut is_global = false;
     let mut if_not_exists = DEFAULT_IF_NOT_EXISTS;
+    let mut unlogged = DEFAULT_UNLOGGED;
     let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
 
     let nullable_primary_key_column_error = Err(SbroadError::Invalid(
@@ -896,6 +898,7 @@ fn parse_create_table(
         let child_node = ast.nodes.get_node(*child_id)?;
         match child_node.rule {
             Rule::IfNotExists => if_not_exists = true,
+            Rule::Unlogged => unlogged = true,
             Rule::NewTable => {
                 table_name = parse_identifier(ast, *child_id)?;
             }
@@ -1127,11 +1130,26 @@ fn parse_create_table(
         if engine_type != SpaceEngineType::Memtx {
             return Err(SbroadError::Unsupported(
                 Entity::Query,
-                Some("global spaces can use only memtx engine".into()),
+                Some("Global tables can use only memtx engine.".into()),
             ));
         };
+
+        if unlogged {
+            return Err(SbroadError::Unsupported(
+                Entity::Query,
+                Some("Global tables can't be unlogged.".into()),
+            ));
+        }
+
         None
     };
+
+    if unlogged && engine_type == SpaceEngineType::Vinyl {
+        return Err(SbroadError::Unsupported(
+            Entity::Query,
+            Some("Unlogged tables can use only memtx engine.".into()),
+        ));
+    }
 
     Ok(CreateTable {
         name: table_name,
@@ -1139,6 +1157,7 @@ fn parse_create_table(
         primary_key: pk_keys,
         sharding_key,
         engine_type,
+        unlogged,
         if_not_exists,
         wait_applied_globally,
         timeout,

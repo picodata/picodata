@@ -960,6 +960,7 @@ mod tests {
                 distribution: Distribution::Global,
                 engine: SpaceEngineType::Blackhole,
                 owner: user_id,
+                opts: vec![],
             };
 
             let e = access_check_ddl(&storage, &space_to_be_created, user_id).unwrap_err();

@@ -1,9 +1,9 @@
-use crate::column_name;
 use crate::schema::{IndexDef, IndexOption, TableDef, INITIAL_SCHEMA_VERSION};
 use crate::storage::{
     index_by_ids_unchecked, space_by_id_unchecked, EntryIter, SystemTable, ToEntryIter, MP_CUSTOM,
 };
 use crate::traft::op::RenameMapping;
+use crate::{column_name, tlog};
 use std::fmt::Debug;
 use tarantool::index::{
     FieldType as IndexFieldType, Index, IndexIterator, IndexType, IteratorType, Part,
@@ -248,6 +248,33 @@ impl PicoTable {
     ) -> tarantool::Result<EntryIter<TableDef, MP_CUSTOM>> {
         let iter = self.index_owner_id.select(IteratorType::Eq, &[owner_id])?;
         Ok(EntryIter::new(iter))
+    }
+
+    /// Get `TableDef`s of all unlogged tables
+    #[inline]
+    pub fn get_unlogged_tables(&self) -> tarantool::Result<Vec<TableDef>> {
+        // A compromise between speed and memory consumption
+        let mut result = Vec::with_capacity(16);
+        for table_def in self.iter()? {
+            if table_def.is_unlogged() {
+                result.push(table_def);
+            }
+        }
+        Ok(result)
+    }
+
+    /// Truncate all unlogged tables
+    pub fn truncate_unlogged_tables(&self) -> tarantool::Result<()> {
+        let unlogged_tables = self.get_unlogged_tables()?;
+        if !unlogged_tables.is_empty() {
+            tlog!(Info, "began truncating unlogged tables");
+            for t in unlogged_tables {
+                tlog!(Debug, "truncating unlogged table {}", t.name);
+                unsafe { Space::from_id_unchecked(t.id).truncate()? };
+            }
+            tlog!(Info, "ended truncating unlogged tables");
+        }
+        Ok(())
     }
 }
 

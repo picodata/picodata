@@ -231,6 +231,32 @@ def test_upgrade_25_5_to_25_6_check_procs(factory: Factory):
 
 
 @pytest.mark.xdist_group(name="rolling")
+def test_upgrade_25_5_to_25_6_check_opts(factory: Factory):
+    cluster = factory(of=Version.PREVIOUS_MINOR)
+    cluster.change_version(to=Version.CURRENT)
+
+    assert cluster.is_healthy()
+
+    i = cluster.instances[0]
+    res = i.sql("SELECT name, opts FROM _pico_table")
+    for name, opts in res:
+        if name == "_pico_table":
+            assert opts == []
+        else:
+            assert opts is None
+
+    i.sql("CREATE UNLOGGED TABLE t (a INT PRIMARY KEY)")
+    res = i.sql("SELECT name, opts FROM _pico_table")
+    for name, opts in res:
+        if name == "_pico_table":
+            assert opts == []
+        elif name == "t":
+            assert opts == [dict([("unlogged", [True])])]  # type: ignore
+        else:
+            assert opts is None
+
+
+@pytest.mark.xdist_group(name="rolling")
 def test_sentinel_working_during_upgrade(
     registry: Registry,
     cluster: Cluster,

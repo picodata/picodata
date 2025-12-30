@@ -2476,7 +2476,7 @@ def test_create_drop_table(cluster: Cluster):
     )
     assert data == [[{"ShardedImplicitly": [["b", "a"], "murmur3", "default"]}]]
 
-    with pytest.raises(TarantoolError, match="global spaces can use only memtx engine"):
+    with pytest.raises(TarantoolError, match="Global tables can use only memtx engine"):
         i1.sql(
             """
             create table "t" ("key" string, "value" string not null,
