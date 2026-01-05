@@ -8,9 +8,13 @@ override_dh_auto_clean:
 	echo "Nothing to clean on build"
 
 override_dh_auto_build:
-	sudo mkdir -m 777 ~
+	sudo mkdir -p -m 777 $(HOME)
 	make install-cargo
 	make build-release-pkg
+ifeq ($(USE_DYNAMIC_BUILD),1)
+	make sbom
+	mv -v picodata.cdx.json ../../build_*/
+endif
 
 override_dh_auto_test: ;
 

@@ -14,6 +14,7 @@
 %endif
 
 %define use_cmake3 0%{?rhel} == 7
+%define use_dynamic_build 0%{getenv:USE_DYNAMIC_BUILD} == 1
 
 Name: picodata
 # ${major}.${major}.${minor}.${patch}, e.g. 1.0.0.35
@@ -33,9 +34,26 @@ Source0: %name-%version.tar.gz
 BuildRequires: cmake3
 %endif
 
+%if %use_dynamic_build
+BuildRequires: zlib-devel
+%if "%{?_build_vendor}" == "alt"
+BuildRequires: libluajit-devel
+BuildRequires: libsasl2-devel
+BuildRequires: libldap-devel
+%else
+BuildRequires: luajit-devel
+BuildRequires: cyrus-sasl-devel
+BuildRequires: openldap-devel
+BuildRequires: libstdc++-devel
+%endif
+
+BuildRequires: libunwind-devel
+%else
 %if 0%{?rhel} == 8 || 0%{?redos} > 0 || 0%{?fedora} >= 33
 BuildRequires: libstdc++-static
 %endif
+%endif
+
 
 %if "%{?mandriva_os}" == "linux"
 BuildRequires: lib64luajit-5.1-devel
@@ -93,6 +111,12 @@ make centos7-cmake3
 %endif
 
 make build-release-pkg
+
+%if %use_dynamic_build
+make sbom
+mkdir -p %{_rpmdir}
+mv -v picodata.cdx.json %{_rpmdir}/../
+%endif
 
 %install
 

@@ -197,7 +197,7 @@ tarantool-module-trigger:
     - when: manual
       allow_failure: true
 
-svace:
+certlinters:
   stage: test
   needs: []
   rules:
@@ -208,6 +208,7 @@ svace:
     PROJECT_TARGET: "picodata"
     BRANCH_TARGET: $CI_COMMIT_REF_NAME
     SVACE: "true"
+    SONARQUBE: "true"
     BUILD: "false"
     DEPLOY: "false"
   inherit:
@@ -686,75 +687,6 @@ helm-image:
     branch: main
     strategy: depend
 
-gamayun-prepare:
-  extends: .test
-  variables:
-    GIT_STRATEGY: clone
-  when: manual
-  rules:
-    - <<: *if-build-base-changes-on-dev-branch
-      variables:
-        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-    - when: manual
-  script:
-    - export CARGO_HOME=$HOME/.cargo
-    - cargo -V
-    - cargo clippy --locked --message-format=json > clippy.json
-  artifacts:
-    when: always
-    paths:
-      - clippy.json
-
-gamayun-run:
-  extends: .test
-  variables:
-    GIT_STRATEGY: clone
-  needs: ["gamayun-prepare"]
-  tags:
-    - picodata-shell
-  script:
-    # create an ssh tunnel to gamayun server to allow the report uploading
-    - TUNNEL="ssh -4 -L 9000:localhost:9000 sonar-reports -N -f"
-    - eval $TUNNEL
-    - ls -la
-    - |
-      # svace patches is more iportant than gamayun and order of applying is important
-      # first - svace, second - gamayun
-      ./tools/prepare_source_tree_for_stat_analysis.py apply
-    - |
-      # TODO consider moving this to the script as well, this may delete some html
-      # license files which is probably not intended
-      find . -type d -name 'test*' -o -name 'doc' -o -name 'docs' | xargs -n1 rm -rvf
-      find tarantool-sys/third_party/ -type f -name '*.htm*' | xargs -n 1 rm -rfv
-      find tarantool-sys/vendor/ -type f -name '*.htm*' | xargs -n 1 rm -rfv
-      find . -type d -name stress-test | xargs -n 1 rm -rvf
-      find . -type d -name integration-tests | xargs -n 1 rm -rvf
-      find . -type d -name 'example*' | xargs -n 1 rm -rvf
-      find . -type d -name 'docsrc' | xargs -n 1 rm -rvf
-      find . -name '*.md' | xargs -n 1 rm -rvf
-      find http tarantool-sys vshard -type d -name .github | xargs -n 1 rm -rfv
-    - |
-      docker run --rm -t \
-        -v $PWD:/tmp/src:rw \
-        -e "SONAR_OPS=-Dsonar.python.version=3 -Dsonar.login=${SONAR} -Dsonar.projectKey=Picodata-CI -Dsonar.exclusions=**/*.mod,osv-sonar.json" \
-        -e "SONAR_SCANNER_OPTS="-Xmx4096m"" \
-        -e "CARGO_CLIPPY_FILE=clippy.json" \
-        -u $(id -u):$(id -g) --ulimit nofile=100000:100000 --network=host \
-        docker.binary.picodata.io/gamayun
-
-build-vm-image:
-  stage: test
-  when: manual
-  inherit:
-    variables: false
-  variables:
-    # Not CI_COMMIT_BRANCH because CI_COMMIT_BRANCH is not available for tags
-    BRANCH: $CI_COMMIT_REF_NAME
-  trigger:
-    project: picodata/picodata/picodata-fstek-vmbuilder
-    branch: main
-    strategy: depend
-
 pack-on-tag:
   stage: pack
   rules:
@@ -772,6 +704,25 @@ pack-on-tag:
   trigger:
     project: "picodata/devops/builder"
     strategy: depend
+
+pack-on-tag-certified:
+  stage: pack
+  rules:
+    - when: manual
+      allow_failure: true
+  variables:
+    PROJECT_TARGET: "picodata"
+    TYPE: "RELEASE"
+    BRANCH_TARGET: $CI_COMMIT_REF_NAME
+    CERTIFICATION_BUILD: "true"
+  inherit:
+    variables:
+      - TYPE
+      - PROJECT_TARGET
+      - BRANCH_TARGET
+      - CERTIFICATION_BUILD
+  trigger:
+    project: "picodata/devops/builder"
 
 .deploy-docker-tmpl:
   stage: docker
