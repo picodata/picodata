@@ -2776,7 +2776,8 @@ class Cluster:
         exclude: List[Instance] = list(),
     ) -> bool:
         # Wait until governor finishes all ongoing activities
-        self.leader().wait_governor_status("idle")
+        leader = Retriable().call(self.leader)
+        leader.wait_governor_status("idle")
 
         for instance in self.instances:
             if instance not in exclude:
