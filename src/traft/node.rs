@@ -831,8 +831,13 @@ impl NodeImpl {
     where
         T: Into<Op>,
     {
+        if self.raw_node.raft.leader_id == INVALID_ID {
+            return Err(Error::LeaderUnknown);
+        }
         if self.raw_node.raft.state != RaftStateRole::Leader {
-            return Err(Error::NotALeader);
+            return Err(Error::NotALeader {
+                leader_id: self.raw_node.raft.leader_id,
+            });
         }
 
         let index_before = self.raw_node.raft.raft_log.last_index();

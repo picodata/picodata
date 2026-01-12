@@ -202,7 +202,7 @@ pub fn compare_and_swap(
         // for example on shutdown
         res = proc_cas_v2_local(request);
     } else if force_local {
-        return Err(TraftError::NotALeader);
+        return Err(TraftError::NotALeader { leader_id });
     } else {
         let future = async {
             let timeout = deadline.duration_since(fiber::clock());
@@ -341,9 +341,12 @@ fn proc_cas_v2_local(req: &Request) -> Result<Response> {
             current: status.term,
         });
     }
-    if status.leader_id != Some(node.raft_id()) {
+    let Some(leader_id) = status.leader_id else {
+        return Err(TraftError::LeaderUnknown);
+    };
+    if leader_id != node.raft_id() {
         // Invalid request. This node is not a leader at this moment.
-        return Err(TraftError::NotALeader);
+        return Err(TraftError::NotALeader { leader_id });
     }
 
     let raft_log = &node_impl.raw_node.raft.raft_log;

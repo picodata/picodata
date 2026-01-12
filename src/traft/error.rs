@@ -106,8 +106,8 @@ pub enum Error {
         requested: RaftTerm,
         current: RaftTerm,
     },
-    #[error("not a leader")]
-    NotALeader,
+    #[error("not a leader, actual leader: {leader_id}")]
+    NotALeader { leader_id: RaftId },
     #[error("lua error: {0}")]
     Lua(#[from] LuaError),
     #[error("{}", DisplayBoxError(.0))]
@@ -221,7 +221,7 @@ impl Error {
             // use it here:
             Self::Sbroad(_) => ErrorCode::SbroadError as _,
             Self::LeaderUnknown => ErrorCode::LeaderUnknown as _,
-            Self::NotALeader => ErrorCode::NotALeader as _,
+            Self::NotALeader { .. } => ErrorCode::NotALeader as _,
             Self::TermMismatch { .. } => ErrorCode::TermMismatch as _,
             Self::NoSuchInstance(_) => ErrorCode::NoSuchInstance as _,
             Self::NoSuchReplicaset { .. } => ErrorCode::NoSuchReplicaset as _,
@@ -365,6 +365,11 @@ impl IntoBoxError for Error {
             Self::Tarantool(e) => {
                 // Optimization
                 return e.into_box_error();
+            }
+            Self::NotALeader { leader_id } => {
+                let mut e = BoxError::new(self.error_code(), self.to_string());
+                e.set_field("leader_id", leader_id.into());
+                e
             }
             other => {
                 // FIXME: currently these errors capture the source location of where this function is called (see #[track_caller]),
