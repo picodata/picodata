@@ -6,7 +6,7 @@
 По умолчанию [доступ к системным таблицам][a] запрещен всем [пользователям
 СУБД][u], кроме `admin` и `pico_service`.
 
-Описание соответствует версии Picodata `25.5.0-51-g8de1078c9`.
+Описание соответствует версии Picodata `25.5.0-1435-g159ade393`.
 
 [t]: ../overview/glossary.md#table
 [a]: ../admin/access_control.md#tables_access
@@ -220,6 +220,9 @@ SYSTEM].
 * `current_config_version`: (_unsigned_)
 * `target_config_version`: (_unsigned_)
 * `promotion_vclock`: (_map_)
+* `master_change_counter`: (_unsigned_)
+* `current_bucket_state_version`: (_unsigned_)
+* `target_bucket_state_version`: (_unsigned_)
 
 Индексы:
 

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="512"
+   height="499.68503"
+   viewBox="0 0 512 499.68503"
+   fill="none"
+   version="1.1"
+   id="svg6"
+   sodipodi:docname="icon.svg"
+   xml:space="preserve"
+   inkscape:version="1.4.2 (ebf0e940d0, 2025-05-08)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"><defs
+     id="defs6"><style
+       id="style1">
+      .st0 {
+        fill: #e23956;
+      }
+
+      .st1 {
+        fill: #16222e;
+      }
+    </style></defs><sodipodi:namedview
+     id="namedview6"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="0.55587983"
+     inkscape:cx="202.38187"
+     inkscape:cy="501.00756"
+     inkscape:window-width="1858"
+     inkscape:window-height="1014"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg6" /><g
+     id="g12"
+     transform="matrix(4.8868951,0,0,4.8868951,-97.444688,-73.107951)"><path
+       class="st0"
+       d="M 42.53,34.89 H 19.95 c 0,0 0,-15.68 0,-15.68 0,-2.35 1.9,-4.25 4.25,-4.25 h 41.97 l -12.9,15 c -2.69,3.13 -6.62,4.93 -10.75,4.93 z"
+       id="path9" /><path
+       class="st0"
+       d="m 124.7,34.92 c 0,-11.02 -8.93,-19.95 -19.95,-19.95 H 86.31 c -4.13,0 -8.05,1.8 -10.75,4.93 L 60.45,37.47 C 57.76,40.6 53.83,42.4 49.7,42.4 H 19.94 v 19.95 h 22.58 c 4.13,0 8.05,-1.8 10.75,-4.93 L 68.38,39.85 C 71.07,36.72 75,34.92 79.13,34.92 Z"
+       id="path10" /><path
+       class="st0"
+       d="m 86.31,69.83 c -4.13,0 -8.05,1.8 -10.75,4.93 L 60.45,92.33 c -2.69,3.13 -6.62,4.93 -10.75,4.93 H 19.94 v 15.7 c 0,2.35 1.9,4.25 4.25,4.25 h 18.33 c 4.13,0 8.05,-1.8 10.75,-4.93 L 68.38,94.71 C 71.07,91.58 75,89.78 79.13,89.78 h 25.62 c 11.02,0 19.95,-8.93 19.95,-19.95 z"
+       id="path11" /><path
+       class="st0"
+       d="M 75.57,47.33 60.46,64.9 c -2.69,3.13 -6.62,4.93 -10.75,4.93 H 19.95 v 19.95 h 22.58 c 4.13,0 8.05,-1.8 10.75,-4.93 L 68.39,67.28 c 2.69,-3.13 6.62,-4.93 10.75,-4.93 h 45.57 c 0,0 0,-19.95 0,-19.95 H 86.32 c -4.13,0 -8.05,1.8 -10.75,4.93 z"
+       id="path12" /></g></svg>
