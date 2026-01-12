@@ -6903,30 +6903,11 @@ impl AbstractSyntaxTree {
             }
         }
 
-        let mut counter = 0u32;
+        used_aliases.extend(ctes.into_keys());
+        used_aliases.extend(plan.relations.tables.keys().cloned());
+        plan.context_mut().set_used_aliases(used_aliases);
         for node in unnamed_subqueries {
-            let name = loop {
-                let candidate_name: SmolStr = if counter == 0 {
-                    "unnamed_subquery".into()
-                } else {
-                    format!("unnamed_subquery_{}", counter).into()
-                };
-                counter += 1;
-
-                if used_aliases.contains(&candidate_name) {
-                    continue;
-                }
-
-                if ctes.contains_key(&candidate_name) {
-                    continue;
-                }
-
-                if plan.relations.tables.contains_key(&candidate_name) {
-                    continue;
-                }
-
-                break candidate_name;
-            };
+            let name = plan.context_mut().get_unnamed_subquery_name();
 
             let mut scan = plan.get_mut_relation_node(node)?;
             scan.set_scan_name(Some(name))?;

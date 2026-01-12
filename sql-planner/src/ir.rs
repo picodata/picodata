@@ -13,7 +13,7 @@ use relation::Table;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::cell::{RefCell, RefMut};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::Hasher;
 use std::io::Write;
 use std::slice::{Iter, IterMut};
@@ -690,6 +690,10 @@ pub struct Plan {
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct BuildContext {
     shard_col_info: ShardColumnsMap,
+    /// Any aliases that were used in the query. Used for resolving unnamed subqueries/joins
+    used_aliases: HashSet<SmolStr>,
+    unnamed_join_idx: u64,
+    unnamed_subquery_idx: u64,
 }
 
 impl BuildContext {
@@ -704,6 +708,39 @@ impl BuildContext {
         plan: &Plan,
     ) -> Result<Option<&Positions>, SbroadError> {
         self.shard_col_info.get(node_id, plan)
+    }
+
+    pub fn set_used_aliases(&mut self, aliases: HashSet<SmolStr>) {
+        debug_assert!(self.used_aliases.is_empty());
+        self.used_aliases = aliases;
+    }
+
+    fn get_unique_name(&self, pattern: &str, mut counter: u64) -> (SmolStr, u64) {
+        loop {
+            let candidate_name = if counter == 0 {
+                pattern.to_smolstr()
+            } else {
+                format_smolstr!("{}_{}", pattern, counter)
+            };
+            counter += 1;
+
+            if self.used_aliases.contains(&candidate_name) {
+                continue;
+            }
+
+            break (candidate_name, counter);
+        }
+    }
+    pub fn get_unnamed_subquery_name(&mut self) -> SmolStr {
+        let (name, counter) = self.get_unique_name("unnamed_subquery", self.unnamed_subquery_idx);
+        self.unnamed_subquery_idx = counter;
+        name
+    }
+
+    pub fn get_unnamed_join_name(&mut self) -> SmolStr {
+        let (name, counter) = self.get_unique_name("unnamed_join", self.unnamed_join_idx);
+        self.unnamed_join_idx = counter;
+        name
     }
 }
 

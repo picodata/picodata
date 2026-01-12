@@ -890,12 +890,14 @@ impl Plan {
         }
 
         let child_rel_node = self.get_relation_node(child_id)?;
+
         let alias = match child_rel_node {
             Relational::ScanSubQuery(ScanSubQuery { alias, .. }) => alias.clone(),
             Relational::ScanRelation(ScanRelation {
                 alias, relation, ..
             }) => alias.clone().or(Some(relation.clone())),
             Relational::ScanCte(ScanCte { alias, .. }) => Some(alias.clone()),
+            Relational::Join(Join { .. }) => Some(self.context_mut().get_unnamed_join_name()),
             _ => None,
         };
 

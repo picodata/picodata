@@ -8,6 +8,11 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [25.5.4] - Unreleased
+
+### Fixes
+
+- Introduce unnamed_join alias for motions with joins under them to distinguish columns with identical names
 
 ## [25.5.3] - 2026-01-15
 
