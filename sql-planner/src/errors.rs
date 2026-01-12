@@ -128,8 +128,8 @@ pub enum Entity {
     SyntaxPlan,
     /// corresponds to struct Table
     Table,
-    /// corresponds to struct Tarantool
-    Tarantool,
+    /// corresponds to struct BoxError
+    Box,
     /// corresponds to struct Target
     Target,
     /// tarantool transaction
@@ -211,7 +211,7 @@ impl fmt::Display for Entity {
             Entity::SyntaxNodes => "syntax nodes".to_smolstr(),
             Entity::SyntaxPlan => "syntax plan".to_smolstr(),
             Entity::Table => "table".to_smolstr(),
-            Entity::Tarantool => "tarantool".to_smolstr(),
+            Entity::Box => "box".to_smolstr(),
             Entity::Target => "target".to_smolstr(),
             Entity::Transaction => "transaction".to_smolstr(),
             Entity::Tuple => "tuple".to_smolstr(),
@@ -410,23 +410,15 @@ impl fmt::Display for SbroadError {
 
 impl std::error::Error for SbroadError {}
 
-impl<E: fmt::Debug> From<TransactionError<E>> for SbroadError {
+impl<E: fmt::Display> From<TransactionError<E>> for SbroadError {
     fn from(error: TransactionError<E>) -> Self {
-        SbroadError::Invalid(
-            Entity::Transaction,
-            Some(format_smolstr!("Transaction error occurred: {error:?}")),
-        )
+        SbroadError::Invalid(Entity::Transaction, Some(format_smolstr!("{error}")))
     }
 }
 
 impl From<Error> for SbroadError {
     fn from(error: Error) -> Self {
-        SbroadError::Invalid(
-            Entity::Tarantool,
-            Some(format_smolstr!(
-                "Tarantool module error occurred: {error:?}"
-            )),
-        )
+        SbroadError::Invalid(Entity::Box, Some(format_smolstr!("{error}")))
     }
 }
 
