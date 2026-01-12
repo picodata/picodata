@@ -406,7 +406,7 @@ fn cte_with_left_join() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("E"::int -> "E")
+    projection ("unnamed_join"."E"::int -> "E")
         motion [policy: full, program: AddMissingRowsForLeftJoin]
             projection ("cte"."E"::int -> "E", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                 join on true::bool

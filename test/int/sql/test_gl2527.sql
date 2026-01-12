@@ -94,20 +94,20 @@ SELECT "fa"."COL_0" as "id", "fa"."COL_1" as "parent", "fa"."COL_2" as "sharding
 +----------+-------+------+----------------------------------------------------------------------+
 ''
 3. Query (STORAGE):
-SELECT "COL_0" as "id", "COL_1" as "parent", "COL_2" as "sharding", "COL_3" as "id", "COL_4" as "parent", "COL_5" as "sharding", "COL_6" as "bucket_id", "g"."id", "g"."parent", "g"."sharding", "g"."bucket_id" FROM ( SELECT "COL_0", "COL_1", "COL_2", "COL_3", "COL_4", "COL_5", "COL_6" FROM "TMP_6427859553440267575_0136" ) INNER JOIN "t" as "g" ON ("g"."id" = "COL_4") and ("g"."sharding" = "COL_5")
+SELECT "unnamed_join"."COL_0" as "id", "unnamed_join"."COL_1" as "parent", "unnamed_join"."COL_2" as "sharding", "unnamed_join"."COL_3" as "id", "unnamed_join"."COL_4" as "parent", "unnamed_join"."COL_5" as "sharding", "unnamed_join"."COL_6" as "bucket_id", "g"."id", "g"."parent", "g"."sharding", "g"."bucket_id" FROM ( SELECT "COL_0", "COL_1", "COL_2", "COL_3", "COL_4", "COL_5", "COL_6" FROM "TMP_14290416481197473476_0136" ) as "unnamed_join" INNER JOIN "t" as "g" ON ("g"."id" = "unnamed_join"."COL_4") and ("g"."sharding" = "unnamed_join"."COL_5")
 +----------+-------+------+----------------------------------------------------------------------+
 | selectid | order | from | detail                                                               |
 +================================================================================================+
-| 0        | 0     | 0    | SCAN TABLE TMP_6427859553440267575_0136 (~1048576 rows)              |
+| 0        | 0     | 0    | SCAN TABLE TMP_14290416481197473476_0136 (~1048576 rows)             |
 |----------+-------+------+----------------------------------------------------------------------|
 | 0        | 1     | 1    | SEARCH TABLE t AS g USING PRIMARY KEY (id=? AND sharding=?) (~1 row) |
 +----------+-------+------+----------------------------------------------------------------------+
 ''
 4. Query (ROUTER):
-SELECT count (*) as "col_1" FROM ( SELECT "COL_0", "COL_1", "COL_2", "COL_3", "COL_4", "COL_5", "COL_6", "COL_7", "COL_8", "COL_9", "COL_10" FROM "TMP_12644579727369038455_0136" )
+SELECT count (*) as "col_1" FROM ( SELECT "COL_0", "COL_1", "COL_2", "COL_3", "COL_4", "COL_5", "COL_6", "COL_7", "COL_8", "COL_9", "COL_10" FROM "TMP_16717083892382772147_0136" ) as "unnamed_join_1"
 +----------+-------+------+--------------------------------------------+
 | selectid | order | from | detail                                     |
 +======================================================================+
-| 0        | 0     | 0    | B+tree count TMP_12644579727369038455_0136 |
+| 0        | 0     | 0    | B+tree count TMP_16717083892382772147_0136 |
 +----------+-------+------+--------------------------------------------+
 ''

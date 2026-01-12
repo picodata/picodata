@@ -749,7 +749,7 @@ fn front_sql_global_left_join1() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("e"::int -> "e", "b"::int -> "b")
+    projection ("unnamed_join"."e"::int -> "e", "unnamed_join"."b"::int -> "b")
         motion [policy: full, program: AddMissingRowsForLeftJoin]
             projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                 join on true::bool
@@ -774,8 +774,8 @@ fn front_sql_global_left_join2() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("e"::int -> "e", sum(("b"::int))::decimal -> "col_1")
-        group by ("e"::int) output: ("a"::int -> "a", "b"::int -> "b", "e"::int -> "e", "f"::int -> "f", "g"::int -> "g", "h"::int -> "h", "bucket_id"::int -> "bucket_id")
+    projection ("unnamed_join"."e"::int -> "e", sum(("unnamed_join"."b"::int))::decimal -> "col_1")
+        group by ("unnamed_join"."e"::int) output: ("unnamed_join"."a"::int -> "a", "unnamed_join"."b"::int -> "b", "unnamed_join"."e"::int -> "e", "unnamed_join"."f"::int -> "f", "unnamed_join"."g"::int -> "g", "unnamed_join"."h"::int -> "h", "unnamed_join"."bucket_id"::int -> "bucket_id")
             motion [policy: full, program: AddMissingRowsForLeftJoin]
                 projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                     join on true::bool
@@ -800,7 +800,7 @@ fn front_sql_global_left_join3() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("e"::int -> "e", "b"::int -> "b")
+    projection ("unnamed_join"."e"::int -> "e", "unnamed_join"."b"::int -> "b")
         motion [policy: full, program: AddMissingRowsForLeftJoin]
             projection ("unnamed_subquery"."b"::int -> "b", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                 join on true::bool
@@ -828,7 +828,7 @@ fn front_sql_global_left_join4() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("e"::int -> "e", "b"::int -> "b")
+    projection ("unnamed_join"."e"::int -> "e", "unnamed_join"."b"::int -> "b")
         motion [policy: full, program: AddMissingRowsForLeftJoin]
             projection ("unnamed_subquery"."b"::int -> "b", "unnamed_subquery_1"."e"::int -> "e")
                 join on true::bool
