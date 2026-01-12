@@ -5,7 +5,6 @@ use crate::schema::ADMIN_NAME;
 use nix::errno::Errno;
 use nix::sys::signal::SigSet;
 use nix::sys::signal::Signal;
-use nix::sys::signalfd::SignalFd;
 use nix::sys::wait::WaitPidFlag;
 use nix::sys::wait::WaitStatus;
 use nix::unistd::Pid;
@@ -164,7 +163,7 @@ fn reap_children(cluster_meta: &[Meta]) -> Result<()> {
     Ok(())
 }
 
-fn wait_for_signals(cluster_meta: &[Meta]) -> Result<()> {
+fn handle_signals(cluster_meta: &[Meta]) -> Result<()> {
     let mut signals_set_mask = SigSet::empty();
     signals_set_mask.add(Signal::SIGINT);
     signals_set_mask.add(Signal::SIGTERM);
@@ -172,21 +171,16 @@ fn wait_for_signals(cluster_meta: &[Meta]) -> Result<()> {
     signals_set_mask.add(Signal::SIGCHLD);
     signals_set_mask.thread_block()?;
 
-    let signals_fd_handler = SignalFd::new(&signals_set_mask)?;
-    while let Some(signal_info) = signals_fd_handler.read_signal()? {
-        let signal_number = i32::try_from(signal_info.ssi_signo)
-            .expect("received signal number should be in range of masked signals");
-        match Signal::try_from(signal_number)? {
+    loop {
+        match signals_set_mask.wait()? {
             signal @ (Signal::SIGINT | Signal::SIGTERM | Signal::SIGQUIT) => {
                 println!("Received {signal}, shutting down the cluster...");
-                return Ok(());
+                return shutdown_instances(cluster_meta);
             }
             Signal::SIGCHLD => reap_children(cluster_meta)?,
             _ => unreachable!("received signal should not have been caught as it was not masked"),
         }
     }
-
-    Ok(())
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -292,8 +286,9 @@ fn main_impl(args: Demo) -> Result<()> {
 
     // STEP: handle all types of shutdowns by signals.
 
-    wait_for_signals(&cluster_meta)?;
-    shutdown_instances(&cluster_meta)?;
+    handle_signals(&cluster_meta)?;
+
+    // STEP: clean working directory if asked by user.
 
     clean_data(args.clean_data, &working_directory)?;
 

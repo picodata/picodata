@@ -421,3 +421,44 @@ pub fn is_broken_pipe(error: &traft::error::Error) -> bool {
     }
     false
 }
+
+/// Sets up a handler to terminate the current process when its parent process exits.
+///
+/// On **Linux**, this uses `prctl(PR_SET_PDEATHSIG, SIGKILL)` to automatically
+/// send `SIGKILL` to the process if the parent dies.
+///
+/// On **macOS**, a background thread is spawned to periodically check if the
+/// parent process has been reparented to Launchd (PID 1). If so, the process
+/// exits with code 137 (parent death), emulating Linux's parent-death behavior.
+pub fn set_parent_death_handler() {
+    #[cfg(target_os = "linux")]
+    {
+        nix::sys::prctl::set_pdeathsig(nix::sys::signal::SIGKILL).expect("should not fail");
+    }
+
+    // macOS does not provide prctl or signalfd, so we cannot handle parent
+    // death in the same way as Linux. Alternative approaches (pipes, signals)
+    // caused issues due to restrictions in the Pike environment. To work
+    // around this, we monitor whether the child process has been reparented
+    // to Launchd (macOS init daemon process with PID 1), which indicates that
+    // the original parent has exited. This emulates Linux's parent-death signal
+    // behavior for `picodata demo` subcommand purposes.
+    #[cfg(target_os = "macos")]
+    {
+        use nix::unistd::Pid;
+
+        const LAUNCHD_PID: Pid = Pid::from_raw(1);
+
+        std::thread::Builder::new()
+            .name("macos-parent-death-monitor".into())
+            .spawn(move || loop {
+                if nix::unistd::getppid() == LAUNCHD_PID {
+                    std::process::exit(137 /* parent death exit code */);
+                }
+
+                // NOTE: avoid busy waiting by sleeping.
+                std::thread::sleep(Duration::from_millis(500));
+            })
+            .expect("should not fail");
+    }
+}
