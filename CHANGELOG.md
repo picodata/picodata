@@ -57,7 +57,7 @@ with the `YY.MINOR.MICRO` scheme.
   it impossible to deploy huge clusters. Now RPCs from governor are split into
   batches of configurable size (default 200, ALTER SYSTEM parameter `governor_rpc_batch_size`).
 - Improve upgrade flow for creating Lua stored functions (exported to SQL).
-- Node construction is now deferred until actually needed, avoiding unnecessary 
+- Node construction is now deferred until actually needed, avoiding unnecessary
   work for cached queries on any instance execution
 - Fixed a memory leak in SQL API of plugin SDK
 - `picodata status` no longer panics when `stdout`, `stderr`,
@@ -177,7 +177,7 @@ with the `YY.MINOR.MICRO` scheme.
   types (e.g. pk int < decimal) and datetime.
 - Vinyl improvements to decrease in-memory page index size.
 - Add HTTPS support for metrics and WebUI
-- Add the _pico_bucket(tier_name) function to show vshard bucket distribution. 
+- Add the _pico_bucket(tier_name) function to show vshard bucket distribution.
 - Rework SQL execution protocol for DQL queries to reduce data transfer.
 
 ### Fixes
@@ -478,6 +478,8 @@ with the `YY.MINOR.MICRO` scheme.
 - SQL supports new volatile scalar functions `pico_raft_leader_id()` and `pico_raft_leader_uuid()`.
 - SQL scalar function `instance_uuid` is now marked as deprecated, consider using `pico_instance_uuid`.
 - SQL supports new stable scalar function `version()`, that returns version of the current instance.
+- SQL supports `CURRENT_TIMESTAMP` scalar function now.
+- \[breaking\] `LOCALTIMESTAMP` now returns time with correct timezone, instead of always marking it as UTC.
 - Remove `Unsigned` type from casts and general type operations:
   - The `Unsigned` type can no longer be used in casts (`CAST(x AS unsigned)`)
   - `Unsigned` no longer appears in `EXPLAIN` output
@@ -571,6 +573,24 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixed a bug where picodata would sometimes indefinitely block after a
   restart and/or network failure when receiving a raft snapshot.
+
+- Fixed a bug when a non-voting instance would sometimes be chosen as
+  a bootstrap leader which would always lead to failure.
+
+- Fixed a bug when pgproto expected users to pass parameters from the
+  procedure body in CREATE PROCEDURE queries.
+
+- Fixed a bug when pgproto failed to execute CALL queries with the following error:
+  `sbroad: invalid node: node is not Relational type: Block(Procedure(Procedure { name: "proc1", values: [NodeId { offset: 0, arena_type: Arena32 }] }))`.
+
+- Fixed a bug when config inheritance during plugin upgrades
+  lead to loss of new config keys. Config inheritance was reworked and now we:
+  - Inherit keys that present in both configs
+  - Keep new keys untouched
+  - Preserve missing keys and plugin-level config
+
+- Fixed a bug where setting `pg_statement_max` or `pg_portal_max` to `0` could cause queries to
+  fail with access error to a system table.
 
 ### Lua API
 
@@ -807,8 +827,6 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixed a bug where _pico_service_route was incorrectly loaded into the topology cache.
 
-- Fixed a bug where setting `pg_statement_max` or `pg_portal_max` to `0` could cause queries to
-  fail with access error to a system table.
 
 ### RPC API
 
@@ -826,8 +844,6 @@ with the `YY.MINOR.MICRO` scheme.
 - SQL supports `ALTER TABLE old_table_name RENAME TO new_table_name` operation.
 - SQL supports `ALTER TABLE t RENAME COLUMN old_column_name TO new_column_name` operation.
 - SQL supports volatile scalar functions: `instance_uuid`.
-- SQL supports `CURRENT_TIMESTAMP` scalar function now.
-- \[breaking\] `LOCALTIMESTAMP` now returns time with correct timezone, instead of always marking it as UTC.
 
 ### Configuration
 
@@ -1124,17 +1140,6 @@ to 2 and 3.
 
 - Fixed bucket rebalancing for sharded tables
 - Fixed panic when applying snapshot with the same index
-- Fixed a bug when a non-voting instance would sometimes be chosen as
-  a bootstrap leader which would always lead to failure.
-- Fixed a bug when pgproto expected users to pass parameters from the
-  procedure body in CREATE PROCEDURE queries.
-- Fixed a bug when pgproto failed to execute CALL queries with the following error:
-  `sbroad: invalid node: node is not Relational type: Block(Procedure(Procedure { name: "proc1", values: [NodeId { offset: 0, arena_type: Arena32 }] }))`.
-- Fixed a bug when config inheritance during plugin upgrades
-  lead to loss of new config keys. Config inheritance was reworked and now we:
-  - Inherit keys that present in both configs
-  - Keep new keys untouched
-  - Preserve missing keys and plugin-level config
 
 ## [24.5.1] - 2024-09-04
 
