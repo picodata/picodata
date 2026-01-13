@@ -38,7 +38,7 @@
 
 # Change Log
 
-# [?.?.?] Unreleased
+# [11.0.0] Unreleased
 
 ### Added
 
@@ -51,6 +51,13 @@
 ### Fixed
 
 - `Vclock::current` will no longer invoke the lua parser.
+
+### Breaking
+
+- `BoxError::set_last` now propagates extended error fields to tarantool.
+  `BoxError::from_ptr` and (and consequently `BoxError::from_last`) now extract extended error fields from tarantool.
+  This change is breaking because it adds a dependency on tarantool symbols which might not be available in older
+  versions of picodata.
 
 
 # [10.1.0] Dec 29 2025

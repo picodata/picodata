@@ -24,13 +24,13 @@ use std::ptr::NonNull;
 use std::str::Utf8Error;
 use std::sync::Arc;
 
-use rmp::decode::{MarkerReadError, NumValueReadError, ValueReadError};
-use rmp::encode::ValueWriteError;
-
 use crate::ffi::tarantool as ffi;
 use crate::tlua::LuaError;
 use crate::transaction::TransactionError;
+use crate::tuple::Decode;
 use crate::util::to_cstring_lossy;
+use rmp::decode::{MarkerReadError, NumValueReadError, ValueReadError};
+use rmp::encode::ValueWriteError;
 
 /// A specialized [`Result`] type for the crate
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -329,6 +329,12 @@ impl BoxError {
             line = Some(l);
         }
 
+        #[cfg(feature = "picodata")]
+        // SAFETY: `error_ptr` points to a valid `ffi::BoxError` (`struct error`) object
+        let fields = unsafe { get_error_fields(error_ptr.as_ptr()) };
+        #[cfg(not(feature = "picodata"))]
+        let fields = HashMap::new();
+
         Self {
             code,
             message: Some(message),
@@ -336,7 +342,7 @@ impl BoxError {
             errno: None,
             file,
             line,
-            fields: HashMap::default(),
+            fields,
             cause: None,
         }
     }
@@ -359,6 +365,17 @@ impl BoxError {
         }
         let message = to_cstring_lossy(self.message());
         set_last_error(loc, self.error_code(), &message);
+
+        #[cfg(feature = "picodata")]
+        if !self.fields.is_empty() {
+            set_last_error_fields(&self.fields);
+        }
+    }
+
+    /// Stores a value into an extended error field.
+    #[inline(always)]
+    pub fn set_field(&mut self, field: &str, value: rmpv::Value) {
+        self.fields.insert(field.into(), value);
     }
 
     /// Return IPROTO error code
@@ -411,10 +428,15 @@ impl BoxError {
         self.cause.as_deref()
     }
 
-    /// Return the map of additional fields.
+    /// Return the map of all extended error fields.
     #[inline(always)]
     pub fn fields(&self) -> &HashMap<Box<str>, rmpv::Value> {
         &self.fields
+    }
+    /// Get a single extended error field.
+    #[inline(always)]
+    pub fn field(&self, field: &str) -> Option<&rmpv::Value> {
+        self.fields.get(field)
     }
 
     /// Set a fallback [`std::fmt::Display`] implementation for `BoxError` which
@@ -669,6 +691,119 @@ pub fn set_last_error(file_line: Option<(&str, u32)>, code: u32, message: &CStr)
             crate::c_ptr!("%s"),
             message.as_ptr(),
         );
+    }
+}
+
+/// Extracts all tarantool extended error fields from the error.
+///
+/// # Safety
+///
+/// `ptr` must point at a valid instance of `ffi::BoxError`.
+#[cfg(feature = "picodata")]
+unsafe fn get_error_fields(error: *const ffi::BoxError) -> HashMap<Box<str>, rmpv::Value> {
+    // SAFETY: `error` points to a valid `ffi::BoxError` (`struct error`) object
+    // The cast to `mut` pointer and back to a `const` one is sound
+    //  since `error_get_payload` doesn't modify the contents of the structure.
+    // It only does a structure projection.
+    let payload = unsafe { ffi::error_get_payload(error as *mut ffi::BoxError) }
+        as *const ffi::BoxErrorPayload;
+
+    let mut result = HashMap::new();
+
+    let mut iter = ffi::BoxErrorPayloadIter {
+        next_position: 0,
+        ..Default::default()
+    };
+
+    // SAFETY:
+    // - `payload` points to a valid `ffi::BoxErrorPayload` (`struct error_payload`) object
+    // - the `payload` is not mutated during iteration
+    while unsafe { ffi::error_payload_iter_next(payload, &mut iter) } {
+        // SAFETY:
+        // - Since `error_payload_iter_next` returned `true`, `name` should point to a valid C string
+        // - The C string reference does not outlive `payload`, which owns the underlying allocation
+        //   (we copy the string via conversion to `Box<str>`)
+        let name_cstr = unsafe { CStr::from_ptr(iter.name) };
+        let Ok(name_str) = name_cstr.to_str() else {
+            // ignore non UTF-8 named fields
+            continue;
+        };
+        let name_str: Box<str> = name_str.into();
+
+        // SAFETY:
+        // - Since `error_payload_iter_next` returned `true`, `mp_value` and `mp_size` should
+        //   define a valid byte slice.
+        // - The slice reference does not outlive `payload`, which owns the underlying allocation
+        //   (we copy the slice via `Value::decode`)
+        let data_slice =
+            unsafe { std::slice::from_raw_parts(iter.mp_value as *const u8, iter.mp_size) };
+        let Ok(data_value) = rmpv::Value::decode(data_slice) else {
+            // ignore unparseable fields
+            continue;
+        };
+
+        result.insert(name_str, data_value);
+    }
+
+    result
+}
+
+/// Sets multiple tarantool extended error fields.
+///
+/// # Safety
+///
+/// - `ptr` must point at a valid instance of `ffi::BoxError`.
+#[cfg(feature = "picodata")]
+unsafe fn set_error_fields(error: *mut ffi::BoxError, fields: &HashMap<Box<str>, rmpv::Value>) {
+    // SAFETY: `error` points to a valid `ffi::BoxError` (`struct error`) object
+    let payload = unsafe { ffi::error_get_payload(error) };
+
+    let mut encoded = Vec::new();
+
+    for (name, value) in fields {
+        let name = to_cstring_lossy(name);
+
+        encoded.clear();
+
+        // writing to a vector will never fail
+        rmpv::encode::write_value(&mut encoded, value).unwrap();
+
+        // SAFETY:
+        // - `payload` points to a valid `ffi::BoxErrorPayload` (`struct error_payload`) object
+        // - `name` stores a valid C string. This C string is only used for the duration
+        //   of the function call (it is copied to the internal structure).
+        // - The byte slice specified by `encoded.as_ptr()` and `encoded.len()` is only used
+        //   for the duration of the function call (it is copied to the internal structure).
+        unsafe {
+            crate::ffi::tarantool::error_payload_set_mp(
+                payload,
+                name.as_ptr(),
+                encoded.as_ptr() as *const std::ffi::c_char,
+                encoded.len() as u32,
+            )
+        };
+    }
+}
+
+/// Sets multiple tarantool extended error fields for the currently set last error.
+///
+/// # Panics
+///
+/// Will panic if there is no current last error.
+#[cfg(feature = "picodata")]
+#[inline]
+pub fn set_last_error_fields(fields: &HashMap<Box<str>, rmpv::Value>) {
+    {
+        // SAFETY: `box_error_last` should always be safe when used in tarantool runtime.
+        let error = unsafe { ffi::box_error_last() };
+        assert_ne!(
+            error,
+            std::ptr::null_mut(),
+            "Attempt to set fields of the last tarantool error while no error was set"
+        );
+
+        // SAFETY: the pointer returned by `box_error_last` should point to a valid `ffi::BoxError` object
+        unsafe { set_error_fields(error, fields) };
     }
 }
 
@@ -1354,5 +1489,23 @@ mod tests {
         clear_error();
         // This used to crash before the fix
         assert_eq!(e.error_type(), "ClientError");
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn tarantool_error_fields_round_trip() {
+        let mut error = BoxError::new(12345_u32, "complex error");
+        error.set_field("igneous", "mystery".into());
+        error.set_last();
+
+        let error = BoxError::maybe_last().unwrap_err();
+
+        assert_eq!(error.error_code(), 12345_u32);
+        assert_eq!(error.message(), "complex error");
+
+        if cfg!(feature = "picodata") {
+            assert_eq!(error.field("igneous"), Some(&"mystery".into()));
+        } else {
+            assert!(error.fields().is_empty());
+        }
     }
 }

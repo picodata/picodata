@@ -648,7 +648,13 @@ extern "C" {
     pub fn log_default_logger() -> *mut Logger;
 }
 
-// Error.
+/// A tarantool error payload type. Corresponds to `struct error_payload` on the C side.
+#[repr(C)]
+pub struct BoxErrorPayload {
+    _unused: [u8; 0],
+}
+
+/// A tarantool error type. Corresponds to `struct error` on the C side.
 #[repr(C)]
 pub struct BoxError {
     _unused: [u8; 0],
@@ -734,6 +740,59 @@ extern "C" {
     /// and make `box_error_t` be something else, so it will no longer be safe
     /// to call this function with a pointer to `BoxError`.
     pub fn error_unref(error: *mut BoxError);
+}
+
+/// An iterator over [`BoxErrorPayload`] fields. Corresponds to `struct error_payload_iter` on the C side.
+#[cfg(feature = "picodata")]
+#[derive(Default)]
+#[repr(C)]
+pub struct BoxErrorPayloadIter {
+    /// Index of the next field to be returned.
+    pub next_position: c_int,
+    /// Zero terminated field name.
+    pub name: *const c_char,
+    /// MessagePack field value.
+    pub mp_value: *const c_char,
+    /// Size of MessagePack field value.
+    pub mp_size: usize,
+}
+
+#[cfg(feature = "picodata")]
+extern "C" {
+    /// Gets the pointer to error payload from error pointer.
+    pub fn error_get_payload(error: *mut BoxError) -> *mut BoxErrorPayload;
+
+    /// Iterate over fields stored in the error payload.
+    ///
+    /// To start iteration, construct a `error_payload_iter`
+    /// setting `next_position` to 0 and pass it to this function.
+    ///
+    /// Returns `true` if a new field information returned by this function.
+    /// Returns `false` if there are no more fields.
+    ///
+    /// Make sure to not modify the error payload object while it's
+    /// being iterated on.
+    pub fn error_payload_iter_next(
+        payload: *const BoxErrorPayload,
+        iter: &mut BoxErrorPayloadIter,
+    ) -> bool;
+
+    /// Get MessagePack value of a payload field. If it is not found - return NULL
+    /// and the out parameter is set to 0.
+    pub fn error_payload_get_mp(
+        payload: *const BoxErrorPayload,
+        name: *const c_char,
+        size: &mut u32,
+    ) -> *const c_char;
+
+    /// Set value of a payload field to a MessagePack buffer. If the field existed
+    /// before, it is overwritten.
+    pub fn error_payload_set_mp(
+        payload: *mut BoxErrorPayload,
+        name: *const c_char,
+        src: *const c_char,
+        size: u32,
+    );
 }
 
 crate::define_extern_or_dlsym_reloc! {
