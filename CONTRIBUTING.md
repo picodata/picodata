@@ -7,7 +7,7 @@ This document describes contributing to Picodata, primarily the ways you can bui
 - Rust and Cargo (version is declared in `Cargo.toml`)
 - Cmake 3.16 or newer
 - gcc, g++
-- libstc++-static
+- libstdc++-static
 - (*optional* to build with Web UI) node v15+, yarn
 
 ### Prerequisites for CentOS 8
