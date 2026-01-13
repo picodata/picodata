@@ -7060,6 +7060,17 @@ pub fn try_parse_datetime(s: &str) -> Option<Datetime> {
     use time::format_description::well_known::{Iso8601, Rfc2822, Rfc3339};
     use time::macros::format_description;
 
+    fn try_from_date_without_time(s: &str) -> Option<time::OffsetDateTime> {
+        let format = format_description!("[year]-[month]-[day]");
+
+        if let Ok(date) = time::Date::parse(s, format) {
+            let dt = date.with_hms(0, 0, 0).ok()?.assume_utc();
+            return Some(dt);
+        }
+
+        None
+    }
+
     fn try_from_well_known_formats(s: &str) -> Option<time::OffsetDateTime> {
         if let Ok(datetime) = time::OffsetDateTime::parse(s, &Iso8601::PARSING) {
             return Some(datetime);
@@ -7076,17 +7087,21 @@ pub fn try_parse_datetime(s: &str) -> Option<Datetime> {
 
     fn try_from_custom_formats(s: &str) -> Option<time::OffsetDateTime> {
         // Formats used for encoding timestamptz values.
+        // https://time-rs.github.io/book/api/format-description.html
         let formats = [
-                format_description!("[year]-[month]-[day] [hour]:[minute]:[second][offset_hour]"),
-                format_description!(
-                    "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond][offset_hour]"
-                ),
-                format_description!(
-                    "[year]-[month]-[day] [hour]:[minute]:[second][offset_hour]:[offset_minute]"
-                ),
-                format_description!(
-                    "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond][offset_hour]:[offset_minute]"
-            )];
+            format_description!(
+                "[year]-[month]-[day] [hour]:[minute]:[second][offset_hour]"
+            ),
+            format_description!(
+                "[year]-[month]-[day] [hour]:[minute]:[second][offset_hour]:[offset_minute]"
+            ),
+            format_description!(
+                "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond][offset_hour]"
+            ),
+            format_description!(
+                "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond][offset_hour]:[offset_minute]"
+            )
+        ];
 
         for fmt in formats {
             if let Ok(datetime) = time::OffsetDateTime::parse(s, &fmt) {
@@ -7096,11 +7111,16 @@ pub fn try_parse_datetime(s: &str) -> Option<Datetime> {
 
         None
     }
+
     if let Some(datetime) = try_from_well_known_formats(s) {
         return Some(datetime.into());
     }
 
     if let Some(datetime) = try_from_custom_formats(s) {
+        return Some(datetime.into());
+    }
+
+    if let Some(datetime) = try_from_date_without_time(s) {
         return Some(datetime.into());
     }
 
@@ -7131,10 +7151,16 @@ fn parse_plugin_opts<T: Default>(
 #[cfg(test)]
 mod tests {
     #[test]
-    fn test_rfc_3339_parsing() {
+    fn test_datetime_parse_rfc_3339() {
         // https://git.picodata.io/core/picodata/-/issues/1945
         // test that parsing RFC 3339 with non-default separator (` ` instead of `T`) works
         let datetime = super::try_parse_datetime("2025-10-18 02:59:59Z").unwrap();
         assert_eq!(datetime.to_string(), "2025-10-18 2:59:59.0 +00:00:00");
+    }
+
+    #[test]
+    fn test_datetime_parse_yyyy_mm_dd() {
+        let datetime = super::try_parse_datetime("2025-10-18").unwrap();
+        assert_eq!(datetime.to_string(), "2025-10-18 0:00:00.0 +00:00:00");
     }
 }

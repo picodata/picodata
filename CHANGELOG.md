@@ -16,6 +16,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fix erroneous logic of counting rows returned from replicasets which led to undercovered limit exceedance
   errors.
 - Fixed that upgrading between patch versions wouldn't run upgrade scripts.
+- Datetime literals should support `yyyy-mm-dd` format, e.g. `select '2026-01-17'::datetime`.
 
 
 ## [25.5.3] - 2026-01-15
