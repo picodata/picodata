@@ -58,6 +58,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed that governor would sometimes be blocked in read_only on a DDL operation
   mode not being able to apply any subsequent raft operations.
 - Introduce unnamed_join alias for motions with joins under them to distinguish columns with identical names
+- Datetime literals should support `yyyy-mm-dd` format, e.g. `select '2026-01-17'::datetime`.
 
 ## [25.5.1] - 2025-12-19
 
