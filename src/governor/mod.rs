@@ -665,14 +665,15 @@ impl Loop {
                             is_master: false,
                             replicaset_peers,
                         };
+                        let master_name = master_name.as_ref();
 
                         for (instance_name, raft_id) in targets {
-                            rpc.is_master = Some(instance_name) == master_name;
+                            rpc.is_master = Some(&instance_name) == master_name;
                             tlog!(Info, "calling proc_replication"; "instance_name" => %instance_name, "is_master" => rpc.is_master);
 
                             crate::error_injection!(block "BLOCK_REPLICATION_RPC_ON_CLIENT");
 
-                            let resp = pool.call(instance_name, proc_name!(proc_replication), &rpc, rpc_timeout)?;
+                            let resp = pool.call(&instance_name, proc_name!(proc_replication), &rpc, rpc_timeout)?;
                             fs.push(async move {
                                 let res = resp.await;
                                 update_replication_error(instance_reachability, raft_id, res.as_ref().err());

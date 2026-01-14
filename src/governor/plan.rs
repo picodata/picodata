@@ -1,13 +1,14 @@
-use super::conf_change::raft_conf_change;
-use super::queue::handle_governor_queue;
-use super::replication::handle_replicaset_master_switchover;
-use super::sharding::{handle_sharding, handle_sharding_bootstrap};
 use crate::cas;
 use crate::catalog::governor_queue::GovernorOperationDef;
 use crate::column_name;
 use crate::governor::batch::get_next_batch;
 use crate::governor::batch::LastStepInfo;
+use crate::governor::conf_change::raft_conf_change;
+use crate::governor::queue::handle_governor_queue;
+use crate::governor::replication::handle_replicaset_master_switchover;
 use crate::governor::replication::handle_replicaset_sync;
+use crate::governor::replication::handle_replication_config;
+use crate::governor::sharding::{handle_sharding, handle_sharding_bootstrap};
 use crate::has_states;
 use crate::instance::state::{State, StateVariant};
 use crate::instance::{Instance, InstanceName};
@@ -203,40 +204,14 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // configure replication
-    if let Some((replicaset, targets, replicaset_peers)) =
-        get_replicaset_to_configure(instances, peer_addresses, replicasets)
-    {
-        // Targets must not be empty, otherwise we would bump the version
-        // without actually calling the RPC.
-        debug_assert!(!targets.is_empty());
-        let replicaset_name = &replicaset.name;
+    if let Some(plan) = handle_replication_config(topology_ref, peer_addresses, applied)? {
+        debug_assert!(
+            matches!(plan, Plan::ConfigureReplication { .. }),
+            "{:?}",
+            plan.kind()
+        );
 
-        let master_name = replicaset.effective_master_name();
-
-        let mut ops = UpdateOps::new();
-        ops.assign(
-            column_name!(Replicaset, current_config_version),
-            replicaset.target_config_version,
-        )?;
-        let dml = Dml::update(
-            storage::Replicasets::TABLE_ID,
-            &[replicaset_name],
-            ops,
-            ADMIN_ID,
-        )?;
-        // Implicit ranges are sufficient
-        let predicate = cas::Predicate::new(applied, []);
-        let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
-        let replication_config_version_actualize = cas;
-
-        return Ok(ConfigureReplication {
-            replicaset_name,
-            targets,
-            master_name,
-            replicaset_peers,
-            replication_config_version_actualize,
-        }
-        .into());
+        return Ok(plan);
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -1128,15 +1103,15 @@ pub mod stage {
             pub cas: cas::Request,
         }
 
-        pub struct ConfigureReplication<'i> {
+        pub struct ConfigureReplication {
             /// This replicaset is being (re)configured. The id is only used for logging.
-            pub replicaset_name: &'i ReplicasetName,
+            pub replicaset_name: ReplicasetName,
             /// These instances belong to one replicaset and will be sent a
             /// request to call [`rpc::replication::proc_replication`].
-            pub targets: Vec<(&'i InstanceName, RaftId)>,
+            pub targets: Vec<(InstanceName, RaftId)>,
             /// This instance will also become the replicaset master.
             /// This will be `None` if replicaset's current_master_name != target_master_name.
-            pub master_name: Option<&'i InstanceName>,
+            pub master_name: Option<InstanceName>,
             /// This is an explicit list of peer addresses.
             pub replicaset_peers: Vec<SmolStr>,
             /// Global DML operation which updates `current_config_version` in table `_pico_replicaset` for the given replicaset.
@@ -1352,68 +1327,6 @@ pub mod stage {
             pub cas: cas::Request,
         }
     }
-}
-
-#[allow(clippy::type_complexity)]
-fn get_replicaset_to_configure<'i>(
-    instances: &'i [Instance],
-    peer_addresses: &'i HashMap<RaftId, SmolStr>,
-    replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
-) -> Option<(
-    &'i Replicaset,
-    Vec<(&'i InstanceName, RaftId)>,
-    Vec<SmolStr>,
-)> {
-    for replicaset in replicasets.values() {
-        if replicaset.current_config_version == replicaset.target_config_version {
-            // Already configured
-            continue;
-        }
-
-        let replicaset_name = &replicaset.name;
-        let mut targets = Vec::new();
-        let mut replication_config = Vec::new();
-        for instance in instances {
-            let instance_name = &instance.name;
-            if has_states!(instance, Expelled -> *) {
-                // Expelled instances are ignored for everything,
-                // we only store them for history
-                continue;
-            }
-
-            if instance.replicaset_name != replicaset_name {
-                continue;
-            }
-
-            if !instance.may_respond() {
-                // Don't send RPC to instance who will probably not reply to it
-                continue;
-            }
-
-            targets.push((instance_name, instance.raft_id));
-
-            if instance.replication_sync_needed() {
-                // Don't add the waking up instance to other replica
-                // box.cfg.replication configs, until it synchronizes. This
-                // helps us isolate the healthy portion of the replicaset from
-                // potential replication conflicts from deposed masters.
-            } else if let Some(address) = peer_addresses.get(&instance.raft_id) {
-                replication_config.push(address.clone());
-            } else {
-                warn_or_panic!("replica `{instance_name}` address unknown, will be excluded from box.cfg.replication of replicaset `{replicaset_name}`");
-            }
-        }
-
-        if !targets.is_empty() {
-            return Some((replicaset, targets, replication_config));
-        }
-
-        #[rustfmt::skip]
-        tlog!(Warning, "all replicas in {replicaset_name} are offline, skipping replication configuration");
-    }
-
-    // No replication configuration needed
-    None
 }
 
 /// Checks if there's replicaset whose master is offline and tries to find a
