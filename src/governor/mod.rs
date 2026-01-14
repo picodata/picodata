@@ -75,6 +75,7 @@ use std::time::Duration;
 
 mod batch;
 mod conf_change;
+mod ddl;
 pub(crate) mod plan;
 mod queue;
 mod replication;
@@ -1012,7 +1013,7 @@ impl Loop {
                         if let Some(tier) = tier {
                             // DDL should be applied only on a specific tier
                             // (e.g. case of TRUNCATE on sharded tables).
-                            let map_callrw_res = vshard::ddl_map_callrw(tier, proc_name!(proc_apply_schema_change), rpc_timeout, &rpc);
+                            let map_callrw_res = vshard::ddl_map_callrw(&tier, proc_name!(proc_apply_schema_change), rpc_timeout, &rpc);
 
                             // `ddl_map_callrw` sends requests to all replicaset masters in
                             // the tier to which ddl table belongs but we should update
@@ -1020,7 +1021,6 @@ impl Loop {
                             // rpc calls via custom connection pool.
                             let other_targets: Vec<_> = targets
                                 .iter()
-                                .cloned()
                                 .filter(|(_, tier_name)| tier_name != &tier)
                                 .map(|(i_name, tier_name)| (i_name.clone(), tier_name.clone()))
                                 .collect();
@@ -1538,7 +1538,7 @@ impl Loop {
                         let mut fs = vec![];
                         for instance_name in targets {
                             tlog!(Info, "calling proc_apply_schema_change"; "instance_name" => %instance_name);
-                            let resp = pool.call(instance_name, proc_name!(proc_apply_schema_change), &rpc, rpc_timeout)?;
+                            let resp = pool.call(&instance_name, proc_name!(proc_apply_schema_change), &rpc, rpc_timeout)?;
                             fs.push(async move {
                                 match resp.await {
                                     Ok(_) => Ok(()),
@@ -1594,7 +1594,7 @@ impl Loop {
                         let mut fs = vec![];
                         for instance_name in targets {
                             tlog!(Info, "calling proc_internal_script"; "instance_name" => %instance_name);
-                            let resp = pool.call(instance_name, proc_name!(proc_internal_script), &rpc, rpc_timeout)?;
+                            let resp = pool.call(&instance_name, proc_name!(proc_internal_script), &rpc, rpc_timeout)?;
                             fs.push(async move {
                                 match resp.await {
                                     Ok(_) => Ok(()),

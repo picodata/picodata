@@ -1,12 +1,10 @@
 //! Remote procedure calls
 
 use crate::has_states;
-use crate::instance::Instance;
 use crate::instance::InstanceName;
-use crate::replicaset::Replicaset;
-use crate::replicaset::ReplicasetName;
 use crate::static_ref;
 use crate::tlog;
+use crate::topology_cache::TopologyCacheRef;
 use crate::traft::error::Error;
 use crate::traft::{node, ConnectionType, Result};
 use crate::util::relay_connection_config;
@@ -15,7 +13,6 @@ use ::tarantool::network::Client;
 use ::tarantool::tuple::{DecodeOwned, Encode};
 use serde::de::DeserializeOwned;
 use smol_str::SmolStr;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::io;
@@ -38,16 +35,12 @@ pub mod update_instance;
 static mut STATIC_PROCS: Option<HashSet<String>> = None;
 
 /// Returns vec of pairs [(instance_name, tier_name), ...]
-pub fn replicasets_masters<'a>(
-    replicasets: &HashMap<&ReplicasetName, &'a Replicaset>,
-    instances: &'a [Instance],
-) -> Vec<(&'a InstanceName, &'a SmolStr)> {
-    let mut masters = Vec::with_capacity(replicasets.len());
-    // TODO: invert this loop to improve performance
-    // `for instances { replicasets.get() }` instead of `for replicasets { instances.find() }`
-    for r in replicasets.values() {
-        #[rustfmt::skip]
-        let Some(master) = instances.iter().find(|i| i.name == r.current_master_name) else {
+pub fn replicasets_masters(topology_ref: &TopologyCacheRef) -> Vec<(InstanceName, SmolStr)> {
+    let num_replicasets = topology_ref.all_replicasets().size_hint().1.unwrap_or(0);
+    let mut masters = Vec::with_capacity(num_replicasets);
+
+    for r in topology_ref.all_replicasets() {
+        let Ok(master) = topology_ref.instance_by_name(&r.current_master_name) else {
             tlog!(
                 Warning,
                 "couldn't find instance with name {}, which is chosen as master of replicaset {}",
@@ -55,13 +48,15 @@ pub fn replicasets_masters<'a>(
                 r.name,
             );
             // Send them a request anyway just to be safe
-            masters.push((&r.current_master_name, &r.tier));
+            masters.push((r.current_master_name.clone(), r.tier.clone()));
             continue;
         };
+
         if has_states!(master, Expelled -> *) {
             continue;
         }
-        masters.push((&master.name, &master.tier));
+
+        masters.push((master.name.clone(), master.tier.clone()));
     }
 
     masters
