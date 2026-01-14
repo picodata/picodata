@@ -35,8 +35,8 @@ pip install pipenv
 Откройте терминал, последовательно введите команды:
 
 ``` shell
-git clone https://git.picodata.io/core/docs.git
-cd docs
+git clone --recurse-submodules https://git.picodata.io/core/picodata.git
+cd picodata/docs
 ```
 
 ## Установка зависимостей
@@ -75,6 +75,32 @@ pipenv run build
 
 ``` shell
 python -m http.server -d site --bind 127.0.0.1
+```
+
+## Получение документации в формате PDF
+
+Соберите веб-версию документации:
+
+``` shell
+pipenv run mkdocs build -sd build
+```
+
+Установите веб-браузер Chromium (необходим для генерации PDF-файла).
+
+Перейдите в директорию `build` и выполните команду:
+
+```shell
+chromium-browser --headless --disable-gpu --no-sandbox --no-zygote --disable-software-rasterizer --disable-dev-shm-usage --no-pdf-header-footer --print-to-pdf=picodata_docs.pdf picodata_docs.html
+```
+
+Для добавления номеров страниц в колонтитуле:
+
+Установите утилиты [pdfcpu](https://github.com/pdfcpu/pdfcpu) и pdfinfo (входит в состав [poppler-utils](https://github.com/elswork/poppler-utils)).
+
+Выполните команду:
+
+``` shell
+pdfcpu stamp add -p 2-$(pdfinfo picodata_docs.pdf | awk '/^Pages:/ {print $2}') -mode text -- "%p  " "scale:.4 abs, pos:br, rot:0, margins:10" picodata_docs.pdf
 ```
 
 ## Линтинг скриптов Python
