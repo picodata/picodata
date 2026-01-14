@@ -47,7 +47,6 @@ tarantool = { workspace = true, features = ["standalone_decimal", "extra_impls"]
 
 [lib]
 name = "sql"
-crate-type = ["cdylib", "rlib"]
 
 [features]
 mock = []
