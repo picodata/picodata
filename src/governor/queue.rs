@@ -8,12 +8,11 @@ use crate::governor::{
     InsertUpgradeOperation, Plan, RunExecScriptOperationStep, RunProcNameOperationStep,
     RunSqlOperationStep,
 };
-use crate::instance::Instance;
-use crate::replicaset::{Replicaset, ReplicasetName};
 use crate::rpc;
 use crate::schema::{Distribution, TableDef, ADMIN_ID};
 use crate::storage::{Properties, PropertyName, SystemTable};
 use crate::tlog;
+use crate::topology_cache::TopologyCacheRef;
 use crate::traft::error::Error;
 use crate::traft::op::{Ddl, Dml, Op};
 use crate::traft::{RaftIndex, Result};
@@ -29,6 +28,7 @@ const MIN_PICODATA_VERSION_WITH_G_QUEUE: Version = Version::new_clean(25, 3, 0);
 
 /// Handles operations from `_pico_governor_queue` table.
 pub(super) fn handle_governor_queue<'i>(
+    topology_ref: &TopologyCacheRef,
     tables: &HashMap<SpaceId, &'i TableDef>,
     governor_operations: &'i [GovernorOperationDef],
     next_schema_version: u64,
@@ -36,8 +36,6 @@ pub(super) fn handle_governor_queue<'i>(
     pending_catalog_version: Option<SmolStr>,
     current_catalog_version: SmolStr,
     applied: RaftIndex,
-    replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
-    instances: &'i [Instance],
     sync_timeout: Duration,
 ) -> Result<Option<Plan<'i>>> {
     // check cluster version
@@ -71,14 +69,13 @@ pub(super) fn handle_governor_queue<'i>(
     // check if we have pending system catalog upgrade
     if let Some(pending_catalog_version) = pending_catalog_version {
         return handle_catalog_upgrade(
+            topology_ref,
             tables,
             governor_operations,
             next_schema_version,
             pending_catalog_version,
             current_catalog_version,
             applied,
-            replicasets,
-            instances,
             sync_timeout,
         );
     }
@@ -88,7 +85,7 @@ pub(super) fn handle_governor_queue<'i>(
         .iter()
         .find(|op| op.status == GovernorOpStatus::Pending && op.kind != GovernorOpKind::Upgrade)
     {
-        return run_governor_operation(next_op, applied, replicasets, instances, sync_timeout);
+        return run_governor_operation(topology_ref, next_op, applied, sync_timeout);
     }
 
     Ok(None)
@@ -96,14 +93,13 @@ pub(super) fn handle_governor_queue<'i>(
 
 /// Handles system catalog upgrade to version `pending_catalog_version`.
 fn handle_catalog_upgrade<'i>(
+    topology_ref: &TopologyCacheRef,
     tables: &HashMap<SpaceId, &'i TableDef>,
     governor_operations: &'i [GovernorOperationDef],
     next_schema_version: u64,
     pending_catalog_version: SmolStr,
     current_catalog_version: SmolStr,
     applied: RaftIndex,
-    replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
-    instances: &'i [Instance],
     sync_timeout: Duration,
 ) -> Result<Option<Plan<'i>>> {
     tlog!(
@@ -152,7 +148,7 @@ fn handle_catalog_upgrade<'i>(
     // check if we have at least one pending upgrade operation
     // run it in such case
     if let Some(next_op) = pending_upgrade_operation {
-        return run_governor_operation(next_op, applied, replicasets, instances, sync_timeout);
+        return run_governor_operation(topology_ref, next_op, applied, sync_timeout);
     }
 
     // we have all upgrade operations completed here
@@ -163,10 +159,9 @@ fn handle_catalog_upgrade<'i>(
 ///
 /// Returns one of governor's plans to run the operation.
 fn run_governor_operation<'i>(
+    topology_ref: &TopologyCacheRef,
     op: &'i GovernorOperationDef,
     applied: RaftIndex,
-    replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
-    instances: &'i [Instance],
     sync_timeout: Duration,
 ) -> Result<Option<Plan<'i>>> {
     tlog!(Info, "next governor operation to apply: {}", op);
@@ -187,9 +182,9 @@ fn run_governor_operation<'i>(
                 timeout: sync_timeout,
                 tier: None,
             };
-            let masters: Vec<_> = rpc::replicasets_masters(replicasets, instances)
-                .iter()
-                .map(|(name, _)| *name)
+            let masters: Vec<_> = rpc::replicasets_masters(topology_ref)
+                .into_iter()
+                .map(|(name, _)| name)
                 .collect();
             Ok(Some(
                 RunProcNameOperationStep {
@@ -206,8 +201,13 @@ fn run_governor_operation<'i>(
             let rpc = super::upgrade_operations::Request {
                 script_name: op.op.clone(),
             };
-            let targets: Vec<_> = super::plan::maybe_responding(instances)
-                .map(|i| &i.name)
+            let targets: Vec<_> = topology_ref
+                .all_instances()
+                // FIXME: this is probably wrong, if instance temporarily goes
+                // Offline during upgrade, we should wait until it returns,
+                // otherwise it will remain in a non-upgraded state
+                .filter(|i| i.may_respond())
+                .map(|i| i.name.clone())
                 .collect();
             Ok(Some(
                 RunExecScriptOperationStep {

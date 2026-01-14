@@ -4,6 +4,7 @@ use crate::column_name;
 use crate::governor::batch::get_next_batch;
 use crate::governor::batch::LastStepInfo;
 use crate::governor::conf_change::raft_conf_change;
+use crate::governor::ddl::handle_pending_ddl;
 use crate::governor::queue::handle_governor_queue;
 use crate::governor::replication::handle_replicaset_master_switchover;
 use crate::governor::replication::handle_replicaset_sync;
@@ -528,36 +529,17 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // ddl
-    if let Some(ddl) = pending_schema_change {
-        let mut tier = None;
+    if let Some(plan) = handle_pending_ddl(
+        topology_ref,
+        tables,
+        pending_schema_change,
+        term,
+        applied,
+        sync_timeout,
+    )? {
+        debug_assert_plan_kind!(plan, Plan::ApplySchemaChange { .. });
 
-        if let Ddl::TruncateTable { id, .. } = ddl {
-            let table_def = tables.get(id).expect("failed to get table_def");
-            tier = table_def.distribution.in_tier();
-
-            if tier.is_none() {
-                // This is a TRUNCATE on global table. RPC is not required, the
-                // operation is applied locally on each instance of the cluster
-                // when the corresponding DdlCommit is applied in raft_main_loop
-                return Ok(ApplySchemaChange {
-                    tier: None,
-                    rpc: None,
-                    targets: vec![],
-                }
-                .into());
-            }
-        }
-
-        let targets = rpc::replicasets_masters(replicasets, instances);
-
-        let rpc = Some(rpc::ddl_apply::Request {
-            tier: tier.map(Into::into),
-            term,
-            applied,
-            timeout: sync_timeout,
-        });
-
-        return Ok(ApplySchemaChange { tier, rpc, targets }.into());
+        return Ok(plan);
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -889,6 +871,7 @@ pub(super) fn action_plan<'i>(
     ////////////////////////////////////////////////////////////////////////////
     // run operations from `_pico_governor_queue` table
     if let Some(plan) = handle_governor_queue(
+        topology_ref,
         tables,
         governor_operations,
         next_schema_version,
@@ -896,8 +879,6 @@ pub(super) fn action_plan<'i>(
         pending_catalog_version,
         global_catalog_version,
         applied,
-        replicasets,
-        instances,
         sync_timeout,
     )? {
         return Ok(plan);
@@ -1220,14 +1201,14 @@ pub mod stage {
             pub predicate: cas::Predicate,
         }
 
-        pub struct ApplySchemaChange<'i> {
+        pub struct ApplySchemaChange {
             /// Tier name on which schema change should be applied.
             /// If specified, change application should be skipped
             /// for other tiers.
-            pub tier: Option<&'i str>,
+            pub tier: Option<SmolStr>,
             /// These are masters of all the replicasets in the cluster
             /// (their instance names with corresponding tier names).
-            pub targets: Vec<(&'i InstanceName, &'i SmolStr)>,
+            pub targets: Vec<(InstanceName, SmolStr)>,
             /// Request to call [`rpc::ddl_apply::proc_apply_schema_change`] on `targets`.
             pub rpc: Option<rpc::ddl_apply::Request>,
         }
@@ -1299,7 +1280,7 @@ pub mod stage {
             /// This is the procedure name for creation.
             pub proc_name: &'i str,
             /// These are masters of all the replicasets in the cluster.
-            pub targets: Vec<&'i InstanceName>,
+            pub targets: Vec<InstanceName>,
             /// Request to call [`rpc::ddl_apply::proc_apply_schema_change`] on `targets`.
             pub rpc: rpc::ddl_apply::Request,
             /// DML operation to update operation status on success.
@@ -1313,7 +1294,7 @@ pub mod stage {
             /// This is the internal script name for executing.
             pub script_name: &'i str,
             /// These are instances in the cluster.
-            pub targets: Vec<&'i InstanceName>,
+            pub targets: Vec<InstanceName>,
             /// Request to call [`crate::governor::upgrade_operations::proc_internal_script`] on `targets`.
             pub rpc: crate::governor::upgrade_operations::Request,
             /// DML operation to update operation status on success.

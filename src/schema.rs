@@ -255,7 +255,7 @@ impl Distribution {
 
     /// For sharded distribution returns the name of the tier in which the data
     /// is going to be stored. For global distribution returns `None`.
-    pub fn in_tier(&self) -> Option<&str> {
+    pub fn in_tier(&self) -> Option<&SmolStr> {
         match self {
             Distribution::Global => None,
             Distribution::ShardedByField { tier, .. } => Some(tier),
