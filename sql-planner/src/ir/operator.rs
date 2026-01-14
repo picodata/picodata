@@ -1669,17 +1669,14 @@ impl Plan {
     ///
     /// # Errors
     /// - Row node is not of a row type
-    pub fn add_values_row(
-        &mut self,
-        expr_row_id: NodeId,
-        col_idx: &mut usize,
-    ) -> Result<NodeId, SbroadError> {
+    pub fn add_values_row(&mut self, expr_row_id: NodeId) -> Result<NodeId, SbroadError> {
         let row = self.get_expression_node(expr_row_id)?;
         let columns = row.clone_row_list()?;
         let mut aliases: Vec<NodeId> = Vec::with_capacity(columns.len());
+        let mut col_idx = 0;
         for col_id in columns {
             // Generate a row of aliases for the incoming row.
-            *col_idx += 1;
+            col_idx += 1;
             // The column names are generated according to tarantool naming of anonymous columns
             let name = format!("COLUMN_{col_idx}");
             let alias_id = self.nodes.add_alias(&name, col_id)?;
@@ -1725,50 +1722,6 @@ impl Plan {
             }
         }
 
-        // In case we have several `ValuesRow` under `Values`
-        // (e.g. VALUES (1, "test_1"), (2, "test_2")),
-        // the list of alias column names for it will look like:
-        // (COLUMN_1, COLUMN_2), (COLUMN_3, COLUMN_4).
-        // As soon as we want to assign name for column and not for the specific value,
-        // we choose the names of last `ValuesRow` and set them as names of all the columns of `Values`.
-        // The assumption always is that the child `ValuesRow` has the same number of elements.
-        let last_id = if let Some(last_id) = value_rows.last() {
-            *last_id
-        } else {
-            return Err(SbroadError::UnexpectedNumberOfValues(
-                "Values node has no children, expected at least one child.".into(),
-            ));
-        };
-        let value_row_last = self.get_relation_node(last_id)?;
-        let last_output_id = if let Relational::ValuesRow(ValuesRow { output, .. }) = value_row_last
-        {
-            *output
-        } else {
-            return Err(SbroadError::UnexpectedNumberOfValues(
-                "Values node must have at least one child row.".into(),
-            ));
-        };
-        let last_output = self.get_expression_node(last_output_id)?;
-        let names = if let Expression::Row(Row { list, .. }) = last_output {
-            let mut aliases: Vec<SmolStr> = Vec::with_capacity(list.len());
-            for alias_id in list {
-                let alias = self.get_expression_node(*alias_id)?;
-                if let Expression::Alias(Alias { name, .. }) = alias {
-                    aliases.push(name.clone());
-                } else {
-                    return Err(SbroadError::Invalid(
-                        Entity::Expression,
-                        Some("Expected an alias".into()),
-                    ));
-                }
-            }
-            aliases
-        } else {
-            return Err(SbroadError::UnexpectedNumberOfValues(
-                "Values node must have at least one child row.".into(),
-            ));
-        };
-
         let mut types = Vec::new();
         for row_id in &value_rows {
             let value_row = self.get_relation_node(*row_id)?;
@@ -1789,17 +1742,23 @@ impl Plan {
         let unified_types = calculate_unified_types(types.into_iter())?;
 
         // Generate a row of aliases referencing all the children.
-        let mut aliases: Vec<NodeId> = Vec::with_capacity(names.len());
-        for (pos, name) in names.iter().enumerate() {
-            let unified_type = unified_types[pos].1;
+        let first_row_id = value_rows
+            .first()
+            .expect("VALUES ROW must always come after VALUES");
+        let values_row = self.get_relation_node(*first_row_id)?;
+        let row_len = self.get_row_list(values_row.output())?.len();
+
+        let mut aliases: Vec<NodeId> = Vec::with_capacity(row_len);
+        for (pos, unified_type) in unified_types.iter().enumerate() {
             let ref_id = self.nodes.add_ref(
                 ReferenceTarget::Values(value_rows.clone()),
                 pos,
-                unified_type,
+                unified_type.1,
                 None,
                 false,
             );
-            let alias_id = self.nodes.add_alias(name, ref_id)?;
+            let name = format_smolstr!("COLUMN_{}", pos + 1);
+            let alias_id = self.nodes.add_alias(&name, ref_id)?;
             aliases.push(alias_id);
         }
         let output = self.nodes.add_row(aliases, None);

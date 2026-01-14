@@ -143,7 +143,7 @@ fn union_under_insert1() {
                         motion [policy: full, program: ReshardIfNeeded]
                             values
                                 value row (data=ROW(1::int, 1::int))
-                projection ("unnamed_subquery_1"."COLUMN_3"::int -> "COLUMN_3", "unnamed_subquery_1"."COLUMN_4"::int -> "COLUMN_4")
+                projection ("unnamed_subquery_1"."COLUMN_1"::int -> "COLUMN_1", "unnamed_subquery_1"."COLUMN_2"::int -> "COLUMN_2")
                     scan "unnamed_subquery_1"
                         motion [policy: full, program: ReshardIfNeeded]
                             values

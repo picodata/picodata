@@ -3115,7 +3115,7 @@ fn front_sql_insert_6() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     insert "t" on conflict: fail
-        motion [policy: segment([ref("COLUMN_5"), ref("COLUMN_6")]), program: ReshardIfNeeded]
+        motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
             values
                 value row (data=ROW(1::int, 2::int))
                 value row (data=ROW(1::int, 2::int))
@@ -3492,7 +3492,7 @@ fn front_sql_not_exists() {
                         value row (data=ROW(1::int))
     subquery $0:
     scan
-                projection ("unnamed_subquery_1"."COLUMN_2"::int -> "COLUMN_2")
+                projection ("unnamed_subquery_1"."COLUMN_1"::int -> "COLUMN_1")
                     scan "unnamed_subquery_1"
                         motion [policy: full, program: ReshardIfNeeded]
                             values
@@ -3517,7 +3517,7 @@ fn front_sql_not_in() {
     subquery $0:
     motion [policy: full, program: ReshardIfNeeded]
                 scan
-                    projection ("unnamed_subquery_1"."COLUMN_2"::int -> "COLUMN_2")
+                    projection ("unnamed_subquery_1"."COLUMN_1"::int -> "COLUMN_1")
                         scan "unnamed_subquery_1"
                             motion [policy: full, program: ReshardIfNeeded]
                                 values

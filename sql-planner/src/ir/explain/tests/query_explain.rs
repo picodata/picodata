@@ -337,3 +337,29 @@ fn test_query_explain_17() {
     buckets = [1-10000]
     "#);
 }
+
+#[test]
+fn test_query_explain_18() {
+    let sql = "explain select * from (values (1, 2), (3, 4)) join (values (5, 6), (7, 8)) on true";
+
+    let metadata = &RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
+    projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1", "unnamed_subquery"."COLUMN_2"::int -> "COLUMN_2", "unnamed_subquery_1"."COLUMN_1"::int -> "COLUMN_1", "unnamed_subquery_1"."COLUMN_2"::int -> "COLUMN_2")
+        join on true::bool
+            scan "unnamed_subquery"
+                motion [policy: full, program: ReshardIfNeeded]
+                    values
+                        value row (data=ROW(1::int, 2::int))
+                        value row (data=ROW(3::int, 4::int))
+            scan "unnamed_subquery_1"
+                motion [policy: full, program: ReshardIfNeeded]
+                    values
+                        value row (data=ROW(5::int, 6::int))
+                        value row (data=ROW(7::int, 8::int))
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    buckets = any
+    "#);
+}

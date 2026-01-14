@@ -133,7 +133,7 @@ SELECT "id" FROM "space_simple_shard_key" WHERE "id" IN (SELECT "id" FROM "testi
 -- TEST: test_not_in_subquery_select_from_values
 -- SQL:
 SELECT "id" FROM "space_simple_shard_key"
-WHERE "id" NOT IN (SELECT cast("COLUMN_2" as int) FROM (VALUES (1), (3)));
+WHERE "id" NOT IN (SELECT cast("COLUMN_1" as int) FROM (VALUES (1), (3)));
 -- EXPECTED:
 10
 

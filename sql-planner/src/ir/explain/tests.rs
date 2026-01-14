@@ -344,7 +344,7 @@ fn multiply_insert_plan() {
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     insert "test_space" on conflict: fail
-        motion [policy: segment([ref("COLUMN_5")]), program: ReshardIfNeeded]
+        motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
             values
                 value row (data=ROW(1::int, '123'::string))
                 value row (data=ROW(2::int, '456'::string))

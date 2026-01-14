@@ -1653,7 +1653,6 @@ fn parse_insert<M: Metadata>(
     map: &Translation,
     type_analyzer: &mut TypeAnalyzer,
     pairs_map: &mut ParsingPairsMap,
-    col_idx: &mut usize,
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
 ) -> Result<NodeId, SbroadError> {
@@ -1757,7 +1756,6 @@ fn parse_insert<M: Metadata>(
             map,
             type_analyzer,
             pairs_map,
-            col_idx,
             worker,
             plan,
         )?;
@@ -1785,7 +1783,6 @@ fn parse_insert<M: Metadata>(
             map,
             type_analyzer,
             pairs_map,
-            col_idx,
             worker,
             plan,
         )?;
@@ -1802,7 +1799,6 @@ fn parse_insert_source<M: Metadata>(
     map: &Translation,
     type_analyzer: &mut TypeAnalyzer,
     pairs_map: &mut ParsingPairsMap,
-    col_idx: &mut usize,
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
 ) -> Result<NodeId, SbroadError> {
@@ -1817,7 +1813,6 @@ fn parse_insert_source<M: Metadata>(
                 type_analyzer,
                 column_types,
                 pairs_map,
-                col_idx,
                 worker,
                 plan,
             )
@@ -4596,7 +4591,6 @@ fn parse_values_rows<M>(
     type_analyzer: &mut TypeAnalyzer,
     desired_types: &[UnrestrictedType],
     pairs_map: &mut ParsingPairsMap,
-    col_idx: &mut usize,
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
 ) -> Result<Vec<NodeId>, SbroadError>
@@ -4619,7 +4613,7 @@ where
             plan,
             true,
         )?;
-        let values_row_id = plan.add_values_row(expr_id, col_idx)?;
+        let values_row_id = plan.add_values_row(expr_id)?;
         plan.fix_subquery_rows(worker, values_row_id)?;
         values_rows_ids.push(values_row_id);
     }
@@ -5788,9 +5782,6 @@ impl AbstractSyntaxTree {
         let dft_post = PostOrder::with_capacity(|node| self.nodes.ast_iter(node), capacity);
         // Map of { ast `ParseNode` id -> plan `Node` id }.
         let mut map = Translation::with_capacity(self.nodes.next_id());
-        // Counter for `Expression::ValuesRow` output column name aliases ("COLUMN_<`col_idx`>").
-        // Is it global for every `ValuesRow` met in the AST.
-        let mut col_idx: usize = 0;
         let mut worker =
             ExpressionsWorker::new(metadata, sq_pair_to_ast_ids, tnt_parameters_positions);
         let mut ctes = CTEs::new();
@@ -6139,7 +6130,6 @@ impl AbstractSyntaxTree {
                         &mut type_analyzer,
                         &[],
                         pairs_map,
-                        &mut col_idx,
                         &mut worker,
                         &mut plan,
                     )?;
@@ -6449,7 +6439,6 @@ impl AbstractSyntaxTree {
                         &map,
                         &mut type_analyzer,
                         pairs_map,
-                        &mut col_idx,
                         &mut worker,
                         &mut plan,
                     )?;

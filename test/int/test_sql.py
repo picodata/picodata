@@ -951,7 +951,7 @@ def test_datetime(cluster: Cluster):
 
     data = i1.sql(
         """
-        insert into t select cast("COLUMN_5" as int), to_date("COLUMN_6", '%Y %d %m') from (values
+        insert into t select cast("COLUMN_1" as int), to_date("COLUMN_2", '%Y %d %m') from (values
             (1, '2010 10 10'),
             (2, '2020 20 02'),
             (3, '2010 10 10')
@@ -1023,7 +1023,7 @@ def test_datetime(cluster: Cluster):
     # check we can insert min/max date
     data = i1.sql(
         """
-        insert into t2 select cast("COLUMN_3" as int), to_date("COLUMN_4", '') from (values
+        insert into t2 select cast("COLUMN_1" as int), to_date("COLUMN_2", '') from (values
             (1, '-9999-12-31T23:59:59Z'),
             (2, '9999-12-31T23:59:59Z')
         )
