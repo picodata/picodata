@@ -555,6 +555,16 @@ impl TopologyCacheMutable {
         self.instance_by_name(name)
     }
 
+    /// Return info about the replicaset of the currently running instance.
+    ///
+    /// This value should almost always be available. It may be `None` for a
+    /// short period of time when an instance is booting up before it had time
+    /// to apply the corresponding raft log entries.
+    #[inline(always)]
+    pub fn try_this_replicaset(&self) -> Option<&Replicaset> {
+        self.this_replicaset.get()
+    }
+
     #[inline(always)]
     pub fn this_replicaset(&self) -> &Replicaset {
         self.this_replicaset

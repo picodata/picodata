@@ -24,6 +24,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixed that the whole replicaset would be broken if one instance get's a
   replication conflict. (See also https://git.picodata.io/core/picodata/-/issues/2231).
+- Fixed that governor would sometimes be blocked in read_only on a DDL operation
+  mode not being able to apply any subsequent raft operations.
 
 
 ## [25.5.2] - 2025-12-26
