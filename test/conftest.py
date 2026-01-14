@@ -507,12 +507,12 @@ class Retriable:
         """
         while self._next_try():
             try:
-                log.info(f"Retriable.call {func.__name__}")
+                log.info(f"Retriable.call {func.__name__}", stacklevel=2)
                 return func(*args, **kwargs)
             except self.fatal as e:
                 raise e from e
             except Exception as e:
-                log.info(f"got retriable exception: {e}")
+                log.info(f"got retriable exception: {e}", stacklevel=2)
                 if self.fatal_predicate(e):
                     raise e from e
                 now = time.monotonic()
@@ -1968,9 +1968,19 @@ Last governor error is:
 
         assert self.registry
 
+        (_, incarnation), _ = self.states()
         self.terminate()
         self.runtime = self.registry.get(to)
-        self.fail_to_start(rolling=True) if fail else self.start_and_wait()
+        if fail:
+            self.fail_to_start(rolling=True)
+            return
+
+        self.start()
+
+        # Specifiy an incarnation explicitly to make sure instance is
+        # reinitialized correctly even if it turned off non-gracufully without
+        # updating it's state ot Offline
+        self.wait_online(expected_incarnation=incarnation + 1)
 
     def fill_with_data(self):
         ddl = self.sql(

@@ -3,8 +3,11 @@ from typing import Generator, Protocol
 from conftest import Cluster
 from framework.rolling.version import RelativeVersion as Version
 from framework.rolling.registry import Registry
+from framework.log import log
 
 import pytest
+import time
+import random
 
 
 class Factory(Protocol):
@@ -127,6 +130,11 @@ def test_successful_rollback_on_partial_upgrade_failure(factory: Factory):
     6. Confirm that no full upgrade happened, but the cluster
        stayed healthy.
     """
+
+    # Microseconds since epoch
+    seed = int(time.time() * 1000000)
+    log.info("Random seed: {seed}")
+    random.seed(seed)
 
     # step 1
 
