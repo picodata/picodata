@@ -5,6 +5,7 @@ use crate::governor::plan::stage::Plan;
 use crate::governor::plan::stage::*;
 use crate::has_states;
 use crate::instance::Instance;
+use crate::instance::InstanceName;
 use crate::replicaset::Replicaset;
 use crate::rpc;
 use crate::schema::ADMIN_ID;
@@ -12,16 +13,129 @@ use crate::storage;
 use crate::storage::SystemTable;
 use crate::sync::GetVclockRpc;
 use crate::tier::Tier;
+use crate::tlog;
 use crate::topology_cache::TopologyCacheRef;
 use crate::traft::op::Dml;
 use crate::traft::op::Op;
+use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::RaftTerm;
 use crate::traft::Result;
 use crate::version::version_is_new_enough;
 use crate::warn_or_panic;
 use smol_str::SmolStr;
+use std::collections::HashMap;
 use tarantool::space::UpdateOps;
+
+////////////////////////////////////////////////////////////////////////////////
+// handle_replication_config
+////////////////////////////////////////////////////////////////////////////////
+
+pub fn handle_replication_config<'i>(
+    topology_ref: &TopologyCacheRef,
+    peer_addresses: &'i HashMap<RaftId, SmolStr>,
+    applied: RaftIndex,
+) -> Result<Option<Plan<'i>>> {
+    let Some((replicaset, targets, replicaset_peers)) =
+        get_replicaset_to_configure(topology_ref, peer_addresses)
+    else {
+        return Ok(None);
+    };
+
+    // Targets must not be empty, otherwise we would bump the version
+    // without actually calling the RPC.
+    debug_assert!(!targets.is_empty());
+    let replicaset_name = replicaset.name.clone();
+
+    let master_name = replicaset.effective_master_name().cloned();
+
+    let mut ops = UpdateOps::new();
+    ops.assign(
+        column_name!(Replicaset, current_config_version),
+        replicaset.target_config_version,
+    )?;
+    let dml = Dml::update(
+        storage::Replicasets::TABLE_ID,
+        &[&replicaset_name],
+        ops,
+        ADMIN_ID,
+    )?;
+    // Implicit ranges are sufficient
+    let predicate = cas::Predicate::new(applied, []);
+    let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
+    let replication_config_version_actualize = cas;
+
+    Ok(Some(
+        ConfigureReplication {
+            replicaset_name,
+            targets,
+            master_name,
+            replicaset_peers,
+            replication_config_version_actualize,
+        }
+        .into(),
+    ))
+}
+
+#[allow(clippy::type_complexity)]
+fn get_replicaset_to_configure<'t>(
+    topology_ref: &'t TopologyCacheRef,
+    peer_addresses: &HashMap<RaftId, SmolStr>,
+) -> Option<(&'t Replicaset, Vec<(InstanceName, RaftId)>, Vec<SmolStr>)> {
+    for replicaset in topology_ref.all_replicasets() {
+        if replicaset.current_config_version == replicaset.target_config_version {
+            // Already configured
+            continue;
+        }
+
+        let replicaset_name = &replicaset.name;
+        let mut targets = Vec::new();
+        let mut replication_config = Vec::new();
+        // FIXME: for better perf we should keep a mapping from replicaset to
+        // it's instances, so that we don't have to go over all instances in
+        // cluster per each replicaset
+        for instance in topology_ref.all_instances() {
+            let instance_name = &instance.name;
+            if has_states!(instance, Expelled -> *) {
+                // Expelled instances are ignored for everything,
+                // we only store them for history
+                continue;
+            }
+
+            if instance.replicaset_name != replicaset_name {
+                continue;
+            }
+
+            if !instance.may_respond() {
+                // Don't send RPC to instance who will probably not reply to it
+                continue;
+            }
+
+            targets.push((instance_name.clone(), instance.raft_id));
+
+            if instance.replication_sync_needed() {
+                // Don't add the waking up instance to other replica
+                // box.cfg.replication configs, until it synchronizes. This
+                // helps us isolate the healthy portion of the replicaset from
+                // potential replication conflicts from deposed masters.
+            } else if let Some(address) = peer_addresses.get(&instance.raft_id) {
+                replication_config.push(address.clone());
+            } else {
+                warn_or_panic!("replica `{instance_name}` address unknown, will be excluded from box.cfg.replication of replicaset `{replicaset_name}`");
+            }
+        }
+
+        if !targets.is_empty() {
+            return Some((replicaset, targets, replication_config));
+        }
+
+        #[rustfmt::skip]
+        tlog!(Warning, "all replicas in {replicaset_name} are offline, skipping replication configuration");
+    }
+
+    // No replication configuration needed
+    None
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // handle_replicaset_master_switchover
