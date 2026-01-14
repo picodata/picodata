@@ -12,6 +12,7 @@ use crate::schema::ADMIN_ID;
 use crate::storage;
 use crate::storage::SystemTable;
 use crate::sync::GetVclockRpc;
+use crate::tarantool::box_is_ro;
 use crate::tier::Tier;
 use crate::tlog;
 use crate::topology_cache::TopologyCacheRef;
@@ -26,6 +27,41 @@ use crate::warn_or_panic;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 use tarantool::space::UpdateOps;
+
+////////////////////////////////////////////////////////////////////////////////
+// handle_self_read_only
+////////////////////////////////////////////////////////////////////////////////
+
+pub fn handle_self_read_only<'i>(topology_ref: &TopologyCacheRef) -> Option<Plan<'i>> {
+    if !box_is_ro() {
+        return None;
+    }
+
+    let this_instance = topology_ref.try_this_instance()?;
+    let this_replicaset = topology_ref.try_this_replicaset()?;
+
+    if this_replicaset.effective_master_name() != Some(&this_instance.name) {
+        return None;
+    }
+
+    // Governor (raft leader) is the master of it's replicaset but it's
+    // currently read_only. This could be a problem, because if there are any
+    // unapplied DDL operations, our raft_main_loop will be blocked. Normally
+    // read_only flag is controlled via RPC proc_replication, but in order for
+    // governor to call this RPC it needs to see that target_config_version !=
+    // current_config_version for a given replicaset, but that will only be true
+    // if a corresponding global DML is applied in the raft_main_loop, which
+    // could be a problem if this instance is read_only. Anyway this is a
+    // situation which we encountered in the rolling upgrade rollback test and
+    // now we want to fix it.
+    //
+    // And the fix is simple. If governor sees that it's the master and has
+    // read_only flag set to true, then it will simply set that flag to false
+    // without any RPC and/or global DML. Those will still be performed on the
+    // corresponding step.
+
+    Some(SelfReadOnlyFalse {}.into())
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // handle_replication_config

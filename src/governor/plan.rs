@@ -8,6 +8,7 @@ use crate::governor::queue::handle_governor_queue;
 use crate::governor::replication::handle_replicaset_master_switchover;
 use crate::governor::replication::handle_replicaset_sync;
 use crate::governor::replication::handle_replication_config;
+use crate::governor::replication::handle_self_read_only;
 use crate::governor::sharding::{handle_sharding, handle_sharding_bootstrap};
 use crate::has_states;
 use crate::instance::state::{State, StateVariant};
@@ -122,6 +123,18 @@ pub(super) fn action_plan<'i>(
     // conf change
     if let Some(conf_change) = raft_conf_change(instances, voters, learners, tiers) {
         return Ok(ConfChange { conf_change }.into());
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // special case read_only = false for this instance
+    if let Some(plan) = handle_self_read_only(topology_ref) {
+        debug_assert!(
+            matches!(plan, Plan::SelfReadOnlyFalse { .. }),
+            "{:?}",
+            plan.kind()
+        );
+
+        return Ok(plan);
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -920,20 +933,22 @@ pub(super) fn action_plan<'i>(
 macro_rules! define_plan {
     (
         $(
+            $(#[$struct_meta:meta])*
             pub struct $stage:ident $(<$lt:tt>)? {
                 $(
                     $(#[$field_meta:meta])*
                     pub $field:ident: $field_ty:ty,
-                )+
+                )*
             }
         )+
     ) => {
         $(
+            $(#[$struct_meta])*
             pub struct $stage $(<$lt>)? {
                 $(
                     $(#[$field_meta])*
                     pub $field: $field_ty,
-                )+
+                )*
             }
 
             impl<'i> From<$stage $(<$lt>)?> for Plan<'i> {
@@ -949,6 +964,7 @@ macro_rules! define_plan {
         pub enum Plan<'i> {
             GoIdle,
             $(
+                $(#[$struct_meta])*
                 $stage ( $stage $(<$lt>)? ),
             )+
         }
@@ -969,6 +985,7 @@ macro_rules! define_plan {
             #[default]
             GoIdle,
             $(
+                $(#[$struct_meta])*
                 $stage,
             )+
         }
@@ -991,6 +1008,9 @@ pub mod stage {
             /// We will be able to execute `step_kind` at this moment in the future.
             pub next_try: Instant,
         }
+
+        /// See comments in [`handle_self_read_only`] for explanation.
+        pub struct SelfReadOnlyFalse {}
 
         pub struct UpdateCurrentVshardConfig {
             /// All instances which need to handle `rpc` request before `cas` can be applied.

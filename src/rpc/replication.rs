@@ -292,7 +292,7 @@ fn update_sys_cluster() -> Result<()> {
 /// changed.
 ///
 /// [`Service::on_leader_change`]: picodata_plugin::plugin::interface::Service::on_leader_change
-fn set_read_only(new_read_only: bool) -> Result<()> {
+pub fn set_read_only(new_read_only: bool) -> Result<()> {
     let node = node::global()?;
 
     // XXX: Currently we just change the box.cfg.read_only option of the

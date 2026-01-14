@@ -23,6 +23,7 @@ use crate::rpc::load_plugin_dry_run::proc_load_plugin_dry_run;
 use crate::rpc::replication::proc_replication;
 use crate::rpc::replication::proc_replication_demote;
 use crate::rpc::replication::proc_replication_sync;
+use crate::rpc::replication::set_read_only;
 use crate::rpc::sharding::bootstrap::proc_sharding_bootstrap;
 use crate::rpc::sharding::proc_sharding;
 use crate::rpc::sharding::proc_wait_bucket_count;
@@ -457,6 +458,18 @@ impl Loop {
                 tlog!(Info, "transferring leadership to {}", to.name);
                 node.transfer_leadership_and_yield(to.raft_id);
                 _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
+            }
+
+            Plan::SelfReadOnlyFalse(SelfReadOnlyFalse {}) => {
+                set_status!("make raft leader read_only = false");
+                governor_substep! {
+                    "making governor read_only = false"
+                    async {
+                        set_read_only(false)?;
+                        // Add a short sleep to avoid infinite looping in case of bugs
+                        _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
+                    }
+                }
             }
 
             Plan::UpdateTargetReplicasetMaster(UpdateTargetReplicasetMaster { cas }) => {
