@@ -76,11 +76,6 @@ impl Key {
             .collect::<Result<Vec<usize>, _>>()?;
         Ok(Key::new(shard_positions))
     }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.positions.is_empty()
-    }
 }
 
 /// Set of `Key`s each of which represents the same segmentation.

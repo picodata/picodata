@@ -390,11 +390,6 @@ where
             .unwrap()
     }
 
-    #[must_use]
-    pub fn get_buckets(&self, output_id: NodeId) -> Option<&Buckets> {
-        self.bucket_map.get(&output_id)
-    }
-
     /// Checks that query is for plugin.
     ///
     /// # Errors
