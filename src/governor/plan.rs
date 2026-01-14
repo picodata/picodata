@@ -41,6 +41,12 @@ use tarantool::space::{SpaceId, UpdateOps};
 use tarantool::time::Instant;
 use tarantool::vclock::Vclock;
 
+macro_rules! debug_assert_plan_kind {
+    ($plan:expr, $pattern:pat) => {
+        debug_assert!(matches!($plan, $pattern), "Unexpected ActionKind: {:?}, expected this: {}", $plan.kind(), stringify!($pattern));
+    };
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn action_plan<'i>(
     term: RaftTerm,
@@ -128,11 +134,7 @@ pub(super) fn action_plan<'i>(
     ////////////////////////////////////////////////////////////////////////////
     // special case read_only = false for this instance
     if let Some(plan) = handle_self_read_only(topology_ref) {
-        debug_assert!(
-            matches!(plan, Plan::SelfReadOnlyFalse { .. }),
-            "{:?}",
-            plan.kind()
-        );
+        debug_assert_plan_kind!(plan, Plan::SelfReadOnlyFalse { .. });
 
         return Ok(plan);
     }
@@ -218,11 +220,7 @@ pub(super) fn action_plan<'i>(
     ////////////////////////////////////////////////////////////////////////////
     // configure replication
     if let Some(plan) = handle_replication_config(topology_ref, peer_addresses, applied)? {
-        debug_assert!(
-            matches!(plan, Plan::ConfigureReplication { .. }),
-            "{:?}",
-            plan.kind()
-        );
+        debug_assert_plan_kind!(plan, Plan::ConfigureReplication { .. });
 
         return Ok(plan);
     }
@@ -233,14 +231,10 @@ pub(super) fn action_plan<'i>(
     // This must be done after instances have (re)configured replication
     // because master switchover requires synchronizing via tarantool replication.
     if let Some(plan) = handle_replicaset_master_switchover(topology_ref, term, sync_timeout)? {
-        debug_assert!(
-            matches!(
-                plan,
-                Plan::ReplicasetMasterConsistentSwitchover { .. }
-                    | Plan::ReplicasetMasterFailover { .. }
-            ),
-            "{:?}",
-            plan.kind()
+        debug_assert_plan_kind!(
+            plan,
+            Plan::ReplicasetMasterConsistentSwitchover { .. }
+                | Plan::ReplicasetMasterFailover { .. }
         );
 
         return Ok(plan);
@@ -259,13 +253,9 @@ pub(super) fn action_plan<'i>(
         &global_catalog_version,
         sync_timeout,
     )? {
-        debug_assert!(
-            matches!(
-                plan,
-                Plan::ReplicationSync { .. } | Plan::ActualizeMasterSyncIncarnation { .. }
-            ),
-            "{:?}",
-            plan.kind(),
+        debug_assert_plan_kind!(
+            plan,
+            Plan::ReplicationSync { .. } | Plan::ActualizeMasterSyncIncarnation { .. }
         );
 
         return Ok(plan);
@@ -313,18 +303,15 @@ pub(super) fn action_plan<'i>(
         sync_timeout,
         batch_size,
     )? {
-        debug_assert!(
-            matches!(
-                plan,
-                Plan::UpdateCurrentVshardConfig { .. }
-                    | Plan::SleepDueToBackoff(SleepDueToBackoff {
-                        step_kind: ActionKind::UpdateCurrentVshardConfig,
-                        ..
-                    })
-            ),
-            "{:?}",
-            plan.kind()
+        debug_assert_plan_kind!(
+            plan,
+            Plan::UpdateCurrentVshardConfig { .. }
+                | Plan::SleepDueToBackoff(SleepDueToBackoff {
+                    step_kind: ActionKind::UpdateCurrentVshardConfig,
+                    ..
+                })
         );
+
         return Ok(plan);
     }
 
@@ -333,11 +320,7 @@ pub(super) fn action_plan<'i>(
     if let Some(plan) =
         handle_sharding_bootstrap(term, applied, tiers, instances, replicasets, sync_timeout)?
     {
-        debug_assert!(
-            matches!(plan, Plan::ShardingBoot { .. }),
-            "{:?}",
-            plan.kind(),
-        );
+        debug_assert_plan_kind!(plan, Plan::ShardingBoot { .. });
 
         return Ok(plan);
     }
@@ -531,17 +514,13 @@ pub(super) fn action_plan<'i>(
         cluster_uuid,
         batch_size,
     )? {
-        debug_assert!(
-            matches!(
-                plan,
-                Plan::ToOnline { .. }
-                    | Plan::SleepDueToBackoff(SleepDueToBackoff {
-                        step_kind: ActionKind::ToOnline,
-                        ..
-                    })
-            ),
-            "{:?}",
-            plan.kind(),
+        debug_assert_plan_kind!(
+            plan,
+            Plan::ToOnline { .. }
+                | Plan::SleepDueToBackoff(SleepDueToBackoff {
+                    step_kind: ActionKind::ToOnline,
+                    ..
+                })
         );
 
         return Ok(plan);
