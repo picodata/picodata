@@ -2371,24 +2371,41 @@ const REFERENCES_MAP_CAPACITY: usize = 50;
 /// in the parsing result returned from pest. Used for preallocating `ParsingPairsMap`.
 const PARSING_PAIRS_MAP_CAPACITY: usize = 100;
 
-/// Helper structure to fix the double linking
-/// problem in the BETWEEN operator.
-/// We transform `left BETWEEN center AND right` to
-/// `left >= center AND left <= right`.
-struct Between {
-    /// Left node id.
-    left_id: NodeId,
-    /// LEQ node id (`left <= right`)
-    leq_id: NodeId,
-}
+/// Check if `expr` is `A >= B between A <= C`, which is a special variant
+/// of `A >= B and A <= C` we got after rewriting a `BETWEEN` expression.
+///
+/// Panic if the expression is a malformed `BETWEEN` (it's a bug).
+#[allow(clippy::type_complexity)]
+fn try_deconstruct_between_expr<'a>(
+    plan: &'a Plan,
+    expr: &Expression<'a>,
+) -> Option<((NodeId, &'a BoolExpr), (NodeId, &'a BoolExpr))> {
+    let Expression::Bool(BoolExpr {
+        op: Bool::Between,
+        left: lhs_id,
+        right: rhs_id,
+    }) = expr
+    else {
+        return None;
+    };
 
-impl Between {
-    fn new(left_id: NodeId, less_eq_id: NodeId) -> Self {
-        Self {
-            left_id,
-            leq_id: less_eq_id,
-        }
-    }
+    let lhs = match plan
+        .get_expression_node(*lhs_id)
+        .expect("malformed BETWEEN (missing lhs)")
+    {
+        Expression::Bool(expr @ BoolExpr { op: Bool::GtEq, .. }) => expr,
+        _ => panic!("malformed BETWEEN (invalid lhs)"),
+    };
+
+    let rhs = match plan
+        .get_expression_node(*rhs_id)
+        .expect("malformed BETWEEN (missing rhs)")
+    {
+        Expression::Bool(expr @ BoolExpr { op: Bool::LtEq, .. }) => expr,
+        _ => panic!("malformed BETWEEN (invalid rhs)"),
+    };
+
+    Some(((*lhs_id, lhs), (*rhs_id, rhs)))
 }
 
 /// Helper struct holding values and references needed for `parse_expr` calls.
@@ -2406,7 +2423,7 @@ where
     /// Vec of BETWEEN expressions met during parsing.
     /// Used later to fix them as soon as we need to resolve double-linking problem
     /// of left expression.
-    betweens: Vec<Between>,
+    betweens: Vec<NodeId>,
     /// Map of { subquery_id -> row_id }
     /// that is used to fix `betweens`, which children (references under rows)
     /// may have been changed.
@@ -2523,19 +2540,31 @@ where
     /// the plan, these nodes are taken while traversing the `left >= center` expression and
     /// nothing is left for the `left <= right` sutree.
     pub(super) fn fix_betweens(&self, plan: &mut Plan) -> Result<(), SbroadError> {
-        for between in &self.betweens {
-            let left_id = if let Some(id) = self.subquery_replaces.get(&between.left_id) {
-                SubtreeCloner::clone_subtree(plan, *id)?
-            } else {
-                SubtreeCloner::clone_subtree(plan, between.left_id)?
+        for between_id in &self.betweens {
+            let between = plan.get_expression_node(*between_id)?;
+            let ((_lhs_id, lhs), (rhs_id, _rhs)) =
+                try_deconstruct_between_expr(plan, &between).expect("malformed BETWEEN");
+
+            let cloned_lower_bound = match self.subquery_replaces.get(&lhs.left) {
+                Some(id) => SubtreeCloner::clone_subtree(plan, *id)?,
+                None => SubtreeCloner::clone_subtree(plan, lhs.left)?,
             };
-            let less_eq_expr = plan.get_mut_expression_node(between.leq_id)?;
-            if let MutExpression::Bool(BoolExpr { ref mut left, .. }) = less_eq_expr {
-                *left = left_id;
+
+            let rhs = plan.get_mut_expression_node(rhs_id)?;
+            if let MutExpression::Bool(BoolExpr { ref mut left, .. }) = rhs {
+                *left = cloned_lower_bound;
             } else {
                 panic!("Expected to see LEQ expression.")
             }
+
+            // Finally, replace `Bool::Between` with `Bool::And`.
+            // See the explanation for `ParseExpression::FinalBetween` in pratt parser.
+            let between = plan.get_mut_expression_node(*between_id)?;
+            if let MutExpression::Bool(BoolExpr { op, .. }) = between {
+                *op = Bool::And;
+            }
         }
+
         Ok(())
     }
 }
@@ -2990,21 +3019,22 @@ impl ParseExpression {
                 right,
             } => {
                 let plan_left_id = left.populate_plan(plan, worker)?;
-
                 let plan_center_id = center.populate_plan(plan, worker)?;
-
                 let plan_right_id = right.populate_plan(plan, worker)?;
 
+                // XXX: We're going replace `Bool::Between` with `Bool::And` after typecheck!
+                // This is required for better type inference, e.g.
+                //   SELECT '2026-01-13' BETWEEN '2026-01-01' AND '2026-01-20'::datetime;
                 let greater_eq_id = plan.add_cond(plan_left_id, Bool::GtEq, plan_center_id)?;
                 let less_eq_id = plan.add_cond(plan_left_id, Bool::LtEq, plan_right_id)?;
-                let and_id = plan.add_cond(greater_eq_id, Bool::And, less_eq_id)?;
+                let and_id = plan.add_cond(greater_eq_id, Bool::Between, less_eq_id)?;
                 let between_id = if *is_not {
                     plan.add_unary(Unary::Not, and_id)?
                 } else {
                     and_id
                 };
 
-                worker.betweens.push(Between::new(plan_left_id, less_eq_id));
+                worker.betweens.push(and_id);
 
                 between_id
             }

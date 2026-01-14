@@ -134,6 +134,10 @@ mod tests {
         })
     }
 
+    fn between(exprs: Vec<Expr>) -> Expr {
+        expr(ExprKind::Between(exprs))
+    }
+
     fn default_type_system() -> TypeSystem {
         let functions = vec![
             Function::new_operator("+", [Type::Integer, Type::Integer], Type::Integer),
@@ -278,6 +282,31 @@ mod tests {
                 None,
                 Double,
             ),
+            (
+                between(vec![lit(Text), lit(Text), lit(Text)]),
+                None,
+                Boolean,
+            ),
+            (
+                between(vec![lit(Text), lit(Integer), lit(Double)]),
+                None,
+                Boolean,
+            ),
+            (
+                between(vec![lit(Integer), lit(Text), lit(Text)]),
+                None,
+                Boolean,
+            ),
+            (
+                between(vec![lit(Text), lit(Datetime), lit(Text)]),
+                None,
+                Boolean,
+            ),
+            (
+                between(vec![lit(Datetime), param("$1"), param("$2")]),
+                None,
+                Boolean,
+            ),
         ];
 
         for (expr, desired_type, result_type) in exprs {
@@ -346,6 +375,16 @@ mod tests {
                 coalesce(vec![lit(Integer), lit(Double), lit(Boolean)]),
                 None,
                 "COALESCE types int, double and bool cannot be matched",
+            ),
+            (
+                between(vec![lit(Integer), lit(Datetime), lit(Text)]),
+                None,
+                "BETWEEN types int, datetime and text cannot be matched",
+            ),
+            (
+                between(vec![lit(Datetime), lit(Uuid), lit(Datetime)]),
+                None,
+                "BETWEEN types datetime, uuid and datetime cannot be matched",
             ),
         ];
 

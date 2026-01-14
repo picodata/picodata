@@ -940,3 +940,9 @@ SELECT 5 / CASE 1 WHEN 2 THEN 3.0 ELSE 2 END;
 SELECT 5 / -2;
 -- EXPECTED:
 -2
+
+-- TEST: num-addition-subquery-type-unification-1
+-- SQL:
+SELECT 1 + (SELECT '2');
+-- ERROR:
+could not resolve operator overload for \+\(int, text\)

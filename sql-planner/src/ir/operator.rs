@@ -61,7 +61,11 @@ pub enum Bool {
     NotEq,
     /// `OR`
     Or,
-    /// `BETWEEN`
+    /// Note that `BETWEEN` is represented as `a >= b AND a <= c`, but for type checking
+    /// it's beneficial to temporarily write it as `a >= b BETWEEN a <= c` and then
+    /// replace `BETWEEN` with `AND`.
+    ///
+    /// See also: `InterimBetween`, `FinalBetween`.
     Between,
 }
 

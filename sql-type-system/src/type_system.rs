@@ -574,6 +574,12 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 result_report.report(&expr.id, result_ty);
                 Ok(result_report)
             }
+            ExprKind::Between(exprs) => {
+                let (_, mut between_report) =
+                    self.analyze_homogeneous_exprs("BETWEEN", exprs, Type::Text)?;
+                between_report.report(&expr.id, Type::Boolean);
+                Ok(between_report)
+            }
             ExprKind::Unary(op, child) => {
                 let mut report = match op {
                     UnaryOperator::Not => {
