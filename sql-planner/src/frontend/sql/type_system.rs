@@ -234,33 +234,33 @@ pub fn to_type_expr(
             let kind = TypeExprKind::Operator(op.as_str().into(), vec![left, right]);
             Ok(TypeExpr::new(node_id, kind))
         }
-        Expression::Bool(BoolExpr { op, left, right }) => {
-            // TODO: `a BETWEEN b AND c` is translated into two separate expressions:
-            // `a >= b` and `a <= c`. This can lead to inconsistent type coercion for `a` in each
-            // expression, which should be avoided to ensure type consistency.
-            //
-            // In addition, this leads to confusing errors:
-            // ```sql
-            // picodata> explain select 1 between 0 and 'kek'
-            // ---
-            // - null
-            // - 'sbroad: could not resolve overload for <=(int, text)'
-            // ...
-            // ```
-            let left = to_type_expr(*left, plan, subquery_map)?;
-            let right = to_type_expr(*right, plan, subquery_map)?;
-
-            use crate::ir::operator::Bool::*;
-            let kind = match op {
-                And | Or => TypeExprKind::Operator(op.as_str().into(), vec![left, right]),
-                Eq | Gt | GtEq | Lt | LtEq | NotEq | In => {
-                    let op = ComparisonOperator::from(*op);
-                    TypeExprKind::Comparison(op, left.into(), right.into())
-                }
-                Between => panic!("there is no between expressions in the plan"),
-            };
-            Ok(TypeExpr::new(node_id, kind))
-        }
+        ref expr @ Expression::Bool(BoolExpr { op, left, right }) => match op {
+            Bool::Between => {
+                // Note: lhs: `A >= B`, rhs: `A <= C`.
+                let ((_, lhs), (_, rhs)) =
+                    super::try_deconstruct_between_expr(plan, expr).expect("malformed BETWEEN");
+                // Unify types of A, B, C.
+                let kind = TypeExprKind::Between(vec![
+                    to_type_expr(lhs.left, plan, subquery_map)?,
+                    to_type_expr(lhs.right, plan, subquery_map)?,
+                    to_type_expr(rhs.right, plan, subquery_map)?,
+                ]);
+                Ok(TypeExpr::new(node_id, kind))
+            }
+            Bool::And | Bool::Or => {
+                let left = to_type_expr(*left, plan, subquery_map)?;
+                let right = to_type_expr(*right, plan, subquery_map)?;
+                let kind = TypeExprKind::Operator(op.as_str().into(), vec![left, right]);
+                Ok(TypeExpr::new(node_id, kind))
+            }
+            Bool::Eq | Bool::NotEq | Bool::Gt | Bool::GtEq | Bool::Lt | Bool::LtEq | Bool::In => {
+                let left = to_type_expr(*left, plan, subquery_map)?;
+                let right = to_type_expr(*right, plan, subquery_map)?;
+                let op = ComparisonOperator::from(*op);
+                let kind = TypeExprKind::Comparison(op, left.into(), right.into());
+                Ok(TypeExpr::new(node_id, kind))
+            }
+        },
         Expression::Row(Row { list, .. }) => {
             for (subquery_id, row_id) in subquery_map {
                 if *row_id == node_id {

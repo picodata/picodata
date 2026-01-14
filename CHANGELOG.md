@@ -59,6 +59,9 @@ with the `YY.MINOR.MICRO` scheme.
   mode not being able to apply any subsequent raft operations.
 - Introduce unnamed_join alias for motions with joins under them to distinguish columns with identical names
 - Datetime literals should support `yyyy-mm-dd` format, e.g. `select '2026-01-17'::datetime`.
+- Fix type inference for the `a BETWEEN b AND c` expression; now types of `a`, `b` and `c` should be
+  properly unified, meanining that `select '2026-01-13' between '2026-01-01'::datetime and '2026-01-20'`
+  will work as expected.
 
 ## [25.5.1] - 2025-12-19
 

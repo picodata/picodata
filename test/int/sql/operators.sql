@@ -5,11 +5,13 @@ DROP TABLE IF EXISTS testing_space_hist;
 DROP TABLE IF EXISTS space_simple_shard_key;
 DROP TABLE IF EXISTS space_simple_shard_key_hist;
 DROP TABLE IF EXISTS t;
+DROP TABLE IF EXISTS many_columns;
 CREATE TABLE testing_space ("id" int primary key, "name" string, "product_units" int);
 CREATE TABLE testing_space_hist ("id" int primary key, "name" string, "product_units" int);
 CREATE TABLE space_simple_shard_key ("id" int primary key, "name" string, "sysOp" int);
 CREATE TABLE space_simple_shard_key_hist ("id" int primary key, "name" string, "sysOp" int);
 CREATE TABLE t ("id" int primary key, "a" decimal);
+CREATE TABLE many_columns ("id" int primary key, "db" double, "dm" decimal, "dt" datetime);
 INSERT INTO "testing_space" ("id", "name", "product_units") VALUES
             (1, '123', 1);
 INSERT INTO "testing_space_hist" ("id", "name", "product_units") VALUES
@@ -17,6 +19,7 @@ INSERT INTO "testing_space_hist" ("id", "name", "product_units") VALUES
 INSERT INTO "space_simple_shard_key" ("id", "name", "sysOp") VALUES (1, 'ok', 1), (10, null, 0);
 INSERT INTO "space_simple_shard_key_hist" ("id", "name", "sysOp") VALUES (1, 'ok_hist', 3), (2, 'ok_hist_2', 1);
 INSERT INTO "t" ("id", "a") VALUES (1, 4.2), (2, 6.66);
+INSERT INTO many_columns VALUES (1, 2, 3, '2026-01-17');
 
 -- TEST: test_operator_1
 -- SQL:
@@ -276,6 +279,81 @@ SELECT "id" FROM "space_simple_shard_key" WHERE
         "id" BETWEEN 1 AND 2;
 -- EXPECTED:
 1
+
+-- TEST: test_between3
+-- SQL:
+select 1 between -2 and 5.7;
+-- EXPECTED:
+true
+
+-- TEST: test_between4
+-- SQL:
+select '1' between '2' and '3';
+-- EXPECTED:
+false
+
+-- TEST: test_between5
+-- SQL:
+select 6.5 between '2' and '3';
+-- EXPECTED:
+false
+
+-- TEST: test_between6_subquery_type_unification
+-- SQL:
+select '100' between 100 and (select '100');
+-- ERROR:
+BETWEEN types text, int and text cannot be matched
+
+-- TEST: test_between7_type_unification
+-- SQL:
+select 'false' between false and 'foo';
+-- ERROR:
+failed to parse 'foo' as a value of type bool, consider using explicit type casts
+
+-- TEST: test_between8_type_unification
+-- SQL:
+select 'false' between 'bar' and true;
+-- ERROR:
+failed to parse 'bar' as a value of type bool, consider using explicit type casts
+
+-- TEST: test_between9_type_defaulting
+-- SQL:
+select 1 from (select 1) where '' between '' and '';
+-- EXPECTED:
+1
+
+-- TEST: test_between10_plan_tree_postorder
+-- SQL:
+select (1 between 1 and 20) between (2 between 1 and 30) and (3 between 1 and 40);
+-- EXPECTED:
+true
+
+-- TEST: test_between11_plan_tree_postorder
+-- SQL:
+explain select (1 between 1 and 20) between (2 between 1 and 30) and (3 between 1 and 40);
+-- EXPECTED:
+projection ((((1::int >= 1::int) and (1::int <= 20::int)) >= ((2::int >= 1::int) and (2::int <= 30::int))) and (((1::int >= 1::int) and (1::int <= 20::int)) <= ((3::int >= 1::int) and (3::int <= 40::int))) -> "col_1")
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = any
+
+-- TEST: test_between12_column_references
+-- SQL:
+select id from many_columns where db between id and dm;
+-- EXPECTED:
+1
+
+-- TEST: test_between13_column_references
+-- SQL:
+select id from many_columns where id between db and dm;
+-- EXPECTED:
+
+-- TEST: test_between14_column_references_invalid
+-- SQL:
+select id from many_columns where dt between id and dm;
+-- ERROR:
+BETWEEN types datetime, int and numeric cannot be matched
 
 -- TEST: test_join_inner_sq_no_alias
 -- SQL:

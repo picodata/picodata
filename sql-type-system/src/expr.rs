@@ -168,6 +168,9 @@ pub enum ExprKind<Id> {
         when_exprs: Vec<Expr<Id>>,
         result_exprs: Vec<Expr<Id>>,
     },
+    /// Ternary BETWEEN expression.
+    /// Examples: `x BETWEEN y AND z`.
+    Between(Vec<Expr<Id>>),
     /// Unary expressions, such as `NOT`, `IS NULL` or `EXISTS`.
     /// Examples: `not 1 = 2`, `a is null`, `exists (select 1, 2, 3)`
     Unary(UnaryOperator, Box<Expr<Id>>),

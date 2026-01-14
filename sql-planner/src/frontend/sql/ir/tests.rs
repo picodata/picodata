@@ -465,7 +465,7 @@ fn front_sql_between_with_additional_and_from_left() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t"."id"::int -> "id")
-        selection (("t"."id"::int > 1::int) and ("t"."id"::int >= "t"."id"::int)) and ("t"."id"::int <= ("t"."id"::int + 10::int))
+        selection ("t"."id"::int > 1::int) and (("t"."id"::int >= "t"."id"::int) and ("t"."id"::int <= ("t"."id"::int + 10::int)))
             scan "test_space" -> "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -501,7 +501,7 @@ fn front_sql_between_with_additional_and_from_left_and_right() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t"."id"::int -> "id")
-        selection ((("t"."id"::int > 1::int) and ("t"."id"::int >= "t"."id"::int)) and ("t"."id"::int <= ("t"."id"::int + 10::int))) and true::bool
+        selection (("t"."id"::int > 1::int) and (("t"."id"::int >= "t"."id"::int) and ("t"."id"::int <= ("t"."id"::int + 10::int)))) and true::bool
             scan "test_space" -> "t"
     execution options:
         sql_vdbe_opcode_max = 45000
