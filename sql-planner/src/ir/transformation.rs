@@ -2,15 +2,15 @@
 //!
 //! Contains rule-based transformations.
 
-pub mod bool_in;
-pub mod cast_constants;
-pub mod constant_folding;
-pub mod dnf;
-pub mod equality_propagation;
-pub mod merge_tuples;
-pub mod not_push_down;
+mod bool_in;
+mod cast_constants;
+mod constant_folding;
+mod dnf;
+mod equality_propagation;
+mod merge_tuples;
+mod not_push_down;
 pub mod redistribution;
-pub mod split_columns;
+mod split_columns;
 
 use ahash::AHashMap;
 use smol_str::format_smolstr;
@@ -30,7 +30,7 @@ use crate::ir::operator::Bool;
 use crate::ir::{Node, Plan};
 
 pub type ExprId = NodeId;
-pub type RelationId = NodeId;
+type RelationId = NodeId;
 
 /// Pair of:
 /// * node which should be considered an old version of expression tree

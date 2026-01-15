@@ -96,7 +96,7 @@ const DEFAULT_IF_NOT_EXISTS: bool = false;
 const DEFAULT_WAIT_APPLIED_GLOBALLY: bool = true;
 
 // The same limit as in PostgreSQL (http://postgresql.org/docs/16/limits.html)
-pub const MAX_PARAMETER_INDEX: usize = 65535;
+const MAX_PARAMETER_INDEX: usize = 65535;
 
 fn get_default_timeout() -> Decimal {
     Decimal::from_str(&format!("{DEFAULT_TIMEOUT_F64}")).expect("default timeout casting failed")
@@ -2500,7 +2500,7 @@ where
     metadata: &'worker M,
     /// Map of { reference plan_id -> it's column name}
     /// We have to save column name in order to use it later for alias creation.
-    pub reference_to_name_map: HashMap<NodeId, SmolStr>,
+    reference_to_name_map: HashMap<NodeId, SmolStr>,
     /// Map of (relational_node_id, columns_position_map).
     /// As `ColumnPositionMap` is used for parsing references and as it may be shared for the same
     /// relational node we cache it so that we don't have to recreate it every time.
@@ -2595,7 +2595,7 @@ where
     /// plan to build a sub-plan for the storage. If the same `left` subtree is used twice in
     /// the plan, these nodes are taken while traversing the `left >= center` expression and
     /// nothing is left for the `left <= right` sutree.
-    pub(super) fn fix_betweens(&self, plan: &mut Plan) -> Result<(), SbroadError> {
+    fn fix_betweens(&self, plan: &mut Plan) -> Result<(), SbroadError> {
         for between_id in &self.betweens {
             let between = plan.get_expression_node(*between_id)?;
             let ((_lhs_id, lhs), (rhs_id, _rhs)) =
@@ -2726,7 +2726,7 @@ enum ParseExpression {
 }
 
 #[derive(Clone)]
-pub enum SelectOp {
+enum SelectOp {
     Union,
     UnionAll,
     Except,
@@ -2737,7 +2737,7 @@ pub enum SelectOp {
 /// * UNION (ALL)
 /// * EXCEPT
 #[derive(Clone)]
-pub enum SelectSet {
+enum SelectSet {
     PlanId {
         plan_id: NodeId,
     },
@@ -4602,7 +4602,7 @@ where
 // Mapping between pest's Pair and corresponding id
 // of the ast node. This map stores only ids for
 // possible select child (Projection, OrderBy)
-pub(crate) type SelectChildPairTranslation = HashMap<(usize, usize), usize>;
+type SelectChildPairTranslation = HashMap<(usize, usize), usize>;
 
 fn parse_select_set_pratt(
     select_pairs: Pairs<Rule>,
@@ -5072,7 +5072,7 @@ impl<'pairs_map> ParsingPairsMap<'pairs_map> {
 type PairToAstIdTranslation<'i> = HashMap<Pair<'i, Rule>, usize>;
 
 #[derive(Clone, Debug)]
-pub enum OrderNulls {
+enum OrderNulls {
     First,
     Last,
 }

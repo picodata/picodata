@@ -345,7 +345,7 @@ struct ReferenceInfo {
 }
 
 impl ReferenceInfo {
-    pub fn new(row_id: NodeId, ir: &Plan) -> Result<Self, SbroadError> {
+    fn new(row_id: NodeId, ir: &Plan) -> Result<Self, SbroadError> {
         let mut ref_nodes = ReferredNodes::new();
         let mut ref_map: AHashMap<ChildColumnReference, Vec<ParentColumnPosition>> =
             AHashMap::new();
