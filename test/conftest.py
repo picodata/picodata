@@ -10,6 +10,7 @@ import sys
 import time
 import threading
 from packaging.version import InvalidVersion, Version
+import random
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import requests
 from prometheus_client.parser import text_string_to_metric_families
@@ -185,6 +186,38 @@ def pytest_addoption(parser: pytest.Parser):
         default=3303,  # 3301 and 3302 are needed for backwards compat tests
         help="Base socket port which determines the range of ports used for picodata instances spawned for testing.",  # noqa: E501
     )
+    parser.addoption(
+        "--random-seed",
+        action="store",
+        type=int,
+        default=None,
+        help="Seed for Python's `random` module",
+    )
+
+
+def pytest_configure(config: pytest.Config):
+    """
+    Pytest hook called once per session before test collection.
+    Seeds global random module here (e.g., not in session fixture) because:
+    - Called before any fixtures are collected or tests imported.
+    - Ensures determinism for tests using `random` during module import.
+    - Runs once even with `pytest-xdist` parallel workers.
+    """
+    random_seed(config)
+
+
+def pytest_report_header(config: pytest.Config):
+    """
+    Hook that adds custom info to the test session header.
+    Used by `pytest` directly.
+    """
+    # NOTE: the effective seed is derived at runtime and set at `random_seed`
+    # function. Since CLI options cannot be mutated after parsing, we retrieve
+    # it from custom attribute on the `pytest.Config` object, which was set in
+    # `random_seed` function, respectively.
+    seed = getattr(config, "random_seed", None)
+    assert seed is not None, "seed should be set"
+    return f"rng seed: {seed}"
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]):
@@ -237,6 +270,34 @@ def xdist_worker_number(worker_id: str) -> int:
     assert match, f"unexpected worker id: {worker_id}"
 
     return int(match.group(1))
+
+
+def random_seed(config: pytest.Config):
+    """
+    Seed Python's global `random` module once per pytest session using a
+    time-based value (microseconds since the Unix epoch).
+
+    This makes all randomness within the test session reproducible *if* the
+    logged seed is reused, while still providing variability between runs.
+
+    Note that, all tests importing `random` will share this state, but
+    this does not affect other RNGs like `numpy.random`, etc.
+
+    Also note, that this function is not idempotent, as it just generates a
+    random seed: it cannot be used to retrieve a seed which was set for the
+    current testing session; use `pytest.Config` object from `pytestconfig`
+    fixture of `pytest` with `pytestconfig.getoption` method to do so.
+    """
+    seed = config.getoption("--random-seed")
+    if seed is None:
+        seed = int(time.time() * 1000000)
+    random.seed(seed)
+
+    # NOTE: the effective seed is derived at runtime and needs to be accessible
+    # from other pytest hooks (i.e., `pytest_report_header`). Since CLI options
+    # cannot be mutated after parsing, we store the resolved seed as a custom
+    # attribute on the `pytest.Config` object.
+    setattr(config, "random_seed", seed)
 
 
 class TarantoolError(Exception):
