@@ -344,7 +344,7 @@ def test_backup_enables_read_only_on_prepare_sharded(cluster: Cluster):
         i1.sql(f"insert into {sharded_table_name} values (1)")
 
     # Disable injection that leads to BACKUP completion.
-    lc = log_crawler(i1, "finalizing schema change")
+    lc = log_crawler(i1, "finalizing BACKUP operation")
     i1.call("pico._inject_error", error_injection, False)
     lc.wait_matched(timeout=25)
 
@@ -384,7 +384,7 @@ def test_backup_enables_read_only_on_prepare_global(cluster: Cluster):
         i1.sql(f"insert into {global_table_name} values (1)")
 
     # Disable injection that leads to BACKUP completion.
-    lc = log_crawler(i1, "finalizing schema change")
+    lc = log_crawler(i1, "finalizing BACKUP operation")
     i1.call("pico._inject_error", error_injection, False)
     lc.wait_matched(timeout=35)
 
@@ -424,7 +424,7 @@ def test_backup_disables_read_only_mode_on_abort(cluster: Cluster):
     i1.call("box.backup.start")
 
     # Resume BACKUP execution.
-    lc = log_crawler(i1, "finalizing schema change")
+    lc = log_crawler(i1, "finalizing BACKUP operation")
     i1.call("pico._inject_error", error_injection, False)
     lc.wait_matched(timeout=25)
 
