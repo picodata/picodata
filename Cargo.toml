@@ -9,7 +9,7 @@ license-file.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [workspace.package]
-version = "25.5.2"
+version = "25.5.3"
 edition = "2021"
 rust-version = "1.85"
 license-file = "LICENSE"
