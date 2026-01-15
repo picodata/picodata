@@ -169,6 +169,7 @@ pub fn system_table_definitions() -> Vec<(TableDef, Vec<IndexDef>)> {
     use crate::catalog::governor_queue::GovernorQueue;
     use crate::catalog::pico_bucket::PicoBucket;
     use crate::catalog::pico_resharding_state::PicoReshardingState;
+    use crate::catalog::pico_table::PicoTable;
     use crate::catalog::user_audit_policy::PicoUserAuditPolicy;
     use crate::storage::*;
     push_definitions!(

@@ -40,7 +40,7 @@ const PROHIBITED_CONFIGS: &[&str] = &[config::SHREDDING_PARAM_NAME];
 /// dedicated operation types (e.g. Ddl, Acl) because updating these tables
 /// requires automatically updating corresponding local spaces.
 const PROHIBITED_TABLES: &[SpaceId] = &[
-    storage::PicoTable::TABLE_ID,
+    crate::catalog::pico_table::PicoTable::TABLE_ID,
     storage::Indexes::TABLE_ID,
     storage::Users::TABLE_ID,
     storage::Privileges::TABLE_ID,
@@ -1237,11 +1237,11 @@ fn modifies_operable(op: &Op, space: SpaceId, storage: &Catalog) -> bool {
 /// Predicate tests based on the CaS Design Document.
 mod tests {
     use sql::ir::operator::ConflictStrategy;
-    use storage::PicoTable;
     use tarantool::index::IndexType;
     use tarantool::space::SpaceEngineType;
     use tarantool::tuple::ToTupleBuffer;
 
+    use crate::catalog::pico_table::PicoTable;
     use crate::schema::{Distribution, IndexOption, TableDef, ADMIN_ID};
     use crate::storage::SystemTable as _;
     use crate::storage::{Catalog, Properties, PropertyName};

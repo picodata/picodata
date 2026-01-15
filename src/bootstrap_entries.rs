@@ -286,7 +286,7 @@ pub(super) fn prepare(
     for (table_def, index_defs) in schema::system_table_definitions() {
         ops.push(
             op::Dml::insert_raw(
-                storage::PicoTable::TABLE_ID,
+                crate::catalog::pico_table::PicoTable::TABLE_ID,
                 msgpack::encode(&table_def),
                 ADMIN_ID,
             )
