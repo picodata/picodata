@@ -44,7 +44,12 @@ use tarantool::vclock::Vclock;
 
 macro_rules! debug_assert_plan_kind {
     ($plan:expr, $pattern:pat) => {
-        debug_assert!(matches!($plan, $pattern), "Unexpected ActionKind: {:?}, expected this: {}", $plan.kind(), stringify!($pattern));
+        debug_assert!(
+            matches!($plan, $pattern),
+            "Unexpected ActionKind: {:?}, expected this: {}",
+            $plan.kind(),
+            stringify!($pattern)
+        );
     };
 }
 
@@ -537,7 +542,10 @@ pub(super) fn action_plan<'i>(
         applied,
         sync_timeout,
     )? {
-        debug_assert_plan_kind!(plan, Plan::ApplySchemaChange { .. });
+        debug_assert_plan_kind!(
+            plan,
+            Plan::ApplySchemaChange { .. } | Plan::ApplyBackup { .. }
+        );
 
         return Ok(plan);
     }
@@ -1211,6 +1219,22 @@ pub mod stage {
             pub targets: Vec<(InstanceName, SmolStr)>,
             /// Request to call [`rpc::ddl_apply::proc_apply_schema_change`] on `targets`.
             pub rpc: Option<rpc::ddl_apply::Request>,
+        }
+
+        pub struct ApplyBackup {
+            /// These are masters of all the replicasets in the cluster.
+            /// They handle `rpc_master` before any `replicas` handle `rpc_replica`.
+            pub masters: Vec<InstanceName>,
+            /// Request to call `proc_apply_backup` on `masters`
+            pub rpc_master: rpc::ddl_backup::Request,
+            /// These are read_only replicas of all the replicasets in the cluster.
+            /// They handle `rpc_replica` after all `masters` handle `rpc_replica`.
+            pub replicas: Vec<InstanceName>,
+            /// Request to call `proc_apply_backup` on `replicas`
+            pub rpc_replica: rpc::ddl_backup::Request,
+            /// Request to call `proc_backup_abort_clear` on all `masters` &
+            /// `replicas` in case backup operation is aborted.
+            pub rpc_clear: rpc::ddl_backup::RequestClear,
         }
 
         pub struct CreatePlugin<'i> {

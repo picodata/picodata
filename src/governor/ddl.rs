@@ -1,8 +1,11 @@
+use crate::governor::backup::handle_backup;
 use crate::governor::plan::stage::Plan;
 use crate::governor::plan::stage::*;
 use crate::rpc;
 use crate::schema::TableDef;
 use crate::topology_cache::TopologyCacheRef;
+use crate::traft::error::Error;
+use crate::traft::error::ErrorInfo;
 use crate::traft::op::Ddl;
 use crate::traft::RaftIndex;
 use crate::traft::RaftTerm;
@@ -31,6 +34,10 @@ pub fn handle_pending_ddl<'i>(
     let Some(ddl) = pending_schema_change else {
         return Ok(None);
     };
+
+    if let Ddl::Backup { timestamp } = ddl {
+        return handle_backup(topology_ref, *timestamp, term, applied, sync_timeout);
+    }
 
     let mut tier = None;
 
@@ -63,4 +70,24 @@ pub fn handle_pending_ddl<'i>(
     });
 
     return Ok(Some(ApplySchemaChange { tier, rpc, targets }.into()));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// OnError
+////////////////////////////////////////////////////////////////////////////////
+
+/// Helper enum for ApplySchemaChange handling.
+#[derive(Debug)]
+pub enum OnError {
+    Retry(Error),
+    Abort(ErrorInfo),
+}
+
+impl From<OnError> for Error {
+    fn from(e: OnError) -> Error {
+        match e {
+            OnError::Retry(e) => e,
+            OnError::Abort(_) => unreachable!("we never convert Abort to Error"),
+        }
+    }
 }
