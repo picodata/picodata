@@ -38,21 +38,36 @@ use tarantool::space::SpaceId;
 pub fn handle_pending_ddl<'i>(
     topology_ref: &TopologyCacheRef,
     tables: &HashMap<SpaceId, &'i TableDef>,
-    pending_schema_change: &'i Option<Ddl>,
+    pending_ddl: &'i Option<(Ddl, u64)>,
     term: RaftTerm,
     applied: RaftIndex,
     sync_timeout: Duration,
 ) -> Result<Option<Plan<'i>>> {
-    let Some(ddl) = pending_schema_change else {
+    let Some((ref ddl, pending_schema_version)) = *pending_ddl else {
         return Ok(None);
     };
 
     if let Ddl::Backup { timestamp } = ddl {
-        return handle_backup(topology_ref, *timestamp, term, applied, sync_timeout);
+        return handle_backup(
+            topology_ref,
+            pending_schema_version,
+            *timestamp,
+            term,
+            applied,
+            sync_timeout,
+        );
     }
 
     if let Ddl::TruncateTable { id, .. } = ddl {
-        return handle_truncate_table(topology_ref, tables, *id, term, applied, sync_timeout);
+        return handle_truncate_table(
+            topology_ref,
+            tables,
+            pending_schema_version,
+            *id,
+            term,
+            applied,
+            sync_timeout,
+        );
     }
 
     let targets = rpc::replicasets_masters(topology_ref);
@@ -63,7 +78,15 @@ pub fn handle_pending_ddl<'i>(
         timeout: sync_timeout,
     };
 
-    Ok(Some(ApplySchemaChange { ddl, rpc, targets }.into()))
+    Ok(Some(
+        ApplySchemaChange {
+            ddl,
+            pending_schema_version,
+            rpc,
+            targets,
+        }
+        .into(),
+    ))
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -83,6 +106,7 @@ pub fn handle_pending_ddl<'i>(
 fn handle_truncate_table<'i>(
     topology_ref: &TopologyCacheRef,
     tables: &HashMap<SpaceId, &'i TableDef>,
+    pending_schema_version: u64,
     table_id: SpaceId,
     term: RaftTerm,
     applied: RaftIndex,
@@ -98,7 +122,13 @@ fn handle_truncate_table<'i>(
         let ranges = cas::Range::for_op(&Op::DdlCommit)?;
         let predicate = cas::Predicate::new(applied, ranges);
         let cas = cas::Request::new(Op::DdlCommit, predicate, ADMIN_ID)?;
-        return Ok(Some(CommitTruncateGlobalTable { cas }.into()));
+        return Ok(Some(
+            CommitTruncateGlobalTable {
+                pending_schema_version,
+                cas,
+            }
+            .into(),
+        ));
     };
 
     let mut tier_masters_count = 0;
@@ -143,6 +173,7 @@ fn handle_truncate_table<'i>(
 
     Ok(Some(
         ApplyTruncateTable {
+            pending_schema_version,
             tier,
             rpc,
             tier_masters_count,

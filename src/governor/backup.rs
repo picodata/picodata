@@ -30,6 +30,7 @@ use std::time::Duration;
 /// This function is called from [`handle_pending_ddl`]
 pub fn handle_backup<'i>(
     topology_ref: &TopologyCacheRef,
+    pending_schema_version: u64,
     timestamp: i64,
     term: RaftTerm,
     applied: RaftIndex,
@@ -72,6 +73,7 @@ pub fn handle_backup<'i>(
 
     Ok(Some(
         ApplyBackup {
+            pending_schema_version,
             masters,
             rpc_master,
             replicas,

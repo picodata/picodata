@@ -68,7 +68,7 @@ pub(super) fn action_plan<'i>(
     replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
     tiers: &HashMap<&str, &'i Tier>,
     my_raft_id: RaftId,
-    pending_schema_change: &'i Option<Ddl>,
+    pending_ddl: &'i Option<(Ddl, u64)>,
     tables: &HashMap<SpaceId, &'i TableDef>,
     plugins: &HashMap<PluginIdentifier, PluginDef>,
     services: &HashMap<PluginIdentifier, Vec<&'i ServiceDef>>,
@@ -537,7 +537,7 @@ pub(super) fn action_plan<'i>(
     if let Some(plan) = handle_pending_ddl(
         topology_ref,
         tables,
-        pending_schema_change,
+        pending_ddl,
         term,
         applied,
         sync_timeout,
@@ -1215,6 +1215,8 @@ pub mod stage {
         pub struct ApplySchemaChange<'i> {
             /// This DDL operation is being applied. Only used for logging.
             pub ddl: &'i Ddl,
+            /// Only used for logging
+            pub pending_schema_version: u64,
             /// These are masters of all the replicasets in the cluster
             pub targets: Vec<InstanceName>,
             /// Request to call [`rpc::ddl_apply::proc_apply_schema_change`] on `targets`.
@@ -1222,11 +1224,15 @@ pub mod stage {
         }
 
         pub struct CommitTruncateGlobalTable {
+            /// Only used for logging
+            pub pending_schema_version: u64,
             /// Unconditional global DdlCommit operation.
             pub cas: cas::Request,
         }
 
         pub struct ApplyTruncateTable {
+            /// Only used for logging
+            pub pending_schema_version: u64,
             /// Tier name on of the sharded table which we're truncating.
             /// Note that if that there's a separate ActionKind for TRUNCATE on
             /// global tables.
@@ -1248,6 +1254,8 @@ pub mod stage {
         }
 
         pub struct ApplyBackup {
+            /// Only used for logging
+            pub pending_schema_version: u64,
             /// These are masters of all the replicasets in the cluster.
             /// They handle `rpc_master` before any `replicas` handle `rpc_replica`.
             pub masters: Vec<InstanceName>,
