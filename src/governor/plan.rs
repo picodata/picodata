@@ -76,7 +76,6 @@ pub(super) fn action_plan<'i>(
     sync_timeout: Duration,
     batch_size: usize,
     global_cluster_version: SmolStr,
-    next_schema_version: u64,
     governor_operations: &'i [GovernorOperationDef],
     global_catalog_version: SmolStr,
     pending_catalog_version: Option<SmolStr>,
@@ -883,9 +882,7 @@ pub(super) fn action_plan<'i>(
     // run operations from `_pico_governor_queue` table
     if let Some(plan) = handle_governor_queue(
         topology_ref,
-        tables,
         governor_operations,
-        next_schema_version,
         &global_cluster_version,
         pending_catalog_version,
         global_catalog_version,
@@ -1308,11 +1305,6 @@ pub mod stage {
             /// Global batch DML operation which updates records in `_pico_service`, `_pico_service_route`
             /// and removes "pending_plugin_operation" from `_pico_property` in case of success.
             pub success_dml: Op,
-        }
-
-        pub struct CreateGovernorQueue {
-            /// Global DDL operation for creating `_pico_governor_queue` table.
-            pub cas: cas::Request,
         }
 
         pub struct InsertUpgradeOperation {

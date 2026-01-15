@@ -195,11 +195,6 @@ impl Loop {
             .cluster_version()
             .expect("storage should never fail");
 
-        let next_schema_version = storage
-            .properties
-            .next_schema_version()
-            .expect("getting of next schema version should never fail");
-
         let governor_operations: Vec<_> = storage
             .governor_queue
             .all_operations()
@@ -237,7 +232,6 @@ impl Loop {
             rpc_timeout,
             batch_size,
             global_cluster_version,
-            next_schema_version,
             &governor_operations,
             global_catalog_version,
             pending_catalog_version,
@@ -1343,17 +1337,6 @@ impl Loop {
 
                 governor_substep! {
                     "updating current vshard config"
-                    async {
-                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
-                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
-                    }
-                }
-            }
-
-            Plan::CreateGovernorQueue(CreateGovernorQueue { cas }) => {
-                set_status(governor_status, "create _pico_governor_queue table");
-                governor_substep! {
-                    "creating _pico_governor_queue table"
                     async {
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
                         cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;

@@ -4,34 +4,28 @@ use crate::catalog::governor_queue::{
 };
 use crate::column_name;
 use crate::governor::{
-    upgrade_operations::CATALOG_UPGRADE_LIST, CreateGovernorQueue, FinishCatalogUpgrade,
-    InsertUpgradeOperation, Plan, RunExecScriptOperationStep, RunProcNameOperationStep,
-    RunSqlOperationStep,
+    upgrade_operations::CATALOG_UPGRADE_LIST, FinishCatalogUpgrade, InsertUpgradeOperation, Plan,
+    RunExecScriptOperationStep, RunProcNameOperationStep, RunSqlOperationStep,
 };
 use crate::rpc;
-use crate::schema::{Distribution, TableDef, ADMIN_ID};
+use crate::schema::ADMIN_ID;
 use crate::storage::{Properties, PropertyName, SystemTable};
 use crate::tlog;
 use crate::topology_cache::TopologyCacheRef;
-use crate::traft::error::Error;
-use crate::traft::op::{Ddl, Dml, Op};
+use crate::traft::op::{Dml, Op};
 use crate::traft::{RaftIndex, Result};
 use crate::version::Version;
 use smol_str::SmolStr;
-use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::Duration;
-use tarantool::index::Part;
-use tarantool::space::{SpaceEngineType, SpaceId, UpdateOps};
+use tarantool::space::UpdateOps;
 
 const MIN_PICODATA_VERSION_WITH_G_QUEUE: Version = Version::new_clean(25, 3, 0);
 
 /// Handles operations from `_pico_governor_queue` table.
 pub(super) fn handle_governor_queue<'i>(
     topology_ref: &TopologyCacheRef,
-    tables: &HashMap<SpaceId, &'i TableDef>,
     governor_operations: &'i [GovernorOperationDef],
-    next_schema_version: u64,
     global_cluster_version: &str,
     pending_catalog_version: Option<SmolStr>,
     current_catalog_version: SmolStr,
@@ -70,9 +64,7 @@ pub(super) fn handle_governor_queue<'i>(
     if let Some(pending_catalog_version) = pending_catalog_version {
         return handle_catalog_upgrade(
             topology_ref,
-            tables,
             governor_operations,
-            next_schema_version,
             pending_catalog_version,
             current_catalog_version,
             applied,
@@ -94,9 +86,7 @@ pub(super) fn handle_governor_queue<'i>(
 /// Handles system catalog upgrade to version `pending_catalog_version`.
 fn handle_catalog_upgrade<'i>(
     topology_ref: &TopologyCacheRef,
-    tables: &HashMap<SpaceId, &'i TableDef>,
     governor_operations: &'i [GovernorOperationDef],
-    next_schema_version: u64,
     pending_catalog_version: SmolStr,
     current_catalog_version: SmolStr,
     applied: RaftIndex,
@@ -107,12 +97,6 @@ fn handle_catalog_upgrade<'i>(
         "there is a pending system catalog upgrade to version {}",
         pending_catalog_version,
     );
-
-    let create_table_plan =
-        create_governor_table_if_not_exists(tables, next_schema_version, applied)?;
-    if create_table_plan.is_some() {
-        return Ok(create_table_plan);
-    }
 
     let versions_for_upgrade =
         get_versions_for_upgrade(&current_catalog_version, &pending_catalog_version);
@@ -217,50 +201,6 @@ fn run_governor_operation<'i>(
             ))
         }
     }
-}
-
-/// Creates `_pico_governor_queue` table if it does not exist yet.
-/// Verifies that the table is operable.
-///
-/// Returns `CreateGovernorQueue` plan if the table needs to be created.
-/// Returns `None` if the table already exists and is operable.
-/// Returns error if the table exists but not operable.
-fn create_governor_table_if_not_exists<'i>(
-    tables: &HashMap<SpaceId, &'i TableDef>,
-    next_schema_version: u64,
-    applied: RaftIndex,
-) -> Result<Option<Plan<'i>>> {
-    let Some(governor_table) = tables.get(&GovernorQueue::TABLE_ID) else {
-        tlog!(Info, "_pico_governor_queue table is missing, create it");
-
-        let ddl = Ddl::CreateTable {
-            id: GovernorQueue::TABLE_ID,
-            name: SmolStr::new_static(GovernorQueue::TABLE_NAME),
-            format: GovernorQueue::format(),
-            primary_key: vec![Part::field("id")],
-            distribution: Distribution::Global,
-            engine: SpaceEngineType::Memtx,
-            owner: ADMIN_ID,
-        };
-        let ddl_prepare = Op::DdlPrepare {
-            schema_version: next_schema_version,
-            ddl,
-            governor_op_id: None,
-        };
-        let predicate = cas::Predicate::new(applied, cas::schema_change_ranges());
-        let cas = cas::Request::new(ddl_prepare, predicate, ADMIN_ID)?;
-
-        return Ok(Some(CreateGovernorQueue { cas }.into()));
-    };
-    // we cannot get this case typically, but check it to be sure
-    if !governor_table.operable {
-        tlog!(Error, "_pico_governor_queue table exists, but not operable");
-        return Err(Error::Other(
-            "_pico_governor_queue table exists, but not operable".into(),
-        ));
-    }
-
-    Ok(None)
 }
 
 /// Inserts system catalog upgrade operations into `_pico_governor_queue` table.
