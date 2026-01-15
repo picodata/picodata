@@ -1,5 +1,6 @@
 import json
 import os
+import shlex
 import subprocess
 
 from framework.log import log
@@ -44,47 +45,18 @@ def perform_cargo_build(enable_webui: bool = False) -> None:
         )
         return
 
-    cargo_build_features = ["error_injection"]
+    cargo_flags = ["--all"]  # this should be included for Makefile to work correctly
     if enable_webui:
-        cargo_build_features.append("webui")
-    cargo_build_features = ",".join(cargo_build_features)  # type: ignore[assignment]
+        cargo_flags += ["--features", "webui"]
 
-    # fmt: off
-    cargo_build_command = [
-        "cargo", "build",
-        "--profile", cargo_build_profile(),
-        "--features", cargo_build_features,
+    profile = cargo_build_profile()
+    make_command = [
+        "make",
+        f"CARGO_FLAGS={shlex.join(cargo_flags)}",
+        f"build-{profile}",
     ]
-    # fmt: on
-    log.info(f"Running `{cargo_build_command}` command...")
-    subprocess.check_call(cargo_build_command)  # type: ignore[arg-type]
-
-    needed_test_crates = ["gostech-audit-log", "testplug"]
-    log.info(f"The following crates will be builded: {','.join(needed_test_crates)}.")
-    for crate_to_build in needed_test_crates:
-        # fmt: off
-        crate_build_command = [
-            "cargo", "build",
-            "--profile", cargo_build_profile(),
-            "--package", crate_to_build,
-        ]
-        # fmt: on
-        log.info(f"Building '{crate_to_build}' crate...")
-        subprocess.check_call(crate_build_command)
-
-    # NOTE: see why it is special here:
-    # <https://git.picodata.io/core/picodata/-/commit/b83c3230dfd9bec7768fb7f63982a7190675c93d>.
-    special_crate_name = "plug_wrong_version"
-    special_crate_dir = project_tests_path() / special_crate_name
-    # fmt: off
-    crate_build_command = [
-        "cargo", "build",
-        "--profile", "dev",
-        "--package", special_crate_name,
-    ]
-    # fmt: on
-    log.info(f"Running `{crate_build_command}` command...")
-    subprocess.check_call(crate_build_command, cwd=special_crate_dir)
+    log.info(f"Running `{make_command}` command...")
+    subprocess.check_call(make_command)
 
 
 def picodata_executable_path(copy_plugins: bool = True) -> Path:
