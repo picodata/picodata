@@ -494,10 +494,14 @@ rmp_serde error: {e}"
         let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version, system_catalog_version).unwrap().unwrap();
 
         assert_eq!(do_bump, true, "target state change requires replicaset config version bump");
-        let ops = check_update_instance(&dml, "i1");
-        assert_eq!(ops.len(), 1);
-        let target_state: State = check_field_assignment(&ops[0], "target_state");
+        let mut ops = check_update_instance(&dml, "i1").iter();
+        let target_state: State = check_field_assignment(ops.next().unwrap(), "target_state");
         assert_eq!(target_state, State::new(Offline, 0));
+        if let Some(op) = ops.next() {
+            // No need to check the actual value of `_time` because it is unstable
+            let _time: Datetime = check_field_assignment(op, "target_state_change_time");
+        }
+        assert!(ops.next().is_none());
 
         storage.do_dml(&dml).unwrap();
         let instance = storage.instances.get(&InstanceName::from("i1")).unwrap();
@@ -510,10 +514,14 @@ rmp_serde error: {e}"
         let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version, system_catalog_version).unwrap().unwrap();
 
         assert_eq!(do_bump, true, "target state change requires replicaset config version bump");
-        let ops = check_update_instance(&dml, "i1");
-        assert_eq!(ops.len(), 1);
-        let target_state: State = check_field_assignment(&ops[0], "target_state");
+        let mut ops = check_update_instance(&dml, "i1").iter();
+        let target_state: State = check_field_assignment(ops.next().unwrap(), "target_state");
         assert_eq!(target_state, State::new(Online, 1));
+        if let Some(op) = ops.next() {
+            // No need to check the actual value of `_time` because it is unstable
+            let _time: Datetime = check_field_assignment(op, "target_state_change_time");
+        }
+        assert!(ops.next().is_none());
 
         storage.do_dml(&dml).unwrap();
         let instance = storage.instances.get(&InstanceName::from("i1")).unwrap();
@@ -526,10 +534,14 @@ rmp_serde error: {e}"
         let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version, system_catalog_version).unwrap().unwrap();
 
         assert_eq!(do_bump, true, "target state change requires replicaset config version bump");
-        let ops = check_update_instance(&dml, "i1");
-        assert_eq!(ops.len(), 1);
-        let target_state: State = check_field_assignment(&ops[0], "target_state");
+        let mut ops = check_update_instance(&dml, "i1").iter();
+        let target_state: State = check_field_assignment(ops.next().unwrap(), "target_state");
         assert_eq!(target_state, State::new(Online, 2));
+        if let Some(op) = ops.next() {
+            // No need to check the actual value of `_time` because it is unstable
+            let _time: Datetime = check_field_assignment(op, "target_state_change_time");
+        }
+        assert!(ops.next().is_none());
 
         storage.do_dml(&dml).unwrap();
         let instance = storage.instances.get(&InstanceName::from("i1")).unwrap();
@@ -542,11 +554,14 @@ rmp_serde error: {e}"
         let (dml, do_bump) = update_instance(&instance, &req, None, &global_cluster_version, system_catalog_version).unwrap().unwrap();
 
         assert_eq!(do_bump, true, "target state change requires replicaset config version bump");
-        let ops = check_update_instance(&dml, "i1");
-        assert_eq!(ops.len(), 1);
-        let target_state: State = check_field_assignment(&ops[0], "target_state");
+        let mut ops = check_update_instance(&dml, "i1").iter();
+        let target_state: State = check_field_assignment(ops.next().unwrap(), "target_state");
         assert_eq!(target_state, State::new(Expelled, 0));
-
+        if let Some(op) = ops.next() {
+            // No need to check the actual value of `_time` because it is unstable
+            let _time: Datetime = check_field_assignment(op, "target_state_change_time");
+        }
+        assert!(ops.next().is_none());
 
         storage.do_dml(&dml).unwrap();
         let instance = storage.instances.get(&InstanceName::from("i1")).unwrap();
