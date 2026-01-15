@@ -5,6 +5,8 @@ use crate::error_code::ErrorCode;
 use crate::governor::backup::collect_proc_apply_backup;
 use crate::governor::backup::collect_proc_backup_abort_clear;
 use crate::governor::batch::LastStepInfo;
+use crate::governor::ddl::collect_proc_apply_schema_change;
+use crate::governor::ddl::collect_vshard_map_callrw_proc_apply_schema_change;
 use crate::governor::ddl::OnError;
 use crate::instance::InstanceName;
 use crate::metrics;
@@ -36,7 +38,6 @@ use crate::storage::ToEntryIter;
 use crate::sync::proc_get_vclock;
 use crate::tlog;
 use crate::traft::error::Error;
-use crate::traft::error::Error as TraftError;
 use crate::traft::error::ErrorInfo;
 use crate::traft::network::ConnectionPool;
 use crate::traft::node::global;
@@ -48,7 +49,6 @@ use crate::traft::raft_storage::RaftSpaceAccess;
 use crate::traft::RaftId;
 use crate::traft::{ConnectionType, Result};
 use crate::unwrap_ok_or;
-use crate::vshard;
 use ::tarantool::error::BoxError;
 use ::tarantool::error::IntoBoxError;
 use ::tarantool::error::TarantoolErrorCode::Timeout;
@@ -64,7 +64,6 @@ use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use plan::action_plan;
 use plan::stage::*;
-use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::ops::ControlFlow;
 use std::path::PathBuf;
@@ -83,49 +82,6 @@ pub mod upgrade_operations;
 
 impl Loop {
     const RETRY_TIMEOUT: Duration = Duration::from_millis(250);
-
-    async fn collect_proc_apply_schema_change(
-        targets: Vec<(InstanceName, SmolStr)>,
-        rpc: rpc::ddl_apply::Request,
-        pool: Rc<ConnectionPool>,
-        rpc_timeout: Duration,
-    ) -> Result<Result<Vec<()>, OnError>, TraftError> {
-        let mut fs = vec![];
-        for (instance_name, _) in targets {
-            tlog!(Info, "calling proc_apply_schema_change"; "instance_name" => %instance_name);
-            let resp = pool.call(
-                &instance_name,
-                proc_name!(proc_apply_schema_change),
-                &rpc,
-                rpc_timeout,
-            )?;
-            fs.push(async move {
-                match resp.await {
-                    Ok(rpc::ddl_apply::Response::Ok) => {
-                        tlog!(Info, "applied schema change on instance";
-                            "instance_name" => %instance_name,
-                        );
-                        Ok(())
-                    }
-                    Ok(rpc::ddl_apply::Response::Abort { cause }) => {
-                        tlog!(Error, "failed to apply schema change on instance: {cause}";
-                            "instance_name" => %instance_name,
-                        );
-                        Err(OnError::Abort(cause))
-                    }
-                    Err(e) => {
-                        tlog!(Warning, "failed calling proc_apply_schema_change: {e}";
-                            "instance_name" => %instance_name
-                        );
-                        Err(OnError::Retry(e))
-                    }
-                }
-            });
-        }
-
-        let res = try_join_all(fs).await;
-        Ok::<_, TraftError>(res)
-    }
 
     async fn iter_fn(
         State {
@@ -891,104 +847,23 @@ impl Loop {
                 }
             }
 
-            Plan::ApplySchemaChange(ApplySchemaChange { tier, targets, rpc }) => {
+            Plan::ApplySchemaChange(ApplySchemaChange { ddl, targets, rpc }) => {
                 set_status!("apply clusterwide schema change");
                 let mut next_op: Op = Op::Nop;
                 governor_substep! {
-                    "applying pending schema change"
+                    "applying pending schema change" [ "ddl" => ?ddl ]
                     async {
-                        let ddl = pending_schema_change.expect("pending schema should exist");
-                        tlog!(Info, "handling ApplySchemaChange for {ddl:?}");
+                        // Backup and TruncateTable are handled in different code paths
+                        debug_assert!(!matches!(ddl, Ddl::Backup { .. } | Ddl::TruncateTable { .. }));
 
-                        let Some(rpc) = rpc else {
-                            // This is a TRUNCATE on global table. RPC is not required, the
-                            // operation is applied locally on each instance of the cluster
-                            // when the corresponding DdlCommit is applied in raft_main_loop
-                            debug_assert!(ddl.is_truncate_on_global_table(storage));
-
-                            next_op = Op::DdlCommit;
-
+                        // Calls `proc_apply_schema_change` on `targets`
+                        let res = collect_proc_apply_schema_change(&targets, &rpc, pool, rpc_timeout).await?;
+                        if let Err(OnError::Abort(cause)) = res {
+                            next_op = Op::DdlAbort { cause };
+                            crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");
                             return Ok(());
-                        };
-
-                        if let Some(tier) = tier {
-                            // Only TRUNCATE TABLE needs to be handled on a given tier
-                            debug_assert!(matches!(ddl, Ddl::TruncateTable { .. }), "{ddl:?}");
-
-                            // DDL should be applied only on a specific tier
-                            // (e.g. case of TRUNCATE on sharded tables).
-                            let map_callrw_res = vshard::ddl_map_callrw(&tier, proc_name!(proc_apply_schema_change), rpc_timeout, &rpc);
-
-                            // `ddl_map_callrw` sends requests to all replicaset masters in
-                            // the tier to which ddl table belongs but we should update
-                            // local_schema_change on all masters. That's why we make additional
-                            // rpc calls via custom connection pool.
-                            let other_targets: Vec<_> = targets
-                                .iter()
-                                .filter(|(_, tier_name)| tier_name != &tier)
-                                .map(|(i_name, tier_name)| (i_name.clone(), tier_name.clone()))
-                                .collect();
-                            let res = Self::collect_proc_apply_schema_change(other_targets, rpc.clone(), pool.clone(), rpc_timeout).await?;
-                            // In case it's abort error, return Ok(()) so that governor_step
-                            // stop retrying execution
-                            if let Err(OnError::Abort(cause)) = res {
-                                next_op = Op::DdlAbort { cause };
-                                crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");
-                                return Ok(());
-                            }
-                            // Otherwise unwrap Err so that next governor step is executed.
-                            res?;
-
-                            let proc_rpc_res_vec = match map_callrw_res {
-                                Ok(proc_rpc_res_vec) => proc_rpc_res_vec,
-                                Err(e) => {
-                                    // E.g. we faced with timeout.
-                                    tlog!(Error, "failed to execute map_callrw for TRUNCATE: {e}";);
-                                    return Err(e)
-                                }
-                            };
-
-                            let expected_tier_masters_num = targets.iter().filter(|(_, tier_name)| tier_name == &tier).count();
-                            let actual_tier_masters_num = proc_rpc_res_vec.len();
-                            if actual_tier_masters_num != expected_tier_masters_num {
-                                // Some of the replicasets' masters went down so we've executed our
-                                // `proc_apply_schema_change` only on some of them. Have to retry the query.
-                                tlog!(
-                                    Error,
-                                    "failed to execute map_callrw for TRUNCATE: some masters are down";
-                                    "expected" => %expected_tier_masters_num,
-                                    "actual" => %actual_tier_masters_num
-                                );
-                                return Err(Error::other(
-                                    format!("failed to execute map_callrw for TRUNCATE: expected {expected_tier_masters_num} masters, got {actual_tier_masters_num}")
-                                ))
-                            }
-                            for res in proc_rpc_res_vec {
-                                match res.response {
-                                    rpc::ddl_apply::Response::Ok => {},
-                                    rpc::ddl_apply::Response::Abort { .. } => {
-                                        unreachable!("TRUNCATE can't cause Abort on `proc_apply_schema_change` call")
-                                    },
-                                }
-                            }
-                        } else {
-                            let targets_cloned: Vec<_> = targets
-                                .iter()
-                                .cloned()
-                                .map(|(i_name, tier_name)| (i_name.clone(), tier_name.clone()))
-                                .collect();
-
-                            // Backup is handled in a different code path
-                            debug_assert!(!matches!(ddl, Ddl::Backup { .. }));
-
-                            let res = Self::collect_proc_apply_schema_change(targets_cloned, rpc.clone(), pool.clone(), rpc_timeout).await?;
-                            if let Err(OnError::Abort(cause)) = res {
-                                next_op = Op::DdlAbort { cause };
-                                crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");
-                                return Ok(());
-                            }
-                            res?;
                         }
+                        res?;
 
                         next_op = Op::DdlCommit;
 
@@ -999,6 +874,79 @@ impl Loop {
                 let op_name = next_op.to_string();
                 governor_substep! {
                     "finalizing schema change" [
+                        "op" => &op_name,
+                    ]
+                    async {
+                        assert!(matches!(next_op, Op::DdlAbort { .. } | Op::DdlCommit));
+                        let ranges = cas::Range::for_op(&next_op)?;
+                        let predicate = cas::Predicate::new(applied, ranges);
+                        let cas = cas::Request::new(next_op, predicate, ADMIN_ID)?;
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                    }
+                }
+            }
+
+            Plan::CommitTruncateGlobalTable(CommitTruncateGlobalTable { cas }) => {
+                governor_substep! {
+                    "finalizing global TRUNCATE TABLE"
+                    async {
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                    }
+                }
+            }
+
+            Plan::ApplyTruncateTable(ApplyTruncateTable {
+                tier,
+                tier_masters_count,
+                other_tiers_masters,
+                rpc,
+            }) => {
+                set_status!("apply TRUNCATE TABLE");
+                let mut next_op: Op = Op::Nop;
+                governor_substep! {
+                    "applying pending TRUNCATE TABLE"
+                    async {
+                        // Calls `proc_apply_schema_change` on all masters of given `tier`
+                        collect_vshard_map_callrw_proc_apply_schema_change(
+                            &tier,
+                            tier_masters_count,
+                            &rpc,
+                            rpc_timeout,
+                        )?;
+
+                        // `ddl_map_callrw` sends requests to all replicaset masters in
+                        // the tier to which ddl table belongs but we should update
+                        // local_schema_change on all masters. That's why we make additional
+                        // rpc calls via custom connection pool.
+                        // Calls `proc_apply_schema_change` on `other_tiers_masters`
+                        let res = collect_proc_apply_schema_change(
+                            &other_tiers_masters,
+                            &rpc,
+                            pool,
+                            rpc_timeout,
+                        ).await?;
+
+                        // In case it's abort error, return Ok(()) so that governor_step
+                        // stop retrying execution
+                        if let Err(OnError::Abort(cause)) = res {
+                            next_op = Op::DdlAbort { cause };
+                            crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");
+                            return Ok(());
+                        }
+                        // Otherwise unwrap Err so that next governor step is executed.
+                        res?;
+
+                        next_op = Op::DdlCommit;
+
+                        crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_COMMIT");
+                    }
+                }
+
+                let op_name = next_op.to_string();
+                governor_substep! {
+                    "finalizing TRUNCATE TABLE" [
                         "op" => &op_name,
                     ]
                     async {
