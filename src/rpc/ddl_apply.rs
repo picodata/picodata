@@ -19,7 +19,6 @@ use crate::traft::error::Error as TraftError;
 use crate::traft::error::ErrorInfo;
 use crate::traft::node;
 use crate::traft::{RaftIndex, RaftTerm};
-use smol_str::SmolStr;
 use std::rc::Rc;
 use std::time::Duration;
 use tarantool::error::{BoxError, TarantoolErrorCode};
@@ -123,7 +122,6 @@ crate::define_rpc_request! {
         pub term: RaftTerm,
         pub applied: RaftIndex,
         pub timeout: Duration,
-        pub tier: Option<SmolStr>,
     }
 
     pub enum Response {

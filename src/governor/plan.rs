@@ -68,7 +68,7 @@ pub(super) fn action_plan<'i>(
     replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
     tiers: &HashMap<&str, &'i Tier>,
     my_raft_id: RaftId,
-    pending_schema_change: &Option<Ddl>,
+    pending_schema_change: &'i Option<Ddl>,
     tables: &HashMap<SpaceId, &'i TableDef>,
     plugins: &HashMap<PluginIdentifier, PluginDef>,
     services: &HashMap<PluginIdentifier, Vec<&'i ServiceDef>>,
@@ -544,7 +544,10 @@ pub(super) fn action_plan<'i>(
     )? {
         debug_assert_plan_kind!(
             plan,
-            Plan::ApplySchemaChange { .. } | Plan::ApplyBackup { .. }
+            Plan::ApplySchemaChange { .. }
+                | Plan::ApplyBackup { .. }
+                | Plan::CommitTruncateGlobalTable { .. }
+                | Plan::ApplyTruncateTable { .. }
         );
 
         return Ok(plan);
@@ -1209,16 +1212,36 @@ pub mod stage {
             pub predicate: cas::Predicate,
         }
 
-        pub struct ApplySchemaChange {
-            /// Tier name on which schema change should be applied.
-            /// If specified, change application should be skipped
-            /// for other tiers.
-            pub tier: Option<SmolStr>,
+        pub struct ApplySchemaChange<'i> {
+            /// This DDL operation is being applied. Only used for logging.
+            pub ddl: &'i Ddl,
             /// These are masters of all the replicasets in the cluster
-            /// (their instance names with corresponding tier names).
-            pub targets: Vec<(InstanceName, SmolStr)>,
+            pub targets: Vec<InstanceName>,
             /// Request to call [`rpc::ddl_apply::proc_apply_schema_change`] on `targets`.
-            pub rpc: Option<rpc::ddl_apply::Request>,
+            pub rpc: rpc::ddl_apply::Request,
+        }
+
+        pub struct CommitTruncateGlobalTable {
+            /// Unconditional global DdlCommit operation.
+            pub cas: cas::Request,
+        }
+
+        pub struct ApplyTruncateTable {
+            /// Tier name on of the sharded table which we're truncating.
+            /// Note that if that there's a separate ActionKind for TRUNCATE on
+            /// global tables.
+            pub tier: SmolStr,
+            /// The number of masters of replicasets of the given `tier`.
+            /// These master will be sent the `rpc` via the map_callrw vshard api
+            /// and this value is used to check that everybody received the request.
+            pub tier_masters_count: usize,
+            /// These are masters of all tiers other then `tier`. These will be
+            /// sent the `rpc` so that they update their schema_versions without
+            /// actually truncating the table, because they don't store any data
+            /// of this table.
+            pub other_tiers_masters: Vec<InstanceName>,
+            /// Request to call [`rpc::ddl_apply::proc_apply_schema_change`] on `other_tier_masters`.
+            pub rpc: rpc::ddl_apply::Request,
         }
 
         pub struct ApplyBackup {

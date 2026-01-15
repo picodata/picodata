@@ -180,17 +180,13 @@ fn run_governor_operation<'i>(
                 term: cas_on_success.predicate.term,
                 applied,
                 timeout: sync_timeout,
-                tier: None,
             };
-            let masters: Vec<_> = rpc::replicasets_masters(topology_ref)
-                .into_iter()
-                .map(|(name, _)| name)
-                .collect();
+            let targets = rpc::replicasets_masters(topology_ref);
             Ok(Some(
                 RunProcNameOperationStep {
                     operation_id: op.id,
                     proc_name: &op.op,
-                    targets: masters,
+                    targets,
                     rpc,
                     cas_on_success,
                 }
