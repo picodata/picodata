@@ -57,6 +57,7 @@ ignore = [
     { id = "RUSTSEC-2024-0436", reason = "`paste`, transitive dependency from `abi_stable` in `picodata` (see <https://git.picodata.io/core/picodata/issues/2052>)" },
     { id = "RUSTSEC-2025-0057", reason = "`fxhash`, transitive dependency from `raft` in `picodata`" },
     { id = "RUSTSEC-2025-0119", reason = "`number_prefix` transitive dependency from `file_shred` in picodata" },
+    { id = "RUSTSEC-2025-0141", reason = "`bincode` direct dependency in `picodata`" },
 ]
 
 # This section is considered when running `cargo deny check licenses`
