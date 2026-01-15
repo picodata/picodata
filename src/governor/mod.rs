@@ -154,6 +154,14 @@ impl Loop {
             .properties
             .pending_schema_change()
             .expect("storage should never fail");
+
+        let pending_schema_version = storage
+            .properties
+            .pending_schema_version()
+            .expect("reading pending_schema_version should always work");
+
+        let pending_ddl = pending_schema_change.zip(pending_schema_version);
+
         let tables: Vec<_> = storage
             .pico_table
             .iter()
@@ -221,7 +229,7 @@ impl Loop {
             &replicasets,
             &tiers,
             node.raft_id,
-            &pending_schema_change,
+            &pending_ddl,
             &tables,
             &plugins,
             &services,
@@ -847,11 +855,19 @@ impl Loop {
                 }
             }
 
-            Plan::ApplySchemaChange(ApplySchemaChange { ddl, targets, rpc }) => {
+            Plan::ApplySchemaChange(ApplySchemaChange {
+                ddl,
+                pending_schema_version,
+                targets,
+                rpc,
+            }) => {
                 set_status!("apply clusterwide schema change");
                 let mut next_op: Op = Op::Nop;
                 governor_substep! {
-                    "applying pending schema change" [ "ddl" => ?ddl ]
+                    "applying pending schema change" [
+                        "ddl" => ?ddl,
+                        "pending_schema_version" => pending_schema_version,
+                    ]
                     async {
                         // Backup and TruncateTable are handled in different code paths
                         debug_assert!(!matches!(ddl, Ddl::Backup { .. } | Ddl::TruncateTable { .. }));
@@ -887,9 +903,12 @@ impl Loop {
                 }
             }
 
-            Plan::CommitTruncateGlobalTable(CommitTruncateGlobalTable { cas }) => {
+            Plan::CommitTruncateGlobalTable(CommitTruncateGlobalTable {
+                pending_schema_version,
+                cas,
+            }) => {
                 governor_substep! {
-                    "finalizing global TRUNCATE TABLE"
+                    "finalizing global TRUNCATE TABLE" [ "pending_schema_version" => pending_schema_version ]
                     async {
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
                         cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
@@ -898,6 +917,7 @@ impl Loop {
             }
 
             Plan::ApplyTruncateTable(ApplyTruncateTable {
+                pending_schema_version,
                 tier,
                 tier_masters_count,
                 other_tiers_masters,
@@ -906,7 +926,7 @@ impl Loop {
             }) => {
                 set_status!("apply TRUNCATE TABLE");
                 governor_substep! {
-                    "applying pending TRUNCATE TABLE"
+                    "applying pending TRUNCATE TABLE" [ "pending_schema_version" => pending_schema_version ]
                     async {
                         // Calls `proc_apply_schema_change` on all masters of given `tier`
                         collect_vshard_map_callrw_proc_apply_schema_change(
@@ -942,6 +962,7 @@ impl Loop {
             }
 
             Plan::ApplyBackup(ApplyBackup {
+                pending_schema_version,
                 masters,
                 rpc_master,
                 replicas,
@@ -953,7 +974,7 @@ impl Loop {
                 let mut next_op: Op = Op::Nop;
 
                 governor_substep! {
-                    "applying pending BACKUP operation"
+                    "applying pending BACKUP" [ "pending_schema_version" => pending_schema_version ]
                     async {
                         // Vec of pairs (instance_name, backup_path).
                         let mut backup_paths = HashMap::<InstanceName, PathBuf>::new();
