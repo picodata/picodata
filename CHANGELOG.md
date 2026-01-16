@@ -15,6 +15,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Introduce unnamed_join alias for motions with joins under them to distinguish columns with identical names
 - Fix erroneous logic of counting rows returned from replicasets which led to undercovered limit exceedance
   errors.
+- Fixed that upgrading between patch versions wouldn't run upgrade scripts.
+
 
 ## [25.5.3] - 2026-01-15
 

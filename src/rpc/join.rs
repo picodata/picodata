@@ -85,11 +85,19 @@ crate::define_rpc_request! {
     }
 }
 
-// Compares the versions of instances before joining the cluster.
-// A cluster is considered compatible if the versions have a minor difference of 1.
-// For example, if the leader's version is 25.X, the joinee's version must be either 25.X or 25.(X+1).
-// WARNING: passed versions to this function should be in correct format, otherwise it will panic.
-pub fn compare_picodata_versions(leader_version: &str, joinee_version: &str) -> Result<u8, Error> {
+/// Compares the versions of instances before joining the cluster.
+/// A cluster is considered compatible if the versions have at most a difference of 1 in minor component.
+/// For example, if the leader's version is 25.X, the joinee's version must be either 25.X or 25.(X+1).
+///
+/// Returns
+/// - `Ok(false)` if versions are the same up to the patch component (ignoring the tail).
+/// - `Ok(true)` if versions are compatible but different
+/// - `Err(e)` if versions are incompatible
+///
+/// # Panicking
+///
+/// passed versions to this function should be in correct format, otherwise it will panic.
+pub fn compare_picodata_versions(leader_version: &str, joinee_version: &str) -> Result<bool> {
     let version_mismatch = || Error::PicodataVersionMismatch {
         leader_version: leader_version.to_owned(),
         instance_version: joinee_version.to_owned(),
@@ -102,13 +110,12 @@ pub fn compare_picodata_versions(leader_version: &str, joinee_version: &str) -> 
         return Err(version_mismatch());
     }
 
-    if leader.minor == joinee.minor {
-        Ok(0)
-    } else if joinee.minor == leader.minor + 1 {
-        Ok(1)
-    } else {
-        Err(version_mismatch())
+    if joinee.minor != leader.minor && joinee.minor != leader.minor + 1 {
+        return Err(version_mismatch());
     }
+
+    let version_changed = joinee.cmp_up_to_patch(&leader).is_ne();
+    Ok(version_changed)
 }
 
 /// Processes the [`crate::rpc::join::Request`] and appends necessary

@@ -846,13 +846,13 @@ pub(super) fn action_plan<'i>(
         // Same with global_cluster_version, global_catalog_version etc.
         let instance_version = &instance.picodata_version;
         match rpc::join::compare_picodata_versions(&global_cluster_version, instance_version) {
-            Ok(0) => {
+            Ok(false) => {
                 // if at least one version is equal to global_cluster_version
                 // don't upgrade the global_cluster_version
                 break;
             }
-            Ok(1) => {
-                // Version is exactly one higher, collect it
+            Ok(true) => {
+                // Version changed, collect it
                 new_candidate_counter += 1;
                 new_cluster_version_candidate = Some(instance_version);
             }
@@ -866,7 +866,6 @@ pub(super) fn action_plan<'i>(
                 );
                 return Err(e);
             }
-            _ => {}
         }
     }
 
