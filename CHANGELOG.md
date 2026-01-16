@@ -57,6 +57,7 @@ with the `YY.MINOR.MICRO` scheme.
   replication conflict. (See also https://git.picodata.io/core/picodata/-/issues/2231).
 - Fixed that governor would sometimes be blocked in read_only on a DDL operation
   mode not being able to apply any subsequent raft operations.
+- Introduce unnamed_join alias for motions with joins under them to distinguish columns with identical names
 
 ## [25.5.1] - 2025-12-19
 
