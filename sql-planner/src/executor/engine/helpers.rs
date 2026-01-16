@@ -730,7 +730,7 @@ pub fn dispatch_impl<'p>(
         return Ok(());
     }
 
-    let mut sub_plan = plan.take_subtree(top_id)?;
+    let mut sub_plan = plan.take_subtree(top_id, buckets)?;
 
     let tier = {
         match sub_plan.get_ir_plan().tier.as_ref() {

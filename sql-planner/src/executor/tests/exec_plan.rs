@@ -33,7 +33,7 @@ fn get_sql_from_execution_plan(
     snapshot: Snapshot,
     name_base: &str,
 ) -> PatternWithParams {
-    let subplan = exec_plan.take_subtree(top_id).unwrap();
+    let subplan = exec_plan.take_subtree(top_id, &Buckets::Any).unwrap();
     let subplan_top_id = subplan.get_ir_plan().get_top().unwrap();
     let sp = SyntaxPlan::new(&subplan, subplan_top_id, snapshot).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
@@ -686,7 +686,10 @@ fn global_union_all3() {
         .unwrap();
 
     // imitate plan execution
-    query.exec_plan.take_subtree(sq_motion_child).unwrap();
+    query
+        .exec_plan
+        .take_subtree(sq_motion_child, &Buckets::Any)
+        .unwrap();
 
     let mut sq_vtable = VirtualTable::new();
     sq_vtable.add_column(vcolumn_integer_user_non_null());
@@ -701,7 +704,10 @@ fn global_union_all3() {
         .exec_plan
         .get_motion_subtree_root(groupby_motion_id)
         .unwrap();
-    query.exec_plan.take_subtree(groupby_motion_child).unwrap();
+    query
+        .exec_plan
+        .take_subtree(groupby_motion_child, &Buckets::Any)
+        .unwrap();
 
     let mut groupby_vtable = VirtualTable::new();
     // these tuples must belong to different replicasets
@@ -1102,7 +1108,7 @@ fn check_subtree_hashes_are_equal_2(
         let plan = sql_to_optimized_ir(sql, values);
         let top = plan.get_top().unwrap();
         let mut exec_plan = ExecutionPlan::from(plan.clone());
-        let subplan = exec_plan.take_subtree(top).unwrap();
+        let subplan = exec_plan.take_subtree(top, &Buckets::Any).unwrap();
         subplan.get_ir_plan().pattern_id(top).unwrap()
     };
 
@@ -1361,7 +1367,9 @@ fn take_subtree_projection_windows_transfer() {
 
     let mut execution_plan: ExecutionPlan = plan.into();
 
-    let new_plan = execution_plan.take_subtree(projection).unwrap();
+    let new_plan = execution_plan
+        .take_subtree(projection, &Buckets::Any)
+        .unwrap();
 
     let new_top = new_plan.get_ir_plan().get_top().unwrap();
 

@@ -1459,6 +1459,76 @@ impl RouterConfigurationMock {
             .unwrap(),
         );
 
+        let columns = vec![
+            Column::new(
+                "bucket_id",
+                DerivedType::new(UnrestrictedType::Integer),
+                ColumnRole::Sharding,
+                true,
+            ),
+            Column::new(
+                "a",
+                DerivedType::new(UnrestrictedType::String),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "b",
+                DerivedType::new(UnrestrictedType::Integer),
+                ColumnRole::User,
+                false,
+            ),
+        ];
+        let sharding_key: &[&str] = &["a", "b"];
+        let primary_key: &[&str] = &["a", "b"];
+        tables.insert(
+            "t6".to_smolstr(),
+            Table::new_sharded(
+                random(),
+                "t6",
+                columns,
+                sharding_key,
+                primary_key,
+                SpaceEngine::Memtx,
+            )
+            .unwrap(),
+        );
+
+        let columns = vec![
+            Column::new(
+                "bucket_id",
+                DerivedType::new(UnrestrictedType::Integer),
+                ColumnRole::Sharding,
+                true,
+            ),
+            Column::new(
+                "a",
+                DerivedType::new(UnrestrictedType::String),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "b",
+                DerivedType::new(UnrestrictedType::Integer),
+                ColumnRole::User,
+                false,
+            ),
+        ];
+        let sharding_key: &[&str] = &["a"];
+        let primary_key: &[&str] = &["a", "b"];
+        tables.insert(
+            "t7".to_smolstr(),
+            Table::new_sharded(
+                random(),
+                "t7",
+                columns,
+                sharding_key,
+                primary_key,
+                SpaceEngine::Memtx,
+            )
+            .unwrap(),
+        );
+
         RouterConfigurationMock {
             functions,
             tables,

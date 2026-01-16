@@ -3,6 +3,7 @@
 //! Contains rule-based transformations.
 
 mod bool_in;
+mod bucket_id_addition;
 mod cast_constants;
 mod constant_folding;
 mod dnf;

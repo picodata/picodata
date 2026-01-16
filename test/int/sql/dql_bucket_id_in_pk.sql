@@ -1,0 +1,107 @@
+-- TEST: initialization_before_dql
+-- SQL:
+DROP TABLE IF EXISTS t;
+CREATE TABLE t(a INT, b INT, PRIMARY KEY (bucket_id, a));
+INSERT INTO t VALUES (1, 2),(101, 102);
+
+-- TEST: dql1
+-- SQL:
+SELECT * FROM t WHERE a = 101;
+-- EXPECTED:
+101, 102
+
+-- TEST: dql2
+-- SQL:
+SELECT * FROM t WHERE b = 2;
+-- EXPECTED:
+1, 2
+
+-- TEST: dql3
+-- SQL:
+SELECT * FROM t WHERE a = 1 LIMIT 1;
+-- EXPECTED:
+1, 2
+
+-- TEST: dql4
+-- SQL:
+SELECT * FROM t WHERE a = 1 ORDER BY 1;
+-- EXPECTED:
+1, 2
+
+-- TEST: dql5
+-- SQL:
+SELECT * FROM t WHERE a = 1 ORDER BY 1 LIMIT 1;
+-- EXPECTED:
+1, 2
+
+-- TEST: dql6
+-- SQL:
+SELECT a FROM t WHERE a = 1 GROUP BY 1;
+-- EXPECTED:
+1
+
+-- TEST: dql7
+-- SQL:
+SELECT a, COUNT(b) FROM t GROUP BY 1;
+-- EXPECTED:
+1, 1, 101, 1
+
+-- TEST: dql8
+-- SQL:
+SELECT b, MAX(a) FROM t WHERE a = 1 GROUP BY 1;
+-- EXPECTED:
+2, 1
+
+-- TEST: dql9
+-- SQL:
+SELECT MAX(a) FROM t;
+-- EXPECTED:
+101
+
+-- TEST: dql10
+-- SQL:
+SELECT MAX(a) FROM t WHERE a = 1;
+-- EXPECTED:
+1
+
+-- TEST: dql11
+-- SQL:
+SELECT * FROM t WHERE a = 1 UNION SELECT * FROM t WHERE a = 1 LIMIT 1;
+-- EXPECTED:
+1, 2
+
+-- TEST: dql12
+-- SQL:
+SELECT * FROM t WHERE a = 1 UNION SELECT * FROM t WHERE a = 2 ORDER BY 1 LIMIT 1;
+-- EXPECTED:
+1, 2
+
+-- TEST: dql13
+-- SQL:
+SELECT MAX(a) FROM (SELECT * FROM t WHERE TRUE) WHERE a = 1;
+-- EXPECTED:
+1
+
+-- TEST: dql14
+-- SQL:
+WITH t1 as (SELECT * FROM t WHERE a = 1) SELECT * FROM t JOIN t1 ON TRUE WHERE t.a = 101;
+-- EXPECTED:
+101, 102, 1, 2
+
+-- TEST: dql15
+-- SQL:
+WITH cte AS (SELECT * FROM t WHERE a = 1) SELECT (SELECT a FROM cte) FROM t WHERE a = 101;
+-- EXPECTED:
+1
+
+-- TEST: initialization_t2
+-- SQL:
+DROP TABLE IF EXISTS t2;
+CREATE TABLE t2(a INT, PRIMARY KEY (bucket_id, a));
+INSERT INTO t2 VALUES (1),(101);
+
+-- TEST: dql_t2_1
+-- SQL:
+SELECT * FROM t2 WHERE a = 1 GROUP BY 1 UNION SELECT * FROM t2 WHERE a = 1;
+-- EXPECTED:
+1

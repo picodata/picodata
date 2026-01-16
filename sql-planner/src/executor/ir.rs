@@ -8,6 +8,7 @@ use smol_str::{format_smolstr, ToSmolStr};
 use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::engine::Vshard;
 use crate::executor::vtable::{VirtualTable, VirtualTableMap};
+use crate::executor::Buckets;
 use crate::ir::node::expression::ExprOwned;
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
@@ -355,7 +356,11 @@ impl ExecutionPlan {
     /// # Panics
     /// - Plan is in invalid state
     #[allow(clippy::too_many_lines)]
-    pub fn take_subtree(&mut self, subtree_id: NodeId) -> Result<Self, SbroadError> {
+    pub fn take_subtree(
+        &mut self,
+        subtree_id: NodeId,
+        buckets: &Buckets,
+    ) -> Result<Self, SbroadError> {
         // Get the subtree nodes indexes.
         let plan = self.get_ir_plan();
         let top_id = plan.get_top()?;
@@ -961,6 +966,7 @@ impl ExecutionPlan {
             )));
         }
 
+        new_plan.add_condition_on_bucket_id(buckets)?;
         new_plan.stash_constants(Snapshot::Oldest)?;
         new_plan.effective_options = self.get_ir_plan().effective_options.clone();
         new_plan.tier.clone_from(&self.get_ir_plan().tier);
