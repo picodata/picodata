@@ -20,6 +20,29 @@ fn parse_host_and_port(addr: &str) -> Result<(String, String), String> {
     Ok((host.into(), port.into()))
 }
 
+pub(crate) trait ListenAddress {
+    fn host(&self) -> &str;
+    fn port(&self) -> &str;
+
+    /// Check if two listen addresses would conflict when binding.
+    /// conflicts occur when:
+    /// - both addresses share same host and port
+    /// - one binds to a wildcard (0.0.0.0) and ports match
+    fn conflicts_with(&self, other: &impl ListenAddress) -> bool {
+        const IPV4_WILDCARD_ADDR: &'static str = "0.0.0.0";
+        if self.port() != other.port() {
+            return false;
+        }
+
+        if self.host() == other.host() {
+            return true;
+        }
+
+        // wildcard addresses bind all interfaces, conflict with any host on same port
+        self.host() == IPV4_WILDCARD_ADDR || other.host() == IPV4_WILDCARD_ADDR
+    }
+}
+
 ////////////////////
 // IPROTO ADDRESS //
 ////////////////////
@@ -119,6 +142,15 @@ impl<'de> serde::Deserialize<'de> for IprotoAddress {
     }
 }
 
+impl ListenAddress for IprotoAddress {
+    fn host(&self) -> &str {
+        &self.host
+    }
+    fn port(&self) -> &str {
+        &self.port
+    }
+}
+
 //////////////////
 // HTTP ADDRESS //
 //////////////////
@@ -189,6 +221,15 @@ impl<'de> serde::Deserialize<'de> for HttpAddress {
     }
 }
 
+impl ListenAddress for HttpAddress {
+    fn host(&self) -> &str {
+        &self.host
+    }
+    fn port(&self) -> &str {
+        &self.port
+    }
+}
+
 /////////////////////
 // PGPROTO ADDRESS //
 /////////////////////
@@ -256,6 +297,15 @@ impl<'de> serde::Deserialize<'de> for PgprotoAddress {
     {
         let s: &str = serde::Deserialize::deserialize(deserializer)?;
         Self::from_str(s).map_err(serde::de::Error::custom)
+    }
+}
+
+impl ListenAddress for PgprotoAddress {
+    fn host(&self) -> &str {
+        &self.host
+    }
+    fn port(&self) -> &str {
+        &self.port
     }
 }
 
@@ -371,5 +421,57 @@ mod tests {
             .unwrap();
         assert!(default_pgproto_addr.host == DEFAULT_LISTEN_HOST);
         assert!(default_pgproto_addr.port == DEFAULT_PGPROTO_PORT);
+    }
+    #[test]
+    fn addresses_conflict_same() {
+        let http = HttpAddress {
+            host: "127.0.0.1".into(),
+            port: "8080".into(),
+        };
+        let pg = PgprotoAddress {
+            host: "127.0.0.1".into(),
+            port: "8080".into(),
+        };
+        assert!(http.conflicts_with(&pg));
+    }
+
+    #[test]
+    fn addresses_conflict_different_ports() {
+        let http = HttpAddress {
+            host: "127.0.0.1".into(),
+            port: "8080".into(),
+        };
+        let pg = PgprotoAddress {
+            host: "127.0.0.1".into(),
+            port: "9090".into(),
+        };
+        assert!(!http.conflicts_with(&pg));
+    }
+
+    #[test]
+    fn addresses_conflict_wildcard_ipv4() {
+        let ipr = IprotoAddress {
+            user: None,
+            host: "0.0.0.0".into(),
+            port: "3301".into(),
+        };
+        let http = HttpAddress {
+            host: "127.0.0.1".into(),
+            port: "3301".into(),
+        };
+        assert!(ipr.conflicts_with(&http));
+    }
+
+    #[test]
+    fn addresses_no_conflict_different_hosts() {
+        let http = HttpAddress {
+            host: "192.168.1.1".into(),
+            port: "8080".into(),
+        };
+        let pg = PgprotoAddress {
+            host: "127.0.0.1".into(),
+            port: "8080".into(),
+        };
+        assert!(!http.conflicts_with(&pg));
     }
 }

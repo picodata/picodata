@@ -1,7 +1,7 @@
 pub mod observer;
 
 use crate::access_control::validate_password;
-use crate::address::{HttpAddress, IprotoAddress, PgprotoAddress};
+use crate::address::{HttpAddress, IprotoAddress, ListenAddress, PgprotoAddress};
 use crate::cli::args;
 use crate::cli::args::CONFIG_PARAMETERS_ENV;
 use crate::failure_domain::FailureDomain;
@@ -696,6 +696,15 @@ Using configuration file '{args_path}'.");
     /// Checks specific to reloading a config file on an initialized istance are
     /// done in [`Self::validate_reload`].
     fn validate_common(&self) -> Result<(), Error> {
+        self.validate_listen_addresses()?;
+
+        self.validate_tiers()?;
+
+        Ok(())
+    }
+
+    /// Validates tiers configuration for consistency
+    fn validate_tiers(&self) -> Result<(), Error> {
         let Some(tiers) = &self.cluster.tier else {
             return Ok(());
         };
@@ -719,6 +728,56 @@ Using configuration file '{args_path}'.");
             return Err(Error::InvalidConfiguration(
                 "at least one trier must be votable (`can_vote = true`)".into(),
             ));
+        }
+
+        Ok(())
+    }
+
+    /// Validates that various listen addresses don't conflict
+    fn validate_listen_addresses(&self) -> Result<(), Error> {
+        let conflict_error = |left_id, left: &dyn Display, right_id, right: &dyn Display| {
+            Error::InvalidConfiguration(format!("`instance.{left_id}` ({left}) conflicts with `instance.{right_id}` ({right}): both bind to the same address"))
+        };
+
+        const HTTP_LISTEN_CFG_OPTION: &'static str = "http_listen";
+        const IPROTO_LISTEN_CFG_OPTION: &'static str = "iproto_listen";
+        const PGPROTO_LISTEN_CFG_OPTION: &'static str = "pg.listen";
+
+        let ipr = &self.instance.iproto_listen;
+        let http = &self.instance.http_listen;
+        let pg = &self.instance.pg.listen;
+
+        if let (Some(ipr), Some(http)) = (ipr, http) {
+            if ipr.conflicts_with(http) {
+                return Err(conflict_error(
+                    IPROTO_LISTEN_CFG_OPTION,
+                    ipr,
+                    HTTP_LISTEN_CFG_OPTION,
+                    http,
+                ));
+            }
+        }
+
+        if let (Some(ipr), Some(pg)) = (ipr, pg) {
+            if ipr.conflicts_with(pg) {
+                return Err(conflict_error(
+                    IPROTO_LISTEN_CFG_OPTION,
+                    ipr,
+                    PGPROTO_LISTEN_CFG_OPTION,
+                    pg,
+                ));
+            }
+        }
+
+        if let (Some(http), Some(pg)) = (http, pg) {
+            if http.conflicts_with(pg) {
+                return Err(conflict_error(
+                    HTTP_LISTEN_CFG_OPTION,
+                    http,
+                    PGPROTO_LISTEN_CFG_OPTION,
+                    pg,
+                ));
+            }
         }
 
         Ok(())
@@ -3433,5 +3492,115 @@ instance:
 
         // It should stay "/foo" and not remove root directory.
         assert_eq!(res, Path::new("/foo"));
+    }
+
+    #[test]
+    fn listen_addresses_all_default_no_conflict() {
+        // All default addresses have no conflict
+        let yaml = r###"
+cluster:
+    name: test
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        assert!(config.validate_listen_addresses().is_ok());
+    }
+
+    #[test]
+    fn listen_addresses_no_conflict() {
+        // Different ports cause no conflict
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    iproto_listen: 127.0.0.1:3301
+    http_listen: 127.0.0.1:8080
+    pg:
+        listen: 127.0.0.1:4327
+"###;
+        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+        assert!(config.validate_listen_addresses().is_ok());
+    }
+
+    #[test]
+    fn listen_addresses_conflict_same_address() {
+        // iproto and http can't use the same address
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    iproto_listen: 127.0.0.1:3301
+    http_listen: 127.0.0.1:3301
+"###;
+        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+        assert!(config.validate_listen_addresses().is_err());
+    }
+
+    #[test]
+    fn listen_addresses_conflict_implicit_address() {
+        // pgproto (implicit) and http can't use the same address
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    http_listen: 127.0.0.1:4327
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        assert!(config.validate_listen_addresses().is_err());
+    }
+    #[test]
+    fn listen_addresses_conflict_iproto_pg() {
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    iproto_listen: 127.0.0.1:3301
+    pg:
+        listen: 127.0.0.1:3301
+"###;
+        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+        assert!(config.validate_listen_addresses().is_err());
+    }
+
+    #[test]
+    fn listen_addresses_conflict_http_pg() {
+        // Disallow wildcard hosts if using the same port
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    http_listen: 0.0.0.0:5000
+    pg:
+        listen: 0.0.0.0:5000
+"###;
+        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+        assert!(config.validate_listen_addresses().is_err());
+    }
+
+    #[test]
+    fn listen_addresses_conflict_wildcard() {
+        // 0.0.0.0 conflicts with any host on same port
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    iproto_listen: 0.0.0.0:3301
+    http_listen: 127.0.0.1:3301
+"###;
+        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+        assert!(config.validate_listen_addresses().is_err());
+    }
+
+    #[test]
+    fn listen_addresses_different_interfaces_ok() {
+        // Different interfaces, same port - OK (user's explicit choice)
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    iproto_listen: 192.168.1.1:3301
+    http_listen: 127.0.0.1:3301
+"###;
+        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+        assert!(config.validate_listen_addresses().is_ok());
     }
 }
