@@ -19,6 +19,7 @@
 
 <!--
   Tell what should happen, or what did you expect to happen.
+  Expected query result, etc.
 -->
 \[start writing here...\]
 
@@ -40,8 +41,9 @@
 ## Additional Context
 
 <!--
-  You might want to write a version of Picodata here or your Linux distribution,
-  for example. Something relevant for those who will inspect the broken behavior
+  Picodata version, OS you're running Picodata on. Cluster configuration. Check if the bug
+  can be reproduced on a single instance.
+  Make sure to include all details relevant for those who will inspect the broken behavior
   It would be really cool if you could point out a specific line of code or subsystem.
 -->
 \[start writing here...\]
