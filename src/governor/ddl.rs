@@ -137,12 +137,17 @@ fn handle_truncate_table<'i>(
         timeout: sync_timeout,
     };
 
+    let ranges = cas::Range::for_op(&Op::DdlCommit)?;
+    let predicate = cas::Predicate::new(applied, ranges);
+    let success_cas = cas::Request::new(Op::DdlCommit, predicate, ADMIN_ID)?;
+
     Ok(Some(
         ApplyTruncateTable {
             tier,
             rpc,
             tier_masters_count,
             other_tiers_masters,
+            success_cas,
         }
         .into(),
     ))

@@ -902,9 +902,9 @@ impl Loop {
                 tier_masters_count,
                 other_tiers_masters,
                 rpc,
+                success_cas,
             }) => {
                 set_status!("apply TRUNCATE TABLE");
-                let mut next_op: Op = Op::Nop;
                 governor_substep! {
                     "applying pending TRUNCATE TABLE"
                     async {
@@ -921,41 +921,22 @@ impl Loop {
                         // local_schema_change on all masters. That's why we make additional
                         // rpc calls via custom connection pool.
                         // Calls `proc_apply_schema_change` on `other_tiers_masters`
-                        let res = collect_proc_apply_schema_change(
+                        collect_proc_apply_schema_change(
                             &other_tiers_masters,
                             &rpc,
                             pool,
                             rpc_timeout,
-                        ).await?;
-
-                        // In case it's abort error, return Ok(()) so that governor_step
-                        // stop retrying execution
-                        if let Err(OnError::Abort(cause)) = res {
-                            next_op = Op::DdlAbort { cause };
-                            crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");
-                            return Ok(());
-                        }
-                        // Otherwise unwrap Err so that next governor step is executed.
-                        res?;
-
-                        next_op = Op::DdlCommit;
+                        ).await??;
 
                         crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_COMMIT");
                     }
                 }
 
-                let op_name = next_op.to_string();
                 governor_substep! {
-                    "finalizing TRUNCATE TABLE" [
-                        "op" => &op_name,
-                    ]
+                    "finalizing TRUNCATE TABLE"
                     async {
-                        assert!(matches!(next_op, Op::DdlAbort { .. } | Op::DdlCommit));
-                        let ranges = cas::Range::for_op(&next_op)?;
-                        let predicate = cas::Predicate::new(applied, ranges);
-                        let cas = cas::Request::new(next_op, predicate, ADMIN_ID)?;
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
-                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                        cas::compare_and_swap_local(&success_cas, deadline)?.no_retries()?;
                     }
                 }
             }
