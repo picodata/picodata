@@ -93,6 +93,10 @@ impl InstanceReachabilityManager {
         }
     }
 
+    pub fn reset(&mut self, raft_id: RaftId) {
+        self.infos.remove(&raft_id);
+    }
+
     /// Is called from a connection pool worker loop to report results of raft
     /// messages sent to other instances. For example a timeout is considered
     /// a failure. Updates info for the given instance.

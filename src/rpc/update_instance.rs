@@ -233,6 +233,14 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
     loop {
         let instance = storage.instances.get(&req.instance_name)?;
 
+        // HACK: this will prevent sentinel from immediately marking this instance as offline after it comes back and self-activates
+        // This resets both the raft RPC heartbeat timeout and applied index timeout which will be triggered otherwise
+        if let Some(Online) = req.target_state {
+            node.instance_reachability
+                .borrow_mut()
+                .reset(instance.raft_id);
+        }
+
         let replicaset_name = &instance.replicaset_name;
         #[rustfmt::skip]
         let Some(replicaset) = storage.replicasets.get(replicaset_name)? else {
