@@ -19,40 +19,49 @@ use tarantool::time::Instant;
 /// The results are generally reset if governor decided to execute a step of
 /// different kind. See how `last_step_info` is used in governor/mod.rs,
 /// governor/plan.rs etc.
+#[derive(Default)]
 pub struct LastStepInfo {
     step_kind: ActionKind,
     ok_instances: HashSet<InstanceName>,
     err_instances: HashMap<InstanceName, ErrorTracker>,
     all_instances: HashSet<InstanceName>,
     target_vshard_config_versions: HashMap<SmolStr, u64>,
+
+    // Fields related to DDL:
+    pending_schema_version: Option<u64>,
+    schema_version: Option<u64>,
+    pub truncate_map_callrw_ok: bool,
 }
 
 impl LastStepInfo {
     pub fn new() -> Self {
-        Self {
-            step_kind: ActionKind::GoIdle,
-            ok_instances: HashSet::new(),
-            err_instances: HashMap::new(),
-            all_instances: HashSet::new(),
-            target_vshard_config_versions: HashMap::new(),
-        }
+        Self::default()
     }
 
     /// Is called every time governor chooses actions for the next iteration.
     /// Resets the results if `step` kind changes.
+    #[inline]
     pub fn on_next_step(&mut self, step: &Plan) {
         if matches!(step, Plan::SleepDueToBackoff { .. }) {
             // Sleeping due to backoff should not reset previous step Ok results
             return;
         }
 
-        let kind = step.kind();
+        self.update_step_kind(step.kind())
+    }
+
+    pub fn update_step_kind(&mut self, kind: ActionKind) {
         if self.step_kind == kind {
             return;
         }
 
+        // Next action kind changed, this means that we need to forget all the
+        // results of previous attempts to do the action and next time we'll be
+        // trying to do it from scratch
+
         self.reset_rpc_results("step kind changed");
         self.target_vshard_config_versions.clear();
+        self.reset_schema_info();
 
         self.step_kind = kind;
     }
@@ -105,13 +114,7 @@ impl LastStepInfo {
     /// here, then the call to `on_next_step` in governor loop will reset the
     /// vshard config versions and the first batch of RPCs will always need to
     /// be resent. I couldn't come up with a better solution unfortunately
-    pub fn update_vshard_config_versions(
-        &mut self,
-        tiers: &HashMap<&str, &Tier>,
-        step_kind: ActionKind,
-    ) {
-        self.step_kind = step_kind;
-
+    pub fn update_vshard_config_versions(&mut self, tiers: &HashMap<&str, &Tier>) {
         let mut something_changed = false;
         let mut reason = "<uknown reason>";
         let was_empty = self.target_vshard_config_versions.is_empty();
@@ -171,8 +174,9 @@ impl LastStepInfo {
     pub fn backoff_for_instance_will_end_at(
         &self,
         instance_name: &InstanceName,
-    ) -> Option<Instant> {
-        Some(self.err_instances.get(instance_name)?.next_try())
+    ) -> Option<(Instant, u32)> {
+        let info = self.err_instances.get(instance_name)?;
+        Some((info.next_try(), info.streak))
     }
 
     pub fn all_instances_ok(&self, all_instances: &[InstanceName]) -> bool {
@@ -184,6 +188,47 @@ impl LastStepInfo {
         }
 
         true
+    }
+
+    pub fn update_schema_info(&mut self, schema_version: u64, pending_schema_version: u64) {
+        let Some((prev_schema_version, prev_pending_schema_version)) = self.schema_info() else {
+            return;
+        };
+
+        if (prev_schema_version, prev_pending_schema_version)
+            == (schema_version, pending_schema_version)
+        {
+            return;
+        }
+
+        // Schema version changed, so previous RPC results are no longer
+        // relevant. This can happen if governor applies one DDL right after
+        // another
+        self.reset_rpc_results("schema version changed");
+        self.reset_schema_info();
+    }
+
+    /// Returns a pair of values for `global_schema_version` & `pending_schema_version`
+    /// respectively if the last step was trying to apply a DDL operation.
+    pub fn schema_info(&self) -> Option<(u64, u64)> {
+        debug_assert_eq!(
+            self.schema_version.is_some(),
+            self.pending_schema_version.is_some()
+        );
+        self.schema_version.zip(self.pending_schema_version)
+    }
+
+    /// Saves the values of `global_schema_version` & `pending_schema_version`
+    /// of the last attempt to apply a DDL operation.
+    pub fn save_schema_info(&mut self, schema_version: u64, pending_schema_version: u64) {
+        self.schema_version = Some(schema_version);
+        self.pending_schema_version = Some(pending_schema_version);
+    }
+
+    fn reset_schema_info(&mut self) {
+        self.schema_version = None;
+        self.pending_schema_version = None;
+        self.truncate_map_callrw_ok = false;
     }
 }
 
@@ -232,6 +277,29 @@ impl ErrorTracker {
 
 pub type BatchOrSleep = Result<Vec<InstanceName>, Instant>;
 
+/// Calls [`get_next_batch_impl`]`(..., skip_if_already_ok=true)`.
+#[inline]
+pub fn get_next_batch(
+    targets_total: &[InstanceName],
+    last_step_info: &LastStepInfo,
+    batch_size: usize,
+) -> BatchOrSleep {
+    get_next_batch_impl(targets_total, last_step_info, batch_size, true)
+}
+
+/// Calls [`get_next_batch_impl`]`(..., skip_if_already_ok=false)`.
+///
+/// See comments at where it is called, for explanation on why it needs to be
+/// different.
+#[inline]
+pub fn get_next_batch_for_to_online(
+    targets_total: &[InstanceName],
+    last_step_info: &LastStepInfo,
+    batch_size: usize,
+) -> BatchOrSleep {
+    get_next_batch_impl(targets_total, last_step_info, batch_size, false)
+}
+
 /// Returns a batch of `targets_total` of at most given `batch_size` based on `last_step_info`.
 ///
 /// Instances marked "ok" in `last_step_info` are skipped if `skip_if_already_ok` is `true`.
@@ -251,7 +319,7 @@ pub type BatchOrSleep = Result<Vec<InstanceName>, Instant>;
 ///
 /// # Panicking
 /// Will panic if `targets_total` is empty.
-pub fn get_next_batch(
+pub fn get_next_batch_impl(
     targets_total: &[InstanceName],
     last_step_info: &LastStepInfo,
     batch_size: usize,
@@ -267,6 +335,7 @@ pub fn get_next_batch(
 
     for name in targets_total {
         if last_step_info.instance_ok(name) {
+            tlog!(Debug, "instance {name} is already ok");
             if !skip_if_already_ok && already_tried.len() < batch_size {
                 // If we don't need to outright skip the instances which already responded Ok,
                 // then we'll make sure to add these to the end of the queue
@@ -276,7 +345,7 @@ pub fn get_next_batch(
             continue;
         }
 
-        if let Some(next_try) = last_step_info.backoff_for_instance_will_end_at(name) {
+        if let Some((next_try, streak)) = last_step_info.backoff_for_instance_will_end_at(name) {
             if now < next_try {
                 // This instance is in backoff, not going to send RPC this time
 
@@ -284,13 +353,16 @@ pub fn get_next_batch(
                     closest_next_try = Some(next_try);
                 }
 
+                tlog!(Debug, "instance {name} is in backoff");
                 continue;
             }
 
+            tlog!(Debug, "instance {name} has fail streak: {streak}");
             if already_tried.len() < batch_size {
                 already_tried.push(name);
             }
         } else {
+            tlog!(Debug, "instance {name} no attempts yet");
             only_new_ones.push(name.clone());
             if only_new_ones.len() >= batch_size {
                 break;

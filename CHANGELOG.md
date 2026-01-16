@@ -76,6 +76,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed that governor would sometimes be blocked in read_only on a DDL operation
   mode not being able to apply any subsequent raft operations.
 - Introduce unnamed_join alias for motions with joins under them to distinguish columns with identical names
+- Governor RPC batching is also implemented for proc_apply_schema_change.
 - Datetime literals should support `yyyy-mm-dd` format, e.g. `select '2026-01-17'::datetime`.
 - Fix type inference for the `a BETWEEN b AND c` expression; now types of `a`, `b` and `c` should be
   properly unified, meanining that `select '2026-01-13' between '2026-01-01'::datetime and '2026-01-20'`

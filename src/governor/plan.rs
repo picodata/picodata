@@ -1,7 +1,7 @@
 use crate::cas;
 use crate::catalog::governor_queue::GovernorOperationDef;
 use crate::column_name;
-use crate::governor::batch::get_next_batch;
+use crate::governor::batch::get_next_batch_for_to_online;
 use crate::governor::batch::LastStepInfo;
 use crate::governor::conf_change::raft_conf_change;
 use crate::governor::ddl::handle_pending_ddl;
@@ -76,6 +76,7 @@ pub(super) fn action_plan<'i>(
     sync_timeout: Duration,
     batch_size: usize,
     global_cluster_version: SmolStr,
+    schema_version: u64,
     governor_operations: &'i [GovernorOperationDef],
     global_catalog_version: SmolStr,
     pending_catalog_version: Option<SmolStr>,
@@ -534,12 +535,15 @@ pub(super) fn action_plan<'i>(
     ////////////////////////////////////////////////////////////////////////////
     // ddl
     if let Some(plan) = handle_pending_ddl(
+        last_step_info,
         topology_ref,
         tables,
         pending_ddl,
+        schema_version,
         term,
         applied,
         sync_timeout,
+        batch_size,
     )? {
         debug_assert_plan_kind!(
             plan,
@@ -547,6 +551,10 @@ pub(super) fn action_plan<'i>(
                 | Plan::ApplyBackup { .. }
                 | Plan::CommitTruncateGlobalTable { .. }
                 | Plan::ApplyTruncateTable { .. }
+                | Plan::SleepDueToBackoff(SleepDueToBackoff {
+                    step_kind: ActionKind::ApplySchemaChange | ActionKind::ApplyTruncateTable,
+                    ..
+                })
         );
 
         return Ok(plan);
@@ -923,6 +931,11 @@ macro_rules! define_plan {
                     Self::$stage(s)
                 }
             }
+
+            impl $(<$lt>)? $stage $(<$lt>)? {
+                #[allow(dead_code)]
+                pub const KIND: ActionKind = ActionKind::$stage;
+            }
         )+
 
         // We don't care about `large_enum_variant` in this case, because this
@@ -1210,13 +1223,18 @@ pub mod stage {
         }
 
         pub struct ApplySchemaChange<'i> {
+            /// Current value of 'global_schema_version' from _pico_property.
+            /// Only used for debugging purposes.
+            pub schema_version: u64,
             /// This DDL operation is being applied. Only used for logging.
             pub ddl: &'i Ddl,
-            /// Only used for logging
+            /// This will be the next schema version if the operation succeeds.
             pub pending_schema_version: u64,
             /// These are masters of all the replicasets in the cluster
-            pub targets: Vec<InstanceName>,
-            /// Request to call [`rpc::ddl_apply::proc_apply_schema_change`] on `targets`.
+            pub targets_total: Vec<InstanceName>,
+            /// A batch of `targets_total` to send the `rpc` request to on this iteration.
+            pub targets_batch: Vec<InstanceName>,
+            /// Request to call [`rpc::ddl_apply::proc_apply_schema_change`] on `targets_batch`.
             pub rpc: rpc::ddl_apply::Request,
         }
 
@@ -1228,6 +1246,9 @@ pub mod stage {
         }
 
         pub struct ApplyTruncateTable {
+            /// Current value of 'global_schema_version' from _pico_property.
+            /// Only used for debugging purposes.
+            pub schema_version: u64,
             /// Only used for logging
             pub pending_schema_version: u64,
             /// Tier name on of the sharded table which we're truncating.
@@ -1242,8 +1263,10 @@ pub mod stage {
             /// sent the `rpc` so that they update their schema_versions without
             /// actually truncating the table, because they don't store any data
             /// of this table.
-            pub other_tiers_masters: Vec<InstanceName>,
-            /// Request to call [`rpc::ddl_apply::proc_apply_schema_change`] on `other_tier_masters`.
+            pub other_tiers_masters_total: Vec<InstanceName>,
+            /// A batch of `other_tiers_masters_total` to send the `rpc` request to on this iteration.
+            pub other_tiers_masters_batch: Vec<InstanceName>,
+            /// Request to call [`rpc::ddl_apply::proc_apply_schema_change`] on `other_tier_masters_batch`.
             pub rpc: rpc::ddl_apply::Request,
             /// Global DdlCommit operation which should be applied once all
             /// targets successfully apply the TRUNCATE operation.
@@ -1354,6 +1377,16 @@ pub mod stage {
         pub struct FinishCatalogUpgrade {
             // DML operations to update state in `_pico_property`
             pub cas: cas::Request,
+        }
+    }
+
+    impl SleepDueToBackoff {
+        #[inline]
+        pub fn new(next_try: Instant, step_kind: ActionKind) -> Self {
+            Self {
+                next_try,
+                step_kind,
+            }
         }
     }
 }
@@ -1656,22 +1689,12 @@ pub fn handle_instances_becoming_online<'i>(
     // send the RPC again, no problem. After the finalizing CAS is applied
     // successfully the instance's state changes and next time around in this
     // function that instance will not be in `targets_total` anymore.
-    let skip_if_already_ok = false;
-    let res = get_next_batch(
-        &targets_total,
-        last_step_info,
-        batch_size,
-        skip_if_already_ok,
-    );
+    let res = get_next_batch_for_to_online(&targets_total, last_step_info, batch_size);
     let names_batch = match res {
         Ok(v) => v,
         Err(next_try) => {
             return Ok(Some(
-                SleepDueToBackoff {
-                    next_try,
-                    step_kind: ActionKind::ToOnline,
-                }
-                .into(),
+                SleepDueToBackoff::new(next_try, ActionKind::ToOnline).into(),
             ));
         }
     };

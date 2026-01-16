@@ -1,5 +1,4 @@
 use super::plan::{get_first_ready_replicaset_in_tier, maybe_responding};
-use super::ActionKind;
 use super::SleepDueToBackoff;
 use super::{Plan, ShardingBoot, UpdateCurrentVshardConfig};
 use crate::cas;
@@ -54,13 +53,15 @@ pub(super) fn handle_sharding<'i>(
             continue;
         }
 
-        // XXX: I don't like that we're mutating `last_step_info` in here, but
-        // we must check if vshard config versions have changed before choosing
-        // targets for RPC. Maybe we should instead call this before
-        // `action_plan` altogether, but I don't like how this complicates
-        // things. This is good enough for the first version I guess...
-        let step_kind = ActionKind::UpdateCurrentVshardConfig;
-        last_step_info.update_vshard_config_versions(tiers, step_kind);
+        // We must check if step kind is different from the one we tried on
+        // previous iteration, so that we know not to use irrelevant results
+        type Action = UpdateCurrentVshardConfig;
+        let step_kind = Action::KIND;
+        last_step_info.update_step_kind(step_kind);
+
+        // Clear previous results if vshard config version changed, because now
+        // everybody needs to apply the new configuration
+        last_step_info.update_vshard_config_versions(tiers);
 
         let targets_total: Vec<_> = maybe_responding(instances)
             .map(|instance| &instance.name)
@@ -74,17 +75,11 @@ pub(super) fn handle_sharding<'i>(
 
         // Note at this point all the instances should have their replication configured,
         // so it's ok to configure sharding for them
-        let res = get_next_batch(&targets_total, last_step_info, batch_size, true);
+        let res = get_next_batch(&targets_total, last_step_info, batch_size);
         let targets_batch = match res {
             Ok(v) => v,
             Err(next_try) => {
-                return Ok(Some(
-                    SleepDueToBackoff {
-                        next_try,
-                        step_kind,
-                    }
-                    .into(),
-                ));
+                return Ok(Some(SleepDueToBackoff::new(next_try, step_kind).into()));
             }
         };
 
@@ -105,7 +100,7 @@ pub(super) fn handle_sharding<'i>(
         let cas = cas::Request::new(bump, predicate, ADMIN_ID)?;
 
         return Ok(Some(
-            UpdateCurrentVshardConfig {
+            Action {
                 targets_total,
                 targets_batch,
                 rpc,

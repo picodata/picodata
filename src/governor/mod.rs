@@ -195,6 +195,11 @@ impl Loop {
             .cluster_version()
             .expect("storage should never fail");
 
+        let schema_version = storage
+            .properties
+            .global_schema_version()
+            .expect("getting of next schema version should never fail");
+
         let governor_operations: Vec<_> = storage
             .governor_queue
             .all_operations()
@@ -232,6 +237,7 @@ impl Loop {
             rpc_timeout,
             batch_size,
             global_cluster_version,
+            schema_version,
             &governor_operations,
             global_catalog_version,
             pending_catalog_version,
@@ -800,6 +806,9 @@ impl Loop {
             }) => {
                 set_status!("update instance state to online");
 
+                // Unlike in other cases here batch should never be empty,
+                // because we don't skip RPC if instance already replied Ok,
+                // because we need to remember to apply the finalizing Dml for it
                 debug_assert!(!targets_batch.is_empty());
 
                 last_step_info.set_pending(&targets_total);
@@ -832,6 +841,8 @@ impl Loop {
                         }
 
                         last_step_info.report_stats();
+
+                        // TODO: explain why no return Err() here
                     }
                 }
 
@@ -841,6 +852,7 @@ impl Loop {
                         "current_state" => %new_current_state,
                     ]
                     async {
+                        // FIXME: skip CAS if `ok_dmls` is empty
                         let ops = Op::single_dml_or_batch(ok_dmls);
                         let cas = cas::Request::new(ops, predicate, ADMIN_ID)?;
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
@@ -850,13 +862,20 @@ impl Loop {
             }
 
             Plan::ApplySchemaChange(ApplySchemaChange {
+                schema_version,
                 ddl,
                 pending_schema_version,
-                targets,
+                targets_total,
+                targets_batch,
                 rpc,
             }) => {
                 set_status!("apply clusterwide schema change");
-                let mut next_op: Op = Op::Nop;
+
+                last_step_info.save_schema_info(schema_version, pending_schema_version);
+                debug_assert!(!targets_total.is_empty());
+                last_step_info.set_pending(&targets_total);
+
+                let mut abort_cause = None;
                 governor_substep! {
                     "applying pending schema change" [
                         "ddl" => ?ddl,
@@ -866,19 +885,42 @@ impl Loop {
                         // Backup and TruncateTable are handled in different code paths
                         debug_assert!(!matches!(ddl, Ddl::Backup { .. } | Ddl::TruncateTable { .. }));
 
-                        // Calls `proc_apply_schema_change` on `targets`
-                        let res = collect_proc_apply_schema_change(&targets, &rpc, pool, rpc_timeout).await?;
-                        if let Err(OnError::Abort(cause)) = res {
-                            next_op = Op::DdlAbort { cause };
-                            crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");
-                            return Ok(());
+                        // Calls `proc_apply_schema_change` on `targets_batch`
+                        let res = collect_proc_apply_schema_change(
+                            last_step_info,
+                            targets_batch,
+                            &rpc,
+                            pool,
+                            rpc_timeout,
+                        ).await;
+
+                        last_step_info.report_stats();
+
+                        match res {
+                            Ok(()) => {}
+                            Err(OnError::Abort(cause)) => {
+                                abort_cause = Some(cause);
+                            }
+                            Err(OnError::Retry(error)) => {
+                                // If there were any other errors, end this step as a failure
+                                return Err(error);
+                            }
                         }
-                        res?;
-
-                        next_op = Op::DdlCommit;
-
-                        crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_COMMIT");
                     }
+                }
+
+                if abort_cause.is_none() && !last_step_info.all_instances_ok(&targets_total) {
+                    // This batch was successful, but there're still more RPCs to send out
+                    return ControlFlow::Continue(());
+                }
+
+                let next_op;
+                if let Some(cause) = abort_cause {
+                    next_op = Op::DdlAbort { cause };
+                    crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");
+                } else {
+                    next_op = Op::DdlCommit;
+                    crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_COMMIT");
                 }
 
                 let op_name = next_op.to_string();
@@ -911,44 +953,65 @@ impl Loop {
             }
 
             Plan::ApplyTruncateTable(ApplyTruncateTable {
+                schema_version,
                 pending_schema_version,
                 tier,
                 tier_masters_count,
-                other_tiers_masters,
+                other_tiers_masters_total,
+                other_tiers_masters_batch,
                 rpc,
                 success_cas,
             }) => {
                 set_status!("apply TRUNCATE TABLE");
+
+                last_step_info.save_schema_info(schema_version, pending_schema_version);
+                last_step_info.set_pending(&other_tiers_masters_total);
+
                 governor_substep! {
                     "applying pending TRUNCATE TABLE" [ "pending_schema_version" => pending_schema_version ]
                     async {
-                        // Calls `proc_apply_schema_change` on all masters of given `tier`
-                        collect_vshard_map_callrw_proc_apply_schema_change(
-                            &tier,
-                            tier_masters_count,
-                            &rpc,
-                            rpc_timeout,
-                        )?;
+                        if !last_step_info.truncate_map_callrw_ok {
+                            // Calls `proc_apply_schema_change` on all masters of given `tier`
+                            collect_vshard_map_callrw_proc_apply_schema_change(
+                                &tier,
+                                tier_masters_count,
+                                &rpc,
+                                rpc_timeout,
+                            )?;
+
+                            last_step_info.truncate_map_callrw_ok = true;
+                        }
 
                         // `ddl_map_callrw` sends requests to all replicaset masters in
                         // the tier to which ddl table belongs but we should update
                         // local_schema_change on all masters. That's why we make additional
                         // rpc calls via custom connection pool.
                         // Calls `proc_apply_schema_change` on `other_tiers_masters`
-                        collect_proc_apply_schema_change(
-                            &other_tiers_masters,
+                        let res = collect_proc_apply_schema_change(
+                            last_step_info,
+                            other_tiers_masters_batch,
                             &rpc,
                             pool,
                             rpc_timeout,
-                        ).await??;
+                        ).await;
 
-                        crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_COMMIT");
+                        last_step_info.report_stats();
+
+                        // End the step with failure only after RPC batching stats are reported
+                        res?;
                     }
+                }
+
+                if !last_step_info.all_instances_ok(&other_tiers_masters_total) {
+                    // This batch was successful, but there're still more RPCs to send out
+                    return ControlFlow::Continue(());
                 }
 
                 governor_substep! {
                     "finalizing TRUNCATE TABLE"
                     async {
+                        crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_COMMIT");
+
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
                         cas::compare_and_swap_local(&success_cas, deadline)?.no_retries()?;
                     }
