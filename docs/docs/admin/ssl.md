@@ -299,7 +299,7 @@ configure].
 ```yaml
 https:
     enabled: true
-    ca_file: cert.pem
+    cert_file: cert.pem
     key_file: key.pem
 ```
 

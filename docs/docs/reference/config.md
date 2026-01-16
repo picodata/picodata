@@ -442,14 +442,14 @@ HTTPS. Используется для получения метрик и дос
 
 При установке значения `true` требуется использовать 2 дополнительных параметра:
 
-- `ca_file` (*str*) — путь к файлу сертификата
+- `cert_file` (*str*) — путь к файлу сертификата
 - `key_file` (*str*) — путь к файлу с закрытым ключом
 
 а также, опционально, укажите путь к файлу с паролем, если он был задан
 в настройках сертификата (пароль требуется для расшифровки закрытого
 ключа):
 
-- `pass_file` (*str*)
+- `password_file` (*str*)
 
 При включенном HTTPS и использовании пароля, блок
 настроек файла конфигурации будет иметь следующий вид:
@@ -457,15 +457,15 @@ HTTPS. Используется для получения метрик и дос
 ```yaml
 https:
     enabled: true
-    ca_file: cert.pem
+    cert_file: cert.pem
     key_file: key.pem
-    pass_file: pass.txt
+    password_file: pass.txt
 ```
 
 Задание параметра в командной строке: [`picodata run --config-parameter`]. Пример:
 
 ```shell
-picodata run -c instance.https.enabled=true -c instance.https.ca_file=https/cert.pem -c instance.https.key_file=https/key.pem -c instance.https.pass_file=https/pass.txt
+picodata run -c instance.https.enabled=true -c instance.https.cert_file=https/cert.pem -c instance.https.key_file=https/key.pem -c instance.https.password_file=https/pass.txt
 ```
 
 ### instance.instance_dir {: #instance_instance_dir }
