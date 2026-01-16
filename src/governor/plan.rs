@@ -1242,6 +1242,9 @@ pub mod stage {
             pub other_tiers_masters: Vec<InstanceName>,
             /// Request to call [`rpc::ddl_apply::proc_apply_schema_change`] on `other_tier_masters`.
             pub rpc: rpc::ddl_apply::Request,
+            /// Global DdlCommit operation which should be applied once all
+            /// targets successfully apply the TRUNCATE operation.
+            pub success_cas: cas::Request,
         }
 
         pub struct ApplyBackup {

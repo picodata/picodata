@@ -14,6 +14,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixed governor's `ConfigureReplication` step was broken during upgrade from before 25.5.3
 - Fixed that instances from tiers with can_vote=false attempting to promote to raft leader.
+- Fixed a crash in case of any error during TRUNCATE operation.
 
 
 ## [25.5.5] - 2026-01-26

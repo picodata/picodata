@@ -245,9 +245,9 @@ pub fn apply_schema_change(
             };
 
             if should_apply {
-                let abort_reason = ddl_truncate_space_on_master(id).map_err(Error::Other)?;
-                if let Some(e) = abort_reason {
-                    return Err(Error::Aborted(e.into()));
+                let res = ddl_truncate_space_on_master(id).map_err(Error::Other)?;
+                if let Some(e) = res {
+                    return Err(Error::Other(e.into()));
                 }
             }
         }
