@@ -13,14 +13,15 @@ use crate::proc_name;
 use crate::replicaset::Replicaset;
 use crate::schema::ADMIN_ID;
 use crate::storage;
-use crate::storage::SystemTable;
+use crate::storage::{Catalog, SystemTable};
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft::op::{Dml, Op};
-use crate::traft::Result;
-use crate::traft::{error::Error, node};
+use crate::traft::{error::Error, node, ConnectionType};
+use crate::traft::{Address, RaftId, Result};
 use crate::util::Uppercase;
 use crate::version::version_is_new_enough;
+use rand::RngExt;
 use smallvec::smallvec;
 use smallvec::SmallVec;
 use smol_str::format_smolstr;
@@ -447,6 +448,66 @@ pub fn update_instance(
 // update_our_target_state_to_online
 ////////////////////////////////////////////////////////////////////////////////
 
+fn choose_random_node_with_known_address(
+    storage: &Catalog,
+    self_id: RaftId,
+) -> Result<Option<(RaftId, Address)>> {
+    let voting_tiers = storage
+        .tiers
+        .all_tiers()?
+        .into_iter()
+        .filter(|tier| tier.can_vote)
+        .map(|tier| tier.name)
+        .collect::<HashSet<_>>();
+
+    let mut candidate_instances = storage
+        .instances
+        .all_instances()?
+        .into_iter()
+        .filter(|instance| {
+            // - don't choose Expelled instances
+            // don't check Online/Offline states, since our information on that is likely to be out of date
+            // (we are restarting and will need to catch up)
+            // - don't choose ourselves (we'll know if we are the leader)
+            // - don't choose nodes from non-voting tiers
+            instance.current_state.variant != Expelled
+                && instance.raft_id != self_id
+                && voting_tiers.contains(&instance.tier)
+        })
+        .map(|instance| instance.raft_id)
+        .collect::<Vec<_>>();
+
+    tlog!(
+        Debug,
+        "choosing a random instance id from {:?}",
+        candidate_instances
+    );
+
+    let rng = &mut rand::rng();
+
+    while !candidate_instances.is_empty() {
+        let candidate_index = rng.random_range(0..candidate_instances.len());
+
+        let candidate_id = candidate_instances[candidate_index];
+        if let Some(candidate_address) = storage
+            .peer_addresses
+            .get(candidate_id, &ConnectionType::Iproto)?
+        {
+            return Ok(Some((candidate_id, candidate_address)));
+        }
+
+        tlog!(
+            Debug,
+            "dropping instance {} from candidates since its peer address is not known",
+            candidate_id
+        );
+        candidate_instances.swap_remove(candidate_index);
+    }
+
+    // no more candidates left, we know addresses of no instances
+    Ok(None)
+}
+
 pub fn update_our_target_state_to_online(
     node: &node::Node,
     reason: &str,
@@ -509,8 +570,25 @@ pub fn update_our_target_state_to_online(
 
         let cluster_name = node.topology_cache.cluster_name;
         let cluster_uuid = node.topology_cache.cluster_uuid;
-        // Doesn't have to be leader - can be any online peer
-        let leader_id = node.status().leader_id;
+        // Use the leader_id as reported by the raft loop as the main source of truth
+        let mut leader_id = node.status().leader_id;
+
+        // if raft loop doesn't yet provide the leader_id (because it didn't get a heartbeat from master yet)
+        // try to use a random peer with known address
+        if leader_id.is_none() {
+            if let Some((candidate_id, _candidate_address)) =
+                choose_random_node_with_known_address(&node.storage, node.raft_id)?
+            {
+                tlog!(
+                    Info,
+                    "leader address is unknown, trying to send proc_update_instance to a random peer id {}",
+                    candidate_id
+                );
+
+                leader_id = Some(candidate_id);
+            }
+        }
+
         let leader_address = leader_id.and_then(|id| {
             node.storage
                 .peer_addresses

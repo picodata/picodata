@@ -2241,6 +2241,14 @@ impl Tiers {
         self.space.replace(tier)?;
         Ok(())
     }
+
+    #[inline]
+    pub fn all_tiers(&self) -> tarantool::Result<Vec<Tier>> {
+        self.space
+            .select(IteratorType::All, &())?
+            .map(|tuple| tuple.decode())
+            .collect()
+    }
 }
 
 impl ToEntryIter<MP_SERDE> for Tiers {

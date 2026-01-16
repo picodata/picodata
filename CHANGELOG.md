@@ -72,6 +72,7 @@ with the `YY.MINOR.MICRO` scheme.
   END $$;
   ```
 - Add support for `EXPLAIN (RAW)` for block queries.
+- Speed up instance restart by actively trying to identify the raft leader instead of waiting for it to send a heartbeat to us.
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:
