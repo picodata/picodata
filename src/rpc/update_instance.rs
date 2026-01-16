@@ -728,6 +728,12 @@ pub fn update_our_target_state_to_online(
                 // Hopefully a network error happened? Try again later.
                 error_message = e.to_string();
             }
+            Err(timeout::Error::Failed(TntError::ConnectionClosed(e)))
+                if matches!(e.as_ref(), TntError::Tcp(_) | TntError::IO(_)) =>
+            {
+                // Yet another flavor of a network error happened. Try again later.
+                error_message = e.to_string();
+            }
             Err(timeout::Error::Failed(TntError::Remote(e)))
                 if e.error_code() == ErrorCode::NotALeader as u32 =>
             {
