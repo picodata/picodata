@@ -6959,3 +6959,41 @@ def test_gl2405(cluster: Cluster):
     )
 
     assert result == [[0]]
+
+
+def test_gl2626(cluster: Cluster):
+    cluster.deploy(instance_count=5)
+    cluster.wait_balanced()
+
+    i1 = cluster.instances[0]
+    i1.sql(
+        """
+        CREATE TABLE t (a INT PRIMARY KEY);
+        """
+    )
+    i1.sql(
+        """
+        INSERT INTO t VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9), (10)
+        """
+    )
+    cluster.wait_balanced()
+
+    i1.sql(
+        """
+        ALTER SYSTEM SET sql_motion_row_max = 5;
+        """
+    )
+
+    result = i1.sql(
+        """
+        SELECT 1 FROM t LIMIT 1 OPTION(SQL_MOTION_ROW_MAX = 0);
+        """
+    )
+    assert result == [[1]]
+
+    with pytest.raises(TarantoolError, match="Exceeded maximum number of rows \\(1\\) in virtual table"):
+        i1.sql(
+            """
+            SELECT 1 FROM t LIMIT 1;
+            """
+        )
