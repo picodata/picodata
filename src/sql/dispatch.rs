@@ -419,8 +419,7 @@ fn dql_execution_result_process<'lua, 'p>(
         })?;
         match res {
             SqlExecute::Dql(tuples) => {
-                let ibuf_rows = port_write_tuples(port, tuples, max_rows, row_count, row_len, &rs)?;
-                row_count += ibuf_rows;
+                port_write_tuples(port, tuples, max_rows, &mut row_count, row_len, &rs)?;
             }
             _ => unreachable!("We have already checked that there are no MISS or DML responses"),
         }
@@ -434,18 +433,18 @@ fn port_write_tuples<'tuples, 'p>(
     port: &mut impl Port<'p>,
     tuples: TupleIter<'tuples>,
     max_rows: u64,
-    mut row_count: u64,
+    row_count: &mut u64,
     row_len: u32,
     rs: &str,
-) -> SqlResult<u64> {
+) -> SqlResult<()> {
     for mp in tuples {
         let mp = mp.map_err(|e| {
             SbroadError::DispatchError(format_smolstr!(
                 "Failed to decode tuple from replicaset {rs}: {e}"
             ))
         })?;
-        row_count += 1;
-        if max_rows > 0 && row_count > max_rows {
+        *row_count += 1;
+        if max_rows > 0 && *row_count > max_rows {
             return Err(SbroadError::DispatchError(format_smolstr!(
                 "Exceeded maximum number of rows ({max_rows}) in virtual table: {row_count}"
             )));
@@ -457,7 +456,7 @@ fn port_write_tuples<'tuples, 'p>(
             ))
         })?;
     }
-    Ok(row_count)
+    Ok(())
 }
 
 fn port_append_mp<'p>(port: &mut impl Port<'p>, mp: &[u8], row_len: u32) -> IoResult<()> {

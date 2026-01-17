@@ -6991,9 +6991,9 @@ def test_gl2626(cluster: Cluster):
     )
     assert result == [[1]]
 
-    with pytest.raises(TarantoolError, match="Exceeded maximum number of rows \\(1\\) in virtual table"):
-        i1.sql(
-            """
-            SELECT 1 FROM t LIMIT 1;
-            """
-        )
+    result = i1.sql(
+        """
+        SELECT 1 FROM t LIMIT 1;
+        """
+    )
+    assert result == [[1]]
