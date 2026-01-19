@@ -3,7 +3,6 @@ use crate::errors::SbroadError;
 use crate::executor::engine::helpers::{new_table_name, write_insert_args, TupleBuilderPattern};
 use crate::executor::engine::VersionMap;
 use crate::executor::ir::{ExecutionPlan, QueryType};
-use crate::executor::protocol::SchemaInfo;
 use crate::executor::vtable::{VTableTuple, VirtualTable, VirtualTableTupleEncoder};
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::relational::Relational;
@@ -24,17 +23,11 @@ use sql_protocol::dml::update::UpdateType;
 use sql_protocol::dml::update::{
     CoreUpdateDataSource, UpdateDataSource, UpdateSharedKeyDataSource,
 };
-use sql_protocol::dql::DQLCacheMissResult::{Sql, VtablesMetadata};
-use sql_protocol::dql::DQLResult::{Options, Params, Vtables};
-use sql_protocol::dql::{DQLCacheMissResult, DQLResult};
 use sql_protocol::dql_encoder::{
     ColumnType, DQLCacheMissDataSource, DQLDataSource, DQLOptions, MsgpackEncode,
 };
-use sql_protocol::error::ProtocolError;
-use sql_protocol::iterators::MsgpackMapIterator;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
-use std::marker::PhantomData;
 use std::ops::Not;
 use std::rc::Rc;
 use tarantool::msgpack::{Context, Encode};
@@ -752,151 +745,4 @@ pub fn build_dql_data_source(
         vtables,
         plan: exec_plan,
     })
-}
-
-pub trait PlanInfo {
-    fn schema_info(&self) -> &SchemaInfo;
-
-    fn plan_id(&self) -> u64;
-
-    fn get_cache_hit_iter(&self) -> impl Iterator<Item = Result<DQLResult<'_>, ProtocolError>>;
-
-    fn get_cache_miss_iter(
-        &self,
-    ) -> impl Iterator<Item = Result<DQLCacheMissResult<'_>, ProtocolError>>;
-}
-
-pub struct FullDeletePlanInfo {
-    plan_id: u64,
-    schema_info: SchemaInfo,
-    options: DQLOptions,
-    sql: String,
-}
-
-impl FullDeletePlanInfo {
-    pub fn new(plan_id: u64, table_name: &str, options: DQLOptions) -> Self {
-        Self {
-            plan_id,
-            options,
-            schema_info: SchemaInfo::default(),
-            sql: format!("DELETE FROM \"{}\"", table_name),
-        }
-    }
-}
-
-impl PlanInfo for FullDeletePlanInfo {
-    fn schema_info(&self) -> &SchemaInfo {
-        &self.schema_info
-    }
-
-    fn plan_id(&self) -> u64 {
-        self.plan_id
-    }
-
-    fn get_cache_hit_iter(&self) -> impl Iterator<Item = Result<DQLResult<'_>, ProtocolError>> {
-        FullDeleteCacheHitIter::new(self.options)
-    }
-
-    fn get_cache_miss_iter(
-        &self,
-    ) -> impl Iterator<Item = Result<DQLCacheMissResult<'_>, ProtocolError>> {
-        FullDeleteCacheMissIter::new(&self.sql)
-    }
-}
-
-#[derive(Clone, Copy)]
-#[repr(u8)]
-enum FullDeleteState {
-    Vtables = 0,
-    Options,
-    Params,
-    End,
-}
-
-struct FullDeleteCacheHitIter<'a> {
-    state: FullDeleteState,
-    options: DQLOptions,
-    phantom: PhantomData<&'a str>,
-}
-
-impl FullDeleteCacheHitIter<'_> {
-    fn new(options: DQLOptions) -> Self {
-        Self {
-            state: FullDeleteState::Vtables,
-            options,
-            phantom: PhantomData,
-        }
-    }
-}
-
-impl<'a> Iterator for FullDeleteCacheHitIter<'a> {
-    type Item = Result<DQLResult<'a>, ProtocolError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.state {
-            FullDeleteState::Vtables => {
-                self.state = FullDeleteState::Options;
-                Some(Ok(Vtables(MsgpackMapIterator::empty())))
-            }
-            FullDeleteState::Options => {
-                self.state = FullDeleteState::Params;
-                Some(Ok(Options(self.options)))
-            }
-            FullDeleteState::Params => {
-                self.state = FullDeleteState::End;
-                Some(Ok(Params(&[0x90]))) // empty array
-            }
-            FullDeleteState::End => None,
-        }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = (FullDeleteState::End as usize).saturating_sub(self.state as usize);
-        (len, Some(len))
-    }
-}
-
-#[derive(Clone, Copy)]
-#[repr(u8)]
-enum FullDeleteMissState {
-    VtablesMetadata = 0,
-    Sql,
-    End,
-}
-
-struct FullDeleteCacheMissIter<'a> {
-    state: FullDeleteMissState,
-    sql: &'a str,
-}
-
-impl<'a> FullDeleteCacheMissIter<'a> {
-    fn new(sql: &'a str) -> Self {
-        Self {
-            state: FullDeleteMissState::VtablesMetadata,
-            sql,
-        }
-    }
-}
-
-impl<'a> Iterator for FullDeleteCacheMissIter<'a> {
-    type Item = Result<DQLCacheMissResult<'a>, ProtocolError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.state {
-            FullDeleteMissState::VtablesMetadata => {
-                self.state = FullDeleteMissState::Sql;
-                Some(Ok(VtablesMetadata(MsgpackMapIterator::empty())))
-            }
-            FullDeleteMissState::Sql => {
-                self.state = FullDeleteMissState::End;
-                Some(Ok(Sql(self.sql)))
-            }
-            FullDeleteMissState::End => None,
-        }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = (FullDeleteMissState::End as usize).saturating_sub(self.state as usize);
-        (len, Some(len))
-    }
 }

@@ -35,14 +35,6 @@ impl<'a, K, V> MsgpackMapIterator<'a, K, V> {
             decode_value_f: |_| Err(ProtocolError::DecodeError("empty map".to_string())),
         }
     }
-
-    pub fn len(&self) -> u32 {
-        self.count
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.count == 0
-    }
 }
 
 impl<K, V> Iterator for MsgpackMapIterator<'_, K, V> {
@@ -72,6 +64,20 @@ impl<K, V> Iterator for MsgpackMapIterator<'_, K, V> {
     }
 }
 
+impl<K, V> ExactSizeIterator for MsgpackMapIterator<'_, K, V> {}
+
+impl<K, V> Clone for MsgpackMapIterator<'_, K, V> {
+    fn clone(&self) -> Self {
+        Self {
+            count: self.count,
+            current: self.current,
+            raw_msgpack: self.raw_msgpack.clone(),
+            decode_key_f: self.decode_key_f,
+            decode_value_f: self.decode_value_f,
+        }
+    }
+}
+
 pub struct MsgpackArrayIterator<'a, T> {
     count: u32,
     current: u32,
@@ -91,14 +97,6 @@ impl<'a, T> MsgpackArrayIterator<'a, T> {
             raw_msgpack: Cursor::new(raw_msgpack),
             decode_f,
         }
-    }
-
-    pub fn len(&self) -> u32 {
-        self.count
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.count == 0
     }
 }
 
@@ -124,6 +122,8 @@ impl<T> Iterator for MsgpackArrayIterator<'_, T> {
         (m as usize, Some(m as usize))
     }
 }
+
+impl<T> ExactSizeIterator for MsgpackArrayIterator<'_, T> {}
 
 pub struct TupleIterator<'a> {
     data: Cursor<&'a [u8]>,

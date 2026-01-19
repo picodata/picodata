@@ -2066,55 +2066,6 @@ impl Plan {
             hasher: XxHash3_64::default(),
         };
 
-        for (id, version) in &self.table_version_map {
-            hasher.write(id.to_be_bytes().as_slice()).map_err(|e| {
-                SbroadError::FailedTo(
-                    Action::Serialize,
-                    None,
-                    format_smolstr!("plan nodes to binary: {e:?}"),
-                )
-            })?;
-            hasher
-                .write(version.to_be_bytes().as_slice())
-                .map_err(|e| {
-                    SbroadError::FailedTo(
-                        Action::Serialize,
-                        None,
-                        format_smolstr!("plan nodes to binary: {e:?}"),
-                    )
-                })?;
-        }
-
-        for (index_id, version) in &self.index_version_map {
-            hasher
-                .write(index_id[0].to_be_bytes().as_slice())
-                .map_err(|e| {
-                    SbroadError::FailedTo(
-                        Action::Serialize,
-                        None,
-                        format_smolstr!("plan nodes to binary: {e:?}"),
-                    )
-                })?;
-            hasher
-                .write(index_id[1].to_be_bytes().as_slice())
-                .map_err(|e| {
-                    SbroadError::FailedTo(
-                        Action::Serialize,
-                        None,
-                        format_smolstr!("plan nodes to binary: {e:?}"),
-                    )
-                })?;
-            hasher
-                .write(version.to_be_bytes().as_slice())
-                .map_err(|e| {
-                    SbroadError::FailedTo(
-                        Action::Serialize,
-                        None,
-                        format_smolstr!("plan nodes to binary: {e:?}"),
-                    )
-                })?;
-        }
-
         for level_node in nodes {
             let node = self.get_node(level_node.1)?;
 

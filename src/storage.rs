@@ -21,8 +21,7 @@ use crate::schema::ServiceRouteKey;
 use crate::schema::{IndexDef, IndexOption, TableDef};
 use crate::schema::{PluginDef, INITIAL_SCHEMA_VERSION};
 use crate::schema::{PrivilegeDef, RoutineDef, UserDef};
-#[allow(deprecated)]
-use crate::sql::execute::dql_execute_second_round;
+use crate::sql::execute::full_delete_execute;
 use crate::sql::port::PicoPortC;
 use crate::sql::storage::StorageRuntime;
 use crate::static_ref;
@@ -438,20 +437,21 @@ impl Catalog {
             },
             Dml::Replace { tuple, .. } => space.replace(tuple).map(Some),
             Dml::Update { key, ops, .. } => space.update(key, ops),
-            Dml::Delete { key, metainfo, .. } => {
-                if let Some(info) = metainfo {
-                    let rt = StorageRuntime::new();
-                    let mut info = info.clone();
-                    let mut port = TarantoolPort::new_port_c();
-                    let mut pico_port = PicoPortC::from(unsafe { port.as_mut_port_c() });
-                    #[allow(deprecated)]
-                    dql_execute_second_round(&rt, &mut info, &mut pico_port)
-                        .map_err(|sbroad_err| TntError::Other(format!("{}", sbroad_err).into()))?;
-
-                    Ok(None)
-                } else {
-                    space.delete(key).map(|_| None)
-                }
+            Dml::Delete {
+                key,
+                metainfo: None,
+                ..
+            } => space.delete(key).map(|_| None),
+            Dml::Delete {
+                metainfo: Some(info),
+                ..
+            } => {
+                let rt = StorageRuntime::new();
+                let mut port = TarantoolPort::new_port_c();
+                let mut pico_port = PicoPortC::from(unsafe { port.as_mut_port_c() });
+                full_delete_execute(&rt, info, &mut pico_port)
+                    .map_err(|sbroad_err| TntError::Other(format!("{}", sbroad_err).into()))?;
+                Ok(None)
             }
         }
     }

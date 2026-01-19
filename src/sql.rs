@@ -18,7 +18,7 @@ use crate::schema::{
     ShardingFn, UserDef, ADMIN_ID,
 };
 use crate::sql::router::RouterRuntime;
-use crate::sql::storage::{GlobalDeleteInfo, StorageRuntime};
+use crate::sql::storage::{FullDeleteInfo, StorageRuntime};
 use crate::storage::Catalog;
 use crate::storage::{get_backup_dir_name, space_by_name, DbConfig, SystemTable, ToEntryIter};
 use crate::sync::wait_for_index_globally;
@@ -2890,17 +2890,16 @@ fn create_dml_ops(
     if childen.is_empty() {
         // If children are empty, there's delete without filter and
         // there's no need to generate tuples.
-        let plan_id = plan.pattern_id(top)?;
-        let info = GlobalDeleteInfo {
-            table_name: table_name.clone(),
+        let plan_id = plan.new_pattern_id(top)?;
+        let info = FullDeleteInfo::new(
             plan_id,
-            _params: vec![],
-            schema_info: SchemaInfo::new(
+            SchemaInfo::new(
                 plan.table_version_map.clone(),
                 plan.index_version_map.clone(),
             ),
-            options: plan.effective_options.clone(),
-        };
+            plan.effective_options.clone(),
+            table_name.as_str(),
+        );
         let op = Dml::delete(space.id(), &Vec::<u8>::new(), current_user, Some(info))?;
         return Ok((vec![op], space.len()?));
     }

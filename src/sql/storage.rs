@@ -6,7 +6,7 @@ use crate::sql::dispatch::port_write_metadata;
 #[allow(deprecated)]
 use crate::sql::execute::{
     dml_execute, dql_execute, dql_execute_first_round, dql_execute_second_round, explain_execute,
-    old_dml_execute, old_sql_execute, old_stmt_execute,
+    old_dml_execute,
 };
 use crate::sql::router::{
     calculate_bucket_id, get_index_version_by_pk, get_table_name_and_version, get_table_version,
@@ -18,15 +18,11 @@ use sql::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::bucket::Buckets;
 use sql::executor::engine::helpers::vshard::get_random_bucket;
-use sql::executor::engine::helpers::{
-    table_name, EncodedQueryInfo, FullPlanInfo, RequiredPlanInfo,
-};
+use sql::executor::engine::helpers::{new_table_name, table_name, EncodedQueryInfo};
 use sql::executor::engine::{QueryCache, StorageCache, Vshard};
 use sql::executor::ir::{ExecutionPlan, QueryType};
 use sql::executor::lru::{Cache, EvictFn, LRUCache};
-use sql::executor::protocol::{
-    EncodedVTables, OptionalData, RequiredData, SchemaInfo, VTablesMeta,
-};
+use sql::executor::protocol::{OptionalData, RequiredData, SchemaInfo};
 use sql::executor::{Port, PortType};
 use sql::ir::helpers::RepeatableState;
 use sql::ir::options::Options;
@@ -39,17 +35,25 @@ use crate::metrics::{
 };
 use smol_str::{format_smolstr, SmolStr};
 use sql::executor::vdbe::SqlStmt;
+use sql::executor::vtable::{VirtualTable, VirtualTableTupleEncoder};
 use sql::ir::node::NodeId;
 use sql::ir::tree::Snapshot;
 use sql::ir::value::Value;
 use sql_protocol::decode::{ProtocolMessage, ProtocolMessageIter, ProtocolMessageType};
+use sql_protocol::dql_encoder::ColumnType;
+use sql_protocol::error::ProtocolError;
+use sql_protocol::iterators::TupleIterator;
 use std::collections::HashMap;
 use std::rc::Rc;
 use tarantool::space::{Space, SpaceId};
 
 use crate::schema::ADMIN_ID;
+use crate::sql::execute::{
+    sql_execute, stmt_execute, LazyVirtualTableEncoder, LendingTupleIterator,
+};
 use crate::tlog;
 use tarantool::fiber::Mutex;
+use tarantool::msgpack;
 use tarantool::session::with_su;
 
 thread_local!(
@@ -358,29 +362,30 @@ impl QueryCache for StorageRuntime {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct GlobalDeleteInfo {
-    pub table_name: SmolStr,
-    pub plan_id: SmolStr,
-    pub _params: Vec<Value>,
-    pub schema_info: SchemaInfo,
-    pub options: Options,
+pub struct FullDeleteInfo {
+    plan_id: u64,
+    schema_info: SchemaInfo,
+    options: Options,
+    sql: SmolStr,
 }
 
-impl RequiredPlanInfo for GlobalDeleteInfo {
-    fn id(&self) -> &SmolStr {
-        &self.plan_id
+impl FullDeleteInfo {
+    pub fn new(plan_id: u64, schema_info: SchemaInfo, options: Options, table_name: &str) -> Self {
+        Self {
+            plan_id,
+            schema_info,
+            options,
+            sql: format_smolstr!("DELETE FROM \"{}\"", table_name),
+        }
     }
+}
 
-    fn params(&self) -> &Vec<Value> {
-        &self._params
-    }
-
-    fn schema_info(&self) -> &SchemaInfo {
-        &self.schema_info
-    }
-
-    fn extract_data(&mut self) -> EncodedVTables {
-        HashMap::new()
+impl PlanInfo for FullDeleteInfo {
+    fn vtables(
+        &self,
+    ) -> impl ExactSizeIterator<Item = Result<(&str, impl LendingTupleIterator), ProtocolError>>
+    {
+        HashMap::<&str, TupleIterator>::new().into_iter().map(Ok)
     }
 
     fn sql_vdbe_opcode_max(&self) -> u64 {
@@ -390,72 +395,155 @@ impl RequiredPlanInfo for GlobalDeleteInfo {
     fn sql_motion_row_max(&self) -> u64 {
         self.options.sql_motion_row_max as u64
     }
-}
 
-impl FullPlanInfo for GlobalDeleteInfo {
-    fn take_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError> {
-        let local_sql = format!("DELETE FROM \"{}\"", self.table_name);
-        Ok((local_sql, vec![], HashMap::new()))
+    fn params(&self) -> &[u8] {
+        &[0x90]
     }
 }
 
-struct LocalExecutionQueryInfo {
-    exec_plan: ExecutionPlan,
-    plan_id: SmolStr,
-    params: Vec<Value>,
-    schema_info: SchemaInfo,
-}
-
-impl RequiredPlanInfo for LocalExecutionQueryInfo {
-    fn id(&self) -> &SmolStr {
-        &self.plan_id
-    }
-
-    fn params(&self) -> &Vec<Value> {
-        &self.params
-    }
-
+impl ExpandedPlanInfo for FullDeleteInfo {
     fn schema_info(&self) -> &SchemaInfo {
         &self.schema_info
     }
 
-    fn sql_vdbe_opcode_max(&self) -> u64 {
-        self.exec_plan
-            .get_ir_plan()
-            .effective_options
-            .sql_vdbe_opcode_max as u64
+    fn plan_id(&self) -> u64 {
+        self.plan_id
     }
 
-    fn sql_motion_row_max(&self) -> u64 {
-        self.exec_plan.get_sql_motion_row_max()
+    fn vtable_metadata(
+        &self,
+    ) -> impl ExactSizeIterator<Item = Result<(&str, Vec<(&str, ColumnType)>), ProtocolError>> {
+        HashMap::new().into_iter().map(Ok)
     }
 
-    fn extract_data(&mut self) -> EncodedVTables {
-        self.exec_plan.encode_vtables()
+    fn sql(&self) -> &str {
+        self.sql.as_str()
     }
 }
 
-impl FullPlanInfo for LocalExecutionQueryInfo {
-    fn take_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError> {
-        let vtables = self.exec_plan.get_vtables();
-        let mut meta = VTablesMeta::with_capacity(vtables.len());
-        for (id, table) in vtables.iter() {
-            meta.insert(*id, table.metadata());
+pub trait PlanInfo {
+    fn vtables(
+        &self,
+    ) -> impl ExactSizeIterator<Item = Result<(&str, impl LendingTupleIterator), ProtocolError>>;
+    fn sql_vdbe_opcode_max(&self) -> u64;
+    fn sql_motion_row_max(&self) -> u64;
+    fn params(&self) -> &[u8];
+}
+
+pub trait ExpandedPlanInfo {
+    fn schema_info(&self) -> &SchemaInfo;
+    fn plan_id(&self) -> u64;
+    #[allow(clippy::type_complexity)]
+    fn vtable_metadata(
+        &self,
+    ) -> impl ExactSizeIterator<Item = Result<(&str, Vec<(&str, ColumnType)>), ProtocolError>>;
+    fn sql(&self) -> &str;
+}
+
+pub struct LocalExecutionInfo<'a> {
+    vtables: &'a HashMap<SmolStr, Rc<VirtualTable>>,
+    sql_motion_row_max: u64,
+    sql_vdbe_opcode_max: u64,
+    params: Vec<u8>,
+}
+
+impl<'a> LocalExecutionInfo<'a> {
+    pub fn new(
+        vtables: &'a HashMap<SmolStr, Rc<VirtualTable>>,
+        sql_motion_row_max: u64,
+        sql_vdbe_opcode_max: u64,
+        params: Vec<u8>,
+    ) -> Self {
+        Self {
+            vtables,
+            sql_motion_row_max,
+            sql_vdbe_opcode_max,
+            params,
         }
+    }
+}
 
-        let top_id = self.exec_plan.get_ir_plan().get_top()?;
-        let sp = SyntaxPlan::new(&self.exec_plan, top_id, Snapshot::Oldest)?;
-        let ordered = OrderedSyntaxNodes::try_from(sp)?;
-        let nodes = ordered.to_syntax_data()?;
+impl PlanInfo for LocalExecutionInfo<'_> {
+    fn vtables(
+        &self,
+    ) -> impl ExactSizeIterator<Item = Result<(&str, impl LendingTupleIterator), ProtocolError>>
+    {
+        self.vtables.iter().map(|(name, table)| {
+            Ok((
+                name.as_str(),
+                LazyVirtualTableEncoder::new(
+                    table
+                        .get_tuples()
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, tuple)| VirtualTableTupleEncoder::new(tuple, idx as u64)),
+                ),
+            ))
+        })
+    }
 
-        let (local_sql, motion_ids) = self.exec_plan.generate_sql(
-            &nodes,
-            self.plan_id.as_str(),
-            Some(&meta),
-            |name: &str, id| table_name(name, id),
-        )?;
+    fn params(&self) -> &[u8] {
+        self.params.as_slice()
+    }
 
-        Ok((local_sql, motion_ids, meta))
+    fn sql_vdbe_opcode_max(&self) -> u64 {
+        self.sql_vdbe_opcode_max
+    }
+
+    fn sql_motion_row_max(&self) -> u64 {
+        self.sql_motion_row_max
+    }
+}
+
+pub struct ExpandedLocalExecutionInfo<'a> {
+    schema_info: SchemaInfo,
+    plan_id: u64,
+    vtables: &'a HashMap<SmolStr, Rc<VirtualTable>>,
+    sql: String,
+}
+
+impl<'a> ExpandedLocalExecutionInfo<'a> {
+    pub fn new(
+        schema_info: SchemaInfo,
+        plan_id: u64,
+        vtables: &'a HashMap<SmolStr, Rc<VirtualTable>>,
+        sql: String,
+    ) -> Self {
+        Self {
+            schema_info,
+            plan_id,
+            vtables,
+            sql,
+        }
+    }
+}
+
+impl ExpandedPlanInfo for ExpandedLocalExecutionInfo<'_> {
+    fn schema_info(&self) -> &SchemaInfo {
+        &self.schema_info
+    }
+
+    fn plan_id(&self) -> u64 {
+        self.plan_id
+    }
+
+    fn vtable_metadata(
+        &self,
+    ) -> impl ExactSizeIterator<Item = Result<(&str, Vec<(&str, ColumnType)>), ProtocolError>> {
+        self.vtables.iter().map(|(name, table)| {
+            Ok((
+                name.as_str(),
+                table
+                    .get_columns()
+                    .iter()
+                    .map(|column| (column.name.as_str(), column.r#type.into()))
+                    .collect(),
+            ))
+        })
+    }
+
+    fn sql(&self) -> &str {
+        self.sql.as_str()
     }
 }
 
@@ -474,69 +562,121 @@ impl Vshard for StorageRuntime {
 
     fn exec_ir_on_any_node<'p>(
         &self,
-        ex_plan: ExecutionPlan,
+        mut ex_plan: ExecutionPlan,
         buckets: &Buckets,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
-        if !ex_plan.get_ir_plan().is_raw_explain() {
-            port_write_metadata(port, &ex_plan)?;
-        }
         let plan = ex_plan.get_ir_plan();
-        let query_type = ex_plan.query_type()?;
-        let top_id = plan.get_top()?;
         let explain_type = plan.get_explain_type();
-        let plan_id = plan.pattern_id(top_id)?;
-        let params = ex_plan.to_params().to_vec();
-        let table_version_map = ex_plan.get_ir_plan().table_version_map.clone();
-        let index_version_map = ex_plan.get_ir_plan().index_version_map.clone();
-        let schema_info = SchemaInfo::new(table_version_map, index_version_map);
-        let mut info = LocalExecutionQueryInfo {
-            exec_plan: ex_plan,
-            plan_id,
-            params,
-            schema_info,
-        };
+        let top_id = plan.get_top()?;
 
-        #[allow(deprecated)]
-        match explain_type {
-            None => {
-                if let QueryType::DML = query_type {
-                    // DML queries are not supported on arbitrary nodes
-                    return Err(SbroadError::Other(
-                        "DML queries are not supported on arbitrary nodes".into(),
-                    ));
-                }
+        if let Some(explain_type) = explain_type {
+            let is_fmt = match explain_type {
+                ExplainType::Explain => unreachable!("Explain should already be handled."),
+                ExplainType::ExplainQueryPlan => false,
+                ExplainType::ExplainQueryPlanFmt => true,
+            };
 
-                use sql::executor::vdbe::ExecutionInsight::*;
-                let mut cache_guarded = self.cache().lock();
+            let sql_vdbe_opcode_max = plan.effective_options.sql_vdbe_opcode_max as u64;
 
-                if let Some((stmt, motion_ids)) = cache_guarded.get(info.id())? {
-                    // Transaction rollbacks are very expensive in Tarantool, so we're going to
-                    // avoid transactions for DQL queries. We can achieve atomicity by truncating
-                    // temporary tables. Isolation is guaranteed by keeping a lock on the cache.
-                    match old_stmt_execute(stmt, &mut info, motion_ids, port)? {
-                        Nothing => report_storage_cache_hit("dql", "local"),
-                        BusyStmt => report_storage_cache_miss("dql", "local", "busy"),
-                        StaleStmt => report_storage_cache_miss("dql", "local", "stale"),
-                    }
-                } else {
-                    match old_sql_execute::<Self>(&mut cache_guarded, &mut info, port)? {
-                        Nothing => report_storage_cache_miss("dql", "local", "true"),
-                        BusyStmt => report_storage_cache_miss("dql", "local", "busy"),
-                        StaleStmt => report_storage_cache_miss("dql", "local", "stale"),
-                    }
-                }
+            let plan_id = plan.new_pattern_id(top_id)?;
+            let vtables = ex_plan
+                .get_vtables()
+                .iter()
+                .map(|(node_id, table)| (new_table_name(plan_id, *node_id), table.clone()))
+                .collect::<HashMap<_, _>>();
+
+            let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Oldest)?;
+            let ordered = OrderedSyntaxNodes::try_from(sp)?;
+            let nodes = ordered.to_syntax_data()?;
+            let (local_sql, _) = ex_plan.generate_sql(&nodes, plan_id, None, new_table_name)?;
+
+            let schema_info = SchemaInfo::new(
+                std::mem::take(&mut ex_plan.get_mut_ir_plan().table_version_map),
+                std::mem::take(&mut ex_plan.get_mut_ir_plan().index_version_map),
+            );
+
+            let miss_info = ExpandedLocalExecutionInfo {
+                schema_info,
+                plan_id,
+                vtables: &vtables,
+                sql: local_sql,
+            };
+
+            let location = buckets.determine_exec_location();
+            explain_execute(
+                self,
+                miss_info,
+                ex_plan.to_params(),
+                sql_vdbe_opcode_max,
+                is_fmt,
+                location,
+                port,
+            )?;
+
+            return Ok(());
+        }
+
+        port_write_metadata(port, &ex_plan)?;
+
+        let query_type = ex_plan.query_type()?;
+        if let QueryType::DML = query_type {
+            // DML queries are not supported on arbitrary nodes
+            return Err(SbroadError::Other(
+                "DML queries are not supported on arbitrary nodes".into(),
+            ));
+        }
+
+        let plan_id = plan.new_pattern_id(top_id)?;
+        let vtables = ex_plan
+            .get_vtables()
+            .iter()
+            .map(|(node_id, table)| (new_table_name(plan_id, *node_id), table.clone()))
+            .collect::<HashMap<_, _>>();
+        let info = LocalExecutionInfo::new(
+            &vtables,
+            plan.effective_options.sql_motion_row_max as u64,
+            plan.effective_options.sql_vdbe_opcode_max as u64,
+            msgpack::encode(&ex_plan.to_params()),
+        );
+
+        use sql::executor::vdbe::ExecutionInsight::*;
+        let mut cache_guarded = self.cache().lock();
+
+        if let Some((stmt, _)) = cache_guarded.get(&plan_id)? {
+            // Transaction rollbacks are very expensive in Tarantool, so we're going to
+            // avoid transactions for DQL queries. We can achieve atomicity by truncating
+            // temporary tables. Isolation is guaranteed by keeping a lock on the cache.
+            match stmt_execute(stmt, &info, port)? {
+                Nothing => report_storage_cache_hit("dql", "local"),
+                BusyStmt => report_storage_cache_miss("dql", "local", "busy"),
+                StaleStmt => report_storage_cache_miss("dql", "local", "stale"),
             }
-            Some(ExplainType::Explain) => unreachable!("Explain should already be handled."),
-            Some(ExplainType::ExplainQueryPlan) => {
-                let location = buckets.determine_exec_location();
-                explain_execute(self, &mut info, false, location, port)?;
-            }
-            Some(ExplainType::ExplainQueryPlanFmt) => {
-                let location = buckets.determine_exec_location();
-                explain_execute(self, &mut info, true, location, port)?;
+        } else {
+            let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Oldest)?;
+            let ordered = OrderedSyntaxNodes::try_from(sp)?;
+            let nodes = ordered.to_syntax_data()?;
+            let (local_sql, _) = ex_plan.generate_sql(&nodes, plan_id, None, new_table_name)?;
+
+            let schema_info = SchemaInfo::new(
+                std::mem::take(&mut ex_plan.get_mut_ir_plan().table_version_map),
+                std::mem::take(&mut ex_plan.get_mut_ir_plan().index_version_map),
+            );
+
+            let miss_info = ExpandedLocalExecutionInfo {
+                plan_id,
+                schema_info,
+                vtables: &vtables,
+                sql: local_sql,
+            };
+
+            match sql_execute::<Self>(&mut cache_guarded, &info, &miss_info, port)? {
+                Nothing => report_storage_cache_miss("dql", "local", "true"),
+                BusyStmt => report_storage_cache_miss("dql", "local", "busy"),
+                StaleStmt => report_storage_cache_miss("dql", "local", "stale"),
             }
         }
+
         Ok(())
     }
 

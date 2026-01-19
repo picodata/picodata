@@ -4,9 +4,11 @@ use crate::metrics::{
 use crate::preemption::scheduler_options;
 use crate::sql::lua::{lua_decode_ibufs, lua_query_metadata};
 use crate::sql::router::{get_index_version_by_pk, get_table_version_by_id, VersionMap};
+use crate::sql::storage::{ExpandedPlanInfo, FullDeleteInfo, PlanInfo};
 use crate::sql::PicoPortC;
 use crate::tlog;
 use crate::traft::node;
+use ahash::HashMapExt;
 use rmp::decode::read_array_len;
 use rmp::encode::{write_array_len, write_str, write_str_len, write_uint};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
@@ -19,7 +21,6 @@ use sql::executor::engine::helpers::{
     old_truncate_tables, pk_name, table_name, vtable_columns, FullPlanInfo, QueryInfo,
     RequiredPlanInfo, TupleBuilderCommand, TupleBuilderPattern,
 };
-use sql::executor::engine::protocol::{FullDeletePlanInfo, PlanInfo};
 use sql::executor::engine::{QueryCache, StorageCache, Vshard};
 use sql::executor::ir::QueryType;
 use sql::executor::preemption::Scheduler;
@@ -29,11 +30,13 @@ use sql::executor::vdbe::ExecutionInsight::{BusyStmt, Nothing, StaleStmt};
 use sql::executor::vdbe::{ExecutionInsight, SqlError, SqlStmt};
 use sql::executor::vtable::{
     vtable_indexed_column_name, VTableTuple, VirtualTable, VirtualTableMeta,
+    VirtualTableTupleEncoder,
 };
 use sql::executor::{Port, PortType};
 use sql::ir::helpers::RepeatableState;
 use sql::ir::node::relational::Relational;
 use sql::ir::operator::ConflictStrategy;
+use sql::ir::options::Options;
 use sql::ir::relation::{Column, ColumnRole};
 use sql::ir::value::{EncodedValue, MsgPackValue, Value};
 use sql::ir::{node::NodeId, relation::SpaceEngine};
@@ -50,9 +53,10 @@ use sql_protocol::dml::update::{
     UpdateIterator, UpdateResult, UpdateSharedKeyIterator, UpdateSharedKeyResult,
 };
 use sql_protocol::dql::{DQLCacheMissResult, DQLPacketPayloadIterator, DQLResult};
-use sql_protocol::dql_encoder::ColumnType;
+use sql_protocol::dql_encoder::MsgpackEncode;
+use sql_protocol::dql_encoder::{ColumnType, DQLOptions};
 use sql_protocol::error::ProtocolError;
-use sql_protocol::iterators::{MsgpackArrayIterator, TupleIterator};
+use sql_protocol::iterators::{MsgpackArrayIterator, MsgpackMapIterator, TupleIterator};
 use std::collections::HashMap;
 use std::io::{Cursor, Write};
 use std::sync::OnceLock;
@@ -93,7 +97,57 @@ macro_rules! protocol_get {
     }};
 }
 
-fn populate_table(table_name: &str, tuples: TupleIterator) -> Result<(), SbroadError> {
+pub trait LendingTupleIterator {
+    fn next_tuple(&mut self) -> Option<Result<&RawBytes, SbroadError>>;
+}
+
+impl LendingTupleIterator for TupleIterator<'_> {
+    fn next_tuple(&mut self) -> Option<Result<&RawBytes, SbroadError>> {
+        let res = self.next()?;
+        Some(res.map(RawBytes::new).map_err(SbroadError::ProtocolError))
+    }
+}
+
+#[derive(Clone)]
+pub struct LazyVirtualTableEncoder<'e, T>
+where
+    T: Iterator<Item = VirtualTableTupleEncoder<'e>>,
+{
+    buffer: Vec<u8>,
+    iter: T,
+}
+
+impl<'e, T> LazyVirtualTableEncoder<'e, T>
+where
+    T: Iterator<Item = VirtualTableTupleEncoder<'e>>,
+{
+    pub fn new(iter: T) -> Self {
+        LazyVirtualTableEncoder {
+            buffer: Vec::new(),
+            iter,
+        }
+    }
+}
+
+impl<'e, T> LendingTupleIterator for LazyVirtualTableEncoder<'e, T>
+where
+    T: Iterator<Item = VirtualTableTupleEncoder<'e>>,
+{
+    fn next_tuple(&mut self) -> Option<Result<&RawBytes, SbroadError>> {
+        let val = self.iter.next()?;
+        self.buffer.clear();
+        Some(
+            val.encode_into(&mut self.buffer)
+                .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))
+                .map(|_| RawBytes::new(self.buffer.as_slice())),
+        )
+    }
+}
+
+fn populate_table(
+    table_name: &str,
+    mut tuples: impl LendingTupleIterator,
+) -> Result<(), SbroadError> {
     with_su(ADMIN_ID, || -> Result<(), SbroadError> {
         let space = Space::find(table_name).ok_or_else(|| {
             // See https://git.picodata.io/core/picodata/-/issues/1859.
@@ -106,18 +160,18 @@ fn populate_table(table_name: &str, tuples: TupleIterator) -> Result<(), SbroadE
             )
         })?;
         let mut ys = Scheduler::default();
-        for tuple in tuples {
+        while let Some(tuple) = tuples.next_tuple() {
             ys.maybe_yield(&scheduler_options())
                 .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             let tuple = tuple?;
-            space.insert(RawBytes::new(tuple)).map_err(|e|
+            space.insert(tuple).map_err(|e|
                 // It is possible that the temporary table was recreated by admin
                 // user with a different format. We should not panic in this case.
                 SbroadError::FailedTo(
-                Action::Insert,
-                Some(Entity::Tuple),
-                format_smolstr!("tuple {tuple:?}, temporary table {table_name}: {e}"),
-            ))?;
+                    Action::Insert,
+                    Some(Entity::Tuple),
+                    format_smolstr!("tuple {tuple:?}, temporary table {table_name}: {e}"),
+                ))?;
         }
         Ok(())
     })??;
@@ -264,18 +318,70 @@ where
     Ok(())
 }
 
+pub struct ProtocolExecutionInfo<'b> {
+    vtables: MsgpackMapIterator<'b, &'b str, TupleIterator<'b>>,
+    options: DQLOptions,
+    params: &'b [u8],
+}
+
+impl PlanInfo for ProtocolExecutionInfo<'_> {
+    fn vtables(
+        &self,
+    ) -> impl ExactSizeIterator<Item = Result<(&str, impl LendingTupleIterator), ProtocolError>>
+    {
+        self.vtables.clone()
+    }
+
+    fn params(&self) -> &[u8] {
+        self.params
+    }
+
+    fn sql_vdbe_opcode_max(&self) -> u64 {
+        self.options.sql_vdbe_opcode_max
+    }
+
+    fn sql_motion_row_max(&self) -> u64 {
+        self.options.sql_motion_row_max
+    }
+}
+
+struct ProtocolCacheMissExecution<'b> {
+    schema_info: SchemaInfo,
+    plan_id: u64,
+    vtable_metadata: MsgpackMapIterator<'b, &'b str, Vec<(&'b str, ColumnType)>>,
+    sql: &'b str,
+}
+
+impl ExpandedPlanInfo for ProtocolCacheMissExecution<'_> {
+    fn schema_info(&self) -> &SchemaInfo {
+        &self.schema_info
+    }
+
+    fn plan_id(&self) -> u64 {
+        self.plan_id
+    }
+
+    fn vtable_metadata(
+        &self,
+    ) -> impl ExactSizeIterator<Item = Result<(&str, Vec<(&str, ColumnType)>), ProtocolError>> {
+        self.vtable_metadata.clone()
+    }
+
+    fn sql(&self) -> &str {
+        self.sql
+    }
+}
+
 // must be executed under lock
-fn dql_execute_impl<'p, 'b>(
+pub fn stmt_execute<'p, 'b>(
     stmt: &mut SqlStmt,
-    mut info: impl Iterator<Item = Result<DQLResult<'b>, ProtocolError>>,
+    info: &impl PlanInfo,
     port: &mut impl Port<'p>,
 ) -> Result<ExecutionInsight, SbroadError> {
-    // populate vtables
-    let vtables = protocol_get!(info, DQLResult::Vtables);
-
     let has_metadata = port.size() == 1;
-    let mut tables_names = Vec::with_capacity(vtables.len() as usize);
-    let mut max_rows = 0;
+    let vtables = info.vtables();
+    let sql_motion_row_max = info.sql_motion_row_max();
+    let mut tables_names = Vec::with_capacity(vtables.len());
     let pcall = || -> Result<ExecutionInsight, SbroadError> {
         for vtable_data in vtables {
             let (vtable, tuples) = vtable_data?;
@@ -283,14 +389,8 @@ fn dql_execute_impl<'p, 'b>(
             tables_names.push(vtable);
         }
 
-        let options = protocol_get!(info, DQLResult::Options);
-
-        max_rows = options.sql_motion_row_max;
-
-        let params = protocol_get!(info, DQLResult::Params);
-
         with_su(ADMIN_ID, || -> Result<ExecutionInsight, SqlError> {
-            port.process_stmt_with_raw_params(stmt, params, options.sql_vdbe_opcode_max)
+            port.process_stmt_with_raw_params(stmt, info.params(), info.sql_vdbe_opcode_max())
         })?
         .map_err(SbroadError::from)
     };
@@ -311,10 +411,10 @@ fn dql_execute_impl<'p, 'b>(
     // We should check if we exceed the maximum number of rows.
     if port.size() > 0 {
         let current_rows = port.size() - if has_metadata { 1 } else { 0 }; // exclude metadata tuple
-        if max_rows > 0 && current_rows as u64 > max_rows {
+        if sql_motion_row_max > 0 && current_rows as u64 > sql_motion_row_max {
             return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
                 "Exceeded maximum number of rows ({}) in virtual table: {}",
-                max_rows,
+                sql_motion_row_max,
                 current_rows
             )));
         }
@@ -332,15 +432,14 @@ fn dql_cache_miss_execute<'p, 'b, R: Vshard + QueryCache>(
     runtime: &R,
     request_id: &str,
     plan_id: u64,
-    mut info: DQLPacketPayloadIterator<'b>,
+    raft_id: u64,
+    info: &impl PlanInfo,
     port: &mut impl Port<'p>,
     timeout: f64,
 ) -> Result<(), SbroadError>
 where
     R::Cache: StorageCache<u64, SmolStr>,
 {
-    let raft_id = protocol_get!(info, DQLResult::SenderId);
-
     let node = node::global().expect("should be init");
     let instance = with_su(ADMIN_ID, || node.storage.instances.get(&raft_id))?
         .map_err(|e| SbroadError::DispatchError(format_smolstr!("Failed to get instance: {e}")))?;
@@ -401,7 +500,7 @@ where
     let mut cache_guarded = runtime.cache().lock();
 
     if let Some((stmt, _motion_ids)) = cache_guarded.get(&plan_id)? {
-        match dql_execute_impl(stmt, info, port)? {
+        match stmt_execute(stmt, info, port)? {
             Nothing => report_storage_cache_hit("dql", "2nd"),
             BusyStmt => report_storage_cache_miss("dql", "2nd", "busy"),
             StaleStmt => report_storage_cache_miss("dql", "2nd", "stale"),
@@ -409,14 +508,17 @@ where
 
         Ok(())
     } else {
-        match sql_execute::<R>(
-            &mut cache_guarded,
+        let metadata = protocol_get!(cache_miss_info, DQLCacheMissResult::VtablesMetadata);
+        let sql = protocol_get!(cache_miss_info, DQLCacheMissResult::Sql);
+
+        let miss_info = ProtocolCacheMissExecution {
+            schema_info: SchemaInfo::new(table_versions, index_versions),
             plan_id,
-            &SchemaInfo::new(table_versions, index_versions),
-            info,
-            cache_miss_info,
-            port,
-        )? {
+            vtable_metadata: metadata,
+            sql,
+        };
+
+        match sql_execute::<R>(&mut cache_guarded, info, &miss_info, port)? {
             Nothing => report_storage_cache_miss("dql", "2nd", "true"),
             BusyStmt => report_storage_cache_miss("dql", "2nd", "busy"),
             StaleStmt => report_storage_cache_miss("dql", "2nd", "stale"),
@@ -426,42 +528,38 @@ where
     }
 }
 
-fn sql_execute<'a, 'p, R: QueryCache>(
+pub fn sql_execute<'a, 'p, R: QueryCache>(
     cache_guarded: &mut <<R as QueryCache>::Mutex as MutexLike<R::Cache>>::Guard<'_>,
-    plan_id: u64,
-    schema_info: &SchemaInfo,
-    info: impl Iterator<Item = Result<DQLResult<'a>, ProtocolError>>,
-    mut cache_miss_info: impl Iterator<Item = Result<DQLCacheMissResult<'a>, ProtocolError>>,
+    info: &impl PlanInfo,
+    miss_info: &impl ExpandedPlanInfo,
     port: &mut impl Port<'p>,
 ) -> Result<ExecutionInsight, SbroadError>
 where
     R::Cache: StorageCache<u64, SmolStr>,
 {
-    let metadata = protocol_get!(cache_miss_info, DQLCacheMissResult::VtablesMetadata);
-
-    let mut tables = Vec::with_capacity(metadata.len() as usize);
+    let metadata = miss_info.vtable_metadata();
+    let mut tables = Vec::with_capacity(metadata.len());
     for data in metadata {
         let (name, meta) = data?;
         let pk_name = format!("PK_{}", name.strip_prefix("TMP_").unwrap_or(name));
-        table_create(name, pk_name.as_str(), meta)?;
+        table_create(name, pk_name.as_str(), &meta)?;
         tables.push(name.to_smolstr());
     }
 
-    let sql = protocol_get!(cache_miss_info, DQLCacheMissResult::Sql);
-
+    let sql = miss_info.sql();
     let stmt = SqlStmt::compile(sql).inspect_err(|e| {
         tlog!(
             Warning,
             "Failed to compile statement for the query '{sql}': {e}"
         )
     })?;
-    cache_guarded.put(plan_id, stmt, schema_info, tables)?;
+    cache_guarded.put(miss_info.plan_id(), stmt, miss_info.schema_info(), tables)?;
 
-    let Some((stmt, _)) = cache_guarded.get(&plan_id)? else {
+    let Some((stmt, _)) = cache_guarded.get(&miss_info.plan_id())? else {
         unreachable!("was just added, should be in the cache")
     };
 
-    dql_execute_impl(stmt, info, port)
+    stmt_execute(stmt, info, port)
 }
 
 /// Execute a DQL query on storage.
@@ -496,13 +594,17 @@ where
     }
 
     let plan_id = protocol_get!(info, DQLResult::PlanId);
+    let sender_id = protocol_get!(info, DQLResult::SenderId);
+
+    let info = ProtocolExecutionInfo {
+        vtables: protocol_get!(info, DQLResult::Vtables),
+        options: protocol_get!(info, DQLResult::Options),
+        params: protocol_get!(info, DQLResult::Params),
+    };
 
     let mut cache_guarded = runtime.cache().lock();
     if let Some((stmt, _)) = cache_guarded.get(&plan_id)? {
-        // skip it
-        let _ = protocol_get!(info, DQLResult::SenderId);
-
-        match dql_execute_impl(stmt, info, port)? {
+        match stmt_execute(stmt, &info, port)? {
             Nothing => report_storage_cache_hit("dql", "1st"),
             BusyStmt => report_storage_cache_miss("dql", "1st", "busy"),
             StaleStmt => report_storage_cache_miss("dql", "1st", "stale"),
@@ -514,7 +616,9 @@ where
         drop(cache_guarded);
         report_storage_cache_miss("dql", "1st", "true");
 
-        let res = dql_cache_miss_execute(runtime, request_id, plan_id, info, port, timeout);
+        let res = dql_cache_miss_execute(
+            runtime, request_id, plan_id, sender_id, &info, port, timeout,
+        );
         port.set_type(PortType::ExecuteDql);
         let result = if res.is_err() { "err" } else { "ok" };
         STORAGE_2ND_REQUESTS_TOTAL
@@ -526,7 +630,9 @@ where
 
 pub fn explain_execute<'p, R: QueryCache>(
     runtime: &R,
-    info: &mut impl FullPlanInfo,
+    miss_info: impl ExpandedPlanInfo,
+    params: &[Value],
+    sql_vdbe_opcode_max: u64,
     formatted: bool,
     location: &str,
     port: &mut impl Port<'p>,
@@ -536,7 +642,7 @@ where
 {
     let _lock: <<R as QueryCache>::Mutex as MutexLike<<R as QueryCache>::Cache>>::Guard<'_> =
         runtime.cache().lock();
-    let (explain, motion_ids, vtables_meta) = info.take_query_meta()?;
+    let explain = miss_info.sql();
 
     // EXPLAIN QUERY PLAN output formatting for each tuple in the port:
     // - [int, int, int , string] (selectid, order, from, detail).
@@ -573,8 +679,7 @@ where
             fmt_options.joins_as_top_level = true;
             fmt_options.inline = true;
         }
-        let params = info
-            .params()
+        let params = params
             .iter()
             .map(|p| p.to_string())
             .collect::<Vec<String>>();
@@ -592,45 +697,18 @@ where
     };
     port.add_mp(mp_sql.as_slice());
 
-    for motion_id in &motion_ids {
-        let table_name = table_name(info.id(), *motion_id);
-        let pk_name = pk_name(info.id(), *motion_id);
-        let meta = vtables_meta.get(motion_id).ok_or_else(|| {
-            SbroadError::Invalid(
-                Entity::Plan,
-                Some(format_smolstr!("missing metadata for motion {motion_id}")),
-            )
-        })?;
-        #[allow(deprecated)]
-        old_table_create(&table_name, &pk_name, meta)?;
+    for motion_id in miss_info.vtable_metadata() {
+        let (table_name, columns) = motion_id?;
+        let pk_name = format!(
+            "PK_{}",
+            table_name.strip_prefix("TMP_").unwrap_or(table_name)
+        );
+        table_create(table_name, &pk_name, &columns)?;
     }
 
-    let mut stmt = SqlStmt::compile(&explain)?;
-    port.process_stmt(&mut stmt, info.params(), info.sql_vdbe_opcode_max())?;
+    let mut stmt = SqlStmt::compile(explain)?;
+    port.process_stmt(&mut stmt, params, sql_vdbe_opcode_max)?;
     Ok(())
-}
-
-fn plan_execute<'p, R: QueryCache>(
-    runtime: &R,
-    info: impl PlanInfo,
-    port: &mut impl Port<'p>,
-) -> Result<ExecutionInsight, SbroadError>
-where
-    R::Cache: StorageCache<u64, SmolStr>,
-{
-    let mut cache_guarded: <<R as QueryCache>::Mutex as MutexLike<<R as QueryCache>::Cache>>::Guard<'_> = runtime.cache().lock();
-    if let Some((stmt, _motion_ids)) = cache_guarded.get(&info.plan_id())? {
-        dql_execute_impl(stmt, info.get_cache_hit_iter(), port)
-    } else {
-        sql_execute::<R>(
-            &mut cache_guarded,
-            info.plan_id(),
-            info.schema_info(),
-            info.get_cache_hit_iter(),
-            info.get_cache_miss_iter(),
-            port,
-        )
-    }
 }
 
 #[deprecated(note = "Remove in next release. Used for smooth upgrade")]
@@ -727,7 +805,7 @@ fn old_table_create(name: &str, pk_name: &str, meta: &VirtualTableMeta) -> Resul
 fn table_create(
     name: &str,
     pk_name: &str,
-    columns: Vec<(&str, ColumnType)>,
+    columns: &Vec<(&str, ColumnType)>,
 ) -> Result<(), SbroadError> {
     let mut fields: Vec<Field> = columns
         .iter()
@@ -885,7 +963,7 @@ where
     let mut pico_port = PicoPortC::from(unsafe { port.as_mut_port_c() });
     dql_execute(runtime, request_id, info, &mut pico_port, timeout)?;
 
-    let mut vcolumns = Vec::with_capacity(columns.len() as usize);
+    let mut vcolumns = Vec::with_capacity(columns.len());
     for (i, column) in columns.enumerate() {
         let column_type = column?;
         vcolumns.push(Column {
@@ -1755,10 +1833,39 @@ where
     let plan_id = protocol_get!(iter, DeleteFullResult::PlanId);
     let options = protocol_get!(iter, DeleteFullResult::Options);
 
+    let versions = HashMap::from_iter([(table_id, version)]);
+    let schema_info = SchemaInfo::new(versions, HashMap::<_, _, RepeatableState>::new());
+
     // We have a deal with a DELETE without WHERE filter
     // and want to execute local SQL instead of space api.
-    let info = FullDeletePlanInfo::new(plan_id, &table_name, options);
-    plan_execute::<R>(runtime, info, port)?;
+    let info = FullDeleteInfo::new(
+        plan_id,
+        schema_info,
+        Options {
+            sql_motion_row_max: options.sql_motion_row_max as i64,
+            sql_vdbe_opcode_max: options.sql_vdbe_opcode_max as i64,
+            read_preference: Default::default(),
+        },
+        table_name.as_str(),
+    );
+
+    full_delete_execute(runtime, &info, port)
+}
+
+pub fn full_delete_execute<'p, 'ip, R: Vshard + QueryCache>(
+    runtime: &R,
+    info: &FullDeleteInfo,
+    port: &mut impl Port<'p>,
+) -> Result<(), SbroadError>
+where
+    R::Cache: StorageCache<u64, SmolStr>,
+{
+    let mut cache_guarded: <<R as QueryCache>::Mutex as MutexLike<<R as QueryCache>::Cache>>::Guard<'_> = runtime.cache().lock();
+    if let Some((stmt, _motion_ids)) = cache_guarded.get(&info.plan_id())? {
+        stmt_execute(stmt, info, port)?;
+    } else {
+        sql_execute::<R>(&mut cache_guarded, info, info, port)?;
+    }
 
     Ok(())
 }
