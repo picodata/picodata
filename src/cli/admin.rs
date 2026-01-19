@@ -1,6 +1,6 @@
 use crate::cli::args;
 use crate::cli::console::{Command, Console, ConsoleLanguage, ReplError, SpecialCommand};
-use crate::cli::util::ResultSet;
+use crate::cli::util::{OutputFormat, ResultSet};
 
 use std::cell::RefCell;
 use std::io::{self, ErrorKind, Read, Write};
@@ -211,6 +211,24 @@ impl UnixClient {
 }
 
 fn admin_repl(args: args::Admin) -> Result<(), ReplError> {
+    // Determine output format from command line arguments
+    let output_format = if args.json {
+        OutputFormat::Json
+    } else if args.csv {
+        OutputFormat::Csv {
+            separator: args.field_separator.unwrap_or(','),
+        }
+    } else if args.tuples_only {
+        OutputFormat::TuplesOnly {
+            separator: args.field_separator.unwrap_or('\t'),
+        }
+    } else {
+        OutputFormat::Table
+    };
+
+    let is_terminal = isatty(0).unwrap_or(false);
+    let is_machine_readable = !matches!(output_format, OutputFormat::Table);
+
     let client = UnixClient::new(&args.socket_path).map_err(|err| {
         ReplError::Other(format!(
             "Connection via unix socket by path '{}' is not established: {}",
@@ -229,12 +247,18 @@ fn admin_repl(args: args::Admin) -> Result<(), ReplError> {
         },
     };
 
-    let mut console = Console::with_completer(helper)?;
+    // Quiet mode: suppress decorative output when using machine-readable format,
+    // or when not a tty (unless --prompts is specified)
+    let quiet = is_machine_readable || (!is_terminal && !args.prompts);
+    let mut console = Console::with_completer(helper, quiet)?;
 
-    console.greet(&format!(
-        "Connected to admin console by socket path \"{}\"",
-        args.socket_path
-    ));
+    // Only show greeting in interactive mode with table format
+    if !quiet {
+        console.greet(&format!(
+            "Connected to admin console by socket path \"{}\"",
+            args.socket_path
+        ));
+    }
 
     const HELP_MESSAGE: &'static str = "
     Available backslash commands:
@@ -271,7 +295,6 @@ fn admin_repl(args: args::Admin) -> Result<(), ReplError> {
                 temp_client.write(&line)?;
                 let raw_response = temp_client.read()?;
 
-                let is_terminal = isatty(0).unwrap_or(false);
                 // In error responses, '- null' always appears at the top of the message.
                 if !is_terminal && !args.ignore_errors && raw_response.contains("- null\n") {
                     return Err(ReplError::Other(raw_response));
@@ -285,7 +308,7 @@ fn admin_repl(args: args::Admin) -> Result<(), ReplError> {
                                 "Error occurred while processing output: {err}",
                             ))
                         })?
-                        .to_string(),
+                        .format(output_format),
                 };
 
                 console.write(&formatted);

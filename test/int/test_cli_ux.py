@@ -610,7 +610,7 @@ def test_input_with_delimiter(cluster: Cluster):
 def test_cat_file_to_picodata_admin_stdin(cluster: Cluster):
     instance = cluster.add_instance()
     data = subprocess.check_output(
-        [cluster.runtime.command, "admin", f"{instance.instance_dir}/admin.sock"],
+        [cluster.runtime.command, "admin", "--prompts", f"{instance.instance_dir}/admin.sock"],
         input=b"""\
 CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id))
         USING MEMTX
@@ -641,11 +641,160 @@ Bye
     )
 
 
+def test_admin_output_format_json(cluster: Cluster):
+    instance = cluster.add_instance()
+    data = subprocess.check_output(
+        [cluster.runtime.command, "admin", "--json", f"{instance.instance_dir}/admin.sock"],
+        input=b"""\
+CREATE TABLE warehouse (id INTEGER NOT NULL, item TEXT NOT NULL, PRIMARY KEY(id))
+        USING MEMTX DISTRIBUTED BY (id);
+INSERT INTO warehouse VALUES (1, 'bricks');
+INSERT INTO warehouse VALUES (2, 'hooves');
+SELECT * FROM warehouse;
+""",
+    )
+
+    assert (
+        data
+        == b"""\
+1
+1
+1
+[
+  {
+    "id": 1,
+    "item": "bricks"
+  },
+  {
+    "id": 2,
+    "item": "hooves"
+  }
+]
+"""
+    )
+
+
+def test_admin_output_format_csv(cluster: Cluster):
+    instance = cluster.add_instance()
+    data = subprocess.check_output(
+        [cluster.runtime.command, "admin", "--csv", f"{instance.instance_dir}/admin.sock"],
+        input=b"""\
+CREATE TABLE warehouse (id INTEGER NOT NULL, item TEXT NOT NULL, PRIMARY KEY(id))
+        USING MEMTX DISTRIBUTED BY (id);
+INSERT INTO warehouse VALUES (1, 'bricks');
+INSERT INTO warehouse VALUES (2, 'hooves');
+SELECT * FROM warehouse;
+""",
+    )
+
+    assert (
+        data
+        == b"""\
+1
+1
+1
+id,item
+1,bricks
+2,hooves
+"""
+    )
+
+
+def test_admin_output_format_csv_custom_separator(cluster: Cluster):
+    instance = cluster.add_instance()
+    data = subprocess.check_output(
+        [
+            cluster.runtime.command,
+            "admin",
+            "--csv",
+            "--field-separator",
+            ";",
+            f"{instance.instance_dir}/admin.sock",
+        ],
+        input=b"""\
+CREATE TABLE warehouse (id INTEGER NOT NULL, item TEXT NOT NULL, PRIMARY KEY(id))
+        USING MEMTX DISTRIBUTED BY (id);
+INSERT INTO warehouse VALUES (1, 'bricks');
+INSERT INTO warehouse VALUES (2, 'hooves');
+SELECT * FROM warehouse;
+""",
+    )
+
+    assert (
+        data
+        == b"""\
+1
+1
+1
+id;item
+1;bricks
+2;hooves
+"""
+    )
+
+
+def test_admin_output_format_tuples_only(cluster: Cluster):
+    instance = cluster.add_instance()
+    data = subprocess.check_output(
+        [cluster.runtime.command, "admin", "--tuples-only", f"{instance.instance_dir}/admin.sock"],
+        input=b"""\
+CREATE TABLE warehouse (id INTEGER NOT NULL, item TEXT NOT NULL, PRIMARY KEY(id))
+        USING MEMTX DISTRIBUTED BY (id);
+INSERT INTO warehouse VALUES (1, 'bricks');
+INSERT INTO warehouse VALUES (2, 'hooves');
+SELECT * FROM warehouse;
+""",
+    )
+
+    assert (
+        data
+        == b"""\
+1
+1
+1
+1\tbricks
+2\thooves
+"""
+    )
+
+
+def test_admin_output_format_tuples_only_custom_separator(cluster: Cluster):
+    instance = cluster.add_instance()
+    data = subprocess.check_output(
+        [
+            cluster.runtime.command,
+            "admin",
+            "--tuples-only",
+            "--field-separator",
+            "|",
+            f"{instance.instance_dir}/admin.sock",
+        ],
+        input=b"""\
+CREATE TABLE warehouse (id INTEGER NOT NULL, item TEXT NOT NULL, PRIMARY KEY(id))
+        USING MEMTX DISTRIBUTED BY (id);
+INSERT INTO warehouse VALUES (1, 'bricks');
+INSERT INTO warehouse VALUES (2, 'hooves');
+SELECT * FROM warehouse;
+""",
+    )
+
+    assert (
+        data
+        == b"""\
+1
+1
+1
+1|bricks
+2|hooves
+"""
+    )
+
+
 def test_cat_file_to_picodata_connect_stdin(cluster: Cluster):
     i1 = cluster.add_instance()
 
     data = subprocess.check_output(
-        [cluster.runtime.command, "admin", f"{i1.instance_dir}/admin.sock"],
+        [cluster.runtime.command, "admin", "--prompts", f"{i1.instance_dir}/admin.sock"],
         input=b"""\
 CREATE USER "alice" WITH PASSWORD 'T0psecret';
 GRANT CREATE TABLE TO "alice"

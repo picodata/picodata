@@ -110,6 +110,8 @@ pub struct Console<H: Helper> {
     separated_statements: VecDeque<String>,
     uncompleted_statement: String,
     eof_received: bool,
+    /// When true, suppresses decorative messages like "Bye" for machine-readable output
+    quiet: bool,
 }
 
 impl<T: Helper> Console<T> {
@@ -270,7 +272,9 @@ impl<T: Helper> Console<T> {
     pub fn read(&mut self) -> Result<Option<Command>> {
         loop {
             if self.eof_received {
-                self.write("Bye");
+                if !self.quiet {
+                    self.write("Bye");
+                }
                 return Ok(None);
             }
 
@@ -340,7 +344,9 @@ impl<T: Helper> Console<T> {
                         ))));
                     }
 
-                    self.write("Bye");
+                    if !self.quiet {
+                        self.write("Bye");
+                    }
                     return Ok(None);
                 }
                 Err(err) => return Err(err.into()),
@@ -383,7 +389,7 @@ impl<T: Helper> Console<T> {
 }
 
 impl Console<LuaHelper> {
-    pub fn with_completer(helper: LuaHelper) -> Result<Self> {
+    pub fn with_completer(helper: LuaHelper, quiet: bool) -> Result<Self> {
         let (mut editor, history_file_path) = Self::editor_with_history()?;
 
         editor.set_helper(Some(helper));
@@ -399,6 +405,7 @@ impl Console<LuaHelper> {
             eof_received: false,
             current_language: ConsoleLanguage::Sql,
             mode: Mode::Admin,
+            quiet,
         })
     }
 }
@@ -416,6 +423,7 @@ impl Console<()> {
             eof_received: false,
             current_language: ConsoleLanguage::Sql,
             mode: Mode::Connection,
+            quiet: false,
         })
     }
 }

@@ -15,8 +15,22 @@ use std::time::Duration;
 use comfy_table::{ContentArrangement, Table};
 use nix::sys::termios::{tcgetattr, tcsetattr, LocalFlags, SetArg::TCSADRAIN};
 use serde::{Deserialize, Serialize};
+use serde_json;
 use tarantool::auth::AuthMethod;
 use tarantool::network::{client::tls, AsClient, Client, Config};
+
+/// Output format for admin console results.
+#[derive(Debug, Clone, Copy)]
+pub enum OutputFormat {
+    /// Default ASCII table with headers and row count.
+    Table,
+    /// Values only, no headers or row count, with configurable separator (default: tab).
+    TuplesOnly { separator: char },
+    /// JSON array output.
+    Json,
+    /// CSV with configurable separator (default: comma).
+    Csv { separator: char },
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ColumnDesc {
@@ -35,6 +49,100 @@ impl Display for ColumnDesc {
 pub struct RowSet {
     pub metadata: Vec<ColumnDesc>,
     pub rows: Vec<Vec<rmpv::Value>>,
+}
+
+impl RowSet {
+    /// Format the row set according to the specified output format.
+    pub fn format(&self, fmt: OutputFormat) -> String {
+        match fmt {
+            OutputFormat::Table => self.to_string(),
+            OutputFormat::TuplesOnly { separator } => self.format_tuples_only(separator),
+            OutputFormat::Json => self.format_json(),
+            OutputFormat::Csv { separator } => self.format_csv(separator),
+        }
+    }
+
+    /// Format a single MessagePack value as a string.
+    fn format_value(v: &rmpv::Value) -> String {
+        if let rmpv::Value::String(s) = v {
+            s.as_str().unwrap_or("").to_string()
+        } else if let rmpv::Value::Nil = v {
+            String::new()
+        } else {
+            serde_json::to_string(v).unwrap_or_else(|_| v.to_string())
+        }
+    }
+
+    /// Format as tuples only (no headers, no row count).
+    fn format_tuples_only(&self, separator: char) -> String {
+        let sep = separator.to_string();
+        self.rows
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .map(Self::format_value)
+                    .collect::<Vec<_>>()
+                    .join(&sep)
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Format as JSON array of objects.
+    fn format_json(&self) -> String {
+        let objects: Vec<serde_json::Value> = self
+            .rows
+            .iter()
+            .map(|row| {
+                let obj: serde_json::Map<String, serde_json::Value> = self
+                    .metadata
+                    .iter()
+                    .zip(row.iter())
+                    .filter_map(|(col, val)| {
+                        serde_json::to_value(val)
+                            .ok()
+                            .map(|v| (col.name.clone(), v))
+                    })
+                    .collect();
+                serde_json::Value::Object(obj)
+            })
+            .collect();
+        serde_json::to_string_pretty(&objects).unwrap_or_else(|_| "[]".to_string())
+    }
+
+    /// Escape a value for CSV output.
+    fn escape_csv(value: &str, separator: char) -> String {
+        if value.contains(separator) || value.contains('"') || value.contains('\n') {
+            format!("\"{}\"", value.replace('"', "\"\""))
+        } else {
+            value.to_string()
+        }
+    }
+
+    /// Format as CSV with the specified separator.
+    fn format_csv(&self, separator: char) -> String {
+        let sep = separator.to_string();
+        let mut lines = vec![self
+            .metadata
+            .iter()
+            .map(|c| Self::escape_csv(&c.name, separator))
+            .collect::<Vec<_>>()
+            .join(&sep)];
+
+        let mut rows = self
+            .rows
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .map(|v| Self::escape_csv(&Self::format_value(v), separator))
+                    .collect::<Vec<_>>()
+                    .join(&sep)
+            })
+            .collect::<Vec<_>>();
+
+        lines.append(&mut rows);
+        lines.join("\n")
+    }
 }
 
 impl Display for RowSet {
@@ -108,23 +216,34 @@ pub enum ResultSet {
     Error(Option<()>, String),
 }
 
-impl Display for ResultSet {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl ResultSet {
+    /// Format the result set according to the specified output format.
+    pub fn format(&self, fmt: OutputFormat) -> String {
         match self {
-            ResultSet::RowSet(s) => f.write_fmt(format_args!(
-                "{}",
-                s.first().expect(
+            ResultSet::RowSet(s) => s
+                .first()
+                .expect(
                     "RowSet is represented as a Vec<Vec<Rows>> where outer vec always has lenghth equal to 1"
                 )
-            )),
-            ResultSet::Error(_, message) => f.write_str(message),
-            ResultSet::RowCount(c) => f.write_fmt(format_args!("{}", c.first().expect(
-                "RowCount response always consists of a Vec containing the only entry"
-            ))),
-            ResultSet::Explain(e) => f.write_fmt(format_args!("{}", e.first().expect(
-                "Explain is represented as a Vec<Vec<String>> where outer vec always has lenghth equal to 1"
-            ))),
+                .format(fmt),
+            ResultSet::Error(_, message) => message.clone(),
+            ResultSet::RowCount(c) => c
+                .first()
+                .expect("RowCount response always consists of a Vec containing the only entry")
+                .to_string(),
+            ResultSet::Explain(e) => e
+                .first()
+                .expect(
+                    "Explain is represented as a Vec<Vec<String>> where outer vec always has lenghth equal to 1"
+                )
+                .to_string(),
         }
+    }
+}
+
+impl Display for ResultSet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.format(OutputFormat::Table))
     }
 }
 
@@ -460,5 +579,179 @@ pub fn set_parent_death_handler() {
                 std::thread::sleep(Duration::from_millis(500));
             })
             .expect("should not fail");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_rowset() -> RowSet {
+        RowSet {
+            metadata: vec![
+                ColumnDesc {
+                    name: "id".to_string(),
+                    ty: "integer".to_string(),
+                },
+                ColumnDesc {
+                    name: "name".to_string(),
+                    ty: "string".to_string(),
+                },
+            ],
+            rows: vec![
+                vec![
+                    rmpv::Value::Integer(1.into()),
+                    rmpv::Value::String("Alice".into()),
+                ],
+                vec![
+                    rmpv::Value::Integer(2.into()),
+                    rmpv::Value::String("Bob".into()),
+                ],
+            ],
+        }
+    }
+
+    fn empty_rowset() -> RowSet {
+        RowSet {
+            metadata: vec![ColumnDesc {
+                name: "id".to_string(),
+                ty: "integer".to_string(),
+            }],
+            rows: vec![],
+        }
+    }
+
+    #[test]
+    fn test_format_tuples_only() {
+        let rowset = sample_rowset();
+        let output = rowset.format(OutputFormat::TuplesOnly { separator: '\t' });
+        assert_eq!(output, "1\tAlice\n2\tBob");
+    }
+
+    #[test]
+    fn test_format_tuples_only_custom_separator() {
+        let rowset = sample_rowset();
+        let output = rowset.format(OutputFormat::TuplesOnly { separator: '|' });
+        assert_eq!(output, "1|Alice\n2|Bob");
+    }
+
+    #[test]
+    fn test_format_tuples_only_empty() {
+        let rowset = empty_rowset();
+        let output = rowset.format(OutputFormat::TuplesOnly { separator: '\t' });
+        assert_eq!(output, "");
+    }
+
+    #[test]
+    fn test_format_json() {
+        let rowset = sample_rowset();
+        let output = rowset.format(OutputFormat::Json);
+        let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+        let arr = parsed.as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0]["id"], 1);
+        assert_eq!(arr[0]["name"], "Alice");
+        assert_eq!(arr[1]["id"], 2);
+        assert_eq!(arr[1]["name"], "Bob");
+    }
+
+    #[test]
+    fn test_format_json_empty() {
+        let rowset = empty_rowset();
+        let output = rowset.format(OutputFormat::Json);
+        let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+        let arr = parsed.as_array().unwrap();
+        assert_eq!(arr.len(), 0);
+    }
+
+    #[test]
+    fn test_format_csv() {
+        let rowset = sample_rowset();
+        let output = rowset.format(OutputFormat::Csv { separator: ',' });
+        assert_eq!(output, "id,name\n1,Alice\n2,Bob");
+    }
+
+    #[test]
+    fn test_format_csv_custom_separator() {
+        let rowset = sample_rowset();
+        let output = rowset.format(OutputFormat::Csv { separator: ';' });
+        assert_eq!(output, "id;name\n1;Alice\n2;Bob");
+    }
+
+    #[test]
+    fn test_format_csv_empty() {
+        let rowset = empty_rowset();
+        let output = rowset.format(OutputFormat::Csv { separator: ',' });
+        assert_eq!(output, "id");
+    }
+
+    #[test]
+    fn test_format_csv_escaping() {
+        let rowset = RowSet {
+            metadata: vec![ColumnDesc {
+                name: "value".to_string(),
+                ty: "string".to_string(),
+            }],
+            rows: vec![
+                vec![rmpv::Value::String("hello,world".into())],
+                vec![rmpv::Value::String("with\"quote".into())],
+                vec![rmpv::Value::String("line\nbreak".into())],
+            ],
+        };
+        let output = rowset.format(OutputFormat::Csv { separator: ',' });
+        assert_eq!(
+            output,
+            "value\n\"hello,world\"\n\"with\"\"quote\"\n\"line\nbreak\""
+        );
+    }
+
+    #[test]
+    fn test_format_table_includes_row_count() {
+        let rowset = sample_rowset();
+        let output = rowset.format(OutputFormat::Table);
+        assert!(output.contains("(2 rows)"));
+        assert!(output.contains("id"));
+        assert!(output.contains("name"));
+    }
+
+    #[test]
+    fn test_format_value_nil() {
+        let val = rmpv::Value::Nil;
+        assert_eq!(RowSet::format_value(&val), "");
+    }
+
+    #[test]
+    fn test_format_value_types() {
+        assert_eq!(RowSet::format_value(&rmpv::Value::Boolean(true)), "true");
+        assert_eq!(RowSet::format_value(&rmpv::Value::Integer(42.into())), "42");
+        assert_eq!(
+            RowSet::format_value(&rmpv::Value::String("test".into())),
+            "test"
+        );
+        // Arrays and maps are serialized as compact JSON without whitespace
+        let array = rmpv::Value::Array(vec![
+            rmpv::Value::Integer(1.into()),
+            rmpv::Value::Integer(2.into()),
+            rmpv::Value::Integer(3.into()),
+        ]);
+        assert_eq!(RowSet::format_value(&array), "[1,2,3]");
+    }
+
+    #[test]
+    fn test_result_set_format_delegates_to_rowset() {
+        let rowset = sample_rowset();
+        let result_set = ResultSet::RowSet(vec![rowset]);
+        let output = result_set.format(OutputFormat::TuplesOnly { separator: '\t' });
+        assert_eq!(output, "1\tAlice\n2\tBob");
+    }
+
+    #[test]
+    fn test_result_set_error_ignores_format() {
+        let result_set = ResultSet::Error(None, "some error".to_string());
+        assert_eq!(result_set.format(OutputFormat::Json), "some error");
+        assert_eq!(
+            result_set.format(OutputFormat::Csv { separator: ',' }),
+            "some error"
+        );
     }
 }

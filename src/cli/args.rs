@@ -637,6 +637,30 @@ pub struct Admin {
     #[clap(long = "ignore-errors")]
     /// Flag to continue execution despite invalid queries being sent in non-interactive mode.
     pub ignore_errors: bool,
+
+    #[clap(short = 't', long = "tuples-only", conflicts_with_all = ["csv", "json"])]
+    /// Print only tuples without headers or row count.
+    pub tuples_only: bool,
+
+    #[clap(short = 'j', long = "json", conflicts_with_all = ["csv", "tuples_only"])]
+    /// Output results in JSON format.
+    pub json: bool,
+
+    #[clap(short = 'c', long = "csv", conflicts_with_all = ["json", "tuples_only"])]
+    /// Output results in CSV format.
+    pub csv: bool,
+
+    #[clap(short = 'F', long = "field-separator", conflicts_with = "json")]
+    /// Field separator for CSV (default: ',') and tuples-only (default: tab) output.
+    pub field_separator: Option<char>,
+
+    #[clap(
+        short = 'p',
+        long = "prompts",
+        conflicts_with_all = ["json", "csv", "tuples_only"]
+    )]
+    /// Show prompts and decorative messages even when input is not a terminal.
+    pub prompts: bool,
 }
 
 impl Admin {

@@ -28,6 +28,7 @@ with the `YY.MINOR.MICRO` scheme.
   - Added graceful shutdown and guaranteed cleanup of child processes.
   - Introduced cluster orchestration model for simplified lifecycle management.
   - Added configurable command-line parameters and cluster information display.
+  - Add machine-readable output formats to `picodata admin`
 
 ### Fixes
 
