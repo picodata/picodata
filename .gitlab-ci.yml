@@ -211,7 +211,8 @@ svace:
     BUILD: "false"
     DEPLOY: "false"
   inherit:
-    variables: false
+    variables:
+      - MAIN_BRANCH
   trigger:
     project: "picodata/devops/builder"
 
