@@ -8,7 +8,6 @@ use crate::governor::batch::LastStepInfo;
 use crate::governor::ddl::collect_proc_apply_schema_change;
 use crate::governor::ddl::collect_vshard_map_callrw_proc_apply_schema_change;
 use crate::governor::ddl::OnError;
-use crate::instance::InstanceName;
 use crate::metrics;
 use crate::op::Op;
 use crate::proc_name;
@@ -66,7 +65,6 @@ use plan::action_plan;
 use plan::stage::*;
 use std::collections::HashMap;
 use std::ops::ControlFlow;
-use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -1020,75 +1018,90 @@ impl Loop {
 
             Plan::ApplyBackup(ApplyBackup {
                 pending_schema_version,
-                masters,
+                masters_total,
+                masters_batch,
                 rpc_master,
-                replicas,
+                replicas_total,
+                replicas_batch,
                 rpc_replica,
                 rpc_clear,
             }) => {
                 set_status!("apply clusterwide BACKUP");
 
-                let mut next_op: Op = Op::Nop;
+                let mut targets_total = masters_total.clone();
+                targets_total.extend_from_slice(&replicas_total);
+                debug_assert!(!targets_total.is_empty());
+                last_step_info.set_pending(&targets_total);
 
+                let mut abort_cause = None;
                 governor_substep! {
                     "applying pending BACKUP" [ "pending_schema_version" => pending_schema_version ]
                     async {
-                        // Vec of pairs (instance_name, backup_path).
-                        let mut backup_paths = HashMap::<InstanceName, PathBuf>::new();
+                        let masters_batch_is_empty = masters_batch.is_empty();
+                        if !masters_batch.is_empty() {
+                            // 1. Call `proc_apply_backup` on all masters.
+                            tlog!(Info, "calling BACKUP on masters");
+                            let res = collect_proc_apply_backup(
+                                last_step_info,
+                                masters_batch,
+                                &rpc_master,
+                                pool,
+                                rpc_timeout,
+                            ).await;
 
-                        // 1. Call `proc_apply_backup` on all masters.
-                        tlog!(Info, "calling BACKUP on masters");
-                        let res = collect_proc_apply_backup(
-                            &masters,
-                            &rpc_master,
-                            pool,
-                            rpc_timeout,
-                        ).await?;
+                            last_step_info.report_stats();
 
-                        match res {
-                            Ok(v) => backup_paths.extend(v),
-                            Err(OnError::Abort(cause)) => {
-                                next_op = Op::DdlAbort { cause };
-                                return Ok(());
-                            }
-                            Err(OnError::Retry(e)) => {
-                                return Err(e);
+                            match res {
+                                Ok(()) => {}
+                                Err(OnError::Abort(cause)) => {
+                                    abort_cause = Some(cause);
+                                }
+                                Err(OnError::Retry(error)) => {
+                                    // If there were any other errors, end this step as a failure
+                                    return Err(error);
+                                }
                             }
                         }
 
                         // 2. Call `proc_apply_backup` on all replicas.
-                        if !replicas.is_empty() {
+                        if abort_cause.is_none() && !replicas_batch.is_empty() {
+                            debug_assert!(masters_batch_is_empty);
+                            debug_assert!(last_step_info.all_instances_ok(&masters_total));
+
                             crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_BACKUP_ON_REPLICAS");
 
                             tlog!(Info, "calling BACKUP on replicas");
                             let res = collect_proc_apply_backup(
-                                &replicas,
+                                last_step_info,
+                                replicas_batch,
                                 &rpc_replica,
                                 pool,
                                 rpc_timeout,
-                            ).await?;
+                            ).await;
+
+                            last_step_info.report_stats();
 
                             match res {
-                                Ok(v) => backup_paths.extend(v),
+                                Ok(()) => {}
                                 Err(OnError::Abort(cause)) => {
-                                    next_op = Op::DdlAbort { cause };
-                                    return Ok(());
+                                    abort_cause = Some(cause);
                                 }
-                                Err(OnError::Retry(e)) => {
-                                    return Err(e);
+                                Err(OnError::Retry(error)) => {
+                                    // If there were any other errors, end this step as a failure
+                                    return Err(error);
                                 }
                             }
                         }
-
-                        let backup_paths_yaml = serde_yaml::to_string(&backup_paths)
-                            .expect("yaml conversion should not fail");
-                        tlog!(Info, "BACKUP is finished successfully with the following paths:\n{backup_paths_yaml}");
-
-                        next_op = Op::DdlCommit;
                     }
                 }
 
-                if matches!(next_op, Op::DdlAbort { .. }) {
+                if abort_cause.is_none() && !last_step_info.all_instances_ok(&targets_total) {
+                    // This batch was successful, but there're still more RPCs to send out
+                    return ControlFlow::Continue(());
+                }
+
+                let next_op;
+                if let Some(cause) = abort_cause {
                     governor_substep! {
                         "clearing failed BACKUP"
                         async {
@@ -1099,20 +1112,32 @@ impl Loop {
                             // Because this code definitely doesn't do it,
                             // instead it tries once and gives up in case of any
                             // errors.
-                            let mut targets = masters;
-                            targets.extend_from_slice(&replicas);
 
                             // Call `proc_backup_abort_clear` on `targets`
                             collect_proc_backup_abort_clear(
-                                &targets,
+                                &targets_total,
                                 &rpc_clear,
                                 pool,
                                 rpc_timeout,
                             ).await??;
-
-                            crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");
                         }
                     }
+
+                    next_op = Op::DdlAbort { cause };
+                    crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");
+                } else {
+                    if cfg!(debug_assertions) {
+                        let backup_path_keys: Vec<_> =
+                            last_step_info.backup_paths.keys().cloned().collect();
+                        debug_assert!(last_step_info.all_instances_ok(&backup_path_keys));
+                    }
+
+                    let backup_paths_yaml = serde_yaml::to_string(&last_step_info.backup_paths)
+                        .expect("yaml conversion should not fail");
+                    tlog!(Info, "BACKUP is finished successfully with the following paths:\n{backup_paths_yaml}");
+
+                    next_op = Op::DdlCommit;
+                    crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_COMMIT");
                 }
 
                 let op_name = next_op.to_string();

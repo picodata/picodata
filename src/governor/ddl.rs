@@ -59,12 +59,14 @@ pub fn handle_pending_ddl<'i>(
 
     if let Ddl::Backup { timestamp } = ddl {
         return handle_backup(
+            last_step_info,
             topology_ref,
             pending_schema_version,
             *timestamp,
             term,
             applied,
             sync_timeout,
+            batch_size,
         );
     }
 

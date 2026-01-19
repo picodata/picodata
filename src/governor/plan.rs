@@ -552,7 +552,9 @@ pub(super) fn action_plan<'i>(
                 | Plan::CommitTruncateGlobalTable { .. }
                 | Plan::ApplyTruncateTable { .. }
                 | Plan::SleepDueToBackoff(SleepDueToBackoff {
-                    step_kind: ActionKind::ApplySchemaChange | ActionKind::ApplyTruncateTable,
+                    step_kind: ActionKind::ApplySchemaChange
+                        | ActionKind::ApplyBackup
+                        | ActionKind::ApplyTruncateTable,
                     ..
                 })
         );
@@ -1277,13 +1279,17 @@ pub mod stage {
             /// Only used for logging
             pub pending_schema_version: u64,
             /// These are masters of all the replicasets in the cluster.
-            /// They handle `rpc_master` before any `replicas` handle `rpc_replica`.
-            pub masters: Vec<InstanceName>,
+            /// They handle `rpc_master` before any `replicas_total` handle `rpc_replica`.
+            pub masters_total: Vec<InstanceName>,
+            /// A batch of `masters_total` to send the `rpc_master` request to on this iteration.
+            pub masters_batch: Vec<InstanceName>,
             /// Request to call `proc_apply_backup` on `masters`
             pub rpc_master: rpc::ddl_backup::Request,
             /// These are read_only replicas of all the replicasets in the cluster.
-            /// They handle `rpc_replica` after all `masters` handle `rpc_replica`.
-            pub replicas: Vec<InstanceName>,
+            /// They handle `rpc_replica` after all `masters_total` handle `rpc_replica`.
+            pub replicas_total: Vec<InstanceName>,
+            /// A batch of `replicas_total` to send the `rpc_replica` request to on this iteration.
+            pub replicas_batch: Vec<InstanceName>,
             /// Request to call `proc_apply_backup` on `replicas`
             pub rpc_replica: rpc::ddl_backup::Request,
             /// Request to call `proc_backup_abort_clear` on all `masters` &

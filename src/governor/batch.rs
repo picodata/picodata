@@ -7,6 +7,7 @@ use smol_str::SmolStr;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::time::Duration;
 use tarantool::fiber;
 use tarantool::time::Instant;
@@ -31,6 +32,8 @@ pub struct LastStepInfo {
     pending_schema_version: Option<u64>,
     schema_version: Option<u64>,
     pub truncate_map_callrw_ok: bool,
+
+    pub backup_paths: HashMap<InstanceName, PathBuf>,
 }
 
 impl LastStepInfo {
@@ -229,6 +232,7 @@ impl LastStepInfo {
         self.schema_version = None;
         self.pending_schema_version = None;
         self.truncate_map_callrw_ok = false;
+        self.backup_paths.clear();
     }
 }
 
