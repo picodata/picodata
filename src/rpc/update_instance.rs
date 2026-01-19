@@ -538,6 +538,9 @@ pub fn update_our_target_state_to_online(
         Duration::from_secs_f64(bootstrap_election_timeout.as_secs_f64() * random_factor);
     let mut next_election_try = fiber::clock().saturating_add(election_timeout);
 
+    // leader id we have learned from the `NotALeader` error response
+    let mut redirected_leader_id = None;
+
     // See comments bellow
     let mut use_old_proc_update_instance = false;
 
@@ -573,8 +576,23 @@ pub fn update_our_target_state_to_online(
         // Use the leader_id as reported by the raft loop as the main source of truth
         let mut leader_id = node.status().leader_id;
 
-        // if raft loop doesn't yet provide the leader_id (because it didn't get a heartbeat from master yet)
-        // try to use a random peer with known address
+        // If raft loop doesn't yet provide the leader_id (because it didn't get a heartbeat from master yet)
+        // try using the id from the `NotALeader` error response
+        if leader_id.is_none() {
+            if let Some(candidate_id) = redirected_leader_id {
+                tlog!(
+                    Info,
+                    "leader address is unknown, trying to send proc_update_instance to a peer described in the NotALeader error: {}",
+                    candidate_id
+                );
+
+                // Reset the `redirected_leader_id`, so that we don't end up stuck connecting to it if this guess is wrong.
+                redirected_leader_id = None;
+                leader_id = Some(candidate_id);
+            }
+        }
+
+        // If any of the previous methods didn't get the leader_id, try to use a random peer with a known address
         if leader_id.is_none() {
             if let Some((candidate_id, _candidate_address)) =
                 choose_random_node_with_known_address(&node.storage, node.raft_id)?
@@ -710,9 +728,11 @@ pub fn update_our_target_state_to_online(
                 // Hopefully a network error happened? Try again later.
                 error_message = e.to_string();
             }
-            Err(timeout::Error::Failed(e)) if e.error_code() == ErrorCode::NotALeader as u32 => {
-                // Our info about raft leader is outdated, just wait a while for
-                // it to update and send a request to hopefully the new leader.
+            Err(timeout::Error::Failed(TntError::Remote(e)))
+                if e.error_code() == ErrorCode::NotALeader as u32 =>
+            {
+                // Our info about raft leader is outdated, use the error response extended fields to get a potential leader id (if present).
+                redirected_leader_id = e.field("leader_id").and_then(|v| v.as_u64());
                 error_message = e.to_string();
             }
             Err(timeout::Error::Failed(e)) if e.error_code() == ErrorCode::LeaderUnknown as u32 => {
