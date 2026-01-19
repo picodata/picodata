@@ -79,7 +79,7 @@ source "$HOME/.cargo/env"
 
 ### Getting and building the source code
 ```bash
-git clone https://git.picodata.io/picodata/picodata/picodata.git
+git clone https://git.picodata.io/core/picodata.git
 cd picodata
 git submodule update --init --recursive
 ```
