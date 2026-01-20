@@ -36,6 +36,7 @@ use crate::traft::op::PluginRaftOp;
 use crate::traft::op::{Ddl, Dml, Op};
 use crate::traft::{RaftId, RaftIndex, RaftTerm, Result};
 use crate::warn_or_panic;
+use picodata_plugin::plugin::interface::ServiceId;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -567,16 +568,26 @@ pub(super) fn action_plan<'i>(
     // plugin operation
     if let Some(plan) = handle_plugin_op(
         plugin_op,
+        last_step_info,
         topology_ref,
         plugins,
         services,
         term,
         applied,
         sync_timeout,
+        batch_size,
     )? {
         debug_assert_plan_kind!(
             plan,
-            Plan::CreatePlugin { .. } | Plan::EnablePlugin { .. } | Plan::AlterServiceTiers { .. }
+            Plan::CreatePlugin { .. }
+                | Plan::EnablePlugin { .. }
+                | Plan::AlterServiceTiers { .. }
+                | Plan::SleepDueToBackoff(SleepDueToBackoff {
+                    step_kind: ActionKind::CreatePlugin
+                        | ActionKind::EnablePlugin
+                        | ActionKind::AlterServiceTiers,
+                    ..
+                })
         );
 
         return Ok(plan);
@@ -1072,11 +1083,15 @@ pub mod stage {
             pub rpc_clear: rpc::ddl_backup::RequestClear,
         }
 
-        pub struct CreatePlugin {
+        pub struct CreatePlugin<'i> {
             /// Identifier of the plugin. Used for logging.
             pub plugin: PluginIdentifier,
+            /// This plugin operation is being applied.
+            pub plugin_op: &'i PluginOp,
             /// This is every instance which is currently online.
-            pub targets: Vec<InstanceName>,
+            pub targets_total: Vec<InstanceName>,
+            /// A batch of `targets_total` to send the `rpc` request to on this iteration.
+            pub targets_batch: Vec<InstanceName>,
             /// Request to call [`rpc::load_plugin_dry_run::proc_load_plugin_dry_run`] on `targets`.
             pub rpc: rpc::load_plugin_dry_run::Request,
             /// Global batch DML operation which creates records in `_pico_plugin`, `_pico_service`, `_pico_plugin_config`
@@ -1084,9 +1099,13 @@ pub mod stage {
             pub success_dml: Op,
         }
 
-        pub struct EnablePlugin {
+        pub struct EnablePlugin<'i> {
+            /// This plugin operation is being applied.
+            pub plugin_op: &'i PluginOp,
             /// This is every instance which is currently online.
-            pub targets: Vec<InstanceName>,
+            pub targets_total: Vec<InstanceName>,
+            /// A batch of `targets_total` to send the `rpc` request to on this iteration.
+            pub targets_batch: Vec<InstanceName>,
             /// Request to call [`rpc::enable_plugin::proc_enable_plugin`] on `targets`.
             pub rpc: rpc::enable_plugin::Request,
             /// Rpc response must arrive within this timeout. Otherwise the operation is rolled back.
@@ -1099,13 +1118,19 @@ pub mod stage {
             pub success_dml: Op,
         }
 
-        pub struct AlterServiceTiers {
+        pub struct AlterServiceTiers<'i> {
             /// Identifier of the service. Used for logging.
             pub service: ServiceId,
+            /// This plugin operation is being applied.
+            pub plugin_op: &'i PluginOp,
             /// This is the list of instances on which we want to enable the service.
-            pub enable_targets: Vec<InstanceName>,
+            pub enable_targets_total: Vec<InstanceName>,
+            /// A batch of `enable_targets_total` to send the `enable_rpc` request to on this iteration.
+            pub enable_targets_batch: Vec<InstanceName>,
             /// This is the list of instances on which we want to disable the service.
-            pub disable_targets: Vec<InstanceName>,
+            pub disable_targets_total: Vec<InstanceName>,
+            /// A batch of `disable_targets_total` to send the `disable_rpc` request to on this iteration.
+            pub disable_targets_batch: Vec<InstanceName>,
             /// Request to call [`rpc::enable_service::proc_enable_service`] on `enable_targets`.
             pub enable_rpc: rpc::enable_service::Request,
             /// Request to call [`rpc::disable_service::proc_disable_service`] on `disable_targets`.

@@ -1170,46 +1170,62 @@ impl Loop {
             }
 
             Plan::CreatePlugin(CreatePlugin {
-                targets,
+                plugin,
+                plugin_op,
+                targets_total,
+                targets_batch,
                 rpc,
                 success_dml,
             }) => {
                 set_status!("install new plugin");
 
-                let mut next_op = None;
+                last_step_info.save_plugin_op(plugin_op);
+                debug_assert!(!targets_total.is_empty());
+                last_step_info.set_pending(&targets_total);
+
+                let mut abort_cause = None;
                 governor_substep! {
                     "checking if plugin is ready for installation on instances" [ "plugin" => %plugin ]
                     async {
-                        let mut fs = vec![];
-                        for instance_name in targets {
-                            tlog!(Info, "calling proc_load_plugin_dry_run"; "instance_name" => %instance_name);
+                        let mut fs = FuturesUnordered::new();
+                        for instance_name in targets_batch {
+                            tlog!(Info, "calling proc_load_plugin_dry_run"; "instance_name" => %instance_name, "plugin" => %plugin);
                             let resp = pool.call(&instance_name, proc_name!(proc_load_plugin_dry_run), &rpc, plugin_rpc_timeout)?;
-                            fs.push(async move {
-                                match resp.await {
-                                    Ok(_) => {
-                                        tlog!(Info, "instance is ready to install plugin";
-                                            "instance_name" => %instance_name,
-                                        );
-                                        Ok(())
-                                    }
-                                    Err(e) => {
-                                        tlog!(Error, "failed to call proc_load_plugin_dry_run: {e}";
-                                            "instance_name" => %instance_name
-                                        );
-                                        Err(ErrorInfo::new(instance_name.clone(), e))
-                                    }
+                            fs.push(async move { (instance_name, resp.await) });
+                        }
+
+                        while let Some((instance_name, res)) = fs.next().await {
+                            match res {
+                                Ok(_) => {
+                                    tlog!(Info, "instance is ready to install plugin";
+                                        "instance_name" => %instance_name, "plugin" => %plugin);
+                                    last_step_info.on_ok_instance(instance_name);
                                 }
-                            });
+                                Err(e) => {
+                                    tlog!(Error, "failed to call proc_load_plugin_dry_run: {e}";
+                                        "instance_name" => %instance_name, "plugin" => %plugin);
+                                    // Kinda weird that we're going to abort the whole operation
+                                    // even if a single request times out. Feels like it would be better
+                                    // to retry these trivial kinds of errors automatically.
+                                    // On the other hand nobody seems to be complaining about it, so...
+                                    abort_cause = Some(ErrorInfo::new(instance_name.clone(), e));
+                                }
+                            }
                         }
-
-                        if let Err(cause) = try_join_all(fs).await {
-                            tlog!(Error, "Plugin installation aborted: {cause}");
-                            next_op = Some(Op::Plugin(PluginRaftOp::Abort { cause }));
-                            return Ok(());
-                        }
-
-                        next_op = Some(success_dml);
                     }
+                }
+
+                if abort_cause.is_none() && !last_step_info.all_instances_ok(&targets_total) {
+                    // This batch was successful, but there're still more RPCs to send out
+                    return ControlFlow::Continue(());
+                }
+
+                let next_op;
+                if let Some(cause) = abort_cause {
+                    tlog!(Error, "Plugin `{plugin}` installation aborted: {cause}");
+                    next_op = Some(Op::Plugin(PluginRaftOp::Abort { cause }));
+                } else {
+                    next_op = Some(success_dml);
                 }
 
                 governor_substep! {
@@ -1226,64 +1242,85 @@ impl Loop {
 
             Plan::EnablePlugin(EnablePlugin {
                 plugin,
-                targets,
+                plugin_op,
+                targets_total,
+                targets_batch,
                 rpc,
                 on_start_timeout,
                 success_dml,
             }) => {
                 set_status!("enable plugin");
-                let mut next_op = None;
 
+                last_step_info.save_plugin_op(plugin_op);
+                debug_assert!(!targets_total.is_empty());
+                last_step_info.set_pending(&targets_total);
+
+                let mut abort_cause = None;
                 governor_substep! {
                     "enabling plugin" [ "plugin" => %plugin ]
                     async {
-                        let mut fs = vec![];
-                        for instance_name in &targets {
-                            tlog!(Info, "calling enable_plugin"; "instance_name" => %instance_name);
-                            let resp = pool.call(instance_name, proc_name!(proc_enable_plugin), &rpc, on_start_timeout)?;
-                            fs.push(async move {
-                                match resp.await {
-                                    Ok(rpc::enable_plugin::Response::Ok) => {
-                                        tlog!(Info, "enabled plugin on instance"; "instance_name" => %instance_name);
-                                        Ok(())
-                                    }
-                                    Ok(rpc::enable_plugin::Response::Abort { cause }) => {
-                                        tlog!(Error, "failed to enable plugin at instance: {cause}";
-                                            "instance_name" => %instance_name,
-                                        );
-                                        Err(OnError::Abort(cause))
-                                    }
-                                    Err(e) if e.error_code() == Timeout as u32 => {
-                                        tlog!(Error, "failed to enable plugin at instance: timeout";
-                                            "instance_name" => %instance_name,
-                                        );
-                                        Err(OnError::Abort(ErrorInfo::timeout(instance_name.clone(), "no response")))
-                                    }
-                                    Err(e) => {
-                                        tlog!(Warning, "failed calling proc_load_plugin: {e}";
-                                            "instance_name" => %instance_name
-                                        );
-                                        Err(OnError::Retry(e))
-                                    }
+                        let mut fs = FuturesUnordered::new();
+                        for instance_name in targets_batch {
+                            tlog!(Info, "calling enable_plugin"; "instance_name" => %instance_name, "plugin" => %plugin);
+                            let resp = pool.call(&instance_name, proc_name!(proc_enable_plugin), &rpc, on_start_timeout)?;
+                            fs.push(async move { (instance_name, resp.await) });
+                        }
+
+                        let mut first_error = None;
+
+                        while let Some((instance_name, res)) = fs.next().await {
+                            match res {
+                                Ok(rpc::enable_plugin::Response::Ok) => {
+                                    tlog!(Info, "enabled plugin on instance";
+                                        "instance_name" => %instance_name, "plugin" => %plugin);
+                                    last_step_info.on_ok_instance(instance_name);
                                 }
-                            });
+                                Ok(rpc::enable_plugin::Response::Abort { cause }) => {
+                                    tlog!(Error, "failed to enable plugin at instance: {cause}";
+                                        "instance_name" => %instance_name, "plugin" => %plugin);
+                                    abort_cause = Some(cause);
+                                }
+                                Err(e) if e.error_code() == Timeout as u32 => {
+                                    tlog!(Error, "failed to enable plugin at instance: timeout";
+                                        "instance_name" => %instance_name, "plugin" => %plugin);
+                                    last_step_info.on_err_instance(&instance_name);
+                                    abort_cause = Some(ErrorInfo::timeout(instance_name.clone(), "no response"));
+                                }
+                                Err(e) => {
+                                    tlog!(Warning, "failed calling `proc_enable_plugin`: {e}";
+                                        "instance_name" => %instance_name, "plugin" => %plugin);
+                                    last_step_info.on_err_instance(&instance_name);
+                                    first_error = Some(e);
+                                }
+                            }
                         }
 
-                        let enable_result = try_join_all(fs).await;
-                        if let Err(OnError::Abort(cause)) = enable_result {
-                            let rollback_op = PluginRaftOp::DisablePlugin {
-                                ident: ident.clone(),
-                                cause: Some(cause),
-                            };
-                            next_op = Some(Op::Plugin(rollback_op));
-                            return Ok(());
+                        if abort_cause.is_none() {
+                            if let Some(error) = first_error {
+                                // Return error if this is a retriable error
+                                return Err(error);
+                            }
                         }
-
-                        // Return error if this is a retriable error
-                        enable_result?;
-
-                        next_op = Some(success_dml);
                     }
+                }
+
+                if abort_cause.is_none() && !last_step_info.all_instances_ok(&targets_total) {
+                    // This batch was successful, but there're still more RPCs to send out
+                    return ControlFlow::Continue(());
+                }
+
+                let next_op;
+                if let Some(cause) = abort_cause {
+                    tlog!(
+                        Error,
+                        "Attempt to enable plugin `{plugin}` aborted: {cause}"
+                    );
+                    next_op = Some(Op::Plugin(PluginRaftOp::DisablePlugin {
+                        ident: plugin.clone(),
+                        cause: Some(cause),
+                    }));
+                } else {
+                    next_op = Some(success_dml);
                 }
 
                 governor_substep! {
@@ -1300,8 +1337,11 @@ impl Loop {
 
             Plan::AlterServiceTiers(AlterServiceTiers {
                 service,
-                enable_targets,
-                disable_targets,
+                plugin_op,
+                enable_targets_total,
+                enable_targets_batch,
+                disable_targets_total,
+                disable_targets_batch,
                 enable_rpc,
                 disable_rpc,
                 success_dml,
@@ -1309,7 +1349,11 @@ impl Loop {
                 let service = &service;
 
                 set_status!("update plugin service topology");
-                let mut next_op = None;
+
+                last_step_info.save_plugin_op(plugin_op);
+                let mut targets_total = enable_targets_total.clone();
+                targets_total.extend_from_slice(&disable_targets_total);
+                last_step_info.set_pending(&targets_total);
 
                 // FIXME: this step is overcomplicated and there's probably some
                 // corner cases in which it may lead to inconsistent state.
@@ -1320,38 +1364,48 @@ impl Loop {
                 // introducing the plugin healthcheck system, but it's
                 // nevertheless concerning that there could be cases where this
                 // type of inconsistency could lead to some scary things.
+                let mut abort_cause = None;
                 governor_substep! {
                     "enabling/disabling service at new tiers" [ "service" => %service ]
                     async {
-                        let mut fs = vec![];
-                        for instance_name in &enable_targets {
+                        let mut fs = FuturesUnordered::new();
+                        for instance_name in enable_targets_batch {
                             tlog!(Info, "calling proc_enable_service"; "instance_name" => %instance_name, "service" => %service);
-                            let resp = pool.call(instance_name, proc_name!(proc_enable_service), &enable_rpc, plugin_rpc_timeout)?;
-                            fs.push(async move {
-                                match resp.await {
-                                    Ok(_) => {
-                                        tlog!(Info, "instance enable service"; "instance_name" => %instance_name, "service" => %service);
-                                        Ok(())
-                                    }
-                                    Err(e) => {
-                                        tlog!(Error, "failed to call proc_enable_service: {e}";
-                                            "instance_name" => %instance_name, "service" => %service,
-                                        );
-                                        Err(ErrorInfo::new(instance_name.clone(), e))
-                                    }
-                                }
-                            });
+                            let resp = pool.call(&instance_name, proc_name!(proc_enable_service), &enable_rpc, plugin_rpc_timeout)?;
+                            fs.push(async move { (instance_name, resp.await) });
                         }
 
-                        if let Err(cause) = try_join_all(fs).await {
+                        while let Some((instance_name, res)) = fs.next().await {
+                            match res {
+                                Ok(_) => {
+                                    tlog!(Info, "instance enable service";
+                                        "instance_name" => %instance_name, "service" => %service);
+                                    last_step_info.on_ok_instance(instance_name);
+                                }
+                                Err(e) => {
+                                    tlog!(Error, "failed to call proc_enable_service: {e}";
+                                        "instance_name" => %instance_name, "service" => %service,
+                                    );
+                                    // Kinda lame that we abort on any single error
+                                    // even if it's a connection failure or timeout...
+                                    abort_cause = Some(ErrorInfo::new(instance_name.clone(), e));
+                                    // The operation is aborted. We mark this
+                                    // instance as Ok, so that later we remember
+                                    // to call proc_disable_service on it
+                                    last_step_info.on_ok_instance(instance_name);
+                                }
+                            }
+                        }
+
+                        if let Some(cause) = &abort_cause {
                             tlog!(Error, "Enabling service `{service}` failed with: {cause}, rollback and abort");
-                            next_op = Some(Op::Plugin(PluginRaftOp::Abort { cause }));
 
                             // try to disable plugins at all instances
                             // where it was enabled previously
                             let mut fs = vec![];
-                            for instance_name in enable_targets {
-                                let resp = pool.call(&instance_name, proc_name!(proc_disable_service), &disable_rpc, plugin_rpc_timeout)?;
+                            for instance_name in last_step_info.ok_instances() {
+                                tlog!(Info, "calling proc_disable_service"; "instance_name" => %instance_name, "service" => %service);
+                                let resp = pool.call(instance_name, proc_name!(proc_disable_service), &disable_rpc, plugin_rpc_timeout)?;
                                 fs.push(resp);
                             }
                             // FIXME: over here we completely ignore the result of the RPC above.
@@ -1362,24 +1416,60 @@ impl Loop {
                             return Ok(());
                         }
 
-                        let mut fs = vec![];
-                        for instance_name in disable_targets {
-                            tlog!(Info, "calling proc_disable_service"; "instance_name" => %instance_name, "service" => %service);
-                            let resp = pool.call(&instance_name, proc_name!(proc_disable_service), &disable_rpc, plugin_rpc_timeout)?;
-                            fs.push(resp);
-                        }
-                        try_join_all(fs).await?;
+                        // Must wait until all enablings are handled to find out
+                        // if the operation was aborted or not
+                        let all_enabled = last_step_info.all_instances_ok(&enable_targets_total);
+                        if all_enabled {
+                            let mut fs = FuturesUnordered::new();
+                            for instance_name in disable_targets_batch {
+                                tlog!(Info, "calling proc_disable_service"; "instance_name" => %instance_name, "service" => %service);
+                                let resp = pool.call(&instance_name, proc_name!(proc_disable_service), &disable_rpc, plugin_rpc_timeout)?;
+                                fs.push(async move { (instance_name, resp.await) });
+                            }
 
-                        next_op = Some(success_dml);
+                            let mut first_error = None;
+
+                            while let Some((instance_name, res)) = fs.next().await {
+                                match res {
+                                    Ok(_) => {
+                                        tlog!(Info, "disabled service on instance";
+                                            "instance_name" => %instance_name, "service" => %service);
+                                        last_step_info.on_ok_instance(instance_name);
+                                    }
+                                    Err(e) => {
+                                        tlog!(Error, "failed to call proc_disable_service: {e}";
+                                            "instance_name" => %instance_name, "service" => %service);
+                                        last_step_info.on_err_instance(&instance_name);
+                                        first_error = Some(e);
+                                    }
+                                }
+                            }
+
+                            if let Some(error) = first_error {
+                                // If there were any other errors, end this step as a failure
+                                return Err(error);
+                            }
+                        }
                     }
+                }
+
+                if abort_cause.is_none() && !last_step_info.all_instances_ok(&targets_total) {
+                    // This batch was successful, but there're still more RPCs to send out
+                    return ControlFlow::Continue(());
+                }
+
+                let next_op;
+                if let Some(cause) = abort_cause {
+                    next_op = Op::Plugin(PluginRaftOp::Abort { cause });
+                } else {
+                    next_op = success_dml;
                 }
 
                 governor_substep! {
                     "finalizing topology update" [ "service" => %service ]
                     async {
-                        let op = next_op.expect("is set on the first substep");
                         let predicate = cas::Predicate::new(applied, []);
-                        let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
+                        let cas = cas::Request::new(next_op, predicate, ADMIN_ID)?;
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
                         cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
                     }

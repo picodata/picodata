@@ -1,6 +1,7 @@
 use crate::governor::plan::stage::ActionKind;
 use crate::governor::plan::stage::Plan;
 use crate::instance::InstanceName;
+use crate::plugin::PluginOp;
 use crate::tier::Tier;
 use crate::tlog;
 use smol_str::SmolStr;
@@ -34,6 +35,9 @@ pub struct LastStepInfo {
     pub truncate_map_callrw_ok: bool,
 
     pub backup_paths: HashMap<InstanceName, PathBuf>,
+
+    // Fields related to Plugin operation
+    pub last_plugin_op: Option<PluginOp>,
 }
 
 impl LastStepInfo {
@@ -65,6 +69,7 @@ impl LastStepInfo {
         self.reset_rpc_results("step kind changed");
         self.target_vshard_config_versions.clear();
         self.reset_schema_info();
+        self.last_plugin_op = None;
 
         self.step_kind = kind;
     }
@@ -89,6 +94,11 @@ impl LastStepInfo {
             .entry(instance_name.clone())
             .and_modify(ErrorTracker::on_error)
             .or_insert_with(ErrorTracker::new)
+    }
+
+    #[inline]
+    pub fn ok_instances(&self) -> impl Iterator<Item = &InstanceName> {
+        self.ok_instances.iter()
     }
 
     pub fn set_pending(&mut self, instances: &[InstanceName]) {
@@ -233,6 +243,25 @@ impl LastStepInfo {
         self.pending_schema_version = None;
         self.truncate_map_callrw_ok = false;
         self.backup_paths.clear();
+    }
+
+    pub fn update_plugin_op(&mut self, plugin_op: &PluginOp) {
+        let Some(last_plugin_op) = &self.last_plugin_op else {
+            return;
+        };
+
+        if last_plugin_op == plugin_op {
+            return;
+        }
+
+        self.reset_rpc_results("step kind changed");
+        self.last_plugin_op = None;
+    }
+
+    pub fn save_plugin_op(&mut self, plugin_op: &PluginOp) {
+        if self.last_plugin_op.as_ref() != Some(plugin_op) {
+            self.last_plugin_op = Some(plugin_op.clone());
+        }
     }
 }
 
