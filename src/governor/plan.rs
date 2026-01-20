@@ -5,6 +5,7 @@ use crate::governor::batch::get_next_batch_for_to_online;
 use crate::governor::batch::LastStepInfo;
 use crate::governor::conf_change::raft_conf_change;
 use crate::governor::ddl::handle_pending_ddl;
+use crate::governor::plugin::handle_plugin_op;
 use crate::governor::queue::handle_governor_queue;
 use crate::governor::replication::handle_replicaset_master_switchover;
 use crate::governor::replication::handle_replicaset_sync;
@@ -14,14 +15,14 @@ use crate::governor::sharding::{handle_sharding, handle_sharding_bootstrap};
 use crate::has_states;
 use crate::instance::state::{State, StateVariant};
 use crate::instance::{Instance, InstanceName};
-use crate::plugin::{PluginIdentifier, PluginOp, TopologyUpdateOpKind};
+use crate::plugin::{PluginIdentifier, PluginOp};
 use crate::replicaset::{Replicaset, ReplicasetName, ReplicasetState, WeightOrigin};
 use crate::rpc;
 use crate::rpc::update_instance::prepare_update_instance_cas_request;
-use crate::schema::{
-    PluginConfigRecord, PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, TableDef,
-    ADMIN_ID,
-};
+use crate::schema::PluginDef;
+use crate::schema::ServiceDef;
+use crate::schema::TableDef;
+use crate::schema::ADMIN_ID;
 use crate::sentinel::SentinelStatus;
 use crate::storage;
 use crate::storage::{PropertyName, SystemTable};
@@ -563,251 +564,22 @@ pub(super) fn action_plan<'i>(
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // install plugin
-    if let Some(PluginOp::CreatePlugin {
-        manifest,
-        inherit_entities,
-        inherit_topology,
-    }) = plugin_op
-    {
-        let ident = manifest.plugin_identifier();
-        if plugins.get(&ident).is_some() {
-            warn_or_panic!(
-                "received a request to install a plugin which is already installed {ident:?}"
-            );
-        }
+    // plugin operation
+    if let Some(plan) = handle_plugin_op(
+        plugin_op,
+        topology_ref,
+        plugins,
+        services,
+        term,
+        applied,
+        sync_timeout,
+    )? {
+        debug_assert_plan_kind!(
+            plan,
+            Plan::CreatePlugin { .. } | Plan::EnablePlugin { .. } | Plan::AlterServiceTiers { .. }
+        );
 
-        let mut targets = Vec::with_capacity(instances.len());
-        for i in maybe_responding(instances) {
-            targets.push(&i.name);
-        }
-
-        let rpc = rpc::load_plugin_dry_run::Request {
-            term,
-            applied,
-            timeout: sync_timeout,
-        };
-
-        let plugin_def = manifest.plugin_def();
-        let mut ops = vec![];
-
-        let dml = Dml::replace(storage::Plugins::TABLE_ID, &plugin_def, ADMIN_ID)?;
-        ops.push(dml);
-
-        let ident = plugin_def.into_identifier();
-        for mut service_def in manifest.service_defs() {
-            if let Some(service_topology) = inherit_topology.get(&service_def.name) {
-                service_def.tiers = service_topology.clone();
-            }
-            let dml = Dml::replace(storage::Services::TABLE_ID, &service_def, ADMIN_ID)?;
-            ops.push(dml);
-
-            let config = manifest
-                .get_default_config(&service_def.name)
-                .expect("configuration should exist");
-            let config_records =
-                PluginConfigRecord::from_config(&ident, &service_def.name, config.clone())?;
-
-            for config_rec in config_records {
-                let dml = Dml::replace(storage::PluginConfig::TABLE_ID, &config_rec, ADMIN_ID)?;
-                ops.push(dml);
-            }
-        }
-
-        for (entity, config) in inherit_entities {
-            let config_records = PluginConfigRecord::from_config(&ident, entity, config.clone())?;
-            for config_rec in config_records {
-                let dml = Dml::replace(storage::PluginConfig::TABLE_ID, &config_rec, ADMIN_ID)?;
-                ops.push(dml);
-            }
-        }
-
-        let dml = Dml::delete(
-            storage::Properties::TABLE_ID,
-            &[PropertyName::PendingPluginOperation],
-            ADMIN_ID,
-            None,
-        )?;
-        ops.push(dml);
-
-        let success_dml = Op::BatchDml { ops };
-        return Ok(CreatePlugin {
-            targets,
-            rpc,
-            success_dml,
-        }
-        .into());
-    }
-
-    ////////////////////////////////////////////////////////////////////////////
-    // enable plugin
-    if let Some(PluginOp::EnablePlugin {
-        plugin,
-        timeout: on_start_timeout,
-    }) = plugin_op
-    {
-        let service_defs = services.get(plugin).map(|v| &**v).unwrap_or(&[]);
-
-        let targets = maybe_responding(instances).map(|i| &i.name).collect();
-
-        let rpc = rpc::enable_plugin::Request {
-            term,
-            applied,
-            timeout: sync_timeout,
-        };
-
-        let mut success_dml = vec![];
-        let mut enable_ops = UpdateOps::new();
-        enable_ops.assign(column_name!(PluginDef, enabled), true)?;
-        let dml = Dml::update(
-            storage::Plugins::TABLE_ID,
-            &[&plugin.name, &plugin.version],
-            enable_ops,
-            ADMIN_ID,
-        )?;
-        success_dml.push(dml);
-
-        for i in instances {
-            for svc in service_defs {
-                if !svc.tiers.contains(&i.tier) {
-                    continue;
-                }
-                let dml = Dml::replace(
-                    storage::ServiceRouteTable::TABLE_ID,
-                    &ServiceRouteItem::new_healthy(i.name.clone(), plugin, svc.name.clone()),
-                    ADMIN_ID,
-                )?;
-                success_dml.push(dml);
-            }
-        }
-
-        let dml = Dml::delete(
-            storage::Properties::TABLE_ID,
-            &[PropertyName::PendingPluginOperation],
-            ADMIN_ID,
-            None,
-        )?;
-        success_dml.push(dml);
-        let success_dml = Op::BatchDml { ops: success_dml };
-
-        return Ok(EnablePlugin {
-            rpc,
-            targets,
-            on_start_timeout: *on_start_timeout,
-            ident: plugin,
-            success_dml,
-        }
-        .into());
-    }
-
-    ////////////////////////////////////////////////////////////////////////////
-    // update service tiers
-    if let Some(PluginOp::AlterServiceTiers {
-        plugin,
-        service,
-        tier,
-        kind,
-    }) = plugin_op
-    {
-        let mut enable_targets = Vec::with_capacity(instances.len());
-        let mut disable_targets = Vec::with_capacity(instances.len());
-        let mut on_success_dml = vec![];
-
-        let plugin_def = plugins
-            .get(plugin)
-            .expect("operation for non existent plugin");
-        let service_def = *services
-            .get(plugin)
-            .expect("operation for non existent service")
-            .iter()
-            .find(|s| &s.name == service)
-            .expect("operation for non existent service");
-
-        let mut new_service_def = service_def.clone();
-        let new_tiers = &mut new_service_def.tiers;
-        match kind {
-            TopologyUpdateOpKind::Add => {
-                if new_tiers.iter().all(|t| t != tier) {
-                    new_tiers.push(tier.clone());
-                }
-            }
-            TopologyUpdateOpKind::Remove => {
-                new_tiers.retain(|t| t != tier);
-            }
-        }
-
-        let old_tiers = &service_def.tiers;
-
-        // note: no need to enable/disable service and update routing table if plugin disabled
-        if plugin_def.enabled {
-            for i in maybe_responding(instances) {
-                // if instance in both new and old tiers - do nothing
-                if new_tiers.contains(&i.tier) && old_tiers.contains(&i.tier) {
-                    continue;
-                }
-
-                if new_tiers.contains(&i.tier) {
-                    enable_targets.push(&i.name);
-                    let dml = Dml::replace(
-                        storage::ServiceRouteTable::TABLE_ID,
-                        &ServiceRouteItem::new_healthy(
-                            i.name.clone(),
-                            plugin,
-                            service_def.name.clone(),
-                        ),
-                        ADMIN_ID,
-                    )?;
-                    on_success_dml.push(dml);
-                }
-
-                if old_tiers.contains(&i.tier) {
-                    disable_targets.push(&i.name);
-                    let key = ServiceRouteKey {
-                        instance_name: &i.name,
-                        plugin_name: &plugin.name,
-                        plugin_version: &plugin.version,
-                        service_name: &service_def.name,
-                    };
-                    let dml =
-                        Dml::delete(storage::ServiceRouteTable::TABLE_ID, &key, ADMIN_ID, None)?;
-                    on_success_dml.push(dml);
-                }
-            }
-        }
-
-        let dml = Dml::replace(storage::Services::TABLE_ID, &new_service_def, ADMIN_ID)?;
-        on_success_dml.push(dml);
-
-        let dml = Dml::delete(
-            storage::Properties::TABLE_ID,
-            &[PropertyName::PendingPluginOperation],
-            ADMIN_ID,
-            None,
-        )?;
-        on_success_dml.push(dml);
-        let success_dml = Op::BatchDml {
-            ops: on_success_dml,
-        };
-
-        let enable_rpc = rpc::enable_service::Request {
-            term,
-            applied,
-            timeout: sync_timeout,
-        };
-        let disable_rpc = rpc::disable_service::Request {
-            term,
-            applied,
-            timeout: sync_timeout,
-        };
-
-        return Ok(AlterServiceTiers {
-            enable_targets,
-            disable_targets,
-            enable_rpc,
-            disable_rpc,
-            success_dml,
-        }
-        .into());
+        return Ok(plan);
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -1300,9 +1072,11 @@ pub mod stage {
             pub rpc_clear: rpc::ddl_backup::RequestClear,
         }
 
-        pub struct CreatePlugin<'i> {
+        pub struct CreatePlugin {
+            /// Identifier of the plugin. Used for logging.
+            pub plugin: PluginIdentifier,
             /// This is every instance which is currently online.
-            pub targets: Vec<&'i InstanceName>,
+            pub targets: Vec<InstanceName>,
             /// Request to call [`rpc::load_plugin_dry_run::proc_load_plugin_dry_run`] on `targets`.
             pub rpc: rpc::load_plugin_dry_run::Request,
             /// Global batch DML operation which creates records in `_pico_plugin`, `_pico_service`, `_pico_plugin_config`
@@ -1310,26 +1084,28 @@ pub mod stage {
             pub success_dml: Op,
         }
 
-        pub struct EnablePlugin<'i> {
+        pub struct EnablePlugin {
             /// This is every instance which is currently online.
-            pub targets: Vec<&'i InstanceName>,
+            pub targets: Vec<InstanceName>,
             /// Request to call [`rpc::enable_plugin::proc_enable_plugin`] on `targets`.
             pub rpc: rpc::enable_plugin::Request,
             /// Rpc response must arrive within this timeout. Otherwise the operation is rolled back.
             pub on_start_timeout: Duration,
             /// Identifier of the plugin. This will be used to construct a [`PluginRaftOp::DisablePlugin`]
             /// raft operation if the RPC fails on some of the targets.
-            pub ident: &'i PluginIdentifier,
+            pub plugin: PluginIdentifier,
             /// Global batch DML operation which updates records in `_pico_service`, `_pico_service_route`
             /// and removes "pending_plugin_operation" from `_pico_property` in case of success.
             pub success_dml: Op,
         }
 
-        pub struct AlterServiceTiers<'i> {
+        pub struct AlterServiceTiers {
+            /// Identifier of the service. Used for logging.
+            pub service: ServiceId,
             /// This is the list of instances on which we want to enable the service.
-            pub enable_targets: Vec<&'i InstanceName>,
+            pub enable_targets: Vec<InstanceName>,
             /// This is the list of instances on which we want to disable the service.
-            pub disable_targets: Vec<&'i InstanceName>,
+            pub disable_targets: Vec<InstanceName>,
             /// Request to call [`rpc::enable_service::proc_enable_service`] on `enable_targets`.
             pub enable_rpc: rpc::enable_service::Request,
             /// Request to call [`rpc::disable_service::proc_disable_service`] on `disable_targets`.

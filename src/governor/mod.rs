@@ -73,6 +73,7 @@ mod batch;
 mod conf_change;
 mod ddl;
 pub(crate) mod plan;
+mod plugin;
 mod queue;
 mod replication;
 mod sharding;
@@ -1177,12 +1178,12 @@ impl Loop {
 
                 let mut next_op = None;
                 governor_substep! {
-                    "checking if plugin is ready for installation on instances"
+                    "checking if plugin is ready for installation on instances" [ "plugin" => %plugin ]
                     async {
                         let mut fs = vec![];
                         for instance_name in targets {
                             tlog!(Info, "calling proc_load_plugin_dry_run"; "instance_name" => %instance_name);
-                            let resp = pool.call(instance_name, proc_name!(proc_load_plugin_dry_run), &rpc, plugin_rpc_timeout)?;
+                            let resp = pool.call(&instance_name, proc_name!(proc_load_plugin_dry_run), &rpc, plugin_rpc_timeout)?;
                             fs.push(async move {
                                 match resp.await {
                                     Ok(_) => {
@@ -1212,7 +1213,7 @@ impl Loop {
                 }
 
                 governor_substep! {
-                    "finalizing plugin installing"
+                    "finalizing plugin installing" [ "plugin" => %plugin ]
                     async {
                         let op = next_op.expect("is set on the first substep");
                         let predicate = cas::Predicate::new(applied, []);
@@ -1224,9 +1225,9 @@ impl Loop {
             }
 
             Plan::EnablePlugin(EnablePlugin {
+                plugin,
                 targets,
                 rpc,
-                ident,
                 on_start_timeout,
                 success_dml,
             }) => {
@@ -1234,10 +1235,10 @@ impl Loop {
                 let mut next_op = None;
 
                 governor_substep! {
-                    "enabling plugin"
+                    "enabling plugin" [ "plugin" => %plugin ]
                     async {
                         let mut fs = vec![];
-                        for &instance_name in &targets {
+                        for instance_name in &targets {
                             tlog!(Info, "calling enable_plugin"; "instance_name" => %instance_name);
                             let resp = pool.call(instance_name, proc_name!(proc_enable_plugin), &rpc, on_start_timeout)?;
                             fs.push(async move {
@@ -1286,7 +1287,7 @@ impl Loop {
                 }
 
                 governor_substep! {
-                    "finalizing plugin enabling"
+                    "finalizing plugin enabling" [ "plugin" => %plugin ]
                     async {
                         let op = next_op.expect("is set on the first substep");
                         let predicate = cas::Predicate::new(applied, []);
@@ -1298,12 +1299,15 @@ impl Loop {
             }
 
             Plan::AlterServiceTiers(AlterServiceTiers {
+                service,
                 enable_targets,
                 disable_targets,
                 enable_rpc,
                 disable_rpc,
                 success_dml,
             }) => {
+                let service = &service;
+
                 set_status!("update plugin service topology");
                 let mut next_op = None;
 
@@ -1317,21 +1321,21 @@ impl Loop {
                 // nevertheless concerning that there could be cases where this
                 // type of inconsistency could lead to some scary things.
                 governor_substep! {
-                    "enabling/disabling service at new tiers"
+                    "enabling/disabling service at new tiers" [ "service" => %service ]
                     async {
                         let mut fs = vec![];
-                        for &instance_name in &enable_targets {
-                            tlog!(Info, "calling proc_enable_service"; "instance_name" => %instance_name);
+                        for instance_name in &enable_targets {
+                            tlog!(Info, "calling proc_enable_service"; "instance_name" => %instance_name, "service" => %service);
                             let resp = pool.call(instance_name, proc_name!(proc_enable_service), &enable_rpc, plugin_rpc_timeout)?;
                             fs.push(async move {
                                 match resp.await {
                                     Ok(_) => {
-                                        tlog!(Info, "instance enable service"; "instance_name" => %instance_name);
+                                        tlog!(Info, "instance enable service"; "instance_name" => %instance_name, "service" => %service);
                                         Ok(())
                                     }
                                     Err(e) => {
                                         tlog!(Error, "failed to call proc_enable_service: {e}";
-                                            "instance_name" => %instance_name
+                                            "instance_name" => %instance_name, "service" => %service,
                                         );
                                         Err(ErrorInfo::new(instance_name.clone(), e))
                                     }
@@ -1340,14 +1344,14 @@ impl Loop {
                         }
 
                         if let Err(cause) = try_join_all(fs).await {
-                            tlog!(Error, "Enabling plugins fail with: {cause}, rollback and abort");
+                            tlog!(Error, "Enabling service `{service}` failed with: {cause}, rollback and abort");
                             next_op = Some(Op::Plugin(PluginRaftOp::Abort { cause }));
 
                             // try to disable plugins at all instances
                             // where it was enabled previously
                             let mut fs = vec![];
                             for instance_name in enable_targets {
-                                let resp = pool.call(instance_name, proc_name!(proc_disable_service), &disable_rpc, plugin_rpc_timeout)?;
+                                let resp = pool.call(&instance_name, proc_name!(proc_disable_service), &disable_rpc, plugin_rpc_timeout)?;
                                 fs.push(resp);
                             }
                             // FIXME: over here we completely ignore the result of the RPC above.
@@ -1360,8 +1364,8 @@ impl Loop {
 
                         let mut fs = vec![];
                         for instance_name in disable_targets {
-                            tlog!(Info, "calling proc_disable_service"; "instance_name" => %instance_name);
-                            let resp = pool.call(instance_name, proc_name!(proc_disable_service), &disable_rpc, plugin_rpc_timeout)?;
+                            tlog!(Info, "calling proc_disable_service"; "instance_name" => %instance_name, "service" => %service);
+                            let resp = pool.call(&instance_name, proc_name!(proc_disable_service), &disable_rpc, plugin_rpc_timeout)?;
                             fs.push(resp);
                         }
                         try_join_all(fs).await?;
@@ -1371,7 +1375,7 @@ impl Loop {
                 }
 
                 governor_substep! {
-                    "finalizing topology update"
+                    "finalizing topology update" [ "service" => %service ]
                     async {
                         let op = next_op.expect("is set on the first substep");
                         let predicate = cas::Predicate::new(applied, []);
