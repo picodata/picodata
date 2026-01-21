@@ -96,6 +96,8 @@ with the `YY.MINOR.MICRO` scheme.
   simultaneously with `--iproto-advertise`.
 - Fixed a race condition between DDL (i.e., TRUNCATE) and DQL when the preemption option is enabled.
 - Fixed a number of vinyl issues by backporting upstream patches
+- Fixed `picodata plugin configure` panic on attempt to update non-existent plugin or a non-existing
+  service of an existing plugin.
 
 
 ## [25.5.5] - 2026-01-26

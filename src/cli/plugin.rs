@@ -12,6 +12,65 @@ use tarantool::fiber;
 use tarantool::network::{AsClient, Client};
 use tarantool::tuple::Decode;
 
+#[inline(always)]
+fn bad_response(response: &Vec<Vec<RowSet>>) -> cli::Result<()> {
+    Err(format!("bad response format from _pico_plugin: {response:?}").into())
+}
+
+fn verify_plugin_exists(
+    client: &Client,
+    plugin_name: &str,
+    plugin_version: &str,
+) -> cli::Result<()> {
+    let plugin_query = format!("SELECT name FROM _pico_plugin WHERE name = '{plugin_name}'");
+    let response = fiber::block_on(client.call(
+        crate::proc_name!(proc_sql_dispatch),
+        &(plugin_query, Vec::<()>::new()),
+    ))?
+    .decode::<Vec<Vec<RowSet>>>()?;
+
+    if let Some(outer) = response.first() {
+        if let Some(inner) = outer.first() {
+            if inner.rows.is_empty() {
+                return Err(format!("no such plugin {plugin_name}:{plugin_version}").into());
+            }
+        } else {
+            return bad_response(&response);
+        }
+    } else {
+        return bad_response(&response);
+    }
+
+    Ok(())
+}
+
+fn verify_service_exists(
+    client: &Client,
+    plugin_name: &str,
+    service_name: &str,
+) -> cli::Result<()> {
+    let check_query = format!("SELECT name FROM _pico_service WHERE name = '{service_name}' AND plugin_name = '{plugin_name}'");
+    let response = fiber::block_on(client.call(
+        crate::proc_name!(proc_sql_dispatch),
+        &(check_query, Vec::<()>::new()),
+    ))?
+    .decode::<Vec<Vec<RowSet>>>()?;
+
+    if let Some(outer) = response.first() {
+        if let Some(inner) = outer.first() {
+            if inner.rows.is_empty() {
+                return Err(format!("no such service {plugin_name}.{service_name}").into());
+            }
+        } else {
+            return bad_response(&response);
+        }
+    } else {
+        return bad_response(&response);
+    }
+
+    Ok(())
+}
+
 fn fetch_current_parameters(
     client: &Client,
     plugin_name: &str,
@@ -104,60 +163,71 @@ fn main_impl(args: Plugin) -> cli::Result<()> {
                 ..
             } = &cfg;
 
-            // validate config first for better ux
+            // STEP: validate config file as a first step, for better UX.
+
             let config_string = read_to_string(config_file)?;
             let config_values: ConfigRepr = serde_yaml::from_str(&config_string)?;
 
-            // setup credentials and options for the connection
+            // STEP: setup client connection to database with passed credentials.
+
             let credentials = Credentials::try_from(&cfg)?;
             let timeout = Some(Duration::from_secs(*timeout));
-            let client = credentials
-                .connect(peer_address, tls, timeout)
-                .map_err(crate::traft::error::Error::other)?;
+            let client = credentials.connect(peer_address, tls, timeout)?;
 
-            // setup buffers and current parameters to update them
+            // STEP: validate that the plugin we are going to update even exists.
+
+            verify_plugin_exists(&client, plugin_name, plugin_version)?;
+
+            // STEP: perform plugin services update with verification.
+
             let query_prefix = format!(r#"ALTER PLUGIN "{plugin_name}" {plugin_version} SET"#);
             let mut updated_parameters = Vec::new();
             let mut update_queries = Vec::new();
             let current_parameters =
                 fetch_current_parameters(&client, plugin_name, plugin_version)?;
 
-            // user specified (with a flag) a list of services to update from a config file
-            if let Some(service_names) = service_names {
-                for service_name in service_names {
-                    let service_parameters = config_values.get(service_name).ok_or_else(|| {
-                        format!("service {service_name} from `--service-names` parameter not found in a new config")
-                    })?;
+            match service_names {
+                Some(service_names) => {
+                    for service_name in service_names {
+                        verify_service_exists(&client, plugin_name, service_name)?;
 
-                    let (parameters, queries) = create_update_queries(
-                        &query_prefix,
-                        service_name,
-                        &current_parameters,
-                        service_parameters,
-                    )?;
-                    updated_parameters.extend_from_slice(&parameters);
-                    update_queries.extend_from_slice(&queries);
+                        let service_parameters = config_values.get(service_name).ok_or_else(|| {
+                            format!("service {service_name} from `--service-names` parameter not found in a new config")
+                        })?;
+
+                        let (parameters, queries) = create_update_queries(
+                            &query_prefix,
+                            service_name,
+                            &current_parameters,
+                            service_parameters,
+                        )?;
+                        updated_parameters.extend_from_slice(&parameters);
+                        update_queries.extend_from_slice(&queries);
+                    }
                 }
-            // user have not specified anything so we update all services from a config file
-            } else {
-                for (service_name, service_parameters) in config_values {
-                    let (parameters, queries) = create_update_queries(
-                        &query_prefix,
-                        &service_name,
-                        &current_parameters,
-                        &service_parameters,
-                    )?;
-                    updated_parameters.extend_from_slice(&parameters);
-                    update_queries.extend_from_slice(&queries);
+                None => {
+                    for (service_name, service_parameters) in config_values {
+                        verify_service_exists(&client, plugin_name, &service_name)?;
+
+                        let (parameters, queries) = create_update_queries(
+                            &query_prefix,
+                            &service_name,
+                            &current_parameters,
+                            &service_parameters,
+                        )?;
+                        updated_parameters.extend_from_slice(&parameters);
+                        update_queries.extend_from_slice(&queries);
+                    }
                 }
             }
 
-            // run all update queries if they were created
+            // STEP: run all collected update queries.
+
             assert_eq!(updated_parameters.len(), update_queries.len());
 
-            // quite common situation, return correct code
+            // NOTE: "nothing-to-update" situation is quite common and fine.
             if update_queries.is_empty() {
-                println!("no values to update");
+                println!("no values to update for plugin '{plugin_name}'");
                 return Ok(());
             }
 
@@ -166,10 +236,14 @@ fn main_impl(args: Plugin) -> cli::Result<()> {
                     crate::proc_name!(proc_sql_dispatch),
                     &(update_query, Vec::<()>::new()),
                 ))
-                .expect("updating existing and correct parameters of plugins should be fine");
+                .expect(
+                    "updating existing and correct parameters of existing plugins should be fine",
+                );
             }
 
-            // output success message for better ux
+            // NOTE: by "rule of silence" in *nix systems, we should not say
+            // anything on success, but for better UX, let's print out the
+            // updated parameters list to the user.
             println!("new configuration for plugin '{plugin_name}' successfully applied: {updated_parameters:?}");
         }
     }

@@ -1,7 +1,6 @@
 import os
 import subprocess
 import sys
-from pathlib import Path
 
 import pexpect  # type: ignore
 import pytest
@@ -16,6 +15,9 @@ from tarantool.error import (  # type: ignore
     NetworkError,
 )
 from test_plugin import _PLUGIN, _PLUGIN_VERSION_1, PluginReflection
+from typing import Any
+from typing import List
+from typing import Optional
 
 
 def test_connect_ux(cluster: Cluster):
@@ -174,61 +176,77 @@ def test_admin_ux(cluster: Cluster):
     cli.expect_exact("(admin) lua> help")
 
 
-def assert_config_change(
-    general_config: Path,
+def check_plugin_schema(
     instance: Instance,
     username: str,
+    expected_output: str,
     service_names: str,
-    expected: list[object],
-    err: bool = False,
-    same: bool = False,
+    plugin_name: str = _PLUGIN,
+    plugin_version: str = _PLUGIN_VERSION_1,
+    plugin_config: Optional[str] = None,
+    expected_values: Optional[List[Any]] = None,
+    must_error: bool = False,
 ):
-    inst_addr = f"{username}@{instance.iproto_listen}"
-    proc = subprocess.Popen(
-        [
-            instance.runtime.command,
-            "plugin",
-            "configure",
-            "--peer",
-            inst_addr,
-            _PLUGIN,
-            _PLUGIN_VERSION_1,
-            str(general_config),
-            "--service-password-file",
-            str(instance.service_password_file),
-            "--service-names",
-            service_names,
-        ],
+    config_file = instance.instance_dir / "config.yml"
+    if plugin_config is not None:
+        config_file.write_text(plugin_config)
+
+    credentials = f"{username}@{instance.iproto_listen}"
+    # fmt: off
+    command = [
+        instance.runtime.command, "plugin", "configure",
+        "--peer", credentials,
+        plugin_name, plugin_version, f"{config_file}",
+        "--service-password-file", f"{instance.service_password_file}",
+        "--service-names", service_names,
+    ]
+    # fmt: on
+    process = subprocess.Popen(
+        command,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
     )
+    stdout, stderr = process.communicate()
 
-    stdout, stderr = proc.communicate()
-    if err:
-        assert proc.returncode != 0
-        assert f"AccessDenied: Read access to space '_pico_plugin_config' is denied for user '{username}'" in stderr
-    else:
-        assert proc.returncode == 0
-        assert instance.sql("SELECT * FROM _pico_plugin_config") == expected
-        if same:
-            assert "no values to update" == stdout.strip()
-        else:
-            assert f"new configuration for plugin '{_PLUGIN}' successfully applied" in stdout
+    actual_code = process.returncode
+    expected_code = int(must_error)
+    if (expected_code == 0) != (actual_code == 0):
+        error = f"{command} return code mismatch"
+        hint = f"expected: {expected_code}, got: {actual_code}"
+        message = f"{error}, {hint}"
+        raise ValueError(message)
+
+    output_stream = stderr if must_error else stdout
+    actual_output = output_stream.strip()
+    if expected_output not in actual_output:
+        error = f"{command} output message mismatch"
+        hint = f"expected: '{expected_output}', got: '{actual_output}'"
+        message = f"{error}, {hint}"
+        raise ValueError(message)
+
+    if not must_error and expected_values is not None:
+        actual_values = instance.sql("SELECT * FROM _pico_plugin_config")
+        if actual_values != expected_values:
+            error = f"{command} output values mismatch"
+            hint = f"expected: {expected_values}, got: {actual_values}"
+            message = f"{error}, {hint}"
+            raise ValueError(message)
 
 
 def test_plugin_ux(cluster: Cluster):
-    # setup cluster
     inst = cluster.add_instance(wait_online=False)
 
-    general_password = "T0psecret"
-    general_config = Path(inst.instance_dir) / "config.yml"
-
-    inst.env["PICODATA_ADMIN_PASSWORD"] = general_password
-    inst.set_service_password(general_password)
+    service_password = "T0psecret"
+    inst.env["PICODATA_ADMIN_PASSWORD"] = service_password
+    inst.set_service_password(service_password)
     assert inst.service_password_file
 
     inst.start_and_wait()
+
+    plugin_ref = PluginReflection.default(inst)
+    inst.call("pico.install_plugin", _PLUGIN, _PLUGIN_VERSION_1)
+    plugin_ref.install(True).enable(False)
 
     # test as `pico_service` system user on
     # list of services with multiple elements:
@@ -236,19 +254,11 @@ def test_plugin_ux(cluster: Cluster):
     # testservice_1.foo = true -> true, shouldn't be even altered initially
     # testservice_1.baz = ["one", "two", "three"] -> ["cool", "nice"], multiple elements
     # testservice_2.foo = 0 -> 13, check more than a one service
-    expected = [
-        ["testplug", "0.1.0", "testservice_1", "bar", 42],
-        [
-            "testplug",
-            "0.1.0",
-            "testservice_1",
-            "baz",
-            ["cool", "nice"],
-        ],
-        ["testplug", "0.1.0", "testservice_1", "foo", True],
-        ["testplug", "0.1.0", "testservice_2", "foo", 13],
-    ]
-    general_config.write_text("""\
+    check_plugin_schema(
+        instance=inst,
+        username="pico_service",
+        service_names="testservice_1,testservice_2",
+        plugin_config="""\
 testservice_1:
     bar: 42
     foo: true
@@ -259,48 +269,110 @@ testservice_2:
 
 unknown_service:
     unknown_field: "unknown_value"
-""")
-
-    plugin_ref = PluginReflection.default(inst)
-    inst.call("pico.install_plugin", _PLUGIN, _PLUGIN_VERSION_1)
-    plugin_ref.install(True).enable(False)
-    assert_config_change(general_config, inst, "pico_service", "testservice_1,testservice_2", expected)
+""",
+        expected_values=[
+            ["testplug", "0.1.0", "testservice_1", "bar", 42],
+            [
+                "testplug",
+                "0.1.0",
+                "testservice_1",
+                "baz",
+                ["cool", "nice"],
+            ],
+            ["testplug", "0.1.0", "testservice_1", "foo", True],
+            ["testplug", "0.1.0", "testservice_2", "foo", 13],
+        ],
+        expected_output=f"new configuration for plugin '{_PLUGIN}' successfully applied",
+    )
 
     # test as `admin` priviliged user on
     # list of services with a single element:
     # testservice_1.baz = ["cool", "baz"] -> ["sindragosa"]
-    expected = [
-        ["testplug", "0.1.0", "testservice_1", "bar", 42],
-        ["testplug", "0.1.0", "testservice_1", "baz", ["sindragosa"]],
-        ["testplug", "0.1.0", "testservice_1", "foo", True],
-        ["testplug", "0.1.0", "testservice_2", "foo", 13],
-    ]
-    general_config.write_text("""\
+    check_plugin_schema(
+        instance=inst,
+        username="admin",
+        service_names="testservice_1",
+        plugin_config="""\
 testservice_1:
     baz: ["sindragosa"]
-""")
-    assert_config_change(general_config, inst, "admin", "testservice_1", expected)
+""",
+        expected_values=[
+            ["testplug", "0.1.0", "testservice_1", "bar", 42],
+            ["testplug", "0.1.0", "testservice_1", "baz", ["sindragosa"]],
+            ["testplug", "0.1.0", "testservice_1", "foo", True],
+            ["testplug", "0.1.0", "testservice_2", "foo", 13],
+        ],
+        expected_output=f"new configuration for plugin '{_PLUGIN}' successfully applied",
+    )
 
     # test as `admin` priviliged user on
     # list of services with a single element:
     # testservice_1.baz = ["sindragosa"] -> ["sindragosa"]
-    # no change, essentially
-    assert_config_change(general_config, inst, "admin", "testservice_1", expected, same=True)
+    check_plugin_schema(
+        instance=inst,
+        username="admin",
+        service_names="testservice_1",
+        plugin_config="""\
+testservice_1:
+    baz: ["sindragosa"]
+""",
+        expected_values=[
+            ["testplug", "0.1.0", "testservice_1", "bar", 42],
+            ["testplug", "0.1.0", "testservice_1", "baz", ["sindragosa"]],
+            ["testplug", "0.1.0", "testservice_1", "foo", True],
+            ["testplug", "0.1.0", "testservice_2", "foo", 13],
+        ],
+        expected_output="no values to update",
+    )
 
-    # test as `somebody` un-/priviliged user on
+    # test as `admin` priviliged user
+    # on non-existing plugin:
+    check_plugin_schema(
+        instance=inst,
+        username="admin",
+        plugin_name="unknown_plugin",
+        service_names="unknown_service",
+        expected_output="no such plugin unknown_plugin:0.1.0",
+        must_error=True,
+    )
+
+    # test as `admin` priviliged user
+    # on non-existing service:
+    check_plugin_schema(
+        instance=inst,
+        username="admin",
+        service_names="unknown_service",
+        plugin_config="""\
+unknown_service:
+    unknown_key: "unknown_value"
+""",
+        expected_output=f"no such service {_PLUGIN}.unknown_service",
+        must_error=True,
+    )
+
+    username = "somebody"
+
+    res = inst.sql(f"CREATE USER {username} WITH PASSWORD '{service_password}' USING MD5", sudo=True)
+    assert isinstance(res, dict)
+    assert res["row_count"] == 1
+
+    # test as `somebody` unpriviliged user on
     # list of services with multiple elements
+    # which should error:
     # testservice_1.bar = 42 -> 101
     # testservice_1.baz = ["sindragosa"] -> ["one", "two", "three"]
     # testservice_2.foo = 13 -> 0
-    username = "somebody"
-
-    expected = [
-        ["testplug", "0.1.0", "testservice_1", "bar", 101],
-        ["testplug", "0.1.0", "testservice_1", "baz", ["one", "two", "three"]],
-        ["testplug", "0.1.0", "testservice_1", "foo", True],
-        ["testplug", "0.1.0", "testservice_2", "foo", 0],
-    ]
-    general_config.write_text("""\
+    check_plugin_schema(
+        instance=inst,
+        username=username,
+        expected_values=[
+            ["testplug", "0.1.0", "testservice_1", "bar", 101],
+            ["testplug", "0.1.0", "testservice_1", "baz", ["one", "two", "three"]],
+            ["testplug", "0.1.0", "testservice_1", "foo", True],
+            ["testplug", "0.1.0", "testservice_2", "foo", 0],
+        ],
+        service_names="testservice_1,testservice_2",
+        plugin_config="""\
 testservice_1:
     bar: 101
     foo: true
@@ -308,17 +380,10 @@ testservice_1:
 
 testservice_2:
     foo: 0
-""")
-
-    res = inst.sql(f"CREATE USER {username} WITH PASSWORD '{general_password}' USING MD5", sudo=True)
-    assert isinstance(res, dict)
-    assert res["row_count"] == 1
-    assert_config_change(general_config, inst, username, "testservice_1,testservice_2", expected, err=True)
-
-    res = inst.sql(f"GRANT WRITE ON TABLE _pico_plugin_config TO {username}", sudo=True)
-    assert isinstance(res, dict)
-    assert res["row_count"] == 1
-    assert_config_change(general_config, inst, username, "testservice_1,testservice_2", expected, err=True)
+""",
+        expected_output=f"Read access to space '_pico_plugin' is denied for user '{username}'",
+        must_error=True,
+    )
 
 
 def test_lua_completion(cluster: Cluster):
