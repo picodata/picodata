@@ -87,7 +87,7 @@ def perform_cargo_build(enable_webui: bool = False) -> None:
     subprocess.check_call(crate_build_command, cwd=special_crate_dir)
 
 
-def picodata_executable_path() -> Path:
+def picodata_executable_path(copy_plugins: bool = True) -> Path:
     """
     Path to Picodata executable binary according to Cargo, e.g. `target/debug/picodata`.
 
@@ -146,8 +146,9 @@ def picodata_executable_path() -> Path:
         f"{tests_path}/testplug_w_migration/0.2.0_changed",
         f"{tests_path}/testplug_sdk/0.1.0",
     ]
-    for destination_directory in plugin_destinations:
-        copy_plugin_library(cargo_profile_directory, destination_directory, "libtestplug")
+    if copy_plugins:
+        for destination_directory in plugin_destinations:
+            copy_plugin_library(cargo_profile_directory, destination_directory, "libtestplug")
 
     # STEP: determine Picodata executable binary path.
 

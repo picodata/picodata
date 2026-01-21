@@ -101,3 +101,29 @@ def parse_version_exc(version: str) -> Version:
         return Version(version)
     except InvalidVersion:
         raise original_error from original_error
+
+
+def ask_yes_no(prompt: str, repeat: bool = False) -> bool:
+    """
+    Ask the user a yes/no question and return the answer as a boolean.
+
+    Arguments:
+        * prompt - the question to display to the user.
+        * repeat - (True) keep prompting until a valid answer is given,
+                   (False) raise ValueError on the first invalid input.
+    """
+    while True:
+        message = f"{prompt} [y/n]: "
+        answer = input(message).strip().lower()
+
+        if answer in ("y", "yes"):
+            return True
+
+        if answer in ("n", "no"):
+            return False
+
+        if not repeat:
+            error = "invalid input"
+            hint = f"expected: 'y' or 'n', got: {answer}"
+            message = f"{error}, {hint}"
+            raise ValueError(message)

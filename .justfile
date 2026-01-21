@@ -223,3 +223,8 @@ build-base:
 [doc("sort picodata exports file alphabetically")]
 sort-exports:
 	sort exports_picodata -o exports_picodata
+
+[group("misc")]
+[doc("build binaries needed for rolling upgrade tests")]
+build-rolling *ARGS:
+	poetry run python tools/build_rolling_binaries.py {{ ARGS }}

@@ -403,3 +403,45 @@ We use `cargo insta` for snapshot testing in the Rust codebase, particularly wit
   ```bash
   cargo insta review
   ```
+
+
+## Testing Rolling Upgrades
+
+### 1. Build Binaries for Previous Picodata Versions
+
+Rolling upgrade tests expect binaries of older Picodata versions to be available in `$PATH`.
+
+To simplify the process, use the provided helper script:
+
+```bash
+$ poetry run python tools/build_rolling_binaries.py [OPTIONS]
+````
+
+or, if [Just](https://just.systems/) is installed:
+
+```bash
+$ just build-rolling [OPTIONS]
+```
+
+To see all available options and parameters:
+
+```bash
+$ just build-rolling --help
+```
+
+### 2. Run Rolling Upgrade Test Suite
+
+After the required binaries are built and available in `$PATH`, run the tests:
+
+```bash
+$ poetry run pytest -k test_rolling
+```
+
+or with [Just](https://just.systems/):
+
+```bash
+$ just tp test_rolling
+```
+
+>Note that rolling upgrade tests are **not a separate test suite**:
+>they will also be executed when running the full test suite.

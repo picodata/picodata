@@ -22,18 +22,18 @@ class Registry:
     def __str__(self) -> str:
         return self.__repr__()
 
-    def __init__(self) -> None:
+    def __init__(self, skip_resolution: bool = False, copy_plugins: bool = True) -> None:
         self.entries = [None] * len(VersionAlias)
-        self.populate()
+        self.populate(skip_resolution, copy_plugins)
 
-    def _fetch(self, version: VersionAlias) -> None:
+    def _fetch(self, version: VersionAlias, copy_plugins: bool = True) -> None:
         from conftest import Repository
 
         repository = Repository()
 
         match version:
             case VersionAlias.CURRENT:
-                self.entries[version.value] = Runtime.current()
+                self.entries[version.value] = Runtime.current(copy_plugins)
             case VersionAlias.PREVIOUS_MINOR:
                 current = repository.current_version()
                 for tag in repository.rolling_versions():
@@ -55,12 +55,15 @@ class Registry:
                     if tag.major - current.major == 2:
                         self.entries[version.value] = Runtime(tag, version)
 
-    def populate(self) -> None:
-        self._fetch(VersionAlias.CURRENT)
+    def populate(self, skip_resolution: bool = False, copy_plugins: bool = True) -> None:
+        self._fetch(VersionAlias.CURRENT, copy_plugins)
         self._fetch(VersionAlias.PREVIOUS_MINOR)
         self._fetch(VersionAlias.BEFORELAST_MINOR)
         self._fetch(VersionAlias.PREVIOUS_MAJOR)
         self._fetch(VersionAlias.BEFORELAST_MAJOR)
+
+        if skip_resolution:
+            return
 
         for entry in self.entries:
             if entry is not None:

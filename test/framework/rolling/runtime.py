@@ -42,10 +42,10 @@ class Runtime:
         self.executable_path = executable_path
 
     @classmethod
-    def current(cls) -> Runtime:
+    def current(cls, copy_plugins: bool = True) -> Runtime:
         absolute_version = project_git_version()
         relative_version = VersionAlias.CURRENT
-        executable_path = picodata_executable_path()
+        executable_path = picodata_executable_path(copy_plugins)
         return Runtime(absolute_version, relative_version, executable_path)
 
     @property
