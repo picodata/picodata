@@ -51,8 +51,9 @@ from framework.log import log
 from framework.port_distributor import PortDistributor
 from framework.rolling.registry import Registry
 from framework.rolling.runtime import Runtime
-from framework.rolling.version import RelativeVersion, parse_picodata_version
+from framework.rolling.version import VersionAlias
 from framework.util.build import perform_cargo_build
+from framework.util import parse_version_exc
 from framework.util import BASE_HOST
 
 pytest_plugins = "framework.sqltester"
@@ -1986,7 +1987,7 @@ Last governor error is:
             return False
 
         [[cluster_version]] = self.sql("SELECT value FROM _pico_property WHERE key = 'cluster_version'")
-        if parse_picodata_version(cluster_version) >= Version("25.5.0"):
+        if parse_version_exc(cluster_version) >= Version("25.5.0"):
             res = self.sql("SELECT name, id FROM _pico_table WHERE name = '_pico_bucket'")
             if res != [["_pico_bucket", 533]]:
                 log.error(f"Invalid metadata for _pico_bucket: {res}")
@@ -2020,7 +2021,7 @@ Last governor error is:
 
     def change_version(
         self,
-        to: RelativeVersion,
+        to: VersionAlias,
         fail: bool = False,
     ) -> None:
         print(
@@ -2871,7 +2872,7 @@ class Cluster:
 
     def change_version(
         self,
-        to: RelativeVersion,
+        to: VersionAlias,
         exclude: List[Instance] = list(),
         fail: bool = False,
     ) -> None:

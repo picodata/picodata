@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 from framework.rolling.runtime import Runtime
-from framework.rolling.version import RelativeVersion
+from framework.rolling.version import VersionAlias
 
 import pytest
 
@@ -23,62 +23,53 @@ class Registry:
         return self.__repr__()
 
     def __init__(self) -> None:
-        self.entries = [None] * len(RelativeVersion)
+        self.entries = [None] * len(VersionAlias)
         self.populate()
 
-    def _fetch(self, version: RelativeVersion) -> None:
+    def _fetch(self, version: VersionAlias) -> None:
         from conftest import Repository
 
         repository = Repository()
 
         match version:
-            case RelativeVersion.CURRENT:
+            case VersionAlias.CURRENT:
                 self.entries[version.value] = Runtime.current()
-            case RelativeVersion.PREVIOUS_MINOR:
+            case VersionAlias.PREVIOUS_MINOR:
                 current = repository.current_version()
                 for tag in repository.rolling_versions():
                     if tag.major == current.major and current.minor - tag.minor == 1:
                         self.entries[version.value] = Runtime(tag, version)
-            case RelativeVersion.BEFORELAST_MINOR:
+            case VersionAlias.BEFORELAST_MINOR:
                 current = repository.current_version()
                 for tag in repository.rolling_versions():
                     if tag.major == current.major and current.minor - tag.minor == 2:
                         self.entries[version.value] = Runtime(tag, version)
-            case RelativeVersion.PREVIOUS_MAJOR:
+            case VersionAlias.PREVIOUS_MAJOR:
                 current = repository.current_version()
                 for tag in repository.rolling_versions():
                     if tag.major - current.major == 1:
                         self.entries[version.value] = Runtime(tag, version)
-            case RelativeVersion.BEFORELAST_MAJOR:
+            case VersionAlias.BEFORELAST_MAJOR:
                 current = repository.current_version()
                 for tag in repository.rolling_versions():
                     if tag.major - current.major == 2:
                         self.entries[version.value] = Runtime(tag, version)
 
     def populate(self) -> None:
-        self._fetch(RelativeVersion.CURRENT)
-        self._fetch(RelativeVersion.PREVIOUS_MINOR)
-        self._fetch(RelativeVersion.BEFORELAST_MINOR)
-        self._fetch(RelativeVersion.PREVIOUS_MAJOR)
-        self._fetch(RelativeVersion.BEFORELAST_MAJOR)
+        self._fetch(VersionAlias.CURRENT)
+        self._fetch(VersionAlias.PREVIOUS_MINOR)
+        self._fetch(VersionAlias.BEFORELAST_MINOR)
+        self._fetch(VersionAlias.PREVIOUS_MAJOR)
+        self._fetch(VersionAlias.BEFORELAST_MAJOR)
 
         for entry in self.entries:
             if entry is not None:
                 entry.resolve()
 
-    def get(self, version: RelativeVersion) -> Runtime:
+    def get(self, version: VersionAlias) -> Runtime:
         requested_entry = self.entries[version.value]
-        if not requested_entry:
-            pytest.skip(f"no need to test against {version.name.lower()} version")
-
-        if version in (RelativeVersion.PREVIOUS_MINOR, RelativeVersion.BEFORELAST_MINOR):
-            current_entry = self.entries[RelativeVersion.CURRENT.value]
-            assert current_entry
-
-            not_the_same_major = current_entry.absolute_version.major != requested_entry.absolute_version.major
-            if not_the_same_major:
-                pytest.skip(
-                    f"{version.name.lower()} is actually {RelativeVersion.PREVIOUS_MAJOR} or {RelativeVersion.BEFORELAST_MAJOR}"
-                )
-
+        if requested_entry is None:
+            reason = f"no need to test against {version} version"
+            hint = f"there is no {version} version released"
+            pytest.skip(f"{reason} because {hint}")
         return requested_entry

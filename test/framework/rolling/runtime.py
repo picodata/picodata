@@ -7,7 +7,7 @@ import shutil
 from dataclasses import dataclass
 from framework.util.build import picodata_executable_path
 from framework.util.git import project_git_version
-from framework.rolling.version import RelativeVersion
+from framework.rolling.version import VersionAlias
 from packaging.version import Version as AbsoluteVersion
 from pathlib import Path
 from typing import Optional
@@ -16,16 +16,16 @@ from typing import Optional
 @dataclass(init=False)
 class Runtime:
     absolute_version: AbsoluteVersion
-    relative_version: RelativeVersion
+    relative_version: VersionAlias
     executable_path: Optional[Path]
 
     def __init__(
         self,
         absolute_version: AbsoluteVersion,
-        relative_version: RelativeVersion,
+        relative_version: VersionAlias,
         executable_path: Optional[Path] = None,
     ) -> None:
-        if absolute_version.micro == 0 and relative_version != RelativeVersion.CURRENT:
+        if absolute_version.micro == 0 and relative_version != VersionAlias.CURRENT:
             # NOTE: this problem occurs when we branched new minor, but didnt make a release yet.
             # So e g we have 25.5.0 tag from previous series without 25.5.1 tag and 25.6.0 tag in master.
             # For 25.6.0 we cant really find previous minor, which would've been 25.5.1 but 25.5.1 is not tagged yet.
@@ -44,7 +44,7 @@ class Runtime:
     @classmethod
     def current(cls) -> Runtime:
         absolute_version = project_git_version()
-        relative_version = RelativeVersion.CURRENT
+        relative_version = VersionAlias.CURRENT
         executable_path = picodata_executable_path()
         return Runtime(absolute_version, relative_version, executable_path)
 
@@ -65,7 +65,7 @@ class Runtime:
                 self.executable_path = Path(executable_path)
                 return
 
-            explain = f"which is needed to test against {self.relative_version.name.lower().replace('_', ' ')}"
+            explain = f"which is needed to test against {self.relative_version.name}"
             help = "Consider installing it from repository, or building it manually"
             error = f"'{executable_name}' not found in PATH, {explain}. {help}."
             if os.environ.get("CI") is not None:

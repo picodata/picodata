@@ -4,7 +4,10 @@ import shutil
 import sys
 
 from framework.log import log
+from packaging.version import InvalidVersion
+from packaging.version import Version
 from pathlib import Path
+from typing import Optional
 from typing import Union
 
 
@@ -60,3 +63,41 @@ def is_in_ci() -> bool:
     NOTE: only checks that $CI env variable is set, not its value.
     """
     return os.environ.get("CI") is not None
+
+
+def parse_version_opt(version: str) -> Optional[Version]:
+    """
+    Wrapper over `parse_version_exc` that returns `None` instead of raising
+    exception. Useful when applied to a collection of potential versions via
+    higher-order functions like `map`.
+    """
+    try:
+        return parse_version_exc(version)
+    except InvalidVersion:
+        return None
+
+
+def parse_version_exc(version: str) -> Version:
+    """
+    Parse a Picodata version string into a `packaging.version.Version` object.
+
+    Accepts standard PEP 440 versions and Picodata-specific variants that
+    include a dash-separated build or commit suffix (e.g. "1.2.3-abcdef"),
+    which is ignored for version comparison purposes.
+
+    On failure, raises the original `InvalidVersion` produced when parsing
+    the unmodified input.
+    """
+    # STEP: try to parse as standard PEP 440 version.
+    try:
+        return Version(version)
+    except InvalidVersion as exception:
+        original_error = exception
+
+    # STEP: try to parse as Picodata-compatible version.
+    # NOTE: only a single trailing dash-suffix is supported.
+    try:
+        version, _hash = version.rsplit("-", maxsplit=1)
+        return Version(version)
+    except InvalidVersion:
+        raise original_error from original_error

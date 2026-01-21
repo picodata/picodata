@@ -1,17 +1,17 @@
-from __future__ import annotations
-from packaging.version import InvalidVersion, Version
-
 import enum
 
 
 @enum.unique
-class RelativeVersion(enum.Enum):
+class VersionAlias(enum.Enum):
     """
     Represents the relative age of a version compared to the current version.
     Used to select appropriate versions for compatibility testing in rolling
     upgrade scenarios.
     """
 
+    # NOTE: override `enum.auto()` value generation to assign zero-based, contiguous
+    # integer values (0, 1, 2, so on). This is required so enum values can be used
+    # as stable indices (e.g., into lists or arrays) without an off-by-one offset.
     @staticmethod
     def _generate_next_value_(
         name,
@@ -24,51 +24,25 @@ class RelativeVersion(enum.Enum):
         _ = last_values
         return count
 
-    CURRENT = enum.auto()
+    def __str__(self):
+        return self.name.lower().replace("_", " ")
 
-    PREVIOUS_MINOR = enum.auto()
-    BEFORELAST_MINOR = enum.auto()
-
-    PREVIOUS_MAJOR = enum.auto()
+    # The major version two steps before the current version (e.g., if current is 3.x, this is 1.x).
+    # Used to test scenarios where upgrades must be sequential and cannot skip major versions.
     BEFORELAST_MAJOR = enum.auto()
 
-    @property
-    def is_beforelast(self) -> bool:
-        return self in [RelativeVersion.BEFORELAST_MINOR, RelativeVersion.BEFORELAST_MAJOR]
+    # The major version immediately before the current version (e.g., if current is 3.x, this is 2.x).
+    # Used to test compatibility and upgrade paths between consecutive major versions.
+    PREVIOUS_MAJOR = enum.auto()
 
-    @property
-    def is_previous(self) -> bool:
-        return self in [RelativeVersion.PREVIOUS_MINOR, RelativeVersion.PREVIOUS_MAJOR]
+    # The minor version two steps before the current version (e.g., if current is 2.2, this is 2.0).
+    # Used to test sequential minor version upgrades and to verify that skipping minor versions fails.
+    BEFORELAST_MINOR = enum.auto()
 
-    @property
-    def is_current(self) -> bool:
-        return self == RelativeVersion.CURRENT
+    # The minor version immediately before the current version (e.g., if current is 2.2, this is 2.1).
+    # Used to test direct upgrades from the previous minor version and rollback scenarios.
+    PREVIOUS_MINOR = enum.auto()
 
-    @property
-    def is_major(self) -> bool:
-        return self in [RelativeVersion.PREVIOUS_MAJOR, RelativeVersion.BEFORELAST_MAJOR]
-
-    @property
-    def is_minor(self) -> bool:
-        return self in [RelativeVersion.PREVIOUS_MINOR, RelativeVersion.BEFORELAST_MINOR]
-
-    def is_mismatch(self, another: RelativeVersion) -> bool:
-        straight = self.is_current and another.is_beforelast
-        reversed = another.is_current and self.is_beforelast
-        return straight or reversed
-
-
-def parse_picodata_version(v: str) -> Version:
-    try:
-        return Version(v)
-    except InvalidVersion as e:
-        invalid_version_exception = e
-        pass
-
-    try:
-        version, hash = v.rsplit("-", maxsplit=1)
-        _ = hash
-        return Version(version)
-    except ValueError:
-        # If that didn't work, just raise the original exception
-        raise invalid_version_exception from invalid_version_exception
+    # The current and/or latest version being tested.
+    # Represents the target version for upgrade tests and the baseline for downgrade rejection tests.
+    CURRENT = enum.auto()
