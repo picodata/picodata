@@ -108,7 +108,7 @@ export const instances = {
         label: "Target state",
       },
       currentState: {
-        label: "Current state",
+        label: "State",
       },
       binaryAddress: {
         label: "IPROTO",

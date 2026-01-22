@@ -110,7 +110,7 @@ export const instances: TPages["instances"] = {
         label: "Целевое состояние",
       },
       currentState: {
-        label: "Текущее состояние",
+        label: "Состояние",
       },
       binaryAddress: {
         label: "IPROTO",

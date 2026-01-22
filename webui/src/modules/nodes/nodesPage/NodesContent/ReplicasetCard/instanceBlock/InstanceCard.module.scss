@@ -51,10 +51,6 @@ $leader-height: 16px;
   overflow: hidden;
 }
 
-.targetStateColumn {
-  min-width: 95px;
-}
-
 .currentStateColumn {
   min-width: 95px;
 }
@@ -64,6 +60,7 @@ $leader-height: 16px;
 }
 
 .joinedColumn {
+  transform: translateX(74px);
   display: grid;
   align-items: start;
   grid-template-columns: auto auto;
@@ -115,10 +112,6 @@ $leader-height: 16px;
   display: flex;
   width: 100%;
   justify-content: center;
-}
-
-.targetStateValue {
-  padding: 0;
 }
 
 .currentStateValue {

@@ -80,14 +80,6 @@ export const InstanceCard: FC<InstanceCardProps> = React.memo(
               </div>
             </div>
             <div className={styles.joinedColumn}>
-              <div className={cn(styles.infoColumn, styles.targetStateColumn)}>
-                <div className={styles.label}>
-                  {instanceTranslations.targetState.label}
-                </div>
-                <div className={cn(styles.value, styles.targetStateValue)}>
-                  <NetworkState state={instance.targetState} />
-                </div>
-              </div>
               <div className={cn(styles.infoColumn, styles.currentStateColumn)}>
                 <div className={styles.label}>
                   {instanceTranslations.currentState.label}
