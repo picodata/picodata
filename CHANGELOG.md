@@ -68,6 +68,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed assertion failure in CAS right after raft leader change followed by
   persisted raft log tail truncation.
 - Fixed instance.vinyl.* options to be applied to primary and bucket_id indices.
+- Fixed ignoring `NULLS FIRST` and `NULLS LAST` in unnamed window queries with ordering.
 
 ## [25.5.1] - 2025-12-19
 

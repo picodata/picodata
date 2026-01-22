@@ -130,7 +130,7 @@ could not resolve operator overload for \+\(int, bool\)
 -- SQL:
 SELECT (NOT 1) + NULL;
 -- ERROR:
-argument of NOT must be type boolean, not type int 
+argument of NOT must be type boolean, not type int
 
 -- TEST: parentheses-under-arithmetic-with-between
 -- SQL:
@@ -443,6 +443,60 @@ SELECT * FROM t UNION ALL SELECT * FROM t;
 1, None, 1, None,
 3, 1, 3, 1,
 2, None, 2, None,
+
+-- TEST: test-order-by-nulls-init-4
+-- SQL:
+DROP TABLE IF EXISTS t;
+CREATE TABLE t(a INT PRIMARY KEY, b INT);
+INSERT INTO t (a, b) VALUES (1, 10), (2, NULL), (3, 5), (4, NULL), (5, 20), (6, 5), (7, NULL);
+
+-- TEST: test-order-by-nulls-9
+-- SQL:
+SELECT a, b, row_number() OVER (ORDER BY b ASC NULLS FIRST, a ASC) AS rn FROM t;
+-- EXPECTED:
+2, nil, 1,
+4, nil, 2,
+7, nil, 3,
+3, 5, 4,
+6, 5, 5,
+1, 10, 6,
+5, 20, 7,
+
+-- TEST: test-order-by-nulls-10
+-- SQL:
+SELECT a, b, row_number() OVER (ORDER BY b DESC NULLS FIRST, a DESC) AS rn FROM t;
+-- EXPECTED:
+7, nil, 1,
+4, nil, 2,
+2, nil, 3,
+5, 20, 4,
+1, 10, 5,
+6, 5, 6,
+3, 5, 7,
+
+-- TEST: test-order-by-nulls-11
+-- SQL:
+SELECT a, b, row_number() OVER (ORDER BY b ASC NULLS LAST, a ASC) AS rn FROM t;
+-- EXPECTED:
+3, 5, 1,
+6, 5, 2,
+1, 10, 3,
+5, 20, 4,
+2, nil, 5,
+4, nil, 6,
+7, nil, 7,
+
+-- TEST: test-order-by-nulls-12
+-- SQL:
+SELECT a, b, row_number() OVER (ORDER BY b DESC NULLS LAST, a DESC) AS rn FROM t;
+-- EXPECTED:
+5, 20, 1,
+1, 10, 2,
+6, 5, 3,
+3, 5, 4,
+7, nil, 5,
+4, nil, 6,
+2, nil, 7,
 
 -- TEST: test-check-compare-order-2-init
 -- SQL:

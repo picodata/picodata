@@ -3597,17 +3597,49 @@ fn parse_window_func<M: Metadata>(
                                 false,
                             )?;
 
-                            // Check for DESC/ASC
-                            let order_type = if order_item_inner.any(|p| p.as_rule() == Rule::Desc)
-                            {
-                                OrderByType::Desc
-                            } else {
-                                OrderByType::Asc
+                            let (order_type, order_nulls) = {
+                                let mut order_type = Some(OrderByType::Asc);
+                                let mut order_nulls = None;
+
+                                for rule in order_item_inner.map(|p| p.as_rule()) {
+                                    match rule {
+                                        Rule::Asc => {}
+                                        Rule::Desc => order_type = Some(OrderByType::Desc),
+                                        Rule::NullsFirst => order_nulls = Some(OrderNulls::First),
+                                        Rule::NullsLast => order_nulls = Some(OrderNulls::Last),
+                                        rule => unreachable!(
+                                            "{}",
+                                            format!(
+                                                "Unexpected rule met under OrderByElement: {rule:?}"
+                                            )
+                                        ),
+                                    }
+                                }
+                                (order_type, order_nulls)
                             };
+
+                            if let Some(order_nulls) = order_nulls {
+                                let nulls_expr_id = SubtreeCloner::clone_subtree(plan, expr_id)?;
+                                let is_null_expr_id =
+                                    plan.add_unary(Unary::IsNull, nulls_expr_id)?;
+                                let top_expr_id = match order_nulls {
+                                    OrderNulls::Last => is_null_expr_id,
+                                    OrderNulls::First => {
+                                        plan.add_unary(Unary::Not, is_null_expr_id)?
+                                    }
+                                };
+                                let new_entity_first = OrderByEntity::Expression {
+                                    expr_id: top_expr_id,
+                                };
+                                order_by_elements.push(OrderByElement {
+                                    entity: new_entity_first,
+                                    order_type: None,
+                                });
+                            }
 
                             order_by_elements.push(OrderByElement {
                                 entity: OrderByEntity::Expression { expr_id },
-                                order_type: Some(order_type),
+                                order_type,
                             });
                         }
                         ordering = Some(order_by_elements)
