@@ -1,7 +1,9 @@
 # Data Definition Language
 
 Data Definition Language — команды языка SQL для изменения объектов в
-кластере.
+кластере. К таким командам относятся `ALTER`, `CREATE`, `DROP`, `TRUNCATE`
+применительно к объектам `INDEX`, `PLUGIN`, `PROCEDURE` и `TABLE`, а также
+служебная команда `BACKUP`.
 
 ## Синтаксис {: #syntax }
 

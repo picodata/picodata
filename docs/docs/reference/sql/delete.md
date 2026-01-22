@@ -41,10 +41,14 @@
 Простой запрос удаляет все данные из указанной таблицы:
 
 ```sql
-DELETE FROM warehouse OPTION (
-    SQL_MOTION_ROW_MAX = 100,
-    SQL_VDBE_OPCODE_MAX = 15000
-);
+DELETE FROM warehouse;
+```
+
+Пример использования неблокирующего запроса:
+
+```sql
+DELETE FROM warehouse
+OPTION(SQL_VDBE_OPCODE_MAX = 10000, SQL_MOTION_ROW_MAX = 15000);
 ```
 
 Запрос с условием позволяет удалить только нужный кортеж:
