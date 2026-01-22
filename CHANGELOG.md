@@ -8,6 +8,14 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [25.5.5] - Unreleased
+
+### Fixes
+
+- Fixed assertion failure in CAS right after raft leader change followed by
+  persisted raft log tail truncation.
+
+
 ## [25.5.4] - 2026-01-21
 
 ### Fixes

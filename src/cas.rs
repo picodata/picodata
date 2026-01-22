@@ -344,7 +344,7 @@ fn proc_cas_v2_local(req: &Request) -> Result<Response> {
 
     let first = raft_log.first_index();
     let last = raft_log.last_index();
-    assert!(first >= 1);
+    debug_assert!(first >= 1, "{first}");
     if requested > last {
         return Err(Error::NoSuchIndex {
             requested,
@@ -359,9 +359,12 @@ fn proc_cas_v2_local(req: &Request) -> Result<Response> {
         .into());
     }
 
-    assert!(requested >= first - 1);
-    assert!(requested <= last);
-    assert_eq!(requested_term, status.term);
+    debug_assert!(
+        requested >= first - 1,
+        "requested: {requested}, first: {first}"
+    );
+    debug_assert!(requested <= last, "requested: {requested}, last: {last}");
+    debug_assert_eq!(requested_term, status.term);
 
     // Also check that requested index actually belongs to the
     // requested term.
@@ -383,8 +386,12 @@ fn proc_cas_v2_local(req: &Request) -> Result<Response> {
     // because it is hooked into AccessDenied error creation (on_access_denied) trigger
     access_control::access_check_op(storage, &req.op, req.as_user)?;
 
-    let last_persisted = raft::Storage::last_index(raft_storage)?;
-    assert!(last_persisted <= last);
+    let mut last_persisted = raft::Storage::last_index(raft_storage)?;
+    if last_persisted > last {
+        // This is possible right after raft leader change, when the persisted
+        // raft log needs to be truncated
+        last_persisted = last;
+    }
 
     match &req.op {
         Op::Dml(dml) => {
@@ -430,6 +437,9 @@ fn proc_cas_v2_local(req: &Request) -> Result<Response> {
     //                  [ unstable  ]
     //
 
+    // Also it's possible that last_persisted > last, right after leader change
+    // when uncommitted raft log tail gets truncated.
+
     if requested < last_persisted {
         // there's at least one persisted entry to check
         let persisted = raft_storage.entries(requested + 1, last_persisted + 1, None)?;
@@ -438,7 +448,7 @@ fn proc_cas_v2_local(req: &Request) -> Result<Response> {
         }
 
         for entry in persisted {
-            assert_eq!(entry.term, status.term);
+            debug_assert_eq!(entry.term, status.term);
             let entry_index = entry.index;
             let Some(op) = entry.into_op() else { continue };
             check_predicate(entry_index, &op, &ranges, storage)?;
@@ -452,7 +462,7 @@ fn proc_cas_v2_local(req: &Request) -> Result<Response> {
         GetEntriesContext::empty(false),
     )?;
     for entry in unstable {
-        assert_eq!(entry.term, status.term);
+        debug_assert_eq!(entry.term, status.term);
         let Ok(cx) = EntryContext::from_raft_entry(&entry) else {
             tlog!(Warning, "raft entry has invalid context"; "entry" => ?entry);
             continue;
@@ -517,7 +527,7 @@ fn proc_cas_v2_local(req: &Request) -> Result<Response> {
     let term = entry_id.term;
     // TODO: return number of raft entries and check this
     // assert_eq!(index, last + 1);
-    assert_eq!(term, requested_term);
+    debug_assert_eq!(term, requested_term);
     drop(node_impl); // unlock the mutex
 
     // Tell raft_main_loop that we're expecting it to handle our request ASAP.
