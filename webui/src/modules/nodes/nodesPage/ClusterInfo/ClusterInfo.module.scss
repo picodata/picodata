@@ -41,7 +41,6 @@
   align-items: center;
   justify-content: center;
 }
-
 .columnValue {
   font-size: 16px;
   font-style: normal;
@@ -58,6 +57,10 @@
   margin-top: 6px;
   color: $colorTextBlack;
   text-align: center;
+}
+.columnContentWarning {
+  color: $colorBgRed;
+  font-weight: bold;
 }
 
 .right {

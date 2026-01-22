@@ -24,6 +24,9 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
     return null;
   }
 
+  const instancesCurrentStateOfflineIsPositive =
+    clusterInfoData.instancesCurrentStateOffline > 0;
+
   return (
     <Content className={cn(styles.container, className)}>
       <div className={cn(styles.left, styles.capacityInfoColumn)}>
@@ -86,10 +89,20 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
               </div>
             </div>
             <div className={styles.columnContent}>
-              <div className={styles.columnValue}>
+              <div
+                className={cn(styles.columnValue, {
+                  [styles.columnContentWarning]:
+                    instancesCurrentStateOfflineIsPositive,
+                })}
+              >
                 {clusterInfoData.instancesCurrentStateOffline}
               </div>
-              <div className={styles.columnLabel}>
+              <div
+                className={cn(styles.columnLabel, {
+                  [styles.columnContentWarning]:
+                    instancesCurrentStateOfflineIsPositive,
+                })}
+              >
                 {clusterTranslations.instances.offlineState}
               </div>
             </div>

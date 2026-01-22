@@ -231,6 +231,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### WebUI
 - Introduce display of used memory in terms of tier
+- Make offline instance count red in case if there are offline instances
 
 ### ACL
 - Support granting CREATE privilege on specific table.
