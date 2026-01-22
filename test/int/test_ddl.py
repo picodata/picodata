@@ -240,7 +240,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
         f"{space_id}_pkey",
         "tree",
         dict(unique=True),
-        [[0, "unsigned", None, False, None]],
+        [{"field": 0, "type": "unsigned", "is_nullable": False}],
     ]
     assert i1.call("box.space._index:get", [space_id, 0]) == tt_pk_def
     assert i2.call("box.space._index:get", [space_id, 0]) == tt_pk_def
@@ -357,7 +357,7 @@ def test_ddl_create_sharded_space(cluster: Cluster):
         f"{space_id}_pkey",
         "tree",
         dict(unique=True),
-        [[0, "unsigned", None, False, None]],
+        [{"field": 0, "type": "unsigned", "is_nullable": False}],
     ]
     assert i1.call("box.space._index:get", [space_id, 0]) == tt_pk_def
     assert i2.call("box.space._index:get", [space_id, 0]) == tt_pk_def
@@ -370,7 +370,7 @@ def test_ddl_create_sharded_space(cluster: Cluster):
         "bucket_id",
         "tree",
         dict(unique=False),
-        [[1, "unsigned", None, False, None]],
+        [{"field": 1, "type": "unsigned", "is_nullable": False}],
     ]
     assert i1.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
     assert i2.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
@@ -668,7 +668,7 @@ def test_ddl_create_table_from_snapshot_at_boot(cluster: Cluster):
         f"{space_id}_pkey",
         "tree",
         dict(unique=True),
-        [[0, "unsigned", None, False, None]],
+        [{"field": 0, "type": "unsigned", "is_nullable": False}],
     ]
     assert i1.call("box.space._index:get", [space_id, 0]) == tt_pk_def
     assert i2.call("box.space._index:get", [space_id, 0]) == tt_pk_def
@@ -679,7 +679,7 @@ def test_ddl_create_table_from_snapshot_at_boot(cluster: Cluster):
         "bucket_id",
         "tree",
         dict(unique=False),
-        [[1, "unsigned", None, False, None]],
+        [{"field": 1, "type": "unsigned", "is_nullable": False}],
     ]
     assert i1.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
     assert i2.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
@@ -765,7 +765,7 @@ def test_ddl_create_table_from_snapshot_at_catchup(cluster: Cluster):
         f"{space_id}_pkey",
         "tree",
         dict(unique=True),
-        [[0, "unsigned", None, False, None]],
+        [{"field": 0, "type": "unsigned", "is_nullable": False}],
     ]
     assert i1.call("box.space._index:get", [space_id, 0]) == tt_pk_def
     assert i2.call("box.space._index:get", [space_id, 0]) == tt_pk_def
@@ -2881,3 +2881,104 @@ cluster:
     result = storage_1_1.call("box.execute", 'SELECT "id" FROM "_space" WHERE "name" = \'test\'')
     [[space_id]] = result["rows"]
     assert table_id == space_id
+
+
+def test_vinyl_options_applied_to_indices_on_create_table(cluster: Cluster):
+    """
+    Verify that instance.vinyl.* configuration options are applied to indices
+    created during CREATE TABLE ... USING vinyl, including both the primary key
+    and the automatically created bucket_id index, as well as any explicit
+    secondary indices created using CREATE INDEX.
+
+    Tests the following options (with non-default values):
+    - page_size: 16K (default 8K)
+    - range_size: 128M (default 1G)
+    - bloom_fpr: 0.10 (default 0.05)
+    - run_count_per_level: 3 (default 2)
+    - run_size_ratio: 5.0 (default 3.5)
+    """
+    custom_page_size = 16384  # 16K
+    custom_range_size = 128 * 1024 * 1024  # 128M
+    custom_bloom_fpr = 0.10
+    custom_run_count_per_level = 3
+    custom_run_size_ratio = 5.0
+
+    cluster.set_config_file(
+        config=dict(
+            cluster=dict(
+                name="test",
+                tier=dict(default=dict()),
+            ),
+            instance=dict(
+                vinyl=dict(
+                    page_size=custom_page_size,
+                    range_size=custom_range_size,
+                    bloom_fpr=custom_bloom_fpr,
+                    run_count_per_level=custom_run_count_per_level,
+                    run_size_ratio=custom_run_size_ratio,
+                ),
+            ),
+        )
+    )
+
+    i1 = cluster.deploy(instance_count=1)[0]
+
+    # Verify the vinyl options were set in box.cfg
+    assert i1.eval("return box.cfg.vinyl_page_size") == custom_page_size
+    assert i1.eval("return box.cfg.vinyl_range_size") == custom_range_size
+    assert abs(i1.eval("return box.cfg.vinyl_bloom_fpr") - custom_bloom_fpr) < 0.001
+    assert i1.eval("return box.cfg.vinyl_run_count_per_level") == custom_run_count_per_level
+    assert abs(i1.eval("return box.cfg.vinyl_run_size_ratio") - custom_run_size_ratio) < 0.001
+
+    # Create a sharded vinyl table - this creates:
+    # - Primary key index (id=0)
+    # - bucket_id index (id=1)
+    i1.sql(
+        """
+        CREATE TABLE vinyl_options_test (
+            id INT NOT NULL,
+            data TEXT,
+            PRIMARY KEY (id)
+        ) USING vinyl
+        DISTRIBUTED BY (id)
+        """
+    )
+
+    space_id = i1.eval("return box.space.vinyl_options_test.id")
+
+    def assert_vinyl_opts(index_tuple, index_name):
+        """Helper to verify all vinyl options on an index."""
+        opts = index_tuple[4]  # opts is at index 4
+        assert opts.get("page_size") == custom_page_size, (
+            f"{index_name} page_size mismatch: expected {custom_page_size}, got {opts}"
+        )
+        assert opts.get("range_size") == custom_range_size, (
+            f"{index_name} range_size mismatch: expected {custom_range_size}, got {opts}"
+        )
+        assert abs(opts.get("bloom_fpr") - custom_bloom_fpr) < 0.001, (
+            f"{index_name} bloom_fpr mismatch: expected {custom_bloom_fpr}, got {opts}"
+        )
+        assert opts.get("run_count_per_level") == custom_run_count_per_level, (
+            f"{index_name} run_count_per_level mismatch: expected {custom_run_count_per_level}, got {opts}"
+        )
+        assert abs(opts.get("run_size_ratio") - custom_run_size_ratio) < 0.001, (
+            f"{index_name} run_size_ratio mismatch: expected {custom_run_size_ratio}, got {opts}"
+        )
+
+    # Check primary key index (id=0)
+    pk_index = i1.call("box.space._index:get", [space_id, 0])
+    assert pk_index is not None, "Primary key index should exist"
+    assert_vinyl_opts(pk_index, "Primary key")
+
+    # Check bucket_id index (id=1)
+    bucket_index = i1.call("box.space._index:get", [space_id, 1])
+    assert bucket_index is not None, "bucket_id index should exist"
+    assert bucket_index[2] == "bucket_id", "Index 1 should be bucket_id"
+    assert_vinyl_opts(bucket_index, "bucket_id")
+
+    # Also create an index via CREATE INDEX for comparison
+    i1.sql("CREATE INDEX secondary ON vinyl_options_test (data)")
+
+    secondary_index = i1.call("box.space._index:get", [space_id, 2])
+    assert secondary_index is not None, "Secondary index should exist"
+    assert_vinyl_opts(secondary_index, "Secondary index")

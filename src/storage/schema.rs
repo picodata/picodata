@@ -23,13 +23,11 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use tarantool::auth::AuthDef;
 use tarantool::coio::coio_call;
-use tarantool::decimal::Decimal;
 use tarantool::error::{BoxError, Error as TntError, TarantoolErrorCode as TntErrorCode};
 use tarantool::index::FieldType as IndexFieldType;
 #[allow(unused_imports)]
 use tarantool::index::Metadata as IndexMetadata;
-use tarantool::index::{Index, IndexId, IndexType, IteratorType};
-use tarantool::index::{IndexOptions, Part};
+use tarantool::index::{Index, IndexId, IndexOptions, IndexType, IteratorType, Part};
 use tarantool::schema::index::{create_index, drop_index};
 use tarantool::session::UserId;
 use tarantool::space::UpdateOps;
@@ -199,29 +197,9 @@ pub fn ddl_create_index_on_master(
         .indexes
         .get(space_id, index_id)?
         .ok_or_else(|| Error::other(format!("index with id {index_id} not found")))?;
-    let mut opts = IndexOptions {
-        parts: Some(pico_index_def.parts.into_iter().map(|i| i.into()).collect()),
-        r#type: Some(pico_index_def.ty),
-        id: Some(pico_index_def.id),
-        ..Default::default()
-    };
-    let dec_to_f32 = |d: Decimal| f32::from_str(&d.to_string()).expect("decimal to f32");
-    for opt in pico_index_def.opts {
-        match opt {
-            IndexOption::Unique(unique) => opts.unique = Some(unique),
-            IndexOption::Dimension(dim) => opts.dimension = Some(dim),
-            IndexOption::Distance(distance) => opts.distance = Some(distance),
-            IndexOption::BloomFalsePositiveRate(rate) => opts.bloom_fpr = Some(dec_to_f32(rate)),
-            IndexOption::PageSize(size) => opts.page_size = Some(size),
-            IndexOption::RangeSize(size) => opts.range_size = Some(size),
-            IndexOption::RunCountPerLevel(count) => opts.run_count_per_level = Some(count),
-            IndexOption::RunSizeRatio(ratio) => opts.run_size_ratio = Some(dec_to_f32(ratio)),
-            IndexOption::Hint(_) => {
-                // FIXME: `hint` option is disabled in Tarantool module.
-            }
-        }
-    }
-    create_index(space_id, &pico_index_def.name, &opts)?;
+    let name = pico_index_def.name.clone();
+    let opts: IndexOptions = pico_index_def.into();
+    create_index(space_id, &name, &opts)?;
 
     Ok(())
 }
@@ -423,7 +401,6 @@ pub fn ddl_create_space_on_master(
 ) -> traft::Result<Option<TntError>> {
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
     let sys_space = Space::from(SystemSpace::Space);
-    let sys_index = Space::from(SystemSpace::Index);
 
     let pico_table_def = storage
         .pico_table
@@ -438,7 +415,6 @@ pub fn ddl_create_space_on_master(
             pico_table_def.name
         ))
     })?;
-    let tt_pk_def = pico_pk_def.to_index_metadata(&pico_table_def);
 
     let bucket_id_def = match &pico_table_def.distribution {
         Distribution::ShardedImplicitly { .. } => {
@@ -460,20 +436,26 @@ pub fn ddl_create_space_on_master(
     };
 
     let res = (|| -> tarantool::Result<()> {
-        if tt_pk_def.parts.is_empty() {
+        if pico_pk_def.parts.is_empty() {
             return Err(BoxError::new(
                 tarantool::error::TarantoolErrorCode::ModifyIndex,
                 format!(
                     "can't create index '{}' in space '{}': parts list cannot be empty",
-                    tt_pk_def.name, tt_space_def.name,
+                    pico_pk_def.name, pico_table_def.name,
                 ),
             )
             .into());
         }
         sys_space.insert(&tt_space_def)?;
-        sys_index.insert(&tt_pk_def)?;
+
+        let pk_name = pico_pk_def.name.clone();
+        let pk_opts: IndexOptions = pico_pk_def.into();
+        create_index(space_id, &pk_name, &pk_opts)?;
+
         if let Some(def) = bucket_id_def {
-            sys_index.insert(&def.to_index_metadata(&pico_table_def))?;
+            let name = def.name.clone();
+            let opts: IndexOptions = def.into();
+            create_index(space_id, &name, &opts)?;
         }
 
         Ok(())

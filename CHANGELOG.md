@@ -67,6 +67,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed that upgrading between patch versions wouldn't run upgrade scripts.
 - Fixed assertion failure in CAS right after raft leader change followed by
   persisted raft log tail truncation.
+- Fixed instance.vinyl.* options to be applied to primary and bucket_id indices.
 
 ## [25.5.1] - 2025-12-19
 

@@ -34,7 +34,9 @@ use tarantool::fiber;
 use tarantool::index::IndexId;
 use tarantool::index::IteratorType;
 use tarantool::index::Metadata as IndexMetadata;
-use tarantool::index::{FieldType as IndexFieldType, IndexType, Part, RtreeIndexDistanceType};
+use tarantool::index::{
+    FieldType as IndexFieldType, IndexOptions, IndexType, Part, RtreeIndexDistanceType,
+};
 use tarantool::msgpack;
 use tarantool::session::{with_su, UserId};
 use tarantool::space::SpaceId;
@@ -489,6 +491,36 @@ impl IndexDef {
             }
         }
         true
+    }
+}
+
+impl From<IndexDef> for IndexOptions {
+    fn from(def: IndexDef) -> Self {
+        let dec_to_f32 = |d: Decimal| f32::from_str(&d.to_string()).expect("decimal to f32");
+        let mut opts = IndexOptions {
+            parts: Some(def.parts.into_iter().map(|p| p.into()).collect()),
+            r#type: Some(def.ty),
+            id: Some(def.id),
+            ..Default::default()
+        };
+        for opt in def.opts {
+            match opt {
+                IndexOption::Unique(unique) => opts.unique = Some(unique),
+                IndexOption::Dimension(dim) => opts.dimension = Some(dim),
+                IndexOption::Distance(distance) => opts.distance = Some(distance),
+                IndexOption::BloomFalsePositiveRate(rate) => {
+                    opts.bloom_fpr = Some(dec_to_f32(rate))
+                }
+                IndexOption::PageSize(size) => opts.page_size = Some(size),
+                IndexOption::RangeSize(size) => opts.range_size = Some(size),
+                IndexOption::RunCountPerLevel(count) => opts.run_count_per_level = Some(count),
+                IndexOption::RunSizeRatio(ratio) => opts.run_size_ratio = Some(dec_to_f32(ratio)),
+                IndexOption::Hint(_) => {
+                    // FIXME: `hint` option is disabled in Tarantool module.
+                }
+            }
+        }
+        opts
     }
 }
 
