@@ -18,3 +18,8 @@ class TestTargetQueries2(ClusterSingleInstance):
 @sql_test_file("test_gl2527.sql")
 class TestUpdate(ClusterTwoInstances):
     pass
+
+
+@sql_test_file("test_known_defects.sql")
+class TestKnownDefects(ClusterSingleInstance):
+    pass
