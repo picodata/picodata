@@ -7,7 +7,7 @@ use crate::message_type::write_request_header;
 use crate::message_type::MessageType::DQL;
 use crate::msgpack::{skip_value, ByteCounter};
 use rmp::decode::{read_array_len, read_int, read_map_len, read_str_len};
-use rmp::encode::{write_array_len, write_map_len, write_str, write_uint, write_uint8};
+use rmp::encode::{write_array_len, write_map_len, write_str, write_uint};
 use std::fmt;
 use std::fmt::Formatter;
 use std::io::{Cursor, Write};
@@ -114,10 +114,9 @@ pub(crate) fn write_tuples(
 }
 
 pub(crate) fn write_options(w: &mut impl Write, options: DQLOptions) -> Result<(), std::io::Error> {
-    write_array_len(w, 3)?;
+    write_array_len(w, 2)?;
     write_uint(w, options.sql_motion_row_max)?;
     write_uint(w, options.sql_vdbe_opcode_max)?;
-    write_uint8(w, options.read_preference)?;
 
     Ok(())
 }
@@ -349,29 +348,21 @@ pub(crate) fn get_vtables<'a>(
 
 pub(crate) fn get_options(raw_payload: &mut Cursor<&[u8]>) -> Result<DQLOptions, ProtocolError> {
     let options = read_array_len(raw_payload)?;
-    let (sql_motion_row_max, sql_vdbe_opcode_max, read_preference) = match options {
+    let (sql_motion_row_max, sql_vdbe_opcode_max) = match options {
         2 => {
-            // TODO: remove this block after 26.1 release
             let sql_motion_row_max = read_int(raw_payload)?;
             let sql_vdbe_opcode_max = read_int(raw_payload)?;
-            (sql_motion_row_max, sql_vdbe_opcode_max, 0)
-        }
-        3 => {
-            let sql_motion_row_max = read_int(raw_payload)?;
-            let sql_vdbe_opcode_max = read_int(raw_payload)?;
-            let read_preference = read_int(raw_payload)?;
-            (sql_motion_row_max, sql_vdbe_opcode_max, read_preference)
+            (sql_motion_row_max, sql_vdbe_opcode_max)
         }
         _ => {
             return Err(ProtocolError::DecodeError(format!(
-                "DQL package is invalid: expected to have options array length 2 or 3, got {options}"
+                "DQL package is invalid: expected to have options array length 2, got {options}"
             )));
         }
     };
     Ok(DQLOptions {
         sql_motion_row_max,
         sql_vdbe_opcode_max,
-        read_preference,
     })
 }
 
@@ -636,7 +627,6 @@ mod tests {
             .set_options(DQLOptions {
                 sql_motion_row_max: 123,
                 sql_vdbe_opcode_max: 456,
-                read_preference: 0,
             })
             .set_params(vec![138, 123, 432])
             .build();
@@ -644,14 +634,14 @@ mod tests {
         let mut writer = Vec::new();
 
         write_dql_packet(&mut writer, &data).unwrap();
-        let expected: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x97\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw\x2a\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x93{\xcd\x01\xc8\x00\x93\xcc\x8a{\xcd\x01\xb0";
+        let expected: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x97\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw\x2a\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
 
         assert_eq!(writer, expected);
     }
 
     #[test]
     fn test_execute_dql_cache_hit() {
-        let mut data: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x97\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw\x2a\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x93{\xcd\x01\xc8\x00\x93\xcc\x8a{\xcd\x01\xb0";
+        let mut data: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x97\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw\x2a\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
 
         let l = read_array_len(&mut data).unwrap();
         assert_eq!(l, 3);
@@ -706,7 +696,6 @@ mod tests {
                 DQLResult::Options(options) => {
                     assert_eq!(options.sql_motion_row_max, 123);
                     assert_eq!(options.sql_vdbe_opcode_max, 456);
-                    assert_eq!(options.read_preference, 0);
                 }
                 DQLResult::Params(params) => {
                     let expected = vec![147, 204, 138, 123, 205, 1, 176];

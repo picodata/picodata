@@ -46,7 +46,6 @@ impl TryFrom<u8> for ColumnType {
 pub struct DQLOptions {
     pub sql_motion_row_max: u64,
     pub sql_vdbe_opcode_max: u64,
-    pub read_preference: u8,
 }
 
 pub trait DQLDataSource {

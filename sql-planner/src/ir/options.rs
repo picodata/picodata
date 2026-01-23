@@ -103,7 +103,6 @@ impl Options {
         DQLOptions {
             sql_motion_row_max: self.sql_motion_row_max as u64,
             sql_vdbe_opcode_max: self.sql_vdbe_opcode_max as u64,
-            read_preference: self.read_preference as u8,
         }
     }
 }

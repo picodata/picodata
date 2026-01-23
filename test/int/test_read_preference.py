@@ -200,10 +200,11 @@ def test_replica_many(cluster: Cluster):
 
     balance = set()
     for i in [i1] + repl:
-        dql = i.sql(dql_query)
-        # not i1 handles DQL on read_preference = replica
-        assert any(map(lambda i: dql == [[i.name, x] for x in dql_expect_0], repl))
-        balance.add(next(map(lambda x: x[0], dql)))
+        for _ in range(3):
+            dql = i.sql(dql_query)
+            # not i1 handles DQL on read_preference = replica
+            assert any(map(lambda i: dql == [[i.name, x] for x in dql_expect_0], repl))
+            balance.add(next(map(lambda x: x[0], dql)))
     # balancer works
     assert len(balance) > 1
 
