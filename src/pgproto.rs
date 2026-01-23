@@ -7,12 +7,11 @@ use crate::{
 };
 use prometheus::IntCounter;
 use smol_str::SmolStr;
+#[cfg(target_os = "linux")]
+use std::os::linux::net::SocketAddrExt;
 use std::{
     io,
-    os::{
-        fd::{AsRawFd, BorrowedFd},
-        linux::net::SocketAddrExt,
-    },
+    os::fd::{AsRawFd, BorrowedFd},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -133,12 +132,15 @@ fn get_peer_address(raw: &CoIOStream) -> io::Result<SmolStr> {
             Ok(sa.to_string().into())
         } else if let Some(unix) = addr.as_unix() {
             if let Some(path) = unix.as_pathname() {
-                Ok(format!("{path:?}").into())
-            } else if let Some(namespace) = unix.as_abstract_name() {
-                Ok(format!("{namespace:?}").into())
-            } else {
-                Ok("unnamed unix client".into())
+                return Ok(format!("{path:?}").into());
             }
+
+            #[cfg(target_os = "linux")]
+            if let Some(namespace) = unix.as_abstract_name() {
+                return Ok(format!("{namespace:?}").into());
+            }
+
+            Ok("unnamed unix client".into())
         } else {
             Ok(format!("{addr:?}").into())
         }
