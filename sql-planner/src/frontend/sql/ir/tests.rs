@@ -3197,10 +3197,11 @@ fn front_sql_update1() {
     update "t"
     "b" = "col_1"
     "d" = "col_3"
+    "bucket_id" = "col_4"
     "a" = "col_0"
     "c" = "col_2"
         motion [policy: segment([]), program: [PrimaryKey(1), RearrangeForShardedUpdate(0, 1)]]
-            projection (1::int -> "col_0", "t"."b"::int -> "col_1", "t"."c"::int -> "col_2", "t"."d"::int -> "col_3", "t"."a"::int -> "col_4", "t"."b"::int -> "col_5")
+            projection (1::int -> "col_0", "t"."b"::int -> "col_1", "t"."c"::int -> "col_2", "t"."d"::int -> "col_3", "t"."bucket_id"::int -> "col_4", "t"."a"::int -> "col_5", "t"."b"::int -> "col_6")
                 scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000

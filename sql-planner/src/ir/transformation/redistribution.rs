@@ -1970,18 +1970,7 @@ impl Plan {
             }
             match kind {
                 UpdateStrategy::ShardedUpdate { .. } => {
-                    let new_shard_cols_positions = {
-                        let mut positions = table.get_sk()?.to_vec();
-                        let bucket_id_pos = table
-                            .get_bucket_id_position()?
-                            .expect("wrong update strategy");
-                        for pos in &mut positions {
-                            if *pos > bucket_id_pos {
-                                *pos -= 1;
-                            }
-                        }
-                        positions
-                    };
+                    let new_shard_cols_positions = table.get_sk()?.to_vec();
                     let op = MotionOpcode::RearrangeForShardedUpdate {
                         update_id,
                         old_shard_columns_len: table.get_sk()?.len(),
@@ -1996,10 +1985,8 @@ impl Plan {
 
                     let child_output_id = self.get_relation_node(child_id)?.output();
                     let child_dist = self.get_rel_distribution(child_id)?;
-                    // Len of the new tuple, 1 is subtracted because new tuple does not
-                    // contain bucket_id.
                     let projection_len = self.get_row_list(child_output_id)?.len();
-                    let new_tuple_len = table.columns.len() - 1;
+                    let new_tuple_len = table.columns.len();
                     let old_shard_key_positions =
                         (new_tuple_len..projection_len).collect::<Vec<usize>>();
                     let expected_key = Key::new(old_shard_key_positions);

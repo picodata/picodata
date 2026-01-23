@@ -552,39 +552,21 @@ impl Plan {
         let update_kind = if is_sharded_update {
             // For sharded Update Projection has the following format:
             // table_tuple , sharding_key_columns
-            // table_tuple is without bucket_id column
+            // table_tuple is with bucket_id column
 
             // Calculate primary key positions in table_tuple
-            if let Some(bucket_id_pos) = table.get_bucket_id_position()? {
-                table.primary_key.positions.iter().for_each(|pos| {
-                    if *pos <= bucket_id_pos {
-                        primary_key_positions.push(*pos);
-                    } else {
-                        primary_key_positions.push(*pos - 1);
-                    }
-                });
-            } else {
-                primary_key_positions.extend(table.primary_key.positions.iter());
-            }
+            primary_key_positions.extend(table.primary_key.positions.iter());
 
             // Create projection columns for table_tuple
             let cols_len = table.columns.len();
-            // current projection column position
-            let mut proj_pos = 0;
             for table_col in 0..cols_len {
-                let column = self.get_relation_column(relation, table_col)?;
-                // skip bucket_id
-                if let ColumnRole::Sharding = column.role {
-                    continue;
-                }
-                update_columns_map.insert(table_col, proj_pos);
+                update_columns_map.insert(table_col, table_col);
                 let expr_id = if let Some(id) = update_defs.get(&table_col) {
                     *id
                 } else {
                     create_ref_from_column(self, rel_child_id, relation, &child_map, table_col)?
                 };
                 projection_cols.push(expr_id);
-                proj_pos += 1;
             }
 
             // Create projection columns for sharding_key_columns

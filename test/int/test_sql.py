@@ -6634,9 +6634,10 @@ buckets = [1-3000]"""
     lines = i1.sql("explain update t2 set d = 1 where d = 2 or d = 2002")
     expected_explain = """update "t2"
 "c" = "col_0"
-"d" = "col_1"
-    motion [policy: segment([]), program: [PrimaryKey(0), RearrangeForShardedUpdate(1)]]
-        projection ("t2"."c"::int -> "col_0", 1::int -> "col_1", "t2"."d"::int -> "col_2")
+"bucket_id" = "col_1"
+"d" = "col_2"
+    motion [policy: segment([]), program: [PrimaryKey(0), RearrangeForShardedUpdate(2)]]
+        projection ("t2"."c"::int -> "col_0", "t2"."bucket_id"::int -> "col_1", 1::int -> "col_2", "t2"."d"::int -> "col_3")
             selection ("t2"."d"::int = 2::int) or ("t2"."d"::int = 2002::int)
                 scan "t2"
 execution options:

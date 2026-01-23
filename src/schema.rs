@@ -1860,8 +1860,6 @@ pub enum CreateTableError {
     EmptyTier { tier_name: String },
     #[error("primary key '{0}' already exists")]
     ConflictingPrimaryKey(String),
-    #[error("incorrect sharding key '{0}'")]
-    IncorrectShardingKey(String),
 }
 
 impl From<CreateTableError> for Error {
@@ -2368,15 +2366,6 @@ impl CreateTableParams {
                         // And all parts are unique
                         if !parts.insert(part.as_str()) {
                             return Err(CreateTableError::DuplicateFieldName(part.clone()).into());
-                        }
-                    }
-                    if self.opts.contains(&TableOption::PkContainsBucketId(true)) {
-                        // Sharding key must be prefix of primary key in this case.
-                        if !self.primary_key.starts_with(sharding_key) {
-                            return Err(CreateTableError::IncorrectShardingKey(
-                                sharding_key.join(","),
-                            )
-                            .into());
                         }
                     }
                 }

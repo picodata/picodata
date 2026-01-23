@@ -164,10 +164,11 @@ fn test_query_explain_10() {
     update "t2"
     "f" = "col_1"
     "h" = "col_3"
+    "bucket_id" = "col_4"
     "e" = "col_0"
     "g" = "col_2"
         motion [policy: segment([]), program: [PrimaryKey(2, 3), RearrangeForShardedUpdate(0, 1)]]
-            projection (20::int -> "col_0", "t2"."f"::int -> "col_1", "t2"."g"::int -> "col_2", "t2"."h"::int -> "col_3", "t2"."e"::int -> "col_4", "t2"."f"::int -> "col_5")
+            projection (20::int -> "col_0", "t2"."f"::int -> "col_1", "t2"."g"::int -> "col_2", "t2"."h"::int -> "col_3", "t2"."bucket_id"::int -> "col_4", "t2"."e"::int -> "col_5", "t2"."f"::int -> "col_6")
                 selection ROW("t2"."e"::int, "t2"."f"::int) = ROW(10::int, 10::int)
                     scan "t2"
     execution options:

@@ -160,3 +160,34 @@ fn test_bucket_id_addition5() {
 
     assert_eq!(Buckets::Filtered(collection!(5815)), buckets);
 }
+
+#[test]
+fn test_bucket_id_addition6() {
+    // Primary key is (d), sharding key is (c).
+    let query = r#"SELECT * FROM "t4" WHERE "c" = '42'"#;
+
+    let coordinator = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
+    let buckets = {
+        let plan = query.get_exec_plan().get_ir_plan();
+        let top = plan.get_top().unwrap();
+        query.bucket_discovery(top).unwrap()
+    };
+    query
+        .get_mut_exec_plan()
+        .get_mut_ir_plan()
+        .add_condition_on_bucket_id(&buckets)
+        .unwrap();
+    let query_explain = query.get_exec_plan().get_ir_plan().as_explain().unwrap();
+
+    insta::assert_snapshot!(query_explain, @r#"
+    projection ("t4"."c"::string -> "c", "t4"."d"::int -> "d")
+        selection ("t4"."bucket_id"::int in ROW(5815::int)) and ("t4"."c"::string = '42'::string)
+            scan "t4"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+
+    assert_eq!(Buckets::Filtered(collection!(5815)), buckets);
+}

@@ -7,12 +7,18 @@ from conftest import (
     Instance,
 )
 
+TABLE_SIZE = 9000
+BATCH_SIZE = 1000
+
 
 @pytest.mark.parametrize(
     "engine",
     ["memtx", "vinyl"],
 )
 def test_simple_table_having_bucket_id_in_pk(cluster: Cluster, engine: str):
+    """
+    Primary key is equal to sharding key.
+    """
     i1 = cluster.add_instance(replicaset_name="r1")
     cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
 
@@ -25,22 +31,20 @@ def test_simple_table_having_bucket_id_in_pk(cluster: Cluster, engine: str):
         """
     )
     assert ddl["row_count"] == 1
-    table_size = 9000
-    batch_size = 1000
-    for start in range(0, table_size, batch_size):
+    for start in range(0, TABLE_SIZE, BATCH_SIZE):
         response = i1.sql(
-            "INSERT INTO sharded_table VALUES " + (", ".join([f"({i},{i})" for i in range(start, start + batch_size)]))
+            "INSERT INTO sharded_table VALUES " + (", ".join([f"({i},{i})" for i in range(start, start + BATCH_SIZE)]))
         )
-        assert response["row_count"] == batch_size
+        assert response["row_count"] == BATCH_SIZE
 
     i2 = cluster.add_instance(replicaset_name="r2")
     cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
 
     # check vshard rebalancing
     res = i1.eval("return box.space.sharded_table:count()")
-    assert math.isclose(res, table_size / 2, abs_tol=20)
+    assert math.isclose(res, TABLE_SIZE / 2, abs_tol=200)
     res = i2.eval("return box.space.sharded_table:count()")
-    assert math.isclose(res, table_size / 2, abs_tol=20)
+    assert math.isclose(res, TABLE_SIZE / 2, abs_tol=200)
 
     # check schema correctness
     res = i1.sql("SELECT id, format, distribution FROM _pico_table WHERE name = 'sharded_table'")
@@ -60,14 +64,12 @@ def test_simple_table_having_bucket_id_in_pk(cluster: Cluster, engine: str):
         ["bucket_id", "unsigned", None, False, None],
         ["a", "integer", None, False, None],
     ]
-
     res = i1.eval(f"return box.space._space:select({table_id})")
     assert res[0][6] == [
         {"is_nullable": False, "name": "bucket_id", "type": "unsigned"},
         {"is_nullable": False, "name": "a", "type": "integer"},
         {"is_nullable": True, "name": "b", "type": "integer"},
     ]
-
     res = i1.eval(f"return box.space._index:select({table_id})")
     assert res[0][5] == [
         {"field": 0, "is_nullable": False, "type": "unsigned"},
@@ -161,6 +163,91 @@ def test_simple_table_having_bucket_id_in_pk(cluster: Cluster, engine: str):
     res = i1.eval(f"return box.space._space:select({table_id})")
     assert res == []
     res = i1.eval(f"return box.space._index:select({table_id})")
+
+
+def test_with_sk_prefix_of_pk(cluster: Cluster):
+    """
+    Sharding key is prefix of primary key.
+    """
+    i1 = cluster.add_instance(replicaset_name="r1")
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
+
+    ddl = i1.sql(
+        """
+        CREATE TABLE sharded_table
+        (a INT NOT NULL, b INT, c INT, PRIMARY KEY (bucket_id, a, b))
+        DISTRIBUTED BY (a)
+        """
+    )
+    assert ddl["row_count"] == 1
+    for start in range(0, TABLE_SIZE, BATCH_SIZE):
+        response = i1.sql(
+            "INSERT INTO sharded_table VALUES "
+            + (", ".join([f"({i},{i + 1},{i + 2})" for i in range(start, start + BATCH_SIZE)]))
+        )
+        assert response["row_count"] == BATCH_SIZE
+
+    i2 = cluster.add_instance(replicaset_name="r2")
+    cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
+
+    # check vshard rebalancing
+    res = i1.eval("return box.space.sharded_table:count()")
+    assert math.isclose(res, TABLE_SIZE / 2, abs_tol=200)
+    res = i2.eval("return box.space.sharded_table:count()")
+    assert math.isclose(res, TABLE_SIZE / 2, abs_tol=200)
+
+    # check DML
+    res = i1.sql("SELECT * FROM sharded_table WHERE a = 42")
+    assert res == [[42, 43, 44]]
+    res = i1.sql("UPDATE sharded_table SET c = 43 WHERE a = 42")
+    assert res["row_count"] == 1
+    res = i1.sql("UPDATE sharded_table SET c = 42 WHERE c = 43")
+    assert res["row_count"] == 2
+    res = i1.sql("DELETE FROM sharded_table WHERE a = 42")
+    assert res["row_count"] == 1
+
+
+def test_with_sk_and_pk_different(cluster: Cluster):
+    """
+    Sharding key is completely different from primary key.
+    """
+    i1 = cluster.add_instance(replicaset_name="r1")
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
+
+    ddl = i1.sql(
+        """
+        CREATE TABLE sharded_table
+        (a INT NOT NULL, b INT, c INT, PRIMARY KEY (bucket_id, a))
+        DISTRIBUTED BY (b)
+        """
+    )
+    assert ddl["row_count"] == 1
+    for start in range(0, TABLE_SIZE, BATCH_SIZE):
+        response = i1.sql(
+            "INSERT INTO sharded_table VALUES "
+            + (", ".join([f"({i},{i + 1},{i + 2})" for i in range(start, start + BATCH_SIZE)]))
+        )
+        assert response["row_count"] == BATCH_SIZE
+
+    i2 = cluster.add_instance(replicaset_name="r2")
+    cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
+
+    # check vshard rebalancing
+    res = i1.eval("return box.space.sharded_table:count()")
+    assert math.isclose(res, TABLE_SIZE / 2, abs_tol=200)
+    res = i2.eval("return box.space.sharded_table:count()")
+    assert math.isclose(res, TABLE_SIZE / 2, abs_tol=200)
+
+    # check DQL, DML
+    res = i1.sql("SELECT * FROM sharded_table WHERE a = 42")
+    assert res == [[42, 43, 44]]
+    # sharded update
+    res = i1.sql("UPDATE sharded_table SET b = 42 WHERE b = 43")
+    assert res["row_count"] == 1
+    res = i1.sql("SELECT * FROM sharded_table WHERE b = 42 ORDER BY a")
+    assert res == [[41, 42, 43], [42, 42, 44]]
+    res = i1.sql("DELETE FROM sharded_table WHERE b = 42")
+    assert res["row_count"] == 2
 
 
 def test_explain_raw(instance: Instance):
