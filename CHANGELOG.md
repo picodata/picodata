@@ -20,6 +20,13 @@ with the `YY.MINOR.MICRO` scheme.
   enables the checking if replication is broken on any instance, in which case
   the instance will be automatically made Offline.
 - New columns `target_state_reason` & `target_state_change_time` in `_pico_instance` system table
+- Added env option PICODATA_UNSAFE_FORCE_RECOVERY.
+  - Possible values: true, false.
+  - This option is passed to Tarantool as `force_recovery` option.
+  - If force_recovery equals true, Tarantool tries to continue
+    if there is an error while reading a snapshot file (at server instance start)
+    or a write-ahead log file (at server instance start or when applying
+    an update at a replica.
 - Introduce `read_preference` option for routing DQL queries to replicas in specific scenarios.
 
 ### CLI

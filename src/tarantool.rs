@@ -512,7 +512,7 @@ impl Cfg {
         Ok(res)
     }
 
-    pub fn set_core_parameters(&mut self, config: &PicodataConfig) -> Result<(), Error> {
+    fn set_core_parameters(&mut self, config: &PicodataConfig) -> Result<(), Error> {
         self.log.clone_from(&config.instance.log.destination);
         self.log_level = Some(config.instance.log_level() as _);
 
@@ -566,6 +566,28 @@ impl Cfg {
             debug_assert_ne!(value, RmpvValue::Nil);
             self.user_configured_fields
                 .insert((*box_field).into(), value);
+        }
+
+        // If force_recovery equals true, Tarantool tries to continue
+        // if there is an error while reading a snapshot file (at server instance start)
+        // or a write-ahead log file (at server instance start or when applying
+        // an update at a replica.
+        match std::env::var("PICODATA_UNSAFE_FORCE_RECOVERY") {
+            Ok(v) if v == "true" => {
+                crate::tlog!(Warning, "Set force_recovery = true");
+                self.user_configured_fields
+                    .insert("force_recovery".into(), true.into());
+            }
+            Ok(v) if v == "false" => {
+                crate::tlog!(Warning, "Set force_recovery = false");
+            }
+            Ok(v) => {
+                crate::tlog!(
+                    Warning,
+                    "Ignoring unexpected value for PICODATA_UNSAFE_FORCE_RECOVERY: {v}. Available options are 'true', 'false'"
+                );
+            }
+            _ => {}
         }
 
         Ok(())
