@@ -1,13 +1,12 @@
 from typing import Generator, Protocol
 
-from conftest import Cluster
+from conftest import Cluster, Retriable
 from framework.rolling.version import RelativeVersion as Version
 from framework.rolling.registry import Registry
-from framework.log import log
 
 import pytest
-import time
-import random
+import os
+import signal
 
 
 class Factory(Protocol):
@@ -131,11 +130,6 @@ def test_successful_rollback_on_partial_upgrade_failure(factory: Factory):
        stayed healthy.
     """
 
-    # Microseconds since epoch
-    seed = int(time.time() * 1000000)
-    log.info("Random seed: {seed}")
-    random.seed(seed)
-
     # step 1
 
     cluster = factory(of=Version.PREVIOUS_MINOR)
@@ -232,3 +226,94 @@ def test_upgrade_25_5_to_25_6_check_procs(factory: Factory):
         for p in proc_names:
             res = i.call("box.space._func.index.name:select", [p])
             assert res[0][2] == p
+
+
+@pytest.mark.xdist_group(name="rolling")
+def test_sentinel_working_during_upgrade(
+    registry: Registry,
+    cluster: Cluster,
+):
+    cluster.registry = registry
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            can_vote: true
+        storage:
+            can_vote: false
+            replication_factor: 2
+        """
+    )
+
+    runtime_v1 = cluster.registry.get(Version.PREVIOUS_MINOR)
+    cluster.runtime = runtime_v1
+    leader = cluster.add_instance(wait_online=False, name="leader", tier="arbiter")
+    storage_A = cluster.add_instance(wait_online=False, name="storage_A", tier="storage")
+    storage_B = cluster.add_instance(wait_online=False, name="storage_B", tier="storage")
+    cluster.wait_online()
+
+    # Initial cluster version
+    [[cluster_version]] = leader.sql("SELECT value FROM _pico_property WHERE key = 'cluster_version'")
+    assert base_version(cluster_version) == str(runtime_v1.absolute_version)
+
+    # Change auto-offline timeout to check senitnel's behaviour later
+    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 3")
+
+    # Turn off one of the instances to block upgrade
+    storage_B.terminate()
+    leader.wait_has_states("Offline", "Offline", target=storage_B)
+
+    # Start upgrading instances one by one
+    runtime_v2 = cluster.registry.get(Version.CURRENT)
+
+    storage_A.terminate()
+    storage_A.runtime = runtime_v2
+    storage_A.start()
+    storage_A.wait_online()
+
+    leader.terminate()
+    leader.runtime = runtime_v2
+    leader.start()
+    leader.wait_online()
+
+    # Cluster wasn't upgraded yet, because `storage_B` is not online
+    [[cluster_version]] = leader.sql("SELECT value FROM _pico_property WHERE key = 'cluster_version'")
+    assert base_version(cluster_version) == str(runtime_v1.absolute_version)
+
+    # Make sure graceful shutdown works during upgrade
+    storage_A.terminate()
+    leader.wait_has_states("Offline", "Offline", target=storage_A)
+
+    storage_A.start()
+    storage_A.wait_online()
+
+    # Make sure sentinel successfully handles non-graceful shutdown (auto-offline)
+    assert storage_A.process
+    os.killpg(storage_A.process.pid, signal.SIGSTOP)
+    leader.wait_has_states("Offline", "Offline", target=storage_A)
+
+    # Make sure sentinel successfully handles wake-up after auto-offline
+    os.killpg(storage_A.process.pid, signal.SIGCONT)
+    leader.wait_has_states("Online", "Online", target=storage_A)
+
+    # Finish the upgrade successfully as a sanity check
+    storage_B.runtime = runtime_v2
+    storage_B.start()
+    storage_B.wait_online()
+
+    # Now cluster is successfully upgraded
+    def check():
+        [[cluster_version]] = leader.sql("SELECT value FROM _pico_property WHERE key = 'cluster_version'")
+        assert base_version(cluster_version) == str(runtime_v2.absolute_version)
+
+    # Note: needs to be retriable because upgrade happens asynchronously after all instances become Online
+    Retriable().call(check)
+
+
+def base_version(v: str) -> str:
+    parts = v.split("-", maxsplit=1)
+    if parts:
+        return parts[0]
+    return v
