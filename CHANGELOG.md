@@ -8,7 +8,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-## [25.5.5] - Unreleased
+## [25.5.5] - 2026-01-26
 
 ### Fixes
 
@@ -23,6 +23,7 @@ with the `YY.MINOR.MICRO` scheme.
     if there is an error while reading a snapshot file (at server instance start)
     or a write-ahead log file (at server instance start or when applying
     an update at a replica.
+- Always open vylog files with O_SYNC.
 - Fixed that sentinel_loop was broken during upgrade from versions before 25.5.3.
 
 

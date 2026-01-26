@@ -1,6 +1,6 @@
 [package]
 name = "picodata-plugin"
-version = "25.5.4"
+version = "25.5.5"
 edition = "2021"
 license = "BSD-2-Clause"
 description = "Toolkit to build plugins for picodata.io DBMS"
