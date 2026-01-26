@@ -1,15 +1,21 @@
 use crate::has_states;
+use crate::instance::Instance;
 use crate::instance::StateVariant::*;
 use crate::proc_name;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
+#[allow(deprecated)]
+use crate::rpc::update_instance::proc_update_instance;
 use crate::rpc::update_instance::proc_update_instance_v2;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::network::ConnectionPool;
 use crate::traft::node;
+use crate::traft::RaftId;
 use crate::traft::RaftIndex;
+use crate::traft::Result;
 use crate::util::NoYieldsRefCell;
+use crate::version::version_is_new_enough;
 use ::tarantool::fiber;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
@@ -64,6 +70,12 @@ impl Loop {
         let cluster_name = node.topology_cache.cluster_name;
         let cluster_uuid = node.topology_cache.cluster_uuid;
         let my_raft_id = node.raft_id;
+        let system_catalog_version = node
+            .storage
+            .properties
+            .system_catalog_version()
+            .expect("reading from _pico_property should always work")
+            .expect("system_catalog_version always available since 25.1.0");
 
         ////////////////////////////////////////////////////////////////////////
         // Awoken during graceful shutdown.
@@ -100,12 +112,13 @@ impl Loop {
                     let Some(leader_id) = raft_status.get().leader_id else {
                         return Err(Error::LeaderUnknown);
                     };
-                    pool.call(
-                        &leader_id,
-                        proc_name!(proc_update_instance_v2),
+                    call_proc_update_instance(
+                        pool,
+                        leader_id,
                         &req,
                         timeout,
-                    )?
+                        &system_catalog_version,
+                    )
                     .await?;
                     Ok(())
                 }
@@ -262,12 +275,13 @@ impl Loop {
                     };
                     crate::error_injection!("SENTINEL_CONNECTION_POOL_CALL_FAILURE" =>
                         return Err(BoxError::new(crate::error_code::ErrorCode::Other, "injected error").into()));
-                    pool.call(
-                        &leader_id,
-                        proc_name!(proc_update_instance_v2),
+                    call_proc_update_instance(
+                        pool,
+                        leader_id,
                         &req,
                         Self::UPDATE_INSTANCE_TIMEOUT,
-                    )?
+                        &system_catalog_version,
+                    )
                     .await?;
                     Ok(())
                 }
@@ -365,6 +379,46 @@ pub struct Loop {
     status: watch::Sender<SentinelStatus>,
     pub stats: Rc<NoYieldsRefCell<ContinuityTracker>>,
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// call_proc_update_instance
+////////////////////////////////////////////////////////////////////////////////
+
+pub async fn call_proc_update_instance(
+    pool: &ConnectionPool,
+    leader_id: RaftId,
+    request: &rpc::update_instance::Request,
+    timeout: Duration,
+    system_catalog_version: &str,
+) -> Result<()> {
+    if version_is_new_enough(
+        system_catalog_version,
+        &Instance::TARGET_STATE_CHANGE_TIME_AVAILABLE_SINCE,
+    )? {
+        pool.call(
+            &leader_id,
+            proc_name!(proc_update_instance_v2),
+            request,
+            timeout,
+        )?
+        .await?;
+    } else {
+        #[allow(deprecated)]
+        pool.call(
+            &leader_id,
+            proc_name!(proc_update_instance),
+            &request.base,
+            timeout,
+        )?
+        .await?;
+    }
+
+    Ok(())
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// SentinelStatus
+////////////////////////////////////////////////////////////////////////////////
 
 /// Describes possible states of the current instance with respect to what
 /// sentinel should be doing.

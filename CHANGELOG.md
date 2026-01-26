@@ -77,6 +77,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed instance.vinyl.* options to be applied to primary and bucket_id indices.
 - Fixed a crash in proc_runtime_info when the last applied raft entry contained
   a unicode string where a 100th byte position was not on a character boundary.
+- Fixed that sentinel_loop was broken during upgrade from versions before 25.5.3.
 - Fixed ignoring `NULLS FIRST` and `NULLS LAST` in unnamed window queries with ordering.
 
 ## [25.5.1] - 2025-12-19
