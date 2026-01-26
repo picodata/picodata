@@ -23,6 +23,7 @@ with the `YY.MINOR.MICRO` scheme.
     if there is an error while reading a snapshot file (at server instance start)
     or a write-ahead log file (at server instance start or when applying
     an update at a replica.
+- Fixed that sentinel_loop was broken during upgrade from versions before 25.5.3.
 
 
 ## [25.5.4] - 2026-01-21
