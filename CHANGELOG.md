@@ -14,6 +14,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixed assertion failure in CAS right after raft leader change followed by
   persisted raft log tail truncation.
+- Fixed a crash in proc_runtime_info when the last applied raft entry contained
+  a unicode string where a 100th byte position was not on a character boundary.
 
 
 ## [25.5.4] - 2026-01-21

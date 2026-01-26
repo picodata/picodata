@@ -428,8 +428,12 @@ impl std::fmt::Display for Op {
                         let threshold = TRUNCATION_THRESHOLD_FOR_STRING;
                         if let Some(s) = s.as_str() {
                             if s.len() > threshold {
-                                let s = format!("{}<TRUNCATED>...", &s[..threshold]);
-                                serializer.serialize_str(&s)
+                                if let Some((i, _)) = s.char_indices().nth(threshold) {
+                                    let s = format!("{}<TRUNCATED>...", &s[..i]);
+                                    serializer.serialize_str(&s)
+                                } else {
+                                    serializer.serialize_str(s)
+                                }
                             } else {
                                 serializer.serialize_str(s)
                             }

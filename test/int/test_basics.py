@@ -882,6 +882,19 @@ def test_proc_runtime_info(instance: Instance):
     )
 
 
+def test_panic_in_proc_runtime_info_regression(instance: Instance):
+    instance.sql("CREATE TABLE test_global (id INT PRIMARY KEY, value TEXT) DISTRIBUTED GLOBALLY")
+    instance.sql(
+        """INSERT INTO test_global
+        VALUES
+            (1, '12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789абвгдеёжзийклмнопрстуфхцчшщэюя')
+        """
+    )
+
+    info = instance.call(".proc_runtime_info")
+    assert "<TRUNCATED>..." in info["internal"]["main_loop_last_entry"]["payload"]
+
+
 def check_file_shredding_common(i1: Instance):
     i1.call("pico._inject_error", "KEEP_FILES_AFTER_SHREDDING", True)
 
