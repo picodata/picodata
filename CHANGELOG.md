@@ -16,6 +16,13 @@ with the `YY.MINOR.MICRO` scheme.
   persisted raft log tail truncation.
 - Fixed a crash in proc_runtime_info when the last applied raft entry contained
   a unicode string where a 100th byte position was not on a character boundary.
+- Added env option PICODATA_UNSAFE_FORCE_RECOVERY.
+  - Possible values: true, false.
+  - This option is passed to Tarantool as `force_recovery` option.
+  - If force_recovery equals true, Tarantool tries to continue
+    if there is an error while reading a snapshot file (at server instance start)
+    or a write-ahead log file (at server instance start or when applying
+    an update at a replica.
 
 
 ## [25.5.4] - 2026-01-21
