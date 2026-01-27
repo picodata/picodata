@@ -162,14 +162,6 @@ def test_cross_cluster_isolation(cluster: Cluster):
 
     lc_cu = log_crawler(i3, "cluster UUID mismatch")
     lc_cu.wait_matched()
-    assert i3.current_state()[0] != "Online"
 
-    assert i1.cluster_uuid != i3.cluster_uuid
-
-    # We expect that i3 fails to route SQL due to cluster UUID mismatch.
-    # The node does not initialize tier routers in this state, so the error
-    # message must explicitly indicate missing router for the tier. This check
-    # verifies cross-cluster isolation: data/routing from cluster A is not used
-    # when connecting to cluster B.
-    with pytest.raises(TarantoolError, match="no router found for tier"):
-        i3.sql("SELECT * FROM test_table WHERE id = 1")
+    # the cluster UUID mismatch should result in a fatal error during instance startup
+    i3.assert_process_dead()
