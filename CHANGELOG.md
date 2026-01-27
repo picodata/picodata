@@ -80,6 +80,91 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed that sentinel_loop was broken during upgrade from versions before 25.5.3.
 - Fixed ignoring `NULLS FIRST` and `NULLS LAST` in unnamed window queries with ordering.
 
+
+## [25.5.5] - 2026-01-26
+
+### Fixes
+
+- Fixed assertion failure in CAS right after raft leader change followed by
+  persisted raft log tail truncation.
+- Fixed a crash in proc_runtime_info when the last applied raft entry contained
+  a unicode string where a 100th byte position was not on a character boundary.
+- Added env option PICODATA_UNSAFE_FORCE_RECOVERY.
+  - Possible values: true, false.
+  - This option is passed to Tarantool as `force_recovery` option.
+  - If force_recovery equals true, Tarantool tries to continue
+    if there is an error while reading a snapshot file (at server instance start)
+    or a write-ahead log file (at server instance start or when applying
+    an update at a replica.
+- Always open vylog files with O_SYNC.
+- Fixed that sentinel_loop was broken during upgrade from versions before 25.5.3.
+
+
+## [25.5.4] - 2026-01-21
+
+### Fixes
+
+- Introduce unnamed_join alias for motions with joins under them to distinguish columns with identical names
+- Fix erroneous logic of counting rows returned from replicasets which led to undercovered limit exceedance
+  errors.
+- Fixed that upgrading between patch versions wouldn't run upgrade scripts.
+- Datetime literals should support `yyyy-mm-dd` format, e.g. `select '2026-01-17'::datetime`.
+- Fix type inference for the `a BETWEEN b AND c` expression; now types of `a`, `b` and `c` should be
+  properly unified, meanining that `select '2026-01-13' between '2026-01-01'::datetime and '2026-01-20'`
+  will work as expected.
+
+
+## [25.5.3] - 2026-01-15
+
+### Features
+
+- Support JSON_EXTRACT_PATH function.
+- New column `sync_incarnation` is added to `_pico_instance` system table.
+- New ALTER SYSTEM parameter `governor_check_replication_error` (default: true)
+  enables the checking if replication is broken on any instance, in which case
+  the instance will be automatically made Offline.
+- New columns `target_state_reason` & `target_state_change_time` in `_pico_instance` system table
+
+### Fixes
+
+- Fixed that the whole replicaset would be broken if one instance get's a
+  replication conflict. (See also https://git.picodata.io/core/picodata/-/issues/2231).
+- Fixed that governor would sometimes be blocked in read_only on a DDL operation
+  mode not being able to apply any subsequent raft operations.
+
+
+## [25.5.2] - 2025-12-26
+
+### Features
+
+- Rework SQL execution protocol for DML queries to reduce data transfer.
+- Introduce non-blocking SQL execution to prevent fiber starvation.
+
+### Fixes
+
+- Fixed that governor would hang indefinitely if an Offline replicaset had
+  target_master_name != current_master_name.
+- Fixed that instance would hang indefinitely when trying to join the cluster if
+  the cluster becomes too big.
+  NOTE: The fix requires modifying the proc_raft_join RPC response format
+  which technically breaks compatibility with previous versions of picodata.
+  However picodata explicitly doesn't support heterogeneous joins (when version
+  of joining instances mismatches version of cluster), so this shouldn't be a
+  problem for anybody. NOTE also that this doesn't affect restarting instances
+  which already joined the cluster.
+- Fixed a crash when SQL request arrives before instance is properly initialized
+- Fixed that instances would be made Offline immediately after a raft entry is
+  applied if there weren't any entries applied for a long time before that
+- Fixed that instances would randomly fail with ER_READONLY during bootstrap
+- Improve upgrade flow for creating Lua stored functions (exported to SQL).
+- Fixed that governor would send redundant proc_sharding RPCs which would make
+  it impossible to deploy huge clusters. Now RPCs from governor are split into
+  batches of configurable size (default 200, ALTER SYSTEM parameter `governor_rpc_batch_size`).
+- Node construction is now deferred until actually needed, avoiding unnecessary
+  work for cached queries on any instance execution
+- Fixed a memory leak in SQL API of plugin SDK
+
+
 ## [25.5.1] - 2025-12-19
 
 ### Features
