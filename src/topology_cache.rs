@@ -612,6 +612,11 @@ impl TopologyCacheMutable {
     }
 
     #[inline(always)]
+    pub fn try_this_tier(&self) -> Option<&Tier> {
+        self.this_tier.get()
+    }
+
+    #[inline(always)]
     pub fn this_tier(&self) -> &Tier {
         self.this_tier.get().expect("should be known at this point")
     }

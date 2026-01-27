@@ -461,12 +461,20 @@ pub fn update_our_target_state_to_online(
 
     // When the whole cluster is restarting we use a smaller election timeout so
     // that we don't wait too long.
-    const BOOTSTRAP_ELECTION_TIMEOUT: Duration = Duration::from_secs(3);
+    const DEFAULT_BOOTSTRAP_ELECTION_TIMEOUT: Duration = Duration::from_secs(3);
+
+    let mut bootstrap_election_timeout = DEFAULT_BOOTSTRAP_ELECTION_TIMEOUT;
+    if let Ok(v) = std::env::var("PICODATA_BOOTSTRAP_ELECTION_TIMEOUT") {
+        if let Ok(v) = v.parse() {
+            bootstrap_election_timeout = Duration::from_secs_f64(v);
+        }
+    }
+
     // Use a random factor so that hopefully everybody doesn't start the
     // election at the same time.
     let random_factor = 1.0 + rand::random::<f64>();
     let election_timeout =
-        Duration::from_secs_f64(BOOTSTRAP_ELECTION_TIMEOUT.as_secs_f64() * random_factor);
+        Duration::from_secs_f64(bootstrap_election_timeout.as_secs_f64() * random_factor);
     let mut next_election_try = fiber::clock().saturating_add(election_timeout);
 
     // See comments bellow
@@ -509,7 +517,17 @@ pub fn update_our_target_state_to_online(
                 .try_get(id, &crate::traft::ConnectionType::Iproto)
                 .ok()
         });
-        let Some((leader_address, leader_id)) = leader_address.zip(leader_id) else {
+
+        #[allow(unused_mut)]
+        let mut leader_info = leader_address.zip(leader_id);
+        crate::error_injection!("LEADER_NOT_KNOWN_DURING_RESTART" => {
+            // The error is: instance doesn't know who's the leader unless it is the leader itself
+            if leader_id != Some(node.status().id) {
+                leader_info = None;
+            }
+        });
+
+        let Some((leader_address, leader_id)) = leader_info else {
             // FIXME: don't hard code timeout
             let timeout = Duration::from_millis(250);
             tlog!(
@@ -517,8 +535,13 @@ pub fn update_our_target_state_to_online(
                 "leader address is still unknown, retrying in {timeout:?}"
             );
 
+            let mut i_can_vote = false;
+            if let Some(tier) = node.topology_cache.get().try_this_tier() {
+                i_can_vote = tier.can_vote;
+            }
+
             // Leader has been unknown for too long
-            if fiber::clock() >= next_election_try {
+            if i_can_vote && fiber::clock() >= next_election_try {
                 // Normally we should get here only if the whole cluster of
                 // several instances is restarting at the same time, because
                 // otherwise the raft leader should be known and the waking up
@@ -553,7 +576,6 @@ pub fn update_our_target_state_to_online(
 
         #[allow(unused_mut)]
         let mut version = SmolStr::new_static(crate::info::PICODATA_VERSION);
-        #[cfg(feature = "error_injection")]
         crate::error_injection!("UPDATE_PICODATA_VERSION" => {
             if let Ok(v) = std::env::var("PICODATA_INTERNAL_VERSION_OVERRIDE") {
                 version = v.into();

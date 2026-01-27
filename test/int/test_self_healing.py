@@ -3,7 +3,7 @@ import time
 import random
 import re
 
-from conftest import Cluster, Instance, TarantoolError, Retriable, ErrorCode
+from conftest import Cluster, Instance, TarantoolError, Retriable, ErrorCode, log_crawler
 
 
 @pytest.fixture
@@ -565,3 +565,64 @@ cluster:
 
     # This guy is also still online obviously
     storage_1_2.wait_online()
+
+
+def test_non_voter_doesnt_become_leader(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            can_vote: true
+        storage:
+            can_vote: false
+        """
+    )
+
+    arbiter = cluster.add_instance(wait_online=False, tier="arbiter")
+    cluster.add_instance(wait_online=False, tier="storage")
+    cluster.add_instance(wait_online=False, tier="storage")
+    cluster.add_instance(wait_online=False, tier="storage")
+
+    followers = [i for i in cluster.instances if i is not arbiter]
+
+    lcs = [log_crawler(i, "leader not known for too long, trying to promote") for i in followers]
+
+    cluster.wait_online()
+
+    for i in followers:
+        i.terminate()
+
+    arbiter.terminate()
+
+    error_injection = "LEADER_NOT_KNOWN_DURING_RESTART"
+    for i in followers:
+        i.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
+        i.start()
+
+    timeout = 3.0
+    for i in followers:
+        try:
+            i.wait_online(timeout=timeout)
+        except AssertionError as e:
+            # Instance.wait_online raises AssertionError on timeout because the
+            # failure message is better that way
+            assert f"Timed out waiting for instance '{i.name}' state 'Online'" in str(e)
+
+        # After first iteration everybody has waited for 3 seconds already so let's reset the timeout
+        timeout = 0.1
+
+    for lc in lcs:
+        assert not lc.matched
+
+    try:
+        assert cluster.leader()
+    except Exception as e:
+        assert e.args[0] == "leader unknown"
+
+    for i in followers:
+        i.call("pico._inject_error", error_injection, False)
+
+    arbiter.start()
+    cluster.wait_online()
