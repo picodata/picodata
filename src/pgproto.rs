@@ -6,12 +6,11 @@ use crate::{
     traft::error::Error,
 };
 use prometheus::IntCounter;
-use smol_str::SmolStr;
+use smol_str::{format_smolstr, SmolStr};
 #[cfg(target_os = "linux")]
 use std::os::linux::net::SocketAddrExt;
 use std::{
     io,
-    os::fd::{AsRawFd, BorrowedFd},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -110,41 +109,39 @@ impl Config {
     }
 }
 
-fn with_socket<F, T>(raw: &CoIOStream, f: F) -> io::Result<T>
-where
-    F: FnOnce(&socket2::SockRef) -> io::Result<T>,
-{
-    let fd = raw.as_raw_fd();
-    // SAFETY: stream contains a valid descriptor
-    let fd = unsafe { BorrowedFd::borrow_raw(fd) };
-    let socket = socket2::SockRef::from(&fd);
-    f(&socket)
-}
-
-fn enable_tcp_nodelay(raw: &CoIOStream) -> std::io::Result<()> {
-    with_socket(raw, |socket| socket.set_nodelay(true))
+/// Format arbitrary byte sequence as a somewhat readable string.
+/// Valid ascii symbols are preserved, but anything else is escaped.
+/// Unlike [`String::from_utf8_lossy`], this function does not replace
+/// invalid utf-8 sequences with the question marks, meaning that
+/// it can be trusted when comparing two byte slices.
+fn to_readable_string(raw: &[u8]) -> SmolStr {
+    // TODO: consider supporting utf-8 for better formatting (unlikely to be useful atm)
+    raw.iter()
+        .flat_map(|x| std::ascii::escape_default(*x).map(|c| c as char))
+        .collect()
 }
 
 fn get_peer_address(raw: &CoIOStream) -> io::Result<SmolStr> {
-    with_socket(raw, |socket| {
-        let addr = socket.peer_addr()?;
-        if let Some(sa) = addr.as_socket() {
-            Ok(sa.to_string().into())
-        } else if let Some(unix) = addr.as_unix() {
-            if let Some(path) = unix.as_pathname() {
-                return Ok(format!("{path:?}").into());
-            }
+    let addr = socket2::SockRef::from(raw).peer_addr()?;
 
-            #[cfg(target_os = "linux")]
-            if let Some(namespace) = unix.as_abstract_name() {
-                return Ok(format!("{namespace:?}").into());
-            }
+    if let Some(sa) = addr.as_socket() {
+        return Ok(format_smolstr!("{sa}"));
+    }
 
-            Ok("unnamed unix client".into())
-        } else {
-            Ok(format!("{addr:?}").into())
+    if let Some(unix) = addr.as_unix() {
+        if let Some(name) = unix.as_pathname() {
+            return Ok(format_smolstr!("{}", name.display()));
         }
-    })
+
+        #[cfg(target_os = "linux")]
+        if let Some(name) = unix.as_abstract_name() {
+            return Ok(format_smolstr!("{}", to_readable_string(name)));
+        }
+
+        return Ok(format_smolstr!("<unix>"));
+    }
+
+    Ok(format_smolstr!("{addr:?}"))
 }
 
 fn server_start(context: &'static Context) {
@@ -154,21 +151,16 @@ fn server_start(context: &'static Context) {
     while let Ok(raw) = context
         .server
         .accept()
-        .inspect_err(|e| tlog!(Error, "accept failed: {e:?}"))
+        .inspect_err(|e| tlog!(Error, "failed to accept: {e:?}"))
     {
-        if let Err(e) = enable_tcp_nodelay(&raw) {
+        if let Err(e) = socket2::SockRef::from(&raw).set_nodelay(true) {
             tlog!(Error, "failed to enable TCP_NODELAY on socket: {e:?}");
         }
 
-        let peer_addr = get_peer_address(&raw);
         let stream = PgStream::new(raw);
-        if let Err(e) = handle_client(
-            stream,
-            context.tls_acceptor.clone(),
-            context.storage,
-            peer_addr,
-        ) {
-            tlog!(Error, "failed to handle client {e}");
+        let tls_acceptor = context.tls_acceptor.clone();
+        if let Err(e) = handle_client(stream, tls_acceptor, context.storage) {
+            tlog!(Error, "failed to handle client: {e}");
         }
     }
 
@@ -179,10 +171,8 @@ fn handle_client(
     client: PgStream<CoIOStream>,
     tls_acceptor: Option<TlsAcceptor>,
     storage: &'static Catalog,
-    peer_addr: io::Result<SmolStr>,
 ) -> tarantool::Result<()> {
-    // ошибка может быть только если соединение уже сдохло
-    let peer_addr = peer_addr?;
+    let peer_addr = get_peer_address(client.as_ref())?;
 
     tarantool::fiber::Builder::new()
         .name(format!("pgproto::client[{peer_addr}]"))
@@ -317,4 +307,24 @@ pub fn start_once() -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_to_readable_string() {
+        let s = to_readable_string(&[1, 2, 3]);
+        assert_eq!(s, "\\x01\\x02\\x03");
+
+        let s = to_readable_string("hello".as_bytes());
+        assert_eq!(s, "hello");
+
+        let s = to_readable_string("привет".as_bytes());
+        assert_eq!(
+            s,
+            "\\xd0\\xbf\\xd1\\x80\\xd0\\xb8\\xd0\\xb2\\xd0\\xb5\\xd1\\x82"
+        );
+    }
 }

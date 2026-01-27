@@ -77,6 +77,13 @@ impl<S> PgStream<S> {
             startup_processed: false,
         }
     }
+
+    pub fn as_ref(&self) -> &S {
+        match &self.socket {
+            PgSocket::Plain(stream) => stream,
+            PgSocket::Secure(ssl_stream) => ssl_stream.get_ref(),
+        }
+    }
 }
 
 /// Read part of the stream.

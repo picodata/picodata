@@ -46,6 +46,7 @@
   multiple values on the lua stack
 - `datetime::Datetime::now_utc` constructor
 - `#encode(default)` field attribute and `#encode(rename = "new_name")` enum variant attribute
+- `CoIOStream` now implements `std::os::unix::io::AsFd`
 
 ### Fixed
 

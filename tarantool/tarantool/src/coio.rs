@@ -9,7 +9,7 @@ use std::ffi::c_void;
 use std::io::{self, Read, Write};
 use std::mem::forget;
 use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
-use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
+use std::os::unix::io::{AsFd, AsRawFd, BorrowedFd, IntoRawFd, RawFd};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -93,6 +93,13 @@ impl IntoRawFd for CoIOStream {
 impl AsRawFd for CoIOStream {
     fn as_raw_fd(&self) -> RawFd {
         self.fd
+    }
+}
+
+impl AsFd for CoIOStream {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        // SAFETY: stream contains a valid descriptor
+        unsafe { BorrowedFd::borrow_raw(self.fd) }
     }
 }
 
