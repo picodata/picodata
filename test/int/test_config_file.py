@@ -80,7 +80,7 @@ instance:
     assert config == dict(
         cluster=dict(
             tier=dict(
-                value=dict(deluxe=dict(can_vote=True)),
+                value=[["deluxe", dict(can_vote=True)]],
                 source="config_file",
             ),
             default_bucket_count=dict(value=3000, source="default"),
@@ -487,7 +487,6 @@ def test_output_config_parameters(cluster: Cluster):
         'instance.cluster_name':
         'instance.name': "from-config"
         'instance.replicaset_name': "with-love"
-        'instance.tier': "default"
         'instance.failure_domain': {}
         'instance.peer':
         'instance.iproto_listen':

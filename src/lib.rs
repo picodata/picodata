@@ -1235,7 +1235,7 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
 
     init_common(config, &cfg, enable_shredding)?;
 
-    let my_tier_name = config.instance.tier();
+    let my_tier_name = config.effective_instance_tier();
     let can_vote = {
         let tiers = config.cluster.tiers();
         let Some(tier) = tiers.get(my_tier_name) else {
@@ -1381,7 +1381,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     tlog!(Info, "entering cluster bootstrap phase");
 
     let tiers = config.cluster.tiers();
-    let my_tier_name = config.instance.tier();
+    let my_tier_name = config.effective_instance_tier();
     let Some(tier) = tiers.get(my_tier_name) else {
         return Err(Error::other(format!(
             "invalid configuration: current instance is assigned tier '{my_tier_name}' which is not defined in the configuration file",
@@ -1419,7 +1419,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
         current_state: instance::State::new(Offline, 0),
         target_state: instance::State::new(Offline, 0),
         failure_domain: config.instance.failure_domain().clone(),
-        tier: my_tier_name.into(),
+        tier: my_tier_name.to_smolstr(),
         picodata_version: version,
         sync_incarnation: Some(0),
         target_state_reason: Some("".into()),
@@ -1721,7 +1721,7 @@ fn start_pre_join(
         advertise_address: config.instance.iproto_advertise().to_host_port(),
         pgproto_advertise_address: config.instance.pgproto_advertise().to_host_port(),
         failure_domain: config.instance.failure_domain().clone(),
-        tier: config.instance.tier().into(),
+        tier: config.effective_instance_tier().to_smolstr(),
         picodata_version: version,
         uuid: instance_uuid,
     };
@@ -2044,7 +2044,9 @@ fn start_join(
         raft_storage
             .persist_cluster_uuid(&resp.cluster_uuid)
             .unwrap();
-        raft_storage.persist_tier(config.instance.tier()).unwrap();
+        raft_storage
+            .persist_tier(config.effective_instance_tier())
+            .unwrap();
         raft_storage
             .persist_join_state("confirm".to_owned())
             .unwrap();
@@ -2060,7 +2062,7 @@ fn start_join(
         .cluster_uuid()
         .expect("storage should never fail");
 
-    let my_tier_name = config.instance.tier();
+    let my_tier_name = config.effective_instance_tier();
     debug_assert_eq!(resp.instance.tier, my_tier_name);
 
     tlog!(Info, "cluster_uuid {}", cluster_uuid);

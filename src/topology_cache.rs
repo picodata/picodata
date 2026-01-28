@@ -376,6 +376,8 @@ pub struct TopologyCacheMutable {
     replicaset_uuid_by_name: HashMap<SmolStr, SmolStr>,
 
     tiers_by_name: HashMap<SmolStr, Tier>,
+    /// Info about the cluster's default tier.
+    default_tier: Option<Tier>,
 
     /// The meaning of the data is such:
     /// ```ignore
@@ -398,6 +400,7 @@ impl TopologyCacheMutable {
         let mut this_instance = None;
         let mut this_replicaset = None;
         let mut this_tier = None;
+        let mut default_tier = None;
 
         let mut instances_by_name = HashMap::default();
         let mut instance_name_by_uuid = HashMap::default();
@@ -451,6 +454,9 @@ impl TopologyCacheMutable {
                     this_tier = Some(tier.clone());
                 }
             }
+            if tier.is_default.is_some_and(|v| v) {
+                default_tier = Some(tier.clone());
+            }
 
             tiers_by_name.insert(tier.name.clone(), tier);
         }
@@ -497,6 +503,7 @@ impl TopologyCacheMutable {
             replicasets_by_uuid,
             replicaset_uuid_by_name,
             tiers_by_name,
+            default_tier,
             service_routes,
         })
     }
@@ -624,6 +631,15 @@ impl TopologyCacheMutable {
     #[inline(always)]
     pub fn all_tiers(&self) -> impl Iterator<Item = &Tier> {
         self.tiers_by_name.values()
+    }
+
+    /// Default cluster tier.
+    ///
+    /// Picodata tries to ensure that the default tier is always known, but DML to `_pico_tier` can break this invariant.
+    /// This function returns an `Option` to account for that situation
+    #[inline(always)]
+    pub fn default_tier(&self) -> Option<&Tier> {
+        self.default_tier.as_ref()
     }
 
     pub fn tier_by_name(&self, name: &str) -> Result<&Tier> {
@@ -820,11 +836,26 @@ impl TopologyCacheMutable {
                 }
             }
 
+            if new.is_default.is_some_and(|v| v) {
+                let old_cached = self.default_tier.replace(new.clone());
+                // Do not assert if there was no default tier before.
+                // This prevents the migration fixing the "there ends up being no default tier" from triggering the assert
+                // The migration was implemented in https://git.picodata.io/core/picodata/-/merge_requests/2783
+                if old_cached.is_some() {
+                    debug_assert_eq!(old_cached, old);
+                }
+            }
+
             // Create new tier or update old tier
             let old_cached = self.tiers_by_name.insert(new_name, new);
             debug_assert_eq!(old_cached, old);
         } else if let Some(old) = old {
             // Delete tier
+            if old.is_default.is_some_and(|v| v) {
+                let old_cached = self.default_tier.take();
+                debug_assert_eq!(old_cached.as_ref(), Some(&old));
+            }
+
             let old_cached = self.tiers_by_name.remove(&old.name);
             debug_assert_eq!(old_cached.as_ref(), Some(&old));
         } else {

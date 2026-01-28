@@ -25,7 +25,7 @@ use tarantool::auth::{AuthData, AuthDef, AuthMethod};
 pub(super) fn prepare(
     config: &PicodataConfig,
     instance: &Instance,
-    tiers: &HashMap<String, Tier>,
+    tiers: &HashMap<&str, Tier>,
     admin_auth: Option<AuthDef>,
 ) -> Result<Vec<raft::Entry>, Error> {
     let mut init_entries = Vec::new();

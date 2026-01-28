@@ -1893,8 +1893,6 @@ version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
 dependencies = [
- "allocator-api2",
- "equivalent",
  "foldhash 0.1.5",
 ]
 
@@ -2940,16 +2938,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ordered_hash_map"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6c699f8a30f345785be969deed7eee4c73a5de58c7faf61d6a3251ef798ff61"
-dependencies = [
- "hashbrown 0.15.5",
- "serde",
-]
-
-[[package]]
 name = "parking_lot"
 version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3134,7 +3122,6 @@ dependencies = [
  "nix 0.29.0",
  "once_cell",
  "openssl",
- "ordered_hash_map",
  "pbkdf2",
  "pgwire",
  "pico_proc_macro",

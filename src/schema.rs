@@ -7,8 +7,8 @@ use crate::pico_service::pico_service_password;
 use crate::plugin::PluginIdentifier;
 use crate::plugin::ServiceId;
 use crate::storage::*;
-use crate::tier::DEFAULT_TIER;
 use crate::tlog;
+use crate::topology_cache::TopologyCacheRef;
 use crate::traft::error::Error;
 use crate::traft::error::ErrorInfo;
 use crate::traft::op::{Ddl, Op};
@@ -17,7 +17,7 @@ use crate::util::effective_user_id;
 use ahash::AHashSet;
 use picodata_plugin::error_code::ErrorCode;
 use serde::{Deserialize, Serialize};
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use sql::ir::ddl::{Language, ParamDef};
 use sql::ir::value::Value as IrValue;
 use std::borrow::Cow;
@@ -1860,6 +1860,8 @@ pub enum CreateTableError {
     EmptyTier { tier_name: String },
     #[error("primary key '{0}' already exists")]
     ConflictingPrimaryKey(String),
+    #[error("attempt to create a table in default tier, but default tier is unknown")]
+    UnknownDefaultTier,
 }
 
 impl From<CreateTableError> for Error {
@@ -2236,7 +2238,7 @@ pub struct CreateTableParams {
     pub(crate) sharding_fn: Option<ShardingFn>,
     pub(crate) engine: Option<SpaceEngineType>,
     pub(crate) owner: UserId,
-    pub(crate) tier: Option<SmolStr>,
+    pub(crate) tier: SmolStr,
     /// Table options.
     pub(crate) opts: Vec<TableOption>,
     /// Timeout in seconds.
@@ -2252,25 +2254,22 @@ impl CreateTableParams {
     /// 2) specified tier contains at least one instance
     ///
     /// Checks occur only in case of a sharded table.
-    pub fn check_tier_exists(&self, storage: &Catalog) -> traft::Result<()> {
+    pub fn check_tier_exists(&self, topology_cache: &TopologyCacheRef) -> traft::Result<()> {
         if self.distribution == DistributionParam::Sharded {
-            let tier = self.tier.as_deref().unwrap_or(DEFAULT_TIER);
-
-            if storage.tiers.by_name(tier)?.is_none() {
+            if topology_cache.tier_by_name(&self.tier).is_err() {
                 return Err(CreateTableError::UnexistingTier {
-                    tier_name: tier.to_string(),
+                    tier_name: self.tier.to_string(),
                 }
                 .into());
             };
 
-            let tier_is_not_empty = storage
-                .instances
-                .iter()?
-                .any(|instance| instance.tier == tier);
+            let tier_is_not_empty = topology_cache
+                .all_instances()
+                .any(|instance| instance.tier == self.tier);
 
             if !tier_is_not_empty {
                 return Err(CreateTableError::EmptyTier {
-                    tier_name: tier.to_string(),
+                    tier_name: self.tier.to_string(),
                 }
                 .into());
             }
@@ -2557,17 +2556,18 @@ impl CreateTableParams {
         let distribution = match self.distribution {
             DistributionParam::Global => Distribution::Global,
             DistributionParam::Sharded => {
-                // Case when tier wasn't specified explicitly. On that stage we sure that specified tier exists and isn't empty.
-                let tier = self.tier.unwrap_or_else(|| DEFAULT_TIER.into());
                 if let Some(field) = self.by_field {
-                    Distribution::ShardedByField { field, tier }
+                    Distribution::ShardedByField {
+                        field,
+                        tier: self.tier,
+                    }
                 } else {
                     Distribution::ShardedImplicitly {
                         sharding_key: self
                             .sharding_key
                             .expect("should be checked during `validate`"),
                         sharding_fn: self.sharding_fn.unwrap_or_default(),
-                        tier,
+                        tier: self.tier,
                     }
                 }
             }
@@ -2588,6 +2588,26 @@ impl CreateTableParams {
     #[inline(always)]
     fn is_unlogged(&self) -> bool {
         self.opts.contains(&TableOption::Unlogged(true))
+    }
+}
+
+/// Chooses the tier to create the table on based on the user-supplied value and the default tier in the topology cache
+pub fn choose_table_tier(
+    specified_tier: Option<&str>,
+    topology_cache: &TopologyCacheRef,
+) -> traft::Result<SmolStr> {
+    match specified_tier {
+        // explicitly specified by user
+        Some(tier) => Ok(tier.to_smolstr()),
+        None => {
+            // unspecified, should use the default tier
+            if let Some(default_tier) = topology_cache.default_tier() {
+                Ok(default_tier.name.clone())
+            } else {
+                // this should not happen unless user executes DML on _pico_tier
+                Err(CreateTableError::UnknownDefaultTier.into())
+            }
+        }
     }
 }
 
@@ -2684,9 +2704,9 @@ pub fn abort_ddl(deadline: Instant) -> traft::Result<RaftIndex> {
 }
 
 mod tests {
-    use tarantool::{auth::AuthMethod, space::FieldType};
-
     use super::*;
+    use crate::tier::DEFAULT_TIER;
+    use tarantool::{auth::AuthMethod, space::FieldType};
 
     fn storage() -> Catalog {
         let storage = Catalog::for_tests();
@@ -2730,7 +2750,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
-            tier: None,
+            tier: DEFAULT_TIER.into(),
             opts: vec![],
         }
         .test_create_space(&storage)
@@ -2749,7 +2769,7 @@ mod tests {
             engine: Some(SpaceEngineType::Vinyl),
             timeout: None,
             owner: ADMIN_ID,
-            tier: None,
+            tier: DEFAULT_TIER.into(),
             opts: vec![],
         }
         .test_create_space(&storage)
@@ -2768,7 +2788,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
-            tier: None,
+            tier: DEFAULT_TIER.into(),
             opts: vec![],
         }
         .test_create_space(&storage)
@@ -2806,7 +2826,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
-            tier: None,
+            tier: DEFAULT_TIER.into(),
             opts: vec![],
         }
         .validate()
@@ -2825,7 +2845,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
-            tier: None,
+            tier: DEFAULT_TIER.into(),
             opts: vec![],
         }
         .validate()
@@ -2844,7 +2864,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
-            tier: None,
+            tier: DEFAULT_TIER.into(),
             opts: vec![],
         }
         .validate()
@@ -2863,7 +2883,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
-            tier: None,
+            tier: DEFAULT_TIER.into(),
             opts: vec![],
         }
         .validate()
@@ -2882,7 +2902,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
-            tier: None,
+            tier: DEFAULT_TIER.into(),
             opts: vec![],
         }
         .validate()
@@ -2901,7 +2921,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
-            tier: None,
+            tier: DEFAULT_TIER.into(),
             opts: vec![],
         }
         .validate()
@@ -2923,7 +2943,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
-            tier: None,
+            tier: DEFAULT_TIER.into(),
             opts: vec![],
         }
         .validate()
@@ -2945,7 +2965,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
-            tier: None,
+            tier: DEFAULT_TIER.into(),
             opts: vec![],
         }
         .validate()
@@ -2963,7 +2983,7 @@ mod tests {
             engine: Some(SpaceEngineType::Vinyl),
             timeout: None,
             owner: ADMIN_ID,
-            tier: None,
+            tier: DEFAULT_TIER.into(),
             opts: vec![],
         }
         .validate()

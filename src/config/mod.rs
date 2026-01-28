@@ -32,7 +32,6 @@ use crate::{pgproto, traft};
 use ::sql::ir::options;
 use ::sql::ir::value::{EncodedValue, Value};
 use observer::AtomicObserverProvider;
-use ordered_hash_map::OrderedHashMap;
 use rand::TryRng;
 use serde_yaml::Value as YamlValue;
 use std::collections::HashMap;
@@ -270,8 +269,7 @@ Using configuration file '{args_path}'.");
 
         // This isn't set by set_defaults_explicitly, because we expect the
         // tiers to be specified explicitly when the config file is provided.
-        let mut tier = OrderedHashMap::new();
-        tier.insert(
+        let tier = vec![(
             DEFAULT_TIER.to_string(),
             TierConfig {
                 replication_factor: Some(1),
@@ -279,7 +277,7 @@ Using configuration file '{args_path}'.");
                 bucket_count: Some(sql::DEFAULT_BUCKET_COUNT),
                 ..Default::default()
             },
-        );
+        )];
         config.cluster.tier = Some(tier);
 
         // Same story as with `cluster.tier`, the cluster name must be provided
@@ -905,6 +903,14 @@ Using configuration file '{args_path}'.");
         }
     }
 
+    #[inline]
+    pub fn effective_instance_tier(&self) -> &str {
+        self.instance
+            .tier
+            .as_deref()
+            .unwrap_or_else(|| self.cluster.default_tier())
+    }
+
     // TODO: just derive a move_non_default_fields function,
     // it should be much simpler
     fn move_non_none_fields_from(&mut self, donor: Self) {
@@ -1220,11 +1226,11 @@ pub struct ClusterConfig {
     // AND
     // when configuration file was not specified and tiers map is empty
     #[serde(
-        deserialize_with = "deserialize_map_forbid_duplicate_keys",
+        with = "tuple_vec_map_forbid_duplicate_keys",
         skip_serializing_if = "Option::is_none",
         default
     )]
-    pub tier: Option<OrderedHashMap<String, TierConfig>>,
+    pub tier: Option<Vec<(String, TierConfig)>>,
 
     /// Replication factor which is used for tiers which didn't specify one
     /// explicitly. For default value see [`Self::default_replication_factor()`].
@@ -1248,10 +1254,10 @@ pub struct ClusterConfig {
 
 impl ClusterConfig {
     // this method used only from bootstraping to persist tiers information
-    pub fn tiers(&self) -> HashMap<String, Tier> {
+    pub fn tiers(&self) -> HashMap<&str, Tier> {
         let Some(tiers) = &self.tier else {
             return HashMap::from([(
-                DEFAULT_TIER.to_string(),
+                DEFAULT_TIER,
                 Tier {
                     name: DEFAULT_TIER.into(),
                     replication_factor: self.default_replication_factor(),
@@ -1286,9 +1292,19 @@ impl ClusterConfig {
                 tier_def.is_default = Some(true);
                 is_first_tier = false;
             }
-            tier_defs.insert(name.into(), tier_def);
+            tier_defs.insert(name.as_str(), tier_def);
         }
         tier_defs
+    }
+
+    fn default_tier(&self) -> &str {
+        self.tiers()
+            .into_iter()
+            .find(|(_, tier)| tier.is_default.is_some_and(|v| v))
+            .expect(
+                "If at least one tier specified, ClusterConfig::tiers has to mark it as default",
+            )
+            .0
     }
 
     pub fn shredding(&self) -> bool {
@@ -1343,7 +1359,6 @@ pub struct InstanceConfig {
     pub name: Option<String>,
     pub replicaset_name: Option<String>,
 
-    #[introspection(config_default = "default")]
     pub tier: Option<String>,
 
     #[introspection(config_default = FailureDomain::default())]
@@ -1444,13 +1459,6 @@ impl InstanceConfig {
     #[inline]
     pub fn replicaset_name(&self) -> Option<ReplicasetName> {
         self.replicaset_name.as_deref().map(ReplicasetName::from)
-    }
-
-    #[inline]
-    pub fn tier(&self) -> &str {
-        self.tier
-            .as_deref()
-            .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
     #[inline]
@@ -2625,50 +2633,90 @@ pub fn get_admin_auth_def_from_env(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// deserialize_map_forbid_duplicate_keys
+// tuple_vec_map_forbid_duplicate_keys
 ////////////////////////////////////////////////////////////////////////////////
 
-pub fn deserialize_map_forbid_duplicate_keys<'de, D, K, V>(
-    des: D,
-) -> Result<Option<OrderedHashMap<K, V>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-    K: serde::Deserialize<'de> + std::hash::Hash + Eq + std::fmt::Display,
-    V: serde::Deserialize<'de>,
-{
+mod tuple_vec_map_forbid_duplicate_keys {
+    //! Serializes and deserializes a map as a list of tuples, forbidding duplicate keys.
+
+    use serde::de::{MapAccess, Visitor};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::HashSet;
+    use std::fmt;
+    use std::fmt::Display;
+    use std::hash::Hash;
     use std::marker::PhantomData;
-    struct Visitor<K, V>(PhantomData<(K, V)>);
 
-    impl<'de, K, V> serde::de::Visitor<'de> for Visitor<K, V>
+    struct TupleVecMapVisitor<K, V> {
+        marker: PhantomData<Vec<(K, V)>>,
+    }
+
+    impl<K, V> TupleVecMapVisitor<K, V> {
+        pub fn new() -> Self {
+            TupleVecMapVisitor {
+                marker: PhantomData,
+            }
+        }
+    }
+
+    impl<'de, K, V> Visitor<'de> for TupleVecMapVisitor<K, V>
     where
-        K: serde::Deserialize<'de> + std::hash::Hash + Eq + std::fmt::Display,
-        V: serde::Deserialize<'de>,
+        K: Deserialize<'de> + Eq + Hash + Display + Clone,
+        V: Deserialize<'de>,
     {
-        type Value = Option<OrderedHashMap<K, V>>;
+        type Value = Option<Vec<(K, V)>>;
 
-        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
             formatter.write_str("a map with unique keys")
         }
 
-        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+        #[inline]
+        fn visit_unit<E>(self) -> Result<Option<Vec<(K, V)>>, E> {
+            Ok(None)
+        }
+
+        #[inline]
+        fn visit_map<T>(self, mut access: T) -> Result<Option<Vec<(K, V)>>, T::Error>
         where
-            A: serde::de::MapAccess<'de>,
+            T: MapAccess<'de>,
         {
-            let mut res = OrderedHashMap::with_capacity(map.size_hint().unwrap_or(16));
-            while let Some((key, value)) = map.next_entry::<K, V>()? {
-                if res.contains_key(&key) {
+            let mut values = access.size_hint().map_or_else(Vec::new, Vec::with_capacity);
+            let mut keys = HashSet::new();
+
+            while let Some((key, value)) = access.next_entry::<K, V>()? {
+                if !keys.insert(key.clone()) {
                     return Err(serde::de::Error::custom(format!(
                         "duplicate key `{key}` found",
                     )));
                 }
-                res.insert(key, value);
+
+                values.push((key, value));
             }
 
-            Ok(Some(res))
+            Ok(Some(values))
         }
     }
 
-    des.deserialize_map(Visitor::<K, V>(PhantomData))
+    pub fn serialize<K, V, S>(data: &Option<Vec<(K, V)>>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+        K: Serialize,
+        V: Serialize,
+    {
+        match data {
+            None => serializer.serialize_unit(),
+            Some(data) => serializer.collect_map(data.iter().map(|x| (&x.0, &x.1))),
+        }
+    }
+
+    pub fn deserialize<'de, K, V, D>(deserializer: D) -> Result<Option<Vec<(K, V)>>, D::Error>
+    where
+        D: Deserializer<'de>,
+        K: Deserialize<'de> + Eq + Hash + Display + Clone,
+        V: Deserialize<'de>,
+    {
+        deserializer.deserialize_map(TupleVecMapVisitor::new())
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

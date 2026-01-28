@@ -615,3 +615,64 @@ cluster:
     data = router_instance.sql("""SELECT t1.a FROM t1 JOIN t2 ON t1.a = t2.a AND t1.bucket_id = t2.bucket_id""")
 
     assert data == [[1]]
+
+
+def test_default_tier_not_named_default(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        not_default:
+        empty_tier:
+instance:
+    # there is not need to specify this, it is inferred from the cluster tiers config
+    # tier: "not_default"
+"""
+    )
+
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    def get_tier_from_distribution_field_from_pico_table(table_name):
+        data = i1.sql(
+            f"""
+            SELECT "distribution" FROM "_pico_table" WHERE "name" = '{table_name}'
+            """,
+            sudo=True,
+        )
+
+        distribution_field = data[0][0]
+        distribution_parameters = list(distribution_field.values())
+        assert len(distribution_parameters) == 1
+        tier = distribution_parameters[0][2]
+        return tier
+
+    with pytest.raises(TarantoolError, match="specified tier 'default' doesn't exist"):
+        i1.sql(
+            """
+            CREATE TABLE "table_in_default_tier" (a INT NOT NULL, b INT, PRIMARY KEY (a))
+                DISTRIBUTED BY (b)
+            IN TIER "default"
+            OPTION (TIMEOUT = 3)
+            """
+        )
+
+    i1.sql(
+        """
+        CREATE TABLE "table_in_implicit_default_tier" (a INT NOT NULL, b INT, PRIMARY KEY (a))
+            DISTRIBUTED BY (b)
+        OPTION (TIMEOUT = 3)
+        """
+    )
+    assert get_tier_from_distribution_field_from_pico_table("table_in_implicit_default_tier") == "not_default"
+
+    i1.sql(
+        """
+        CREATE TABLE "table_in_explicit_default_tier" (a INT NOT NULL, b INT, PRIMARY KEY (a))
+            DISTRIBUTED BY (b)
+        IN TIER "not_default"
+        OPTION (TIMEOUT = 3)
+        """
+    )
+    assert get_tier_from_distribution_field_from_pico_table("table_in_explicit_default_tier") == "not_default"

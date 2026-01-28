@@ -63,7 +63,6 @@ pub struct Tier {
     /// The default tier is used in some operations when the explicit tier
     /// parameter is not specified. For example CREATE TABLE will create a table
     /// with data distributed in this tier unless specified otherwise.
-    /// NOTE: this feature is not yet implemented, see <https://git.picodata.io/core/picodata/-/issues/1437>
     #[serde(default)]
     pub is_default: Option<bool>,
 

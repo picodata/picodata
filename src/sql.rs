@@ -2,7 +2,6 @@
 
 use crate::access_control::access_check_plugin_system;
 use crate::access_control::{validate_password, UserMetadataKind};
-use crate::audit;
 use crate::backoff::SimpleBackoffManager;
 use crate::cas::Predicate;
 use crate::catalog::governor_queue;
@@ -28,6 +27,7 @@ use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op, RenameMappi
 use crate::traft::{self, node};
 use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
 use crate::version::Version;
+use crate::{audit, schema};
 use crate::{cas, has_states, plugin, tlog};
 
 use ::tarantool::access_control::{
@@ -1515,6 +1515,10 @@ fn ddl_ir_node_to_op_or_result(
                 opts.push(TableOption::PkContainsBucketId(*pk_contains_bucket_id));
             }
 
+            let topology_cache = node.topology_cache.get();
+
+            let tier = schema::choose_table_tier(tier.as_deref(), &topology_cache)?;
+
             let mut params = CreateTableParams {
                 id: None,
                 name: name.clone(),
@@ -1527,7 +1531,7 @@ fn ddl_ir_node_to_op_or_result(
                 engine: Some(*engine_type),
                 timeout: None,
                 owner: current_user,
-                tier: tier.clone(),
+                tier,
                 opts,
             };
             params.validate()?;
@@ -1540,7 +1544,7 @@ fn ddl_ir_node_to_op_or_result(
                 }
             }
 
-            params.check_tier_exists(storage)?;
+            params.check_tier_exists(&topology_cache)?;
 
             params.choose_id_if_not_specified(name, governor_op_id)?;
             params.check_primary_key(storage)?;

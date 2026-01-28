@@ -46,6 +46,7 @@ with the `YY.MINOR.MICRO` scheme.
     prevent inconsistencies. Creating unlogged tables is possible with the `CREATE UNLOGGED TABLE ...`
     syntax. Unlogged tables are implemented as Tarantool data-temporary spaces, so it is not possible to
     store them using the vinyl engine.
+- \[breaking\] Instead of always being a tier with name `default`, default tier is now the first tier mentioned in the config.
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:
