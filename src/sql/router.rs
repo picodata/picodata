@@ -659,12 +659,13 @@ impl Metadata for RouterMetadata {
             .ok_or_else(|| SbroadError::NotFound(Entity::Space, name.to_smolstr()))?;
 
         let engine = table.engine;
+        let is_sharded = matches!(table.distribution, Distribution::ShardedImplicitly { .. });
         let mut columns: Vec<Column> = Vec::with_capacity(table.format.len());
         for column_meta in &table.format {
             let col_name = &column_meta.name;
             let is_nullable = column_meta.is_nullable;
             let col_type = UnrestrictedType::new(column_meta.field_type.as_str())?;
-            let role = if col_name == DEFAULT_BUCKET_ID_COLUMN_NAME {
+            let role = if is_sharded && col_name == DEFAULT_BUCKET_ID_COLUMN_NAME {
                 ColumnRole::Sharding
             } else {
                 ColumnRole::User

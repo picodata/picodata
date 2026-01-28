@@ -190,3 +190,27 @@ def test_explain_raw(instance: Instance):
     for statement in statement_list:
         res = i.sql(f"EXPLAIN(RAW) {statement}")
         assert "SEARCH TABLE t USING PRIMARY KEY (bucket_id=? AND a=?)" in res[5]
+
+
+def test_global_table_with_explicit_bucket_id_column(instance: Instance):
+    """
+    Checks that global tables can use "bucket_id" column as
+    other ordinary column.
+    """
+    i = instance
+    ddl = i.sql(
+        """
+        CREATE TABLE g
+        (bucket_id INT PRIMARY KEY)
+        DISTRIBUTED GLOBALLY
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    i.sql("INSERT INTO g VALUES (1)")
+    [[res]] = i.sql("SELECT * FROM g WHERE bucket_id = 1")
+    assert res == 1
+    res = i.sql("EXPLAIN(RAW) SELECT * FROM g WHERE bucket_id = 1")
+    assert "SEARCH TABLE g USING PRIMARY KEY" in res[5]
+    res = i.eval("return require('vshard').storage._sharded_spaces()")
+    assert res == []
