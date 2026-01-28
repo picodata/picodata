@@ -50,7 +50,6 @@ variables:
   GIT_DEPTH: 1
   GET_SOURCES_ATTEMPTS: 3
   GIT_FETCH_TAGS_DIRS: ".,tarantool-sys,tarantool-sys/third_party/luajit"
-  PICODATA_DESCRIBE: "25.6.0"
   PARENT_BRANCH: $CI_COMMIT_REF_NAME
   PARENT_CI_COMMIT_SHA: $CI_COMMIT_SHA
   PARENT_PROJECT_PATH: ${CI_PROJECT_PATH}.git
@@ -288,7 +287,6 @@ clone:
 .test:
   stage: test
   variables:
-    GIT_DESCRIBE: $PICODATA_DESCRIBE
     RUST_BACKTRACE: full
     GIT_STRATEGY: none
     KUBERNETES_CPU_REQUEST: 6
@@ -399,7 +397,6 @@ lint:
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
   variables:
     GIT_STRATEGY: none
-    GIT_DESCRIBE: $PICODATA_DESCRIBE
     TARGET: debug
   cache:
     - <<: *cache_git
