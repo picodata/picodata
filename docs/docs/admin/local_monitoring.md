@@ -1,11 +1,16 @@
-# Мониторинг
+# Получение данных о кластере
 
-В данном разделе приведена информация о мониторинге запущенного кластера Picodata.
+В данном разделе приведена информация о средствах диагностики
+запущенного кластера Picodata.
 
-Мониторинг состояния кластера возможен после
-[подключения](../tutorial/connecting.md) к кластеру в консоли. После этого можно
-использовать команды, показывающие состояние raft-группы, отдельных
+Сбор служебных данных о состоянии кластера возможен после
+[подключения](../tutorial/connecting.md) к кластеру в консоли. После
+этого доступны команды, показывающие состояние raft-группы, отдельных
 инстансов, собранных из них репликасетов и т.д.
+
+См. также:
+
+- [Dashboard для Grafana](grafana_monitoring.md)
 
 ## Получение лидера raft-группы {: #getting_raft_leader }
 
@@ -231,7 +236,7 @@ picodata run --http-listen '127.0.0.1:8081'
 
 [instance.http.listen]: ../reference/config.md#instance_http_listen
 
-### Метрики в консоли {: #curls_metrics }
+### Метрики в консоли {: #curl_metrics }
 
 Метрики инстанса Picodata можно получить в консоли, используя `curl`:
 
@@ -243,109 +248,3 @@ curl --location 'http://127.0.0.1:8081/metrics'
 
 - [Справочник метрик](../reference/metrics.md)
 
-### Dashboard в Grafana {: #grafana }
-
-#### Быстрый запуск в Docker {: #docker_compose }
-
-Picodata предоставляет быстрый способ автоматически поднять
-веб-интерфейс [Grafana] и получить доступ к дашбоарду, отображающему
-метрики кластера. Для этого необходимо иметь в системе запущенную службу
-[Docker] и консольную утилиту `docker-compose`.
-
-В дереве исходного кода Picodata перейдите в директорию `monitoring` и
-выполните команду:
-
-```shell
-docker-compose up -d
-```
-На локальном узле будет запущен [Prometheus], настроенный на получение
-данных с адресов `127.0.0.1:8081`, `127.0.0.1:8082`, `127.0.0.1:8083`
-(адреса и прочие настройки Prometheus можно изменить в файле
-`monitoring/prometheus/prometheus.yml`).
-
-Также, будет поднят сервер Grafana по адресу `127.0.0.1:3000` (порт
-настраивается в файле `docker-compose.yml`). Для авторизации используйте
-`admin`/`grafana`.
-
-Импортируйте дашбоард Picodata из файла [Picodata.json].
-
-#### Настройка Prometheus и Grafana вручную {: #manual_setup }
-
-Перед настройкой Grafana сконфигурируйте и запустите систему мониторинга
-событий и оповещений [Prometheus], которая является источником данных
-для Grafana.
-
-Установите и настройте Prometheus согласно рекомендациям для вашей ОС.
-Укажите для Prometheus цели в файле `/etc/prometheus/prometheus.yml`:
-
-```yaml
-global:
-  scrape_interval: 10s
-
-scrape_configs:
-  - job_name: 'prometheus'
-    scrape_interval: 5s
-    static_configs:
-      - targets: ['127.0.0.1:9090']
-
-  - job_name: 'picodata'
-    scrape_interval: 5s
-    metrics_path: /metrics
-    static_configs:
-      - targets: ['127.0.0.1:8081']
-```
-
-В приведенном примере:
-
-- `127.0.0.1:9090` — адрес, с которого Prometheus будет отдавать метрики
-- `127.0.0.1:8081` — адрес, с которого Prometheus собирает метрики
-  (должен соответствовать параметру `--http-listen` при запуске инстанса
-  Picodata или параметру [instance.http.listen] при использовании [файла конфигурации])
-
-Под каждый инстанс Picodata нужно выделять отдельный адрес сбора метрик.
-Например, если локально запустить 4 инстанса Picodata, то файл
-конфигурации Prometheus может выглядеть так:
-
-```yaml
-global:
-  scrape_interval: 10s
-
-scrape_configs:
-  - job_name: 'prometheus'
-    scrape_interval: 5s
-    static_configs:
-      - targets: ['127.0.0.1:9090']
-
-  - job_name: 'picodata'
-    scrape_interval: 5s
-    metrics_path: /metrics
-    static_configs:
-      - targets: ['127.0.0.1:8081', '127.0.0.1:8082', '127.0.0.1:8083', '127.0.0.1:8084']
-```
-
-После того как Prometheus сконфигурирован и запущен, установите и
-настройте Grafana согласно рекомендациям для вашей ОС. Удостоверьтесь,
-что Grafana работает, перейдя по адресу `127.0.0.1:3000`.
-
-Далее выполните следующие шаги.
-
-1.&nbsp;Убедитесь, что в настройках подключений в Grafana (`Connections` >
-   `Data sources`) имеется источник данных Prometheus:
-
-![Prometheus data source](../images/grafana/data_sources.png)
-
-2.&nbsp;Импортируйте dashboard с данными Picodata. Для этого понадобится файл
-   [Picodata.json], который следует добавить в меню `Dashboards` > `New` > `Import`:
-
-![Import Picodata dashboard](../images/grafana/import_dashboard.png)
-
-После этого в Grafana можно будет оперативно отслеживать состояние
-инстансов, потребляемую память, нагрузку на сеть, изменения в составе
-кластера и прочие параметры:
-
-![Picodata dashboard](../images/grafana/dashboard.png)
-
-[Docker]: https://www.docker.com
-[Grafana]: https://grafana.com
-[Prometheus]: https://prometheus.io
-[Picodata.json]: https://git.picodata.io/core/picodata/-/tree/master/monitoring/dashboard

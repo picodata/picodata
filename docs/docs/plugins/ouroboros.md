@@ -400,7 +400,7 @@ ansible-playbook -i ouroboros.yml picodata.yml
 - **Кластер-приёмник** — имя кластера, в который Ouroboros будет записывать данные (значение по умолчанию — `porognee`)
 - **Игнорируемые спейсы** — список таблиц (спейсов), данные которых не будут скопированы
 
-[Grafana]: ../admin/monitoring.md#grafana
+[Grafana]: ../admin/grafana_monitoring.md
 [dashboard.grafana.json]: https://git.picodata.io/picodata/plugin/uroboros/-/raw/master/observability/dashboard.grafana.json
 
 См. также:

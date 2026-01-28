@@ -58,7 +58,7 @@ qualified domain name) вместо IP-адреса.
 Picodata](../reference/metrics.md).
 
 **Рекомендация:** настроить [мониторинг в
-Picodata](monitoring.md#grafana) — это позволит находить проблемы в
+Grafana](grafana_monitoring.md) — это позволит находить проблемы в
 работе кластера и своевременно на них реагировать — а также мониторинг
 метрик самих серверов, как минимум, CPU, RAM, HDD.
 

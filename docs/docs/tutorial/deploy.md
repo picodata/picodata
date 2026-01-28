@@ -534,3 +534,8 @@ i4      Online   9560e6ad-445c-4334-a01f-02ee2f1fb6a8   127.0.0.1:3304
     пустая строка.
 
 [`picodata status`]: ../reference/cli.md#status
+
+См. также:
+
+- [Получение данных о кластере](../admin/local_monitoring.md)
+- [Dashboard для Grafana](../admin/grafana_monitoring.md)

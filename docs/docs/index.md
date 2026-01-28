@@ -94,7 +94,7 @@ Picodata — это распределенная система промышле
             <h3>Настройка и обслуживание</h3>
             <p><ul>
             <li><a href="admin/configure/">Способы конфигурирования</a></li>
-            <li><a href="admin/monitoring/">Мониторинг</a></li>
+            <li><a href="admin/grafana_monitoring/">Мониторинг в Grafana</a></li>
             <li><a href="admin/troubleshooting/">Устранение неполадок</a></li>
             </ul></p>
         </div>

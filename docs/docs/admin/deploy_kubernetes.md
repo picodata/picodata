@@ -235,3 +235,23 @@ picodata admin admin.sock
     ```shell
     minikube delete
     ```
+
+## Мониторинг кластера {: #monitoring }
+
+Для мониторинга развернутого кластера Picodata используйте dashboard для
+Grafana. Мы предоставляем заранее сконфигурированный dashboard-файл
+[Picodata.json], который можно импортировать в интерфейсе Grafana и
+использовать для отслеживания [состояния кластера], изменения [состава и
+роли узлов], а также для оперативного доступа к [метрикам] Picodata.
+
+Dashboard позволяет следить за производительностью кластера, оперативно
+реагировать на инциденты и устранять неполадки.
+
+[состояния кластера]: local_monitoring.md
+[метрикам]: ../reference/metrics.md
+[состава и роли узлов]: ../overview/glossary.md#node_states
+[Picodata.json]: https://git.picodata.io/core/picodata/-/tree/master/monitoring/dashboard
+
+Читайте далее:
+
+- [Dashboard для Grafana](grafana_monitoring.md)
