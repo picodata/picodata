@@ -303,7 +303,7 @@ https:
     key_file: key.pem
 ```
 
-[метрикам]: monitoring.md/#enable_metrics
+[метрикам]: local_monitoring.md/#enable_metrics
 [веб-интерфейсу]: ../tutorial/webui.md
 
 Для генерации необходимых сертификатов и ключей используйте приведенные

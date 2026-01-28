@@ -21,14 +21,14 @@ Rust, с примерами кода и указаниями по запуску
 [руководство по разработке плагина]: plugin_create.md
 [статья]: plugin_mgmt.md
 
-## Дашбоард Grafana {: #grafana }
+## Dashboard для Grafana {: #grafana }
 
-Для загрузки доступен дашбоард [Picodata.json] для веб-интерфейса
-Grafana. Инструкция по использованию дашбоарда и настройке мониторинга
-приведена в разделе [Dashboard в Grafana].
+Для загрузки доступен dashboard-файл [Picodata.json] для веб-интерфейса
+Grafana. Инструкция по использованию dashboard-файла и настройке мониторинга
+приведена в разделе [Dashboard для Grafana].
 
 [Picodata.json]: https://git.picodata.io/core/picodata/-/tree/master/monitoring/dashboard
-[Dashboard в Grafana]: https://docs.picodata.io/picodata/stable/admin/monitoring/#grafana
+[Dashboard для Grafana]: ../admin/grafana_monitoring.md
 
 ## Роль Picodata для Ansible {: #ansible }
 

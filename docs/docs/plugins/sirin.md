@@ -436,7 +436,7 @@ INSERT INTO sessions (id, user_id) VALUES (uuid(), 42) USING TTL 600;
 
 - [Установка плагинов](../overview/glossary.md#plugin)
 - [Создание кластера](../tutorial/deploy.md)
-- [Мониторинг и телеметрия](../admin/monitoring.md)
+- [Получение данных о кластере](../admin/local_monitoring.md)
 - [Резервное копирование и восстановление](../admin/backup_and_restore.md)
 
 ### Конфигурация плагина {: #plugin_configuration }

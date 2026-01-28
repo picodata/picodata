@@ -429,3 +429,27 @@ ansible-playbook -i hosts.yml picodata.yml -t crash_dump
 переменные из инвентарного файла. Если не определены, то используются
 значения по умолчанию) в техническую поддержку компании Picodata.
 
+## Мониторинг кластера {: #monitoring }
+
+Для мониторинга развернутого кластера Picodata используйте dashboard для
+Grafana. Мы предоставляем заранее сконфигурированный dashboard-файл
+[Picodata.json], который можно импортировать в интерфейсе Grafana и
+использовать для отслеживания [состояния кластера] (в том числе,
+отслеживать изменения [состава и роли узлов]), а также для оперативного
+доступа к [метрикам] Picodata.
+
+Dashboard позволяет следить за производительностью кластера, оперативно
+реагировать на инциденты и устранять неполадки.
+
+Для удобства добавления инстансов в конфигурационный файл Prometheus
+можно взять секцию `prometheus` из файла `report.yml`, который создается
+после выполнения роли Ansible.
+
+[состояния кластера]: local_monitoring.md
+[метрикам]: ../reference/metrics.md
+[состава и роли узлов]: ../overview/glossary.md#node_states
+[Picodata.json]: https://git.picodata.io/core/picodata/-/tree/master/monitoring/dashboard
+
+Читайте далее:
+
+- [Dashboard для Grafana](grafana_monitoring.md)

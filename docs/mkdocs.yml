@@ -51,12 +51,14 @@ nav:
           - reference/cli.md
           - reference/config.md
           - reference/db_config.md
+      - Мониторинг:
+          - admin/local_monitoring.md
+          - admin/grafana_monitoring.md
       - admin/deploy_ansible.md
       - admin/deploy_kubernetes.md
       - admin/server_setup.md
       - admin/cluster_mgmt.md
       - admin/cluster_update.md
-      - admin/monitoring.md
       - admin/benchmarking.md
       - admin/backup_and_restore.md
       - admin/access_control.md

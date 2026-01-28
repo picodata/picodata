@@ -73,7 +73,7 @@ ALTER PLUGIN silver 0.6.2 ENABLE;
 
 Для диагностики работы плагина обратитесь к [отладочному журналу] инстанса Picodata.
 
-[отладочному журналу]: ../admin/monitoring.md#reading_log
+[отладочному журналу]: ../admin/local_monitoring.md#reading_log
 [административной консоли]: ../tutorial/connecting.md#admin_console
 
 ## Конфигурация плагина {: #silver_config }
