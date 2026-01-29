@@ -29,7 +29,7 @@ pub type VTableTuple = Vec<Value>;
 /// key:   bucket id.
 /// value: list of positions in the `tuples` list (see `VirtualTable`) corresponding to the bucket.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub struct VTableIndex {
+struct VTableIndex {
     value: HashMap<u64, Vec<usize>, RepeatableState>,
 }
 
@@ -40,7 +40,7 @@ impl VTableIndex {
         }
     }
 
-    pub fn add_entry(&mut self, bucket_id: u64, position: usize) {
+    fn add_entry(&mut self, bucket_id: u64, position: usize) {
         match self.value.entry(bucket_id) {
             Entry::Vacant(entry) => {
                 entry.insert(vec![position]);
@@ -63,9 +63,9 @@ pub struct VirtualTableMeta {
     /// List of the columns.
     pub columns: Vec<Column>,
     /// Unique table name (we need to generate it ourselves).
-    pub name: Option<SmolStr>,
+    name: Option<SmolStr>,
     /// Column positions that form a primary key.
-    pub primary_key: Option<Vec<ColumnPosition>>,
+    primary_key: Option<Vec<ColumnPosition>>,
 }
 
 /// Result tuple storage, created by the executor. All tuples
