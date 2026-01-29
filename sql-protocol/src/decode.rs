@@ -1,5 +1,3 @@
-#[allow(deprecated)]
-use crate::decode::ExecuteArgsData::{New, Old};
 use crate::dml::delete::{DeleteFilteredIterator, DeleteFullIterator};
 use crate::dml::dml_type::DMLType;
 use crate::dml::insert::{InsertIterator, InsertMaterializedIterator};
@@ -7,7 +5,7 @@ use crate::dml::update::{UpdateIterator, UpdateSharedKeyIterator};
 use crate::dql::DQLPacketPayloadIterator;
 use crate::error::ProtocolError;
 use crate::message_type::MessageType;
-use crate::msgpack::{shift_pos, skip_value};
+use crate::msgpack::skip_value;
 use rmp::decode::{
     read_array_len, read_bool, read_f32, read_f64, read_int, read_map_len, read_pfix, read_str_len,
     RmpRead,
@@ -23,27 +21,12 @@ pub struct QueryMetaArgs<'bytes> {
     pub plan_id: u64,
 }
 
-#[allow(deprecated)]
 pub struct ExecuteArgs<'bytes> {
     pub timeout: f64,
     pub need_ref: bool,
     pub rid: i64,
     pub sid: &'bytes str,
-    pub data: ExecuteArgsData<'bytes>,
-}
-/// Temporary enum for protocol migration (remove after old protocol deprecation).
-/// New: raw payload bytes for new protocol
-/// Old: raw legacy protocol data
-#[deprecated(note = "Remove in next release. Change to &[u8]. Used for smooth upgrade")]
-#[allow(deprecated)]
-pub enum ExecuteArgsData<'bytes> {
-    New(&'bytes [u8]),
-    Old(OldExecuteArgs<'bytes>),
-}
-#[deprecated(note = "Remove in next release. Used for smooth upgrade")]
-pub struct OldExecuteArgs<'bytes> {
-    pub required: &'bytes [u8],
-    pub optional: Option<&'bytes [u8]>,
+    pub data: &'bytes [u8],
 }
 
 pub enum ProtocolMessageType {
@@ -153,7 +136,6 @@ impl<'bytes> ProtocolMessage<'bytes> {
     }
 }
 
-#[allow(deprecated)]
 pub fn execute_args_split(mp: &[u8]) -> IoResult<ExecuteArgs<'_>> {
     let mut stream = Cursor::new(mp);
     let elems = read_array_len(&mut stream)
@@ -203,62 +185,18 @@ pub fn execute_args_split(mp: &[u8]) -> IoResult<ExecuteArgs<'_>> {
     let start_pos = stream.position() as usize;
     let array_len = read_array_len(&mut stream)
         .map_err(|e| IoError::other(format!("Failed to unpack required from array: {e}")))?;
-    if array_len == 3 {
-        Ok(ExecuteArgs {
-            timeout,
-            need_ref,
-            rid,
-            sid,
-            data: New(&mp[start_pos..]),
-        })
-    } else {
-        // Decode required data.
-        if array_len != 1 {
-            return Err(IoError::other(format!(
-                "Expected an array of 1 element in required, got: {array_len}"
-            )));
-        }
-        // TODO: use binary instead of string.
-        let req_len = read_str_len(&mut stream)
-            .map_err(|e| IoError::other(format!("Failed to unpack required bytes: {e}")))?
-            as usize;
-        let req_start = stream.position() as usize;
-        let required = &mp[req_start..req_start + req_len];
-
-        let mut args = ExecuteArgs {
-            timeout,
-            need_ref,
-            rid,
-            sid,
-            data: Old(OldExecuteArgs {
-                required,
-                optional: None,
-            }),
-        };
-
-        // Decode optional data if present.
-        if elems == 6 {
-            shift_pos(&mut stream, req_len as u64)?;
-            let array_len = read_array_len(&mut stream).map_err(|e| {
-                IoError::other(format!("Failed to unpack optional from array: {e}"))
-            })?;
-            if array_len != 1 {
-                return Err(IoError::other(format!(
-                    "Expected an array of 1 element in optional, got: {array_len}"
-                )));
-            }
-            // TODO: use binary instead of string.
-            let opt_len = read_str_len(&mut stream)
-                .map_err(|e| IoError::other(format!("Failed to unpack optional bytes: {e}")))?
-                as usize;
-            let opt_start = stream.position() as usize;
-            let Old(args) = &mut args.data else {
-                unreachable!("Optional data must be present in old format")
-            };
-            args.optional = Some(&mp[opt_start..opt_start + opt_len]);
-        }
-        Ok(args)
+    if array_len != 3 {
+        return Err(IoError::other(format!(
+            "Expected an array of 3 element in required, got: {array_len}"
+        )));
     }
+    Ok(ExecuteArgs {
+        timeout,
+        need_ref,
+        rid,
+        sid,
+        data: &mp[start_pos..],
+    })
 }
 
 pub fn query_meta_args_split(mp: &[u8]) -> IoResult<QueryMetaArgs<'_>> {

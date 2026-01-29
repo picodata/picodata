@@ -217,16 +217,15 @@ pub fn get_builtin_functions() -> &'static [Function] {
     })
 }
 
-// TODO: generics would be removed after execution on any would be on the new protocol
-pub trait StorageCache<K, T> {
+pub trait StorageCache {
     /// Put the prepared statement with given key in cache,
     /// remembering its version.
     fn put(
         &mut self,
-        plan_id: K,
+        plan_id: u64,
         stmt: SqlStmt,
         schema_info: &SchemaInfo,
-        motion_ids: Vec<T>,
+        motion_ids: Vec<SmolStr>,
     ) -> Result<(), SbroadError>;
 
     /// Get the prepared statement and a list of motion ids from cache.
@@ -234,7 +233,7 @@ pub trait StorageCache<K, T> {
     /// has been changed, `None` is returned.
     #[allow(clippy::ptr_arg)]
     #[allow(clippy::type_complexity)]
-    fn get(&mut self, plan_id: &K) -> Result<Option<(&mut SqlStmt, &[T])>, SbroadError>;
+    fn get(&mut self, plan_id: &u64) -> Result<Option<(&mut SqlStmt, &[SmolStr])>, SbroadError>;
 }
 
 pub type VersionMap = HashMap<u32, u64, RepeatableState>;

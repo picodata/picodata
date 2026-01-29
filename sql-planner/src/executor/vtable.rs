@@ -1,17 +1,14 @@
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::{TupleBuilderCommand, TupleBuilderPattern};
-use crate::executor::protocol::{Binary, EncodedRows, EncodedVTables};
 use crate::executor::{bucket::Buckets, Vshard};
 use crate::ir::helpers::RepeatableState;
-use crate::ir::node::{Insert, NodeId};
+use crate::ir::node::NodeId;
 use crate::ir::relation::{Column, ColumnRole};
 use crate::ir::transformation::redistribution::{ColumnPosition, MotionKey, Target};
 use crate::ir::types::{DerivedType, UnrestrictedType};
-use crate::ir::value::{EncodedValue, MsgPackValue, Value};
-use crate::utils::{write_u32_array_len, ByteCounter};
+use crate::ir::value::{EncodedValue, Value};
 use ahash::AHashSet;
 use rmp::encode::{write_array_len, write_map_len, write_str, write_uint};
-use rmp_serde::Serializer;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr};
 use sql_protocol::dql_encoder::MsgpackEncode;
@@ -21,13 +18,10 @@ use std::io::{Error as IoError, Result as IoResult, Write};
 use std::rc::Rc;
 use std::vec;
 
-use super::ir::ExecutionPlan;
 use super::Port;
 
-use crate::ir::node::relational::Relational;
 use tarantool::msgpack;
 use tarantool::msgpack::Encode;
-use tarantool::tuple::TupleBuilder;
 
 pub type VTableTuple = Vec<Value>;
 
@@ -723,110 +717,6 @@ impl Write for VirtualTable {
 
     fn flush(&mut self) -> IoResult<()> {
         Ok(())
-    }
-}
-
-struct TupleIterator<'t> {
-    vtable: &'t VirtualTable,
-    buf: Vec<EncodedValue<'t>>,
-    row_id: usize,
-}
-
-impl<'t> TupleIterator<'t> {
-    fn new(vtable: &'t VirtualTable) -> Self {
-        let buf = Vec::with_capacity(vtable.get_columns().len() + 1);
-        TupleIterator {
-            vtable,
-            buf,
-            row_id: 0,
-        }
-    }
-
-    fn next<'a>(&'a mut self) -> Option<&'a [EncodedValue<'t>]> {
-        let pk = self.row_id as i64;
-
-        let row_id = self.row_id;
-
-        let vt_tuple = self.vtable.get_tuples().get(row_id)?;
-
-        self.buf.clear();
-        for value in vt_tuple {
-            self.buf.push(MsgPackValue::from(value).into());
-        }
-        self.buf.push(Value::Integer(pk).into());
-
-        self.row_id += 1;
-        Some(&self.buf)
-    }
-}
-
-fn write_vtable_as_msgpack(vtable: &VirtualTable, stream: &mut impl Write) {
-    let array_len =
-        u32::try_from(vtable.get_tuples().len()).expect("expected u32 tuples in virtual table");
-    write_u32_array_len(stream, array_len).expect("failed to write array len");
-
-    let mut ser = Serializer::new(stream);
-    let mut tuple_iter = TupleIterator::new(vtable);
-
-    while let Some(tuple) = tuple_iter.next() {
-        tuple
-            .serialize(&mut ser)
-            .expect("failed to serialize tuple");
-    }
-}
-
-fn vtable_marking(vtable: &VirtualTable) -> Vec<usize> {
-    let mut marking: Vec<usize> = Vec::with_capacity(vtable.get_tuples().len());
-    let mut tuple_iter = TupleIterator::new(vtable);
-    while let Some(tuple) = tuple_iter.next() {
-        let mut byte_counter = ByteCounter::default();
-        let mut ser = Serializer::new(&mut byte_counter);
-        tuple
-            .serialize(&mut ser)
-            .expect("temporary table serialization failed");
-        marking.push(byte_counter.bytes());
-    }
-    marking
-}
-
-impl ExecutionPlan {
-    pub fn encode_vtables(&self) -> EncodedVTables {
-        let vtables = self.get_vtables();
-        let mut encoded_tables = EncodedVTables::with_capacity(vtables.len());
-
-        let insert_child = {
-            let plan = self.get_ir_plan();
-            let top = plan.get_top().expect("top must be set during execution");
-            match plan.get_relation_node(top).expect("top cannot be missed") {
-                Relational::Insert(Insert { child, .. })
-                    // XXX: Keep this check in sync with `insert_execute`.
-                    //  This is the case of local VALUES materialization (see `materialize_values`),
-                    //  in which `insert_execute` doesn't use encoded vtables from the required
-                    //  data and inserts tuples directly from the vtable from the plan.
-                    if self.contains_vtable_for_motion(*child) =>
-                {
-                    Some(*child)
-                }
-                _ => None,
-            }
-        };
-
-        let vtables = vtables.iter().filter(|(id, _)| Some(**id) != insert_child);
-        for (id, vtable) in vtables {
-            let marking = vtable_marking(vtable);
-            // Array marker (1 byte) + array length (4 bytes) + tuples.
-            let data_len = 5 + marking.iter().sum::<usize>();
-            assert!(data_len <= u32::MAX as usize);
-            let mut builder = TupleBuilder::rust_allocated();
-            builder.reserve(data_len);
-            write_vtable_as_msgpack(vtable, &mut builder);
-            let Ok(tuple) = builder.into_tuple() else {
-                unreachable!("failed to build binary table")
-            };
-            let binary_table = Binary::from(tuple);
-            encoded_tables.insert(*id, EncodedRows::new(marking, binary_table));
-        }
-        encoded_tables
     }
 }
 

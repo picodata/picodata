@@ -37,14 +37,7 @@ local function prepare_args(args, rid, sid, timeout, need_ref)
     table.insert(call_args, rid)
     table.insert(call_args, sid)
     table.insert(call_args, need_ref)
-    if args['required'] then
-        table.insert(call_args, args['required'])
-        if args['optional'] then
-            table.insert(call_args, args['optional'])
-        end
-    else
-        table.insert(call_args, args) -- as is
-    end
+    table.insert(call_args, args) -- as is
 
     return call_args
 end

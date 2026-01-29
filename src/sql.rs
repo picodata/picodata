@@ -8,7 +8,7 @@ use crate::cas::Predicate;
 use crate::catalog::governor_queue;
 use crate::column_name;
 use crate::config::{AlterSystemParameters, DYNAMIC_CONFIG};
-use crate::metrics::{self, STORAGE_1ST_REQUESTS_TOTAL, STORAGE_2ND_REQUESTS_TOTAL};
+use crate::metrics::{self, STORAGE_1ST_REQUESTS_TOTAL};
 use crate::plugin::{InheritOpts, PluginIdentifier, TopologyUpdateOpKind};
 use crate::preemption::with_sql_execution_guard;
 use crate::schema::{
@@ -55,7 +55,7 @@ use sql::executor::engine::helpers::{
     init_insert_tuple_builder, init_local_update_tuple_builder,
 };
 use sql::executor::engine::Router;
-use sql::executor::protocol::{OptionalData, RequiredData, SchemaInfo};
+use sql::executor::protocol::SchemaInfo;
 use sql::executor::result::ConsumerResult;
 use sql::executor::ExecutingQuery;
 use sql::executor::{Port, PortType};
@@ -106,10 +106,7 @@ use self::port::PicoPortC;
 use self::router::DEFAULT_QUERY_TIMEOUT;
 use crate::sql::dispatch::build_cache_miss_dql_packet;
 use serde::Serialize;
-use sql::executor::ir::QueryType;
 use sql::BoundStatement;
-#[allow(deprecated)]
-use sql_protocol::decode::ExecuteArgsData::{New, Old};
 
 pub const DEFAULT_BUCKET_COUNT: u64 = 3000;
 
@@ -2586,28 +2583,12 @@ fn report(msg: &str, e: Error) -> i32 {
     TarantoolErrorCode::ProcC as i32
 }
 
-#[allow(deprecated)]
 struct ExecArgs {
     timeout: f64,
     need_ref: bool,
     sid: SmallVec<[u8; 36]>,
     rid: i64,
-    data: ExecArgsData,
-}
-/// Temporary enum for protocol migration (remove after old protocol deprecation).
-/// New: raw payload vector for new protocol
-/// Old: parsed legacy protocol data
-#[deprecated(note = "Remove in next release, Change to Vec<u8>. Used for smooth upgrade")]
-#[allow(deprecated)]
-enum ExecArgsData {
-    New(Vec<u8>),
-    Old(Box<OldExecArgs>),
-}
-
-#[deprecated(note = "Remove in next release. Used for smooth upgrade")]
-struct OldExecArgs {
-    required: RequiredData,
-    optional: Option<OptionalData>,
+    data: Vec<u8>,
 }
 
 impl<'de> Decode<'de> for ExecArgs {
@@ -2638,41 +2619,13 @@ impl<'de> Decode<'de> for ExecArgs {
         let rid = args.rid;
         let need_ref = args.need_ref;
 
-        #[allow(deprecated)]
-        match args.data {
-            New(data) => Ok(ExecArgs {
-                timeout,
-                need_ref,
-                sid,
-                rid,
-                data: ExecArgsData::New(data.to_vec()),
-            }),
-            Old(args) => {
-                let required = RequiredData::try_from(args.required).map_err(|e| {
-                    TarantoolError::other(format!(
-                        "Failed to decode required data for '.proc_sql_execute': {e}"
-                    ))
-                })?;
-
-                let optional = args
-                    .optional
-                    .map(OptionalData::try_from)
-                    .transpose()
-                    .map_err(|e| {
-                        TarantoolError::other(format!(
-                            "Failed to decode optional data for '.proc_sql_execute': {e}"
-                        ))
-                    })?;
-
-                Ok(ExecArgs {
-                    timeout,
-                    need_ref,
-                    sid,
-                    rid,
-                    data: ExecArgsData::Old(Box::new(OldExecArgs { required, optional })),
-                })
-            }
-        }
+        Ok(ExecArgs {
+            timeout,
+            need_ref,
+            sid,
+            rid,
+            data: args.data.to_vec(),
+        })
     }
 }
 
@@ -2680,21 +2633,12 @@ unsafe fn proc_sql_execute_impl(args: ExecArgs, port: &mut PicoPortC) -> ::std::
     // Safety: safe as the original args.sid is as valid UTF-8 string.
     let sid = unsafe { std::str::from_utf8_unchecked(args.sid.as_slice()) };
 
-    #[allow(deprecated)]
-    let pcall = || -> Result<(), Error> {
-        match args.data {
-            ExecArgsData::New(data) => {
-                let package =
-                    sql_protocol::decode::ProtocolMessage::decode_from_bytes(data.as_slice())
-                        .map_err(Error::other)?;
-                let runtime = StorageRuntime::new();
-                runtime.execute_plan(package, port, args.timeout)?;
-            }
-            ExecArgsData::Old(mut args) => {
-                let runtime = StorageRuntime::new();
-                runtime.old_execute_plan(&mut args.required, args.optional, port)?;
-            }
-        }
+    let mut pcall = || -> Result<(), Error> {
+        let package =
+            sql_protocol::decode::ProtocolMessage::decode_from_bytes(args.data.as_slice())
+                .map_err(Error::other)?;
+        let runtime = StorageRuntime::new();
+        runtime.execute_plan(package, port, args.timeout)?;
         Ok(())
     };
 
@@ -2743,49 +2687,26 @@ pub unsafe extern "C" fn proc_sql_execute(
     with_sql_execution_guard(|| {
         let mut port = PicoPortC::from(ctx.mut_port_c());
 
-        #[allow(deprecated)]
-        let (is_old, is_first_req, query_type) = match &args.data {
-            ExecArgsData::New(data) => {
-                // TODO: can we reuse it?
-                match ProtocolMessage::decode_from_bytes(data.as_slice()) {
-                    Ok(msg) => {
-                        let query_type = match msg.msg_type {
-                            ProtocolMessageType::Dql => "dql",
-                            ProtocolMessageType::Dml(_) | ProtocolMessageType::LocalDml(_) => "dml",
-                        };
-                        (false, true, query_type)
-                    }
-                    Err(e) => return report("", Error::other(e)),
+        let query_type =
+            // TODO: can we reuse it?
+            match ProtocolMessage::decode_from_bytes(args.data.as_slice()) {
+                Ok(msg) => {
+                    let query_type = match msg.msg_type {
+                        ProtocolMessageType::Dql => "dql",
+                        ProtocolMessageType::Dml(_) | ProtocolMessageType::LocalDml(_) => "dml",
+                    };
+                    query_type
                 }
-            }
-            ExecArgsData::Old(args) => {
-                let is_first_req = args.optional.is_none();
-                let query_type = match args.required.query_type {
-                    QueryType::DQL => "dql",
-                    QueryType::DML => "dml",
-                };
-                (true, is_first_req, query_type)
-            }
-        };
+                Err(e) => return report("", Error::other(e)),
+            };
 
         let rc = proc_sql_execute_impl(args, &mut port);
 
         let result = if rc == 0 { "ok" } else { "err" };
-        if is_old {
-            if is_first_req {
-                STORAGE_1ST_REQUESTS_TOTAL
-                    .with_label_values(&[query_type, result])
-                    .inc();
-            } else {
-                STORAGE_2ND_REQUESTS_TOTAL
-                    .with_label_values(&[query_type, result])
-                    .inc();
-            }
-        } else {
-            STORAGE_1ST_REQUESTS_TOTAL
-                .with_label_values(&[query_type, result])
-                .inc();
-        }
+
+        STORAGE_1ST_REQUESTS_TOTAL
+            .with_label_values(&[query_type, result])
+            .inc();
 
         let is_replica = node::global()
             .map(|node| node.is_readonly())

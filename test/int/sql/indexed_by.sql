@@ -81,13 +81,13 @@ SELECT "s"."d" FROM "s" INDEXED BY "bbb" WHERE "s"."f" < CAST(-5 AS int)
 +----------+-------+------+------------------------------------------------------+
 ''
 2. Query (STORAGE):
-SELECT * FROM ( SELECT "t"."a", "t"."b", "t"."c" FROM "t" INDEXED BY "aaa" WHERE "t"."a" > CAST(10 AS int) ) as "unnamed_subquery" INNER JOIN ( SELECT "COL_0" FROM "TMP_3652143126927884454_0136" ) as "unnamed_subquery_1" ON CAST(true AS bool)
+SELECT * FROM ( SELECT "t"."a", "t"."b", "t"."c" FROM "t" INDEXED BY "aaa" WHERE "t"."a" > CAST(10 AS int) ) as "unnamed_subquery" INNER JOIN ( SELECT "COL_0" FROM "TMP_2780082465818158874_0136" ) as "unnamed_subquery_1" ON CAST(true AS bool)
 +----------+-------+------+--------------------------------------------------------------+
 | selectid | order | from | detail                                                       |
 +========================================================================================+
 | 0        | 0     | 0    | SEARCH TABLE t USING COVERING INDEX aaa (a>?) (~262144 rows) |
 |----------+-------+------+--------------------------------------------------------------|
-| 0        | 1     | 1    | SCAN TABLE TMP_3652143126927884454_0136 (~1048576 rows)      |
+| 0        | 1     | 1    | SCAN TABLE TMP_2780082465818158874_0136 (~1048576 rows)      |
 +----------+-------+------+--------------------------------------------------------------+
 ''
 

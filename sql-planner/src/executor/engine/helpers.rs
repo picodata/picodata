@@ -1,14 +1,12 @@
 use crate::{
-    backend::sql::space::{TableGuard, ADMIN_ID},
-    executor::preemption::{Scheduler, SchedulerOptions},
-    ir::api::children::Children,
+    backend::sql::space::ADMIN_ID, executor::preemption::Scheduler, ir::api::children::Children,
     ir::node::expression::MutExpression,
 };
 use ahash::AHashMap;
 
 use crate::{
     error,
-    executor::{protocol::VTablesMeta, vtable::vtable_indexed_column_name},
+    executor::vtable::vtable_indexed_column_name,
     ir::{
         node::{
             expression::Expression, relational::Relational, Alias, Constant, Limit, Motion, NodeId,
@@ -18,39 +16,24 @@ use crate::{
     },
 };
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
-use std::{
-    any::Any,
-    cmp::Ordering,
-    collections::HashMap,
-    rc::Rc,
-    str::{from_utf8, FromStr},
-    sync::OnceLock,
-};
+use std::{any::Any, cmp::Ordering, collections::HashMap, rc::Rc, sync::OnceLock};
 use tarantool::space::Space;
 
 use super::{Metadata, Router, Vshard};
-use crate::executor::engine::helpers::vshard::CacheInfo;
-use crate::executor::protocol::{EncodedVTables, SchemaInfo};
 use crate::executor::Port;
 use crate::ir::node::Node;
 use crate::ir::value::{EncodedValue, MsgPackValue};
 use crate::{
-    backend::sql::{
-        ir::PatternWithParams,
-        tree::{OrderedSyntaxNodes, SyntaxPlan},
-    },
     errors::{Action, Entity, SbroadError},
     executor::{
         bucket::Buckets,
         ir::{ExecutionPlan, QueryType},
-        protocol::{Binary, EncodedOptionalData, OptionalData, RequiredData},
         result::MetadataColumn,
         vtable::{calculate_unified_types, VTableTuple, VirtualTable},
     },
     ir::{
         relation::{Column, ColumnRole},
-        transformation::redistribution::{MotionKey, MotionPolicy},
-        tree::Snapshot,
+        transformation::redistribution::MotionKey,
         value::Value,
         Plan,
     },
@@ -58,7 +41,7 @@ use crate::{
 use rmp::encode::{write_array_len, write_map_len, write_pfix, write_str};
 use std::io::Write;
 use tarantool::msgpack;
-use tarantool::msgpack::rmp::{self, decode::RmpRead};
+use tarantool::msgpack::rmp;
 use tarantool::msgpack::{decode_from_read, Context, Decode, DecodeError};
 use tarantool::msgpack::{Encode, EncodeError};
 use tarantool::session::with_su;
@@ -128,294 +111,6 @@ pub fn new_table_name(plan_id: u64, node_id: NodeId) -> SmolStr {
 pub fn pk_name(plan_id: &str, node_id: NodeId) -> SmolStr {
     let base = xx_hash(plan_id);
     format_smolstr!("PK_{base}_{node_id}")
-}
-
-pub fn build_required_binary(exec_plan: &mut ExecutionPlan) -> Result<Binary, SbroadError> {
-    let query_type = exec_plan.query_type()?;
-    let mut sub_plan_id = None;
-    {
-        let ir = exec_plan.get_ir_plan();
-        let top_id = ir.get_top()?;
-        match query_type {
-            QueryType::DQL => {
-                sub_plan_id = Some(ir.pattern_id(top_id)?);
-            }
-            QueryType::DML => {
-                let top = ir.get_relation_node(top_id)?;
-                let top_children = ir.children(top_id);
-                if matches!(top, Relational::Delete(_)) && top_children.is_empty() {
-                    sub_plan_id = Some(ir.pattern_id(top_id)?);
-                } else {
-                    let child_id = top_children[0];
-                    let is_cacheable = matches!(
-                        ir.get_relation_node(child_id)?,
-                        Relational::Motion(Motion {
-                            policy: MotionPolicy::Local | MotionPolicy::LocalSegment { .. },
-                            ..
-                        })
-                    );
-                    if is_cacheable {
-                        let cacheable_subtree_root_id =
-                            exec_plan.get_motion_subtree_root(child_id)?;
-                        sub_plan_id = Some(ir.pattern_id(cacheable_subtree_root_id)?);
-                    }
-                }
-            }
-        };
-    }
-    let sub_plan_id = sub_plan_id.unwrap_or_default();
-    let params = exec_plan.to_params().to_vec();
-    let vtables = exec_plan.encode_vtables();
-    let table_version_map = std::mem::take(&mut exec_plan.get_mut_ir_plan().table_version_map);
-    let index_version_map = std::mem::take(&mut exec_plan.get_mut_ir_plan().index_version_map);
-    let schema_info = SchemaInfo::new(table_version_map, index_version_map);
-    let required = RequiredData::new(
-        sub_plan_id,
-        params,
-        query_type,
-        exec_plan.get_ir_plan().effective_options.clone(),
-        schema_info,
-        vtables,
-    );
-    let required_as_tuple = required.to_tuple()?;
-    Ok(required_as_tuple.into())
-}
-
-pub fn build_optional_binary(mut exec_plan: ExecutionPlan) -> Result<Binary, SbroadError> {
-    let query_type = exec_plan.query_type()?;
-    let ordered = match query_type {
-        QueryType::DQL => {
-            let sp_top_id = exec_plan.get_ir_plan().get_top()?;
-            let sp = SyntaxPlan::new(&exec_plan, sp_top_id, Snapshot::Oldest)?;
-
-            OrderedSyntaxNodes::try_from(sp)?
-        }
-        QueryType::DML => {
-            let plan = exec_plan.get_ir_plan();
-            let sp_top_id = plan.get_top()?;
-            let sp_top = plan.get_relation_node(sp_top_id)?;
-            let sp_top_children = sp_top.children();
-
-            if matches!(sp_top, Relational::Delete(_)) && sp_top_children.is_empty() {
-                // We have a case of DELETE without WHERE
-                // which we want to execute via local SQL.
-                let sp = SyntaxPlan::new(&exec_plan, sp_top_id, Snapshot::Oldest)?;
-                OrderedSyntaxNodes::try_from(sp)?
-            } else {
-                let motion_id = sp_top_children[0];
-                let policy = plan.get_motion_policy(motion_id)?;
-
-                // SQL is needed only for the motion node subtree.
-                // HACK: we don't actually need SQL when the subtree is already
-                //       materialized into a virtual table on the router.
-                let already_materialized = exec_plan.contains_vtable_for_motion(motion_id);
-
-                if already_materialized {
-                    OrderedSyntaxNodes::empty()
-                } else if let MotionPolicy::LocalSegment { .. } | MotionPolicy::Local = policy {
-                    let motion_child_id = exec_plan.get_motion_child(motion_id)?;
-                    let sp = SyntaxPlan::new(&exec_plan, motion_child_id, Snapshot::Oldest)?;
-                    OrderedSyntaxNodes::try_from(sp)?
-                } else {
-                    // In case we are not dealing with `LocalSegment` and `Local` policies, `exec_plan`
-                    // must contain vtable for `motion_id` (See `dispatch` method in `src/executor.rs`)
-                    // so we mustn't got here.
-                    return Err(SbroadError::Invalid(
-                        Entity::Plan,
-                        Some(format_smolstr!(
-                            "unsupported motion policy under DML node: {policy:?}",
-                        )),
-                    ));
-                }
-            }
-        }
-    };
-    let vtables_meta = exec_plan.remove_vtables()?;
-    let optional_data = OptionalData::new(exec_plan, ordered, vtables_meta);
-    let optional_as_tuple = optional_data.to_tuple()?;
-    Ok(optional_as_tuple.into())
-}
-
-/// Helper struct for storing optional data extracted
-/// from router request.
-///
-/// It contains None, in case message from router
-/// didn't contain optional data.
-/// Otherwise it contains encoded optional data.
-pub struct OptionalBytes(Option<Vec<u8>>);
-
-impl OptionalBytes {
-    const ERR_MSG: &'static str = "expected optional data in request";
-
-    /// # Errors
-    /// - Original request didn't contain optinal data
-    pub fn get_mut(&mut self) -> Result<&mut Vec<u8>, SbroadError> {
-        self.0
-            .as_mut()
-            .ok_or_else(|| SbroadError::Other(Self::ERR_MSG.into()))
-    }
-
-    /// # Errors
-    /// - Original request didn't contain optinal data
-    pub fn extract(self) -> Result<Vec<u8>, SbroadError> {
-        self.0
-            .ok_or_else(|| SbroadError::Other(Self::ERR_MSG.into()))
-    }
-}
-
-pub type DecodeOutput = (Vec<u8>, OptionalBytes, CacheInfo);
-
-/// Decode the execution plan from msgpack into a pair of binary data:
-/// * required data (plan id, parameters, etc.)
-/// * optional data (execution plan, etc.)
-///
-/// # Errors
-/// - Failed to decode the execution plan.
-pub fn decode_msgpack(tuple_buf: &[u8]) -> Result<DecodeOutput, SbroadError> {
-    let mut stream = rmp::decode::Bytes::from(tuple_buf);
-    let array_len = rmp::decode::read_array_len(&mut stream).map_err(|e| {
-        SbroadError::FailedTo(
-            Action::Decode,
-            Some(Entity::MsgPack),
-            format_smolstr!("array length: {e:?}"),
-        )
-    })? as usize;
-    if array_len != 2 && array_len != 3 {
-        return Err(SbroadError::Invalid(
-            Entity::Tuple,
-            Some(format_smolstr!(
-                "expected tuple of 2 or 3 elements, got {array_len}"
-            )),
-        ));
-    }
-
-    // Decode required data.
-    let req_array_len = rmp::decode::read_array_len(&mut stream).map_err(|e| {
-        SbroadError::FailedTo(
-            Action::Decode,
-            Some(Entity::MsgPack),
-            format_smolstr!("required array length: {e:?}"),
-        )
-    })? as usize;
-    if req_array_len != 1 {
-        return Err(SbroadError::Invalid(
-            Entity::Tuple,
-            Some(format_smolstr!(
-                "expected array of 1 element in required, got {req_array_len}"
-            )),
-        ));
-    }
-    let req_data_len = rmp::decode::read_str_len(&mut stream).map_err(|e| {
-        SbroadError::FailedTo(
-            Action::Decode,
-            Some(Entity::MsgPack),
-            format_smolstr!("read required data length: {e:?}"),
-        )
-    })? as usize;
-    let mut data: Vec<u8> = vec![0_u8; req_data_len];
-    stream.read_exact_buf(&mut data).map_err(|e| {
-        SbroadError::FailedTo(
-            Action::Decode,
-            Some(Entity::MsgPack),
-            format_smolstr!("read required data: {e:?}"),
-        )
-    })?;
-
-    let mut optional_data = None;
-    if array_len == 3 {
-        let opt_array_len = rmp::decode::read_array_len(&mut stream).map_err(|e| {
-            SbroadError::FailedTo(
-                Action::Decode,
-                Some(Entity::MsgPack),
-                format_smolstr!("optional array length: {e:?}"),
-            )
-        })? as usize;
-        if opt_array_len != 1 {
-            return Err(SbroadError::Invalid(
-                Entity::Tuple,
-                Some(format_smolstr!(
-                    "expected array of 1 element in optional, got {opt_array_len}"
-                )),
-            ));
-        }
-        let opt_len = rmp::decode::read_str_len(&mut stream).map_err(|e| {
-            SbroadError::FailedTo(
-                Action::Decode,
-                Some(Entity::MsgPack),
-                format_smolstr!("read optional data string length: {e:?}"),
-            )
-        })? as usize;
-        let mut optional: Vec<u8> = vec![0_u8; opt_len];
-        stream.read_exact_buf(&mut optional).map_err(|e| {
-            SbroadError::FailedTo(
-                Action::Decode,
-                Some(Entity::MsgPack),
-                format_smolstr!("read optional data: {e:?}"),
-            )
-        })?;
-        optional_data = Some(optional);
-    }
-
-    let cacheable_len = rmp::decode::read_str_len(&mut stream).map_err(|e| {
-        SbroadError::FailedTo(
-            Action::Decode,
-            Some(Entity::MsgPack),
-            format_smolstr!("read cacheable string length: {e:?}"),
-        )
-    })? as usize;
-    let mut cacheable_bytes: Vec<u8> = vec![0_u8; cacheable_len];
-    stream.read_exact_buf(&mut cacheable_bytes).map_err(|e| {
-        SbroadError::FailedTo(
-            Action::Decode,
-            Some(Entity::MsgPack),
-            format_smolstr!("read cacheable string: {e:?}"),
-        )
-    })?;
-    let cache_info_str = from_utf8(&cacheable_bytes).map_err(|e| {
-        SbroadError::FailedTo(
-            Action::Decode,
-            Some(Entity::MsgPack),
-            format_smolstr!("cacheable string: {e:?}"),
-        )
-    })?;
-    let cache_info = CacheInfo::from_str(cache_info_str).map_err(|e| {
-        SbroadError::FailedTo(
-            Action::Decode,
-            Some(Entity::MsgPack),
-            format_smolstr!("cacheable string: {e:?}"),
-        )
-    })?;
-
-    Ok((data, OptionalBytes(optional_data), cache_info))
-}
-
-/// Decode dispatched optional data (execution plan, etc.) from msgpack
-/// and compile it into a pattern with parameters and temporary space map.
-///
-/// # Errors
-/// - Failed to decode or compile optional data.
-pub fn compile_encoded_optional(
-    raw_optional: &mut Vec<u8>,
-    template: &str,
-) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
-    let data = std::mem::take(raw_optional);
-    let mut optional = OptionalData::try_from(EncodedOptionalData::from(data))?;
-    compile_optional(&mut optional, template)
-}
-
-/// Compile already decoded optional data into a pattern with parameters
-/// and temporary space map
-///
-/// # Errors
-/// - Failed to compile optional data
-pub fn compile_optional(
-    optional: &mut OptionalData,
-    template: &str,
-) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
-    let nodes = optional.ordered.to_syntax_data()?;
-    let vtables_meta = Some(&optional.vtables_meta);
-    let (u, v) = optional.exec_plan.to_sql(&nodes, template, vtables_meta)?;
-    Ok((u, v))
 }
 
 /// Command to build a tuple suitable to be passed into Tarantool API functions.
@@ -1403,56 +1098,6 @@ pub fn sharding_key_from_tuple<'tuple>(
     }
 }
 
-#[deprecated(note = "Remove in next release. Used for smooth upgrade")]
-pub fn old_populate_table(
-    motion_id: &NodeId,
-    plan_id: &SmolStr,
-    vtables: &EncodedVTables,
-    options: &SchedulerOptions,
-) -> Result<(), SbroadError> {
-    let data = vtables.get(motion_id).ok_or_else(|| {
-        SbroadError::NotFound(
-            Entity::Table,
-            format_smolstr!(
-                "with id {motion_id} among encoded virtual tables {:?}",
-                vtables.keys()
-            ),
-        )
-    })?;
-    with_su(ADMIN_ID, || -> Result<(), SbroadError> {
-        let name = table_name(plan_id, *motion_id);
-        let space = Space::find(&name).ok_or_else(|| {
-            // See https://git.picodata.io/core/picodata/-/issues/1859.
-            SbroadError::Invalid(
-                Entity::Space,
-                Some(format_smolstr!(
-                    "Temporary SQL table {name} not found. \
-                    Probably there are unused motions in the plan"
-                )),
-            )
-        })?;
-        let mut ys = Scheduler::default();
-        for tuple in data.iter() {
-            ys.maybe_yield(options)
-                .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
-            match space.insert(tuple) {
-                Ok(_) => {}
-                Err(e) => {
-                    // It is possible that the temporary table was recreated by admin
-                    // user with a different format. We should not panic in this case.
-                    return Err(SbroadError::FailedTo(
-                        Action::Insert,
-                        Some(Entity::Tuple),
-                        format_smolstr!("tuple {tuple:?}, temporary table {name}: {e}"),
-                    ));
-                }
-            }
-        }
-        Ok(())
-    })??;
-    Ok(())
-}
-
 pub fn drop_tables(tables: Vec<(SmolStr, bool)>) -> Result<(), SbroadError> {
     for (name, already_created) in tables {
         if already_created {
@@ -1475,148 +1120,6 @@ pub fn drop_tables(tables: Vec<(SmolStr, bool)>) -> Result<(), SbroadError> {
     }
 
     Ok(())
-}
-
-#[deprecated(note = "Remove in next release. Used for smooth upgrade")]
-pub fn old_truncate_tables(table_ids: &[NodeId], plan_id: &SmolStr) {
-    with_su(ADMIN_ID, || {
-        for node_id in table_ids {
-            let name = table_name(plan_id, *node_id);
-            if let Some(space) = Space::find(&name) {
-                space
-                    .truncate()
-                    .expect("failed to truncate temporary table");
-            }
-        }
-    })
-    .expect("failed to switch to admin user");
-}
-
-pub trait RequiredPlanInfo {
-    fn id(&self) -> &SmolStr;
-    fn params(&self) -> &Vec<Value>;
-    fn schema_info(&self) -> &SchemaInfo;
-    fn sql_vdbe_opcode_max(&self) -> u64;
-    fn sql_motion_row_max(&self) -> u64;
-    fn extract_data(&mut self) -> EncodedVTables;
-}
-
-pub trait FullPlanInfo: RequiredPlanInfo {
-    /// Extracts the query and vtables meta from the plan.
-    ///
-    /// # Errors
-    /// - Failed to extract query and vtables meta.
-    fn take_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError>;
-}
-
-pub struct QueryInfo<'data> {
-    optional: &'data mut OptionalData,
-    required: &'data mut RequiredData,
-}
-
-impl<'data> QueryInfo<'data> {
-    pub fn new(optional: &'data mut OptionalData, required: &'data mut RequiredData) -> Self {
-        Self { optional, required }
-    }
-}
-
-impl RequiredPlanInfo for QueryInfo<'_> {
-    fn id(&self) -> &SmolStr {
-        &self.required.plan_id
-    }
-
-    fn params(&self) -> &Vec<Value> {
-        &self.required.parameters
-    }
-
-    fn schema_info(&self) -> &SchemaInfo {
-        &self.required.schema_info
-    }
-
-    fn sql_vdbe_opcode_max(&self) -> u64 {
-        self.required.options.sql_vdbe_opcode_max as u64
-    }
-
-    fn sql_motion_row_max(&self) -> u64 {
-        self.required.options.sql_motion_row_max as u64
-    }
-
-    fn extract_data(&mut self) -> EncodedVTables {
-        std::mem::take(&mut self.required.vtables)
-    }
-}
-
-impl FullPlanInfo for QueryInfo<'_> {
-    fn take_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError> {
-        let nodes = self.optional.ordered.to_syntax_data()?;
-        let (local_sql, motion_ids) = self.optional.exec_plan.generate_sql(
-            &nodes,
-            self.required.plan_id(),
-            Some(&self.optional.vtables_meta),
-            |name: &str, id| table_name(name, id),
-        )?;
-
-        let meta = std::mem::take(&mut self.optional.vtables_meta);
-
-        Ok((local_sql, motion_ids, meta))
-    }
-}
-
-pub struct EncodedQueryInfo<'data> {
-    optional: Option<OptionalData>,
-    required: &'data mut RequiredData,
-}
-
-impl<'data> EncodedQueryInfo<'data> {
-    pub fn new(optional: Option<OptionalData>, required: &'data mut RequiredData) -> Self {
-        Self { optional, required }
-    }
-}
-
-impl RequiredPlanInfo for EncodedQueryInfo<'_> {
-    fn id(&self) -> &SmolStr {
-        &self.required.plan_id
-    }
-
-    fn params(&self) -> &Vec<Value> {
-        &self.required.parameters
-    }
-
-    fn schema_info(&self) -> &SchemaInfo {
-        &self.required.schema_info
-    }
-
-    fn sql_vdbe_opcode_max(&self) -> u64 {
-        self.required.options.sql_vdbe_opcode_max as u64
-    }
-
-    fn sql_motion_row_max(&self) -> u64 {
-        self.required.options.sql_motion_row_max as u64
-    }
-
-    fn extract_data(&mut self) -> EncodedVTables {
-        std::mem::take(&mut self.required.vtables)
-    }
-}
-
-impl FullPlanInfo for EncodedQueryInfo<'_> {
-    fn take_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError> {
-        let optional = self.optional.take().ok_or_else(|| {
-            SbroadError::Invalid(
-                Entity::OptionalData,
-                Some("optional data is missing".into()),
-            )
-        })?;
-        let nodes = optional.ordered.to_syntax_data()?;
-        let (local_sql, motion_ids) = optional.exec_plan.generate_sql(
-            &nodes,
-            self.required.plan_id(),
-            Some(&optional.vtables_meta),
-            |name: &str, id| table_name(name, id),
-        )?;
-
-        Ok((local_sql, motion_ids, optional.vtables_meta))
-    }
 }
 
 pub struct UpdateArgs<'vtable_tuple> {
