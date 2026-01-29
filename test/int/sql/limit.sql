@@ -42,7 +42,7 @@ WITH cte (b) AS (SELECT "a" FROM "t" ORDER BY "a" LIMIT 2)
 -- EXPECTED:
 1
 
--- TEST: limit2
+-- TEST: limit6
 -- SQL:
 SELECT "a" FROM (SELECT "a" FROM "t" LIMIT 1);
 -- EXPECTED:

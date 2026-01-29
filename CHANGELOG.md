@@ -25,6 +25,7 @@ with the `YY.MINOR.MICRO` scheme.
     an update at a replica.
 - Always open vylog files with O_SYNC.
 - Fixed that sentinel_loop was broken during upgrade from versions before 25.5.3.
+- Fixed metadata loss in queries with LIMIT clause in picodata admin.
 
 
 ## [25.5.4] - 2026-01-21
