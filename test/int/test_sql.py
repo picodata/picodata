@@ -353,7 +353,7 @@ def test_pg_params(cluster: Cluster):
         )
 
     data = i1.sql("""select * from (select $1 union select ($1 * 2))""", 1, strip_metadata=False)
-    assert data["metadata"] == [{"name": "COL_0", "type": "int"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "int"}]
     assert data["rows"] == [[1], [2]]
 
     data = i1.sql("""select (select $1::int) + 1""", 1, strip_metadata=False)
@@ -5468,6 +5468,225 @@ def test_metadata(instance: Instance):
     # It used to return "T1.id" column name in metadata,
     # though it should return "id" (because of an alias).
     assert data["metadata"] == [{"name": "id", "type": "int"}]
+
+    # More complex table
+    instance.sql("DROP TABLE t")
+    ddl = instance.sql(
+        """
+        CREATE TABLE "t" ("id" INT PRIMARY KEY, "n" INT)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = instance.sql(
+        """
+        CREATE TABLE "g" ("id" INT PRIMARY KEY, "m" INT)
+        DISTRIBUTED GLOBALLY
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    # LIMIT column metadata
+    data = instance.sql(
+        """
+        SELECT * FROM "t" LIMIT 1
+        """,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [{"name": "id", "type": "int"}, {"name": "n", "type": "int"}]
+
+    # ORDER BY + LIMIT column metadata
+    data = instance.sql(
+        """
+        SELECT * FROM "t" ORDER BY n LIMIT 1
+        """,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [{"name": "id", "type": "int"}, {"name": "n", "type": "int"}]
+
+    # UNION + LIMIT column metadata
+    data = instance.sql(
+        """
+        SELECT * FROM "t" UNION SELECT * FROM "t" LIMIT 1
+        """,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [{"name": "id", "type": "int"}, {"name": "n", "type": "int"}]
+
+    # JOIN + LIMIT column metadata
+    data = instance.sql(
+        """
+        SELECT * FROM "t" JOIN "t" ON true LIMIT 1
+        """,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [
+        {"name": "id", "type": "int"},
+        {"name": "n", "type": "int"},
+        {"name": "id", "type": "int"},
+        {"name": "n", "type": "int"},
+    ]
+
+    # JOIN IN + LIMIT column metadata
+    data = instance.sql(
+        """
+        SELECT * FROM t JOIN t AS t1 ON 1 IN (t1.n, t1.id) LIMIT 1;
+        """,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [
+        {"name": "id", "type": "int"},
+        {"name": "n", "type": "int"},
+        {"name": "id", "type": "int"},
+        {"name": "n", "type": "int"},
+    ]
+
+    # JOIN column metadata
+    data = instance.sql(
+        """
+        SELECT * FROM "t" JOIN "t" ON true
+        """,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [
+        {"name": "id", "type": "int"},
+        {"name": "n", "type": "int"},
+        {"name": "id", "type": "int"},
+        {"name": "n", "type": "int"},
+    ]
+
+    # JOIN column metadata
+    data = instance.sql(
+        """
+        SELECT t0.id, t1.n FROM "t" AS t0 JOIN "t" AS t1 ON t0.id = t1.id
+        """,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [{"name": "id", "type": "int"}, {"name": "n", "type": "int"}]
+
+    # JOIN column metadata
+    data = instance.sql(
+        """
+        SELECT t0.id + 1 AS id1, t1.n * 2 AS n2
+        FROM "t" AS t0 JOIN "t" AS t1 ON t0.id = t1.id
+        """,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [{"name": "id1", "type": "int"}, {"name": "n2", "type": "int"}]
+
+    # JOIN column metadata
+    data = instance.sql(
+        """
+        SELECT * FROM (
+            SELECT id, n FROM "t"
+        ) AS d JOIN "t" AS t1 ON d.id = t1.id
+        ORDER BY d.id LIMIT 1
+        """,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [
+        {"name": "id", "type": "int"},
+        {"name": "n", "type": "int"},
+        {"name": "id", "type": "int"},
+        {"name": "n", "type": "int"},
+    ]
+
+    # UNION column metadata
+    data = instance.sql(
+        """
+        SELECT id AS id1, n + 1 AS n1 FROM "t"
+        UNION ALL
+        SELECT id AS id1, n + 2 AS n1 FROM "t"
+        """,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [{"name": "id1", "type": "int"}, {"name": "n1", "type": "int"}]
+
+    # UNION column metadata
+    data = instance.sql(
+        """
+        SELECT * FROM (
+            SELECT id, n FROM "t"
+            UNION
+            SELECT id, n FROM "t"
+        ) AS u
+        ORDER BY id LIMIT 1
+        """,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [{"name": "id", "type": "int"}, {"name": "n", "type": "int"}]
+
+    # UNION column metadata
+    data = instance.sql(
+        """
+        SELECT t0.id, t1.n FROM "t" AS t0 JOIN "t" AS t1 ON t0.id = t1.id
+        UNION
+        SELECT t2.id, t3.n FROM "t" AS t2 JOIN "t" AS t3 ON t2.id = t3.id
+        """,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [{"name": "id", "type": "int"}, {"name": "n", "type": "int"}]
+
+    # Global UNION column metadata
+    data = instance.sql(
+        """
+        SELECT *
+        FROM (
+            SELECT * FROM t
+            UNION ALL
+            SELECT * FROM g
+        ) u
+        JOIN t AS t1 ON u.id = t1.id
+        LIMIT 1
+        """,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [
+        {"name": "id", "type": "int"},
+        {"name": "n", "type": "int"},
+        {"name": "id", "type": "int"},
+        {"name": "n", "type": "int"},
+    ]
+
+    # Global JOIN x2 column metadata
+    data = instance.sql(
+        """
+        SELECT *
+        FROM t
+        JOIN g ON t.id = g.id
+        JOIN t AS t1 ON g.id = t1.id
+        LIMIT 1
+        """,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [
+        {"name": "id", "type": "int"},
+        {"name": "n", "type": "int"},
+        {"name": "id", "type": "int"},
+        {"name": "m", "type": "int"},
+        {"name": "id", "type": "int"},
+        {"name": "n", "type": "int"},
+    ]
+
+    # Global JOIN + UNION + OREDER BY column metadata
+    data = instance.sql(
+        """
+        SELECT * FROM (
+            SELECT * FROM t JOIN g ON t.id = g.id
+            UNION
+            SELECT * FROM g JOIN t ON g.id = t.id
+        ) u
+        ORDER BY 1
+        LIMIT 1
+        """,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [
+        {"name": "id", "type": "int"},
+        {"name": "n", "type": "int"},
+        {"name": "id", "type": "int"},
+        {"name": "m", "type": "int"},
+    ]
 
 
 def test_create_role_and_user_with_empty_name(cluster: Cluster):

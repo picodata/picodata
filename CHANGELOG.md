@@ -79,6 +79,7 @@ with the `YY.MINOR.MICRO` scheme.
   a unicode string where a 100th byte position was not on a character boundary.
 - Fixed that sentinel_loop was broken during upgrade from versions before 25.5.3.
 - Fixed ignoring `NULLS FIRST` and `NULLS LAST` in unnamed window queries with ordering.
+- Fixed metadata loss in queries with LIMIT clause in picodata admin.
 
 
 ## [25.5.5] - 2026-01-26

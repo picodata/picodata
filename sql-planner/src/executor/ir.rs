@@ -688,6 +688,8 @@ impl ExecutionPlan {
                         // only References that have an Asterisk source.
                         // References without asterisks would be covered with aliases like
                         // "COL_1 as <alias>".
+                        // If we deal with `top_id` node we shouldn't rename its aliases with motion child.
+                        // F.e., `SELECT * FROM t LIMIT 1`
                         let is_projection = matches!(rel, RelOwned::Projection(_));
                         if !rel_renamed_output_lists.is_empty() {
                             let rel_output_list: Vec<NodeId> =
@@ -706,7 +708,7 @@ impl ExecutionPlan {
                                     continue;
                                 };
 
-                                if is_projection && asterisk_source.is_none() {
+                                if node_id == top_id || is_projection && asterisk_source.is_none() {
                                     continue;
                                 }
 
