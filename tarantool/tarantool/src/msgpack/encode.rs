@@ -2320,4 +2320,428 @@ mod tests {
 
         assert_eq!(actual, value);
     }
+
+    #[test]
+    fn default_ambiguous_with_map() {
+        // when using MAP_CTX, we explicitly encode each field name
+        // so we can decode it knowing for sure that a field with
+        // the `default` attribute is present or not
+        #[derive(Encode, Decode, PartialEq)]
+        #[encode(tarantool = "crate")]
+        #[encode(as_map)]
+        struct OldStruct {
+            old_value_1: u64,
+            old_value_2: String,
+            old_value_3: Vec<bool>,
+        }
+
+        #[derive(Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        #[encode(as_map)]
+        struct NewStruct {
+            old_value_1: u64,
+            #[encode(default)]
+            new_value: String,
+            old_value_2: String,
+            old_value_3: Vec<bool>,
+        }
+
+        let old = OldStruct {
+            old_value_1: 69,
+            old_value_2: String::from("kek"),
+            old_value_3: vec![true, false, true, true],
+        };
+
+        let bytes = encode(&old);
+        let mut new = decode::<NewStruct>(&bytes).unwrap();
+        assert_eq!(
+            NewStruct {
+                old_value_1: old.old_value_1,
+                old_value_2: old.old_value_2,
+                old_value_3: old.old_value_3,
+                new_value: Default::default(),
+            },
+            new
+        );
+
+        new.new_value = String::from("here's a new string");
+
+        let bytes = encode(&new);
+        let new_new = decode::<NewStruct>(&bytes).unwrap();
+        assert_eq!(new, new_new);
+    }
+
+    #[test]
+    fn default_simple() {
+        #[derive(Encode, Decode, PartialEq)]
+        #[encode(tarantool = "crate")]
+        struct OldStruct {
+            old_value_1: u64,
+            old_value_2: Vec<bool>,
+        }
+
+        #[derive(Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct NewStruct {
+            old_value_1: u64,
+            other_value: Vec<bool>,
+            #[encode(default)]
+            new_value: String,
+        }
+
+        let old = OldStruct {
+            old_value_1: 69,
+            old_value_2: vec![true, false, true, true],
+        };
+
+        let bytes = encode(&old);
+        let mut new = decode::<NewStruct>(&bytes).unwrap();
+        assert_eq!(
+            NewStruct {
+                old_value_1: old.old_value_1,
+                other_value: old.old_value_2,
+                new_value: Default::default(),
+            },
+            new
+        );
+
+        new.new_value = String::from("here's a new string");
+
+        let bytes = encode(&new);
+        let new_new = decode::<NewStruct>(&bytes).unwrap();
+        assert_eq!(new, new_new);
+    }
+
+    #[test]
+    fn default_fail() {
+        #[derive(Encode, Decode, PartialEq)]
+        #[encode(tarantool = "crate")]
+        struct OldStruct {
+            old_value_1: u64,
+            old_value_2: Vec<u8>,
+        }
+
+        #[derive(Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct NewStruct {
+            old_value_1: u64,
+            #[encode(default)]
+            new_value: Vec<u8>,
+            other_value: Vec<u8>,
+        }
+
+        let old = OldStruct {
+            old_value_1: 69,
+            old_value_2: vec![2, 5, 3, 1, 2],
+        };
+
+        let bytes = encode(&old);
+        // this errors because the fields of a struct are not named in the messagepack,
+        // you can avoid this by using #[encode(as_map)] like in the
+        // `decode_default_ambiguous_with_map` test or just by avoiding consecutive
+        // same-family-typed fields like in the `decode_default_different_types` test
+        let err = decode::<NewStruct>(&bytes).unwrap_err();
+        // old_value_2 was decoded to new_value, so other_value does not have a marker,
+        // because of the msgpack end
+        assert_eq!(err.to_string(), "failed decoding tarantool::msgpack::encode::tests::default_fail::NewStruct (field other_value): \
+                                     failed decoding alloc::vec::Vec<u8>: failed to read MessagePack marker");
+    }
+
+    #[test]
+    fn default_different_types() {
+        #[derive(Encode, Decode, PartialEq)]
+        #[encode(tarantool = "crate")]
+        struct OldStruct {
+            old_value_1: u64,
+            old_value_2: u16,
+        }
+
+        #[derive(Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct NewStruct {
+            old_value_1: u64,
+            #[encode(default)]
+            new_value: String,
+            other_value: u16,
+        }
+
+        let old = OldStruct {
+            old_value_1: 69,
+            old_value_2: 25,
+        };
+
+        let bytes = encode(&old);
+        let mut new = decode::<NewStruct>(&bytes).unwrap();
+        assert_eq!(
+            NewStruct {
+                old_value_1: old.old_value_1,
+                other_value: old.old_value_2,
+                new_value: Default::default(),
+            },
+            new
+        );
+
+        new.new_value = String::from("hello world");
+
+        let bytes = encode(&new);
+        let new_new = decode::<NewStruct>(&bytes).unwrap();
+        assert_eq!(new, new_new);
+    }
+
+    #[test]
+    fn default_enums() {
+        #[derive(Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        enum MyEnum {
+            Two(u64, usize),
+            Unit,
+            One(String),
+        }
+
+        impl Default for MyEnum {
+            fn default() -> Self {
+                Self::Two(123, 456)
+            }
+        }
+
+        #[derive(Encode, Decode, PartialEq)]
+        #[encode(tarantool = "crate")]
+        struct OldStruct {
+            old_value_1: u64,
+            old_value_2: String,
+        }
+
+        #[derive(Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct NewStruct {
+            old_value_1: u64,
+            #[encode(default)]
+            new_value: MyEnum,
+            other_value: String,
+        }
+
+        let old = OldStruct {
+            old_value_1: 69,
+            old_value_2: String::from("value"),
+        };
+
+        let bytes = encode(&old);
+        let mut new = decode::<NewStruct>(&bytes).unwrap();
+        assert_eq!(
+            NewStruct {
+                old_value_1: old.old_value_1,
+                other_value: old.old_value_2,
+                new_value: Default::default(),
+            },
+            new
+        );
+
+        new.new_value = MyEnum::Unit;
+
+        let bytes = encode(&new);
+        let new_new = decode::<NewStruct>(&bytes).unwrap();
+        assert_eq!(new, new_new);
+    }
+
+    #[test]
+    fn decode_rename_default_enums() {
+        #[derive(Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        enum MyEnum {
+            #[encode(rename = "not_two")]
+            Two(u64, usize),
+            #[encode(rename = "ultra_unit")]
+            Unit,
+            #[encode(rename = "one")]
+            One(String),
+        }
+
+        impl Default for MyEnum {
+            fn default() -> Self {
+                Self::Two(123, 456)
+            }
+        }
+
+        #[derive(Encode, Decode, PartialEq)]
+        #[encode(tarantool = "crate")]
+        struct OldStruct {
+            old_value_1: u64,
+            old_value_2: String,
+        }
+
+        #[derive(Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct NewStruct {
+            old_value_1: u64,
+            #[encode(default)]
+            new_value: MyEnum,
+            other_value: String,
+        }
+
+        let old = OldStruct {
+            old_value_1: 69,
+            old_value_2: String::from("value"),
+        };
+
+        let bytes = encode(&old);
+
+        // deserialize with missing field
+        let mut new = decode::<NewStruct>(&bytes).unwrap();
+        assert_eq!(
+            NewStruct {
+                old_value_1: old.old_value_1,
+                other_value: old.old_value_2.clone(),
+                new_value: Default::default(),
+            },
+            new
+        );
+
+        fn check_serde(ns: &NewStruct, msgpack: Value) {
+            let bytes = encode(&ns);
+            let mut encoded = Vec::new();
+            rmpv::encode::write_value(&mut encoded, &msgpack).unwrap();
+            assert_eq!(bytes, encoded);
+
+            let decoded_new = NewStruct::decode(&mut bytes.as_slice(), ARR_CTX).unwrap();
+            assert_eq!(decoded_new, *ns);
+
+            let decoded_new_manual = NewStruct::decode(&mut encoded.as_slice(), ARR_CTX).unwrap();
+            assert_eq!(decoded_new_manual, *ns);
+        }
+
+        // check deserialization of a enum variant with more than one value
+        check_serde(
+            &new,
+            Value::Array(vec![
+                Value::Integer(old.old_value_1.into()),
+                Value::Map(vec![(
+                    Value::String("not_two".into()),
+                    Value::Array(vec![Value::Integer(123.into()), Value::Integer(456.into())]),
+                )]),
+                Value::String(old.old_value_2.clone().into()),
+            ]),
+        );
+
+        // check deserialization of unit enum variant
+        new.new_value = MyEnum::Unit;
+        check_serde(
+            &new,
+            Value::Array(vec![
+                Value::Integer(old.old_value_1.into()),
+                Value::Map(vec![(Value::String("ultra_unit".into()), Value::Nil)]),
+                Value::String(old.old_value_2.clone().into()),
+            ]),
+        );
+
+        // check deserialization of a enum variant with exactly one value
+        new.new_value = MyEnum::One(String::from("useless"));
+        check_serde(
+            &new,
+            Value::Array(vec![
+                Value::Integer(old.old_value_1.into()),
+                Value::Map(vec![(
+                    Value::String("one".into()),
+                    Value::Array(vec![Value::String("useless".into())]),
+                )]),
+                Value::String(old.old_value_2.into()),
+            ]),
+        );
+    }
+
+    #[test]
+    fn default_enum_values() {
+        // unnamed fields default field is missing (ok)
+        #[derive(Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        enum UnnamedFields {
+            Variant(u64, #[encode(default)] u32, String),
+        }
+
+        let expected_msgpack = Value::Map(vec![(
+            Value::String("Variant".into()),
+            Value::Array(vec![
+                Value::Integer(123.into()),
+                Value::String("Hello!".into()),
+            ]),
+        )]);
+        let mut expected_msgpack_bytes = vec![];
+        rmpv::encode::write_value(&mut expected_msgpack_bytes, &expected_msgpack).unwrap();
+        let new = UnnamedFields::decode(&mut expected_msgpack_bytes.as_slice(), ARR_CTX).unwrap();
+        let expected = UnnamedFields::Variant(123, 0, String::from("Hello!"));
+        assert_eq!(new, expected);
+
+        // named fields default field is missing (ok)
+        #[derive(Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        enum NamedFields {
+            Variant {
+                a: u64,
+                #[encode(default)]
+                c: u32,
+                b: String,
+            },
+        }
+
+        let expected_msgpack = Value::Map(vec![(
+            Value::String("Variant".into()),
+            Value::Array(vec![
+                Value::Integer(123.into()),
+                Value::String("Hello!".into()),
+            ]),
+        )]);
+        let mut expected_msgpack_bytes = vec![];
+        rmpv::encode::write_value(&mut expected_msgpack_bytes, &expected_msgpack).unwrap();
+
+        let new = NamedFields::decode(&mut expected_msgpack_bytes.as_slice(), ARR_CTX).unwrap();
+        let expected = NamedFields::Variant {
+            a: 123,
+            c: 0,
+            b: String::from("Hello!"),
+        };
+        assert_eq!(new, expected);
+    }
+
+    #[test]
+    fn default_named_struct() {
+        #[derive(Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct Variant {
+            a: u64,
+            #[encode(default)]
+            c: u32,
+            b: String,
+        }
+
+        // array context, default field is missing (ok)
+        let expected_msgpack = Value::Array(vec![
+            Value::Integer(123.into()),
+            Value::String("Hello!".into()),
+        ]);
+        let mut expected_msgpack_bytes = vec![];
+        rmpv::encode::write_value(&mut expected_msgpack_bytes, &expected_msgpack).unwrap();
+
+        let new = Variant::decode(&mut expected_msgpack_bytes.as_slice(), ARR_CTX).unwrap();
+        let expected = Variant {
+            a: 123,
+            c: 0,
+            b: String::from("Hello!"),
+        };
+        assert_eq!(new, expected);
+
+        // map context, default field is missing (ok)
+        let expected_msgpack = Value::Map(vec![
+            (Value::String("a".into()), Value::Integer(123.into())),
+            (Value::String("b".into()), Value::String("Hello!".into())),
+        ]);
+        let mut expected_msgpack_bytes = vec![];
+        rmpv::encode::write_value(&mut expected_msgpack_bytes, &expected_msgpack).unwrap();
+
+        let new = Variant::decode(&mut expected_msgpack_bytes.as_slice(), MAP_CTX).unwrap();
+        let expected = Variant {
+            a: 123,
+            c: 0,
+            b: String::from("Hello!"),
+        };
+        assert_eq!(new, expected);
+    }
 }

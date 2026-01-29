@@ -32,13 +32,14 @@ pub fn test(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 mod msgpack {
+
     use darling::FromDeriveInput;
     use proc_macro2::TokenStream;
     use proc_macro_error2::{abort, SpanRange};
     use quote::{format_ident, quote, quote_spanned, ToTokens};
     use syn::{
         parse_quote, spanned::Spanned, Data, Field, Fields, FieldsNamed, FieldsUnnamed,
-        GenericParam, Generics, Ident, Index, Path, Type,
+        GenericParam, Generics, Ident, Index, Path, Type, Variant,
     };
 
     #[derive(Default, FromDeriveInput)]
@@ -92,6 +93,8 @@ mod msgpack {
         Map,
         /// TODO: Field should be serialized as MP_ARRAY, ignoring struct-level serialization type.
         Vec,
+        /// Field should use a default value if missing during decoding
+        Default,
     }
 
     impl FieldAttr {
@@ -147,9 +150,53 @@ mod msgpack {
                         Ok(Some(Self::Map))
                     } else if ident == "as_vec" {
                         Ok(Some(Self::Vec))
+                    } else if ident == "default" {
+                        Ok(Some(Self::Default))
                     } else {
                         Err(syn::Error::new(ident.span(), "unknown encoding type"))
                     }
+                }),
+                None => Ok(None),
+            }
+        }
+    }
+
+    /// Defines how an enum variant will be encoded or decoded according to attributes on it.
+    enum VariantAttr {
+        /// Rename a variant.
+        Rename(String),
+    }
+
+    impl VariantAttr {
+        #[inline]
+        fn from_variant(variant: &Variant) -> Result<Option<Self>, syn::Error> {
+            let attrs = &variant.attrs;
+
+            let mut encode_attr = None;
+
+            for attr in attrs.iter().filter(|attr| attr.path.is_ident("encode")) {
+                if encode_attr.is_some() {
+                    return Err(syn::Error::new(
+                        attr.span(),
+                        "multiple encoding types are not allowed",
+                    ));
+                }
+
+                encode_attr = Some(attr);
+            }
+
+            match encode_attr {
+                Some(attr) => attr.parse_args_with(|input: syn::parse::ParseStream| {
+                    let ident: Ident = input.parse()?;
+                    input.parse::<syn::Token![=]>()?;
+
+                    if ident != "rename" {
+                        return Err(syn::Error::new(ident.span(), "expected `rename`"));
+                    }
+
+                    let lit: syn::LitStr = input.parse()?;
+
+                    Ok(Some(Self::Rename(lit.value())))
                 }),
                 None => Ok(None),
             }
@@ -195,6 +242,10 @@ mod msgpack {
                             syn::Error::new(f.span(), "`as_vec` is not currently supported")
                                 .to_compile_error()
                         }
+                        FieldAttr::Default => quote_spanned! {f.span()=>
+                            #write_key
+                            #tarantool_crate::msgpack::Encode::encode(#s #field_name, w, context)?;
+                        },
                     }
                 } else {
                     quote_spanned! {f.span()=>
@@ -232,6 +283,9 @@ mod msgpack {
                             syn::Error::new(f.span(), "`as_vec` is not currently supported")
                                 .to_compile_error()
                         }
+                        FieldAttr::Default => quote_spanned! {f.span()=>
+                            #tarantool_crate::msgpack::Encode::encode(&self.#index, w, context)?;
+                        },
                     }
                 } else {
                     quote_spanned! {f.span()=>
@@ -307,7 +361,12 @@ mod msgpack {
                     .iter()
                     .flat_map(|variant| {
                         let variant_name = &variant.ident;
-                        let variant_repr = format_ident!("{}", variant_name).to_string();
+                        let attr = unwrap_or_compile_error!(VariantAttr::from_variant(variant));
+                        let variant_repr = if let Some(VariantAttr::Rename(new_name)) = attr {
+                            new_name
+                        } else {
+                            format_ident!("{}", variant_name).to_string()
+                        };
                         match variant.fields {
                             Fields::Named(ref fields) => {
                                 let field_count = fields.named.len() as u32;
@@ -478,6 +537,9 @@ mod msgpack {
         let out = match field_attr {
             Some(FieldAttr::Map) => unimplemented!("`as_map` is not currently supported"),
             Some(FieldAttr::Vec) => unimplemented!("`as_vec` is not currently supported"),
+            Some(FieldAttr::Default) => {
+                panic!("optional fields are marked `#[encode(default)]` by default")
+            }
             Some(FieldAttr::Raw) => quote_spanned! {field.span()=>
                     let mut #var_name: #field_type = None;
                     let mut is_none = false;
@@ -532,13 +594,12 @@ mod msgpack {
         let field_name = proc_macro2::Literal::byte_string(field_repr.as_bytes());
         let var_name = format_ident!("_field_{}", field_ident);
 
-        let read_key = quote_spanned! {field.span()=>
+        let mut read_key = quote_spanned! {field.span()=>
             if as_map {
                 let len = rmp::decode::read_str_len(r)
                     .map_err(|err| #tarantool_crate::msgpack::DecodeError::from_vre::<Self>(err).with_part("field name"))?;
                 let decoded_field_name = r.get(0..(len as usize))
                     .ok_or_else(|| #tarantool_crate::msgpack::DecodeError::new::<Self>("not enough data").with_part("field name"))?;
-                *r = &r[(len as usize)..]; // advance
                 if decoded_field_name != #field_name {
                     let field_name = String::from_utf8(#field_name.to_vec()).expect("is valid utf8");
                     let err = if let Ok(decoded_field_name) = String::from_utf8(decoded_field_name.to_vec()) {
@@ -547,6 +608,8 @@ mod msgpack {
                         format!("expected field {}, got invalid utf8 {:?}", field_name, decoded_field_name)
                     };
                     return Err(#tarantool_crate::msgpack::DecodeError::new::<Self>(err));
+                } else {
+                    *r = &r[(len as usize)..]; // advance
                 }
             }
         };
@@ -561,6 +624,38 @@ mod msgpack {
             unimplemented!("`as_map` is not currently supported");
         } else if let Some(FieldAttr::Vec) = field_attr {
             unimplemented!("`as_vec` is not currently supported");
+        } else if let Some(FieldAttr::Default) = field_attr {
+            read_key = quote_spanned! {field.span()=>
+                let mut skip = false;
+                if as_map {
+                    let mut tmp = *r;
+                    let len = rmp::decode::read_str_len(&mut tmp)
+                        .map_err(|err| #tarantool_crate::msgpack::DecodeError::from_vre::<Self>(err).with_part("field name"))?;
+                    let decoded_field_name = tmp.get(0..(len as usize))
+                        .ok_or_else(|| #tarantool_crate::msgpack::DecodeError::new::<Self>("not enough data").with_part("field name"))?;
+                    if decoded_field_name != #field_name {
+                        skip = true;
+                    } else {
+                        *r = &tmp[(len as usize)..]; // advance
+                    }
+                }
+            };
+
+            quote_spanned! {field.span()=>
+                #read_key
+                let #var_name = if skip {
+                    Default::default()
+                } else {
+                    let mut tmp = *r;
+                    match #tarantool_crate::msgpack::Decode::decode(&mut tmp, context) {
+                        Ok(value) => {
+                            *r = tmp;
+                            value
+                        },
+                        Err(_) => Default::default(),
+                    }
+                };
+            }
         } else {
             quote_spanned! {field.span()=>
                 #read_key
@@ -631,6 +726,9 @@ mod msgpack {
         let out = match field_attr {
             Some(FieldAttr::Map) => unimplemented!("`as_map` is not currently supported"),
             Some(FieldAttr::Vec) => unimplemented!("`as_vec` is not currently supported"),
+            Some(FieldAttr::Default) => {
+                panic!("optional fields are marked `#[encode(default)]` by default")
+            }
             Some(FieldAttr::Raw) => quote_spanned! {field.span()=>
                 let #var_name = #tarantool_crate::msgpack::preserve_read(r).expect("only valid msgpack here");
             },
@@ -677,6 +775,18 @@ mod msgpack {
             unimplemented!("`as_map` is not currently supported");
         } else if let Some(FieldAttr::Vec) = field_attr {
             unimplemented!("`as_vec` is not currently supported");
+        } else if let Some(FieldAttr::Default) = field_attr {
+            quote_spanned! {field.span()=>
+                let mut tmp = *r;
+                let res = #tarantool_crate::msgpack::Decode::decode(&mut tmp, context);
+                let #var_name = match res {
+                    Ok(v) => {
+                        *r = &tmp;
+                        v
+                    },
+                    Err(_) => Default::default(),
+                };
+            }
         } else {
             quote_spanned! {field.span()=>
                 let #var_name = #tarantool_crate::msgpack::Decode::decode(r, context)
@@ -780,8 +890,13 @@ mod msgpack {
                     .variants
                     .iter()
                     .flat_map(|variant| {
-                        let variant_ident = &variant.ident;
-                        let variant_repr = format_ident!("{}", variant_ident).to_string();
+                        let variant_name = &variant.ident;
+                        let attr = unwrap_or_compile_error!(VariantAttr::from_variant(variant));
+                        let variant_repr = if let Some(VariantAttr::Rename(new_name)) = attr {
+                            new_name
+                        } else {
+                            format_ident!("{}", variant_name).to_string()
+                        };
                         variant_reprs.push(variant_repr.clone());
                         let variant_repr = proc_macro2::Literal::byte_string(variant_repr.as_bytes());
 
@@ -814,7 +929,7 @@ mod msgpack {
                                     #variant_repr => {
                                         let () = #tarantool_crate::msgpack::Decode::decode(r, context)
                                             .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
-                                        Ok(Self::#variant_ident)
+                                        Ok(Self::#variant_name)
                                     }
                                 }
                             },
