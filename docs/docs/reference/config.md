@@ -792,7 +792,9 @@ TLS-сертификат и закрытый ключ:
 
 ```yaml
   pg:
-    enabled: true
+    listen: <URI>
+    advertise: <URI>
+    ssl: true
     cert_file: tls/server.crt
     key_file: tls/server.key
     ca_file: tls/ca.crt
@@ -801,7 +803,7 @@ TLS-сертификат и закрытый ключ:
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
 ```shell
-picodata run -c instance.pg_ssl.enabled=true -c instance.pg.cert_file=tls/server.crt -c instance.pg.key_file=tls/server.key -c instance.pg.ca_file=tls/ca.crt
+picodata run -c instance.pg.ssl=true -c instance.pg.cert_file=tls/server.crt -c instance.pg.key_file=tls/server.key -c instance.pg.ca_file=tls/ca.crt
 ```
 
 Режим mTLS настраивается глобально во всем кластере. Для параметров
