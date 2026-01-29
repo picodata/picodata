@@ -539,9 +539,12 @@ impl RaftSpaceAccess {
     /// Panics if one `raft::Entry` of provided fails to be converted
     /// into `traft::Entry`.
     pub fn persist_entries(&self, entries: &[raft::Entry]) -> tarantool::Result<()> {
-        for e in entries {
+        let err_with_ctx = |error, entry| format!("{error}: {entry:?}");
+        for entry in entries {
             // FIXME: this deserialize -> serialize step is redundant
-            let row = traft::Entry::try_from(e).unwrap();
+            let row = traft::Entry::try_from(entry)
+                .map_err(|error| err_with_ctx(error, entry))
+                .unwrap();
             self.space_raft_log.replace(&row)?;
         }
         Ok(())
@@ -1035,6 +1038,23 @@ mod tests {
             ),
             Ok(test_entries)
         );
+
+        // TEMP: assert that we have enough information to debug on panic.
+        // NOTE: see <https://git.picodata.io/core/picodata/-/issues/2646#note_198362>.
+        let _ = std::panic::take_hook();
+        let panicking_raft_entry = std::panic::catch_unwind(|| {
+            storage.persist_entries(&[raft::Entry {
+                term: 103,
+                index: 10,
+                context: vec![0x00, 0x00, 0x00, 0x00],
+                ..Default::default()
+            }])
+        });
+        let error = panicking_raft_entry.unwrap_err();
+        let msg = error.downcast_ref::<String>().unwrap();
+        assert!(msg.contains("failed to decode tuple"));
+        assert!(msg.contains("data did not match any variant of untagged enum EntryContext"));
+        assert!(msg.contains("Entry {"));
     }
 
     #[::tarantool::test]
