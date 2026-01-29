@@ -1590,7 +1590,6 @@ mod tests {
         #[derive(Clone, Serialize, Encode, Decode, PartialEq, Debug)]
         #[encode(tarantool = "crate")]
         enum Test7 {
-            #[encode(as_raw)]
             Something(Vec<u8>),
         }
         #[derive(Clone, Serialize, Encode, Decode, PartialEq, Debug)]
