@@ -80,10 +80,10 @@ impl SystemTable for PicoUserAuditPolicy {
 }
 
 impl PicoUserAuditPolicy {
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
+    pub const fn new() -> Self {
+        Self {
             space: space_by_id_unchecked(Self::TABLE_ID),
-        })
+        }
     }
 
     /// NOTE: this is new space since 25.4.1
@@ -168,5 +168,11 @@ impl PicoUserAuditPolicy {
             self.space.delete(&(user_id, policy_id))?;
         }
         Ok(())
+    }
+}
+
+impl Default for PicoUserAuditPolicy {
+    fn default() -> Self {
+        Self::new()
     }
 }

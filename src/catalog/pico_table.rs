@@ -76,13 +76,13 @@ impl SystemTable for PicoTable {
 }
 
 impl PicoTable {
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
+    pub const fn new() -> Self {
+        Self {
             space: space_by_id_unchecked(Self::TABLE_ID),
             index_id: index_by_ids_unchecked(Self::TABLE_ID, 0),
             index_name: index_by_ids_unchecked(Self::TABLE_ID, 1),
             index_owner_id: index_by_ids_unchecked(Self::TABLE_ID, 2),
-        })
+        }
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
@@ -194,7 +194,7 @@ impl PicoTable {
     ///
     /// ```no_run
     /// # use tarantool::space::SpaceId;
-    /// let tables = picodata::catalog::pico_table::PicoTable::new().unwrap();
+    /// let tables = picodata::catalog::pico_table::PicoTable::new();
     ///
     /// let table_id = 28;
     /// let new_schema_version = 42;
@@ -248,6 +248,12 @@ impl PicoTable {
     ) -> tarantool::Result<EntryIter<TableDef, MP_CUSTOM>> {
         let iter = self.index_owner_id.select(IteratorType::Eq, &[owner_id])?;
         Ok(EntryIter::new(iter))
+    }
+}
+
+impl Default for PicoTable {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

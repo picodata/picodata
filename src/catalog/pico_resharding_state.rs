@@ -136,11 +136,11 @@ impl PicoReshardingState {
         DISTRIBUTED GLOBALLY
     ";
 
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
+    pub const fn new() -> Self {
+        Self {
             space: space_by_id_unchecked(Self::TABLE_ID),
             index_primary: index_by_ids_unchecked(Self::TABLE_ID, 0),
-        })
+        }
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
@@ -165,6 +165,12 @@ impl PicoReshardingState {
         debug_assert_eq!(self.index_primary.id(), index_primary.id());
 
         Ok(())
+    }
+}
+
+impl Default for PicoReshardingState {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

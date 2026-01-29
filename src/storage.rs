@@ -1,3 +1,4 @@
+#![allow(clippy::new_without_default)]
 use crate::catalog::governor_queue::GovernorQueue;
 use crate::catalog::pico_bucket::PicoBucket;
 use crate::catalog::pico_resharding_state::PicoReshardingState;
@@ -81,7 +82,7 @@ macro_rules! column_name {
 }
 
 #[inline(always)]
-pub fn space_by_id_unchecked(space_id: SpaceId) -> Space {
+pub const fn space_by_id_unchecked(space_id: SpaceId) -> Space {
     // SAFETY: this is always safe. Tarantool will check if space exists when executing requests
     unsafe { Space::from_id_unchecked(space_id) }
 }
@@ -112,7 +113,7 @@ fn no_such_space(message: impl Into<String>) -> BoxError {
 }
 
 #[inline]
-pub fn index_by_ids_unchecked(space_id: SpaceId, index_id: IndexId) -> Index {
+pub const fn index_by_ids_unchecked(space_id: SpaceId, index_id: IndexId) -> Index {
     // SAFETY: this is always safe. Tarantool will check if space exists when executing requests
     unsafe { Index::from_ids_unchecked(space_id, index_id) }
 }
@@ -211,7 +212,7 @@ impl Catalog {
     ///
     /// This function is private because it should only be called once
     /// per picodata instance on boot.
-    fn new() -> tarantool::Result<Self> {
+    fn new() -> Self {
         // SAFETY: safe as long as only called from tx thread.
         static mut WAS_CALLED: bool = false;
         unsafe {
@@ -219,30 +220,30 @@ impl Catalog {
             WAS_CALLED = true;
         }
 
-        Ok(Self {
-            pico_table: PicoTable::new()?,
-            indexes: Indexes::new()?,
-            peer_addresses: PeerAddresses::new()?,
-            instances: Instances::new()?,
-            properties: Properties::new()?,
-            replicasets: Replicasets::new()?,
-            users: Users::new()?,
-            privileges: Privileges::new()?,
-            tiers: Tiers::new()?,
-            routines: Routines::new()?,
-            plugins: Plugins::new()?,
-            services: Services::new()?,
-            service_route_table: ServiceRouteTable::new()?,
-            plugin_migrations: PluginMigrations::new()?,
-            plugin_config: PluginConfig::new()?,
-            db_config: DbConfig::new()?,
-            governor_queue: GovernorQueue::new()?,
-            users_audit_policies: PicoUserAuditPolicy::new()?,
-            pico_bucket: PicoBucket::new()?,
-            pico_resharding_state: PicoReshardingState::new()?,
+        Self {
+            pico_table: PicoTable::new(),
+            indexes: Indexes::new(),
+            peer_addresses: PeerAddresses::new(),
+            instances: Instances::new(),
+            properties: Properties::new(),
+            replicasets: Replicasets::new(),
+            users: Users::new(),
+            privileges: Privileges::new(),
+            tiers: Tiers::new(),
+            routines: Routines::new(),
+            plugins: Plugins::new(),
+            services: Services::new(),
+            service_route_table: ServiceRouteTable::new(),
+            plugin_migrations: PluginMigrations::new(),
+            plugin_config: PluginConfig::new(),
+            db_config: DbConfig::new(),
+            governor_queue: GovernorQueue::new(),
+            users_audit_policies: PicoUserAuditPolicy::new(),
+            pico_bucket: PicoBucket::new(),
+            pico_resharding_state: PicoReshardingState::new(),
             snapshot_cache: Default::default(),
             login_attempts: Default::default(),
-        })
+        }
     }
 
     /// Creates system tables & indexes. Should only be called on master during
@@ -363,7 +364,7 @@ impl Catalog {
                 if !init {
                     return Err(Error::Uninitialized);
                 }
-                STORAGE = Some(Self::new()?);
+                STORAGE = Some(Self::new());
             }
             Ok(static_ref!(const STORAGE).as_ref().unwrap())
         }
@@ -624,12 +625,12 @@ impl SystemTable for Indexes {
 }
 
 impl Indexes {
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
+    pub const fn new() -> Self {
+        Self {
             space: space_by_id_unchecked(Self::TABLE_ID),
             index_id: index_by_ids_unchecked(Self::TABLE_ID, 0),
             index_name: index_by_ids_unchecked(Self::TABLE_ID, 1),
-        })
+        }
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
@@ -794,11 +795,11 @@ impl SystemTable for PeerAddresses {
 }
 
 impl PeerAddresses {
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
+    pub const fn new() -> Self {
+        Self {
             space: space_by_id_unchecked(Self::TABLE_ID),
             index: index_by_ids_unchecked(Self::TABLE_ID, 0),
-        })
+        }
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
@@ -1110,14 +1111,14 @@ impl SystemTable for Instances {
 }
 
 impl Instances {
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
+    pub const fn new() -> Self {
+        Self {
             space: space_by_id_unchecked(Self::TABLE_ID),
             index_instance_name: index_by_ids_unchecked(Self::TABLE_ID, 0),
             index_instance_uuid: index_by_ids_unchecked(Self::TABLE_ID, 1),
             index_raft_id: index_by_ids_unchecked(Self::TABLE_ID, 2),
             index_replicaset_name: index_by_ids_unchecked(Self::TABLE_ID, 3),
-        })
+        }
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
@@ -1352,11 +1353,11 @@ impl SystemTable for Properties {
 }
 
 impl Properties {
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
+    pub const fn new() -> Self {
+        Self {
             space: space_by_id_unchecked(Self::TABLE_ID),
             index: index_by_ids_unchecked(Self::TABLE_ID, 0),
-        })
+        }
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
@@ -1573,12 +1574,12 @@ impl SystemTable for Replicasets {
 }
 
 impl Replicasets {
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
+    pub const fn new() -> Self {
+        Self {
             space: space_by_id_unchecked(Self::TABLE_ID),
             index_replicaset_name: index_by_ids_unchecked(Self::TABLE_ID, 0),
             index_replicaset_uuid: index_by_ids_unchecked(Self::TABLE_ID, 1),
-        })
+        }
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
@@ -1801,13 +1802,13 @@ impl SystemTable for Users {
 }
 
 impl Users {
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
+    pub const fn new() -> Self {
+        Self {
             space: space_by_id_unchecked(Self::TABLE_ID),
             index_id: index_by_ids_unchecked(Self::TABLE_ID, 0),
             index_name: index_by_ids_unchecked(Self::TABLE_ID, 1),
             index_owner_id: index_by_ids_unchecked(Self::TABLE_ID, 2),
-        })
+        }
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
@@ -1986,12 +1987,12 @@ impl SystemTable for Privileges {
 }
 
 impl Privileges {
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
+    pub const fn new() -> Self {
+        Self {
             space: space_by_id_unchecked(Self::TABLE_ID),
             primary_key: index_by_ids_unchecked(Self::TABLE_ID, 0),
             object_idx: index_by_ids_unchecked(Self::TABLE_ID, 1),
-        })
+        }
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
@@ -2189,11 +2190,11 @@ impl SystemTable for Tiers {
     }
 }
 impl Tiers {
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
+    pub const fn new() -> Self {
+        Self {
             space: space_by_id_unchecked(Self::TABLE_ID),
             index_name: index_by_ids_unchecked(Self::TABLE_ID, 0),
-        })
+        }
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
@@ -2301,13 +2302,13 @@ impl SystemTable for Routines {
 }
 
 impl Routines {
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
+    pub const fn new() -> Self {
+        Self {
             space: space_by_id_unchecked(Self::TABLE_ID),
             index_id: index_by_ids_unchecked(Self::TABLE_ID, 0),
             index_name: index_by_ids_unchecked(Self::TABLE_ID, 1),
             index_owner_id: index_by_ids_unchecked(Self::TABLE_ID, 2),
-        })
+        }
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
@@ -2453,11 +2454,11 @@ impl SystemTable for Plugins {
     }
 }
 impl Plugins {
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
+    pub const fn new() -> Self {
+        Self {
             space: space_by_id_unchecked(Self::TABLE_ID),
             primary_key: index_by_ids_unchecked(Self::TABLE_ID, 0),
-        })
+        }
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
@@ -2582,11 +2583,11 @@ impl SystemTable for Services {
     }
 }
 impl Services {
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
+    pub const fn new() -> Self {
+        Self {
             space: space_by_id_unchecked(Self::TABLE_ID),
             index_name: index_by_ids_unchecked(Self::TABLE_ID, 0),
-        })
+        }
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
@@ -2736,11 +2737,11 @@ impl SystemTable for ServiceRouteTable {
     }
 }
 impl ServiceRouteTable {
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
+    pub const fn new() -> Self {
+        Self {
             space: space_by_id_unchecked(Self::TABLE_ID),
             primary_key: index_by_ids_unchecked(Self::TABLE_ID, 0),
-        })
+        }
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
@@ -2886,11 +2887,11 @@ impl SystemTable for PluginMigrations {
     }
 }
 impl PluginMigrations {
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
+    pub const fn new() -> Self {
+        Self {
             space: space_by_id_unchecked(Self::TABLE_ID),
             primary_key: index_by_ids_unchecked(Self::TABLE_ID, 0),
-        })
+        }
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
@@ -2967,11 +2968,11 @@ impl SystemTable for PluginConfig {
     }
 }
 impl PluginConfig {
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
+    pub const fn new() -> Self {
+        Self {
             space: space_by_id_unchecked(Self::TABLE_ID),
             primary: index_by_ids_unchecked(Self::TABLE_ID, 0),
-        })
+        }
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
@@ -3232,12 +3233,12 @@ impl SystemTable for DbConfig {
 impl DbConfig {
     pub const GLOBAL_SCOPE: &'static str = "";
 
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
+    pub const fn new() -> Self {
+        Self {
             space: space_by_id_unchecked(Self::TABLE_ID),
             primary: index_by_ids_unchecked(Self::TABLE_ID, 0),
             secondary: index_by_ids_unchecked(Self::TABLE_ID, 1),
-        })
+        }
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
@@ -3469,7 +3470,7 @@ mod tests {
         use crate::failure_domain::FailureDomain;
 
         let storage = Catalog::for_tests();
-        let storage_peer_addresses = PeerAddresses::new().unwrap();
+        let storage_peer_addresses = PeerAddresses::new();
         let space_peer_addresses = storage_peer_addresses.space.clone();
 
         let faildom = FailureDomain::from([("a", "b")]);

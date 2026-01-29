@@ -159,10 +159,10 @@ impl SystemTable for GovernorQueue {
 }
 
 impl GovernorQueue {
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
+    pub const fn new() -> Self {
+        Self {
             space: space_by_id_unchecked(Self::TABLE_ID),
-        })
+        }
     }
 
     /// NOTE: this is new space since 25.3.1
@@ -226,5 +226,11 @@ impl GovernorQueue {
             });
         }
         Ok(next_op)
+    }
+}
+
+impl Default for GovernorQueue {
+    fn default() -> Self {
+        Self::new()
     }
 }
