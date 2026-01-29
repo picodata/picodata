@@ -45,6 +45,7 @@
 - `tlua::Object::read` function which is useful for getting borrowed access to
   multiple values on the lua stack
 - `datetime::Datetime::now_utc` constructor
+- `#encode(default)` field attribute and `#encode(rename = "new_name")` enum variant attribute
 
 ### Fixed
 

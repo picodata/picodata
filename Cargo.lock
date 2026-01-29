@@ -4513,7 +4513,7 @@ dependencies = [
 
 [[package]]
 name = "tarantool-proc"
-version = "4.0.2"
+version = "4.1.0"
 dependencies = [
  "darling 0.14.4",
  "proc-macro-error2",
