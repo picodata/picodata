@@ -768,6 +768,16 @@ table.legend {
             </td>
         </tr>
         <tr>
+            <td><span class="sql-cluster">[governor_check_replication_error](db_config.md#governor_check_replication_error){.link}</span></td>
+            <td>Режим проверки неполадок в системе репликации</td>
+            <td>true</td>
+            <td>
+            ```sql
+            ALTER SYSTEM SET governor_check_replication_error = false;
+            ```
+            </td>
+        </tr>
+        <tr>
             <td><span class="sql-cluster">[governor_common_rpc_timeout](db_config.md#governor_common_rpc_timeout){.link}</span></td>
             <td>Время ожидания до перехода губернатора к новой итерации цикла, за которое инстансы должны ответить губернатору на его RPC-запросы</td>
             <td>3.0</td>
