@@ -224,6 +224,24 @@ cat file.sql | picodata admin ./admin.sock
     DELETE FROM customers WHERE id > 100;
     ```
 
+Для перенаправления также удобно использовать команду `picodata admin`,
+которая поддерживает дополнительные параметры форматирования для вывода.
+
+Пример:
+
+```sql title="Вывод результата в виде таплов"
+echo "SELECT * FROM warehouse;"  | picodata admin ./admin.sock --tuples-only
+1	bricks	heavy
+3	blocks	heavy
+4	piles	light
+2	bars	light
+5	panels	light
+```
+
+См. также:
+
+- [picodata admin](../reference/cli.md#admin)
+
 [pipe]: https://ru.wikipedia.org/wiki/Конвейер_(Unix)
 
 ### Параметры сессии {: #session_options }

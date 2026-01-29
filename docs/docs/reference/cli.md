@@ -19,9 +19,11 @@ OPTIONS:
 SUBCOMMANDS:
     admin      Connect to the Admin console of a Picodata instance
     config     Subcommands related to working with the configuration file
+    demo       Run interactive Picodata demonstration scenario
     expel      Expel node from cluster
     help       Print this message or the help of the given subcommand(s)
     plugin     Subcommand related to plugin management
+    restore    Restore the picodata instance from given backup path
     run        Run the picodata instance
     status     Display the status of all instances in the cluster
     test       Run picodata integration tests
@@ -498,6 +500,215 @@ type '\help' for interactive help
 (admin) sql>
 ```
 
+### --csv {: #csv }
+
+`--csv`, `-c`
+
+Выводить результат в формате CSV.
+
+??? example "Пример вывода в формате CSV"
+    ```shell
+    echo "SELECT * FROM warehouse;"  | picodata admin ./admin.sock
+    +----+--------+-------+
+    | id | item   | type  |
+    +=====================+
+    | 1  | bricks | heavy |
+    |----+--------+-------|
+    | 3  | blocks | heavy |
+    |----+--------+-------|
+    | 4  | piles  | light |
+    |----+--------+-------|
+    | 2  | bars   | light |
+    |----+--------+-------|
+    | 5  | panels | light |
+    +----+--------+-------+
+    (5 rows)
+
+    echo "SELECT * FROM warehouse;"  | picodata admin ./admin.sock --csv
+    id,item,type
+    1,bricks,heavy
+    3,blocks,heavy
+    4,piles,light
+    2,bars,light
+    5,panels,light
+    ```
+
+### --field-separator {: #field-separator }
+
+`--field-separator`, `-F`
+
+Разделитель полей для вывода в режимах `--csv` и `--tuples-only`. По
+умолчанию используется запятая для `--csv` и знак табуляции (`\t`) для
+`--tuples-only`.
+
+??? example "Пример использования альтернативного разделителя"
+    ```shell
+    echo "SELECT * FROM warehouse;"  | picodata admin ./admin.sock --csv --field-separator /
+    id/item/type
+    1/bricks/heavy
+    3/blocks/heavy
+    4/piles/light
+    2/bars/light
+    5/panels/light
+    ```
+
+### --ignore-errors {: #ignore-errors }
+
+`--ignore-errors`
+
+Игнорировать ошибки и продолжить выполнение пользовательского запроса в
+неинтерактивном режиме.
+
+### --json {: #json }
+
+`--json`, `-j`
+
+Выводить результат в формате JSON.
+
+??? example "Пример вывода в формате JSON"
+    ```shell
+    echo "SELECT * FROM warehouse;"  | picodata admin ./admin.sock
+    +----+--------+-------+
+    | id | item   | type  |
+    +=====================+
+    | 1  | bricks | heavy |
+    |----+--------+-------|
+    | 3  | blocks | heavy |
+    |----+--------+-------|
+    | 4  | piles  | light |
+    |----+--------+-------|
+    | 2  | bars   | light |
+    |----+--------+-------|
+    | 5  | panels | light |
+    +----+--------+-------+
+    (5 rows)
+
+    echo "SELECT * FROM warehouse;"  | picodata admin ./admin.sock --json
+    [
+        {
+            "id": 1,
+            "item": "bricks",
+            "type": "heavy"
+        },
+        {
+            "id": 3,
+            "item": "blocks",
+            "type": "heavy"
+        },
+        {
+            "id": 4,
+            "item": "piles",
+            "type": "light"
+        },
+        {
+            "id": 2,
+            "item": "bars",
+            "type": "light"
+        },
+        {
+            "id": 5,
+            "item": "panels",
+            "type": "light"
+        }
+    ]
+    ```
+
+### --prompts {: #prompts }
+
+`--prompts`, `-p`
+
+Показывать интерактивные запросы и сообщения вне зависимости от наличия
+интерактивной TTY-сессии.
+
+По умолчанию результаты запроса, выполненного через перенаправление на
+`picodata admin`, выводятся без интерактивных сообщений:
+
+??? example "Пример стандартного поведения"
+    ```
+    echo "SELECT * FROM warehouse;"  | picodata admin ./admin.sock
+    +----+--------+-------+
+    | id | item   | type  |
+    +=====================+
+    | 1  | bricks | heavy |
+    |----+--------+-------|
+    | 3  | blocks | heavy |
+    |----+--------+-------|
+    | 4  | piles  | light |
+    |----+--------+-------|
+    | 2  | bars   | light |
+    |----+--------+-------|
+    | 5  | panels | light |
+    +----+--------+-------+
+    (5 rows)
+    ```
+
+Параметр `--prompts` позволяет вернуть отображение интерактивных сообщений:
+
+??? example "Пример вывода сообщений в неинтерактивной сессии"
+    ```
+    echo "SELECT * FROM warehouse;"  | picodata admin ./admin.sock --prompts
+    Connected to admin console by socket path "./admin.sock"
+    type '\help' for interactive help
+    +----+--------+-------+
+    | id | item   | type  |
+    +=====================+
+    | 1  | bricks | heavy |
+    |----+--------+-------|
+    | 3  | blocks | heavy |
+    |----+--------+-------|
+    | 4  | piles  | light |
+    |----+--------+-------|
+    | 2  | bars   | light |
+    |----+--------+-------|
+    | 5  | panels | light |
+    +----+--------+-------+
+    (5 rows)
+    Bye
+    ```
+
+### --tuples-only {: #tuples-only }
+
+`--tuples-only`, `-t`
+
+Выводить только таплы — значения строк в таблице.
+
+??? example "Пример вывода в виде таплов"
+    ```shell
+    echo "SELECT * FROM warehouse;"  | picodata admin ./admin.sock
+    +----+--------+-------+
+    | id | item   | type  |
+    +=====================+
+    | 1  | bricks | heavy |
+    |----+--------+-------|
+    | 3  | blocks | heavy |
+    |----+--------+-------|
+    | 4  | piles  | light |
+    |----+--------+-------|
+    | 2  | bars   | light |
+    |----+--------+-------|
+    | 5  | panels | light |
+    +----+--------+-------+
+    (5 rows)
+
+    echo "SELECT * FROM warehouse;"  | picodata admin ./admin.sock --tuples-only
+    1	bricks	heavy
+    3	blocks	heavy
+    4	piles	light
+    2	bars	light
+    5	panels	light
+    ```
+
+### Специальные команды {: #special_commands }
+
+- `\e` — открыть текстовый редактор, заданный в shell-переменной EDITOR
+- `\help` — вывод встроенной справки
+- `\sql` — переключить язык ввода на SQL
+- `\lua` — переключить язык ввода на Lua
+
+См также:
+
+- [Подключение и работа в консоли](../tutorial/connecting.md)
+
 ## picodata restore {: #restore }
 
 Восстанавливает данные из ранее созданной резервной копии, см.
@@ -845,7 +1056,36 @@ picodata status -t 10
 
 Аналогичная переменная окружения: `PICODATA_IPROTO_TLS_KEY`
 
+## picodata demo {: #demo }
 
+Запускает демонстрационный кластер Picodata на локальном узле. В
+демо-сценарий входит кластер, состоящий из 4-х инстансов, распределенных
+по 2-м репликасетам. Команда выводит следующие подробности для каждого
+инстанса в демо-кластере:
+
+  - `pid` — PID процесса
+  - `dir` — [рабочую директорию инстанса]
+  - `logs` — расположение [файла журнала инстанса]
+  - `http` — [адрес HTTP-сервера инстанса]
+  - `iproto` — [порт] для подключения к инстансу по протоколу Iproto
+  - `pgproto` — [адрес] для подключения к инстансу по протоколу PostgreSQL
+
+[рабочую директорию инстанса]: config.md#instance_instance_dir
+[файла журнала инстанса]: config.md#instance_log_destination
+[адрес HTTP-сервера инстанса]: config.md#instance_http_listen
+[порт]: config.md#instance_iproto_listen
+[адрес]: config.md#instance_pg_listen
+
+??? example "Пример"
+    ```shell
+    Instance 'default_1_1':
+    - pid: `244053`
+    - dir: `/home/atolstoy/Sources/picodata/picodata_demo/cluster/i1`
+    - logs: `/home/atolstoy/Sources/picodata/picodata_demo/cluster/i1/picodata.log`
+    - http: `http://127.0.0.1:8001`
+    - iproto: `3001`
+    - pgproto: `postgres://admin:T0psecret@127.0.0.1:5433`
+    ```
 
 
 
