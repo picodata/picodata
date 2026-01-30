@@ -295,6 +295,7 @@ pub(crate) struct TierInfo {
 pub(crate) struct ClusterInfo {
     capacity_usage: f64,
     cluster_name: &'static str,
+    cluster_version: SmolStr,
     #[serde(rename = "currentInstaceVersion")] // for compatibility with lua version
     current_instance_version: SmolStr,
     replicasets_count: usize,
@@ -527,6 +528,8 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo> {
         .map(|plugin| format!("{} {}", plugin.name, plugin.version))
         .collect();
 
+    let cluster_version = storage.properties.cluster_version()?;
+
     let mut instances = 0;
     let mut instances_online = 0;
     let mut replicasets_count = 0;
@@ -551,6 +554,7 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo> {
     let res = ClusterInfo {
         capacity_usage: get_capacity_usage(mem_info.usable, mem_info.used),
         cluster_name,
+        cluster_version,
         current_instance_version: version,
         replicasets_count,
         instances_current_state_offline: (instances - instances_online),

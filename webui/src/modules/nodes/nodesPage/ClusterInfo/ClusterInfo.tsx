@@ -101,7 +101,7 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
           </div>
           <div className={styles.columnContent}>
             <div className={styles.columnValue}>
-              {clusterInfoData.currentInstaceVersion}
+              {clusterInfoData.clusterVersion}
             </div>
             <div className={styles.columnLabel}>
               {clusterTranslations.version.description}

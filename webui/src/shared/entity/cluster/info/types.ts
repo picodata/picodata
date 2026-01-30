@@ -1,5 +1,6 @@
 export type ServerClusterInfoType = {
   clusterName: string;
+  clusterVame: string;
   capacityUsage: number;
   systemCapacityUsage: number;
   memory: {
@@ -13,7 +14,6 @@ export type ServerClusterInfoType = {
   replicasetsCount: number;
   instancesCurrentStateOnline: number;
   instancesCurrentStateOffline: number;
-  currentInstaceVersion: string;
   plugins: string[];
 };
 

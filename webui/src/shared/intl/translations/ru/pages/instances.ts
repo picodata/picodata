@@ -24,7 +24,7 @@ export const instances: TPages["instances"] = {
     },
     version: {
       label: "Версия",
-      description: "текущего инстанса",
+      description: "кластера",
     },
   },
   groupBy: {

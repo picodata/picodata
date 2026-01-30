@@ -163,6 +163,7 @@ def test_webui_basic(instance: Instance, auth_token: Optional[str]):
         assert json.load(response) == {
             "capacityUsage": capacity_usage,
             "clusterName": instance.cluster_name,
+            "clusterVersion": instance_version,
             "replicasetsCount": 1,
             "instancesCurrentStateOffline": 0,
             "currentInstaceVersion": instance_version,
@@ -337,6 +338,7 @@ def test_webui_with_plugin(cluster: Cluster):
             "instancesCurrentStateOnline": 3,
             "instancesCurrentStateOffline": 0,
             "currentInstaceVersion": instance_version,
+            "clusterVersion": instance_version,
             "memory": {"usable": 201326592, "used": 0},
             "plugins": [
                 plugin_1 + " " + version_1,
@@ -486,6 +488,7 @@ def test_webui_replicaset_state(cluster: Cluster):
             "instancesCurrentStateOnline": 3,
             "instancesCurrentStateOffline": 1,
             "currentInstaceVersion": instance_version,
+            "clusterVersion": instance_version,
             "memory": {"usable": 134217728, "used": 0},
             "plugins": [],
         }, "/api/v1/cluster"

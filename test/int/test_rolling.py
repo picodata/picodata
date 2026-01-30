@@ -3,6 +3,8 @@ from typing import Generator, Protocol
 from conftest import Cluster, Retriable
 from framework.rolling.version import RelativeVersion as Version
 from framework.rolling.registry import Registry
+from urllib.request import urlopen
+import json
 
 import pytest
 import os
@@ -396,3 +398,89 @@ cluster:
 
     # Note: needs to be retriable because upgrade happens asynchronously after all instances become Online
     Retriable().call(check)
+
+
+@pytest.mark.webui
+@pytest.mark.xdist_group(name="rolling")
+def test_webui_during_upgrade(
+    registry: Registry,
+    cluster: Cluster,
+):
+    cluster.registry = registry
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            can_vote: true
+        storage:
+            can_vote: false
+            replication_factor: 2
+        """
+    )
+
+    runtime_v1 = cluster.registry.get(Version.PREVIOUS_MINOR)
+    cluster.runtime = runtime_v1
+    leader = cluster.add_instance(wait_online=False, name="leader", tier="arbiter")
+
+    http_listen = f"{cluster.base_host}:{cluster.port_distributor.get()}"
+    leader.env["PICODATA_HTTP_LISTEN"] = http_listen
+
+    storage = cluster.add_instance(wait_online=False, name="storage", tier="storage")
+    cluster.wait_online()
+
+    # Disable webui authentication for simplicity
+    leader.sql("ALTER SYSTEM SET jwt_secret = ''")
+
+    # Initial cluster version
+    with urlopen(f"http://{http_listen}/api/v1/cluster") as response:
+        response = json.load(response)
+        assert base_version(response["currentInstaceVersion"]) == str(runtime_v1.absolute_version)
+
+        if "clusterVersion" in response:
+            assert base_version(response["clusterVersion"]) == str(runtime_v1.absolute_version)
+        else:
+            # On older versions it may be absent
+            pass
+
+    # Turn off one of the instances to block upgrade
+    storage.terminate()
+    leader.wait_has_states("Offline", "Offline", target=storage)
+
+    # Start upgrading instances one by one
+    runtime_v2 = cluster.registry.get(Version.CURRENT)
+
+    leader.terminate()
+    leader.runtime = runtime_v2
+    leader.start()
+    leader.wait_online()
+
+    # Cluster wasn't upgraded yet, because `storage` is not online
+    with urlopen(f"http://{http_listen}/api/v1/cluster") as response:
+        response = json.load(response)
+        # currentInstaceVersion is different now
+        assert base_version(response["currentInstaceVersion"]) == str(runtime_v2.absolute_version)
+        # but currentVersion is the same
+        assert base_version(response["clusterVersion"]) == str(runtime_v1.absolute_version)
+
+    # Finish the upgrade successfully
+    storage.runtime = runtime_v2
+    storage.start()
+    storage.wait_online()
+
+    # Now cluster is successfully upgraded
+    def check():
+        [[cluster_version]] = leader.sql("SELECT value FROM _pico_property WHERE key = 'cluster_version'")
+        assert base_version(cluster_version) == str(runtime_v2.absolute_version)
+
+    # Note: needs to be retriable because upgrade happens asynchronously after all instances become Online
+    Retriable().call(check)
+
+    # Cluster wasn't upgraded yet, because `storage` is not online
+    with urlopen(f"http://{http_listen}/api/v1/cluster") as response:
+        response = json.load(response)
+        # currentInstaceVersion is different now
+        assert base_version(response["currentInstaceVersion"]) == str(runtime_v2.absolute_version)
+        # but currentVersion is the same
+        assert base_version(response["clusterVersion"]) == str(runtime_v2.absolute_version)

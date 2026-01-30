@@ -22,7 +22,7 @@ export const instances = {
     },
     version: {
       label: "Version",
-      description: "current instance",
+      description: "cluster",
     },
   },
   groupBy: {

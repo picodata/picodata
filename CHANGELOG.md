@@ -10,6 +10,11 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## [25.5.6] - Unreleased
 
+### WebUI
+- Webui now displays the value of `cluster_version` instead of current
+  instance's version. That way you can easily tell if the cluster has been
+  upgraded successfully or not yet.
+
 ### Fixes
 
 - Fixed governor's `ConfigureReplication` step was broken during upgrade from before 25.5.3
