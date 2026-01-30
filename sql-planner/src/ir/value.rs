@@ -313,7 +313,7 @@ impl fmt::Display for Value {
             Value::Boolean(v) => write!(f, "{v}"),
             Value::Null => write!(f, "NULL"),
             Value::Integer(v) => write!(f, "{v}"),
-            Value::Datetime(v) => write!(f, "{v}"),
+            Value::Datetime(v) => write!(f, "'{v}'"),
             Value::Double(v) => fmt::Display::fmt(&v, f),
             Value::Decimal(v) => fmt::Display::fmt(v, f),
             Value::String(v) => write!(f, "'{v}'"),

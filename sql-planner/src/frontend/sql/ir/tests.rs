@@ -3609,8 +3609,8 @@ fn front_sql_current_date() {
     // functions getting current date/time all get transformed to concrete values during the optimization
     let plan = sql_to_optimized_ir(input, vec![]);
     let expected_explain = format!(
-        r#"projection ({today}::datetime -> "col_1")
-    selection "to_date"(('2010/10/10'::string, '%Y/%d/%m'::string))::datetime < {today}::datetime
+        r#"projection ('{today}'::datetime -> "col_1")
+    selection "to_date"(('2010/10/10'::string, '%Y/%d/%m'::string))::datetime < '{today}'::datetime
         scan "unnamed_subquery"
             motion [policy: full, program: ReshardIfNeeded]
                 values
