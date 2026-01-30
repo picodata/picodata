@@ -37,6 +37,11 @@ with the `YY.MINOR.MICRO` scheme.
   - Added configurable command-line parameters and cluster information display.
   - Add machine-readable output formats to `picodata admin`
 
+### WebUI
+- Webui now displays the value of `cluster_version` instead of current
+  instance's version. That way you can easily tell if the cluster has been
+  upgraded successfully or not yet.
+
 ### Fixes
 
 - Fixed that governor would hang indefinitely if an Offline replicaset had
