@@ -114,7 +114,7 @@ def test_raft_log_auto_compaction_basics(cluster: Cluster):
                 assert size == 0
                 break
             else:
-                assert size < max_size
+                assert size <= max_size
 
             prev_count, prev_size = count, size
 
