@@ -162,8 +162,7 @@ where
                 (code, PushGuard::new(lua, 1))
             };
 
-            if read_data.triggered_error.is_some() {
-                let error = read_data.triggered_error.unwrap();
+            if let Some(error) = read_data.triggered_error {
                 return Err((LuaError::ReadError(error), pushed_value.into_inner()));
             }
 

@@ -2098,6 +2098,7 @@ impl Drop for LatchGuard {
 /// call, see <https://stackoverflow.com/a/14437277/3093427>).
 /// So currently this is the best thing we can do.
 #[inline]
+#[allow(clippy::manual_is_multiple_of)]
 pub unsafe fn context_is_valid(context: *mut Context) -> bool {
     if context as usize == 0 {
         return false;
