@@ -1110,15 +1110,23 @@ fn parse_create_table(
             _ => panic!("Unexpected rule met under CreateTable."),
         }
     }
+    if is_global && pk_contains_bucket_id {
+        // It makes sense only for sharded tables.
+        pk_contains_bucket_id = false;
+    }
     if pk_keys.is_empty() {
+        if pk_contains_bucket_id {
+            return Err(SbroadError::Invalid(
+                Entity::PrimaryKey,
+                Some(
+                    "Primary key must include at least one column in addition to bucket_id.".into(),
+                ),
+            ));
+        }
         return Err(SbroadError::Invalid(
             Entity::PrimaryKey,
             Some(format_smolstr!("Primary key must be declared.")),
         ));
-    }
-    if is_global && pk_contains_bucket_id {
-        // It makes sense only for sharded tables.
-        pk_contains_bucket_id = false;
     }
     // infer sharding key from primary key
     if shard_key.is_empty() && !is_global {
