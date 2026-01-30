@@ -4087,17 +4087,22 @@ where
                                             let mut arg_pairs_to_parse = Vec::new();
                                             let mut volatile = false;
 
-                                            if let Ok(f) = worker.metadata.function(&function_name) {
-                                                if f.volatility == VolatilityType::Volatile {
-                                                    volatile = true;
-                                                }
-                                            }
-
                                             // Exposed by picodata scalar function name should be
                                             // transformed to real name of representing it stored procedure.
                                             if let Some(name) = get_real_function_name(&function_name) {
                                                 function_name = name.to_string();
-                                                volatile = true;
+                                            }
+
+                                            // We should not through an error here as while performing
+                                            // Pratt parsing, we inspect function volatility and may
+                                            // disallow a function based on the higher-level context
+                                            // (for example, volatile functions in filters). But if we
+                                            // error out early because the function is missing from
+                                            // metadata, we lose meaningful aggregate error diagnostics.
+                                            // Metadata will be checked again during full parsing,
+                                            // where a correct "function not found" error can be produced.
+                                            if let Ok(f) = worker.metadata.function(&function_name) {
+                                                volatile = f.is_volatile();
                                             }
 
                                             if volatile && !safe_for_volatile_function {

@@ -607,3 +607,9 @@ NULL
 SELECT to_char(to_date('1970-01-01T10:10:10', ''), NULL);
 -- EXPECTED:
 NULL
+
+-- TEST: stable-rust-implemented-func-in-filter
+-- SQL:
+SELECT * FROM (VALUES(1)) WHERE version() IS NOT NULL;
+-- EXPECTED:
+1
