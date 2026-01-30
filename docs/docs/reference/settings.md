@@ -808,6 +808,16 @@ table.legend {
             </td>
         </tr>
         <tr>
+            <td><span class="sql-cluster">[governor_rpc_batch_size](db_config.md#governor_rpc_batch_size){.link}</span></td>
+            <td>Размер группы RPC-запросов, которую губернатор отправляет за одну итерацию цикла</td>
+            <td>200</td>
+            <td>
+            ```sql
+            ALTER SYSTEM SET governor_rpc_batch_size = 80;
+            ```
+            </td>
+        </tr>
+        <tr>
             <td><span class="sql-tier">[iproto_net_msg_max](db_config.md#iproto_net_msg_max){.link}</span></td>
             <td>Максимальное количество сообщений, которое Picodata обрабатывает параллельно</td>
             <td>768</td>
