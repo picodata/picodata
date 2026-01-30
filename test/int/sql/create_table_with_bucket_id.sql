@@ -15,3 +15,9 @@ invalid column: Primary key column bucket_id not found.
 CREATE TABLE t(a INT, PRIMARY KEY (bucket_id));
 -- ERROR:
 invalid primary key: Primary key must include at least one column in addition to bucket_id.
+
+-- TEST: incorrect_column_name
+-- SQL:
+CREATE TABLE t(a INT, bucket_id INT, PRIMARY KEY (bucket_id, a));
+-- ERROR:
+invalid column: bucket_id is reserved for system use in sharded tables. Choose another name.

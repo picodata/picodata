@@ -1128,6 +1128,19 @@ fn parse_create_table(
             Some(format_smolstr!("Primary key must be declared.")),
         ));
     }
+    if !is_global {
+        let has_bucket_id_for_sharded = columns
+            .iter()
+            .any(|c| c.name == DEFAULT_BUCKET_ID_COLUMN_NAME);
+        if has_bucket_id_for_sharded {
+            return Err(SbroadError::Invalid(
+                Entity::Column,
+                Some(format_smolstr!(
+                    "{DEFAULT_BUCKET_ID_COLUMN_NAME} is reserved for system use in sharded tables. Choose another name."
+                )),
+            ));
+        }
+    }
     // infer sharding key from primary key
     if shard_key.is_empty() && !is_global {
         for pk_key in &pk_keys {
