@@ -445,3 +445,49 @@ cluster:
             "server responded with error: Other: cannot determine the default tier while altering _pico_tier",
         ]
     ]
+
+
+def test_restart_upgrade_after_fail(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=4, init_replication_factor=2)
+    # sql with typo
+    op = "REATE TABLE my_table (id UNSIGNED NOT NULL, PRIMARY KEY (id)) DISTRIBUTED GLOBALLY"
+    index, _ = i1.cas(
+        "insert",
+        "_pico_governor_queue",
+        make_operation_tuple(1, op),
+    )
+    cluster.raft_wait_index(index + 1)
+    # operation is failed
+    res = i1.sql("SELECT status, status_description FROM _pico_governor_queue WHERE id = 1")
+    assert res[0][0] == "failed"
+    assert "rule parsing error" in res[0][1]
+
+    # update the sql to be correct
+    i1.sql(
+        """
+        UPDATE _pico_governor_queue SET
+            op = 'CREATE TABLE my_table (id UNSIGNED NOT NULL, PRIMARY KEY (id)) DISTRIBUTED GLOBALLY',
+            status_description = ''
+        WHERE id = 1
+        """
+    )
+    cluster.raft_wait_index(index + 2)
+    # operation is still failed
+    res = i1.sql("SELECT status FROM _pico_governor_queue WHERE id = 1")
+    assert res[0][0] == "failed"
+
+    # restart upgrade step (change status to 'pending')
+    i1.sql(
+        """
+        UPDATE _pico_governor_queue SET
+            status = 'pending'
+        WHERE id = 1
+        """
+    )
+    cluster.raft_wait_index(index + 5)
+
+    # operation is successful
+    res = i1.sql("SELECT status FROM _pico_governor_queue WHERE id = 1")
+    assert res[0][0] == "done"
+    res = i1.sql("SELECT * FROM my_table")
+    assert res == []
