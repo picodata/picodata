@@ -142,8 +142,7 @@ lint-rs:
 	RUSTDOCFLAGS="-Dwarnings -Arustdoc::private_intra_doc_links" \
 		cargo doc \
 			$(LOCKED) $(MAKE_JOBSERVER_ARGS) \
-			--workspace --no-deps --document-private-items \
-			--exclude=tlua --exclude=tarantool
+			--workspace --no-deps --document-private-items
 
 .PHONY: lint-py
 lint-py:

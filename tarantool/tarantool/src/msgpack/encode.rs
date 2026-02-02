@@ -151,7 +151,7 @@ impl<'a> ExtStruct<'a> {
 /// When deriving the trait for a structure it's possible to additionally specify
 /// if the structure should be represented as `MP_MAP` or as an `MP_ARRAY`.
 /// `MP_ARRAY` is chosen by default for compactness. To deserailize a structure as an `MP_MAP`
-/// add [`encode(as_map)`] attribute to it.
+/// add `#[encode(as_map)]` attribute to it.
 ///
 /// E.g. given `let foo = Foo { a: 1, b: 3}`
 /// As `MP_ARRAY` `foo` should be identical to `(1, 3)` during serialization.
@@ -644,7 +644,7 @@ impl<'de> Decode<'de> for ExtStruct<'de> {
 /// When deriving the trait for a structure it's possible to additionally specify
 /// if the structure should be represented as `MP_MAP` or as an `MP_ARRAY`.
 /// `MP_ARRAY` is chosen by default for compactness. To serailize a structure as an `MP_MAP`
-/// add [`encode(as_map)`] attribute to it.
+/// add `#[encode(as_map)]` attribute to it.
 ///
 /// E.g. given `let foo = Foo { a: 1, b: 3}`
 /// As `MP_ARRAY` `foo` should be identical to `(1, 3)` during serialization.

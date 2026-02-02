@@ -145,7 +145,7 @@ pub unsafe fn has_fiber_id() -> bool {
 /// # Safety
 /// This function is only safe to be called from the tx thread.
 ///
-/// [`BoxError`]: crate::tarantool::error::BoxError
+/// [`BoxError`]: crate::error::BoxError
 /// [`luaL_iserror`]: tarantool::luaL_iserror
 #[inline]
 pub unsafe fn has_box_error_from_lua() -> bool {

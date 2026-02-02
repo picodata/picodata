@@ -222,7 +222,7 @@ mod on_drop {
         fn on_drop(&mut self, l: LuaState);
     }
 
-    /// See [`StaticLua`].
+    /// See [`crate::StaticLua`].
     #[derive(Debug)]
     pub struct Ignore;
 
@@ -230,7 +230,7 @@ mod on_drop {
         fn on_drop(&mut self, _: LuaState) {}
     }
 
-    /// See [`TempLua`].
+    /// See [`crate::TempLua`].
     #[derive(Debug)]
     pub struct Close;
 
@@ -240,7 +240,7 @@ mod on_drop {
         }
     }
 
-    /// See [`LuaThread`].
+    /// See [`crate::LuaThread`].
     #[derive(Debug)]
     pub struct Unref(pub i32);
 

@@ -954,7 +954,7 @@ macro_rules! impl_object {
 
             /// # Safety
             /// `inner` must satisfy the neccessary invariants of `Self`. See
-            /// [`check`]
+            /// `check`
             #[inline(always)]
             unsafe fn from_obj(inner: $crate::object::Object<L>) -> Self {
                 Self { inner }
