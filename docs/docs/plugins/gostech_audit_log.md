@@ -31,3 +31,8 @@ picodata run --audit='| gostech-audit-log --url https://example.com'
 
 В качестве `url` следует указать адрес внешнего сервера, принимающего
 данные аудита.
+
+См. также:
+
+- [Использование журнала аудита](../admin/audit_log.md)
+- [Журнал аудита в защищенной ОС](../security/audit_log.md)
