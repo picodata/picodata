@@ -13,3 +13,18 @@ time = { workspace = true } # not used directly, but referenced by macro expansi
 
 [lib]
 crate-type = ["lib", "cdylib"]
+
+# XXX: Testplug doesn't (or rather, shouldn't) have any tests relying on
+# std's test harness, so it's fine to disable them. Otherwise, cargo will
+# try to build and link a testless binary for tests which won't link due to
+# symbol requirements from `picodata-plugin = { features = "internal_test" }`.
+#
+# The dependency record above doesn't include "internal_test", but
+# this feature will emerge regardless due to cargo's gimmick called
+# "feature unification" (a workspace-wide concatentation of features
+# for a dependency used by multiple crates).
+#
+# This doesn't mean testplug has no tests. On the contrary, its sole
+# purpose is to be a comprehensive test suite for the plugin system;
+# But the tests are run via `Service::on_start` and other methods.
+test = false

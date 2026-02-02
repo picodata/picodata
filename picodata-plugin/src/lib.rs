@@ -18,7 +18,15 @@ pub mod util;
 #[no_mangle]
 pub static PICOPLUGIN_VERSION: RStr<'static> = rstr!(env!("CARGO_PKG_VERSION"));
 
-#[cfg(feature = "internal_test")]
+// XXX: Tests relying on `tarantool::test` cannot work in standalone
+// test binaries produced by `#[cfg(test)]` due to missing symbols,
+// which means that `feature = "internal_test"` and `cfg(test)`
+// are mutually exclusive.
+//
+// In case of picodata-plugin specifically, these tests will be included in
+// picodata main binary (see picodata's dependency record for picodata-plugin),
+// which means that `picodata test` command will be the one running them.
+#[cfg(all(feature = "internal_test", not(test)))]
 mod test_macros {
     use super::system::tarantool;
 

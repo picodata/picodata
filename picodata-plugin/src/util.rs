@@ -680,7 +680,15 @@ pub fn tarantool_error_to_box_error(e: tarantool::error::Error) -> BoxError {
 // test
 ////////////////////////////////////////////////////////////////////////////////
 
-#[cfg(feature = "internal_test")]
+// XXX: Tests relying on `tarantool::test` cannot work in standalone
+// test binaries produced by `#[cfg(test)]` due to missing symbols,
+// which means that `feature = "internal_test"` and `cfg(test)`
+// are mutually exclusive.
+//
+// In case of picodata-plugin specifically, these tests will be included in
+// picodata main binary (see picodata's dependency record for picodata-plugin),
+// which means that `picodata test` command will be the one running them.
+#[cfg(all(feature = "internal_test", not(test)))]
 mod test {
     use super::*;
 
