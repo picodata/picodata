@@ -468,8 +468,8 @@ pub fn build_instance(
         failure_domain: failure_domain.clone(),
         tier: tier.name.clone(),
         picodata_version: picodata_version.into(),
-        sync_incarnation: 0,
-        target_state_reason: "".into(),
+        sync_incarnation: Some(0),
+        target_state_reason: Some("".into()),
         target_state_change_time: Some(Datetime::now_utc()),
     };
 

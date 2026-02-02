@@ -62,12 +62,12 @@ pub struct Instance {
     /// with its replicaset's master. It is assigned `target_state.incarnation`
     /// when the synchronization takes place.
     #[serde(default)]
-    pub sync_incarnation: u64,
+    pub sync_incarnation: Option<u64>,
 
     /// The explanation for `target_state`. If the instance was automatically
     /// made `Offline` then we will explain the reason for that in here.
     #[serde(default)]
-    pub target_state_reason: SmolStr,
+    pub target_state_reason: Option<SmolStr>,
 
     /// The UNIX timestamp of the last time when `target_state` was changed
     /// (either state variant or state incarnation).
@@ -142,7 +142,7 @@ impl Instance {
 
     #[inline]
     pub fn replication_sync_needed(&self) -> bool {
-        self.sync_incarnation < self.target_state.incarnation
+        self.sync_incarnation.unwrap_or(0) < self.target_state.incarnation
     }
 
     /// Returns a dummy instance of the struct for use in tests
@@ -158,8 +158,8 @@ impl Instance {
             failure_domain: FailureDomain::default(),
             tier: "default".into(),
             picodata_version: "22.07.0".into(),
-            sync_incarnation: 13,
-            target_state_reason: "wakeup".into(),
+            sync_incarnation: Some(13),
+            target_state_reason: Some("wakeup".into()),
             target_state_change_time: Some(Datetime::now_utc()),
         }
     }
@@ -231,8 +231,8 @@ mod tests {
             failure_domain: FailureDomain::default(),
             tier: DEFAULT_TIER.into(),
             picodata_version: PICODATA_VERSION.into(),
-            sync_incarnation: state.incarnation,
-            target_state_reason: "".into(),
+            sync_incarnation: Some(state.incarnation),
+            target_state_reason: Some("".into()),
             target_state_change_time: None,
         }
     }
@@ -623,8 +623,8 @@ rmp_serde error: {e}"
             failure_domain: FailureDomain::default(),
             tier: DEFAULT_TIER.into(),
             picodata_version: PICODATA_VERSION.into(),
-            sync_incarnation: 0,
-            target_state_reason: "".into(),
+            sync_incarnation: Some(0),
+            target_state_reason: Some("".into()),
             target_state_change_time: None,
         };
         add_instance(&storage, &expelled_instance).unwrap();

@@ -3513,7 +3513,7 @@ mod tests {
                 " with old tuple",
                 r#" - ["i1", "i1-uuid", 1, "r1", "r1-uuid", ["{gon}", 0], ["{tgon}", 0], {{"A": "B"}}, "default", "{picodata_version}"]"#,
                 " and new tuple",
-                r#" - ["i99", "", 1, "", "", ["{goff}", 0], ["{tgoff}", 0], {{}}, "default", "{picodata_version}", 0, "", null]"#,
+                r#" - ["i99", "", 1, "", "", ["{goff}", 0], ["{tgoff}", 0], {{}}, "default", "{picodata_version}", null, null, null]"#,
             ),
             gon = Online,
             goff = Offline,
