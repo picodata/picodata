@@ -317,3 +317,82 @@ def base_version(v: str) -> str:
     if parts:
         return parts[0]
     return v
+
+
+# This test checks upgrade from 25.5.2 or lower to 25.5.3 or greater.
+# We can drop it once we don't have any clients on picodata 25.5.2 or older.
+@pytest.mark.xdist_group(name="rolling")
+def test_ddl_catchup_by_log_during_upgrade(
+    registry: Registry,
+    cluster: Cluster,
+):
+    cluster.registry = registry
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            can_vote: true
+        storage:
+            can_vote: false
+            replication_factor: 3
+        """
+    )
+
+    runtime_v1 = cluster.registry.get(Version.PREVIOUS_MINOR)
+    cluster.runtime = runtime_v1
+    leader = cluster.add_instance(wait_online=False, name="leader", tier="arbiter")
+    storage_A = cluster.add_instance(wait_online=False, name="storage_A", tier="storage")
+    storage_B = cluster.add_instance(wait_online=False, name="storage_B", tier="storage")
+    storage_C = cluster.add_instance(wait_online=False, name="storage_C", tier="storage")
+    cluster.wait_online()
+
+    # Initial cluster version
+    [[cluster_version]] = leader.sql("SELECT value FROM _pico_property WHERE key = 'cluster_version'")
+    assert base_version(cluster_version) == str(runtime_v1.absolute_version)
+
+    # Change auto-offline timeout to check senitnel's behaviour later
+    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 3")
+
+    # Turn off the replicas to block upgrade and to check how they handle
+    # applying DdlCommit during catch-up
+    storage_B.terminate()
+    storage_C.terminate()
+    leader.wait_has_states("Offline", "Offline", target=storage_B)
+    leader.wait_has_states("Offline", "Offline", target=storage_C)
+
+    # Introduce a DDL operation
+    leader.sql("CREATE TABLE my_bass (id INT PRIMARY KEY, value TEXT) DISTRIBUTED GLOBALLY WAIT APPLIED LOCALLY")
+    storage_A.raft_wait_index(leader.raft_get_index())
+
+    # Start upgrading instances one by one
+    runtime_v2 = cluster.registry.get(Version.CURRENT)
+
+    # First upgrade the 2 up-to-date instances
+    storage_A.terminate()
+    storage_A.runtime = runtime_v2
+    storage_A.start()
+    storage_A.wait_online()
+
+    leader.terminate()
+    leader.runtime = runtime_v2
+    leader.start()
+    leader.wait_online()
+
+    # Now let's try upgrading the lagging replicas
+    storage_B.runtime = runtime_v2
+    storage_C.runtime = runtime_v2
+    storage_B.start()
+    storage_C.start()
+
+    storage_B.wait_online()
+    storage_C.wait_online()
+
+    # Now cluster is successfully upgraded
+    def check():
+        [[cluster_version]] = leader.sql("SELECT value FROM _pico_property WHERE key = 'cluster_version'")
+        assert base_version(cluster_version) == str(runtime_v2.absolute_version)
+
+    # Note: needs to be retriable because upgrade happens asynchronously after all instances become Online
+    Retriable().call(check)
