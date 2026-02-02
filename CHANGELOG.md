@@ -8,6 +8,13 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [25.5.6] - Unreleased
+
+### Fixes
+
+- Fixed governor's `ConfigureReplication` step was broken during upgrade from before 25.5.3
+
+
 ## [25.5.5] - 2026-01-26
 
 ### Fixes
