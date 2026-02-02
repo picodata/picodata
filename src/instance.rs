@@ -142,7 +142,12 @@ impl Instance {
 
     #[inline]
     pub fn replication_sync_needed(&self) -> bool {
-        self.sync_incarnation.unwrap_or(0) < self.target_state.incarnation
+        let Some(sync_incarnation) = self.sync_incarnation else {
+            // Schema not yet upgraded, keep old behavior, i.e. no sync
+            return false;
+        };
+
+        sync_incarnation < self.target_state.incarnation
     }
 
     /// Returns a dummy instance of the struct for use in tests
