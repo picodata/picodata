@@ -419,7 +419,7 @@ pub fn update_instance(
     }
 
     if let Some(reason) = &req.target_state_reason {
-        if reason != &instance.target_state_reason {
+        if Some(reason) != instance.target_state_reason.as_ref() {
             if version_is_new_enough(
                 system_catalog_version,
                 &Instance::TARGET_STATE_CHANGE_TIME_AVAILABLE_SINCE,

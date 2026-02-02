@@ -1412,8 +1412,8 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
         failure_domain: config.instance.failure_domain().clone(),
         tier: my_tier_name.into(),
         picodata_version: SmolStr::new_static(PICODATA_VERSION),
-        sync_incarnation: 0,
-        target_state_reason: "".into(),
+        sync_incarnation: Some(0),
+        target_state_reason: Some("".into()),
         target_state_change_time: Some(Datetime::now_utc()),
     };
 
