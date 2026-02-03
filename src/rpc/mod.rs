@@ -201,9 +201,11 @@ macro_rules! define_rpc_request {
         #[::tarantool::proc(packed_args)]
         fn $proc($_r: $_request) -> $result {
             let start = tarantool::time::Instant::now_fiber();
-            let proc_name = $crate::proc_name!($proc);
 
-            let result: ::std::result::Result<_, $crate::traft::error::Error> = { $($proc_body)* };
+            let proc_name = $crate::proc_name!($proc);
+            let proc_impl = || { $($proc_body)* };
+
+            let result: $result = proc_impl();
             if result.is_err() {
                 $crate::metrics::record_rpc_request_errors_total(proc_name);
             }

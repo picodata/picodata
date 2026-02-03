@@ -105,6 +105,7 @@ with the `YY.MINOR.MICRO` scheme.
   when applying system catalog changes for several catalog versions.
 - Fixed `picodata plugin configure` panic on attempt to update non-existent plugin or a non-existing
   service of an existing plugin.
+- Fixed an RPC to avoid skipping metrics collection code path on early return in procedure implementation.
 
 
 ## [25.5.5] - 2026-01-26
