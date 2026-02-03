@@ -158,18 +158,23 @@ impl From<&CastType> for TypeSystemType {
     }
 }
 
-impl From<&UnrestrictedType> for CastType {
-    fn from(value: &UnrestrictedType) -> Self {
+impl TryFrom<&UnrestrictedType> for CastType {
+    type Error = SbroadError;
+
+    fn try_from(value: &UnrestrictedType) -> Result<Self, Self::Error> {
         match value {
-            UnrestrictedType::Boolean => CastType::Boolean,
-            UnrestrictedType::Decimal => CastType::Decimal,
-            UnrestrictedType::Datetime => CastType::Datetime,
-            UnrestrictedType::Double => CastType::Double,
-            UnrestrictedType::Integer => CastType::Integer,
-            UnrestrictedType::Uuid => CastType::Uuid,
-            UnrestrictedType::String => CastType::String,
+            UnrestrictedType::Boolean => Ok(CastType::Boolean),
+            UnrestrictedType::Decimal => Ok(CastType::Decimal),
+            UnrestrictedType::Datetime => Ok(CastType::Datetime),
+            UnrestrictedType::Double => Ok(CastType::Double),
+            UnrestrictedType::Integer => Ok(CastType::Integer),
+            UnrestrictedType::Uuid => Ok(CastType::Uuid),
+            UnrestrictedType::String => Ok(CastType::String),
             UnrestrictedType::Map | UnrestrictedType::Any | UnrestrictedType::Array => {
-                unreachable!("incorrect type transition, only scalar types supported");
+                Err(Self::Error::Invalid(
+                    Entity::Type,
+                    Some(format_smolstr!("cannot cast to Map/Any/Array")),
+                ))
             }
         }
     }

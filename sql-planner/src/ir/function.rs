@@ -2,8 +2,8 @@ use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::to_user;
 use crate::ir::aggregates::AggregateKind;
 use crate::ir::node::expression::{Expression, MutExpression};
-use crate::ir::node::{NodeId, ScalarFunction};
-use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY};
+use crate::ir::node::{ArenaType, Node96};
+use crate::ir::node::{Cast, NodeId, ScalarFunction};
 use crate::ir::types::CastType;
 use crate::ir::Plan;
 use serde::{Deserialize, Serialize};
@@ -248,55 +248,60 @@ impl Plan {
         &mut self,
         type_analyzer: &TypeAnalyzer<NodeId>,
     ) -> Result<(), SbroadError> {
-        let filter = |id| {
-            matches!(
-                self.get_expression_node(id),
-                Ok(Expression::ScalarFunction(ScalarFunction {
-                    volatility_type: VolatilityType::Stable,
-                    ..
-                }))
-            )
-        };
+        let func_node_ids: Vec<NodeId> = self
+            .nodes
+            .iter96()
+            .enumerate()
+            .filter(|(_, node)| matches!(node, Node96::ScalarFunction(_)))
+            .map(|(offset, _)| NodeId {
+                offset: offset.try_into().unwrap(),
+                arena_type: ArenaType::Arena96,
+            })
+            .collect();
 
-        let mut post_order = PostOrderWithFilter::with_capacity(
-            |node| self.subtree_iter(node, false),
-            EXPR_CAPACITY,
-            Box::new(filter),
-        );
-
-        post_order.populate_nodes(self.get_top()?);
-        let func_node_ids = post_order.take_nodes();
-        drop(post_order);
-
-        for LevelNode(_, func_node_id) in func_node_ids {
+        for func_node_id in func_node_ids {
             let Expression::ScalarFunction(ScalarFunction { children: args, .. }) =
                 self.get_expression_node(func_node_id)?
             else {
                 unreachable!("expected only ScalarFunctions");
             };
 
-            if args.is_empty() {
-                continue;
-            }
-
             let args = args.clone();
             let type_report = type_analyzer.get_report();
+
             for (idx, arg_node_id) in args.iter().enumerate() {
                 let arg_node_id = *arg_node_id;
-                if matches!(
-                    self.get_expression_node(arg_node_id)?,
-                    Expression::Cast(_) | Expression::CountAsterisk(_)
-                ) {
-                    continue;
-                }
-                let arg_type = DerivedType::from(type_report.get_type(&arg_node_id));
-                let arg_type = arg_type
-                    .get()
-                    .expect("expected defined type from type analyzer");
-                if !arg_type.is_scalar() {
-                    continue;
-                }
-                let cast_type = CastType::from(&arg_type);
+                let arg_expr = self.get_expression_node(arg_node_id)?;
+
+                let cast_type = match arg_expr {
+                    Expression::CountAsterisk(_) => continue,
+                    Expression::Cast(Cast { to, .. }) => {
+                        let arg_type = DerivedType::from(type_report.get_type(&arg_node_id));
+                        let arg_type = arg_type
+                            .get()
+                            .expect("expected defined type from type analyzer");
+                        if !arg_type.is_scalar() {
+                            continue;
+                        }
+                        let cast_type = CastType::try_from(&arg_type)?;
+
+                        if *to == cast_type {
+                            continue;
+                        }
+                        cast_type
+                    }
+                    _ => {
+                        let arg_type = DerivedType::from(type_report.get_type(&arg_node_id));
+                        let arg_type = arg_type
+                            .get()
+                            .expect("expected defined type from type analyzer");
+                        if !arg_type.is_scalar() {
+                            continue;
+                        }
+                        CastType::try_from(&arg_type)?
+                    }
+                };
+
                 let cast_id = self.add_cast(arg_node_id, cast_type)?;
                 let MutExpression::ScalarFunction(ScalarFunction { children, .. }) =
                     self.get_mut_expression_node(func_node_id)?
