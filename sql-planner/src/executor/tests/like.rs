@@ -23,7 +23,7 @@ fn like2_test() {
 fn ilike_test() {
     broadcast_check(
         r#"SELECT a ilike a escape 'x' FROM t1"#,
-        r#"SELECT lower ("t1"."a") LIKE lower ("t1"."a") ESCAPE CAST($1 AS string) as "col_1" FROM "t1""#,
+        r#"SELECT lower (CAST ("t1"."a" as string)) LIKE lower (CAST ("t1"."a" as string)) ESCAPE CAST($1 AS string) as "col_1" FROM "t1""#,
         vec![Value::from("x")],
     );
 }

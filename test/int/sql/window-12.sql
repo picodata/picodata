@@ -126,7 +126,7 @@ WINDOW
     win AS (ORDER BY y + 2 * (SELECT 111) + (SELECT 2)),
     win1 AS (PARTITION BY x + (SELECT 3));
 -- EXPECTED:
-projection (avg("x"::int) over (partition by ("x"::int + ROW($0)) ) -> "col_1", sum("x"::int) over (order by (("y"::int + (2::int * ROW($2))) + ROW($1)) ) -> "col_2")
+projection (avg("x"::int::int) over (partition by ("x"::int + ROW($0)) ) -> "col_1", sum("x"::int::int) over (order by (("y"::int + (2::int * ROW($2))) + ROW($1)) ) -> "col_2")
     motion [policy: full, program: ReshardIfNeeded]
         projection ("t6"."x"::int -> "x", "t6"."y"::int -> "y")
             scan "t6"
@@ -163,7 +163,7 @@ WINDOW
         )
     )::int);
 -- EXPECTED:
-projection (row_number() over (partition by ("x"::int + ROW($1)) ) -> "col_1", sum("y"::int) over (partition by ("x"::int + ROW($1)) ) -> "col_2", max("x"::int) over (order by ("x"::int + ROW($0)::int) ) -> "col_3")
+projection (row_number() over (partition by ("x"::int + ROW($1)) ) -> "col_1", sum("y"::int::int) over (partition by ("x"::int + ROW($1)) ) -> "col_2", max("x"::int::int) over (order by ("x"::int + ROW($0)::int) ) -> "col_3")
     motion [policy: full, program: ReshardIfNeeded]
         projection ("t6"."x"::int -> "x", "t6"."y"::int -> "y")
             scan "t6"

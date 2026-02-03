@@ -158,6 +158,23 @@ impl From<&CastType> for TypeSystemType {
     }
 }
 
+impl From<&UnrestrictedType> for CastType {
+    fn from(value: &UnrestrictedType) -> Self {
+        match value {
+            UnrestrictedType::Boolean => CastType::Boolean,
+            UnrestrictedType::Decimal => CastType::Decimal,
+            UnrestrictedType::Datetime => CastType::Datetime,
+            UnrestrictedType::Double => CastType::Double,
+            UnrestrictedType::Integer => CastType::Integer,
+            UnrestrictedType::Uuid => CastType::Uuid,
+            UnrestrictedType::String => CastType::String,
+            UnrestrictedType::Map | UnrestrictedType::Any | UnrestrictedType::Array => {
+                unreachable!("incorrect type transition, only scalar types supported");
+            }
+        }
+    }
+}
+
 impl TryFrom<&Rule> for CastType {
     type Error = SbroadError;
 

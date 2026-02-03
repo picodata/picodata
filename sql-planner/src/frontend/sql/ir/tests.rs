@@ -837,7 +837,7 @@ fn front_order_by_over_single_distribution_must_not_add_motion() {
                     scan "unnamed_subquery"
                         projection (sum(("count_1"::int))::int -> "id_count")
                             motion [policy: full, program: ReshardIfNeeded]
-                                projection (count(("test_space"."id"::int))::int -> "count_1")
+                                projection (count(("test_space"."id"::int::int))::int -> "count_1")
                                     scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1483,7 +1483,7 @@ fn front_sql_join() {
                 scan "t2"
                     projection (sum(("sum_1"::decimal))::decimal -> "id")
                         motion [policy: full, program: ReshardIfNeeded]
-                            projection (sum(("test_space"."id"::int))::decimal -> "sum_1")
+                            projection (sum(("test_space"."id"::int::int))::decimal -> "sum_1")
                                 scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1549,7 +1549,7 @@ fn front_sql_aggregates() {
     projection ("gr_expr_1"::int -> "b", sum(("count_1"::int))::int + sum(("count_2"::int))::int -> "col_1")
         group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "count_1"::int -> "count_1", "count_2"::int -> "count_2")
             motion [policy: full, program: ReshardIfNeeded]
-                projection ("t"."b"::int -> "gr_expr_1", count(("t"."a"::int))::int -> "count_1", count(("t"."b"::int))::int -> "count_2")
+                projection ("t"."b"::int -> "gr_expr_1", count(("t"."a"::int::int))::int -> "count_1", count(("t"."b"::int::int))::int -> "count_2")
                     group by ("t"."b"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                         scan "t"
     execution options:
@@ -1592,8 +1592,8 @@ fn front_sql_avg_aggregate() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(("avg_1"::decimal::double))::decimal / sum(("avg_2"::decimal::double))::decimal -> "col_1", avg(distinct ("gr_expr_1"::decimal::double))::decimal -> "col_2", (sum(("avg_1"::decimal::double))::decimal / sum(("avg_2"::decimal::double))::decimal) * (sum(("avg_1"::decimal::double))::decimal / sum(("avg_2"::decimal::double))::decimal) -> "col_3")
         motion [policy: full, program: ReshardIfNeeded]
-            projection ("t"."b"::int -> "gr_expr_1", sum(("t"."b"::int))::decimal -> "avg_1", count(("t"."b"::int))::int -> "avg_2")
-                group by ("t"."b"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
+            projection ("t"."b"::int::int -> "gr_expr_1", sum(("t"."b"::int::int))::decimal -> "avg_1", count(("t"."b"::int::int))::int -> "avg_2")
+                group by ("t"."b"::int::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                     scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1610,8 +1610,8 @@ fn front_sql_total_aggregate() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (total(("total_1"::double))::double -> "col_1", total(distinct ("gr_expr_1"::double))::double -> "col_2")
         motion [policy: full, program: ReshardIfNeeded]
-            projection ("t"."b"::int -> "gr_expr_1", total(("t"."b"::int))::double -> "total_1")
-                group by ("t"."b"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
+            projection ("t"."b"::int::int -> "gr_expr_1", total(("t"."b"::int::int))::double -> "total_1")
+                group by ("t"."b"::int::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                     scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1628,8 +1628,8 @@ fn front_sql_min_aggregate() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (min(("min_1"::int))::int -> "col_1", min(distinct ("gr_expr_1"::int))::int -> "col_2")
         motion [policy: full, program: ReshardIfNeeded]
-            projection ("t"."b"::int -> "gr_expr_1", min(("t"."b"::int))::int -> "min_1")
-                group by ("t"."b"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
+            projection ("t"."b"::int::int -> "gr_expr_1", min(("t"."b"::int::int))::int -> "min_1")
+                group by ("t"."b"::int::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                     scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1646,8 +1646,8 @@ fn front_sql_max_aggregate() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (max(("max_1"::int))::int -> "col_1", max(distinct ("gr_expr_1"::int))::int -> "col_2")
         motion [policy: full, program: ReshardIfNeeded]
-            projection ("t"."b"::int -> "gr_expr_1", max(("t"."b"::int))::int -> "max_1")
-                group by ("t"."b"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
+            projection ("t"."b"::int::int -> "gr_expr_1", max(("t"."b"::int::int))::int -> "max_1")
+                group by ("t"."b"::int::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                     scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1664,8 +1664,8 @@ fn front_sql_group_concat_aggregate() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (group_concat(("group_concat_1"::string))::string -> "col_1", group_concat(distinct ("gr_expr_1"::string))::string -> "col_2")
         motion [policy: full, program: ReshardIfNeeded]
-            projection ("test_space"."FIRST_NAME"::string -> "gr_expr_1", group_concat(("test_space"."FIRST_NAME"::string))::string -> "group_concat_1")
-                group by ("test_space"."FIRST_NAME"::string) output: ("test_space"."id"::int -> "id", "test_space"."sysFrom"::int -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::int -> "sys_op", "test_space"."bucket_id"::int -> "bucket_id")
+            projection ("test_space"."FIRST_NAME"::string::string -> "gr_expr_1", group_concat(("test_space"."FIRST_NAME"::string::string))::string -> "group_concat_1")
+                group by ("test_space"."FIRST_NAME"::string::string) output: ("test_space"."id"::int -> "id", "test_space"."sysFrom"::int -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::int -> "sys_op", "test_space"."bucket_id"::int -> "bucket_id")
                     scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1682,8 +1682,8 @@ fn front_sql_group_concat_aggregate2() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (group_concat(("group_concat_1"::string, ' '::string))::string -> "col_1", group_concat(distinct ("gr_expr_1"::string))::string -> "col_2")
         motion [policy: full, program: ReshardIfNeeded]
-            projection ("test_space"."FIRST_NAME"::string -> "gr_expr_1", group_concat(("test_space"."FIRST_NAME"::string, ' '::string))::string -> "group_concat_1")
-                group by ("test_space"."FIRST_NAME"::string) output: ("test_space"."id"::int -> "id", "test_space"."sysFrom"::int -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::int -> "sys_op", "test_space"."bucket_id"::int -> "bucket_id")
+            projection ("test_space"."FIRST_NAME"::string::string -> "gr_expr_1", group_concat(("test_space"."FIRST_NAME"::string::string, ' '::string))::string -> "group_concat_1")
+                group by ("test_space"."FIRST_NAME"::string::string) output: ("test_space"."id"::int -> "id", "test_space"."sysFrom"::int -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::int -> "sys_op", "test_space"."bucket_id"::int -> "bucket_id")
                     scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1699,7 +1699,7 @@ fn front_sql_string_agg_alias_to_group_concat() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (group_concat(("group_concat_1"::string, ','::string))::string -> "col_1")
         motion [policy: full, program: ReshardIfNeeded]
-            projection (group_concat(("test_space"."FIRST_NAME"::string, ','::string))::string -> "group_concat_1")
+            projection (group_concat(("test_space"."FIRST_NAME"::string::string, ','::string))::string -> "group_concat_1")
                 scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1713,7 +1713,7 @@ fn front_sql_string_agg_alias_to_group_concat() {
     projection ("gr_expr_1"::int -> "id", group_concat(("group_concat_1"::string, ','::string))::string -> "col_1")
         group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "group_concat_1"::string -> "group_concat_1")
             motion [policy: full, program: ReshardIfNeeded]
-                projection ("test_space"."id"::int -> "gr_expr_1", group_concat(("test_space"."FIRST_NAME"::string, ','::string))::string -> "group_concat_1")
+                projection ("test_space"."id"::int -> "gr_expr_1", group_concat(("test_space"."FIRST_NAME"::string::string, ','::string))::string -> "group_concat_1")
                     group by ("test_space"."id"::int) output: ("test_space"."id"::int -> "id", "test_space"."sysFrom"::int -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::int -> "sys_op", "test_space"."bucket_id"::int -> "bucket_id")
                         scan "test_space"
     execution options:
@@ -1782,9 +1782,9 @@ fn front_sql_aggregates_with_subexpressions() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::int -> "b", sum(("count_1"::int))::int -> "col_1", sum(("count_2"::int))::int -> "col_2")
-        group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "count_1"::int -> "count_1", "count_2"::int -> "count_2")
+        group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "count_2"::int -> "count_2", "count_1"::int -> "count_1")
             motion [policy: full, program: ReshardIfNeeded]
-                projection ("t"."b"::int -> "gr_expr_1", count((("t"."a"::int * "t"."b"::int) + 1::int))::int -> "count_1", count((TRIM("t"."a"::int::string)))::int -> "count_2")
+                projection ("t"."b"::int -> "gr_expr_1", count((TRIM("t"."a"::int::string)::string))::int -> "count_2", count(((("t"."a"::int * "t"."b"::int) + 1::int)::int))::int -> "count_1")
                     group by ("t"."b"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                         scan "t"
     execution options:
@@ -1801,11 +1801,11 @@ fn front_sql_aggregates_with_distinct1() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("gr_expr_1"::int -> "b", count(distinct ("gr_expr_2"::int))::int -> "col_1", count(distinct ("gr_expr_1"::int))::int -> "col_2")
-        group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "gr_expr_2"::int -> "gr_expr_2")
+    projection ("gr_expr_1"::int -> "b", count(distinct ("gr_expr_2"::int))::int -> "col_1", count(distinct ("gr_expr_3"::int))::int -> "col_2")
+        group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "gr_expr_2"::int -> "gr_expr_2", "gr_expr_3"::int -> "gr_expr_3")
             motion [policy: full, program: ReshardIfNeeded]
-                projection ("t"."b"::int -> "gr_expr_1", "t"."a"::int -> "gr_expr_2")
-                    group by ("t"."b"::int, "t"."a"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
+                projection ("t"."b"::int -> "gr_expr_1", "t"."a"::int::int -> "gr_expr_2", "t"."b"::int::int -> "gr_expr_3")
+                    group by ("t"."b"::int, "t"."a"::int::int, "t"."b"::int::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1824,8 +1824,8 @@ fn front_sql_aggregates_with_distinct2() {
     projection ("gr_expr_1"::int -> "b", sum(distinct ("gr_expr_2"::decimal))::decimal -> "col_1")
         group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "gr_expr_2"::int -> "gr_expr_2")
             motion [policy: full, program: ReshardIfNeeded]
-                projection ("t"."b"::int -> "gr_expr_1", ("t"."a"::int + "t"."b"::int) + 3::int -> "gr_expr_2")
-                    group by ("t"."b"::int, ("t"."a"::int + "t"."b"::int) + 3::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
+                projection ("t"."b"::int -> "gr_expr_1", (("t"."a"::int + "t"."b"::int) + 3::int)::int -> "gr_expr_2")
+                    group by ("t"."b"::int, (("t"."a"::int + "t"."b"::int) + 3::int)::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1842,8 +1842,8 @@ fn front_sql_aggregates_with_distinct3() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(distinct ("gr_expr_1"::decimal))::decimal -> "col_1")
         motion [policy: full, program: ReshardIfNeeded]
-            projection (("t"."a"::int + "t"."b"::int) + 3::int -> "gr_expr_1")
-                group by (("t"."a"::int + "t"."b"::int) + 3::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
+            projection ((("t"."a"::int + "t"."b"::int) + 3::int)::int -> "gr_expr_1")
+                group by ((("t"."a"::int + "t"."b"::int) + 3::int)::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                     scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1961,7 +1961,7 @@ fn front_sql_pg_style_params3() {
         having sum(("count_1"::int))::int > 42::int
             group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "count_1"::int -> "count_1")
                 motion [policy: full, program: ReshardIfNeeded]
-                    projection ("t"."a"::int + 42::int -> "gr_expr_1", count(("t"."b"::int))::int -> "count_1")
+                    projection ("t"."a"::int + 42::int -> "gr_expr_1", count(("t"."b"::int::int))::int -> "count_1")
                         group by ("t"."a"::int + 42::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                             selection "t"."a"::int = 42::int
                                 scan "t"
@@ -2145,7 +2145,7 @@ fn front_sql_aggregate_without_groupby() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(("sum_1"::decimal))::decimal -> "col_1")
         motion [policy: full, program: ReshardIfNeeded]
-            projection (sum((("t"."a"::int * "t"."b"::int) + 1::int))::decimal -> "sum_1")
+            projection (sum(((("t"."a"::int * "t"."b"::int) + 1::int)::int))::decimal -> "sum_1")
                 scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2164,7 +2164,7 @@ fn front_sql_aggregate_without_groupby2() {
         scan "t1"
             projection (sum(("count_1"::int))::int -> "col_1")
                 motion [policy: full, program: ReshardIfNeeded]
-                    projection (count(("test_space"."id"::int))::int -> "count_1")
+                    projection (count(("test_space"."id"::int::int))::int -> "count_1")
                         scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2179,11 +2179,11 @@ fn front_sql_aggregate_on_aggregate() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (max(("t1"."c"::int))::int -> "col_1")
+    projection (max(("t1"."c"::int::int))::int -> "col_1")
         scan "t1"
             projection (sum(("count_1"::int))::int -> "c")
                 motion [policy: full, program: ReshardIfNeeded]
-                    projection (count(("test_space"."id"::int))::int -> "count_1")
+                    projection (count(("test_space"."id"::int::int))::int -> "count_1")
                         scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2208,7 +2208,7 @@ fn front_sql_union_single_left() {
         motion [policy: segment([ref("col_1")]), program: ReshardIfNeeded]
             projection (sum(("sum_1"::decimal))::decimal -> "col_1")
                 motion [policy: full, program: ReshardIfNeeded]
-                    projection (sum(("t"."a"::int))::decimal -> "sum_1")
+                    projection (sum(("t"."a"::int::int))::decimal -> "sum_1")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2231,7 +2231,7 @@ fn front_sql_union_single_right() {
         motion [policy: segment([ref("col_1")]), program: ReshardIfNeeded]
             projection (sum(("sum_1"::decimal))::decimal -> "col_1")
                 motion [policy: full, program: ReshardIfNeeded]
-                    projection (sum(("t"."a"::int))::decimal -> "sum_1")
+                    projection (sum(("t"."a"::int::int))::decimal -> "sum_1")
                         scan "t"
         projection ("t"."a"::int -> "a")
             scan "t"
@@ -2255,11 +2255,11 @@ fn front_sql_union_single_both() {
     union all
         projection (sum(("sum_1"::decimal))::decimal -> "col_1")
             motion [policy: full, program: ReshardIfNeeded]
-                projection (sum(("t"."a"::int))::decimal -> "sum_1")
+                projection (sum(("t"."a"::int::int))::decimal -> "sum_1")
                     scan "t"
         projection (sum(("sum_1"::decimal))::decimal -> "col_1")
             motion [policy: full, program: ReshardIfNeeded]
-                projection (sum(("t"."a"::int))::decimal -> "sum_1")
+                projection (sum(("t"."a"::int::int))::decimal -> "sum_1")
                     scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2278,7 +2278,7 @@ fn front_sql_insert_single() {
         motion [policy: segment([value(NULL), ref("col_2")]), program: ReshardIfNeeded]
             projection (sum(("sum_1"::decimal))::decimal -> "col_1", sum(("count_2"::int))::int -> "col_2")
                 motion [policy: full, program: ReshardIfNeeded]
-                    projection (sum(("t"."b"::int))::decimal -> "sum_1", count(("t"."d"::int))::int -> "count_2")
+                    projection (count(("t"."d"::int::int))::int -> "count_2", sum(("t"."b"::int::int))::decimal -> "sum_1")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2301,7 +2301,7 @@ fn front_sql_except_single_right() {
         motion [policy: segment([ref("col_1"), ref("col_2")]), program: ReshardIfNeeded]
             projection (sum(("sum_1"::decimal))::decimal -> "col_1", sum(("count_2"::int))::int -> "col_2")
                 motion [policy: full, program: ReshardIfNeeded]
-                    projection (count(("t"."b"::int))::int -> "count_2", sum(("t"."a"::int))::decimal -> "sum_1")
+                    projection (sum(("t"."a"::int::int))::decimal -> "sum_1", count(("t"."b"::int::int))::int -> "count_2")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2322,7 +2322,7 @@ fn front_sql_except_single_right() {
         motion [policy: segment([ref("col_2"), ref("col_1")]), program: ReshardIfNeeded]
             projection (sum(("sum_1"::decimal))::decimal -> "col_1", sum(("count_2"::int))::int -> "col_2")
                 motion [policy: full, program: ReshardIfNeeded]
-                    projection (count(("t"."b"::int))::int -> "count_2", sum(("t"."a"::int))::decimal -> "sum_1")
+                    projection (sum(("t"."a"::int::int))::decimal -> "sum_1", count(("t"."b"::int::int))::int -> "count_2")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2343,7 +2343,7 @@ fn front_sql_except_single_left() {
         motion [policy: segment([ref("col_1"), ref("col_2")]), program: ReshardIfNeeded]
             projection (sum(("sum_1"::decimal))::decimal -> "col_1", sum(("count_2"::int))::int -> "col_2")
                 motion [policy: full, program: ReshardIfNeeded]
-                    projection (count(("t"."b"::int))::int -> "count_2", sum(("t"."a"::int))::decimal -> "sum_1")
+                    projection (sum(("t"."a"::int::int))::decimal -> "sum_1", count(("t"."b"::int::int))::int -> "count_2")
                         scan "t"
         projection ("t"."a"::int -> "a", "t"."b"::int -> "b")
             scan "t"
@@ -2366,12 +2366,12 @@ fn front_sql_except_single_both() {
         motion [policy: segment([ref("col_1")]), program: ReshardIfNeeded]
             projection (sum(("sum_1"::decimal))::decimal -> "col_1", sum(("count_2"::int))::int -> "col_2")
                 motion [policy: full, program: ReshardIfNeeded]
-                    projection (count(("t"."b"::int))::int -> "count_2", sum(("t"."a"::int))::decimal -> "sum_1")
+                    projection (sum(("t"."a"::int::int))::decimal -> "sum_1", count(("t"."b"::int::int))::int -> "count_2")
                         scan "t"
         motion [policy: segment([ref("col_1")]), program: ReshardIfNeeded]
             projection (sum(("sum_1"::decimal))::decimal -> "col_1", sum(("sum_2"::decimal))::decimal -> "col_2")
                 motion [policy: full, program: ReshardIfNeeded]
-                    projection (sum(("t"."b"::int))::decimal -> "sum_2", sum(("t"."a"::int))::decimal -> "sum_1")
+                    projection (sum(("t"."a"::int::int))::decimal -> "sum_1", sum(("t"."b"::int::int))::decimal -> "sum_2")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2410,7 +2410,7 @@ fn front_sql_groupby_expression2() {
     projection ("gr_expr_1"::int + sum(("count_1"::int))::int -> "col_1")
         group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "count_1"::int -> "count_1")
             motion [policy: full, program: ReshardIfNeeded]
-                projection ("t"."a"::int + "t"."b"::int -> "gr_expr_1", count(("t"."a"::int))::int -> "count_1")
+                projection ("t"."a"::int + "t"."b"::int -> "gr_expr_1", count(("t"."a"::int::int))::int -> "count_1")
                     group by ("t"."a"::int + "t"."b"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                         scan "t"
     execution options:
@@ -2428,9 +2428,9 @@ fn front_sql_groupby_expression3() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::int -> "col_1", ("gr_expr_2"::int * sum(("sum_1"::decimal))::decimal) / sum(("count_2"::int))::int -> "col_2")
-        group by ("gr_expr_1"::int, "gr_expr_2"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "gr_expr_2"::int -> "gr_expr_2", "sum_1"::decimal -> "sum_1", "count_2"::int -> "count_2")
+        group by ("gr_expr_1"::int, "gr_expr_2"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "gr_expr_2"::int -> "gr_expr_2", "count_2"::int -> "count_2", "sum_1"::decimal -> "sum_1")
             motion [policy: full, program: ReshardIfNeeded]
-                projection ("t"."a"::int + "t"."b"::int -> "gr_expr_1", "t"."c"::int * "t"."d"::int -> "gr_expr_2", sum(("t"."c"::int * "t"."d"::int))::decimal -> "sum_1", count(("t"."a"::int * "t"."b"::int))::int -> "count_2")
+                projection ("t"."a"::int + "t"."b"::int -> "gr_expr_1", "t"."c"::int * "t"."d"::int -> "gr_expr_2", count((("t"."a"::int * "t"."b"::int)::int))::int -> "count_2", sum((("t"."c"::int * "t"."d"::int)::int))::decimal -> "sum_1")
                     group by ("t"."a"::int + "t"."b"::int, "t"."c"::int * "t"."d"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                         scan "t"
     execution options:
@@ -2474,14 +2474,14 @@ fn front_sql_groupby_with_aggregates() {
                 projection ("gr_expr_1"::int -> "a", "gr_expr_2"::int -> "b", sum(("sum_1"::decimal))::decimal -> "c")
                     group by ("gr_expr_1"::int, "gr_expr_2"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "gr_expr_2"::int -> "gr_expr_2", "sum_1"::decimal -> "sum_1")
                         motion [policy: full, program: ReshardIfNeeded]
-                            projection ("t"."a"::int -> "gr_expr_1", "t"."b"::int -> "gr_expr_2", sum(("t"."c"::int))::decimal -> "sum_1")
+                            projection ("t"."a"::int -> "gr_expr_1", "t"."b"::int -> "gr_expr_2", sum(("t"."c"::int::int))::decimal -> "sum_1")
                                 group by ("t"."a"::int, "t"."b"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                                     scan "t"
             scan "t2"
                 projection ("gr_expr_1"::int -> "g", "gr_expr_2"::int -> "e", sum(("sum_1"::decimal))::decimal -> "f")
                     group by ("gr_expr_1"::int, "gr_expr_2"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "gr_expr_2"::int -> "gr_expr_2", "sum_1"::decimal -> "sum_1")
                         motion [policy: full, program: ReshardIfNeeded]
-                            projection ("t2"."g"::int -> "gr_expr_1", "t2"."e"::int -> "gr_expr_2", sum(("t2"."f"::int))::decimal -> "sum_1")
+                            projection ("t2"."g"::int -> "gr_expr_1", "t2"."e"::int -> "gr_expr_2", sum(("t2"."f"::int::int))::decimal -> "sum_1")
                                 group by ("t2"."g"::int, "t2"."e"::int) output: ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                                     scan "t2"
     execution options:
@@ -2532,7 +2532,7 @@ fn front_sql_left_join_single_left() {
                 scan "t1"
                     projection (sum(("sum_1"::decimal))::decimal / 3::int -> "a")
                         motion [policy: full, program: ReshardIfNeeded]
-                            projection (sum(("test_space"."id"::int))::decimal -> "sum_1")
+                            projection (sum(("test_space"."id"::int::int))::decimal -> "sum_1")
                                 scan "test_space"
             motion [policy: full, program: ReshardIfNeeded]
                 scan "t2"
@@ -2562,7 +2562,7 @@ fn front_sql_left_join_single_left2() {
                 scan "t1"
                     projection (sum(("sum_1"::decimal))::decimal / 3::int -> "a")
                         motion [policy: full, program: ReshardIfNeeded]
-                            projection (sum(("test_space"."id"::int))::decimal -> "sum_1")
+                            projection (sum(("test_space"."id"::int::int))::decimal -> "sum_1")
                                 scan "test_space"
             motion [policy: full, program: ReshardIfNeeded]
                 scan "t2"
@@ -2591,12 +2591,12 @@ fn front_sql_left_join_single_both() {
             scan "t1"
                 projection (sum(("sum_1"::decimal))::decimal / 3::int -> "a")
                     motion [policy: full, program: ReshardIfNeeded]
-                        projection (sum(("test_space"."id"::int))::decimal -> "sum_1")
+                        projection (sum(("test_space"."id"::int::int))::decimal -> "sum_1")
                             scan "test_space"
             scan "t2"
                 projection (sum(("count_1"::int))::int -> "b")
                     motion [policy: full, program: ReshardIfNeeded]
-                        projection (count(("test_space"."id"::int))::int -> "count_1")
+                        projection (count(("test_space"."id"::int::int))::int -> "count_1")
                             scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2648,8 +2648,8 @@ fn front_sql_having1() {
         having ("gr_expr_1"::int > 1::int) and (sum(distinct ("gr_expr_2"::decimal))::decimal > 1::int)
             group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "gr_expr_2"::int -> "gr_expr_2", "sum_1"::decimal -> "sum_1")
                 motion [policy: full, program: ReshardIfNeeded]
-                    projection ("t"."a"::int -> "gr_expr_1", "t"."b"::int -> "gr_expr_2", sum(("t"."b"::int))::decimal -> "sum_1")
-                        group by ("t"."a"::int, "t"."b"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
+                    projection ("t"."a"::int -> "gr_expr_1", "t"."b"::int::int -> "gr_expr_2", sum(("t"."b"::int::int))::decimal -> "sum_1")
+                        group by ("t"."a"::int, "t"."b"::int::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                             scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2669,8 +2669,8 @@ fn front_sql_having2() {
     projection (sum(("sum_1"::decimal))::decimal * count(distinct ("gr_expr_1"::int))::int -> "col_1", sum(("sum_1"::decimal))::decimal -> "col_2")
         having (sum(distinct ("gr_expr_1"::decimal))::decimal > 1::int) and (sum(("sum_1"::decimal))::decimal > 1::int)
             motion [policy: full, program: ReshardIfNeeded]
-                projection ("t"."b"::int -> "gr_expr_1", sum(("t"."a"::int))::decimal -> "sum_1")
-                    group by ("t"."b"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
+                projection ("t"."b"::int::int -> "gr_expr_1", sum(("t"."a"::int::int))::decimal -> "sum_1")
+                    group by ("t"."b"::int::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2690,7 +2690,7 @@ fn front_sql_having3() {
     projection (sum(("sum_1"::decimal))::decimal -> "col_1")
         having sum(("sum_1"::decimal))::decimal > 1::int
             motion [policy: full, program: ReshardIfNeeded]
-                projection (sum(("t"."a"::int))::decimal -> "sum_1")
+                projection (sum(("t"."a"::int::int))::decimal -> "sum_1")
                     scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2728,8 +2728,8 @@ fn front_sql_having_with_sq() {
         having ROW($0) > count(distinct ("gr_expr_2"::int))::int
             group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "gr_expr_2"::int -> "gr_expr_2")
                 motion [policy: full, program: ReshardIfNeeded]
-                    projection ("test_space"."sysFrom"::int -> "gr_expr_1", "test_space"."id"::int -> "gr_expr_2")
-                        group by ("test_space"."sysFrom"::int, "test_space"."id"::int) output: ("test_space"."id"::int -> "id", "test_space"."sysFrom"::int -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::int -> "sys_op", "test_space"."bucket_id"::int -> "bucket_id")
+                    projection ("test_space"."sysFrom"::int -> "gr_expr_1", "test_space"."id"::int::int -> "gr_expr_2")
+                        group by ("test_space"."sysFrom"::int, "test_space"."id"::int::int) output: ("test_space"."id"::int -> "id", "test_space"."sysFrom"::int -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::int -> "sys_op", "test_space"."bucket_id"::int -> "bucket_id")
                             scan "test_space"
     subquery $0:
     motion [policy: full, program: ReshardIfNeeded]
@@ -2775,8 +2775,8 @@ fn front_sql_having_with_sq_segment_motion() {
         having ROW("gr_expr_1"::int, "gr_expr_2"::int) in ROW($0, $0)
             group by ("gr_expr_1"::int, "gr_expr_2"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "gr_expr_2"::int -> "gr_expr_2", "gr_expr_3"::int -> "gr_expr_3")
                 motion [policy: full, program: ReshardIfNeeded]
-                    projection ("test_space"."sysFrom"::int -> "gr_expr_1", "test_space"."sys_op"::int -> "gr_expr_2", "test_space"."id"::int -> "gr_expr_3")
-                        group by ("test_space"."sysFrom"::int, "test_space"."sys_op"::int, "test_space"."id"::int) output: ("test_space"."id"::int -> "id", "test_space"."sysFrom"::int -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::int -> "sys_op", "test_space"."bucket_id"::int -> "bucket_id")
+                    projection ("test_space"."sysFrom"::int -> "gr_expr_1", "test_space"."sys_op"::int -> "gr_expr_2", "test_space"."id"::int::int -> "gr_expr_3")
+                        group by ("test_space"."sysFrom"::int, "test_space"."sys_op"::int, "test_space"."id"::int::int) output: ("test_space"."id"::int -> "id", "test_space"."sysFrom"::int -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::int -> "sys_op", "test_space"."bucket_id"::int -> "bucket_id")
                             scan "test_space"
     subquery $0:
     motion [policy: full, program: ReshardIfNeeded]
@@ -2805,8 +2805,8 @@ fn front_sql_having_with_sq_segment_local_motion() {
         having ROW("gr_expr_1"::int, "gr_expr_2"::int) in ROW($0, $0)
             group by ("gr_expr_1"::int, "gr_expr_2"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "gr_expr_2"::int -> "gr_expr_2", "gr_expr_3"::int -> "gr_expr_3")
                 motion [policy: full, program: ReshardIfNeeded]
-                    projection ("test_space"."sysFrom"::int -> "gr_expr_1", "test_space"."sys_op"::int -> "gr_expr_2", "test_space"."id"::int -> "gr_expr_3")
-                        group by ("test_space"."sysFrom"::int, "test_space"."sys_op"::int, "test_space"."id"::int) output: ("test_space"."id"::int -> "id", "test_space"."sysFrom"::int -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::int -> "sys_op", "test_space"."bucket_id"::int -> "bucket_id")
+                    projection ("test_space"."sysFrom"::int -> "gr_expr_1", "test_space"."sys_op"::int -> "gr_expr_2", "test_space"."id"::int::int -> "gr_expr_3")
+                        group by ("test_space"."sysFrom"::int, "test_space"."sys_op"::int, "test_space"."id"::int::int) output: ("test_space"."id"::int -> "id", "test_space"."sysFrom"::int -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::int -> "sys_op", "test_space"."bucket_id"::int -> "bucket_id")
                             scan "test_space"
     subquery $0:
     motion [policy: full, program: ReshardIfNeeded]
@@ -2830,7 +2830,7 @@ fn front_sql_unique_local_aggregates() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(("sum_1"::decimal))::decimal -> "col_1", sum(("count_2"::int))::int -> "col_2", sum(("sum_1"::decimal))::decimal + sum(("count_2"::int))::int -> "col_3")
         motion [policy: full, program: ReshardIfNeeded]
-            projection (count(("t"."a"::int))::int -> "count_2", sum(("t"."a"::int))::decimal -> "sum_1")
+            projection (sum(("t"."a"::int::int))::decimal -> "sum_1", count(("t"."a"::int::int))::int -> "count_2")
                 scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2849,11 +2849,11 @@ fn front_sql_unique_local_groupings() {
 
     // here we must compute only two groupby columns at local stage: a, b
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (sum(distinct ("gr_expr_2"::decimal))::decimal -> "col_1", count(distinct ("gr_expr_2"::int))::int -> "col_2", count(distinct ("gr_expr_1"::int))::int -> "col_3")
-        group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "gr_expr_2"::int -> "gr_expr_2")
+    projection (sum(distinct ("gr_expr_2"::decimal))::decimal -> "col_1", count(distinct ("gr_expr_2"::int))::int -> "col_2", count(distinct ("gr_expr_3"::int))::int -> "col_3")
+        group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "gr_expr_2"::int -> "gr_expr_2", "gr_expr_3"::int -> "gr_expr_3")
             motion [policy: full, program: ReshardIfNeeded]
-                projection ("t"."b"::int -> "gr_expr_1", "t"."a"::int -> "gr_expr_2")
-                    group by ("t"."b"::int, "t"."a"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
+                projection ("t"."b"::int -> "gr_expr_1", "t"."a"::int::int -> "gr_expr_2", "t"."b"::int::int -> "gr_expr_3")
+                    group by ("t"."b"::int, "t"."a"::int::int, "t"."b"::int::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2961,7 +2961,7 @@ fn front_sql_select_distinct_with_aggr() {
     projection (sum(("sum_1"::decimal))::decimal -> "col_1", "gr_expr_1"::int -> "b")
         group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "sum_1"::decimal -> "sum_1")
             motion [policy: full, program: ReshardIfNeeded]
-                projection ("t"."b"::int -> "gr_expr_1", sum(("t"."a"::int))::decimal -> "sum_1")
+                projection ("t"."b"::int -> "gr_expr_1", sum(("t"."a"::int::int))::decimal -> "sum_1")
                     group by ("t"."b"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                         scan "t"
     execution options:
@@ -2979,7 +2979,7 @@ fn front_sql_select_distinct_with_aggr2() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(("sum_1"::decimal))::decimal -> "col_1")
         motion [policy: full, program: ReshardIfNeeded]
-            projection (sum(("t"."a"::int))::decimal -> "sum_1")
+            projection (sum(("t"."a"::int::int))::decimal -> "sum_1")
                 scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -3312,7 +3312,7 @@ fn front_sql_update6() {
                         scan
                             projection (sum(("sum_1"::decimal))::decimal -> "s")
                                 motion [policy: full, program: ReshardIfNeeded]
-                                    projection (sum(("t3"."b"::int))::decimal -> "sum_1")
+                                    projection (sum(("t3"."b"::int::int))::decimal -> "sum_1")
                                         scan "t3"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -3586,7 +3586,7 @@ fn front_sql_to_date() {
     let input = r#"SELECT to_date("COLUMN_1", '%Y/%d/%m') FROM (values ('2010/10/10'))"#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("to_date"(("unnamed_subquery"."COLUMN_1"::string, '%Y/%d/%m'::string))::datetime -> "col_1")
+    projection ("to_date"(("unnamed_subquery"."COLUMN_1"::string::string, '%Y/%d/%m'::string))::datetime -> "col_1")
         scan "unnamed_subquery"
             motion [policy: full, program: ReshardIfNeeded]
                 values

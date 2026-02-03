@@ -143,8 +143,8 @@ fn ilike_explain() {
     projection ("gr_expr_1"::bool -> "col_1")
         group by ("gr_expr_1"::bool) output: ("gr_expr_1"::bool -> "gr_expr_1")
             motion [policy: full, program: ReshardIfNeeded]
-                projection (lower(("t1"."a"::string))::string LIKE lower(("t1"."a"::string))::string ESCAPE 'x'::string -> "gr_expr_1")
-                    group by (lower(("t1"."a"::string))::string LIKE lower(("t1"."a"::string))::string ESCAPE 'x'::string) output: ("t1"."a"::string -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
+                projection (lower(("t1"."a"::string::string))::string LIKE lower(("t1"."a"::string::string))::string ESCAPE 'x'::string -> "gr_expr_1")
+                    group by (lower(("t1"."a"::string::string))::string LIKE lower(("t1"."a"::string::string))::string ESCAPE 'x'::string) output: ("t1"."a"::string -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
                         scan "t1"
     execution options:
         sql_vdbe_opcode_max = 45000

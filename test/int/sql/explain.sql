@@ -523,7 +523,7 @@ EXPLAIN (RAW) DELETE FROM testing_space;
 EXPLAIN (RAW) DELETE FROM testing_space WHERE id IN ( SELECT id FROM testing_space_hist GROUP BY id HAVING SUM(product_units) = 0 );
 -- EXPECTED:
 1. Query (STORAGE):
-SELECT "testing_space_hist"."id" as "gr_expr_1", sum ("testing_space_hist"."product_units") as "sum_1" FROM "testing_space_hist" GROUP BY "testing_space_hist"."id"
+SELECT "testing_space_hist"."id" as "gr_expr_1", sum ( CAST ("testing_space_hist"."product_units" as int) ) as "sum_1" FROM "testing_space_hist" GROUP BY "testing_space_hist"."id"
 +----------+-------+------+-----------------------------------------------+
 | selectid | order | from | detail                                        |
 +=========================================================================+
@@ -575,7 +575,7 @@ SELECT CAST(0 AS int) as "col_0", "testing_space"."id" as "col_1" FROM "testing_
 EXPLAIN (RAW) UPDATE testing_space SET product_units = -1 WHERE id IN ( SELECT id FROM testing_space_hist GROUP BY id HAVING SUM(product_units) = 0 );
 -- EXPECTED:
 1. Query (STORAGE):
-SELECT "testing_space_hist"."id" as "gr_expr_1", sum ("testing_space_hist"."product_units") as "sum_1" FROM "testing_space_hist" GROUP BY "testing_space_hist"."id"
+SELECT "testing_space_hist"."id" as "gr_expr_1", sum ( CAST ("testing_space_hist"."product_units" as int) ) as "sum_1" FROM "testing_space_hist" GROUP BY "testing_space_hist"."id"
 +----------+-------+------+-----------------------------------------------+
 | selectid | order | from | detail                                        |
 +=========================================================================+
@@ -759,7 +759,7 @@ SELECT "id", "name", "product_units" FROM ( SELECT * FROM "testing_space_global"
 EXPLAIN (RAW) SELECT g.name, COUNT(*) AS global_rows, SUM(g.product_units) AS global_units, SUM(l.product_units) AS local_units FROM testing_space_global g JOIN testing_space l ON g.name = l.name WHERE g.product_units > 5 GROUP BY g.name HAVING SUM(l.product_units) > SUM(g.product_units) ORDER BY global_units DESC LIMIT 10;
 -- EXPECTED:
 1. Query (STORAGE):
-SELECT "g"."name" as "gr_expr_1", count (*) as "count_1", sum ("g"."product_units") as "sum_2", sum ("l"."product_units") as "sum_3" FROM "testing_space_global" as "g" INNER JOIN "testing_space" as "l" ON "g"."name" = "l"."name" WHERE "g"."product_units" > CAST(5 AS int) GROUP BY "g"."name"
+SELECT "g"."name" as "gr_expr_1", count (*) as "count_1", sum (CAST ("l"."product_units" as int)) as "sum_3", sum (CAST ("g"."product_units" as int)) as "sum_2" FROM "testing_space_global" as "g" INNER JOIN "testing_space" as "l" ON "g"."name" = "l"."name" WHERE "g"."product_units" > CAST(5 AS int) GROUP BY "g"."name"
 +----------+-------+------+-----------------------------------------------------+
 | selectid | order | from | detail                                              |
 +===============================================================================+
@@ -771,11 +771,11 @@ SELECT "g"."name" as "gr_expr_1", count (*) as "count_1", sum ("g"."product_unit
 +----------+-------+------+-----------------------------------------------------+
 ''
 2. Query (ROUTER):
-SELECT "name", "global_rows", "global_units", "local_units" FROM ( SELECT "COL_0" as "name", sum ("COL_1") as "global_rows", sum ("COL_2") as "global_units", sum ("COL_3") as "local_units" FROM ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "TMP_18305461434037550222_0136" ) GROUP BY "COL_0" HAVING sum ("COL_3") > sum ("COL_2") ) ORDER BY "global_units" DESC LIMIT 10
+SELECT "name", "global_rows", "global_units", "local_units" FROM ( SELECT "COL_0" as "name", sum ("COL_1") as "global_rows", sum ("COL_3") as "global_units", sum ("COL_2") as "local_units" FROM ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "TMP_13612427720739559236_0136" ) GROUP BY "COL_0" HAVING sum ("COL_2") > sum ("COL_3") ) ORDER BY "global_units" DESC LIMIT 10
 +----------+-------+------+----------------------------------------------------------+
 | selectid | order | from | detail                                                   |
 +====================================================================================+
-| 0        | 0     | 0    | SCAN TABLE TMP_18305461434037550222_0136 (~1048576 rows) |
+| 0        | 0     | 0    | SCAN TABLE TMP_13612427720739559236_0136 (~1048576 rows) |
 |----------+-------+------+----------------------------------------------------------|
 | 0        | 0     | 0    | USE TEMP B-TREE FOR GROUP BY                             |
 |----------+-------+------+----------------------------------------------------------|
@@ -844,7 +844,7 @@ VALUES ( ( SELECT CAST(1 AS int) as "col_1"), ( SELECT "COL_0" FROM "TMP_1345526
 EXPLAIN (RAW) UPDATE testing_space_global SET name = upper(name);
 -- EXPECTED:
 1. Query (ROUTER):
-SELECT upper ("testing_space_global"."name") as "col_0", "testing_space_global"."id" as "col_1" FROM "testing_space_global"
+SELECT upper (CAST ("testing_space_global"."name" as string)) as "col_0", "testing_space_global"."id" as "col_1" FROM "testing_space_global"
 +----------+-------+------+-------------------------------------------------+
 | selectid | order | from | detail                                          |
 +===========================================================================+

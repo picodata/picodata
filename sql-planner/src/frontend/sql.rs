@@ -7084,6 +7084,7 @@ impl AbstractSyntaxTree {
         // their types as soon as they are parsed but it needs to be investigated.
         plan.update_value_rows()?;
         plan.recalculate_ref_types()?;
+        plan.explicit_cast_func_args(&type_analyzer)?;
 
         Ok(plan)
     }

@@ -220,12 +220,12 @@ fn exec_plan_subtree_aggregates() {
         panic!("Expected MotionPolicy::Full for local aggregation stage");
     };
     assert_eq!(sql.params, vec![Value::from("o")]);
-    insta::assert_snapshot!(sql.pattern, @r#"SELECT "T1"."sys_op" as "gr_expr_1", "T1"."id" * "T1"."sys_op" as "gr_expr_2", "T1"."id" as "gr_expr_3", count ("T1"."id") as "avg_4", min ("T1"."id") as "min_6", max ("T1"."id") as "max_7", group_concat ("T1"."FIRST_NAME", CAST($1 AS string)) as "group_concat_3", count ("T1"."sysFrom") as "count_1", sum ("T1"."id") as "sum_2", total ("T1"."id") as "total_5" FROM "test_space" as "T1" GROUP BY "T1"."sys_op", "T1"."id" * "T1"."sys_op", "T1"."id""#);
+    insta::assert_snapshot!(sql.pattern, @r#"SELECT "T1"."sys_op" as "gr_expr_1", CAST (("T1"."id" * "T1"."sys_op") as int) as "gr_expr_2", CAST ("T1"."id" as int) as "gr_expr_3", sum (CAST ("T1"."id" as int)) as "sum_2", count (CAST ("T1"."sysFrom" as int)) as "count_1", count (CAST ("T1"."id" as int)) as "avg_4", group_concat (CAST ("T1"."FIRST_NAME" as string), CAST($1 AS string)) as "group_concat_3", max (CAST ("T1"."id" as int)) as "max_7", min (CAST ("T1"."id" as int)) as "min_6", total (CAST ("T1"."id" as int)) as "total_5" FROM "test_space" as "T1" GROUP BY "T1"."sys_op", CAST (("T1"."id" * "T1"."sys_op") as int), CAST ("T1"."id" as int)"#);
 
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_eq!(sql.params, vec![Value::Integer(2), Value::from("o")]);
-    insta::assert_snapshot!(sql.pattern, @r#"SELECT "COL_1" + "COL_1" as "col_1", ("COL_1" * CAST($1 AS int)) + sum ("COL_8") as "col_2", sum ("COL_9") as "col_3", sum (DISTINCT "COL_2") / count (DISTINCT "COL_3") as "col_4", group_concat ("COL_7", CAST($2 AS string)) as "col_5", sum (CAST ("COL_9" as double)) / sum (CAST ("COL_4" as double)) as "col_6", total ("COL_10") as "col_7", min ("COL_5") as "col_8", max ("COL_6") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "TMP_test_0136") GROUP BY "COL_1""#);
+    insta::assert_snapshot!(sql.pattern, @r#"SELECT "COL_1" + "COL_1" as "col_1", ("COL_1" * CAST($1 AS int)) + sum ("COL_5") as "col_2", sum ("COL_4") as "col_3", sum (DISTINCT "COL_2") / count (DISTINCT "COL_3") as "col_4", group_concat ("COL_7", CAST($2 AS string)) as "col_5", sum (CAST ("COL_4" as double)) / sum (CAST ("COL_6" as double)) as "col_6", total ("COL_10") as "col_7", min ("COL_9") as "col_8", max ("COL_8") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "TMP_test_0136") GROUP BY "COL_1""#);
 }
 
 #[test]
@@ -257,7 +257,7 @@ fn exec_plan_subtree_aggregates_no_groupby() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT "T1"."id" + "T1"."sysFrom" as "gr_expr_1", count ("T1"."sysFrom") as "count_1" FROM "test_space" as "T1" GROUP BY "T1"."id" + "T1"."sysFrom""#.to_string(),
+            r#"SELECT CAST (("T1"."id" + "T1"."sysFrom") as int) as "gr_expr_1", count (CAST ("T1"."sysFrom" as int)) as "count_1" FROM "test_space" as "T1" GROUP BY CAST (("T1"."id" + "T1"."sysFrom") as int)"#.to_string(),
             vec![]
         ));
 
@@ -472,9 +472,9 @@ fn exec_plan_subtree_having() {
         PatternWithParams::new(
             format!(
                 "{} {} {}",
-                r#"SELECT "T1"."sys_op" as "gr_expr_1", "T1"."sys_op" * CAST($1 AS int) as "gr_expr_2","#,
-                r#"count ("T1"."sys_op" * CAST($2 AS int)) as "count_1" FROM "test_space" as "T1""#,
-                r#"GROUP BY "T1"."sys_op", "T1"."sys_op" * CAST($3 AS int)"#,
+                r#"SELECT "T1"."sys_op" as "gr_expr_1", CAST (("T1"."sys_op" * CAST($1 AS int)) as int) as "gr_expr_2","#,
+                r#"count (CAST (("T1"."sys_op" * CAST($2 AS int)) as int)) as "count_1" FROM "test_space" as "T1""#,
+                r#"GROUP BY "T1"."sys_op", CAST (("T1"."sys_op" * CAST($3 AS int)) as int)"#,
             ),
             vec![Value::Integer(2), Value::Integer(2), Value::Integer(2)]
         )
@@ -536,9 +536,9 @@ fn exec_plan_subtree_having_without_groupby() {
         PatternWithParams::new(
             format!(
                 "{} {} {}",
-                r#"SELECT "T1"."sys_op" * CAST($1 AS int) as "gr_expr_1","#,
-                r#"count ("T1"."sys_op" * CAST($2 AS int)) as "count_1" FROM "test_space" as "T1""#,
-                r#"GROUP BY "T1"."sys_op" * CAST($3 AS int)"#,
+                r#"SELECT CAST (("T1"."sys_op" * CAST($1 AS int)) as int) as "gr_expr_1","#,
+                r#"count (CAST (("T1"."sys_op" * CAST($2 AS int)) as int)) as "count_1" FROM "test_space" as "T1""#,
+                r#"GROUP BY CAST (("T1"."sys_op" * CAST($3 AS int)) as int)"#,
             ),
             vec![Value::Integer(2), Value::Integer(2), Value::Integer(2)]
         )

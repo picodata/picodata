@@ -52,8 +52,8 @@ fn aggregate() {
     limit 1
         projection (min(("min_1"::int))::int -> "col_1", min(distinct ("gr_expr_1"::int))::int -> "col_2")
             motion [policy: full, program: ReshardIfNeeded]
-                projection ("t"."b"::int -> "gr_expr_1", min(("t"."b"::int))::int -> "min_1")
-                    group by ("t"."b"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
+                projection ("t"."b"::int::int -> "gr_expr_1", min(("t"."b"::int::int))::int -> "min_1")
+                    group by ("t"."b"::int::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000

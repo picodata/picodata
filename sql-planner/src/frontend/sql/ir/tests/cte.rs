@@ -191,7 +191,7 @@ fn agg_cte() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (count(("cte"."a"::string))::int -> "col_1")
+    projection (count(("cte"."a"::string::string))::int -> "col_1")
         scan cte cte($0)
     subquery $0:
     motion [policy: full, program: ReshardIfNeeded]
