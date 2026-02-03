@@ -8,11 +8,20 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [25.5.8] - Unreleased
+
+### Fixes
+
+- Fixed that `--pg-advertise` CLI argument was erroneously disallowed to be used
+  simultaneously with `--iproto-advertise`.
+
+
 ## [25.5.7] - 2026-02-10
 
 ### Fixes
 
 - Fixed a number of vinyl issues by backporting upstream patches
+
 
 ## [25.5.6] - 2026-02-06
 
