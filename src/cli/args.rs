@@ -177,12 +177,7 @@ pub struct Run {
     /// By default "127.0.0.1:3301" is used.
     pub iproto_listen: Option<IprotoAddress>,
 
-    #[clap(
-        long,
-        value_name = "HOST:PORT",
-        env = "PICODATA_PG_ADVERTISE",
-        group = "advertise_arguments"
-    )]
+    #[clap(long, value_name = "HOST:PORT", env = "PICODATA_PG_ADVERTISE")]
     /// Public network address of the pgproto server.
     /// It is announced to the cluster during the instance start.
     ///

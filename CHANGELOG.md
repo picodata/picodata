@@ -83,6 +83,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed invalid volatile flag for rust-implemented builtin functions.
 - Fixed governor's `ConfigureReplication` step was broken during upgrade from before 25.5.3
 - Fixed that instances from tiers with can_vote=false attempting to promote to raft leader.
+- Fixed that `--pg-advertise` CLI argument was erroneously disallowed to be used
+  simultaneously with `--iproto-advertise`.
 
 
 ## [25.5.5] - 2026-01-26
