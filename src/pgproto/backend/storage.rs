@@ -19,7 +19,7 @@ use crate::{
 use postgres_types::{Oid, Type as PgType};
 use prometheus::IntCounter;
 use serde::Serialize;
-use smol_str::format_smolstr;
+use smol_str::{format_smolstr, SmolStr};
 use sql::executor::Port;
 use sql::ir::types::{DerivedType, UnrestrictedType as SbroadType};
 use sql_protocol::query_plan::PlanBlockIter;
@@ -438,6 +438,35 @@ pub fn collect_param_oids(inferred_types: &[SbroadType], client_types: &[Oid]) -
             }
         })
         .collect()
+}
+
+#[derive(serde::Serialize)]
+#[serde(tag = "type")]
+pub struct PreparedStatementMetadata {
+    pub query: String,
+    pub tier: Option<SmolStr>,
+    // Vector which contains pairs of
+    // parameter index and pg data type oid.
+    pub dk_meta: Vec<(u16, Oid)>,
+}
+
+pub fn build_prepared_statement_metadata(
+    prepared_statement: &sql::PreparedStatement,
+    query: &str,
+) -> PgResult<PreparedStatementMetadata> {
+    let tier = prepared_statement.as_plan().tier.clone();
+    let dk_meta = prepared_statement.as_plan().discover_sharding_key_info()?;
+
+    let dk_meta: Vec<_> = dk_meta
+        .into_iter()
+        .map(|(idx, ty)| (idx, sbroad_type_to_pg(&ty).oid()))
+        .collect();
+
+    Ok(PreparedStatementMetadata {
+        query: query.to_string(),
+        tier,
+        dk_meta,
+    })
 }
 
 pub fn port_read_tuples<'bytes>(

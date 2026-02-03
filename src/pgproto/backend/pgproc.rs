@@ -5,7 +5,7 @@ use super::{
 };
 use crate::pgproto::{
     backend,
-    client::ClientId,
+    client::{ClientId, ClientParams},
     error::{EncodingError, PgResult},
     value::FieldFormat,
 };
@@ -59,13 +59,21 @@ pub fn proc_pg_bind(args: BindArgs) -> PgResult<()> {
         encoding_format: output_format,
     } = args;
 
+    let client_params = ClientParams {
+        username: "".to_string(),
+        options: PartialOptions::default(),
+        is_statement_invalidation: false,
+        is_query_metadata: false,
+        _rest: Default::default(),
+    };
+
     backend::bind(
         id,
         stmt_name,
         portal_name,
         params,
         output_format,
-        &PartialOptions::default(),
+        &client_params,
     )
 }
 

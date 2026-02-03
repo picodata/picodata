@@ -18,7 +18,6 @@ use crate::{
 use bytes::Bytes;
 use postgres_types::Oid;
 use smol_str::format_smolstr;
-use sql::ir::options::PartialOptions;
 use sql::ir::value::Value as SbroadValue;
 use sql::PreparedStatement;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -91,7 +90,7 @@ pub fn bind(
     portal_name: String,
     params: Vec<SbroadValue>,
     result_format: Vec<FieldFormat>,
-    connection_options: &PartialOptions,
+    client_params: &ClientParams,
 ) -> PgResult<()> {
     let statement_key = storage::Key(id, stmt_name.into());
 
@@ -104,14 +103,14 @@ pub fn bind(
         })
         .ok_or_else(|| PgError::other(format!("Couldn't find statement '{}'.", statement_key.1)))?;
 
-    if connection_options.is_statement_invalidation {
+    if client_params.statement_invalidation_enabled() {
         statement.ensure_valid()?;
     }
 
     let Some(sql_options) = DYNAMIC_CONFIG.current_sql_options() else {
         return Err(PgError::other("Not initialized yet"));
     };
-    let effective_options = connection_options.unwrap_or(sql_options);
+    let effective_options = client_params.execution_options().unwrap_or(sql_options);
 
     let bound_statement = statement
         .prepared_statement()
@@ -231,6 +230,10 @@ impl Backend {
         }
     }
 
+    pub fn client_id(&self) -> ClientId {
+        self.client_id
+    }
+
     /// Execute a simple query. Handler for a Query message.
     ///
     /// First, it closes an unnamed portal and statement, just like PG does when gets a Query
@@ -301,7 +304,7 @@ impl Backend {
                 "".into(),
                 params,
                 vec![FieldFormat::Text; ncolumns],
-                &PartialOptions::default(),
+                &self.params,
             )?;
             self.execute(None, -1)
         };
@@ -355,7 +358,6 @@ impl Backend {
         let params_format = prepare_encoding_format(params_format, params.len())?;
         let result_format = prepare_encoding_format(result_format, describe.ncolumns())?;
         let params = decode_parameters(params, &describe.param_oids, &params_format, &statement)?;
-        let default_options = self.params.execution_options();
 
         bind(
             self.client_id,
@@ -363,7 +365,7 @@ impl Backend {
             portal,
             params,
             result_format,
-            default_options,
+            &self.params,
         )
     }
 
@@ -400,6 +402,10 @@ impl Backend {
     fn on_disconnect(&self) {
         close_client_statements(self.client_id);
         close_client_portals(self.client_id);
+    }
+
+    pub fn params(&self) -> &ClientParams {
+        &self.params
     }
 }
 

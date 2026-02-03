@@ -20,6 +20,8 @@ use std::{
 pub struct ClientParams {
     pub username: String,
     pub options: PartialOptions,
+    pub is_statement_invalidation: bool,
+    pub is_query_metadata: bool,
     pub _rest: BTreeMap<String, String>,
     // NB: add more params as needed.
     // Keep in mind that a client is required to send only "user".
@@ -49,15 +51,18 @@ impl ClientParams {
             )));
         };
 
+        const PICO_QUERY_METADATA: &str = "pico_query_metadata";
         const PICO_STMT_INVALIDATION: &str = "pico_stmt_invalidation";
 
-        // The parameter "pico_stmt_invalidation"
+        // The parameters "pico_query_metadata" and "pico_stmt_invalidation"
         // can be provided through two different mechanisms:
-        // 1. As direct startup parameter
+        // 1. As direct startup parameters
         // 2. Via the standard PostgreSQL 'options' parameter
         // When the same parameter is provided through both mechanisms,
-        // direct startup parameter takes precedence over value in 'options'.
+        // direct startup parameters take precedence over values in 'options'.
         let mut options_accumulator = PartialOptions::default();
+        let mut is_statement_invalidation = false;
+        let mut is_query_metadata = false;
         if let Some(options) = parameters.get("options") {
             for pair in options.split(',') {
                 let mut pair = pair.split('=');
@@ -82,7 +87,15 @@ impl ClientParams {
                                 "error parsing value for option {PICO_STMT_INVALIDATION}: {error}"
                             ))
                         })?;
-                        options_accumulator.is_statement_invalidation = value
+                        is_statement_invalidation = value
+                    }
+                    PICO_QUERY_METADATA => {
+                        let value: bool = val.parse().map_err(|error| {
+                            PgError::other(format!(
+                                "error parsing value for option {PICO_QUERY_METADATA}: {error}"
+                            ))
+                        })?;
+                        is_query_metadata = value
                     }
                     "read_preference" => {
                         let value = ReadPreference::from_str(val).map_err(|_| {
@@ -105,24 +118,42 @@ impl ClientParams {
             }
         }
 
+        if let Some(val) = parameters.get(PICO_QUERY_METADATA) {
+            let value: bool = val.parse().map_err(|error| {
+                PgError::other(format!(
+                    "error parsing value for option {PICO_QUERY_METADATA}: {error}"
+                ))
+            })?;
+            is_query_metadata = value
+        }
         if let Some(val) = parameters.get(PICO_STMT_INVALIDATION) {
             let value: bool = val.parse().map_err(|error| {
                 PgError::other(format!(
                     "error parsing value for option {PICO_STMT_INVALIDATION}: {error}"
                 ))
             })?;
-            options_accumulator.is_statement_invalidation = value
+            is_statement_invalidation = value
         }
 
         Ok(Self {
             username,
             options: options_accumulator,
+            is_query_metadata,
+            is_statement_invalidation,
             _rest: parameters,
         })
     }
 
     pub fn execution_options(&self) -> &PartialOptions {
         &self.options
+    }
+
+    pub fn query_metadata_enabled(&self) -> bool {
+        self.is_query_metadata
+    }
+
+    pub fn statement_invalidation_enabled(&self) -> bool {
+        self.is_statement_invalidation
     }
 }
 

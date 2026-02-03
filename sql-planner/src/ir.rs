@@ -59,6 +59,7 @@ pub mod node;
 pub mod operator;
 pub mod options;
 pub mod relation;
+pub mod sharding_key;
 pub mod transformation;
 pub mod tree;
 pub mod types;
@@ -1353,6 +1354,19 @@ impl Plan {
     pub fn is_backup(&self) -> Result<bool, SbroadError> {
         let top_id = self.get_top()?;
         Ok(matches!(self.get_node(top_id)?, Node::Ddl(Ddl::Backup(_))))
+    }
+
+    /// Checks that top node of the plan is insert.
+    ///
+    /// # Errors
+    /// - top node doesn't exist in the plan or is invalid.
+    pub fn is_insert(&self) -> Result<bool, SbroadError> {
+        let top_id = self.get_top()?;
+        if let Ok(rel) = self.get_relation_node(top_id) {
+            Ok(rel.is_insert())
+        } else {
+            Ok(false)
+        }
     }
 
     /// Checks that plan is a deallocate query.

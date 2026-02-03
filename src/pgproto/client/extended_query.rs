@@ -1,5 +1,7 @@
 use crate::pgproto::backend::result::ExecuteResult;
+use crate::pgproto::backend::storage::{self, build_prepared_statement_metadata, PG_STATEMENTS};
 use crate::pgproto::backend::Backend;
+use crate::pgproto::error::EncodingError;
 use crate::pgproto::stream::{BeMessage, FeMessage};
 use crate::pgproto::{
     error::{PgError, PgResult},
@@ -10,12 +12,34 @@ use pgwire::messages::extendedquery::{Bind, Close, Describe, Execute, Parse};
 use smol_str::format_smolstr;
 use std::io::{Read, Write};
 
+pub fn query_metadata_message(
+    backend: &Backend,
+    name: Option<String>,
+    query: &str,
+) -> PgResult<BeMessage> {
+    let key = storage::Key(backend.client_id(), name.unwrap_or_default().into());
+    let statement = PG_STATEMENTS
+        .with(|storage| storage.borrow().get(&key).map(|holder| holder.statement()))
+        .ok_or_else(|| PgError::other(format!("Couldn't find statement '{}'.", key.1)))?;
+
+    let metadata = build_prepared_statement_metadata(statement.prepared_statement(), query)?;
+    let message = serde_json::to_string(&metadata).map_err(EncodingError::new)?;
+
+    Ok(messages::notice(message))
+}
+
 pub fn process_parse_message(
     stream: &mut PgStream<impl Read + Write>,
     backend: &Backend,
     parse: Parse,
 ) -> PgResult<()> {
-    backend.parse(parse.name, &parse.query, parse.type_oids)?;
+    backend.parse(parse.name.clone(), &parse.query, parse.type_oids)?;
+
+    if backend.params().query_metadata_enabled() {
+        let metadata = query_metadata_message(backend, parse.name, &parse.query)?;
+        stream.write_message_noflush(metadata)?;
+    }
+
     stream.write_message_noflush(messages::parse_complete())?;
     Ok(())
 }

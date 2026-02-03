@@ -29,6 +29,7 @@ with the `YY.MINOR.MICRO` scheme.
     an update at a replica.
 - Introduce `read_preference` option for routing DQL queries to replicas in specific scenarios.
 - Introduce `pico_stmt_invalidation` option for getting errors when binding invalid statements.
+- Introduce `pico_query_metadata` option for getting distribution key metadata.
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:

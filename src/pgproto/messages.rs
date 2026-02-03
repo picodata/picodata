@@ -6,9 +6,20 @@ use pgwire::messages::data::{self, DataRow, ParameterDescription, RowDescription
 use pgwire::messages::extendedquery::{
     BindComplete, CloseComplete, ParseComplete, PortalSuspended,
 };
-use pgwire::messages::response::{ReadyForQuery, SslResponse, TransactionStatus};
+use pgwire::messages::response::{NoticeResponse, ReadyForQuery, SslResponse, TransactionStatus};
 use pgwire::messages::{response, startup::*};
 use postgres_types::Oid;
+
+/// Notice for the frontend.
+pub fn notice(message: String) -> BeMessage {
+    BeMessage::NoticeResponse(NoticeResponse::new(vec![
+        // Notice response always has severity, code, and message fields.
+        // See https://www.postgresql.org/docs/current/protocol-error-fields.html#PROTOCOL-ERROR-FIELDS
+        (b'S', "NOTICE".to_string()),
+        (b'C', "00000".to_string()),
+        (b'M', message),
+    ]))
+}
 
 /// MD5AuthRequest requests md5 password from the frontend.
 pub fn md5_auth_request(salt: &[u8; 4]) -> BeMessage {
