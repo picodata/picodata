@@ -1534,13 +1534,12 @@ impl Plan {
                 Ok(Node::Expression(Expression::Reference(_)))
             )
         };
-        let mut dfs = PostOrderWithFilter::with_capacity(
+        let dfs = PostOrderWithFilter::with_capacity(
             |x| self.nodes.expr_iter(x, false),
             EXPR_CAPACITY,
             Box::new(filter),
         );
-        dfs.populate_nodes(expr_id);
-        let ref_ids: Vec<NodeId> = dfs.take_nodes().iter().map(|n| n.1).collect();
+        let ref_ids: Vec<NodeId> = dfs.populate_nodes(expr_id).iter().map(|n| n.1).collect();
         Ok(ref_ids)
     }
 
@@ -1552,13 +1551,12 @@ impl Plan {
                 Ok(Node::Expression(Expression::SubQueryReference(_)))
             )
         };
-        let mut dfs = PostOrderWithFilter::with_capacity(
+        let dfs = PostOrderWithFilter::with_capacity(
             |x| self.nodes.expr_iter(x, false),
             EXPR_CAPACITY,
             Box::new(filter),
         );
-        dfs.populate_nodes(expr_id);
-        let ref_ids: Vec<NodeId> = dfs.take_nodes().iter().map(|n| n.1).collect();
+        let ref_ids: Vec<NodeId> = dfs.populate_nodes(expr_id).iter().map(|n| n.1).collect();
         Ok(ref_ids)
     }
 
@@ -2022,9 +2020,8 @@ impl Plan {
     /// # Errors
     /// - serialization error (to binary)
     pub fn pattern_id(&self, top_id: NodeId) -> Result<SmolStr, SbroadError> {
-        let mut dfs = PostOrder::with_capacity(|x| self.subtree_iter(x, true), self.nodes.len());
-        dfs.populate_nodes(top_id);
-        let nodes = dfs.take_nodes();
+        let dfs = PostOrder::with_capacity(|x| self.subtree_iter(x, true), self.nodes.len());
+        let nodes = dfs.populate_nodes(top_id);
         let mut plan_nodes: Vec<Node> = Vec::with_capacity(nodes.len());
         for level_node in nodes {
             let node = self.get_node(level_node.1)?;
@@ -2043,9 +2040,8 @@ impl Plan {
         Ok(hash)
     }
     pub fn new_pattern_id(&self, top_id: NodeId) -> Result<u64, SbroadError> {
-        let mut dfs = PostOrder::with_capacity(|x| self.subtree_iter(x, true), self.nodes.len());
-        dfs.populate_nodes(top_id);
-        let nodes = dfs.take_nodes();
+        let dfs = PostOrder::with_capacity(|x| self.subtree_iter(x, true), self.nodes.len());
+        let nodes = dfs.populate_nodes(top_id);
 
         struct HashWriter<H: Hasher> {
             hasher: H,

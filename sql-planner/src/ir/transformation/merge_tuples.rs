@@ -431,13 +431,15 @@ impl Plan {
             }
             visited.insert(*id);
 
-            let mut tree_and = BreadthFirst::with_capacity(
+            let tree_and = BreadthFirst::with_capacity(
                 |node| self.nodes.and_iter(node),
                 EXPR_CAPACITY,
                 EXPR_CAPACITY,
             );
-            let nodes_and: Vec<NodeId> =
-                tree_and.iter(*id).map(|level_node| level_node.1).collect();
+            let nodes_and: Vec<NodeId> = tree_and
+                .into_iter(*id)
+                .map(|level_node| level_node.1)
+                .collect();
             let mut nodes_for_chain: Vec<NodeId> = Vec::with_capacity(nodes_and.len());
             for and_id in nodes_and {
                 let expr = self.get_expression_node(and_id)?;
@@ -493,12 +495,15 @@ impl Plan {
             -> Result<HashMap<NodeId, Chain, RepeatableState>, SbroadError>,
         f_to_plan: &dyn Fn(NodeId, &Chain, &mut Plan) -> Result<NodeId, SbroadError>,
     ) -> Result<ExprId, SbroadError> {
-        let mut tree = BreadthFirst::with_capacity(
+        let tree = BreadthFirst::with_capacity(
             |node| self.nodes.expr_iter(node, false),
             EXPR_CAPACITY,
             EXPR_CAPACITY,
         );
-        let nodes: Vec<NodeId> = tree.iter(expr_id).map(|level_node| level_node.1).collect();
+        let nodes: Vec<NodeId> = tree
+            .into_iter(expr_id)
+            .map(|level_node| level_node.1)
+            .collect();
         let chains = f_build_chains(self, &nodes)?;
 
         // Replace nodes' children with the merged tuples.

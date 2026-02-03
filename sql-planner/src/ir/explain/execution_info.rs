@@ -178,9 +178,8 @@ impl BucketsInfo {
             }
             false
         });
-        let mut dfs = PostOrderWithFilter::with_capacity(|x| plan.nodes.rel_iter(x), 0, filter);
-        dfs.populate_nodes(top_id);
-        drop(dfs);
+        let dfs = PostOrderWithFilter::with_capacity(|x| plan.nodes.rel_iter(x), 0, filter);
+        let _ = dfs.populate_nodes(top_id);
 
         if contains_segment_motion {
             return Ok(false);

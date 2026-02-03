@@ -28,18 +28,8 @@ where
         self.inner.into_iter(root)
     }
 
-    pub fn new(iter_children: F, nodes: Vec<LevelNode<T>>) -> Self {
-        Self {
-            inner: PostOrderWithFilter::new(iter_children, nodes, Box::new(|_| true)),
-        }
-    }
-
-    pub fn populate_nodes(&mut self, root: T) {
-        self.inner.populate_nodes(root);
-    }
-
-    pub fn take_nodes(&mut self) -> Vec<LevelNode<T>> {
-        self.inner.take_nodes()
+    pub fn populate_nodes(self, root: T) -> Vec<LevelNode<T>> {
+        self.inner.populate_nodes(root)
     }
 
     pub fn with_capacity(iter_children: F, capacity: usize) -> Self {
@@ -68,37 +58,15 @@ where
     I: Iterator<Item = T>,
     T: Copy + 'filter,
 {
-    pub fn into_iter(mut self, root: T) -> impl Iterator<Item = LevelNode<T>> {
-        self.populate_nodes(root);
-        let nodes = self.take_nodes();
+    pub fn into_iter(self, root: T) -> impl Iterator<Item = LevelNode<T>> {
+        let nodes = self.populate_nodes(root);
         nodes.into_iter()
     }
 
-    /// Iter inner nodes without taking them.
-    /// Note that `populate_nodes` must be called before this function.
-    pub fn iter(&self) -> impl Iterator<Item = &LevelNode<T>> {
-        self.nodes.iter()
-    }
-
-    pub fn new(
-        iter_children: F,
-        nodes: Vec<LevelNode<T>>,
-        filter_fn: FilterFn<'filter, T>,
-    ) -> Self {
-        Self {
-            iter_children,
-            nodes,
-            filter_fn,
-        }
-    }
-
-    pub fn populate_nodes(&mut self, root: T) {
+    pub fn populate_nodes(mut self, root: T) -> Vec<LevelNode<T>> {
         self.nodes.clear();
         self.traverse(root, 0);
-    }
-
-    pub fn take_nodes(&mut self) -> Vec<LevelNode<T>> {
-        std::mem::take(&mut self.nodes)
+        self.nodes
     }
 
     fn traverse(&mut self, root: T, level: usize) {
@@ -136,20 +104,11 @@ where
     I: Iterator<Item = T>,
     T: Copy,
 {
-    pub fn iter(&mut self, root: T) -> impl Iterator<Item = LevelNode<T>> {
-        self.populate_nodes(root);
-        self.take_nodes().into_iter()
+    pub fn into_iter(self, root: T) -> impl Iterator<Item = LevelNode<T>> {
+        self.populate_nodes(root).into_iter()
     }
 
-    pub fn new(iter_children: F, queue: VecDeque<LevelNode<T>>, nodes: Vec<LevelNode<T>>) -> Self {
-        Self {
-            iter_children,
-            queue,
-            nodes,
-        }
-    }
-
-    pub fn populate_nodes(&mut self, root: T) {
+    pub fn populate_nodes(mut self, root: T) -> Vec<LevelNode<T>> {
         self.queue.push_back(LevelNode(0, root));
         while let Some(LevelNode(level, node)) = self.queue.pop_front() {
             self.nodes.push(LevelNode(level, node));
@@ -157,10 +116,7 @@ where
                 self.queue.push_back(LevelNode(level + 1, child));
             }
         }
-    }
-
-    pub fn take_nodes(&mut self) -> Vec<LevelNode<T>> {
-        std::mem::take(&mut self.nodes)
+        self.nodes
     }
 
     pub fn with_capacity(iter_children: F, node_capacity: usize, queue_capacity: usize) -> Self {

@@ -2523,12 +2523,11 @@ impl<'p> SyntaxPlan<'p> {
     fn gather_selects(&self) -> Result<Option<Vec<Select>>, SbroadError> {
         let mut selects: Vec<Select> = Vec::new();
         let top = self.get_top()?;
-        let mut dfs = PostOrder::with_capacity(
+        let dfs = PostOrder::with_capacity(
             |node| self.nodes.iter(node),
             self.plan.get_ir_plan().nodes.len(),
         );
-        dfs.populate_nodes(top);
-        let nodes = dfs.take_nodes();
+        let nodes = dfs.populate_nodes(top);
         for LevelNode(_, pos) in nodes {
             let node = self.nodes.get_sn(pos);
             if pos == top {

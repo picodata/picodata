@@ -1680,13 +1680,12 @@ impl Plan {
                     | Node::Expression(Expression::SubQueryReference { .. })
             )
         };
-        let mut post_tree = PostOrderWithFilter::with_capacity(
+        let post_tree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.expr_iter(node, false),
             capacity,
             Box::new(filter),
         );
-        post_tree.populate_nodes(row_id);
-        let nodes = post_tree.take_nodes();
+        let nodes = post_tree.populate_nodes(row_id);
         // We don't expect much relational references in a row (5 is a reasonable number).
         let mut rel_nodes: HashSet<NodeId, RandomState> =
             HashSet::with_capacity_and_hasher(5, RandomState::new());
@@ -1935,14 +1934,12 @@ impl Plan {
                     | Node::Expression(Expression::SubQueryReference { .. })
             )
         };
-        let mut subtree = PostOrderWithFilter::with_capacity(
+        let subtree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.expr_iter(node, false),
             EXPR_CAPACITY,
             Box::new(filter),
         );
-        subtree.populate_nodes(node_id);
-        let references = subtree.take_nodes();
-        drop(subtree);
+        let references = subtree.populate_nodes(node_id);
         for LevelNode(_, id) in references {
             match self.get_mut_expression_node(id)? {
                 MutExpression::Reference(Reference { target, .. }) => match target {
@@ -1994,14 +1991,12 @@ impl Plan {
             }
             false
         };
-        let mut subtree = PostOrderWithFilter::with_capacity(
+        let subtree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.expr_iter(node, false),
             EXPR_CAPACITY,
             Box::new(filter),
         );
-        subtree.populate_nodes(expr_id);
-        let references = subtree.take_nodes();
-        drop(subtree);
+        let references = subtree.populate_nodes(expr_id);
         for LevelNode(_, id) in references {
             let node = self.get_mut_expression_node(id)?;
             if let MutExpression::Reference(Reference { target, .. }) = node {

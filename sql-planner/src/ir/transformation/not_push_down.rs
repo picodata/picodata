@@ -78,14 +78,12 @@ fn call_expr_tree_not_push_down(
             Ok(Node::Expression(Expression::Bool(_) | Expression::Row(_)))
         )
     };
-    let mut subtree = PostOrderWithFilter::with_capacity(
+    let subtree = PostOrderWithFilter::with_capacity(
         |node| plan.nodes.expr_iter(node, false),
         EXPR_CAPACITY,
         Box::new(filter),
     );
-    subtree.populate_nodes(new_top_id);
-    let nodes = subtree.take_nodes();
-    drop(subtree);
+    let nodes = subtree.populate_nodes(new_top_id);
     for level_node in &nodes {
         let id = level_node.1;
 

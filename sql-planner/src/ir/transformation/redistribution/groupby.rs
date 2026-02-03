@@ -482,13 +482,12 @@ impl Plan {
                     Ok(Node::Expression(Expression::Reference(_)))
                 )
             };
-            let mut dfs = PostOrderWithFilter::with_capacity(
+            let dfs = PostOrderWithFilter::with_capacity(
                 |x| self.nodes.aggregate_iter(x, false),
                 EXPR_CAPACITY,
                 Box::new(filter),
             );
-            dfs.populate_nodes(*col);
-            let nodes = dfs.take_nodes();
+            let nodes = dfs.populate_nodes(*col);
             for LevelNode(_, id) in nodes {
                 let n = self.get_expression_node(id)?;
                 if matches!(n, Expression::Reference(_)) {
@@ -515,10 +514,8 @@ impl Plan {
             unreachable!("expected having node");
         };
 
-        let mut dfs =
-            PostOrder::with_capacity(|x| self.nodes.aggregate_iter(x, false), EXPR_CAPACITY);
-        dfs.populate_nodes(*filter);
-        let nodes = dfs.take_nodes();
+        let dfs = PostOrder::with_capacity(|x| self.nodes.aggregate_iter(x, false), EXPR_CAPACITY);
+        let nodes = dfs.populate_nodes(*filter);
         for LevelNode(_, id) in nodes {
             if matches!(self.get_expression_node(id)?, Expression::Reference(_)) {
                 return Err(SbroadError::Invalid(

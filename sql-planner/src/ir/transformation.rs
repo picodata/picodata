@@ -161,14 +161,12 @@ impl Plan {
                     | Ok(Node::Relational(Relational::Selection(_)))
             )
         };
-        let mut ir_tree = PostOrderWithFilter::with_capacity(
+        let ir_tree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.rel_iter(node),
             EXPR_CAPACITY,
             Box::new(filter),
         );
-        ir_tree.populate_nodes(top_id);
-        let nodes = ir_tree.take_nodes();
-        drop(ir_tree);
+        let nodes = ir_tree.populate_nodes(top_id);
         for level_node in &nodes {
             let id: NodeId = level_node.1;
             let rel: Relational<'_> = self.get_relation_node(id)?;
@@ -247,14 +245,12 @@ impl Plan {
             }
             false
         };
-        let mut subtree = PostOrderWithFilter::with_capacity(
+        let subtree = PostOrderWithFilter::with_capacity(
             |node_id| self.nodes.expr_iter(node_id, false),
             EXPR_CAPACITY,
             Box::new(filter),
         );
-        subtree.populate_nodes(top_id);
-        let nodes = subtree.take_nodes();
-        drop(subtree);
+        let nodes = subtree.populate_nodes(top_id);
         for level_node in &nodes {
             let bool_id = level_node.1;
             let expr = self.get_expression_node(bool_id)?;

@@ -31,12 +31,12 @@ fn expression_bft() {
         .add_bool(c1c2_and_c2c3, Bool::Or, c4_eq_c5)
         .unwrap();
 
-    let mut bft_tree = BreadthFirst::with_capacity(
+    let bft_tree = BreadthFirst::with_capacity(
         |node| plan.nodes.expr_iter(node, true),
         EXPR_CAPACITY,
         EXPR_CAPACITY,
     );
-    let mut iter = bft_tree.iter(top);
+    let mut iter = bft_tree.into_iter(top);
     assert_eq!(iter.next(), Some(LevelNode(0, top)));
     assert_eq!(iter.next(), Some(LevelNode(1, c1c2_and_c2c3)));
     assert_eq!(iter.next(), Some(LevelNode(1, c4_eq_c5)));

@@ -1009,13 +1009,12 @@ impl Plan {
             )
         };
         let get_leaf_refs = |expr_id: NodeId| -> Vec<LevelNode<NodeId>> {
-            let mut post_tree = PostOrderWithFilter::with_capacity(
+            let post_tree = PostOrderWithFilter::with_capacity(
                 |node| self.nodes.expr_iter(node, false),
                 EXPR_CAPACITY,
                 Box::new(filter),
             );
-            post_tree.populate_nodes(expr_id);
-            post_tree.take_nodes()
+            post_tree.populate_nodes(expr_id)
         };
 
         fn collect_columns(
@@ -1213,15 +1212,13 @@ impl Plan {
                 })))
             )
         };
-        let mut dft = PostOrderWithFilter::with_capacity(
+        let dft = PostOrderWithFilter::with_capacity(
             |x| self.subtree_iter(x, false),
             REL_CAPACITY,
             Box::new(filter),
         );
 
-        dft.populate_nodes(top);
-        let nodes = dft.take_nodes();
-        drop(dft);
+        let nodes = dft.populate_nodes(top);
 
         for LevelNode(_, proj_id) in nodes {
             let group_by_id = self.get_group_by(proj_id)?;
@@ -1346,14 +1343,13 @@ impl Plan {
 
                 // Fill the `gr_alias_mappings` with alias name mapped to alias itself with its parent
                 for gr_expr_id in gr_exprs {
-                    let mut dft = PostOrderWithFilter::with_capacity(
+                    let dft = PostOrderWithFilter::with_capacity(
                         |x| self.nodes.expr_iter(x, false),
                         EXPR_CAPACITY,
                         Box::new(filter),
                     );
 
-                    dft.populate_nodes(*gr_expr_id);
-                    let alias_parents = dft.take_nodes();
+                    let alias_parents = dft.populate_nodes(*gr_expr_id);
 
                     for LevelNode(_, alias_parent_id) in alias_parents {
                         // Add all Expression::Alias nodes among expression children

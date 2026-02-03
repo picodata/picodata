@@ -390,17 +390,17 @@ impl ExecutionPlan {
                 }
                 false
             };
-            let mut rel_tree = PostOrderWithFilter::with_capacity(
+            let rel_tree = PostOrderWithFilter::with_capacity(
                 |node| plan.nodes.rel_iter(node),
                 REL_CAPACITY,
                 Box::new(filter),
             );
-            rel_tree.populate_nodes(top_id);
+            let nodes = rel_tree.populate_nodes(top_id);
 
             // Preallocate memory for all subqueries and CTE subtrees.
             nodes_to_save.reserve(SQ_IDS_CAPACITY * 2);
 
-            for LevelNode(_, node_id) in rel_tree.iter() {
+            for LevelNode(_, node_id) in nodes.iter() {
                 let subtree = PostOrder::with_capacity(
                     |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
                     REL_CAPACITY,
@@ -411,12 +411,11 @@ impl ExecutionPlan {
             }
         }
 
-        let mut subtree = PostOrder::with_capacity(
+        let subtree = PostOrder::with_capacity(
             |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
             plan.nodes.len(),
         );
-        subtree.populate_nodes(subtree_id);
-        let nodes = subtree.take_nodes();
+        let nodes = subtree.populate_nodes(subtree_id);
 
         let mut subtree_map = SubtreeMap::with_capacity(nodes.len());
         let vtables_capacity = self.get_vtables().len();

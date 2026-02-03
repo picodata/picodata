@@ -27,14 +27,12 @@ impl From<&Distribution> for DistMock {
 }
 
 fn collect_relational(plan: &Plan, predicate: FilterFn<'_, NodeId>) -> Vec<LevelNode<NodeId>> {
-    let mut rel_tree = PostOrderWithFilter::with_capacity(
+    let rel_tree = PostOrderWithFilter::with_capacity(
         |node| plan.nodes.rel_iter(node),
         REL_CAPACITY,
         predicate,
     );
-    rel_tree.populate_nodes(plan.get_top().unwrap());
-    let nodes = rel_tree.take_nodes();
-    drop(rel_tree);
+    let nodes = rel_tree.populate_nodes(plan.get_top().unwrap());
     nodes
 }
 

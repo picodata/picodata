@@ -408,13 +408,12 @@ impl Plan {
                 })))
             )
         };
-        let mut post_tree = PostOrderWithFilter::with_capacity(
+        let post_tree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.expr_iter(node, false),
             EXPR_CAPACITY,
             Box::new(filter),
         );
-        post_tree.populate_nodes(top);
-        post_tree.take_nodes()
+        post_tree.populate_nodes(top)
     }
 
     /// Get boolean expressions with at least one row or ref children in the sub-tree.
@@ -461,13 +460,12 @@ impl Plan {
             }
             false
         };
-        let mut post_tree = PostOrderWithFilter::with_capacity(
+        let post_tree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.expr_iter(node, false),
             EXPR_CAPACITY,
             Box::new(filter),
         );
-        post_tree.populate_nodes(top);
-        post_tree.take_nodes()
+        post_tree.populate_nodes(top)
     }
 
     /// Get unary expressions with row children in the sub-tree.
@@ -493,13 +491,12 @@ impl Plan {
             }
             false
         };
-        let mut post_tree = PostOrderWithFilter::with_capacity(
+        let post_tree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.expr_iter(node, false),
             EXPR_CAPACITY,
             Box::new(filter),
         );
-        post_tree.populate_nodes(top);
-        post_tree.take_nodes()
+        post_tree.populate_nodes(top)
     }
 
     /// Get a single sub-query from the row node.
@@ -536,13 +533,12 @@ impl Plan {
                 Ok(Node::Expression(Expression::SubQueryReference { .. }))
             )
         };
-        let mut post_tree = PostOrderWithFilter::with_capacity(
+        let post_tree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.expr_iter(node, false),
             capacity,
             Box::new(filter),
         );
-        post_tree.populate_nodes(row_id);
-        let nodes = post_tree.take_nodes();
+        let nodes = post_tree.populate_nodes(row_id);
         // We don't expect much relational references in a row (5 is a reasonable number).
         let mut ref_nodes: Vec<NodeId> = Vec::with_capacity(capacity);
         for LevelNode(_, id) in nodes {
@@ -2610,10 +2606,8 @@ impl Plan {
         type MotionId = ChildId;
         let mut cte_motions: AHashMap<CteChildId, MotionId> = AHashMap::with_capacity(CTE_CAPACITY);
         let top = self.get_top()?;
-        let mut post_tree =
-            PostOrder::with_capacity(|node| self.nodes.rel_iter(node), REL_CAPACITY);
-        post_tree.populate_nodes(top);
-        let nodes = post_tree.take_nodes();
+        let post_tree = PostOrder::with_capacity(|node| self.nodes.rel_iter(node), REL_CAPACITY);
+        let nodes = post_tree.populate_nodes(top);
         // Set of already visited nodes. Used for the case of BETWEEN where two expressions may
         // refer to the same relational node.
         let mut visited = AHashSet::with_capacity(nodes.len());

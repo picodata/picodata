@@ -2807,10 +2807,8 @@ impl Plan {
         if !matches!(self.get_node(top)?, Node::Relational(_)) {
             return Ok(());
         }
-        let mut post_tree =
-            PostOrder::with_capacity(|node| self.nodes.rel_iter(node), REL_CAPACITY);
-        post_tree.populate_nodes(top);
-        let nodes = post_tree.take_nodes();
+        let post_tree = PostOrder::with_capacity(|node| self.nodes.rel_iter(node), REL_CAPACITY);
+        let nodes = post_tree.populate_nodes(top);
         for LevelNode(_, id) in nodes {
             if matches!(self.get_relation_node(id)?, Relational::Projection(_)) {
                 self.adjust_grouping_exprs(id)?;

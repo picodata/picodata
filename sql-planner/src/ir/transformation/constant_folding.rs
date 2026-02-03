@@ -199,14 +199,12 @@ impl Plan {
                     Ok(Node::Expression(Expression::Bool(_) | Expression::Unary(_)))
                 )
             };
-            let mut dfs = PostOrderWithFilter::with_capacity(
+            let dfs = PostOrderWithFilter::with_capacity(
                 |node_id| self.nodes.expr_iter(node_id, false),
                 EXPR_CAPACITY,
                 Box::new(bool_filter),
             );
-            dfs.populate_nodes(filter);
-            let op_nodes = dfs.take_nodes();
-            drop(dfs);
+            let op_nodes = dfs.populate_nodes(filter);
 
             for LevelNode(_, op_id) in op_nodes.iter() {
                 match self.get_mut_expression_node(*op_id)? {
