@@ -200,7 +200,14 @@ macro_rules! define_rpc_request {
         $(#[$proc_meta])*
         #[::tarantool::proc(packed_args)]
         fn $proc($_r: $_request) -> $result {
-            let start = tarantool::time::Instant::now_fiber();
+            // NOTE: measured time includes not only the actual execution time
+            // of the fiber, but also any time after a yield until the fiber
+            // resumes - including other fibers running, event loop processing,
+            // and the fiber waiting its turn in the event loop, as well as
+            // underlying OS operations. This is a known trade-off and is
+            // acceptable for our purposes. A more precise per-fiber CPU time is
+            // available via `fiber.top`, but that would be overkill here.
+            let start = tarantool::time::Instant::now_accurate();
 
             let proc_name = $crate::proc_name!($proc);
             let proc_impl = || { $($proc_body)* };
@@ -210,7 +217,7 @@ macro_rules! define_rpc_request {
                 $crate::metrics::record_rpc_request_errors_total(proc_name);
             }
 
-            let duration = tarantool::time::Instant::now_fiber().duration_since(start);
+            let duration = start.elapsed();
             $crate::metrics::observe_rpc_request_duration(proc_name, &duration);
             $crate::metrics::record_rpc_request_total(proc_name);
             result

@@ -111,6 +111,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - All duration-based metrics now report in fractional seconds instead of
   milliseconds for consistency with Prometheus and more precision.
+- RPC request durations now use a monotonic high-precision clock instead
+  of the event-loop clock to improve timing accuracy.
 
 
 ## [25.5.5] - 2026-01-26
