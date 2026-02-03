@@ -49,6 +49,14 @@ impl ClientParams {
             )));
         };
 
+        const PICO_STMT_INVALIDATION: &str = "pico_stmt_invalidation";
+
+        // The parameter "pico_stmt_invalidation"
+        // can be provided through two different mechanisms:
+        // 1. As direct startup parameter
+        // 2. Via the standard PostgreSQL 'options' parameter
+        // When the same parameter is provided through both mechanisms,
+        // direct startup parameter takes precedence over value in 'options'.
         let mut options_accumulator = PartialOptions::default();
         if let Some(options) = parameters.get("options") {
             for pair in options.split(',') {
@@ -67,6 +75,14 @@ impl ClientParams {
                     option_name @ "sql_vdbe_opcode_max" => {
                         let value = validate_value_for_option(val, option_name)?;
                         options_accumulator.sql_vdbe_opcode_max = Some(value)
+                    }
+                    PICO_STMT_INVALIDATION => {
+                        let value: bool = val.parse().map_err(|error| {
+                            PgError::other(format!(
+                                "error parsing value for option {PICO_STMT_INVALIDATION}: {error}"
+                            ))
+                        })?;
+                        options_accumulator.is_statement_invalidation = value
                     }
                     "read_preference" => {
                         let value = ReadPreference::from_str(val).map_err(|_| {
@@ -87,6 +103,15 @@ impl ClientParams {
                     }
                 }
             }
+        }
+
+        if let Some(val) = parameters.get(PICO_STMT_INVALIDATION) {
+            let value: bool = val.parse().map_err(|error| {
+                PgError::other(format!(
+                    "error parsing value for option {PICO_STMT_INVALIDATION}: {error}"
+                ))
+            })?;
+            options_accumulator.is_statement_invalidation = value
         }
 
         Ok(Self {

@@ -10,6 +10,7 @@ use crate::sasl;
 pub enum PgErrorCode {
     DuplicateCursor,
     DuplicatePreparedStatement,
+    InvalidatedPreparedStatement,
     FeatureNotSupported,
     InternalError,
     InvalidAuthorizationSpecification,
@@ -26,6 +27,10 @@ impl PgErrorCode {
         match self {
             PgErrorCode::DuplicateCursor => "42P03",
             PgErrorCode::DuplicatePreparedStatement => "42P05",
+            // "42999" is not a standard postgres error code and isn't present
+            // at https://www.postgresql.org/docs/current/errcodes-appendix.html
+            // This would be sent only if `pico_stmt_invalidation` option was provided.
+            PgErrorCode::InvalidatedPreparedStatement => "42999",
             PgErrorCode::FeatureNotSupported => "0A000",
             PgErrorCode::InternalError => "XX000",
             PgErrorCode::InvalidAuthorizationSpecification => "28000",

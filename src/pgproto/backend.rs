@@ -104,6 +104,10 @@ pub fn bind(
         })
         .ok_or_else(|| PgError::other(format!("Couldn't find statement '{}'.", statement_key.1)))?;
 
+    if connection_options.is_statement_invalidation {
+        statement.ensure_valid()?;
+    }
+
     let Some(sql_options) = DYNAMIC_CONFIG.current_sql_options() else {
         return Err(PgError::other("Not initialized yet"));
     };

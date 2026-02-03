@@ -28,6 +28,7 @@ with the `YY.MINOR.MICRO` scheme.
     or a write-ahead log file (at server instance start or when applying
     an update at a replica.
 - Introduce `read_preference` option for routing DQL queries to replicas in specific scenarios.
+- Introduce `pico_stmt_invalidation` option for getting errors when binding invalid statements.
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:

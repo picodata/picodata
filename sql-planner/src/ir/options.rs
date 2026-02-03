@@ -135,6 +135,7 @@ impl TryFrom<&Value> for ReadPreference {
 pub struct PartialOptions {
     pub sql_motion_row_max: Option<i64>,
     pub sql_vdbe_opcode_max: Option<i64>,
+    pub is_statement_invalidation: bool,
     pub read_preference: Option<ReadPreference>,
 }
 

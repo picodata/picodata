@@ -3,10 +3,10 @@ use super::{
     describe::{Describe, MetadataColumn, PortalDescribe, QueryType, StatementDescribe},
     result::{ExecuteResult, Rows},
 };
-use crate::audit;
 use crate::config::observer::AtomicObserver;
 use crate::sql::port::PicoPortOwned;
-use crate::sql::router::RouterRuntime;
+use crate::sql::router::{get_table_version, RouterRuntime};
+use crate::{audit, schema::ADMIN_ID};
 use crate::{
     pgproto::{
         client::ClientId,
@@ -35,6 +35,7 @@ use std::{
 };
 use tarantool::{
     proc::{Return, ReturnMsgpack},
+    session::with_su,
     tuple::FunctionCtx,
 };
 
@@ -305,6 +306,29 @@ impl Statement {
     #[inline(always)]
     fn ptr_eq(&self, other: &Statement) -> bool {
         Rc::ptr_eq(&self.0, &other.0)
+    }
+
+    pub fn ensure_valid(&self) -> PgResult<()> {
+        let stmt_plan = self.prepared_statement().as_plan();
+        for table in stmt_plan.relations.tables.values() {
+            let actual_version = with_su(ADMIN_ID, || get_table_version(&table.name))??;
+            let cached_version = stmt_plan
+                .table_version_map
+                .get(&table.id)
+                .expect("table version must be present in Plan");
+
+            if actual_version > *cached_version {
+                return Err(PgError::WithExplicitCode(PedanticError::new(
+                    PgErrorCode::InvalidatedPreparedStatement,
+                    std::io::Error::other(format!(
+                        "prepared statement {} has been invalidated",
+                        self.0.key.1
+                    )),
+                )));
+            }
+        }
+
+        Ok(())
     }
 }
 
