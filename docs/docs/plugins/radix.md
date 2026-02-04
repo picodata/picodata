@@ -600,6 +600,19 @@ redis-cli -p 7301
 
 ## Поддерживаемые команды {: #supported_commands }
 
+<style>
+
+.supported {
+    line-height: 1em;
+    margin-left: 0.5em;
+    width: 87em;
+    padding: 0.3em 0.7em;
+    border-radius: 1em;
+    font-family: monospace;
+    background-color: #d9ead3;
+}
+</style>
+
 ### Управление кластером {: #cluster_management }
 
 #### cluster getkeysinslot {: #cluster_getkeysinslot }
@@ -607,7 +620,7 @@ redis-cli -p 7301
 ```sql
 CLUSTER GETKEYSINSLOT slot count
 ```
-<font size="2">_поддерживается с версии 0.4.0_</font>
+<span class="supported">поддерживается с версии 0.4.0</span>
 
 Возвращает набор ключей, которые, в соответствии со своими хэш-суммами,
 относятся к указанному слоту. Второй аргумент ограничивает максимальное
@@ -618,7 +631,7 @@ CLUSTER GETKEYSINSLOT slot count
 ```sql
 CLUSTER INFO
 ```
-<font size="2">_поддерживается с версии 0.12.0_</font>
+<span class="supported">поддерживается с версии 0.12.0</span>
 
 Возвращает основной набор параметров кластера. Пример:
 
@@ -648,7 +661,7 @@ cluster_stats_messages_received:0
 ```sql
 CLUSTER KEYSLOT key
 ```
-<font size="2">_поддерживается с версии 0.4.0_</font>
+<span class="supported">поддерживается с версии 0.4.0</span>
 
 Позволяет узнать, к какому хэш-слоту относится указанный в команде ключ.
 
@@ -657,7 +670,7 @@ CLUSTER KEYSLOT key
 ```sql
 CLUSTER MYID
 ```
-<font size="2">_поддерживается с версии 0.4.0_</font>
+<span class="supported">поддерживается с версии 0.4.0</span>
 
 Возвращает идентификатор текущего узла кластера (INSTANCE UUID).
 
@@ -666,7 +679,7 @@ CLUSTER MYID
 ```sql
 CLUSTER MYSHARDID
 ```
-<font size="2">_поддерживается с версии 0.4.0_</font>
+<span class="supported">поддерживается с версии 0.4.0</span>
 
 Возвращает идентификатор текущего репликасета, в который входит текущий
 узел кластера (REPLICASET UUID).
@@ -676,7 +689,7 @@ CLUSTER MYSHARDID
 ```sql
 CLUSTER NODES
 ```
-<font size="2">_поддерживается с версии 0.5.0_</font>
+<span class="supported">поддерживается с версии 0.5.0</span>
 
 Возвращает информацию о текущем составе и конфигурации узлов кластера,
 включая номера бакетов, относящихся к узлам.
@@ -686,7 +699,7 @@ CLUSTER NODES
 ```sql
 CLUSTER REPLICAS node-id
 ```
-<font size="2">_поддерживается с версии 0.5.0_</font>
+<span class="supported">поддерживается с версии 0.5.0</span>
 
 Возвращает состав реплицированных узлов (т.е. состав репликасета)
 
@@ -695,7 +708,7 @@ CLUSTER REPLICAS node-id
 ```sql
 CLUSTER SHARDS
 ```
-<font size="2">_поддерживается с версии 0.5.0_</font>
+<span class="supported">поддерживается с версии 0.5.0</span>
 
 Возвращает подробную информацию о шардах кластера.
 
@@ -704,7 +717,7 @@ CLUSTER SHARDS
 ```sql
 CLUSTER SLOTS
 ```
-<font size="2">_поддерживается с версии 0.5.0_</font>
+<span class="supported">поддерживается с версии 0.5.0</span>
 
 Возвращает информацию о соответствии слотов инстансам кластера.
 
@@ -713,7 +726,7 @@ CLUSTER SLOTS
 ```sql
 ECHO message
 ```
-<font size="2">_поддерживается с версии 0.11.0_</font>
+<span class="supported">поддерживается с версии 0.11.0</span>
 
 Возвращает сообщение (`message`).
 
@@ -722,7 +735,7 @@ ECHO message
 ```sql
 PING [message]
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 Возвращает `PONG`, если аргумент не указан, в противном случае
 возвращает строкой аргумент, который пришел. Эта команда полезна для:
@@ -738,7 +751,7 @@ PING [message]
 ```sql
 QUIT
 ```
-<font size="2">_поддерживается с версии 0.13.0_</font>
+<span class="supported">поддерживается с версии 0.13.0</span>
 
 Отправляет серверу сигнал на закрытие соединения. Сервер исполнит запрос
 после того как будут отправлены все ответы на уже обработанные запросы.
@@ -761,7 +774,7 @@ QUIT
 ```sql
 READONLY
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Переводит сессию в режим,  в котором получение данных производится не с
 лидеров репликасетов, а с резервных реплик (при факторе репликации ≥ 2).
@@ -773,7 +786,7 @@ READONLY
 ```sql
 auth password
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Производит аутентификацию пользователем по умолчанию. Имя пользователя должно быть задано
 в конфигурации плагина в параметре `default_user_name`.
@@ -789,7 +802,7 @@ auth username password
 ```sql
 reset
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Сбрасывает соединение в состояние по умолчанию:
 
@@ -803,7 +816,7 @@ reset
 ```sql
 SELECT index
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 Получение логической базы данных Redis с указанным нулевым числовым
 индексом. Новые соединения всегда используют базу данных 0.
@@ -815,7 +828,7 @@ SELECT index
 ```sql
 DBSIZE
 ```
-<font size="2">_поддерживается с версии 0.5.0_</font>
+<span class="supported">поддерживается с версии 0.5.0</span>
 
 Возвращает количество ключей в базе данных
 
@@ -824,7 +837,7 @@ DBSIZE
 ```sql
 DEL key [key ...]
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 Удаляет указанные ключи. Несуществующие ключи игнорируются.
 
@@ -833,7 +846,7 @@ DEL key [key ...]
 ```sql
 EXISTS key [key ...]
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 
 Проверяет, существует ли указанный ключ `key` и возвращает число совпадений.
@@ -844,7 +857,7 @@ EXISTS key [key ...]
 ```sql
 EXPIRE key seconds [NX | XX | GT | LT]
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 
 Устанавливает срок жизни (таймаут) для ключа `key` в секундах (TTL, time
@@ -862,7 +875,7 @@ _волатильным_.
 ```sql
 EXPIREAT key unix-time-seconds [NX | XX | GT | LT]
 ```
-<font size="2">_поддерживается с версии 0.7.0_</font>
+<span class="supported">поддерживается с версии 0.7.0</span>
 
 Устанавливает срок жизни (таймаут) для ключа `key` подобно
 [EXPIRE](#expire), но вместо оставшегося числа секунд (TTL, time to
@@ -883,7 +896,7 @@ live) использует абсолютное время Unix timestamp — ч
 ```sql
 EXPIRETIME key
 ```
-<font size="2">_поддерживается с версии 0.7.0_</font>
+<span class="supported">поддерживается с версии 0.7.0</span>
 
 Возвращает срок жизни (таймаут) ключа `key` в секундах согласно формату
 Unix timestamp.
@@ -893,7 +906,7 @@ Unix timestamp.
 ```sql
 KEYS pattern
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 
 Возвращает все ключи, соответствующие шаблону.
@@ -911,7 +924,7 @@ KEYS pattern
 ```sql
 PERSIST key
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 Удаляет существующий таймаут для ключа `key`, превращая его из непостоянного
 (ключ с установленным сроком действия) в постоянный (ключ, срок действия
@@ -922,7 +935,7 @@ PERSIST key
 ```sql
 PEXPIRE key milliseconds [NX | XX | GT | LT]
 ```
-<font size="2">_поддерживается с версии 0.7.0_</font>
+<span class="supported">поддерживается с версии 0.7.0</span>
 
 Устанавливает срок жизни (таймаут) для ключа `key` подобно
 [EXPIRE](#expire), но в миллисекундах.
@@ -932,7 +945,7 @@ PEXPIRE key milliseconds [NX | XX | GT | LT]
 ```sql
 PEXPIREAT key unix-time-milliseconds [NX | XX | GT | LT]
 ```
-<font size="2">_поддерживается с версии 0.7.0_</font>
+<span class="supported">поддерживается с версии 0.7.0</span>
 
 Устанавливает срок жизни (таймаут) для ключа `key` подобно
 [EXPIREAT](#expireat), но в миллисекундах.
@@ -942,7 +955,7 @@ PEXPIREAT key unix-time-milliseconds [NX | XX | GT | LT]
 ```sql
 PEXPIRETIME key
 ```
-<font size="2">_поддерживается с версии 0.7.0_</font>
+<span class="supported">поддерживается с версии 0.7.0</span>
 
 Возвращает срок жизни (таймаут) ключа `key` подобно
 [EXPIRETIME](#expiretime), но в миллисекундах.
@@ -952,7 +965,7 @@ PEXPIRETIME key
 ```sql
 PTTL key
 ```
-<font size="2">_поддерживается с версии 0.7.0_</font>
+<span class="supported">поддерживается с версии 0.7.0</span>
 
 Возвращает оставшееся время жизни ключа `key` подобно [TTL](#ttl), но в
 миллисекундах.
@@ -962,7 +975,7 @@ PTTL key
 ```sql
 SCAN cursor [MATCH pattern] [COUNT count] [TYPE type]
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 Команда `SCAN` используется для инкрементного итерационного просмотра
 коллекции элементов в выбранной в данный момент базе данных Redis.
@@ -972,7 +985,7 @@ SCAN cursor [MATCH pattern] [COUNT count] [TYPE type]
 ```sql
 TTL key
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 Возвращает оставшееся время жизни ключа `key`, для которого установлен
 таймаут. Эта возможность интроспекции позволяет клиенту Redis проверить,
@@ -988,7 +1001,7 @@ TTL key
 ```sql
 TYPE key
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 Возвращает строковое представление типа значения, хранящегося по адресу
 ключа `key`. Могут быть возвращены следующие типы:
@@ -1005,7 +1018,7 @@ TYPE key
 ```sql
 UNLINK key [key ...]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Выполняет асинхронное удаление ключей. Работает точно также, как и `DEL`,
 за исключением того, что фактическое удаление данных происходит в фоне.
@@ -1019,7 +1032,7 @@ UNLINK key [key ...]
 ```sql
 HDEL key field [field ...]
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 Удаляет указанные поля из хэша, хранящегося по адресу ключа `key`.
 Указанные поля, которые не существуют в этом хэше, игнорируются. Удаляет
@@ -1031,7 +1044,7 @@ HDEL key field [field ...]
 ```sql
 HEXISTS key field
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 Возвращает, является ли поле `field` существующим полем в хэше, хранящемся по
 адресу ключа `key`.
@@ -1041,7 +1054,7 @@ HEXISTS key field
 ```sql
 HGET key field
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 Возвращает значение, связанное с полем `field` в хэше, хранящемся по
 адресу ключа `key`.
@@ -1051,7 +1064,7 @@ HGET key field
 ```sql
 HGETALL key
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 Возвращает все поля и значения хэша, хранящегося по адресу ключа `key`. В
 возвращаемом значении за именем каждого поля следует его значение,
@@ -1062,7 +1075,7 @@ HGETALL key
 ```sql
 HINCRBY key field increment
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 Увеличивает число, хранящееся в поле `field`, в хэше, хранящемся в ключе
 `key`, на инкремент. Если ключ не существует, создается новый ключ,
@@ -1077,7 +1090,7 @@ HINCRBY key field increment
 ```sql
 HKEYS key
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 Возвращает все имена полей в хэше, хранящемся по адресу ключа `key`.
 
@@ -1086,7 +1099,7 @@ HKEYS key
 ```sql
 HLEN key
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 Возвращает количество полей, содержащихся в хэше, хранящемся по адресу
 ключа `key`.
@@ -1096,7 +1109,7 @@ HLEN key
 ```sql
 HMGET key field [field ...]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Возвращает значения указанных полей из хэша.
 
@@ -1105,7 +1118,7 @@ HMGET key field [field ...]
 ```sql
 HMSET key field value [field value ...]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Выставляет значения указанным полям для заданного хэша.
 
@@ -1123,7 +1136,7 @@ HMSET key field value [field value ...]
 ```sql
 HSCAN key cursor [MATCH pattern] [COUNT count] [NOVALUES]
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 Работает подобно [SCAN](#scan), но с некоторым отличием: `HSCAN`
 выполняет итерацию полей типа Hash и связанных с ними значений.
@@ -1133,7 +1146,7 @@ HSCAN key cursor [MATCH pattern] [COUNT count] [NOVALUES]
 ```sql
 HSET key field value [field value ...]
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 Устанавливает указанные поля в соответствующие им значения в хэше,
 хранящемся по адресу ключа `key`.
@@ -1146,7 +1159,7 @@ HSET key field value [field value ...]
 ```sql
 HVALS key
 ```
-<font size="2">_поддерживается с версии 0.7.0_</font>
+<span class="supported">поддерживается с версии 0.7.0</span>
 
 Возвращает значения всех полей в хэше, хранящиеся по адресу ключа `key`.
 
@@ -1157,7 +1170,7 @@ HVALS key
 ```sql
 SADD key member [member ...]
 ```
-<font size="2">_поддерживается с версии 0.13.0_</font>
+<span class="supported">поддерживается с версии 0.13.0</span>
 
 Добавляет указанные элементы (`member`) к множеству, хранящемуся по
 ключу `key`. Если такие элемены уже есть, они будут проигнорированы.
@@ -1170,7 +1183,7 @@ SADD key member [member ...]
 ```sql
 SCARD key
 ```
-<font size="2">_поддерживается с версии 0.13.0_</font>
+<span class="supported">поддерживается с версии 0.13.0</span>
 
 Возвращает мощность множества (количество элементов), хранящегося по
 ключу `key`.
@@ -1180,7 +1193,7 @@ SCARD key
 ```sql
 SDIFF key [key ...]
 ```
-<font size="2">_поддерживается с версии 0.13.0_</font>
+<span class="supported">поддерживается с версии 0.13.0</span>
 
 Работает аналогично [SDIFFSTORE](#sdiffstore), но вместо записи
 результирующего множества выводит его клиенту.
@@ -1190,7 +1203,7 @@ SDIFF key [key ...]
 ```sql
 SDIFFSTORE destination key [key ...]
 ```
-<font size="2">_поддерживается с версии 0.13.0_</font>
+<span class="supported">поддерживается с версии 0.13.0</span>
 
 Вычисляет разницу между первым и последующими множествами (хранящимися в
 соответствующих ключах `key`) и записывает его в `destination`. Команда
@@ -1226,7 +1239,7 @@ SDIFFSTORE destination key [key ...]
 ```sql
 SINTER key [key ...]
 ```
-<font size="2">_поддерживается с версии 0.13.0_</font>
+<span class="supported">поддерживается с версии 0.13.0</span>
 
 Работает аналогично [SINTERSTORE](#sinterstore), но вместо записи
 результирующего множества выводит его клиенту.
@@ -1236,7 +1249,7 @@ SINTER key [key ...]
 ```sql
 SINTERCARD numkeys key [key ...] [LIMIT limit]
 ```
-<font size="2">_поддерживается с версии 0.13.0_</font>
+<span class="supported">поддерживается с версии 0.13.0</span>
 
 Работает аналогично [SINTER](#sinter), но выводит клиенту не само
 множество, а только его мощность. Если указан несуществующий ключ `key`,
@@ -1253,7 +1266,7 @@ SINTERCARD numkeys key [key ...] [LIMIT limit]
 ```sql
 SINTERSTORE destination key [key ...]
 ```
-<font size="2">_поддерживается с версии 0.13.0_</font>
+<span class="supported">поддерживается с версии 0.13.0</span>
 
 Вычисляет пересечение элементов из двух или более множеств,
 хранящихся по указанным ключам (`key`) в виде нового
@@ -1287,7 +1300,7 @@ SINTERSTORE destination key [key ...]
 ```sql
 SISMEMBER key member
 ```
-<font size="2">_поддерживается с версии 0.13.0_</font>
+<span class="supported">поддерживается с версии 0.13.0</span>
 
 Возвращает признак присутствия элемента в указанном множестве. В вывоже
 будет `1` или `0`, соответственно.
@@ -1297,7 +1310,7 @@ SISMEMBER key member
 ```sql
 SMEMBERS key
 ```
-<font size="2">_поддерживается с версии 0.13.0_</font>
+<span class="supported">поддерживается с версии 0.13.0</span>
 
 Возвращает список всех элементов, хранящихся в указанном множестве.
 
@@ -1306,7 +1319,7 @@ SMEMBERS key
 ```sql
 SMOVE source destination member
 ```
-<font size="2">_поддерживается с версии 0.13.0_</font>
+<span class="supported">поддерживается с версии 0.13.0</span>
 
 Перемещает элемент из исходного множества (`source`) в целевое
 (`destination`). Операция является атомарной. В любой момент времени
@@ -1322,7 +1335,7 @@ SMOVE source destination member
 ```sql
 SPOP key [count]
 ```
-<font size="2">_поддерживается с версии 0.13.0_</font>
+<span class="supported">поддерживается с версии 0.13.0</span>
 
 Извлекает один или несколько элементов (согласно числу, указанному в
 `count`), хранящихся в множестве по указанному ключу. Если `count` не
@@ -1333,7 +1346,7 @@ SPOP key [count]
 ```sql
 SRANDMEMBER key [count]
 ```
-<font size="2">_поддерживается с версии 0.13.0_</font>
+<span class="supported">поддерживается с версии 0.13.0</span>
 
 Возвращает случайный элемент из множества, хранящегося по ключу `key`.
 Дополнительный параметр `count` позволяет указать количество выводимых
@@ -1351,7 +1364,7 @@ SRANDMEMBER key [count]
 ```sql
 SREM key member [member ...]
 ```
-<font size="2">_поддерживается с версии 0.13.0_</font>
+<span class="supported">поддерживается с версии 0.13.0</span>
 
 Удаляет указанные элементы из множества, хранящегося по ключу `key`.
 Если указанный элемент отсутствует в множестве, то такой элемент
@@ -1363,7 +1376,7 @@ SREM key member [member ...]
 ```sql
 SSCAN key cursor [MATCH pattern] [COUNT count]
 ```
-<font size="2">_поддерживается с версии 0.13.0_</font>
+<span class="supported">поддерживается с версии 0.13.0</span>
 
 См. [SCAN](#scan)
 
@@ -1372,7 +1385,7 @@ SSCAN key cursor [MATCH pattern] [COUNT count]
 ```sql
 SUNION key [key ...]
 ```
-<font size="2">_поддерживается с версии 0.13.0_</font>
+<span class="supported">поддерживается с версии 0.13.0</span>
 
 Работает аналогично [SUNIONSTORE](#sunionstore), но вместо записи
 результирующего множества выводит его клиенту.
@@ -1382,7 +1395,7 @@ SUNION key [key ...]
 ```sql
 SUNIONSTORE destination key [key ...]
 ```
-<font size="2">_поддерживается с версии 0.13.0_</font>
+<span class="supported">поддерживается с версии 0.13.0</span>
 
 Вычисляет пересечение элементов из двух или более множеств,
 хранящихся по указанным ключам (`key`) в виде нового
@@ -1422,7 +1435,7 @@ SUNIONSTORE destination key [key ...]
 ```sql
 BZMPOP timeout numkeys key [key ...] <MIN | MAX> [COUNT count]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Вариант команды [ZMPOP](#zmpop) с блокировкой. Ведет себя аналогично
 [ZMPOP](#zmpop) в ситуации:
@@ -1441,7 +1454,7 @@ BZMPOP timeout numkeys key [key ...] <MIN | MAX> [COUNT count]
 ```sql
 BZPOPMAX key [key ...] timeout
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Вариант команды [ZPOPMAX](#zpopmax) с блокировкой. Ведет себя так же как
 `ZPOPMAX`, но при отсутствии элементов во всех cортированных множествах,
@@ -1455,7 +1468,7 @@ BZPOPMAX key [key ...] timeout
 ```sql
 BZPOPMIN key [key ...] timeout
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Вариант команды [ZPOPMIN](#zpopmin) с блокировкой. Ведет себя так же как
 `ZPOPMIN`, но при отсутствии элементов во всех cортированных множествах,
@@ -1469,7 +1482,7 @@ BZPOPMIN key [key ...] timeout
 ```sql
 ZADD key [NX | XX] [GT | LT] [CH] [INCR] score member [score member ...]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Добавляет указанные элементы (`member`) и соответствующие им оценки
 (`score`) к сортированному множеству, хранящемуся по ключу `key`. Если
@@ -1504,7 +1517,7 @@ ZADD key [NX | XX] [GT | LT] [CH] [INCR] score member [score member ...]
 ```sql
 ZCARD key
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Возвращает мощность множества (количество элементов в сортированном
 множестве), хранящегося по ключу `key`.
@@ -1514,7 +1527,7 @@ ZCARD key
 ```sql
 ZCOUNT key min max
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Возвращает мощность множества (количество элементов в сортированном
 множестве), хранящегося по ключу `key`, с оценкой в диапазоне от `min` до
@@ -1526,7 +1539,7 @@ ZCOUNT key min max
 ```sql
 ZDIFF numkeys key [key ...] [WITHSCORES]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Работает аналогично [ZDIFFSTORE](#zdiffstore), но вместо записи
 результирующего сортированного множества выводит его клиенту.
@@ -1536,7 +1549,7 @@ ZDIFF numkeys key [key ...] [WITHSCORES]
 ```sql
 ZDIFFSTORE destination numkeys key [key ...]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Вычисляет разницу между первым и последующими сортированными множествами
 (хранящимися в соответствующих ключах `key`) и записывает его в
@@ -1571,7 +1584,7 @@ ZDIFFSTORE destination numkeys key [key ...]
 ```sql
 ZINCRBY key increment member
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Увеличивает оценку элемента `member` в сортированном множестве,
 хранящемся по ключу `key`, на величину `increment`. Если указанный
@@ -1588,7 +1601,7 @@ ZINCRBY key increment member
 ZINTER numkeys key [key ...] [WEIGHTS weight [weight ...]]
   [AGGREGATE <SUM | MIN | MAX>] [WITHSCORES]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Работает аналогично [ZINTERSTORE](#zinterstore), но вместо записи
 результирующего сортированного множества выводит его клиенту.
@@ -1599,7 +1612,7 @@ ZINTER numkeys key [key ...] [WEIGHTS weight [weight ...]]
 ZINTERSTORE destination numkeys key [key ...] [WEIGHTS weight
   [weight ...]] [AGGREGATE <SUM | MIN | MAX>]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Вычисляет пересечение элементов из двух или более сортированных множеств,
 хранящихся по указанным ключам (`key`) в виде нового сортированного
@@ -1640,7 +1653,7 @@ ZINTERSTORE destination numkeys key [key ...] [WEIGHTS weight
 ```sql
 ZLEXCOUNT key min max
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Возвращает количество всех элементов из сортированного множества,
 хранящегося по ключу `key`, в лексикографическом диапазоне от `min` до
@@ -1652,7 +1665,7 @@ ZLEXCOUNT key min max
 ```sql
 ZMPOP numkeys key [key ...] <MIN | MAX> [COUNT count]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Извлекает один или несколько элементов, составляющих пары
 оценка/элемент, из первого непустого сортированного множества на основании
@@ -1667,7 +1680,7 @@ ZMPOP numkeys key [key ...] <MIN | MAX> [COUNT count]
 ```sql
 ZMSCORE key member [member ...]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Возвращает оценки указанных элементов (`member`) сортированных множеств,
 хранящихся по указанному ключу `key`. Если элемент отсутствует в
@@ -1678,7 +1691,7 @@ ZMSCORE key member [member ...]
 ```sql
 ZPOPMAX key [count]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Извлекает указанное в `count` число элементов с наивысшей оценкой из
 сортированного множества, хранящегося по указанному ключу. По умолчанию
@@ -1691,7 +1704,7 @@ ZPOPMAX key [count]
 ```sql
 ZPOPMIN key [count]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Извлекает указанное в `count` число элементов с наименьшей оценкой из
 сортированного множества, хранящегося по указанному ключу. По умолчанию
@@ -1704,7 +1717,7 @@ ZPOPMIN key [count]
 ```sql
 ZRANDMEMBER key [count [WITHSCORES]]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Возвращает случайный элемент из сортированного множества, хранящегося по
 ключу `key`.
@@ -1724,7 +1737,7 @@ ZRANDMEMBER key [count [WITHSCORES]]
 ZRANGE key start stop [BYSCORE | BYLEX] [REV] [LIMIT offset count]
   [WITHSCORES]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Возвращает указанный набор элементов из сортированного множества,
 хранящегося по ключу `key`. Команда может выполять разные типы запросов,
@@ -1894,7 +1907,7 @@ ZRANGE zset 10 5 REV BYSCORE
 ZRANGESTORE destination src min max [BYSCORE | BYLEX] [REV] [LIMIT offset
   count]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Работает аналогично [ZRANGE](#zrange), но вместо вывода
 результирующего сортированного множества записывает его в `destination`.
@@ -1904,7 +1917,7 @@ ZRANGESTORE destination src min max [BYSCORE | BYLEX] [REV] [LIMIT offset
 ```sql
 ZRANGEBYLEX key min max [LIMIT offset count]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Работает аналогично [ZRANGE](#zrange) c параметром вывода `BYLEX`.
 
@@ -1921,7 +1934,7 @@ ZRANGEBYLEX key min max [LIMIT offset count]
 ```sql
 ZRANGEBYSCORE key min max [WITHSCORES] [LIMIT offset count]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Работает аналогично [ZRANGE](#zrange) c параметром вывода `BYSCORE`.
 
@@ -1938,7 +1951,7 @@ ZRANGEBYSCORE key min max [WITHSCORES] [LIMIT offset count]
 ```sql
 ZRANK key member [WITHSCORE]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Возвращает позиции элемента (`member`) в сортированном множестве,
 хранящемся по указанному ключу `key`, с сортировкой по возрастанию
@@ -1953,7 +1966,7 @@ ZRANK key member [WITHSCORE]
 ```sql
 ZREM key member [member ...]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Удаляет указанные элементы из сортированного множества, хранящегося по
 ключу `key`. Если указанный элемент отсутствует в множестве, то такой
@@ -1965,7 +1978,7 @@ ZREM key member [member ...]
 ```sql
 ZREMRANGEBYLEX key min max
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Удаляет все элементы из сортированного множества, хранящегося по ключу
 `key`, в лексикографическом диапазоне от `min` до `max`. Аргументы `min`
@@ -1977,7 +1990,7 @@ ZREMRANGEBYLEX key min max
 ```sql
 ZREMRANGEBYRANK key start stop
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Удаляет все элементы из сортированного множества, хранящегося по
 ключу `key`, с позиции в диапазоне от `start` до `stop`. Значение `0 `—
@@ -1989,7 +2002,7 @@ ZREMRANGEBYRANK key start stop
 ```sql
 ZREMRANGEBYSCORE key min max
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Удаляет все элементы из сортированного множества, хранящегося по
 ключу `key`, с оценкой в диапазоне от `min` до `max` включительно.
@@ -1999,7 +2012,7 @@ ZREMRANGEBYSCORE key min max
 ```sql
 ZREVRANGE key start stop [WITHSCORES]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Работает аналогично [ZRANGE](#zrange) c параметром вывода `REV`.
 
@@ -2016,7 +2029,7 @@ ZREVRANGE key start stop [WITHSCORES]
 ```sql
 ZREVRANGEBYLEX key max min [LIMIT offset count]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Работает аналогично [ZRANGE](#zrange) c параметрами вывода `REV` и `BYLEX`.
 
@@ -2033,7 +2046,7 @@ ZREVRANGEBYLEX key max min [LIMIT offset count]
 ```sql
 ZREVRANGEBYSCORE key max min [WITHSCORES] [LIMIT offset count]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Работает аналогично [ZRANGE](#zrange) c параметрами вывода `REV` и `BYSCORE`.
 
@@ -2050,7 +2063,7 @@ ZREVRANGEBYSCORE key max min [WITHSCORES] [LIMIT offset count]
 ```sql
 ZREVRANK key member [WITHSCORE]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Возвращает позиции элемента (`member`) в сортированном множестве,
 хранящемся по указанному ключу `key`, с сортировкой по убыванию оценки.
@@ -2066,7 +2079,7 @@ ZREVRANK key member [WITHSCORE]
 ```sql
 ZSCAN key cursor [MATCH pattern] [COUNT count]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 См. [SCAN](#scan)
 
@@ -2075,7 +2088,7 @@ ZSCAN key cursor [MATCH pattern] [COUNT count]
 ```sql
 ZSCORE key member
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Возвращает оценку элемента `member` в сортированном множестве, хранящемся
 по ключу `key`.
@@ -2086,7 +2099,7 @@ ZSCORE key member
 ZUNION numkeys key [key ...] [WEIGHTS weight [weight ...]]
   [AGGREGATE <SUM | MIN | MAX>] [WITHSCORES]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Работает аналогично [ZUNIONSTORE](#zunionstore), но вместо записи
 результирующего сортированного множества выводит его клиенту.
@@ -2097,7 +2110,7 @@ ZUNION numkeys key [key ...] [WEIGHTS weight [weight ...]]
 ZUNIONSTORE destination numkeys key [key ...] [WEIGHTS weight
   [weight ...]] [AGGREGATE <SUM | MIN | MAX>]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Объединяет элементы двух или более сортированных множеств, хранящихся по
 указанным ключам (`key`) в новое сортированное множество и записывает его в
@@ -2162,7 +2175,7 @@ ZUNIONSTORE destination numkeys key [key ...] [WEIGHTS weight
 ```sql
 BLMOVE source destination <LEFT | RIGHT> <LEFT | RIGHT> timeout
 ```
-<font size="2">_поддерживается с версии 0.4.0_</font>
+<span class="supported">поддерживается с версии 0.4.0</span>
 
 Работает аналогично [LMPOP](#lmpop), но с использованием блокировки.
 Если исходный список (`source`) пуст, то команда будет ждать наполнения
@@ -2175,7 +2188,7 @@ BLMOVE source destination <LEFT | RIGHT> <LEFT | RIGHT> timeout
 ```sql
 BLMPOP timeout numkeys key [key ...] <LEFT | RIGHT> [COUNT count]
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Работает аналогично [LMOVE](#lmove), но с использованием блокировки.
 Если все указанные списки ключей пусты, то команда будет ждать
@@ -2188,7 +2201,7 @@ BLMPOP timeout numkeys key [key ...] <LEFT | RIGHT> [COUNT count]
 ```sql
 BLPOP key [key ...] timeout
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Работает аналогично [LPOP](#lpop), но с использованием блокировки.
 Если указанный список пуст, то команда будет ждать его наполнения
@@ -2201,7 +2214,7 @@ BLPOP key [key ...] timeout
 ```sql
 BRPOPLPUSH source destination timeout
 ```
-<font size="2">_поддерживается с версии 0.13.0_</font>
+<span class="supported">поддерживается с версии 0.13.0</span>
 
 Работает аналогично [RPOPLPUSH](#rpoplpush), но с использованием
 блокировки. При использовании внутри блока [MULTI](#multi) или
@@ -2222,7 +2235,7 @@ BRPOPLPUSH source destination timeout
 ```sql
 BRPOP key [key ...] timeout
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Работает аналогично [RPOP](#lpop), но с использованием блокировки.
 Поведение механизма блокировки аналогично таковому для [BLPOP](#blpop).
@@ -2232,7 +2245,7 @@ BRPOP key [key ...] timeout
 ```sql
 LINDEX key index
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Возвращает элемент с указанным индексом (`index`) из списка, хранящегося
 по указанному ключу `key`. Индекс `0` означает первый элемент списка,
@@ -2259,7 +2272,7 @@ LINDEX key index
 ```sql
 LINSERT key <BEFORE | AFTER> pivot element
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Вставляет в список, хранящийся по ключу `key`, элемент (`element`) до
 (`BEFORE`) или после (`AFTER`) указанного другого элемента (`pivot`).
@@ -2287,7 +2300,7 @@ LINSERT key <BEFORE | AFTER> pivot element
 ```sql
 LLEN key
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Возвращает длину (количество элементов) списка, хранящегося по ключу
 `key`. Если указан несуществующий ключ, то команда вернет `0`. Если по
@@ -2309,7 +2322,7 @@ LLEN key
 ```sql
 LMOVE source destination <LEFT | RIGHT> <LEFT | RIGHT>
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Перемещает первый/последний элемент первого списка (`source`) в
 начало/конец второго списка (`destination`).
@@ -2340,7 +2353,7 @@ LMOVE source destination <LEFT | RIGHT> <LEFT | RIGHT>
 ```sql
 LMPOP numkeys key [key ...] <LEFT | RIGHT> [COUNT count]
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Извлекает (и удаляет) один или несколько (`count`) элементов в начале
 (`LEFT`) или в конце (`REFT`) из первого непустого
@@ -2400,7 +2413,7 @@ LMPOP numkeys key [key ...] <LEFT | RIGHT> [COUNT count]
 ```sql
 LPOP key [count]
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Извлекает (и удаляет) указанное число (`count`) первых элементов,
 хранящихся в списке по адресу ключа `key`. Без аргумента `count` команда
@@ -2426,7 +2439,7 @@ LPOP key [count]
 ```sql
 LPOS key element [RANK rank] [COUNT num-matches] [MAXLEN len]
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Возвращает индекс найденного в списке, хранящегося по ключу `key`,
 элемента (`element`). Без дополнительных аргументов эта команда
@@ -2479,7 +2492,7 @@ LPOS key element [RANK rank] [COUNT num-matches] [MAXLEN len]
 ```sql
 LPUSH key element [element ...]
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Вставляет указанные элементы в начала списка, хранящегося по ключу
 `key`.
@@ -2501,7 +2514,7 @@ LPUSH key element [element ...]
 ```sql
 LPUSHX key element [element ...]
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Работает аналогично [LPUSH](#lpush), но проверяет, что указанный ключ
 `key` существует. В противном случае команда ничего не делает (в отличие
@@ -2512,7 +2525,7 @@ LPUSHX key element [element ...]
 ```sql
 LRANGE key start stop
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Возвращает диапазон элементов списка, хранящегося по ключу `key`.
 Позиция `start` обозначает начало диапазона, `stop` — его конец. При
@@ -2553,7 +2566,7 @@ LRANGE key start stop
 ```sql
 LREM key count element
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Удаляет из списка, хранящегося по ключу `key`, указанное количество
 (`count`) найденных элементов (`element`). Положительное значение `count`
@@ -2584,7 +2597,7 @@ LREM key count element
 ```sql
 LSET key index element
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Устанавливает индекс (`index`) для добавляемого элемента (`element`).
 Таким образом можно затереть один элемент списка и заменить его новым
@@ -2615,7 +2628,7 @@ LSET key index element
 ```sql
 LTRIM key start stop
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Обрезает список, хранящийся по ключу `key`, задавая его размер с помощью
 диапазона. При указании отрицательных значений можно использовать
@@ -2657,7 +2670,7 @@ LTRIM mylist 0 99
 ```sql
 RPOP key [count]
 ```
-<font size="2">_поддерживается с версии 0.4.0_</font>
+<span class="supported">поддерживается с версии 0.4.0</span>
 
 Извлекает (и удаляет) указанное число (`count`) последних элементов,
 хранящихся в списке по адресу ключа `key`. Без аргумента `count` команда
@@ -2683,7 +2696,7 @@ RPOP key [count]
 ```sql
 RPOPLPUSH source destination
 ```
-<font size="2">_поддерживается с версии 0.13.0_</font>
+<span class="supported">поддерживается с версии 0.13.0</span>
 
 Извлекает один последний элемент из множества, хранящегося в `source` и
 добавляет его в начало множества, хранящегося в `destination`. Если
@@ -2704,7 +2717,7 @@ RPOPLPUSH source destination
 ```sql
 RPUSH key element [element ...]
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Работает аналогично [LPUSH](#lpush), но добавляет элементы в конец
 списка.
@@ -2714,7 +2727,7 @@ RPUSH key element [element ...]
 ```sql
 RPUSHX key element [element ...]
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Работает аналогично [RPUSH](#rpush), но проверяет существование ключа
 `key` и то, что этот ключ содержит список. В противном случае команда
@@ -2729,7 +2742,7 @@ Pub/Sub — механизм для отправки сообщений межд
 ```sql
 PSUBSCRIBE pattern [pattern ...]
 ```
-<font size="2">_поддерживается с версии 0.2_</font>
+<span class="supported">поддерживается с версии 0.2</span>
 
 Подписывает клиента на получение данных согласно указанному шаблону (`pattern`). Примеры шаблонов:
 
@@ -2742,7 +2755,7 @@ PSUBSCRIBE pattern [pattern ...]
 ```sql
 PUBLISH channel message
 ```
-<font size="2">_поддерживается с версии 0.2_</font>
+<span class="supported">поддерживается с версии 0.2</span>
 
 Размещает сообщение (`message`) в указанном канале (`channel`).
 Сообщение будет доступно клиентам вне зависимости от того, к какому узлу
@@ -2753,7 +2766,7 @@ PUBLISH channel message
 ```sql
 PUBSUB CHANNELS [pattern]
 ```
-<font size="2">_поддерживается с версии 0.2_</font>
+<span class="supported">поддерживается с версии 0.2</span>
 
 Выводит список активных каналов. Канал считается активным, если на него
 есть хотя бы один подписчик (подписка на шаблоны (`pattern`) не
@@ -2766,7 +2779,7 @@ PUBSUB CHANNELS [pattern]
 ```sql
 PUBSUB NUMPAT
 ```
-<font size="2">_поддерживается с версии 0.2_</font>
+<span class="supported">поддерживается с версии 0.2</span>
 
 Выводит список уникальных шаблонов, на которые были произведены подписки
 со стороны клиентов (с помощью команды [PSUBSCRIBE](#psubscribe)). Не
@@ -2777,7 +2790,7 @@ PUBSUB NUMPAT
 ```sql
 PUBSUB NUMSUB [channel [channel ...]]
 ```
-<font size="2">_поддерживается с версии 0.2_</font>
+<span class="supported">поддерживается с версии 0.2</span>
 
 Выводит список всех подписчиков указанных каналов. Подписчики на шаблоны
 (`pattern`) не считаются.
@@ -2787,7 +2800,7 @@ PUBSUB NUMSUB [channel [channel ...]]
 ```sql
 PUNSUBSCRIBE [pattern [pattern ...]]
 ```
-<font size="2">_поддерживается с версии 0.2_</font>
+<span class="supported">поддерживается с версии 0.2</span>
 
 Отписывает клиента от указанных шаблонов. Если ни один канал (`pattern`)
 не указан, то клиент будет отписан от всех шаблонов.
@@ -2797,7 +2810,7 @@ PUNSUBSCRIBE [pattern [pattern ...]]
 ```sql
 SUBSCRIBE channel [channel ...]
 ```
-<font size="2">_поддерживается с версии 0.2_</font>
+<span class="supported">поддерживается с версии 0.2</span>
 
 Подписывает клиента на получение данных из указанных каналов
 (`channel`). Cм. также [PSUBSCRIBE](#psubscribe).
@@ -2807,7 +2820,7 @@ SUBSCRIBE channel [channel ...]
 ```sql
 UNSUBSCRIBE [channel [channel ...]]
 ```
-<font size="2">_поддерживается с версии 0.2_</font>
+<span class="supported">поддерживается с версии 0.2</span>
 
 Отписывает клиента от указанных каналов. Если ни один канал (`channel`)
 не указан, то клиент будет отписан от всех каналов.
@@ -2819,7 +2832,7 @@ UNSUBSCRIBE [channel [channel ...]]
 ```sql
 GET key
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 Получает значение ключа `key`. Если ключ не существует, возвращается
 специальное значение `nil`. Если значение, хранящееся в ключе, не
@@ -2831,7 +2844,7 @@ GET key
 ```sql
 GETRANGE key start end
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Возвращает подстроку из значения, хранящегося по указанному ключу.
 Границы подстроки определяют аргументами `start` и `end`.
@@ -2841,7 +2854,7 @@ GETRANGE key start end
 ```sql
 INCR key
 ```
-<font size="2">_поддерживается с версии 0.4.3_</font>
+<span class="supported">поддерживается с версии 0.4.3</span>
 
 Увеличивает значение, хранящееся по указанному ключу, на `1.` Если
 указанный ключ не существует, то его значение
@@ -2852,7 +2865,7 @@ INCR key
 ```sql
 INCRBY key increment
 ```
-<font size="2">_поддерживается с версии 0.4.3_</font>
+<span class="supported">поддерживается с версии 0.4.3</span>
 
 Увеличивает значение, хранящееся по указанному ключу, на величину
 `increment`. Если указанный ключ не существует, то его значение
@@ -2863,7 +2876,7 @@ INCRBY key increment
 ```sql
 INCRBYFLOAT key increment
 ```
-<font size="2">_поддерживается с версии 0.4.3_</font>
+<span class="supported">поддерживается с версии 0.4.3</span>
 
 Увеличивает значение, хранящееся по указанному ключу, на величину
 `increment`, но при этом поддерживает дробные и отрицательные значения.
@@ -2874,7 +2887,7 @@ INCRBYFLOAT key increment
 ```sql
 MGET key [key ...]
 ```
-<font size="2">_поддерживается с версии 0.12.0_</font>
+<span class="supported">поддерживается с версии 0.12.0</span>
 
 Возвращает значения всех указанных ключей. Если ключ не существует, или
 не содержит значения, то для него команда вернет `nil`. Благодаря этому,
@@ -2885,7 +2898,7 @@ MGET key [key ...]
 ```sql
 MSET key value [key value ...]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Сохраняет строковые значения в ключах в соответствующих парах.
 Существующие значения при этом перезаписываются (аналогично
@@ -2898,7 +2911,7 @@ MSET key value [key value ...]
 ```sql
 PSETEX key milliseconds value
 ```
-<font size="2">_поддерживается с версии 0.7.0_</font>
+<span class="supported">поддерживается с версии 0.7.0</span>
 
 Устанавливает значение и срок жизни (таймаут) для ключа `key` подобно
 [SETEX](#setex), но в миллисекундах.
@@ -2917,7 +2930,7 @@ PSETEX key milliseconds value
 SET key value [NX | XX] [GET] [EX seconds | PX milliseconds |
   EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL]
 ```
-<font size="2">_поддерживается с версии 0.1.0_</font>
+<span class="supported">поддерживается с версии 0.1.0</span>
 
 Сохраняет строковое значение в ключе. Если ключ уже содержит значение,
 оно будет перезаписано, независимо от его типа. Любое предыдущее
@@ -2949,7 +2962,7 @@ SET key value [NX | XX] [GET] [EX seconds | PX milliseconds |
 ```sql
 SETEX key seconds value
 ```
-<font size="2">_поддерживается с версии 0.7.0_</font>
+<span class="supported">поддерживается с версии 0.7.0</span>
 
 Устанавливает для ключа `key` значение `value` и срок жизни (таймаут) в секундах.
 Аналогичный результат достигается так:
@@ -2973,7 +2986,7 @@ SET key value EX seconds
 ```sql
 SETNX key value
 ```
-<font size="2">_поддерживается с версии 0.7.0_</font>
+<span class="supported">поддерживается с версии 0.7.0</span>
 
 Устанавливает для ключа `key` значение `value` только если такого ключа
 ранее не было.
@@ -2991,7 +3004,7 @@ SETNX key value
 ```sql
 STRLEN key
 ```
-<font size="2">_поддерживается с версии 0.3.0_</font>
+<span class="supported">поддерживается с версии 0.3.0</span>
 
 Возвращает длину текстового значения, хранящегося по
 указанному ключу.
@@ -3008,14 +3021,14 @@ Radix поддерживает необходимый минимум коман�
 ```sql
 ALTER PLUGIN radix 0.14.1 SET radix.sentinel_enabled = 'true';
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 #### sentinel get-master-addr-by-name {: #sentinel-get-master-addr-by-name }
 
 ```sql
 SENTINEL GET-MASTER-ADDR-BY-NAME <replicaset name>
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Возвращает адрес Radix для заданного репликасета.
 
@@ -3024,7 +3037,7 @@ SENTINEL GET-MASTER-ADDR-BY-NAME <replicaset name>
 ```sql
 SENTINEL MASTER <replicaset name>
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Выводит мастера для заданного репликасета. Radix возвращает мастера
 репликасета с соответствующим именем.
@@ -3034,7 +3047,7 @@ SENTINEL MASTER <replicaset name>
 ```sql
 SENTINEL MASTERS
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Возвращает список репликасетов, которые есть в системе.
 
@@ -3043,7 +3056,7 @@ SENTINEL MASTERS
 ```sql
 SENTINEL MYID
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Возвращает id текущего инстанса
 
@@ -3052,7 +3065,7 @@ SENTINEL MYID
 ```sql
 SENTINEL REPLICAS <replicaset name>
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Показывает список реплик для заданного репликасета.
 
@@ -3061,7 +3074,7 @@ SENTINEL REPLICAS <replicaset name>
 ```sql
 SENTINEL SENTINELS <replicaset name>
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Показывает список сентинелей для заданного репликасета. Radix
 возвращает мастера репликасета с соответствующим именем.
@@ -3075,7 +3088,7 @@ Radix поддерживает следующие команды для рабо
 ```sql
 EVAL script numkeys [key [key ...]] [arg [arg ...]]
 ```
-<font size="2">_поддерживается с версии 0.5.0_</font>
+<span class="supported">поддерживается с версии 0.5.0</span>
 
 Вызывает Lua-скрипт. Первый аргумент — исходный код Lua-скрипта
 (`script`). Следующий за ним аргумент — количество передаваемых ключей
@@ -3104,7 +3117,7 @@ EVAL script numkeys [key [key ...]] [arg [arg ...]]
 ```sql
 EVAL_RO script numkeys [key [key ...]] [arg [arg ...]]
 ```
-<font size="2">_поддерживается с версии 0.5.0_</font>
+<span class="supported">поддерживается с версии 0.5.0</span>
 
 Вызывает Lua-скрипт аналогично [eval](#eval), но в режиме "только
 чтение", т.е. без модификации данных БД.
@@ -3114,7 +3127,7 @@ EVAL_RO script numkeys [key [key ...]] [arg [arg ...]]
 ```sql
 EVALSHA sha1 numkeys [key [key ...]] [arg [arg ...]]
 ```
-<font size="2">_поддерживается с версии 0.5.0_</font>
+<span class="supported">поддерживается с версии 0.5.0</span>
 
 Вызывает Lua-скрипт аналогично [eval](#eval), но в качестве аргумента
 принимает не сам скрипт, а его SHA1-хэш из кэша скриптов.
@@ -3124,7 +3137,7 @@ EVALSHA sha1 numkeys [key [key ...]] [arg [arg ...]]
 ```sql
 EVALSHA_RO sha1 numkeys [key [key ...]] [arg [arg ...]]
 ```
-<font size="2">_поддерживается с версии 0.5.0_</font>
+<span class="supported">поддерживается с версии 0.5.0</span>
 
 Вызывает Lua-скрипт аналогично [evalsha](#evalsha), но в режиме "только
 чтение", т.е. без модификации данных БД.
@@ -3134,7 +3147,7 @@ EVALSHA_RO sha1 numkeys [key [key ...]] [arg [arg ...]]
 ```sql
 SCRIPT EXISTS sha1 [sha1 ...]
 ```
-<font size="2">_поддерживается с версии 0.6.0_</font>
+<span class="supported">поддерживается с версии 0.6.0</span>
 
 Возвращает информацию о существовании скрипта с указанным хэшем SHA1 в
 кэше скриптов.
@@ -3144,7 +3157,7 @@ SCRIPT EXISTS sha1 [sha1 ...]
 ```sql
 SCRIPT FLUSH [ASYNC | SYNC]
 ```
-<font size="2">_поддерживается с версии 0.11.0_</font>
+<span class="supported">поддерживается с версии 0.11.0</span>
 
 Очищает кэш Lua-скриптов. По умолчанию, операция производится в
 синхронном режиме. Пользователь может указать режим явно:
@@ -3157,7 +3170,7 @@ SCRIPT FLUSH [ASYNC | SYNC]
 ```sql
 SCRIPT LOAD script
 ```
-<font size="2">_поддерживается с версии 0.6.0_</font>
+<span class="supported">поддерживается с версии 0.6.0</span>
 
 Загружает скрипт в кэш скриптов. Работает идемпотентно (т.е.
 подразумевая, что такой скрипт уже есть в хранилище).
@@ -3169,7 +3182,7 @@ SCRIPT LOAD script
 ```sql
 DISCARD
 ```
-<font size="2">_поддерживается с версии 0.6.0_</font>
+<span class="supported">поддерживается с версии 0.6.0</span>
 
 Удаляет все команды из очереди исполнения
 
@@ -3178,7 +3191,7 @@ DISCARD
 ```sql
 EXEC
 ```
-<font size="2">_поддерживается с версии 0.6.0_</font>
+<span class="supported">поддерживается с версии 0.6.0</span>
 
 Исполняет все команды в очереди в рамках единой транзакции.
 
@@ -3187,7 +3200,7 @@ EXEC
 ```sql
 MULTI
 ```
-<font size="2">_поддерживается с версии 0.6.0_</font>
+<span class="supported">поддерживается с версии 0.6.0</span>
 
 Обозначает момент блокировки транзакции. Последующие команды будут
 исполняться одна за другой при помощи [exec](#exec).
@@ -3197,7 +3210,7 @@ MULTI
 ```sql
 UNWATCH key [key ...]
 ```
-<font size="2">_поддерживается с версии 0.6.0_</font>
+<span class="supported">поддерживается с версии 0.6.0</span>
 
 Удаляет все ключи из списка наблюдения [watch](#watch).
 
@@ -3206,7 +3219,7 @@ UNWATCH key [key ...]
 ```sql
 WATCH key [key ...]
 ```
-<font size="2">_поддерживается с версии 0.6.0_</font>
+<span class="supported">поддерживается с версии 0.6.0</span>
 
 Включает проверку значений указанных ключей для последующих транзакций.
 
@@ -3217,7 +3230,7 @@ WATCH key [key ...]
 ```sql
 FLUSHALL [ASYNC | SYNC]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Очищает все базы данных.
 
@@ -3231,7 +3244,7 @@ FLUSHALL [ASYNC | SYNC]
 ```sql
 FLUSHDB [ASYNC | SYNC]
 ```
-<font size="2">_поддерживается с версии 0.10.0_</font>
+<span class="supported">поддерживается с версии 0.10.0</span>
 
 Очищает текущую базу данных.
 
@@ -3245,7 +3258,7 @@ FLUSHDB [ASYNC | SYNC]
 ```sql
 INFO [section [section ...]]
 ```
-<font size="2">_поддерживается с версии 0.4.0_</font>
+<span class="supported">поддерживается с версии 0.4.0</span>
 
 Возвращает информацию о сервере, подключенных клиентах, нагрузке на
 текущий узел и прочую статистику. Параметр `section` позволяет уточнить
@@ -3468,7 +3481,7 @@ INFO [section [section ...]]
 ```sql
 MEMORY USAGE key [SAMPLES count]
 ```
-<font size="2">_поддерживается с версии 0.6.0_</font>
+<span class="supported">поддерживается с версии 0.6.0</span>
 
 Показывает объем ОЗУ, занимаемый указанным ключом `key`. Параметр
 `SAMPLES` позволяет указать число дочерних элементов ключа (если такие

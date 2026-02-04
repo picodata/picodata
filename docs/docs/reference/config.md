@@ -87,20 +87,20 @@ cluster:
   shredding: false # (4)!
 instance:
   instance_dir: . # (15)!
-  backup_dir: ./backup # (42)!
-  name: null # (23)!
-  replicaset_name: null # (29)!
-  tier: default # (30)!
+  backup_dir: ./backup # (43)!
+  name: null # (24)!
+  replicaset_name: null # (30)!
+  tier: default # (31)!
   failure_domain: {} # (12)!
-  peer: # (24)!
-  - 127.0.0.1:3301
   iproto_listen: 127.0.0.1:3301 # (16)!
   iproto_advertise: 127.0.0.1:3301 # (9)!
+  peer: # (25)!
+  - 127.0.0.1:3301
   http_listen: null # (13)!
   https:
     enabled: true (14)!
   admin_socket: ./admin.sock # (8)!
-  share_dir: null # (28)!
+  share_dir: null # (29)!
   audit: null # (10)!
   log:
     level: info # (20)!
@@ -108,23 +108,24 @@ instance:
     format: plain # (19)!
   memtx:
     memory: 64M # (22)!
+    system_memory: 256M #(23)!
     max_tuple_size: 1M # (21)!
   vinyl:
-    memory: 128M # (32)!
-    cache: 128M # (31)!
-    bloom_fpr: 0.05 # (33)!
-    max_tuple_size: 1M # (34)!
-    page_size: 8K # (35)!
-    range_size: 1G # (36)!
-    run_count_per_level: 2 # (37)!
-    run_size_ratio: 3.5 # (38)!
-    read_threads: 1 # (39)!
-    write_threads: 4 # (40)!
-    timeout: 60.0 # (41)!
+    memory: 128M # (33)!
+    cache: 128M # (32)!
+    bloom_fpr: 0.05 # (34)!
+    max_tuple_size: 1M # (35)!
+    page_size: 8K # (36)!
+    range_size: 1G # (37)!
+    run_count_per_level: 2 # (38)!
+    run_size_ratio: 3.5 # (39)!
+    read_threads: 1 # (40)!
+    write_threads: 4 # (41)!
+    timeout: 60.0 # (42)!
   pg:
-    listen: 127.0.0.1:4327 # (26)!
-    advertise: 127.0.0.1:4327 # (25)!
-    ssl: false # (27)!
+    listen: 127.0.0.1:4327 # (27)!
+    advertise: 127.0.0.1:4327 # (26)!
+    ssl: false # (28)!
   iproto_tls:
     enabled: false # (17)!
   boot_timeout: 7200 # (11)!
@@ -152,26 +153,27 @@ instance:
 20. [instance.log.level](#instance_log_level)
 21. [instance.memtx.max_tuple_size](#instance_memtx_max_tuple_size)
 22. [instance.memtx.memory](#instance_memtx_memory)
-23. [instance.name](#instance_name)
-24. [instance.peer](#instance_peer)
-25. [instance.pg.advertise](#instance_pg_advertise)
-26. [instance.pg.listen](#instance_pg_listen)
-27. [instance.pg.ssl](#instance_pg_ssl)
-28. [instance.share_dir](#instance_share_dir)
-29. [instance.replicaset_name](#instance_replicaset_name)
-30. [instance.tier](#instance_tier)
-31. [instance.vinyl.cache](#instance_vinyl_cache)
-32. [instance.vinyl.memory](#instance_vinyl_memory)
-33. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
-34. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
-35. [instance.vinyl.page_size](#instance_vinyl_page_size)
-36. [instance.vinyl.range_size](#instance_vinyl_range_size)
-37. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
-38. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
-39. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
-40. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
-41. [instance.vinyl.timeout](#instance_vinyl_timeout)
-42. [instance.backup_dir](#instance_backup_dir)
+23. [instance.memtx.system_memory](#instance_memtx_system_memory)
+24. [instance.name](#instance_name)
+25. [instance.peer](#instance_peer)
+26. [instance.pg.advertise](#instance_pg_advertise)
+27. [instance.pg.listen](#instance_pg_listen)
+28. [instance.pg.ssl](#instance_pg_ssl)
+29. [instance.share_dir](#instance_share_dir)
+30. [instance.replicaset_name](#instance_replicaset_name)
+31. [instance.tier](#instance_tier)
+32. [instance.vinyl.cache](#instance_vinyl_cache)
+33. [instance.vinyl.memory](#instance_vinyl_memory)
+34. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
+35. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
+36. [instance.vinyl.page_size](#instance_vinyl_page_size)
+37. [instance.vinyl.range_size](#instance_vinyl_range_size)
+38. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
+39. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
+40. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
+41. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
+42. [instance.vinyl.timeout](#instance_vinyl_timeout)
+43. [instance.backup_dir](#instance_backup_dir)
 
 См. также:
 
@@ -179,7 +181,22 @@ instance:
 
 ## Параметры файла конфигурации {: #config_file_parameters }
 
+<style>
+
+.supported {
+    line-height: 1em;
+    margin-left: 0.5em;
+    width: 87em;
+    padding: 0.3em 0.7em;
+    border-radius: 1em;
+    font-family: monospace;
+    background-color: #d9ead3;
+}
+</style>
+
 ### cluster.default_bucket_count {: #cluster_default_bucket_count }
+
+<span class="supported">поддерживается с версии 24.4.1</span>
 
 Число бакетов в кластере по умолчанию.
 
@@ -191,6 +208,8 @@ instance:
 Данный параметр задается только в файле конфигурации.
 
 ### cluster.default_replication_factor {: #cluster_default_replication_factor }
+
+<span class="supported">поддерживается с версии 24.4.1</span>
 
 Число реплик — инстансов с одинаковым набором хранимых данных — для каждого
 репликасета.
@@ -207,6 +226,8 @@ instance:
 
 ### cluster.name {: #cluster_name }
 
+<span class="supported">поддерживается с версии 24.6.1</span>
+
 Имя кластера. Инстанс не сможет присоединиться к кластеру с другим именем.
 
 Данные:
@@ -220,6 +241,8 @@ instance:
 [`picodata run --cluster-name`]: cli.md#run_cluster_name
 
 ### cluster.shredding {: #cluster_shredding }
+
+<span class="supported">поддерживается с версии 25.1.1</span>
 
 Режим безопасного удаления [рабочих файлов][runfiles] путем
 многократной перезаписи специальными битовыми последовательностями, см.
@@ -239,6 +262,8 @@ instance:
 
 ### cluster.tier.<tier_name\>.bucket_count {: #cluster_tier_tier_bucket_count }
 
+<span class="supported">поддерживается с версии 25.1.1</span>
+
 Число бакетов в данном тире.
 
 Данные:
@@ -249,6 +274,8 @@ instance:
 Данный параметр задается только в файле конфигурации.
 
 ### cluster.tier.<tier_name\>.can_vote {: #cluster_tier_tier_can_vote }
+
+<span class="supported">поддерживается с версии 24.4.1</span>
 
 Признак [тира] *<tier_name\>*, определяющий возможность инстансов участвовать
 в голосовании на выборах [raft-лидера](../overview/glossary.md#raft_leader).
@@ -274,6 +301,8 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 1, "can_vote": 
 
 ### cluster.tier.<tier_name\>.replication_factor {: #cluster_tier_tier_replication_factor }
 
+<span class="supported">поддерживается с версии 24.4.1</span>
+
 [Фактор репликации](../overview/glossary.md#replication_factor) тира *<tier_name\>*.
 
 Данные:
@@ -288,6 +317,8 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 ```
 
 ### instance.admin_socket {: #instance_admin_socket }
+
+<span class="supported">поддерживается с версии 24.1.1</span>
 
 Путь к unix-сокету для подключения к консоли администратора с помощью
 команды `picodata admin`. В отличие от [пользовательской консоли],
@@ -307,6 +338,8 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 
 ### instance.audit {: #instance_audit }
 
+<span class="supported">поддерживается с версии 24.4.1</span>
+
 Конфигурация журнала аудита. Доступны следующие варианты:
 
 * `file:<FILE>` или просто `<FILE>` — запись в файл
@@ -325,6 +358,8 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 
 ### instance.backup_dir {: #instance_backup_dir }
 
+<span class="supported">поддерживается с версии 25.3.1</span>
+
 Директория для хранения резервных копий, создаваемых командой [`BACKUP`](sql/backup.md).
 Каждый инстанс сохраняет данные в поддиректории внутри `backup-dir` в файле, имя
 которого формируется в формате `YYYYMMDDThhmmss`.
@@ -339,10 +374,13 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 
 [`picodata run --backup-dir`]: cli.md#run_backup_dir
 
-
 ### instance.boot_timeout {: #instance_boot_timeout }
 
-Максимальное время *в секундах*, в течение которого `instance` может находиться в ожидании загрузки перед присоединением к кластеру, после чего он автоматически отключается.
+<span class="supported">поддерживается с версии 25.2.1</span>
+
+Максимальное время *в секундах*, в течение которого `instance` может находиться
+в ожидании загрузки перед присоединением к кластеру, после чего он автоматически
+отключается.
 
 Данные:
 
@@ -356,6 +394,8 @@ picodata run -c instance.boot_timeout=3600
 ```
 
 ### instance.failure_domain {: #instance_failure_domain }
+
+<span class="supported">поддерживается с версии 24.4.1</span>
 
 Список пар ключ-значение, разделенных запятыми, определяющий [домен
 отказа] инстанса. Набор параметров домена отказа позволяет указать
@@ -418,6 +458,8 @@ export PICODATA_FAILURE_DOMAIN=rack=12-90,server=srv_007,vm=rhel8
 
 ### instance.http_listen {: #instance_http_listen }
 
+<span class="supported">поддерживается с версии 24.4.1</span>
+
 Адрес HTTP-сервера.
 
 Данные:
@@ -431,6 +473,8 @@ export PICODATA_FAILURE_DOMAIN=rack=12-90,server=srv_007,vm=rhel8
 [`picodata run --http-listen`]: cli.md#run_http_listen
 
 ### instance.https {: #instance_https }
+
+<span class="supported">поддерживается с версии 25.5.1</span>
 
 Конфигурация защищенного режима для работы с кластером по протоколу
 HTTPS. Используется для получения метрик и доступа к веб-интерфейсу.
@@ -470,6 +514,8 @@ picodata run -c instance.https.enabled=true -c instance.https.cert_file=https/ce
 
 ### instance.instance_dir {: #instance_instance_dir }
 
+<span class="supported">поддерживается с версии 25.1.1</span>
+
 Рабочая директория инстанса. Здесь Picodata хранит все данные.
 
 Данные:
@@ -483,6 +529,8 @@ picodata run -c instance.https.enabled=true -c instance.https.cert_file=https/ce
 [`picodata run --instance-dir`]: cli.md#run_instance_dir
 
 ### instance.iproto_advertise {: #instance_iproto_advertise }
+
+<span class="supported">поддерживается с версии 25.1.1</span>
 
 Публичный сетевой адрес инстанса. Анонсируется кластеру при запуске
 инстанса и используется для подключения к нему других инстансов.
@@ -499,6 +547,8 @@ picodata run -c instance.https.enabled=true -c instance.https.cert_file=https/ce
 
 ### instance.iproto_listen {: #instance_iproto_listen }
 
+<span class="supported">поддерживается с версии 25.1.1</span>
+
 Сетевой адрес инстанса.
 
 Данные:
@@ -512,6 +562,8 @@ picodata run -c instance.https.enabled=true -c instance.https.cert_file=https/ce
 [`picodata run --iproto-listen`]: cli.md#run_iproto_listen
 
 ### instance.iproto_tls {: #instance_iproto_tls }
+
+<span class="supported">поддерживается с версии 25.5.1</span>
 
 Конфигурация защищенного режима для внутренней коммуникации между узлами
 кластера по протоколу Iproto. Основной параметр
@@ -549,6 +601,8 @@ picodata run -c instance.iproto_tls.enabled=true -c instance.iproto_tls.cert_fil
 
 ### instance.log.destination {: #instance_log_destination }
 
+<span class="supported">поддерживается с версии 24.4.1</span>
+
 Конфигурация отладочного журнала. Доступны следующие варианты:
 
 * `file:<FILE>` или просто `<FILE>` — запись в файл
@@ -570,6 +624,8 @@ picodata run -c instance.iproto_tls.enabled=true -c instance.iproto_tls.cert_fil
 ### instance.log.format {: #instance_log_format }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-logging-log-format -->
 
+<span class="supported">поддерживается с версии 24.4.1</span>
+
 Формат отладочного журнала.
 
 Возможные значения: `plain`, `json`
@@ -588,6 +644,8 @@ picodata run -c instance.log.format=json
 
 ### instance.log.level {: #instance_log_level }
 
+<span class="supported">поддерживается с версии 24.4.1</span>
+
 Уровень важности событий, регистрируемых в отладочном журнале.
 
 Возможные значения: `fatal`, `system`, `error`, `crit`, `warn`, `info`,
@@ -604,6 +662,8 @@ picodata run -c instance.log.format=json
 [`picodata run --log-level`]: cli.md#run_log_level
 
 ### instance.memtx.max_tuple_size {: #instance_memtx_max_tuple_size }
+
+<span class="supported">поддерживается с версии 25.1.1</span>
 
 Максимальный размер кортежа *в байтах* для движка хранения `memtx`.
 
@@ -628,6 +688,8 @@ picodata run -c instance.memtx.max_tuple_size=2M
 
 ### instance.memtx.memory {: #instance_memtx_memory }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-memtx-memory -->
+
+<span class="supported">поддерживается с версии 24.4.1</span>
 
 Объем памяти *в байтах*, выделяемый для хранения кортежей. Когда
 достигается лимит использования памяти, запросы команд [INSERT](./sql/insert.md)
@@ -659,6 +721,8 @@ picodata run -c instance.memtx.memory=128M
 ### instance.memtx.system_memory {: #instance_memtx_system_memory }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-memtx-memory -->
 
+<span class="supported">поддерживается с версии 25.4.1</span>
+
 Объем памяти *в байтах*, выделяемый для хранения кортежей и индексов системных таблиц. Когда
 достигается лимит использования памяти, запросы команд [INSERT](./sql/insert.md)
 и [UPDATE](./sql/update.md) начинают отклоняться с ошибкой *ER_MEMORY_ISSUE*.
@@ -688,6 +752,8 @@ picodata run -c instance.memtx.system_memory=128M
 
 ### instance.name {: #instance_name }
 
+<span class="supported">поддерживается с версии 24.4.1</span>
+
 Имя инстанса. При отсутствии параметра значение будет автоматически
 сгенерировано raft-лидером в момент присоединения инстанса к кластеру.
 Генератор имен использует следующую схему: имя тира, номер репликасета,
@@ -707,6 +773,8 @@ picodata run -c instance.memtx.system_memory=128M
 [`picodata run --instance-name`]: cli.md#run_instance_name
 
 ### instance.peer {: #instance_peer }
+
+<span class="supported">поддерживается с версии 24.4.1</span>
 
 Список сетевых адресов других инстансов, разделенных запятыми. Используется
 при инициализации кластера и присоединении инстанса к уже существующему
@@ -731,6 +799,8 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 
 ### instance.pg.advertise {: #instance_pg_advertise }
 
+<span class="supported">поддерживается с версии 24.4.1</span>
+
 Публичный адрес сервера для подключения по протоколу
 [PostgreSQL](../tutorial/connecting.md#postgresql).
 Анонсируется кластеру при запуске инстанса.
@@ -747,6 +817,8 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 
 ### instance.pg.listen {: #instance_pg_listen }
 
+<span class="supported">поддерживается с версии 24.4.1</span>
+
 Адрес сервера для подключения по протоколу
 [PostgreSQL](../tutorial/connecting.md#postgresql).
 
@@ -761,6 +833,8 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 [`picodata run --pg-listen`]: cli.md#run_pg_listen
 
 ### instance.pg.ssl {: #instance_pg_ssl }
+
+<span class="supported">поддерживается с версии 25.5.1</span>
 
 Признак использования протокола TLS/SSL или mTLS при подключении по протоколу PostgreSQL.
 
@@ -812,6 +886,8 @@ picodata run -c instance.pg.ssl=true -c instance.pg.cert_file=tls/server.crt -c 
 
 ### instance.replicaset_name {: #instance_replicaset_name }
 
+<span class="supported">поддерживается с версии 24.4.1</span>
+
 Имя репликасета. Используется при инициализации кластера и присоединении
 инстанса к уже существующему кластеру. При отсутствии параметра имя
 репликасета будет сгенерировано автоматически. Генератор имен использует
@@ -832,6 +908,8 @@ picodata run -c instance.pg.ssl=true -c instance.pg.cert_file=tls/server.crt -c 
 
 ### instance.share_dir {: #instance_share_dir }
 
+<span class="supported">поддерживается с версии 25.1.1</span>
+
 Путь к директории, содержащей файлы плагинов.
 
 Данные:
@@ -845,6 +923,8 @@ picodata run -c instance.pg.ssl=true -c instance.pg.cert_file=tls/server.crt -c 
 [`picodata run --share-dir`]: cli.md#run_share_dir
 
 ### instance.tier {: #instance_tier }
+
+<span class="supported">поддерживается с версии 25.1.1</span>
 
 Имя [тира], которому будет принадлежать инстанс. Используется при
 инициализации кластера и присоединении инстанса к уже существующему
@@ -862,6 +942,8 @@ picodata run -c instance.pg.ssl=true -c instance.pg.cert_file=tls/server.crt -c 
 
 ### instance.vinyl.bloom_fpr {: #instance_vinyl_bloom_fpr }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-vinyl_bloom_fpr -->
+
+<span class="supported">поддерживается с версии 25.1.1</span>
 
 Вероятность ложноположительного срабатывания [фильтра Блума] для движка
 хранения `vinyl`, измеряемая в долях единицы.
@@ -887,6 +969,8 @@ picodata run -c instance.vinyl.bloom_fpr=0.10
 ### instance.vinyl.cache {: #instance_vinyl_cache }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-vinyl-cache -->
 
+<span class="supported">поддерживается с версии 24.4.1</span>
+
 Размер кэша *в байтах* для движка хранения `vinyl`.
 
 Данные:
@@ -906,6 +990,8 @@ picodata run -c instance.vinyl.cache=256M
 ### instance.vinyl.max_tuple_size {: #instance_vinyl_max_tuple_size }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-vinyl_max_tuple_size -->
 
+<span class="supported">поддерживается с версии 25.1.1</span>
+
 Максимальный размер кортежа *в байтах* для движка хранения `vinyl`.
 
 Данные:
@@ -924,6 +1010,8 @@ picodata run -c instance.vinyl.max_tuple_size=2M
 
 ### instance.vinyl.memory {: #instance_vinyl_memory }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-vinyl-memory -->
+
+<span class="supported">поддерживается с версии 24.4.1</span>
 
 Максимальное количество оперативной памяти *в байтах*, которое использует
 движок хранения `vinyl`.
@@ -945,6 +1033,8 @@ picodata run -c instance.vinyl.memory=256M
 ### instance.vinyl.page_size {: #instance_vinyl_page_size }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-vinyl_page_size -->
 
+<span class="supported">поддерживается с версии 25.1.1</span>
+
 Размер страницы *в байтах*, используемой движком хранения `vinyl` для
 операций чтения и записи на диск.
 
@@ -964,6 +1054,8 @@ picodata run -c instance.vinyl.page_size=16M
 
 ### instance.vinyl.range_size {: #instance_vinyl_range_size }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-vinyl_range_size -->
+
+<span class="supported">поддерживается с версии 25.1.1</span>
 
 Максимальный размер LSM-поддерева по умолчанию *в байтах* для движка
 хранения `vinyl`.
@@ -985,6 +1077,8 @@ picodata run -c instance.vinyl.range_size=2G
 ### instance.vinyl.read_threads {: #instance_vinyl_read_threads }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-vinyl_read_threads -->
 
+<span class="supported">поддерживается с версии 25.1.1</span>
+
 Максимальное количество потоков чтения для движка хранения `vinyl`.
 
 Данные:
@@ -1000,6 +1094,8 @@ picodata run -c instance.vinyl.read_threads=2
 
 ### instance.vinyl.run_count_per_level {: #instance_vinyl_run_count_per_level }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-vinyl_run_count_per_level -->
+
+<span class="supported">поддерживается с версии 25.1.1</span>
 
 Максимальное количество файлов на уровне в LSM-дереве для движка хранения
 `vinyl`.
@@ -1018,6 +1114,8 @@ picodata run -c instance.vinyl.run_count_per_level=4
 ### instance.vinyl.run_size_ratio {: #instance_vinyl_run_size_ratio }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-vinyl_run_size_ratio -->
 
+<span class="supported">поддерживается с версии 25.1.1</span>
+
 Соотношение между размерами разных уровней в LSM-дереве для движка хранения
 `vinyl`.
 
@@ -1035,6 +1133,8 @@ picodata run -c instance.vinyl.run_size_ratio=7.0
 ### instance.vinyl.timeout {: #instance_vinyl_timeout }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-vinyl_timeout -->
 
+<span class="supported">поддерживается с версии 25.1.1</span>
+
 Максимальное время обработки запроса движком хранения `vinyl` *в секундах*.
 
 Данные:
@@ -1050,6 +1150,8 @@ picodata run -c instance.vinyl.timeout=120.0
 
 ### instance.vinyl.write_threads {: #instance_vinyl_write_threads }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-vinyl_write_threads -->
+
+<span class="supported">поддерживается с версии 25.1.1</span>
 
 Максимальное количество потоков записи для движка хранения `vinyl`.
 
