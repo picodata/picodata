@@ -249,6 +249,7 @@ extra_css:
 plugins:
   - open-in-new-tab
   - search:
+      separator: '[\s\-\_]+'
       lang:
         - en
         - ru
