@@ -199,10 +199,6 @@ impl ExecutionPlan {
         let mut sql = String::new();
         let delim = " ";
 
-        if self.get_ir_plan().is_raw_explain() {
-            sql.push_str("EXPLAIN QUERY PLAN ");
-        }
-
         let need_delim_after = |id: usize| -> bool {
             let mut result: bool = true;
             if id > 0 {
@@ -593,6 +589,17 @@ impl ExecutionPlan {
                 }
             }
         }
+
+        // Generated sql query can be empty in case of buggy plan.
+        // We should not insert `EXPLAIN QUERY PLAN` in such scenario
+        // since this will lead to error incostistency. For instance,
+        // executing empty query and `EXPLAIN QUERY PLAN ` produces
+        // different errors: `Failed to execute an empty SQL statement`
+        // and `Syntax error at line 1 near ''` respectively.
+        if self.get_ir_plan().is_raw_explain() && !sql.is_empty() {
+            sql.insert_str(0, "EXPLAIN QUERY PLAN ");
+        }
+
         assert_eq!(ir_plan.constants.len(), params_idx.len());
         let motions: Vec<NodeId> = motions.into_iter().collect();
 

@@ -1,5 +1,5 @@
+use crate::iterators::ExplainIter;
 use crate::msgpack::ByteCounter;
-use crate::query_plan::ExplainIter;
 use rmp::decode::read_int;
 use rmp::encode::{write_array_len, write_map_len, write_str, write_uint};
 use std::io::{Cursor, Error as IoError, Result as IoResult, Write};
@@ -61,10 +61,9 @@ pub fn dispatch_write_query_plan_response<'bytes>(
     write_array_len(writer, 1)?;
 
     let explain: Vec<String> = ExplainIter::new(port).collect();
-    let number = u32::try_from(explain.iter().flat_map(|s| s.split('\n')).count())
-        .map_err(IoError::other)?;
+    let number = u32::try_from(explain.len()).map_err(IoError::other)?;
     write_array_len(writer, number)?;
-    for line in explain.iter().flat_map(|s| s.split('\n')) {
+    for line in explain.iter() {
         write_str(writer, line)?;
     }
     Ok(())

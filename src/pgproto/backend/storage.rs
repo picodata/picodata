@@ -22,7 +22,7 @@ use serde::Serialize;
 use smol_str::{format_smolstr, SmolStr};
 use sql::executor::Port;
 use sql::ir::types::{DerivedType, UnrestrictedType as SbroadType};
-use sql_protocol::query_plan::ExplainIter;
+use sql_protocol::iterators::ExplainIter;
 use std::{
     cell::RefCell,
     collections::{btree_map::Entry, BTreeMap},
@@ -637,9 +637,8 @@ impl PortalInner {
                     port_read_explain(port.iter(), port.size() as usize, self.describe.metadata())?
                 } else {
                     let mut rows: Vec<Vec<PgValue>> = Vec::new();
-                    let explain: Vec<String> = ExplainIter::new(port.iter()).collect();
-                    for line in explain.iter().flat_map(|s| s.split('\n')) {
-                        rows.push(vec![PgValue::Text(line.to_string())]);
+                    for line in ExplainIter::new(port.iter()) {
+                        rows.push(vec![PgValue::Text(line)]);
                     }
                     rows
                 };

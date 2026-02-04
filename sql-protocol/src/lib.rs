@@ -7,4 +7,3 @@ pub mod error;
 pub mod iterators;
 pub mod message_type;
 pub mod msgpack;
-pub mod query_plan;

@@ -546,6 +546,15 @@ fn repack_vdbe_explain<'p>(port: &mut impl Port<'p>) -> String {
     format!("{table}\n")
 }
 
+fn repack_vdbe_error(err: String) -> String {
+    let mut table = Table::default();
+    table.set_content_arrangement(ContentArrangement::Dynamic);
+    let row = Row::from([Cell::new(err)]);
+    table.add_row(row);
+
+    format!("{table}\n")
+}
+
 fn format_sql(explain: &str, params: &[Value], formatted: bool) -> String {
     let sql = explain.strip_prefix("EXPLAIN QUERY PLAN ").unwrap_or("");
     let mut fmt_options = sqlformat::FormatOptions::default();
@@ -594,14 +603,23 @@ where
         table_create(table_name, &pk_name, &columns)?;
     }
 
-    let mut stmt = SqlStmt::compile(explain)?;
-    let mut tmp_port = PicoPortOwned::new();
-    tmp_port.process_stmt(&mut stmt, params, sql_vdbe_opcode_max)?;
+    match SqlStmt::compile(explain) {
+        Ok(mut stmt) => {
+            let mut tmp_port = PicoPortOwned::new();
+            tmp_port.process_stmt(&mut stmt, params, sql_vdbe_opcode_max)?;
 
-    let vdbe_explain = repack_vdbe_explain(&mut tmp_port);
-    let vdbe_explain_serialized = rmp_serde::to_vec(&[vdbe_explain])?;
+            let vdbe_explain = repack_vdbe_explain(&mut tmp_port);
+            let vdbe_explain_serialized = rmp_serde::to_vec(&[vdbe_explain])?;
 
-    port.add_mp(&vdbe_explain_serialized);
+            port.add_mp(&vdbe_explain_serialized);
+        }
+        Err(err) => {
+            let err_msg = repack_vdbe_error(err.to_string());
+            let err_serialized = rmp_serde::to_vec(&[err_msg])?;
+
+            port.add_mp(&err_serialized);
+        }
+    }
 
     Ok(())
 }

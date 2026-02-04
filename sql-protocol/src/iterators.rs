@@ -210,3 +210,47 @@ impl MsgpackEncode for TestPureTupleEncoder<'_> {
         Ok(())
     }
 }
+
+// Iterator for a port containing result of EXPLAIN (RAW) query.
+// All rows must be Vec<String> with at least one element. The general
+// structure of port is Vec<Vec<String>>.
+pub struct ExplainIter {
+    explain: std::vec::IntoIter<String>,
+    idx: u64,
+}
+
+impl ExplainIter {
+    pub fn new<'a>(port: impl Iterator<Item = &'a [u8]>) -> Self {
+        let explain_rows: Vec<Vec<String>> = port
+            .into_iter()
+            .map(|tuple| rmp_serde::decode::from_slice(tuple).expect("expected vec of strings"))
+            .collect();
+
+        let mut explain = Vec::new();
+        for line_vec in explain_rows {
+            for line in line_vec[0].split('\n') {
+                explain.push(line.to_string());
+            }
+        }
+
+        ExplainIter {
+            explain: explain.into_iter(),
+            idx: 0,
+        }
+    }
+}
+
+impl Iterator for ExplainIter {
+    type Item = String;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let line = self.explain.next()?;
+
+        if line.starts_with("Query") {
+            self.idx += 1;
+            Some(format!("{}. {}", self.idx, line))
+        } else {
+            Some(line)
+        }
+    }
+}

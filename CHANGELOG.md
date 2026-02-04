@@ -32,6 +32,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Introduce `pico_query_metadata` option for getting distribution key metadata.
 - Introduce `sql_preemption_opcode_max` to control the VDBE opcode interval
   between execution time checks when `sql_preemption` is enabled.
+- Add support for `EXPLAIN (RAW)` for queries that fail at local sql execution stage.
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:

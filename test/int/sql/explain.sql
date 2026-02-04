@@ -851,3 +851,82 @@ SELECT upper (CAST ("testing_space_global"."name" as string)) as "col_0", "testi
 | 0        | 0     | 0    | SCAN TABLE testing_space_global (~1048576 rows) |
 +----------+-------+------+-------------------------------------------------+
 ''
+
+-- TEST: test_raw_explain_for_query_from-gl1394-1
+-- SQL:
+CREATE TABLE g (id INT PRIMARY KEY) DISTRIBUTED GLOBALLY;
+
+-- TEST: test_raw_explain_for_query_from-gl1394-2
+-- SQL:
+EXPLAIN (RAW) SELECT max(id) FROM g HAVING true UNION SELECT 1;
+-- EXPECTED:
+1. Query (ROUTER):
+SELECT max (CAST ("g"."id" as int)) as "col_1" FROM "g" HAVING CAST(true AS bool) UNION SELECT CAST(1 AS int) as "col_1"
++----------------------------------------------------------------------------------+
+| Failed to compile SQL statement: LIMIT clause should come after UNION not before |
++----------------------------------------------------------------------------------+
+''
+
+-- TEST: test_raw_explain-dbg
+-- SQL:
+EXPLAIN (RAW) SELECT * FROM g WHERE MAX(id) = 5;
+-- EXPECTED:
+1. Query (ROUTER):
+SELECT * FROM "g" WHERE max (CAST ("g"."id" as int)) = CAST(5 AS int)
++---------------------------------------------------------------------+
+| Failed to compile SQL statement: misuse of aggregate function MAX() |
++---------------------------------------------------------------------+
+''
+
+-- TEST: test_raw_explain_for_query_from-gl2666-1
+-- SQL:
+CREATE TABLE t (a INT PRIMARY KEY);
+
+-- TEST: test_raw_explain_for_query_from-gl2666-2
+-- SQL:
+EXPLAIN (RAW) WITH a AS (SELECT 1 FROM t limit 1) SELECT 1 FROM t JOIN a ON (values (true));
+-- EXPECTED:
+1. Query (STORAGE):
+SELECT CAST(1 AS int) as "col_1" FROM "t" LIMIT 1
++----------+-------+------+------------------------------+
+| selectid | order | from | detail                       |
++========================================================+
+| 0        | 0     | 0    | SCAN TABLE t (~1048576 rows) |
++----------+-------+------+------------------------------+
+''
+2. Query (ROUTER):
+VALUES (CAST(true AS bool))
++----------+-------+------+--------+
+| selectid | order | from | detail |
++==================================+
++----------+-------+------+--------+
+''
+3. Query (ROUTER):
+SELECT "COL_0" FROM "TMP_3828273143781783160_0136" LIMIT 1
++----------+-------+------+---------------------------------------------------------+
+| selectid | order | from | detail                                                  |
++===================================================================================+
+| 0        | 0     | 0    | SCAN TABLE TMP_3828273143781783160_0136 (~1048576 rows) |
++----------+-------+------+---------------------------------------------------------+
+
+''
+4. Query (ROUTER):
+''
++---------------------------------------------------------------------------+
+| Failed to compile SQL statement: Failed to execute an empty SQL statement |
++---------------------------------------------------------------------------+
+''
+5. Query (STORAGE):
+SELECT CAST(1 AS int) as "col_1" FROM "t" INNER JOIN ( SELECT "COL_0" FROM "TMP_4585702767082550896_0136" ) as "a" ON ( SELECT "COL_0" FROM "TMP_4585702767082550896_1136" )
++----------+-------+------+---------------------------------------------------------+
+| selectid | order | from | detail                                                  |
++===================================================================================+
+| 0        | 0     | 0    | SCAN TABLE t (~1048576 rows)                            |
+|----------+-------+------+---------------------------------------------------------|
+| 0        | 0     | 0    | EXECUTE SCALAR SUBQUERY 1                               |
+|----------+-------+------+---------------------------------------------------------|
+| 1        | 0     | 0    | SCAN TABLE TMP_4585702767082550896_1136 (~1048576 rows) |
+|----------+-------+------+---------------------------------------------------------|
+| 0        | 1     | 1    | SCAN TABLE TMP_4585702767082550896_0136 (~1048576 rows) |
++----------+-------+------+---------------------------------------------------------+
+''
