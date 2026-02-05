@@ -162,7 +162,7 @@ impl Instance {
             target_state: State::new(StateVariant::Online, 13),
             failure_domain: FailureDomain::default(),
             tier: "default".into(),
-            picodata_version: "22.07.0".into(),
+            picodata_version: SmolStr::new_static(PICODATA_VERSION),
             sync_incarnation: Some(13),
             target_state_reason: Some("wakeup".into()),
             target_state_change_time: Some(Datetime::now_utc()),
@@ -187,7 +187,7 @@ impl std::fmt::Display for Instance {
 }
 
 #[rustfmt::skip]
-mod tests {
+pub mod tests {
     use std::collections::HashSet;
     use tarantool::space::UpdateOps;
     use crate::storage::SystemTable;
@@ -434,7 +434,7 @@ mod tests {
         ops
     }
 
-    fn check_field_assignment<'a, T>(op: &'a TupleBuffer, expected_field: &str) -> T
+    pub fn check_field_assignment<'a, T>(op: &'a TupleBuffer, expected_field: &str) -> T
     where
         T: serde::Deserialize<'a>,
     {

@@ -1026,6 +1026,8 @@ mod tests {
             .insert(&(2, "ya.ru", traft::ConnectionType::Pgproto))
             .unwrap();
 
+        // Reset the contents of _pico_property to be independent from Catalog::for_tests
+        storage.properties.space.truncate().unwrap();
         storage.properties.space.insert(&("foo", "bar")).unwrap();
 
         let r = Replicaset::for_tests();

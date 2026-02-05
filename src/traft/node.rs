@@ -165,6 +165,17 @@ impl Status {
         }
         Ok(())
     }
+
+    /// Create an instance of this struct for use in tests
+    pub fn for_tests() -> Self {
+        Self {
+            id: 1,
+            leader_id: Some(1),
+            term: 1,
+            raft_state: RaftState::Leader,
+            main_loop_status: "idle",
+        }
+    }
 }
 
 /// The heart of `traft` module - the Node.
@@ -187,7 +198,7 @@ pub struct Node {
     #[allow(unused)]
     pub(crate) resharding_loop: ReshardingLoop,
     pub(crate) pool: Rc<ConnectionPool>,
-    status: watch::Receiver<Status>,
+    pub(crate) status: watch::Receiver<Status>,
     applied: watch::Receiver<RaftIndex>,
 
     pub(crate) main_loop_info: Rc<NoYieldsRefCell<MainLoopInfo>>,
@@ -199,6 +210,8 @@ pub struct Node {
     pub plugin_manager: Rc<PluginManager>,
     pub(crate) instance_reachability: InstanceReachabilityManagerRef,
     pub alter_system_parameters: AlterSystemParametersRef,
+
+    pub cas_test_override: Option<crate::cas::OverrideChannel>,
 }
 
 impl std::fmt::Debug for Node {
@@ -245,7 +258,7 @@ impl Node {
             tls_connector: tls_connector.cloned(),
             ..Default::default()
         };
-        let mut pool = ConnectionPool::new(storage.clone(), opts);
+        let mut pool = ConnectionPool::new_impl(storage.clone(), opts, for_tests);
         let instance_reachability =
             instance_reachability_manager(alter_system_parameters.clone(), applied);
         pool.instance_reachability = Some(instance_reachability.clone());
@@ -304,6 +317,11 @@ impl Node {
             ReshardingLoop::start()
         };
 
+        let mut cas_test_override = None;
+        if for_tests {
+            cas_test_override = Some(crate::cas::OverrideChannel::new());
+        }
+
         let node = Node {
             raft_id,
             main_loop,
@@ -322,6 +340,7 @@ impl Node {
             plugin_manager,
             instance_reachability,
             alter_system_parameters,
+            cas_test_override,
         };
 
         // SAFETY: only accessed from main thread, and never mutated after this

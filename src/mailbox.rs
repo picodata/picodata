@@ -55,8 +55,6 @@ use std::time::Duration;
 /// // Won't ever yield.
 /// assert!(mailbox.try_receive_all().is_empty());
 /// ```
-
-#[derive(Default)]
 pub struct Mailbox<T>(Rc<Inner<T>>);
 
 #[derive(Default)]
@@ -88,6 +86,12 @@ impl<T> ::std::fmt::Debug for Mailbox<T> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         let typ = format!("Mailbox<{}>", std::any::type_name::<T>());
         f.debug_struct(&typ).finish_non_exhaustive()
+    }
+}
+
+impl<T> Default for Mailbox<T> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

@@ -194,7 +194,12 @@ fn test_one(test: &TestCase) {
 
     crate::schema::init_user_pico_service();
 
-    ::tarantool::fiber::set_name(test.name());
+    let mut short_name = test.name();
+    if let Some((_, tail)) = short_name.rsplit_once("::") {
+        short_name = tail;
+    };
+
+    ::tarantool::fiber::set_name(short_name);
     test.run();
     std::process::exit(0i32);
 }

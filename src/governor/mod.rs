@@ -39,8 +39,7 @@ use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::error::ErrorInfo;
 use crate::traft::network::ConnectionPool;
-use crate::traft::node::global;
-use crate::traft::node::Status;
+use crate::traft::node;
 use crate::traft::op::Ddl;
 use crate::traft::op::Dml;
 use crate::traft::op::PluginRaftOp;
@@ -64,7 +63,6 @@ use futures::stream::StreamExt;
 use plan::action_plan;
 use plan::stage::*;
 use std::collections::HashMap;
-use std::ops::ControlFlow;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -77,12 +75,13 @@ mod plugin;
 mod queue;
 mod replication;
 mod sharding;
+mod test;
 pub mod upgrade_operations;
 
 impl Loop {
     const RETRY_TIMEOUT: Duration = Duration::from_millis(250);
 
-    async fn iter_fn(
+    async fn governor_loop(
         State {
             governor_status,
             storage,
@@ -92,14 +91,14 @@ impl Loop {
             pool,
             last_step_info,
         }: &mut State,
-    ) -> ControlFlow<()> {
+    ) -> IterationEnd {
         if !raft_status.get().raft_state.is_leader() {
             set_status(governor_status, "not a leader");
             raft_status.changed().await.unwrap();
-            return ControlFlow::Continue(());
+            return IterationEnd::Continue;
         }
 
-        let node = global().expect("must be initialized");
+        let node = node::global().expect("must be initialized");
         let instance_reachability = &node.instance_reachability;
 
         let topology_ref = node.topology_cache.get();
@@ -249,12 +248,17 @@ impl Loop {
         let plan = unwrap_ok_or!(plan,
             Err(e) => {
                 tlog!(Warning, "failed constructing an action plan: {e}");
+                governor_status
+                    .send_modify(|s| s.last_error = Some(e.into_box_error()))
+                    .expect("status shouldn't ever be borrowed across yields");
                 waker.mark_seen();
-                _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
-                return ControlFlow::Continue(());
+                return IterationEnd::Sleep(Loop::RETRY_TIMEOUT);
             }
         );
         last_step_info.on_next_step(&plan);
+        governor_status
+            .send_modify(|s| s.last_step_kind = Some(plan.kind()))
+            .expect("status shouldn't ever be borrowed across yields");
 
         // NOTE: this is a macro, because borrow checker is hot garbage
         macro_rules! set_status {
@@ -280,11 +284,12 @@ impl Loop {
                         .expect("status shouldn't ever be borrowed across yields");
 
                     waker.mark_seen();
-                    _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
-                    return ControlFlow::Continue(());
+                    return IterationEnd::Sleep(Loop::RETRY_TIMEOUT);
                 }
             }
         }
+
+        let mut sleep_timeout = None;
 
         match plan {
             Plan::SleepDueToBackoff(SleepDueToBackoff {
@@ -299,7 +304,7 @@ impl Loop {
                         "timeout" => ?timeout
                     ]
                     async {
-                        _ = waker.changed().timeout(timeout).await;
+                        sleep_timeout = Some(timeout);
                     }
                 }
             }
@@ -322,7 +327,7 @@ impl Loop {
                 set_status!("transfer raft leader");
                 tlog!(Info, "transferring leadership to {}", to.name);
                 node.transfer_leadership_and_yield(to.raft_id);
-                _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
+                sleep_timeout = Some(Loop::RETRY_TIMEOUT);
             }
 
             Plan::SelfReadOnlyFalse(SelfReadOnlyFalse {}) => {
@@ -332,7 +337,7 @@ impl Loop {
                     async {
                         set_read_only(false)?;
                         // Add a short sleep to avoid infinite looping in case of bugs
-                        _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
+                        sleep_timeout = Some(Loop::RETRY_TIMEOUT);
                     }
                 }
             }
@@ -922,7 +927,7 @@ impl Loop {
 
                 if abort_cause.is_none() && !last_step_info.all_instances_ok(&targets_total) {
                     // This batch was successful, but there're still more RPCs to send out
-                    return ControlFlow::Continue(());
+                    return IterationEnd::Continue;
                 }
 
                 let next_op;
@@ -1015,7 +1020,7 @@ impl Loop {
 
                 if !last_step_info.all_instances_ok(&other_tiers_masters_total) {
                     // This batch was successful, but there're still more RPCs to send out
-                    return ControlFlow::Continue(());
+                    return IterationEnd::Continue;
                 }
 
                 governor_substep! {
@@ -1110,7 +1115,7 @@ impl Loop {
 
                 if abort_cause.is_none() && !last_step_info.all_instances_ok(&targets_total) {
                     // This batch was successful, but there're still more RPCs to send out
-                    return ControlFlow::Continue(());
+                    return IterationEnd::Continue;
                 }
 
                 let next_op;
@@ -1217,7 +1222,7 @@ impl Loop {
 
                 if abort_cause.is_none() && !last_step_info.all_instances_ok(&targets_total) {
                     // This batch was successful, but there're still more RPCs to send out
-                    return ControlFlow::Continue(());
+                    return IterationEnd::Continue;
                 }
 
                 let next_op;
@@ -1306,7 +1311,7 @@ impl Loop {
 
                 if abort_cause.is_none() && !last_step_info.all_instances_ok(&targets_total) {
                     // This batch was successful, but there're still more RPCs to send out
-                    return ControlFlow::Continue(());
+                    return IterationEnd::Continue;
                 }
 
                 let next_op;
@@ -1455,7 +1460,7 @@ impl Loop {
 
                 if abort_cause.is_none() && !last_step_info.all_instances_ok(&targets_total) {
                     // This batch was successful, but there're still more RPCs to send out
-                    return ControlFlow::Continue(());
+                    return IterationEnd::Continue;
                 }
 
                 let next_op;
@@ -1526,7 +1531,7 @@ impl Loop {
 
                 if !last_step_info.all_instances_ok(&targets_total) {
                     // This batch was successful, but there're still more RPCs to send out
-                    return ControlFlow::Continue(());
+                    return IterationEnd::Continue;
                 }
 
                 governor_substep! {
@@ -1730,21 +1735,23 @@ impl Loop {
                 s.last_error = None;
             })
             .expect("status shouldn't ever be borrowed across yields");
-        ControlFlow::Continue(())
+
+        if let Some(timeout) = sleep_timeout {
+            return IterationEnd::Sleep(timeout);
+        }
+
+        IterationEnd::Continue
     }
 
     pub fn start(
         pool: Rc<ConnectionPool>,
-        raft_status: watch::Receiver<Status>,
+        raft_status: watch::Receiver<node::Status>,
         storage: Catalog,
         raft_storage: RaftSpaceAccess,
     ) -> Self {
         let (waker_tx, waker_rx) = watch::channel(());
-        let (governor_status_tx, governor_status_rx) = watch::channel(GovernorStatus {
-            governor_loop_status: "initializing",
-            last_error: None,
-            step_counter: 0,
-        });
+        let (governor_status_tx, governor_status_rx) =
+            watch::channel(GovernorStatus::new("initializing"));
 
         let state = State {
             governor_status: governor_status_tx,
@@ -1757,7 +1764,22 @@ impl Loop {
         };
 
         Self {
-            fiber_id: crate::loop_start!("governor_loop", Self::iter_fn, state),
+            fiber_id: ::tarantool::fiber::Builder::new()
+                .name("governor_loop")
+                .func_async(async {
+                    let mut state = state;
+                    loop {
+                        match Self::governor_loop(&mut state).await {
+                            IterationEnd::Continue => continue,
+                            IterationEnd::Sleep(timeout) => {
+                                _ = state.waker.changed().timeout(timeout).await;
+                            }
+                        };
+                    }
+                })
+                .defer_non_joinable()
+                .expect("starting a fiber shouldn't fail")
+                .expect("fiber id is supported"),
             waker: waker_tx,
             status: governor_status_rx,
         }
@@ -1765,11 +1787,7 @@ impl Loop {
 
     pub fn for_tests() -> Self {
         let (waker, _) = watch::channel(());
-        let (_, status) = watch::channel(GovernorStatus {
-            governor_loop_status: "uninitialized",
-            last_error: None,
-            step_counter: 0,
-        });
+        let (_, status) = watch::channel(GovernorStatus::new("uninitialized"));
         Self {
             fiber_id: 0,
             waker,
@@ -1781,6 +1799,12 @@ impl Loop {
     pub fn wakeup(&self) -> Result<()> {
         self.waker.send(()).map_err(|_| Error::GovernorStopped)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum IterationEnd {
+    Sleep(Duration),
+    Continue,
 }
 
 #[inline(always)]
@@ -1817,7 +1841,7 @@ struct State {
     governor_status: watch::Sender<GovernorStatus>,
     storage: Catalog,
     raft_storage: RaftSpaceAccess,
-    raft_status: watch::Receiver<Status>,
+    raft_status: watch::Receiver<node::Status>,
     waker: watch::Receiver<()>,
     pool: Rc<ConnectionPool>,
     last_step_info: LastStepInfo,
@@ -1830,6 +1854,8 @@ pub struct GovernorStatus {
     /// Is set by governor to explain the reason why it has yielded.
     pub governor_loop_status: &'static str,
 
+    pub last_step_kind: Option<ActionKind>,
+
     /// If the last governor step ended with an error, this is the corresponding
     /// error value.
     ///
@@ -1841,6 +1867,18 @@ pub struct GovernorStatus {
     ///
     /// This value is only used for testing purposes.
     pub step_counter: u64,
+}
+
+impl GovernorStatus {
+    #[inline]
+    fn new(initial_status: &'static str) -> Self {
+        Self {
+            governor_loop_status: initial_status,
+            last_step_kind: None,
+            last_error: None,
+            step_counter: 0,
+        }
+    }
 }
 
 fn make_promotion_vclock_update_dml(replicaset_name: &str, vclock: &Vclock) -> Result<Dml> {

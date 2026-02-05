@@ -263,6 +263,18 @@ impl LastStepInfo {
             self.last_plugin_op = Some(plugin_op.clone());
         }
     }
+
+    /// A helper function for use in tests. It subtracts `offset` from all
+    /// recorded `last_try` fields of recorded failed RPC attempts.
+    ///
+    /// # Safety
+    ///
+    /// This function should not be called from anywhere except for test code
+    pub unsafe fn nudge_last_try_instants_backwards(&mut self, offset: Duration) {
+        for instance in self.err_instances.values_mut() {
+            instance.last_try = instance.last_try.saturating_sub(offset);
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

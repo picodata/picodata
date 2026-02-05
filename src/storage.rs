@@ -387,6 +387,18 @@ impl Catalog {
         let storage = Self::try_get(true).unwrap();
         storage.initialize_storage_on_master().unwrap();
 
+        storage
+            .properties
+            .put(PropertyName::ClusterVersion, &PICODATA_VERSION)
+            .unwrap();
+        storage
+            .properties
+            .put(
+                PropertyName::SystemCatalogVersion,
+                &LATEST_SYSTEM_CATALOG_VERSION,
+            )
+            .unwrap();
+
         if storage.pico_table.space.len().unwrap() != 0 {
             // Already initialized by other tests.
             return storage.clone();

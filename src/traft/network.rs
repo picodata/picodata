@@ -64,11 +64,11 @@ impl Default for WorkerOptions {
 // Request
 ////////////////////////////////////////////////////////////////////////////////
 
-struct Request {
-    proc: &'static str,
-    args: TupleBuffer,
-    deadline: Instant,
-    on_result: OnRequestResult,
+pub struct Request {
+    pub proc: &'static str,
+    pub args: TupleBuffer,
+    pub deadline: Instant,
+    pub on_result: OnRequestResult,
 }
 
 impl Request {
@@ -101,9 +101,18 @@ impl Request {
     }
 }
 
-enum OnRequestResult {
+pub enum OnRequestResult {
     Callback(Box<dyn FnOnce(Result<Tuple>)>),
     ReportUnreachable,
+}
+
+impl OnRequestResult {
+    pub fn handle(self, result: Result<Tuple>) {
+        match self {
+            Self::Callback(cb) => cb(result),
+            Self::ReportUnreachable => unreachable!(),
+        }
+    }
 }
 
 type Queue = Mailbox<Request>;
@@ -375,17 +384,10 @@ impl PoolWorker {
         Args: ToTupleBuffer + ?Sized,
         Response: tarantool::tuple::DecodeOwned,
     {
-        let args = unwrap_ok_or!(args.to_tuple_buffer(),
-            Err(e) => { return cb(Err(e.into())) }
-        );
-        let convert_result = |bytes: Result<Tuple>| {
-            let tuple: Tuple = bytes?;
-            let res = crate::rpc::decode_iproto_return_value(tuple)?;
-            Ok(res)
+        let Some(request) = prepare_request(proc, args, timeout, cb) else {
+            // The error is already passed to the callback
+            return;
         };
-        let deadline = fiber::clock().saturating_add(timeout);
-        let request =
-            Request::with_callback(proc, args, move |res| cb(convert_result(res)), deadline);
         self.inbox.send(request);
         if self.inbox_ready.send(()).is_err() {
             tlog!(
@@ -410,6 +412,34 @@ impl std::fmt::Debug for PoolWorker {
     }
 }
 
+fn prepare_request<Args, Response>(
+    proc: &'static str,
+    args: &Args,
+    timeout: Duration,
+    cb: impl FnOnce(Result<Response>) + 'static,
+) -> Option<Request>
+where
+    Args: ToTupleBuffer + ?Sized,
+    Response: tarantool::tuple::DecodeOwned,
+{
+    let args = unwrap_ok_or!(args.to_tuple_buffer(),
+        Err(e) => {
+            // Send the encoding error into the callback so that it's received
+            // where the response is expected
+            cb(Err(e.into()));
+            return None;
+        }
+    );
+    let convert_result = |bytes: Result<Tuple>| {
+        let tuple: Tuple = bytes?;
+        let res = crate::rpc::decode_iproto_return_value(tuple)?;
+        Ok(res)
+    };
+    let deadline = fiber::clock().saturating_add(timeout);
+    let request = Request::with_callback(proc, args, move |res| cb(convert_result(res)), deadline);
+    Some(request)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // ConnectionPool
 ////////////////////////////////////////////////////////////////////////////////
@@ -423,11 +453,26 @@ pub struct ConnectionPool {
     peer_addresses: PeerAddresses,
     instances: Instances,
     pub(crate) instance_reachability: Option<InstanceReachabilityManagerRef>,
+    pub(crate) test_override: Option<OverrideChannel>,
 }
 
 impl ConnectionPool {
     #[inline(always)]
     pub fn new(storage: Catalog, worker_options: WorkerOptions) -> Self {
+        Self::new_impl(storage, worker_options, false)
+    }
+
+    #[inline(always)]
+    pub fn for_tests(storage: Catalog, worker_options: WorkerOptions) -> Self {
+        Self::new_impl(storage, worker_options, true)
+    }
+
+    pub fn new_impl(storage: Catalog, worker_options: WorkerOptions, for_tests: bool) -> Self {
+        let mut test_override = None;
+        if for_tests {
+            test_override = Some(Mailbox::new());
+        }
+
         Self {
             worker_options,
             workers: Default::default(),
@@ -435,6 +480,7 @@ impl ConnectionPool {
             peer_addresses: storage.peer_addresses,
             instances: storage.instances,
             instance_reachability: None,
+            test_override,
         }
     }
 
@@ -581,15 +627,22 @@ impl ConnectionPool {
         Args: ToTupleBuffer + ?Sized,
     {
         let (tx, mut rx) = oneshot::channel();
-        id.get_or_create_in(self)?
-            .rpc_raw(proc, args, timeout, move |res| {
-                if tx.send(res).is_err() {
-                    tlog!(
-                        Debug,
-                        "rpc response ignored because caller dropped the future"
-                    )
-                }
-            });
+
+        let on_response = move |res| {
+            if tx.send(res).is_err() {
+                tlog!(
+                    Debug,
+                    "rpc response ignored because caller dropped the future"
+                )
+            }
+        };
+
+        if let Some(test_override) = &self.test_override {
+            handle_test_override(test_override, id, proc, args, timeout, on_response);
+        } else {
+            let worker = id.get_or_create_in(self)?;
+            worker.rpc_raw(proc, args, timeout, on_response);
+        }
 
         // We use an explicit type implementing Future instead of defining an
         // async fn, because we need to tell rust explicitly that the `id` &
@@ -611,6 +664,33 @@ impl Drop for ConnectionPool {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// test override
+////////////////////////////////////////////////////////////////////////////////
+
+/// A channel for RPC requests which is used for the mock implementation in tests.
+pub type OverrideChannel = Mailbox<(RaftIdOrName, Request)>;
+
+#[cold]
+fn handle_test_override<Args, Response>(
+    test_override: &OverrideChannel,
+    id: &impl IdOfInstance,
+    proc: &'static str,
+    args: &Args,
+    timeout: Duration,
+    cb: impl FnOnce(Result<Response>) + 'static,
+) where
+    Response: tarantool::tuple::DecodeOwned + 'static,
+    Args: ToTupleBuffer + ?Sized,
+{
+    let id = id.clone().into_raft_id_or_name();
+    let Some(request) = prepare_request(proc, args, timeout, cb) else {
+        // The error is already passed to the callback
+        return;
+    };
+    test_override.send((id, request));
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // IdOfInstance
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -618,6 +698,7 @@ impl Drop for ConnectionPool {
 /// accessing ConnectionPool.
 pub trait IdOfInstance: std::hash::Hash + Clone + std::fmt::Debug {
     fn get_or_create_in<'p>(&self, pool: &'p ConnectionPool) -> Result<&'p PoolWorker>;
+    fn into_raft_id_or_name(self) -> RaftIdOrName;
 }
 
 impl IdOfInstance for RaftId {
@@ -625,12 +706,43 @@ impl IdOfInstance for RaftId {
     fn get_or_create_in<'p>(&self, pool: &'p ConnectionPool) -> Result<&'p PoolWorker> {
         pool.get_or_create_by_raft_id(*self)
     }
+
+    #[inline]
+    fn into_raft_id_or_name(self) -> RaftIdOrName {
+        RaftIdOrName::RaftId(self)
+    }
 }
 
 impl IdOfInstance for InstanceName {
     #[inline(always)]
     fn get_or_create_in<'p>(&self, pool: &'p ConnectionPool) -> Result<&'p PoolWorker> {
         pool.get_or_create_by_instance_name(self)
+    }
+
+    #[inline]
+    fn into_raft_id_or_name(self) -> RaftIdOrName {
+        RaftIdOrName::Name(self)
+    }
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]
+pub enum RaftIdOrName {
+    RaftId(RaftId),
+    Name(InstanceName),
+}
+
+impl IdOfInstance for RaftIdOrName {
+    #[inline]
+    fn get_or_create_in<'p>(&self, pool: &'p ConnectionPool) -> Result<&'p PoolWorker> {
+        match self {
+            Self::RaftId(raft_id) => pool.get_or_create_by_raft_id(*raft_id),
+            Self::Name(name) => pool.get_or_create_by_instance_name(name),
+        }
+    }
+
+    #[inline]
+    fn into_raft_id_or_name(self) -> RaftIdOrName {
+        self
     }
 }
 

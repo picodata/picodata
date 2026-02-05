@@ -1,6 +1,7 @@
 use crate::access_control;
 use crate::config;
 use crate::error_code::ErrorCode;
+use crate::mailbox::Mailbox;
 use crate::metrics;
 use crate::proc_name;
 use crate::static_ref;
@@ -24,6 +25,7 @@ use smol_str::SmolStr;
 use tarantool::error::Error as TntError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
+use tarantool::fiber::r#async::oneshot;
 use tarantool::fiber::r#async::timeout::IntoTimeout;
 use tarantool::session::UserId;
 use tarantool::space::{Space, SpaceId};
@@ -177,6 +179,10 @@ pub fn compare_and_swap(
     deadline: Instant,
 ) -> traft::Result<CasResult> {
     let node = node::global()?;
+
+    if let Some(inbox) = &node.cas_test_override {
+        return handle_test_override(inbox, request);
+    }
 
     if let Op::BatchDml { ops } = &request.op {
         if ops.is_empty() {
@@ -562,6 +568,7 @@ crate::define_rpc_request! {
         proc_cas_v2_local(&req)
     }
 
+    #[derive(PartialEq, Eq)]
     pub struct Request {
         pub cluster_name: SmolStr,
         pub predicate: Predicate,
@@ -586,6 +593,16 @@ impl Request {
             op: op.into(),
             as_user,
         })
+    }
+}
+
+impl Response {
+    pub fn for_tests() -> Self {
+        Self {
+            index: 1,
+            term: 1,
+            res_row_count: 1,
+        }
     }
 }
 
@@ -681,7 +698,7 @@ pub struct PredicateInLua {
 }
 
 /// Predicate that will be checked by the leader, before accepting the proposed `op`.
-#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, PartialEq, Eq)]
 pub struct Predicate {
     /// CaS sender's current raft index.
     pub index: RaftIndex,
@@ -915,7 +932,7 @@ pub struct RangeInLua {
 }
 
 /// A range of keys used as an argument for a [`Predicate`].
-#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Range {
     pub table: SpaceId,
@@ -1120,7 +1137,7 @@ impl Range {
     }
 }
 
-#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead, PartialEq)]
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead, PartialEq, Eq)]
 #[serde(tag = "kind")]
 #[serde(rename_all = "snake_case")]
 pub enum RangeBounds {
@@ -1233,6 +1250,43 @@ fn modifies_operable(op: &Op, space: SpaceId, storage: &Catalog) -> bool {
         _ => false,
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// test override
+////////////////////////////////////////////////////////////////////////////////
+
+/// A channel for CAS requests which is used for the mock implementation in tests.
+pub type OverrideChannel = Mailbox<(Request, oneshot::Sender<Result<Response>>)>;
+
+#[inline(never)]
+#[cold]
+fn handle_test_override(inbox: &OverrideChannel, request: &Request) -> Result<CasResult> {
+    let (tx, rx) = oneshot::channel();
+    inbox.send((request.clone(), tx));
+    let res = match fiber::block_on(rx) {
+        Ok(v) => v,
+        Err(e) => panic!("channel sender dropped unexpectedly: {e}"),
+    };
+    let response = match res {
+        Ok(v) => v,
+        Err(e) => {
+            if e.is_retriable() {
+                return Ok(CasResult::RetriableError(e));
+            } else {
+                return Err(e);
+            }
+        }
+    };
+    Ok(CasResult::Ok((
+        response.index,
+        response.term,
+        response.res_row_count,
+    )))
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// tests
+////////////////////////////////////////////////////////////////////////////////
 
 /// Predicate tests based on the CaS Design Document.
 mod tests {

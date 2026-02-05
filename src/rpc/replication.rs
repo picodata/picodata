@@ -2,7 +2,7 @@
 //!
 //! Note that stored procedures in this module do not do [`Node::wait_index`].
 //! This is different from all other stored procedures called by governor in
-//! [`governor::Loop::iter_fn`]
+//! [`governor::Loop::governor_loop`]
 //! (for example [`rpc::sharding::proc_sharding`] calls wait_index at the
 //! start and so do most others procs).
 //!

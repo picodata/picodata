@@ -543,6 +543,14 @@ impl Op {
             Self::BatchDml { ops }
         }
     }
+
+    pub fn dmls(&self) -> Option<&[Dml]> {
+        match self {
+            Self::Dml(dml) => Some(std::slice::from_ref(dml)),
+            Self::BatchDml { ops } => Some(ops),
+            _ => None,
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
