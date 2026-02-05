@@ -790,3 +790,52 @@ def test_self_pipe_message_size(cluster: Cluster):
         "box.execute", 'SELECT COUNT(*) FROM "_pico_peer_address" WHERE "connection_type" = \'iproto\''
     )
     assert response["rows"] == [[5000]]
+
+
+def test_increase_replication_factor(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            can_vote: true
+            replication_factor: 1
+        storage:
+            can_vote: false
+            replication_factor: 1
+        """
+    )
+
+    arbiter_1 = cluster.add_instance(wait_online=False, tier="arbiter")
+    arbiter_2 = cluster.add_instance(wait_online=False, tier="arbiter")
+    storage_1 = cluster.add_instance(wait_online=False, tier="storage")
+    storage_2 = cluster.add_instance(wait_online=False, tier="storage")
+
+    cluster.wait_online()
+
+    # Every instance is in it's own replicaset because of the replication_factor
+    assert arbiter_1.replicaset_name != arbiter_2.replicaset_name
+    assert storage_1.replicaset_name != storage_2.replicaset_name
+
+    # Update replication_factor for all tiers at once
+    res = arbiter_1.sql("UPDATE _pico_tier SET replication_factor = 2")
+    # We had 2 tiers, all of them now have a changed replication_factor
+    assert res["row_count"] == 2
+
+    arbiter_3 = cluster.add_instance(wait_online=False, tier="arbiter")
+    arbiter_4 = cluster.add_instance(wait_online=False, tier="arbiter")
+    storage_3 = cluster.add_instance(wait_online=False, tier="storage")
+    storage_4 = cluster.add_instance(wait_online=False, tier="storage")
+
+    cluster.wait_online()
+
+    # New instances are added to existing replicasets (new replication_factor is effective)
+    assert arbiter_3.replicaset_name != arbiter_4.replicaset_name
+    assert arbiter_3.replicaset_name in [arbiter_1.replicaset_name, arbiter_2.replicaset_name]
+    assert arbiter_4.replicaset_name in [arbiter_1.replicaset_name, arbiter_2.replicaset_name]
+
+    # New instances are added to existing replicasets (new replication_factor is effective)
+    assert storage_3.replicaset_name != storage_4.replicaset_name
+    assert storage_3.replicaset_name in [storage_1.replicaset_name, storage_2.replicaset_name]
+    assert storage_4.replicaset_name in [storage_1.replicaset_name, storage_2.replicaset_name]
