@@ -407,16 +407,13 @@ pub fn tuple_debug_fmt() {
 
     assert_eq!(
         format!("{:?}", tuple),
-        r#"Tuple(Array([Integer(PosInt(42)), String(Utf8String { s: Ok("hello") }), String(Utf8String { s: Ok("nice") }), Integer(PosInt(420)), Integer(PosInt(69))]))"#
+        r#"Tuple!([42,"hello","nice",420,69])"#
     );
 
     let tuple = Tuple::new(&(1, true, "foo")).unwrap();
     let buf = TupleBuffer::from(tuple);
 
-    assert_eq!(
-        format!("{:?}", buf),
-        r#"TupleBuffer(Array([Integer(PosInt(1)), Boolean(true), String(Utf8String { s: Ok("foo") })]))"#
-    );
+    assert_eq!(format!("{:?}", buf), r#"TupleBuffer!([1,true,"foo"])"#);
 }
 
 pub fn raw_bytes() {

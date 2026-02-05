@@ -36,7 +36,11 @@ pub struct Tuple {
 impl Debug for Tuple {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         if let Ok(v) = self.decode::<rmpv::Value>() {
-            f.debug_tuple("Tuple").field(&v).finish()
+            if let Ok(s) = serde_json::to_string(&v) {
+                write!(f, "Tuple!({s})")
+            } else {
+                f.debug_tuple("Tuple").field(&v).finish()
+            }
         } else {
             // Probably will never happen but better safe than sorry
             f.debug_tuple("Tuple").field(&self.to_vec()).finish()
@@ -662,7 +666,11 @@ impl From<&Tuple> for TupleBuffer {
 impl Debug for TupleBuffer {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         if let Ok(v) = rmpv::Value::decode(&self.0) {
-            f.debug_tuple("TupleBuffer").field(&v).finish()
+            if let Ok(s) = serde_json::to_string(&v) {
+                write!(f, "TupleBuffer!({s})")
+            } else {
+                f.debug_tuple("TupleBuffer").field(&v).finish()
+            }
         } else {
             f.debug_tuple("TupleBuffer").field(&self.0).finish()
         }
