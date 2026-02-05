@@ -1,6 +1,43 @@
-# Picodata –  Distributed, PostgreSQL-compatible in-memory database
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="webui/src/assets/logo-dark.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="webui/src/assets/logo.svg">
+    <img src="webui/src/assets/logo-dark.svg" alt="Picodata" width="600"/>
+  </picture>
+  <br/>
+  <br/>
+</div>
 
-This repository contains the source code of Picodata, a distributed
+<div align="center">
+<h2>Distributed, PostgreSQL-Compatible In-Memory Database</h2>
+</div>
+
+<div align="center">
+  <h3>
+    <a href="https://picodata.io/en">Website</a> |
+    <a href="https://docs.picodata.io/picodata/stable/">Docs</a>
+  </h3>
+
+  <div>
+    <img alt="GitHub Tag" src="https://img.shields.io/github/v/tag/picodata/picodata?label=release">
+    <img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/picodata/picodata">
+    <img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/m/picodata/picodata">
+    <img alt="GitLab License" src="https://img.shields.io/gitlab/license/core%2Fpicodata?gitlab_url=https%3A%2F%2Fgit.picodata.io">
+  </div>
+
+  <div>
+    <a href="https://t.me/picodataru">
+      <img src="https://img.shields.io/badge/telegram-follow_us-e23956.svg?style=for-the-badge" alt="Telegram"/>
+    </a>
+    <a href="https://www.linkedin.com/company/picodata/">
+      <img src="https://img.shields.io/badge/linkedin-connect_with_us-e23956.svg?style=for-the-badge" alt="LinkedIn"/>
+    </a>
+  </div>
+  <br/>
+  <br/>
+</div>
+
+> This repository contains the source code of Picodata, a distributed
 in-memory database with plugins in Rust.
 
 ## What is Picodata
