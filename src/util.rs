@@ -2,15 +2,14 @@ use crate::config::SbroadType;
 use crate::pico_service::pico_service_password;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::traft::error::Error;
-
+use ::sql::ir::value::{EncodedValue, Value};
 use std::any::{Any, TypeId};
 use std::cell::Cell;
 use std::mem::replace;
 use std::panic::Location;
 use std::path::Path;
 use std::time::Duration;
-
-use ::sql::ir::value::{EncodedValue, Value};
+use tarantool::fiber::NoYieldsGuard;
 use tarantool::network::Config;
 use tarantool::session::{self, UserId};
 
@@ -455,50 +454,6 @@ impl<T> IsSameType<T, T> for T {
 
 #[allow(unused)]
 pub type CheckIsSameType<L, R> = <L as IsSameType<L, R>>::Void;
-
-////////////////////////////////////////////////////////////////////////////////
-// no yields check
-////////////////////////////////////////////////////////////////////////////////
-
-/// A helper struct to enforce that a function must not yield. Will cause a
-/// panic if fiber yields are detected when drop is called for it.
-pub struct NoYieldsGuard {
-    message: &'static str,
-    csw: u64,
-}
-
-#[allow(clippy::new_without_default)]
-impl NoYieldsGuard {
-    #[inline(always)]
-    pub fn new() -> Self {
-        Self {
-            message: "fiber yielded when it wasn't supposed to",
-            csw: tarantool::fiber::csw(),
-        }
-    }
-
-    #[inline(always)]
-    pub fn with_message(message: &'static str) -> Self {
-        Self {
-            message,
-            csw: tarantool::fiber::csw(),
-        }
-    }
-
-    #[inline(always)]
-    pub fn has_yielded(&self) -> bool {
-        tarantool::fiber::csw() != self.csw
-    }
-}
-
-impl Drop for NoYieldsGuard {
-    #[inline(always)]
-    fn drop(&mut self) {
-        if self.has_yielded() {
-            panic!("NoYieldsGuard: {}", self.message);
-        }
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 // NoYieldsRefCell

@@ -85,7 +85,7 @@ pub(super) fn action_plan<'i>(
     // This function is specifically extracted, to separate the task
     // construction from any IO and/or other yielding operations.
     #[cfg(debug_assertions)]
-    let _guard = crate::util::NoYieldsGuard::new();
+    let _guard = tarantool::fiber::NoYieldsGuard::new();
 
     ////////////////////////////////////////////////////////////////////////////
     // transfer raft leadership

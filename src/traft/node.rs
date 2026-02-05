@@ -273,7 +273,7 @@ impl Node {
 
         // Raft main loop accesses the global node refernce,
         // so it must be initilized before the main loop starts.
-        let guard = crate::util::NoYieldsGuard::new();
+        let guard = tarantool::fiber::NoYieldsGuard::new();
 
         let main_loop = if for_tests {
             MainLoop::for_tests()

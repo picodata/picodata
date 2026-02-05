@@ -484,7 +484,7 @@ fn cached_key_def_impl(
 ) -> tarantool::Result<Rc<KeyDef>> {
     // We borrow global variables here. It's only safe as long as we don't yield from here.
     #[cfg(debug_assertions)]
-    let _guard = crate::util::NoYieldsGuard::new();
+    let _guard = tarantool::fiber::NoYieldsGuard::new();
 
     let id = (space_id, index_id, kind);
 

@@ -12,8 +12,6 @@ use crate::traft::RaftMessageExt;
 use crate::traft::Result;
 use crate::unwrap_ok_or;
 use crate::util::relay_connection_config;
-#[cfg(debug_assertions)]
-use crate::util::NoYieldsGuard;
 use ::raft::prelude as raft;
 use ::tarantool::fiber;
 use ::tarantool::fiber::r#async::oneshot;
@@ -35,6 +33,8 @@ use std::collections::VecDeque;
 use std::pin::Pin;
 use std::task::Poll;
 use std::time::Duration;
+#[cfg(debug_assertions)]
+use tarantool::fiber::NoYieldsGuard;
 use tarantool::network::client::tls;
 use tarantool::time::Instant;
 

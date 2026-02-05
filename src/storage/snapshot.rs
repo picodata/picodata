@@ -215,7 +215,7 @@ impl Catalog {
         // We keep a &mut on the read views container here,
         // so we mustn't yield for the duration of that borrow.
         #[cfg(debug_assertions)]
-        let _guard = crate::util::NoYieldsGuard::new();
+        let _guard = tarantool::fiber::NoYieldsGuard::new();
 
         let Some(rv) = self.snapshot_cache.read_views().get_mut(&entry_id) else {
             warn_or_panic!("read view for entry {entry_id} is not available");
@@ -243,7 +243,7 @@ impl Catalog {
         // We keep a &mut on the read views container here,
         // so we mustn't yield for the duration of that borrow.
         #[cfg(debug_assertions)]
-        let _guard = crate::util::NoYieldsGuard::new();
+        let _guard = tarantool::fiber::NoYieldsGuard::new();
 
         if entry_id.index >= compacted_index {
             // Reuse the read view, if it's already open for the requested index.

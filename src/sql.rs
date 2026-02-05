@@ -708,7 +708,7 @@ impl<'de> Decode<'de> for DispatchArgs {
         // data referencing arguments' bytes into the rust memory before calling any
         // code that can possibly yield to avoid heap-after-free.
         #[cfg(debug_assertions)]
-        let _guard = crate::util::NoYieldsGuard::new();
+        let _guard = tarantool::fiber::NoYieldsGuard::new();
 
         let (pattern, params): (String, Vec<Value>) = msgpack::decode(data)?;
         Ok(DispatchArgs { pattern, params })
@@ -2620,7 +2620,7 @@ impl<'de> Decode<'de> for ExecArgs {
         // - https://github.com/tarantool/tarantool/issues/4792#issuecomment-592893087
         // - https://git.picodata.io/core/picodata/-/issues/2359
         #[cfg(debug_assertions)]
-        let _guard = crate::util::NoYieldsGuard::new();
+        let _guard = tarantool::fiber::NoYieldsGuard::new();
 
         let args = execute_args_split(data).map_err(|e| {
             TarantoolError::other(format!(
@@ -2752,7 +2752,7 @@ impl<'de> Decode<'de> for QueryMetaRequest<'de> {
 pub fn proc_query_metadata(req: QueryMetaRequest) -> Result<Tuple, Error> {
     // SAFETY: The code below never yields, so it's safe to use a slice here
     #[cfg(debug_assertions)]
-    let _guard = crate::util::NoYieldsGuard::new();
+    let _guard = tarantool::fiber::NoYieldsGuard::new();
     let args = req.args;
     let tuple = build_cache_miss_dql_packet(args.request_id, args.plan_id)?;
     Ok(tuple)
