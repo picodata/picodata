@@ -1314,14 +1314,21 @@ impl NodeImpl {
                     .expect("storage should not fail")
                     .expect("granted we don't mess up log compaction, this should not be None");
 
-                tlog!(Info, "Applying DdlCommit for {ddl:?}");
+                let is_truncate = matches!(ddl, Ddl::TruncateTable { .. });
+                if is_truncate {
+                    // Truncate is not a DDL from the user's POV and is much more frequent
+                } else {
+                    tlog!(Info, "Applying DdlCommit for {ddl:?}");
+                }
 
                 // This instance is catching up to the cluster.
                 if v_local < v_pending {
-                    tlog!(
-                        Info,
-                        "Catching up from {v_local} to {v_pending} for {ddl:?}"
-                    );
+                    if !is_truncate {
+                        tlog!(
+                            Info,
+                            "Catching up from {v_local} to {v_pending} for {ddl:?}"
+                        );
+                    }
                     if self.is_readonly() {
                         return SleepAndRetry(read_only(
                             "awaiting DDL results from master replica",
@@ -1357,10 +1364,12 @@ impl NodeImpl {
                         }
                     }
                 } else if self.is_readonly() {
-                    tlog!(
-                        Info,
-                        "local_schema_version = {v_local} (replica, ddl commit)"
-                    );
+                    if !is_truncate {
+                        tlog!(
+                            Info,
+                            "local_schema_version = {v_local} (replica, ddl commit)"
+                        );
+                    }
                 }
 
                 // Update pico metadata.
@@ -1829,7 +1838,6 @@ impl NodeImpl {
                     }
                 }
 
-                tlog!(Info, "Removing PendingSchemaChange");
                 storage_properties
                     .delete(PropertyName::PendingSchemaChange)
                     .expect("storage should not fail");
