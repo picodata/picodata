@@ -38,10 +38,56 @@ change made it to relevant nodes before continuing to next steps.
 #### Rerunning Tests many Times
 
 One way to see if test is flaky or not is to run it a couple of times to see whether there are any failures.
-Running a test 50 times is OK. This can be done with trivial loop in bash with pytest call or via
-`--flake-finder --flake-runs=50` runs to pytest. Additional stress factor for the test can be limited amount of CPU
-which sometimes happen when CI machine is under higher load. To emulate this locally consider using `taskset` and
-`cpulimit` utilities.
+Running a test 50 times is OK, but running it more times may be necessary to catch tests that flake more rarely.
+
+There are several ways you can get the "run test multiple times" behavior:
+
+##### Looping in your favorite shell
+
+The simplest way is doing a while loop that will stop at first test failure with your shell,
+but doing it at scale is more involved than using pytest plugins (see the next section).
+
+A simple setup:
+- with `bash`/`zsh`: `for i in $(seq 1 50); do clear; poetry run pytest -s [TEST_PATH]::[TEST_NAME] || break; done`
+- with `fish`: `for i in (seq 1 50); clear; poetry run pytest -s [TEST_PATH]::[TEST_NAME]; or break; end`
+
+You can do several improvements to this setup:
+- Skip a no-op call to `cargo` in each iteration to make sure the test binaries are up-to-date by passing `CI=1` environment variable
+- Run the loop in multiple terminal windows. This requires segregating network port ranges used by different pytest instances,
+  which can be done by explicitly passing `--base-port [NUMBER]` to each instance. Spreading instances 100 ports apart should be enough for our codebase.
+
+Then the command for each window becomes:
+- with `bash`/`zsh`: `make build-dev; while clear && CI=1 poetry run pytest --base-port 3303 -s [TEST_PATH]::[TEST_NAME]; do true; done`
+- with `fish`: `make build-dev; while clear && CI=1 poetry run pytest --base-port 3303 -s [TEST_PATH]::[TEST_NAME]; end`
+
+(add 100 to the `--base-port` number for each window you run the command in).
+
+##### Using `pytest-flake-finder` and `pytest-xdist`
+
+You can also use [`pytest-flake-finder`](https://pypi.org/project/pytest-flakefinder/) and 
+[`pytest-xdist`](https://pypi.org/project/pytest-xdist/) pytest plugins, which come pre-installed in our testing environment.
+
+`pytest-flake-finder` allows you to run a single test multiple times within a single pytest invocation.
+To do that you should pass `--flake-finder` to enable the plugin and control how much you want to rerun tests either with 
+`--flake-runs=[COUNT]` (by number of runs) or `--flake-max-minutes=[DURATION]` (by run time).
+
+`pytest-xdist` allows you to execute multiple tests in parallel, utilizing more CPU cores that might otherwise be idle.
+You can enable it with `-n [COUNT]` (use an explicit number of processes) or `-n auto` (use as many processes as your computer has physical CPU cores).
+I find that `-n auto` usually does not result in full system load (which you want to minimize time to reproduce a flake),
+so using a number 2x the number of your physical CPU codes might be better.
+
+Here's the command line to utilize both plugins:
+
+```bash
+poetry run pytest --flake-finder --flake-runs=1000 -n auto [TEST_PATH]::[TEST_NAME]
+```
+
+You might also want to use `-x` flag to stop testing on first test failure, which allows you to see the output of the test failure earlier.
+
+##### Simulating CPU contention
+
+Additional stress factor for the test can be limited amount of CPU which sometimes happen when CI machine is under higher load.
+To emulate this locally consider using `taskset` and `cpulimit` utilities.
 
 #### Keeping Pipelines Green
 
