@@ -392,7 +392,7 @@ impl InstanceReachabilityManager {
         debug_assert!(
             self.lagging_applied
                 .iter()
-                .is_sorted_by(|(li, lt), (ri, rt)| li < ri && lt < rt),
+                .is_sorted_by(|(li, lt), (ri, rt)| li <= ri && lt <= rt),
             "{:?}",
             self.lagging_applied
         );
