@@ -2743,6 +2743,20 @@ tarantool::define_str_enum! {
     }
 }
 
+tarantool::define_str_enum! {
+    /// See tarantool docs <https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-wal_mode>
+    #[derive(Default)]
+    pub enum WalMode {
+        /// Write-ahead log is not maintained. A node with wal_mode = none can’t be replication master;
+        None = "none",
+        /// Fibers wait for their data to be written to the write-ahead log (no fsync(2));
+        #[default]
+        Write = "write",
+        /// Fibers wait for their data, fsync(2) follows each write(2);
+        Fsync = "fsync",
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // config_parameter_path!
 ////////////////////////////////////////////////////////////////////////////////

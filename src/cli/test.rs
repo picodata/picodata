@@ -185,6 +185,8 @@ fn test_one(test: &TestCase) {
         }),
         read_only: false,
         log_level: Some(::tarantool::log::SayLevel::Verbose as u8),
+        wal_mode: crate::config::WalMode::None,
+        checkpoint_enabled: false,
         ..Default::default()
     };
 

@@ -1,3 +1,4 @@
+use crate::config::WalMode;
 use crate::config::{BootstrapStrategy, ByteSize, ElectionMode, PicodataConfig};
 use crate::config_parameter_path;
 use crate::instance::Instance;
@@ -334,6 +335,22 @@ pub struct Cfg {
     pub log: Option<String>,
     pub log_level: Option<u8>,
 
+    /// See comments on [`WalMode`].
+    ///
+    /// This parameter is used in tests.
+    ///
+    /// Not configurable by user for now.
+    pub wal_mode: WalMode,
+
+    /// If disabled tarantool will not automatically create snapshots on regular
+    /// intervals. Only manual calls to `box.snapshot()` will result in snapshot
+    /// creation.
+    ///
+    /// This flag is turned off for testing.
+    ///
+    /// Not configurable by user for now.
+    pub checkpoint_enabled: bool,
+
     #[serde(flatten)]
     pub user_configured_fields: HashMap<String, RmpvValue>,
 }
@@ -352,6 +369,12 @@ impl Cfg {
             // During restore we don't set up the replication.
             bootstrap_strategy: Some(BootstrapStrategy::Auto),
             election_mode: ElectionMode::Off,
+
+            // We use `write` instead of `sync` because we want better perfomance by default
+            wal_mode: WalMode::Write,
+
+            // Disabling automatic snapshots doesn't make sense for us
+            checkpoint_enabled: true,
 
             ..Default::default()
         };
@@ -391,6 +414,12 @@ impl Cfg {
 
             election_mode: ElectionMode::Off,
 
+            // We use `write` instead of `sync` because we want better perfomance by default
+            wal_mode: WalMode::Write,
+
+            // Disabling automatic snapshots doesn't make sense for us
+            checkpoint_enabled: true,
+
             // If this is a restart, replication will be configured by governor
             // before our state changes to Online.
             ..Default::default()
@@ -422,6 +451,12 @@ impl Cfg {
             bootstrap_strategy: Some(BootstrapStrategy::Auto),
 
             election_mode: ElectionMode::Off,
+
+            // We use `write` instead of `sync` because we want better perfomance by default
+            wal_mode: WalMode::Write,
+
+            // Disabling automatic snapshots doesn't make sense for us
+            checkpoint_enabled: true,
 
             // Replication will be configured by governor when another replica
             // joins.
@@ -474,6 +509,12 @@ impl Cfg {
 
             election_mode: ElectionMode::Off,
 
+            // We use `write` instead of `sync` because we want better perfomance by default
+            wal_mode: WalMode::Write,
+
+            // Disabling automatic snapshots doesn't make sense for us
+            checkpoint_enabled: true,
+
             ..Default::default()
         };
 
@@ -504,6 +545,12 @@ impl Cfg {
             // This is temporary configuration, we don't really need replication,
             // because we will rebootstrap a little bit later.
             replication: Vec::new(),
+
+            // We use `write` instead of `sync` because we want better perfomance by default
+            wal_mode: WalMode::Write,
+
+            // Disabling automatic snapshots doesn't make sense for us
+            checkpoint_enabled: true,
 
             ..Default::default()
         };
