@@ -90,6 +90,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed that instances from tiers with can_vote=false attempting to promote to raft leader.
 - Fixed that `--pg-advertise` CLI argument was erroneously disallowed to be used
   simultaneously with `--iproto-advertise`.
+- Fixed a race condition between DDL (i.e., TRUNCATE) and DQL when the preemption option is enabled.
 
 
 ## [25.5.5] - 2026-01-26
