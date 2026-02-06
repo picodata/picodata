@@ -8,7 +8,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-## [25.5.6] - Unreleased
+## [25.5.6] - 2026-02-06
 
 ### WebUI
 - Webui now displays the value of `cluster_version` instead of current
