@@ -877,6 +877,7 @@ fn parse_create_table(
     let mut table_name = SmolStr::default();
     let mut columns: Vec<ColumnDef> = Vec::new();
     let mut pk_keys: Vec<SmolStr> = Vec::new();
+    let mut raw_pk_keys = Vec::new();
     let mut shard_key: Vec<SmolStr> = Vec::new();
     let mut engine_type: SpaceEngineType = SpaceEngineType::default();
     let mut explicit_null_columns: AHashSet<SmolStr> = AHashSet::new();
@@ -969,35 +970,10 @@ fn parse_create_table(
                     return primary_key_already_declared_error;
                 }
                 let pk_node = ast.nodes.get_node(*child_id)?;
-
                 // First child is a `PrimaryKeyMark` that we should skip.
-                for (index, pk_col_id) in pk_node.children.iter().skip(1).enumerate() {
+                for pk_col_id in pk_node.children.iter().skip(1) {
                     let pk_col_name = parse_identifier(ast, *pk_col_id)?;
-                    let mut column_found = false;
-                    for column in &mut columns {
-                        if column.name == pk_col_name {
-                            column_found = true;
-                            if column.is_nullable && explicit_null_columns.contains(&column.name) {
-                                return nullable_primary_key_column_error;
-                            }
-                            // Infer not null on primary key column
-                            column.is_nullable = false;
-                            break;
-                        }
-                    }
-                    if index == 0 && pk_col_name == DEFAULT_BUCKET_ID_COLUMN_NAME {
-                        pk_contains_bucket_id = true;
-                        continue;
-                    }
-                    if !column_found {
-                        return Err(SbroadError::Invalid(
-                            Entity::Column,
-                            Some(format_smolstr!(
-                                "Primary key column {pk_col_name} not found."
-                            )),
-                        ));
-                    }
-                    pk_keys.push(pk_col_name);
+                    raw_pk_keys.push(pk_col_name);
                 }
             }
             Rule::Engine => {
@@ -1110,16 +1086,50 @@ fn parse_create_table(
             _ => panic!("Unexpected rule met under CreateTable."),
         }
     }
-    if is_global && pk_contains_bucket_id {
-        // It makes sense only for sharded tables.
-        pk_contains_bucket_id = false;
+
+    for (pk_index, pk_col_name) in raw_pk_keys.into_iter().enumerate() {
+        let mut column_found = false;
+        for column in &mut columns {
+            if column.name == pk_col_name {
+                column_found = true;
+                if column.is_nullable && explicit_null_columns.contains(&column.name) {
+                    return nullable_primary_key_column_error;
+                }
+                // Infer not null on primary key column
+                column.is_nullable = false;
+                break;
+            }
+        }
+        if !column_found {
+            if !is_global && pk_col_name == DEFAULT_BUCKET_ID_COLUMN_NAME {
+                if pk_index == 0 {
+                    pk_contains_bucket_id = true;
+                    continue;
+                } else {
+                    return Err(SbroadError::Invalid(
+                        Entity::PrimaryKey,
+                        Some(format_smolstr!(
+                            "Primary key must include {pk_col_name} as first column."
+                        )),
+                    ));
+                }
+            }
+            return Err(SbroadError::Invalid(
+                Entity::Column,
+                Some(format_smolstr!(
+                    "Primary key column {pk_col_name} not found."
+                )),
+            ));
+        }
+        pk_keys.push(pk_col_name);
     }
+
     if pk_keys.is_empty() {
         if pk_contains_bucket_id {
             return Err(SbroadError::Invalid(
                 Entity::PrimaryKey,
-                Some(
-                    "Primary key must include at least one column in addition to bucket_id.".into(),
+                Some(format_smolstr!(
+                    "Primary key must include at least one column in addition to {DEFAULT_BUCKET_ID_COLUMN_NAME}.")
                 ),
             ));
         }

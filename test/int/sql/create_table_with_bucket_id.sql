@@ -8,7 +8,7 @@ DROP TABLE IF EXISTS t;
 -- SQL:
 CREATE TABLE t(a INT, PRIMARY KEY (a, bucket_id));
 -- ERROR:
-invalid column: Primary key column bucket_id not found.
+invalid primary key: Primary key must include bucket_id as first column.
 
 -- TEST: incorrect_primary_key_only_bucket_id
 -- SQL:
@@ -21,3 +21,9 @@ invalid primary key: Primary key must include at least one column in addition to
 CREATE TABLE t(a INT, bucket_id INT, PRIMARY KEY (bucket_id, a));
 -- ERROR:
 invalid column: bucket_id is reserved for system use in sharded tables. Choose another name.
+
+-- TEST: incorrect_primary_key_global_table
+-- SQL:
+CREATE TABLE t(a INT, PRIMARY KEY (bucket_id, a)) DISTRIBUTED GLOBALLY;
+-- ERROR:
+invalid column: Primary key column bucket_id not found.
