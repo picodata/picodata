@@ -150,7 +150,7 @@ openssl req -new -key client.key -out client.csr -subj "/CN=client.int"
 ```
 
 ```shell title="Шаг 8. Подпись клиентского сертификата с помощью корневого сертификата (CA)"
- openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt -days 3650 -sha256 <(echo subjectAltName="DNS:client.int")
+ openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt -days 3650 -sha256 -extfile <(echo subjectAltName="DNS:client.int")
 ```
 
 ```shell title="Шаг 9. Конвертация клиентского ключа в формат PKCS#8"
