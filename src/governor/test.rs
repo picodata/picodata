@@ -14,15 +14,21 @@ use crate::instance::StateVariant;
 use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetState;
 use crate::rpc;
+use crate::rpc::replicasets_masters;
+use crate::schema::Distribution;
 use crate::schema::ADMIN_ID;
+use crate::storage::PropertyName;
 use crate::storage::SystemTable;
 use crate::tier::Tier;
 use crate::tlog;
+use crate::topology_cache::TopologyCacheRef;
 use crate::traft::error::Error;
 use crate::traft::network;
 use crate::traft::network::RaftIdOrName;
 use crate::traft::node;
+use crate::traft::op::Ddl;
 use crate::traft::op::Dml;
+use crate::traft::op::Op;
 use crate::traft::RaftId;
 use ::tarantool::fiber::r#async::watch;
 use raft::prelude::ConfState;
@@ -32,6 +38,7 @@ use smol_str::format_smolstr;
 use smol_str::SmolStr;
 use std::cell::Cell;
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 use tarantool::fiber;
@@ -240,6 +247,40 @@ fn setup_governor_loop_state(
     )
 }
 
+fn generate_replicasets(
+    num_instances: usize,
+    replication_factor: usize,
+) -> (Vec<Instance>, Vec<Replicaset>) {
+    let mut instances = vec![];
+    let mut replicasets = vec![];
+    let mut last_replicaset_size = 0;
+
+    for raft_id in 1..=(num_instances as RaftId) {
+        let mut instance = dummy_instance(raft_id);
+
+        if replicasets.is_empty() || last_replicaset_size == replication_factor {
+            let tier_name = &instance.tier;
+            let n = replicasets.len() + 1;
+            instance.replicaset_name = format_smolstr!("{tier_name}_{n}").into();
+            instance.replicaset_uuid = uuid_v4();
+
+            let mut replicaset = Replicaset::with_one_instance(&instance);
+            replicaset.state = ReplicasetState::Ready;
+            replicasets.push(replicaset);
+            last_replicaset_size = 1;
+        } else {
+            let replicaset = replicasets.last().unwrap();
+            instance.replicaset_name = replicaset.name.clone();
+            instance.replicaset_uuid = replicaset.uuid.clone();
+            last_replicaset_size += 1;
+        }
+
+        instances.push(instance);
+    }
+
+    (instances, replicasets)
+}
+
 fn uuid_v4() -> SmolStr {
     format_smolstr!("{}", uuid::Uuid::new_v4().to_hyphenated())
 }
@@ -250,6 +291,22 @@ fn dummy_instance(raft_id: u64) -> Instance {
     instance.name = InstanceName(format_smolstr!("default_1_{raft_id}"));
     instance.uuid = uuid_v4();
     instance
+}
+
+fn masters_and_replicas(topology_ref: &TopologyCacheRef) -> (HashSet<InstanceName>, HashSet<InstanceName>) {
+    let mut masters = HashSet::new();
+    let mut replicas = HashSet::new();
+
+    for instance in topology_ref.all_instances() {
+        let replicaset = topology_ref.replicaset_by_uuid(&instance.replicaset_uuid).unwrap();
+        if replicaset.current_master_name == instance.name {
+            masters.insert(instance.name.clone());
+        } else {
+            replicas.insert(instance.name.clone());
+        }
+    }
+
+    (masters, replicas)
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
@@ -264,6 +321,7 @@ struct BatchingRpcTestParameters {
     p_rpc_err: f64,
     /// probability of a given CAS request failing
     p_cas_err: f64,
+    replication_factor: usize,
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -295,6 +353,7 @@ fn test_governor_loop_proc_before_online_batching_fixed() {
         batch_size: 20,
         p_rpc_err: 0.666,
         p_cas_err: 0.1,
+        ..Default::default()
     };
     do_governor_loop_proc_before_online_batching(params);
 }
@@ -313,6 +372,7 @@ fn test_governor_loop_proc_before_online_batching_random() {
         batch_size: 20,
         p_rpc_err: 0.666,
         p_cas_err: 0.1,
+        ..Default::default()
     };
 
     do_governor_loop_proc_before_online_batching(params);
@@ -509,6 +569,7 @@ fn test_governor_loop_proc_sharding_batching_fixed() {
         batch_size: 20,
         p_rpc_err: 0.666,
         p_cas_err: 0.8,
+        ..Default::default()
     };
     do_governor_loop_proc_sharding_batching(params);
 }
@@ -527,6 +588,7 @@ fn test_governor_loop_proc_sharding_batching_random() {
         batch_size: 20,
         p_rpc_err: 0.666,
         p_cas_err: 0.8,
+        ..Default::default()
     };
     do_governor_loop_proc_sharding_batching(params);
 }
@@ -721,6 +783,455 @@ fn do_governor_loop_proc_sharding_batching(params: BatchingRpcTestParameters) {
 
     // Make sure governor did something before going idle
     assert_ne!(pretend_state.get().num_iterations, 1);
+
+    // Log the stats
+    let s = pretend_state.get();
+    tlog!(Info, "stats: {params:#0.3?}, {s:#0.3?}, {stats:#0.3?}")
+}
+
+//
+// test DDL step
+//
+
+#[tarantool::test]
+fn test_governor_loop_proc_apply_schema_change_batching_fixed() {
+    // Run with a fixed seed each time for some stability
+    let seed = 1770229753053178;
+
+    let params = BatchingRpcTestParameters {
+        seed,
+        num_instances: 300,
+        batch_size: 20,
+        p_rpc_err: 0.666,
+        p_cas_err: 0.1,
+        replication_factor: 3,
+    };
+
+    do_governor_loop_proc_apply_schema_change_batching(params);
+}
+
+#[tarantool::test]
+fn test_governor_loop_proc_apply_schema_change_batching_random() {
+    let time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    // And also run with a random seed for chaos
+    let seed = (time.as_secs_f64() * 1000_000.0) as u64;
+
+    let params = BatchingRpcTestParameters {
+        seed,
+        num_instances: 300,
+        batch_size: 20,
+        p_rpc_err: 0.666,
+        p_cas_err: 0.1,
+        replication_factor: 3,
+    };
+
+    do_governor_loop_proc_apply_schema_change_batching(params);
+}
+
+fn do_governor_loop_proc_apply_schema_change_batching(params: BatchingRpcTestParameters) {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(params.seed);
+    tlog!(Info, "random seed: {}", params.seed);
+
+    let node = node::Node::for_tests();
+
+    //
+    // Setup cluster topology
+    //
+
+    let (instances, replicasets) =
+        generate_replicasets(params.num_instances, params.replication_factor);
+    let num_masters = replicasets.len();
+
+    setup_topology(node, &instances, Some(&replicasets), None);
+
+    // Setup the pending DDL operation
+    let ddl = Ddl::CreateTable {
+        id: 42069,
+        name: "table_for_the_purposes_of_testing".into(),
+        format: vec![],
+        primary_key: vec![],
+        distribution: Distribution::Global,
+        engine: tarantool::space::SpaceEngineType::Memtx,
+        owner: ADMIN_ID,
+    };
+    node.storage
+        .properties
+        .put(PropertyName::PendingSchemaChange, &ddl)
+        .unwrap();
+    node.storage
+        .properties
+        .put(PropertyName::PendingSchemaVersion, &111)
+        .unwrap();
+
+    //
+    // Setup other things
+    //
+
+    node.alter_system_parameters
+        .borrow_mut()
+        .governor_rpc_batch_size = params.batch_size;
+
+    let (state, _, _, rpc_requests, cas_requests) = setup_governor_loop_state(node);
+
+    //
+    // Spawn the pretend governor_loop fiber
+    //
+    let pretend_state = spawn_pretend_governor_loop(state);
+
+    //
+    // Loop until pretend governor_loop finishes, handle governor's RPC & CAS requests
+    //
+
+    let mut ok_so_far = HashSet::new();
+    let mut first_cas_request_skipped = false;
+    let mut cas_request_handled = false;
+    let mut stats = BatchingRpcTestStats::default();
+
+    while !pretend_state.get().governor_idle {
+        //
+        // Handle governor's RPCs
+        //
+
+        let rpcs = rpc_requests.receive_all(Duration::from_millis(50));
+
+        stats.num_batches += 1;
+        tlog!(
+            Info,
+            "RPC batch #{} size: {}",
+            stats.num_batches,
+            rpcs.len()
+        );
+
+        let mut targets = vec![];
+
+        for rpc in rpcs {
+            // Verify RPC request
+            let (id, request) = rpc;
+            let RaftIdOrName::Name(name) = id else {
+                panic!("expected instance name, got {id:?}");
+            };
+            targets.push(name.clone());
+
+            assert_eq!(request.proc, ".proc_apply_schema_change");
+            let resp = rpc::ddl_apply::Response::Ok {};
+
+            // Send the RPC response to governor
+            let fail = rng.gen_bool(params.p_rpc_err);
+            if fail {
+                request
+                    .on_result
+                    .handle(Err(Error::other("injected error")));
+                stats.num_rpc_fails += 1;
+
+                continue;
+            }
+
+            request.on_result.handle(Ok(Tuple::new(&[resp]).unwrap()));
+
+            // Remember which RPCs got an Ok response
+            assert!(!ok_so_far.contains(&name), "{name} got a repeat RPC after Ok response");
+            ok_so_far.insert(name);
+        }
+
+        // RPCs are sent out in batches of given size (may be shorter)
+        assert!(targets.len() <= params.batch_size, "{targets:?}");
+
+        // Allow governor to handle RPC results and send the CAS requests
+        fiber::reschedule();
+
+        //
+        // Handle governor's CAS requests
+        //
+
+        let cas_requests = cas_requests.try_receive_all();
+        tlog!(Info, "CAS batch size: {}", cas_requests.len());
+
+        if !cas_requests.is_empty() {
+            // Make sure CAS request is only sent once every instance handled the RPC
+            assert_eq!(ok_so_far.len(), num_masters);
+
+            // Verify CAS request
+            assert_ne!(
+                node.storage.properties.pending_schema_change().unwrap(),
+                None
+            );
+            assert_ne!(
+                node.storage.properties.pending_schema_version().unwrap(),
+                None
+            );
+
+            let mut cas_requests = cas_requests.into_iter();
+            let (request, response) = cas_requests.next().unwrap();
+
+            let Op::DdlCommit = &request.op else {
+                panic!("expected DdlCommit, got {:?}", request.op);
+            };
+
+            tlog!(Info, "cas_request: {request:?}");
+
+            // Apply CAS request
+            let fail = rng.gen_bool(params.p_cas_err);
+            if
+            // Fail the first attempt always just to check what how we handle that
+            first_cas_request_skipped
+                    // Next time fail randomly
+                    && !fail
+            {
+                response.send(Ok(cas::Response::for_tests())).unwrap();
+
+                node.storage
+                    .properties
+                    .delete(PropertyName::PendingSchemaChange)
+                    .unwrap();
+                node.storage
+                    .properties
+                    .delete(PropertyName::PendingSchemaVersion)
+                    .unwrap();
+                cas_request_handled = true;
+            } else {
+                // It's possible that the CAS request get's dropped due to
+                // a conflict. Governor should handle this fine
+                response.send(Err(Error::other("injected error"))).unwrap();
+                stats.num_cas_fails += 1;
+                first_cas_request_skipped = true;
+            }
+
+            // Expecting only 1 CAS request
+            assert_eq!(cas_requests.next().map(|(r, _)| r), None);
+        }
+    }
+
+    // Make sure only masters received the RPC
+    let all_masters = replicasets_masters(&node.topology_cache.get());
+    let all_masters = HashSet::from_iter(all_masters);
+    assert_eq!(all_masters, ok_so_far);
+
+    assert!(cas_request_handled);
+
+    // Log the stats
+    let s = pretend_state.get();
+    tlog!(Info, "stats: {params:#0.3?}, {s:#0.3?}, {stats:#0.3?}")
+}
+
+//
+// test BACKUP step
+//
+
+#[tarantool::test]
+fn test_governor_loop_backup_batching_fixed() {
+    // Run with a fixed seed each time for some stability
+    let seed = 1770229753053178;
+
+    let params = BatchingRpcTestParameters {
+        seed,
+        num_instances: 102,
+        batch_size: 20,
+        p_rpc_err: 0.666,
+        p_cas_err: 0.8,
+        replication_factor: 3,
+    };
+
+    do_governor_loop_backup_batching(params);
+}
+
+#[tarantool::test]
+fn test_governor_loop_backup_batching_random() {
+    let time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    // And also run with a random seed for chaos
+    let seed = (time.as_secs_f64() * 1000_000.0) as u64;
+
+    let params = BatchingRpcTestParameters {
+        seed,
+        num_instances: 102,
+        batch_size: 20,
+        p_rpc_err: 0.666,
+        p_cas_err: 0.8,
+        replication_factor: 3,
+    };
+
+    do_governor_loop_backup_batching(params);
+}
+
+fn do_governor_loop_backup_batching(params: BatchingRpcTestParameters) {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(params.seed);
+    tlog!(Info, "random seed: {}", params.seed);
+
+    let node = node::Node::for_tests();
+
+    //
+    // Setup cluster topology
+    //
+
+    let (instances, replicasets) =
+        generate_replicasets(params.num_instances, params.replication_factor);
+
+    setup_topology(node, &instances, Some(&replicasets), None);
+
+    // Setup the pending BACKUP operation
+    let ddl = Ddl::Backup { timestamp: 3333 };
+    node.storage
+        .properties
+        .put(PropertyName::PendingSchemaChange, &ddl)
+        .unwrap();
+    node.storage
+        .properties
+        .put(PropertyName::PendingSchemaVersion, &111)
+        .unwrap();
+
+    //
+    // Setup other things
+    //
+
+    node.alter_system_parameters
+        .borrow_mut()
+        .governor_rpc_batch_size = params.batch_size;
+
+    let (state, _, _, rpc_requests, cas_requests) = setup_governor_loop_state(node);
+
+    //
+    // Spawn the pretend governor_loop fiber
+    //
+    let pretend_state = spawn_pretend_governor_loop(state);
+
+    //
+    // Loop until pretend governor_loop finishes, handle governor's RPC & CAS requests
+    //
+
+    let mut ok_masters = HashSet::new();
+    let mut ok_replicas = HashSet::new();
+    let mut first_cas_request_skipped = false;
+    let mut cas_request_handled = false;
+    let mut stats = BatchingRpcTestStats::default();
+
+    let (all_masters, all_replicas) = masters_and_replicas(&node.topology_cache.get());
+
+    while !pretend_state.get().governor_idle {
+        //
+        // Handle governor's RPCs
+        //
+
+        let rpcs = rpc_requests.receive_all(Duration::from_millis(50));
+
+        stats.num_batches += 1;
+        tlog!(
+            Info,
+            "RPC batch #{} size: {}",
+            stats.num_batches,
+            rpcs.len()
+        );
+
+        let mut targets = vec![];
+
+        for rpc in rpcs {
+            // Verify RPC request
+            let (id, request) = rpc;
+            let RaftIdOrName::Name(name) = id else {
+                panic!("expected instance name, got {id:?}");
+            };
+            targets.push(name.clone());
+
+            assert_eq!(request.proc, ".proc_apply_backup");
+            let resp = rpc::ddl_backup::Response::BackupPath(PathBuf::new());
+
+            // Send the RPC response to governor
+            let fail = rng.gen_bool(params.p_rpc_err);
+            if fail {
+                request
+                    .on_result
+                    .handle(Err(Error::other("injected error")));
+                stats.num_rpc_fails += 1;
+
+                continue;
+            }
+
+            request.on_result.handle(Ok(Tuple::new(&[resp]).unwrap()));
+
+            // Remember which RPCs got an Ok response
+            if all_masters.contains(&name) {
+                assert_eq!(ok_replicas.len(), 0, "replicas only get RPCs after all masters");
+                assert!(!ok_masters.contains(&name), "{name} got a repeat RPC after Ok response");
+                ok_masters.insert(name);
+            } else {
+                assert_eq!(ok_masters.len(), all_masters.len(), "replicas only get RPCs after all masters");
+                assert!(!ok_replicas.contains(&name), "{name} got a repeat RPC after Ok response");
+                ok_replicas.insert(name);
+            }
+        }
+
+        // RPCs are sent out in batches of given size (may be shorter)
+        assert!(targets.len() <= params.batch_size, "{targets:?}");
+
+        // Allow governor to handle RPC results and send the CAS requests
+        fiber::reschedule();
+
+        //
+        // Handle governor's CAS requests
+        //
+
+        let cas_requests = cas_requests.try_receive_all();
+        tlog!(Info, "CAS batch size: {}", cas_requests.len());
+
+        if !cas_requests.is_empty() {
+            // Make sure CAS request is only sent once every instance handled the RPC
+            assert_eq!(ok_masters.len(), all_masters.len());
+            assert_eq!(ok_replicas.len(), all_replicas.len());
+
+            // Verify CAS request
+            assert_ne!(
+                node.storage.properties.pending_schema_change().unwrap(),
+                None
+            );
+            assert_ne!(
+                node.storage.properties.pending_schema_version().unwrap(),
+                None
+            );
+
+            let mut cas_requests = cas_requests.into_iter();
+            let (request, response) = cas_requests.next().unwrap();
+
+            let Op::DdlCommit = &request.op else {
+                panic!("expected DdlCommit, got {:?}", request.op);
+            };
+
+            tlog!(Info, "cas_request: {request:?}");
+
+            // Apply CAS request
+            let fail = rng.gen_bool(params.p_cas_err);
+            if
+            // Fail the first attempt always just to check what how we handle that
+            first_cas_request_skipped
+                    // Next time fail randomly
+                    && !fail
+            {
+                response.send(Ok(cas::Response::for_tests())).unwrap();
+
+                node.storage
+                    .properties
+                    .delete(PropertyName::PendingSchemaChange)
+                    .unwrap();
+                node.storage
+                    .properties
+                    .delete(PropertyName::PendingSchemaVersion)
+                    .unwrap();
+                cas_request_handled = true;
+            } else {
+                // It's possible that the CAS request get's dropped due to
+                // a conflict. Governor should handle this fine
+                response.send(Err(Error::other("injected error"))).unwrap();
+                stats.num_cas_fails += 1;
+                first_cas_request_skipped = true;
+            }
+
+            // Expecting only 1 CAS request
+            assert_eq!(cas_requests.next().map(|(r, _)| r), None);
+        }
+    }
+
+    assert!(cas_request_handled);
 
     // Log the stats
     let s = pretend_state.get();
