@@ -232,6 +232,7 @@ with the `YY.MINOR.MICRO` scheme.
 ### WebUI
 - Introduce display of used memory in terms of tier
 - Make offline instance count red in case if there are offline instances
+- Get rid of "target state" field due to its uselessness
 
 ### ACL
 - Support granting CREATE privilege on specific table.
