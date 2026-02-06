@@ -1,5 +1,7 @@
 use crate::catalog::governor_queue::GovernorOpFormat;
 use crate::op::Ddl;
+use crate::preemption::sql_preemption;
+use crate::sql::storage::StorageRuntime;
 use crate::storage::schema::ddl_change_format_on_master;
 use crate::storage::schema::ddl_create_function_on_master;
 use crate::storage::schema::ddl_create_index_on_master;
@@ -19,6 +21,7 @@ use crate::traft::error::Error as TraftError;
 use crate::traft::error::ErrorInfo;
 use crate::traft::node;
 use crate::traft::{RaftIndex, RaftTerm};
+use sql::executor::engine::QueryCache;
 use std::rc::Rc;
 use std::time::Duration;
 use tarantool::error::{BoxError, TarantoolErrorCode};
@@ -92,6 +95,16 @@ crate::define_rpc_request! {
             .ok_or_else(|| TraftError::other("pending schema change not found"))?;
 
         let my_tier_name = node.topology_cache.my_tier_name();
+
+
+        let sql_runtime;
+        let _sql_guard;
+        if sql_preemption() {
+            // We want to lock DQL operations, so we don't have scenarios where we yield DQL execution,
+            // change a space and then resume DQL on the corrupted space. It can lead to undefined results.
+            sql_runtime = StorageRuntime::new();
+            _sql_guard = sql_runtime.cache().lock();
+        }
 
         let res = transaction(|| apply_schema_change(storage, &ddl, pending_schema_version, false, my_tier_name));
         match res {

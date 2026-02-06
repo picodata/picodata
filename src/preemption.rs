@@ -88,7 +88,7 @@ pub(crate) extern "C" fn vdbe_yield_handler(args: *mut VdbeYieldArgs) -> libc::c
 }
 
 #[inline(always)]
-fn sql_preemption() -> bool {
+pub fn sql_preemption() -> bool {
     DYNAMIC_CONFIG
         .sql_preemption
         .try_current_value()
