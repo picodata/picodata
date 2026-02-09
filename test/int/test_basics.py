@@ -417,7 +417,8 @@ Replace(_pico_db_config, ["memtx_checkpoint_interval","default",3600]),
 Replace(_pico_db_config, ["iproto_net_msg_max","default",768]),
 Replace(_pico_db_config, ["plugin_check_migration_hash","",true]),
 Replace(_pico_db_config, ["governor_check_replication_error","",true]),
-Replace(_pico_db_config, ["jwt_secret","","<jwt_secret>"]))|
+Replace(_pico_db_config, ["jwt_secret","","<jwt_secret>"]),
+Replace(_pico_db_config, ["sql_log","",false]))|
 |  0  | 1  |BatchDml(
 Insert(_pico_db_config, ["shredding","",false])
 )|

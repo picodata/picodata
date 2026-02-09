@@ -55,6 +55,7 @@ pub const DEFAULT_CONFIG_FILE_NAME: &str = "picodata.yaml";
 pub(crate) const DEFAULT_SQL_PREEMPTION: bool = false;
 pub(crate) const DEFAULT_SQL_PREEMPTION_INTERVAL_US: u64 = 500;
 pub(crate) const DEFAULT_SQL_PREEMPTION_OPCODE_MAX: u64 = 1024;
+pub(crate) const DEFAULT_SQL_LOG: bool = false;
 
 pub use ::sql::ir::types::DomainType as SbroadType;
 
@@ -2027,6 +2028,11 @@ pub struct AlterSystemParameters {
     #[introspection(sbroad_type = SbroadType::String)]
     #[introspection(config_default = generate_secure_token())]
     pub jwt_secret: String,
+
+    /// Enables logging of SQL statements.
+    #[introspection(sbroad_type = SbroadType::Boolean)]
+    #[introspection(config_default = DEFAULT_SQL_LOG)]
+    pub sql_log: bool,
 }
 
 fn generate_secure_token() -> String {
@@ -2166,6 +2172,7 @@ pub struct DynamicConfigProviders {
     pub sql_preemption: AtomicObserverProvider<bool>,
     pub sql_preemption_interval_us: AtomicObserverProvider<u64>,
     pub sql_preemption_opcode_max: AtomicObserverProvider<u64>,
+    pub sql_log: AtomicObserverProvider<bool>,
 }
 
 impl DynamicConfigProviders {
@@ -2179,6 +2186,7 @@ impl DynamicConfigProviders {
             sql_preemption: AtomicObserverProvider::new(),
             sql_preemption_interval_us: AtomicObserverProvider::new(),
             sql_preemption_opcode_max: AtomicObserverProvider::new(),
+            sql_log: AtomicObserverProvider::new(),
         }
     }
 
@@ -2574,6 +2582,10 @@ pub fn apply_parameter(
             }
             res
         })?;
+    } else if name == system_parameter_name!(sql_log) {
+        let value = v.as_bool().expect("type is already checked");
+        // Cache the value.
+        DYNAMIC_CONFIG.sql_log.update(value);
     }
 
     Ok(())

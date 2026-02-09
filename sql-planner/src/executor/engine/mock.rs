@@ -1883,6 +1883,10 @@ impl Router for RouterRuntimeMock {
         Ok(false)
     }
 
+    fn is_sql_log_enabled(&self) -> Result<bool, SbroadError> {
+        Ok(false)
+    }
+
     fn get_scheduler_options(&self) -> SchedulerOptions {
         SchedulerOptions {
             enabled: false,

@@ -19,6 +19,8 @@ with the `YY.MINOR.MICRO` scheme.
 - New ALTER SYSTEM parameter `governor_check_replication_error` (default: true)
   enables the checking if replication is broken on any instance, in which case
   the instance will be automatically made Offline.
+- New ALTER SYSTEM parameter `sql_log` (default: false)
+  enables logging of all SQL statements to log file.
 - New columns `target_state_reason` & `target_state_change_time` in `_pico_instance` system table
 - Added env option PICODATA_UNSAFE_FORCE_RECOVERY.
   - Possible values: true, false.

@@ -567,6 +567,9 @@ fn dispatch_bound_statement_impl<'p>(
                 if bound_statement.params_for_audit().is_some() {
                     audit::policy::log_dml_for_user(&pattern, bound_statement.params_for_audit());
                 }
+                if runtime.is_sql_log_enabled()? {
+                    tlog!(Info, "sql-log: {pattern}");
+                }
 
                 dispatch_bound_statement_impl(
                     runtime,
@@ -756,6 +759,9 @@ pub fn parse_and_dispatch<'p>(
     let bound_statement = BoundStatement::parse_and_bind(&router, query_text, params, sql_options)?;
     if bound_statement.params_for_audit().is_some() {
         audit::policy::log_dml_for_user(query_text, bound_statement.params_for_audit());
+    }
+    if router.is_sql_log_enabled()? {
+        tlog!(Info, "sql-log: {query_text}");
     }
 
     dispatch_bound_statement(
