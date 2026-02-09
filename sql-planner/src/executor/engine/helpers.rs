@@ -861,9 +861,10 @@ pub fn materialize_values(
         runtime.dispatch(exec_plan, values_id, &Buckets::Any, &mut port)?;
 
         let mut vtable = VirtualTable::with_columns(columns);
-        let mut ys = Scheduler::default();
+        let scheduler_opts = runtime.get_scheduler_options();
+        let mut ys = Scheduler::new(&scheduler_opts);
         for mp in port.iter().skip(1) {
-            ys.maybe_yield(&runtime.get_scheduler_options())
+            ys.maybe_yield(&scheduler_opts)
                 .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             vtable.write_all(mp).map_err(|e| {
                 SbroadError::FailedTo(
@@ -988,9 +989,10 @@ pub fn materialize_motion(
             })?;
         }
     } else {
-        let mut ys = Scheduler::default();
+        let scheduler_opts = runtime.get_scheduler_options();
+        let mut ys = Scheduler::new(&scheduler_opts);
         for mp in port.iter().skip(1) {
-            ys.maybe_yield(&runtime.get_scheduler_options())
+            ys.maybe_yield(&scheduler_opts)
                 .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             vtable.write_all(mp).map_err(|e| {
                 SbroadError::FailedTo(

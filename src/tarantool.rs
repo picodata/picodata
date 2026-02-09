@@ -1307,8 +1307,18 @@ unsafe extern "C" {
         extern "C" fn(args: *mut VdbeYieldArgs) -> libc::c_int;
 }
 
+unsafe extern "C" {
+    static mut OPCODE_YIELD_COUNT: u64;
+}
+
 pub(crate) fn set_vdbe_yield_cb() {
     unsafe { vdbe_yield_cb = vdbe_yield_handler };
+}
+
+pub(crate) fn set_vdbe_opcode_yield_count(limit: u64) {
+    unsafe {
+        OPCODE_YIELD_COUNT = limit;
+    }
 }
 
 /// Set global cluster UUID for iproto connections (see IPROTO_ID).

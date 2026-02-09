@@ -1887,6 +1887,7 @@ impl Router for RouterRuntimeMock {
         SchedulerOptions {
             enabled: false,
             yield_interval_us: 500,
+            yield_vdbe_opcodes: 1024,
             yield_impl: || {},
             metrics: SchedulerMetrics::noop(),
         }

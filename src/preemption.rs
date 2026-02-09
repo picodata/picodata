@@ -1,4 +1,7 @@
-use crate::config::{DEFAULT_SQL_PREEMPTION, DEFAULT_SQL_PREEMPTION_INTERVAL_US, DYNAMIC_CONFIG};
+use crate::config::{
+    DEFAULT_SQL_PREEMPTION, DEFAULT_SQL_PREEMPTION_INTERVAL_US, DEFAULT_SQL_PREEMPTION_OPCODE_MAX,
+    DYNAMIC_CONFIG,
+};
 use crate::metrics;
 use crate::tarantool::VdbeYieldArgs;
 use sql::executor::preemption::{SchedulerMetrics, SchedulerOptions};
@@ -48,6 +51,7 @@ pub(crate) fn scheduler_options() -> SchedulerOptions {
     SchedulerOptions {
         enabled: sql_preemption(),
         yield_interval_us: sql_preemption_interval_us(),
+        yield_vdbe_opcodes: sql_preemption_opcodes(),
         yield_impl: yield_sql_execution,
         metrics: SchedulerMetrics {
             record_tx_splits_total: metrics::record_sql_tx_splits_total,
@@ -101,4 +105,12 @@ fn sql_preemption_interval_us() -> u64 {
         .sql_preemption_interval_us
         .try_current_value()
         .unwrap_or(DEFAULT_SQL_PREEMPTION_INTERVAL_US)
+}
+
+#[inline(always)]
+pub fn sql_preemption_opcodes() -> u64 {
+    DYNAMIC_CONFIG
+        .sql_preemption_opcode_max
+        .try_current_value()
+        .unwrap_or(DEFAULT_SQL_PREEMPTION_OPCODE_MAX)
 }

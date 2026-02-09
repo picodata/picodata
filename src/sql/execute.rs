@@ -149,9 +149,10 @@ fn populate_table(
                 )),
             )
         })?;
-        let mut ys = Scheduler::default();
+        let scheduler_opts = scheduler_options();
+        let mut ys = Scheduler::new(&scheduler_opts);
         while let Some(tuple) = tuples.next_tuple() {
-            ys.maybe_yield(&scheduler_options())
+            ys.maybe_yield(&scheduler_opts)
                 .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             let tuple = tuple?;
             space.insert(tuple).map_err(|e|
@@ -710,9 +711,10 @@ where
         });
     }
     let mut vtable = VirtualTable::with_columns(vcolumns);
-    let mut ys = Scheduler::default();
+    let scheduler_opts = scheduler_options();
+    let mut ys = Scheduler::new(&scheduler_opts);
     for tuple in pico_port.iter() {
-        ys.maybe_yield(&scheduler_options())
+        ys.maybe_yield(&scheduler_opts)
             .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
         vtable.write_all(tuple).map_err(|e| {
             SbroadError::Invalid(

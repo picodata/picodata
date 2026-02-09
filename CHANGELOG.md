@@ -30,6 +30,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Introduce `read_preference` option for routing DQL queries to replicas in specific scenarios.
 - Introduce `pico_stmt_invalidation` option for getting errors when binding invalid statements.
 - Introduce `pico_query_metadata` option for getting distribution key metadata.
+- Introduce `sql_preemption_opcode_max` to control the VDBE opcode interval
+  between execution time checks when `sql_preemption` is enabled.
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:
