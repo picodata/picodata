@@ -554,6 +554,10 @@ impl PortalInner {
                 audit::policy::log_dml_for_user(query, statement.params_for_audit());
             }
         }
+        if let Some(query) = self.statement.prepared_statement().query_for_logging() {
+            // Logs only the SQL text, not its parameters.
+            tlog!(Info, "sql-log: {query}");
+        }
 
         let mut port = PicoPortOwned::new();
         crate::sql::dispatch_bound_statement(router, statement, None, None, &mut port)?;

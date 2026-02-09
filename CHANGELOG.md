@@ -10,11 +10,15 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## [25.5.8] - Unreleased
 
+### Features
+
+- New ALTER SYSTEM parameter `sql_log` (default: false)
+  enables logging of all SQL statements to log file.
+
 ### Fixes
 
 - Fixed that `--pg-advertise` CLI argument was erroneously disallowed to be used
   simultaneously with `--iproto-advertise`.
-
 
 ## [25.5.7] - 2026-02-10
 

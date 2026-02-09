@@ -472,6 +472,13 @@ impl Router for RouterRuntime {
         (self.is_audit_enabled_func)(plan)
     }
 
+    fn is_sql_log_enabled(&self) -> Result<bool, SbroadError> {
+        Ok(crate::config::DYNAMIC_CONFIG
+            .sql_log
+            .try_current_value()
+            .unwrap_or(crate::config::DEFAULT_SQL_LOG))
+    }
+
     fn get_scheduler_options(&self) -> SchedulerOptions {
         scheduler_options()
     }

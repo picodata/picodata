@@ -33,6 +33,8 @@ pub struct PreparedStatement {
     plan: Rc<Plan>,
     /// This is for audit logging of SQL statements.
     query_for_audit: Option<String>,
+    /// This is for SQL statement logging.
+    query_for_logging: Option<String>,
 }
 
 impl PreparedStatement {
@@ -61,9 +63,15 @@ impl PreparedStatement {
             } else {
                 None
             };
+            let query_for_logging = if router.is_sql_log_enabled()? {
+                Some(query_text.to_string())
+            } else {
+                None
+            };
             return Ok(PreparedStatement {
                 plan: cached_plan.clone(),
                 query_for_audit,
+                query_for_logging,
             });
         }
 
@@ -117,10 +125,16 @@ impl PreparedStatement {
         } else {
             None
         };
+        let query_for_logging = if router.is_sql_log_enabled()? {
+            Some(query_text.to_string())
+        } else {
+            None
+        };
 
         Ok(PreparedStatement {
             plan: new_plan,
             query_for_audit,
+            query_for_logging,
         })
     }
 
@@ -134,8 +148,14 @@ impl PreparedStatement {
         &self.plan
     }
 
+    /// Gets the SQL statement text stored for output to the audit log.
     pub fn query_for_audit(&self) -> Option<&str> {
         self.query_for_audit.as_deref()
+    }
+
+    /// Gets the SQL statement text stored for output to the SQL log.
+    pub fn query_for_logging(&self) -> Option<&str> {
+        self.query_for_logging.as_deref()
     }
 
     /// Provide concrete values for query parameters, creating a [`BoundStatement`] as a result.

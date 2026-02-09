@@ -663,6 +663,7 @@ def test_read_from_system_tables(cluster: Cluster):
         "raft_wal_count_max",
         "raft_wal_size_max",
         "shredding",
+        "sql_log",
         "sql_motion_row_max",
         "sql_preemption",
         "sql_preemption_interval_us",
