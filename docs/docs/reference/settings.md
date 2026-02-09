@@ -644,7 +644,7 @@ table.legend {
             <td><span class="instance">vinyl.read_threads</span></td>
             <td>Максимальное количество потоков чтения для движка хранения vinyl</td>
             <td>1</td>
-            <td>[picodata run -c instance.vinyl.run_count_per_level=4](cli.md#run_config_parameter)</td>
+            <td>[picodata run -c instance.vinyl.read_threads=2](cli.md#run_config_parameter)</td>
             <td>[instance.vinyl.read_threads](config.md#instance_vinyl_read_threads)</td>
             <td></td>
         </tr>
