@@ -105,9 +105,10 @@ fn populate_table(table_name: &str, tuples: TupleIterator) -> Result<(), SbroadE
                 )),
             )
         })?;
-        let mut ys = Scheduler::default();
+        let scheduler_opts = scheduler_options();
+        let mut ys = Scheduler::new(&scheduler_opts);
         for tuple in tuples {
-            ys.maybe_yield(&scheduler_options())
+            ys.maybe_yield(&scheduler_opts)
                 .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             let tuple = tuple?;
             space.insert(RawBytes::new(tuple)).map_err(|e|
@@ -896,9 +897,10 @@ where
         });
     }
     let mut vtable = VirtualTable::with_columns(vcolumns);
-    let mut ys = Scheduler::default();
+    let scheduler_opts = scheduler_options();
+    let mut ys = Scheduler::new(&scheduler_opts);
     for tuple in pico_port.iter() {
-        ys.maybe_yield(&scheduler_options())
+        ys.maybe_yield(&scheduler_opts)
             .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
         vtable.write_all(tuple).map_err(|e| {
             SbroadError::Invalid(
@@ -1004,10 +1006,11 @@ fn sharded_update_execute(
             }
         }
     }
-    let mut ys = Scheduler::default();
+    let scheduler_options = scheduler_options();
+    let mut ys = Scheduler::new(&scheduler_options);
     for (bucket_id, positions) in vtable.get_bucket_index() {
         for pos in positions {
-            ys.maybe_yield(&scheduler_options())
+            ys.maybe_yield(&scheduler_options)
                 .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             let vt_tuple = vtable.get_tuples().get(*pos).ok_or_else(|| {
                 SbroadError::Invalid(
@@ -1175,9 +1178,10 @@ fn old_local_update_execute(
     vtable: &VirtualTable,
     space: &Space,
 ) -> Result<(), SbroadError> {
-    let mut ys = Scheduler::default();
+    let scheduler_options = scheduler_options();
+    let mut ys = Scheduler::new(&scheduler_options);
     for vt_tuple in vtable.get_tuples() {
-        ys.maybe_yield(&scheduler_options())
+        ys.maybe_yield(&scheduler_options)
             .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
         let args = update_args(vt_tuple, builder)?;
         let update_res = space.update(&args.key_tuple, &args.ops);
@@ -1259,9 +1263,10 @@ where
         )
     })?;
     transaction(|| -> Result<(), SbroadError> {
-        let mut ys = Scheduler::default();
+        let scheduler_options = scheduler_options();
+        let mut ys = Scheduler::new(&scheduler_options);
         for vt_tuple in vtable.get_tuples() {
-            ys.maybe_yield(&scheduler_options())
+            ys.maybe_yield(&scheduler_options)
                 .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             let delete_tuple = delete_args(vt_tuple, &builder)?;
             if let Err(Error::Tarantool(tnt_err)) = space.delete(&delete_tuple) {
@@ -1331,10 +1336,11 @@ where
         .get_ir_plan()
         .insert_conflict_strategy(insert_id)?;
     transaction(|| -> Result<(), SbroadError> {
-        let mut ys = Scheduler::default();
+        let scheduler_options = scheduler_options();
+        let mut ys = Scheduler::new(&scheduler_options);
         for (bucket_id, positions) in vtable.get_bucket_index() {
             for pos in positions {
-                ys.maybe_yield(&scheduler_options())
+                ys.maybe_yield(&scheduler_options)
                     .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
                 let vt_tuple = vtable.get_tuples().get(*pos).ok_or_else(|| {
                     SbroadError::Invalid(

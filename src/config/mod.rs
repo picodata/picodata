@@ -16,7 +16,7 @@ use crate::sql::storage::STATEMENT_CACHE;
 use crate::sql::value_type_str;
 use crate::static_ref;
 use crate::storage::{self, DbConfig, SystemTable};
-use crate::tarantool::set_cfg_field_from_rmpv;
+use crate::tarantool::{set_cfg_field_from_rmpv, set_vdbe_opcode_yield_count};
 use crate::tier::Tier;
 use crate::tier::TierConfig;
 use crate::tier::DEFAULT_TIER;
@@ -54,6 +54,7 @@ pub use crate::address::{
 pub const DEFAULT_CONFIG_FILE_NAME: &str = "picodata.yaml";
 pub(crate) const DEFAULT_SQL_PREEMPTION: bool = false;
 pub(crate) const DEFAULT_SQL_PREEMPTION_INTERVAL_US: u64 = 500;
+pub(crate) const DEFAULT_SQL_PREEMPTION_OPCODE_MAX: u64 = 1024;
 pub(crate) const DEFAULT_SQL_LOG: bool = false;
 
 pub use ::sql::ir::types::DomainType as SbroadType;
@@ -1862,6 +1863,12 @@ pub struct AlterSystemParameters {
     #[introspection(config_default = DEFAULT_SQL_PREEMPTION_INTERVAL_US)]
     pub sql_preemption_interval_us: u64,
 
+    /// Fiber yield interval in VDBE opcodes for non-blocking
+    /// SQL execution.
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = DEFAULT_SQL_PREEMPTION_OPCODE_MAX)]
+    pub sql_preemption_opcode_max: u64,
+
     /// Picodata statement cache size capacity in bytes.
     ///
     /// Corresponds to `box.cfg.sql_cache_size`.
@@ -2097,6 +2104,7 @@ pub struct DynamicConfigProviders {
     pub sql_motion_row_max: AtomicObserverProvider<i64>,
     pub sql_preemption: AtomicObserverProvider<bool>,
     pub sql_preemption_interval_us: AtomicObserverProvider<u64>,
+    pub sql_preemption_opcode_max: AtomicObserverProvider<u64>,
     pub sql_log: AtomicObserverProvider<bool>,
 }
 
@@ -2109,6 +2117,7 @@ impl DynamicConfigProviders {
             sql_motion_row_max: AtomicObserverProvider::new(),
             sql_preemption: AtomicObserverProvider::new(),
             sql_preemption_interval_us: AtomicObserverProvider::new(),
+            sql_preemption_opcode_max: AtomicObserverProvider::new(),
             sql_log: AtomicObserverProvider::new(),
         }
     }
@@ -2228,7 +2237,20 @@ pub fn validate_alter_system_parameter_value<'v>(
             .expect("invalid value for sql_preemption_interval_us");
 
         let max = u64::MAX / 1000;
-        if interval < 1 || interval as u64 > max {
+        if interval as u64 > max {
+            return Err(Error::other(format!(
+                "invalid value for '{name}': value must be between 0 and {max}",
+            )));
+        }
+    }
+
+    if name == system_parameter_name!(sql_preemption_opcode_max) {
+        let opcode_count = casted_value
+            .integer()
+            .expect("invalid value for sql_preemption_opcode_yield_count");
+
+        let max = u64::MAX;
+        if opcode_count < 1 || opcode_count as u64 > max {
             return Err(Error::other(format!(
                 "invalid value for '{name}': value must be between 1 and {max}",
             )));
@@ -2429,6 +2451,11 @@ pub fn apply_parameter(
         let value = v.as_u64().expect("type already checked");
         // Cache the value.
         DYNAMIC_CONFIG.sql_preemption_interval_us.update(value);
+    } else if name == system_parameter_name!(sql_preemption_opcode_max) {
+        let value = v.as_u64().expect("type already checked");
+        // Cache the value.
+        DYNAMIC_CONFIG.sql_preemption_opcode_max.update(value);
+        set_vdbe_opcode_yield_count(value);
     } else if name == system_parameter_name!(sql_storage_cache_count_max) {
         let value = v.as_u64().expect("type is already checked") as _;
 

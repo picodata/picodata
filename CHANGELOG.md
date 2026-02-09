@@ -14,6 +14,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - New ALTER SYSTEM parameter `sql_log` (default: false)
   enables logging of all SQL statements to log file.
+- Introduce `sql_preemption_opcode_max` to control the VDBE opcode interval
+  between execution time checks when `sql_preemption` is enabled.
 
 ### Fixes
 

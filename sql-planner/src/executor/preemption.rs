@@ -3,23 +3,21 @@ use std::time::{Duration, Instant};
 use tarantool::error::TarantoolError;
 use tarantool::transaction::{begin, commit, is_in_transaction, TransactionError};
 
-const YIELD_ITERATION_COUNT: usize = 1024;
-
 thread_local!(static SCHEDULER_START_TIME: Cell<Option<Instant>> = const { Cell::new(None) });
 
 pub struct Scheduler {
-    ops_left: usize,
+    ops_left: u64,
 }
 
-impl Default for Scheduler {
-    fn default() -> Self {
+impl Scheduler {
+    pub fn new(options: &SchedulerOptions) -> Self {
         SCHEDULER_START_TIME.with(|timer| {
             if timer.get().is_none() {
                 timer.set(Some(Instant::now()))
             }
         });
         Self {
-            ops_left: YIELD_ITERATION_COUNT,
+            ops_left: options.yield_vdbe_opcodes,
         }
     }
 }
@@ -35,12 +33,13 @@ impl Scheduler {
         }
 
         // Check iteration counter.
-        debug_assert_ne!(YIELD_ITERATION_COUNT, 0);
+        let opcodes = options.yield_vdbe_opcodes;
+        debug_assert_ne!(opcodes, 0);
         self.ops_left -= 1;
         if self.ops_left != 0 {
             return Ok(());
         }
-        self.ops_left = YIELD_ITERATION_COUNT;
+        self.ops_left = opcodes;
 
         // Check time interval.
         let start_time =
@@ -83,6 +82,7 @@ impl Scheduler {
 pub struct SchedulerOptions {
     pub enabled: bool,
     pub yield_interval_us: u64,
+    pub yield_vdbe_opcodes: u64,
     pub yield_impl: fn(),
     pub metrics: SchedulerMetrics,
 }
