@@ -5,7 +5,7 @@ use crate::storage::Catalog;
 use crate::storage::ToEntryIter as _;
 use crate::tier::Tier;
 use crate::traft::network::ConnectionPool;
-use crate::traft::{node, ConnectionType, Result};
+use crate::traft::{self, node, ConnectionType};
 use crate::util::Uppercase;
 use crate::{has_states, introspection::Introspection, tlog, unwrap_ok_or};
 use futures::future::join_all;
@@ -113,17 +113,29 @@ pub struct AuthContext {
     pub roles: Vec<String>,
 }
 
+#[derive(Debug, thiserror::Error)]
 pub(crate) enum AuthError {
+    #[error("{0}")]
     Inner(String),
+    #[error("auth disabled")]
     Disabled,
+    #[error("invalid authorization header")]
     InvalidHeader,
+    #[error("invalid token type")]
     InvalidType,
+    #[error("token expired")]
     Expired,
+    #[error("invalid credentials")]
     InvalidCredentials,
+    #[error("insufficient privileges")]
     InsufficientPrivileges,
+    #[error("failed to encode jwt: {0}")]
     JWTEncoding(String),
+    #[error("invalid jwt: {0}")]
     JWTValidation(String),
+    #[error("failed to find user jwt: {0}")]
     UserLookup(String),
+    #[error("failed to find privileges: {0}")]
     PrivilegesLookup(String),
 }
 
@@ -146,23 +158,30 @@ impl AuthError {
     }
 
     fn error_msg(&self) -> String {
-        match self {
-            AuthError::Disabled => String::from("auth disabled"),
-            AuthError::InvalidHeader => String::from("invalid authorization header"),
-            AuthError::InvalidType => String::from("invalid token type"),
-            AuthError::Expired => String::from("token expired"),
-            AuthError::InsufficientPrivileges => String::from("insufficient privileges"),
-            AuthError::JWTEncoding(v) => format!("failed to encode jwt: {}", v),
-            AuthError::JWTValidation(v) => format!("invalid jwt: {}", v),
-            AuthError::UserLookup(v) => format!("failed to find user jwt: {}", v),
-            AuthError::PrivilegesLookup(v) => format!("failed to find privileges: {}", v),
-            AuthError::InvalidCredentials => String::from("invalid credentials"),
-            AuthError::Inner(v) => v.to_owned(),
-        }
+        self.to_string()
     }
 }
 
 type AuthResult<T> = std::result::Result<T, AuthError>;
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ApiError {
+    #[error("{0}")]
+    Auth(#[from] AuthError),
+    #[error("{0}")]
+    Internal(#[from] crate::traft::error::Error),
+}
+
+impl From<ApiError> for ErrorResponse {
+    fn from(value: ApiError) -> Self {
+        match value {
+            ApiError::Auth(e) => e.into(),
+            ApiError::Internal(e) => e.into(),
+        }
+    }
+}
+
+pub(crate) type ApiResult<T> = std::result::Result<T, ApiError>;
 
 /// Response from instances:
 /// - `raft_id`: instance raft_id to find Instance to store data
@@ -310,7 +329,7 @@ pub(crate) struct UiConfig {
     is_auth_enabled: bool,
 }
 
-fn get_replicasets(storage: &Catalog) -> Result<HashMap<ReplicasetName, Replicaset>> {
+fn get_replicasets(storage: &Catalog) -> traft::Result<HashMap<ReplicasetName, Replicaset>> {
     let i = storage.replicasets.iter()?;
     Ok(i.map(|item| (item.name.clone(), item)).collect())
 }
@@ -320,7 +339,7 @@ fn get_peer_addresses(
     replicasets: &HashMap<ReplicasetName, Replicaset>,
     instances: &[Instance],
     only_leaders: bool, // get data from leaders only or from all instances
-) -> Result<HashMap<u64, (SmolStr, SmolStr)>> {
+) -> traft::Result<HashMap<u64, (SmolStr, SmolStr)>> {
     let leaders: HashMap<_, _> = instances
         .iter()
         .filter(|item| {
@@ -422,7 +441,10 @@ async fn get_instances_data(
 
 // Collect detailed information from replicasets and instances
 //
-fn get_replicasets_info(storage: &Catalog, only_leaders: bool) -> Result<Vec<ReplicasetInfo>> {
+fn get_replicasets_info(
+    storage: &Catalog,
+    only_leaders: bool,
+) -> traft::Result<Vec<ReplicasetInfo>> {
     let node = crate::traft::node::global()?;
     let instances = storage.instances.all_instances()?;
     let instances_props = fiber::block_on(get_instances_data(&node.pool, &instances));
@@ -508,7 +530,7 @@ fn get_capacity_usage(mem_usable: u64, mem_used: u64) -> f64 {
     }
 }
 
-pub(crate) fn http_api_cluster() -> Result<ClusterInfo> {
+pub(crate) fn http_api_cluster() -> traft::Result<ClusterInfo> {
     let version = VersionInfo::current().picodata_version.clone();
 
     let storage = Catalog::get();
@@ -560,7 +582,7 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo> {
     Ok(res)
 }
 
-pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>> {
+pub(crate) fn http_api_tiers() -> traft::Result<Vec<TierInfo>> {
     let storage = Catalog::get();
     let replicasets = get_replicasets_info(storage, false)?;
     let tiers = storage.tiers.iter()?;
@@ -825,21 +847,20 @@ macro_rules! wrap_api_result {
 
 pub(crate) use wrap_api_result;
 
-pub(crate) fn auth_middleware<F, T>(auth_header: String, handler: F) -> AuthResult<T>
+pub(crate) fn auth_middleware<F, T, E>(auth_header: String, handler: F) -> ApiResult<T>
 where
-    F: FnOnce() -> Result<T>,
-    T: serde::Serialize,
+    F: FnOnce() -> Result<T, E>,
+    ApiError: From<E>,
 {
     allow_disabled_auth!(validate_auth(&auth_header), AuthContext::default())?;
-
-    handler().map_err(|x| AuthError::Inner(x.to_string()))
+    Ok(handler()?)
 }
 
-pub(crate) fn http_api_tiers_with_auth(auth_header: String) -> AuthResult<Vec<TierInfo>> {
+pub(crate) fn http_api_tiers_with_auth(auth_header: String) -> ApiResult<Vec<TierInfo>> {
     as_admin(|| auth_middleware(auth_header, http_api_tiers))
 }
 
-pub(crate) fn http_api_cluster_with_auth(auth_header: String) -> AuthResult<ClusterInfo> {
+pub(crate) fn http_api_cluster_with_auth(auth_header: String) -> ApiResult<ClusterInfo> {
     as_admin(|| auth_middleware(auth_header, http_api_cluster))
 }
 
