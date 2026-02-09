@@ -18,12 +18,13 @@ fn main() {
 
     let build_root = cargo::get_build_root();
     let use_static_build = !cargo::get_feature("dynamic_build");
+    let use_debug_build = cargo::get_feature("debug_tarantool");
 
     insert_build_metadata();
 
     // Build and link all the relevant tarantool libraries.
     // For more info, read the comments in tarantool-build.
-    TarantoolBuildRoot::new(&build_root, use_static_build)
+    TarantoolBuildRoot::new(&build_root, use_static_build, use_debug_build)
         .build_libraries(jobserver)
         .link_libraries();
 

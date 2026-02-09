@@ -13,10 +13,16 @@ pub struct TarantoolBuildRoot {
     /// In static build mode we build not only Tarantool, but also many
     /// of its dependencies, e.g. readline, curl, unwind, etc.
     use_static_build: bool,
+    /// Should we use Debug or RelWithDebInfo?
+    use_debug_build: bool,
 }
 
 impl TarantoolBuildRoot {
-    pub fn new(build_root: impl Into<PathBuf>, use_static_build: bool) -> Self {
+    pub fn new(
+        build_root: impl Into<PathBuf>,
+        use_static_build: bool,
+        use_debug_build: bool,
+    ) -> Self {
         // The distinction between static & dynamic build paths
         // lets us keep both builds intact when we toggle
         // the "use_static_build" option.
@@ -26,11 +32,21 @@ impl TarantoolBuildRoot {
             .join(match use_static_build {
                 false => "dynamic",
                 true => "static",
+            })
+            .with_extension(match use_debug_build {
+                false => "release",
+                true => "debug",
             });
 
+        // Thus, the current variants are:
+        // - static.debug
+        // - static.release
+        // - dynamic.debug
+        // - dynamic.release
         Self {
             root,
             use_static_build,
+            use_debug_build,
         }
     }
 
@@ -131,7 +147,13 @@ impl TarantoolBuildRoot {
             configure_cmd.arg("-B").arg(tarantool_root);
 
             let mut common_args = vec![
-                "-DCMAKE_BUILD_TYPE=RelWithDebInfo".to_string(),
+                format!(
+                    "-DCMAKE_BUILD_TYPE={}",
+                    match self.use_debug_build {
+                        false => "RelWithDebInfo",
+                        true => "Debug",
+                    }
+                ),
                 "-DBUILD_TESTING=FALSE".to_string(),
                 "-DBUILD_DOC=FALSE".to_string(),
             ];
