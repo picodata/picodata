@@ -147,6 +147,7 @@ smallvec = { version = "1.15" }
 
 [features]
 default = []
+debug_tarantool = []
 dynamic_build = []
 error_injection = []
 load_test = []
