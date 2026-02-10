@@ -918,6 +918,16 @@ table.legend {
             </td>
         </tr>
         <tr>
+            <td><span class="sql-cluster">[sql_log](db_config.md#sql_log){.link}</span></td>
+            <td>Включение логирования SQL запросов в лог-файл</td>
+            <td>false</td>
+            <td>
+            ```sql
+            ALTER SYSTEM SET sql_log = true;
+            ```
+            </td>
+        </tr>
+        <tr>
             <td><span class="sql-cluster">[sql_storage_cache_count_max](db_config.md#sql_storage_cache_count_max){.link}</span></td>
             <td>Максимальное количество prepared statement-ов для размещения в LRU-кэше на узлах хранения Vshard</td>
             <td>50</td>
