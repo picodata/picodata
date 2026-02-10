@@ -8,6 +8,12 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [25.5.9] - Unreleased
+
+### Features
+
+- Support cluster update to next major version (26.1.0).
+
 ## [25.5.8] - 2026-02-25
 
 ### Features
