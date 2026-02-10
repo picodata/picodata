@@ -69,11 +69,9 @@ pub fn log_dml_for_user(query: &str, params: Option<&[Value]>) {
 
     let message = match params {
         Some(params) if !params.is_empty() => {
-            // TODO: use `format_args!` when update MSRV
-            // (https://github.com/rust-lang/rust/issues/92698)
-            format!("apply `{}` with params {}", query, DisplayValues(params))
+            format_args!("apply `{}` with params {}", query, DisplayValues(params))
         }
-        _ => format!("apply `{}`", query),
+        _ => format_args!("apply `{}`", query),
     };
     crate::audit!(
         message: "{message}",
