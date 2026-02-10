@@ -124,7 +124,7 @@ pub(crate) struct TokenResponse {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct ErrorResponse {
+struct ErrorResponse {
     error: String,
     #[serde(rename = "errorMessage")]
     error_message: String,
@@ -588,7 +588,7 @@ fn get_capacity_usage(mem_usable: u64, mem_used: u64) -> f64 {
     }
 }
 
-pub(crate) fn http_api_cluster() -> traft::Result<ClusterInfo> {
+fn http_api_cluster() -> traft::Result<ClusterInfo> {
     let version = VersionInfo::current().picodata_version.clone();
 
     let storage = Catalog::get();
@@ -640,7 +640,7 @@ pub(crate) fn http_api_cluster() -> traft::Result<ClusterInfo> {
     Ok(res)
 }
 
-pub(crate) fn http_api_tiers() -> traft::Result<Vec<TierInfo>> {
+fn http_api_tiers() -> traft::Result<Vec<TierInfo>> {
     let storage = Catalog::get();
     let replicasets = get_replicasets_info(storage, false)?;
     let tiers = storage.tiers.iter()?;
@@ -854,7 +854,7 @@ pub(crate) fn http_api_refresh_session(auth_header: String) -> AuthResult<TokenR
     )
 }
 
-pub(crate) fn validate_auth(auth_header: &str) -> AuthResult<AuthContext> {
+fn validate_auth(auth_header: &str) -> AuthResult<AuthContext> {
     let claims = get_jwt_claims(auth_header)?;
 
     if claims.typ != "auth" {
@@ -895,7 +895,7 @@ where
     response.into()
 }
 
-pub(crate) fn auth_middleware<F, T, E>(auth_header: String, handler: F) -> ApiResult<T>
+fn auth_middleware<F, T, E>(auth_header: String, handler: F) -> ApiResult<T>
 where
     F: FnOnce() -> Result<T, E>,
     ApiError: From<E>,
