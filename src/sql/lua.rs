@@ -11,7 +11,7 @@ use ::tarantool::tlua::{
 };
 use rmp::decode::{read_array_len, read_int, read_marker, RmpRead};
 use rmp::Marker;
-use sql_protocol::query_plan::PlanBlockIter;
+use sql_protocol::query_plan::ExplainIter;
 use std::fmt::Write;
 use std::io::Cursor;
 use std::os::raw::c_char;
@@ -64,12 +64,11 @@ pub(crate) unsafe extern "C" fn dispatch_query_plan_dump_lua(
     lua::lua_createtable(l, 0, 0);
     let mut idx: i32 = 0;
 
-    for block in PlanBlockIter::new(port_c.iter()) {
-        for s in block.to_string().split('\n') {
-            lua::lua_pushlstring(l, s.as_ptr() as *const c_char, s.len());
-            idx += 1;
-            lua::lua_rawseti(l, -2, idx);
-        }
+    let explain: Vec<String> = ExplainIter::new(port_c.iter()).collect();
+    for line in explain.iter().flat_map(|s| s.split('\n')) {
+        lua::lua_pushlstring(l, line.as_ptr() as *const c_char, line.len());
+        idx += 1;
+        lua::lua_rawseti(l, -2, idx);
     }
 }
 

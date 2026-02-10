@@ -22,7 +22,7 @@ use serde::Serialize;
 use smol_str::{format_smolstr, SmolStr};
 use sql::executor::Port;
 use sql::ir::types::{DerivedType, UnrestrictedType as SbroadType};
-use sql_protocol::query_plan::PlanBlockIter;
+use sql_protocol::query_plan::ExplainIter;
 use std::{
     cell::RefCell,
     collections::{btree_map::Entry, BTreeMap},
@@ -637,11 +637,9 @@ impl PortalInner {
                     port_read_explain(port.iter(), port.size() as usize, self.describe.metadata())?
                 } else {
                     let mut rows: Vec<Vec<PgValue>> = Vec::new();
-                    let plan_steps = PlanBlockIter::new(port.iter());
-                    for block in plan_steps.into_iter().map(|b| b.to_string()) {
-                        for line in block.split('\n') {
-                            rows.push(vec![PgValue::Text(line.to_string())]);
-                        }
+                    let explain: Vec<String> = ExplainIter::new(port.iter()).collect();
+                    for line in explain.iter().flat_map(|s| s.split('\n')) {
+                        rows.push(vec![PgValue::Text(line.to_string())]);
                     }
                     rows
                 };

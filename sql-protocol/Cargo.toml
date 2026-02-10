@@ -6,7 +6,7 @@ edition.workspace = true
 license-file.workspace = true
 
 [dependencies]
-comfy-table = { workspace = true }
 rmp = { workspace = true }
+rmp-serde.workspace = true
 thiserror = { workspace = true }
 

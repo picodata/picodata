@@ -4244,8 +4244,8 @@ dependencies = [
 name = "sql_protocol"
 version = "25.6.0"
 dependencies = [
- "comfy-table",
  "rmp",
+ "rmp-serde",
  "thiserror 1.0.69",
 ]
 

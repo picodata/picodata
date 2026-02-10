@@ -1,5 +1,6 @@
 use crate::executor::vdbe::SqlError;
 use crate::ir::types::UnrestrictedType;
+use rmp_serde::encode::Error as EncodeError;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql_protocol::error::ProtocolError;
 use sql_type_system::error::Error as TypeSystemError;
@@ -443,5 +444,11 @@ impl From<ProtocolError> for SbroadError {
 impl From<SqlError> for SbroadError {
     fn from(value: SqlError) -> Self {
         Self::VdbeError(value.to_smolstr())
+    }
+}
+
+impl From<EncodeError> for SbroadError {
+    fn from(value: EncodeError) -> Self {
+        Self::Invalid(Entity::MsgPack, Some(value.to_smolstr()))
     }
 }

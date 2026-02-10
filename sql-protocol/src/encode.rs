@@ -1,5 +1,5 @@
 use crate::msgpack::ByteCounter;
-use crate::query_plan::PlanBlockIter;
+use crate::query_plan::ExplainIter;
 use rmp::decode::read_int;
 use rmp::encode::{write_array_len, write_map_len, write_str, write_uint};
 use std::io::{Cursor, Error as IoError, Result as IoResult, Write};
@@ -60,16 +60,11 @@ pub fn dispatch_write_query_plan_response<'bytes>(
     // (for iproto compatibility).
     write_array_len(writer, 1)?;
 
-    // As we split each plan block into lines, we have to materialize
-    // all blocks first to calculate the amount of entries in msgpack
-    // array.
-    let blocks: Vec<String> = PlanBlockIter::new(port)
-        .map(|b| b.to_string())
-        .collect::<Vec<String>>();
-    let amount =
-        u32::try_from(blocks.iter().flat_map(|s| s.split('\n')).count()).map_err(IoError::other)?;
-    write_array_len(writer, amount)?;
-    for line in blocks.iter().flat_map(|s| s.split('\n')) {
+    let explain: Vec<String> = ExplainIter::new(port).collect();
+    let number = u32::try_from(explain.iter().flat_map(|s| s.split('\n')).count())
+        .map_err(IoError::other)?;
+    write_array_len(writer, number)?;
+    for line in explain.iter().flat_map(|s| s.split('\n')) {
         write_str(writer, line)?;
     }
     Ok(())

@@ -3,14 +3,16 @@ use crate::metrics::{
 };
 use crate::preemption::scheduler_options;
 use crate::sql::lua::{lua_decode_ibufs, lua_query_metadata};
+use crate::sql::port::PicoPortOwned;
 use crate::sql::router::{get_index_version_by_pk, get_table_version_by_id, VersionMap};
 use crate::sql::storage::{ExpandedPlanInfo, FullDeleteInfo, PlanInfo};
 use crate::sql::PicoPortC;
 use crate::tlog;
 use crate::traft::node;
 use ahash::HashMapExt;
+use comfy_table::{Cell, ContentArrangement, Row, Table};
 use rmp::decode::read_array_len;
-use rmp::encode::{write_array_len, write_str, write_str_len, write_uint};
+use rmp::encode::{write_array_len, write_uint};
 use smol_str::{format_smolstr, ToSmolStr};
 use sql::backend::sql::space::ADMIN_ID;
 use sql::errors::{Action, Entity, SbroadError};
@@ -515,6 +517,50 @@ where
     }
 }
 
+fn create_row_from_tuple(mp: &[u8]) -> Row {
+    let mut cur = Cursor::new(mp);
+    let (select_id, order, from, detail) =
+        rmp_serde::from_read::<_, (i64, i64, i64, String)>(&mut cur)
+            .expect("explain format violation");
+
+    let cells = [
+        Cell::new(select_id),
+        Cell::new(order),
+        Cell::new(from),
+        Cell::new(detail),
+    ];
+
+    Row::from(cells)
+}
+
+fn repack_vdbe_explain<'p>(port: &mut impl Port<'p>) -> String {
+    let mut table = Table::default();
+    table.set_content_arrangement(ContentArrangement::Dynamic);
+    table.set_header(["selectid", "order", "from", "detail"]);
+
+    for tuple in port.iter() {
+        let row = create_row_from_tuple(tuple);
+        table.add_row(row);
+    }
+
+    format!("{table}\n")
+}
+
+fn format_sql(explain: &str, params: &[Value], formatted: bool) -> String {
+    let sql = explain.strip_prefix("EXPLAIN QUERY PLAN ").unwrap_or("");
+    let mut fmt_options = sqlformat::FormatOptions::default();
+    if !formatted || sql.len() < LINE_WIDTH {
+        fmt_options.joins_as_top_level = true;
+        fmt_options.inline = true;
+    }
+    let params = params
+        .iter()
+        .map(|p| p.to_string())
+        .collect::<Vec<String>>();
+
+    sqlformat::format(sql, &sqlformat::QueryParams::Indexed(params), &fmt_options)
+}
+
 pub fn explain_execute<'p, R: QueryCache>(
     runtime: &R,
     miss_info: impl ExpandedPlanInfo,
@@ -531,58 +577,13 @@ where
         runtime.cache().lock();
     let explain = miss_info.sql();
 
-    // EXPLAIN QUERY PLAN output formatting for each tuple in the port:
-    // - [int, int, int , string] (selectid, order, from, detail).
-    // We also wish to add to the port additional headers:
-    // - query location
-    // - sql text
-    // As we operate with SQL tables, we should repack the headers to the
-    // same format as the tuples in the port, i.e.:
-    // - [-1, -1, -1, query location]
-    // - [-2, -2, -2, sql]
-    // It is the responsibility of the port virtual table to repack the
-    // results in a user-friendly way.
+    let header = format!("Query ({location}):");
+    let mp_header = rmp_serde::to_vec(&[header])?;
+    port.add_mp(&mp_header);
 
-    let mp_header = {
-        let mut mp = Vec::with_capacity(4 + 5 + location.len());
-        mp.extend_from_slice(b"\x94\xff\xff\xff");
-        write_str_len(&mut mp, location.len() as u32).map_err(|e| {
-            SbroadError::Invalid(
-                Entity::MsgPack,
-                Some(format_smolstr!(
-                    "Failed to write the length of explain header: {e}"
-                )),
-            )
-        })?;
-        mp.extend_from_slice(location.as_bytes());
-        mp
-    };
-    port.add_mp(mp_header.as_slice());
-
-    let mp_sql = {
-        let sql = &explain["EXPLAIN QUERY PLAN ".len()..];
-        let mut fmt_options = sqlformat::FormatOptions::default();
-        if !formatted || sql.len() < LINE_WIDTH {
-            fmt_options.joins_as_top_level = true;
-            fmt_options.inline = true;
-        }
-        let params = params
-            .iter()
-            .map(|p| p.to_string())
-            .collect::<Vec<String>>();
-        let sql_fmt =
-            sqlformat::format(sql, &sqlformat::QueryParams::Indexed(params), &fmt_options);
-        let mut mp = Vec::with_capacity(4 + 5 + sql_fmt.len());
-        mp.extend_from_slice(b"\x94\xfe\xfe\xfe");
-        write_str(&mut mp, &sql_fmt).map_err(|e| {
-            SbroadError::Invalid(
-                Entity::MsgPack,
-                Some(format_smolstr!("Failed to write explain SQL: {e}")),
-            )
-        })?;
-        mp
-    };
-    port.add_mp(mp_sql.as_slice());
+    let sql = format_sql(explain, params, formatted);
+    let mp_sql = rmp_serde::to_vec(&[sql])?;
+    port.add_mp(&mp_sql);
 
     for motion_id in miss_info.vtable_metadata() {
         let (table_name, columns) = motion_id?;
@@ -594,7 +595,14 @@ where
     }
 
     let mut stmt = SqlStmt::compile(explain)?;
-    port.process_stmt(&mut stmt, params, sql_vdbe_opcode_max)?;
+    let mut tmp_port = PicoPortOwned::new();
+    tmp_port.process_stmt(&mut stmt, params, sql_vdbe_opcode_max)?;
+
+    let vdbe_explain = repack_vdbe_explain(&mut tmp_port);
+    let vdbe_explain_serialized = rmp_serde::to_vec(&[vdbe_explain])?;
+
+    port.add_mp(&vdbe_explain_serialized);
+
     Ok(())
 }
 
