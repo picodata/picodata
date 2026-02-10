@@ -401,7 +401,7 @@ fn start_http_server(
               return handler(username, password)
         end)"#,
         tlua::Function::new(|login: String, password: String| -> _ {
-            http_server::wrap_api_result!(http_server::http_api_login(login, password))
+            http_server::wrap_api_result(http_server::http_api_login(login, password))
         }),
     )
     .map_err(|err| {
@@ -419,7 +419,7 @@ fn start_http_server(
               return handler(auth_header)
         end)"#,
         tlua::Function::new(|auth_header: String| -> _ {
-            http_server::wrap_api_result!(http_server::http_api_refresh_session(auth_header))
+            http_server::wrap_api_result(http_server::http_api_refresh_session(auth_header))
         }),
     )
     .map_err(|err| {
@@ -437,7 +437,7 @@ fn start_http_server(
               return handler(auth_header)
         end)"#,
         tlua::Function::new(|auth_header: String| -> _ {
-            http_server::wrap_api_result!(http_server::http_api_tiers_with_auth(auth_header))
+            http_server::wrap_api_result(http_server::http_api_tiers_with_auth(auth_header))
         }),
     )
     .map_err(|err| {
@@ -454,7 +454,7 @@ fn start_http_server(
               return handler(auth_header)
         end)"#,
         tlua::Function::new(|auth_header: String| -> _ {
-            http_server::wrap_api_result!(http_server::http_api_cluster_with_auth(auth_header))
+            http_server::wrap_api_result(http_server::http_api_cluster_with_auth(auth_header))
         }),
     )
     .map_err(|err| {
@@ -470,7 +470,7 @@ fn start_http_server(
               return handler()
         end)"#,
         tlua::Function::new(|| -> _ {
-            http_server::wrap_api_result!(http_server::http_api_config())
+            http_server::wrap_api_result(http_server::http_api_config())
         }),
     )
     .map_err(|err| {

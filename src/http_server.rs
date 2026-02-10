@@ -9,6 +9,7 @@ use crate::traft::{self, node, ConnectionType};
 use crate::util::Uppercase;
 use crate::{has_states, introspection::Introspection, tlog, unwrap_ok_or};
 use futures::future::join_all;
+use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use smol_str::format_smolstr;
 use smol_str::SmolStr;
@@ -22,6 +23,62 @@ use tarantool::session::with_su;
 const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 const AUTH_TOKEN_EXPIRY_HOURS: u64 = 24;
 const REFRESH_TOKEN_EXPIRY_DAYS: u64 = 365;
+const CONTENT_TYPE_JSON: &'static str = "application/json";
+
+/// Newtype wrapper around `http::Response<String>` for HTTP API responses.
+/// We have to make it a newtype and not just an alias to provide From/Into
+/// imlementations for HttpResponseTable and not hit the orphan rule.
+pub(crate) struct HttpResponse(pub(crate) http::Response<String>);
+
+impl HttpResponse {
+    /// Creates a JSON response with the given status code and body.
+    pub fn to_json_response(status: StatusCode, body: String) -> Self {
+        /* Building HTTP response can't fail here because it would fail only for invalid status
+         * code (outside 100-999 range), invalid HTTP version or header name/value issues such as
+         * \r\n characters. None of these can possibly happen here.
+         */
+        Self(
+            http::Response::builder()
+                .status(status)
+                .header(http::header::CONTENT_TYPE, CONTENT_TYPE_JSON)
+                .body(body)
+                .expect("building HTTP response should not fail"),
+        )
+    }
+}
+
+/// Type alias for the `AsTable` structure expected by Lua HTTP server.
+pub(crate) type HttpResponseTable = tarantool::tlua::AsTable<(
+    (&'static str, u16),
+    (&'static str, String),
+    (
+        &'static str,
+        tarantool::tlua::AsTable<((&'static str, String),)>,
+    ),
+)>;
+
+impl From<HttpResponse> for HttpResponseTable {
+    fn from(response: HttpResponse) -> Self {
+        let status = response.0.status().as_u16();
+        let content_type = response
+            .0
+            .headers()
+            .get(http::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or(CONTENT_TYPE_JSON)
+            .to_owned();
+        let body = response.0.into_body();
+
+        tarantool::tlua::AsTable((
+            ("status", status),
+            ("body", body),
+            (
+                "headers",
+                tarantool::tlua::AsTable((("content-type", content_type),)),
+            ),
+        ))
+    }
+}
 
 #[derive(
     Clone, Debug, Default, Eq, Introspection, PartialEq, serde::Deserialize, serde::Serialize,
@@ -71,8 +128,6 @@ pub(crate) struct ErrorResponse {
     error: String,
     #[serde(rename = "errorMessage")]
     error_message: String,
-    #[serde(skip)]
-    pub(crate) status: u64,
 }
 
 impl std::fmt::Display for ErrorResponse {
@@ -80,29 +135,6 @@ impl std::fmt::Display for ErrorResponse {
         match serde_json::to_string(self) {
             Ok(value) => write!(f, "{}", value),
             Err(e) => write!(f, r#"{{"error":"{}","errorMessage":"Internal error"}}"#, e),
-        }
-    }
-}
-
-impl From<AuthError> for ErrorResponse {
-    fn from(value: AuthError) -> Self {
-        let error_message = value.error_msg();
-        let error = value.error_type();
-        let status = value.status_code();
-        Self {
-            error,
-            error_message,
-            status,
-        }
-    }
-}
-
-impl From<crate::traft::error::Error> for ErrorResponse {
-    fn from(value: crate::traft::error::Error) -> Self {
-        Self {
-            error: String::from("error"),
-            error_message: value.to_string(),
-            status: 500,
         }
     }
 }
@@ -149,11 +181,13 @@ impl AuthError {
             _ => "authError",
         })
     }
-    fn status_code(&self) -> u64 {
+    fn status_code(&self) -> StatusCode {
         match self {
-            AuthError::Inner(_) => 500,
-            AuthError::InsufficientPrivileges | AuthError::PrivilegesLookup(_) => 403,
-            _ => 401,
+            AuthError::Inner(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AuthError::InsufficientPrivileges | AuthError::PrivilegesLookup(_) => {
+                StatusCode::FORBIDDEN
+            }
+            _ => StatusCode::UNAUTHORIZED,
         }
     }
 
@@ -172,7 +206,31 @@ pub(crate) enum ApiError {
     Internal(#[from] crate::traft::error::Error),
 }
 
-impl From<ApiError> for ErrorResponse {
+impl From<AuthError> for HttpResponse {
+    fn from(value: AuthError) -> Self {
+        let status = value.status_code();
+        let body = ErrorResponse {
+            error: value.error_type(),
+            error_message: value.error_msg(),
+        }
+        .to_string();
+
+        HttpResponse::to_json_response(status, body)
+    }
+}
+
+impl From<crate::traft::error::Error> for HttpResponse {
+    fn from(value: crate::traft::error::Error) -> Self {
+        let body = ErrorResponse {
+            error: String::from("error"),
+            error_message: value.to_string(),
+        }
+        .to_string();
+        HttpResponse::to_json_response(StatusCode::INTERNAL_SERVER_ERROR, body)
+    }
+}
+
+impl From<ApiError> for HttpResponse {
     fn from(value: ApiError) -> Self {
         match value {
             ApiError::Auth(e) => e.into(),
@@ -818,34 +876,24 @@ pub(crate) fn validate_auth(auth_header: &str) -> AuthResult<AuthContext> {
     })
 }
 
-macro_rules! wrap_api_result {
-    ($api_result:expr) => {{
-        let mut status = 200;
-        let content_type = "application/json";
-        let content: String;
-        match $api_result {
-            Ok(res) => match serde_json::to_string(&res) {
-                Ok(value) => content = value,
-                Err(err) => {
-                    content = format!(r#"{{"error":"{err}","errorMessage":"Internal error"}}"#);
-                    status = 500
-                }
-            },
-            Err(err) => {
-                let error_resp = crate::http_server::ErrorResponse::from(err);
-                status = error_resp.status;
-                content = error_resp.to_string();
-            }
-        }
-        tlua::AsTable((
-            ("status", status),
-            ("body", content),
-            ("headers", tlua::AsTable((("content-type", content_type),))),
-        ))
-    }};
-}
+pub(crate) fn wrap_api_result<T, E>(result: Result<T, E>) -> HttpResponseTable
+where
+    T: Serialize,
+    E: Into<HttpResponse>,
+{
+    let response: HttpResponse = match result {
+        Ok(res) => match serde_json::to_string(&res) {
+            Ok(body) => HttpResponse::to_json_response(StatusCode::OK, body),
+            Err(err) => HttpResponse::to_json_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!(r#"{{"error":"{err}","errorMessage":"Internal error"}}"#),
+            ),
+        },
+        Err(err) => err.into(),
+    };
 
-pub(crate) use wrap_api_result;
+    response.into()
+}
 
 pub(crate) fn auth_middleware<F, T, E>(auth_header: String, handler: F) -> ApiResult<T>
 where

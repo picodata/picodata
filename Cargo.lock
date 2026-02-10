@@ -3113,6 +3113,7 @@ dependencies = [
  "futures",
  "git-version",
  "hmac",
+ "http 1.4.0",
  "indoc",
  "itoa",
  "jsonwebtoken",

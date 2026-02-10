@@ -31,6 +31,7 @@ file_shred = "1.2"
 flate2 = "1.1"
 futures = "0.3"
 hmac = { version = "0.12", features = ["reset"] }
+http = "1.0"
 indoc = "2.0"
 itoa = "1.0"
 jsonwebtoken = { version = "10.3", features = ["aws_lc_rs"] }
