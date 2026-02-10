@@ -1402,6 +1402,13 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
         replicaset::ReplicasetName::from(format!("{my_tier_name}_{replicaset_number}"))
     });
 
+    #[allow(unused_mut)]
+    let mut version = SmolStr::new_static(PICODATA_VERSION);
+    #[cfg(feature = "error_injection")]
+    crate::error_injection!("BOOT_PICODATA_VERSION" => |v| {
+        version = v.into();
+    });
+
     let instance = Instance {
         raft_id,
         name: instance_name.clone(),
@@ -1412,7 +1419,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
         target_state: instance::State::new(Offline, 0),
         failure_domain: config.instance.failure_domain().clone(),
         tier: my_tier_name.into(),
-        picodata_version: SmolStr::new_static(PICODATA_VERSION),
+        picodata_version: version,
         sync_incarnation: Some(0),
         target_state_reason: Some("".into()),
         target_state_change_time: Some(Datetime::now_utc()),

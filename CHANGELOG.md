@@ -34,6 +34,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Introduce `pico_query_metadata` option for getting distribution key metadata.
 - Introduce `sql_preemption_opcode_max` to control the VDBE opcode interval
   between execution time checks when `sql_preemption` is enabled.
+- Support cluster update to next major version (26.1.0).
 - Add support for `EXPLAIN (RAW)` for queries that fail at local sql execution stage.
 - Add unlogged tables to SQL:
   - Unlogged tables' updates are not writeen into the WAL, so they are not persisted on restarts of

@@ -2,6 +2,7 @@ use ::raft::prelude as raft;
 use protobuf::Message;
 
 use ::tarantool::msgpack;
+use smol_str::SmolStr;
 
 use crate::config::PicodataConfig;
 use crate::config::{self};
@@ -104,6 +105,12 @@ pub(super) fn prepare(
         .into(),
     );
 
+    #[allow(unused_mut)]
+    let mut version = SmolStr::new_static(PICODATA_VERSION);
+    #[cfg(feature = "error_injection")]
+    crate::error_injection!("BOOT_PICODATA_VERSION" => |v| {
+        version = v.into();
+    });
     //
     // Populate "_pico_property" with initial values for cluster-wide properties
     //
@@ -131,7 +138,7 @@ pub(super) fn prepare(
         .expect("serialization cannot fail"),
         op::Dml::insert(
             storage::Properties::TABLE_ID,
-            &(PropertyName::ClusterVersion, PICODATA_VERSION.to_string()),
+            &(PropertyName::ClusterVersion, version.to_string()),
             ADMIN_ID,
         )
         .expect("serialization cannot fail"),
