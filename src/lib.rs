@@ -479,6 +479,58 @@ fn start_http_server(
         ))
     })?;
 
+    // Health check endpoints
+    lua.exec_with(
+        r#"
+            local handler = ...
+            pico.httpd:route({method = 'GET', path = 'api/v1/health/live'}, function(req)
+                return handler()
+            end)
+        "#,
+        tlua::Function::new(|| -> _ {
+            http_server::wrap_api_result(http_server::http_api_health_live())
+        }),
+    )
+    .map_err(|err| {
+        Error::other(format!(
+            "failed to add route `/api/v1/health/live` to http server: {err}",
+        ))
+    })?;
+
+    lua.exec_with(
+        r#"
+            local handler = ...
+            pico.httpd:route({method = 'GET', path = 'api/v1/health/ready'}, function(req)
+                return handler()
+            end)
+        "#,
+        tlua::Function::new(|| -> _ {
+            http_server::wrap_api_result(http_server::http_api_health_ready())
+        }),
+    )
+    .map_err(|err| {
+        Error::other(format!(
+            "failed to add route `/api/v1/health/ready` to http server: {err}",
+        ))
+    })?;
+
+    lua.exec_with(
+        r#"
+            local handler = ...
+            pico.httpd:route({method = 'GET', path = 'api/v1/health/startup'}, function(req)
+                return handler()
+            end)
+        "#,
+        tlua::Function::new(|| -> _ {
+            http_server::wrap_api_result(http_server::http_api_health_startup())
+        }),
+    )
+    .map_err(|err| {
+        Error::other(format!(
+            "failed to add route `/api/v1/health/startup` to http server: {err}",
+        ))
+    })?;
+
     // Initialize all of the metrics here!
     let register_metrics = || {
         metrics::register_metrics(registry)?;

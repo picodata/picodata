@@ -199,11 +199,26 @@ impl AuthError {
 type AuthResult<T> = std::result::Result<T, AuthError>;
 
 #[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+pub(crate) struct HealthCheckError(SmolStr);
+
+impl From<HealthCheckError> for HttpResponse {
+    fn from(value: HealthCheckError) -> Self {
+        let body = format!(r#"{{"status":"not_ready","reason":"{}"}}"#, value.0);
+        HttpResponse::to_json_response(http::StatusCode::SERVICE_UNAVAILABLE, body)
+    }
+}
+
+type HealthCheckResult = std::result::Result<HealthCheckOk, HealthCheckError>;
+
+#[derive(Debug, thiserror::Error)]
 pub(crate) enum ApiError {
     #[error("{0}")]
     Auth(#[from] AuthError),
     #[error("{0}")]
     Internal(#[from] crate::traft::error::Error),
+    #[error("{0}")]
+    HealthCheck(#[from] HealthCheckError),
 }
 
 impl From<AuthError> for HttpResponse {
@@ -235,6 +250,7 @@ impl From<ApiError> for HttpResponse {
         match value {
             ApiError::Auth(e) => e.into(),
             ApiError::Internal(e) => e.into(),
+            ApiError::HealthCheck(e) => e.into(),
         }
     }
 }
@@ -385,6 +401,21 @@ pub(crate) struct ClusterInfo {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct UiConfig {
     is_auth_enabled: bool,
+}
+
+pub(crate) struct HealthCheckOk;
+
+impl Serialize for HealthCheckOk {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        #[derive(Serialize)]
+        struct Helper {
+            status: &'static str,
+        }
+        Helper { status: "ok" }.serialize(serializer)
+    }
 }
 
 fn get_replicasets(storage: &Catalog) -> traft::Result<HashMap<ReplicasetName, Replicaset>> {
@@ -916,4 +947,78 @@ pub(crate) fn http_api_config() -> AuthResult<UiConfig> {
     let is_auth_enabled = get_jwt_secret().is_ok_and(|secret| secret.is_some());
 
     Ok(UiConfig { is_auth_enabled })
+}
+
+/// Liveness probe endpoint - always returns 200 OK
+///
+/// This endpoint verifies that the Tarantool event loop is running
+/// and the HTTP server is responsive.
+pub(crate) fn http_api_health_live() -> HealthCheckResult {
+    Ok(HealthCheckOk)
+}
+
+/// Readiness probe endpoint - returns 200 if instance can serve traffic
+///
+/// Conditions for 200:
+/// - current_state == Online
+/// - Raft leader is known
+pub(crate) fn http_api_health_ready() -> HealthCheckResult {
+    check_instance_ready()?;
+    Ok(HealthCheckOk)
+}
+
+/// Startup probe endpoint - returns 200 when instance has completed initialization
+///
+/// Conditions for 200:
+/// - current_state == Online
+/// - Raft leader is known
+/// - Replicaset is in "ready" state (replicas >= replication_factor)
+pub(crate) fn http_api_health_startup() -> HealthCheckResult {
+    use crate::replicaset::ReplicasetState;
+
+    let node = node::global().map_err(|e| HealthCheckError(format_smolstr!("not inited: {e}")))?;
+
+    // Fast path: startup already complete (latched)
+    if node.is_startup_complete() {
+        return Ok(HealthCheckOk);
+    }
+
+    // Slow path: check common readiness conditions (Online + leader known)
+    check_instance_ready()?;
+
+    // Additional startup condition: replicaset must be ready
+    let topology = node.topology_cache.get();
+    let replicaset = topology
+        .try_this_replicaset()
+        .ok_or_else(|| HealthCheckError(SmolStr::new_static("replicaset unavailable")))?;
+
+    if replicaset.state != ReplicasetState::Ready {
+        return Err(HealthCheckError(format_smolstr!(
+            "replicaset state: {}",
+            replicaset.state
+        )));
+    }
+
+    Ok(HealthCheckOk)
+}
+
+/// Common health checks for readiness and startup probes.
+fn check_instance_ready() -> Result<(), HealthCheckError> {
+    let node = node::global().map_err(|e| HealthCheckError(format_smolstr!("not inited: {e}")))?;
+
+    let current_state = node.topology_cache.my_current_state();
+    if current_state.variant != StateVariant::Online {
+        return Err(HealthCheckError(format_smolstr!(
+            "state is {}",
+            current_state.variant
+        )));
+    }
+
+    if node.status().leader_id.is_none() {
+        return Err(HealthCheckError(SmolStr::new_static(
+            "no Raft leader known",
+        )));
+    }
+
+    Ok(())
 }
