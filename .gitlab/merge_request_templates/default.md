@@ -1,23 +1,37 @@
-## Summary
+> 🚨 Please review the [contribution guidelines](../../CONTRIBUTING.md).
 
-%{all_commits}
-
-<!--
-Reminder:
-- Ensure proposed changes are tested in CI
-- Ensure docstrings and comments are up to date
-- Update changelog if you want a mention in release notes
--->
-
----
-
-- Close #...
-- Cherry-pick to: none / 25.5 / 25.4 / 25.3
-- Docs follow-up: not necessary / [new issue](https://git.picodata.io/core/picodata/-/issues/new?issuable_template=followup) / docs updated in this MR
-- [ ] Changelog is updated
+### *CHECKLIST* <small>(MUST BE COMPLETED)</small>
 
 <!--
-- Follow-up for !...
-- Depends on !...
-- See also ...
+  Tasklist syntax cheatsheet:
+  - [x] Completed task
+  - [~] Inapplicable task
+  - [ ] Incomplete task
 -->
+
+- [ ] All tests passing.
+- [ ] Code compiles correctly. 
+- [ ] Changelog updated if necessary.
+- [ ] Documentation changed if necessary.
+
+### *HYPERLINKS* <small>(REQUIRED IF APPLICABLE)</small>
+
+- Closes: none
+- See-also: none
+- Depends-on: none
+- Follow-up-for: none
+- Cherry-pick-to: none
+
+### *SUMMARY* <small>(OPTIONAL IF NEEDED)</small>
+
+<!--
+  Prefer putting most context in the commit history. Use this section only
+  when commits alone do not fully explain the change, or when this MR addresses
+  multiple independent concerns (which should generally be split into separate MRs).
+-->
+
+> ⚠️ **DO NOT INCLUDE SPECIFIC CVE IDENTIFIERS, LINKS, OR EXPLOIT DETAILS HERE OR
+> IN COMMIT MESSAGES. THIS REPOSITORY IS PUBLIC, AND SUCH INFORMATION MAY ENABLE
+> ZERO-DAY EXPLOITATION. USE PRIVATE DISCLOSURE CHANNELS INSTEAD.** ⚠️
+
+[Brief description of what changed and why]
