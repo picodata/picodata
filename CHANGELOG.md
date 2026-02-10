@@ -8,6 +8,12 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [25.5.7] - 2026-02-10
+
+### Fixes
+
+- Fixed a number of vinyl issues by backporting upstream patches
+
 ## [25.5.6] - 2026-02-06
 
 ### WebUI
@@ -21,7 +27,6 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed that instances from tiers with can_vote=false attempting to promote to raft leader.
 - Fixed a crash in case of any error during TRUNCATE operation.
 - Fixed a race condition between DDL (i.e., TRUNCATE) and DQL when the preemption option is enabled.
-- Fixed a number of vinyl issues by backporting upstream patches
 
 
 ## [25.5.5] - 2026-01-26
