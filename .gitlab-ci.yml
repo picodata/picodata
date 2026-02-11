@@ -444,6 +444,22 @@ lint-docs:
     - pushd docs && pipenv run lint
     - echo "Picodata doc successfully checked"
 
+flaky-finder:
+  stage: test
+  needs: []
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      allow_failure: true
+    - when: manual
+      allow_failure: true
+  variables:
+    GITLAB_TOKEN: $CI_JOB_TOKEN
+    DAYS: 30
+    TG_CHAT_ID: -1001222144211
+    TG_MESSAGE_ID: 22563
+  script:
+    - make flaky-finder
+
 .test-patch-rules: &test-patch-rules
   rules:
     - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE == "schedule")

@@ -235,3 +235,18 @@ sbom:
 		--git https://github.com/evanmiller2112/cyclonedx-rust-cargo \
 		cargo-cyclonedx && \
 	cargo cyclonedx --format json --spec-version 1.6
+
+# IMPORTANT. This rule should only be executed via CI.
+# It updates the pinned message in the `pico-dev` chat.
+.PHONY: flaky-finder
+flaky-finder:
+	echo "Looking for flaky tests on master..."
+	echo "*Flaky tests on master ($(DAYS) days)*" > report.txt
+	echo >> report.txt
+	set +o pipefail && ./tools/flaky_finder.py --days $(DAYS) --csv-format | \
+		while read -r row; do awk -F, '{printf "`%s` -> %s ([pipeline](%s))\n", $$1, $$3, $$2}'; done >> report.txt
+	echo >> report.txt
+	echo "Edited on _$(shell date)_ by [job]($(CI_JOB_URL))." >> report.txt
+	echo "Sending report update via bot..."
+	curl "https://api.telegram.org/bot${FLAKY_INFORMER_BOT_TOKEN}/editMessageText?chat_id=$(TG_CHAT_ID)&message_id=$(TG_MESSAGE_ID)&parse_mode=Markdown" \
+		--data-urlencode "text@report.txt" --data-urlencode "link_preview_options={\"url\":\"$(CI_JOB_URL)\"}"

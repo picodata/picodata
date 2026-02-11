@@ -64,11 +64,11 @@ Then the command for each window becomes:
 
 ##### Using `pytest-flake-finder` and `pytest-xdist`
 
-You can also use [`pytest-flake-finder`](https://pypi.org/project/pytest-flakefinder/) and 
+You can also use [`pytest-flake-finder`](https://pypi.org/project/pytest-flakefinder/) and
 [`pytest-xdist`](https://pypi.org/project/pytest-xdist/) pytest plugins, which come pre-installed in our testing environment.
 
 `pytest-flake-finder` allows you to run a single test multiple times within a single pytest invocation.
-To do that you should pass `--flake-finder` to enable the plugin and control how much you want to rerun tests either with 
+To do that you should pass `--flake-finder` to enable the plugin and control how much you want to rerun tests either with
 `--flake-runs=[COUNT]` (by number of runs) or `--flake-max-minutes=[DURATION]` (by run time).
 
 `pytest-xdist` allows you to execute multiple tests in parallel, utilizing more CPU cores that might otherwise be idle.
@@ -88,6 +88,26 @@ You might also want to use `-x` flag to stop testing on first test failure, whic
 
 Additional stress factor for the test can be limited amount of CPU which sometimes happen when CI machine is under higher load.
 To emulate this locally consider using `taskset` and `cpulimit` utilities.
+
+#### Searching for flaky tests on master branch
+
+The `tools/flaky_finder.py` script is integrated into CI and regularly updates statistics on flaky tests for the last 30 days on the master in the `pico-dev` chat.
+
+You can also run it locally. Here are a few examples:
+
+```shell
+# Find flaky tests from the last 7 days.
+./tools/flaky_finder.py -d 7
+
+# Find flaky tests that match a regular expression.
+./tools/flaky_finder.py -f 'test_ddl_ok|test_failover'
+
+# Get stack traces for specific tests.
+./tools/flaky_finder.py -vf 'test_dml_ok'
+
+# More options.
+./tools/flaky_finder.py --help
+```
 
 #### Keeping Pipelines Green
 
