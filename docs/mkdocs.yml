@@ -136,6 +136,7 @@ nav:
           - dev/connectors/jdbc.md
           - dev/connectors/go.md
           - dev/connectors/rust.md
+          - dev/connectors/picopyn.md
       - Работа с плагинами:
           - architecture/plugins.md
           - dev/plugin_create.md
