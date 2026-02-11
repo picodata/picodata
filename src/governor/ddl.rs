@@ -93,7 +93,6 @@ pub fn handle_pending_ddl<'i>(
 
     let targets_total = rpc::replicasets_masters(topology_ref);
     debug_assert!(!targets_total.is_empty());
-    tlog!(Info, "targets_total: {targets_total:?}");
 
     let res = get_next_batch(&targets_total, last_step_info, batch_size);
     let targets_batch = match res {

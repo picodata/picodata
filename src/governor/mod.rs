@@ -823,6 +823,7 @@ impl Loop {
                             fs.push(async move { (instance_name, dml, resp.await) });
                         }
 
+                        let mut first_error = None;
                         while let Some((instance_name, dml, res)) = fs.next().await {
                             match res {
                                 Ok(_) => {
@@ -834,13 +835,22 @@ impl Loop {
                                     let info = last_step_info.on_err_instance(&instance_name);
                                     let streak = info.streak;
                                     tlog!(Warning, "failed calling proc_enable_all_plugins (fail streak: {streak}): {e}"; "instance_name" => %instance_name);
+                                    if first_error.is_none() {
+                                        first_error = Some(e);
+                                    }
                                 }
                             }
                         }
 
                         last_step_info.report_stats();
 
-                        // TODO: explain why no return Err() here
+                        if let Some(error) = first_error {
+                            if ok_dmls.is_empty() {
+                                return Err(error);
+                            } else {
+                                // Must update the ok instances' states
+                            }
+                        }
                     }
                 }
 
@@ -850,7 +860,9 @@ impl Loop {
                         "current_state" => %new_current_state,
                     ]
                     async {
-                        // FIXME: skip CAS if `ok_dmls` is empty
+                        // If there were no errors there should be at least
+                        // one `ok_dmls`, because `targets_batch` was not empty
+                        debug_assert!(!ok_dmls.is_empty());
                         let ops = Op::single_dml_or_batch(ok_dmls);
                         let cas = cas::Request::new(ops, predicate, ADMIN_ID)?;
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
