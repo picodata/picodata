@@ -15,6 +15,7 @@ use crate::governor::sharding::{handle_sharding, handle_sharding_bootstrap};
 use crate::has_states;
 use crate::instance::state::{State, StateVariant};
 use crate::instance::{Instance, InstanceName};
+use crate::plugin::TopologyUpdateOpKind;
 use crate::plugin::{PluginIdentifier, PluginOp};
 use crate::replicaset::{Replicaset, ReplicasetName, ReplicasetState, WeightOrigin};
 use crate::rpc;
@@ -1121,6 +1122,10 @@ pub mod stage {
         pub struct AlterServiceTiers<'i> {
             /// Identifier of the service. Used for logging.
             pub service: ServiceId,
+            /// What operation is being performed (only for logging)
+            pub kind: TopologyUpdateOpKind,
+            /// Plugin services are being added/removed to/from this tier (only for logging)
+            pub tier: SmolStr,
             /// This plugin operation is being applied.
             pub plugin_op: &'i PluginOp,
             /// This is the list of instances on which we want to enable the service.

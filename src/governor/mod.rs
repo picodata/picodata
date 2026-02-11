@@ -1342,6 +1342,8 @@ impl Loop {
 
             Plan::AlterServiceTiers(AlterServiceTiers {
                 service,
+                kind,
+                tier,
                 plugin_op,
                 enable_targets_total,
                 enable_targets_batch,
@@ -1371,7 +1373,7 @@ impl Loop {
                 // type of inconsistency could lead to some scary things.
                 let mut abort_cause = None;
                 governor_substep! {
-                    "enabling/disabling service at new tiers" [ "service" => %service ]
+                    "enabling/disabling service at new tiers" [ "service" => %service, "tier" => %tier, "op" => ?kind ]
                     async {
                         let mut fs = FuturesUnordered::new();
                         for instance_name in enable_targets_batch {

@@ -615,7 +615,6 @@ impl PluginDef {
         ]
     }
 
-    #[cfg(test)]
     pub fn for_tests() -> Self {
         Self {
             name: "plugin".into(),
@@ -687,7 +686,6 @@ impl ServiceDef {
         }
     }
 
-    #[cfg(test)]
     pub fn for_tests() -> Self {
         Self {
             plugin_name: SmolStr::new_static("plugin"),
@@ -784,7 +782,7 @@ impl ServiceRouteItem {
     }
 }
 
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ServiceRouteKey<'a> {
     pub plugin_name: &'a str,
     pub plugin_version: &'a str,

@@ -360,6 +360,16 @@ impl Manifest {
         });
         config
     }
+
+    pub fn for_tests() -> Self {
+        Self {
+            name: SmolStr::new_static("dummy-plugin"),
+            description: SmolStr::new_static("Dummy plugin for testing"),
+            version: SmolStr::new_static("1.2.3-pre-rc1"),
+            services: vec![],
+            migration: vec![],
+        }
+    }
 }
 
 /// Events that may be fired at picodata

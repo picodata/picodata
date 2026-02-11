@@ -477,6 +477,8 @@ pub fn handle_alter_service_tiers<'i>(
     Ok(Some(
         Action {
             service: ServiceId::new(plugin.name, service.clone(), plugin.version),
+            tier: tier.clone(),
+            kind,
             plugin_op,
             enable_targets_total,
             enable_targets_batch,
