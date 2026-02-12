@@ -80,6 +80,17 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("proc_name", "proc_update_instance_v2"),
         ],
     ),
+    (
+        "25.5.8",
+        &[
+            // There was bug, so we need to create these procs again.
+            ("proc_name", "proc_instance_dir"),
+            ("proc_name", "proc_instance_name"),
+            ("proc_name", "proc_replicaset_name"),
+            ("proc_name", "proc_tier_name"),
+            ("proc_name", "proc_query_metadata"),
+        ]
+    ),
 ];
 
 tarantool::define_str_enum! {

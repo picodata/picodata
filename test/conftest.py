@@ -1956,7 +1956,7 @@ Last governor error is:
                 log.error(f"Invalid metadata for _pico_bucket: {res}")
 
         res = self.sql("SELECT value FROM _pico_property WHERE key = 'system_catalog_version'")
-        if res[0][0] not in ["25.3.7", "25.4.1", "25.5.1", "25.5.2", "25.5.3"]:
+        if res[0][0] not in ["25.3.7", "25.4.1", "25.5.1", "25.5.2", "25.5.3", "25.5.8"]:
             return False
 
         self.sql("AUDIT POLICY dml_default BY pico_service", timeout=30)
