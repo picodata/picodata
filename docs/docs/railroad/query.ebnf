@@ -235,7 +235,7 @@ create_procedure ::= 'CREATE' 'PROCEDURE' ('IF' 'NOT' 'EXISTS')? procedure '(' u
                      ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                      ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 create_role    ::= 'CREATE' 'ROLE' ('IF' 'NOT' 'EXISTS')? role ('OPTION' '(' ('TIMEOUT' '=' double)')')?
-create_table   ::= 'CREATE' 'TABLE' ('IF' 'NOT' 'EXISTS')? table
+create_table   ::= 'CREATE' 'UNLOGGED'? 'TABLE' ('IF' 'NOT' 'EXISTS')? table
                    '('
                        column column_def_type ('NOT'? 'NULL')? ('PRIMARY' 'KEY')? (',' column column_def_type ('NOT'? 'NULL')? ('PRIMARY' 'KEY')?)*
                        (',' 'PRIMARY' 'KEY' '(' column (',' column)* ')')?
