@@ -626,3 +626,38 @@ cluster:
 
     arbiter.start()
     cluster.wait_online()
+
+
+def test_read_index_when_leader_unknown(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            can_vote: true
+        storage:
+            can_vote: false
+        """
+    )
+
+    cluster.add_instance(wait_online=False, tier="arbiter")
+    cluster.add_instance(wait_online=False, tier="arbiter")
+
+    cluster.wait_online()
+
+    # Must be killed, because graceful shutdown cannot succeed under these circumstances
+    leader = cluster.leader()
+    leader.kill()
+
+    voter = next(instance for instance in cluster.instances if instance is not leader)
+
+    # Make attempt to promote which will make it so instance will more quickly
+    # recongnize that there's no raft leader
+    with pytest.raises(AssertionError):
+        voter.promote_or_fail(timeout=1)
+
+    with pytest.raises(TarantoolError) as e:
+        voter.sql("CREATE TABLE yoooooooooooooooooo (id INT PRIMARY KEY, name TEXT) OPTION (timeout = 1)")
+    # We get a timeout error instead of 'proposal dropped'
+    assert e.value.args[0] == "ER_TIMEOUT"

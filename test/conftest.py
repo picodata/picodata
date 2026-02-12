@@ -1862,7 +1862,7 @@ Last governor error is:
 
         return Retriable(timeout=timeout, rps=1, fatal=NotALeader).call(impl)
 
-    def promote_or_fail(self):
+    def promote_or_fail(self, timeout: int | float = 10):
         log.info(f"Instance.promote_or_fail({self})")
 
         attempt = 0
@@ -1878,7 +1878,7 @@ Last governor error is:
             # 2. Wait until the miracle occurs.
             Retriable(timeout, rps).call(self.assert_raft_status, "Leader")
 
-        Retriable(timeout=10, rps=1).call(make_attempt, timeout=1, rps=10)
+        Retriable(timeout=timeout, rps=1).call(make_attempt, timeout=1, rps=10)
         log.info(f"{self} is a leader now")
 
     def grant_privilege(self, user, privilege: str, object_type: str, object_name: Optional[str] = None):
