@@ -19,6 +19,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixed that `--pg-advertise` CLI argument was erroneously disallowed to be used
   simultaneously with `--iproto-advertise`.
+- Fixed an issue where upgrade operations were inserted incorrectly
+  when applying system catalog changes for several catalog versions.
 
 ## [25.5.7] - 2026-02-10
 

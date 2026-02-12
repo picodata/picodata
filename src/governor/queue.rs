@@ -264,10 +264,10 @@ fn create_governor_table_if_not_exists<'i>(
 }
 
 /// Inserts system catalog upgrade operations into `_pico_governor_queue` table.
-/// The operations are taken from `UPGRADE_OPERATIONS_MAP` static variable.
+/// The operations are taken from [`CATALOG_UPGRADE_LIST`] static variable.
 ///
-/// Returns `InsertUpgradeOperation` plan if there are upgrade operations to insert.
-/// Returns `None` if there are no upgrade operations to insert.
+/// Returns [`InsertUpgradeOperation`] plan if there are upgrade operations to insert.
+/// Returns [`None`] if there are no upgrade operations to insert.
 fn insert_catalog_upgrade_operations<'i>(
     governor_operations: &'i [GovernorOperationDef],
     pending_catalog_version: &str,
@@ -276,41 +276,14 @@ fn insert_catalog_upgrade_operations<'i>(
 ) -> Result<Option<Plan<'i>>> {
     tlog!(
         Info,
-        "insert governor operations for system catalog upgrade to version {}",
-        pending_catalog_version
+        "insert governor operations for system catalog upgrade to version {pending_catalog_version}",
     );
-    let upgrade_operations: Vec<_> = CATALOG_UPGRADE_LIST
-        .iter()
-        .filter(|u| versions_for_upgrade.contains(&u.0))
-        .collect();
 
-    let last_operation_id;
-    if let Some(last_operation) = governor_operations.iter().last() {
-        last_operation_id = last_operation.id;
-    } else {
-        last_operation_id = 0;
-    }
-
-    let mut dmls = vec![];
-    for (index0, (op_version, ops)) in upgrade_operations.iter().enumerate() {
-        for (index1, (op_format, op)) in ops.iter().enumerate() {
-            let insert_def = GovernorOperationDef::new_upgrade(
-                op_version,
-                index0 as u64 + index1 as u64 + last_operation_id + 1,
-                op,
-                GovernorOpFormat::from_str(op_format)
-                    .expect("got from constant, converting to GovernorOpFormat should never fail"),
-            );
-            let dml = Dml::replace(GovernorQueue::TABLE_ID, &insert_def, ADMIN_ID)?;
-            dmls.push(dml);
-        }
-    }
-
+    let dmls = get_insert_dmls(governor_operations, versions_for_upgrade)?;
     if dmls.is_empty() {
         tlog!(
             Warning,
-            "no governor operations to insert for the system catalog upgrade to version {}",
-            pending_catalog_version,
+            "no governor operations to insert for the system catalog upgrade to version {pending_catalog_version}",
         );
         return Ok(None);
     }
@@ -320,6 +293,34 @@ fn insert_catalog_upgrade_operations<'i>(
     let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
 
     Ok(Some(InsertUpgradeOperation { cas }.into()))
+}
+
+fn get_insert_dmls(
+    governor_operations: &[GovernorOperationDef],
+    versions_for_upgrade: Vec<&'static str>,
+) -> Result<Vec<Dml>> {
+    let upgrade_operations: Vec<_> = CATALOG_UPGRADE_LIST
+        .iter()
+        .filter(|u| versions_for_upgrade.contains(&u.0))
+        .collect();
+    let last_operation_id = governor_operations.last().map(|op| op.id).unwrap_or(0);
+
+    let mut dmls = Vec::with_capacity(versions_for_upgrade.len());
+    for (op_version, ops) in upgrade_operations {
+        for (op_format, op) in *ops {
+            let insert_def = GovernorOperationDef::new_upgrade(
+                op_version,
+                last_operation_id + 1 + dmls.len() as u64,
+                op,
+                GovernorOpFormat::from_str(op_format)
+                    .expect("got from constant, converting to GovernorOpFormat should never fail"),
+            );
+            let dml = Dml::replace(GovernorQueue::TABLE_ID, &insert_def, ADMIN_ID)?;
+            dmls.push(dml);
+        }
+    }
+
+    Ok(dmls)
 }
 
 fn get_versions_for_upgrade(current_version: &str, target_version: &str) -> Vec<&'static str> {
@@ -395,4 +396,52 @@ pub fn make_change_status_cas(
     let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
 
     Ok(cas)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tarantool::tuple::Decode;
+
+    /// Tests that getting dmls for insertion from [`CATALOG_UPGRADE_LIST`] is correct.
+    #[test]
+    fn test_insert_dmls() {
+        let dmls = get_insert_dmls(&[], vec!["25.5.1", "25.5.2"]).unwrap();
+        assert_eq!(dmls.len(), 13);
+
+        let mut ids_set = std::collections::HashSet::new();
+        for dml in dmls {
+            match dml {
+                Dml::Replace { tuple, .. } => {
+                    let op = GovernorOperationDef::decode(tuple.as_ref()).unwrap();
+                    ids_set.insert(op.id);
+                }
+                _ => panic!("incorrect operation type"),
+            }
+        }
+        assert_eq!(ids_set.len(), 13);
+        assert_eq!(ids_set.iter().min(), Some(1).as_ref());
+        assert_eq!(ids_set.iter().max(), Some(13).as_ref());
+
+        let governor_op = GovernorOperationDef {
+            id: 42,
+            ..GovernorOperationDef::default()
+        };
+        let dmls = get_insert_dmls(&[governor_op], vec!["25.5.1", "25.5.2", "25.5.3"]).unwrap();
+        assert_eq!(dmls.len(), 17);
+
+        ids_set.clear();
+        for dml in dmls {
+            match dml {
+                Dml::Replace { tuple, .. } => {
+                    let op = GovernorOperationDef::decode(tuple.as_ref()).unwrap();
+                    ids_set.insert(op.id);
+                }
+                _ => panic!("incorrect operation type"),
+            }
+        }
+        assert_eq!(ids_set.len(), 17);
+        assert_eq!(ids_set.iter().min(), Some(43).as_ref());
+        assert_eq!(ids_set.iter().max(), Some(59).as_ref());
+    }
 }
