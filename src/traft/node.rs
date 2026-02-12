@@ -200,6 +200,7 @@ pub struct Node {
     pub(crate) pool: Rc<ConnectionPool>,
     pub(crate) status: watch::Receiver<Status>,
     applied: watch::Receiver<RaftIndex>,
+    startup_complete: watch::Receiver<bool>,
 
     pub(crate) main_loop_info: Rc<NoYieldsRefCell<MainLoopInfo>>,
 
@@ -281,6 +282,7 @@ impl Node {
         let raft_id = node_impl.raft_id();
         let status = node_impl.status.subscribe();
         let applied = node_impl.applied.subscribe();
+        let startup_complete = node_impl.startup_complete.subscribe();
 
         let node_impl = Rc::new(Mutex::new(node_impl));
 
@@ -336,6 +338,7 @@ impl Node {
             status,
             main_loop_info,
             applied,
+            startup_complete,
             instances_update: Mutex::new(()),
             plugin_manager,
             instance_reachability,
@@ -370,6 +373,11 @@ impl Node {
     #[inline(always)]
     pub fn status(&self) -> Status {
         self.status.get()
+    }
+
+    #[inline(always)]
+    pub fn is_startup_complete(&self) -> bool {
+        self.startup_complete.get()
     }
 
     #[inline(always)]
@@ -615,6 +623,8 @@ pub(crate) struct NodeImpl {
     applied: watch::Sender<RaftIndex>,
     /// Index of the last committed raft log entry.
     commit: watch::Sender<RaftIndex>,
+    /// Set to `true` once all startup conditions are met.
+    startup_complete: watch::Sender<bool>,
 
     main_loop_info: Rc<NoYieldsRefCell<MainLoopInfo>>,
 
@@ -688,6 +698,7 @@ impl NodeImpl {
         });
         let (applied, _) = watch::channel(applied);
         let (commit, _) = watch::channel(commit);
+        let (startup_complete, _) = watch::channel(false);
 
         // Note that this is not a memory leak. This is equivalent to storing
         // the `Box` onto a global variable which is never dropped except that
@@ -718,6 +729,7 @@ impl NodeImpl {
             status,
             applied,
             commit,
+            startup_complete,
             main_loop_info,
             plugin_manager,
             pending_raft_snapshot: None,
@@ -728,6 +740,52 @@ impl NodeImpl {
 
     fn raft_id(&self) -> RaftId {
         self.raw_node.raft.id
+    }
+
+    /// Captures the moment when instance startup is complete and notifies subscribers.
+    ///
+    /// Three conditions must be met simultaneously:
+    /// 1. Raft leader is known (cluster has quorum)
+    /// 2. This instance is Online (joined the cluster and ready)
+    /// 3. This instance's replicaset is Ready (has enough replicas per RF)
+    ///
+    /// Once triggered, startup remains complete even if conditions change later
+    /// (e.g., leader loss, instance goes offline). This "latching" behavior is
+    /// intentional: startup probe indicates "has the instance finished initializing",
+    /// not "is the instance currently healthy". K8s liveness/readiness probes
+    /// handle ongoing health checks separately.
+    fn try_notify_startup_complete(&self) {
+        use crate::instance::StateVariant;
+        use crate::replicaset::ReplicasetState;
+
+        if self.startup_complete.get() {
+            return;
+        }
+
+        if self.status.get().leader_id.is_none() {
+            return;
+        }
+
+        let ready = self.topology_cache.with(|topology| {
+            let Some(this) = topology.try_this_instance() else {
+                return false;
+            };
+            if this.current_state.variant != StateVariant::Online {
+                return false;
+            }
+
+            let Some(rs) = topology.try_this_replicaset() else {
+                return false;
+            };
+            rs.state == ReplicasetState::Ready
+        });
+
+        if ready {
+            self.startup_complete
+                .send(true)
+                .expect("startup_complete should not be borrowed across yields");
+            tlog!(Info, "startup complete: instance is ready to serve traffic");
+        }
     }
 
     pub fn read_index_async(&mut self) -> Result<oneshot::Receiver<RaftIndex>, RaftError> {
@@ -1205,6 +1263,8 @@ impl NodeImpl {
                     .update_instance(old.as_ref(), new.as_ref());
 
                 self.topology_cache.update_instance(old, new);
+
+                self.try_notify_startup_complete();
             }
 
             storage::Replicasets::TABLE_ID => {
@@ -1215,6 +1275,8 @@ impl NodeImpl {
                     .as_ref()
                     .map(|x| x.decode().expect("format was already verified"));
                 self.topology_cache.update_replicaset(old, new);
+
+                self.try_notify_startup_complete();
             }
 
             storage::Tiers::TABLE_ID => {
@@ -2968,6 +3030,8 @@ impl NodeImpl {
             let leader: Option<u64> = (ss.leader_id != INVALID_ID).then_some(ss.leader_id);
             metrics::record_raft_leader_id(leader);
             metrics::record_raft_state(ss.raft_state);
+
+            self.try_notify_startup_complete();
         }
 
         // These messages are only available on leader. Send them out ASAP.
@@ -3772,6 +3836,295 @@ fn do_audit_logging_for_instance_update(
             instance_name: %instance_name,
             raft_id: %new.raft_id,
             initiator: &initiator_def.name,
+        );
+    }
+}
+
+mod tests {
+    use super::*;
+    use crate::instance::state::{State, StateVariant};
+    use crate::instance::Instance;
+    use crate::replicaset::{Replicaset, ReplicasetState};
+
+    fn make_instance(raft_id: RaftId, state: StateVariant) -> Instance {
+        Instance {
+            raft_id,
+            name: "test_instance".into(),
+            uuid: "cf776032-dd2b-4d0e-bc1e-b01543cad590".into(),
+            replicaset_name: "test_replicaset".into(),
+            replicaset_uuid: "701c042b-2716-43c4-9737-f0dba1ccdac3".into(),
+            current_state: State::new(state, 1),
+            target_state: State::new(state, 1),
+            tier: "default".into(),
+            ..Instance::for_tests()
+        }
+    }
+
+    fn make_replicaset(instance: &Instance, state: ReplicasetState) -> Replicaset {
+        let mut rs = Replicaset::with_one_instance(instance);
+        rs.state = state;
+        rs
+    }
+
+    #[::tarantool::test]
+    fn test_startup_not_complete_when_no_leader() {
+        let node = Node::for_tests();
+        let node_impl = node.node_impl();
+
+        // Set instance Online and replicaset Ready
+        let instance = make_instance(node.raft_id(), StateVariant::Online);
+        let replicaset = make_replicaset(&instance, ReplicasetState::Ready);
+
+        node_impl
+            .topology_cache
+            .update_instance(None, Some(instance));
+        node_impl
+            .topology_cache
+            .update_replicaset(None, Some(replicaset));
+
+        // leader_id is None by default
+        assert!(node_impl.status.get().leader_id.is_none());
+
+        node_impl.try_notify_startup_complete();
+
+        assert!(
+            !node_impl.startup_complete.get(),
+            "startup should NOT complete without leader"
+        );
+    }
+
+    #[::tarantool::test]
+    fn test_startup_not_complete_when_instance_offline() {
+        let node = Node::for_tests();
+        let node_impl = node.node_impl();
+
+        // Set leader known
+        node_impl
+            .status
+            .send_modify(|s| s.leader_id = Some(node.raft_id()))
+            .unwrap();
+
+        // Set instance Offline and replicaset Ready
+        let instance = make_instance(node.raft_id(), StateVariant::Offline);
+        let replicaset = make_replicaset(&instance, ReplicasetState::Ready);
+
+        node_impl
+            .topology_cache
+            .update_instance(None, Some(instance));
+        node_impl
+            .topology_cache
+            .update_replicaset(None, Some(replicaset));
+
+        node_impl.try_notify_startup_complete();
+
+        assert!(
+            !node_impl.startup_complete.get(),
+            "startup should NOT complete when instance is Offline"
+        );
+    }
+
+    #[::tarantool::test]
+    fn test_startup_not_complete_when_replicaset_not_ready() {
+        let node = Node::for_tests();
+        let node_impl = node.node_impl();
+
+        // Set leader known
+        node_impl
+            .status
+            .send_modify(|s| s.leader_id = Some(node.raft_id()))
+            .unwrap();
+
+        // Set instance Online but replicaset NotReady
+        let instance = make_instance(node.raft_id(), StateVariant::Online);
+        let replicaset = make_replicaset(&instance, ReplicasetState::NotReady);
+
+        node_impl
+            .topology_cache
+            .update_instance(None, Some(instance));
+        node_impl
+            .topology_cache
+            .update_replicaset(None, Some(replicaset));
+
+        node_impl.try_notify_startup_complete();
+
+        assert!(
+            !node_impl.startup_complete.get(),
+            "startup should NOT complete when replicaset is NotReady"
+        );
+    }
+
+    #[::tarantool::test]
+    fn test_startup_completes_when_all_conditions_met() {
+        let node = Node::for_tests();
+        let node_impl = node.node_impl();
+
+        // Set leader known
+        node_impl
+            .status
+            .send_modify(|s| s.leader_id = Some(node.raft_id()))
+            .unwrap();
+
+        // Set instance Online and replicaset Ready
+        let instance = make_instance(node.raft_id(), StateVariant::Online);
+        let replicaset = make_replicaset(&instance, ReplicasetState::Ready);
+
+        node_impl
+            .topology_cache
+            .update_instance(None, Some(instance));
+        node_impl
+            .topology_cache
+            .update_replicaset(None, Some(replicaset));
+
+        node_impl.try_notify_startup_complete();
+
+        assert!(
+            node_impl.startup_complete.get(),
+            "startup SHOULD complete when all conditions are met"
+        );
+    }
+
+    /// Test: Startup completes when leader becomes known
+    /// assuming instance Online and replicaset Ready
+    #[::tarantool::test]
+    fn test_raft_path_triggers_startup() {
+        let node = Node::for_tests();
+        let node_impl = node.node_impl();
+
+        // Pre-conditions: instance Online, replicaset Ready, but no leader
+        let instance = make_instance(node.raft_id(), StateVariant::Online);
+        let replicaset = make_replicaset(&instance, ReplicasetState::Ready);
+
+        node_impl
+            .topology_cache
+            .update_instance(None, Some(instance));
+        node_impl
+            .topology_cache
+            .update_replicaset(None, Some(replicaset));
+
+        assert!(!node_impl.startup_complete.get());
+
+        // Simulate Raft soft state update with leader_id
+        node_impl
+            .status
+            .send_modify(|s| s.leader_id = Some(node.raft_id()))
+            .unwrap();
+        node_impl.try_notify_startup_complete();
+
+        assert!(
+            node_impl.startup_complete.get(),
+            "Raft path should trigger startup when leader becomes known"
+        );
+    }
+
+    /// Test: Startup completes when instance goes Online
+    /// assuming leader known and replicaset Ready
+    #[::tarantool::test]
+    fn test_instances_path_triggers_startup() {
+        let node = Node::for_tests();
+        let node_impl = node.node_impl();
+
+        node_impl
+            .status
+            .send_modify(|s| s.leader_id = Some(node.raft_id()))
+            .unwrap();
+
+        let instance_offline = make_instance(node.raft_id(), StateVariant::Offline);
+        let replicaset = make_replicaset(&instance_offline, ReplicasetState::Ready);
+
+        node_impl
+            .topology_cache
+            .update_instance(None, Some(instance_offline.clone()));
+        node_impl
+            .topology_cache
+            .update_replicaset(None, Some(replicaset));
+
+        assert!(!node_impl.startup_complete.get());
+
+        // Simulate instance state change to Online
+        let instance_online = make_instance(node.raft_id(), StateVariant::Online);
+        node_impl
+            .topology_cache
+            .update_instance(Some(instance_offline), Some(instance_online));
+        node_impl.try_notify_startup_complete();
+
+        assert!(
+            node_impl.startup_complete.get(),
+            "Instances path should trigger startup when instance goes Online"
+        );
+    }
+
+    /// Test: startup completes when replicaset becomes Ready
+    /// assuming leader known and instance Online
+    #[::tarantool::test]
+    fn test_replicasets_path_triggers_startup() {
+        let node = Node::for_tests();
+        let node_impl = node.node_impl();
+
+        // Pre-conditions: leader known, instance Online, but replicaset NotReady
+        node_impl
+            .status
+            .send_modify(|s| s.leader_id = Some(node.raft_id()))
+            .unwrap();
+
+        let instance = make_instance(node.raft_id(), StateVariant::Online);
+        let replicaset_not_ready = make_replicaset(&instance, ReplicasetState::NotReady);
+
+        node_impl
+            .topology_cache
+            .update_instance(None, Some(instance.clone()));
+        node_impl
+            .topology_cache
+            .update_replicaset(None, Some(replicaset_not_ready.clone()));
+
+        assert!(!node_impl.startup_complete.get());
+
+        // Simulate replicaset state change to Ready
+        let replicaset_ready = make_replicaset(&instance, ReplicasetState::Ready);
+        node_impl
+            .topology_cache
+            .update_replicaset(Some(replicaset_not_ready), Some(replicaset_ready));
+        node_impl.try_notify_startup_complete();
+
+        assert!(
+            node_impl.startup_complete.get(),
+            "Replicasets path should trigger startup when replicaset becomes Ready"
+        );
+    }
+
+    /// Test: startup_complete remains true even if conditions change
+    #[::tarantool::test]
+    fn test_startup_latches_after_completion() {
+        let node = Node::for_tests();
+        let node_impl = node.node_impl();
+
+        // Complete startup
+        node_impl
+            .status
+            .send_modify(|s| s.leader_id = Some(node.raft_id()))
+            .unwrap();
+
+        let instance_online = make_instance(node.raft_id(), StateVariant::Online);
+        let replicaset = make_replicaset(&instance_online, ReplicasetState::Ready);
+
+        node_impl
+            .topology_cache
+            .update_instance(None, Some(instance_online.clone()));
+        node_impl
+            .topology_cache
+            .update_replicaset(None, Some(replicaset));
+
+        node_impl.try_notify_startup_complete();
+        assert!(node_impl.startup_complete.get());
+
+        // Change conditions - instance goes Offline
+        let instance_offline = make_instance(node.raft_id(), StateVariant::Offline);
+        node_impl
+            .topology_cache
+            .update_instance(Some(instance_online), Some(instance_offline));
+
+        assert!(
+            node_impl.startup_complete.get(),
+            "startup should remain true after latching, even if conditions change"
         );
     }
 }
