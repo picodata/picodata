@@ -714,10 +714,10 @@ impl TopologyCacheMutable {
                 let old_cached_name = self
                     .instance_name_by_uuid
                     .insert(new_uuid, new_name.clone());
-                debug_assert!(old_cached_name.is_none());
+                debug_assert_eq!(old_cached_name, None);
 
                 let old_cached = self.instances_by_name.insert(new_name, new);
-                debug_assert!(old_cached.is_none());
+                debug_assert_eq!(old_cached, None);
             }
 
             // Update instance

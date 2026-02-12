@@ -993,6 +993,7 @@ impl Loop {
                                 tier_masters_count,
                                 &rpc,
                                 rpc_timeout,
+                                pool.test_override.as_ref(),
                             )?;
 
                             last_step_info.truncate_map_callrw_ok = true;

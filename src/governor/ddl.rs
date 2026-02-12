@@ -15,6 +15,9 @@ use crate::tlog;
 use crate::topology_cache::TopologyCacheRef;
 use crate::traft::error::Error;
 use crate::traft::error::ErrorInfo;
+use crate::traft::network::OverrideChannel;
+use crate::traft::network::RaftIdOrName;
+use crate::traft::network::Request;
 use crate::traft::op::Ddl;
 use crate::traft::op::Op;
 use crate::traft::ConnectionPool;
@@ -23,11 +26,15 @@ use crate::traft::RaftTerm;
 use crate::traft::Result;
 use crate::vshard;
 use crate::warn_or_panic;
+use ::tarantool::fiber::r#async::oneshot;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use std::collections::HashMap;
 use std::time::Duration;
+use tarantool::fiber;
 use tarantool::space::SpaceId;
+use tarantool::tuple::ToTupleBuffer;
+use tarantool::tuple::Tuple;
 
 ////////////////////////////////////////////////////////////////////////////////
 // handle_pending_ddl
@@ -262,7 +269,12 @@ pub fn collect_vshard_map_callrw_proc_apply_schema_change(
     expected_response_count: usize,
     rpc: &rpc::ddl_apply::Request,
     rpc_timeout: Duration,
+    test_override: Option<&OverrideChannel>,
 ) -> Result<()> {
+    if let Some(test_override) = test_override {
+        return handle_test_override_for_vshard_map_callrw(test_override, rpc_timeout);
+    }
+
     let res = vshard::ddl_map_callrw(
         tier,
         proc_name!(proc_apply_schema_change),
@@ -296,7 +308,7 @@ pub fn collect_vshard_map_callrw_proc_apply_schema_change(
 
     #[cfg(debug_assertions)]
     for res in responses {
-        // Applying TRUNCATE never results in an Abort, and if the retriable
+        // Applying TRUNCATE never results in an Abort, and all the retriable
         // errors are handled above.
         debug_assert!(
             matches!(res.response, rpc::ddl_apply::Response::Ok),
@@ -385,6 +397,57 @@ pub async fn collect_proc_apply_schema_change(
     }
 
     Ok(())
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// handle_test_override_for_vshard_map_callrw
+////////////////////////////////////////////////////////////////////////////////
+
+fn handle_test_override_for_vshard_map_callrw(
+    test_override: &OverrideChannel,
+    timeout: Duration,
+) -> Result<()> {
+    let (tx, rx) = oneshot::channel();
+
+    let on_response = move |res| {
+        if tx.send(res).is_err() {
+            tlog!(
+                Debug,
+                "rpc response ignored because caller dropped the future"
+            )
+        }
+    };
+
+    #[allow(clippy::let_unit_value)]
+    let convert_result = |bytes: Result<Tuple>| {
+        let tuple: Tuple = bytes?;
+        let res = crate::rpc::decode_iproto_return_value(tuple)?;
+        Ok(res)
+    };
+
+    // This is not the real arguments for the RPC, because this case is somewhat
+    // special. We use vshard.map_callrw to choose the final targets instead of
+    // specifying them directly. And our test knows how to handle these
+    // arguments so it's fine.
+    //
+    // In the future we're going to get rid of vshard.map_callrw usage in
+    // governor, so this hacky code is also going to go away, so it's fine,
+    // don't worry about it
+    let dummy_id = RaftIdOrName::RaftId(0);
+    let args = ["proc_apply_schema_change"]
+        .to_tuple_buffer()
+        .expect("can't fail");
+    let deadline = fiber::clock().saturating_add(timeout);
+    let request = Request::with_callback(
+        "vshard.map_callrw",
+        args,
+        move |res| on_response(convert_result(res)),
+        deadline,
+    );
+
+    test_override.send((dummy_id, request));
+
+    fiber::block_on(rx).expect("channel sender should not be dropped in test code")
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -73,7 +73,7 @@ pub struct Request {
 
 impl Request {
     #[inline(always)]
-    fn with_callback<H>(
+    pub fn with_callback<H>(
         proc: &'static str,
         args: TupleBuffer,
         on_result: H,

@@ -23,6 +23,7 @@ use crate::schema::PluginDef;
 use crate::schema::ServiceDef;
 use crate::schema::ServiceRouteItem;
 use crate::schema::ServiceRouteKey;
+use crate::schema::TableDef;
 use crate::schema::ADMIN_ID;
 use crate::storage::Plugins;
 use crate::storage::Properties;
@@ -258,20 +259,30 @@ fn setup_governor_loop_state(
 }
 
 fn generate_replicasets(
+    next_raft_id: RaftId,
     num_instances: usize,
     replication_factor: usize,
+    tier_name: Option<&SmolStr>,
 ) -> (Vec<Instance>, Vec<Replicaset>) {
     let mut instances = vec![];
     let mut replicasets = vec![];
     let mut last_replicaset_size = 0;
+    let tier_name = tier_name
+        .cloned()
+        .unwrap_or_else(|| Instance::for_tests().tier);
 
-    for raft_id in 1..=(num_instances as RaftId) {
-        let mut instance = dummy_instance(raft_id);
+    for i in 0..(num_instances as RaftId) {
+        let mut instance = Instance::for_tests();
+        instance.raft_id = next_raft_id + i;
+        instance.tier = tier_name.clone();
+        instance.uuid = uuid_v4();
 
         if replicasets.is_empty() || last_replicaset_size == replication_factor {
             let tier_name = &instance.tier;
             let n = replicasets.len() + 1;
-            instance.replicaset_name = format_smolstr!("{tier_name}_{n}").into();
+            let replicaset_name = format_smolstr!("{tier_name}_{n}");
+            instance.name = format_smolstr!("{replicaset_name}_{last_replicaset_size}").into();
+            instance.replicaset_name = replicaset_name.into();
             instance.replicaset_uuid = uuid_v4();
 
             let mut replicaset = Replicaset::with_one_instance(&instance);
@@ -280,8 +291,11 @@ fn generate_replicasets(
             last_replicaset_size = 1;
         } else {
             let replicaset = replicasets.last().unwrap();
+            let replicaset_name = &replicaset.name;
+            instance.name = format_smolstr!("{replicaset_name}_{last_replicaset_size}").into();
             instance.replicaset_name = replicaset.name.clone();
             instance.replicaset_uuid = replicaset.uuid.clone();
+
             last_replicaset_size += 1;
         }
 
@@ -861,7 +875,7 @@ fn do_governor_loop_proc_apply_schema_change_batching(params: BatchingRpcTestPar
     //
 
     let (instances, replicasets) =
-        generate_replicasets(params.num_instances, params.replication_factor);
+        generate_replicasets(1, params.num_instances, params.replication_factor, None);
     let num_masters = replicasets.len();
 
     setup_topology(node, &instances, Some(&replicasets), None);
@@ -1039,6 +1053,374 @@ fn do_governor_loop_proc_apply_schema_change_batching(params: BatchingRpcTestPar
 }
 
 //
+// test TRUNCATE TABLE
+//
+
+#[tarantool::test]
+fn test_governor_loop_truncate_table_batching_fixed() {
+    // Run with a fixed seed each time for some stability
+    let seed = 1770229753053178;
+
+    let params = BatchingRpcTestParameters {
+        seed,
+        num_instances: 300,
+        batch_size: 20,
+        p_rpc_err: 0.666,
+        p_cas_err: 0.1,
+        replication_factor: 3,
+    };
+
+    do_governor_loop_truncate_table_batching(params);
+}
+
+#[tarantool::test]
+fn test_governor_loop_truncate_table_batching_random() {
+    let time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    // And also run with a random seed for chaos
+    let seed = (time.as_secs_f64() * 1000_000.0) as u64;
+
+    let params = BatchingRpcTestParameters {
+        seed,
+        num_instances: 300,
+        batch_size: 20,
+        p_rpc_err: 0.666,
+        p_cas_err: 0.1,
+        replication_factor: 3,
+    };
+
+    do_governor_loop_truncate_table_batching(params);
+}
+
+fn do_governor_loop_truncate_table_batching(params: BatchingRpcTestParameters) {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(params.seed);
+    tlog!(Info, "random seed: {}", params.seed);
+
+    let node = node::Node::for_tests();
+
+    //
+    // Setup cluster topology
+    //
+
+    let mut tier_1 = Tier::default();
+    tier_1.name = SmolStr::new_static("tier_1");
+    tier_1.replication_factor = params.replication_factor as _;
+
+    let mut tier_2 = Tier::default();
+    tier_2.name = SmolStr::new_static("tier_2");
+    tier_2.replication_factor = 2;
+
+    let mut tier_3 = Tier::default();
+    tier_3.name = SmolStr::new_static("tier_3");
+    tier_3.replication_factor = 1;
+
+    let tier_1_size = params.num_instances / 2;
+    let tier_2_size = params.num_instances / 4;
+    let tier_3_size = params.num_instances / 4;
+
+    let next_raft_id = 1;
+    let (tier_1_instances, tier_1_replicasets) = generate_replicasets(
+        next_raft_id,
+        tier_1_size,
+        tier_1.replication_factor as _,
+        Some(&tier_1.name),
+    );
+    let next_raft_id = tier_1_instances.last().unwrap().raft_id + 1;
+    let (tier_2_instances, tier_2_replicasets) = generate_replicasets(
+        next_raft_id,
+        tier_2_size,
+        tier_2.replication_factor as _,
+        Some(&tier_2.name),
+    );
+    let next_raft_id = tier_2_instances.last().unwrap().raft_id + 1;
+    let (tier_3_instances, tier_3_replicasets) = generate_replicasets(
+        next_raft_id,
+        tier_3_size,
+        tier_3.replication_factor as _,
+        Some(&tier_3.name),
+    );
+
+    let all_instances: Vec<_> = std::iter::empty()
+        .chain(tier_1_instances.iter().cloned())
+        .chain(tier_2_instances.iter().cloned())
+        .chain(tier_3_instances.iter().cloned())
+        .collect();
+    let all_replicasets: Vec<_> = std::iter::empty()
+        .chain(tier_1_replicasets.iter().cloned())
+        .chain(tier_2_replicasets.iter().cloned())
+        .chain(tier_3_replicasets.iter().cloned())
+        .collect();
+    let all_tiers = vec![tier_1.clone(), tier_2.clone(), tier_3.clone()];
+    setup_topology(
+        node,
+        &all_instances,
+        Some(&all_replicasets),
+        Some(&all_tiers),
+    );
+
+    //
+    // Setup the pending TRUNCATE TABLE operation
+    //
+    let mut table_def = TableDef::for_tests();
+    let first_field = table_def.format[0].name.as_str();
+    table_def.distribution = Distribution::ShardedByField {
+        field: first_field.into(),
+        tier: tier_1.name.clone(),
+    };
+
+    let ddl = Ddl::TruncateTable {
+        id: table_def.id,
+        initiator: ADMIN_ID,
+    };
+
+    node.storage.pico_table.put(&table_def).unwrap();
+    node.storage
+        .properties
+        .put(PropertyName::PendingSchemaChange, &ddl)
+        .unwrap();
+    node.storage
+        .properties
+        .put(PropertyName::PendingSchemaVersion, &111)
+        .unwrap();
+
+    //
+    // Setup other things
+    //
+
+    node.alter_system_parameters
+        .borrow_mut()
+        .governor_rpc_batch_size = params.batch_size;
+
+    let (state, _, _, rpc_requests, cas_requests) = setup_governor_loop_state(node);
+
+    //
+    // Spawn the pretend governor_loop fiber
+    //
+    let pretend_state = spawn_pretend_governor_loop(state);
+
+    //
+    // First governor does a vshard.map_callrw
+    //
+
+    let mut ok_so_far = HashSet::new();
+    let mut first_cas_request_skipped = false;
+    let mut cas_request_handled = false;
+    let mut stats = BatchingRpcTestStats::default();
+
+    {
+        let rpcs = rpc_requests.receive_all(Duration::from_millis(50));
+
+        stats.num_batches += 1;
+        tlog!(
+            Info,
+            "RPC batch #{} size: {}",
+            stats.num_batches,
+            rpcs.len()
+        );
+
+        let mut rpcs = rpcs.into_iter();
+        let rpc = rpcs.next().unwrap();
+
+        // Verify RPC request
+        let (id, request) = rpc;
+
+        // Special hack value used just for testing
+        let RaftIdOrName::RaftId(0) = id else {
+            panic!("expected RaftId(0), got {id:?}");
+        };
+
+        assert_eq!(request.proc, "vshard.map_callrw");
+
+        // Fail the first time just to see what happens
+        request
+            .on_result
+            .handle(Err(Error::other("injected error")));
+        stats.num_rpc_fails += 1;
+
+        // Expecting only 1 RPC request
+        assert_eq!(rpcs.next().map(|(r, _)| r), None);
+    }
+
+    // Allow governor to handle RPC results and send the CAS requests
+    fiber::reschedule();
+
+    // Governor retries vshard.map_callrw until it succeeds
+    {
+        let rpcs = rpc_requests.receive_all(Duration::from_millis(50));
+
+        stats.num_batches += 1;
+        tlog!(
+            Info,
+            "RPC batch #{} size: {}",
+            stats.num_batches,
+            rpcs.len()
+        );
+
+        let mut rpcs = rpcs.into_iter();
+        let rpc = rpcs.next().unwrap();
+
+        // Verify RPC request
+        let (id, request) = rpc;
+
+        // Special hack value used just for testing
+        let RaftIdOrName::RaftId(0) = id else {
+            panic!("expected RaftId(0), got {id:?}");
+        };
+
+        assert_eq!(request.proc, "vshard.map_callrw");
+        let resp = ();
+
+        // Succeed the second time around so we can proceed to the following steps
+        request.on_result.handle(Ok(Tuple::new(&[resp]).unwrap()));
+
+        // Expecting only 1 RPC request
+        assert_eq!(rpcs.next().map(|(r, _)| r), None);
+    }
+
+    //
+    // Loop until pretend governor_loop finishes, handle governor's RPC & CAS requests
+    //
+
+    let tier_1_instance_names: HashSet<_> = tier_1_instances
+        .iter()
+        .map(|instance| instance.name.clone())
+        .collect();
+
+    let all_masters = replicasets_masters(&node.topology_cache.get());
+    let other_tier_masters: HashSet<_> = all_masters
+        .into_iter()
+        .filter(|instance| !tier_1_instance_names.contains(instance))
+        .collect();
+
+    while !pretend_state.get().governor_idle {
+        //
+        // Handle governor's RPCs
+        //
+
+        let rpcs = rpc_requests.receive_all(Duration::from_millis(50));
+
+        stats.num_batches += 1;
+        tlog!(
+            Info,
+            "RPC batch #{} size: {}",
+            stats.num_batches,
+            rpcs.len()
+        );
+
+        let mut targets = vec![];
+
+        for rpc in rpcs {
+            // Verify RPC request
+            let (id, request) = rpc;
+            let RaftIdOrName::Name(name) = id else {
+                panic!("expected instance name, got {id:?}");
+            };
+            targets.push(name.clone());
+
+            assert_eq!(request.proc, ".proc_apply_schema_change");
+            let resp = rpc::ddl_apply::Response::Ok {};
+
+            // Send the RPC response to governor
+            let fail = rng.gen_bool(params.p_rpc_err);
+            if fail {
+                request
+                    .on_result
+                    .handle(Err(Error::other("injected error")));
+                stats.num_rpc_fails += 1;
+
+                continue;
+            }
+
+            request.on_result.handle(Ok(Tuple::new(&[resp]).unwrap()));
+
+            // Remember which RPCs got an Ok response
+            assert!(
+                !ok_so_far.contains(&name),
+                "{name} got a repeat RPC after Ok response"
+            );
+            ok_so_far.insert(name);
+        }
+
+        // RPCs are sent out in batches of given size (may be shorter)
+        assert!(targets.len() <= params.batch_size, "{targets:?}");
+
+        // Allow governor to handle RPC results and send the CAS requests
+        fiber::reschedule();
+
+        //
+        // Handle governor's CAS requests
+        //
+
+        let cas_requests = cas_requests.try_receive_all();
+        tlog!(Info, "CAS batch size: {}", cas_requests.len());
+
+        if !cas_requests.is_empty() {
+            // Make sure CAS request is only sent once every instance handled the RPC
+            assert_eq!(ok_so_far.len(), other_tier_masters.len());
+
+            // Verify CAS request
+            assert_ne!(
+                node.storage.properties.pending_schema_change().unwrap(),
+                None
+            );
+            assert_ne!(
+                node.storage.properties.pending_schema_version().unwrap(),
+                None
+            );
+
+            let mut cas_requests = cas_requests.into_iter();
+            let (request, response) = cas_requests.next().unwrap();
+
+            let Op::DdlCommit = &request.op else {
+                panic!("expected DdlCommit, got {:?}", request.op);
+            };
+
+            tlog!(Info, "cas_request: {request:?}");
+
+            // Apply CAS request
+            let fail = rng.gen_bool(params.p_cas_err);
+            if
+            // Fail the first attempt always just to check what how we handle that
+            first_cas_request_skipped
+                    // Next time fail randomly
+                    && !fail
+            {
+                response.send(Ok(cas::Response::for_tests())).unwrap();
+
+                node.storage
+                    .properties
+                    .delete(PropertyName::PendingSchemaChange)
+                    .unwrap();
+                node.storage
+                    .properties
+                    .delete(PropertyName::PendingSchemaVersion)
+                    .unwrap();
+                cas_request_handled = true;
+            } else {
+                // It's possible that the CAS request get's dropped due to
+                // a conflict. Governor should handle this fine
+                response.send(Err(Error::other("injected error"))).unwrap();
+                stats.num_cas_fails += 1;
+                first_cas_request_skipped = true;
+            }
+
+            // Expecting only 1 CAS request
+            assert_eq!(cas_requests.next().map(|(r, _)| r), None);
+        }
+    }
+
+    // Make sure only masters of other replicasets received the RPC
+    assert_eq!(ok_so_far, other_tier_masters);
+
+    assert!(cas_request_handled);
+
+    // Log the stats
+    let s = pretend_state.get();
+    tlog!(Info, "stats: {params:#0.3?}, {s:#0.3?}, {stats:#0.3?}")
+}
+
+//
 // test BACKUP step
 //
 
@@ -1090,7 +1472,7 @@ fn do_governor_loop_backup_batching(params: BatchingRpcTestParameters) {
     //
 
     let (instances, replicasets) =
-        generate_replicasets(params.num_instances, params.replication_factor);
+        generate_replicasets(1, params.num_instances, params.replication_factor, None);
 
     setup_topology(node, &instances, Some(&replicasets), None);
 
