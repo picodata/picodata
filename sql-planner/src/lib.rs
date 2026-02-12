@@ -63,7 +63,7 @@ impl PreparedStatement {
             } else {
                 None
             };
-            let query_for_logging = if router.is_sql_log_enabled()? {
+            let query_for_logging = if router.is_sql_log_enabled(cached_plan)? {
                 Some(query_text.to_string())
             } else {
                 None
@@ -125,7 +125,7 @@ impl PreparedStatement {
         } else {
             None
         };
-        let query_for_logging = if router.is_sql_log_enabled()? {
+        let query_for_logging = if router.is_sql_log_enabled(&new_plan)? {
             Some(query_text.to_string())
         } else {
             None

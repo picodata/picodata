@@ -1883,7 +1883,7 @@ impl Router for RouterRuntimeMock {
         Ok(false)
     }
 
-    fn is_sql_log_enabled(&self) -> Result<bool, SbroadError> {
+    fn is_sql_log_enabled(&self, _plan: &Plan) -> Result<bool, SbroadError> {
         Ok(false)
     }
 
