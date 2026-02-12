@@ -412,8 +412,8 @@ pub trait Router: QueryCache {
     /// of current user to decide if the operation requires audit trail generation.
     fn is_audit_enabled(&self, plan: &crate::ir::Plan) -> Result<bool, SbroadError>;
 
-    /// Determines whether SQL statement logging should be performed.
-    fn is_sql_log_enabled(&self) -> Result<bool, SbroadError>;
+    /// Determines whether SQL statement logging should be performed  for the given query plan.
+    fn is_sql_log_enabled(&self, plan: &crate::ir::Plan) -> Result<bool, SbroadError>;
 
     /// Get scheduler options from the runtime.
     fn get_scheduler_options(&self) -> SchedulerOptions;

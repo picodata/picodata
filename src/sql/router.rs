@@ -471,11 +471,13 @@ impl Router for RouterRuntime {
         (self.is_audit_enabled_func)(plan)
     }
 
-    fn is_sql_log_enabled(&self) -> Result<bool, SbroadError> {
-        Ok(crate::config::DYNAMIC_CONFIG
+    fn is_sql_log_enabled(&self, plan: &Plan) -> Result<bool, SbroadError> {
+        let config_enabled = crate::config::DYNAMIC_CONFIG
             .sql_log
             .try_current_value()
-            .unwrap_or(crate::config::DEFAULT_SQL_LOG))
+            .unwrap_or(crate::config::DEFAULT_SQL_LOG);
+        // Do not want to log passwords from ACL.
+        Ok(config_enabled && !plan.is_acl()?)
     }
 
     fn get_scheduler_options(&self) -> SchedulerOptions {
