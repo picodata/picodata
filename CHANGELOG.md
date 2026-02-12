@@ -116,6 +116,7 @@ with the `YY.MINOR.MICRO` scheme.
   when applying system catalog changes for several catalog versions.
 - Fixed `picodata plugin configure` panic on attempt to update non-existent plugin or a non-existing
   service of an existing plugin.
+- Fixed `proposal dropped` errors sometimes being returned from DDL commands for example when raft is unknown.
 - Fixed an RPC to avoid skipping metrics collection code path on early return in procedure implementation.
 - Make sure that single-tiered clusters upgraded from 25.3.x always have a default tier. 
 - Fixed local SQL iterators to survive fiber yields during table truncation.

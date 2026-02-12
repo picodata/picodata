@@ -360,10 +360,18 @@ impl Node {
     }
 
     /// Wait for the status to be changed.
+    ///
+    /// Returns error only if `deadline` expires before status changes.
+    ///
     /// **This function yields**
-    #[inline(always)]
-    pub fn wait_status(&self) {
-        fiber::block_on(self.status.clone().changed()).unwrap();
+    pub fn wait_status(&self, deadline: Instant) -> traft::Result<()> {
+        let mut status = self.status.clone();
+        let f = status.changed().deadline(deadline);
+        if let Err(_) = fiber::block_on(f) {
+            return Err(Error::timeout());
+        };
+
+        Ok(())
     }
 
     /// Returns current applied [`RaftIndex`].
@@ -378,7 +386,8 @@ impl Node {
     ///
     /// 1. The instance forwards a request (`MsgReadIndex`) to a raft
     ///    leader. In case there's no leader at the moment, the function
-    ///    returns `Err(ProposalDropped)`.
+    ///    blocks the current fiber until leader is known or the `timeout` is
+    ///    exceeded.
     /// 2. Raft leader tracks its `commit_index` and broadcasts a
     ///    heartbeat to followers to make certain that it's still a
     ///    leader.
@@ -394,13 +403,38 @@ impl Node {
     pub fn read_index(&self, timeout: Duration) -> traft::Result<RaftIndex> {
         let deadline = fiber::clock().saturating_add(timeout);
 
-        let rx = self.raw_operation(|node_impl| node_impl.read_index_async())?;
-        let index: RaftIndex = match fiber::block_on(rx.timeout(timeout)) {
-            Ok(v) => v,
-            Err(_) => return Err(Error::timeout()),
-        };
+        loop {
+            let res = self.raw_operation(|node_impl| node_impl.read_index_async());
+            let rx = match res {
+                Ok(v) => v,
+                Err(e) => {
+                    debug_assert!(matches!(e, RaftError::ProposalDropped), "{e:?}");
 
-        self.wait_index(index, deadline.duration_since(fiber::clock()))
+                    // Leader not known yet, let's wait until it's known
+                    self.wait_status(deadline)?;
+
+                    continue;
+                }
+            };
+
+            let f = rx.deadline(deadline);
+            let index = match fiber::block_on(f) {
+                Ok(v) => v,
+                Err(_) => return Err(Error::timeout()),
+            };
+
+            let res = self.wait_index(index, deadline.duration_since(fiber::clock()));
+            let index = match res {
+                Ok(v) => v,
+                Err(e) => {
+                    debug_assert_eq!(e.error_code(), TarantoolErrorCode::Timeout as u32);
+
+                    return Err(Error::timeout());
+                }
+            };
+
+            return Ok(index);
+        }
     }
 
     /// Waits for [`RaftIndex`] to be applied to the storage locally.
@@ -430,8 +464,7 @@ impl Node {
                     return Ok(current);
                 }
 
-                let timeout = deadline.duration_since(fiber::clock());
-                let res = applied.changed().timeout(timeout).await;
+                let res = applied.changed().deadline(deadline).await;
                 if let Err(TimeoutError::Expired) = res {
                     tlog!(
                         Debug,
