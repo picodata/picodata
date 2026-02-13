@@ -21,3 +21,4 @@ This page is an entry point for documents in `doc/dev`.
 
 - [AST-to-IR Plan: NamedWindows transformation](./named-windows-ast-transform.md)
 - [Type System Release Notes](./type-system-release-notes.md)
+- [How to generate SQL EBNF railroad diagrams](./sql_ebnf_railroad_diagrams.md)
