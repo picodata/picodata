@@ -10,20 +10,28 @@ use crate::util::Uppercase;
 use crate::{has_states, introspection::Introspection, tlog, unwrap_ok_or};
 use futures::future::join_all;
 use http::StatusCode;
+use raft::Storage as _;
 use serde::{Deserialize, Serialize};
-use smol_str::format_smolstr;
 use smol_str::SmolStr;
+use smol_str::{format_smolstr, ToSmolStr};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tarantool::fiber;
 use tarantool::fiber::r#async::timeout::IntoTimeout;
+use tarantool::index::IteratorType;
 use tarantool::session::with_su;
+use tarantool::space::Space;
+use tarantool::tlua::{self, Index as _};
 
 const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 const AUTH_TOKEN_EXPIRY_HOURS: u64 = 24;
 const REFRESH_TOKEN_EXPIRY_DAYS: u64 = 365;
 const CONTENT_TYPE_JSON: &'static str = "application/json";
+
+extern "C" {
+    fn tarantool_uptime() -> f64;
+}
 
 /// Newtype wrapper around `http::Response<String>` for HTTP API responses.
 /// We have to make it a newtype and not just an alias to provide From/Into
@@ -1021,4 +1029,275 @@ fn check_instance_ready() -> Result<(), HealthCheckError> {
     }
 
     Ok(())
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum HealthStatusLevel {
+    Healthy,
+    Degraded,
+    Unhealthy,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RaftStatus {
+    state: &'static str,
+    term: u64,
+    leader_id: u64,
+    leader_name: SmolStr,
+    applied_index: u64,
+    commited_index: u64,
+    compacted_index: u64,
+    persisted_index: u64,
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BucketStatus {
+    active: usize,
+    pinned: usize,
+    sending: usize,
+    receiving: usize,
+    garbage: usize,
+    total: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClusterStatus {
+    uuid: &'static str,
+    version: SmolStr,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HealthStatus {
+    status: HealthStatusLevel,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    reasons: Vec<SmolStr>,
+    timestamp: u64,
+    uptime_seconds: u64,
+    name: SmolStr,
+    uuid: SmolStr,
+    version: &'static str,
+    raft_id: u64,
+    tier: SmolStr,
+    replicaset: SmolStr,
+    current_state: &'static str,
+    target_state: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    target_state_reason: Option<SmolStr>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    target_state_change_time: Option<SmolStr>,
+    limbo_owner: u64,
+    raft: RaftStatus,
+    buckets: BucketStatus,
+    cluster: ClusterStatus,
+}
+
+fn get_bucket_status(total: usize) -> Result<BucketStatus, tarantool::error::Error> {
+    let space_bucket = Space::find("_bucket")
+        .ok_or_else(|| tarantool::error::Error::other("can't access _bucket space"))?;
+    let index_status = space_bucket.index("status").ok_or_else(|| {
+        tarantool::error::Error::other("space _bucket should have a 'status' index")
+    })?;
+    let active = index_status.count(IteratorType::Eq, &("active",))?;
+    let pinned = index_status.count(IteratorType::Eq, &("pinned",))?;
+    let sending = index_status.count(IteratorType::Eq, &("sending",))?;
+    let receiving = index_status.count(IteratorType::Eq, &("receiving",))?;
+    let garbage = index_status.count(IteratorType::Eq, &("garbage",))?;
+
+    Ok(BucketStatus {
+        active,
+        pinned,
+        sending,
+        receiving,
+        garbage,
+        total,
+    })
+}
+
+fn get_limbo_owner() -> Result<u64, tlua::LuaError> {
+    let lua = tarantool::lua_state();
+    let the_box: tlua::LuaTable<_> = lua.get("box").ok_or_else(tlua::WrongType::default)?;
+    let info: tlua::Indexable<_> = the_box.try_get("info")?;
+    let synchro: tlua::Indexable<_> = info.try_get("synchro")?;
+    let queue: tlua::Indexable<_> = synchro.try_get("queue")?;
+    queue.try_get("owner")
+}
+
+fn determine_health_status(
+    current_state: StateVariant,
+    target_state: StateVariant,
+    leader_id: Option<u64>,
+    buckets_sending: usize,
+    limbo_owner: u64,
+) -> (HealthStatusLevel, Vec<SmolStr>) {
+    let mut reasons = Vec::new();
+    let mut level = HealthStatusLevel::Healthy;
+
+    // Check degraded conditions first
+    if buckets_sending > 0 {
+        level = HealthStatusLevel::Degraded;
+        reasons.push(SmolStr::new_static("resharding in progress"));
+    }
+
+    if current_state == StateVariant::Online && target_state == StateVariant::Offline {
+        level = HealthStatusLevel::Degraded;
+        reasons.push(format_smolstr!(
+            "instance is transitioning Online -> Offline"
+        ));
+    }
+
+    if limbo_owner != 0 {
+        level = HealthStatusLevel::Degraded;
+        reasons.push(format_smolstr!(
+            "limbo is owned by instance {}",
+            limbo_owner
+        ));
+    }
+
+    // Check unhealthy conditions (always overrides degraded)
+    if current_state != StateVariant::Online {
+        level = HealthStatusLevel::Unhealthy;
+        reasons.push(format_smolstr!("instance state is {}", current_state));
+    }
+
+    if leader_id.is_none() {
+        level = HealthStatusLevel::Unhealthy;
+        reasons.push(SmolStr::new_static("no Raft leader known"));
+    }
+
+    (level, reasons)
+}
+
+/// Health status endpoint - returns comprehensive health information.
+///
+/// This endpoint always returns HTTP 200 after startup completion.
+/// The actual health status is sent in the response body, allowing
+/// monitoring systems to always receive meaningful data.
+fn http_api_health_status() -> traft::Result<HealthStatus> {
+    // If node is not yet initialized, fail with an error.
+    // Once node is available, all topology data should be present.
+    let node = node::global()?;
+    let storage = Catalog::get();
+    let topology = node.topology_cache.get();
+
+    // Use try_* methods to avoid panics if data is not yet available
+    // This can happen if health status is queried before instance startup completion
+    let instance = topology
+        .try_this_instance()
+        .ok_or_else(|| traft::error::Error::other("instance info not yet available"))?;
+    let tier = topology
+        .try_this_tier()
+        .ok_or_else(|| traft::error::Error::other("tier info not yet available"))?;
+
+    let raft_status = node.status();
+    let raft_storage = &node.raft_storage;
+
+    // Leader ID (0 means leader is unknown)
+    let leader_id = raft_status.leader_id.unwrap_or(0);
+    let leader_name = if leader_id != 0 {
+        topology
+            .all_instances()
+            .find(|i| i.raft_id == leader_id)
+            .map(|i| i.name.0.clone())
+            .unwrap_or_default()
+    } else {
+        SmolStr::default()
+    };
+
+    // Track retrieval errors - if any occur, status becomes unhealthy
+    // They can only happen under extreme circumstances, e.g., when the storage is corrupted
+    // Still, we want to report them in a meaningful and uniform way
+    let mut retrieval_errors: Vec<SmolStr> = Vec::new();
+
+    let applied_index = node.get_index();
+    let commited_index = raft_storage.commit().unwrap_or_else(|e| {
+        retrieval_errors.push(format_smolstr!("failed to get commit index: {e}"));
+        0
+    });
+    let compacted_index = raft_storage.compacted_index().unwrap_or_else(|e| {
+        retrieval_errors.push(format_smolstr!("failed to get compacted index: {e}"));
+        0
+    });
+    let persisted_index = raft_storage.last_index().unwrap_or_else(|e| {
+        retrieval_errors.push(format_smolstr!("failed to get persisted index: {e}"));
+        0
+    });
+
+    let uptime_seconds = unsafe { tarantool_uptime() } as u64;
+
+    let cluster_uuid: &'static str = node.topology_cache.cluster_uuid;
+    let cluster_version = storage.properties.cluster_version().unwrap_or_else(|e| {
+        retrieval_errors.push(format_smolstr!("failed to get cluster version: {e}"));
+        SmolStr::default()
+    });
+
+    let total_bucket_count = tier.bucket_count as usize;
+    let bucket_status = get_bucket_status(total_bucket_count).unwrap_or_else(|e| {
+        retrieval_errors.push(format_smolstr!("failed to get bucket status: {e}"));
+        BucketStatus {
+            total: total_bucket_count,
+            ..Default::default()
+        }
+    });
+
+    let limbo_owner = get_limbo_owner().unwrap_or_else(|e| {
+        retrieval_errors.push(format_smolstr!("failed to get limbo owner: {e}"));
+        0
+    });
+
+    let (mut status_level, mut reasons) = determine_health_status(
+        instance.current_state.variant,
+        instance.target_state.variant,
+        raft_status.leader_id,
+        bucket_status.sending,
+        limbo_owner,
+    );
+
+    if !retrieval_errors.is_empty() {
+        status_level = HealthStatusLevel::Unhealthy;
+        reasons.extend(retrieval_errors);
+    }
+
+    let timestamp = get_unix_timestamp();
+
+    Ok(HealthStatus {
+        status: status_level,
+        reasons,
+        timestamp,
+        uptime_seconds,
+        name: instance.name.0.clone(),
+        uuid: instance.uuid.clone(),
+        version: crate::info::PICODATA_VERSION,
+        raft_id: instance.raft_id,
+        tier: instance.tier.clone(),
+        replicaset: instance.replicaset_name.0.clone(),
+        current_state: instance.current_state.variant.as_str(),
+        target_state: instance.target_state.variant.as_str(),
+        target_state_reason: instance.target_state_reason.clone(),
+        target_state_change_time: instance.target_state_change_time.map(|dt| dt.to_smolstr()),
+        limbo_owner,
+        raft: RaftStatus {
+            state: raft_status.raft_state.as_str(),
+            term: raft_status.term,
+            leader_id,
+            leader_name,
+            applied_index,
+            commited_index,
+            compacted_index,
+            persisted_index,
+        },
+        buckets: bucket_status,
+        cluster: ClusterStatus {
+            uuid: cluster_uuid,
+            version: cluster_version,
+        },
+    })
+}
+
+pub(crate) fn http_api_health_status_with_auth(auth_header: String) -> ApiResult<HealthStatus> {
+    as_admin(|| auth_middleware(auth_header, http_api_health_status))
 }
