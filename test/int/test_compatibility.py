@@ -36,6 +36,9 @@ def test_major_upgrade_error(unstarted_instance: Instance):
     i.env["PICODATA_INTERNAL_VERSION_OVERRIDE"] = "24.1.0"
     i.fail_to_start()
 
+    i.env["PICODATA_INTERNAL_VERSION_OVERRIDE"] = "25.4.9"
+    i.fail_to_start()
+
 
 def test_minor_upgrade_ok(unstarted_instance: Instance):
     i = unstarted_instance

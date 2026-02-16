@@ -86,10 +86,18 @@ crate::define_rpc_request! {
 }
 
 /// Compares the versions of instances before joining the cluster.
-/// Versions are compatible when the joinee is on the same major version and
-/// at most one minor ahead, or when it is exactly one major ahead and still in
-/// the initial rollout window (`minor <= 1`).
-/// For example, leader `25.X` accepts joinee `25.X`, `25.(X+1)`, `26.0`, or `26.1`.
+/// Versions are compatible in the following cases:
+///
+/// If the `joinee` is on the same major version it must be at most one minor ahead.
+/// Or
+/// If the `joinee` is on next-major (`leader.major + 1`) then
+/// - its minor must be in the initial rollout window (`minor <= 1`).
+/// - `leader` must be on the latest supported minor for its major ([`latest_minor_for_major`])
+///
+/// Otherwise the versions are incompatible.
+///
+/// For example, with `latest_minor_for_major(25) = 5`, leader `25.5.*` accepts
+/// joinee `26.0.*` and `26.1.*`, while `25.4.* -> 26.*.*` is rejected.
 ///
 /// Returns
 /// - `Ok(false)` if versions are the same up to the patch component (ignoring the tail).
@@ -111,7 +119,7 @@ pub fn compare_picodata_versions(leader_version: &str, joinee_version: &str) -> 
         if joinee.major == leader.major {
             joinee.minor == leader.minor || joinee.minor == leader.minor + 1
         } else if joinee.major == leader.major + 1 {
-            joinee.minor <= 1
+            leader.minor == latest_minor_for_major(leader.major) && joinee.minor <= 1
         } else {
             false
         }
@@ -123,6 +131,13 @@ pub fn compare_picodata_versions(leader_version: &str, joinee_version: &str) -> 
 
     let version_changed = joinee.cmp_up_to_patch(&leader).is_ne();
     Ok(version_changed)
+}
+
+fn latest_minor_for_major(major_version_component: u64) -> u64 {
+    match major_version_component {
+        25 => 5, // 25.5.X -> 26.X.X
+        _ => unimplemented!(),
+    }
 }
 
 /// Processes the [`crate::rpc::join::Request`] and appends necessary
