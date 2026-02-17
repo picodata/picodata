@@ -284,8 +284,7 @@ clone:
     # the build scripts. Without them the job fails.
     - ./tools/get_tags.py
 
-.test:
-  stage: test
+.test_rules:
   variables:
     RUST_BACKTRACE: full
     GIT_STRATEGY: none
@@ -328,15 +327,15 @@ clone:
   POETRY_VIRTUALENVS_IN_PROJECT=1 PIP_NO_CACHE_DIR=true poetry install --no-interaction --ansi
   ci-log-section end "poetry-install"
 
-test-linux:
+
+build-linux:
+  stage: test
   extends:
-    - .test
+    - .test_rules
     - .parallel
   cache:
     - <<: *cache_git
       policy: pull
-    - <<: *py_cache
-      policy: $CACHE_POLICY
     - <<: *base_cache
       policy: $CACHE_POLICY
     - <<: *base_node
@@ -353,10 +352,6 @@ test-linux:
       sccache --show-stats
       ci-log-section end "sccache-setup"
 
-    - *poetry-install
-    - pushd sql-planner && make test
-    - make bench_check; popd
-
     - |
       ci-log-section start "build" Build
       make build-$BUILD_PROFILE CARGO_FLAGS_EXTRA="--timings"
@@ -367,10 +362,39 @@ test-linux:
       ci-log-section start "sccache-stats" sccache statistics ...
       sccache --show-stats
       ci-log-section end "sccache-stats"
+
+  artifacts:
+    paths:
+      - ./target/cargo-timings/cargo-timing.html
+      - target/$TARGET/picodata
+      - target/$TARGET/gostech-audit-log
+      - target/$TARGET/libtestplug.so
+      - test/plug_wrong_version/target/debug/libplug_wrong_version.so
+
+
+test-rs-linux:
+  stage: test
+  extends:
+    - .test_rules
+    - .parallel
+  cache:
+    - <<: *cache_git
+      policy: pull
+    - <<: *py_cache
+      policy: pull
+  script:
+
+    - |
+      ci-log-section start "test sql-planner" Test sql-planner
+      pushd sql-planner
+      make test
+      make bench_check
+      popd
+      ci-log-section end "test sql-planner"
+
     - |
       ci-log-section start "test" Test
-      make test \
-        PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10" \
+      make test-rs \
         CARGO_FLAGS_EXTRA="--profile=$BUILD_PROFILE"
       ci-log-section end "test"
 
@@ -378,11 +402,57 @@ test-linux:
     when: always
     paths:
       - junit_pytest.xml
-      - ./target/cargo-timings/cargo-timing.html
       - core*
-      - target/$TARGET/picodata
     reports:
       junit: junit_pytest.xml
+
+
+.test-py-linux_base:
+  extends:
+    - .test_rules
+    - .parallel
+  needs:
+    - job: build-linux
+      artifacts: true
+  cache:
+    - <<: *cache_git
+      policy: pull
+    - <<: *py_cache
+      policy: pull
+  artifacts:
+    when: always
+    paths:
+      - junit_pytest.xml
+      - core*
+    reports:
+      junit: junit_pytest.xml
+
+
+test-py-sql-linux:
+  stage: test
+  extends:
+    - .test-py-linux_base
+  script:
+    - *poetry-install
+    - |
+      ci-log-section start "test" Test
+      make test-py \
+        PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k '(sql or pgproto)'"
+      ci-log-section end "test"
+
+
+test-py-not-sql-linux:
+  stage: test
+  extends:
+    - .test-py-linux_base
+  script:
+    - *poetry-install
+    - |
+      ci-log-section start "test" Test
+      make test-py \
+        PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k 'not (sql or pgproto)'"
+      ci-log-section end "test"
+
 
 lint:
   stage: test
@@ -576,7 +646,8 @@ deploy-doc-prod:
     STAGE: PROD
 
 test-patch-picodata:
-  extends: .test
+  stage: test
+  extends: .test_rules
   <<: *test-patch-rules
   variables:
     BUILD_PROFILE: release
@@ -601,7 +672,8 @@ test-patch-picodata:
         CARGO_FLAGS_EXTRA="--profile=$BUILD_PROFILE --features dynamic_build"
 
 test-patch-tarantool:
-  extends: .test
+  stage: test
+  extends: .test_rules
   <<: *test-patch-rules
   cache:
     - <<: *cache_git
@@ -624,7 +696,8 @@ test-patch-tarantool:
       - tarantool-sys/test/artifacts/
 
 test-mac-m1:
-  extends: .test
+  stage: test
+  extends: .test_rules
   variables:
     GIT_STRATEGY: fetch
     GIT_SUBMODULE_STRATEGY: recursive
@@ -804,15 +877,6 @@ publish-picodata-plugin:
   script:
     - if [ -z "$CARGO_REGISTRY_TOKEN" ]; then echo "Variable CARGO_TOKEN must be available, check that branch is protected" 1>&2 && exit 1; fi
     - make publish-picodata-plugin
-
-.test-sql:
-  stage: test
-  tags:
-    - docker-k8s
-  rules:
-    - if: $CI_PIPELINE_SOURCE != "schedule"
-  before_script:
-    - pushd sql-planner
 
 audit:
   stage: test
