@@ -40,7 +40,13 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("proc_name", "proc_apply_backup"),
             ("sql", "CREATE TABLE _pico_user_audit_policy (user_id UNSIGNED NOT NULL, policy_id UNSIGNED NOT NULL, PRIMARY KEY (user_id, policy_id)) DISTRIBUTED GLOBALLY"),
             ("proc_name", "proc_internal_script"),
+
+            // Upgrade `_pico_tier` table to add `is_default` field.
             ("exec_script", "alter_pico_tier_add_is_default"),
+            // Make `is_default` contain sensible values.
+            // NOTE: this order of SQL operations is buggy.
+            // Since we don't change upgrades for versions that were already released, this is fixed later in 25.6.1 migration.
+            // See https://git.picodata.io/core/picodata/-/issues/2683.
             ("sql", "UPDATE _pico_tier SET is_default = true WHERE 1 in (SELECT count(*) FROM _pico_tier)"),
             ("sql", "UPDATE _pico_tier SET is_default = CASE WHEN name = 'default' THEN true ELSE false END"),
         ],
@@ -96,6 +102,11 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
         "26.1.0",
         &[
             ("exec_script", InternalScript::AlterPicoTableAddOptsField.as_str()),
+
+            // Make sure single-tier clusters have the single tier marked as default.
+            // This fixes a bug in 25.4.1 migration.
+            // See https://git.picodata.io/core/picodata/-/issues/2683
+            ("sql", "UPDATE _pico_tier SET is_default = true WHERE 1 in (SELECT count(*) FROM _pico_tier)")
         ]
     )
 ];

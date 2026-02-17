@@ -1,6 +1,7 @@
 from typing import Generator, Protocol
 
 from conftest import Cluster, Retriable
+from packaging.version import Version as AbsoluteVersion
 from framework.rolling.version import VersionAlias as Version
 from framework.rolling.registry import Registry
 from urllib.request import urlopen
@@ -576,3 +577,76 @@ cluster:
 
     # Note: needs to be retriable because upgrade happens asynchronously after all instances become Online
     Retriable().call(check)
+
+
+@pytest.mark.xdist_group(name="rolling")
+def test_25_4_1_broken_pico_tier_migration(registry: Registry, cluster: Cluster):
+    # This test validates the fix for https://git.picodata.io/core/picodata/-/issues/2683
+    # For this we find a picodata version before the `26.1.0` migration that ought to fix it,
+    #  and modify `_pico_tier` to simulate the breakage.
+    # When the bug happens, `_pico_tier` contains a single tuple that has `is_default = false`.
+    # The test checks that the 26.1.0 migration will fix it and set `is_default = true`.
+    # It is expected that this test will stop working after 25.5.x stops being a valid upgrade starting point.
+    # NB: consider removing this test once 26.1.x branch will stop being updated
+
+    cluster.registry = registry
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        tier_name:
+        """
+    )
+
+    # FIXME: refactor code after <https://git.picodata.io/core/picodata/-/merge_requests/2677> gets merged
+    # Find a version before the 26.1.0 fix
+    runtime_v1 = None
+    for version in [Version.PREVIOUS_MINOR, Version.BEFORELAST_MINOR]:
+        registry_item = cluster.registry.get(version)
+        if registry_item.absolute_version < AbsoluteVersion("26.0.0"):
+            runtime_v1 = registry_item
+            break
+    if runtime_v1 is None:
+        pytest.skip(
+            "Could not find a version which doesn't have the migration fix "
+            "between versions available in the version registry via aliases. Can't test this"
+        )
+    print(f"Found version to use: {runtime_v1.relative_version} ({runtime_v1.absolute_version})")
+
+    runtime_v2 = cluster.registry.get(Version.CURRENT)
+
+    if runtime_v2.absolute_version >= AbsoluteVersion("26.2.0"):
+        pytest.skip("This test is only relevant when updating from 25.5.x to 26.1.x. Current version is >= 26.2.0")
+
+    cluster.runtime = runtime_v1
+    instance = cluster.add_instance(name="tier_name_1_1", tier="tier_name")
+
+    [[cluster_version]] = instance.sql("SELECT value FROM _pico_property WHERE key = 'cluster_version'")
+    assert base_version(cluster_version) == str(runtime_v1.absolute_version)
+
+    # This version should not have the bug
+    [[tier_is_default]] = instance.sql("SELECT is_default FROM _pico_tier")
+    assert tier_is_default is True
+
+    # Simulate the broken catalog by modifying `_pico_tier`.
+    # The same result can be obtained by creating a cluster in 25.3.8, and then updating it to 25.4.4 and to 25.5.6,
+    #  but is not possible with our current upgrade testing framework.
+    instance.sql("UPDATE _pico_tier SET is_default = false")
+
+    # Now we should have the broken catalog, as if after applying the buggy 25.4.1 migration
+    [[tier_is_default]] = instance.sql("SELECT is_default FROM _pico_tier")
+    assert tier_is_default is False
+
+    instance.terminate()
+
+    instance.runtime = runtime_v2
+    instance.start()
+    instance.wait_online()
+
+    [[cluster_version]] = instance.sql("SELECT value FROM _pico_property WHERE key = 'cluster_version'")
+    assert base_version(cluster_version) == str(runtime_v2.absolute_version)
+
+    # The migration should have fixed the missing default tier
+    [[tier_is_default]] = instance.sql("SELECT is_default FROM _pico_tier")
+    assert tier_is_default is True

@@ -114,6 +114,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed `picodata plugin configure` panic on attempt to update non-existent plugin or a non-existing
   service of an existing plugin.
 - Fixed an RPC to avoid skipping metrics collection code path on early return in procedure implementation.
+- Make sure that single-tiered clusters upgraded from 25.3.x always have a default tier. 
 
 ### Observability
 
