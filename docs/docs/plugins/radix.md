@@ -18,20 +18,216 @@ Redis на базе СУБД Picodata. Каждый экземпляр Radix о�
 отдельной инфраструктуре Redis Sentinel, так как каждый узел Picodata
 выполняет роль прокси ко всем данным Redis.
 
+## Соответствие версий Picodata и Radix {: #picodata_radix_versions }
+
+Версии плагина Radix требуют определённых версий СУБД Picodata. Ниже
+показана таблица совместимости версий:
+
+| Radix | Picodata | ФСТЭК-сертификат |
+| ------ | ------ | :-----: |
+| 0.9.0 | 25.2.2 | :white_check_mark: |
+| 0.14.1 | 25.5.7 (25.5.*) | |
+
+См. также:
+
+- [Страница загрузки Picodata](https://picodata.io/download/)
+
 ## Установка {: #install }
 
-### Предварительные действия {: #prerequisites }
+### Развёртывание Picodata c Radix {: #picodata_with_radix }
 
-Установка плагина Radix, в целом, соответствует общей процедуре
-установки плагинов в Picodata, но имеет ряд особенностей.
-<!-- вставить ссылку на туториал по плагинам, когда он будет залит -->
+#### Развёртывание с помощью Ansible {: #radix_deploy_ansible }
 
-Процедура установки включает:
+При работе с Picodata в промышленной среде удобно использовать [роль
+Picodata для Ansible]. С её помощью вы можете развернуть кластер СУБД
+Picodata на нескольких узлах, в том числе, с поддержкой плагинов.
 
-- установку адреса, который будет слушать Radix (например, `export RADIX_LISTEN_ADDR=0.0.0.0:7379`).
-  Эта настройка также доступна для инвентарного файла Ansible. Если в одном пространстве имен
-  (например, на одном хосте) запущено несколько инстансов Picodata, то нужно
-  задать для них разные значения `RADIX_LISTEN_ADDR`.
+Для этого потребуется:
+
+- [установить роль](../admin/deploy_ansible.md#install_role)
+- [подготовить плейбук](../admin/deploy_ansible.md#create_playbook)
+- [подготовить инвентарный
+  файл](../admin/deploy_ansible.md#create_inventory_file), включив в
+  него блок параметров для установки Radix
+- [установить кластер](../admin/deploy_ansible.md#install_cluster) с Radix
+
+Добавьте в инвентарный файл дополнительныне переменные `RADIX_LISTEN_ADDR`
+(адрес и порт, который будет слушать Radix) и `RADIX_ADVERTISE_ADDR` (публичный
+адрес, который Radix будет использовать для кластерных команд). Пример:
+
+```yaml
+tiers:
+  default:
+    replicaset_count: 2
+    replication_factor: 3
+    bucket_count: 16384
+    extra_vars:
+       RADIX_LISTEN_ADDR: '0.0.0.0:73<INSTANCE_NUM>'
+       RADIX_ADVERTISE_ADDR: '{{ listen_address }}:73<INSTANCE_NUM>'
+```
+
+В указанном случае для первого инстанса переменные `RADIX_LISTEN_ADDR` и
+`RADIX_ADVERTISE_ADDR` установят значение `0.0.0.0:7300`, для второго —
+`0.0.0.0:7301`, для третьего — `0.0.0.0:7302` и так далее.
+
+Добавьте в инвентарный файле блок параметров, относящийся к Radix:
+
+```yaml
+plugins:
+  radix:                                                        # плагин
+    path: '../plugins/radix_0.14.1-ubuntu_noble.tar.gz'         # путь до пакета с Radix
+    config: '../plugins/radix-config.yml'                       # путь до файла с настройками Radix
+    services:
+      radix:
+        tiers:                                                  # список тиров, в которые устанавливается сервис radix
+          - default                                             # указано значение по умолчанию (default)
+    migration_context:                                          # параметры миграции для Radix
+      tier_0: 'default'
+      tier_1: 'default'
+      tier_2: 'default'
+      tier_3: 'default'
+      tier_4: 'default'
+      tier_5: 'default'
+      tier_6: 'default'
+      tier_7: 'default'
+      tier_8: 'default'
+      tier_9: 'default'
+      tier_10: 'default'
+      tier_11: 'default'
+      tier_12: 'default'
+      tier_13: 'default'
+      tier_14: 'default'
+      tier_15: 'default'
+```
+
+??? example "Пример инвентарного файла cluster.yml с указанием плагина Radix"
+    ```yaml
+    all:
+      vars:
+        ansible_user: vagrant      # пользователь для ssh-доступа к серверам
+
+        repo: 'https://download.picodata.io'  # репозиторий, откуда инсталлировать пакет Picodata
+
+        cluster_name: 'demo'           # имя кластера
+        admin_password: '123asdZXV'    # пароль пользователя admin
+
+        default_bucket_count: 16384    # количество бакетов в каждом тире (для Radix требуется значение 16384)
+
+        audit: false                   # состояние аудита (отключен)
+        log_level: 'info'              # уровень отладки
+        log_to: 'file'                 # вывод журнала в файлы (а не в journald)
+
+        conf_dir: '/etc/picodata'         # директория для хранения конфигурационных файлов
+        data_dir: '/var/lib/picodata'     # директория для хранения данных
+        run_dir: '/var/run/picodata'      # директория для хранения sock-файлов
+        log_dir: '/var/log/picodata'      # директория для журналов и файлов аудита
+        share_dir: '/usr/share/picodata'  # директория для размещения служебных данных (плагинов)
+
+        listen_address: '{{ ansible_fqdn }}'     # адрес, который будет слушать инстанс. Для IP указать {{ansible_default_ipv4.address}}
+        pg_address: '{{ listen_address }}'       # адрес, который будет слушать PostgreSQL-протокол инстанса
+
+        first_bin_port: 13301     # начальный бинарный порт для первого инстанса
+        first_http_port: 18001    # начальный http-порт для первого инстанса для веб-интерфейса
+        first_pg_port: 15001      # начальный номер порта для PostgreSQL-протокола инстансов кластера
+
+        tiers:                         # описание тиров
+          arbiter:                     # имя тира
+            replicaset_count: 1        # количество репликасетов
+            replication_factor: 1      # фактор репликации
+            config:
+              memtx:
+                memory: 64M            # количество памяти, выделяемое каждому инстансу тира
+            host_groups:
+              - ARBITERS               # целевая группа серверов для установки инстанса
+
+          default:                     # имя тира
+            replicaset_count: 3        # количество репликасетов
+            replication_factor: 3      # фактор репликации
+            bucket_count: 16384        # количество бакетов в тире
+            config:
+              memtx:
+                memory: 71M            # количество памяти, выделяемое каждому инстансу тира
+            host_groups:
+              - STORAGES               # целевая группа серверов для установки инстанса
+            extra_vars:
+                RADIX_LISTEN_ADDR: '0.0.0.0:73<INSTANCE_NUM>'                   # адрес, который будет слушать Radix
+                RADIX_ADVERTISE_ADDR: '{{ listen_address }}:73<INSTANCE_NUM>'   # публичный адрес для кластерных команд Radix
+
+        db_config:                     # параметры конфигурации кластера (см. https://docs.picodata.io/picodata/stable/reference/db_config)
+          governor_auto_offline_timeout: 30
+          iproto_net_msg_max: 500
+          memtx_checkpoint_count: 1
+          memtx_checkpoint_interval: 7200
+
+        plugins:
+          radix:                                                        # плагин
+            path: '../plugins/radix_0.14.1-ubuntu_noble.tar.gz'         # путь до пакета с Radix
+            config: '../plugins/radix-config.yml'                       # путь до файла с настройками Radix
+            services:
+              radix:
+                tiers:                                                  # список тиров, в которые устанавливается сервис radix
+                  - default                                             # указано значение по умолчанию (default)
+            migration_context:                                          # параметры миграции для Radix
+              tier_0: 'default'
+              tier_1: 'default'
+              tier_2: 'default'
+              tier_3: 'default'
+              tier_4: 'default'
+              tier_5: 'default'
+              tier_6: 'default'
+              tier_7: 'default'
+              tier_8: 'default'
+              tier_9: 'default'
+              tier_10: 'default'
+              tier_11: 'default'
+              tier_12: 'default'
+              tier_13: 'default'
+              tier_14: 'default'
+              tier_15: 'default'
+    DC1:                                # имя датацентра (failure_domain)
+      hosts:                            # серверы в датацентре
+        server-1-1:                     # имя сервера в инвентарном файле
+          ansible_host: '192.168.19.21' # IP-адрес или fqdn если не совпадает с предыдущей строкой
+          host_group: 'STORAGES'        # определение целевой группы серверов для установки инстансов
+
+        server-1-2:                     # имя сервера в инвентарном файле
+          ansible_host: '192.168.19.22' # IP-адрес или fqdn если не совпадает с предыдущей строкой
+          host_group: 'ARBITERS'        # определение целевой группы серверов для установки инстансов
+
+    DC2:                                # имя датацентра (failure_domain)
+      hosts:                            # серверы в датацентре
+        server-2-1:                     # имя сервера в инвентарном файле
+          ansible_host: '192.168.20.21' # IP-адрес или fqdn если не совпадает с предыдущей строкой
+          host_group: 'STORAGES'        # определение целевой группы серверов для установки инстансов
+
+    DC3:                                # имя датацентра (failure_domain)
+      hosts:                            # серверы в датацентре
+        server-3-1:                     # имя сервера в инвентарном файле
+          ansible_host: '192.168.21.21' # IP-адрес или fqdn если не совпадает с предыдущей строкой
+          host_group: 'STORAGES'        # определение целевой группы серверов для установки инстансов
+    ```
+
+[роль Picodata для Ansible]: ../admin/deploy_ansible.md#plugin_management
+
+Установите кластер Picodata с Radix, указав инвентарный файл и файл плейбука:
+
+```shell
+ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml
+```
+
+См. также:
+
+- [Развертывание кластера через Ansible](../admin/deploy_ansible.md)
+
+#### Развёртывание вручную {: #radix_deploy_manual }
+
+Установка плагина Radix вручную имеет ряд особенностей. Процедура установки включает:
+
+- установку адреса, который будет слушать Radix (например, `export
+  RADIX_LISTEN_ADDR=0.0.0.0:7379`). Эта настройка также доступна для
+  [инвентарного файла Ansible](#radix_deploy_ansible). Если в одном пространстве
+  имен (например, на одном хосте) запущено несколько инстансов Picodata, то
+  нужно задать для них разные значения `RADIX_LISTEN_ADDR`.
 - установку публичного адреса, который Radix будет использовать для кластерных команд
   (например, `export RADIX_ADVERTISE_ADDR=public.hostname.int:7379`). Этот адрес будет
   возвращаться клиентам (например, в `CLUSTER NODES`).
@@ -51,6 +247,11 @@ Redis на базе СУБД Picodata. Каждый экземпляр Radix о�
 [bucket_count]: ../reference/config.md#cluster_tier_tier_bucket_count
 [default_bucket_count]: ../reference/config.md#cluster_default_bucket_count
 
+См. также:
+
+- [Установка плагинов](../architecture/plugins.md#plugin_install)
+- [Управления плагинами](../dev/plugin_mgmt.md)
+
 ### Подключение плагина {: #plugin_enable }
 
 Radix поддерживает 16 баз данных, каждую из которых можно расположить на
@@ -61,7 +262,7 @@ Radix поддерживает 16 баз данных, каждую из кот�
 в административной консоли Picodata:
 
 ```sql
-CREATE PLUGIN radix 0.13.0;
+CREATE PLUGIN radix 0.14.1;
 ```
 
 Выполните указанные ниже шаги для того, чтобы включить плагин.
@@ -71,25 +272,25 @@ CREATE PLUGIN radix 0.13.0;
 Для настройки миграций задайте значения для 16 параметров (по числу баз данных в Radix):
 
 ```sql
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_0='hot';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_1='hot';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_2='hot';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_3='hot';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_4='cold';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_5='cold';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_6='cold';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_7='cold';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_8='cold';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_9='cold';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_10='cold';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_11='cold';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_12='cold';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_13='cold';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_14='cold';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_15='cold';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_0='hot';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_1='hot';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_2='hot';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_3='hot';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_4='cold';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_5='cold';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_6='cold';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_7='cold';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_8='cold';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_9='cold';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_10='cold';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_11='cold';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_12='cold';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_13='cold';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_14='cold';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_15='cold';
 
-ALTER PLUGIN radix 0.13.0 ADD SERVICE radix TO TIER hot;
-ALTER PLUGIN radix 0.13.0 ADD SERVICE radix TO TIER cold;
+ALTER PLUGIN radix 0.14.1 ADD SERVICE radix TO TIER hot;
+ALTER PLUGIN radix 0.14.1 ADD SERVICE radix TO TIER cold;
 ```
 
 Для выполнения миграции:
@@ -115,15 +316,15 @@ ALTER PLUGIN radix MIGRATE TO 0.13.0 OPTION(TIMEOUT=300);
 Для включения плагина в кластере:
 
 ```sql title="Убедитесь, что задан адрес, который будет слушать Radix"
-ALTER PLUGIN radix 0.13.0 ENABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 0.14.1 ENABLE OPTION(TIMEOUT=30);
 ```
 
 Если в кластере ранее была включена предыдущая версия плагина, то ее
 следует сначала отключить и лишь затем включить новую версию. Пример:
 
 ```sql
-ALTER PLUGIN radix 0.12.0 DISABLE OPTION(TIMEOUT=30);
-ALTER PLUGIN radix 0.13.0 ENABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 0.13.0 DISABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 0.14.1 ENABLE OPTION(TIMEOUT=30);
 ```
 
 Чтобы убедиться в том, что плагин успешно добавлен и запущен, выполните запрос:
@@ -139,23 +340,23 @@ SELECT * FROM _pico_plugin;
 Если в кластере используется только один тир `default`, настройка миграций будет выглядеть так:
 
 ```sql
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_0='default';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_1='default';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_2='default';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_3='default';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_4='default';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_5='default';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_6='default';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_7='default';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_8='default';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_9='default';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_10='default';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_11='default';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_12='default';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_13='default';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_14='default';
-ALTER PLUGIN radix 0.13.0 SET migration_context.tier_15='default';
-ALTER PLUGIN radix 0.13.0 ADD SERVICE radix TO TIER default;
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_0='default';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_1='default';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_2='default';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_3='default';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_4='default';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_5='default';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_6='default';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_7='default';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_8='default';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_9='default';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_10='default';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_11='default';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_12='default';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_13='default';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_14='default';
+ALTER PLUGIN radix 0.14.1 SET migration_context.tier_15='default';
+ALTER PLUGIN radix 0.14.1 ADD SERVICE radix TO TIER default;
 ```
 
 ## Настройка {: #configuration }
@@ -167,17 +368,18 @@ Ansible].
 Пример файла конфигурации:
 
 ```yaml
-clients:                 # ограничения клиентских соединений
+radix:
+  clients:                 # ограничения клиентских соединений
     max_clients: 10000
     max_input_buffer_size: 1073741824
     max_output_buffer_size: 1073741824
-cluster_mode: true       # какой флаг отдавать в команде `info cluster`
-sentinel_enabled: false  # режим совместимости с Redis Sentinel
-redis_compatibility:
+  cluster_mode: true       # какой флаг отдавать в команде `info cluster`
+  sentinel_enabled: false  # режим совместимости с Redis Sentinel
+  redis_compatibility:
     enabled_deprecated_commands: []
     enforce_one_slot_transactions: false
     push_result_includes_popped_items: false
-authorization_mode:
+  authorization_mode:
     state: Off
 ```
 
@@ -186,8 +388,8 @@ authorization_mode:
 
 ### Сетевые настройки {: #network_settings }
 
-- `RADIX_LISTEN_ADDR` — Radix откроет сокет по указанному адресу и будет его слушать.
-- `RADIX_ADVERTISE_ADDR` — Radix будет использовать этот адрес в кластерных и sentinel-командах.
+- `RADIX_LISTEN_ADDR` — Radix откроет сокет по указанному адресу и будет его слушать
+- `RADIX_ADVERTISE_ADDR` — Radix будет использовать этот адрес в кластерных и sentinel-командах
 
 !!! note
     Если процессы не изолированы (например, развёртывание произведено без использования Docker или Kubernetes), то
@@ -328,7 +530,7 @@ cold:
 ##### Миграция с кластера с директивой `requirepass` {: #requirepass }
 
 ```sql
-ALTER PLUGIN radix 0.13.0 SET radix.authorization_mode = '{ "state": "On", "default_user_name": "default_radix_user" }';
+ALTER PLUGIN radix 0.14.1 SET radix.authorization_mode = '{ "state": "On", "default_user_name": "default_radix_user" }';
 CREATE USER default_radix_user WITH PASSWORD 'S0m1Str2ngP3ssword';
 GRANT radix_reader TO default_radix_user;
 GRANT radix_writer TO default_radix_user;
@@ -347,7 +549,7 @@ OK
 ##### Использование LDAP {: #ldapuser }
 
 ```sql
-ALTER PLUGIN radix 0.13.0 SET radix.authorization_mode = '{ "state": "On", "default_user_name": "default_radix_user" }';
+ALTER PLUGIN radix 0.14.1 SET radix.authorization_mode = '{ "state": "On", "default_user_name": "default_radix_user" }';
 CREATE USER default_radix_user USING ldap;
 GRANT radix_reader TO default_radix_user;
 GRANT radix_writer TO default_radix_user;
@@ -371,7 +573,7 @@ argus:
 ##### Разделение доступов по БД {: #access_separation }
 
 ```sql
-ALTER PLUGIN radix 0.13.0 SET radix.authorization_mode = '{ "state": "On" }';
+ALTER PLUGIN radix 0.14.1 SET radix.authorization_mode = '{ "state": "On" }';
 
 CREATE USER app_1_user WITH PASSWORD 'pwd1';
 GRANT radix_reader_0 TO app_1_user;
@@ -550,7 +752,7 @@ QUIT
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["hmset" ] }';
+    ALTER PLUGIN radix 0.14.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["hmset" ] }';
     ```
 
 
@@ -913,7 +1115,7 @@ HMSET key field value [field value ...]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["hmset" ] }';
+    ALTER PLUGIN radix 0.14.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["hmset" ] }';
     ```
 
 #### hscan
@@ -1711,7 +1913,7 @@ ZRANGEBYLEX key min max [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrangebylex" ] }';
+    ALTER PLUGIN radix 0.14.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrangebylex" ] }';
     ```
 
 #### zrangebyscore
@@ -1728,7 +1930,7 @@ ZRANGEBYSCORE key min max [WITHSCORES] [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrangebyscore" ] }';
+    ALTER PLUGIN radix 0.14.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrangebyscore" ] }';
     ```
 
 #### zrank
@@ -1806,7 +2008,7 @@ ZREVRANGE key start stop [WITHSCORES]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrevrange" ] }';
+    ALTER PLUGIN radix 0.14.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrevrange" ] }';
     ```
 
 #### zrevrangebylex
@@ -1823,7 +2025,7 @@ ZREVRANGEBYLEX key max min [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrevrangebylex" ] }';
+    ALTER PLUGIN radix 0.14.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrevrangebylex" ] }';
     ```
 
 #### zrevrangebyscore
@@ -1840,7 +2042,7 @@ ZREVRANGEBYSCORE key max min [WITHSCORES] [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrevrangebyscore" ] }';
+    ALTER PLUGIN radix 0.14.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["zrevrangebyscore" ] }';
     ```
 
 #### zrevrank
@@ -2011,7 +2213,7 @@ BRPOPLPUSH source destination timeout
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["psetex" ] }';
+    ALTER PLUGIN radix 0.14.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["psetex" ] }';
     ```
 
 
@@ -2494,7 +2696,7 @@ RPOPLPUSH source destination
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["psetex" ] }';
+    ALTER PLUGIN radix 0.14.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["psetex" ] }';
     ```
 
 #### rpush
@@ -2706,7 +2908,7 @@ PSETEX key milliseconds value
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["psetex" ] }';
+    ALTER PLUGIN radix 0.14.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["psetex" ] }';
     ```
 
 #### set
@@ -2761,7 +2963,7 @@ SET key value EX seconds
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["setex" ] }';
+    ALTER PLUGIN radix 0.14.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["setex" ] }';
     ```
 
 Установка некорректного значения вернет ошибку.
@@ -2781,7 +2983,7 @@ SETNX key value
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.13.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["setnx" ] }';
+    ALTER PLUGIN radix 0.14.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "enabled_deprecated_commands": ["setnx" ] }';
     ```
 
 #### strlen
@@ -2804,7 +3006,7 @@ Radix поддерживает необходимый минимум коман�
 включить, используйте запрос:
 
 ```sql
-ALTER PLUGIN radix 0.13.0 SET radix.sentinel_enabled = 'true';
+ALTER PLUGIN radix 0.14.1 SET radix.sentinel_enabled = 'true';
 ```
 <font size="2">_поддерживается с версии 0.10.0_</font>
 
@@ -3273,6 +3475,21 @@ MEMORY USAGE key [SAMPLES count]
 имеются), объем которых также будет учтен. По умолчанию, значение
 `SAMPLES` равно 5. Для учета всех дочерних элементов следует указать
 `SAMPLES 0`.
+
+#### object encoding {: #object_encoding }
+
+```sql
+OBJECT ENCODING key
+```
+<font size="2">_поддерживается с версии 0.14.1_</font>
+
+Возвращает способ кодирования объекта, хранящегося по ключу `key`.
+Варианты кодирования:
+
+- `raw` — стандартное кодирование текстовых строк
+- `quicklist` — способ кодирования списков, совместимый с типами `linkedlist`, `ziplist` и `listpack` в Redis
+- `hashtable` — стандартное кодирование множеств
+- `skiplist` — стандартное кодирование сортированных множеств
 
 ### Команды для отладки {: #pico_debug }
 

@@ -420,7 +420,7 @@ share_dir
 
 [тирах]: ../overview/glossary.md#tier
 [`share_dir`]: ../reference/config.md#instance_share_dir
-[пример]: ../plugins/radix.md#prerequisites
+[пример]: ../plugins/radix.md#radix_deploy_manual
 
 
 ### Включение плагина {: #plugin_enable }
