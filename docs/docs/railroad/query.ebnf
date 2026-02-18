@@ -238,7 +238,7 @@ create_role    ::= 'CREATE' 'ROLE' ('IF' 'NOT' 'EXISTS')? role ('OPTION' '(' ('T
 create_table   ::= 'CREATE' 'UNLOGGED'? 'TABLE' ('IF' 'NOT' 'EXISTS')? table
                    '('
                        column column_def_type ('NOT'? 'NULL')? ('PRIMARY' 'KEY')? (',' column column_def_type ('NOT'? 'NULL')? ('PRIMARY' 'KEY')?)*
-                       (',' 'PRIMARY' 'KEY' '(' column (',' column)* ')')?
+                       (',' 'PRIMARY' 'KEY' '(' (bucket_id ',')? column (',' column)* ')')?
                    ')'
                    ('USING' ('MEMTX' | 'VINYL'))?
                    (('DISTRIBUTED' (('BY' '(' column (',' column)* ')' ('IN' 'TIER' tier)?) | 'GLOBALLY'))?)?
