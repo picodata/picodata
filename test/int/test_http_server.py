@@ -1,4 +1,5 @@
 import ssl
+import time
 from typing import Dict, Any, Tuple, Optional
 from pathlib import Path
 
@@ -689,3 +690,106 @@ def test_ui_config(instance: Instance, auth_token):
         assert response.headers.get("content-type") == "application/json"
         assert response.status == 200
         assert json.loads(response.read().decode()) == {"isAuthEnabled": auth_token is not None}
+
+
+def test_healthcheck_k8s_probes(cluster: Cluster):
+    """
+    Test K8s health check probes (startup, live, ready) lifecycle.
+    They are designed to comply with k8s specs:
+    https://kubernetes.io/docs/concepts/configuration/liveness-readiness-startup-probes/
+
+    Test flow:
+    1. Deploy 2 instances with RF=3 -> startup 503 (replicaset not ready)
+    2. Reduce RF to 2 -> startup 200 (RF met)
+    3. Verify live and ready return 200
+    4. Put i1 Offline -> startup 200 (latched), ready 503
+    """
+    # Configure cluster with RF=3
+    cluster.set_config_file(
+        yaml=f"""
+cluster:
+    name: {cluster.id}
+    tier:
+        default:
+            replication_factor: 3
+"""
+    )
+
+    # Step 1: Deploy 2 instances - RF=3 so replicaset is not ready
+    i1, i2 = cluster.deploy(instance_count=2, tier="default", enable_http=True)
+    http_listen = i1.env["PICODATA_HTTP_LISTEN"]
+    base_url = f"http://{http_listen}/api/v1/health"
+
+    # Startup probe should return 503 (replicaset not ready - only 2 of 3)
+    try:
+        with get_unauthorized(f"{base_url}/startup") as response:
+            assert False, f"Expected 503, got {response.status}"
+    except HTTPError as e:
+        assert e.code == 503, f"Expected 503, got {e.code}"
+        body = json.loads(e.read())
+        assert body["status"] == "not_ready"
+        assert "replicaset" in body["reason"].lower()
+
+    # Step 2: Reduce RF to 2 to make replicaset ready
+    i1.sql("UPDATE _pico_tier SET replication_factor = 2")
+
+    # Wait for startup to return 200
+    deadline = time.monotonic() + 10
+    startup_ok = False
+    while time.monotonic() < deadline:
+        try:
+            with get_unauthorized(f"{base_url}/startup") as response:
+                if response.status == 200:
+                    startup_ok = True
+                    break
+        except HTTPError:
+            pass
+        time.sleep(0.2)
+    assert startup_ok, "Startup probe did not return 200 after RF was met"
+
+    # Step 3: Check that live and ready also return 200
+    with get_unauthorized(f"{base_url}/live") as response:
+        assert response.status == 200, f"Expected live to return 200, got {response.status}"
+
+    with get_unauthorized(f"{base_url}/ready") as response:
+        assert response.status == 200, f"Expected ready to return 200, got {response.status}"
+
+    # Step 4: Put i1 into offline state to test latching behavior
+    i1.call("pico._inject_error", "SENTINEL_CONNECTION_POOL_CALL_FAILURE", True)
+
+    assert i1.cluster_name is not None
+    assert i1.cluster_uuid is not None
+    leader = cluster.leader()
+    leader.call(
+        ".proc_update_instance_v2",
+        [
+            i1.name,
+            i1.cluster_name,
+            i1.cluster_uuid,
+            None,  # current_state
+            "Offline",  # target_state
+            None,  # failure_domain
+            False,  # dont_retry
+            None,  # picodata_version
+        ],
+        "k8s_probes_test",
+    )
+    cluster.wait_has_states(i1, "Offline", "Offline", timeout=10)
+
+    with get_unauthorized(f"{base_url}/startup") as response:
+        assert response.status == 200, "Startup should remain 200 after going offline (latched)"
+
+    with get_unauthorized(f"{base_url}/live") as response:
+        assert response.status == 200, "Live should return 200 even when offline"
+
+    try:
+        with get_unauthorized(f"{base_url}/ready") as response:
+            assert False, f"Expected ready to return 503 when offline, got {response.status}"
+    except HTTPError as e:
+        assert e.code == 503, f"Expected 503, got {e.code}"
+        body = json.loads(e.read())
+        assert body["status"] == "not_ready"
+        assert "offline" in body["reason"].lower()
+
+    # Cleanup
+    i1.call("pico._inject_error", "SENTINEL_CONNECTION_POOL_CALL_FAILURE", False)
