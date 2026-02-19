@@ -899,6 +899,8 @@ pub fn dispatch_impl<'p>(
             }
         };
 
+        let request_id = plan.get_request_id().to_owned();
+
         let BlockOwned::Anonymous(block) = plan.get_ir_plan().get_owned_block_node(top_id)? else {
             unreachable!("plan.is_block() returned true");
         };
@@ -925,7 +927,13 @@ pub fn dispatch_impl<'p>(
             vdbe_max_steps,
             returns_rows: !block.return_columns.is_empty(),
         };
-        return tier_runtime.exec_block_on_buckets(metadata, exec_block, buckets, port);
+        return tier_runtime.exec_block_on_buckets(
+            metadata,
+            exec_block,
+            buckets,
+            &request_id,
+            port,
+        );
     }
 
     let mut sub_plan = plan.take_subtree(top_id, buckets)?;

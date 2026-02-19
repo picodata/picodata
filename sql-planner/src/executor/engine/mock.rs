@@ -1712,6 +1712,7 @@ impl Vshard for RouterRuntimeMock {
         _metadata: Vec<MetadataColumn>,
         _block: BlockExecData,
         _buckets: &Buckets,
+        _request_id: &str,
         _port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
         todo!()
@@ -1756,6 +1757,7 @@ impl Vshard for &RouterRuntimeMock {
         _metadata: Vec<MetadataColumn>,
         _block: BlockExecData,
         _buckets: &Buckets,
+        _request_id: &str,
         _port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
         todo!()

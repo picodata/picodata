@@ -9,13 +9,13 @@ use crate::column_name;
 use crate::config::{AlterSystemParameters, DYNAMIC_CONFIG};
 use crate::metrics::{self, STORAGE_1ST_REQUESTS_TOTAL};
 use crate::plugin::{InheritOpts, PluginIdentifier, TopologyUpdateOpKind};
-use crate::preemption::with_sql_execution_guard;
 use crate::schema::{
     wait_for_ddl_commit, CreateIndexParams, CreateProcParams, CreateTableParams, DdlError,
     DistributionParam, Field, IndexOption, PrivilegeDef, PrivilegeType, RenameRoutineParams,
     RoutineDef, RoutineLanguage, RoutineParamDef, RoutineParams, RoutineSecurity, SchemaObjectType,
     ShardingFn, TableOption, UserDef, ADMIN_ID,
 };
+use crate::sql::concurrency::{runtime_owner_key, with_sql_runtime_limit};
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::{FullDeleteInfo, StorageRuntime};
 use crate::storage::Catalog;
@@ -597,7 +597,10 @@ fn dispatch_bound_statement_impl<'p>(
                 )
             }
             BlockOwned::Anonymous(AnonymousBlock { .. }) => {
-                query.dispatch(port).map_err(Error::Sbroad)
+                let request_id = runtime_owner_key(query.get_exec_plan().get_request_id())
+                    .map_err(Error::Sbroad)?;
+                with_sql_runtime_limit(request_id, || query.dispatch(port).map_err(Error::Sbroad))
+                    .map_err(Error::Sbroad)?
             }
         }
     } else {
@@ -635,14 +638,20 @@ fn dispatch_bound_statement_impl<'p>(
             Ok::<(), Error>(())
         })??;
 
-        if plan.is_dml_on_global_table()? && !plan.is_raw_explain() {
-            let ConsumerResult { row_count } =
-                do_dml_on_global_tbl(query, override_deadline, governor_op_id)?;
-            port_write_dml_response(port, row_count);
-            return Ok(());
-        }
+        let is_dml_on_global = plan.is_dml_on_global_table()? && !plan.is_raw_explain();
+        let request_id =
+            runtime_owner_key(query.get_exec_plan().get_request_id()).map_err(Error::Sbroad)?;
+        with_sql_runtime_limit(request_id, || -> traft::Result<()> {
+            if is_dml_on_global {
+                let ConsumerResult { row_count } =
+                    do_dml_on_global_tbl(query, override_deadline, governor_op_id)?;
+                port_write_dml_response(port, row_count);
+                return Ok(());
+            }
 
-        query.dispatch(port).map_err(Error::Sbroad)?;
+            query.dispatch(port).map_err(Error::Sbroad)?;
+            Ok(())
+        })??;
         Ok(())
     }
 }
@@ -743,17 +752,15 @@ pub unsafe extern "C" fn proc_sql_dispatch(
     mut ctx: FunctionCtx,
     args: FunctionArgs,
 ) -> ::std::os::raw::c_int {
+    // All arguments should be copied into the rust memory to
+    // survive possible fiber switch.
     let bind_args = match args.decode::<DispatchArgs>() {
         Ok(v) => v,
         Err(e) => return report("", Error::from(e)),
     };
 
-    // All arguments should be copied into the rust memory to
-    // survive possible fiber switch.
-    let result = with_sql_execution_guard(|| {
-        let mut port = PicoPortC::from(ctx.mut_port_c());
-        parse_and_dispatch(&bind_args.pattern, bind_args.params, None, None, &mut port)
-    });
+    let mut port = PicoPortC::from(ctx.mut_port_c());
+    let result = parse_and_dispatch(&bind_args.pattern, bind_args.params, None, None, &mut port);
 
     match result {
         Ok(_) => return 0,
@@ -2722,30 +2729,30 @@ pub unsafe extern "C" fn proc_sql_execute(
     mut ctx: FunctionCtx,
     func_args: FunctionArgs,
 ) -> ::std::os::raw::c_int {
+    // All arguments should be copied into the rust memory to
+    // survive possible fiber switch.
     let args = match func_args.decode::<ExecArgs>() {
         Ok(args) => args,
         Err(e) => return report("", Error::from(e)),
     };
 
-    // All arguments should be copied into the rust memory to
-    // survive possible fiber switch.
-    with_sql_execution_guard(|| {
+    let msg = match ProtocolMessage::decode_from_bytes(args.data.as_slice()) {
+        Ok(msg) => msg,
+        Err(e) => return report("", Error::other(e)),
+    };
+
+    let request_id = match runtime_owner_key(msg.request_id) {
+        Ok(request_id) => request_id,
+        Err(e) => return report("", Error::Sbroad(e)),
+    };
+    match with_sql_runtime_limit(request_id, || {
         let mut port = PicoPortC::from(ctx.mut_port_c());
 
-        let query_type =
-            // TODO: can we reuse it?
-            match ProtocolMessage::decode_from_bytes(args.data.as_slice()) {
-                Ok(msg) => {
-                    let query_type = match msg.msg_type {
-                        ProtocolMessageType::Dql => "dql",
-                        ProtocolMessageType::Dml(_) | ProtocolMessageType::LocalDml(_) => "dml",
-                        ProtocolMessageType::Block => "block",
-                    };
-                    query_type
-                }
-                Err(e) => return report("", Error::other(e)),
-            };
-
+        let query_type = match msg.msg_type {
+            ProtocolMessageType::Dql => "dql",
+            ProtocolMessageType::Dml(_) | ProtocolMessageType::LocalDml(_) => "dml",
+            ProtocolMessageType::Block => "block",
+        };
         let rc = proc_sql_execute_impl(args, &mut port);
 
         let result = if rc == 0 { "ok" } else { "err" };
@@ -2762,7 +2769,10 @@ pub unsafe extern "C" fn proc_sql_execute(
         }
 
         rc
-    })
+    }) {
+        Ok(rc) => rc,
+        Err(e) => report("", Error::Sbroad(e)),
+    }
 }
 
 struct QueryMetaRequest<'q> {

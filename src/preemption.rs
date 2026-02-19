@@ -5,39 +5,10 @@ use crate::config::{
 use crate::metrics;
 use crate::tarantool::VdbeYieldArgs;
 use sql::executor::preemption::{SchedulerMetrics, SchedulerOptions};
-use std::cell::Cell;
 use std::time::Duration;
 use tarantool::clock::monotonic64;
 use tarantool::fiber;
 use tarantool::transaction::is_in_transaction;
-
-thread_local!(static SQL_EXECUTION_GUARD: Cell<Option<fiber::FiberId>> = const { Cell::new(None) });
-
-fn acquire_sql_execution_guard() {
-    SQL_EXECUTION_GUARD.with(|guard| {
-        let current_fid = fiber::id();
-        match guard.get() {
-            Some(fid) if fid == current_fid => {}
-            None => guard.set(Some(current_fid)),
-            _ => yield_sql_execution(),
-        }
-    });
-}
-
-fn release_sql_execution_guard() {
-    SQL_EXECUTION_GUARD.with(|guard| guard.set(None));
-}
-
-#[inline(always)]
-pub(crate) fn with_sql_execution_guard<F, R>(f: F) -> R
-where
-    F: FnOnce() -> R,
-{
-    acquire_sql_execution_guard();
-    let result = f();
-    release_sql_execution_guard();
-    result
-}
 
 #[inline(always)]
 pub(crate) fn yield_sql_execution() {

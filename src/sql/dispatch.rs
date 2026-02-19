@@ -231,6 +231,7 @@ pub(crate) fn block_dispatch<'p>(
     metadata: Vec<MetadataColumn>,
     block: BlockExecData,
     buckets: &Buckets,
+    request_id: &str,
     timeout: u64,
     tier: Option<&str>,
 ) -> Result<(), SbroadError> {
@@ -288,9 +289,6 @@ pub(crate) fn block_dispatch<'p>(
             })?;
 
             let mut tb = TupleBuilder::rust_allocated();
-            // Every protocol message must have some request id,
-            // but blocks don't use them so it's OK to pass a random value.
-            let request_id = "XXXX";
             write_block_packet(&mut tb, request_id, &data)
                 .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
             let tuple = tb

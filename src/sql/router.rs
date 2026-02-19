@@ -567,6 +567,7 @@ impl Vshard for Tier {
         metadata: Vec<MetadataColumn>,
         block: BlockExecData,
         buckets: &Buckets,
+        request_id: &str,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
         block_dispatch(
@@ -574,6 +575,7 @@ impl Vshard for Tier {
             metadata,
             block,
             buckets,
+            request_id,
             DEFAULT_QUERY_TIMEOUT,
             self.name().as_deref(),
         )
@@ -626,6 +628,7 @@ impl Vshard for &Tier {
         metadata: Vec<MetadataColumn>,
         block: BlockExecData,
         buckets: &Buckets,
+        request_id: &str,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
         block_dispatch(
@@ -633,6 +636,7 @@ impl Vshard for &Tier {
             metadata,
             block,
             buckets,
+            request_id,
             DEFAULT_QUERY_TIMEOUT,
             self.name().as_deref(),
         )

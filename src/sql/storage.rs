@@ -614,6 +614,7 @@ impl Vshard for StorageRuntime {
         _metadata: Vec<MetadataColumn>,
         _block: BlockExecData,
         _buckets: &Buckets,
+        _request_id: &str,
         _port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
         return Err(SbroadError::Other(

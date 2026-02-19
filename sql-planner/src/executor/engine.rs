@@ -463,6 +463,7 @@ pub trait Vshard {
         metadata: Vec<MetadataColumn>,
         block: BlockExecData,
         buckets: &Buckets,
+        request_id: &str,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError>;
 
