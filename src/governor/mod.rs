@@ -14,9 +14,9 @@ use crate::proc_name;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::replicaset::Replicaset;
 use crate::rpc;
+use crate::rpc::before_online::proc_before_online;
 use crate::rpc::ddl_apply::proc_apply_schema_change;
 use crate::rpc::disable_service::proc_disable_service;
-use crate::rpc::enable_all_plugins::proc_enable_all_plugins;
 use crate::rpc::enable_plugin::proc_enable_plugin;
 use crate::rpc::enable_service::proc_enable_service;
 use crate::rpc::load_plugin_dry_run::proc_load_plugin_dry_run;
@@ -818,8 +818,8 @@ impl Loop {
                     async {
                         let mut fs = FuturesUnordered::new();
                         for (instance_name, dml) in targets_batch {
-                            tlog!(Info, "calling proc_enable_all_plugins"; "instance_name" => %instance_name);
-                            let resp = pool.call(&instance_name, proc_name!(proc_enable_all_plugins), &rpc, plugin_rpc_timeout)?;
+                            tlog!(Info, "calling proc_before_online"; "instance_name" => %instance_name);
+                            let resp = pool.call(&instance_name, proc_name!(proc_before_online), &rpc, plugin_rpc_timeout)?;
                             fs.push(async move { (instance_name, dml, resp.await) });
                         }
 
@@ -834,7 +834,7 @@ impl Loop {
                                 Err(e) => {
                                     let info = last_step_info.on_err_instance(&instance_name);
                                     let streak = info.streak;
-                                    tlog!(Warning, "failed calling proc_enable_all_plugins (fail streak: {streak}): {e}"; "instance_name" => %instance_name);
+                                    tlog!(Warning, "failed calling proc_before_online (fail streak: {streak}): {e}"; "instance_name" => %instance_name);
                                     if first_error.is_none() {
                                         first_error = Some(e);
                                     }

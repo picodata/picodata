@@ -1217,8 +1217,8 @@ pub mod stage {
             pub targets_batch: Vec<(InstanceName, Dml)>,
             /// This is going to be the new current state of the instances. Only used for logging.
             pub new_current_state: &'static str,
-            /// Request to call [`rpc::enable_all_plugins::proc_enable_all_plugins`] on `targets`.
-            pub rpc: rpc::enable_all_plugins::Request,
+            /// Request to call [`rpc::before_online::proc_before_online`] on `targets`.
+            pub rpc: rpc::before_online::Request,
             /// Update instance request which translates into a global DML operation
             /// which updates `current_state` to `Online` in table `_pico_instance` for a given instance.
             pub predicate: cas::Predicate,
@@ -1763,12 +1763,12 @@ pub fn handle_instances_becoming_online<'i>(
     let common_ranges = common_ranges.expect("is set if targets not empty");
 
     // rpc params are wrapped into another rpc params because
-    // `proc_enable_all_plugins` is considered softly deprecated
-    let rpc = rpc::enable_all_plugins::Request(rpc::before_online::Request {
+    // `proc_before_online` is considered softly deprecated
+    let rpc = rpc::before_online::Request {
         term,
         applied,
         timeout: sync_timeout,
-    });
+    };
 
     let predicate = cas::Predicate::new(applied, common_ranges.into_vec());
 
