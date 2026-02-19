@@ -37,6 +37,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Introduce `pico_query_metadata` option for getting distribution key metadata.
 - Introduce `sql_preemption_opcode_max` to control the VDBE opcode interval
   between execution time checks when `sql_preemption` is enabled.
+- New ALTER SYSTEM parameter `sql_runtime_concurrency_max` (default: `1`)
+  limits the number of simultaneously executing SQL requests per instance.
 - Support cluster update to next major version (26.1.0).
 - Support compatibility between the next major Picodata version and older plugin versions.
 - Add support for `EXPLAIN (RAW)` for queries that fail at local sql execution stage.

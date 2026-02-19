@@ -375,6 +375,41 @@ def test_alter_system_sql_storage_cache_count_max(cluster: Cluster):
         instance.sql(f"ALTER SYSTEM SET {sql_storage_cache_count_max} = {bad_value}")
 
 
+def test_alter_system_sql_runtime_concurrency_max(cluster: Cluster):
+    instance = cluster.add_instance()
+    db_config = instance.sql("""
+                SELECT key, value FROM _pico_db_config
+                WHERE key='sql_runtime_concurrency_max'
+                """)
+    assert db_config == [["sql_runtime_concurrency_max", 50]]
+
+    instance.sql("ALTER SYSTEM SET sql_runtime_concurrency_max = 4")
+    assert instance.sql("SELECT key, value FROM _pico_db_config WHERE key = 'sql_runtime_concurrency_max'") == [
+        ["sql_runtime_concurrency_max", 4]
+    ]
+
+    bad_value = 0
+    with pytest.raises(
+        TarantoolError,
+        match="""invalid value for 'sql_runtime_concurrency_max': value must be between 1 and 9223372036854775807""",
+    ):
+        instance.sql(f"ALTER SYSTEM SET sql_runtime_concurrency_max = {bad_value}")
+
+    bad_value = -1
+    with pytest.raises(
+        TarantoolError,
+        match="""invalid value for 'sql_runtime_concurrency_max': expected unsigned, got integer""",
+    ):
+        instance.sql(f"ALTER SYSTEM SET sql_runtime_concurrency_max = {bad_value}")
+
+    bad_value = False
+    with pytest.raises(
+        TarantoolError,
+        match="""invalid value for 'sql_runtime_concurrency_max': expected unsigned, got boolean""",
+    ):
+        instance.sql(f"ALTER SYSTEM SET sql_runtime_concurrency_max = {bad_value}")
+
+
 def test_alter_system_motion_row_param(cluster: Cluster):
     instance = cluster.add_instance(init_replication_factor=2)
     i2 = cluster.add_instance()

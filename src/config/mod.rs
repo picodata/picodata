@@ -56,6 +56,7 @@ pub(crate) const DEFAULT_SQL_PREEMPTION: bool = false;
 pub(crate) const DEFAULT_SQL_PREEMPTION_INTERVAL_US: u64 = 500;
 pub(crate) const DEFAULT_SQL_PREEMPTION_OPCODE_MAX: u64 = 1024;
 pub(crate) const DEFAULT_SQL_LOG: bool = false;
+pub(crate) const DEFAULT_SQL_RUNTIME_CONCURRENCY_MAX: u64 = 50;
 
 pub use ::sql::ir::types::DomainType as SbroadType;
 
@@ -1838,6 +1839,12 @@ pub struct AlterSystemParameters {
     #[introspection(config_default = 100000)]
     pub pg_portal_max: u64,
 
+    /// Maximum number of SQL runtime requests that can execute concurrently
+    /// on a single instance.
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = DEFAULT_SQL_RUNTIME_CONCURRENCY_MAX)]
+    pub sql_runtime_concurrency_max: u64,
+
     /// Raft snapshot will be sent out in chunks not bigger than this threshold.
     /// Note: actual snapshot size may exceed this threshold. In most cases
     /// it will just add a couple of dozen metadata bytes. But in extreme
@@ -2175,6 +2182,7 @@ pub const SHREDDING_PARAM_NAME: &str = "shredding";
 pub struct DynamicConfigProviders {
     pub pg_statement_max: AtomicObserverProvider<usize>,
     pub pg_portal_max: AtomicObserverProvider<usize>,
+    pub sql_runtime_concurrency_max: AtomicObserverProvider<u64>,
     pub sql_vdbe_opcode_max: AtomicObserverProvider<i64>,
     pub sql_motion_row_max: AtomicObserverProvider<i64>,
     pub read_preference: AtomicObserverProvider<u8>,
@@ -2189,6 +2197,7 @@ impl DynamicConfigProviders {
         Self {
             pg_statement_max: AtomicObserverProvider::new(),
             pg_portal_max: AtomicObserverProvider::new(),
+            sql_runtime_concurrency_max: AtomicObserverProvider::new(),
             sql_vdbe_opcode_max: AtomicObserverProvider::new(),
             sql_motion_row_max: AtomicObserverProvider::new(),
             read_preference: AtomicObserverProvider::new(),
@@ -2302,6 +2311,19 @@ pub fn validate_alter_system_parameter_value<'v>(
             .expect("invalid value for sql_storage_cache_count_max");
 
         if cache_count < 1 {
+            return Err(Error::other(format!(
+                "invalid value for '{name}': value must be between 1 and {}",
+                i64::MAX,
+            )));
+        }
+    }
+
+    if name == system_parameter_name!(sql_runtime_concurrency_max) {
+        let concurrency = casted_value
+            .integer()
+            .expect("invalid value for sql_runtime_concurrency_max");
+
+        if concurrency < 1 {
             return Err(Error::other(format!(
                 "invalid value for '{name}': value must be between 1 and {}",
                 i64::MAX,
@@ -2527,6 +2549,10 @@ pub fn apply_parameter(
         let value = v.as_u64().expect("type is already checked") as _;
         // Cache the value.
         DYNAMIC_CONFIG.pg_statement_max.update(value);
+    } else if name == system_parameter_name!(sql_runtime_concurrency_max) {
+        let value = v.as_u64().expect("type already checked");
+        // Cache the value.
+        DYNAMIC_CONFIG.sql_runtime_concurrency_max.update(value);
     } else if name == system_parameter_name!(sql_vdbe_opcode_max) {
         let value = v.as_u64().expect("type is already checked");
         // The only way for this value to get into the table is via SQL and it will be checked to fit into i64, so cast is safe.
