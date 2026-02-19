@@ -11,7 +11,6 @@ use crate::ir::tree::relation::RelationalIterator;
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
 use crate::ir::Plan;
 use ahash::AHashMap;
-use rand::{thread_rng, Rng};
 use smol_str::format_smolstr;
 use std::collections::{HashMap, HashSet};
 
@@ -236,8 +235,7 @@ fn disable_serialize_as_empty_opcode(
 }
 
 pub fn get_random_bucket(runtime: &impl Vshard) -> Buckets {
-    let mut rng = thread_rng();
-    let bucket_id: u64 = rng.gen_range(1..=runtime.bucket_count());
+    let bucket_id: u64 = rand::random_range(1..=runtime.bucket_count());
     let bucket_set: HashSet<u64, RepeatableState> = HashSet::from_iter(vec![bucket_id]);
     Buckets::Filtered(bucket_set)
 }

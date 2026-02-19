@@ -4111,7 +4111,7 @@ where
                     let mut col_name = normalize_name_from_sql(first_identifier);
 
 					// simple id, without reference continuation or function invocation continuation
-					let is_simple_id = inner_pairs.len() == 0;
+					let is_simple_id = inner_pairs.is_empty();
 
                     if !is_simple_id {
                         let continuation = inner_pairs.next().expect("Continuation expected after Identifier");

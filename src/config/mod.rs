@@ -33,6 +33,7 @@ use ::sql::ir::options;
 use ::sql::ir::value::{EncodedValue, Value};
 use observer::AtomicObserverProvider;
 use ordered_hash_map::OrderedHashMap;
+use rand::TryRng;
 use serde_yaml::Value as YamlValue;
 use std::collections::HashMap;
 use std::convert::{From, Into};
@@ -2036,14 +2037,14 @@ pub struct AlterSystemParameters {
 }
 
 fn generate_secure_token() -> String {
-    use rand::rngs::OsRng;
-    use rand::RngCore;
+    use rand::rngs::SysRng;
 
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    let mut rng = OsRng;
+    let mut rng = SysRng;
     let mut bytes = [0u8; 16];
 
-    rng.fill_bytes(&mut bytes);
+    rng.try_fill_bytes(&mut bytes)
+        .expect("failed to generate random out of OS random source");
 
     bytes
         .iter()

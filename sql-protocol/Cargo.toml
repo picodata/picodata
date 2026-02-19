@@ -1,5 +1,5 @@
 [package]
-name = "sql_protocol"
+name = "sql-protocol"
 version.workspace = true
 rust-version.workspace = true
 edition.workspace = true
@@ -9,4 +9,3 @@ license-file.workspace = true
 rmp = { workspace = true }
 rmp-serde.workspace = true
 thiserror = { workspace = true }
-

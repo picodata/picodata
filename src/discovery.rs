@@ -299,7 +299,7 @@ mod tests {
             .zip(std::iter::repeat(HashSet::new()))
             .collect();
 
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         #[derive(Debug)]
         enum Event {
@@ -310,7 +310,7 @@ mod tests {
         let mut network: Vec<Event> = [].into();
 
         while done.len() != len {
-            if rng.gen_bool(0.5) {
+            if rand::random_bool(0.5) {
                 let src = addrs.choose(&mut rng).unwrap();
                 if !pending_requests.get(src).unwrap().is_empty() {
                     continue;
@@ -404,10 +404,10 @@ mod tests {
 
     #[test]
     fn test_discovery_4() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..999 {
             // at least one peer must be votable
-            let mut can_vote = vec![true, rng.gen_bool(0.5), rng.gen_bool(0.5)];
+            let mut can_vote = vec![true, rng.random_bool(0.5), rng.random_bool(0.5)];
             can_vote.shuffle(&mut rng);
             let instances = [
                 (

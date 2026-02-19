@@ -4,6 +4,7 @@ version = "25.6.0"
 edition = "2021"
 license = "BSD-2-Clause"
 description = "Toolkit to build plugins for picodata.io DBMS"
+repository.workspace = true
 
 [lib]
 crate-type = ["lib"]
@@ -16,14 +17,14 @@ rmp = "0.8"
 rmp-serde = "1.1"
 rmpv = { version = "1.0", features = ["with-serde"] }
 serde = "1.0"
-smol_str = "0.2"
+smol_str = "0.3"
 tarantool = { path = "../tarantool/tarantool", version = "10.2", features = ["picodata", "test", "tokio_components"] }
 tarolog = "0.5"
-thiserror = "1.0"
+thiserror = "2"
 tros = { version = "0.5", features = ["picodata"] }
 
 [dev-dependencies]
-reqwest = "0.12"
+reqwest = "0.13"
 serde_json = "1.0"
 threadpool = "1.8"
 

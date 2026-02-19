@@ -49,11 +49,18 @@ pub const LOCK_RELEASE_MINIMUM_TIMEOUT: Duration = Duration::from_secs(5);
 pub enum PluginError {
     #[error("Plugin `{0}` already exists")]
     AlreadyExist(PluginIdentifier),
-    #[error("Failed to install plugin `{0}`: {}", DisplaySomeOrDefault(.1, "unknown reason"))]
+    #[error(
+        "Failed to install plugin `{0}`: {reason}", reason = DisplaySomeOrDefault(.1, "unknown reason")
+    )]
     InstallationAborted(PluginIdentifier, Option<ErrorInfo>),
-    #[error("Failed to enable plugin `{0}`: {}", DisplaySomeOrDefault(.1, "unknown reason"))]
+    #[error(
+        "Failed to enable plugin `{0}`: {reason}", reason = DisplaySomeOrDefault(.1, "unknown reason")
+    )]
     EnablingAborted(PluginIdentifier, Option<ErrorInfo>),
-    #[error("Failed to update topology for plugin `{0}`: {}", DisplaySomeOrDefault(.1, "unknown reason"))]
+    #[error(
+        "Failed to update topology for plugin `{0}`: {reason}",
+        reason = DisplaySomeOrDefault(.1, "unknown reason")
+    )]
     TopologyUpdateAborted(PluginIdentifier, Option<ErrorInfo>),
     #[error("Error while discovering manifest for plugin `{0}`: {1}")]
     ManifestNotFound(String, io::Error),
@@ -98,8 +105,8 @@ pub enum PluginError {
     #[error("Invalid configuration value (should be a json string): {0}")]
     ConfigDecode(serde_json::Error),
     #[error(
-        "Picoplugin version {0} used to build a plugin is incompatible with picodata version {}",
-        PICODATA_VERSION
+        "Picoplugin version {0} used to build a plugin is incompatible with picodata version {version}",
+        version = PICODATA_VERSION
     )]
     IncompatiblePicopluginVersion(String),
 }

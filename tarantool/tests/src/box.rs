@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::RngExt;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use tarantool::error::{IntoBoxError, TarantoolErrorCode};
@@ -234,9 +234,9 @@ pub fn len() {
 pub fn random() {
     let space = Space::find("test_s2").unwrap();
     let idx = space.primary_key();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
-    let result = idx.random(rng.gen()).unwrap();
+    let result = idx.random(rng.random()).unwrap();
     assert!(result.is_some());
 
     let output = result.unwrap().decode::<S2Record>().unwrap();

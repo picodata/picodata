@@ -121,7 +121,6 @@ macro_rules! has_states {
 mod tests {
     use super::super::Instance;
     use super::StateVariant;
-    use crate::has_states;
 
     #[test]
     fn has_states() {

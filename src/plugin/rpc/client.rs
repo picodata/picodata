@@ -380,7 +380,7 @@ fn resolve_rpc_target(
     };
 
     // TODO: find a better strategy then just the random one
-    let random_index = rand::random::<usize>() % candidates.len();
+    let random_index = rand::random_range(1..=candidates.len());
     let instance_name = candidates[random_index];
     return Ok(instance_name.into());
 }

@@ -29,7 +29,7 @@ const REDIRECT_RPC_TIMEOUT: Duration = Duration::from_secs(10);
 pub fn render_version() -> String {
     format!(
         "picodata {}, {}, {}\ntarantool {}, {}\n",
-        PICODATA_VERSION.to_string(),
+        PICODATA_VERSION,
         env!("PICO_LINKAGE"),
         env!("PICO_BUILD_PROFILE"),
         crate::tarantool::version(),

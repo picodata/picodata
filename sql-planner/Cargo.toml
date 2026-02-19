@@ -1,5 +1,5 @@
 [package]
-name = "sql-core"
+name = "sql-planner"
 version = "0.1.0"
 rust-version.workspace = true
 authors = ["Picodata"]
@@ -27,9 +27,9 @@ rmp = { workspace = true }
 rmp-serde = { workspace = true }
 rmpv = { workspace = true }
 serde = { workspace = true, features = ["derive", "rc"] }
-sql_protocol = { workspace = true }
+sql-protocol = { workspace = true }
 serde_bytes = { workspace = true }
-smol_str = { version = "0.2", features = ["serde"] }
+smol_str = { workspace = true }
 twox-hash = "2.1"
 sqlformat = "0.4"
 sql-type-system = { path = "../sql-type-system" }
@@ -43,7 +43,7 @@ smallvec = { workspace = true }
 pretty_assertions = { workspace = true }
 serde_yaml = "0.9.34"
 insta = "1.42"
-tarantool = { workspace = true, features = ["standalone_decimal", "extra_impls"] }
+tarantool = { workspace = true, features = ["standalone_decimal","extra_impls"] }
 
 [lib]
 name = "sql"

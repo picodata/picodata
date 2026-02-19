@@ -4,6 +4,7 @@ version = "25.6.0"
 edition = "2021"
 license = "BSD-2-Clause"
 description = "Procedural macros for picodata-plugin crate"
+repository.workspace = true
 
 [lib]
 proc-macro = true

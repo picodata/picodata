@@ -119,7 +119,7 @@ pub fn calculate_migration_hash_async(migration: &MigrationInfo) -> traft::Resul
             context.consume(&buffer[..n]);
         }
 
-        let digest = context.compute();
+        let digest = context.finalize();
         Ok(digest)
     }
 
