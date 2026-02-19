@@ -131,7 +131,7 @@ lint-rs:
 
 	cargo fmt --check
 
-	RUSTFLAGS="-Dwarnings -Adeprecated" cargo check $(LOCKED) $(MAKE_JOBSERVER_ARGS)
+	RUSTFLAGS="-Dwarnings -Adeprecated" cargo check --tests --all --benches $(LOCKED) $(MAKE_JOBSERVER_ARGS)
 
 	cargo clippy --version
 	cargo clippy \
