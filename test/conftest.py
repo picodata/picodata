@@ -930,6 +930,8 @@ class Instance:
             # Be idempotent
             return
 
+        log.info(f"Instance.kill({self})")
+
         pid = self.process.pid
         with suppress(ProcessLookupError, PermissionError):
             os.killpg(pid, signal.SIGKILL)
@@ -1073,7 +1075,7 @@ class Instance:
             # Be idempotent
             return None
 
-        log.info(f"termintating instance {self}")
+        log.info(f"Instance.terminate({self}, kill_after_seconds={kill_after_seconds}) termintating instance ...")
 
         with suppress(ProcessLookupError, PermissionError):
             os.killpg(self.process.pid, signal.SIGCONT)
@@ -1138,7 +1140,7 @@ class Instance:
             # Be idempotent
             return
 
-        log.info(f"{self} starting...")
+        log.info(f"Instance.start({self}) starting...")
 
         if peers is not None:
             self.peers = list(map(lambda i: i.iproto_listen, peers))
@@ -1621,6 +1623,8 @@ class Instance:
             AssertionError: if doesn't succeed
         """
 
+        log.info(f"Instance.wait_online({self})")
+
         if self.process is None:
             raise ProcessDead("process was not started")
 
@@ -1838,6 +1842,8 @@ Last governor error is:
         old_step_counter: int | None = None,
         timeout: int | float = 10,
     ) -> int:
+        log.info(f"Instance.wait_governor_status({self}, '{expected_status}', old_step_counter={old_step_counter})")
+
         assert expected_status != "not a leader", "use another function"
 
         def impl():
@@ -1857,6 +1863,8 @@ Last governor error is:
         return Retriable(timeout=timeout, rps=1, fatal=NotALeader).call(impl)
 
     def promote_or_fail(self):
+        log.info(f"Instance.promote_or_fail({self})")
+
         attempt = 0
 
         def make_attempt(timeout, rps):
@@ -2038,9 +2046,7 @@ Last governor error is:
         to: VersionAlias,
         fail: bool = False,
     ) -> None:
-        print(
-            f"instance_name={self.name}: changing version [from={self.runtime.absolute_version}, to={to}], should fail? {fail}"
-        )
+        log.info(f"Instance.change_version({self.name}, from={self.runtime.absolute_version}, to={to}, fail={fail})")
 
         assert self.registry
 
@@ -2356,6 +2362,7 @@ class Cluster:
         self.peer = None
 
     def wait_online(self, timeout: int = WAIT_ONLINE_TIMEOUT) -> list[Instance]:
+        log.info(f"Cluster.wait_online(timeout={timeout})")
         for instance in self.instances:
             instance.start()
 
@@ -2528,10 +2535,12 @@ class Cluster:
         instance.fail_to_start()
 
     def kill(self):
+        log.info("Cluster.kill()")
         for instance in self.instances:
             instance.kill()
 
     def terminate(self):
+        log.info("Cluster.terminate()")
         errors = []
         for instance in self.instances:
             try:
@@ -2551,6 +2560,8 @@ class Cluster:
         force: bool = False,
         timeout: int = 30,
     ):
+        log.info(f"Cluster.expel({target})")
+
         peer = self.leader(peer)
         assert self.service_password_file, "cannot expel without pico_service password"
 
