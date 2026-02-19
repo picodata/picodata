@@ -53,6 +53,7 @@ from framework.rolling.registry import Registry
 from framework.rolling.runtime import Runtime
 from framework.rolling.version import VersionAlias
 from framework.util.build import perform_cargo_build
+from framework.util.path import project_root_path
 from framework.util import parse_version_exc
 from framework.util import BASE_HOST
 
@@ -194,6 +195,12 @@ def pytest_addoption(parser: pytest.Parser):
         default=None,
         help="Seed for Python's `random` module",
     )
+    parser.addoption(
+        "--collect-required-rolling-versions",
+        action="store_true",
+        default=False,
+        help="Write the list of collected software versions required for rolling upgrade to `required_rolling_versions.txt` file",  # noqa: E501
+    )
 
 
 def pytest_configure(config: pytest.Config):
@@ -225,11 +232,42 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     # https://docs.pytest.org/en/7.4.x/how-to/writing_hook_functions.html
     # https://docs.pytest.org/en/7.4.x/example/simple.html#control-skipping-of-tests-according-to-command-line-option
 
-    if not config.getoption("--with-webui"):
+    with_webui = config.getoption("--with-webui")
+    if not with_webui:
         skip = pytest.mark.skip(reason="run: pytest --with-webui")
-        for item in items:
-            if "webui" in item.keywords:
-                item.add_marker(skip)
+
+    collect_versions = config.getoption("--collect-required-rolling-versions")
+    if collect_versions:
+        collected_versions = set()
+
+    for item in items:
+        if not with_webui and "webui" in item.keywords:
+            item.add_marker(skip)
+
+        if collect_versions:
+            for marker in item.iter_markers(name="required_rolling_versions"):
+                required_versions = marker.kwargs.get("versions", [])
+                collected_versions.update(required_versions)
+
+    if collect_versions:
+        setattr(config, "required_rolling_versions", collected_versions)
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus: pytest.ExitCode, config: pytest.Config):
+    if config.getoption("--collect-required-rolling-versions"):
+        # TODO(kbezuglyi): Once <picodata!2677> lands, this should use `Versions`
+        # sourced from the new register instead of `VersionAlias`. Aliases
+        # alone carry no value for CI - only the resolved versions do.
+        aliases: set[VersionAlias] = getattr(config, "required_rolling_versions", set())
+        versions: list[str] = sorted(list(map(str, aliases)))
+
+        message = f"collected versions for rolling upgrade tests: [{', '.join(versions)}]"
+        terminalreporter.write_line(message)
+
+        line = "\n".join(versions)
+        path = project_root_path() / "required_rolling_versions.txt"
+        with open(path, "w") as file:
+            file.write(line)
 
 
 @pytest.fixture(scope="session")

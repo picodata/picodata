@@ -38,6 +38,9 @@ test/manual/sql/*.json
 .direnv
 .envrc
 
+# Optional data collection from tests.
+required_rolling_versions.txt
+
 # IDE configuration folders
 .idea/
 .vscode/

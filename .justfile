@@ -228,3 +228,8 @@ sort-exports:
 [doc("build binaries needed for rolling upgrade tests")]
 build-rolling *ARGS:
 	poetry run python tools/build_rolling_binaries.py {{ ARGS }}
+
+[group("misc")]
+[doc("collect picodata versions needed for rolling upgrade tests")]
+collect-required-rolling-versions *ARGS:
+	poetry run pytest --collect-only --collect-required-rolling-versions {{ ARGS }}

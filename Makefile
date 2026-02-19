@@ -247,3 +247,7 @@ flaky-finder:
 	echo "Sending report update via bot..."
 	curl "https://api.telegram.org/bot${FLAKY_INFORMER_BOT_TOKEN}/editMessageText?chat_id=$(TG_CHAT_ID)&message_id=$(TG_MESSAGE_ID)&parse_mode=Markdown" \
 		--data-urlencode "text@report.txt" --data-urlencode "link_preview_options={\"url\":\"$(CI_JOB_URL)\"}"
+
+.PHONY: collect-versions
+collect-required-rolling-versions:
+	poetry run pytest --collect-only --collect-required-rolling-versions

@@ -67,6 +67,13 @@ def factory(
 
 
 @pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
+        Version.BEFORELAST_MINOR,
+        Version.PREVIOUS_MINOR,
+        Version.CURRENT,
+    ]
+)
 def test_node_by_node_sequential_upgrade_success(factory: Factory):
     """
     Verifies that upgrading node by node works smoothly:
@@ -99,6 +106,12 @@ def test_node_by_node_sequential_upgrade_success(factory: Factory):
 
 
 @pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
+        Version.BEFORELAST_MINOR,
+        Version.CURRENT,
+    ]
+)
 def test_node_by_node_leaping_upgrade_failure(factory: Factory):
     """
     Verifies that leap upgrading node by node fails:
@@ -121,6 +134,12 @@ def test_node_by_node_leaping_upgrade_failure(factory: Factory):
 
 
 @pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
+        Version.PREVIOUS_MINOR,
+        Version.CURRENT,
+    ]
+)
 def test_successful_rollback_on_partial_upgrade_failure(factory: Factory):
     """
     Checks that a partial upgrade can be safely rolled back:
@@ -163,6 +182,12 @@ def test_successful_rollback_on_partial_upgrade_failure(factory: Factory):
 
 
 @pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
+        Version.PREVIOUS_MINOR,
+        Version.CURRENT,
+    ]
+)
 def test_reject_older_node_joining_newer_cluster(factory: Factory):
     """
     Ensure an older node cannot rejoin a newer cluster.
@@ -188,6 +213,12 @@ def test_reject_older_node_joining_newer_cluster(factory: Factory):
 
 
 @pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
+        Version.PREVIOUS_MINOR,
+        Version.CURRENT,
+    ]
+)
 def test_successful_upgrade_then_failed_downgrade(factory: Factory):
     """
     Test upgrade followed by a failed downgrade.
@@ -218,6 +249,12 @@ def test_successful_upgrade_then_failed_downgrade(factory: Factory):
 
 
 @pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
+        Version.PREVIOUS_MINOR,
+        Version.CURRENT,
+    ]
+)
 def test_upgrade_25_5_to_25_6_check_procs(factory: Factory):
     cluster = factory(of=Version.PREVIOUS_MINOR)
     cluster.change_version(to=Version.CURRENT)
@@ -232,6 +269,12 @@ def test_upgrade_25_5_to_25_6_check_procs(factory: Factory):
 
 
 @pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
+        Version.PREVIOUS_MINOR,
+        Version.CURRENT,
+    ]
+)
 def test_upgrade_25_5_to_25_6_check_opts(factory: Factory):
     cluster = factory(of=Version.PREVIOUS_MINOR)
     cluster.change_version(to=Version.CURRENT)
@@ -258,6 +301,12 @@ def test_upgrade_25_5_to_25_6_check_opts(factory: Factory):
 
 
 @pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
+        Version.PREVIOUS_MINOR,
+        Version.CURRENT,
+    ]
+)
 def test_sentinel_working_during_upgrade(
     registry: Registry,
     cluster: Cluster,
@@ -350,6 +399,12 @@ def base_version(v: str) -> str:
 
 # This test checks upgrade from 25.5.2 or lower to 25.5.3 or greater.
 # We can drop it once we don't have any clients on picodata 25.5.2 or older.
+@pytest.mark.required_rolling_versions(
+    versions=[
+        Version.PREVIOUS_MINOR,
+        Version.CURRENT,
+    ]
+)
 @pytest.mark.xdist_group(name="rolling")
 def test_ddl_catchup_by_log_during_upgrade(
     registry: Registry,
@@ -429,6 +484,12 @@ cluster:
 
 @pytest.mark.webui
 @pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
+        Version.PREVIOUS_MINOR,
+        Version.CURRENT,
+    ]
+)
 def test_webui_during_upgrade(
     registry: Registry,
     cluster: Cluster,
@@ -514,6 +575,12 @@ cluster:
 
 
 @pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
+        Version.PREVIOUS_MINOR,
+        Version.CURRENT,
+    ]
+)
 def test_expel_working_during_upgrade(
     registry: Registry,
     cluster: Cluster,
@@ -580,6 +647,13 @@ cluster:
 
 
 @pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
+        Version.BEFORELAST_MINOR,
+        Version.PREVIOUS_MINOR,
+        Version.CURRENT,
+    ]
+)
 def test_25_4_1_broken_pico_tier_migration(registry: Registry, cluster: Cluster):
     # This test validates the fix for https://git.picodata.io/core/picodata/-/issues/2683
     # For this we find a picodata version before the `26.1.0` migration that ought to fix it,
