@@ -283,6 +283,34 @@ def test_router_and_storage_cache_metrics(instance: Instance):
     instance.sql("SELECT * FROM t JOIN t t2 on t.a = t2.a")
 
 
+@pytest.mark.webui
+def test_temp_table_lock_metrics(instance: Instance) -> None:
+    instance.sql("CREATE TABLE temp_metrics (id INTEGER PRIMARY KEY, name TEXT)")
+    instance.sql("INSERT INTO temp_metrics VALUES (1, 'one')")
+
+    metrics = instance.get_metrics()
+    lease_metric = metrics.get("pico_sql_temp_table_leases")
+    assert lease_metric is not None, "pico_sql_temp_table_leases not found"
+    assert len(lease_metric.samples) == 1
+    initial_leases = lease_metric.samples[0].value
+
+    waits_metric = metrics.get("pico_sql_temp_table_lock_waits")
+    assert waits_metric is not None, "pico_sql_temp_table_lock_waits not found"
+    assert len(waits_metric.samples) == 1
+    initial_waits = waits_metric.samples[0].value
+
+    instance.sql("SELECT * FROM temp_metrics")
+
+    metrics = instance.get_metrics()
+    lease_metric = metrics.get("pico_sql_temp_table_leases")
+    assert lease_metric is not None, "pico_sql_temp_table_leases not found"
+    assert lease_metric.samples[0].value >= initial_leases + 1
+
+    waits_metric = metrics.get("pico_sql_temp_table_lock_waits")
+    assert waits_metric is not None, "pico_sql_temp_table_lock_waits not found"
+    assert waits_metric.samples[0].value == initial_waits
+
+
 def get_instance_state_metric(instance: Instance) -> Dict[str, Sample]:
     metric = instance.get_metrics()["pico_instance_state"]
     samples_by_instance_name = {}

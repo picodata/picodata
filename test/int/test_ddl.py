@@ -1745,6 +1745,7 @@ def test_operability_of_global_and_sharded_table(cluster: Cluster):
     i1.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
     i1.start()
     i1.wait_online()
+    i1.sql("ALTER SYSTEM SET sql_runtime_concurrency_max = 2")
 
     # GLOBAL TABLE
     table_name = "global_warehouse"
