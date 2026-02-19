@@ -13,8 +13,9 @@ use crate::{
     frontend::sql::get_real_function_name, ir::helpers::RepeatableState, ir::node::BlockStatement,
 };
 use std::any::Any;
-
+use std::cell::Cell;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::OnceLock;
 
 use crate::errors::SbroadError;
@@ -34,6 +35,7 @@ use super::result::MetadataColumn;
 use crate::backend::sql::ir::PatternWithParams;
 use crate::executor::vdbe::SqlStmt;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use tarantool::fiber::Mutex;
 use tarantool::space::SpaceId;
 
 pub mod helpers;
@@ -223,6 +225,8 @@ pub fn get_builtin_functions() -> &'static [Function] {
 }
 
 pub trait StorageCache {
+    type LockRef: Clone;
+
     /// Put the prepared statement with given key in cache,
     /// remembering its version.
     fn put(
@@ -233,12 +237,43 @@ pub trait StorageCache {
         motion_ids: Vec<SmolStr>,
     ) -> Result<(), SbroadError>;
 
-    /// Get the prepared statement and a list of motion ids from cache.
+    /// Get the prepared statement and corresponding temporary-table lock from cache.
     /// If the schema version for some virtual table (corresponding to some Motion)
     /// has been changed, `None` is returned.
     #[allow(clippy::ptr_arg)]
-    #[allow(clippy::type_complexity)]
-    fn get(&mut self, plan_id: &u64) -> Result<Option<(&mut SqlStmt, &[SmolStr])>, SbroadError>;
+    fn get(&mut self, plan_id: &u64) -> Result<Option<CachedStmtRef<Self::LockRef>>, SbroadError>;
+
+    /// Get or create lock for a plan. Used to serialize temporary table
+    /// lifecycle across concurrent cache misses.
+    fn get_or_create_lock(&mut self, plan_id: u64) -> Self::LockRef;
+}
+
+pub type CachedStmt = Rc<Mutex<SqlStmt>>;
+pub struct CachedStmtRef<L> {
+    pub stmt: CachedStmt,
+    pub table_lock: L,
+    in_use: Rc<Cell<usize>>,
+}
+
+impl<L> CachedStmtRef<L> {
+    pub fn new(stmt: CachedStmt, table_lock: L, in_use: Rc<Cell<usize>>) -> Self {
+        let prev = in_use.get();
+        debug_assert!(prev < usize::MAX, "cached stmt lease overflow");
+        in_use.set(prev.saturating_add(1));
+        Self {
+            stmt,
+            table_lock,
+            in_use,
+        }
+    }
+}
+
+impl<L> Drop for CachedStmtRef<L> {
+    fn drop(&mut self) {
+        let prev = self.in_use.get();
+        debug_assert!(prev > 0, "cached stmt lease underflow");
+        self.in_use.set(prev.saturating_sub(1));
+    }
 }
 
 pub type VersionMap = HashMap<u32, u64, RepeatableState>;

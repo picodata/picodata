@@ -15,7 +15,7 @@ use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::bucket::Buckets;
 use sql::executor::engine::helpers::new_table_name;
 use sql::executor::engine::helpers::vshard::get_random_bucket;
-use sql::executor::engine::{QueryCache, StorageCache, Vshard};
+use sql::executor::engine::{CachedStmt, CachedStmtRef, QueryCache, StorageCache, Vshard};
 use sql::executor::ir::{ExecutionPlan, QueryType};
 use sql::executor::lru::{Cache, EvictFn, LRUCache};
 use sql::executor::protocol::SchemaInfo;
@@ -23,7 +23,7 @@ use sql::executor::{Port, PortType};
 use sql::ir::helpers::RepeatableState;
 use sql::ir::options::Options;
 use sql::ir::ExplainType;
-use std::cell::OnceCell;
+use std::cell::{Cell, OnceCell, RefCell};
 
 use crate::metrics::{
     report_storage_cache_hit, report_storage_cache_miss, STORAGE_CACHE_STATEMENTS_ADDED_TOTAL,
@@ -48,6 +48,10 @@ use crate::schema::ADMIN_ID;
 use crate::sql::execute::{
     sql_execute, stmt_execute, LazyVirtualTableEncoder, LendingTupleIterator,
 };
+use crate::sql::lock::{
+    downgrade_temp_table_lock, lock_temp_table, new_temp_table_lock, TempTableLockRef,
+    TempTableLockWeak,
+};
 use crate::sql::port::PicoPortOwned;
 use crate::tlog;
 use sql::executor::engine::BlockExecData;
@@ -59,17 +63,92 @@ use tarantool::session::with_su;
 thread_local!(
     // OnceCell is used for interior mutability
     pub static STATEMENT_CACHE: OnceCell<Rc<Mutex<PicoStorageCache>>> = const { OnceCell::new() };
+    static PENDING_EVICTIONS: RefCell<Vec<PendingEviction>> = const { RefCell::new(Vec::new()) };
 );
+
+const DEFERRED_EVICTION_MAX_YIELDS: usize = 1024;
+
+type TableLocksMap = Rc<RefCell<HashMap<u64, TempTableLockWeak>>>;
+
+struct PendingEviction {
+    plan_id: u64,
+    in_use: Rc<Cell<usize>>,
+    stmt: CachedStmt,
+    motion_ids: Vec<SmolStr>,
+    table_lock: TempTableLockWeak,
+    table_locks: TableLocksMap,
+}
 
 pub fn init_statement_cache(count_max: usize, size_max: usize) {
     STATEMENT_CACHE.with(|cache| {
         assert!(cache.get().is_none(), "must be initialized only once");
         cache.get_or_init(|| {
             Rc::new(Mutex::new(
-                PicoStorageCache::new(count_max, size_max, Some(Box::new(evict))).unwrap(),
+                PicoStorageCache::new(count_max, size_max).unwrap(),
             ))
         });
     });
+}
+
+/// Process evictions that were deferred while the cache mutex was held.
+///
+/// Must be called after releasing the cache mutex whenever evictions may
+/// have occurred (after `put`, `adjust_count_max`, `adjust_size_max`).
+pub fn process_deferred_evictions() {
+    let pending = PENDING_EVICTIONS.with(|cell| cell.take());
+    let mut deferred = Vec::new();
+    'evictions: for eviction in pending {
+        let mut yields = 0usize;
+        while eviction.in_use.get() > 0 {
+            if yields >= DEFERRED_EVICTION_MAX_YIELDS {
+                tlog!(
+                    Warning,
+                    "deferred SQL statement eviction is still in use; postponing cleanup";
+                    "plan_id" => eviction.plan_id,
+                    "in_use" => eviction.in_use.get(),
+                    "wait_yields" => yields
+                );
+                deferred.push(eviction);
+                continue 'evictions;
+            }
+            yields += 1;
+            crate::preemption::yield_sql_execution();
+        }
+        let _stmt_guard = eviction.stmt.lock();
+        for table in &eviction.motion_ids {
+            Space::find(table.as_str()).map(|space| {
+                with_su(ADMIN_ID, || {
+                    space.drop().inspect_err(|e| {
+                        tlog!(Error, "failed to drop temporary table {table}: {e:?}")
+                    })
+                })
+            });
+        }
+        cleanup_table_lock_entry(
+            eviction.plan_id,
+            &eviction.table_lock,
+            &eviction.table_locks,
+        );
+    }
+    if !deferred.is_empty() {
+        PENDING_EVICTIONS.with(|cell| cell.borrow_mut().extend(deferred));
+    }
+}
+
+fn cleanup_table_lock_entry(
+    plan_id: u64,
+    evicted_lock: &TempTableLockWeak,
+    table_locks: &TableLocksMap,
+) {
+    let mut locks = table_locks.borrow_mut();
+    let should_remove = if let Some(current) = locks.get(&plan_id) {
+        current.ptr_eq(evicted_lock) && current.upgrade().is_none()
+    } else {
+        false
+    };
+    if should_remove {
+        locks.remove(&plan_id);
+    }
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -78,30 +157,44 @@ pub struct StorageRuntime {
     cache: Rc<Mutex<PicoStorageCache>>,
 }
 
-type StorageCacheValue = (
-    SqlStmt,
-    VersionMap,
-    HashMap<[u32; 2], u64, RepeatableState>,
-    Vec<SmolStr>,
-);
+pub(crate) struct StorageCacheEntry {
+    stmt: CachedStmt,
+    table_lock: TempTableLockRef,
+    in_use: Rc<Cell<usize>>,
+    stmt_size: usize,
+    table_versions: VersionMap,
+    index_versions: HashMap<[u32; 2], u64, RepeatableState>,
+    motion_ids: Vec<SmolStr>,
+}
 
-fn evict(_plan_id: &u64, val: &mut StorageCacheValue) -> Result<(), SbroadError> {
-    STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL.inc();
-    // Remove temporary tables from the instance.
-    for table in &val.3 {
-        Space::find(table.as_str()).map(|space| {
-            with_su(ADMIN_ID, || {
-                space
-                    .drop()
-                    .inspect_err(|e| tlog!(Error, "failed to drop temporary table {table}: {e:?}"))
-            })
+/// Build a lightweight eviction closure that defers actual cleanup.
+///
+/// The closure captures `table_locks` and pushes a `PendingEviction`
+/// into the thread-local vec for later processing outside the cache mutex.
+/// Table-lock map cleanup is done in `process_deferred_evictions`.
+fn make_evict_fn(table_locks: TableLocksMap) -> EvictFn<u64, StorageCacheEntry> {
+    Box::new(move |plan_id: &u64, val: &mut StorageCacheEntry| {
+        STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL.inc();
+
+        // Defer actual cleanup (waiting + table drops) to outside the mutex.
+        PENDING_EVICTIONS.with(|cell| {
+            cell.borrow_mut().push(PendingEviction {
+                plan_id: *plan_id,
+                in_use: Rc::clone(&val.in_use),
+                stmt: Rc::clone(&val.stmt),
+                motion_ids: std::mem::take(&mut val.motion_ids),
+                table_lock: downgrade_temp_table_lock(&val.table_lock),
+                table_locks: Rc::clone(&table_locks),
+            });
         });
-    }
-    Ok(())
+
+        Ok(())
+    })
 }
 
 pub struct PicoStorageCache {
-    pub cache: LRUCache<u64, StorageCacheValue>,
+    pub(crate) cache: LRUCache<u64, StorageCacheEntry>,
+    table_locks: TableLocksMap,
     /// Amount of memory currently used by SQL statements.
     /// NB: We track only SQL statements because they occupy the most memory.
     mem_used: usize,
@@ -111,22 +204,13 @@ pub struct PicoStorageCache {
 }
 
 impl PicoStorageCache {
-    pub fn new(
-        count_max: usize,
-        size_max: usize,
-        evict_fn: Option<EvictFn<u64, StorageCacheValue>>,
-    ) -> Result<Self, SbroadError> {
-        let new_fn: Option<EvictFn<u64, StorageCacheValue>> = if let Some(evict_fn) = evict_fn {
-            let new_fn = move |key: &u64, val: &mut StorageCacheValue| -> Result<(), SbroadError> {
-                evict_fn(key, val)
-            };
-            Some(Box::new(new_fn))
-        } else {
-            None
-        };
+    pub(crate) fn new(count_max: usize, size_max: usize) -> Result<Self, SbroadError> {
+        let table_locks: TableLocksMap = Rc::new(RefCell::new(HashMap::new()));
+        let evict_fn = make_evict_fn(Rc::clone(&table_locks));
 
         Ok(PicoStorageCache {
-            cache: LRUCache::new(count_max, new_fn)?,
+            cache: LRUCache::new(count_max, Some(evict_fn))?,
+            table_locks,
             mem_limit: size_max,
             mem_used: 0,
         })
@@ -156,13 +240,39 @@ impl PicoStorageCache {
         Ok(())
     }
 
-    fn pop(&mut self) -> Result<Option<StorageCacheValue>, SbroadError> {
+    fn pop(&mut self) -> Result<Option<StorageCacheEntry>, SbroadError> {
         let removed = self.cache.pop()?;
-        Ok(removed.inspect(|x| self.mem_used -= x.0.estimated_size()))
+        Ok(removed.inspect(|x| self.mem_used -= x.stmt_size))
+    }
+
+    pub(crate) fn get_or_create_table_lock(&mut self, plan_id: u64) -> TempTableLockRef {
+        if let Some(entry) = self.cache.get_mut(&plan_id) {
+            return Rc::clone(&entry.table_lock);
+        }
+
+        if self.table_locks.borrow().len() > self.capacity().saturating_mul(4).max(1024) {
+            self.table_locks
+                .borrow_mut()
+                .retain(|_, weak| weak.upgrade().is_some());
+        }
+
+        let locks = self.table_locks.borrow();
+        if let Some(lock) = locks.get(&plan_id).and_then(|weak| weak.upgrade()) {
+            return lock;
+        }
+        drop(locks);
+
+        let lock = new_temp_table_lock();
+        self.table_locks
+            .borrow_mut()
+            .insert(plan_id, downgrade_temp_table_lock(&lock));
+        lock
     }
 }
 
 impl StorageCache for PicoStorageCache {
+    type LockRef = TempTableLockRef;
+
     fn put(
         &mut self,
         plan_id: u64,
@@ -200,12 +310,22 @@ impl StorageCache for PicoStorageCache {
             index_version_map.insert(*index, current_version);
         }
 
+        let table_lock = self.get_or_create_table_lock(plan_id);
         let mem_added = stmt.estimated_size();
+        let stmt = Rc::new(Mutex::new(stmt));
         let removed = self.cache.put(
             plan_id,
-            (stmt, table_version_map, index_version_map, table_names),
+            StorageCacheEntry {
+                stmt,
+                table_lock,
+                in_use: Rc::new(Cell::new(0)),
+                stmt_size: mem_added,
+                table_versions: table_version_map,
+                index_versions: index_version_map,
+                motion_ids: table_names,
+            },
         )?;
-        let mem_removed = removed.map(|x| x.0.estimated_size()).unwrap_or(0);
+        let mem_removed = removed.map(|x| x.stmt_size).unwrap_or(0);
 
         self.mem_used += mem_added;
         self.mem_used -= mem_removed;
@@ -213,10 +333,8 @@ impl StorageCache for PicoStorageCache {
         STORAGE_CACHE_STATEMENTS_ADDED_TOTAL.inc();
         Ok(())
     }
-    fn get(&mut self, plan_id: &u64) -> Result<Option<(&mut SqlStmt, &[SmolStr])>, SbroadError> {
-        let Some((ir, table_version_map, index_version_map, table_ids)) =
-            self.cache.get_mut(plan_id)
-        else {
+    fn get(&mut self, plan_id: &u64) -> Result<Option<CachedStmtRef<Self::LockRef>>, SbroadError> {
+        let Some(entry) = self.cache.get_mut(plan_id) else {
             return Ok(None);
         };
         // check Plan's tables have up to date schema
@@ -224,7 +342,7 @@ impl StorageCache for PicoStorageCache {
             SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
         })?;
         let pico_table = &node.storage.pico_table;
-        for (table_id, cached_version) in table_version_map {
+        for (table_id, cached_version) in &entry.table_versions {
             let Some(table_def) = with_su(ADMIN_ID, || {
                 pico_table.by_id(*table_id).map_err(|e| {
                     SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
@@ -239,14 +357,22 @@ impl StorageCache for PicoStorageCache {
                 return Ok(None);
             }
         }
-        for (pk, cached_version) in index_version_map {
+        for (pk, cached_version) in &entry.index_versions {
             let version = get_index_version_by_pk(pk[0], pk[1])?;
             if *cached_version != version {
                 return Ok(None);
             }
         }
 
-        Ok(Some((ir, table_ids)))
+        Ok(Some(CachedStmtRef::new(
+            Rc::clone(&entry.stmt),
+            Rc::clone(&entry.table_lock),
+            Rc::clone(&entry.in_use),
+        )))
+    }
+
+    fn get_or_create_lock(&mut self, plan_id: u64) -> Self::LockRef {
+        self.get_or_create_table_lock(plan_id)
     }
 }
 
@@ -559,13 +685,18 @@ impl Vshard for StorageRuntime {
         );
 
         use sql::executor::vdbe::ExecutionInsight::*;
-        let mut cache_guarded = self.cache().lock();
+        let cached = {
+            let mut cache_guarded = self.cache().lock();
+            cache_guarded.get(&plan_id)?
+        };
 
-        if let Some((stmt, _)) = cache_guarded.get(&plan_id)? {
+        if let Some(cached) = cached {
             // Transaction rollbacks are very expensive in Tarantool, so we're going to
             // avoid transactions for DQL queries. We can achieve atomicity by truncating
-            // temporary tables. Isolation is guaranteed by keeping a lock on the cache.
-            match stmt_execute(stmt, &info, port)? {
+            // temporary tables. Isolation is guaranteed by a lock tied to plan_id.
+            let _table_lease = lock_temp_table(&cached.table_lock)?;
+            let mut stmt_guard = cached.stmt.lock();
+            match stmt_execute(&mut stmt_guard, &info, port)? {
                 Nothing => report_storage_cache_hit("dql", "local"),
                 BusyStmt => report_storage_cache_miss("dql", "local", "busy"),
                 StaleStmt => report_storage_cache_miss("dql", "local", "stale"),
@@ -588,7 +719,7 @@ impl Vshard for StorageRuntime {
                 sql: local_sql,
             };
 
-            match sql_execute::<Self>(&mut cache_guarded, &info, &miss_info, port)? {
+            match sql_execute::<Self>(self, &info, &miss_info, port)? {
                 Nothing => report_storage_cache_miss("dql", "local", "true"),
                 BusyStmt => report_storage_cache_miss("dql", "local", "busy"),
                 StaleStmt => report_storage_cache_miss("dql", "local", "stale"),

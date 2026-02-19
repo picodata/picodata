@@ -2,6 +2,7 @@ use crate::metrics::{
     report_storage_cache_hit, report_storage_cache_miss, STORAGE_2ND_REQUESTS_TOTAL,
 };
 use crate::preemption::scheduler_options;
+use crate::sql::lock::{lock_temp_table, TempTableLockRef};
 use crate::sql::lua::{lua_decode_ibufs, lua_query_metadata};
 use crate::sql::port::PicoPortOwned;
 use crate::sql::router::{get_index_version_by_pk, get_table_version_by_id, VersionMap};
@@ -179,7 +180,7 @@ pub(crate) fn dml_execute<'p, R: Vshard + QueryCache>(
     timeout: f64,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
     let iter = msg.get_iter()?;
 
@@ -327,7 +328,7 @@ fn dql_cache_miss_execute<'p, 'b, R: Vshard + QueryCache>(
     timeout: f64,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
     let node = node::global().expect("should be init");
     let instance = with_su(ADMIN_ID, || node.storage.instances.get(&raft_id))?
@@ -386,10 +387,15 @@ where
         index_versions.insert(pk, version);
     }
 
-    let mut cache_guarded = runtime.cache().lock();
+    let cached = {
+        let mut cache_guarded = runtime.cache().lock();
+        cache_guarded.get(&plan_id)?
+    };
 
-    if let Some((stmt, _motion_ids)) = cache_guarded.get(&plan_id)? {
-        match stmt_execute(stmt, info, port)? {
+    if let Some(cached) = cached {
+        let _table_lease = lock_temp_table(&cached.table_lock)?;
+        let mut stmt_guard = cached.stmt.lock();
+        match stmt_execute(&mut stmt_guard, info, port)? {
             Nothing => report_storage_cache_hit("dql", "2nd"),
             BusyStmt => report_storage_cache_miss("dql", "2nd", "busy"),
             StaleStmt => report_storage_cache_miss("dql", "2nd", "stale"),
@@ -407,7 +413,7 @@ where
             sql,
         };
 
-        match sql_execute::<R>(&mut cache_guarded, info, &miss_info, port)? {
+        match sql_execute::<R>(runtime, info, &miss_info, port)? {
             Nothing => report_storage_cache_miss("dql", "2nd", "true"),
             BusyStmt => report_storage_cache_miss("dql", "2nd", "busy"),
             StaleStmt => report_storage_cache_miss("dql", "2nd", "stale"),
@@ -418,18 +424,35 @@ where
 }
 
 pub fn sql_execute<'a, 'p, R: QueryCache>(
-    cache_guarded: &mut <<R as QueryCache>::Mutex as MutexLike<R::Cache>>::Guard<'_>,
+    runtime: &R,
     info: &impl PlanInfo,
     miss_info: &impl ExpandedPlanInfo,
     port: &mut impl Port<'p>,
 ) -> Result<ExecutionInsight, SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
+    let plan_lock = {
+        let mut cache_guarded = runtime.cache().lock();
+        cache_guarded.get_or_create_lock(miss_info.plan_id())
+    };
+    let _table_lease = lock_temp_table(&plan_lock)?;
+
+    // Re-check cache after acquiring the plan lock to avoid duplicate
+    // temporary table creation on concurrent cache misses for the same plan.
+    let cached = {
+        let mut cache_guarded = runtime.cache().lock();
+        cache_guarded.get(&miss_info.plan_id())?
+    };
+    if let Some(cached) = cached {
+        let mut stmt_guard = cached.stmt.lock();
+        return stmt_execute(&mut stmt_guard, info, port);
+    }
+
     let metadata = miss_info.vtable_metadata();
     let mut tables = Vec::with_capacity(metadata.len());
-    for data in metadata {
-        let (name, meta) = data?;
+    for metadata in metadata {
+        let (name, meta) = metadata?;
         let pk_name = format!("PK_{}", name.strip_prefix("TMP_").unwrap_or(name));
         table_create(name, pk_name.as_str(), &meta)?;
         tables.push(name.to_smolstr());
@@ -442,13 +465,18 @@ where
             "Failed to compile statement for the query '{sql}': {e}"
         )
     })?;
-    cache_guarded.put(miss_info.plan_id(), stmt, miss_info.schema_info(), tables)?;
-
-    let Some((stmt, _)) = cache_guarded.get(&miss_info.plan_id())? else {
-        unreachable!("was just added, should be in the cache")
+    let cached = {
+        let mut cache_guarded = runtime.cache().lock();
+        cache_guarded.put(miss_info.plan_id(), stmt, miss_info.schema_info(), tables)?;
+        let Some(cached) = cache_guarded.get(&miss_info.plan_id())? else {
+            unreachable!("was just added, should be in the cache")
+        };
+        cached
     };
-
-    stmt_execute(stmt, info, port)
+    // Process any evictions that were deferred while the cache mutex was held.
+    crate::sql::storage::process_deferred_evictions();
+    let mut stmt_guard = cached.stmt.lock();
+    stmt_execute(&mut stmt_guard, info, port)
 }
 
 /// Execute a DQL query on storage.
@@ -463,7 +491,7 @@ pub(crate) fn dql_execute<'p, 'b, R: Vshard + QueryCache>(
     timeout: f64,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
     let table_schema_info = protocol_get!(info, DQLResult::TableSchemaInfo);
     let index_schema_info = protocol_get!(info, DQLResult::IndexSchemaInfo);
@@ -491,9 +519,14 @@ where
         params: protocol_get!(info, DQLResult::Params),
     };
 
-    let mut cache_guarded = runtime.cache().lock();
-    if let Some((stmt, _)) = cache_guarded.get(&plan_id)? {
-        match stmt_execute(stmt, &info, port)? {
+    let cached = {
+        let mut cache_guarded = runtime.cache().lock();
+        cache_guarded.get(&plan_id)?
+    };
+    if let Some(cached) = cached {
+        let _table_lease = lock_temp_table(&cached.table_lock)?;
+        let mut stmt_guard = cached.stmt.lock();
+        match stmt_execute(&mut stmt_guard, &info, port)? {
             Nothing => report_storage_cache_hit("dql", "1st"),
             BusyStmt => report_storage_cache_miss("dql", "1st", "busy"),
             StaleStmt => report_storage_cache_miss("dql", "1st", "stale"),
@@ -502,7 +535,6 @@ where
         port.set_type(PortType::ExecuteDql);
         Ok(())
     } else {
-        drop(cache_guarded);
         report_storage_cache_miss("dql", "1st", "true");
 
         let res = dql_cache_miss_execute(
@@ -580,7 +612,7 @@ pub fn explain_execute<'p, R: QueryCache>(
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
     let _lock: <<R as QueryCache>::Mutex as MutexLike<<R as QueryCache>::Cache>>::Guard<'_> =
         runtime.cache().lock();
@@ -720,7 +752,7 @@ fn virtual_table_materialize<'a, R: Vshard + QueryCache>(
     timeout: f64,
 ) -> Result<VirtualTable, SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
     let mut port = TarantoolPort::new_port_c();
     let mut pico_port = PicoPortC::from(unsafe { port.as_mut_port_c() });
@@ -890,7 +922,7 @@ fn insert_execute<'p, 'ip, R: Vshard + QueryCache>(
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
     let mut result = ConsumerResult::default();
 
@@ -967,7 +999,7 @@ fn update_execute<'p, 'ip, R: Vshard + QueryCache>(
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
     let mut result = ConsumerResult::default();
 
@@ -1025,7 +1057,7 @@ fn local_insert_execute<'p, 'ip, R: Vshard + QueryCache>(
     timeout: f64,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
     let mut result = ConsumerResult::default();
 
@@ -1126,7 +1158,7 @@ fn local_update_execute<'p, 'ip, R: Vshard + QueryCache>(
     timeout: f64,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
     let mut result = ConsumerResult::default();
 
@@ -1175,7 +1207,7 @@ fn local_delete_execute<'p, 'ip, R: Vshard + QueryCache>(
     timeout: f64,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
     let mut result = ConsumerResult::default();
 
@@ -1224,7 +1256,7 @@ fn delete_execute<'p, 'ip, R: Vshard + QueryCache>(
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
     let table_id = protocol_get!(iter, DeleteFullResult::TableId);
     let version = protocol_get!(iter, DeleteFullResult::TableVersion);
@@ -1263,13 +1295,18 @@ pub fn full_delete_execute<'p, 'ip, R: Vshard + QueryCache>(
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
-    let mut cache_guarded: <<R as QueryCache>::Mutex as MutexLike<<R as QueryCache>::Cache>>::Guard<'_> = runtime.cache().lock();
-    if let Some((stmt, _motion_ids)) = cache_guarded.get(&info.plan_id())? {
-        stmt_execute(stmt, info, port)?;
+    let cached = {
+        let mut cache_guarded = runtime.cache().lock();
+        cache_guarded.get(&info.plan_id())?
+    };
+    if let Some(cached) = cached {
+        let _table_lease = lock_temp_table(&cached.table_lock)?;
+        let mut stmt_guard = cached.stmt.lock();
+        stmt_execute(&mut stmt_guard, info, port)?;
     } else {
-        sql_execute::<R>(&mut cache_guarded, info, info, port)?;
+        sql_execute::<R>(runtime, info, info, port)?;
     }
 
     Ok(())

@@ -132,6 +132,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed that `--pg-advertise` CLI argument was erroneously disallowed to be used
   simultaneously with `--iproto-advertise`.
 - Fixed a race condition between DDL (i.e., TRUNCATE) and DQL when the preemption option is enabled.
+- Fixed concurrent access to storage temporary tables by synchronizing their lifecycle
+  and execution with a per-plan lock.
 - Fixed a number of vinyl issues by backporting upstream patches
 - Fixed an issue where upgrade operations were inserted incorrectly
   when applying system catalog changes for several catalog versions.
