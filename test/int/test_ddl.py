@@ -8,6 +8,7 @@ from conftest import (
     Instance,
     TarantoolError,
     log_crawler,
+    ReplicationBroken,
 )
 
 
@@ -2730,8 +2731,30 @@ cluster:
 
     # Now the new replicaset successfully finishes catching up
     leader.wait_governor_status("idle")
-    storage_2_1.wait_online()
-    storage_2_2.wait_online()
+
+    replication_errors = []
+    try:
+        storage_2_1.wait_online()
+    except ReplicationBroken as e:
+        replication_errors.append(e)
+
+    try:
+        storage_2_2.wait_online()
+    except ReplicationBroken as e:
+        replication_errors.append(e)
+
+    # It's currently possible that master switchover during DDL will cause a
+    # replication conflict. See https://git.picodata.io/core/picodata/-/issues/2701
+    # But governor guarantees that replication conflicts are not propagated to
+    # other replicas, so at most one instance will be broken.
+    match replication_errors:
+        case []:
+            pass
+        case [one_failure]:
+            _ = one_failure
+            pytest.xfail("https://git.picodata.io/core/picodata/-/issues/2701")
+        case [e1, e2]:
+            raise ReplicationBroken(e1.args[0] + "\n\n" + e2.args[0])
 
     # And the DDL was applied of course (sanity check)
     assert storage_2_1.eval("return box.space.i_have_no_brain_and_i_must_think.id") is not None
