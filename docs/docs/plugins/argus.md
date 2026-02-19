@@ -16,6 +16,20 @@ Picodata.
 Picodata, для которой перед этим была настроена авторизация с помощью
 [LDAP/LDAPS](../admin/ldap.md).
 
+## Соответствие версий Picodata и Argus {: #picodata_argus_versions }
+
+Версии плагина Argus требуют определённых версий СУБД Picodata. Ниже
+показана таблица совместимости версий:
+
+| Argus | Picodata | ФСТЭК-сертификат |
+| ------ | ------ | :-----: |
+| 2.1.2 | 25.2.2 | :white_check_mark: |
+| 2.2.5 | 25.5.7 (25.5.*) | |
+
+См. также:
+
+- [Страница загрузки Picodata](https://picodata.io/download/)
+
 ## Состав плагина {: #plugin_files }
 
 <!--
@@ -29,7 +43,7 @@ Picodata, для которой перед этим была настроена 
 
 ```
 └── argus
-    └── 2.1.4
+    └── 2.2.5
         ├── libargus.so
         └── manifest.yaml
 ```
@@ -75,9 +89,9 @@ picodata run --plugin-dir=<PLUGIN-DIR> ...
 следующих SQL-команд:
 
 ```sql
-CREATE PLUGIN argus 2.1.4;
-ALTER PLUGIN argus 2.1.4 ADD SERVICE argus TO TIER default;
-ALTER PLUGIN argus 2.1.4 ENABLE;
+CREATE PLUGIN argus 2.2.5;
+ALTER PLUGIN argus 2.2.5 ADD SERVICE argus TO TIER default;
+ALTER PLUGIN argus 2.2.5 ENABLE;
 ```
 
 !!! note "Примечание"
@@ -166,7 +180,7 @@ all:
 
     plugins:
       argus:                                    # плагин
-        path: '../plugins/argus_2.1.4.tar.gz'   # путь до пакета плагина
+        path: '../plugins/argus_2.2.5.tar.gz'   # путь до пакета плагина
         config: '../plugins/argus-config.yml'   # путь до файла с настройками плагина
         services:
           argus:
