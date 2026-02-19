@@ -12,6 +12,7 @@ from conftest import (
     Cluster,
     Retriable,
 )
+from framework.log import log
 
 
 # Auth methods that don't require requests to remote servers (e.g. LDAP).
@@ -30,11 +31,41 @@ def instance_with_audit_file(unstarted_instance: Instance):
 
 class AuditFile:
     def __init__(self, path):
+        self.path = path
         self._f = open(path)
+        self.seen_error_at_line = None
 
     def events(self) -> Generator[dict, None, None]:
-        for line in self._f:
-            yield json.loads(line)
+        skip_until_line_no = 0
+        if self.seen_error_at_line:
+            skip_until_line_no = self.seen_error_at_line
+            self._f.close()
+            self._f = open(self.path)
+
+        seen_error = None
+        for line_no, line in enumerate(self._f, start=1):
+            if line_no < skip_until_line_no:
+                continue
+
+            if seen_error:
+                # We only expect the last line in the file to be faulty. If
+                # instead it's not the last line and we get here, then the error
+                # is more serious
+                raise seen_error from seen_error
+
+            data = None
+            try:
+                data = json.loads(line)
+            except json.decoder.JSONDecodeError as e:
+                e.args = (self.path, line_no, *e.args)
+                # It's possible that the last line in the file is not a finished
+                # json expression, if picodata is writing to the file concurrently
+                log.error(f"{self.path}:{line_no}: error {e}")
+                seen_error = e
+                self.seen_error_at_line = line_no
+                continue
+
+            yield data
 
 
 def take_until_title(events, title: str) -> dict | None:
@@ -739,30 +770,10 @@ def test_rotation(cluster: Cluster):
     instance.create_user(with_name=user, with_password=password)
     instance.sql(f'GRANT CREATE ROLE TO "{user}"', sudo=True)
 
-    # NOTE: we have seen this test as flaky, which looked like it took more than
-    # 5 seconds to rotate audit logs which is suspicious. High load on CI server
-    # in theory might be the cause but we dont have all logs to prove that. So
-    # we now direct instance log to file instead of stdout, so "rotate" message
-    # appears there too and we can cross check timings of these two messages.
-    # To reduce probability of it spuriously failing again we first check
-    # instance log to first validate that it was rotated, and increase timeouts
-    # for checks.
-    # NOTE: log crawler by default works with stdout and does not work with
-    # files, but there is no need for now to modify it and make it work this
-    # way, because this test is a rare scenario when instance is running with
-    # the logs output to file, instead of stdout.
-    def check_instance_log_rotate(instance: Instance):
-        log_file = instance.log_file()
-        assert log_file, "instance log rotation check requires instance logs to be stored in a file"
-        with open(log_file, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-            assert any("log file has been reopened" in line for line in lines)
-
     assert instance.process is not None
     instance.process.send_signal(sig=signal.SIGHUP)
 
-    Retriable(timeout=10, rps=1).call(check_instance_log_rotate, instance)
-    check_audit_log_rotate(audit)
+    Retriable(timeout=10, rps=1, fatal=json.decoder.JSONDecodeError).call(check_audit_log_rotate, audit)
 
 
 def test_rename_user(instance_with_audit_file: Instance):
