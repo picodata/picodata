@@ -503,6 +503,10 @@ class NotALeader(Exception):
     pass
 
 
+class ReplicationBroken(AssertionError):
+    pass
+
+
 class CommandFailed(Exception):
     def __init__(self, stdout, stderr):
         self.stdout = maybe_decode_utf8(stdout)
@@ -1652,18 +1656,18 @@ class Instance:
                 raise e from e
             except Exception as e:
                 match e.args:
-                    case (ErrorCode.Loading, _):
+                    case (ErrorCode.Loading, _) if time.monotonic() > start + timeout * 6:
                         # This error is returned when instance is in the middle
                         # of bootstrap (box.cfg{} is running). This sometimes
                         # takes quite a long time in our test runs, so we put
                         # this crutch in for that special case. The logic is:
                         # if tarantool is taking too long to bootstrap it's
                         # probably not our fault.
-                        if time.monotonic() > start + timeout * 6:
-                            raise e from e
-                    case _:
-                        if time.monotonic() > deadline:
-                            raise e from e
+                        raise e from e
+                    case _ if time.monotonic() > deadline:
+                        raise e from e
+                    case (str(message),) if "target_state_reason: Replication broken" in message:
+                        raise ReplicationBroken(e) from e
 
         log.info(f"{self} is online")
 
@@ -1671,6 +1675,7 @@ class Instance:
         last_error = None
         governor_status = None
         leader = None
+        target_state_reason = None
 
         try:
             if self.cluster:
@@ -1679,6 +1684,10 @@ class Instance:
                 last_error = leader_runtime_info["internal"].get("governor_loop_last_error")
                 governor_status = leader_runtime_info["internal"].get("governor_loop_status")
                 del leader_runtime_info
+                [[target_state_reason]] = leader.sql(
+                    "SELECT target_state_reason FROM _pico_instance WHERE name = ?", self.name
+                )
+
         except ProcessDead as e:
             raise e from e
         except Exception as e:
@@ -1690,6 +1699,9 @@ class Instance:
 Timed out waiting for instance '{self.name_or_port()}' state 'Online'.
 Expected state 'Online', actual: '{state_repr}'
 """
+
+        if target_state_reason:
+            message += f"target_state_reason: {target_state_reason}\n"
 
         if self.log_file():
             message += f"Instance log file: {self.log_file()}\n"
