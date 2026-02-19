@@ -445,3 +445,27 @@ $ just tp test_rolling
 
 >Note that rolling upgrade tests are **not a separate test suite**:
 >they will also be executed when running the full test suite.
+
+## Merge Requests
+
+This section describes how to prepare and submit merge requests.
+
+### ⚠️ Important Warning
+
+Do not include specific CVE identifiers, links, or exploit details in merge
+requests and commit messages. This repository is public, and such information
+may enable zero-day exploitation. Use private disclosure channels instead.
+
+### Commit Messages
+
+Commit messages are the primary source of context for code changes. Write clear
+and descriptive commit titles and bodies explaining what changed, why the change
+was necessary, any important design decisions and/or tradeoffs, impact on users,
+compatibility, or performance, etc.
+
+### Merge Request Checklist
+
+The merge request template contains required checklist items. These fields
+should be reviewed and filled only when applicable; if a checklist item does not
+apply, mark it as `~` instead of leaving it empty. This makes it clear that the
+item was reviewed and intentionally skipped.
