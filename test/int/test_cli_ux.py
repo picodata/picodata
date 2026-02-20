@@ -18,6 +18,7 @@ from test_plugin import _PLUGIN, _PLUGIN_VERSION_1, PluginReflection
 from tarantool.error import (  # type: ignore
     NetworkError,
 )
+from framework.util.build import Executable
 
 
 def test_admin_ux(cluster: Cluster):
@@ -27,7 +28,7 @@ def test_admin_ux(cluster: Cluster):
 
     cli = pexpect.spawn(
         cwd=i1.instance_dir,
-        command=i1.runtime.command,
+        command=i1.executable.command,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -116,7 +117,7 @@ def check_plugin_schema(
     credentials = f"{username}@{instance.iproto_listen}"
     # fmt: off
     command = [
-        instance.runtime.command, "plugin", "configure",
+        instance.executable.command, "plugin", "configure",
         "--peer", credentials,
         plugin_name, plugin_version, f"{config_file}",
         "--service-password-file", f"{instance.service_password_file}",
@@ -315,7 +316,7 @@ def test_lua_completion(cluster: Cluster):
 
     cli = pexpect.spawn(
         cwd=i1.instance_dir,
-        command=i1.runtime.command,
+        command=i1.executable.command,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -361,7 +362,7 @@ def test_sql_explain_ok(cluster: Cluster):
 
     cli = pexpect.spawn(
         cwd=i1.instance_dir,
-        command=i1.runtime.command,
+        command=i1.executable.command,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -471,7 +472,7 @@ def test_admin_pretty_message_on_server_crash(cluster: Cluster):
     # test crash error when run with `picodata admin`
     cli = pexpect.spawn(
         cwd=i1.instance_dir,
-        command=i1.runtime.command,
+        command=i1.executable.command,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -491,7 +492,7 @@ def test_input_with_delimiter(cluster: Cluster):
 
     cli = pexpect.spawn(
         cwd=i1.instance_dir,
-        command=i1.runtime.command,
+        command=i1.executable.command,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -570,11 +571,13 @@ def test_input_with_delimiter(cluster: Cluster):
 
 
 def test_cat_file_to_picodata_admin_stdin(cluster: Cluster):
+    picodata_executable = Executable.current()
+
     instance = cluster.add_instance()
 
     # Test CREATE USER and GRANT via picodata admin stdin
     data = subprocess.check_output(
-        [cluster.runtime.command, "admin", "--prompts", f"{instance.instance_dir}/admin.sock"],
+        [picodata_executable.command, "admin", "--prompts", f"{instance.instance_dir}/admin.sock"],
         input=b"""\
 CREATE USER "alice" WITH PASSWORD 'T0psecret';
 GRANT CREATE TABLE TO "alice"
@@ -594,7 +597,7 @@ Bye
 
     # Test CREATE TABLE, INSERT, SELECT via picodata admin stdin
     data = subprocess.check_output(
-        [cluster.runtime.command, "admin", "--prompts", f"{instance.instance_dir}/admin.sock"],
+        [picodata_executable.command, "admin", "--prompts", f"{instance.instance_dir}/admin.sock"],
         input=b"""\
 CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id))
         USING MEMTX
@@ -626,9 +629,11 @@ Bye
 
 
 def test_admin_output_format_json(cluster: Cluster):
+    picodata_executable = Executable.current()
+
     instance = cluster.add_instance()
     data = subprocess.check_output(
-        [cluster.runtime.command, "admin", "--json", f"{instance.instance_dir}/admin.sock"],
+        [picodata_executable.command, "admin", "--json", f"{instance.instance_dir}/admin.sock"],
         input=b"""\
 CREATE TABLE warehouse (id INTEGER NOT NULL, item TEXT NOT NULL, PRIMARY KEY(id))
         USING MEMTX DISTRIBUTED BY (id);
@@ -659,9 +664,11 @@ SELECT * FROM warehouse;
 
 
 def test_admin_output_format_csv(cluster: Cluster):
+    picodata_executable = Executable.current()
+
     instance = cluster.add_instance()
     data = subprocess.check_output(
-        [cluster.runtime.command, "admin", "--csv", f"{instance.instance_dir}/admin.sock"],
+        [picodata_executable.command, "admin", "--csv", f"{instance.instance_dir}/admin.sock"],
         input=b"""\
 CREATE TABLE warehouse (id INTEGER NOT NULL, item TEXT NOT NULL, PRIMARY KEY(id))
         USING MEMTX DISTRIBUTED BY (id);
@@ -685,10 +692,12 @@ id,item
 
 
 def test_admin_output_format_csv_custom_separator(cluster: Cluster):
+    picodata_executable = Executable.current()
+
     instance = cluster.add_instance()
     data = subprocess.check_output(
         [
-            cluster.runtime.command,
+            picodata_executable.command,
             "admin",
             "--csv",
             "--field-separator",
@@ -718,9 +727,11 @@ id;item
 
 
 def test_admin_output_format_tuples_only(cluster: Cluster):
+    picodata_executable = Executable.current()
+
     instance = cluster.add_instance()
     data = subprocess.check_output(
-        [cluster.runtime.command, "admin", "--tuples-only", f"{instance.instance_dir}/admin.sock"],
+        [picodata_executable.command, "admin", "--tuples-only", f"{instance.instance_dir}/admin.sock"],
         input=b"""\
 CREATE TABLE warehouse (id INTEGER NOT NULL, item TEXT NOT NULL, PRIMARY KEY(id))
         USING MEMTX DISTRIBUTED BY (id);
@@ -743,10 +754,12 @@ SELECT * FROM warehouse;
 
 
 def test_admin_output_format_tuples_only_custom_separator(cluster: Cluster):
+    picodata_executable = Executable.current()
+
     instance = cluster.add_instance()
     data = subprocess.check_output(
         [
-            cluster.runtime.command,
+            picodata_executable.command,
             "admin",
             "--tuples-only",
             "--field-separator",
@@ -802,7 +815,7 @@ def test_do_not_ban_admin_via_unix_socket(cluster: Cluster):
 
     cli = pexpect.spawn(
         cwd=i1.instance_dir,
-        command=i1.runtime.command,
+        command=i1.executable.command,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -815,6 +828,8 @@ def test_do_not_ban_admin_via_unix_socket(cluster: Cluster):
 
 
 def test_picodata_tarantool(cluster: Cluster):
+    picodata_executable = Executable.current()
+
     test_lua = os.path.join(cluster.data_dir, "test.lua")
     with open(test_lua, "w") as f:
         print(
@@ -829,7 +844,7 @@ def test_picodata_tarantool(cluster: Cluster):
         )
 
     stdout = subprocess.check_output(
-        [cluster.runtime.command, "tarantool", "--", test_lua],
+        [picodata_executable.command, "tarantool", "--", test_lua],
         cwd=cluster.data_dir,
     )
     assert stdout == b"stdout check\n"
@@ -848,7 +863,7 @@ def test_command_history_with_delimiter(cluster: Cluster):
 
     cli = pexpect.spawn(
         cwd=i1.instance_dir,
-        command=i1.runtime.command,
+        command=i1.executable.command,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -897,14 +912,18 @@ def test_command_history_with_delimiter(cluster: Cluster):
 
 
 def test_picodata_version(cluster: Cluster):
-    stdout = subprocess.check_output([cluster.runtime.command, "-V"])
+    picodata_executable = Executable.current()
+
+    stdout = subprocess.check_output([picodata_executable.command, "--version"])
     lines = iter(stdout.splitlines())
     assert_starts_with(next(lines), b"picodata ")
     assert_starts_with(next(lines), b"tarantool ")
 
 
 def test_picodata_long_version(cluster: Cluster):
-    stdout = subprocess.check_output([cluster.runtime.command, "-VV"])
+    picodata_executable = Executable.current()
+
+    stdout = subprocess.check_output([picodata_executable.command, "-VV"])
     info = yaml.safe_load(stdout)
 
     assert "linkage" in info
@@ -943,7 +962,7 @@ def test_admin_cli_exit_code(cluster: Cluster):
     i1.wait_online()
 
     process = subprocess.run(
-        [i1.runtime.command, "admin", f"{i1.instance_dir}/admin.sock"],
+        [i1.executable.command, "admin", f"{i1.instance_dir}/admin.sock"],
         stdin=open(setup_sql, "r"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -971,7 +990,7 @@ def test_admin_cli_exit_code(cluster: Cluster):
     i2.wait_online()
 
     process = subprocess.run(
-        [i2.runtime.command, "admin", f"{i2.instance_dir}/admin.sock"],
+        [i2.executable.command, "admin", f"{i2.instance_dir}/admin.sock"],
         stdin=open(insert_sql, "r"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -993,7 +1012,7 @@ def test_admin_cli_exit_code(cluster: Cluster):
     i3.wait_online()
 
     process = subprocess.run(
-        [i3.runtime.command, "admin", f"{i3.instance_dir}/admin.sock"],
+        [i3.executable.command, "admin", f"{i3.instance_dir}/admin.sock"],
         stdin=open(plugin_sql, "r"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -1024,7 +1043,7 @@ def test_connect_cli_exit_code(cluster: Cluster):
     i1.sql('GRANT CREATE TABLE TO "andy"', sudo=True)
 
     process = subprocess.run(
-        [i1.runtime.command, "admin", f"{i1.instance_dir}/admin.sock"],
+        [i1.executable.command, "admin", f"{i1.instance_dir}/admin.sock"],
         stdin=open(connect_sql, "r"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -1053,7 +1072,7 @@ def test_admin_cli_with_ignore_errors(cluster: Cluster):
     i1.wait_online()
 
     process = subprocess.run(
-        [i1.runtime.command, "admin", f"{i1.instance_dir}/admin.sock", "--ignore-errors"],
+        [i1.executable.command, "admin", f"{i1.instance_dir}/admin.sock", "--ignore-errors"],
         stdin=open(setup_sql, "r"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -1075,6 +1094,8 @@ def strip(s: str) -> str:
 
 
 def test_picodata_status_basic(cluster: Cluster):
+    picodata_executable = Executable.current()
+
     cluster.set_config_file(
         yaml="""
     cluster:
@@ -1114,7 +1135,7 @@ def test_picodata_status_basic(cluster: Cluster):
 
     data = subprocess.check_output(
         [
-            cluster.runtime.command,
+            picodata_executable.command,
             "status",
             "--peer",
             f"{i1_address}",
@@ -1151,7 +1172,7 @@ def test_picodata_status_basic(cluster: Cluster):
 
     data = subprocess.check_output(
         [
-            cluster.runtime.command,
+            picodata_executable.command,
             "status",
             "--peer",
             i1_address,
@@ -1185,6 +1206,8 @@ def test_picodata_status_basic(cluster: Cluster):
 
 
 def assert_status_info(inst: Instance, cluster: Cluster, username: str, password_file: str, err: bool = False):
+    picodata_executable = Executable.current()
+
     info = inst.instance_info()
 
     cluster_name = info["cluster_name"]
@@ -1197,7 +1220,7 @@ def assert_status_info(inst: Instance, cluster: Cluster, username: str, password
     if err:
         proc = subprocess.Popen(
             [
-                cluster.runtime.command,
+                picodata_executable.command,
                 "status",
                 "--peer",
                 inst_addr,
@@ -1214,7 +1237,7 @@ def assert_status_info(inst: Instance, cluster: Cluster, username: str, password
     else:
         data = subprocess.check_output(
             [
-                cluster.runtime.command,
+                picodata_executable.command,
                 "status",
                 "--peer",
                 inst_addr,
@@ -1269,6 +1292,8 @@ def test_picodata_status_custom_user(cluster: Cluster):
 
 
 def test_picodata_status_short_instance_name(cluster: Cluster):
+    picodata_executable = Executable.current()
+
     short_name = "a"
     service_password = "T3stP4ssword"
     cluster.set_service_password(service_password)
@@ -1285,7 +1310,7 @@ def test_picodata_status_short_instance_name(cluster: Cluster):
 
     data = subprocess.check_output(
         [
-            cluster.runtime.command,
+            picodata_executable.command,
             "status",
             "--peer",
             f"{i1_address}",
@@ -1308,6 +1333,8 @@ def test_picodata_status_short_instance_name(cluster: Cluster):
 
 
 def test_picodata_status_exit_code(cluster: Cluster):
+    picodata_executable = Executable.current()
+
     service_password = "T3stP4ssword"
     cluster.set_service_password(service_password)
 
@@ -1320,7 +1347,7 @@ def test_picodata_status_exit_code(cluster: Cluster):
 
     process = subprocess.run(
         [
-            cluster.runtime.command,
+            picodata_executable.command,
             "status",
             "--peer",
             f"{i1_address}",
@@ -1341,7 +1368,7 @@ def test_picodata_status_exit_code(cluster: Cluster):
 
     process = subprocess.run(
         [
-            cluster.runtime.command,
+            picodata_executable.command,
             "status",
             "--peer",
             f"{i1_address}",
@@ -1364,7 +1391,7 @@ def test_picodata_status_exit_code(cluster: Cluster):
 
     process = subprocess.run(
         [
-            cluster.runtime.command,
+            picodata_executable.command,
             "status",
             "--peer",
             f"{i1_address}",
@@ -1380,6 +1407,8 @@ def test_picodata_status_exit_code(cluster: Cluster):
 
 
 def test_picodata_status_doesnt_show_expelled_instances(cluster: Cluster):
+    picodata_executable = Executable.current()
+
     cluster.set_config_file(
         yaml="""
     cluster:
@@ -1422,7 +1451,7 @@ def test_picodata_status_doesnt_show_expelled_instances(cluster: Cluster):
 
     data = subprocess.check_output(
         [
-            cluster.runtime.command,
+            picodata_executable.command,
             "status",
             "--peer",
             f"{i1_address}",
@@ -1458,7 +1487,7 @@ def test_picodata_status_doesnt_show_expelled_instances(cluster: Cluster):
 
     data = subprocess.check_output(
         [
-            cluster.runtime.command,
+            picodata_executable.command,
             "status",
             "--peer",
             i1_address,

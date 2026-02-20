@@ -23,6 +23,7 @@ from conftest import (
 )
 from framework.ldap import LdapServer, is_glauth_available
 from framework.thread import spawn_thread
+from framework.util.build import Executable
 from framework.util.build import project_tests_path
 from framework.util import copy_plugin_library
 
@@ -407,7 +408,7 @@ def init_dummy_plugin(
     os.makedirs(plugin_dir)
 
     if not cargo_target_dir:
-        cargo_target_dir = Path(cluster.runtime.command).parent
+        cargo_target_dir = Executable.current().path.parent
 
     # Copy plugin library
     copy_plugin_library(cargo_target_dir, plugin_dir, library_name)

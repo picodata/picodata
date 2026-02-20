@@ -22,10 +22,10 @@ path_hack()
 
 from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
-from framework.rolling.registry import Registry
-from framework.rolling.version import VersionAlias
+from framework.registry import Registry
 from framework.util.path import project_root_path
 from framework.util import ask_yes_no
+from framework.util import VersionAlias
 from packaging.version import Version
 from pathlib import Path
 
@@ -123,14 +123,13 @@ def main():
     auto_confirm = program_arguments.yes
     output_path = program_arguments.output
 
-    version_registry = Registry(skip_resolution=True, copy_plugins=False)
+    registry = Registry()
     executable_paths = {}
-
     versions_to_build = [VersionAlias.PREVIOUS_MINOR, VersionAlias.BEFORELAST_MINOR]
     for version_alias in versions_to_build:
-        version_runtime = version_registry.get(version_alias)
-        assert version_runtime is not None
-        version_component = version_runtime.absolute_version
+        version_executable = registry.get(version_alias, resolve=False)
+        assert version_executable is not None
+        version_component = version_executable.version
 
         executable_path = build_binary(version_component, output_path, auto_confirm)
         executable_paths[(version_component, version_alias)] = executable_path

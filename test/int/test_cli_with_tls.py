@@ -50,7 +50,7 @@ class TestCliWithTls:
         if cert_auth_enabled:
             args.append("--tls-auth")
         cli = pexpect.spawn(
-            command=i.runtime.command,
+            command=i.executable.command,
             args=args,
             encoding="utf-8",
             timeout=CLI_TIMEOUT,
@@ -82,7 +82,7 @@ class TestCliWithTls:
             "--tls-auth",
         ]
         cli = pexpect.spawn(
-            command=i.runtime.command,
+            command=i.executable.command,
             args=args,
             encoding="utf-8",
             timeout=CLI_TIMEOUT,
@@ -101,7 +101,7 @@ class TestCliWithTls:
             f"{user}@{i.host}:{i.port}",
         ]
         cli = pexpect.spawn(
-            command=i.runtime.command,
+            command=i.executable.command,
             args=args,
             encoding="utf-8",
             timeout=CLI_TIMEOUT,

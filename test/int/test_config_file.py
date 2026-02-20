@@ -1,4 +1,5 @@
 from conftest import Cluster, Instance, PortDistributor, log_crawler, ColorCode
+from framework.util.build import Executable
 import os
 import pathlib
 import subprocess
@@ -59,7 +60,7 @@ instance:
 """
     )
     instance = Instance(
-        runtime=cluster.runtime,
+        executable=Executable.current(),
         cwd=cluster.data_dir,
         color_code=ColorCode.Cyan,
         config_path=cluster.config_path,
@@ -410,8 +411,10 @@ instance:
 
 
 def test_picodata_default_config(cluster: Cluster):
+    picodata_executable = Executable.current()
+
     # Check generating the default config
-    data = subprocess.check_output([cluster.runtime.command, "config", "default"])
+    data = subprocess.check_output([picodata_executable.command, "config", "default"])
     default_config = data.decode()
     assert len(default_config) != 0
 
@@ -422,7 +425,7 @@ def test_picodata_default_config(cluster: Cluster):
 
     # Explicit filename
     subprocess.call(
-        [cluster.runtime.command, "config", "default", "-o", "filename.yaml"],
+        [picodata_executable.command, "config", "default", "-o", "filename.yaml"],
         cwd=cluster.data_dir,
     )
     with open(f"{cluster.data_dir}/filename.yaml", "r") as f:
@@ -430,7 +433,7 @@ def test_picodata_default_config(cluster: Cluster):
     assert default_config.strip() == default_config_2.strip()
 
     # Explicit stdout
-    data = subprocess.check_output([cluster.runtime.command, "config", "default", "-o-"])
+    data = subprocess.check_output([picodata_executable.command, "config", "default", "-o-"])
     default_config_3 = data.decode()
     assert default_config.strip() == default_config_3.strip()
 
@@ -461,7 +464,9 @@ def test_picodata_default_config(cluster: Cluster):
 def test_picodata_default_config_has_unified_socket_sections(cluster: Cluster):
     """Test that picodata config default generates unified socket configuration sections
     and does not contain deprecated socket options."""
-    data = subprocess.check_output([cluster.runtime.command, "config", "default"])
+    picodata_executable = Executable.current()
+
+    data = subprocess.check_output([picodata_executable.command, "config", "default"])
     default_config = data.decode()
     config = yaml.safe_load(default_config)
 
