@@ -1,4 +1,4 @@
-import { FC, ReactNode, MouseEventHandler } from "react";
+import { FC, ReactNode, MouseEventHandler, CSSProperties } from "react";
 
 export interface IconProps {
   height?: number;
@@ -10,6 +10,7 @@ export interface IconProps {
   children?: ReactNode;
   onClick?: MouseEventHandler<SVGElement | HTMLElement>;
   dataTest?: string;
+  style?: CSSProperties;
 }
 
 export const Icon: FC<IconProps> = ({
@@ -17,6 +18,7 @@ export const Icon: FC<IconProps> = ({
   height = 24,
   viewBox = "0 0 24 24",
   fill = "#696B6D",
+  style = {},
   stroke,
   children,
   className,
@@ -33,6 +35,7 @@ export const Icon: FC<IconProps> = ({
     onClick={onClick}
     data-test={dataTest}
     xmlns="http://www.w3.org/2000/svg"
+    style={style}
   >
     {children}
   </svg>

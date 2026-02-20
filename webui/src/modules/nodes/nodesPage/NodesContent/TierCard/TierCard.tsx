@@ -1,5 +1,4 @@
 import React, { FC, useState } from "react";
-import cn from "classnames";
 
 import { ChevronDown } from "shared/icons/ChevronDown";
 import { TierType } from "shared/entity/tier";
@@ -12,7 +11,26 @@ import { HiddenWrapper } from "shared/ui/HiddenWrapper/HiddenWrapper";
 import { ReplicasetCard } from "../ReplicasetCard/ReplicasetCard";
 import { CapacityProgress } from "../../ClusterInfo/CapacityProgress/CapacityProgress";
 
-import styles from "./TierCard.module.scss";
+import {
+  BucketCountColumn,
+  CanVoterColumn,
+  CapacityColumn,
+  CardWrapper,
+  ChevronColumn,
+  chevronIconIsOpenStyle,
+  chevronIconStyle,
+  Content,
+  HiddenInfoValue,
+  InfoValue,
+  InstancesColumn,
+  Label,
+  NameColumn,
+  ReplicasetsColumn,
+  ReplicasetsWrapper,
+  RfColumn,
+  ServicesColumn,
+  ServicesValue,
+} from "./StyledComponents";
 
 export interface TierCardProps {
   theme?: "primary" | "secondary";
@@ -31,35 +49,17 @@ export const TierCard: FC<TierCardProps> = React.memo(({ tier, theme }) => {
   };
 
   return (
-    <div className={styles.cardWrapper} onClick={onClick}>
-      <div className={styles.content}>
-        <div
-          className={cn(
-            styles.infoColumn,
-            styles.nameColumn,
-            styles.hiddenColumn
-          )}
-        >
-          <div className={styles.label}>{tierTranslations.name.label}</div>
-          <div className={cn(styles.infoValue, styles.hiddenValue)}>
+    <CardWrapper onClick={onClick}>
+      <Content>
+        <NameColumn>
+          <Label>{tierTranslations.name.label}</Label>
+          <HiddenInfoValue>
             <HiddenWrapper>{tier.name}</HiddenWrapper>
-          </div>
-        </div>
-        <div
-          className={cn(
-            styles.infoColumn,
-            styles.servicesColumn,
-            styles.hiddenColumn
-          )}
-        >
-          <div className={styles.label}>{tierTranslations.services.label}</div>
-          <div
-            className={cn(
-              styles.infoValue,
-              styles.hiddenValue,
-              styles.servicesValue
-            )}
-          >
+          </HiddenInfoValue>
+        </NameColumn>
+        <ServicesColumn>
+          <Label>{tierTranslations.services.label}</Label>
+          <ServicesValue>
             {tier.services.length ? (
               <HiddenWrapper>
                 {tier.services.map((service, i) =>
@@ -76,36 +76,32 @@ export const TierCard: FC<TierCardProps> = React.memo(({ tier, theme }) => {
             ) : (
               <InfoNoData text={translation.components.infoNoData.label} />
             )}
-          </div>
-        </div>
-        <div className={cn(styles.infoColumn, styles.replicasetsColumn)}>
-          <div className={styles.label}>
-            {tierTranslations.replicasets.label}
-          </div>
-          <div className={styles.infoValue}>{tier.replicasetCount}</div>
-        </div>
-        <div className={cn(styles.infoColumn, styles.instancesColumn)}>
-          <div className={styles.label}>{tierTranslations.instances.label}</div>
-          <div className={styles.infoValue}>{tier.instanceCount}</div>
-        </div>
-        <div className={cn(styles.infoColumn, styles.rfColumn)}>
-          <div className={styles.label}>{tierTranslations.rf.label}</div>
-          <div className={styles.infoValue}>{tier.rf}</div>
-        </div>
-        <div className={cn(styles.infoColumn, styles.bucketCountColumn)}>
-          <div className={styles.label}>
-            {tierTranslations.bucket_count.label}
-          </div>
-          <div className={styles.infoValue}>{tier.bucketCount}</div>
-        </div>
-        <div className={cn(styles.infoColumn, styles.canVoterColumn)}>
-          <div className={styles.label}>{tierTranslations.canVote.label}</div>
-          <div className={styles.infoValue}>
+          </ServicesValue>
+        </ServicesColumn>
+        <ReplicasetsColumn>
+          <Label>{tierTranslations.replicasets.label}</Label>
+          <InfoValue>{tier.replicasetCount}</InfoValue>
+        </ReplicasetsColumn>
+        <InstancesColumn>
+          <Label>{tierTranslations.instances.label}</Label>
+          <InfoValue>{tier.instanceCount}</InfoValue>
+        </InstancesColumn>
+        <RfColumn>
+          <Label>{tierTranslations.rf.label}</Label>
+          <InfoValue>{tier.rf}</InfoValue>
+        </RfColumn>
+        <BucketCountColumn>
+          <Label>{tierTranslations.bucket_count.label}</Label>
+          <InfoValue>{tier.bucketCount}</InfoValue>
+        </BucketCountColumn>
+        <CanVoterColumn>
+          <Label>{tierTranslations.canVote.label}</Label>
+          <InfoValue>
             <SwitchInfo checked={tier.can_vote} />
-          </div>
-        </div>
+          </InfoValue>
+        </CanVoterColumn>
         {tier.memory && (
-          <div className={cn(styles.infoColumn, styles.capacityColumn)}>
+          <CapacityColumn>
             <CapacityProgress
               percent={tier.capacityUsage}
               currentValue={tier.memory?.used ?? 0}
@@ -114,16 +110,16 @@ export const TierCard: FC<TierCardProps> = React.memo(({ tier, theme }) => {
               theme={theme === "secondary" ? "primary" : "secondary"}
               progressLineWidth="100%"
             />
-          </div>
+          </CapacityColumn>
         )}
-        <div className={cn(styles.infoColumn, styles.chevronColumn)}>
+        <ChevronColumn>
           <ChevronDown
-            className={cn(styles.chevronIcon, isOpen && styles.chevronIconOpen)}
+            style={isOpen ? chevronIconIsOpenStyle : chevronIconStyle}
           />
-        </div>
-      </div>
+        </ChevronColumn>
+      </Content>
       <Collapse isOpen={isOpen}>
-        <div className={styles.replicasetsWrapper}>
+        <ReplicasetsWrapper>
           {tier.replicasets.map((replicaset) => (
             <ReplicasetCard
               key={replicaset.name}
@@ -131,8 +127,8 @@ export const TierCard: FC<TierCardProps> = React.memo(({ tier, theme }) => {
               theme="secondary"
             />
           ))}
-        </div>
+        </ReplicasetsWrapper>
       </Collapse>
-    </div>
+    </CardWrapper>
   );
 });

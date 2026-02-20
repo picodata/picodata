@@ -1,12 +1,11 @@
 import React, { useRef, useState } from "react";
-import cn from "classnames";
 
 import { useOutsideClickEvent } from "shared/react/hooks/useOutsideClickEvent";
 
 import { Button, ButtonProps } from "../Button/Button";
 import { ModalBody, ModalBodyProps } from "../Modal/ModalBody/ModalBody";
 
-import styles from "./ButtonModal.module.scss";
+import { Root } from "./StyledComponents";
 
 type ButtonModalProps = {
   buttonProps: ButtonProps;
@@ -27,7 +26,7 @@ export const ButtonModal: React.FC<ButtonModalProps> = (props) => {
   });
 
   return (
-    <div className={styles.container} ref={containerRef}>
+    <Root ref={containerRef}>
       <Button
         size="normal"
         onClick={(event) => {
@@ -39,14 +38,10 @@ export const ButtonModal: React.FC<ButtonModalProps> = (props) => {
         {buttonProps.children}
       </Button>
       {modalIsOpen && (
-        <ModalBody
-          {...modalProps}
-          bodyClassName={cn(styles.modalBody, modalProps.bodyClassName)}
-          onClose={() => setModalIsOpen(false)}
-        >
+        <ModalBody {...modalProps} onClose={() => setModalIsOpen(false)}>
           {children}
         </ModalBody>
       )}
-    </div>
+    </Root>
   );
 };

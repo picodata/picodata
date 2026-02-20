@@ -9,8 +9,7 @@ import { useTranslation } from "shared/intl";
 import { TFilterByValue } from "./config";
 import { FilterByModal } from "./FilterByModal/FilterByModal";
 import { useInstancesFiltersData } from "./hooks";
-
-import styles from "./FilterBy.module.scss";
+import { bodySx, Close, TitleText, TitleWrapper } from "./StyledComponents";
 
 export type FilterByProps = {
   filterByValue?: TFilterByValue;
@@ -33,22 +32,19 @@ export const FilterBy: React.FC<FilterByProps> = (props) => {
     }
 
     return (
-      <Modal bodyClassName={styles.body}>
+      <Modal bodySx={bodySx}>
         <>
-          <div className={styles.titleWrapper}>
-            <span className={styles.titleText}>
-              {filterByTranslation.modal.title}
-            </span>
-            <div
-              className={styles.close}
+          <TitleWrapper>
+            <TitleText>{filterByTranslation.modal.title}</TitleText>
+            <Close
               onClick={(event) => {
                 event.stopPropagation();
                 setIsOpen(false);
               }}
             >
               <CloseIcon />
-            </div>
-          </div>
+            </Close>
+          </TitleWrapper>
           <FilterByModal
             domains={domains}
             values={{

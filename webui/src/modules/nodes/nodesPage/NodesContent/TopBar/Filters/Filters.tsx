@@ -1,5 +1,5 @@
 import React from "react";
-import cn from "classnames";
+import { SxProps } from "@mui/system/styleFunctionSx";
 
 import { Button } from "shared/ui/Button/Button";
 import { Tag } from "shared/ui/Tag/Tag";
@@ -8,16 +8,16 @@ import { useTranslation } from "shared/intl";
 import { TFilterByValue } from "../FilterBy/config";
 import { formatFailDomain } from "../../utils";
 
-import styles from "./Filters.module.scss";
+import { Root } from "./StyledComponents";
 
 type FiltersProps = {
   filterByValue: TFilterByValue;
-  className?: string;
+  sx?: SxProps;
   setFilterByValue: (value?: TFilterByValue) => void;
 };
 
 export const Filters: React.FC<FiltersProps> = (props) => {
-  const { filterByValue, className, setFilterByValue } = props;
+  const { filterByValue, sx, setFilterByValue } = props;
 
   const { translation } = useTranslation();
   const filtersTranslations = translation.pages.instances.filters;
@@ -38,7 +38,7 @@ export const Filters: React.FC<FiltersProps> = (props) => {
   if (!filterByValue.domain?.length) return null;
 
   return (
-    <div className={cn(styles.container, className)}>
+    <Root sx={sx}>
       <Button
         theme="secondary"
         size="extraSmall"
@@ -61,6 +61,6 @@ export const Filters: React.FC<FiltersProps> = (props) => {
           </Tag>
         );
       })}
-    </div>
+    </Root>
   );
 };

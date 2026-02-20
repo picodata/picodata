@@ -1,5 +1,4 @@
 import React, { FC, useState } from "react";
-import cn from "classnames";
 
 import { ChevronDown } from "shared/icons/ChevronDown";
 import { InstanceType } from "shared/entity/instance";
@@ -11,8 +10,24 @@ import { HiddenWrapper } from "shared/ui/HiddenWrapper/HiddenWrapper";
 import { CapacityProgress } from "../../ClusterInfo/CapacityProgress/CapacityProgress";
 
 import { InstanceCard } from "./instanceBlock/InstanceCard";
-
-import styles from "./ReplicasetCard.module.scss";
+import {
+  CapacityColumn,
+  CardWrapperTheme,
+  ChevronColumn,
+  chevronIconIsOpenStyle,
+  chevronIconStyle,
+  Content,
+  HiddenInfoValue,
+  InfoStateColumn,
+  InfoValue,
+  instancesCardWrapperSx,
+  InstancesColumn,
+  InstancesWrapper,
+  Label,
+  NameColumn,
+  StateColumn,
+  StateInfoValue,
+} from "./StyledComponents";
 
 export type TReplicaset = {
   name: string;
@@ -46,38 +61,30 @@ export const ReplicasetCard: FC<ReplicasetCardProps> = React.memo(
     };
 
     return (
-      <div className={cn(styles.cardWrapper, styles[theme])} onClick={onClick}>
-        <div className={styles.content}>
-          <div
-            className={cn(
-              styles.infoColumn,
-              styles.nameColumn,
-              styles.hiddenColumn
-            )}
-          >
-            <div className={styles.label}>
-              {replicasetTranslations.name.label}
-            </div>
-            <div className={cn(styles.infoValue, styles.hiddenValue)}>
+      <CardWrapperTheme
+        // className={cn(styles.cardWrapper, styles[theme])}
+        $theme={theme}
+        onClick={onClick}
+      >
+        <Content $theme={theme}>
+          <NameColumn>
+            <Label>{replicasetTranslations.name.label}</Label>
+            <HiddenInfoValue>
               <HiddenWrapper>{replicaset.name}</HiddenWrapper>
-            </div>
-          </div>
-          <div className={cn(styles.infoColumn, styles.inctancesColumn)}>
-            <div className={styles.label}>
-              {replicasetTranslations.instances.label}
-            </div>
-            <div className={styles.infoValue}>{replicaset.instanceCount}</div>
-          </div>
-          <div className={cn(styles.infoColumn, styles.stateColumn)}>
-            <div className={styles.label}>
-              {replicasetTranslations.state.label}
-            </div>
-            <div className={cn(styles.infoValue, styles.stateValue)}>
+            </HiddenInfoValue>
+          </NameColumn>
+          <InstancesColumn>
+            <Label>{replicasetTranslations.instances.label}</Label>
+            <InfoValue>{replicaset.instanceCount}</InfoValue>
+          </InstancesColumn>
+          <InfoStateColumn>
+            <Label>{replicasetTranslations.state.label}</Label>
+            <StateInfoValue>
               <NetworkState state={replicaset.state} />
-            </div>
-          </div>
-          <div className={styles.stateColumn} />
-          <div className={cn(styles.infoColumn, styles.capacityColumn)}>
+            </StateInfoValue>
+          </InfoStateColumn>
+          <StateColumn />
+          <CapacityColumn>
             <CapacityProgress
               percent={replicaset.capacityUsage}
               currentValue={replicaset.memory.used}
@@ -86,29 +93,28 @@ export const ReplicasetCard: FC<ReplicasetCardProps> = React.memo(
               theme={theme === "secondary" ? "primary" : "secondary"}
               progressLineWidth="100%"
             />
-          </div>
-          <div className={cn(styles.infoColumn, styles.chevronColumn)}>
+          </CapacityColumn>
+          <ChevronColumn>
             <ChevronDown
-              className={cn(
-                styles.chevronIcon,
-                isOpen && styles.chevronIconOpen
-              )}
+              style={isOpen ? chevronIconIsOpenStyle : chevronIconStyle}
             />
-          </div>
-        </div>
+          </ChevronColumn>
+        </Content>
         <Collapse isOpen={isOpen}>
-          <div className={styles.instancesWrapper}>
+          <InstancesWrapper $theme={theme}>
             {replicaset.instances.map((instance) => (
               <InstanceCard
+                cardWrapperSx={
+                  theme === "secondary" ? instancesCardWrapperSx : undefined
+                }
                 key={instance.name}
                 instance={instance}
                 theme="secondary"
-                classes={{ cardWrapper: styles.instancesCardWrapper }}
               />
             ))}
-          </div>
+          </InstancesWrapper>
         </Collapse>
-      </div>
+      </CardWrapperTheme>
     );
   }
 );

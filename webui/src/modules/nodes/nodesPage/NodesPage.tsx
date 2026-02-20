@@ -3,14 +3,13 @@ import { PageContainer } from "shared/ui/layout/PageContainer/PageContainer";
 import { ClusterInfo } from "./ClusterInfo/ClusterInfo";
 import { NodesContent } from "./NodesContent/NodesContent";
 import { ClusterId } from "./ClusterId/ClusterId";
-
-import styles from "./NodesPage.module.scss";
+import { clusterInfoSx } from "./StyledComponents";
 
 export const NodesPage = () => {
   return (
     <PageContainer>
       <ClusterId />
-      <ClusterInfo className={styles.clusterInfo} />
+      <ClusterInfo sx={clusterInfoSx} />
       <NodesContent />
     </PageContainer>
   );

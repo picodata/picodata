@@ -5,7 +5,7 @@ import { useSessionStore } from "shared/session";
 
 import { Button } from "../Button/Button";
 
-import styles from "./Header.module.scss";
+import { Actions, StyledHeader } from "./StyledComponents";
 
 export const Header = () => {
   const [tokens] = useSessionStore();
@@ -13,15 +13,15 @@ export const Header = () => {
   const { signout } = useTranslation().translation.components;
 
   return (
-    <header className={styles.header}>
+    <StyledHeader>
       <img src={logo} />
       {tokens.auth && (
-        <div className={styles.actions}>
+        <Actions>
           <Button theme="secondary" size="extraSmall" onClick={() => logout()}>
             {signout}
           </Button>
-        </div>
+        </Actions>
       )}
-    </header>
+    </StyledHeader>
   );
 };

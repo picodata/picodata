@@ -1,0 +1,20 @@
+.navLink {
+  display: flex;
+  align-items: center;
+  column-gap: 16px;
+  color: #050505;
+  margin-bottom: 16px;
+
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  &:hover {
+    color: #f7941d;
+  }
+}
+
+.activeNavLink {
+  color: #f7941d;
+}

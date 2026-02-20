@@ -6,15 +6,13 @@ import React, {
   PropsWithChildren,
 } from "react";
 import { Transition, TransitionStatus } from "react-transition-group";
-import cn from "classnames";
 
 import { useResizeObserver } from "shared/hooks/useResizeObserver";
 
-import styles from "./Collapse.module.scss";
+import { Content } from "./StyledComponent";
 
 type CollapseProps = {
   isOpen: boolean;
-  className?: string;
   style?: React.CSSProperties;
   timingOptions?: {
     exit?: number;
@@ -28,7 +26,6 @@ export const Collapse: React.FC<PropsWithChildren<CollapseProps>> = ({
   isOpen,
   timingOptions = {},
   style,
-  className,
 }) => {
   const [height, setHeight] = useState<number>(0);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -56,16 +53,15 @@ export const Collapse: React.FC<PropsWithChildren<CollapseProps>> = ({
   return (
     <Transition in={isOpen} timeout={{ exit, appear, enter }}>
       {(state) => (
-        <div
+        <Content
           ref={contentRef}
-          className={cn(styles.content, className)}
           style={{
             ...transitionStyles[state],
             ...style,
           }}
         >
           {children}
-        </div>
+        </Content>
       )}
     </Transition>
   );

@@ -1,19 +1,19 @@
 import React from "react";
-import cn from "classnames";
+import { SxProps } from "@mui/system/styleFunctionSx";
 
 import { InfoNoData } from "shared/ui/InfoNoData/InfoNoData";
 import { useTranslation } from "shared/intl";
 import { Clippable } from "shared/ui/Clippable/Clippable";
 
-import styles from "./IpAddressLabel.module.scss";
+import { containerSx } from "./StyledComponents";
 
 type IpAddressLabelProps = {
-  className?: string;
+  sx?: SxProps;
   address: string;
 };
 
 export const IpAddressLabel: React.FC<IpAddressLabelProps> = (props) => {
-  const { className, address } = props;
+  const { sx, address } = props;
 
   const { translation } = useTranslation();
 
@@ -21,7 +21,15 @@ export const IpAddressLabel: React.FC<IpAddressLabelProps> = (props) => {
     return <InfoNoData text={translation.components.infoNoData.label} />;
 
   return (
-    <Clippable className={cn(styles.container, className)} text={address}>
+    <Clippable
+      text={address}
+      sx={
+        {
+          ...containerSx,
+          ...sx,
+        } as SxProps
+      }
+    >
       {address}
     </Clippable>
   );

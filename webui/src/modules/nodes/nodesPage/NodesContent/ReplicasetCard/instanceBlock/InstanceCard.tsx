@@ -1,5 +1,5 @@
-import cn from "classnames";
 import React, { FC, ReactNode } from "react";
+import { SxProps } from "@mui/material";
 
 import { InstanceType } from "shared/entity/instance";
 import { useTranslation } from "shared/intl";
@@ -9,86 +9,73 @@ import { InfoNoData } from "shared/ui/InfoNoData/InfoNoData";
 
 import { FailureDomainLabel } from "./FailureDomainLabel/FailureDomainLabel";
 import { AddressBlock } from "./AddressBlock/AddressBlock";
-
-import styles from "./InstanceCard.module.scss";
+import {
+  CardWrapper,
+  Content,
+  CurrentStateColumn,
+  CurrentStateValue,
+  DomainValue,
+  FollowerBlock,
+  HiddenFailureDomainColumn,
+  HiddenNameColumn,
+  JoinedColumn,
+  Label,
+  LeaderBlock,
+  StartValue,
+  ValueHidden,
+  VersionColumn,
+} from "./StyledComponents";
 
 interface InstanceCardProps {
-  classes?: { cardWrapper?: string };
   instance: InstanceType;
   theme?: "primary" | "secondary";
+  cardWrapperSx?: SxProps;
 }
 
 export const InstanceCard: FC<InstanceCardProps> = React.memo(
-  ({ instance, theme = "primary", classes }) => {
+  ({ instance, theme = "primary", cardWrapperSx = {} }) => {
     const { translation } = useTranslation();
     const instanceTranslations = translation.pages.instances.list.instanceCard;
 
     return (
       <>
-        <div
+        <CardWrapper
+          $theme={theme}
           onClick={(event) => {
             event.stopPropagation();
           }}
-          className={cn(
-            styles.cardWrapper,
-            styles[theme],
-            classes?.cardWrapper
-          )}
+          sx={cardWrapperSx}
         >
           {instance.isLeader ? (
-            <div className={styles.leaderBlock}>
-              {instanceTranslations.leader.label}
-            </div>
+            <LeaderBlock>{instanceTranslations.leader.label}</LeaderBlock>
           ) : (
-            <div className={styles.followerBlock} />
+            <FollowerBlock />
           )}
-          <div className={styles.content}>
-            <div
-              className={cn(
-                styles.infoColumn,
-                styles.nameColumn,
-                styles.hiddenColumn
-              )}
-            >
+          <Content>
+            <HiddenNameColumn>
               {theme === "primary" && (
-                <div className={styles.label}>
+                <Label $alignLeft={true}>
                   {instanceTranslations.name.label}
-                </div>
+                </Label>
               )}
-              <div
-                className={cn(
-                  styles.value,
-                  styles.hiddenValue,
-                  styles.startValue
-                )}
-              >
+              <StartValue>
                 <HiddenWrapper>{instance.name}</HiddenWrapper>
-              </div>
-            </div>
-            <div
-              className={cn(
-                styles.infoColumn,
-                styles.failureDomainColumn,
-                styles.hiddenColumn
-              )}
-            >
-              <div className={styles.label}>
-                {instanceTranslations.failureDomain.label}
-              </div>
-              <div className={cn(styles.value, styles.domainValue)}>
+              </StartValue>
+            </HiddenNameColumn>
+            <HiddenFailureDomainColumn>
+              <Label>{instanceTranslations.failureDomain.label}</Label>
+              <DomainValue>
                 <FailureDomainLabel failureDomain={instance.failureDomain} />
-              </div>
-            </div>
-            <div className={styles.joinedColumn}>
-              <div className={cn(styles.infoColumn, styles.currentStateColumn)}>
-                <div className={styles.label}>
-                  {instanceTranslations.currentState.label}
-                </div>
-                <div className={cn(styles.value, styles.currentStateValue)}>
+              </DomainValue>
+            </HiddenFailureDomainColumn>
+            <JoinedColumn>
+              <CurrentStateColumn>
+                <Label>{instanceTranslations.currentState.label}</Label>
+                <CurrentStateValue>
                   <NetworkState state={instance.currentState} />
-                </div>
-              </div>
-            </div>
+                </CurrentStateValue>
+              </CurrentStateColumn>
+            </JoinedColumn>
             <AddressBlock
               addresses={[
                 {
@@ -106,15 +93,14 @@ export const InstanceCard: FC<InstanceCardProps> = React.memo(
               ]}
             />
             <VersionBlock
-              className={cn(styles.infoColumn, styles.hiddenValue)}
               label={instanceTranslations.version.label}
               version={instance.version}
               noData={
                 <InfoNoData text={translation.components.infoNoData.label} />
               }
             />
-          </div>
-        </div>
+          </Content>
+        </CardWrapper>
         {/* <InstanceModal
           key={`${instance.name}_modal`}
           instance={instance}
@@ -130,18 +116,17 @@ function VersionBlock(props: {
   label: string;
   version: string;
   noData?: ReactNode;
-  className?: string;
 }) {
   return (
-    <div className={cn(props.className, styles.versionColumn)}>
-      <div className={styles.label}>{props.label}</div>
+    <VersionColumn>
+      <Label>{props.label}</Label>
       {props.version ? (
-        <div className={cn(styles.value, styles.hiddenValue)}>
+        <ValueHidden>
           <HiddenWrapper>{props.version}</HiddenWrapper>
-        </div>
+        </ValueHidden>
       ) : (
         props.noData
       )}
-    </div>
+    </VersionColumn>
   );
 }

@@ -1,20 +1,29 @@
-import cn from "classnames";
+import { SxProps } from "@mui/material";
 
 import { Content } from "shared/ui/layout/Content/Content";
 import { useTranslation } from "shared/intl";
 import { useClusterInfo } from "shared/entity/cluster/info";
 
 import { CapacityProgress } from "./CapacityProgress/CapacityProgress";
-
-import styles from "./ClusterInfo.module.scss";
+import {
+  CapacityInfoColumn,
+  CapacityWrapper,
+  ColumnContent,
+  ColumnLabel,
+  ColumnName,
+  ColumnValue,
+  containerSx,
+  InstancesBlock,
+  RightColumn,
+  RightContainer,
+} from "./StyledComponents";
 
 type ClusterInfoProps = {
   className?: string;
+  sx?: SxProps;
 };
 
-export const ClusterInfo = (props: ClusterInfoProps) => {
-  const { className } = props;
-
+export const ClusterInfo = ({ sx }: ClusterInfoProps) => {
   const { data: clusterInfoData } = useClusterInfo();
 
   const { translation } = useTranslation();
@@ -23,33 +32,34 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
   if (!clusterInfoData) {
     return null;
   }
-
   const instancesCurrentStateOfflineIsPositive =
     clusterInfoData.instancesCurrentStateOffline > 0;
-
   return (
-    <Content className={cn(styles.container, className)}>
-      <div className={cn(styles.left, styles.capacityInfoColumn)}>
-        <div className={styles.columnName}>
-          {clusterTranslations.capacityProgress.label}
-        </div>
-        <div className={styles.capacityWrapper}>
+    <Content
+      sx={
+        {
+          ...sx,
+          ...containerSx,
+        } as SxProps
+      }
+    >
+      <CapacityInfoColumn>
+        <ColumnName>{clusterTranslations.capacityProgress.label}</ColumnName>
+        <CapacityWrapper>
           <CapacityProgress
             percent={clusterInfoData.capacityUsage}
             currentValue={clusterInfoData.memory.used}
             limit={clusterInfoData.memory.usable}
             currentValueLabel={clusterTranslations.capacityProgress.valueLabel}
           />
-        </div>
-      </div>
-      <div className={styles.right}>
-        <div className={cn(styles.rightColumn)}>
-          <div className={styles.columnName}>
-            {clusterTranslations.plugins.label}
-          </div>
-          <div className={styles.columnContent}>
-            <div className={styles.columnValue}>
-              {clusterInfoData.plugins.map((plugin, i) =>
+        </CapacityWrapper>
+      </CapacityInfoColumn>
+      <RightContainer>
+        <RightColumn>
+          <ColumnName>{clusterTranslations.plugins.label}</ColumnName>
+          <ColumnContent>
+            <ColumnValue>
+              {(clusterInfoData.plugins as Array<unknown>).map((plugin, i) =>
                 i == 0 ? (
                   <>{plugin}</>
                 ) : (
@@ -59,69 +69,49 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
                   </>
                 )
               )}
-            </div>
-          </div>
-        </div>
-        <div className={cn(styles.rightColumn)}>
-          <div className={styles.columnName}>
-            {clusterTranslations.replicasets.label}
-          </div>
-          <div className={styles.columnContent}>
-            <div className={styles.columnValue}>
-              {clusterInfoData.replicasetsCount}
-            </div>
-            <div className={styles.columnLabel}>
+            </ColumnValue>
+          </ColumnContent>
+        </RightColumn>
+        <RightColumn>
+          <ColumnName>{clusterTranslations.replicasets.label}</ColumnName>
+          <ColumnContent>
+            <ColumnValue>{clusterInfoData.replicasetsCount}</ColumnValue>
+            <ColumnLabel>
               {clusterTranslations.replicasets.description}
-            </div>
-          </div>
-        </div>
-        <div className={cn(styles.rightColumn)}>
-          <div className={styles.columnName}>
-            {clusterTranslations.instances.label}
-          </div>
-          <div className={styles.instancesBlock}>
-            <div className={styles.columnContent}>
-              <div className={styles.columnValue}>
+            </ColumnLabel>
+          </ColumnContent>
+        </RightColumn>
+        <RightColumn>
+          <ColumnName>{clusterTranslations.instances.label}</ColumnName>
+          <InstancesBlock>
+            <ColumnContent>
+              <ColumnValue>
                 {clusterInfoData.instancesCurrentStateOnline}
-              </div>
-              <div className={styles.columnLabel}>
+              </ColumnValue>
+              <ColumnLabel>
                 {clusterTranslations.instances.onlineState}
-              </div>
-            </div>
-            <div className={styles.columnContent}>
-              <div
-                className={cn(styles.columnValue, {
-                  [styles.columnContentWarning]:
-                    instancesCurrentStateOfflineIsPositive,
-                })}
-              >
+              </ColumnLabel>
+            </ColumnContent>
+            <ColumnContent>
+              <ColumnValue $isWarning={instancesCurrentStateOfflineIsPositive}>
                 {clusterInfoData.instancesCurrentStateOffline}
-              </div>
-              <div
-                className={cn(styles.columnLabel, {
-                  [styles.columnContentWarning]:
-                    instancesCurrentStateOfflineIsPositive,
-                })}
-              >
+              </ColumnValue>
+              <ColumnLabel $isWarning={instancesCurrentStateOfflineIsPositive}>
                 {clusterTranslations.instances.offlineState}
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className={cn(styles.rightColumn)}>
-          <div className={styles.columnName}>
-            {clusterTranslations.version.label}
-          </div>
-          <div className={styles.columnContent}>
-            <div className={styles.columnValue}>
-              {clusterInfoData.clusterVersion}
-            </div>
-            <div className={styles.columnLabel}>
-              {clusterTranslations.version.description}
-            </div>
-          </div>
-        </div>
-      </div>
+              </ColumnLabel>
+            </ColumnContent>
+          </InstancesBlock>
+        </RightColumn>
+        <RightColumn>
+          <ColumnName>{clusterTranslations.version.label}</ColumnName>
+          <ColumnContent>
+            <ColumnValue>
+              {(clusterInfoData as unknown).currentInstaceVersion}
+            </ColumnValue>
+            <ColumnLabel>{clusterTranslations.version.description}</ColumnLabel>
+          </ColumnContent>
+        </RightColumn>
+      </RightContainer>
     </Content>
   );
 };

@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import cn from "classnames";
 
 import { Modal } from "shared/ui/Modal/Modal";
 import { Role, User } from "shared/entity/users/types/types";
@@ -7,7 +6,24 @@ import { CloseIcon } from "shared/icons/CloseIcon";
 import { Button } from "shared/ui/Button/Button";
 import { useTranslation } from "shared/intl";
 
-import styles from "./UserRoleModal.module.scss";
+import {
+  BlockElement,
+  ButtonElement,
+  ButtonsRow,
+  CloseElement,
+  DisabledContainer,
+  DisabledValue,
+  Divider,
+  Footer,
+  Label,
+  modalBodySx,
+  MultiItem,
+  MultiSelect,
+  Row,
+  TitleText,
+  TitleWrapper,
+  Value,
+} from "./StyledComponents";
 
 export const UserRoleModal = ({
   item,
@@ -47,14 +63,12 @@ export const UserRoleModal = ({
     forAllItemsTranslate: string
   ) => {
     if (!privileges || privileges.length === 0) {
-      return <div className={styles.disabledContainer}>{noPrivileges}</div>;
+      return <DisabledContainer>{noPrivileges}</DisabledContainer>;
     }
 
     const renderUsersMulti = () => {
       if (!selectedElement) {
-        return (
-          <div className={styles.disabledContainer}>{selectPrivilege}</div>
-        );
+        return <DisabledContainer>{selectPrivilege}</DisabledContainer>;
       }
 
       const foundPrivilege = privileges?.find(
@@ -64,120 +78,112 @@ export const UserRoleModal = ({
       if (!foundPrivilege) return null;
 
       return foundPrivilege.isForAll ? (
-        <div className={styles.disabledContainer}>{forAllItemsTranslate}</div>
+        <DisabledContainer>{forAllItemsTranslate}</DisabledContainer>
       ) : (
-        <div className={styles.multiSelect}>
+        <MultiSelect>
           {foundPrivilege.items.map((elem, i, arr) => {
             return (
-              <div className={styles.multiItem} key={i}>
+              <MultiItem key={i}>
                 <div>{elem}</div>
-                {i !== arr.length - 1 && <div className={styles.divider} />}
-              </div>
+                {i !== arr.length - 1 && <Divider />}
+              </MultiItem>
             );
           })}
-        </div>
+        </MultiSelect>
       );
     };
 
     return (
       <>
-        <div className={styles.buttonsRow}>
+        <ButtonsRow>
           {privileges.map((privilege, index) => {
             return (
-              <div
+              <ButtonElement
                 key={index}
-                className={cn(
-                  styles.button,
-                  selectedElement === privilege.type && styles.activeButton
-                )}
+                $isActive={selectedElement === privilege.type}
                 onClick={() => setSelectedItem(privilege.type)}
               >
                 {privilege.type}
-              </div>
+              </ButtonElement>
             );
           })}
-        </div>
+        </ButtonsRow>
         {renderUsersMulti()}
       </>
     );
   };
 
   return (
-    <Modal bodyClassName={styles.body}>
+    <Modal bodySx={modalBodySx}>
       <>
-        <div className={styles.titleWrapper}>
-          <span className={styles.titleText}>{item.name}</span>
-          <div
-            className={styles.close}
+        <TitleWrapper>
+          <TitleText>{item.name}</TitleText>
+          <CloseElement
             onClick={(event) => {
               event.stopPropagation();
               onClose();
             }}
           >
             <CloseIcon />
-          </div>
-        </div>
+          </CloseElement>
+        </TitleWrapper>
         {item.type === "user" && (
-          <div className={styles.block}>
-            <div className={styles.label}>{authType}</div>
-            <div className={styles.value}>{item.authType}</div>
-          </div>
+          <BlockElement>
+            <Label>{authType}</Label>
+            <Value>{item.authType}</Value>
+          </BlockElement>
         )}
         {item.roles && !!item.roles.length && (
-          <div className={styles.block}>
-            <div className={styles.label}>{roles}</div>
-            <div className={styles.row}>
+          <BlockElement>
+            <Label>{roles}</Label>
+            <Row>
               {item.roles.map((role, index, arr) => (
                 <React.Fragment key={index}>
-                  <div className={styles.value}>{role}</div>
-                  {index !== arr.length - 1 && (
-                    <div className={styles.divider} />
-                  )}
+                  <Value>{role}</Value>
+                  {index !== arr.length - 1 && <Divider />}
                 </React.Fragment>
               ))}
-            </div>
-          </div>
+            </Row>
+          </BlockElement>
         )}
-        <div className={styles.block}>
-          <div className={styles.label}>{privilegesRoles}</div>
+        <BlockElement>
+          <Label>{privilegesRoles}</Label>
           {item.privilegesForRoles && !!item.privilegesForRoles.length ? (
-            <div className={styles.row}>
+            <Row>
               {item.privilegesForRoles.map((role, index, arr) => (
                 <React.Fragment key={index}>
-                  <div className={styles.value}>{role}</div>
-                  {index !== arr.length - 1 && (
-                    <div className={styles.divider} />
-                  )}
+                  <Value>{role}</Value>
+                  {index !== arr.length - 1 && <Divider />}
                 </React.Fragment>
               ))}
-            </div>
+            </Row>
           ) : (
-            <div className={styles.disabledValue}>{noPrivileges}</div>
+            <DisabledValue>{noPrivileges}</DisabledValue>
           )}
-        </div>
-        <div className={styles.block}>
-          <div className={styles.label}>{privilegesUsers}</div>
+        </BlockElement>
+        <BlockElement>
+          <Label>{privilegesUsers}</Label>
           {renderMultiBlock(
             item.privilegesForUsers,
             selectedUserPrivilege,
             setSelectedUserPrivilege,
             privilegesForAllUsers
           )}
-        </div>
-        <div className={styles.block}>
-          <div className={styles.label}>{privilegesTables}</div>
+        </BlockElement>
+        <BlockElement>
+          <Label>{privilegesTables}</Label>
           {renderMultiBlock(
             item.privilegesForTables,
             selectedTablePrivilege,
             setSelectedTablePrivilege,
             privilegesForAllTables
           )}
-        </div>
-        <div className={styles.footer}>
+        </BlockElement>
+        <Footer>
           <Button theme="secondary" onClick={onClose} size="small">
             {close}
           </Button>
-        </div>
+        </Footer>
       </>
     </Modal>
   );

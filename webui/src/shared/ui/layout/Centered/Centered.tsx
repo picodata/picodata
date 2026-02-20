@@ -1,11 +1,11 @@
 import { Outlet } from "react-router-dom";
 
-import styles from "./Centered.module.scss";
+import { Root } from "./StyledComponents";
 
 export const CenteredLayout = () => {
   return (
-    <div className={styles.container}>
+    <Root>
       <Outlet />
-    </div>
+    </Root>
   );
 };

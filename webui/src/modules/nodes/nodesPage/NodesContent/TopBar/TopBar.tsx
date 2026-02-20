@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import cn from "classnames";
+import { SxProps } from "@mui/material";
 
 import {
   GroupByFilter,
@@ -9,20 +9,19 @@ import { SortBy, SortByProps } from "./SortBy/SortBy";
 import { FilterBy, FilterByProps } from "./FilterBy/FilterBy";
 import { DEFAULT_SORT_BY, DEFAULT_SORT_ORDER } from "./SortBy/config";
 import { Filters } from "./Filters/Filters";
-
-import styles from "./TopBar.module.scss";
+import { Controls, filtersSx, Right, Root } from "./StyledComponents";
 
 type TopBarProps = GroupByFilterProps &
   SortByProps &
   FilterByProps & {
     showSortBy: boolean;
     showFilterBy: boolean;
-    className?: string;
+    sx?: SxProps;
   };
 
 export const TopBar: React.FC<TopBarProps> = (props) => {
   const {
-    className,
+    sx,
     groupByFilterValue,
     setGroupByFilterValue,
     showSortBy,
@@ -53,10 +52,10 @@ export const TopBar: React.FC<TopBarProps> = (props) => {
   }, [showFilterBy, setFilterByValue]);
 
   return (
-    <div className={cn(styles.container, className)}>
-      <div className={styles.controls}>
+    <Root sx={sx}>
+      <Controls>
         <div />
-        <div className={styles.right}>
+        <Right>
           {showSortBy && (
             <SortBy sortByValue={sortByValue} setSortByValue={setSortByValue} />
           )}
@@ -70,15 +69,15 @@ export const TopBar: React.FC<TopBarProps> = (props) => {
             groupByFilterValue={groupByFilterValue}
             setGroupByFilterValue={setGroupByFilterValue}
           />
-        </div>
-      </div>
+        </Right>
+      </Controls>
       {filterByValue && (
         <Filters
-          className={styles.filters}
+          sx={filtersSx}
           filterByValue={filterByValue}
           setFilterByValue={setFilterByValue}
         />
       )}
-    </div>
+    </Root>
   );
 };

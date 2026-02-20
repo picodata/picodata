@@ -1,11 +1,16 @@
 import React from "react";
-import cn from "classnames";
 
 import { formatBytes } from "shared/utils/format/formatBytes";
 
 import { CapacityProgressLine } from "./CapacityProgressLine/CapacityProgressLine";
-
-import styles from "./CapacityProgress.module.scss";
+import {
+  Content,
+  Label,
+  ProgressLineContainer,
+  ProgressLineInfo,
+  Root,
+  Text,
+} from "./StyledComponents";
 
 type CapacityProgressProps = {
   currentValue: number;
@@ -32,23 +37,29 @@ export const CapacityProgress: React.FC<CapacityProgressProps> = (props) => {
   const showLabels = !!currentValueLabel;
 
   return (
-    <div className={styles.container}>
-      <div className={cn(styles.content, styles[size], styles[theme])}>
-        <div className={styles.text}>{percent} %</div>
-        <div className={styles.progressLineContainer}>
+    <Root>
+      <Content>
+        <Text $size={size} $theme={theme}>
+          {percent} %
+        </Text>
+        <ProgressLineContainer $size={size}>
           <CapacityProgressLine
             width={progressLineWidth}
             percent={percent}
             theme={theme}
             size={size}
           />
-          <div className={styles.progressLineInfo}>
-            <div className={styles.text}>{formatBytes(currentValue)}</div>
-            <div className={styles.text}>{formatBytes(limit)}</div>
-          </div>
-        </div>
-      </div>
-      {showLabels && <div className={styles.label}>{currentValueLabel}</div>}
-    </div>
+          <ProgressLineInfo $size={size}>
+            <Text $size={size} $theme={theme}>
+              {formatBytes(currentValue)}
+            </Text>
+            <Text $size={size} $theme={theme}>
+              {formatBytes(limit)}
+            </Text>
+          </ProgressLineInfo>
+        </ProgressLineContainer>
+      </Content>
+      {showLabels && <Label>{currentValueLabel}</Label>}
+    </Root>
   );
 };

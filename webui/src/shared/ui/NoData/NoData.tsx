@@ -1,18 +1,7 @@
-import React from "react";
-import cn from "classnames";
+import { PropsWithChildren } from "react";
 
-import styles from "./NoData.module.scss";
+import { Root } from "./StyledComponents";
 
-type NoDataProps = {
-  children: React.ReactNode;
-} & Omit<React.HTMLAttributes<HTMLDivElement>, "children">;
-
-export const NoData: React.FC<NoDataProps> = (props) => {
-  const { className, children, ...other } = props;
-
-  return (
-    <div className={cn(styles.container, className)} {...other}>
-      {children}
-    </div>
-  );
+export const NoData = ({ children }: PropsWithChildren) => {
+  return <Root>{children}</Root>;
 };

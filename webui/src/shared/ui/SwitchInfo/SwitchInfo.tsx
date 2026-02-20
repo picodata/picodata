@@ -1,23 +1,13 @@
-import React from "react";
-import cn from "classnames";
+import { Circle, Root } from "./StyledComponents";
 
-import styles from "./SwitchInfo.module.scss";
-
-type SwitchProps = {
+type SwitchInfoProps = {
   checked: boolean;
 };
 
-export const SwitchInfo: React.FC<SwitchProps> = (props) => {
-  const { checked } = props;
-
+export const SwitchInfo = ({ checked }: SwitchInfoProps) => {
   return (
-    <div
-      className={cn(
-        styles.container,
-        checked ? styles.enabled : styles.disabled
-      )}
-    >
-      <div className={styles.circle} />
-    </div>
+    <Root>
+      <Circle $checked={checked} />
+    </Root>
   );
 };

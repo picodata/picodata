@@ -1,7 +1,13 @@
+import { ThemeProvider } from "../shared/theme";
+
 import { BrowserRouter } from "./Router";
 
 function App() {
-  return <BrowserRouter />;
+  return (
+    <ThemeProvider>
+      <BrowserRouter />
+    </ThemeProvider>
+  );
 }
 
 export default App;

@@ -15,6 +15,5 @@ export type ServerClusterInfoType = {
   instancesCurrentStateOnline: number;
   instancesCurrentStateOffline: number;
   plugins: string[];
+  currentInstaceVersion?: string;
 };
-
-export type ClusterInfoType = ServerClusterInfoType;

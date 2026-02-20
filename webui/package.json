@@ -21,6 +21,12 @@
   },
   "dependencies": {
     "@aashutoshrathi/word-wrap": "^1.2.6",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@fontsource/roboto": "^5.2.9",
+    "@mui/icons-material": "^7.3.7",
+    "@mui/material": "^7.3.7",
+    "@mui/system": "^7.3.8",
     "axios": "^1.9.0",
     "classnames": "^2.3.2",
     "follow-redirects": "1.15.6",

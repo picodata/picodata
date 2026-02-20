@@ -1,6 +1,4 @@
-import React from "react";
-
-import styles from "./ProgressLine.module.css";
+import { Fill, Root } from "./StyledComponents";
 
 export type ProgressLineProps = {
   width: number | string;
@@ -10,25 +8,23 @@ export type ProgressLineProps = {
   trailColor?: string;
 };
 
-export const ProgressLine: React.FC<ProgressLineProps> = (props) => {
+export const ProgressLine = (props: ProgressLineProps) => {
   const { trailColor = "#F9F5F2", strokeColor = "#6FFF9F" } = props;
 
   return (
-    <div
+    <Root
       style={{
         width: props.width,
         height: props.height,
         backgroundColor: trailColor,
       }}
-      className={styles.container}
     >
-      <div
+      <Fill
         style={{
           width: `${props.percent}%`,
           backgroundColor: strokeColor,
         }}
-        className={styles.fill}
       />
-    </div>
+    </Root>
   );
 };

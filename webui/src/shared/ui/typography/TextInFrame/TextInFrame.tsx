@@ -1,17 +1,7 @@
-import React from "react";
-import cn from "classnames";
+import { PropsWithChildren } from "react";
 
-import styles from "./TextInFrame.module.scss";
+import { Root } from "./StyledComponents";
 
-export type TextInFrameProps = {
-  className?: string;
-  children: React.ReactNode;
-};
-
-export const TextInFrame: React.FC<TextInFrameProps> = (props) => {
-  return (
-    <div className={cn(styles.container, props.className)}>
-      {props.children}
-    </div>
-  );
+export const TextInFrame = (props: PropsWithChildren) => {
+  return <Root>{props.children}</Root>;
 };

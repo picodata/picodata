@@ -1,9 +1,8 @@
 import { MouseEvent } from "react";
-import classNames from "classnames";
 
 import { Option } from "../Option/Option";
 
-import styles from "./Dropdown.module.scss";
+import { Root } from "./StyledComponents";
 
 type DropdownItem<T extends string | number> = {
   value: T;
@@ -12,7 +11,6 @@ type DropdownItem<T extends string | number> = {
 
 export type DropdownProps<T extends string | number> = {
   items: DropdownItem<T>[];
-  className?: string;
   upDirection?: boolean;
   value?: T;
   onClick?: (e: MouseEvent<HTMLDivElement>) => void;
@@ -23,14 +21,7 @@ export const Dropdown = <T extends string | number>(
   props: DropdownProps<T>
 ) => {
   return (
-    <div
-      className={classNames(
-        styles.container,
-        props.upDirection && styles.upDirection,
-        props.className
-      )}
-      onClick={props.onClick}
-    >
+    <Root $upDirection={Boolean(props.upDirection)} onClick={props.onClick}>
       {props.items.map((item) => {
         const isSelected = props.value === item.value;
 
@@ -44,6 +35,6 @@ export const Dropdown = <T extends string | number>(
           </Option>
         );
       })}
-    </div>
+    </Root>
   );
 };

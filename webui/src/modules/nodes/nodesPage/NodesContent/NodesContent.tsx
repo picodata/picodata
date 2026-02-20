@@ -20,8 +20,7 @@ import { useFilterBy } from "./TopBar/FilterBy/hooks";
 import { TierCard } from "./TierCard/TierCard";
 import { TFilterByValue } from "./TopBar/FilterBy/config";
 import { TSortValue } from "./TopBar/SortBy/config";
-
-import styles from "./NodesContent.module.scss";
+import { gridWrapperSx, List, topBarSx } from "./StyledComponents";
 
 export const NodesContent = () => {
   const { data } = useTiers();
@@ -40,13 +39,13 @@ export const NodesContent = () => {
   const isNoData = data?.replicasets.length === 0;
 
   return (
-    <Content className={styles.gridWrapper}>
+    <Content sx={gridWrapperSx}>
       {isNoData ? (
         <NoData>{instancesTranslations.noData.text}</NoData>
       ) : (
         <>
           <TopBar
-            className={styles.topBar}
+            sx={topBarSx}
             groupByFilterValue={groupByFilterValue}
             setGroupByFilterValue={setGroupByFilterValue}
             sortByValue={sortByValue}
@@ -56,7 +55,7 @@ export const NodesContent = () => {
             filterByValue={filterByValue}
             setFilterByValue={setFilterByValue}
           />
-          <div className={styles.list}>
+          <List>
             {groupedByTiers && <Tiers tiers={data?.tiers} />}
             {groupedByReplicasets && (
               <Replicasets replicasets={data?.replicasets} />
@@ -68,7 +67,7 @@ export const NodesContent = () => {
                 sortByValue={sortByValue}
               />
             )}
-          </div>
+          </List>
         </>
       )}
     </Content>

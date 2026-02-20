@@ -10,8 +10,15 @@ import { PromptIcon } from "shared/components/Prompt/PromptIcon";
 import { TKeyValueFilter } from "./DomainField/types";
 import { useKeyValues } from "./hooks";
 import { DomainField, DomainFieldProps } from "./DomainField/DomainField";
-
-import styles from "./FilterByModal.module.scss";
+import {
+  AddFilter,
+  buttonApplySx,
+  buttonClearSx,
+  Field,
+  Footer,
+  Label,
+  Scroll,
+} from "./StyledComponents";
 
 export type Values = {
   domainValuesFilters?: Omit<TKeyValueFilter, "id">[];
@@ -74,14 +81,14 @@ export const FilterByModal: React.FC<FilterByModalProps> = (props) => {
 
   return (
     <>
-      <div className={styles.field}>
-        <div className={styles.label}>
+      <Field>
+        <Label>
           {modalTranslations.failureDomainField.label}
           <PromptIcon>
             {modalTranslations.failureDomainField.promptText}
           </PromptIcon>
-        </div>
-        <div className={styles.scroll}>
+        </Label>
+        <Scroll>
           {keyValueFilters.map((filter, i) => {
             const currentDomains = domains.filter(
               (domain) => domain.key === filter.key
@@ -107,20 +114,20 @@ export const FilterByModal: React.FC<FilterByModalProps> = (props) => {
               />
             );
           })}
-        </div>
-      </div>
+        </Scroll>
+      </Field>
       {canAddMoreFilters && (
-        <div className={styles.addFilter} onClick={addKeyValueFilter}>
+        <AddFilter onClick={addKeyValueFilter}>
           <PlusIcon />
-        </div>
+        </AddFilter>
       )}
-      <div className={styles.footer}>
-        <Button size="small" className={styles.apply} onClick={onApplyClick}>
+      <Footer>
+        <Button size="small" sx={buttonApplySx} onClick={onApplyClick}>
           {modalTranslations.ok}
         </Button>
         <Button
           size="small"
-          className={styles.clear}
+          sx={buttonClearSx}
           theme="secondary"
           onClick={() =>
             onApply({
@@ -130,7 +137,7 @@ export const FilterByModal: React.FC<FilterByModalProps> = (props) => {
         >
           {modalTranslations.clear}
         </Button>
-      </div>
+      </Footer>
     </>
   );
 };

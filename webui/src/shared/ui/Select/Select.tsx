@@ -80,7 +80,7 @@ export const Select = <T extends TOption>(props: SelectProps<T>) => {
                   size="extraSmall"
                   theme="secondary"
                   isSelectValue
-                  className={args.innerProps?.className}
+                  // className={args.innerProps?.className} ToDo sx
                 >
                   See all ({value.length})
                 </Tag>
@@ -91,7 +91,7 @@ export const Select = <T extends TOption>(props: SelectProps<T>) => {
           return (
             <Tag
               size="extraSmall"
-              className={args.innerProps?.className}
+              // className={args.innerProps?.className} ToDo sx
               isSelectValue
               rightIcon={
                 <div {...args.removeProps}>

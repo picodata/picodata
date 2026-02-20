@@ -1,12 +1,10 @@
 import { FC } from "react";
 
 import { SpinnerProps } from "./Spinner.types";
-
-import styles from "./Spinner.module.scss";
+import { Root } from "./StyledComponents";
 
 export const Spinner: FC<SpinnerProps> = ({ size = 14 }) => (
-  <svg
-    className={styles.spinner}
+  <Root
     aria-hidden="true"
     width={`${size}px`}
     height={`${size}px`}
@@ -21,5 +19,5 @@ export const Spinner: FC<SpinnerProps> = ({ size = 14 }) => (
       strokeLinecap="round"
       strokeLinejoin="round"
     />
-  </svg>
+  </Root>
 );

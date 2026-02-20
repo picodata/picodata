@@ -2,7 +2,7 @@ import { useMemo } from "react";
 
 import { useClusterInfo } from "shared/entity/cluster/info";
 
-import styles from "./ClusterId.module.scss";
+import { Prefix, Root } from "./StyledComponents";
 
 export const ClusterId = () => {
   const { data: clusterInfoData } = useClusterInfo();
@@ -12,12 +12,8 @@ export const ClusterId = () => {
   );
 
   return (
-    <div className={styles.title}>
-      {clusterName ? (
-        <span>{clusterName}</span>
-      ) : (
-        <span className={styles.prefix}>Cluster ID</span>
-      )}
-    </div>
+    <Root>
+      {clusterName ? <span>{clusterName}</span> : <Prefix>Cluster ID</Prefix>}
+    </Root>
   );
 };

@@ -1,15 +1,12 @@
 import { PropsWithChildren, useRef, useState } from "react";
-import cn from "classnames";
+import { SxProps } from "@mui/material";
 
 import { HiddenWrapper } from "../HiddenWrapper/HiddenWrapper";
 
 import { ClippableIcon } from "./ClippableIcon";
-
-import styles from "./Clippable.module.scss";
+import { Root } from "./StyledComponents";
 
 export interface ClippableProps {
-  className?: string;
-
   /**
    * For how long the "copied" icon should be displayed (ms).
    *
@@ -27,26 +24,25 @@ export interface ClippableProps {
    * Shorthand to display icon in line with the other contents
    */
   inline?: boolean;
+
+  sx?: SxProps;
 }
 
 /**
  * Copies text to clipboard when clicking on the icon
  */
 export const Clippable = (props: PropsWithChildren<ClippableProps>) => {
-  const { className, inline, text, iconTimeout = 400 } = props;
+  const { inline, text, sx = {}, iconTimeout = 400 } = props;
 
   const ref = useRef<HTMLDivElement>(null);
 
   const [isClipping, setClipped] = useState(false);
 
   return (
-    <div
-      ref={ref}
-      className={inline ? cn(styles.inline, className) : className}
-    >
+    <Root $inline={Boolean(inline)} sx={sx} ref={ref}>
       <ClippableIcon isClipping={isClipping} onClick={copyText} />
       <HiddenWrapper>{props.children}</HiddenWrapper>
-    </div>
+    </Root>
   );
 
   function copyText() {

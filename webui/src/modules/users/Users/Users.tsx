@@ -3,8 +3,6 @@ import { User } from "shared/entity/users/types/types";
 
 import { UserRoleCard } from "../UserRoleCard/UserRoleCard";
 
-import styles from "../UsersPage.module.scss";
-
 export const Users = ({
   setSelectedItem,
   search,
@@ -16,7 +14,7 @@ export const Users = ({
 
   return (
     <>
-      {data
+      {(data as Array<User>) //ToDo types
         ?.filter((user) => {
           if (search.length) {
             return user.name
@@ -30,7 +28,7 @@ export const Users = ({
           return (
             <UserRoleCard
               key={i}
-              className={styles.item}
+              // className={styles.item} ToDo
               type="USERS"
               onClick={() => setSelectedItem(item)}
               card={item}

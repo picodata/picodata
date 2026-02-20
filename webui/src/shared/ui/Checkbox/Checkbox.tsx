@@ -1,9 +1,8 @@
 import React, { useMemo, useRef } from "react";
-import cn from "classnames";
 
 import { CheckIcon } from "shared/icons/CheckIcon";
 
-import styles from "./Checkbox.module.scss";
+import { checkSx, Content, Root, StyleInput } from "./StyledComponents";
 
 export type CheckboxProps = {
   children?: React.ReactNode;
@@ -22,9 +21,8 @@ export const Checkbox: React.FC<CheckboxProps> = (props) => {
   );
 
   return (
-    <div className={cn(styles.container, subprops.className)}>
-      <input
-        className={styles.input}
+    <Root>
+      <StyleInput
         type="checkbox"
         {...subprops}
         id={id}
@@ -38,10 +36,8 @@ export const Checkbox: React.FC<CheckboxProps> = (props) => {
         }}
         checked={!!subprops.checked || !!subprops.value}
       />
-      <CheckIcon className={styles.check} />
-      <label htmlFor={id} className={styles.content}>
-        {children}
-      </label>
-    </div>
+      <CheckIcon style={checkSx} />
+      <Content htmlFor={id}>{children}</Content>
+    </Root>
   );
 };

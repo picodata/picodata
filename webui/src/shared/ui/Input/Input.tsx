@@ -1,7 +1,7 @@
-import React, { useRef, useState } from "react";
-import cn from "classnames";
+import { useRef, useState } from "react";
+import { SxProps } from "@mui/system/styleFunctionSx";
 
-import styles from "./Input.module.scss";
+import { Root, StyledInput, IconContent, RightIcon } from "./StyledComponents";
 
 export type InputProps = {
   classes?: {
@@ -13,11 +13,13 @@ export type InputProps = {
   onBlur?: () => void;
   onChange: (v: string) => void;
   value: string;
+  containerSx?: SxProps;
 } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange">;
 
 export const Input: React.FC<InputProps> = (props) => {
   const {
     disabled = false,
+    containerSx = {},
     rightIcon,
     onBlur,
     onFocus,
@@ -46,26 +48,19 @@ export const Input: React.FC<InputProps> = (props) => {
   };
 
   return (
-    <div
-      className={cn(
-        styles.container,
-        isFocused && styles.activeContainer,
-        classes?.container
-      )}
-    >
-      <input
+    <Root $isFocused={isFocused} sx={containerSx}>
+      <StyledInput
         ref={ref}
         {...inputProps}
         value={value}
-        className={cn(styles.input, !!rightIcon && styles.inputWithIcon)}
         onFocus={handleFocus}
         onBlur={handleBlur}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
       />
-      <div className={styles.content}>
-        {rightIcon && <div className={styles.rightIcon}>{rightIcon}</div>}
-      </div>
-    </div>
+      <IconContent>
+        {rightIcon && <RightIcon>{rightIcon}</RightIcon>}
+      </IconContent>
+    </Root>
   );
 };

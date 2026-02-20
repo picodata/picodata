@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo } from "react";
-import cn from "classnames";
 
 import { Select } from "shared/ui/Select/Select";
 import { isArrayContainsOtherArray } from "shared/utils/array/isArrayContainsOtherArray";
@@ -8,11 +7,16 @@ import { useTranslation } from "shared/intl";
 
 import { TKeyValueFilter } from "./types";
 import { useKeysValuesData } from "./hooks";
-
-import styles from "./DomainField.module.scss";
+import styles from "./DomainField.module.css";
+import {
+  Container,
+  DeleteContainer,
+  DeleteElement,
+  KeyValueField,
+  KeyValueFieldCenter,
+} from "./StyledComponents";
 
 export type DomainFieldProps = {
-  className?: string;
   onDelete?: () => void;
   filter: TKeyValueFilter;
   domains: Array<{ key: string; value: string }>;
@@ -23,7 +27,7 @@ export type DomainFieldProps = {
 };
 
 export const DomainField: React.FC<DomainFieldProps> = (props) => {
-  const { className, filter, domains, updateKeyValueFilter, onDelete } = props;
+  const { filter, domains, updateKeyValueFilter, onDelete } = props;
 
   const { keys, values } = useKeysValuesData(domains, filter);
 
@@ -60,8 +64,8 @@ export const DomainField: React.FC<DomainFieldProps> = (props) => {
     : undefined;
 
   return (
-    <div className={cn(styles.container, className)}>
-      <div className={styles.keyValueField}>
+    <Container>
+      <KeyValueField>
         <Select
           options={keys.map((key) => ({ label: key, value: key }))}
           classNames={{ container: () => styles.valueSelect }}
@@ -81,8 +85,8 @@ export const DomainField: React.FC<DomainFieldProps> = (props) => {
             });
           }}
         />
-      </div>
-      <div className={cn(styles.keyValueField, styles.keyValueFieldCenter)}>
+      </KeyValueField>
+      <KeyValueFieldCenter>
         <Select
           options={domainValuesOptions}
           classNames={{ container: () => styles.valueSelect }}
@@ -98,14 +102,14 @@ export const DomainField: React.FC<DomainFieldProps> = (props) => {
             });
           }}
         />
-      </div>
+      </KeyValueFieldCenter>
       {!!onDelete && (
-        <div className={styles.deleteContainer}>
-          <div className={styles.delete} onClick={onDelete}>
+        <DeleteContainer>
+          <DeleteElement onClick={onDelete}>
             <TrashIcon />
-          </div>
-        </div>
+          </DeleteElement>
+        </DeleteContainer>
       )}
-    </div>
+    </Container>
   );
 };

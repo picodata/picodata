@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Button, ButtonProps } from "../Button/Button";
 import { Dropdown, DropdownProps } from "../Dropdown/Dropdown";
 
-import styles from "./ButtonSelect.module.scss";
+import { Root } from "./StyledComponents";
 
 export type ButtonSelectProps<T extends string | number> = Omit<
   ButtonProps,
@@ -15,11 +15,10 @@ export const ButtonSelect = <T extends string | number>(
   props: ButtonSelectProps<T>
 ) => {
   const { children, items, value, onChange, ...buttonProps } = props;
-
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div className={styles.container}>
+    <Root>
       <Button
         {...buttonProps}
         onClick={() => setIsOpen(!isOpen)}
@@ -28,6 +27,6 @@ export const ButtonSelect = <T extends string | number>(
         {children}
       </Button>
       {isOpen && <Dropdown items={items} value={value} onChange={onChange} />}
-    </div>
+    </Root>
   );
 };

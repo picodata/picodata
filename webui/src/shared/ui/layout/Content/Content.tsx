@@ -1,12 +1,14 @@
 import React from "react";
-import cn from "classnames";
+import { SxProps } from "@mui/system/styleFunctionSx";
 
-import styles from "./Content.module.scss";
+import { Root } from "./StyledComponents";
 
-type ContentProps = React.HTMLAttributes<HTMLDivElement>;
+type ContentProps = React.HTMLAttributes<HTMLDivElement> & {
+  sx?: SxProps;
+};
 
 export const Content: React.FC<ContentProps> = (props) => {
-  const { className, ...other } = props;
+  const { ...other } = props;
 
-  return <div className={cn(styles.container, className)} {...other}></div>;
+  return <Root {...other}></Root>;
 };

@@ -1,15 +1,12 @@
-import React from "react";
-import cn from "classnames";
-
-import styles from "./InfoNoData.module.scss";
+import { Root } from "./StyledComponents";
 
 type InfoNoDataProps = {
   text: string;
   className?: string;
 };
 
-export const InfoNoData: React.FC<InfoNoDataProps> = (props) => {
-  const { text, className } = props;
+export const InfoNoData = (props: InfoNoDataProps) => {
+  const { text } = props;
 
-  return <div className={cn(styles.text, className)}>{text}</div>;
+  return <Root>{text}</Root>;
 };

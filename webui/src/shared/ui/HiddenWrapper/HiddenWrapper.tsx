@@ -1,14 +1,15 @@
 import React, { useRef, ReactNode, useId } from "react";
-import cn from "classnames";
 import { PlacesType, Tooltip } from "react-tooltip";
+import { SxProps } from "@mui/material";
 
 import { useHiddenRefs } from "shared/hooks/useHiddenRefs";
 
-import styles from "./HiddenWrapper.module.scss";
+import styles from "./HiddenWrapper.module.css";
+import { Overlay, Root } from "./StyledComponents";
 
 export type HiddenWrapperProps = {
   children: ReactNode;
-  className?: string;
+  sx?: SxProps;
   twoLine?: boolean;
   place?: PlacesType;
   onMouseEnter?: React.MouseEventHandler<HTMLDivElement>;
@@ -18,7 +19,7 @@ export type HiddenWrapperProps = {
 
 export const HiddenWrapper = ({
   children,
-  className,
+  sx,
   place,
   onMouseEnter,
   onMouseLeave,
@@ -33,16 +34,18 @@ export const HiddenWrapper = ({
 
   return (
     <>
-      <div
+      <Root
         data-tooltip-id={id}
         ref={ref}
         style={style}
-        className={cn(styles.text, className, twoLine && styles.twoLiner)}
+        sx={sx}
+        $twoLine={twoLine}
+        // className={cn(styles.text, className, twoLine && styles.twoLiner)} //ToDo
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
       >
         {children}
-      </div>
+      </Root>
       <Tooltip
         opacity={1}
         hidden={!isHidden}
@@ -53,7 +56,7 @@ export const HiddenWrapper = ({
         noArrow
         offset={0}
       >
-        <div className={cn(styles.overlay)}>{children}</div>
+        <Overlay>{children}</Overlay>
       </Tooltip>
     </>
   );

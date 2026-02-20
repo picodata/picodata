@@ -4,7 +4,12 @@ import { EyeClosed } from "shared/icons/EyeClosed";
 import { EyeOpen } from "shared/icons/EyeOpen";
 import { Input, InputProps } from "shared/ui/Input/Input";
 
-import styles from "./LoginPage.module.scss";
+import {
+  FormField,
+  FormFieldError,
+  FormFieldTitle,
+  PasswordToggle,
+} from "./StyledComponents";
 
 export function InputField(
   props: {
@@ -33,8 +38,8 @@ export function InputField(
   );
 
   return (
-    <div className={styles.formField}>
-      <span className={styles.formFieldTitle}>{title}</span>
+    <FormField>
+      <FormFieldTitle>{title}</FormFieldTitle>
       <Input
         {...subprops}
         type={textVisible ? subprops.type ?? "text" : "password"}
@@ -43,21 +48,15 @@ export function InputField(
         placeholder={placeholder}
         rightIcon={
           toggleable && (
-            <div
-              onClick={togglePasswordVisibility}
-              className={styles.passwordToggle}
-            >
+            <PasswordToggle onClick={togglePasswordVisibility}>
               {textVisible ? <EyeOpen /> : <EyeClosed />}
-            </div>
+            </PasswordToggle>
           )
         }
       />
-      <span
-        className={styles.formFieldError}
-        style={{ height: error ? undefined : 0 }}
-      >
+      <FormFieldError style={{ height: error ? undefined : 0 }}>
         {error}
-      </span>
-    </div>
+      </FormFieldError>
+    </FormField>
   );
 }

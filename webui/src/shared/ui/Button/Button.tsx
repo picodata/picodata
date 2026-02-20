@@ -1,7 +1,7 @@
-import React, { useRef } from "react";
-import cn from "classnames";
+import { useRef } from "react";
+import { SxProps } from "@mui/material";
 
-import styles from "./Button.module.scss";
+import { Content, Icon, Root } from "./StyledComponents";
 
 export type ButtonProps = {
   children?: React.ReactNode;
@@ -10,9 +10,10 @@ export type ButtonProps = {
   theme?: "primary" | "secondary";
   size?: "large" | "normal" | "small" | "extraSmall";
   disabled?: boolean;
+  sx?: SxProps;
 } & React.ButtonHTMLAttributes<HTMLButtonElement>;
 
-export const Button: React.FC<ButtonProps> = (props) => {
+export const Button = (props: ButtonProps) => {
   const {
     children,
     size = "normal",
@@ -20,20 +21,16 @@ export const Button: React.FC<ButtonProps> = (props) => {
     disabled = false,
     leftIcon,
     rightIcon,
+    sx = {},
     ...buttonProps
   } = props;
   const ref = useRef<HTMLButtonElement>(null);
 
   return (
-    <button
+    <Root
+      sx={sx}
       ref={ref}
       {...buttonProps}
-      className={cn(
-        styles.container,
-        styles[size],
-        styles[theme],
-        buttonProps.className
-      )}
       onClick={(e) => {
         if (buttonProps.onClick) {
           buttonProps.onClick(e);
@@ -41,12 +38,23 @@ export const Button: React.FC<ButtonProps> = (props) => {
         ref.current?.focus();
       }}
       disabled={disabled}
+      $size={size}
+      $theme={theme}
+      $disabled={disabled}
     >
-      <span className={styles.content}>
-        {leftIcon && <span className={styles.leftIcon}>{leftIcon}</span>}
+      <Content $size={size}>
+        {leftIcon && (
+          <Icon $type={"left"} $size={size}>
+            {leftIcon}
+          </Icon>
+        )}
         {children}
-        {rightIcon && <span className={styles.rightIcon}>{rightIcon}</span>}
-      </span>
-    </button>
+        {rightIcon && (
+          <Icon $type={"right"} $size={size}>
+            {rightIcon}
+          </Icon>
+        )}
+      </Content>
+    </Root>
   );
 };

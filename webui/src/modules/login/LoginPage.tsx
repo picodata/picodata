@@ -17,9 +17,17 @@ import { Checkbox } from "shared/ui/Checkbox";
 import { useSessionStore } from "shared/session";
 
 import { InputField } from "./InputField";
-
-import styles from "./LoginPage.module.scss";
-import layout from "shared/ui/layout/Centered/Centered.module.scss";
+import {
+  FormActions,
+  FormContainer,
+  FormFieldPadded,
+  FormFields,
+  LoginContainer,
+  Logo,
+  StyleForm,
+  StyleMain,
+  Title,
+} from "./StyledComponents";
 
 export const LoginPage = () => {
   const login = useLogin();
@@ -89,19 +97,14 @@ export const LoginPage = () => {
 
   return (
     <>
-      <main className={layout.main}>
-        <div className={styles.loginContainer}>
-          <img src={logo} alt="PICODATA" className={styles.logo} />
+      <StyleMain>
+        <LoginContainer>
+          <Logo src={logo} alt="PICODATA" />
+          <FormContainer>
+            <Title>{form.title}</Title>
 
-          <div className={styles.formContainer}>
-            <h1 className={styles.title}>{form.title}</h1>
-
-            <form
-              className={styles.form}
-              onSubmit={callLogin}
-              aria-disabled={isFormDisabled}
-            >
-              <div className={styles.formFields}>
+            <StyleForm onSubmit={callLogin} aria-disabled={isFormDisabled}>
+              <FormFields>
                 <InputField
                   autoComplete="username"
                   name="username"
@@ -121,7 +124,7 @@ export const LoginPage = () => {
                   {...form.field.password}
                 />
 
-                <div className={styles.formFieldPadded}>
+                <FormFieldPadded>
                   <Checkbox
                     name="remember"
                     checked={session.remembers}
@@ -129,15 +132,15 @@ export const LoginPage = () => {
                   >
                     {form.field.remember.title}
                   </Checkbox>
-                </div>
-              </div>
-              <div className={styles.formActions}>
+                </FormFieldPadded>
+              </FormFields>
+              <FormActions>
                 <Button>{form.loginButton}</Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </main>
+              </FormActions>
+            </StyleForm>
+          </FormContainer>
+        </LoginContainer>
+      </StyleMain>
     </>
   );
 };

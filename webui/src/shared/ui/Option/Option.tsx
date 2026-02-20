@@ -1,22 +1,16 @@
-import React from "react";
-import cn from "classnames";
-
-import styles from "./Option.module.scss";
+import { Root } from "./StyledComponents";
 
 type OptionProps = {
   isSelected: boolean;
   children: React.ReactNode;
 } & React.ButtonHTMLAttributes<HTMLDivElement>;
 
-export const Option: React.FC<OptionProps> = (props) => {
+export const Option = (props: OptionProps) => {
   const { isSelected, children, ...other } = props;
 
   return (
-    <div
-      className={cn(styles.item, isSelected && styles.selectedItem)}
-      {...other}
-    >
+    <Root {...other} $isSelected={isSelected}>
       {children}
-    </div>
+    </Root>
   );
 };

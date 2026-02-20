@@ -10,7 +10,8 @@ import { Routes } from "shared/router/config";
 import { useLsState } from "shared/localStorage/hooks/useLsState";
 import { useTranslation } from "shared/intl";
 
-import styles from "./SideMenu.module.scss";
+import { MenuIcon, NavLinksList, NavLinkText, Root } from "./StyledComponents";
+import styles from "./SideMenu.module.css";
 
 export const SideMenu = () => {
   const [isOpen, setIsOpen] = useLsState({
@@ -32,22 +33,16 @@ export const SideMenu = () => {
     {
       to: Routes.NODES,
       label: sideMenuTranslations.navLinks.instances.label,
-      icon: <InstancesIcon className={styles.icon} />,
+      icon: <InstancesIcon style={{ flexShrink: 0 }} />,
     },
   ];
 
   return (
-    <div
-      className={cn(styles.container, isOpen && styles.openContainer)}
-      ref={containerRef}
-    >
-      <div
-        className={cn(styles.menuIcon, isOpen && styles.openMenuIcon)}
-        onClick={() => setIsOpen(!isOpen)}
-      >
+    <Root ref={containerRef} $isOpen={isOpen}>
+      <MenuIcon $isOpen={isOpen} onClick={() => setIsOpen(!isOpen)}>
         <BurgerIcon />
-      </div>
-      <div className={styles.navLinksList}>
+      </MenuIcon>
+      <NavLinksList $isOpen={isOpen}>
         {navLinks.map((link) => {
           return (
             <NavLink
@@ -60,11 +55,11 @@ export const SideMenu = () => {
               }}
             >
               {link.icon}
-              <span className={styles.navLinkText}>{link.label}</span>
+              <NavLinkText>{link.label}</NavLinkText>
             </NavLink>
           );
         })}
-      </div>
+      </NavLinksList>
       {/* Пример смены языка
       <div
         onClick={() =>
@@ -73,6 +68,6 @@ export const SideMenu = () => {
       >
         Change Locale
       </div> */}
-    </div>
+    </Root>
   );
 };

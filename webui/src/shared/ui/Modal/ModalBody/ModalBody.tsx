@@ -1,29 +1,25 @@
 import React from "react";
-import cn from "classnames";
 
-import { CloseIcon } from "shared/icons/CloseIcon";
-
-import styles from "./ModalBody.module.scss";
+import { CloseIcon, Root, TitleText, TitleWrapper } from "./StyledComponents";
 
 export type ModalBodyProps = {
   title: React.ReactNode;
   children: (args: {
     onClose: () => void;
   }) => Exclude<React.ReactNode, "string"> | React.ReactNode;
-  bodyClassName?: string;
   onClose: () => void;
 } & Omit<React.HtmlHTMLAttributes<HTMLDivElement>, "children">;
 
 export const ModalBody: React.FC<ModalBodyProps> = (props) => {
-  const { title, children, bodyClassName, onClose, ...other } = props;
+  const { title, children, onClose, ...other } = props;
 
   return (
-    <div className={cn(styles.body, bodyClassName)} {...other}>
-      <div className={styles.titleWrapper}>
-        <span className={styles.titleText}>{title}</span>
-        <CloseIcon onClick={onClose} className={styles.closeIcon} />
-      </div>
+    <Root {...other}>
+      <TitleWrapper>
+        <TitleText /*className={styles.titleText}*/>{title}</TitleText>
+        <CloseIcon onClick={onClose} />
+      </TitleWrapper>
       {typeof children === "function" ? children({ onClose }) : children}
-    </div>
+    </Root>
   );
 };

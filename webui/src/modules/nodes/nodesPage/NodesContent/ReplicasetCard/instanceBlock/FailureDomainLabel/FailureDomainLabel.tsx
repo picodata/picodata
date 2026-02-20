@@ -1,5 +1,4 @@
 import React from "react";
-import cn from "classnames";
 
 import { HiddenWrapper } from "shared/ui/HiddenWrapper/HiddenWrapper";
 import { sortByString } from "shared/utils/string/sort";
@@ -7,10 +6,9 @@ import { Clippable } from "shared/ui/Clippable/Clippable";
 
 import { formatFailDomain } from "../../../utils";
 
-import styles from "./FailureDomainLabel.module.scss";
+import { containerSx, Text } from "./StyledComponents";
 
 type FailureDomainLabelProps = {
-  className?: string;
   failureDomain: {
     key: string;
     value: string;
@@ -20,10 +18,10 @@ type FailureDomainLabelProps = {
 export const FailureDomainLabel: React.FC<FailureDomainLabelProps> = (
   props
 ) => {
-  const { className, failureDomain } = props;
+  const { failureDomain } = props;
 
   return (
-    <HiddenWrapper className={cn(styles.container, className)}>
+    <HiddenWrapper sx={containerSx}>
       {failureDomain
         .map(formatFailDomain)
         .sort((a, b) => sortByString(b, a)) // Ensure consistent display order for key=value pairs
@@ -33,10 +31,10 @@ export const FailureDomainLabel: React.FC<FailureDomainLabelProps> = (
           return (
             <React.Fragment key={index}>
               <Clippable text={domain} inline>
-                <span className={styles.text}>
+                <Text>
                   {domain}
                   {isLastItem ? "" : ";"}
-                </span>
+                </Text>
               </Clippable>
             </React.Fragment>
           );

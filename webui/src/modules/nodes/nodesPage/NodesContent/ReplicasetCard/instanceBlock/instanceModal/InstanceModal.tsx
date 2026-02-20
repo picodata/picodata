@@ -1,12 +1,23 @@
 import { FC, useMemo } from "react";
 import { createPortal } from "react-dom";
-import classNames from "classnames";
 
 import { CloseIcon } from "shared/icons/CloseIcon";
 import { LeaderBigIcon } from "shared/icons/LeaderBigIcon";
 import { InstanceType } from "shared/entity/instance";
 
-import styles from "./InstanceModal.module.css";
+import {
+  Body,
+  BoxInfo,
+  BoxInfoRaw,
+  BoxInfoWrapper,
+  CloseElement,
+  starIconStyle,
+  TabGroup,
+  TitleText,
+  TitleTextInline,
+  TitleWrapper,
+  Wrapper,
+} from "./StyledComponents";
 
 export interface InstanceModalProps {
   isOpen: boolean;
@@ -22,25 +33,20 @@ export const InstanceModal: FC<InstanceModalProps> = ({
   const boxInfoEl = useMemo(() => {
     const keys = Object.keys(instance);
     return (
-      <div className={styles.boxInfoWrapper}>
+      <BoxInfoWrapper>
         {keys.map((key, index) => {
           if (typeof instance[key as keyof InstanceType] === "string") {
             return (
-              <div
-                key={index}
-                className={classNames(styles.boxInfoRaw, {
-                  [styles.grayRaw]: index % 2 !== 0,
-                })}
-              >
+              <BoxInfoRaw key={index} $isGrayRow={index % 2 !== 0}>
                 <span>
-                  <p className={styles.titleText}>{key}</p>
+                  <TitleText>{key}</TitleText>
                 </span>
                 <p>{instance[key as keyof InstanceType]?.toString()}</p>
-              </div>
+              </BoxInfoRaw>
             );
           }
         })}
-      </div>
+      </BoxInfoWrapper>
     );
   }, [instance]);
 
@@ -49,35 +55,33 @@ export const InstanceModal: FC<InstanceModalProps> = ({
   }
 
   return createPortal(
-    <div
-      className={styles.wrapper}
+    <Wrapper
       onClick={(e) => {
         e.stopPropagation();
         e.preventDefault();
       }}
     >
-      <div className={styles.body}>
-        <div className={styles.titleWrapper}>
-          <span className={styles.titleText}>
-            {instance.isLeader && <LeaderBigIcon className={styles.starIcon} />}
+      <Body>
+        <TitleWrapper>
+          <TitleTextInline>
+            {instance.isLeader && <LeaderBigIcon style={starIconStyle} />}
             {instance.name}
-          </span>
-          <div
-            className={styles.close}
+          </TitleTextInline>
+          <CloseElement
             onClick={(event) => {
               event.stopPropagation();
               onClose();
             }}
           >
             <CloseIcon />
-          </div>
-        </div>
-        <div className={styles.tabGroup}>
+          </CloseElement>
+        </TitleWrapper>
+        <TabGroup>
           <span>General</span>
-        </div>
-        <div className={styles.boxInfo}>{boxInfoEl}</div>
-      </div>
-    </div>,
+        </TabGroup>
+        <BoxInfo>{boxInfoEl}</BoxInfo>
+      </Body>
+    </Wrapper>,
     document.body
   );
 };

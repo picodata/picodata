@@ -1,4 +1,3 @@
-import cn from "classnames";
 import { Fragment } from "react/jsx-runtime";
 
 import { useTranslation } from "shared/intl";
@@ -6,7 +5,7 @@ import { InfoNoData } from "shared/ui/InfoNoData/InfoNoData";
 
 import { IpAddressLabel } from "../IpAddressLabel/IpAddressLabel";
 
-import styles from "./AddressBlock.module.scss";
+import { AddressLabel, addressValueSx, Root } from "./StyledComponents";
 
 export interface AddressDisplay {
   title: string;
@@ -26,19 +25,17 @@ export const AddressBlock: React.FC<AddressBlockProps> = (props) => {
     return <InfoNoData text={translation.components.infoNoData.label} />;
 
   return (
-    <div className={cn(styles.addressBlock, props.className)}>
+    <Root>
       {addresses.map((a) => (
         <Fragment key={a.title}>
-          <span className={styles.addressLabel} key={`label-for-${a.title}`}>
-            {a.title}
-          </span>
+          <AddressLabel key={`label-for-${a.title}`}>{a.title}</AddressLabel>
           <IpAddressLabel
             key={`value-for-${a.title}`}
-            className={styles.addressValue}
             address={a.value}
+            sx={addressValueSx}
           />
         </Fragment>
       ))}
-    </div>
+    </Root>
   );
 };

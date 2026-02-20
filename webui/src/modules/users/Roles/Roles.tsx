@@ -3,8 +3,6 @@ import { useRolesInfoQuery } from "shared/entity/users/api/useRolesInfoQuery";
 
 import { UserRoleCard } from "../UserRoleCard/UserRoleCard";
 
-import styles from "../UsersPage.module.scss";
-
 export const Roles = ({
   setSelectedItem,
   search,
@@ -16,7 +14,7 @@ export const Roles = ({
 
   return (
     <>
-      {data
+      {(data as Array<Role>) //ToDo types
         ?.filter((role) => {
           if (search.length) {
             return role.name
@@ -30,7 +28,7 @@ export const Roles = ({
           return (
             <UserRoleCard
               key={i}
-              className={styles.item}
+              // className={styles.item} ToDo
               type="ROLES"
               onClick={() => setSelectedItem(item)}
               card={item}

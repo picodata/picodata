@@ -1,16 +1,17 @@
 import React from "react";
-import cn from "classnames";
+import { SxProps } from "@mui/material";
 
 import { CircleCloseIcon } from "shared/icons/CircleCloseIcon";
 
 import { Button, ButtonProps } from "../Button/Button";
 
-import styles from "./Tag.module.scss";
+import { sx } from "./StyledComponents";
 
 type TagProps = ButtonProps & {
   isSelectValue?: boolean;
   closeIcon?: boolean;
   onClose?: (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
+  sx?: SxProps;
 };
 
 export const Tag: React.FC<TagProps> = (props) => {
@@ -40,9 +41,9 @@ export const Tag: React.FC<TagProps> = (props) => {
 
   return (
     <Button
+      sx={isSelectValue ? sx : undefined}
       {...other}
       rightIcon={renderIcon()}
-      className={cn(styles.button, isSelectValue && styles.selectTag)}
     />
   );
 };

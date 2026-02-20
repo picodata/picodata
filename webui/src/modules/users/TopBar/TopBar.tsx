@@ -1,5 +1,4 @@
 import React from "react";
-import cn from "classnames";
 
 import { Input } from "shared/ui/Input/Input";
 import { SearchIcon } from "shared/icons/SearchIcon";
@@ -9,8 +8,13 @@ import {
   GroupByFilter,
   GroupByFilterProps,
 } from "./GroupByFilter/GroupByFilter";
-
-import styles from "./TopBar.module.scss";
+import {
+  Controls,
+  inputContainerSx,
+  RightContainer,
+  Root,
+  searchIconSx,
+} from "./StyledComponents";
 
 type TopBarProps = GroupByFilterProps & {
   search: string;
@@ -24,24 +28,24 @@ export const TopBar: React.FC<TopBarProps> = (props) => {
   const { translation } = useTranslation();
 
   return (
-    <div className={cn(styles.container)}>
-      <div className={styles.controls}>
-        <div className={styles.left}>
+    <Root>
+      <Controls>
+        <div>
           <Input
+            containerSx={inputContainerSx}
             value={search}
-            classes={{ container: styles.searchInput }}
             onChange={setSearch}
             placeholder={translation.pages.users.search}
-            rightIcon={<SearchIcon className={styles.searchIcon} />}
+            rightIcon={<SearchIcon style={searchIconSx} />}
           />
         </div>
-        <div className={styles.right}>
+        <RightContainer>
           <GroupByFilter
             groupByFilterValue={groupByFilterValue}
             setGroupByFilterValue={setGroupByFilterValue}
           />
-        </div>
-      </div>
-    </div>
+        </RightContainer>
+      </Controls>
+    </Root>
   );
 };

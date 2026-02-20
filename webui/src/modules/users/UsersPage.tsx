@@ -1,4 +1,3 @@
-import cn from "classnames";
 import { useState } from "react";
 
 import { Content } from "shared/ui/layout/Content/Content";
@@ -10,8 +9,7 @@ import { TopBar } from "./TopBar/TopBar";
 import { UserRoleModal } from "./UserRoleModal/UserRoleModal";
 import { Roles } from "./Roles/Roles";
 import { Users } from "./Users/Users";
-
-import styles from "./UsersPage.module.scss";
+import { containerSx, Items } from "./StyledComponents";
 
 export const UsersPage = () => {
   const [groupByFilterValue, setGroupByFilterValue] = useGroupByFilter();
@@ -33,14 +31,14 @@ export const UsersPage = () => {
 
   return (
     <PageContainer>
-      <Content className={cn(styles.container)}>
+      <Content sx={containerSx}>
         <TopBar
           search={search}
           setSearch={setSearch}
           setGroupByFilterValue={setGroupByFilterValue}
           groupByFilterValue={groupByFilterValue}
         />
-        <div className={styles.items}>
+        <Items>
           {groupByFilterValue && (
             <>
               {groupByFilterValue === "USERS" && (
@@ -51,7 +49,7 @@ export const UsersPage = () => {
               )}
             </>
           )}
-        </div>
+        </Items>
         {renderModal()}
       </Content>
     </PageContainer>
