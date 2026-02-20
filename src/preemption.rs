@@ -40,7 +40,7 @@ where
 }
 
 #[inline(always)]
-fn yield_sql_execution() {
+pub(crate) fn yield_sql_execution() {
     // Yield the fiber execution, collect all IO events and reschedule the fiber
     // to the tail of the event loop queue.
     fiber::sleep(Duration::ZERO);

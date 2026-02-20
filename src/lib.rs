@@ -90,6 +90,7 @@ pub mod introspection;
 pub mod ipc;
 mod iproto;
 pub mod kvcell;
+mod limiter;
 pub mod r#loop;
 mod luamod;
 pub mod mailbox;
