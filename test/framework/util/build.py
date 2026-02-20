@@ -1,14 +1,20 @@
 import functools
 import json
 import os
+import pytest
 import shlex
+import shutil
 import subprocess
 
+from dataclasses import dataclass
 from framework.log import log
+from framework.rolling.version import VersionAlias
+from framework.util.git import project_git_version
 from framework.util.path import project_tests_path
 from framework.util import copy_plugin_library
 from framework.util import eprint
 from framework.util import is_in_ci
+from packaging.version import Version
 from pathlib import Path
 from typing import Any
 
@@ -135,3 +141,79 @@ def picodata_executable_path() -> Path:
     Path to Picodata executable binary according to Cargo, e.g. `target/debug/picodata`.
     """
     return cargo_build_path() / "picodata"
+
+
+@dataclass
+class Executable:
+    """
+    This class handles the mapping between a semantic version and its physical
+    location on the filesystem, providing mechanisms to resolve (locate) the
+    binary and prepare it for execution in tests.
+    """
+
+    version: Version
+    """
+    The exact semantic version of this executable, typically derived from a git tag.
+    """
+
+    alias: VersionAlias | None = None
+    """
+    An optional logical label (e.g., 'CURRENT' or 'PREVIOUS_MINOR') assigned
+    by the `Registry` to identify this version's role in upgrade scenarios.
+    """
+
+    path: Path | None = None
+    """
+    The filesystem path to the binary. This is initialized as `None` and
+    populated once the executable is successfully resolved (located in $PATH).
+    """
+
+    def resolve(self):
+        """
+        Attempts to locate the binary on the system $PATH.
+        The method looks for a file named "picodata-<version>".
+        If the binary cannot be found:
+        1. In CI environments, it raises a `ValueError` to signal a configuration error.
+        2. In local environments, it triggers a `pytest.skip` to avoid failing tests due
+           to missing historical binaries on a developer's machine.
+        """
+        if self.resolved:
+            return
+
+        name = f"picodata-{self.version}"
+        path = shutil.which(name)
+        if path is not None:
+            self.path = Path(path)
+            return
+
+        message = f"'{name}' binary is required to test against {self.version}"
+        raise ValueError(message) if is_in_ci() else pytest.skip(message)
+
+    @property
+    def resolved(self) -> bool:
+        """
+        Whether the binary has been located on the filesystem.
+        False until `Self.resolve` method is called successfully.
+        """
+        return self.path is not None
+
+    @property
+    def command(self) -> str:
+        """
+        Returns the path to executable as `str` instead of `Path`,
+        as required by `subprocess`/`pexpected`-like APIs. Asserts
+        that the executable is resolved (path to it is known).
+        """
+        assert self.resolved
+        return str(self.path)
+
+    @classmethod
+    def current(cls):
+        """
+        Factory method to create an `Executable` instance representing the
+        currently built version of the project in the Cargo workspace.
+        """
+        version = project_git_version()
+        alias = VersionAlias.CURRENT
+        path = picodata_executable_path()
+        return Executable(version, alias, path)
