@@ -167,13 +167,11 @@ type AuthResult<T> = std::result::Result<T, AuthError>;
 /// Response from instances:
 /// - `raft_id`: instance raft_id to find Instance to store data
 /// - `httpd_address`: host:port of hhtpd on instance if exists or empty string
-/// - `version`: picodata version or empty string
 /// - `mem_usable`: quota_size from box.slab.info
 /// - `mem_used`: quota_used from box.slab.info
 #[derive(Deserialize)]
 struct InstanceDataResponse {
     httpd_address: SmolStr,
-    version: SmolStr,
     mem_usable: u64,
     mem_used: u64,
 }
@@ -392,7 +390,6 @@ async fn get_instances_data(
             async move {
                 let mut data = InstanceDataResponse {
                     httpd_address: Default::default(),
-                    version: Default::default(),
                     mem_usable: 0u64,
                     mem_used: 0u64,
                 };
@@ -402,7 +399,6 @@ async fn get_instances_data(
                         if let Some(http) = info.http {
                             data.httpd_address = format_smolstr!("{}:{}", &http.host, &http.port);
                         }
-                        data.version = info.version_info.picodata_version.clone();
                         data.mem_usable = info.slab_info.quota_size;
                         data.mem_used = info.slab_info.quota_used;
                     }
@@ -454,19 +450,17 @@ fn get_replicasets_info(storage: &Catalog, only_leaders: bool) -> Result<Vec<Rep
         }
 
         let mut http_address = SmolStr::default();
-        let mut version = SmolStr::default();
         let mut mem_usable: u64 = 0u64;
         let mut mem_used: u64 = 0u64;
-        if let Some(data) = instances_props.get(&instance.raft_id) {
-            http_address = data.httpd_address.clone();
-            version = data.version.clone();
-            mem_usable = data.mem_usable;
-            mem_used = data.mem_used;
+        if let Some(rpc_data) = instances_props.get(&instance.raft_id) {
+            http_address = rpc_data.httpd_address.clone();
+            mem_usable = rpc_data.mem_usable;
+            mem_used = rpc_data.mem_used;
         }
 
         let instance_info = InstanceInfo {
             http_address,
-            version,
+            version: instance.picodata_version.clone(),
             failure_domain: instance.failure_domain.data,
             is_leader,
             current_state: instance.current_state.variant,

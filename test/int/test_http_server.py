@@ -415,7 +415,6 @@ def test_webui_replicaset_state(cluster: Cluster):
         "targetState": "Offline",
         "binaryAddress": i3.iproto_listen,
         "pgAddress": i3.pg_listen,
-        "version": "",
     }
     instance_4 = {
         **instance_template,
