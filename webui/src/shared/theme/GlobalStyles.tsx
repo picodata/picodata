@@ -8,6 +8,7 @@ const globalStyles: GlobalStylesProps["styles"] = () => ({
     fontFamily: "Montserrat, sans-serif",
     lineHeight: 1.5,
     fontWeight: 400,
+    height: "100%",
   },
   html: {
     width: "100vw",
@@ -21,7 +22,7 @@ const globalStyles: GlobalStylesProps["styles"] = () => ({
   body: {
     width: "100vw",
     height: "100vh",
-    overflow: "auto",
+    minHeight: "600px",
   },
   a: {
     fontWeight: 500,

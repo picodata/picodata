@@ -40,7 +40,6 @@ export const HiddenWrapper = ({
         style={style}
         sx={sx}
         $twoLine={twoLine}
-        // className={cn(styles.text, className, twoLine && styles.twoLiner)} //ToDo
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
       >

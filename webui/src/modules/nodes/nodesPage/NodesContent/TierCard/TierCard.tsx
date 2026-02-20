@@ -1,107 +1,98 @@
-import React, { FC, useState } from "react";
+import { Box, Tooltip } from "@mui/material";
+import { memo } from "react";
 
 import { ChevronDown } from "shared/icons/ChevronDown";
-import { TierType } from "shared/entity/tier";
+import { TierNodeType } from "shared/entity/tier";
 import { SwitchInfo } from "shared/ui/SwitchInfo/SwitchInfo";
-import { Collapse } from "shared/ui/Collapse/Collapse";
 import { InfoNoData } from "shared/ui/InfoNoData/InfoNoData";
 import { useTranslation } from "shared/intl";
-import { HiddenWrapper } from "shared/ui/HiddenWrapper/HiddenWrapper";
 
-import { ReplicasetCard } from "../ReplicasetCard/ReplicasetCard";
 import { CapacityProgress } from "../../ClusterInfo/CapacityProgress/CapacityProgress";
+import { CellLabel, CellValue, ContentFlexCell } from "../common";
 
 import {
-  BucketCountColumn,
-  CanVoterColumn,
-  CapacityColumn,
-  CardWrapper,
-  ChevronColumn,
   chevronIconIsOpenStyle,
   chevronIconStyle,
-  Content,
-  HiddenInfoValue,
-  InfoValue,
-  InstancesColumn,
-  Label,
-  NameColumn,
-  ReplicasetsColumn,
-  ReplicasetsWrapper,
-  RfColumn,
-  ServicesColumn,
-  ServicesValue,
+  ServicesList,
+  TierBackground,
+  TierCapacityProgressCell,
+  TierContentFlexCenteredCell,
+  TierItemRoot,
 } from "./StyledComponents";
 
-export interface TierCardProps {
+type TierCardAltProps = {
+  isLast: boolean;
+  isFirst: boolean;
   theme?: "primary" | "secondary";
-  tier: TierType;
-}
+  tier: TierNodeType;
+  onClick: (id: string) => void;
+};
+export const TierCardAlt = memo(
+  ({ isLast, isFirst, tier, theme, onClick }: TierCardAltProps) => {
+    const { translation } = useTranslation();
+    const tierTranslations = translation.pages.instances.list.tierCard;
 
-export const TierCard: FC<TierCardProps> = React.memo(({ tier, theme }) => {
-  const [isOpen, setIsOpen] = useState<boolean>(false);
+    const tierClickHandler = () => {
+      onClick(tier.syntheticId);
+    };
+    return (
+      <TierBackground
+        className={"item"}
+        $withPaddingBottom={isLast}
+        $withPaddingTop={!isFirst}
+        $withBottomRadius={isLast}
+        $variant={"white"}
+      >
+        <TierItemRoot onClick={tierClickHandler} $withBorderRadius={!tier.open}>
+          <Box></Box>
+          <ContentFlexCell>
+            <CellLabel>{tierTranslations.name.label}</CellLabel>
+            <Tooltip title={tier.name}>
+              <CellValue>{tier.name}</CellValue>
+            </Tooltip>
+          </ContentFlexCell>
 
-  const { translation } = useTranslation();
-  const tierTranslations = translation.pages.instances.list.tierCard;
+          <TierContentFlexCenteredCell>
+            <CellLabel>{tierTranslations.services.label}</CellLabel>
+            <ServicesList>
+              {tier.services.length ? (
+                tier.services.map((service) => (
+                  <Tooltip title={service}>
+                    <CellValue>{service}</CellValue>
+                  </Tooltip>
+                ))
+              ) : (
+                <InfoNoData text={translation.components.infoNoData.label} />
+              )}
+            </ServicesList>
+          </TierContentFlexCenteredCell>
 
-  const onClick = (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
-    event.stopPropagation();
-    setIsOpen(!isOpen);
-  };
+          <TierContentFlexCenteredCell>
+            <CellLabel>{tierTranslations.replicasets.label}</CellLabel>
+            <CellValue>{tier.replicasetCount}</CellValue>
+          </TierContentFlexCenteredCell>
 
-  return (
-    <CardWrapper onClick={onClick}>
-      <Content>
-        <NameColumn>
-          <Label>{tierTranslations.name.label}</Label>
-          <HiddenInfoValue>
-            <HiddenWrapper>{tier.name}</HiddenWrapper>
-          </HiddenInfoValue>
-        </NameColumn>
-        <ServicesColumn>
-          <Label>{tierTranslations.services.label}</Label>
-          <ServicesValue>
-            {tier.services.length ? (
-              <HiddenWrapper>
-                {tier.services.map((service, i) =>
-                  i == 0 ? (
-                    <>{service}</>
-                  ) : (
-                    <>
-                      <br />
-                      {service}
-                    </>
-                  )
-                )}
-              </HiddenWrapper>
-            ) : (
-              <InfoNoData text={translation.components.infoNoData.label} />
-            )}
-          </ServicesValue>
-        </ServicesColumn>
-        <ReplicasetsColumn>
-          <Label>{tierTranslations.replicasets.label}</Label>
-          <InfoValue>{tier.replicasetCount}</InfoValue>
-        </ReplicasetsColumn>
-        <InstancesColumn>
-          <Label>{tierTranslations.instances.label}</Label>
-          <InfoValue>{tier.instanceCount}</InfoValue>
-        </InstancesColumn>
-        <RfColumn>
-          <Label>{tierTranslations.rf.label}</Label>
-          <InfoValue>{tier.rf}</InfoValue>
-        </RfColumn>
-        <BucketCountColumn>
-          <Label>{tierTranslations.bucket_count.label}</Label>
-          <InfoValue>{tier.bucketCount}</InfoValue>
-        </BucketCountColumn>
-        <CanVoterColumn>
-          <Label>{tierTranslations.canVote.label}</Label>
-          <InfoValue>
+          <TierContentFlexCenteredCell>
+            <CellLabel>{tierTranslations.instances.label}</CellLabel>
+            <CellValue>{tier.instanceCount}</CellValue>
+          </TierContentFlexCenteredCell>
+
+          <TierContentFlexCenteredCell>
+            <CellLabel>{tierTranslations.rf.label}</CellLabel>
+            <CellValue>{tier.rf}</CellValue>
+          </TierContentFlexCenteredCell>
+
+          <TierContentFlexCenteredCell>
+            <CellLabel>{tierTranslations.bucket_count.label}</CellLabel>
+            <CellValue>{tier.bucketCount}</CellValue>
+          </TierContentFlexCenteredCell>
+
+          <TierContentFlexCenteredCell>
+            <CellLabel>{tierTranslations.canVote.label}</CellLabel>
             <SwitchInfo checked={tier.can_vote} />
-          </InfoValue>
-        </CanVoterColumn>
-        {tier.memory && (
-          <CapacityColumn>
+          </TierContentFlexCenteredCell>
+
+          <TierCapacityProgressCell>
             <CapacityProgress
               percent={tier.capacityUsage}
               currentValue={tier.memory?.used ?? 0}
@@ -110,25 +101,15 @@ export const TierCard: FC<TierCardProps> = React.memo(({ tier, theme }) => {
               theme={theme === "secondary" ? "primary" : "secondary"}
               progressLineWidth="100%"
             />
-          </CapacityColumn>
-        )}
-        <ChevronColumn>
-          <ChevronDown
-            style={isOpen ? chevronIconIsOpenStyle : chevronIconStyle}
-          />
-        </ChevronColumn>
-      </Content>
-      <Collapse isOpen={isOpen}>
-        <ReplicasetsWrapper>
-          {tier.replicasets.map((replicaset) => (
-            <ReplicasetCard
-              key={replicaset.name}
-              replicaset={replicaset}
-              theme="secondary"
+          </TierCapacityProgressCell>
+          <TierContentFlexCenteredCell>
+            <ChevronDown
+              style={tier.open ? chevronIconIsOpenStyle : chevronIconStyle}
             />
-          ))}
-        </ReplicasetsWrapper>
-      </Collapse>
-    </CardWrapper>
-  );
-});
+          </TierContentFlexCenteredCell>
+          <Box></Box>
+        </TierItemRoot>
+      </TierBackground>
+    );
+  }
+);

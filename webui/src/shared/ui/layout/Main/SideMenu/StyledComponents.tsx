@@ -21,13 +21,13 @@ export const Root = styled("div")<{ $isOpen: boolean }>(
     rgba(231, 225, 223, 0.3) 100%
   )`,
     backdropFilter: "blur(10px)", // возможны тормоза в хроме из блюров, работать с ними аккуратнее
-    position: "absolute",
     left: 0,
-    top: 0,
+    top: 48,
     bottom: 0,
     padding: "40px 16px",
     zIndex: theme.common.zIndex.zIndexSideMenu,
     transition: " width 0.3s ease-out",
+    position: "absolute",
   })
 );
 

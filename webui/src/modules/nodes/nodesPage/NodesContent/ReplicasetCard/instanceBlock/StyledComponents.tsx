@@ -1,18 +1,12 @@
-import { styled } from "@mui/material";
+import { Box, styled } from "@mui/material";
 
-export const CardWrapper = styled("div")<{ $theme: "primary" | "secondary" }>(
-  ({ $theme, theme }) => ({
-    display: "flex",
-    borderRadius: "4px",
-    boxShadow: theme.common.variables.elevation1,
-    position: "relative",
-    overflow: "hidden",
-    backgroundColor:
-      $theme === "primary"
-        ? theme.common.colors.grey.colorLightGrey
-        : theme.common.colors.bg.colorBgWhite,
-  })
-);
+import {
+  Background,
+  Cell,
+  CommonCell,
+  ContentFlexCenteredCell,
+  ItemRoot,
+} from "../../common";
 
 export const Content = styled("div")({
   display: "flex",
@@ -22,49 +16,6 @@ export const Content = styled("div")({
   alignItems: "center",
   minHeight: "60px",
   padding: "0 16px",
-});
-
-export const InfoColumn = styled("div")({
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  padding: "8px 0",
-});
-export const NameColumn = styled(InfoColumn)({
-  alignItems: "flex-start",
-  justifyContent: "center",
-  maxWidth: "fit-content",
-});
-
-export const HiddenNameColumn = styled(NameColumn)({
-  overflow: "hidden",
-});
-
-export const FailureDomainColumn = styled(InfoColumn)({
-  flex: 1,
-  maxWidth: "fit-content",
-  overflow: "hidden",
-});
-
-export const HiddenFailureDomainColumn = styled(FailureDomainColumn)({
-  overflow: "hidden",
-});
-
-export const TargetStateColumn = styled(InfoColumn)({
-  minWidth: "95px",
-});
-export const CurrentStateColumn = styled(InfoColumn)({
-  minWidth: "95px",
-});
-export const HiddenValue = styled(InfoColumn)({
-  width: "100%",
-  display: "grid",
-  whiteSpace: "nowrap",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-});
-export const VersionColumn = styled(HiddenValue)({
-  width: "auto !important",
 });
 
 export const Label = styled("div")<{ $alignLeft?: boolean }>(
@@ -82,19 +33,7 @@ export const Label = styled("div")<{ $alignLeft?: boolean }>(
   })
 );
 
-export const JoinedColumn = styled("div")({
-  transform: "translateX(74px)",
-  display: "grid",
-  alignItems: "start",
-  gridTemplateColumns: "auto auto",
-  columnGap: "16px",
-  maxWidth: "max-content",
-  "@ media (min-width: 1920px)": {
-    columnGap: "32px",
-  },
-});
-
-export const Value = styled("div")(({ theme }) => ({
+export const Value = styled(Box)(({ theme }) => ({
   fontSize: "14px",
   fontStyle: "normal",
   fontWeight: 400,
@@ -110,20 +49,15 @@ export const ValueHidden = styled(Value)({
   overflow: "hidden",
   textOverflow: "ellipsis",
 });
-export const StartValue = styled(ValueHidden)({
-  textAlign: "start",
-});
+
 export const DomainValue = styled(Value)({
   display: "flex",
   width: "100%",
   justifyContent: "center",
+  gap: 4,
+  overflow: "hidden",
 });
-export const TargetStateValue = styled(Value)({
-  padding: 0,
-});
-export const CurrentStateValue = styled(Value)({
-  padding: 0,
-});
+
 export const FollowerBlock = styled(Value)(({ theme }) => ({
   width: "16px",
   backgroundColor: "transparent",
@@ -137,8 +71,71 @@ export const FollowerBlock = styled(Value)(({ theme }) => ({
   justifyContent: "center",
   writingMode: "vertical-lr",
   textOrientation: "mixed",
+  marginRight: 10,
 }));
 
 export const LeaderBlock = styled(FollowerBlock)(({ theme }) => ({
   backgroundColor: theme.common.colors.notifications.colorNotificationSuccess,
+  marginRight: 10,
+}));
+
+export const InstanceItemRoot = styled(ItemRoot)<{ $fromReplicaset: boolean }>(
+  ({ $fromReplicaset, theme }) => ({
+    borderRadius: 6,
+    backgroundColor: $fromReplicaset
+      ? theme.common.colors.bg.colorBgWhite
+      : theme.common.colors.bg.colorBgGrey,
+    ...(!$fromReplicaset
+      ? {
+          backgroundColor: theme.common.colors.bg.colorBgGrey,
+          borderBottom: `4px solid ${theme.common.colors.bg.colorBgWhite}`,
+        }
+      : {}),
+  })
+);
+
+export const InstanceCell = styled(Cell)<{ $fromReplicaset: boolean }>(
+  ({ theme, $fromReplicaset }) => ({
+    backgroundColor: $fromReplicaset
+      ? theme.common.colors.bg.colorBgGrey
+      : theme.common.colors.bg.colorBgWhite,
+  })
+);
+
+export const InstanceNameCell = styled(CommonCell)<{
+  $fromReplicaset: boolean;
+}>(({ theme, $fromReplicaset }) => ({
+  backgroundColor: $fromReplicaset
+    ? theme.common.colors.bg.colorBgWhite
+    : theme.common.colors.bg.colorBgGrey,
+  width: "100%",
+  height: "100%",
+  display: "grid",
+  gridTemplateColumns: "min-content 1fr",
+}));
+
+export const ContentFlexCenteredNameCell = styled(ContentFlexCenteredCell)<{
+  $fromReplicaset: boolean;
+}>(({ $fromReplicaset }) =>
+  $fromReplicaset
+    ? {
+        alignItems: "flex-start",
+        justifyContent: "center",
+      }
+    : {}
+);
+
+export const InstanceBackground = styled(Background)<{
+  $withBottomPadding: boolean;
+}>(({ $withBottomPadding }) => ({
+  padding: `0 10px ${$withBottomPadding ? "10px" : "0"} 10px`,
+}));
+
+export const InstanceBackgroundInner = styled(Background)<{
+  $withBottomPadding: boolean;
+  $fromReplicaset: boolean;
+}>(({ $withBottomPadding, $fromReplicaset }) => ({
+  padding: $fromReplicaset
+    ? `4px 10px ${$withBottomPadding ? "10px" : "0"} 10px`
+    : "unset",
 }));

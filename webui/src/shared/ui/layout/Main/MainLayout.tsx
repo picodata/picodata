@@ -2,19 +2,19 @@ import { Outlet } from "react-router-dom";
 
 import { Header } from "shared/ui/Header";
 
-import { SideMenu } from "./SideMenu/SideMenu";
-import { BodyWrapper, LayoutMain, Root } from "./StyledComponents";
+import { LayoutMain, Root, WorkSpace } from "./StyledComponents";
+import { SideMenu } from "./SideMenu";
 
 export const MainLayout = () => {
   return (
     <Root>
-      <Header />
-      <LayoutMain>
-        <SideMenu />
-        <BodyWrapper>
+      <SideMenu />
+      <WorkSpace>
+        <Header />
+        <LayoutMain>
           <Outlet />
-        </BodyWrapper>
-      </LayoutMain>
+        </LayoutMain>
+      </WorkSpace>
     </Root>
   );
 };

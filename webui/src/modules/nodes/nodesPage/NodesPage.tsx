@@ -1,16 +1,28 @@
-import { PageContainer } from "shared/ui/layout/PageContainer/PageContainer";
+import { CircularProgress } from "@mui/material";
+
+import { useTiers } from "../../../shared/entity/tier";
 
 import { ClusterInfo } from "./ClusterInfo/ClusterInfo";
 import { NodesContent } from "./NodesContent/NodesContent";
-import { ClusterId } from "./ClusterId/ClusterId";
-import { clusterInfoSx } from "./StyledComponents";
+import {
+  clusterInfoSx,
+  ContentContainer,
+  LoadContainer,
+  NodesPageContainer,
+} from "./StyledComponents";
 
 export const NodesPage = () => {
-  return (
-    <PageContainer>
-      <ClusterId />
+  const { data, isLoading } = useTiers();
+  return !isLoading ? (
+    <NodesPageContainer>
       <ClusterInfo sx={clusterInfoSx} />
-      <NodesContent />
-    </PageContainer>
+      <ContentContainer>
+        <NodesContent data={data} />
+      </ContentContainer>
+    </NodesPageContainer>
+  ) : (
+    <LoadContainer>
+      <CircularProgress />
+    </LoadContainer>
   );
 };

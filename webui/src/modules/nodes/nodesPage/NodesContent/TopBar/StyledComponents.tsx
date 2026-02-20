@@ -15,6 +15,7 @@ export const Right = styled("div")({
   display: "flex",
   gap: "24px",
 });
+
 export const filtersSx: SxProps = {
   marginTop: "8px",
 };

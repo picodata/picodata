@@ -1,21 +1,33 @@
-import { styled, SxProps } from "@mui/material";
+import { Box, styled } from "@mui/material";
 
-export const gridWrapperSx: SxProps = {
-  display: "flex",
-  flexDirection: "column",
-  overflow: "hidden",
-};
+import { NoData } from "../../../../shared/ui/NoData/NoData";
 
-export const topBarSx: SxProps = {
-  margin: "16px 24px",
-};
-
-export const List = styled("div")({
-  display: "flex",
-  flexDirection: "column",
-  gap: "16px",
-  flexGrow: 1,
-  padding: "0 16px",
-  margin: "0 8px",
-  paddingBottom: "40px",
+export const Root = styled(Box)({
+  padding: "14px 0",
+  overflow: "visible",
+  display: "grid",
+  gridTemplateRows: "min-content 1fr",
+  minHeight: "100%",
 });
+export const Filed = styled(Box)({
+  padding: "0 16px",
+});
+
+export const ToolBarContainer = styled(Filed)(({ theme }) => ({
+  backgroundColor: theme.common.colors.bg.colorBgWhite,
+  borderRadius: "16px 16px 0 0",
+  paddingTop: 10,
+  paddingRight: 10,
+  paddingBottom: 10,
+}));
+
+export const ContentContainer = styled(Box)({
+  overflow: "hidden",
+  borderRadius: "0 0 16px 16px",
+});
+export const NodesNoData = styled(NoData)(({ theme }) => ({
+  backgroundColor: theme.common.colors.bg.colorBgWhite,
+  margin: 0,
+  borderRadius: "0 0 16px 16px",
+  paddingBottom: 16,
+}));

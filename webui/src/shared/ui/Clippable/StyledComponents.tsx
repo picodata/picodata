@@ -6,6 +6,8 @@ export const Root = styled("div")<{ $inline: boolean }>(({ $inline }) =>
     ? {
         display: "flex",
         flexWrap: "nowrap",
+        gap: 3,
+        overflow: "hidden",
       }
     : {}
 );

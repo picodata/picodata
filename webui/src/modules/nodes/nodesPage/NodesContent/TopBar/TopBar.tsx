@@ -1,5 +1,4 @@
 import React, { useEffect } from "react";
-import { SxProps } from "@mui/material";
 
 import {
   GroupByFilter,
@@ -16,12 +15,10 @@ type TopBarProps = GroupByFilterProps &
   FilterByProps & {
     showSortBy: boolean;
     showFilterBy: boolean;
-    sx?: SxProps;
   };
 
 export const TopBar: React.FC<TopBarProps> = (props) => {
   const {
-    sx,
     groupByFilterValue,
     setGroupByFilterValue,
     showSortBy,
@@ -52,7 +49,7 @@ export const TopBar: React.FC<TopBarProps> = (props) => {
   }, [showFilterBy, setFilterByValue]);
 
   return (
-    <Root sx={sx}>
+    <Root>
       <Controls>
         <div />
         <Right>

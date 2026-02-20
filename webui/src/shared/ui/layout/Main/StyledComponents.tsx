@@ -1,20 +1,17 @@
 import { styled } from "@mui/material";
 export const Root = styled("div")({
+  height: "100%",
+  position: "relative",
+});
+export const WorkSpace = styled("div")({
+  overflow: "hidden",
   width: "100vw",
   minWidth: "1440px",
-  display: "flex",
-  flexDirection: "column",
+  display: "grid",
+  gridTemplateRows: "min-content 1fr",
+  height: "100%",
 });
 export const LayoutMain = styled("main")({
-  display: "flex",
-  flexGrow: 1,
   overflow: "hidden",
-  position: "relative",
-  padding: "0 140px",
-  minWidth: "fit-content",
-});
-
-export const BodyWrapper = styled("div")({
-  display: "flex",
-  flexGrow: 1,
+  margin: "0 130px 28px 130px",
 });

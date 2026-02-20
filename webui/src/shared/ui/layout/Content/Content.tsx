@@ -1,14 +1,8 @@
-import React from "react";
-import { SxProps } from "@mui/system/styleFunctionSx";
+import { styled } from "@mui/material";
 
-import { Root } from "./StyledComponents";
+import { Paper } from "../Paper";
 
-type ContentProps = React.HTMLAttributes<HTMLDivElement> & {
-  sx?: SxProps;
-};
-
-export const Content: React.FC<ContentProps> = (props) => {
-  const { ...other } = props;
-
-  return <Root {...other}></Root>;
-};
+export const Content = styled(Paper)({
+  padding: 14,
+  overflow: "hidden",
+});

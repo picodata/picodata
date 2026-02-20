@@ -1,7 +1,6 @@
 import { useState } from "react";
 
 import { Content } from "shared/ui/layout/Content/Content";
-import { PageContainer } from "shared/ui/layout/PageContainer/PageContainer";
 import { Role, User } from "shared/entity/users/types/types";
 
 import { useGroupByFilter } from "./TopBar/GroupByFilter/hooks";
@@ -9,7 +8,7 @@ import { TopBar } from "./TopBar/TopBar";
 import { UserRoleModal } from "./UserRoleModal/UserRoleModal";
 import { Roles } from "./Roles/Roles";
 import { Users } from "./Users/Users";
-import { containerSx, Items } from "./StyledComponents";
+import { containerSx, Items, UserPagContainer } from "./StyledComponents";
 
 export const UsersPage = () => {
   const [groupByFilterValue, setGroupByFilterValue] = useGroupByFilter();
@@ -30,7 +29,7 @@ export const UsersPage = () => {
   };
 
   return (
-    <PageContainer>
+    <UserPagContainer>
       <Content sx={containerSx}>
         <TopBar
           search={search}
@@ -52,6 +51,6 @@ export const UsersPage = () => {
         </Items>
         {renderModal()}
       </Content>
-    </PageContainer>
+    </UserPagContainer>
   );
 };

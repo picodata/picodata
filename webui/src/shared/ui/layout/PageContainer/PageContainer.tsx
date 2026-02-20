@@ -1,11 +1,9 @@
-import React from "react";
+import { Box, styled } from "@mui/material";
 
-import { Root } from "./StyledComponents";
-
-type PageContainerProps = React.HTMLAttributes<HTMLDivElement>;
-
-export const PageContainer: React.FC<PageContainerProps> = (props) => {
-  const { className, ...other } = props;
-
-  return <Root {...other}></Root>;
-};
+export const PageContainer = styled(Box)({
+  paddingTop: "20px",
+  display: "grid",
+  gridTemplateRows: "min-content min-content 1fr",
+  height: "100%",
+  overflow: "hidden",
+});

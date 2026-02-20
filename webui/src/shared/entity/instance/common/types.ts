@@ -1,4 +1,5 @@
 import { Override } from "../../../utils/tsUtils";
+import { NodeType } from "../../tier";
 
 export type ServerInstanceType = {
   name: string;
@@ -16,3 +17,7 @@ export type InstanceType = Override<
   ServerInstanceType,
   { failureDomain: Array<{ key: string; value: string }> }
 >;
+export type InstanceNodeType = InstanceType & {
+  syntheticId: string;
+  type: NodeType.Instance;
+};

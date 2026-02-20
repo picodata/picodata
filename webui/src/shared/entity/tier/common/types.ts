@@ -1,5 +1,6 @@
 import { Override } from "../../../utils/tsUtils";
 import {
+  ReplicasetNodeType,
   ReplicasetType,
   ServerReplicasetType,
 } from "../../replicaset/common/types";
@@ -20,7 +21,19 @@ export type ServerTierType = {
   capacityUsage?: number;
 };
 
+export enum NodeType {
+  Tier = "Tier",
+  Replicaset = "Replicaset",
+  Instance = "Instance",
+}
+
 export type TierType = Override<
   ServerTierType,
   { replicasets: ReplicasetType[] }
 >;
+export type TierNodeType = TierType & {
+  open: boolean;
+  syntheticId: string;
+  type: NodeType.Tier;
+  replicasets: ReplicasetNodeType[];
+};
