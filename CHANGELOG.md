@@ -44,6 +44,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed that instances from tiers with can_vote=false attempting to promote to raft leader.
 - Fixed a crash in case of any error during TRUNCATE operation.
 - Fixed a race condition between DDL (i.e., TRUNCATE) and DQL when the preemption option is enabled.
+- Fixed local SQL iterators to survive fiber yields during table truncation.
 
 
 ## [25.5.5] - 2026-01-26
