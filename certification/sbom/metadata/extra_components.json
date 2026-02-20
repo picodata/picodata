@@ -1,0 +1,25 @@
+[
+    {
+        "type": "library",
+        "name": "openssl",
+        "description": "TLS/SSL and crypto library",
+        "scope": "required",
+        "version": "1.1.1w",
+        "externalReferences": [
+            {
+                "type": "vcs",
+                "url": "https://github.com/openssl/openssl"
+            }
+        ],
+        "properties": [
+            {
+                "name": "GOST:attack_surface",
+                "value": "yes"
+            },
+            {
+                "name": "GOST:security_function",
+                "value": "yes"
+            }
+        ]
+    }
+]

@@ -230,11 +230,8 @@ install_release:
 
 .PHONY: sbom
 sbom:
-	if test -f $(HOME)/.cargo/env; then . $(HOME)/.cargo/env; fi && \
-	cargo install --quiet --locked \
-		--git https://github.com/evanmiller2112/cyclonedx-rust-cargo \
-		cargo-cyclonedx && \
-	cargo cyclonedx --format json --spec-version 1.6
+	./tools/sbom.sh
+
 
 # IMPORTANT. This rule should only be executed via CI.
 # It updates the pinned message in the `pico-dev` chat.
