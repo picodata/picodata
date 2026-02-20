@@ -192,7 +192,7 @@ def test_expel_timeout(cluster: Cluster):
     # for 5 seconds. We can change it by specifying `timeout`.
     cli = pexpect.spawn(
         cwd=i1.instance_dir,
-        command=i1.runtime.command,
+        command=i1.executable.command,
         args=[
             "expel",
             "random_instance_name",

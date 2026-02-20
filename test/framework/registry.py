@@ -1,9 +1,9 @@
 from framework.util.build import Executable
+from framework.util.version import ExecutableVersion
+from framework.util.version import parse_version_opt
+from framework.util.version import VersionAlias
 from framework.util.git import project_repo_instance
 from framework.util.git import project_git_version
-from framework.version import parse_version_opt
-from framework.version import ExecutableVersion
-from framework.version import VersionAlias
 from packaging.version import Version
 from typing import List
 

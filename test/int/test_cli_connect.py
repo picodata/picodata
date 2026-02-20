@@ -4,13 +4,15 @@ import stat
 import sys
 from conftest import CLI_TIMEOUT, Cluster
 
-from framework.rolling.runtime import Runtime
+from framework.util.build import Executable
 from framework.util import eprint
 
 
-def test_admin_enoent(current_runtime: Runtime):
+def test_admin_enoent():
+    executable = Executable.current()
+
     cli = pexpect.spawn(
-        command=current_runtime.command,
+        command=executable.command,
         args=["admin", "wrong/path/t.sock"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
@@ -23,9 +25,11 @@ def test_admin_enoent(current_runtime: Runtime):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_admin_econnrefused(current_runtime: Runtime):
+def test_admin_econnrefused():
+    executable = Executable.current()
+
     cli = pexpect.spawn(
-        command=current_runtime.command,
+        command=executable.command,
         args=["admin", "/dev/null"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
@@ -43,9 +47,11 @@ def test_admin_econnrefused(current_runtime: Runtime):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_admin_invalid_path(current_runtime: Runtime):
+def test_admin_invalid_path():
+    executable = Executable.current()
+
     cli = pexpect.spawn(
-        command=current_runtime.command,
+        command=executable.command,
         args=["admin", "./[][]"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
@@ -58,9 +64,11 @@ def test_admin_invalid_path(current_runtime: Runtime):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_admin_empty_path(current_runtime: Runtime):
+def test_admin_empty_path():
+    executable = Executable.current()
+
     cli = pexpect.spawn(
-        command=current_runtime.command,
+        command=executable.command,
         args=["admin", ""],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
@@ -91,7 +99,7 @@ def test_connect_unix_ok_via_default_sock(cluster: Cluster):
         #
         # We were unable to debug it quickly and used cwd as a workaround
         cwd=i1.instance_dir,
-        command=i1.runtime.command,
+        command=i1.executable.command,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -137,7 +145,7 @@ def test_admin_connection_info_and_help(cluster: Cluster):
         #
         # We were unable to debug it quickly and used cwd as a workaround
         cwd=i1.instance_dir,
-        command=i1.runtime.command,
+        command=i1.executable.command,
         args=["admin", socket_path],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,

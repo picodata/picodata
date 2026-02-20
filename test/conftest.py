@@ -49,14 +49,14 @@ from framework import ldap
 import logging
 from framework.log import log
 from framework.port_distributor import PortDistributor
-from framework.rolling.registry import Registry
-from framework.rolling.version import parse_version_exc
-from framework.rolling.version import VersionAlias
+from framework.registry import Registry
 from framework.util.build import copy_testable_plugins
 from framework.util.build import Executable
 from framework.util.build import perform_cargo_build
+from framework.util.build import picodata_executable_path
 from framework.util.path import project_root_path
-from framework.util import parse_version_exc
+from framework.util.version import parse_version_exc
+from framework.util.version import VersionAlias
 from framework.util import BASE_HOST
 
 pytest_plugins = "framework.sqltester"
@@ -861,7 +861,7 @@ class Instance:
 
         # fmt: off
         return [
-            self.runtime.command, "run",
+            self.executable.command, "run",
             *([f"--cluster-name={self.cluster_name}"] if self.cluster_name else []),
             *([f"--instance-name={self.name}"] if self.name else []),
             *([f"--replicaset-name={self.replicaset_name}"] if self.replicaset_name else []),
@@ -893,7 +893,7 @@ class Instance:
         maybe_process = f", process.pid={self.process.pid}" if self.process else ""
         maybe_version = f", version={self.version}" if self.version else ""
         maybe_log_file = f", log_file={self.log_file()}" if self.log_file() else ""
-        return f"Instance({self.name}, iproto_listen={self.iproto_listen}, cluster={self.cluster_name}{maybe_version}{maybe_process}{maybe_log_file})"  # noqa: E501
+        return f"Instance({self.name}, iproto_listen={self.iproto_listen}, cluster={self.cluster_name}, executable={self.executable}{maybe_version}{maybe_process}{maybe_log_file})"  # noqa: E501
 
     def __hash__(self):
         return hash((self.cluster_name, self.name))
@@ -2294,7 +2294,8 @@ class Cluster:
         """
 
         # Generate default config.
-        data = subprocess.check_output([self.runtime.command, "config", "default"])
+        executable = picodata_executable_path()
+        data = subprocess.check_output([executable, "config", "default"])
         default_config = data.decode()
         config_yaml_obj = yaml_lib.safe_load(default_config)
 
@@ -2371,7 +2372,7 @@ class Cluster:
             log.info(f"executing: `picodata restore` on instance {i} and backup path {i_backup_full_path}")
             try:
                 command = [
-                    self.runtime.command,
+                    i.executable.command,
                     "restore",
                     "--path",
                     i_backup_full_path,
@@ -2461,9 +2462,6 @@ class Cluster:
             executable = Executable.current()
 
         for _ in range(instance_count):
-            print(
-                f"cluster_id={self.id}: deploying instance [version={self.runtime.absolute_version} ({self.runtime.relative_version})]"
-            )
             self.add_instance(
                 wait_online=False,
                 tier=tier,
@@ -3082,7 +3080,7 @@ def picodata_expel(
 
     # fmt: off
     command: list[str] = [
-        peer.runtime.command, "expel",
+        peer.executable.command, "expel",
         "--peer", f"pico_service@{peer.iproto_listen}",
         "--cluster-name", target.cluster_name or "",
         "--password-file", password_file,

@@ -8,9 +8,9 @@ import subprocess
 
 from dataclasses import dataclass
 from framework.log import log
-from framework.rolling.version import VersionAlias
 from framework.util.git import project_git_version
 from framework.util.path import project_tests_path
+from framework.util.version import VersionAlias
 from framework.util import copy_plugin_library
 from framework.util import eprint
 from framework.util import is_in_ci
