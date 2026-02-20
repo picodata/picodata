@@ -239,7 +239,14 @@ def test_with_sk_and_pk_different(cluster: Cluster):
     assert math.isclose(res, TABLE_SIZE / 2, abs_tol=200)
 
     # check DQL, DML
-    res = i1.sql("SELECT * FROM sharded_table WHERE a = 42")
+    res1 = i1.eval("return box.space.sharded_table:select({214, 42})")
+    res2 = i2.eval("return box.space.sharded_table:select({214, 42})")
+    assert res1 == [[214, 42, 43, 44]] or res2 == [[214, 42, 43, 44]]
+    res = i1.sql("SELECT bucket_id, * FROM sharded_table WHERE a = 42")
+    assert res == [[214, 42, 43, 44]]
+    res = i1.sql("EXPLAIN(RAW) SELECT * FROM sharded_table WHERE b = 43")
+    assert '"bucket_id" in (CAST(214 AS int))' in res[1]
+    res = i1.sql("SELECT * FROM sharded_table WHERE b = 43")
     assert res == [[42, 43, 44]]
     # sharded update
     res = i1.sql("UPDATE sharded_table SET b = 42 WHERE b = 43")
