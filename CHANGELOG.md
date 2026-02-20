@@ -148,6 +148,9 @@ with the `YY.MINOR.MICRO` scheme.
   milliseconds for consistency with Prometheus and more precision.
 - RPC request durations now use a monotonic high-precision clock instead
   of the event-loop clock to improve timing accuracy.
+- Added SQL temp-table lock metrics:
+  `pico_sql_temp_table_leases_total` and
+  `pico_sql_temp_table_lock_waits_total`.
 
 
 ## [25.5.5] - 2026-01-26

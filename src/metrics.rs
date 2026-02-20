@@ -103,6 +103,22 @@ static SQL_QUERY_DURATION: LazyLock<HistogramVec> = LazyLock::new(|| {
     .expect("Failed to create pico_sql_query_duration histogram")
 });
 
+static SQL_TEMP_TABLE_LEASES_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(Opts::new(
+        "pico_sql_temp_table_leases_total",
+        "Total number of temp table leases acquired",
+    ))
+    .expect("Failed to create pico_sql_temp_table_leases_total counter")
+});
+
+static SQL_TEMP_TABLE_LOCK_WAITS_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(Opts::new(
+        "pico_sql_temp_table_lock_waits_total",
+        "Total number of waits for temp table locks",
+    ))
+    .expect("Failed to create pico_sql_temp_table_lock_waits_total counter")
+});
+
 static SQL_GLOBAL_DML_QUERY_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
     IntCounter::with_opts(Opts::new(
         "pico_sql_global_dml_query_total",
@@ -409,6 +425,14 @@ pub fn observe_sql_query_duration(tier: &str, replicaset: &str, duration: &Durat
         .observe(seconds);
 }
 
+pub fn record_sql_temp_table_leases_total() {
+    SQL_TEMP_TABLE_LEASES_TOTAL.inc();
+}
+
+pub fn record_sql_temp_table_lock_waits_total() {
+    SQL_TEMP_TABLE_LOCK_WAITS_TOTAL.inc();
+}
+
 pub fn record_rpc_request_total(proc_name: &str) {
     RPC_REQUEST_TOTAL.with_label_values(&[proc_name]).inc();
 }
@@ -524,6 +548,8 @@ pub fn register_metrics(registry: &prometheus::Registry) -> prometheus::Result<(
     registry.register(Box::new(ROUTER_CACHE_MISSES_TOTAL.clone()))?;
     registry.register(Box::new(STORAGE_CACHE_HITS_TOTAL.clone()))?;
     registry.register(Box::new(STORAGE_CACHE_MISSES_TOTAL.clone()))?;
+    registry.register(Box::new(SQL_TEMP_TABLE_LEASES_TOTAL.clone()))?;
+    registry.register(Box::new(SQL_TEMP_TABLE_LOCK_WAITS_TOTAL.clone()))?;
 
     Ok(())
 }

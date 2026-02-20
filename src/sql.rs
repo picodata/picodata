@@ -97,6 +97,7 @@ use std::time::Duration;
 pub mod concurrency;
 pub mod dispatch;
 pub mod execute;
+pub mod lock;
 pub mod lua;
 pub mod port;
 pub mod router;
