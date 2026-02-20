@@ -49,8 +49,8 @@ from framework import ldap
 import logging
 from framework.log import log
 from framework.port_distributor import PortDistributor
-from framework.registry import Registry
 from framework.util.build import copy_testable_plugins
+from framework.registry import get_or_make_registry
 from framework.util.build import Executable
 from framework.util.build import perform_cargo_build
 from framework.util.build import picodata_executable_path
@@ -3538,4 +3538,4 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
 
 @pytest.fixture(scope="session")
 def registry():
-    return Registry()
+    return get_or_make_registry()
