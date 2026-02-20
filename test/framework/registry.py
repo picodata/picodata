@@ -7,6 +7,7 @@ from framework.util.git import project_git_version
 from packaging.version import Version
 from typing import List
 
+import functools
 import pytest
 
 
@@ -186,3 +187,8 @@ class Registry:
             return candidate_version
 
         return self.current_version
+
+
+@functools.cache
+def get_or_make_registry() -> Registry:
+    return Registry()
