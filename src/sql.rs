@@ -94,6 +94,7 @@ use std::rc::Rc;
 use std::str::from_utf8_unchecked;
 use std::time::Duration;
 
+pub mod concurrency;
 pub mod dispatch;
 pub mod execute;
 pub mod lua;
