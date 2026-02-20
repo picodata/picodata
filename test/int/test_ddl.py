@@ -2312,6 +2312,9 @@ def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
     # Trigger log compaction on each raft op
     leader.sql("ALTER SYSTEM SET raft_wal_count_max TO 0")
 
+    # Must wait until buckets are rebalanced, because otherwise TRUNCATE might hang for a long time
+    cluster.wait_until_buckets_balanced()
+
     # Test that all other DDL operations work fine during truncation.
     i2.sql(
         """
