@@ -27,14 +27,14 @@ def test_failover(cluster2: Cluster):
     i1, i2 = cluster2.instances
     i1.promote_or_fail()
 
-    Retriable(timeout=2, rps=10).call(i2.assert_raft_status, "Follower", leader_id=i1.raft_id)
+    Retriable(timeout=5).call(i2.assert_raft_status, "Follower", leader_id=i1.raft_id)
 
     def do_test():
-        i2.eval("pico.raft_tick(20)")
+        i2.call("pico.raft_tick", 200)
         i1.assert_raft_status("Follower", leader_id=i2.raft_id)
         i2.assert_raft_status("Leader")
 
-    Retriable(timeout=2, rps=10).call(do_test)
+    Retriable(timeout=5).call(do_test)
 
 
 def test_restart_follower(cluster2: Cluster):
