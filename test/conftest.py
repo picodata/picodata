@@ -1,4 +1,3 @@
-import git
 import io
 import json
 import os
@@ -9,8 +8,8 @@ import stat
 import sys
 import time
 import threading
-from packaging.version import InvalidVersion, Version
 import random
+from packaging.version import Version
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import requests
 from prometheus_client.parser import text_string_to_metric_families
@@ -51,9 +50,10 @@ import logging
 from framework.log import log
 from framework.port_distributor import PortDistributor
 from framework.rolling.registry import Registry
-from framework.rolling.runtime import Runtime
+from framework.rolling.version import parse_version_exc
 from framework.rolling.version import VersionAlias
 from framework.util.build import copy_testable_plugins
+from framework.util.build import Executable
 from framework.util.build import perform_cargo_build
 from framework.util.path import project_root_path
 from framework.util import parse_version_exc
@@ -738,7 +738,7 @@ def can_cause_fail(error: Exception):
 
 @dataclass
 class Instance:
-    runtime: Runtime
+    executable: Executable
     cwd: str
     color_code: str
 
@@ -785,7 +785,6 @@ class Instance:
     iproto_tls_key: str | None = None
     iproto_tls_ca: str | None = None
 
-    registry: Optional[Registry] = None
     symlink_created = False
     cluster: "Cluster | None" = None
 
@@ -2135,18 +2134,16 @@ Last governor error is:
         except ProcessDead:
             return True
 
-    def change_version(
+    def change_executable(
         self,
-        to: VersionAlias,
+        to: Executable,
         fail: bool = False,
     ) -> None:
-        log.info(f"Instance.change_version({self.name}, from={self.runtime.absolute_version}, to={to}, fail={fail})")
-
-        assert self.registry
+        log.info(f"Instance.change_executable({self.name}, from={self.executable.version}, to={to}, fail={fail})")
 
         (_, incarnation), _ = self.states()
         self.terminate()
-        self.runtime = self.registry.get(to)
+        self.executable = to
         if fail:
             self.fail_to_start(rolling=True)
             return
@@ -2186,7 +2183,6 @@ CLUSTER_COLORS = (
 
 @dataclass
 class Cluster:
-    runtime: Runtime
     id: str
     data_dir: str
     base_host: str
@@ -2266,6 +2262,18 @@ class Cluster:
                 yaml_lib.safe_dump(config_yaml_obj_i, f, default_flow_style=False)
 
             i.set_config_file(config_path)
+
+    def fill_with_data(self):
+        self.leader().fill_with_data()
+
+    def version(self) -> Version:
+        query = """
+            SELECT value
+            FROM _pico_property
+            WHERE key = 'cluster_version';
+        """
+        [[cluster_version]] = self.leader().sql(query)
+        return parse_version_exc(cluster_version)
 
     def restore(
         self,
@@ -2365,6 +2373,7 @@ class Cluster:
         audit: bool | str = True,
         wait_online: bool = True,
         enable_http: bool = False,
+        executable: Executable | None = None,
     ) -> list[Instance]:
         """Deploy a cluster of instances.
 
@@ -2379,6 +2388,9 @@ class Cluster:
 
         self.set_service_password(service_password)
 
+        if executable is None:
+            executable = Executable.current()
+
         for _ in range(instance_count):
             print(
                 f"cluster_id={self.id}: deploying instance [version={self.runtime.absolute_version} ({self.runtime.relative_version})]"
@@ -2389,6 +2401,7 @@ class Cluster:
                 init_replication_factor=init_replication_factor,
                 audit=audit,
                 enable_http=enable_http,
+                executable=executable,
             )
 
         if wait_online:
@@ -2491,6 +2504,7 @@ class Cluster:
         backup_dir: Path | None = None,
         log_to_console: bool | None = None,
         log_to_file: bool | None = None,
+        executable: Executable | None = None,
     ) -> Instance:
         """Add an `Instance` into the list of instances of the cluster and wait
         for it to attain Online grade unless `wait_online` is `False`.
@@ -2528,8 +2542,11 @@ class Cluster:
         if log_to_file:
             os.makedirs(instance_dir)
 
+        if executable is None:
+            executable = Executable.current()
+
         instance = Instance(
-            runtime=self.runtime,
+            executable=executable,
             cwd=self.data_dir,
             cluster_name=self.id,
             name=name,
@@ -2550,7 +2567,6 @@ class Cluster:
             tier=tier,
             config_path=self.config_path,
             audit=audit,
-            registry=self.registry,
             cluster=self,
         )
 
@@ -2951,22 +2967,9 @@ class Cluster:
                     return False
         return True
 
-    def change_version(
-        self,
-        to: VersionAlias,
-        exclude: List[Instance] = list(),
-        fail: bool = False,
-    ) -> None:
-        print(
-            f"cluster_id={self.id}: changing version [from={self.runtime.absolute_version}, to={to}], should fail? {fail}"
-        )
-
-        assert self.registry
-        self.runtime = self.registry.get(to)
-
+    def change_executable(self, to: Executable, fail: bool = False):
         for instance in self.instances:
-            if instance not in exclude:
-                instance.change_version(to, fail)
+            instance.change_executable(to, fail)
 
     def pick_random_instance(
         self,
@@ -3124,11 +3127,6 @@ class PgClient:
 
 
 @pytest.fixture(scope="session")
-def current_runtime(cargo_build_fixt: None) -> Runtime:
-    return Runtime.current()
-
-
-@pytest.fixture(scope="session")
 def cargo_build_fixt(pytestconfig: pytest.Config) -> None:
     enable_webui = pytestconfig.getoption("--with-webui")
     perform_cargo_build(bool(enable_webui))
@@ -3147,7 +3145,7 @@ def class_tmp_dir(tmpdir_factory):
 
 
 @pytest.fixture(scope="class")
-def cluster_factory(current_runtime, class_tmp_dir, cluster_names, port_distributor, request):
+def cluster_factory(class_tmp_dir, cluster_names, port_distributor, cargo_build_fixt, request):
     pytest_timeout = request.config.getini("timeout")
 
     def cluster_factory_():
@@ -3155,7 +3153,6 @@ def cluster_factory(current_runtime, class_tmp_dir, cluster_names, port_distribu
         # see how it's done in def binary_path()
         share_dir = os.getcwd() + "/test/testplug"
         cluster = Cluster(
-            runtime=current_runtime,
             id=next(cluster_names),
             data_dir=class_tmp_dir,
             share_dir=share_dir,
@@ -3179,12 +3176,11 @@ def cluster(cluster_factory) -> Generator[Cluster, None, None]:
 
 
 @pytest.fixture
-def second_cluster(current_runtime, tmpdir, cluster_names, port_distributor, request):
+def second_cluster(tmpdir, cluster_names, port_distributor, cargo_build_fixt, request):
     cluster2_dir = os.path.join(tmpdir, "cluster2")
     os.makedirs(cluster2_dir, exist_ok=True)
 
     cluster = Cluster(
-        runtime=current_runtime,
         id=next(cluster_names),
         data_dir=cluster2_dir,
         base_host=BASE_HOST,
@@ -3545,61 +3541,6 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
     issue.discussions.create({"body": f"[AUTOMATIC COMMENT] Failed once again: {job_url}"})
 
 
-class Repository:
-    root: Path
-    info: git.Git
-    repo: git.Repo
-    tags: List[Version]  # descending order
-
-    def __init__(self) -> None:
-        self.root = Path(os.getcwd())
-
-        self.info = git.Git(self.root)
-        self.repo = git.Repo(self.root)
-
-        self.tags = list()
-        for tag in map(str, self.repo.tags):
-            try:
-                version = Version(tag)
-                if version.major >= 25:
-                    self.tags.append(version)
-            except InvalidVersion:
-                pass
-        self.tags.sort(reverse=True)
-
-    def current_version(self) -> Version:
-        dirty_version = self.info.describe()
-        if not dirty_version:
-            error = "no git describe info"
-            raise ValueError(error)
-
-        version_parts = dirty_version.split("-")
-        current_version = Version(version_parts[0])
-        return current_version
-
-    def all_versions(self) -> List[Version]:
-        return self.tags
-
-    def rolling_versions(self) -> List[Version]:
-        """
-        TODO: ?.
-        """
-
-        seen = set()
-        result = list()
-
-        for version in self.all_versions():
-            # NOTE: versions list is descending, and for rolling tests we ignore
-            # versions that does not follow rolling upgrade guarantees.
-            if version.major < 25:
-                break
-
-            # NOTE: we only need latest versions by patch of major with minor, so
-            # as long as our versions list is descending, we can key by major and
-            # minor, appending to the seen versions set to filter properly.
-            key = (version.major, version.minor)
-            if key not in seen:
-                seen.add(key)
-                result.append(version)
-
-        return result
+@pytest.fixture(scope="session")
+def registry():
+    return Registry()

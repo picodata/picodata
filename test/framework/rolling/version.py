@@ -46,3 +46,14 @@ class VersionAlias(enum.Enum):
     # The current and/or latest version being tested.
     # Represents the target version for upgrade tests and the baseline for downgrade rejection tests.
     CURRENT = enum.auto()
+
+
+ExecutableVersion = Version | VersionAlias
+"""
+A union type representing either a concrete version or a relative version alias.
+This type allows specifying a target version in two ways:
+1. Explicitly, using a parsed `packaging.version.Version` object.
+2. Dynamically, using a `VersionAlias` to select a version relative to the
+   current one (e.g., for defining upgrade paths without hardcoding numbers).
+In most cases, used only by methods of `framework.util.build.Executable`.
+"""
