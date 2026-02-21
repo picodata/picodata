@@ -3504,3 +3504,153 @@ def test_config_inheritance_during_upgrades_gl_1874(instance: Instance):
         ["testplug", "0.4.0", "testservice_4", "a", 1],
         ["testplug", "0.4.0", "testservice_4", "b", 1],
     ]
+
+
+def test_plugin_migration_context_validation(cluster: Cluster):
+    plugin = "testplug_validate_context"
+
+    always_ok_parameter_value = "Pushkin"
+    short_parameter_value_ok = "Smash Mouth"
+    short_parameter_value_err = "Chris Christodoulou"
+    always_bad_parameter_value = "Aphex Twin"
+    not_checked_parameter_value = "Sade"
+
+    plugin_dir = init_dummy_plugin(cluster, plugin, "0.1.0", migrations=["migration.sql"])
+    (plugin_dir / "migration.sql").write_text(
+        """
+-- pico.UP
+
+CREATE TABLE author (id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY (id));
+
+INSERT INTO author VALUES (1, '@_plugin_config.always_ok_parameter');
+INSERT INTO author VALUES (2, '@_plugin_config.short_parameter');
+
+-- pico.DOWN
+DROP TABLE author;
+"""
+    )
+
+    i1 = cluster.add_instance()
+
+    # valid migration context
+    i1.sql(f'CREATE PLUGIN "{plugin}" 0.1.0')
+
+    # check bulky SET
+    res = i1.sql(
+        f"""
+        ALTER PLUGIN "{plugin}" 0.1.0 SET
+            migration_context.always_ok_parameter = \'"{always_ok_parameter_value}"\', 
+            migration_context.short_parameter = \'"{short_parameter_value_ok}"\'; 
+        """
+    )
+    assert res, 2
+
+    # check single SETs
+    res = i1.sql(
+        f"""
+        ALTER PLUGIN "{plugin}" 0.1.0 SET
+            migration_context.always_ok_parameter = \'"{always_ok_parameter_value}"\'; 
+        """
+    )
+    assert res, 1
+    res = i1.sql(
+        f"""
+        ALTER PLUGIN "{plugin}" 0.1.0 SET
+            migration_context.short_parameter = \'"{short_parameter_value_ok}"\'; 
+        """
+    )
+    assert res, 1
+
+    res = i1.sql(f'ALTER PLUGIN "{plugin}" MIGRATE TO 0.1.0')
+    assert res, 1
+
+    assert sorted(i1.sql("SELECT * FROM author")) == [[1, always_ok_parameter_value], [2, short_parameter_value_ok]]
+
+    i1.sql(f'DROP PLUGIN "{plugin}" 0.1.0 WITH DATA')
+
+    # invalid migration context parameters
+    i1.sql(f'CREATE PLUGIN "{plugin}" 0.1.0')
+
+    # check bulky SET
+    with pytest.raises(
+        TarantoolError,
+        match="Migration context parameter validation error: PluginError: this parameter can't be that long!",
+    ):
+        i1.sql(
+            f"""
+            ALTER PLUGIN "{plugin}" 0.1.0 SET
+                migration_context.always_ok_parameter = \'"{always_ok_parameter_value}"\',
+                migration_context.short_parameter = \'"{short_parameter_value_err}"\';
+            """
+        )
+
+    # single SETs
+    with pytest.raises(
+        TarantoolError,
+        match="Migration context parameter validation error: PluginError: this parameter can't be that long!",
+    ):
+        i1.sql(
+            f"""
+            ALTER PLUGIN "{plugin}" 0.1.0 SET
+                migration_context.short_parameter = \'"{short_parameter_value_err}"\';
+            """
+        )
+
+    with pytest.raises(
+        TarantoolError,
+        match="Migration context parameter validation error: PluginError: don't use this parameter, please",
+    ):
+        i1.sql(
+            f"""
+            ALTER PLUGIN "{plugin}" 0.1.0 SET
+                migration_context.always_bad_parameter = \'"{always_bad_parameter_value}"\';
+            """
+        )
+
+    # invalid whole migration context, but parameters are ok
+    # this doesn't fail because the whole context validation happens on ALTER PLUGIN ... MIGRATE TO ...
+    res = i1.sql(
+        f"""
+        ALTER PLUGIN "{plugin}" 0.1.0 SET
+            migration_context.always_ok_parameter = \'"{always_ok_parameter_value}"\',
+            migration_context.short_parameter = \'"{short_parameter_value_ok}"\', 
+            migration_context.not_checked_parameter = \'"{not_checked_parameter_value}"\';
+        """
+    )
+    assert res, 3
+
+    with pytest.raises(
+        TarantoolError,
+        match=f"migration context validation for plugin `{plugin}:0.1.0` failed: PluginError: this context is too long, man",
+    ):
+        i1.sql(f'ALTER PLUGIN "{plugin}" MIGRATE TO 0.1.0')
+
+    res = i1.sql(
+        f"""
+        ALTER PLUGIN "{plugin}" 0.1.0 SET
+            migration_context.always_ok_parameter = \'"{always_ok_parameter_value}"\'
+        """
+    )
+    assert res, 1
+
+    res = i1.sql(
+        f"""
+        ALTER PLUGIN "{plugin}" 0.1.0 SET
+            migration_context.short_parameter = \'"{short_parameter_value_ok}"\'
+        """
+    )
+    assert res, 1
+
+    res = i1.sql(
+        f"""
+        ALTER PLUGIN "{plugin}" 0.1.0 SET
+            migration_context.not_checked_parameter = \'"{not_checked_parameter_value}"\'
+        """
+    )
+    assert res, 1
+
+    with pytest.raises(
+        TarantoolError,
+        match=f"migration context validation for plugin `{plugin}:0.1.0` failed: PluginError: this context is too long, man",
+    ):
+        i1.sql(f'ALTER PLUGIN "{plugin}" MIGRATE TO 0.1.0')

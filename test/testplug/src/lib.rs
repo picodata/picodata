@@ -907,6 +907,33 @@ impl Service for TestPanicInPlugin {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// testing migration context validation
+////////////////////////////////////////////////////////////////////////////////
+
+#[migration_validator]
+pub fn migration_validator(mv: &mut MigrationValidator) {
+    mv.set_context_validator(|ctx| {
+        if ctx.len() >= 3 {
+            Err("this context is too long, man".into())
+        } else {
+            Ok(())
+        }
+    });
+    mv.set_context_parameter_validator(|k, v| match k.as_str() {
+        "always_ok_parameter" => Ok(()),
+        "always_bad_parameter" => Err("don't use this parameter, please".into()),
+        "short_parameter" => {
+            if v.len() > 15 {
+                Err("this parameter can't be that long!".into())
+            } else {
+                Ok(())
+            }
+        }
+        _ => Ok(()),
+    });
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // ...
 ////////////////////////////////////////////////////////////////////////////////
 

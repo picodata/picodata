@@ -28,3 +28,4 @@ threadpool = "1.8"
 
 [features]
 internal_test = []
+internal = []

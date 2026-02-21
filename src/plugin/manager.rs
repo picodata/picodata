@@ -22,10 +22,12 @@ use abi_stable::std_types::RStr;
 use picodata_plugin::background::FfiBackgroundJobCancellationToken;
 use picodata_plugin::error_code::ErrorCode::PluginError as PluginErrorCode;
 use picodata_plugin::metrics::FfiMetricsHandler;
+use picodata_plugin::plugin::interface::FnMigrationValidator;
 use picodata_plugin::plugin::interface::FnServiceRegistrar;
+use picodata_plugin::plugin::interface::MigrationContextValidatorBox;
+use picodata_plugin::plugin::interface::MigrationValidator;
 use picodata_plugin::plugin::interface::ServiceId;
 use picodata_plugin::plugin::interface::{PicoContext, ServiceRegistry};
-use picodata_plugin::util::DisplayErrorLocation;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::fs;
@@ -76,23 +78,21 @@ fn ensure_picodata_version_compatible(
 }
 
 type PluginServices = Vec<Rc<ServiceState>>;
+type PluginMigrationContextValidator = Rc<MigrationContextValidatorBox>;
 
 /// Represent loaded part of a plugin - services and flag of plugin activation.
 struct PluginState {
     /// List of running services.
     services: PluginServices,
-    /// Plugin version
+    /// Migration context validator.
+    migration_context_validator: PluginMigrationContextValidator,
+    /// Plugin version.
     version: String,
+    /// A handle to the dynamic library from which the service callbacks are loaded.
+    _lib: Rc<LibraryWrapper>,
 }
 
 impl PluginState {
-    fn new(version: String) -> Self {
-        Self {
-            version,
-            services: vec![],
-        }
-    }
-
     fn remove_service(&mut self, service: &str) -> Option<Rc<ServiceState>> {
         let index = self
             .services
@@ -132,6 +132,13 @@ pub struct PluginManager {
 }
 
 impl PluginManager {
+    /// The constants below are supposed to be in the picodata-plugin-proc-macro crate, but proc-macro crates
+    /// disallow exporting anything, other than proc macros. This can be avoided by creating a separate
+    /// crate, but it seems like an overkill. Just make sure the names below match what is written
+    /// in picodata-plugin-proc-macro/src/lib.rs:79.
+    const SERVICE_REGISTRAR_EXPORT_NAME: &'static str = "pico_service_registrar";
+    const MIGRATION_VALIDATOR_EXPORT_NAME: &'static str = "pico_migration_validator";
+
     /// Create a new plugin manager.
     pub fn new(storage: Catalog, tls_connector: Option<TlsConnector>) -> Self {
         let (rx, tx) = fiber::channel::Channel::new(1000).into_clones();
@@ -169,6 +176,16 @@ impl PluginManager {
         Ok(fs::read_dir(plugin_dir)?)
     }
 
+    fn find_and_load_so(plugin_dir_entries: ReadDir) -> Result<Rc<LibraryWrapper>> {
+        for dir_entry in plugin_dir_entries {
+            let path = dir_entry?.path();
+            if let Some(lib) = Self::load_so(&path) {
+                return Ok(lib);
+            }
+        }
+        Err(PluginError::PluginLibraryNotFound)
+    }
+
     fn load_so(path: &Path) -> Option<Rc<LibraryWrapper>> {
         // filter files by its extension
         let ext = path.extension()?;
@@ -178,98 +195,120 @@ impl PluginManager {
 
         // trying to load a dynamic library
         let lib = unsafe { LibraryWrapper::new(path.to_path_buf()) }
-            .inspect_err(|e| tlog!(Warning, "error while open plugin candidate: {e}"))
+            .inspect_err(|e| tlog!(Warning, "error while opening plugin candidate: {e}"))
             .ok()?;
 
         Some(Rc::new(lib))
     }
 
-    /// Load plugin services into instance using plugin and service definitions.
-    ///
-    /// Support `dry_run` -
-    /// means that plugin is not being loaded but the possibility of loading is checked.
+    /// Load plugin services into the instance using plugin and service definitions.
     fn try_load_inner(
         &self,
         plugin_def: &PluginDef,
         service_defs: &[ServiceDef],
+    ) -> Result<PluginState> {
+        Ok(self
+            .try_load_inner_maybe_dry_run(plugin_def, service_defs, false)?
+            .expect("not a dry run"))
+    }
+
+    /// Check if the plugin with services could be loaded into the instance.
+    fn try_load_inner_dry_run(
+        &self,
+        plugin_def: &PluginDef,
+        service_defs: &[ServiceDef],
+    ) -> Result<()> {
+        self.try_load_inner_maybe_dry_run(plugin_def, service_defs, true)?;
+        Ok(())
+    }
+
+    /// A helper function, that checks if the plugin with services could be loaded. If `dry_run` equals `false`,
+    /// plugin services are loaded into the instance.
+    ///
+    /// If the `dry_run` is `false`, the returned `Option` is always `Some`
+    fn try_load_inner_maybe_dry_run(
+        &self,
+        plugin_def: &PluginDef,
+        service_defs: &[ServiceDef],
         dry_run: bool,
-    ) -> Result<Vec<ServiceState>> {
+    ) -> Result<Option<PluginState>> {
         let mut loaded_services = Vec::with_capacity(service_defs.len());
 
         let mut service_defs_to_load = service_defs.to_vec();
         let ident = plugin_def.identifier();
 
         let entries = self.load_plugin_dir(&ident)?;
-        for dir_entry in entries {
-            let path = dir_entry?.path();
+        let lib = Self::find_and_load_so(entries)?;
 
-            let Some(lib) = Self::load_so(&path) else {
-                continue;
-            };
+        // check compatibility
+        let picodata_plugin_version = unsafe { lib.get::<&RStr<'static>>("PICOPLUGIN_VERSION")? };
+        if plugin_compatibility_check_enabled() {
+            ensure_picodata_version_compatible(picodata_plugin_version.as_str(), PICODATA_VERSION)?;
+        } else {
+            tlog!(
+                Warning,
+                "Loading a possibly incompatible plugin built using picodata_plugin {}",
+                picodata_plugin_version.as_str(),
+            )
+        }
 
-            // check compatibility
-            let picodata_plugin_version =
-                unsafe { lib.get::<&RStr<'static>>("PICOPLUGIN_VERSION")? };
-            if plugin_compatibility_check_enabled() {
-                ensure_picodata_version_compatible(
-                    picodata_plugin_version.as_str(),
-                    PICODATA_VERSION,
-                )?;
-            } else {
-                tlog!(
-                    Warning,
-                    "Loading a possibly incompatible plugin built using picodata_plugin {}",
-                    picodata_plugin_version.as_str(),
-                )
+        // fill registry with factories
+        let mut service_registry = ServiceRegistry::default();
+        let service_registrar =
+            unsafe { lib.get::<FnServiceRegistrar>(Self::SERVICE_REGISTRAR_EXPORT_NAME)? };
+        service_registrar(&mut service_registry);
+
+        // set up the migration validator
+        let mut migration_validator = MigrationValidator::default();
+        if let Ok(migration_validator_fn) =
+            unsafe { lib.get::<FnMigrationValidator>(Self::MIGRATION_VALIDATOR_EXPORT_NAME) }
+        {
+            migration_validator_fn(&mut migration_validator);
+        };
+        let migration_context_validator = migration_validator.migration_context_validator();
+
+        tlog!(
+            Info,
+            "Plugin registry content from file {:?}: {:?}",
+            lib.filename,
+            service_registry.dump()
+        );
+
+        // validate all services to possible factory collisions
+        service_defs.iter().try_for_each(|svc| {
+            service_registry
+                .contains(&svc.name, &svc.version)
+                .map_err(|_| ServiceCollision(svc.name.clone(), svc.version.clone()))
+                .map(|_| ())
+        })?;
+
+        // trying to load still unloaded services
+        service_defs_to_load.retain(|service_def| {
+            if dry_run {
+                return !service_registry
+                    .contains(&service_def.name, &plugin_def.version)
+                    .expect("checked at previous step");
             }
 
-            // fill registry with factories
-            let mut registry = ServiceRegistry::default();
-            let registrar = unsafe { lib.get::<FnServiceRegistrar>("pico_service_registrar")? };
-            registrar(&mut registry);
+            let maybe_service = service_registry
+                .make(&service_def.name, &plugin_def.version)
+                .expect("checked at previous step");
+            if let Some(service_inner) = maybe_service {
+                let plugin_name = &*plugin_def.name;
+                let service_name = &*service_def.name;
+                let plugin_version = &*service_def.version;
+                let service_id = ServiceId::new(plugin_name, service_name, plugin_version);
+                let config_validator = service_registry
+                    .remove_config_validator(service_name, plugin_version)
+                    .expect("infallible, at least default validator should exists");
 
-            tlog!(
-                Info,
-                "Plugin registry content from file {path:?}: {:?}",
-                registry.dump()
-            );
+                let service = ServiceState::new(service_id, service_inner, config_validator);
+                loaded_services.push(service);
+                return false;
+            }
 
-            // validate all services to possible factory collisions
-            service_defs.iter().try_for_each(|svc| {
-                registry
-                    .contains(&svc.name, &svc.version)
-                    .map_err(|_| ServiceCollision(svc.name.clone(), svc.version.clone()))
-                    .map(|_| ())
-            })?;
-
-            // trying to load still unloaded services
-            service_defs_to_load.retain(|service_def| {
-                if dry_run {
-                    return !registry
-                        .contains(&service_def.name, &plugin_def.version)
-                        .expect("checked at previous step");
-                }
-
-                let maybe_service = registry
-                    .make(&service_def.name, &plugin_def.version)
-                    .expect("checked at previous step");
-                if let Some(service_inner) = maybe_service {
-                    let plugin_name = &*plugin_def.name;
-                    let service_name = &*service_def.name;
-                    let plugin_version = &*service_def.version;
-                    let service_id = ServiceId::new(plugin_name, service_name, plugin_version);
-                    let config_validator = registry
-                        .remove_config_validator(service_name, plugin_version)
-                        .expect("infallible, at least default validator should exists");
-
-                    let service =
-                        ServiceState::new(service_id, service_inner, config_validator, lib.clone());
-                    loaded_services.push(service);
-                    return false;
-                }
-                true
-            });
-        }
+            true
+        });
 
         if !service_defs_to_load.is_empty() {
             return Err(PluginError::PartialLoad(
@@ -281,14 +320,36 @@ impl PluginManager {
         }
 
         if dry_run {
-            return Ok(vec![]);
+            return Ok(None);
         }
 
         debug_assert!(loaded_services.len() == service_defs.len());
-        Ok(loaded_services)
+
+        let state = PluginState {
+            services: loaded_services.into_iter().map(Rc::new).collect(),
+            version: ident.version.to_string(),
+            migration_context_validator: Rc::new(migration_context_validator),
+            _lib: lib,
+        };
+
+        Ok(Some(state))
     }
 
-    /// Load plugin into instance.
+    /// Load and enable a plugin on an instance.
+    ///
+    /// Firstly, [`Self::try_load`] function loads the plugin into memory.
+    /// Secondly, the `on_start` callbacks of all services are called.
+    ///
+    /// # Arguments
+    /// * `ident`: plugin identity
+    pub fn try_enable(&self, ident: &PluginIdentifier) -> Result<()> {
+        let service_defs = self.try_load(ident)?;
+        self.handle_plugin_enable(ident, &service_defs)?;
+
+        Ok(())
+    }
+
+    /// Load a plugin into memory.
     ///
     /// How plugins are loaded:
     /// 1) Extract list of services to load from a `_pico_service` system table.
@@ -298,13 +359,11 @@ impl PluginManager {
     ///    If service can be loaded - remove it from load-list.
     ///    If there is more than one factory for one service - throw error.
     /// 5) After scanning all files - checks that load-list is empty - plugin fully loaded now.
-    /// 6) Send and handle `PluginLoad` event - `on_start` callbacks will be called.
-    /// 7) Return error if any of the previous steps failed with error.
+    /// 6) Return error if any of the previous steps failed with error.
     ///
     /// # Arguments
-    ///
     /// * `ident`: plugin identity
-    pub fn try_load(&self, ident: &PluginIdentifier) -> Result<()> {
+    pub fn try_load(&self, ident: &PluginIdentifier) -> Result<Vec<ServiceDef>> {
         let node = node::global().expect("node must be already initialized");
         let plugin_def = node
             .storage
@@ -326,19 +385,13 @@ impl PluginManager {
             .filter(|svc_def| topology::probe_service(&topology_ctx, svc_def))
             .collect::<Vec<_>>();
 
-        let loaded_services = self.try_load_inner(&plugin_def, &service_defs, false)?;
+        let plugin_state = self.try_load_inner(&plugin_def, &service_defs)?;
 
-        self.plugins.lock().insert(
-            plugin_def.name.clone(),
-            PluginState {
-                services: loaded_services.into_iter().map(Rc::new).collect(),
-                version: ident.version.to_string(),
-            },
-        );
+        self.plugins
+            .lock()
+            .insert(plugin_def.name.clone(), plugin_state);
 
-        self.handle_plugin_load(ident, &service_defs)?;
-
-        Ok(())
+        Ok(service_defs)
     }
 
     /// Check the possibility of loading plugin into instance.
@@ -349,8 +402,11 @@ impl PluginManager {
     pub fn try_load_dry_run(&self, manifest: &Manifest) -> Result<()> {
         let plugin_def = manifest.plugin_def();
         let service_defs = manifest.service_defs();
-        self.try_load_inner(&plugin_def, &service_defs, true)
-            .map(|_| ())
+        self.try_load_inner_dry_run(&plugin_def, &service_defs)
+    }
+
+    pub fn is_plugin_loaded(&self, plugin_ident: &PluginIdentifier) -> bool {
+        self.plugins.lock().contains_key(&plugin_ident.name)
     }
 
     /// Load and start all enabled plugins and services that must be loaded.
@@ -371,7 +427,7 @@ impl PluginManager {
                 let ident = plugin.into_identifier();
                 // no need to load already loaded plugins
                 if self.plugins.lock().get(&ident.name).is_none() {
-                    self.try_load(&ident)?;
+                    self.try_enable(&ident)?;
                 }
 
                 items.extend(self.plugins.lock()[&ident.name].services.iter().map(|svc| {
@@ -528,10 +584,9 @@ impl PluginManager {
                 }
                 RErr(_) => {
                     let error = BoxError::last();
-                    let loc = DisplayErrorLocation(&error);
                     tlog!(
                         Warning,
-                        "service poisoned, {id}.on_config_change error: {loc}{error}"
+                        "service poisoned, {id}.on_config_change error: {error}"
                     );
                     // now the route is poison
                     let route = ServiceRouteItem::new_poison(
@@ -610,10 +665,9 @@ impl PluginManager {
                         }
                         RErr(_) => {
                             let error = BoxError::last();
-                            let loc = DisplayErrorLocation(&error);
                             tlog!(
                                 Warning,
-                                "service poisoned, {id}.on_leader_change error: {loc}{error}"
+                                "service poisoned, {id}.on_leader_change error: {error}"
                             );
                             // now the route is poison
                             routes_to_replace.push(ServiceRouteItem::new_poison(
@@ -661,16 +715,14 @@ impl PluginManager {
 
         let service_defs = [service_def];
 
-        let mut loaded_services = self.try_load_inner(&plugin_def, &service_defs, false)?;
-        debug_assert!(loaded_services.len() == 1);
-        let Some(new_service) = loaded_services.pop() else {
-            return Err(PluginError::ServiceNotFound(
-                service.to_string(),
-                plugin_ident.clone(),
-            ));
-        };
+        let plugin = self.try_load_inner(&plugin_def, &service_defs)?;
+        debug_assert!(plugin.services.len() == 1);
+        let service = plugin
+            .services
+            .first()
+            .ok_or_else(|| PluginError::ServiceNotFound(service.to_string(), plugin_ident.clone()))?
+            .clone();
 
-        let service = Rc::new(new_service);
         let id = &service.id;
 
         // call `on_start` callback
@@ -684,10 +736,7 @@ impl PluginManager {
         // add the service to the storage, because the `on_start` may attempt to
         // indirectly reference it through there
         let mut plugins = self.plugins.lock();
-        let plugin = plugins
-            .entry(plugin_def.name)
-            .or_insert_with(|| PluginState::new(plugin_ident.version.to_string()));
-        plugin.services.push(service.clone());
+        let plugin = plugins.entry(plugin_def.name).or_insert_with(|| plugin);
 
         #[rustfmt::skip]
         tlog!(Debug, "calling {id}.on_start");
@@ -701,9 +750,8 @@ impl PluginManager {
 
         if res.is_err() {
             let error = BoxError::last();
-            let loc = DisplayErrorLocation(&error);
             #[rustfmt::skip]
-            tlog!(Error, "plugin callback {id}.on_start error: {loc}{error}");
+            tlog!(Error, "plugin callback {id}.on_start error: {error}");
 
             // Remove the service which we just added, because it failed to enable
             plugin.remove_service(&id.service);
@@ -748,8 +796,19 @@ impl PluginManager {
         Ok(state.services.clone())
     }
 
+    fn get_plugin_migration_context_validator(
+        &self,
+        plugin_ident: &PluginIdentifier,
+    ) -> Result<PluginMigrationContextValidator> {
+        let plugins = self.plugins.lock();
+        let Some(state) = plugins.get(&plugin_ident.name) else {
+            return Err(PluginError::PluginNotFound(plugin_ident.clone()));
+        };
+        Ok(state.migration_context_validator.clone())
+    }
+
     /// Call `on_start` for all plugin services.
-    fn handle_plugin_load(
+    fn handle_plugin_enable(
         &self,
         plugin_ident: &PluginIdentifier,
         service_defs: &[ServiceDef],
@@ -784,8 +843,7 @@ impl PluginManager {
 
             if res.is_err() {
                 let error = BoxError::last();
-                let loc = DisplayErrorLocation(&error);
-                tlog!(Error, "plugin callback {id}.on_start error: {loc}{error}");
+                tlog!(Error, "plugin callback {id}.on_start error: {error}");
 
                 return Err(PluginError::Callback(PluginCallbackError::OnStart(error)));
             }
@@ -801,7 +859,7 @@ impl PluginManager {
         service_name: &str,
         new_cfg_raw: &[u8],
     ) -> Result<()> {
-        // fast path - service already in memory
+        // fast path, service is in memory
         if let Ok(services) = self.get_plugin_services(plugin_ident) {
             for service in services.iter() {
                 if service.id.service != service_name {
@@ -815,34 +873,27 @@ impl PluginManager {
                 let service = service.volatile_state.lock();
                 let res = service.config_validator.validate(RSlice::from(new_cfg_raw));
 
-                if res.is_err() {
+                return if res.is_err() {
                     let error = BoxError::last();
-                    let loc = DisplayErrorLocation(&error);
                     tlog!(
                         Error,
-                        "plugin callback {id}.config.validate error: {loc}{error}"
+                        "plugin callback {id}.config.validate returned an error: {error}"
                     );
-
-                    return Err(PluginError::Callback(
+                    Err(PluginError::Callback(
                         PluginCallbackError::InvalidConfiguration(error),
-                    ));
-                }
-
-                return Ok(());
+                    ))
+                } else {
+                    Ok(())
+                };
             }
         }
 
         // slow path, service not in memory, validator should be loaded from .so file
         let entries = self.load_plugin_dir(plugin_ident)?;
-        for dir_entry in entries {
-            let path = dir_entry?.path();
-
-            let Some(lib) = Self::load_so(&path) else {
-                continue;
-            };
-
+        if let Ok(lib) = Self::find_and_load_so(entries) {
             let mut registry = ServiceRegistry::default();
-            let registrar = unsafe { lib.get::<FnServiceRegistrar>("pico_service_registrar")? };
+            let registrar =
+                unsafe { lib.get::<FnServiceRegistrar>(Self::SERVICE_REGISTRAR_EXPORT_NAME)? };
             registrar(&mut registry);
 
             if registry
@@ -852,8 +903,16 @@ impl PluginManager {
                 let validator = registry
                     .remove_config_validator(service_name, &plugin_ident.version)
                     .expect("infallible, at least default validator should exists");
-                return if let RErr(_) = validator.validate(RSlice::from(new_cfg_raw)) {
+                let res = validator.validate(RSlice::from(new_cfg_raw));
+                return if res.is_err() {
                     let error = BoxError::last();
+                    tlog!(
+                        Error,
+                        "plugin callback {}.{}:v{}.config.validate returned an error: {error}",
+                        plugin_ident.name,
+                        service_name,
+                        plugin_ident.version,
+                    );
                     Err(PluginError::Callback(
                         PluginCallbackError::InvalidConfiguration(error),
                     ))
@@ -871,6 +930,72 @@ impl PluginManager {
             PluginCallbackError::InvalidConfiguration(BoxError::new(
                 PluginErrorCode,
                 "Configuration validator for service not found",
+            )),
+        ))
+    }
+
+    pub(crate) fn handle_migration_context_validate_parameter(
+        &self,
+        plugin_ident: &PluginIdentifier,
+        parameter_name: &str,
+        parameter_value: &str,
+    ) -> Result<()> {
+        // fast path, plugin is in memory
+        if let Ok(migration_context_validator) =
+            self.get_plugin_migration_context_validator(plugin_ident)
+        {
+            let res = migration_context_validator
+                .validate_parameter(parameter_name.into(), parameter_value.into());
+            if res.is_err() {
+                let error = BoxError::last();
+                tlog!(
+                    Error,
+                    "migration context parameter validation for plugin `{plugin_ident}` returned an error: {error}"
+                );
+
+                return Err(PluginError::Callback(
+                    PluginCallbackError::InvalidMigrationContext(error),
+                ));
+            } else {
+                return Ok(());
+            }
+        }
+
+        // slow path, plugin is not in memory, validator should be loaded from the .so file
+        let entries = self.load_plugin_dir(plugin_ident)?;
+        if let Ok(lib) = Self::find_and_load_so(entries) {
+            let mut migration_validator = MigrationValidator::default();
+            if let Ok(migration_validator_fn) =
+                unsafe { lib.get::<FnMigrationValidator>(Self::MIGRATION_VALIDATOR_EXPORT_NAME) }
+            {
+                migration_validator_fn(&mut migration_validator);
+            };
+            let migration_context_validator = migration_validator.migration_context_validator();
+
+            return if let RErr(_) = migration_context_validator
+                .validate_parameter(parameter_name.into(), parameter_value.into())
+            {
+                let error = BoxError::last();
+                tlog!(
+                    Error,
+                    "migration context parameter validation of parameter '{parameter_name}' with value '{parameter_value}' for plugin `{plugin_ident}` returned an error: {error}"
+                );
+                Err(PluginError::Callback(
+                    PluginCallbackError::InvalidMigrationContext(error),
+                ))
+            } else {
+                Ok(())
+            };
+        }
+
+        tlog!(
+            Warning,
+            "migration context validator for plugin `{plugin_ident}` not found, context forced invalid"
+        );
+        Err(PluginError::Callback(
+            PluginCallbackError::InvalidMigrationContext(BoxError::new(
+                PluginErrorCode,
+                "Migration context validator not found",
             )),
         ))
     }
@@ -945,6 +1070,15 @@ impl PluginManager {
 
         None
     }
+
+    pub fn get_migration_context_validator(
+        &self,
+        plugin_ident: &PluginIdentifier,
+    ) -> Option<Rc<MigrationContextValidatorBox>> {
+        let plugins = self.plugins.lock();
+        let plugin = plugins.get(&plugin_ident.name)?;
+        Some(plugin.migration_context_validator.clone())
+    }
 }
 
 impl Drop for PluginManager {
@@ -972,9 +1106,8 @@ fn stop_service(service: &ServiceState, context: &PicoContext) {
 
     if res.is_err() {
         let error = BoxError::last();
-        let loc = DisplayErrorLocation(&error);
         #[rustfmt::skip]
-        tlog!(Error, "plugin callback {service_id}.on_stop error: {loc}{error}");
+        tlog!(Error, "plugin callback {service_id}.on_stop error: {error}");
     }
 
     rpc::server::unregister_all_rpc_handlers(

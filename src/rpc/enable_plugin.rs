@@ -33,7 +33,7 @@ crate::define_rpc_request! {
             return Err(Error::other("found unexpected plugin operation expected EnablePlugin, found {plugin_op:?}"));
         };
 
-        let load_result = node.plugin_manager.try_load(&plugin);
+        let load_result = node.plugin_manager.try_enable(&plugin);
 
         match load_result {
              Ok(()) => Ok(Response::Ok),

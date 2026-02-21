@@ -13,7 +13,6 @@ use crate::instance::{self, Instance};
 use crate::plugin::PluginIdentifier;
 use crate::plugin::PluginOp;
 use crate::replicaset::Replicaset;
-use crate::schema::PluginConfigRecord;
 use crate::schema::PluginMigrationRecord;
 use crate::schema::PrivilegeType;
 use crate::schema::SchemaObjectType;
@@ -21,6 +20,7 @@ use crate::schema::ServiceDef;
 use crate::schema::ServiceRouteItem;
 use crate::schema::ServiceRouteKey;
 use crate::schema::{IndexDef, IndexOption};
+use crate::schema::{MigrationContextRecord, PluginConfigRecord};
 use crate::schema::{PluginDef, INITIAL_SCHEMA_VERSION};
 use crate::schema::{PrivilegeDef, RoutineDef, UserDef};
 use crate::sql::execute::full_delete_execute;
@@ -3096,6 +3096,28 @@ impl PluginConfig {
         let mut result = HashMap::new();
         for tuple in cfg_records {
             let cfg_record: PluginConfigRecord = tuple.decode()?;
+            result.insert(cfg_record.key, cfg_record.value);
+        }
+
+        Ok(result)
+    }
+
+    pub fn get_migration_context(
+        &self,
+        ident: &PluginIdentifier,
+    ) -> tarantool::Result<HashMap<SmolStr, SmolStr>> {
+        let cfg_records = self.space.select(
+            IteratorType::Eq,
+            &(
+                &ident.name,
+                &ident.version,
+                crate::plugin::migration::CONTEXT_ENTITY,
+            ),
+        )?;
+
+        let mut result = HashMap::new();
+        for tuple in cfg_records {
+            let cfg_record: MigrationContextRecord = tuple.decode()?;
             result.insert(cfg_record.key, cfg_record.value);
         }
 

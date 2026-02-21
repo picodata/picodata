@@ -23,6 +23,7 @@ use crate::traft::op::{Dml, Op};
 use crate::traft::{node, RaftIndex};
 use crate::util::effective_user_id;
 use crate::{cas, tlog, traft};
+use abi_stable::std_types::RString;
 use picodata_plugin::error_code::ErrorCode;
 #[allow(unused_imports)]
 use picodata_plugin::plugin::interface;
@@ -36,7 +37,6 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io;
-use std::rc::Rc;
 use std::time::Duration;
 use tarantool::error::{BoxError, IntoBoxError};
 use tarantool::fiber;
@@ -109,6 +109,8 @@ pub enum PluginError {
         version = PICODATA_VERSION
     )]
     IncompatiblePicopluginVersion(String),
+    #[error("Plugin dynamic library file not found")]
+    PluginLibraryNotFound,
 }
 
 struct DisplaySomeOrDefault<'a>(&'a Option<ErrorInfo>, &'a str);
@@ -138,6 +140,8 @@ pub enum PluginCallbackError {
     OnStart(BoxError),
     #[error("New configuration validation error: {0}")]
     InvalidConfiguration(BoxError),
+    #[error("Migration context parameter validation error: {0}")]
+    InvalidMigrationContext(BoxError),
 }
 
 type Result<T, E = PluginError> = std::result::Result<T, E>;
@@ -155,19 +159,13 @@ pub struct ServiceState {
 
 impl ServiceState {
     #[inline]
-    fn new(
-        id: ServiceId,
-        inner: ServiceBox,
-        config_validator: ValidatorBox,
-        lib: Rc<LibraryWrapper>,
-    ) -> Self {
+    fn new(id: ServiceId, inner: ServiceBox, config_validator: ValidatorBox) -> Self {
         Self {
             id,
             background_job_shutdown_timeout: Cell::new(None),
             volatile_state: fiber::Mutex::new(ServiceStateVolatile {
                 inner,
                 config_validator,
-                _lib: lib,
             }),
         }
     }
@@ -179,15 +177,12 @@ impl ServiceState {
 /// concurrent fibers.
 pub struct ServiceStateVolatile {
     /// The implementation of [`interface::Service`] trait which was loaded from
-    /// the dynamic library [`Self::_lib`].
+    /// the dynamic library `PluginState::_lib`.
     inner: ServiceBox,
 
     /// The implementation of [`interface::Validator`] trait which was loaded from
-    /// the dynamic library [`Self::_lib`].
+    /// the dynamic library `PluginState::_lib`.
     config_validator: ValidatorBox,
-
-    /// A handle to the dynamic library from which the service callbacks are loaded.
-    _lib: Rc<LibraryWrapper>,
 }
 
 pub struct LibraryWrapper {
@@ -696,11 +691,41 @@ pub fn migration_up(
     let deadline = fiber::clock().saturating_add(timeout);
     let node = node::global()?;
 
-    // plugin must be already installed
+    // plugin must be already created
     let installed = node.storage.plugins.contains(ident)?;
     if !installed {
         return Err(PluginError::PluginNotFound(ident.clone()).into());
     }
+
+    // plugin must be loaded to validate the migration context
+    if !node.plugin_manager.is_plugin_loaded(ident) {
+        node.plugin_manager.try_load(ident)?;
+    }
+    // validate the whole migration context
+    let migration_context = node.storage.plugin_config.get_migration_context(ident)?;
+    let migration_context = migration_context
+        .into_iter()
+        .map(|(k, v)| (RString::from(k.as_str()), RString::from(v.as_str())))
+        .collect();
+    let migration_context_validator = node
+        .plugin_manager
+        .get_migration_context_validator(ident)
+        .expect("we already checked that the plugin exists");
+
+    if migration_context_validator
+        .validate(migration_context)
+        .is_err()
+    {
+        let error = BoxError::last();
+        tlog!(
+            Error,
+            "migration context validation for plugin `{ident}` failed: {error}"
+        );
+        return Err(Error::other(format!(
+            "migration context validation for plugin `{ident}` failed: {error}"
+        )));
+    }
+
     // get manifest for loading of migration files
     let manifest = Manifest::load(ident)?;
 
@@ -1206,6 +1231,12 @@ pub fn change_config_atom(
                 service,
             )));
 
+            if service == migration::CONTEXT_ENTITY {
+                for (name, value) in kv {
+                    node.plugin_manager
+                        .handle_migration_context_validate_parameter(ident, name, value)?;
+                }
+            }
             let kv: Vec<(_, rmpv::Value)> = kv
                 .iter()
                 .map(|(k, v)| {
@@ -1214,9 +1245,6 @@ pub fn change_config_atom(
                     (SmolStr::new(*k), value)
                 })
                 .collect();
-
-            // when migration context is changed we do not perform validation
-            // since we dont have anything to validate against
             if service == migration::CONTEXT_ENTITY {
                 service_config_part.push((SmolStr::new(service), kv));
                 continue;

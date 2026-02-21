@@ -4,10 +4,11 @@ use crate::error_code::ErrorCode;
 use crate::util::FfiSafeStr;
 pub use abi_stable;
 use abi_stable::pmr::{RErr, RResult, RSlice};
-use abi_stable::std_types::{RBox, RHashMap, ROk, RString, RVec};
+use abi_stable::std_types::{RBox, RHashMap, ROk, ROption, RString, RVec};
 use abi_stable::{sabi_trait, RTuple, StableAbi};
 use serde::de::DeserializeOwned;
 use smol_str::SmolStr;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 use std::time::Duration;
@@ -488,6 +489,7 @@ impl<S: Service + 'static> Factory for FactoryImpl<S> {
 type ServiceIdent = RTuple!(RString, RString);
 
 /// Config validator stable trait.
+///
 /// The reason for the existence of this trait is that [`abi_stable`] crate doesn't support
 /// closures.
 #[sabi_trait]
@@ -568,6 +570,7 @@ impl ServiceRegistry {
     /// Create service from service name and plugin version pair.
     /// Return an error if there is more than one factory suitable for creating a service.
     #[allow(clippy::result_unit_err)]
+    #[cfg(feature = "internal")]
     pub fn make(&self, service_name: &str, version: &str) -> Result<Option<ServiceBox>, ()> {
         let ident = ServiceIdent::from((RString::from(service_name), RString::from(version)));
         let maybe_factories = self.services.get(&ident);
@@ -584,6 +587,7 @@ impl ServiceRegistry {
     /// Return true if registry contains needle service, false elsewhere.
     /// Return an error if there is more than one factory suitable for creating a service.
     #[allow(clippy::result_unit_err)]
+    #[cfg(feature = "internal")]
     pub fn contains(&self, service_name: &str, version: &str) -> Result<bool, ()> {
         let ident = ServiceIdent::from((RString::from(service_name), RString::from(version)));
         match self.services.get(&ident) {
@@ -618,6 +622,7 @@ impl ServiceRegistry {
     }
 
     /// Remove config validator for service.
+    #[cfg(feature = "internal")]
     pub fn remove_config_validator(
         &mut self,
         service_name: &str,
@@ -628,6 +633,7 @@ impl ServiceRegistry {
     }
 
     /// Return a registered list of (service name, plugin version) pairs.
+    #[cfg(feature = "internal")]
     pub fn dump(&self) -> Vec<(String, String)> {
         self.services
             .keys()
@@ -639,3 +645,162 @@ impl ServiceRegistry {
             .collect()
     }
 }
+
+/// Migration context validator stable trait.
+///
+/// The reason for the existence of this trait is that [`abi_stable`] crate doesn't support
+/// closures.
+#[sabi_trait]
+pub trait MigrationContextValidator {
+    /// Validate the whole plugin migration context.
+    ///
+    /// # Idempotency
+    ///
+    /// **WARNING** This callback may be called several times in a row.
+    /// It is the responsibility of the plugin author to make this function idempotent.
+    fn validate(&self, context: RHashMap<RString, RString>) -> RResult<(), ()>;
+
+    /// Validate a single parameter value from the migration context.
+    ///
+    /// # Idempotency
+    ///
+    /// **WARNING** This callback may be called several times in a row.
+    /// It is the responsibility of the plugin author to make this function idempotent.
+    fn validate_parameter(&self, name: RString, value: RString) -> RResult<(), ()>;
+}
+
+pub type MigrationContextValidatorBox = MigrationContextValidator_TO<'static, RBox<()>>;
+
+/// The reason for the existence of this struct is that [`abi_stable`] crate doesn't support
+/// closures.
+#[derive(Default)]
+struct MigrationContextValidatorImpl {
+    #[allow(clippy::type_complexity)]
+    /// Whole migration context validation function. It's only argument is a
+    /// `HashMap`, that maps migration context parameter names to their values.
+    context_validator: Option<fn(context: HashMap<String, String>) -> CallbackResult<()>>,
+    /// Parameter validation function. It's first argument is the parameter name
+    /// that is currently being validated, the second argument is its value.
+    parameter_validator: Option<fn(name: String, value: String) -> CallbackResult<()>>,
+}
+
+impl MigrationContextValidator for MigrationContextValidatorImpl {
+    fn validate(&self, context: RHashMap<RString, RString>) -> RResult<(), ()> {
+        let Some(context_validator) = self.context_validator else {
+            // the context validator is not set, so don't do any validation
+            return ROk(());
+        };
+        let context = context
+            .into_iter()
+            .map(|tuple| (tuple.0.into(), tuple.1.into()))
+            .collect();
+        match (context_validator)(context) {
+            Ok(_) => ROk(()),
+            Err(e) => error_into_tt_error(e),
+        }
+    }
+
+    fn validate_parameter(&self, name: RString, value: RString) -> RResult<(), ()> {
+        let Some(parameter_validator) = self.parameter_validator else {
+            // the parameter validator is not set, so don't do any validation
+            return ROk(());
+        };
+        match (parameter_validator)(name.into(), value.into()) {
+            Ok(_) => ROk(()),
+            Err(e) => error_into_tt_error(e),
+        }
+    }
+}
+
+/// A struct that holds all entities used for migration validation (currently, only the
+/// migration context validator)
+#[repr(C)]
+#[derive(StableAbi, Default)]
+pub struct MigrationValidator {
+    context_validator: ROption<MigrationContextValidatorBox>,
+}
+
+impl MigrationValidator {
+    /// Set the whole migration context validation function. The only argument of `context_validator_fn`
+    /// is a `HashMap`, that maps migration context parameter names to their values.
+    ///
+    /// The validator function is called on `ALTER PLUGIN ... ENABLE`.
+    pub fn set_context_validator(
+        &mut self,
+        context_validator_fn: fn(context: HashMap<String, String>) -> CallbackResult<()>,
+    ) {
+        match &mut self.context_validator {
+            ROption::RNone => {
+                let validator_inner = MigrationContextValidatorImpl {
+                    context_validator: Some(context_validator_fn),
+                    parameter_validator: None,
+                };
+                let validator_inner = MigrationContextValidatorBox::from_value(
+                    validator_inner,
+                    abi_stable::sabi_trait::TD_CanDowncast,
+                );
+
+                self.context_validator = ROption::RSome(validator_inner);
+            }
+            ROption::RSome(mcv) => {
+                let mcv_impl = mcv
+                    .obj
+                    .downcast_as_mut::<MigrationContextValidatorImpl>()
+                    .expect(
+                    "downcasting should not fail, because it uses the same struct for creating the obj",
+                );
+
+                mcv_impl.context_validator = Some(context_validator_fn);
+            }
+        }
+    }
+
+    /// Set the migartion context parameter validation function. First argument of `parameter_validator_fn`
+    /// is the parameter name that is currently being validated, the second is its value.
+    ///
+    /// The validator function is called on `ALTER PLUGIN ... SET migration_context.<name>='<value>'`.
+    pub fn set_context_parameter_validator(
+        &mut self,
+        parameter_validator_fn: fn(name: String, value: String) -> CallbackResult<()>,
+    ) {
+        match &mut self.context_validator {
+            ROption::RNone => {
+                let validator_inner = MigrationContextValidatorImpl {
+                    context_validator: None,
+                    parameter_validator: Some(parameter_validator_fn),
+                };
+                let validator_inner = MigrationContextValidatorBox::from_value(
+                    validator_inner,
+                    abi_stable::sabi_trait::TD_CanDowncast,
+                );
+
+                self.context_validator = ROption::RSome(validator_inner);
+            }
+            ROption::RSome(mcv) => {
+                let mcv_impl = mcv
+                    .obj
+                    .downcast_as_mut::<MigrationContextValidatorImpl>()
+                    .expect(
+                    "downcasting should not fail, because it uses the same struct for creating the obj",
+                );
+
+                mcv_impl.parameter_validator = Some(parameter_validator_fn);
+            }
+        }
+    }
+
+    #[cfg(feature = "internal")]
+    pub fn migration_context_validator(&mut self) -> MigrationContextValidatorBox {
+        if let ROption::RSome(mcv) = self.context_validator.take() {
+            return mcv;
+        }
+
+        // context validator is not set, return a default implementation, that just returns Ok
+        let validator = MigrationContextValidatorImpl::default();
+        let validator_stable =
+            MigrationContextValidatorBox::from_value(validator, sabi_trait::TD_Opaque);
+        validator_stable
+    }
+}
+
+pub type FnMigrationValidator = extern "C" fn(validator: &mut MigrationValidator);

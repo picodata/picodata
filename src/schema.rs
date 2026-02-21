@@ -948,6 +948,27 @@ impl PluginConfigRecord {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// MigrationContextRecord
+////////////////////////////////////////////////////////////////////////////////
+
+/// Single record of migration context in _pico_plugin_config system table.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct MigrationContextRecord {
+    /// Plugin name.
+    pub plugin: SmolStr,
+    /// Plugin version.
+    pub version: SmolStr,
+    /// Always equal to "migration_context".
+    pub entity: SmolStr,
+    /// Configuration key.
+    pub key: SmolStr,
+    /// Configration value.
+    pub value: SmolStr,
+}
+
+impl Encode for MigrationContextRecord {}
+
+////////////////////////////////////////////////////////////////////////////////
 // UserDef
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -92,7 +92,7 @@ zeroize = "1.8"
 
 # Bundled modules
 pico_proc_macro = { path = "pico_proc_macro" }
-picodata-plugin = { workspace = true, features = ["internal_test"] }
+picodata-plugin = { workspace = true, features = ["internal_test", "internal"] }
 sql-planner = { path = "sql-planner" }
 tarantool = { workspace = true, features = [
   "test",
