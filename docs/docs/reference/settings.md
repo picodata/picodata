@@ -958,6 +958,16 @@ table.legend {
             </td>
         </tr>
         <tr>
+            <td><span class="sql-cluster">[sql_runtime_concurrency_max](db_config.md#sql_runtime_concurrency_max){.link}</span></td>
+            <td>Максимальное количество SQL-запросов, одновременно выполняющихся на одном инстансе</td>
+            <td>50</td>
+            <td>
+            ```sql
+            ALTER SYSTEM SET sql_runtime_concurrency_max = 4;
+            ```
+            </td>
+        </tr>
+        <tr>
             <td><span class="sql-cluster">[sql_vdbe_opcode_max](db_config.md#sql_vdbe_opcode_max){.link}</span></td>
             <td>Максимальное количество команд при исполнении локального плана с помощью VDBE на узле кластера</td>
             <td>45000</td>

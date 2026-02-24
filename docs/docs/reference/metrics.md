@@ -127,6 +127,18 @@ search:
 
 Тип: counter
 
+### pico_sql_temp_table_leases_total
+
+Общее количество успешных захватов блокировки временных таблиц
+
+Тип: counter
+
+### pico_sql_temp_table_lock_waits_total
+
+Общее количество ожиданий блокировки временных таблиц
+
+Тип: counter
+
 ### pico_sql_tx_splits_total
 
 Общее количество разбиений запросов на части, произошедших при фиксации
