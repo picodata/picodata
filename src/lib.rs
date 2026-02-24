@@ -75,6 +75,7 @@ pub mod cas;
 pub mod catalog;
 pub mod cbus;
 pub mod cli;
+mod compatibility;
 pub mod config;
 pub mod discovery;
 pub mod error_code;

@@ -826,7 +826,10 @@ pub(super) fn action_plan<'i>(
         // Instance which goes into topology cache.
         // Same with global_cluster_version, global_catalog_version etc.
         let instance_version = &instance.picodata_version;
-        match rpc::join::compare_picodata_versions(&global_cluster_version, instance_version) {
+        match crate::compatibility::compare_picodata_versions(
+            &global_cluster_version,
+            instance_version,
+        ) {
             Ok(false) => {
                 // if at least one version is equal to global_cluster_version
                 // don't upgrade the global_cluster_version

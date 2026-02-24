@@ -1,7 +1,7 @@
-use super::join::compare_picodata_versions;
 use crate::backoff::SimpleBackoffManager;
 use crate::cas;
 use crate::column_name;
+use crate::compatibility::compare_picodata_versions;
 use crate::error_code::ErrorCode;
 use crate::failure_domain::FailureDomain;
 use crate::has_states;
