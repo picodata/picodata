@@ -16,7 +16,6 @@ use crate::traft::network::ConnectionPool;
 use crate::traft::network::WorkerOptions;
 use crate::traft::node;
 use crate::traft::node::Node;
-use crate::version::Version;
 use crate::{tlog, traft, warn_or_panic};
 use abi_stable::derive_macro_reexports::{RErr, RResult, RSlice};
 use abi_stable::std_types::RStr;
@@ -58,28 +57,19 @@ fn plugin_compatibility_check_enabled() -> bool {
 
 /// Check if picodata version matches picodata_plugin version.
 fn ensure_picodata_version_compatible(picoplugin_version: &str) -> Result<()> {
-    let picodata = Version::try_from(PICODATA_VERSION).expect("correct picodata version");
-    let picoplugin = Version::try_from(picoplugin_version).expect("correct picoplugin version");
-
-    // it is ok to run plugin with different patch version
-    picodata
-        .cmp_up_to_minor(&picoplugin)
-        .is_eq()
-        .then_some(())
-        .ok_or(PluginError::IncompatiblePicopluginVersion(
+    match crate::compatibility::compare_picodata_versions(picoplugin_version, PICODATA_VERSION) {
+        Ok(false) => Ok(()),
+        Ok(true) => {
+            tlog!(
+                Warning,
+                "Plugin version {picoplugin_version} does not match picodata version {PICODATA_VERSION}"
+            );
+            Ok(())
+        }
+        Err(_) => Err(PluginError::IncompatiblePicopluginVersion(
             picoplugin_version.to_string(),
-        ))?;
-
-    // it is ok to run another patch version
-    // but we still ought to warn user
-    if !picodata.cmp_up_to_patch(&picoplugin).is_eq() {
-        tlog!(
-            Warning,
-            "Plugin version {picoplugin} does not match picodata version {picodata}"
-        );
+        )),
     }
-
-    Ok(())
 }
 
 type PluginServices = Vec<Rc<ServiceState>>;
@@ -1002,6 +992,7 @@ fn plugin_manager_async_event_loop(event_chan: fiber::channel::Channel<PluginAsy
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::version::Version;
 
     #[test]
     fn test_versions_match_exactly() {

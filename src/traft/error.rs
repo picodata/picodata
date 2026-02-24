@@ -96,10 +96,10 @@ pub enum Error {
         instance_rsid: String,
         requested_rsid: String,
     },
-    #[error("picodata version of the joining instance = {instance_version:?} mismatches the leader's version = {leader_version:?}")]
+    #[error("picodata version of the joining instance = {new_version:?} mismatches the leader's version = {old_version:?}")]
     PicodataVersionMismatch {
-        leader_version: String,
-        instance_version: String,
+        old_version: SmolStr,
+        new_version: SmolStr,
     },
     #[error("operation request from different term {requested}, current term is {current}")]
     TermMismatch {

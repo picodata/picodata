@@ -2,18 +2,19 @@ use crate::traft::{error::Error, Result};
 use crate::version::Version;
 
 /// Compares the versions of instances before joining the cluster.
+/// Also compares the versions of picodata-plugin and Picodata itself.
 /// Versions are compatible in the following cases:
 ///
-/// If the `joinee` is on the same major version it must be at most one minor ahead.
+/// If the `new_version` is on the same major version it must be at most one minor ahead.
 /// Or
-/// If the `joinee` is on next-major (`leader.major + 1`) then
+/// If the `new_version` is on next-major (`old_version.major + 1`) then
 /// - its minor must be in the initial rollout window (`minor <= 1`).
-/// - `leader` must be on the latest supported minor for its major ([`latest_minor_for_major`])
+/// - `old_version` must be on the latest supported minor for its major ([`latest_minor_for_major`])
 ///
 /// Otherwise the versions are incompatible.
 ///
-/// For example, with `latest_minor_for_major(25) = 5`, leader `25.5.*` accepts
-/// joinee `26.0.*` and `26.1.*`, while `25.4.* -> 26.*.*` is rejected.
+/// For example, with `latest_minor_for_major(25) = 5`, old_version `25.5.*` accepts
+/// new_version `26.0.*` and `26.1.*`, while `25.4.* -> 26.*.*` is rejected.
 ///
 /// Returns
 /// - `Ok(false)` if versions are the same up to the patch component (ignoring the tail).
@@ -23,19 +24,19 @@ use crate::version::Version;
 /// # Panicking
 ///
 /// passed versions to this function should be in correct format, otherwise it will panic.
-pub fn compare_picodata_versions(leader_version: &str, joinee_version: &str) -> Result<bool> {
+pub fn compare_picodata_versions(old_version: &str, new_version: &str) -> Result<bool> {
     let version_mismatch = || Error::PicodataVersionMismatch {
-        leader_version: leader_version.to_owned(),
-        instance_version: joinee_version.to_owned(),
+        old_version: old_version.into(),
+        new_version: new_version.into(),
     };
 
-    let leader = Version::try_from(leader_version).expect("correct picodata version");
-    let joinee = Version::try_from(joinee_version).expect("correct picodata version");
+    let old = Version::try_from(old_version).expect("correct old picodata version");
+    let new = Version::try_from(new_version).expect("correct new picodata version");
     let has_ok_versions = {
-        if joinee.major == leader.major {
-            joinee.minor == leader.minor || joinee.minor == leader.minor + 1
-        } else if joinee.major == leader.major + 1 {
-            leader.minor == latest_minor_for_major(leader.major) && joinee.minor <= 1
+        if new.major == old.major {
+            new.minor == old.minor || new.minor == old.minor + 1
+        } else if new.major == old.major + 1 {
+            old.minor == latest_minor_for_major(old.major) && new.minor <= 1
         } else {
             false
         }
@@ -45,12 +46,13 @@ pub fn compare_picodata_versions(leader_version: &str, joinee_version: &str) -> 
         return Err(version_mismatch());
     }
 
-    let version_changed = joinee.cmp_up_to_patch(&leader).is_ne();
+    let version_changed = new.cmp_up_to_patch(&old).is_ne();
     Ok(version_changed)
 }
 
 fn latest_minor_for_major(major_version_component: u64) -> u64 {
     match major_version_component {
+        24 => 7, // for tests only
         25 => 5, // 25.5.X -> 26.X.X
         _ => unimplemented!(),
     }

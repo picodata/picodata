@@ -38,6 +38,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Introduce `sql_preemption_opcode_max` to control the VDBE opcode interval
   between execution time checks when `sql_preemption` is enabled.
 - Support cluster update to next major version (26.1.0).
+- Support compatibility between the next major Picodata version and older plugin versions.
 - Add support for `EXPLAIN (RAW)` for queries that fail at local sql execution stage.
 - Add unlogged tables to SQL:
   - Unlogged tables' updates are not writeen into the WAL, so they are not persisted on restarts of
