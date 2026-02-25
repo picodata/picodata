@@ -78,6 +78,7 @@ allow = [
     "LGPL-3.0",
     "MIT",
     "MPL-2.0",
+    "OpenSSL",
     "Unicode-3.0",
     "Zlib",
 ]
