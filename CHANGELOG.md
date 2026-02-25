@@ -8,7 +8,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-## [25.5.8] - Unreleased
+## [25.5.8] - 2026-02-25
 
 ### Features
 
@@ -16,6 +16,7 @@ with the `YY.MINOR.MICRO` scheme.
   enables logging of all SQL statements to log file.
 - Introduce `sql_preemption_opcode_max` to control the VDBE opcode interval
   between execution time checks when `sql_preemption` is enabled.
+- Fixed local SQL iterators to survive fiber yields during table truncation.
 
 ### Fixes
 
@@ -44,7 +45,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed that instances from tiers with can_vote=false attempting to promote to raft leader.
 - Fixed a crash in case of any error during TRUNCATE operation.
 - Fixed a race condition between DDL (i.e., TRUNCATE) and DQL when the preemption option is enabled.
-- Fixed local SQL iterators to survive fiber yields during table truncation.
+
 
 
 ## [25.5.5] - 2026-01-26
