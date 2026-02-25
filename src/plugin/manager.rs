@@ -56,13 +56,16 @@ fn plugin_compatibility_check_enabled() -> bool {
 }
 
 /// Check if picodata version matches picodata_plugin version.
-fn ensure_picodata_version_compatible(picoplugin_version: &str) -> Result<()> {
-    match crate::compatibility::compare_picodata_versions(picoplugin_version, PICODATA_VERSION) {
+fn ensure_picodata_version_compatible(
+    picoplugin_version: &str,
+    picodata_version: &str,
+) -> Result<()> {
+    match crate::compatibility::compare_picodata_versions(picoplugin_version, picodata_version) {
         Ok(false) => Ok(()),
         Ok(true) => {
             tlog!(
                 Warning,
-                "Plugin version {picoplugin_version} does not match picodata version {PICODATA_VERSION}"
+                "Plugin version {picoplugin_version} does not match picodata version {picodata_version}"
             );
             Ok(())
         }
@@ -208,7 +211,10 @@ impl PluginManager {
             let picodata_plugin_version =
                 unsafe { lib.get::<&RStr<'static>>("PICOPLUGIN_VERSION")? };
             if plugin_compatibility_check_enabled() {
-                ensure_picodata_version_compatible(picodata_plugin_version.as_str())?;
+                ensure_picodata_version_compatible(
+                    picodata_plugin_version.as_str(),
+                    PICODATA_VERSION,
+                )?;
             } else {
                 tlog!(
                     Warning,
@@ -996,12 +1002,7 @@ mod tests {
 
     #[test]
     fn test_versions_match_exactly() {
-        // we just try the exact same version
-        let plugin_version = Version::try_from(PICODATA_VERSION)
-            .expect("correct picodata version")
-            .to_string();
-
-        assert!(ensure_picodata_version_compatible(plugin_version.as_str()).is_ok());
+        assert!(ensure_picodata_version_compatible(PICODATA_VERSION, PICODATA_VERSION).is_ok());
     }
 
     #[test]
@@ -1013,7 +1014,9 @@ mod tests {
             .to_string();
 
         // Same major and minor, different patch
-        assert!(ensure_picodata_version_compatible(plugin_version.as_str()).is_ok());
+        assert!(
+            ensure_picodata_version_compatible(plugin_version.as_str(), PICODATA_VERSION).is_ok()
+        );
     }
 
     #[test]
@@ -1024,7 +1027,20 @@ mod tests {
             .next_by_minor()
             .to_string();
 
-        let result = ensure_picodata_version_compatible(plugin_version.as_str());
+        let result = ensure_picodata_version_compatible(plugin_version.as_str(), PICODATA_VERSION);
+        assert!(matches!(
+            result,
+            Err(PluginError::IncompatiblePicopluginVersion(_))
+        ));
+
+        let picodata_version = "25.5.7";
+        // try X.Y-1.Z
+        let plugin_version = "25.4.4";
+        assert!(ensure_picodata_version_compatible(plugin_version, picodata_version).is_ok());
+
+        // try X.Y-2.Z
+        let plugin_version = "25.3.3";
+        let result = ensure_picodata_version_compatible(plugin_version, picodata_version);
         assert!(matches!(
             result,
             Err(PluginError::IncompatiblePicopluginVersion(_))
@@ -1039,7 +1055,30 @@ mod tests {
             .next_by_major()
             .to_string();
 
-        let result = ensure_picodata_version_compatible(plugin_version.as_str());
+        let result = ensure_picodata_version_compatible(plugin_version.as_str(), PICODATA_VERSION);
+        assert!(matches!(
+            result,
+            Err(PluginError::IncompatiblePicopluginVersion(_))
+        ));
+
+        let picodata_version = "26.1.1";
+        // try X-1.Y.Z
+        let plugin_version = "25.5.7";
+        assert!(ensure_picodata_version_compatible(plugin_version, picodata_version).is_ok());
+
+        let plugin_version = "25.5.1";
+        assert!(ensure_picodata_version_compatible(plugin_version, picodata_version).is_ok());
+
+        let plugin_version = "25.4.6";
+        let result = ensure_picodata_version_compatible(plugin_version, picodata_version);
+        assert!(matches!(
+            result,
+            Err(PluginError::IncompatiblePicopluginVersion(_))
+        ));
+
+        // try X-2.Y.Z
+        let plugin_version = "24.4.4";
+        let result = ensure_picodata_version_compatible(plugin_version, picodata_version);
         assert!(matches!(
             result,
             Err(PluginError::IncompatiblePicopluginVersion(_))
