@@ -1838,12 +1838,6 @@ pub enum DdlError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum CreateTableError {
-    #[error("space with id {id} exists with a different name '{actual_name}', but expected '{expected_name}'")]
-    ExistsWithDifferentName {
-        id: SpaceId,
-        expected_name: SmolStr,
-        actual_name: SmolStr,
-    },
     #[error("several fields have the same name: {0}")]
     DuplicateFieldName(SmolStr),
     #[error("no field with name: {0}")]
@@ -2228,7 +2222,7 @@ impl CreateIndexParams {
 
 #[derive(Clone, Debug, LuaRead)]
 pub struct CreateTableParams {
-    pub(crate) id: Option<SpaceId>,
+    pub(crate) id: SpaceId,
     pub(crate) name: SmolStr,
     pub(crate) format: Vec<Field>,
     pub(crate) primary_key: Vec<SmolStr>,
@@ -2278,50 +2272,10 @@ impl CreateTableParams {
         Ok(())
     }
 
-    /// Checks if space described by options already exists. Returns an error if
-    /// the space with given id exists, but has a different name.
-    pub fn space_exists(&self) -> traft::Result<bool> {
-        // The check is performed using `box.space` API, so that local spaces are counted too.
-        let sys_space = Space::from(SystemSpace::Space);
-
-        let Some(id) = self.id else {
-            let sys_space_by_name = sys_space
-                .index_cached("name")
-                .expect("_space should have an index by name");
-            let t = sys_space_by_name
-                .get(&[&self.name])
-                .expect("reading from _space shouldn't fail");
-            return Ok(t.is_some());
-        };
-
-        let t = sys_space
-            .get(&[id])
-            .expect("reading from _space shouldn't fail");
-        let Some(t) = t else {
-            return Ok(false);
-        };
-
-        let existing_name: &str = t.get("name").expect("space metadata should contain a name");
-        if existing_name == self.name {
-            return Ok(true);
-        } else {
-            // TODO: check everything else is the same
-            // https://git.picodata.io/picodata/picodata/picodata/-/issues/331
-            return Err(CreateTableError::ExistsWithDifferentName {
-                id,
-                expected_name: self.name.clone(),
-                actual_name: existing_name.into(),
-            }
-            .into());
-        }
-    }
-
     pub fn validate(&self) -> traft::Result<()> {
         // Check space id fits in the allowed range
-        if let Some(id) = self.id {
-            if id <= SPACE_ID_INTERNAL_MAX {
-                crate::tlog!(Warning, "requested space id {id} is in the range 0..={SPACE_ID_INTERNAL_MAX} reserved for future use by picodata, you may have a conflict in a future version");
-            }
+        if self.id <= SPACE_ID_INTERNAL_MAX {
+            crate::tlog!(Warning, "requested space id {} is in the range 0..={SPACE_ID_INTERNAL_MAX} reserved for future use by picodata, you may have a conflict in a future version", self.id);
         }
         // All field names are unique
         let mut field_names = HashSet::new();
@@ -2397,8 +2351,7 @@ impl CreateTableParams {
     }
 
     pub fn check_primary_key(&self, storage: &Catalog) -> traft::Result<()> {
-        let id = self.id.expect("table id should be set before");
-        let index_name = format!("{id}_pkey");
+        let index_name = format!("{}_pkey", self.id);
         if storage
             .indexes
             .by_name(&index_name)
@@ -2414,7 +2367,6 @@ impl CreateTableParams {
     ///
     /// Should be used for checking if a space with these params can be created.
     pub fn test_create_space(&self, storage: &Catalog) -> traft::Result<()> {
-        let id = self.id.expect("space id should've been chosen by now");
         let user = storage
             .users
             .by_id(self.owner)?
@@ -2448,7 +2400,7 @@ impl CreateTableParams {
                 &SpaceCreateOptions {
                     if_not_exists: false,
                     engine: self.engine.unwrap_or_default(),
-                    id: Some(id),
+                    id: Some(self.id),
                     field_count: self.format.len() as u32,
                     user: Some(user.to_string()),
                     space_type,
@@ -2481,72 +2433,7 @@ impl CreateTableParams {
         }
     }
 
-    /// Chooses an id for the new space if it's not set yet and sets `self.id`.
-    pub fn choose_id_if_not_specified(
-        &mut self,
-        name: &str,
-        governor_op_id: Option<u64>,
-    ) -> traft::Result<()> {
-        if self.id.is_some() {
-            return Ok(());
-        }
-        if governor_op_id.is_some() {
-            if let Some((table_def, _)) = system_table_definitions()
-                .iter()
-                .find(|(td, _)| td.name == name)
-            {
-                self.id = Some(table_def.id);
-                return Ok(());
-            }
-        }
-
-        let sys_space = Space::from(SystemSpace::Space);
-        let id_range_min = SPACE_ID_INTERNAL_MAX + 1;
-        let id_range_max = SPACE_ID_TEMPORARY_MIN;
-
-        let mut iter = sys_space.select(IteratorType::LT, &[id_range_max])?;
-        let tuple = iter.next().expect("there's always at least system spaces");
-        let mut max_id: SpaceId = tuple
-            .field(0)
-            .expect("space metadata should decode fine")
-            .expect("space id should always be present");
-
-        let find_next_unused_id = |start: SpaceId| -> Result<SpaceId, Error> {
-            let iter = sys_space.select(IteratorType::GE, &[start])?;
-            let mut next_id = start;
-            for tuple in iter {
-                let id: SpaceId = tuple
-                    .field(0)
-                    .expect("space metadata should decode fine")
-                    .expect("space id should always be present");
-                if id != next_id {
-                    // Found a hole in the id range.
-                    return Ok(next_id);
-                }
-                next_id += 1;
-            }
-            Ok(next_id)
-        };
-
-        if max_id < id_range_min {
-            max_id = id_range_min;
-        }
-
-        let mut id = find_next_unused_id(max_id)?;
-        if id >= id_range_max {
-            id = find_next_unused_id(id_range_min)?;
-            if id >= id_range_max {
-                #[rustfmt::skip]
-                    return Err(BoxError::new(TarantoolErrorCode::CreateSpace, "space id limit is reached").into());
-            }
-        }
-
-        self.id = Some(id);
-        Ok(())
-    }
-
     pub fn into_ddl(self) -> traft::Result<Ddl> {
-        let id = self.id.expect("space id should've been chosen by now");
         let primary_key: Vec<_> = self.primary_key.into_iter().map(Part::field).collect();
         let format: Vec<_> = self
             .format
@@ -2573,7 +2460,7 @@ impl CreateTableParams {
             }
         };
         let res = Ddl::CreateTable {
-            id,
+            id: self.id,
             name: self.name,
             format,
             primary_key,
@@ -2589,6 +2476,75 @@ impl CreateTableParams {
     fn is_unlogged(&self) -> bool {
         self.opts.contains(&TableOption::Unlogged(true))
     }
+}
+
+/// Checks if space referred by the name exists.
+pub fn check_space_exists(name: &str) -> bool {
+    // The check is performed using `box.space` API, so that local spaces are counted too.
+    let sys_space = Space::from(SystemSpace::Space);
+
+    let sys_space_by_name = sys_space
+        .index_cached("name")
+        .expect("_space should have an index by name");
+    let t = sys_space_by_name
+        .get(&[name])
+        .expect("reading from _space shouldn't fail");
+    return t.is_some();
+}
+
+/// Chooses an unused id for a new table.
+pub fn choose_table_id(name: &str, governor_op_id: Option<u64>) -> traft::Result<SpaceId> {
+    if governor_op_id.is_some() {
+        if let Some((table_def, _)) = system_table_definitions()
+            .iter()
+            .find(|(td, _)| td.name == name)
+        {
+            return Ok(table_def.id);
+        }
+    }
+
+    let sys_space = Space::from(SystemSpace::Space);
+    let id_range_min = SPACE_ID_INTERNAL_MAX + 1;
+    let id_range_max = SPACE_ID_TEMPORARY_MIN;
+
+    let mut iter = sys_space.select(IteratorType::LT, &[id_range_max])?;
+    let tuple = iter.next().expect("there's always at least system spaces");
+    let mut max_id: SpaceId = tuple
+        .field(0)
+        .expect("space metadata should decode fine")
+        .expect("space id should always be present");
+
+    let find_next_unused_id = |start: SpaceId| -> Result<SpaceId, Error> {
+        let iter = sys_space.select(IteratorType::GE, &[start])?;
+        let mut next_id = start;
+        for tuple in iter {
+            let id: SpaceId = tuple
+                .field(0)
+                .expect("space metadata should decode fine")
+                .expect("space id should always be present");
+            if id != next_id {
+                // Found a hole in the id range.
+                return Ok(next_id);
+            }
+            next_id += 1;
+        }
+        Ok(next_id)
+    };
+
+    if max_id < id_range_min {
+        max_id = id_range_min;
+    }
+
+    let mut id = find_next_unused_id(max_id)?;
+    if id >= id_range_max {
+        id = find_next_unused_id(id_range_min)?;
+        if id >= id_range_max {
+            #[rustfmt::skip]
+            return Err(BoxError::new(TarantoolErrorCode::CreateSpace, "space id limit is reached").into());
+        }
+    }
+
+    Ok(id)
 }
 
 /// Chooses the tier to create the table on based on the user-supplied value and the default tier in the topology cache
@@ -2728,7 +2684,7 @@ mod tests {
     fn test_create_space() {
         let storage = storage();
         CreateTableParams {
-            id: Some(1337),
+            id: 1337,
             name: "friends_of_peppa".into(),
             format: vec![
                 Field {
@@ -2758,7 +2714,7 @@ mod tests {
         assert!(tarantool::space::Space::find("friends_of_peppa").is_none());
 
         CreateTableParams {
-            id: Some(1337),
+            id: 1337,
             name: "friends_of_peppa".into(),
             format: vec![],
             primary_key: vec![],
@@ -2777,7 +2733,7 @@ mod tests {
         assert!(tarantool::space::Space::find("friends_of_peppa").is_none());
 
         let err = CreateTableParams {
-            id: Some(0),
+            id: 0,
             name: "friends_of_peppa".into(),
             format: vec![],
             primary_key: vec![],
@@ -2815,7 +2771,7 @@ mod tests {
         };
 
         let err = CreateTableParams {
-            id: Some(new_id),
+            id: new_id,
             name: new_space.into(),
             format: vec![field1.clone(), field1.clone()],
             primary_key: vec![],
@@ -2834,7 +2790,7 @@ mod tests {
         assert_eq!(err.to_string(), "several fields have the same name: field1");
 
         let err = CreateTableParams {
-            id: Some(new_id),
+            id: new_id,
             name: new_space.into(),
             format: vec![field1.clone()],
             primary_key: vec![field2.name.clone()],
@@ -2853,7 +2809,7 @@ mod tests {
         assert_eq!(err.to_string(), "no field with name: field2");
 
         let err = CreateTableParams {
-            id: Some(new_id),
+            id: new_id,
             name: new_space.into(),
             format: vec![field1.clone()],
             primary_key: vec![],
@@ -2872,7 +2828,7 @@ mod tests {
         assert_eq!(err.to_string(), "no field with name: field2");
 
         let err = CreateTableParams {
-            id: Some(new_id),
+            id: new_id,
             name: new_space.into(),
             format: vec![field1.clone()],
             primary_key: vec![],
@@ -2891,7 +2847,7 @@ mod tests {
         assert_eq!(err.to_string(), "several fields have the same name: field1");
 
         let err = CreateTableParams {
-            id: Some(new_id),
+            id: new_id,
             name: new_space.into(),
             format: vec![field1.clone()],
             primary_key: vec![],
@@ -2910,7 +2866,7 @@ mod tests {
         assert_eq!(err.to_string(), "no field with name: field2");
 
         let err = CreateTableParams {
-            id: Some(new_id),
+            id: new_id,
             name: new_space.into(),
             format: vec![field1.clone()],
             primary_key: vec![],
@@ -2932,7 +2888,7 @@ mod tests {
         );
 
         let err = CreateTableParams {
-            id: Some(new_id),
+            id: new_id,
             name: new_space.into(),
             format: vec![field1.clone()],
             primary_key: vec![],
@@ -2954,7 +2910,7 @@ mod tests {
         );
 
         CreateTableParams {
-            id: Some(new_id),
+            id: new_id,
             name: new_space.into(),
             format: vec![field1.clone(), field2.clone()],
             primary_key: vec![field2.name.clone()],
@@ -2972,7 +2928,7 @@ mod tests {
         .unwrap();
 
         let err = CreateTableParams {
-            id: Some(new_id),
+            id: new_id,
             name: new_space.into(),
             format: vec![field1, field2.clone()],
             primary_key: vec![field2.name],

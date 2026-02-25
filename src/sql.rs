@@ -1517,10 +1517,11 @@ fn ddl_ir_node_to_op_or_result(
 
             let topology_cache = node.topology_cache.get();
 
+            let id = schema::choose_table_id(name, governor_op_id)?;
             let tier = schema::choose_table_tier(tier.as_deref(), &topology_cache)?;
 
-            let mut params = CreateTableParams {
-                id: None,
+            let params = CreateTableParams {
+                id,
                 name: name.clone(),
                 format,
                 primary_key,
@@ -1536,7 +1537,7 @@ fn ddl_ir_node_to_op_or_result(
             };
             params.validate()?;
 
-            if params.space_exists()? {
+            if schema::check_space_exists(name) {
                 if *if_not_exists {
                     return Ok(Break(ConsumerResult { row_count: 0 }));
                 } else {
@@ -1546,7 +1547,6 @@ fn ddl_ir_node_to_op_or_result(
 
             params.check_tier_exists(&topology_cache)?;
 
-            params.choose_id_if_not_specified(name, governor_op_id)?;
             params.check_primary_key(storage)?;
             params.test_create_space(storage)?;
             let ddl = params.into_ddl()?;
