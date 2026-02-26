@@ -1125,6 +1125,8 @@ cluster:
     cluster.deploy(instance_count=1, wait_online=False)
     i1, *_ = cluster.wait_online()
 
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
+
     ddl = i1.sql("BACKUP", timeout=40)
     new_backup_folder_name = ddl[0][0]
 
