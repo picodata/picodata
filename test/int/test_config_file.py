@@ -80,7 +80,7 @@ instance:
     assert config == dict(
         cluster=dict(
             tier=dict(
-                value=[["deluxe", dict(can_vote=True)]],
+                value=dict(deluxe=dict(can_vote=True)),
                 source="config_file",
             ),
             default_bucket_count=dict(value=3000, source="default"),

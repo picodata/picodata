@@ -6,25 +6,20 @@ use rmpv::ext::Error;
 use rmpv::Value;
 use serde::ser;
 
-struct RmpvNamedSerializer;
-
-/// Convert a `T` into `rmpv::Value` which is an enum that can represent any valid MessagePack data.
+/// A serializer that will serialize structs as msgpack maps (not arrays).
 ///
-/// Structs are converted to msgpack maps (not arrays).
+/// This is unlike [`rmpv::ext`] default serializer, which will serialize them as arrays
 ///
 /// This conversion can fail if `T`'s implementation of `Serialize` decides to fail.
 ///
 /// ```rust
-/// use picodata::to_rmpv_named::to_rmpv_named;
+/// use picodata::to_rmpv_named::RmpvNamedSerializer;
 ///
-/// let val = to_rmpv_named("John Smith").unwrap();
+/// let val = serde::Serialize::serialize("John Smith", RmpvNamedSerializer).unwrap();
 ///
 /// assert_eq!(rmpv::Value::String("John Smith".into()), val);
 /// ```
-#[inline(always)]
-pub fn to_rmpv_named<T: ser::Serialize>(value: T) -> Result<Value, Error> {
-    value.serialize(RmpvNamedSerializer)
-}
+pub struct RmpvNamedSerializer;
 
 impl ser::Serializer for RmpvNamedSerializer {
     type Ok = Value;
@@ -146,7 +141,7 @@ impl ser::Serializer for RmpvNamedSerializer {
             return ext_se.value();
         }
 
-        to_rmpv_named(value)
+        value.serialize(RmpvNamedSerializer)
     }
 
     #[inline]
@@ -162,7 +157,7 @@ impl ser::Serializer for RmpvNamedSerializer {
     {
         Ok(Value::Map(vec![(
             Value::from(variant),
-            to_rmpv_named(value)?,
+            value.serialize(RmpvNamedSerializer)?,
         )]))
     }
 
@@ -867,7 +862,7 @@ impl ser::SerializeSeq for SerializeVec {
     where
         T: ?Sized + ser::Serialize,
     {
-        self.vec.push(to_rmpv_named(value)?);
+        self.vec.push(value.serialize(RmpvNamedSerializer)?);
         Ok(())
     }
 
@@ -922,7 +917,7 @@ impl ser::SerializeTupleVariant for SerializeTupleVariant {
     where
         T: ?Sized + ser::Serialize,
     {
-        self.vec.push(to_rmpv_named(value)?);
+        self.vec.push(value.serialize(RmpvNamedSerializer)?);
         Ok(())
     }
 
@@ -944,7 +939,7 @@ impl ser::SerializeMap for DefaultSerializeMap {
     where
         T: ?Sized + ser::Serialize,
     {
-        self.next_key = Some(to_rmpv_named(key)?);
+        self.next_key = Some(key.serialize(RmpvNamedSerializer)?);
         Ok(())
     }
 
@@ -958,7 +953,7 @@ impl ser::SerializeMap for DefaultSerializeMap {
             .next_key
             .take()
             .expect("`serialize_value` called before `serialize_key`");
-        self.map.push((key, to_rmpv_named(value)?));
+        self.map.push((key, value.serialize(RmpvNamedSerializer)?));
         Ok(())
     }
 
@@ -977,7 +972,10 @@ impl ser::SerializeStruct for DefaultSerializeMap {
     where
         T: ?Sized + ser::Serialize,
     {
-        self.map.push((to_rmpv_named(key)?, to_rmpv_named(value)?));
+        self.map.push((
+            ser::Serialize::serialize(key, RmpvNamedSerializer)?,
+            value.serialize(RmpvNamedSerializer)?,
+        ));
         Ok(())
     }
 
@@ -996,7 +994,10 @@ impl ser::SerializeStructVariant for SerializeStructVariant {
     where
         T: ?Sized + ser::Serialize,
     {
-        self.map.push((to_rmpv_named(key)?, to_rmpv_named(value)?));
+        self.map.push((
+            ser::Serialize::serialize(key, RmpvNamedSerializer)?,
+            value.serialize(RmpvNamedSerializer)?,
+        ));
         Ok(())
     }
 
@@ -1012,6 +1013,10 @@ impl ser::SerializeStructVariant for SerializeStructVariant {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    fn to_rmpv_named<T: ser::Serialize>(value: T) -> Result<Value, Error> {
+        value.serialize(RmpvNamedSerializer)
+    }
 
     #[test]
     fn check_to_rmpv_named() {

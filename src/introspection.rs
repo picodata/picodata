@@ -92,7 +92,7 @@ pub trait Introspection {
     /// form of [`rmpv::Value`].
     ///
     /// When using the `#[derive(Introspection)]` derive macro the implementation
-    /// converts the value to msgpack using [`to_rmpv_value`].
+    /// converts the value to msgpack using [`RmpvNamedSerializer`].
     ///
     /// In the future we may want to get values as some other enums (maybe
     /// serde_yaml::Value, or our custom one), but for now we've chosen rmpv
@@ -130,6 +130,8 @@ pub trait Introspection {
     /// assert_eq!(s.get_field_as_rmpv("text").unwrap(), Value::from("hello"));
     /// assert_eq!(s.get_field_as_rmpv("nested.sub_field").unwrap(), Value::from(2.71));
     /// ```
+    ///
+    /// [`RmpvNamedSerializer`]: crate::to_rmpv_named::RmpvNamedSerializer
     fn get_field_as_rmpv(&self, path: &str) -> Result<rmpv::Value, IntrospectionError>;
 
     /// Get a value which was specified via the `#[introspection(config_default = expr)]`
@@ -303,29 +305,23 @@ where
     }
 }
 
-/// A public reimport for use in the derive macro.
-pub use rmpv::Value as RmpvValue;
+/// Helpers and re-exports that exist solely for use by the `Introspection` derive macro.
+pub mod private {
+    pub use crate::to_rmpv_named::RmpvNamedSerializer;
+    /// A public reimport for use in the derive macro.
+    pub use rmpv::Value as RmpvValue;
 
-/// Converts a [`rmpv::Value`] `value` to a generic serde deserializable type.
-/// This function is just needed to be called from the derived
-/// [`Introspection::set_field_from_rmpv`] implementations.
-#[inline(always)]
-pub fn from_rmpv_value<T>(value: &rmpv::Value) -> Result<T, Error>
-where
-    T: for<'de> serde::Deserialize<'de>,
-{
-    rmpv::ext::deserialize_from(value.as_ref()).map_err(Error::other)
-}
+    pub fn make_yaml_deserializer(
+        value: &str,
+    ) -> impl serde::Deserializer<'_, Error = serde_yaml::Error> {
+        serde_yaml::Deserializer::from_str(value)
+    }
 
-/// Converts a generic serde serializable value to [`rmpv::Value`]. This
-/// function is just needed to be called from the derived
-/// [`Introspection::get_field_as_rmpv`] implementations.
-#[inline(always)]
-pub fn to_rmpv_value<T>(v: &T) -> Result<rmpv::Value, Error>
-where
-    T: serde::Serialize,
-{
-    crate::to_rmpv_named::to_rmpv_named(v).map_err(Error::other)
+    pub fn make_rpmv_deserializer(
+        value: &rmpv::Value,
+    ) -> impl serde::Deserializer<'_, Error = rmpv::ext::Error> {
+        value.as_ref()
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

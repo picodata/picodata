@@ -2906,6 +2906,18 @@ cluster:
         let yaml = r###"
 cluster:
     name: test
+    tier: {}
+"###;
+        let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
+        let err = config.validate_from_file().unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "invalid configuration: empty `cluster.tier` section which is required to define the initial tiers"
+        );
+
+        let yaml = r###"
+cluster:
+    name: test
     tier:
         default:
 "###;
@@ -3737,5 +3749,31 @@ instance:
 "###;
         let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
         assert!(config.validate_listen_addresses().is_ok());
+    }
+
+    #[test]
+    fn parse_cluster_tier_via_cli() {
+        // `cluster.tier` is parsed correctly when passed through --config-parameter
+        {
+            let config = setup_for_tests(
+                None,
+                &[
+                    "run",
+                    "--config-parameter",
+                    "cluster.tier={\"default\":{\"can_vote\":true}}",
+                ],
+            )
+            .unwrap();
+            assert_eq!(
+                config.cluster.tier.unwrap(),
+                vec![(
+                    String::from("default"),
+                    TierConfig {
+                        can_vote: true,
+                        ..TierConfig::default()
+                    }
+                )]
+            );
+        }
     }
 }

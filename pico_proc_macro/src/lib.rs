@@ -1,4 +1,5 @@
 use quote::quote;
+use syn::spanned::Spanned;
 use syn::LitStr;
 
 macro_rules! unwrap_or_compile_error {
@@ -86,13 +87,13 @@ pub fn derive_introspection(input: proc_macro::TokenStream) -> proc_macro::Token
     let body_for_set_field_from_yaml = generate_body_for_set_field_from_something(
         &context,
         &syn::parse2(quote! { set_field_from_yaml }).unwrap(),
-        &syn::parse2(quote! { serde_yaml::from_str }).unwrap(),
+        &syn::parse2(quote! { #crate_::introspection::private::make_yaml_deserializer }).unwrap(),
     );
 
     let body_for_set_field_from_rmpv = generate_body_for_set_field_from_something(
         &context,
         &syn::parse2(quote! { set_field_from_rmpv }).unwrap(),
-        &syn::parse2(quote! { #crate_::introspection::from_rmpv_value }).unwrap(),
+        &syn::parse2(quote! { #crate_::introspection::private::make_rpmv_deserializer }).unwrap(),
     );
 
     let body_for_get_field_as_rmpv = generate_body_for_get_field_as_rmpv(&context);
@@ -115,17 +116,17 @@ pub fn derive_introspection(input: proc_macro::TokenStream) -> proc_macro::Token
                 #body_for_set_field_from_yaml
             }
 
-            fn set_field_from_rmpv(&mut self, path: &str, value: &#crate_::introspection::RmpvValue) -> ::std::result::Result<(), #crate_::introspection::IntrospectionError> {
+            fn set_field_from_rmpv(&mut self, path: &str, value: &#crate_::introspection::private::RmpvValue) -> ::std::result::Result<(), #crate_::introspection::IntrospectionError> {
                 use #crate_::introspection::IntrospectionError;
                 #body_for_set_field_from_rmpv
             }
 
-            fn get_field_as_rmpv(&self, path: &str) -> ::std::result::Result<#crate_::introspection::RmpvValue, #crate_::introspection::IntrospectionError> {
+            fn get_field_as_rmpv(&self, path: &str) -> ::std::result::Result<#crate_::introspection::private::RmpvValue, #crate_::introspection::IntrospectionError> {
                 use #crate_::introspection::IntrospectionError;
                 #body_for_get_field_as_rmpv
             }
 
-            fn get_field_default_value_as_rmpv(&self, path: &str) -> Result<Option<#crate_::introspection::RmpvValue>, #crate_::introspection::IntrospectionError> {
+            fn get_field_default_value_as_rmpv(&self, path: &str) -> Result<Option<#crate_::introspection::private::RmpvValue>, #crate_::introspection::IntrospectionError> {
                 use #crate_::introspection::IntrospectionError;
                 #body_for_get_field_default_value_as_rmpv
             }
@@ -183,8 +184,10 @@ fn generate_body_for_field_infos(context: &Context) -> proc_macro2::TokenStream 
 fn generate_body_for_set_field_from_something(
     context: &Context,
     fn_ident: &syn::Ident,
-    conversion_fn: &syn::Path,
+    make_deserializer_fn: &syn::Path,
 ) -> proc_macro2::TokenStream {
+    let crate_ = &context.args.crate_;
+
     let mut set_non_nestable = quote! {};
     let mut set_nestable = quote! {};
     let mut error_if_nestable = quote! {};
@@ -198,16 +201,26 @@ fn generate_body_for_set_field_from_something(
         if !field.attrs.nested {
             non_nestable_names.push(name);
 
+            let deserialize_fn = match &field.attrs.serde_deserialize_with {
+                Some(with_path) => quote!(#with_path),
+                None => quote!(serde::Deserialize::deserialize),
+            };
+
             // Handle assigning to a non-nestable field
             set_non_nestable.extend(quote! {
                 #name => {
-                    match #conversion_fn(value) {
+                    let deserializer = #make_deserializer_fn(value);
+
+                    match #deserialize_fn(deserializer) {
                         Ok(v) => {
                             self.#ident = v;
                             return Ok(());
                         }
                         Err(error) => {
-                            return Err(IntrospectionError::ConvertToFieldError { field: path.into(), error: error.into() });
+                            return Err(IntrospectionError::ConvertToFieldError {
+                                field: path.into(),
+                                error: #crate_::traft::error::Error::other(error).into(),
+                            });
                         }
                     }
                 }
@@ -310,12 +323,22 @@ fn generate_body_for_get_field_as_rmpv(context: &Context) -> proc_macro2::TokenS
         if !field.attrs.nested {
             non_nestable_names.push(name);
 
+            let serialize_fn = match &field.attrs.serde_serialize_with {
+                Some(with_path) => quote!(#with_path),
+                None => quote!(serde::Serialize::serialize),
+            };
+
             // Handle getting a non-nestable field
             get_non_nestable.extend(quote! {
                 #name => {
-                    match #crate_::introspection::to_rmpv_value(&self.#ident) {
-                        Err(e) => {
-                            return Err(IntrospectionError::ToRmpvValue { field: path.into(), details: e });
+                    let serializer = #crate_::introspection::private::RmpvNamedSerializer;
+
+                    match #serialize_fn(&self.#ident, serializer) {
+                        Err(error) => {
+                            return Err(IntrospectionError::ToRmpvValue {
+                                field: path.into(),
+                                details: #crate_::traft::error::Error::other(error),
+                            });
                         }
                         Ok(value) => return Ok(value),
                     }
@@ -325,7 +348,7 @@ fn generate_body_for_get_field_as_rmpv(context: &Context) -> proc_macro2::TokenS
             // Handle getting a field marked with `#[introspection(nested)]`.
             get_whole_nestable.extend(quote! {
                 #name => {
-                    use #crate_::introspection::RmpvValue;
+                    use #crate_::introspection::private::RmpvValue;
                     let field_infos = #Type::FIELD_INFOS;
                     let mut fields = Vec::with_capacity(field_infos.len());
                     for sub_field in field_infos {
@@ -424,13 +447,23 @@ fn generate_body_for_get_field_default_value_as_rmpv(
         if !field.attrs.nested {
             non_nestable_names.push(name);
 
+            let serialize_fn = match &field.attrs.serde_serialize_with {
+                Some(with_path) => quote!(#with_path),
+                None => quote!(serde::Serialize::serialize),
+            };
+
             // Handle getting default for a non-nestable field
             if let Some(default) = &field.attrs.config_default {
                 default_for_non_nestable.extend(quote! {
                     #name => {
-                        match #crate_::introspection::to_rmpv_value(&(#default)) {
-                            Err(e) => {
-                                return Err(IntrospectionError::ToRmpvValue { field: path.into(), details: e });
+                        let serializer = #crate_::introspection::private::RmpvNamedSerializer;
+
+                        match #serialize_fn(&(#default), serializer) {
+                            Err(error) => {
+                                return Err(IntrospectionError::ToRmpvValue {
+                                    field: path.into(),
+                                    details: #crate_::traft::error::Error::other(error),
+                                });
                             }
                             Ok(value) => return Ok(Some(value)),
                         }
@@ -445,7 +478,7 @@ fn generate_body_for_get_field_default_value_as_rmpv(
             // Handle getting a field marked with `#[introspection(nested)]`.
             default_for_whole_nestable.extend(quote! {
                 #name => {
-                    use #crate_::introspection::RmpvValue;
+                    use #crate_::introspection::private::RmpvValue;
                     let field_infos = #Type::FIELD_INFOS;
                     let mut fields = Vec::with_capacity(field_infos.len());
 
@@ -712,6 +745,9 @@ struct FieldAttrs {
     /// Parameters with Tier scope can be set for specific tier with `FOR TIER 'tier_name'`
     /// syntax.
     scope: Option<String>,
+
+    serde_serialize_with: Option<syn::Path>,
+    serde_deserialize_with: Option<syn::Path>,
 }
 
 impl FieldAttrs {
@@ -719,58 +755,113 @@ impl FieldAttrs {
         let mut result = Self::default();
 
         for attr in &attrs {
-            if !attr.path.is_ident("introspection") {
-                continue;
-            }
+            if attr.path.is_ident("introspection") {
+                attr.parse_args_with(|input: syn::parse::ParseStream| {
+                    // `input` is a stream of those tokens right there
+                    // `#[introspection(foo, bar, ...)]`
+                    //                  ^^^^^^^^^^^^^
+                    while !input.is_empty() {
+                        let ident = input.parse::<syn::Ident>()?;
+                        if ident == "ignore" {
+                            result.ignore = true;
+                        } else if ident == "nested" {
+                            result.nested = true;
+                        } else if ident == "config_default" {
+                            if result.config_default.is_some() {
+                                return Err(syn::Error::new(ident.span(), "duplicate `config_default` specified"));
+                            }
 
-            attr.parse_args_with(|input: syn::parse::ParseStream| {
-                // `input` is a stream of those tokens right there
-                // `#[introspection(foo, bar, ...)]`
-                //                  ^^^^^^^^^^^^^
-                while !input.is_empty() {
-                    let ident = input.parse::<syn::Ident>()?;
-                    if ident == "ignore" {
-                        result.ignore = true;
-                    } else if ident == "nested" {
-                        result.nested = true;
-                    } else if ident == "config_default" {
-                        if result.config_default.is_some() {
-                            return Err(syn::Error::new(ident.span(), "duplicate `config_default` specified"));
+                            input.parse::<syn::Token![=]>()?;
+
+                            result.config_default = Some(input.parse::<syn::Expr>()?);
+                        } else if ident == "sbroad_type" {
+                            if result.sbroad_type.is_some() {
+                                return Err(syn::Error::new(ident.span(), "duplicate `sbroad_type` specified"));
+                            }
+
+                            input.parse::<syn::Token![=]>()?;
+
+                            result.sbroad_type = Some(input.parse::<syn::Expr>()?);
+                        } else if ident == "scope" {
+                            if result.scope.is_some() {
+                                return Err(syn::Error::new(ident.span(), "duplicate `scope` specified"));
+                            }
+
+                            input.parse::<syn::Token![=]>()?;
+                            let scope = input.parse::<syn::Ident>()?;
+                            result.scope = Some(scope.to_string());
+                        } else {
+                            return Err(syn::Error::new(
+                                ident.span(),
+                                format!("unknown attribute argument `{ident}`, expected one of `ignore`, `nested`, `config_default`, `sbroad_type`, `scope`"),
+                            ));
                         }
 
-                        input.parse::<syn::Token![=]>()?;
-
-                        result.config_default = Some(input.parse::<syn::Expr>()?);
-                    } else if ident == "sbroad_type" {
-                        if result.sbroad_type.is_some() {
-                            return Err(syn::Error::new(ident.span(), "duplicate `sbroad_type` specified"));
+                        if !input.is_empty() {
+                            input.parse::<syn::Token![,]>()?;
                         }
-
-                        input.parse::<syn::Token![=]>()?;
-
-                        result.sbroad_type = Some(input.parse::<syn::Expr>()?);
-                    } else if ident == "scope" {
-                        if result.scope.is_some() {
-                            return Err(syn::Error::new(ident.span(), "duplicate `scope` specified"));
-                        }
-
-                        input.parse::<syn::Token![=]>()?;
-                        let scope = input.parse::<syn::Ident>()?;
-                        result.scope = Some(scope.to_string());
-                    } else {
-                        return Err(syn::Error::new(
-                            ident.span(),
-                            format!("unknown attribute argument `{ident}`, expected one of `ignore`, `nested`, `config_default`, `sbroad_type`, `scope`"),
-                        ));
                     }
 
-                    if !input.is_empty() {
-                        input.parse::<syn::Token![,]>()?;
+                    Ok(())
+                })?;
+            } else if attr.path.is_ident("serde") {
+                // Parse `serde`'s `with`, `serialize_with` and `deserialize_with` attributes.
+                // This is needed to make generated `set_field_from_yaml`, `set_field_from_rmpv`
+                // and `get_field_as_rmpv` methods use representation consistent with `serde::Serialize`
+                // and `serde::Deserialize`.
+
+                // We do not try to produce any diagnostics when parsing serde attributes.
+                // If we do that, user will get multiple diagnostics (one from serde and one from us).
+                let Ok(syn::Meta::List(meta)) = attr.parse_meta() else {
+                    continue;
+                };
+
+                for item in meta.nested {
+                    let syn::NestedMeta::Meta(syn::Meta::NameValue(meta)) = item else {
+                        continue;
+                    };
+
+                    fn parse_lit_into_expr_path(lit: &syn::Lit) -> Result<syn::Path, ()> {
+                        let syn::Lit::Str(str) = lit else {
+                            return Err(());
+                        };
+                        syn::parse_str::<syn::Path>(&str.value()).map_err(|_| ())
+                    }
+
+                    // serde will error out if both `with` and `deserialize_with` are specified: https://play.rust-lang.org/?version=stable&mode=debug&edition=2024&gist=3b207f01caac16858e39051ad03c9633
+                    // So, precedence we pick doesn't matter
+                    if meta.path.is_ident("with") {
+                        let Ok(path) = parse_lit_into_expr_path(&meta.lit) else {
+                            continue;
+                        };
+
+                        let mut ser_path = path.clone();
+                        ser_path
+                            .segments
+                            .push(syn::Ident::new("serialize", ser_path.span()).into());
+                        result.serde_serialize_with = Some(ser_path);
+
+                        let mut de_path = path;
+                        de_path
+                            .segments
+                            .push(syn::Ident::new("deserialize", de_path.span()).into());
+
+                        result.serde_deserialize_with = Some(de_path);
+                    } else if meta.path.is_ident("serialize_with") {
+                        let Ok(path) = parse_lit_into_expr_path(&meta.lit) else {
+                            continue;
+                        };
+
+                        result.serde_serialize_with = Some(path);
+                    } else if meta.path.is_ident("deserialize_with") {
+                        let Ok(path) = parse_lit_into_expr_path(&meta.lit) else {
+                            continue;
+                        };
+
+                        result.serde_deserialize_with = Some(path);
                     }
                 }
-
-                Ok(())
-            })?;
+            }
         }
 
         Ok(result)
