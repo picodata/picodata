@@ -194,7 +194,7 @@ fn setup_topology(
     //
 
     if let Some(tiers) = tiers {
-        // Callers wants to control the tier setup
+        // Callers want to control the tier setup
         for tier in tiers {
             node.storage.tiers.put(tier).unwrap();
             node.topology_cache.update_tier(None, Some(tier.clone()));
