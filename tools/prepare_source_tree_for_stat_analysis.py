@@ -10,7 +10,7 @@ import subprocess  # nosec
 import sys
 
 REPO_DIR = Path(__file__).parent.parent
-PATCHES_DIR = REPO_DIR / "certification_patches"
+PATCHES_DIR = REPO_DIR / "certification" / "patches"
 SVACE_PATCHES = PATCHES_DIR / "svace_patches"
 GAMAYUN_PATCHES = PATCHES_DIR / "gamayun_patches"
 TARANTOOL_SYS = REPO_DIR / "tarantool-sys"
@@ -43,14 +43,11 @@ DEAD_LIST = [
     "tarantool-sys/third_party/libev/install-sh",
     "tarantool-sys/third_party/libev/ltmain.sh",
     "tarantool-sys/tools/gen-release-notes",
-    "sbroad/docker-compose.yml",
     # further
     "tarantool-sys/third_party/luajit/src/luajit_lldb.py",
     "tarantool-sys/perf/lua/1mops_write.lua",
     "tarantool-sys/third_party/metrics/rpm/prebuild.sh",
     # 25.2
-    "dev/plan-drawer/draw.py",
-    "docker-build-base/stress.Dockerfile",
     "docker/docker-compose.yml",
     "tarantool-sys/extra/pico_parse_git_log.py",
     "tarantool-sys/vendor/openssl-3.2.3/fuzz/helper.py",
