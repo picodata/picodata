@@ -43,7 +43,7 @@ use crate::traft::op::PluginRaftOp;
 use crate::traft::RaftId;
 use ::tarantool::fiber::r#async::watch;
 use raft::prelude::ConfState;
-use rand::Rng;
+use rand::RngExt;
 use rand::SeedableRng;
 use smol_str::format_smolstr;
 use smol_str::SmolStr;
@@ -473,11 +473,11 @@ fn do_governor_loop_proc_before_online_batching(params: BatchingRpcTestParameter
             };
             targets.push(name.clone());
 
-            assert_eq!(request.proc, ".proc_enable_all_plugins");
+            assert_eq!(request.proc, ".proc_before_online");
             let resp = rpc::before_online::Response {};
 
             // Send the RPC response to governor
-            let fail = rng.gen_bool(params.p_rpc_err);
+            let fail = rng.random_bool(params.p_rpc_err);
             if fail {
                 request
                     .on_result
@@ -542,7 +542,7 @@ fn do_governor_loop_proc_before_online_batching(params: BatchingRpcTestParameter
         assert_eq!(expected_ok_targets, actual_ok_targets);
 
         // Apply CAS requests
-        let fail = rng.gen_bool(params.p_cas_err);
+        let fail = rng.random_bool(params.p_cas_err);
         if !fail {
             for name in actual_ok_targets {
                 let old_instance = node.topology_cache.clone_instance_by_name(&name).unwrap();
@@ -702,7 +702,7 @@ fn do_governor_loop_proc_sharding_batching(params: BatchingRpcTestParameters) {
             let resp = rpc::sharding::Response {};
 
             // Send the RPC response to governor
-            let fail = rng.gen_bool(params.p_rpc_err);
+            let fail = rng.random_bool(params.p_rpc_err);
             if fail {
                 request
                     .on_result
@@ -787,7 +787,7 @@ fn do_governor_loop_proc_sharding_batching(params: BatchingRpcTestParameters) {
             tlog!(Info, "cas_request: {request:?}");
 
             // Apply CAS request
-            let fail = rng.gen_bool(params.p_cas_err);
+            let fail = rng.random_bool(params.p_cas_err);
             if
             // Fail the first attempt always just to check what how we handle that
             first_cas_request_skipped
@@ -889,6 +889,7 @@ fn do_governor_loop_proc_apply_schema_change_batching(params: BatchingRpcTestPar
         distribution: Distribution::Global,
         engine: tarantool::space::SpaceEngineType::Memtx,
         owner: ADMIN_ID,
+        opts: vec![],
     };
     node.storage
         .properties
@@ -952,7 +953,7 @@ fn do_governor_loop_proc_apply_schema_change_batching(params: BatchingRpcTestPar
             let resp = rpc::ddl_apply::Response::Ok {};
 
             // Send the RPC response to governor
-            let fail = rng.gen_bool(params.p_rpc_err);
+            let fail = rng.random_bool(params.p_rpc_err);
             if fail {
                 request
                     .on_result
@@ -1009,7 +1010,7 @@ fn do_governor_loop_proc_apply_schema_change_batching(params: BatchingRpcTestPar
             tlog!(Info, "cas_request: {request:?}");
 
             // Apply CAS request
-            let fail = rng.gen_bool(params.p_cas_err);
+            let fail = rng.random_bool(params.p_cas_err);
             if
             // Fail the first attempt always just to check what how we handle that
             first_cas_request_skipped
@@ -1322,7 +1323,7 @@ fn do_governor_loop_truncate_table_batching(params: BatchingRpcTestParameters) {
             let resp = rpc::ddl_apply::Response::Ok {};
 
             // Send the RPC response to governor
-            let fail = rng.gen_bool(params.p_rpc_err);
+            let fail = rng.random_bool(params.p_rpc_err);
             if fail {
                 request
                     .on_result
@@ -1379,7 +1380,7 @@ fn do_governor_loop_truncate_table_batching(params: BatchingRpcTestParameters) {
             tlog!(Info, "cas_request: {request:?}");
 
             // Apply CAS request
-            let fail = rng.gen_bool(params.p_cas_err);
+            let fail = rng.random_bool(params.p_cas_err);
             if
             // Fail the first attempt always just to check what how we handle that
             first_cas_request_skipped
@@ -1543,7 +1544,7 @@ fn do_governor_loop_backup_batching(params: BatchingRpcTestParameters) {
             let resp = rpc::ddl_backup::Response::BackupPath(PathBuf::new());
 
             // Send the RPC response to governor
-            let fail = rng.gen_bool(params.p_rpc_err);
+            let fail = rng.random_bool(params.p_rpc_err);
             if fail {
                 request
                     .on_result
@@ -1619,7 +1620,7 @@ fn do_governor_loop_backup_batching(params: BatchingRpcTestParameters) {
             tlog!(Info, "cas_request: {request:?}");
 
             // Apply CAS request
-            let fail = rng.gen_bool(params.p_cas_err);
+            let fail = rng.random_bool(params.p_cas_err);
             if
             // Fail the first attempt always just to check what how we handle that
             first_cas_request_skipped
@@ -1764,7 +1765,7 @@ fn do_governor_loop_create_plugin_batching(params: BatchingRpcTestParameters) {
             let resp = rpc::load_plugin_dry_run::Response::Ok {};
 
             // Send the RPC response to governor
-            let random_fail = rng.gen_bool(params.p_rpc_err);
+            let random_fail = rng.random_bool(params.p_rpc_err);
             let last_rpc = i == num_rpcs;
             // Make sure we get at least one RPC failure
             let no_fails_so_far = num_fails == 0;
@@ -1928,7 +1929,7 @@ fn do_governor_loop_create_plugin_batching(params: BatchingRpcTestParameters) {
             assert!(seen_dml_delete_pending_plugin_op);
 
             // Apply CAS request
-            let fail = rng.gen_bool(params.p_cas_err);
+            let fail = rng.random_bool(params.p_cas_err);
             if
             // Fail the first attempt always just to check what how we handle that
             first_cas_request_skipped
@@ -2085,7 +2086,7 @@ fn do_governor_loop_enable_plugin_batching(params: BatchingRpcTestParameters) {
             let resp = rpc::enable_plugin::Response::Ok {};
 
             // Send the RPC response to governor
-            let fail = rng.gen_bool(params.p_rpc_err);
+            let fail = rng.random_bool(params.p_rpc_err);
             if fail {
                 request
                     .on_result
@@ -2182,7 +2183,7 @@ fn do_governor_loop_enable_plugin_batching(params: BatchingRpcTestParameters) {
             assert!(seen_dml_delete_pending_plugin_op);
 
             // Apply CAS request
-            let fail = rng.gen_bool(params.p_cas_err);
+            let fail = rng.random_bool(params.p_cas_err);
             if
             // Fail the first attempt always just to check what how we handle that
             first_cas_request_skipped
@@ -2341,7 +2342,7 @@ fn do_governor_loop_alter_plugin_add_service_to_tier_batching(params: BatchingRp
             ok_so_far.insert(name);
 
             // Send the RPC response to governor
-            let random_fail = rng.gen_bool(params.p_rpc_err);
+            let random_fail = rng.random_bool(params.p_rpc_err);
             let last_rpc = i == num_rpcs;
             // Make sure we get at least one RPC failure
             let no_fails_so_far = num_fails == 0;
@@ -2394,7 +2395,7 @@ fn do_governor_loop_alter_plugin_add_service_to_tier_batching(params: BatchingRp
                 disabled_ok.insert(name);
 
                 // Send the RPC response to governor
-                let fail = rng.gen_bool(params.p_rpc_err);
+                let fail = rng.random_bool(params.p_rpc_err);
                 if fail {
                     request
                         .on_result
@@ -2588,7 +2589,7 @@ fn do_governor_loop_alter_plugin_add_service_to_tier_batching(params: BatchingRp
             assert_eq!(ok_so_far, actual_ok_targets);
 
             // Apply CAS request
-            let fail = rng.gen_bool(params.p_cas_err);
+            let fail = rng.random_bool(params.p_cas_err);
             if
             // Fail the first attempt always just to check what how we handle that
             first_cas_request_skipped
@@ -2760,7 +2761,7 @@ fn do_governor_loop_alter_plugin_remove_service_from_tier_batching(
             let resp = rpc::disable_service::Response {};
 
             // Send the RPC response to governor
-            let fail = rng.gen_bool(params.p_rpc_err);
+            let fail = rng.random_bool(params.p_rpc_err);
             if fail {
                 request
                     .on_result
@@ -2892,7 +2893,7 @@ fn do_governor_loop_alter_plugin_remove_service_from_tier_batching(
             assert_eq!(ok_so_far, actual_ok_targets);
 
             // Apply CAS request
-            let fail = rng.gen_bool(params.p_cas_err);
+            let fail = rng.random_bool(params.p_cas_err);
             if
             // Fail the first attempt always just to check what how we handle that
             first_cas_request_skipped
