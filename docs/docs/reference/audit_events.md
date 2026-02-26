@@ -159,7 +159,7 @@ new field: user == initiator
 
 ### change_current_state
 
-Изменение текущего [стейта](../overview/glossary.md#state) инстанса.
+Изменение текущего [состояния](../overview/glossary.md#state) инстанса.
 
 ```json
 {
@@ -196,7 +196,7 @@ new field: user == initiator
 
 ### change_target_state
 
-Изменение целевого [стейта](../overview/glossary.md#state) инстанса.
+Изменение целевого [состояния](../overview/glossary.md#state) инстанса.
 
 ```json
 {

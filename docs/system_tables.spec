@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `25.5.0-1435-g159ade393`.
+Описание соответствует версии Picodata `25.5.0-1760-ge9b4fd537`.
 
 ### _pico_table
 
@@ -110,6 +110,9 @@
 * `failure_domain`: (_map_)
 * `tier`: (_string_)
 * `picodata_version`: (_string_)
+* `sync_incarnation`: (_unsigned_)
+* `target_state_reason`: (_string_)
+* `target_state_change_time`: (_datetime_)
 
 Индексы:
 
