@@ -839,3 +839,48 @@ cluster:
     assert storage_3.replicaset_name != storage_4.replicaset_name
     assert storage_3.replicaset_name in [storage_1.replicaset_name, storage_2.replicaset_name]
     assert storage_4.replicaset_name in [storage_1.replicaset_name, storage_2.replicaset_name]
+
+
+def test_no_failover_during_master_bootstrap(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            can_vote: true
+            replication_factor: 1
+        storage:
+            can_vote: false
+            replication_factor: 3
+        """
+    )
+
+    cluster.add_instance(wait_online=False, tier="arbiter")
+    cluster.add_instance(wait_online=False, tier="arbiter")
+    cluster.wait_online()
+
+    error_injection_for_all = "PICODATA_ERROR_INJECTION_USE_SHORT_REPLICATION_CONNECT_TIMEOUT"
+
+    storage_1 = cluster.add_instance(wait_online=False, tier="storage", replicaset_name="r1")
+    error_injection = "STALL_BEFORE_UPDATE_OUR_STATE_TO_ONLINE"  # stall for 5 sec
+    lc = log_crawler(storage_1, error_injection)
+    storage_1.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
+    storage_1.env[error_injection_for_all] = "1"
+    storage_1.start()
+    lc.wait_matched()
+
+    storage_2 = cluster.add_instance(wait_online=False, tier="storage", replicaset_name="r1")
+    error_injection = "STALL_BEFORE_STORAGE_INIT_IN_START_JOIN"  # stall for 10 sec
+    lc = log_crawler(storage_2, error_injection)
+    storage_2.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
+    storage_2.env[error_injection_for_all] = "1"
+    storage_2.start()
+    lc.wait_matched()
+
+    storage_3 = cluster.add_instance(wait_online=False, tier="storage", replicaset_name="r1")
+    storage_3.env[error_injection_for_all] = "1"
+    storage_3.start_and_wait()
+
+    storage_1.wait_online()
+    storage_2.wait_online()  # this will not happen

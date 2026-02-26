@@ -2004,6 +2004,7 @@ fn postjoin(
     let boot_timeout =
         Instant::now_fiber().saturating_add(Duration::from_secs(config.instance.boot_timeout()));
 
+    crate::error_injection!("STALL_BEFORE_UPDATE_OUR_STATE_TO_ONLINE" => { fiber::sleep(Duration::from_secs(5)); });
     // Send proc_update_instance RPC to raft leader
     crate::rpc::update_instance::update_our_target_state_to_online(
         node,
@@ -2054,6 +2055,7 @@ fn start_join(
     let cfg = tarantool::Cfg::for_instance_join(config, resp)?;
 
     crate::error_injection!(exit "EXIT_AFTER_REBOOTSTRAP_BEFORE_STORAGE_INIT_IN_START_JOIN");
+    crate::error_injection!("STALL_BEFORE_STORAGE_INIT_IN_START_JOIN" => { fiber::sleep(Duration::from_secs(10)); });
 
     // XXX: Initialize cluster uuid before opening any iproto connections.
     let uuid = resp

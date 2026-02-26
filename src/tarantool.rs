@@ -562,6 +562,10 @@ impl Cfg {
     fn set_core_parameters(&mut self, config: &PicodataConfig) -> Result<(), Error> {
         self.log.clone_from(&config.instance.log.destination);
         self.log_level = Some(config.instance.log_level() as _);
+        crate::error_injection!("USE_SHORT_REPLICATION_CONNECT_TIMEOUT" => {
+            self.user_configured_fields
+                .insert("replication_connect_timeout".into(), 2.into());
+        });
 
         // here we handle fields with `ByteSize` types that are needed to be
         // converted into `String`, and then parsed as `rmpv::Value::Integer`
