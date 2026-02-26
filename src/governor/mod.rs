@@ -1296,7 +1296,9 @@ impl Loop {
                                     tlog!(Warning, "failed calling `proc_enable_plugin`: {e}";
                                         "instance_name" => %instance_name, "plugin" => %plugin);
                                     last_step_info.on_err_instance(&instance_name);
-                                    first_error = Some(e);
+                                    if first_error.is_none() {
+                                        first_error = Some(e);
+                                    }
                                 }
                             }
                         }
@@ -1448,7 +1450,9 @@ impl Loop {
                                         tlog!(Error, "failed to call proc_disable_service: {e}";
                                             "instance_name" => %instance_name, "service" => %service);
                                         last_step_info.on_err_instance(&instance_name);
-                                        first_error = Some(e);
+                                        if first_error.is_none() {
+                                            first_error = Some(e);
+                                        }
                                     }
                                 }
                             }
