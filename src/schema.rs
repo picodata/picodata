@@ -346,7 +346,7 @@ pub enum IndexOption {
     BloomFalsePositiveRate(Decimal),
     /// The RTREE index dimension.
     #[serde(rename = "dimension")]
-    Dimension(u32),
+    Dimension(u8),
     /// The RTREE index distance type.
     #[serde(rename = "distance")]
     Distance(RtreeIndexDistanceType),
@@ -552,7 +552,7 @@ impl From<IndexDef> for IndexOptions {
         for opt in def.opts {
             match opt {
                 IndexOption::Unique(unique) => opts.unique = Some(unique),
-                IndexOption::Dimension(dim) => opts.dimension = Some(dim),
+                IndexOption::Dimension(dim) => opts.dimension = Some(dim.into()),
                 IndexOption::Distance(distance) => opts.distance = Some(distance),
                 IndexOption::BloomFalsePositiveRate(rate) => {
                     opts.bloom_fpr = Some(dec_to_f32(rate))

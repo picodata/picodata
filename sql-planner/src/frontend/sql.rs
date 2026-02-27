@@ -654,14 +654,17 @@ fn parse_create_index(
         )
         .expect("Expected to parse decimal value")
     };
-    let u32_value = |node: &ParseNode| -> u32 {
-        first_child(node)
-            .value
+    fn parse_int<T>(node: &ParseNode) -> T
+    where
+        T: std::str::FromStr,
+        <T as FromStr>::Err: std::fmt::Debug,
+    {
+        node.value
             .as_ref()
-            .expect("Expected to see u32 value")
+            .expect("Expected to have value")
             .parse()
-            .expect("Expected to parse u32 value")
-    };
+            .expect("Expected to parse integer value")
+    }
     let bool_value = |node: &ParseNode| -> bool {
         let node = first_child(node);
         match node.rule {
@@ -711,11 +714,13 @@ fn parse_create_index(
                     let param_node = first_child(option_param_node);
                     match param_node.rule {
                         Rule::BloomFpr => bloom_fpr = Some(decimal_value(param_node)),
-                        Rule::PageSize => page_size = Some(u32_value(param_node)),
-                        Rule::RangeSize => range_size = Some(u32_value(param_node)),
-                        Rule::RunCountPerLevel => run_count_per_level = Some(u32_value(param_node)),
+                        Rule::PageSize => page_size = Some(parse_int(first_child(param_node))),
+                        Rule::RangeSize => range_size = Some(parse_int(first_child(param_node))),
+                        Rule::RunCountPerLevel => {
+                            run_count_per_level = Some(parse_int(first_child(param_node)))
+                        }
                         Rule::RunSizeRatio => run_size_ratio = Some(decimal_value(param_node)),
-                        Rule::Dimension => dimension = Some(u32_value(param_node)),
+                        Rule::Dimension => dimension = Some(parse_int(first_child(param_node))),
                         Rule::Distance => {
                             let distance_node = first_child(param_node);
                             match distance_node.rule {
