@@ -215,6 +215,7 @@ certlinters:
       - MAIN_BRANCH
   trigger:
     project: "picodata/devops/builder"
+    strategy: depend
 
 build-base-image:
   stage: build-base-image
