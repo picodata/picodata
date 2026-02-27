@@ -35,6 +35,8 @@ nav:
       - overview/feedback.md
       - overview/licensing.md
       - overview/versioning.md
+  - Основные понятия:
+      - basics/table_types.md
   - Установка и первые шаги:
       - tutorial/install.md
       - tutorial/run.md
