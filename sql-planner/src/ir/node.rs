@@ -1144,6 +1144,7 @@ pub struct CreateIndex {
     pub range_size: Option<u32>,
     pub run_count_per_level: Option<u32>,
     pub run_size_ratio: Option<Decimal>,
+    pub compression_level: Option<i8>,
     pub dimension: Option<u8>,
     pub distance: Option<RtreeIndexDistanceType>,
     pub hint: Option<bool>,

@@ -1735,6 +1735,7 @@ fn ddl_ir_node_to_op_or_result(
             range_size,
             run_count_per_level,
             run_size_ratio,
+            compression_level,
             dimension,
             distance,
             hint,
@@ -1757,6 +1758,9 @@ fn ddl_ir_node_to_op_or_result(
             }
             if let Some(run_size_ratio) = run_size_ratio {
                 opts.push(IndexOption::RunSizeRatio(*run_size_ratio));
+            }
+            if let Some(compression_level) = compression_level {
+                opts.push(IndexOption::CompressionLevel(*compression_level));
             }
             if let Some(dimension) = dimension {
                 opts.push(IndexOption::Dimension(*dimension));

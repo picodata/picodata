@@ -631,6 +631,7 @@ fn parse_create_index(
     let mut range_size = None;
     let mut run_count_per_level = None;
     let mut run_size_ratio = None;
+    let mut compression_level = None;
     let mut dimension = None;
     let mut distance = None;
     let mut hint = None;
@@ -743,6 +744,10 @@ fn parse_create_index(
                         Rule::RunSizeRatio => {
                             run_size_ratio = Some(parse_decimal(param_node, "run_size_ratio")?)
                         }
+                        Rule::CompressionLevel => {
+                            compression_level =
+                                Some(parse_int(first_child(param_node), "compression_level")?)
+                        }
                         Rule::Dimension => {
                             dimension = Some(parse_int(first_child(param_node), "dimension")?)
                         }
@@ -782,6 +787,7 @@ fn parse_create_index(
         range_size,
         run_count_per_level,
         run_size_ratio,
+        compression_level,
         dimension,
         distance,
         hint,

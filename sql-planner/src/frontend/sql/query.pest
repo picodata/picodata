@@ -208,12 +208,13 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable
     IndexOptions = ${ ^"with" ~ WO ~ "(" ~ WO ~ IndexOptionsParams ~ WO ~ ")" }
         IndexOptionsParams = _{ IndexOptionParam ~ (WO ~ "," ~ WO ~ IndexOptionParam)* }
     IndexOptionParam = { BloomFpr | PageSize | RangeSize | RunCountPerLevel | RunSizeRatio
-                         | Dimension | Distance | Hint }
+                         | CompressionLevel | Dimension | Distance | Hint }
         BloomFpr = !{ ^"bloom_fpr" ~ "=" ~ Decimal }
         PageSize = !{ ^"page_size" ~ "=" ~ Unsigned }
         RangeSize = !{ ^"range_size" ~ "=" ~ Unsigned }
-        RunCountPerLevel = !{ ^"run_count_per_level" ~ "=" ~Unsigned }
+        RunCountPerLevel = !{ ^"run_count_per_level" ~ "=" ~ Unsigned }
         RunSizeRatio = !{ ^"run_size_ratio" ~ "=" ~ Decimal }
+        CompressionLevel = !{ ^"compression_level" ~ "=" ~ Integer }
         Dimension = !{ ^"dimension" ~ "=" ~ Unsigned }
         Distance = !{ ^"distance" ~ "=" ~ (Euclid | Manhattan) }
             Euclid = { ^"euclid" }

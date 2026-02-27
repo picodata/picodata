@@ -223,6 +223,7 @@ pub struct IndexOptions {
     pub range_size: Option<u32>,
     pub run_count_per_level: Option<u32>,
     pub run_size_ratio: Option<f32>,
+    pub compression_level: Option<i8>,
     pub sequence: Option<SequenceOpt>,
     pub func: Option<String>,
     // Only for Tarantool >= 2.6

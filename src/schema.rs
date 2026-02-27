@@ -367,6 +367,9 @@ pub enum IndexOption {
     /// Vinyl only. The ratio between the size of different levels in the LSM tree.
     #[serde(rename = "run_size_ratio")]
     RunSizeRatio(Decimal),
+    /// Vinyl only. Compression level (-7 to 22).
+    #[serde(rename = "compression_level")]
+    CompressionLevel(i8),
     /// Specify whether the index is unique. When true, the index cannot contain duplicate values.
     #[serde(rename = "unique")]
     Unique(bool),
@@ -390,6 +393,9 @@ impl IndexOption {
             IndexOption::RunSizeRatio(ratio) => {
                 ("run_size_ratio".into(), Value::Double(dec_to_f64(*ratio)))
             }
+            IndexOption::CompressionLevel(level) => {
+                ("compression_level".into(), Value::Num((*level).into()))
+            }
             IndexOption::Unique(unique) => ("unique".into(), Value::Bool(*unique)),
         }
     }
@@ -402,6 +408,7 @@ impl IndexOption {
                 | IndexOption::RangeSize(_)
                 | IndexOption::RunCountPerLevel(_)
                 | IndexOption::RunSizeRatio(_)
+                | IndexOption::CompressionLevel(_)
         )
     }
 
@@ -423,6 +430,7 @@ impl IndexOption {
             IndexOption::RangeSize(_) => "range_size",
             IndexOption::RunCountPerLevel(_) => "run_count_per_level",
             IndexOption::RunSizeRatio(_) => "run_size_ratio",
+            IndexOption::CompressionLevel(_) => "compression_level",
             IndexOption::Unique(_) => "unique",
         }
     }
@@ -561,6 +569,7 @@ impl From<IndexDef> for IndexOptions {
                 IndexOption::RangeSize(size) => opts.range_size = Some(size),
                 IndexOption::RunCountPerLevel(count) => opts.run_count_per_level = Some(count),
                 IndexOption::RunSizeRatio(ratio) => opts.run_size_ratio = Some(dec_to_f32(ratio)),
+                IndexOption::CompressionLevel(level) => opts.compression_level = Some(level),
                 IndexOption::Hint(_) => {
                     // FIXME: `hint` option is disabled in Tarantool module.
                 }
