@@ -2911,19 +2911,21 @@ cluster:
     assert table_id == space_id
 
 
-def test_vinyl_options_applied_to_indices_on_create_table(cluster: Cluster):
+def test_vinyl_options_applied_to_indices(cluster: Cluster):
     """
-    Verify that instance.vinyl.* configuration options are applied to indices
-    created during CREATE TABLE ... USING vinyl, including both the primary key
-    and the automatically created bucket_id index, as well as any explicit
-    secondary indices created using CREATE INDEX.
+    Verify that vinyl options are applied to indices correctly:
+    1. Instance-level options (instance.vinyl.*) apply to all vinyl indexes by default
+    2. Per-index options via CREATE INDEX ... WITH (...) override instance defaults
 
-    Tests the following options (with non-default values):
+    Tests instance-level options (with non-default values):
     - page_size: 16K (default 8K)
     - range_size: 128M (default 1G)
     - bloom_fpr: 0.10 (default 0.05)
     - run_count_per_level: 3 (default 2)
     - run_size_ratio: 5.0 (default 3.5)
+
+    Tests per-index options via WITH clause:
+    - page_size, bloom_fpr, compression_level overrides
     """
     custom_page_size = 16384  # 16K
     custom_range_size = 128 * 1024 * 1024  # 128M
@@ -3010,3 +3012,39 @@ def test_vinyl_options_applied_to_indices_on_create_table(cluster: Cluster):
     secondary_index = i1.call("box.space._index:get", [space_id, 2])
     assert secondary_index is not None, "Secondary index should exist"
     assert_vinyl_opts(secondary_index, "Secondary index")
+
+    # Test per-index options via CREATE INDEX ... WITH (...)
+    # These should override instance-level defaults
+    custom_index_page_size = 32768  # 32K (different from instance default 16K)
+    custom_index_bloom_fpr = 0.02  # different from instance default 0.10
+    custom_index_compression_level = 15
+
+    i1.sql(
+        f"CREATE INDEX with_custom_opts ON vinyl_options_test (id) "
+        f"WITH (page_size = {custom_index_page_size}, "
+        f"bloom_fpr = {custom_index_bloom_fpr}, "
+        f"compression_level = {custom_index_compression_level})"
+    )
+
+    custom_opts_index = i1.call("box.space._index:get", [space_id, 3])
+    assert custom_opts_index is not None, "Index with custom options should exist"
+    opts = custom_opts_index[4]
+
+    # Verify explicitly set options override instance defaults
+    assert opts.get("page_size") == custom_index_page_size, (
+        f"Custom page_size mismatch: expected {custom_index_page_size}, got {opts}"
+    )
+    assert abs(opts.get("bloom_fpr") - custom_index_bloom_fpr) < 0.001, (
+        f"Custom bloom_fpr mismatch: expected {custom_index_bloom_fpr}, got {opts}"
+    )
+    assert opts.get("compression_level") == custom_index_compression_level, (
+        f"Custom compression_level mismatch: expected {custom_index_compression_level}, got {opts}"
+    )
+
+    # Verify non-overridden options still use instance defaults
+    assert opts.get("range_size") == custom_range_size, (
+        f"range_size should use instance default: expected {custom_range_size}, got {opts}"
+    )
+    assert opts.get("run_count_per_level") == custom_run_count_per_level, (
+        f"run_count_per_level should use instance default: expected {custom_run_count_per_level}, got {opts}"
+    )
