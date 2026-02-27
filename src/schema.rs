@@ -379,13 +379,13 @@ impl IndexOption {
             IndexOption::BloomFalsePositiveRate(rate) => {
                 ("bloom_fpr".into(), Value::Double(dec_to_f64(*rate)))
             }
-            IndexOption::Dimension(dim) => ("dimension".into(), Value::Num(*dim)),
+            IndexOption::Dimension(dim) => ("dimension".into(), Value::Num((*dim).into())),
             IndexOption::Distance(dist) => ("distance".into(), Value::Str(dist.as_str().into())),
             IndexOption::Hint(hint) => ("hint".into(), Value::Bool(*hint)),
-            IndexOption::PageSize(size) => ("page_size".into(), Value::Num(*size)),
-            IndexOption::RangeSize(size) => ("range_size".into(), Value::Num(*size)),
+            IndexOption::PageSize(size) => ("page_size".into(), Value::Num((*size).into())),
+            IndexOption::RangeSize(size) => ("range_size".into(), Value::Num((*size).into())),
             IndexOption::RunCountPerLevel(count) => {
-                ("run_count_per_level".into(), Value::Num(*count))
+                ("run_count_per_level".into(), Value::Num((*count).into()))
             }
             IndexOption::RunSizeRatio(ratio) => {
                 ("run_size_ratio".into(), Value::Double(dec_to_f64(*ratio)))
