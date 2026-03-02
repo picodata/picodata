@@ -605,9 +605,8 @@ cluster:
     for i in followers:
         try:
             i.wait_online(timeout=timeout)
-        except AssertionError as e:
-            # Instance.wait_online raises AssertionError on timeout because the
-            # failure message is better that way
+        except Exception as e:
+            # Instance.wait_online raises Exception on timeout
             assert f"Timed out waiting for instance '{i.name}' state 'Online'" in str(e)
 
         # After first iteration everybody has waited for 3 seconds already so let's reset the timeout

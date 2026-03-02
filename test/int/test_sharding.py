@@ -288,7 +288,7 @@ def test_gitlab_763_no_missing_buckets_after_proc_sharding_failure(cluster: Clus
     i3.start()
 
     # Instance cannot become online until vshard is reconfigured
-    with pytest.raises(AssertionError):
+    with pytest.raises(Exception):
         i3.wait_online()
 
     # Disable the synthetic failure so that instance can come online

@@ -1685,7 +1685,7 @@ class Instance:
                     deadline = time.monotonic() + timeout
 
                 # Check state
-                assert state == "Online", self._wait_online_failure_message(state, target_state)
+                assert state == "Online"
                 if expected_incarnation is not None:
                     assert incarnation == expected_incarnation
 
@@ -1703,9 +1703,9 @@ class Instance:
                         # this crutch in for that special case. The logic is:
                         # if tarantool is taking too long to bootstrap it's
                         # probably not our fault.
-                        raise e from e
+                        raise Exception(self._wait_online_failure_message(state, target_state)) from e
                     case _ if time.monotonic() > deadline:
-                        raise e from e
+                        raise Exception(self._wait_online_failure_message(state, target_state)) from e
                     case (str(message),) if "target_state_reason: Replication broken" in message:
                         raise ReplicationBroken(e) from e
 
