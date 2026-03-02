@@ -15,6 +15,7 @@ use crate::vshard::VshardConfig;
 use smol_str::SmolStr;
 use std::borrow::Cow;
 use std::cell::OnceCell;
+use std::collections::HashMap;
 use std::time::Duration;
 use tarantool::error::BoxError;
 use tarantool::fiber;
@@ -43,7 +44,7 @@ pub fn render_long_version() -> String {
     #[derive(serde::Serialize)]
     struct Info {
         cargo_cfg: serde_json::Value,
-        cargo_feature: serde_json::Value,
+        cargo_features: serde_json::Value,
         rustflags: serde_json::Value,
         linkage: &'static str,
         tarantool: serde_json::Value,
@@ -51,9 +52,11 @@ pub fn render_long_version() -> String {
     }
 
     let info = Info {
-        cargo_cfg: serde_json::from_str(include_str!(env!("CARGO_CFG_FILE"))).unwrap(),
-        cargo_feature: serde_json::from_str(include_str!(env!("CARGO_FEATURE_FILE"))).unwrap(),
-        rustflags: serde_json::from_str(include_str!(env!("RUSTFLAGS_FILE"))).unwrap(),
+        cargo_cfg: serde_json::from_str(include_str!(env!("CARGO_CFG_FILE")))
+            .expect("file contents controlled in build.rs"),
+        cargo_features: parse_cargo_features(include_str!(env!("CARGO_FEATURE_FILE"))),
+        rustflags: serde_json::from_str(include_str!(env!("RUSTFLAGS_FILE")))
+            .expect("file contents controlled in build.rs"),
         linkage: env!("PICO_LINKAGE"),
         tarantool: serde_json::json!({
             "build_profile": env!("TNT_BUILD_PROFILE"),
@@ -65,7 +68,31 @@ pub fn render_long_version() -> String {
         }),
     };
 
-    serde_yaml::to_string(&info).unwrap()
+    serde_yaml::to_string(&info).expect("cannot fail serializing to string")
+}
+
+fn parse_cargo_features(cargo_feature_file: &str) -> serde_json::Value {
+    let cargo_feature_raw: HashMap<String, String> =
+        serde_json::from_str(cargo_feature_file).expect("file contents controlled in build.rs");
+
+    let mut cargo_features = vec![];
+    for (env, value) in &cargo_feature_raw {
+        if value != "1" {
+            // Something changed in CARGO_FEATURE_* format, fallback to unparsed output
+            return serde_json::to_value(cargo_feature_raw)
+                .expect("cannot fail for HashMap<String, String>");
+        }
+
+        let Some(feature) = env.strip_prefix("CARGO_FEATURE_") else {
+            // Something changed in CARGO_FEATURE_* format, fallback to unparsed output
+            return serde_json::to_value(cargo_feature_raw)
+                .expect("cannot fail for HashMap<String, String>");
+        };
+
+        cargo_features.push(feature.to_lowercase());
+    }
+
+    serde_json::to_value(cargo_features).expect("cannot fail for Vec<String>")
 }
 
 ////////////////////////////////////////////////////////////////////////////////

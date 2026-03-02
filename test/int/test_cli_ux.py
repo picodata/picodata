@@ -1083,6 +1083,11 @@ def test_picodata_long_version(cluster: Cluster):
     assert "version" in info_tarantool
     assert "build_profile" in info_tarantool
 
+    assert "cargo_features" in info
+    cargo_features = info["cargo_features"]
+    assert isinstance(cargo_features, list)
+    assert all("CARGO_FEATURE_" not in v for v in cargo_features)
+
 
 def test_admin_cli_exit_code(cluster: Cluster):
     # Test the exit code for SQL statements with syntax errors
