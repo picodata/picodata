@@ -47,6 +47,7 @@ with the `YY.MINOR.MICRO` scheme.
     syntax. Unlogged tables are implemented as Tarantool data-temporary spaces, so it is not possible to
     store them using the vinyl engine.
 - \[breaking\] Instead of always being a tier with name `default`, default tier is now the first tier mentioned in the config.
+- Add support for `compression_level` Vinyl option for secondary indices created with `CREATE INDEX`.
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:
