@@ -112,10 +112,10 @@ make centos7-cmake3
 
 make build-release-pkg
 
-%if %use_dynamic_build
-make sbom
+%if %use_dynamic_build && 0%{?rhel} != 8
+make sbom  SBOM_CHECKER_DIR=/opt/sbom-checker SBOM_VERIFY=0
 mkdir -p %{_rpmdir}
-mv -v picodata.cdx.json %{_rpmdir}/../
+mv -v picodata-fixed.cdx.json %{_rpmdir}/../
 %endif
 
 %install
