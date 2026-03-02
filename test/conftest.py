@@ -899,7 +899,6 @@ class Instance:
                 connection_timeout=timeout,
                 connect_now=True,
                 fetch_schema=False,
-                reconnect_max_attempts=0,
                 transport="ssl" if need_iproto_tls else None,
                 ssl_cert_file=str(self.iproto_tls[0]) if need_iproto_tls else None,  # type: ignore
                 ssl_key_file=str(self.iproto_tls[1]) if need_iproto_tls else None,  # type: ignore
@@ -1576,8 +1575,7 @@ class Instance:
             # connection reset error and when the OS will finish cleaning up
             # the process. So we introduce a tiny timeout here (which may still not
             # be enough in every case).
-            # Using 0.05s instead of 1s to avoid slowing down startup polling.
-            exit_code = self.process.wait(timeout=0.05)  # type: ignore
+            exit_code = self.process.wait(timeout=1)  # type: ignore
         except subprocess.TimeoutExpired:
             # it's fine, the process is still running
             pass
