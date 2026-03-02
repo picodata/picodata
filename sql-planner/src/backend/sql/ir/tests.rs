@@ -2,6 +2,7 @@ use pretty_assertions::assert_eq;
 
 use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 
+use crate::executor::engine::helpers::table_name;
 use crate::executor::ir::ExecutionPlan;
 
 use crate::ir::transformation::helpers::sql_to_ir;
@@ -30,7 +31,7 @@ fn check_sql_with_snapshot(
         .unwrap()
         .merge_tuples()
         .unwrap();
-    let mut ex_plan = ExecutionPlan::from(plan);
+    let mut ex_plan = ExecutionPlan::new(plan);
     let top_id = ex_plan.get_ir_plan().get_top().unwrap();
 
     ex_plan.get_mut_ir_plan().stash_constants(snapshot).unwrap();
@@ -38,7 +39,8 @@ fn check_sql_with_snapshot(
     let sp = SyntaxPlan::new(&ex_plan, top_id, snapshot).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
-    let (sql, _) = ex_plan.to_sql(&nodes, "test", None).unwrap();
+    let sql = ex_plan.generate_sql(&nodes, "test", table_name).unwrap();
+    let sql = PatternWithParams::new(sql, ex_plan.get_ir_plan().constants.clone());
 
     assert_eq!(expected, sql,);
 }

@@ -1,7 +1,6 @@
 use crate::{
     backend::sql::{
         ir::PatternWithParams,
-        space::ADMIN_ID,
         tree::{OrderedSyntaxNodes, SyntaxPlan},
     },
     executor::preemption::Scheduler,
@@ -14,7 +13,6 @@ use crate::{
 use ahash::AHashMap;
 
 use crate::{
-    error,
     executor::vtable::vtable_indexed_column_name,
     ir::{
         node::{
@@ -26,7 +24,6 @@ use crate::{
 };
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::{any::Any, cmp::Ordering, collections::HashMap, rc::Rc, sync::OnceLock};
-use tarantool::space::Space;
 
 use super::{BlockExecData, Metadata, Router, Vshard};
 use crate::executor::Port;
@@ -53,7 +50,6 @@ use tarantool::msgpack;
 use tarantool::msgpack::rmp;
 use tarantool::msgpack::{decode_from_read, Context, Decode, DecodeError};
 use tarantool::msgpack::{Encode, EncodeError};
-use tarantool::session::with_su;
 use tarantool::tuple::Tuple;
 
 pub mod vshard;
@@ -864,10 +860,10 @@ fn generate_pattern_with_params_for_block(
         // WHERE <expr>
         update_nodes.extend(select.filter);
 
-        let (pattern, _) = plan.generate_sql(&update_nodes, plan_id, None, new_table_name)?;
+        let pattern = plan.generate_sql(&update_nodes, plan_id, new_table_name)?;
         PatternWithParams { pattern, params }
     } else {
-        let (pattern, _) = plan.generate_sql(&nodes, plan_id, None, new_table_name)?;
+        let pattern = plan.generate_sql(&nodes, plan_id, new_table_name)?;
         PatternWithParams { pattern, params }
     };
 
@@ -1305,30 +1301,6 @@ pub fn sharding_key_from_tuple<'tuple>(
             )),
         ))
     }
-}
-
-pub fn drop_tables(tables: Vec<(SmolStr, bool)>) -> Result<(), SbroadError> {
-    for (name, already_created) in tables {
-        if already_created {
-            continue;
-        }
-
-        let cleanup = |space: Space| match with_su(ADMIN_ID, || space.drop()) {
-            Ok(_) => {}
-            Err(e) => {
-                error!(
-                    Option::from("Temporary space"),
-                    &format!("Failed to drop {name}: {e}")
-                );
-            }
-        };
-
-        if let Some(space) = with_su(ADMIN_ID, || Space::find(name.as_str()))? {
-            cleanup(space);
-        }
-    }
-
-    Ok(())
 }
 
 pub struct UpdateArgs<'vtable_tuple> {

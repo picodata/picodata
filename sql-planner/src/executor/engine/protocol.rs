@@ -635,8 +635,7 @@ impl TryFrom<ExecutionData> for ExecutionCacheMissData {
             let sp = SyntaxPlan::new(&value.plan, top_id, Snapshot::Oldest)?;
             let on = OrderedSyntaxNodes::try_from(sp)?;
             let a = on.to_syntax_data()?;
-            let (sql, _) = value.plan.generate_sql(&a, plan_id, None, new_table_name)?;
-            sql
+            value.plan.generate_sql(&a, plan_id, new_table_name)?
         };
 
         let vtables_meta = {

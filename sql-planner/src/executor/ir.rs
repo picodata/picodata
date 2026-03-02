@@ -61,16 +61,6 @@ pub struct ExecutionPlan {
     vtables: VirtualTableMap,
 }
 
-impl From<Plan> for ExecutionPlan {
-    fn from(plan: Plan) -> Self {
-        ExecutionPlan {
-            request_id: uuid::Uuid::new_v4().to_string(),
-            plan,
-            vtables: VirtualTableMap::new(),
-        }
-    }
-}
-
 /// Translates the original plan's node id to the new sub-plan one.
 struct SubtreeMap {
     inner: AHashMap<NodeId, NodeId>,
@@ -107,6 +97,14 @@ impl SubtreeMap {
 const SQ_IDS_CAPACITY: usize = 100;
 
 impl ExecutionPlan {
+    pub fn new(plan: Plan) -> Self {
+        ExecutionPlan {
+            request_id: uuid::Uuid::new_v4().to_string(),
+            plan,
+            vtables: VirtualTableMap::new(),
+        }
+    }
+
     #[must_use]
     pub fn get_request_id(&self) -> &str {
         &self.request_id

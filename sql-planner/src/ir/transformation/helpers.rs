@@ -3,6 +3,7 @@
 use crate::backend::sql::ir::PatternWithParams;
 use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use crate::errors::SbroadError;
+use crate::executor::engine::helpers::table_name;
 use crate::executor::engine::mock::RouterConfigurationMock;
 use crate::executor::ir::ExecutionPlan;
 use crate::frontend::sql::ast::AbstractSyntaxTree;
@@ -65,7 +66,7 @@ pub fn check_transformation(
 ) -> PatternWithParams {
     let mut plan = sql_to_ir(query, params);
     plan = f_transform(plan);
-    let mut ex_plan = ExecutionPlan::from(plan);
+    let mut ex_plan = ExecutionPlan::new(plan);
     let top_id = ex_plan.get_ir_plan().get_top().unwrap();
 
     ex_plan
@@ -76,6 +77,6 @@ pub fn check_transformation(
     let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Latest).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
-    let (sql, _) = ex_plan.to_sql(&nodes, "", None).unwrap();
-    sql
+    let sql = ex_plan.generate_sql(&nodes, "", table_name).unwrap();
+    PatternWithParams::new(sql, ex_plan.get_ir_plan().constants.clone())
 }

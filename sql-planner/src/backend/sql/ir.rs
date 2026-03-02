@@ -17,12 +17,10 @@ use tarantool::tlua::{self, Push};
 use tarantool::tuple::{FunctionArgs, Tuple};
 
 use crate::errors::{Action, Entity, SbroadError};
-use crate::executor::engine::helpers::table_name;
 use crate::executor::ir::ExecutionPlan;
 use crate::ir::operator::OrderByType;
 use crate::ir::value::Value;
 
-use super::space::{create_table, TableGuard};
 use super::tree::SyntaxData;
 
 #[derive(Debug, Eq, Deserialize, Serialize, Push, Clone)]
@@ -177,9 +175,8 @@ impl ExecutionPlan {
         &self,
         nodes: &[impl AsRef<SyntaxData>],
         plan_id: T,
-        vtables_meta: Option<&VTablesMeta>,
         table_name: TableName,
-    ) -> Result<(String, Vec<NodeId>), SbroadError>
+    ) -> Result<String, SbroadError>
     where
         TableName: Fn(T, NodeId) -> SmolStr,
         T: Copy,
@@ -570,17 +567,7 @@ impl ExecutionPlan {
                         }
                         col_names
                     };
-                    let col_names = if let Some(meta) = vtables_meta {
-                        let meta = meta.get(motion_id).ok_or_else(|| {
-                            SbroadError::Invalid(
-                                Entity::RequiredData,
-                                Some(format_smolstr!(
-                                    "no vtable meta for motion with id={motion_id}"
-                                )),
-                            )
-                        })?;
-                        build_names(&meta.columns)
-                    } else {
+                    let col_names = {
                         let vtable = self.get_motion_vtable(*motion_id)?;
                         build_names(vtable.get_columns())
                     };
@@ -608,37 +595,8 @@ impl ExecutionPlan {
         }
 
         assert_eq!(ir_plan.constants.len(), params_idx.len());
-        let motions: Vec<NodeId> = motions.into_iter().collect();
 
-        Ok((sql, motions))
-    }
-
-    /// Transform plan sub-tree (pointed by top) to sql string pattern with parameters.
-    ///
-    /// # Errors
-    /// - plan is invalid and can't be transformed
-    #[allow(dead_code)]
-    #[allow(clippy::too_many_lines)]
-    pub fn to_sql(
-        &self,
-        nodes: &[&SyntaxData],
-        plan_id: &str,
-        vtables_meta: Option<&VTablesMeta>,
-    ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
-        let mut guard = Vec::with_capacity(self.get_vtables().len());
-
-        let (sql, motions) = self.generate_sql(nodes, plan_id, vtables_meta, table_name)?;
-
-        for motion_id in motions {
-            let table_guard = create_table(self, plan_id, motion_id, vtables_meta)?;
-            guard.push(table_guard);
-        }
-
-        // MUST be constructed out of the `syntax.ordered.sql` context scope.
-        Ok((
-            PatternWithParams::new(sql, self.get_ir_plan().constants.clone()),
-            guard,
-        ))
+        Ok(sql)
     }
 
     /// Checks if the given query subtree modifies data or not.

@@ -1,5 +1,5 @@
 use crate::{
-    backend::sql::space::ADMIN_ID,
+    backend::sql::ADMIN_ID,
     ir::value::{EncodedValue, Value},
 };
 use std::{

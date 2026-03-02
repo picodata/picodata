@@ -628,7 +628,7 @@ impl Vshard for StorageRuntime {
             let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Oldest)?;
             let ordered = OrderedSyntaxNodes::try_from(sp)?;
             let nodes = ordered.to_syntax_data()?;
-            let (local_sql, _) = ex_plan.generate_sql(&nodes, plan_id, None, new_table_name)?;
+            let local_sql = ex_plan.generate_sql(&nodes, plan_id, new_table_name)?;
 
             let schema_info = SchemaInfo::new(
                 std::mem::take(&mut ex_plan.get_mut_ir_plan().table_version_map),
@@ -700,7 +700,7 @@ impl Vshard for StorageRuntime {
             let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Oldest)?;
             let ordered = OrderedSyntaxNodes::try_from(sp)?;
             let nodes = ordered.to_syntax_data()?;
-            let (local_sql, _) = ex_plan.generate_sql(&nodes, plan_id, None, new_table_name)?;
+            let local_sql = ex_plan.generate_sql(&nodes, plan_id, new_table_name)?;
 
             let schema_info = SchemaInfo::new(
                 std::mem::take(&mut ex_plan.get_mut_ir_plan().table_version_map),

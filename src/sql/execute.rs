@@ -15,7 +15,7 @@ use comfy_table::{Cell, ContentArrangement, Row, Table};
 use rmp::decode::read_array_len;
 use rmp::encode::{write_array_len, write_uint};
 use smol_str::{format_smolstr, ToSmolStr};
-use sql::backend::sql::space::ADMIN_ID;
+use sql::backend::sql::ADMIN_ID;
 use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::engine::helpers::{build_insert_args, TupleBuilderCommand, TupleBuilderPattern};
 use sql::executor::engine::{QueryCache, StorageCache, Vshard};

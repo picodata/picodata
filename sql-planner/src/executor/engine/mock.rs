@@ -22,7 +22,7 @@ use crate::executor::vtable::VirtualTable;
 use crate::executor::{Port, PortType};
 use crate::frontend::sql::ast::AbstractSyntaxTree;
 use crate::ir::function::Function;
-use crate::ir::node::{BlockStatement, NodeId};
+use crate::ir::node::NodeId;
 use crate::ir::relation::{Column, ColumnRole, SpaceEngine, Table};
 use crate::ir::tree::Snapshot;
 use crate::ir::types::{DerivedType, UnrestrictedType};
@@ -37,8 +37,7 @@ use tarantool::space::SpaceId;
 
 use super::helpers::vshard::prepare_rs_to_ir_map;
 use super::helpers::{dispatch_impl, normalize_name_from_sql, table_name};
-use super::{get_builtin_functions, BlockExecData, Metadata, QueryCache, VersionMap};
-use crate::backend::sql::ir::PatternWithParams;
+use super::{get_builtin_functions, BlockExecData, Metadata, QueryCache};
 use crate::executor::result::MetadataColumn;
 use crate::executor::vdbe::{ExecutionInsight, SqlError, SqlStmt};
 
@@ -1808,10 +1807,8 @@ fn to_sql(plan: &ExecutionPlan) -> (String, Vec<Value>) {
     let sp = SyntaxPlan::new(plan, top_id, Snapshot::Oldest).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
-    let (sql, _) = plan
-        .generate_sql(&nodes, TEMPLATE, None, |name: &str, id| {
-            table_name(name, id)
-        })
+    let sql = plan
+        .generate_sql(&nodes, TEMPLATE, |name: &str, id| table_name(name, id))
         .unwrap();
     let params = plan.get_ir_plan().constants.clone();
     (sql, params)
@@ -1914,7 +1911,9 @@ impl Router for RouterRuntimeMock {
             .virtual_tables
             .borrow()
             .get(motion_node_id)
-            .expect("Virtual table for motion with id {motion_node_id} not found.")
+            .expect(&format!(
+                "Virtual table for motion with id {motion_node_id} not found."
+            ))
             .clone())
     }
 
@@ -1927,7 +1926,9 @@ impl Router for RouterRuntimeMock {
             .virtual_tables
             .borrow()
             .get(&values_id)
-            .expect("Virtual table for values with id {values_id} not found.")
+            .expect(&format!(
+                "Virtual table for values with id {values_id} not found."
+            ))
             .clone())
     }
 

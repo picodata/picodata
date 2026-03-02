@@ -1,5 +1,6 @@
 use super::*;
 use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
+use crate::executor::engine::helpers::table_name;
 use crate::executor::engine::mock::{DispatchInfo, PortMocked, RouterRuntimeMock};
 use crate::ir::node::{ArenaType, Node, Over, Projection, ReferenceTarget, Window};
 use crate::ir::operator::{OrderByElement, OrderByEntity};
@@ -38,8 +39,8 @@ fn get_sql_from_execution_plan(
     let sp = SyntaxPlan::new(&subplan, subplan_top_id, snapshot).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
-    let (sql, _) = subplan.to_sql(&nodes, name_base, None).unwrap();
-    sql
+    let sql = subplan.generate_sql(&nodes, name_base, table_name).unwrap();
+    PatternWithParams::new(sql, subplan.get_ir_plan().constants.clone())
 }
 
 #[test]
@@ -1107,7 +1108,7 @@ fn check_subtree_hashes_are_equal_2(
     let get_hash = |sql: &str, values: Vec<Value>| -> SmolStr {
         let plan = sql_to_optimized_ir(sql, values);
         let top = plan.get_top().unwrap();
-        let mut exec_plan = ExecutionPlan::from(plan.clone());
+        let mut exec_plan = ExecutionPlan::new(plan.clone());
         let subplan = exec_plan.take_subtree(top, &Buckets::Any).unwrap();
         subplan.get_ir_plan().pattern_id(top).unwrap()
     };
@@ -1365,7 +1366,7 @@ fn take_subtree_projection_windows_transfer() {
         );
     }
 
-    let mut execution_plan: ExecutionPlan = plan.into();
+    let mut execution_plan = ExecutionPlan::new(plan);
 
     let new_plan = execution_plan
         .take_subtree(projection, &Buckets::Any)

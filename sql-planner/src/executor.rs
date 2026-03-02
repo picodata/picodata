@@ -254,7 +254,7 @@ where
 {
     pub fn from_bound_statement(runtime: &'a C, statement: BoundStatement) -> Self {
         Self {
-            exec_plan: ExecutionPlan::from(*statement.plan),
+            exec_plan: ExecutionPlan::new(*statement.plan),
             coordinator: runtime,
             bucket_map: HashMap::new(),
         }
