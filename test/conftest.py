@@ -51,12 +51,14 @@ from framework.log import log
 from framework.port_distributor import PortDistributor
 from framework.util.build import copy_testable_plugins
 from framework.registry import get_or_make_registry
+from framework.registry import Registry
 from framework.util.build import Executable
 from framework.util.build import perform_cargo_build
 from framework.util.build import picodata_executable_path
+from framework.util.git import project_git_version
 from framework.util.path import project_root_path
+from framework.util.version import ExecutableVersion
 from framework.util.version import parse_version_exc
-from framework.util.version import VersionAlias
 from framework.util import BASE_HOST
 
 pytest_plugins = "framework.sqltester"
@@ -258,16 +260,26 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 def pytest_terminal_summary(terminalreporter, exitstatus: pytest.ExitCode, config: pytest.Config):
     if config.getoption("--collect-required-rolling-versions"):
-        # TODO(kbezuglyi): Once <picodata!2677> lands, this should use `Versions`
-        # sourced from the new register instead of `VersionAlias`. Aliases
-        # alone carry no value for CI - only the resolved versions do.
-        aliases: set[VersionAlias] = getattr(config, "required_rolling_versions", set())
-        versions: list[str] = sorted(list(map(str, aliases)))
+        registry: Registry = get_or_make_registry()
 
-        message = f"collected versions for rolling upgrade tests: [{', '.join(versions)}]"
+        versions: set[str] = set()
+        aliases: set[ExecutableVersion] = getattr(config, "required_rolling_versions", set())
+        for alias in aliases:
+            executable = registry.get(alias, resolve=False)
+            if executable is None:
+                continue
+
+            version = executable.version
+            if version != project_git_version():
+                versions.add(str(version))
+
+        collected = list(versions)
+        collected.sort(reverse=True)
+
+        message = f"collected versions for rolling upgrade tests: [{', '.join(collected)}]"
         terminalreporter.write_line(message)
 
-        line = "\n".join(versions)
+        line = "\n".join(collected)
         path = project_root_path() / "required_rolling_versions.txt"
         with open(path, "w") as file:
             file.write(line)

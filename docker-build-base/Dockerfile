@@ -92,10 +92,5 @@ RUN set -e; \
     curl -L -o glauth https://github.com/glauth/glauth/releases/download/v2.3.2/glauth-linux-amd64 && \
     chmod +x glauth
 
-# Install previous versions of Picodata. Used for rolling upgrade tests.
-# See more explanatory comments in the script itself.
-COPY tools/install_rolling_binaries.sh /usr/bin/install_rolling_binaries.sh
-RUN /usr/bin/install_rolling_binaries.sh
-
 # Timezone
 RUN ln -fs /usr/share/zoneinfo/Europe/Moscow /etc/localtime
