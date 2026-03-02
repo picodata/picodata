@@ -644,26 +644,42 @@ fn parse_create_index(
             .get_node(*child_id)
             .expect("Expected to see first child node")
     };
-    let decimal_value = |node: &ParseNode| -> Decimal {
-        Decimal::from_str(
-            first_child(node)
-                .value
-                .as_ref()
-                .expect("Expected to see Decimal value")
-                .as_str(),
-        )
-        .expect("Expected to parse decimal value")
+    let parse_decimal = |node: &ParseNode, option_name: &str| -> Result<Decimal, SbroadError> {
+        let child = first_child(node);
+        let value_str = child.value.as_ref().ok_or_else(|| {
+            SbroadError::Invalid(
+                Entity::Value,
+                Some(format_smolstr!("missing value for {option_name}")),
+            )
+        })?;
+        Decimal::from_str(value_str.as_str()).map_err(|e| {
+            SbroadError::Invalid(
+                Entity::Value,
+                Some(format_smolstr!(
+                    "invalid value '{value_str}' for {option_name}: {e:?}"
+                )),
+            )
+        })
     };
-    fn parse_int<T>(node: &ParseNode) -> T
+    fn parse_int<T>(node: &ParseNode, option_name: &str) -> Result<T, SbroadError>
     where
         T: std::str::FromStr,
-        <T as FromStr>::Err: std::fmt::Debug,
+        <T as FromStr>::Err: std::fmt::Display,
     {
-        node.value
-            .as_ref()
-            .expect("Expected to have value")
-            .parse()
-            .expect("Expected to parse integer value")
+        let value_str = node.value.as_ref().ok_or_else(|| {
+            SbroadError::Invalid(
+                Entity::Value,
+                Some(format_smolstr!("missing value for {option_name}")),
+            )
+        })?;
+        value_str.parse().map_err(|e| {
+            SbroadError::Invalid(
+                Entity::Value,
+                Some(format_smolstr!(
+                    "invalid value '{value_str}' for {option_name}: {e}"
+                )),
+            )
+        })
     }
     let bool_value = |node: &ParseNode| -> bool {
         let node = first_child(node);
@@ -713,14 +729,23 @@ fn parse_create_index(
                     );
                     let param_node = first_child(option_param_node);
                     match param_node.rule {
-                        Rule::BloomFpr => bloom_fpr = Some(decimal_value(param_node)),
-                        Rule::PageSize => page_size = Some(parse_int(first_child(param_node))),
-                        Rule::RangeSize => range_size = Some(parse_int(first_child(param_node))),
-                        Rule::RunCountPerLevel => {
-                            run_count_per_level = Some(parse_int(first_child(param_node)))
+                        Rule::BloomFpr => bloom_fpr = Some(parse_decimal(param_node, "bloom_fpr")?),
+                        Rule::PageSize => {
+                            page_size = Some(parse_int(first_child(param_node), "page_size")?)
                         }
-                        Rule::RunSizeRatio => run_size_ratio = Some(decimal_value(param_node)),
-                        Rule::Dimension => dimension = Some(parse_int(first_child(param_node))),
+                        Rule::RangeSize => {
+                            range_size = Some(parse_int(first_child(param_node), "range_size")?)
+                        }
+                        Rule::RunCountPerLevel => {
+                            run_count_per_level =
+                                Some(parse_int(first_child(param_node), "run_count_per_level")?)
+                        }
+                        Rule::RunSizeRatio => {
+                            run_size_ratio = Some(parse_decimal(param_node, "run_size_ratio")?)
+                        }
+                        Rule::Dimension => {
+                            dimension = Some(parse_int(first_child(param_node), "dimension")?)
+                        }
                         Rule::Distance => {
                             let distance_node = first_child(param_node);
                             match distance_node.rule {
