@@ -149,6 +149,10 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed `proposal dropped` errors sometimes being returned from DDL commands for example when raft is unknown.
 - Fixed an RPC to avoid skipping metrics collection code path on early return in procedure implementation.
 - Make sure that single-tiered clusters upgraded from 25.3.x always have a default tier. 
+- Fixed that instances would fail with ER_READONLY while joining a replicaset
+  whose master was still bootstrapping. Governor no longer triggers mastership
+  failover for a master that is in the initial Offline(0) join state and has
+  not yet had a chance to become Online.
 - Fixed local SQL iterators to survive fiber yields during table truncation.
 
 ### Observability

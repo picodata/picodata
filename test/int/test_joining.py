@@ -883,4 +883,6 @@ cluster:
     storage_3.start_and_wait()
 
     storage_1.wait_online()
-    storage_2.wait_online()  # this will not happen
+    storage_2.wait_online()
+
+    assert storage_1.replicaset_master_name() == storage_1.name

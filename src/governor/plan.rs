@@ -1247,6 +1247,11 @@ fn get_new_replicaset_master_if_needed<'i>(
             tlog!(Warning, "target master {} of replicaset {} is from different a replicaset {}: trying to choose a new one",
                   master.name, master.replicaset_name, r.name);
         } else if has_states!(master, * -> not Online) {
+            if master_is_bootstrapping(master) {
+                tlog!(Info, "target master {} of replicaset {} is still bootstrapping: skipping master change",
+                      master.name, master.replicaset_name);
+                continue;
+            }
             #[rustfmt::skip]
             tlog!(Info, "target master {} of replicaset {} is going {}: trying to choose a new one",
                   master.name, master.replicaset_name, master.target_state.variant);
@@ -1283,6 +1288,15 @@ fn get_new_replicaset_master_if_needed<'i>(
     }
 
     None
+}
+
+/// A freshly joined master is still the only writable bootstrap source for
+/// lagging replicas in its replicaset. While it is in the initial
+/// Offline(0) -> Offline(0) join state it has not yet had a chance to become
+/// online, so failover must not be triggered.
+fn master_is_bootstrapping(master: &Instance) -> bool {
+    master.current_state == State::new(StateVariant::Offline, 0)
+        && master.target_state == State::new(StateVariant::Offline, 0)
 }
 
 #[inline(always)]
@@ -1609,4 +1623,27 @@ pub fn handle_instances_becoming_online<'i>(
 #[inline(always)]
 pub fn maybe_responding(instances: &[Instance]) -> impl Iterator<Item = &Instance> {
     instances.iter().filter(|instance| instance.may_respond())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bootstrapping_check_applies_to_brand_new_master() {
+        let mut master = Instance::for_tests();
+        master.current_state = State::new(StateVariant::Offline, 0);
+        master.target_state = State::new(StateVariant::Offline, 0);
+
+        assert!(master_is_bootstrapping(&master));
+    }
+
+    #[test]
+    fn bootstrapping_check_does_not_apply_to_previously_online_master() {
+        let mut master = Instance::for_tests();
+        master.current_state = State::new(StateVariant::Offline, 1);
+        master.target_state = State::new(StateVariant::Offline, 1);
+
+        assert!(!master_is_bootstrapping(&master));
+    }
 }
