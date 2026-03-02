@@ -20,10 +20,6 @@ export const GroupByFilter: React.FC<GroupByFilterProps> = (props) => {
       value: "TIERS",
     },
     {
-      label: groupByTranslation.options.replicasets,
-      value: "REPLICASETS",
-    },
-    {
       label: groupByTranslation.options.instances,
       value: "INSTANCES",
     },
