@@ -64,6 +64,7 @@ variables:
   SCCACHE_DIR: $CI_PROJECT_DIR/.sccache
   SCCACHE_CACHE_SIZE: "15G"
   COMPILER_LAUNCHER: "sccache"
+  ROLLING_BINARIES_DIR: $CI_PROJECT_DIR/.rolling_binaries
 
 # job:rules explained:
 #
@@ -147,6 +148,13 @@ variables:
   key: "py_cache-$CI_COMMIT_REF_SLUG"
   fallback_keys:
     - py_cache-$MAIN_BRANCH
+
+.rolling_binaries_cache: &rolling_binaries_cache
+  paths:
+    - .rolling_binaries/
+  key: "rolling_binaries_cache-$CI_COMMIT_REF_SLUG"
+  fallback_keys:
+    - rolling_binaries_cache-$MAIN_BRANCH
 
 .kaniko_image: &kaniko_image
   image:
@@ -350,6 +358,11 @@ make-py-cache:
       - BUILD_PROFILE: dev
         TARGET: debug
 
+.install-rolling-binaries: &install-rolling-binaries |
+  ci-log-section start "install-rolling-binaries" Installing Picodata binaries needed for rolling upgrade tests ...
+  make collect-required-rolling-versions
+  poetry run tools/install_rolling_binaries.py
+  ci-log-section end "install-rolling-binaries"
 
 build-linux:
   stage: test
@@ -451,11 +464,17 @@ test-rs-linux:
   needs:
     - job: build-linux
       artifacts: true
+    - job: install-rolling-binaries
+      artifacts: true
   cache:
     - <<: *cache_git
       policy: pull
     - <<: *py_cache
       policy: pull
+    - <<: *rolling_binaries_cache
+      policy: pull
+  before_script:
+    - export PATH="${ROLLING_BINARIES_DIR}:$PATH"
   artifacts:
     when: always
     paths:
@@ -477,6 +496,48 @@ test-py-sql-linux:
         PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k '(sql or pgproto)'"
       ci-log-section end "test"
 
+
+install-rolling-binaries:
+  stage: test
+  variables:
+    GIT_STRATEGY: none
+  cache:
+    - <<: *cache_git
+      policy: pull
+    - <<: *py_cache
+      policy: pull
+    - <<: *rolling_binaries_cache
+      policy: $CACHE_POLICY
+  rules:
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
+      changes:
+        paths:
+          - test/int/test_rolling.py
+      variables:
+        CACHE_POLICY: push
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
+      variables:
+        CACHE_POLICY: pull
+    - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
+      changes:
+        compare_to: *main-branch
+        paths:
+          - test/int/test_rolling.py
+      variables:
+        CACHE_POLICY: push
+    - <<: *if-build-base-changes-on-dev-branch
+      variables:
+        CACHE_POLICY: pull
+    - <<: *if-no-docs
+      variables:
+        CACHE_POLICY: pull
+  script:
+    - tools/ensure_checkout.sh
+    - *poetry-install
+    - *install-rolling-binaries
+  artifacts:
+    paths:
+      - .rolling_binaries/
 
 test-py-not-sql-linux:
   stage: test
