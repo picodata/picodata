@@ -930,3 +930,225 @@ SELECT CAST(1 AS int) as "col_1" FROM "t" INNER JOIN ( SELECT "COL_0" FROM "TMP_
 | 0        | 1     | 1    | SCAN TABLE TMP_4585702767082550896_0136 (~1048576 rows) |
 +----------+-------+------+---------------------------------------------------------+
 ''
+
+-- TEST: init-block
+-- SQL:
+DROP TABLE IF EXISTS t;
+CREATE TABLE t (pk INT PRIMARY KEY, a INT, b INT);
+INSERT INTO t VALUES (1,1,1), (2,2,2), (3,3,3), (4,4,4);
+
+
+-- TEST: explain-raw-return-query-1
+-- SQL:
+EXPLAIN (RAW) DO $$
+BEGIN
+  RETURN QUERY SELECT a + 1 FROM t WHERE pk = 1;
+  RETURN QUERY SELECT b + 2 FROM t WHERE pk = 1;
+END $$;
+-- EXPECTED:
+1. Return query (FILTERED STORAGE):
+SELECT "t"."a" + CAST(1 AS int) as "col_1" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
++----------+-------+------+--------------------------------------------------+
+| selectid | order | from | detail                                           |
++============================================================================+
+| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
++----------+-------+------+--------------------------------------------------+
+''
+2. Return query (FILTERED STORAGE):
+SELECT "t"."b" + CAST(2 AS int) as "col_1" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
++----------+-------+------+--------------------------------------------------+
+| selectid | order | from | detail                                           |
++============================================================================+
+| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
++----------+-------+------+--------------------------------------------------+
+''
+
+
+-- TEST: explain-raw-return query-2
+-- SQL:
+EXPLAIN (RAW) DO $$
+BEGIN
+  RETURN QUERY SELECT 1,2 UNION ALL SELECT 1,2;
+END $$;
+-- EXPECTED:
+1. Return query (ROUTER):
+SELECT CAST(1 AS int) as "col_1", CAST(2 AS int) as "col_2" UNION ALL SELECT CAST(1 AS int) as "col_1", CAST(2 AS int) as "col_2"
++----------+-------+------+-----------------------------------------+
+| selectid | order | from | detail                                  |
++===================================================================+
+| 0        | 0     | 0    | COMPOUND SUBQUERIES 1 AND 2 (UNION ALL) |
++----------+-------+------+-----------------------------------------+
+''
+
+
+-- TEST: explain-raw-return-query-3
+-- SQL:
+EXPLAIN (RAW) DO $$
+BEGIN
+  RETURN QUERY VALUES (1,2), (2,3);
+  RETURN QUERY SELECT 3,4;
+END $$;
+-- EXPECTED:
+1. Return query (ROUTER):
+VALUES (CAST(1 AS int), CAST(2 AS int)), (CAST(2 AS int), CAST(3 AS int))
++----------+-------+------+--------+
+| selectid | order | from | detail |
++==================================+
++----------+-------+------+--------+
+''
+2. Return query (ROUTER):
+SELECT CAST(3 AS int) as "col_1", CAST(4 AS int) as "col_2"
++----------+-------+------+--------+
+| selectid | order | from | detail |
++==================================+
++----------+-------+------+--------+
+''
+
+
+-- TEST: explain-raw-return-query-4
+-- SQL:
+EXPLAIN (RAW) DO $$
+BEGIN
+  RETURN QUERY SELECT 2;
+  RETURN QUERY SELECT b + 2 FROM t WHERE pk = 1;
+  RETURN QUERY SELECT 4;
+END $$;
+-- EXPECTED:
+1. Return query (FILTERED STORAGE):
+SELECT CAST(2 AS int) as "col_1"
++----------+-------+------+--------+
+| selectid | order | from | detail |
++==================================+
++----------+-------+------+--------+
+''
+2. Return query (FILTERED STORAGE):
+SELECT "t"."b" + CAST(2 AS int) as "col_1" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
++----------+-------+------+--------------------------------------------------+
+| selectid | order | from | detail                                           |
++============================================================================+
+| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
++----------+-------+------+--------------------------------------------------+
+''
+3. Return query (FILTERED STORAGE):
+SELECT CAST(4 AS int) as "col_1"
++----------+-------+------+--------+
+| selectid | order | from | detail |
++==================================+
++----------+-------+------+--------+
+''
+
+
+-- TEST: explain-raw-updates-1
+-- SQL:
+EXPLAIN (RAW) DO $$
+BEGIN 
+  RETURN QUERY SELECT * FROM t WHERE pk = 1;
+  UPDATE t SET a = a + 1 WHERE pk = 1;
+  UPDATE t SET a = a + 1 WHERE pk = 1;
+END $$;
+-- EXPECTED:
+1. Return query (FILTERED STORAGE):
+SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
++----------+-------+------+--------------------------------------------------+
+| selectid | order | from | detail                                           |
++============================================================================+
+| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
++----------+-------+------+--------------------------------------------------+
+''
+2. Query (FILTERED STORAGE):
+UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(1 AS int)
++----------+-------+------+--------------------------------------------------+
+| selectid | order | from | detail                                           |
++============================================================================+
+| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
++----------+-------+------+--------------------------------------------------+
+''
+3. Query (FILTERED STORAGE):
+UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(1 AS int)
++----------+-------+------+--------------------------------------------------+
+| selectid | order | from | detail                                           |
++============================================================================+
+| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
++----------+-------+------+--------------------------------------------------+
+''
+
+
+-- TEST: explain-raw-updates-2
+-- SQL:
+EXPLAIN (RAW) DO $$
+BEGIN
+  RETURN QUERY SELECT * FROM t WHERE pk = 2;
+  UPDATE t SET a = a + 1 WHERE pk = 2;
+  UPDATE t SET a = a * 2 WHERE pk = 2;
+END $$;
+-- EXPECTED:
+1. Return query (FILTERED STORAGE):
+SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(2 AS int)
++----------+-------+------+--------------------------------------------------+
+| selectid | order | from | detail                                           |
++============================================================================+
+| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
++----------+-------+------+--------------------------------------------------+
+''
+2. Query (FILTERED STORAGE):
+UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(2 AS int)
++----------+-------+------+--------------------------------------------------+
+| selectid | order | from | detail                                           |
++============================================================================+
+| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
++----------+-------+------+--------------------------------------------------+
+''
+3. Query (FILTERED STORAGE):
+UPDATE "t" SET "a" = "t"."a" * CAST(2 AS int) WHERE "t"."pk" = CAST(2 AS int)
++----------+-------+------+--------------------------------------------------+
+| selectid | order | from | detail                                           |
++============================================================================+
+| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
++----------+-------+------+--------------------------------------------------+
+''
+
+-- TEST: explain-raw-updates-no-return-query
+-- SQL:
+EXPLAIN (RAW) DO $$
+BEGIN
+  UPDATE t SET a = a + 1 WHERE pk = 3;
+  UPDATE t SET a = a * 2 WHERE pk = 3;
+END $$;
+-- EXPECTED:
+1. Query (FILTERED STORAGE):
+UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(3 AS int)
++----------+-------+------+--------------------------------------------------+
+| selectid | order | from | detail                                           |
++============================================================================+
+| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
++----------+-------+------+--------------------------------------------------+
+''
+2. Query (FILTERED STORAGE):
+UPDATE "t" SET "a" = "t"."a" * CAST(2 AS int) WHERE "t"."pk" = CAST(3 AS int)
++----------+-------+------+--------------------------------------------------+
+| selectid | order | from | detail                                           |
++============================================================================+
+| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
++----------+-------+------+--------------------------------------------------+
+''
+
+-- TEST: explain-not-supported
+-- SQL:
+EXPLAIN DO $$
+BEGIN
+  UPDATE t SET a = a + 1 WHERE pk = 3;
+  UPDATE t SET a = a * 2 WHERE pk = 3;
+END $$;
+-- ERROR:
+sbroad: explain for blocks not implemented
+
+-- TEST: explain-query-different-buckets
+-- SQL:
+EXPLAIN (RAW) DO $$
+BEGIN
+  UPDATE t SET a = a + 1 WHERE pk = 1;
+  UPDATE t SET a = a * 2 WHERE pk = 2;
+END $$;
+-- ERROR:
+block queries have different buckets: \[1934\] and \[1410\]
+

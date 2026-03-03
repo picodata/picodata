@@ -3,6 +3,7 @@
 //! for execution of the dispatched query plan subtrees.
 
 use crate::sql::dispatch::port_write_metadata;
+use crate::sql::execute::explain_execute_guarded;
 use crate::sql::execute::{dml_execute, dql_execute, explain_execute};
 use crate::sql::router::{
     calculate_bucket_id, get_index_version_by_pk, get_table_name_and_version, get_table_version,
@@ -615,12 +616,6 @@ impl Vshard for StorageRuntime {
         let top_id = plan.get_top()?;
 
         if let Some(explain_type) = explain_type {
-            let is_fmt = match explain_type {
-                ExplainType::Explain => unreachable!("Explain should already be handled."),
-                ExplainType::ExplainQueryPlan => false,
-                ExplainType::ExplainQueryPlanFmt => true,
-            };
-
             let sql_vdbe_opcode_max = plan.effective_options.sql_vdbe_opcode_max as u64;
 
             let plan_id = plan.new_pattern_id(top_id)?;
@@ -653,7 +648,7 @@ impl Vshard for StorageRuntime {
                 miss_info,
                 ex_plan.to_params(),
                 sql_vdbe_opcode_max,
-                is_fmt,
+                explain_type,
                 location,
                 port,
             )?;
@@ -841,6 +836,30 @@ impl StorageRuntime {
 
         Ok(())
     }
+}
+
+pub fn explain_execute_block<'p>(
+    block: BlockExecData,
+    explain_type: ExplainType,
+    location: &str,
+    port: &mut impl Port<'p>,
+) -> Result<(), SbroadError> {
+    for stmt in block.statements.into_iter() {
+        let stmt_kind = stmt.kind();
+        let pattern = stmt.take();
+        let (sql, params) = pattern.into_parts();
+        explain_execute_guarded(
+            &sql,
+            &params,
+            block.vdbe_max_steps,
+            explain_type,
+            stmt_kind,
+            location,
+            port,
+        )?;
+    }
+
+    Ok(())
 }
 
 pub fn execute_block_locally<'p>(

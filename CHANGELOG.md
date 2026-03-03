@@ -66,6 +66,7 @@ with the `YY.MINOR.MICRO` scheme.
     UPDATE t SET a = a + 1 WHERE pk = 1;
   END $$;
   ```
+- Add support for `EXPLAIN (RAW)` for block queries.
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:

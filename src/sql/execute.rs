@@ -33,6 +33,7 @@ use sql::ir::options::Options;
 use sql::ir::relation::SpaceEngine;
 use sql::ir::relation::{Column, ColumnRole};
 use sql::ir::value::{EncodedValue, MsgPackValue, Value};
+use sql::ir::ExplainType;
 use sql::utils::MutexLike;
 use sql_protocol::decode::{ProtocolMessage, ProtocolMessageIter};
 use sql_protocol::dml::delete::{
@@ -451,9 +452,9 @@ where
 
     let metadata = miss_info.vtable_metadata();
     let mut tables = Vec::with_capacity(metadata.len());
-    for metadata in metadata {
-        let (name, meta) = metadata?;
-        let pk_name = format!("PK_{}", name.strip_prefix("TMP_").unwrap_or(name));
+    for data in metadata {
+        let (name, meta) = data?;
+        let pk_name = generate_pk_for_tmp_table(name);
         table_create(name, pk_name.as_str(), &meta)?;
         tables.push(name.to_smolstr());
     }
@@ -587,10 +588,10 @@ fn repack_vdbe_error(err: String) -> String {
     format!("{table}\n")
 }
 
-fn format_sql(explain: &str, params: &[Value], formatted: bool) -> String {
+fn format_sql(explain: &str, params: &[Value], explain_type: ExplainType) -> String {
     let sql = explain.strip_prefix("EXPLAIN QUERY PLAN ").unwrap_or("");
     let mut fmt_options = sqlformat::FormatOptions::default();
-    if !formatted || sql.len() < LINE_WIDTH {
+    if !matches!(explain_type, ExplainType::ExplainQueryPlanFmt) || sql.len() < LINE_WIDTH {
         fmt_options.joins_as_top_level = true;
         fmt_options.inline = true;
     }
@@ -602,38 +603,22 @@ fn format_sql(explain: &str, params: &[Value], formatted: bool) -> String {
     sqlformat::format(sql, &sqlformat::QueryParams::Indexed(params), &fmt_options)
 }
 
-pub fn explain_execute<'p, R: QueryCache>(
-    runtime: &R,
-    miss_info: impl ExpandedPlanInfo,
+pub fn explain_execute_guarded<'p>(
+    explain: &str,
     params: &[Value],
     sql_vdbe_opcode_max: u64,
-    formatted: bool,
+    explain_type: ExplainType,
+    query: &str,
     location: &str,
     port: &mut impl Port<'p>,
-) -> Result<(), SbroadError>
-where
-    R::Cache: StorageCache<LockRef = TempTableLockRef>,
-{
-    let _lock: <<R as QueryCache>::Mutex as MutexLike<<R as QueryCache>::Cache>>::Guard<'_> =
-        runtime.cache().lock();
-    let explain = miss_info.sql();
-
-    let header = format!("Query ({location}):");
+) -> Result<(), SbroadError> {
+    let header = format!("{query} ({location}):");
     let mp_header = rmp_serde::to_vec(&[header])?;
     port.add_mp(&mp_header);
 
-    let sql = format_sql(explain, params, formatted);
+    let sql = format_sql(explain, params, explain_type);
     let mp_sql = rmp_serde::to_vec(&[sql])?;
     port.add_mp(&mp_sql);
-
-    for motion_id in miss_info.vtable_metadata() {
-        let (table_name, columns) = motion_id?;
-        let pk_name = format!(
-            "PK_{}",
-            table_name.strip_prefix("TMP_").unwrap_or(table_name)
-        );
-        table_create(table_name, &pk_name, &columns)?;
-    }
 
     match SqlStmt::compile(explain) {
         Ok(mut stmt) => {
@@ -654,6 +639,43 @@ where
     }
 
     Ok(())
+}
+
+fn generate_pk_for_tmp_table(table_name: &str) -> String {
+    format!(
+        "PK_{}",
+        table_name.strip_prefix("TMP_").unwrap_or(table_name)
+    )
+}
+
+pub fn explain_execute<'p, R: QueryCache>(
+    runtime: &R,
+    miss_info: impl ExpandedPlanInfo,
+    params: &[Value],
+    sql_vdbe_opcode_max: u64,
+    explain_type: ExplainType,
+    location: &str,
+    port: &mut impl Port<'p>,
+) -> Result<(), SbroadError>
+where
+    R::Cache: StorageCache,
+{
+    let _lock = runtime.cache().lock();
+    for motion_id in miss_info.vtable_metadata() {
+        let (table_name, columns) = motion_id?;
+        let pk_name = generate_pk_for_tmp_table(table_name);
+        table_create(table_name, &pk_name, &columns)?;
+    }
+
+    explain_execute_guarded(
+        miss_info.sql(),
+        params,
+        sql_vdbe_opcode_max,
+        explain_type,
+        "Query",
+        location,
+        port,
+    )
 }
 
 fn table_create_impl(name: &str, pk_name: &str, fields: Vec<Field>) -> Result<(), SbroadError> {

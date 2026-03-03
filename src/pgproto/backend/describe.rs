@@ -420,7 +420,7 @@ impl Describe {
             let node = plan.get_node(top)?;
             CommandTag::try_from(&node)?
         };
-        let query_type = if plan.is_block()? {
+        let query_type = if plan.is_block()? && !plan.is_raw_explain() {
             let top = plan.get_top()?;
             let block = plan.get_block_node(top)?;
             match block {

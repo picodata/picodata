@@ -1358,6 +1358,14 @@ pub enum BlockStatement<T> {
 }
 
 impl<T> BlockStatement<T> {
+    /// Take the query from the statement.
+    pub fn take(self) -> T {
+        match self {
+            Self::ReturnQuery(v) => v,
+            Self::Query(v) => v,
+        }
+    }
+
     /// Get a reference to the query from the statement.
     pub fn get(&self) -> &T {
         match self {
@@ -1383,6 +1391,13 @@ impl<T> BlockStatement<T> {
             Self::ReturnQuery(v) => BlockStatement::ReturnQuery(f(v)?),
             Self::Query(v) => BlockStatement::Query(f(v)?),
         })
+    }
+
+    pub fn kind(&self) -> &'static str {
+        match self {
+            BlockStatement::ReturnQuery(_) => "Return query",
+            BlockStatement::Query(_) => "Query",
+        }
     }
 }
 

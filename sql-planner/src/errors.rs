@@ -47,6 +47,7 @@ pub enum Entity {
     DistributionKey,
     /// tarantool engine (memtx, vinyl)
     Engine,
+    Explain,
     /// corresponds to enum Expression
     Expression,
     /// corresponds to struct 'ExpressionMapper'
@@ -170,6 +171,7 @@ impl fmt::Display for Entity {
             Entity::Distribution => "distribution".to_smolstr(),
             Entity::DistributionKey => "distribution key".to_smolstr(),
             Entity::Engine => "engine".to_smolstr(),
+            Entity::Explain => "explain".to_smolstr(),
             Entity::Expression => "expression".to_smolstr(),
             Entity::ExpressionMapper => "expression mapper".to_smolstr(),
             Entity::Histogram => "histogram".to_smolstr(),

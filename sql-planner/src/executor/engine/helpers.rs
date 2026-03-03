@@ -926,6 +926,7 @@ pub fn dispatch_impl<'p>(
             index_versions,
             vdbe_max_steps,
             returns_rows: !block.return_columns.is_empty(),
+            explain_type: plan.get_ir_plan().get_explain_type(),
         };
         return tier_runtime.exec_block_on_buckets(
             metadata,

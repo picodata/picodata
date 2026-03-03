@@ -5,6 +5,7 @@ use crate::sql::lua::{
     bucket_into_rs, escape_bytes, lua_custom_plan_dispatch, lua_decode_rs_ibufs,
     lua_single_plan_dispatch, IbufTable,
 };
+use crate::sql::storage::explain_execute_block;
 use crate::traft::node;
 use ahash::{AHashMap, AHashSet};
 use rmp::decode::{read_array_len, read_bool};
@@ -32,7 +33,7 @@ use sql::ir::node::{Delete, Insert, Motion, Update};
 use sql::ir::operator::UpdateStrategy;
 use sql::ir::options::ReadPreference;
 use sql::ir::transformation::redistribution::MotionPolicy;
-use sql::ir::Plan;
+use sql::ir::{ExplainType, Plan};
 use sql::utils::ByteCounter;
 use sql_protocol::block::write_block_packet;
 use sql_protocol::decode::{execute_read_response, SqlExecute, TupleIter};
@@ -235,6 +236,17 @@ pub(crate) fn block_dispatch<'p>(
     timeout: u64,
     tier: Option<&str>,
 ) -> Result<(), SbroadError> {
+    if let Some(explain_type) = block.explain_type {
+        if matches!(explain_type, ExplainType::Explain) {
+            return Err(SbroadError::NotImplemented(
+                Entity::Explain,
+                "for blocks".to_smolstr(),
+            ));
+        }
+
+        return explain_execute_block(block, explain_type, buckets.determine_exec_location(), port);
+    }
+
     match buckets {
         Buckets::All => Err(SbroadError::Other(
             "cannot execute block on all buckets".into(),

@@ -246,7 +246,7 @@ impl Iterator for ExplainIter {
     fn next(&mut self) -> Option<Self::Item> {
         let line = self.explain.next()?;
 
-        if line.starts_with("Query") {
+        if line.starts_with("Query") || line.starts_with("Return") {
             self.idx += 1;
             Some(format!("{}. {}", self.idx, line))
         } else {
