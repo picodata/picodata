@@ -55,10 +55,14 @@ impl ConnectionType {
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ExecutionPlan {
     request_id: String,
+    /// IR plan contains motions.
     pub(crate) plan: Plan,
     /// Virtual tables for `Motion` nodes.
     /// Map of { `Motion` node_id -> it's corresponding data }
     vtables: VirtualTableMap,
+    /// It is calculated via `set_plan_id` during `materialize_motion`
+    /// and stored in `plan_id_cache` in the original IR plan.
+    pub(crate) plan_id: Option<u64>,
 }
 
 /// Translates the original plan's node id to the new sub-plan one.
@@ -102,12 +106,62 @@ impl ExecutionPlan {
             request_id: uuid::Uuid::new_v4().to_string(),
             plan,
             vtables: VirtualTableMap::new(),
+            plan_id: None,
         }
     }
 
     #[must_use]
     pub fn get_request_id(&self) -> &str {
         &self.request_id
+    }
+
+    /// Returns the node id from which the `plan_id` should be calculated.
+    /// This is a bit tricky for DML.
+    /// If plan is cacheable, it never returns `None`.
+    pub fn get_plan_id_target(&self) -> Result<Option<NodeId>, SbroadError> {
+        let query_type = self.query_type()?;
+        let ir = self.get_ir_plan();
+        let top_id = ir.get_top()?;
+
+        let node_id = match query_type {
+            QueryType::DQL => Some(top_id),
+            QueryType::DML => {
+                let top = ir.get_relation_node(top_id)?;
+                let top_children = ir.children(top_id);
+                if matches!(top, Relational::Delete(_)) && top_children.is_empty() {
+                    Some(top_id)
+                } else {
+                    let child_id = top_children[0];
+                    if let Relational::Motion(Motion {
+                        policy: MotionPolicy::Local | MotionPolicy::LocalSegment { .. },
+                        ..
+                    }) = ir.get_relation_node(child_id)?
+                    {
+                        let cacheable_subtree_root_id = self.get_motion_subtree_root(child_id)?;
+                        Some(cacheable_subtree_root_id)
+                    } else {
+                        None
+                    }
+                }
+            }
+        };
+
+        Ok(node_id)
+    }
+
+    pub fn set_plan_id(&mut self, top_id: NodeId) -> Result<u64, SbroadError> {
+        let mut plan_id_cache = self.get_ir_plan().plan_id_cache.borrow_mut();
+        let plan_id = match plan_id_cache.entry(top_id) {
+            std::collections::hash_map::Entry::Occupied(entry) => *entry.get(),
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                let plan_id = self.calculate_plan_id(top_id)?;
+                *entry.insert(plan_id)
+            }
+        };
+        drop(plan_id_cache);
+
+        self.plan_id = Some(plan_id);
+        Ok(plan_id)
     }
 
     #[must_use]
@@ -978,6 +1032,7 @@ impl ExecutionPlan {
             request_id: self.request_id.clone(),
             plan: new_plan,
             vtables,
+            plan_id: std::mem::take(&mut self.plan_id),
         };
         Ok(new_exec_plan)
     }

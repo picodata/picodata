@@ -484,6 +484,10 @@ where
             return Ok(());
         }
 
+        let plan_id_target = self.exec_plan.get_plan_id_target()?;
+        if let Some(node_id) = plan_id_target {
+            self.exec_plan.set_plan_id(node_id)?;
+        }
         let buckets = self.bucket_discovery(top_id)?;
         self.coordinator
             .dispatch(&mut self.exec_plan, top_id, &buckets, port)?;

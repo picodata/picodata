@@ -50,7 +50,7 @@ fn between1_test() {
             "{} {} {}",
             r#"SELECT "t"."identification_number" FROM "hash_testing" as "t""#,
             r#"WHERE ("t"."identification_number" >= CAST($1 AS int))"#,
-            r#"and ("t"."identification_number" <= (SELECT "COL_1" FROM "TMP_test_0136"))"#,
+            r#"and ("t"."identification_number" <= (SELECT "COL_1" FROM "TMP_0_0136"))"#,
         ),
     );
     assert_eq!(params, &vec![Value::from(1)]);
@@ -101,8 +101,8 @@ fn between2_test() {
         &format!(
             "{} {} {}",
             r#"SELECT "t"."identification_number" FROM "hash_testing" as "t""#,
-            r#"WHERE ((SELECT "COL_1" FROM "TMP_test_0136") >= CAST($1 AS int))"#,
-            r#"and ((SELECT "COL_1" FROM "TMP_test_0136") <= CAST($2 AS int))"#,
+            r#"WHERE ((SELECT "COL_1" FROM "TMP_0_0136") >= CAST($1 AS int))"#,
+            r#"and ((SELECT "COL_1" FROM "TMP_0_0136") <= CAST($2 AS int))"#,
         ),
     );
     assert_eq!(params, &vec![Value::from(1), Value::from(3)]);

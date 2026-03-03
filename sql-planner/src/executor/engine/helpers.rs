@@ -23,7 +23,7 @@ use crate::{
     },
 };
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
-use std::{any::Any, cmp::Ordering, collections::HashMap, rc::Rc, sync::OnceLock};
+use std::{any::Any, cmp::Ordering, collections::HashMap, hash::Hasher, rc::Rc, sync::OnceLock};
 
 use super::{BlockExecData, Metadata, Router, Vshard};
 use crate::executor::Port;
@@ -99,15 +99,8 @@ fn xx_hash(s: &str) -> SmolStr {
     }
 }
 
-/// Generate a temporary table name for the specified motion node.
 #[must_use]
-pub fn table_name(plan_id: &str, node_id: NodeId) -> SmolStr {
-    let base = xx_hash(plan_id);
-    format_smolstr!("TMP_{base}_{node_id}")
-}
-
-#[must_use]
-pub fn new_table_name(plan_id: u64, node_id: NodeId) -> SmolStr {
+pub fn table_name(plan_id: u64, node_id: NodeId) -> SmolStr {
     format_smolstr!("TMP_{plan_id}_{node_id}")
 }
 
@@ -818,8 +811,9 @@ fn generate_pattern_with_params_for_block(
         .stash_constants_in_subtree(query_id, Snapshot::Oldest)?;
     let params = plan.to_params().to_vec();
 
-    let plan_id = plan.get_ir_plan().new_pattern_id(query_id)?;
-    let sp = SyntaxPlan::new(plan, query_id, Snapshot::Oldest)?;
+    // TODO: replace with the actual value of `plan_id` when caching is implemented.
+    let plan_id = 0;
+    let sp = SyntaxPlan::new(plan, query_id, Snapshot::Oldest, false)?;
     let on = OrderedSyntaxNodes::try_from(sp)?;
     let nodes = on.to_syntax_data()?;
 
@@ -860,10 +854,10 @@ fn generate_pattern_with_params_for_block(
         // WHERE <expr>
         update_nodes.extend(select.filter);
 
-        let pattern = plan.generate_sql(&update_nodes, plan_id, new_table_name)?;
+        let pattern = plan.generate_sql(&update_nodes, plan_id, table_name, None)?;
         PatternWithParams { pattern, params }
     } else {
-        let pattern = plan.generate_sql(&nodes, plan_id, new_table_name)?;
+        let pattern = plan.generate_sql(&nodes, plan_id, table_name, None)?;
         PatternWithParams { pattern, params }
     };
 
@@ -1061,6 +1055,7 @@ pub fn materialize_values(
         let columns = vtable_columns(exec_plan.get_ir_plan(), values_id)?;
 
         let mut port = runtime.new_port();
+        exec_plan.set_plan_id(values_id)?;
         runtime.dispatch(exec_plan, values_id, &Buckets::Any, &mut port)?;
 
         let mut vtable = VirtualTable::with_columns(columns);
@@ -1153,6 +1148,7 @@ pub fn materialize_motion(
         !top_node.is_dml(),
         "materialize motion can be called only for DQL queries"
     );
+    plan.set_plan_id(top_id)?;
 
     // We should get a motion alias name before we take the subtree in `dispatch` method.
     let motion_node = plan.get_ir_plan().get_relation_node(motion_node_id)?;

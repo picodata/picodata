@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use sql::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::bucket::Buckets;
-use sql::executor::engine::helpers::new_table_name;
+use sql::executor::engine::helpers::table_name;
 use sql::executor::engine::helpers::vshard::get_random_bucket;
 use sql::executor::engine::{CachedStmt, CachedStmtRef, QueryCache, StorageCache, Vshard};
 use sql::executor::ir::{ExecutionPlan, QueryType};
@@ -618,17 +618,17 @@ impl Vshard for StorageRuntime {
         if let Some(explain_type) = explain_type {
             let sql_vdbe_opcode_max = plan.effective_options.sql_vdbe_opcode_max as u64;
 
-            let plan_id = plan.new_pattern_id(top_id)?;
+            let plan_id = ex_plan.get_plan_id()?;
             let vtables = ex_plan
                 .get_vtables()
                 .iter()
-                .map(|(node_id, table)| (new_table_name(plan_id, *node_id), table.clone()))
+                .map(|(node_id, table)| (table_name(plan_id, *node_id), table.clone()))
                 .collect::<HashMap<_, _>>();
 
-            let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Oldest)?;
+            let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Oldest, false)?;
             let ordered = OrderedSyntaxNodes::try_from(sp)?;
             let nodes = ordered.to_syntax_data()?;
-            let local_sql = ex_plan.generate_sql(&nodes, plan_id, new_table_name)?;
+            let local_sql = ex_plan.generate_sql(&nodes, plan_id, table_name, None)?;
 
             let schema_info = SchemaInfo::new(
                 std::mem::take(&mut ex_plan.get_mut_ir_plan().table_version_map),
@@ -666,11 +666,11 @@ impl Vshard for StorageRuntime {
             ));
         }
 
-        let plan_id = plan.new_pattern_id(top_id)?;
+        let plan_id = ex_plan.get_plan_id()?;
         let vtables = ex_plan
             .get_vtables()
             .iter()
-            .map(|(node_id, table)| (new_table_name(plan_id, *node_id), table.clone()))
+            .map(|(node_id, table)| (table_name(plan_id, *node_id), table.clone()))
             .collect::<HashMap<_, _>>();
         let info = LocalExecutionInfo::new(
             &vtables,
@@ -697,10 +697,10 @@ impl Vshard for StorageRuntime {
                 StaleStmt => report_storage_cache_miss("dql", "local", "stale"),
             }
         } else {
-            let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Oldest)?;
+            let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Oldest, false)?;
             let ordered = OrderedSyntaxNodes::try_from(sp)?;
             let nodes = ordered.to_syntax_data()?;
-            let local_sql = ex_plan.generate_sql(&nodes, plan_id, new_table_name)?;
+            let local_sql = ex_plan.generate_sql(&nodes, plan_id, table_name, None)?;
 
             let schema_info = SchemaInfo::new(
                 std::mem::take(&mut ex_plan.get_mut_ir_plan().table_version_map),

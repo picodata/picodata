@@ -74,9 +74,9 @@ pub fn check_transformation(
         .stash_constants(Snapshot::Latest)
         .unwrap();
 
-    let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Latest).unwrap();
+    let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Latest, false).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
-    let sql = ex_plan.generate_sql(&nodes, "", table_name).unwrap();
+    let sql = ex_plan.generate_sql(&nodes, 0, table_name, None).unwrap();
     PatternWithParams::new(sql, ex_plan.get_ir_plan().constants.clone())
 }

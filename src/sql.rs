@@ -643,12 +643,18 @@ fn dispatch_bound_statement_impl<'p>(
             runtime_owner_key(query.get_exec_plan().get_request_id()).map_err(Error::Sbroad)?;
         with_sql_runtime_limit(request_id, || -> traft::Result<()> {
             if is_dml_on_global {
+                let plan = query.get_exec_plan().get_ir_plan();
+                let top_id = plan.get_top()?;
+                if let Relational::Delete(node) = plan.get_relation_node(top_id)? {
+                    if node.child.is_none() {
+                        query.get_mut_exec_plan().set_plan_id(top_id)?;
+                    }
+                }
                 let ConsumerResult { row_count } =
                     do_dml_on_global_tbl(query, override_deadline, governor_op_id)?;
                 port_write_dml_response(port, row_count);
                 return Ok(());
             }
-
             query.dispatch(port).map_err(Error::Sbroad)?;
             Ok(())
         })??;
@@ -2866,7 +2872,7 @@ fn create_dml_ops(
     if childen.is_empty() {
         // If children are empty, there's delete without filter and
         // there's no need to generate tuples.
-        let plan_id = plan.new_pattern_id(top)?;
+        let plan_id = query.get_exec_plan().get_plan_id()?;
         let info = FullDeleteInfo::new(
             plan_id,
             SchemaInfo::new(

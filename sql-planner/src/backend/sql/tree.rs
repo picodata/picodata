@@ -763,6 +763,8 @@ pub struct SyntaxPlan<'p> {
     /// map of { name, sn_id }.
     plan: &'p ExecutionPlan,
     snapshot: Snapshot,
+    /// If set to `true`, all children of the local motions will be added.
+    skip_serialize_as_empty_opcode: bool,
 }
 
 #[allow(dead_code)]
@@ -1287,7 +1289,8 @@ impl<'p> SyntaxPlan<'p> {
             .iter()
             .find(|op| matches!(op, MotionOpcode::SerializeAsEmptyTable(_)));
         if let Some(op) = empty_table_op {
-            let is_enabled = matches!(op, MotionOpcode::SerializeAsEmptyTable(true));
+            let is_enabled = matches!(op, MotionOpcode::SerializeAsEmptyTable(true))
+                && !self.skip_serialize_as_empty_opcode;
             if is_enabled {
                 let output_cols = plan.get_row_list(*output).expect("row aliases");
                 // We need to preserve types when doing `select null`,
@@ -2585,6 +2588,7 @@ impl<'p> SyntaxPlan<'p> {
             top: None,
             plan,
             snapshot: Snapshot::Latest,
+            skip_serialize_as_empty_opcode: false,
         }
     }
 
@@ -2598,9 +2602,11 @@ impl<'p> SyntaxPlan<'p> {
         plan: &'p ExecutionPlan,
         top: NodeId,
         snapshot: Snapshot,
+        skip_serialize_as_empty_opcode: bool,
     ) -> Result<Self, SbroadError> {
         let mut sp = SyntaxPlan::empty(plan);
         sp.snapshot = snapshot;
+        sp.skip_serialize_as_empty_opcode = skip_serialize_as_empty_opcode;
         let ir_plan = plan.get_ir_plan();
 
         // Wrap plan's nodes and preserve their ids.

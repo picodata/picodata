@@ -1,14 +1,11 @@
 use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use crate::errors::SbroadError;
-use crate::executor::engine::helpers::{new_table_name, write_insert_args, TupleBuilderPattern};
+use crate::executor::engine::helpers::{table_name, write_insert_args, TupleBuilderPattern};
 use crate::executor::engine::VersionMap;
-use crate::executor::ir::{ExecutionPlan, QueryType};
+use crate::executor::ir::ExecutionPlan;
 use crate::executor::vtable::{VTableTuple, VirtualTable, VirtualTableTupleEncoder};
 use crate::ir::helpers::RepeatableState;
-use crate::ir::node::relational::Relational;
-use crate::ir::node::Motion;
 use crate::ir::relation::Column;
-use crate::ir::transformation::redistribution::MotionPolicy;
 use crate::ir::tree::Snapshot;
 use rmp::encode::write_array_len;
 use smol_str::SmolStr;
@@ -632,10 +629,10 @@ impl TryFrom<ExecutionData> for ExecutionCacheMissData {
                 plan.get_top()?
             };
 
-            let sp = SyntaxPlan::new(&value.plan, top_id, Snapshot::Oldest)?;
+            let sp = SyntaxPlan::new(&value.plan, top_id, Snapshot::Oldest, false)?;
             let on = OrderedSyntaxNodes::try_from(sp)?;
             let a = on.to_syntax_data()?;
-            value.plan.generate_sql(&a, plan_id, new_table_name)?
+            value.plan.generate_sql(&a, plan_id, table_name, None)?
         };
 
         let vtables_meta = {
@@ -649,7 +646,7 @@ impl TryFrom<ExecutionData> for ExecutionCacheMissData {
                         .get_columns()
                         .iter()
                         .map(|column| (column.name.clone(), column.r#type.into()));
-                    (new_table_name(plan_id, *k), columns.collect::<Vec<_>>())
+                    (table_name(plan_id, *k), columns.collect::<Vec<_>>())
                 })
                 .collect::<HashMap<_, _>>()
         };
@@ -697,43 +694,11 @@ pub fn build_dql_data_source(
     exec_plan: ExecutionPlan,
     sender_id: u64,
 ) -> Result<ExecutionData, SbroadError> {
-    let query_type = exec_plan.query_type()?;
-    let mut sub_plan_id = None;
-    {
-        let ir = exec_plan.get_ir_plan();
-        let top_id = ir.get_top()?;
-        match query_type {
-            QueryType::DQL => {
-                sub_plan_id = Some(ir.new_pattern_id(top_id)?);
-            }
-            QueryType::DML => {
-                let top = ir.get_relation_node(top_id)?;
-                let top_children = ir.children(top_id);
-                if matches!(top, Relational::Delete(_)) && top_children.is_empty() {
-                    sub_plan_id = Some(ir.new_pattern_id(top_id)?);
-                } else {
-                    let child_id = top_children[0];
-                    let is_cacheable = matches!(
-                        ir.get_relation_node(child_id)?,
-                        Relational::Motion(Motion {
-                            policy: MotionPolicy::Local | MotionPolicy::LocalSegment { .. },
-                            ..
-                        })
-                    );
-                    if is_cacheable {
-                        let cacheable_subtree_root_id =
-                            exec_plan.get_motion_subtree_root(child_id)?;
-                        sub_plan_id = Some(ir.new_pattern_id(cacheable_subtree_root_id)?);
-                    }
-                }
-            }
-        };
-    }
-    let plan_id = sub_plan_id.expect("should be initialized");
+    let plan_id = exec_plan.get_plan_id()?;
     let vtables = exec_plan
         .get_vtables()
         .iter()
-        .map(|(k, t)| (new_table_name(plan_id, *k), t.clone()))
+        .map(|(k, t)| (table_name(plan_id, *k), t.clone()))
         .collect();
 
     Ok(ExecutionData {

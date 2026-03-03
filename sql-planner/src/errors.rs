@@ -76,6 +76,8 @@ pub enum Entity {
     PatternWithParams,
     /// corresponds to struct Plan
     Plan,
+    /// corresponds to get_plan_id
+    PlanId,
     /// primary key of tarantool space
     PrimaryKey,
     /// privilege participating in GRANT/REVOKE query
@@ -186,6 +188,7 @@ impl fmt::Display for Entity {
             Entity::Operator => "operator".to_smolstr(),
             Entity::PatternWithParams => "pattern with parameters".to_smolstr(),
             Entity::Plan => "plan".to_smolstr(),
+            Entity::PlanId => "plan id".to_smolstr(),
             Entity::PrimaryKey => "primary key".to_smolstr(),
             Entity::Privilege => "privilege".to_smolstr(),
             Entity::ParseNode => "parse node".to_smolstr(),

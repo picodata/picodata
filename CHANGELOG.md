@@ -73,6 +73,7 @@ with the `YY.MINOR.MICRO` scheme.
   ```
 - Add support for `EXPLAIN (RAW)` for block queries.
 - Speed up instance restart by actively trying to identify the raft leader instead of waiting for it to send a heartbeat to us.
+- Refactor the plan id calculation for more accurate and faster caching.
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:
@@ -154,6 +155,8 @@ with the `YY.MINOR.MICRO` scheme.
   failover for a master that is in the initial Offline(0) join state and has
   not yet had a chance to become Online.
 - Fixed local SQL iterators to survive fiber yields during table truncation.
+- Fixed a caching bug affecting `UNION` queries with global and sharded tables in a cluster of several replicasets.
+- Fixed a caching bug that caused some different queries to tables with `bucket_id` in the primary key to have the same plan id.
 
 ### Observability
 

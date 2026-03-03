@@ -5,14 +5,12 @@ use crate::executor::engine::mock::{DispatchInfo, PortMocked, RouterRuntimeMock}
 use crate::ir::node::{ArenaType, Node, Over, Projection, ReferenceTarget, Window};
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::tests::{vcolumn_integer_user_non_null, vcolumn_user_non_null};
-use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy, Program};
 use crate::ir::tree::Snapshot;
 use crate::ir::types::{CastType, DerivedType, UnrestrictedType as Type};
 use crate::ir::Slice;
 use engine::mock::TEMPLATE;
 use pretty_assertions::assert_eq;
-use smol_str::SmolStr;
 use std::rc::Rc;
 
 fn reshard_vtable(
@@ -32,14 +30,16 @@ fn get_sql_from_execution_plan(
     exec_plan: &mut ExecutionPlan,
     top_id: NodeId,
     snapshot: Snapshot,
-    name_base: &str,
+    name_base: u64,
 ) -> PatternWithParams {
     let subplan = exec_plan.take_subtree(top_id, &Buckets::Any).unwrap();
     let subplan_top_id = subplan.get_ir_plan().get_top().unwrap();
-    let sp = SyntaxPlan::new(&subplan, subplan_top_id, snapshot).unwrap();
+    let sp = SyntaxPlan::new(&subplan, subplan_top_id, snapshot, false).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
-    let sql = subplan.generate_sql(&nodes, name_base, table_name).unwrap();
+    let sql = subplan
+        .generate_sql(&nodes, name_base, table_name, None)
+        .unwrap();
     PatternWithParams::new(sql, subplan.get_ir_plan().constants.clone())
 }
 
@@ -76,7 +76,7 @@ fn exec_plan_subtree_test() {
     assert_eq!(sql.params, vec![]);
     insta::assert_snapshot!(
         sql.pattern,
-        @r#"SELECT "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."id" in (SELECT "COL_1" FROM "TMP_test_0136")"#,
+        @r#"SELECT "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."id" in (SELECT "COL_1" FROM "TMP_0_0136")"#,
     )
 }
 
@@ -121,7 +121,7 @@ fn exec_plan_subtree_two_stage_groupby_test() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT "COL_1" as "FIRST_NAME" FROM (SELECT "COL_1" FROM "TMP_test_0136") GROUP BY "COL_1""#.to_string(),
+            r#"SELECT "COL_1" as "FIRST_NAME" FROM (SELECT "COL_1" FROM "TMP_0_0136") GROUP BY "COL_1""#.to_string(),
             vec![]
         ));
 }
@@ -175,7 +175,7 @@ GROUP BY "T1"."FIRST_NAME", "T1"."sys_op", "T1"."sysFrom""#
             f_sql(
                 r#"SELECT "COL_1" as "FIRST_NAME",
 "COL_2" as "sys_op", "COL_3" as "sysFrom"
-FROM (SELECT "COL_1","COL_2","COL_3" FROM "TMP_test_0136")
+FROM (SELECT "COL_1","COL_2","COL_3" FROM "TMP_0_0136")
 GROUP BY "COL_1", "COL_2", "COL_3""#
             ),
             vec![]
@@ -226,7 +226,7 @@ fn exec_plan_subtree_aggregates() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_eq!(sql.params, vec![Value::Integer(2), Value::from("o")]);
-    insta::assert_snapshot!(sql.pattern, @r#"SELECT "COL_1" + "COL_1" as "col_1", ("COL_1" * CAST($1 AS int)) + sum ("COL_5") as "col_2", sum ("COL_4") as "col_3", sum (DISTINCT "COL_2") / count (DISTINCT "COL_3") as "col_4", group_concat ("COL_7", CAST($2 AS string)) as "col_5", sum (CAST ("COL_4" as double)) / sum (CAST ("COL_6" as double)) as "col_6", total ("COL_10") as "col_7", min ("COL_9") as "col_8", max ("COL_8") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "TMP_test_0136") GROUP BY "COL_1""#);
+    insta::assert_snapshot!(sql.pattern, @r#"SELECT "COL_1" + "COL_1" as "col_1", ("COL_1" * CAST($1 AS int)) + sum ("COL_5") as "col_2", sum ("COL_4") as "col_3", sum (DISTINCT "COL_2") / count (DISTINCT "COL_3") as "col_4", group_concat ("COL_7", CAST($2 AS string)) as "col_5", sum (CAST ("COL_4" as double)) / sum (CAST ("COL_6" as double)) as "col_6", total ("COL_10") as "col_7", min ("COL_9") as "col_8", max ("COL_8") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "TMP_0_0136") GROUP BY "COL_1""#);
 }
 
 #[test]
@@ -267,7 +267,7 @@ fn exec_plan_subtree_aggregates_no_groupby() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT sum ("COL_2") as "col_1", sum (DISTINCT "COL_1") as "col_2" FROM (SELECT "COL_1","COL_2" FROM "TMP_test_0136")"#.to_string(),
+            r#"SELECT sum ("COL_2") as "col_1", sum (DISTINCT "COL_1") as "col_2" FROM (SELECT "COL_1","COL_2" FROM "TMP_0_0136")"#.to_string(),
             vec![]
         ));
 }
@@ -299,7 +299,7 @@ fn exec_plan_subquery_under_motion_without_alias() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT * FROM (SELECT "test_space"."id" as "tid" FROM "test_space") as "unnamed_subquery" INNER JOIN (SELECT "COL_1" FROM "TMP_test_0136") as "unnamed_subquery_1" ON CAST($1 AS bool)"#.to_string(),
+            r#"SELECT * FROM (SELECT "test_space"."id" as "tid" FROM "test_space") as "unnamed_subquery" INNER JOIN (SELECT "COL_1" FROM "TMP_0_0136") as "unnamed_subquery_1" ON CAST($1 AS bool)"#.to_string(),
             vec![Value::Boolean(true)]
         ));
 }
@@ -330,7 +330,7 @@ fn exec_plan_subquery_under_motion_with_alias() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT * FROM (SELECT "test_space"."id" as "tid" FROM "test_space") as "unnamed_subquery" INNER JOIN (SELECT "COL_1" FROM "TMP_test_0136") as "hti" ON CAST($1 AS bool)"#.to_string(),
+            r#"SELECT * FROM (SELECT "test_space"."id" as "tid" FROM "test_space") as "unnamed_subquery" INNER JOIN (SELECT "COL_1" FROM "TMP_0_0136") as "hti" ON CAST($1 AS bool)"#.to_string(),
             vec![Value::Boolean(true)]
         ));
 }
@@ -355,7 +355,7 @@ fn exec_plan_motion_under_in_operator() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT "test_space"."id" FROM "test_space" WHERE "test_space"."id" in (SELECT "COL_1" FROM "TMP_test_0136")"#.to_string(),
+            r#"SELECT "test_space"."id" FROM "test_space" WHERE "test_space"."id" in (SELECT "COL_1" FROM "TMP_0_0136")"#.to_string(),
             vec![]
         ));
 }
@@ -384,9 +384,11 @@ fn exec_plan_motion_under_except() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT "test_space"."id" FROM "test_space" EXCEPT SELECT "COL_1" FROM "TMP_test_0136""#.to_string(),
+            r#"SELECT "test_space"."id" FROM "test_space" EXCEPT SELECT "COL_1" FROM "TMP_0_0136""#
+                .to_string(),
             vec![]
-        ));
+        )
+    );
 }
 
 #[test]
@@ -428,7 +430,7 @@ fn exec_plan_subtree_count_asterisk() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT sum ("COL_1") as "col_1" FROM (SELECT "COL_1" FROM "TMP_test_0136")"#
+            r#"SELECT sum ("COL_1") as "col_1" FROM (SELECT "COL_1" FROM "TMP_0_0136")"#
                 .to_string(),
             vec![]
         )
@@ -490,7 +492,7 @@ fn exec_plan_subtree_having() {
                 "{} {} {} {}",
                 r#"SELECT "COL_1" + "COL_1" as "col_1","#,
                 r#"sum ("COL_3") + count (DISTINCT "COL_2") as "col_2" FROM"#,
-                r#"(SELECT "COL_1","COL_2","COL_3" FROM "TMP_test_0136")"#,
+                r#"(SELECT "COL_1","COL_2","COL_3" FROM "TMP_0_0136")"#,
                 r#"GROUP BY "COL_1" HAVING sum (DISTINCT "COL_2") > CAST($1 AS int)"#
             ),
             vec![Value::Integer(1)]
@@ -553,7 +555,7 @@ fn exec_plan_subtree_having_without_groupby() {
             format!(
                 "{} {} {}",
                 r#"SELECT sum ("COL_2") + count (DISTINCT "COL_1") as "col_1""#,
-                r#"FROM (SELECT "COL_1","COL_2","COL_3" FROM "TMP_test_0136")"#,
+                r#"FROM (SELECT "COL_1","COL_2","COL_3" FROM "TMP_0_0136")"#,
                 r#"HAVING sum (DISTINCT "COL_1") > CAST($1 AS int)"#,
             ),
             vec![Value::Integer(1)]
@@ -660,7 +662,7 @@ fn global_union_all2() {
     let (sql, _, rs, _) = filtered.get(2).unwrap();
     assert_eq!(
         sql,
-        r#"SELECT "global_t"."a", "global_t"."b" FROM "global_t" WHERE "global_t"."b" in (SELECT "COL_1" FROM "TMP_test_0136") UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#,
+        r#"SELECT "global_t"."a", "global_t"."b" FROM "global_t" WHERE "global_t"."b" in (SELECT "COL_1" FROM "TMP_0_0136") UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#,
     );
     assert_eq!(rs, "replicaset_2");
 }
@@ -822,7 +824,7 @@ fn global_except() {
     };
     assert_eq!(
         sql,
-        r#"SELECT "global_t"."a" FROM "global_t" EXCEPT SELECT "COL_1" FROM "TMP_test_0136""#,
+        r#"SELECT "global_t"."a" FROM "global_t" EXCEPT SELECT "COL_1" FROM "TMP_0_0136""#,
     );
     assert_eq!(params, &vec![]);
 }
@@ -944,7 +946,7 @@ fn exec_plan_order_by() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT "COL_1" as "identification_number" FROM (SELECT "COL_1" FROM "TMP_test_0136") as "hash_testing" ORDER BY "COL_1""#.to_string(),
+            r#"SELECT "COL_1" as "identification_number" FROM (SELECT "COL_1" FROM "TMP_0_0136") as "hash_testing" ORDER BY "COL_1""#.to_string(),
             vec![]
         ));
 }
@@ -993,7 +995,7 @@ fn exec_plan_order_by_with_subquery() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT "COL_1" as "identification_number" FROM (SELECT "COL_1" FROM "TMP_test_0136") as "hash_testing" ORDER BY "COL_1""#.to_string(),
+            r#"SELECT "COL_1" as "identification_number" FROM (SELECT "COL_1" FROM "TMP_0_0136") as "hash_testing" ORDER BY "COL_1""#.to_string(),
             vec![]
         ));
 }
@@ -1062,7 +1064,7 @@ fn exec_plan_order_by_with_join() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT * FROM (SELECT "t"."a" FROM "t") as "f" INNER JOIN (SELECT "COL_1" FROM "TMP_test_0136") as "s" ON CAST($1 AS bool)"#.to_string(),
+            r#"SELECT * FROM (SELECT "t"."a" FROM "t") as "f" INNER JOIN (SELECT "COL_1" FROM "TMP_0_0136") as "s" ON CAST($1 AS bool)"#.to_string(),
             vec![Value::Boolean(true)]
         )
     );
@@ -1072,53 +1074,164 @@ fn exec_plan_order_by_with_join() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT "COL_1" as "a", "COL_2" as "a" FROM (SELECT "COL_1","COL_2" FROM "TMP_test_0136") ORDER BY 1"#.to_string(),
+            r#"SELECT "COL_1" as "a", "COL_2" as "a" FROM (SELECT "COL_1","COL_2" FROM "TMP_0_0136") ORDER BY 1"#.to_string(),
             vec![]
         ));
 }
 
-fn check_subtree_hashes_are_equal(
-    sql1: &str,
-    values1: Vec<Value>,
-    sql2: &str,
-    values2: Vec<Value>,
-) {
+/// # Panics
+/// If plan has at least one child motions.
+fn get_top_plan_id(sql: &str, values: Vec<Value>) -> u64 {
     let coordinator = RouterRuntimeMock::new();
-    let get_hash = |sql: &str, values: Vec<Value>| -> SmolStr {
-        let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, values).unwrap();
-        query
-            .get_mut_exec_plan()
-            .get_mut_ir_plan()
-            .stash_constants(Snapshot::Oldest)
-            .unwrap();
-        let ir = query.get_exec_plan().get_ir_plan();
-        let top = ir.get_top().unwrap();
-        ir.pattern_id(top).unwrap()
-    };
-
-    assert_eq!(get_hash(sql1, values1), get_hash(sql2, values2));
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, values).unwrap();
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let ir = query.get_exec_plan().get_ir_plan();
+    let cache = ir.plan_id_cache.borrow();
+    assert_eq!(1, cache.len());
+    cache.values().map(|plan_id| *plan_id).next().unwrap()
 }
 
-fn check_subtree_hashes_are_equal_2(
+fn check_subtree_plan_ids_are_equal(
     sql1: &str,
     values1: Vec<Value>,
     sql2: &str,
     values2: Vec<Value>,
 ) {
-    let get_hash = |sql: &str, values: Vec<Value>| -> SmolStr {
-        let plan = sql_to_optimized_ir(sql, values);
-        let top = plan.get_top().unwrap();
-        let mut exec_plan = ExecutionPlan::new(plan.clone());
-        let subplan = exec_plan.take_subtree(top, &Buckets::Any).unwrap();
-        subplan.get_ir_plan().pattern_id(top).unwrap()
-    };
+    let plan_id1 = get_top_plan_id(sql1, values1);
+    let plan_id2 = get_top_plan_id(sql2, values2);
+    assert_eq!(plan_id1, plan_id2);
+}
 
-    assert_eq!(get_hash(sql1, values1), get_hash(sql2, values2));
+fn check_subtree_plan_ids_not_equal(
+    sql1: &str,
+    values1: Vec<Value>,
+    sql2: &str,
+    values2: Vec<Value>,
+) {
+    let plan_id1 = get_top_plan_id(sql1, values1);
+    let plan_id2 = get_top_plan_id(sql2, values2);
+    assert_ne!(plan_id1, plan_id2);
+}
+
+#[test]
+fn subtree_plan_id_1() {
+    check_subtree_plan_ids_are_equal(
+        r#"select 1, 2 from "t""#,
+        vec![],
+        r#"select 1, 1 from "t""#,
+        vec![],
+    );
+}
+
+#[test]
+fn subtree_plan_id_2() {
+    check_subtree_plan_ids_not_equal(
+        r#"select * from "global_t" where "a" in (select 1 order by 1)"#,
+        vec![],
+        r#"select "a", "b" from "global_t" where "a" in (select 2 order by 1)"#,
+        vec![],
+    );
+}
+
+#[test]
+fn subtree_plan_id_3() {
+    check_subtree_plan_ids_are_equal(
+        r#"select "a" from "global_t" where "a" = 1"#,
+        vec![],
+        r#"select "a" from "global_t" where "a" = 2"#,
+        vec![],
+    );
+}
+
+#[test]
+fn subtree_plan_id_4() {
+    check_subtree_plan_ids_not_equal(
+        r#"select "a" from "global_t" order by "a" limit 5"#,
+        vec![],
+        r#"select "a" from "global_t" order by "a" limit 10"#,
+        vec![],
+    );
+}
+
+#[test]
+fn subtree_plan_id_5() {
+    check_subtree_plan_ids_are_equal(r#"select 1"#, vec![], r#"select 2"#, vec![]);
+}
+
+#[test]
+fn subtree_plan_id_6() {
+    check_subtree_plan_ids_are_equal(
+        r#"values (1, 2, 3, 4)"#,
+        vec![],
+        r#"values (100, 101, 102, 103)"#,
+        vec![],
+    );
+}
+
+#[test]
+fn subtree_plan_id_7() {
+    check_subtree_plan_ids_are_equal(
+        r#"select 1, 2+2, ?, 5 from "t""#,
+        vec![Value::Integer(8)],
+        r#"select 1, $1+$2, 7, 5 from "t""#,
+        vec![Value::Integer(9), Value::Integer(10)],
+    );
+}
+
+#[test]
+fn subtree_plan_id_8() {
+    check_subtree_plan_ids_not_equal(
+        r#"select distinct "a" from "global_t" order by 1"#,
+        vec![],
+        r#"select "a" from "global_t" group by "a" order by 1"#,
+        vec![],
+    );
+}
+
+#[test]
+fn subtree_plan_id_9() {
+    check_subtree_plan_ids_are_equal(
+        r#"select * from "t" where "a" = 1"#,
+        vec![],
+        r#"select "a", "b", "c", "d" from "t" where "a" = 2"#,
+        vec![],
+    );
+}
+
+#[test]
+fn subtree_plan_id_10() {
+    check_subtree_plan_ids_are_equal(
+        r#"select "a", 1, 2+2, ? as a from "global_t""#,
+        vec![Value::Integer(8)],
+        r#"select "a", 1, $1+$2, 7 as a from "global_t""#,
+        vec![Value::Integer(9), Value::Integer(10)],
+    );
+}
+
+#[test]
+fn subtree_plan_id_11() {
+    check_subtree_plan_ids_not_equal(
+        r#"select "a" as "aa" from "global_t" where "a" < 15"#,
+        vec![],
+        r#"select "a" as "bb" from "global_t" where "a" < 15"#,
+        vec![],
+    )
+}
+
+#[test]
+fn subtree_plan_id_12() {
+    check_subtree_plan_ids_not_equal(
+        r#"select * from "global_t" where "a" < $1"#,
+        vec![Value::Integer(8)],
+        r#"select * from "global_t" where "a" < $1"#,
+        vec![Value::Double(8_f64.into())],
+    )
 }
 
 #[test]
 fn subtree_hash1() {
-    check_subtree_hashes_are_equal(
+    check_subtree_plan_ids_are_equal(
         r#"select ?, ? from "t""#,
         vec![Value::Integer(1), Value::Integer(1)],
         r#"select $1, $2 from "t""#,
@@ -1128,7 +1241,7 @@ fn subtree_hash1() {
 
 #[test]
 fn subtree_hash2() {
-    check_subtree_hashes_are_equal(
+    check_subtree_plan_ids_are_equal(
         r#"select ?, ? from "t"
         option(sql_vdbe_opcode_max = ?, sql_motion_row_max = ?)"#,
         vec![
@@ -1173,10 +1286,9 @@ fn check_parentheses() {
     );
 }
 
-/* FIXME: https://git.picodata.io/picodata/picodata/sbroad/-/issues/583
 #[test]
 fn subtree_hash3() {
-    check_subtree_hashes_are_equal(
+    check_subtree_plan_ids_are_equal(
         r#"select ?, ? from "t"
         option(sql_vdbe_opcode_max = ?)"#,
         vec![Value::Integer(1), Value::Integer(11), Value::Integer(10)],
@@ -1184,11 +1296,10 @@ fn subtree_hash3() {
         vec![Value::Integer(1), Value::Integer(1)],
     );
 }
-*/
 
 #[test]
 fn subtree_hash4() {
-    check_subtree_hashes_are_equal_2(
+    check_subtree_plan_ids_are_equal(
         r#"VALUES (1)"#,
         vec![],
         r#"VALUES (?)"#,
@@ -1198,7 +1309,7 @@ fn subtree_hash4() {
 
 #[test]
 fn subtree_hash5() {
-    check_subtree_hashes_are_equal_2(
+    check_subtree_plan_ids_are_equal(
         r#"VALUES (-1)"#,
         vec![],
         r#"VALUES (?)"#,
@@ -1208,7 +1319,7 @@ fn subtree_hash5() {
 
 #[test]
 fn subtree_hash6() {
-    check_subtree_hashes_are_equal_2(
+    check_subtree_plan_ids_are_equal(
         r#"VALUES ('abc')"#,
         vec![],
         r#"VALUES (?)"#,
@@ -1218,7 +1329,7 @@ fn subtree_hash6() {
 
 #[test]
 fn subtree_hash7() {
-    check_subtree_hashes_are_equal_2(
+    check_subtree_plan_ids_are_equal(
         r#"VALUES (0, True, 'abc')"#,
         vec![],
         r#"VALUES ($1, $2, $3)"#,

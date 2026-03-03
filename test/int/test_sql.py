@@ -5718,6 +5718,46 @@ def test_create_role_and_user_with_empty_name(cluster: Cluster):
         i1.sql("""ALTER USER "andy" RENAME TO "" """)
 
 
+def test_plan_id_determinism(cluster: Cluster):
+    cluster.deploy(instance_count=5)
+    [i1, *_] = cluster.instances
+
+    cluster.wait_balanced()
+
+    i1.sql(
+        """
+        CREATE TABLE "t" ("id" INTEGER, "n" INTEGER, PRIMARY KEY("id"))
+        DISTRIBUTED BY ("id")
+        """
+    )
+    i1.sql(
+        """
+        INSERT INTO "t" VALUES (1, 1), (2, 2)
+        """
+    )
+
+    i1.sql(
+        """
+        CREATE TABLE "g" ("id" INTEGER, "n" INTEGER, PRIMARY KEY("id"))
+        DISTRIBUTED GLOBALLY
+        """
+    )
+    i1.sql(
+        """
+        INSERT INTO "g" VALUES (1, 2), (2, 1)
+        """
+    )
+
+    data = i1.retriable_sql(
+        """
+        SELECT * FROM "t"
+        UNION
+        SELECT * FROM "g"
+        """
+    )
+    assert data == [[1, 1], [1, 2], [2, 1], [2, 2]]
+
+
 def test_limit(cluster: Cluster):
     cluster.deploy(instance_count=3)
     [i1, i2, i3] = cluster.instances

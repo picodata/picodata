@@ -163,7 +163,7 @@ fn linker_test() {
             "{} {} {}",
             r#"SELECT "test_space"."FIRST_NAME""#,
             r#"FROM "test_space""#,
-            r#"WHERE "test_space"."id" in (SELECT "COL_1" FROM "TMP_test_0136")"#,
+            r#"WHERE "test_space"."id" in (SELECT "COL_1" FROM "TMP_0_0136")"#,
         ),
     );
     assert!(params.is_empty());
@@ -228,7 +228,7 @@ fn union_linker_test() {
             r#"FROM "test_space_hist""#,
             r#"WHERE "test_space_hist"."sys_op" > CAST($2 AS int)"#,
             r#") as "t1""#,
-            r#"WHERE "t1"."id" in (SELECT "COL_1" FROM "TMP_test_0136")"#,
+            r#"WHERE "t1"."id" in (SELECT "COL_1" FROM "TMP_0_0136")"#,
         ),
     );
     assert_eq!(params, &vec![Value::from(0), Value::from(0)]);
@@ -302,7 +302,7 @@ WHERE "t3"."id" = 2 AND "t8"."identification_number" = 2"#;
             r#"WHERE "test_space_hist"."sysFrom" <= CAST($3 AS int)"#,
             r#") as "t3""#,
             r#"INNER JOIN"#,
-            r#"(SELECT "COL_1" FROM "TMP_test_0136""#,
+            r#"(SELECT "COL_1" FROM "TMP_0_0136""#,
             r#") as "t8""#,
             r#"ON "t3"."id" = "t8"."COL_1""#,
             r#"WHERE ("t3"."id" = CAST($4 AS int)) and ("t8"."COL_1" = CAST($5 AS int))"#
@@ -365,7 +365,7 @@ fn join_linker2_test() {
             "{} {} {} {}",
             r#"SELECT "t1"."id" FROM "test_space" as "t1""#,
             r#"INNER JOIN"#,
-            r#"(SELECT "COL_1","COL_2" FROM "TMP_test_0136")"#,
+            r#"(SELECT "COL_1","COL_2" FROM "TMP_0_0136")"#,
             r#"as "t2" ON "t1"."id" = CAST($1 AS int)"#
         ),
     );
@@ -413,7 +413,7 @@ fn join_linker3_test() {
             r#"SELECT "t2"."COL_1" as "id1" FROM"#,
             r#"(SELECT "test_space"."id" FROM "test_space") as "t1""#,
             r#"INNER JOIN"#,
-            r#"(SELECT "COL_1","COL_2" FROM "TMP_test_0136") as "t2""#,
+            r#"(SELECT "COL_1","COL_2" FROM "TMP_0_0136") as "t2""#,
             r#"ON "t2"."COL_1" = CAST($1 AS int)"#,
         ),
     );
@@ -477,9 +477,9 @@ fn join_linker4_test() {
             "{} {} {} {} {}",
             r#"SELECT "T1"."id" FROM "test_space" as "T1""#,
             r#"INNER JOIN"#,
-            r#"(SELECT "COL_1" FROM "TMP_test_0136") as "T2""#,
+            r#"(SELECT "COL_1" FROM "TMP_0_0136") as "T2""#,
             r#"ON ("T1"."id" = "T2"."COL_1")"#,
-            r#"and ("T1"."FIRST_NAME" = (SELECT "COL_1" FROM "TMP_test_1136"))"#,
+            r#"and ("T1"."FIRST_NAME" = (SELECT "COL_1" FROM "TMP_0_1136"))"#,
         ),
     );
     assert!(params.is_empty());
@@ -544,7 +544,7 @@ on q."f" = "t1"."b""#;
             "{} {} {} {}",
             r#"SELECT "t1"."a", "t1"."b", "q".* FROM"#,
             r#""t1""#,
-            r#"INNER JOIN (SELECT "COL_1","COL_2" FROM "TMP_test_0136")"#,
+            r#"INNER JOIN (SELECT "COL_1","COL_2" FROM "TMP_0_0136")"#,
             r#"as "q" ON "q"."COL_1" = "t1"."b""#,
         ),
     );
@@ -575,7 +575,7 @@ fn dispatch_order_by() {
     };
     assert_eq!(
         sql,
-        r#"SELECT "COL_1" as "id" FROM (SELECT "COL_1" FROM "TMP_test_0136") ORDER BY "COL_1""#
+        r#"SELECT "COL_1" as "id" FROM (SELECT "COL_1" FROM "TMP_0_0136") ORDER BY "COL_1""#
     );
     assert!(params.is_empty());
 }
@@ -624,9 +624,9 @@ fn anonymous_col_index_test() {
             r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op""#,
             r#"FROM "test_space""#,
             r#"WHERE ("test_space"."id" in"#,
-            r#"(SELECT "COL_1" FROM "TMP_test_0136"))"#,
+            r#"(SELECT "COL_1" FROM "TMP_0_0136"))"#,
             r#"or ("test_space"."id" in"#,
-            r#"(SELECT "COL_1" FROM "TMP_test_1136"))"#,
+            r#"(SELECT "COL_1" FROM "TMP_0_1136"))"#,
         ),
     );
     assert!(params.is_empty());
@@ -784,7 +784,7 @@ fn groupby_linker_test() {
         &format!(
             "{} {} {}",
             r#"SELECT "COL_1" as "ii" FROM"#,
-            r#"(SELECT "COL_1" FROM "TMP_test_0136")"#,
+            r#"(SELECT "COL_1" FROM "TMP_0_0136")"#,
             r#"GROUP BY "COL_1""#,
         ),
     );

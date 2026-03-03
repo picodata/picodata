@@ -41,7 +41,7 @@ use super::{get_builtin_functions, BlockExecData, Metadata, QueryCache};
 use crate::executor::result::MetadataColumn;
 use crate::executor::vdbe::{ExecutionInsight, SqlError, SqlStmt};
 
-pub const TEMPLATE: &str = "test";
+pub const TEMPLATE: u64 = 0;
 
 pub struct PortMocked {
     tuples: Vec<Vec<u8>>,
@@ -1804,11 +1804,11 @@ fn mock_dispatch<'p>(
 
 fn to_sql(plan: &ExecutionPlan) -> (String, Vec<Value>) {
     let top_id = plan.get_ir_plan().get_top().unwrap();
-    let sp = SyntaxPlan::new(plan, top_id, Snapshot::Oldest).unwrap();
+    let sp = SyntaxPlan::new(plan, top_id, Snapshot::Oldest, false).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
     let sql = plan
-        .generate_sql(&nodes, TEMPLATE, |name: &str, id| table_name(name, id))
+        .generate_sql(&nodes, TEMPLATE, table_name, None)
         .unwrap();
     let params = plan.get_ir_plan().constants.clone();
     (sql, params)
@@ -1823,7 +1823,7 @@ fn custom_plan_dispatch(
     let mut rs_bucket_vec: Vec<(String, Vec<u64>)> =
         runtime.vshard_mock.group(buckets).drain().collect();
     rs_bucket_vec.sort_by_key(|(rs, _)| rs.clone());
-    let rs_ir = prepare_rs_to_ir_map(&rs_bucket_vec, plan).unwrap();
+    let (rs_ir, _) = prepare_rs_to_ir_map(&rs_bucket_vec, plan).unwrap();
     for (rs, ex_plan) in rs_ir {
         let (pattern, params) = to_sql(&ex_plan);
         let buckets = rs_bucket_vec

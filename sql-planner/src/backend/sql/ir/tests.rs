@@ -36,10 +36,10 @@ fn check_sql_with_snapshot(
 
     ex_plan.get_mut_ir_plan().stash_constants(snapshot).unwrap();
 
-    let sp = SyntaxPlan::new(&ex_plan, top_id, snapshot).unwrap();
+    let sp = SyntaxPlan::new(&ex_plan, top_id, snapshot, false).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
-    let sql = ex_plan.generate_sql(&nodes, "test", table_name).unwrap();
+    let sql = ex_plan.generate_sql(&nodes, 0, table_name, None).unwrap();
     let sql = PatternWithParams::new(sql, ex_plan.get_ir_plan().constants.clone());
 
     assert_eq!(expected, sql,);

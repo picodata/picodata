@@ -430,6 +430,15 @@ impl DerivedType {
     }
 }
 
+impl From<DerivedType> for u8 {
+    fn from(value: DerivedType) -> u8 {
+        match value.0 {
+            Some(r#type) => r#type as u8,
+            None => u8::MAX,
+        }
+    }
+}
+
 impl fmt::Display for DerivedType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.0 {

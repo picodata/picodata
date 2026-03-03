@@ -487,7 +487,10 @@ fn custom_plan_dispatch_dql<'lua, 'p>(
 ) -> SqlResult<()> {
     let row_len = row_len(&ex_plan)?;
     let read_preference = effective_read_preference(&ex_plan)?;
-    let rs_plan = prepare_rs_to_ir_map(&rs_buckets, ex_plan)?;
+    let (rs_plan, rs_last) = prepare_rs_to_ir_map(&rs_buckets, ex_plan)?;
+    let rs_last = rs_last.ok_or_else(|| {
+        SbroadError::DispatchError("Custom plan must have the last replicaset".into())
+    })?;
     let plans = rs_plan.len();
     let mut first_args = HashMap::with_capacity(rs_plan.len());
     let raft_id = node::global()
@@ -506,14 +509,12 @@ fn custom_plan_dispatch_dql<'lua, 'p>(
         let tuple = tb
             .into_tuple()
             .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
+        if rs_last == rs {
+            exec_plan = Some(temp_exec_plan);
+        }
         first_args.insert(rs, tuple);
-        exec_plan = Some(temp_exec_plan);
     }
-    let Some(exec_plan) = exec_plan else {
-        return Err(SbroadError::DispatchError(format_smolstr!(
-            "Custom plan must have at least one replicaset"
-        )));
-    };
+    let exec_plan = exec_plan.expect("last replicaset exists in rs_plan");
     let query_meta_storage = QueryMetaStorage::new();
     let key = exec_plan.get_plan_id();
     let _guard = query_meta_storage.put(key, exec_plan)?;
@@ -846,7 +847,7 @@ fn build_dml_message(ex_plan: ExecutionPlan) -> SqlResult<(Tuple, Option<Executi
                 }
                 None => {
                     debug_assert!(!with_dql, "Delete full works only without DQL");
-                    let plan_id = plan.new_pattern_id(top_id)?;
+                    let plan_id = ex_plan.get_plan_id()?;
                     let options = plan.effective_options.to_protocol_options();
                     let data = FullDeleteData::new(core, plan_id, options);
                     let tuple = encode_with_reservation!(&data, write_delete_full_packet);
@@ -979,7 +980,7 @@ fn custom_plan_dispatch_dml<'lua, 'p>(
     tier: Option<&str>,
 ) -> SqlResult<()> {
     let read_preference = ReadPreference::default().to_string();
-    let rs_plan = prepare_rs_to_ir_map(&rs_buckets, ex_plan)?;
+    let (rs_plan, _) = prepare_rs_to_ir_map(&rs_buckets, ex_plan)?;
     let mut dql_encoder = None;
     let mut args = HashMap::with_capacity(rs_plan.len());
     for (rs, ex_plan) in rs_plan {

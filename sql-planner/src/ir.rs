@@ -1,5 +1,5 @@
 //! Contains the logical plan tree and helpers.
-use base64ct::{Base64, Encoding};
+use ahash::AHashMap;
 use expression::Position;
 use node::acl::{Acl, MutAcl};
 use node::block::{Block, MutBlock};
@@ -14,11 +14,9 @@ use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::cell::{RefCell, RefMut};
 use std::collections::{HashMap, HashSet};
-use std::hash::Hasher;
-use std::io::Write;
+use std::rc::Rc;
 use std::slice::{Iter, IterMut};
 use tree::traversal::LevelNode;
-use twox_hash::XxHash3_64;
 use types::UnrestrictedType;
 
 use self::relation::Relations;
@@ -686,6 +684,11 @@ pub struct Plan {
     /// global tables use `None`.
     #[serde(skip)]
     pub tier: Option<SmolStr>,
+    /// Plan id stored for each motion subtree.
+    /// Valid only for the original plan.
+    /// Check out `materialize_motion` for more.
+    #[serde(skip)]
+    pub plan_id_cache: Rc<RefCell<AHashMap<NodeId, u64>>>,
 }
 
 /// Helper structures used to build the plan
@@ -874,6 +877,7 @@ impl Plan {
             index_version_map: HashMap::with_hasher(RepeatableState),
             context: Some(RefCell::new(BuildContext::default())),
             tier: None,
+            plan_id_cache: Rc::new(RefCell::new(AHashMap::new())),
         }
     }
 
@@ -2028,66 +2032,6 @@ impl Plan {
     /// Set slices of the plan.
     pub fn set_slices(&mut self, slices: Vec<Vec<NodeId>>) {
         self.slices = slices.into();
-    }
-
-    /// # Errors
-    /// - serialization error (to binary)
-    pub fn pattern_id(&self, top_id: NodeId) -> Result<SmolStr, SbroadError> {
-        let dfs = PostOrder::with_capacity(|x| self.subtree_iter(x, true), self.nodes.len());
-        let nodes = dfs.populate_nodes(top_id);
-        let mut plan_nodes: Vec<Node> = Vec::with_capacity(nodes.len());
-        for level_node in nodes {
-            let node = self.get_node(level_node.1)?;
-            plan_nodes.push(node);
-        }
-
-        let bytes: Vec<u8> = bincode::serialize(&plan_nodes).map_err(|e| {
-            SbroadError::FailedTo(
-                Action::Serialize,
-                None,
-                format_smolstr!("plan nodes to binary: {e:?}"),
-            )
-        })?;
-
-        let hash = Base64::encode_string(blake3::hash(&bytes).to_hex().as_bytes()).to_smolstr();
-        Ok(hash)
-    }
-    pub fn new_pattern_id(&self, top_id: NodeId) -> Result<u64, SbroadError> {
-        let dfs = PostOrder::with_capacity(|x| self.subtree_iter(x, true), self.nodes.len());
-        let nodes = dfs.populate_nodes(top_id);
-
-        struct HashWriter<H: Hasher> {
-            hasher: H,
-        }
-
-        impl<H: Hasher> Write for HashWriter<H> {
-            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-                self.hasher.write(buf);
-                Ok(buf.len())
-            }
-
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
-        }
-
-        let mut hasher = HashWriter {
-            hasher: XxHash3_64::default(),
-        };
-
-        for level_node in nodes {
-            let node = self.get_node(level_node.1)?;
-
-            bincode::serialize_into(&mut hasher, &node).map_err(|e| {
-                SbroadError::FailedTo(
-                    Action::Serialize,
-                    None,
-                    format_smolstr!("plan nodes to binary: {e:?}"),
-                )
-            })?;
-        }
-
-        Ok(hasher.hasher.finish())
     }
 }
 
