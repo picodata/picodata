@@ -779,14 +779,17 @@ impl Loop {
                 target,
                 rpc,
                 cas,
+                wait_until_no_buckets,
             }) => {
-                set_status!("transfer buckets from replicaset");
-                governor_substep! {
-                    "waiting for replicaset to transfer all buckets" [
-                        "replicaset_name" => %replicaset_name,
-                    ]
-                    async {
-                        pool.call(target, proc_name!(proc_wait_bucket_count), &rpc, rpc_timeout)?.await?;
+                if wait_until_no_buckets {
+                    set_status!("transfer buckets from replicaset");
+                    governor_substep! {
+                        "waiting for replicaset to transfer all buckets" [
+                            "replicaset_name" => %replicaset_name,
+                        ]
+                        async {
+                            pool.call(target, proc_name!(proc_wait_bucket_count), &rpc, rpc_timeout)?.await?;
+                        }
                     }
                 }
 

@@ -238,8 +238,10 @@ pub fn handle_replicaset_master_switchover<'i>(
         bump_dml.push(replicaset_config_version_bump);
 
         // Vshard configuration must also be updated (it keeps track of replicaset masters)
-        let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op(tier)?;
-        bump_dml.push(vshard_config_version_bump);
+        if tier.has_buckets() {
+            let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op(tier)?;
+            bump_dml.push(vshard_config_version_bump);
+        }
 
         let ranges = vec![
             // We make a decision based on these instances' state so the operation
@@ -353,8 +355,10 @@ pub fn handle_replicaset_sync<'a>(
         .expect("tier for instance should exists");
 
     // Update vshard configuraion so it also knows that new replicas are available
-    let bump = Tier::get_vshard_config_version_bump_op(tier)?;
-    bump_dml.push(bump);
+    if tier.has_buckets() {
+        let bump = Tier::get_vshard_config_version_bump_op(tier)?;
+        bump_dml.push(bump);
+    }
 
     let master = targets.iter().find(|target| target.name == master_name);
     if let Some(master) = master {

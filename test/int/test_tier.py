@@ -676,3 +676,53 @@ instance:
         """
     )
     assert get_tier_from_distribution_field_from_pico_table("table_in_explicit_default_tier") == "not_default"
+
+
+def test_create_sharded_table_on_zero_bucket_tier(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            replication_factor: 1
+            can_vote: true
+            bucket_count: 0
+        storage:
+            replication_factor: 1
+            can_vote: true
+"""
+    )
+
+    i1 = cluster.add_instance(tier="arbiter", wait_online=True)
+    cluster.add_instance(tier="storage", wait_online=True)
+
+    # Creating a sharded table on a tier with bucket_count=0 should fail
+    with pytest.raises(
+        TarantoolError,
+        match="specified tier 'arbiter' has bucket_count=0 and cannot store sharded data",
+    ):
+        i1.sql(
+            """
+            CREATE TABLE "sharded_in_arbiter" (a INT NOT NULL, b INT, PRIMARY KEY (a))
+            DISTRIBUTED BY (b)
+            IN TIER "arbiter"
+            """
+        )
+
+    # Creating a global table on a tier with bucket_count=0 should succeed
+    i1.sql(
+        """
+        CREATE TABLE "global_table" (a INT NOT NULL, b INT, PRIMARY KEY (a))
+        DISTRIBUTED GLOBALLY
+        """
+    )
+
+    # Creating a sharded table on the storage tier should succeed
+    i1.sql(
+        """
+        CREATE TABLE "sharded_in_storage" (a INT NOT NULL, b INT, PRIMARY KEY (a))
+        DISTRIBUTED BY (b)
+        IN TIER "storage"
+        """
+    )

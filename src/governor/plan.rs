@@ -290,8 +290,10 @@ pub(super) fn action_plan<'i>(
         ops.push(dml);
 
         // Replicaset's weight may have changed, let vshard know about it so it starts rebalancing buckets
-        let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op(tier)?;
-        ops.push(vshard_config_version_bump);
+        if tier.has_buckets() {
+            let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op(tier)?;
+            ops.push(vshard_config_version_bump);
+        }
 
         let op = Op::single_dml_or_batch(ops);
         let predicate = cas::Predicate::new(applied, []);
@@ -389,8 +391,10 @@ pub(super) fn action_plan<'i>(
 
         // Bump tier configuration version, because the replicaset must now be
         // removed from router configurations of all other replicasets
-        let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op(tier)?;
-        ops.push(vshard_config_version_bump);
+        if tier.has_buckets() {
+            let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op(tier)?;
+            ops.push(vshard_config_version_bump);
+        }
 
         // Mark replicaset as expelled
         let mut update_ops = UpdateOps::new();
@@ -411,6 +415,7 @@ pub(super) fn action_plan<'i>(
             target,
             rpc,
             cas,
+            wait_until_no_buckets: tier.has_buckets(),
         }
         .into());
     }
@@ -440,8 +445,10 @@ pub(super) fn action_plan<'i>(
         ops.push(dml);
 
         // Replicaset's weight has changed, let vshard know about it so it starts rebalancing buckets
-        let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op(tier)?;
-        ops.push(vshard_config_version_bump);
+        if tier.has_buckets() {
+            let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op(tier)?;
+            ops.push(vshard_config_version_bump);
+        }
 
         let ranges = vec![
             // Decision was made based on this instance's state so we must make sure it was up to date.
@@ -994,6 +1001,12 @@ pub mod stage {
             /// - update master's instance record:
             ///     - set `current_state` to Expelled
             pub cas: cas::Request,
+            /// If `false`, skip the `proc_wait_bucket_count` RPC call.
+            /// This is `false` for tiers with `bucket_count == 0` (arbiter tiers).
+            /// Arbiter tiers have no sharded data and are used solely for Raft consensus.
+            /// So when we expel an arbiter we do not want to block
+            /// on waiting for bucket transfer.
+            pub wait_until_no_buckets: bool,
         }
 
         pub struct ToOnline {

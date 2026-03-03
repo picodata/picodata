@@ -489,6 +489,13 @@ impl Router for RouterRuntime {
 }
 
 pub(crate) fn calculate_bucket_id(tuple: &[&Value], bucket_count: u64) -> Result<u64, SbroadError> {
+    if bucket_count == 0 {
+        return Err(SbroadError::FailedTo(
+            Action::Create,
+            Some(Entity::Tuple),
+            "cannot calculate bucket id: tier has bucket_count=0 (no sharded data)".to_smolstr(),
+        ));
+    }
     let wrapped_tuple = tuple
         .iter()
         .map(|v| MsgPackValue::from(*v))

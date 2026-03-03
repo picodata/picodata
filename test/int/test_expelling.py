@@ -391,3 +391,73 @@ cluster:
     response = storage_1_3.call("box.execute", 'SELECT "uuid" FROM "_cluster"')
     replicaset_uuids = set(uuid for [uuid] in response["rows"])
     assert replicaset_uuids == set((storage_1_3.uuid(), storage_4.uuid()))
+
+
+def test_expel_zero_bucket_tier(cluster: Cluster):
+    """
+    Test that instances in a tier with bucket_count=0 (arbiter tier) can be
+    freely expelled without hanging on bucket transfer. Such tiers have no
+    sharded data and are used only for Raft consensus.
+    """
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            replication_factor: 1
+            can_vote: true
+            bucket_count: 0
+        storage:
+            replication_factor: 1
+            can_vote: false
+"""
+    )
+
+    arbiter_1 = cluster.add_instance(name="arbiter_1", tier="arbiter", wait_online=False)
+    arbiter_2 = cluster.add_instance(name="arbiter_2", tier="arbiter", wait_online=False)
+    cluster.add_instance(name="arbiter_3", tier="arbiter", wait_online=False)
+    cluster.wait_online()
+    arbiter_1.promote_or_fail()
+    cluster.add_instance(name="storage_1", tier="storage")
+
+    counter = arbiter_1.wait_governor_status("idle")
+
+    # Verify arbiter tier has bucket_count=0
+    [[bucket_count]] = arbiter_1.sql("SELECT bucket_count FROM _pico_tier WHERE name = 'arbiter'")
+    assert bucket_count == 0
+
+    # Verify vshard is not bootstrapped for the arbiter tier
+    [[vshard_bootstrapped]] = arbiter_1.sql("SELECT vshard_bootstrapped FROM _pico_tier WHERE name = 'arbiter'")
+    assert vshard_bootstrapped is False
+
+    # Verify vshard is bootstrapped for the storage tier
+    [[vshard_bootstrapped]] = arbiter_1.sql("SELECT vshard_bootstrapped FROM _pico_tier WHERE name = 'storage'")
+    assert vshard_bootstrapped is True
+
+    arbiter_2.terminate()
+    cluster.wait_has_states(arbiter_2, "Offline", "Offline")
+    Retriable(timeout=10).call(arbiter_2.assert_process_dead)
+
+    # Expel offline arbiter_2 — since replication_factor=1, it is the sole instance
+    # in its replicaset, so this triggers the full replicaset expel flow.
+    # Without bucket_count=0 support this would hang waiting for bucket transfer.
+    cluster.expel(arbiter_2, force=True)
+    cluster.wait_has_states(arbiter_2, "Expelled", "Expelled")
+
+    arbiter_1.wait_governor_status("idle", old_step_counter=counter)
+
+    # Verify the replicaset is expelled
+    [[state]] = arbiter_1.sql(
+        "SELECT state FROM _pico_replicaset WHERE name = ?",
+        arbiter_2.replicaset_name,
+    )
+    assert state == "expelled"
+
+    # Verify the instance is expelled
+    rows = arbiter_1.sql(
+        "SELECT current_state FROM _pico_instance WHERE name = ?",
+        arbiter_2.name,
+    )
+    [[state, _incarnation]] = rows[0]
+    assert state == "Expelled"

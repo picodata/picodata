@@ -1572,8 +1572,7 @@ fn ddl_ir_node_to_op_or_result(
                 }
             }
 
-            params.check_tier_exists(&topology_cache)?;
-
+            params.validate_tier(&topology_cache)?;
             params.check_primary_key(storage)?;
             params.test_create_space(storage)?;
             let ddl = params.into_ddl()?;

@@ -54,6 +54,11 @@ with the `YY.MINOR.MICRO` scheme.
   queries transactionally. Blocks are single-bucket, meaning that all the queries within the
   block must be executed on the same bucket (or have distribution any).
 - Add support for Kubernetes startup,liveness and readiness probes.
+- Support `bucket_count=0` for tiers. A tier with `bucket_count=0` has no sharded data
+  (only global system tables) and is intended for "arbiter" tiers used in Raft consensus.
+  Vshard bootstrap and configuration are skipped for such tiers, and replicaset expel
+  proceeds without waiting for bucket transfer. Creating sharded tables on a zero-bucket
+  tier is rejected with a clear error.
 
   Supported statements are:
   - QUERY: execute the given query;

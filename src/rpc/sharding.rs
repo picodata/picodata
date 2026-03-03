@@ -62,6 +62,10 @@ crate::define_rpc_request! {
             .collect();
 
         for tier in node.storage.tiers.iter().expect("tiers shouldn't fail, at least one tier always exists") {
+            // Skip vshard configuration for tiers with no buckets (arbiter tiers)
+            if !tier.has_buckets() {
+                continue;
+            }
             let first_ready_replicaset = get_first_ready_replicaset_in_tier(&instances, &replicasets, &tier.name);
             let ok_to_configure_vshard = tier.vshard_bootstrapped || first_ready_replicaset.is_some();
 

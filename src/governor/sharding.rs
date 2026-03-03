@@ -31,6 +31,10 @@ pub(super) fn handle_sharding<'i>(
     // their target/current versions separately. We should either refactor the
     // outer loop or look into configuring separate tiers separately
     for (&tier_name, &tier) in tiers.iter() {
+        // Skip vshard configuration for tiers with no buckets (arbiter tiers)
+        if !tier.has_buckets() {
+            continue;
+        }
         let mut first_ready_replicaset = None;
         if !tier.vshard_bootstrapped {
             first_ready_replicaset =
@@ -124,6 +128,10 @@ pub(super) fn handle_sharding_bootstrap<'i>(
 ) -> Result<Option<Plan<'i>>> {
     for (&tier_name, &tier) in tiers.iter() {
         if tier.vshard_bootstrapped {
+            continue;
+        }
+        // Skip vshard bootstrap for tiers with no buckets (arbiter tiers)
+        if !tier.has_buckets() {
             continue;
         }
         let Some(r) = get_first_ready_replicaset_in_tier(instances, replicasets, tier_name) else {

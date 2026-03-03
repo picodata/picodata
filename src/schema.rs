@@ -1859,6 +1859,8 @@ pub enum CreateTableError {
     UnexistingTier { tier_name: String },
     #[error("specified tier '{tier_name}' doesn't contain at least one instance")]
     EmptyTier { tier_name: String },
+    #[error("specified tier '{tier_name}' has bucket_count=0 and cannot store sharded data")]
+    TierHasNoBuckets { tier_name: SmolStr },
     #[error("primary key '{0}' already exists")]
     ConflictingPrimaryKey(String),
     #[error("attempt to create a table in default tier, but default tier is unknown")]
@@ -2252,17 +2254,25 @@ pub struct CreateTableParams {
 impl CreateTableParams {
     /// Checks for the following conditions:
     /// 1) specified tier exists
-    /// 2) specified tier contains at least one instance
+    /// 2) specified tier has buckets
+    /// 3) specified tier contains at least one instance
     ///
     /// Checks occur only in case of a sharded table.
-    pub fn check_tier_exists(&self, topology_cache: &TopologyCacheRef) -> traft::Result<()> {
+    pub fn validate_tier(&self, topology_cache: &TopologyCacheRef) -> traft::Result<()> {
         if self.distribution == DistributionParam::Sharded {
-            if topology_cache.tier_by_name(&self.tier).is_err() {
+            let Ok(tier) = topology_cache.tier_by_name(&self.tier) else {
                 return Err(CreateTableError::UnexistingTier {
                     tier_name: self.tier.to_string(),
                 }
                 .into());
             };
+
+            if !tier.has_buckets() {
+                return Err(CreateTableError::TierHasNoBuckets {
+                    tier_name: self.tier.to_smolstr(),
+                }
+                .into());
+            }
 
             let tier_is_not_empty = topology_cache
                 .all_instances()

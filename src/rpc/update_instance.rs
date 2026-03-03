@@ -326,7 +326,7 @@ pub fn prepare_update_instance_cas_request(
         ops.push(replicaset_dml);
     }
 
-    if version_bump_needed {
+    if version_bump_needed && tier.has_buckets() {
         let vshard_bump_dml = Tier::get_vshard_config_version_bump_op(tier)?;
         ops.push(vshard_bump_dml);
     }

@@ -101,6 +101,14 @@ impl Tier {
         ]
     }
 
+    /// Returns `true` if this tier has sharded data (buckets).
+    /// A tier with `bucket_count == 0` is an "arbiter" tier that only stores
+    /// global system tables and participates in Raft consensus.
+    #[inline]
+    pub fn has_buckets(&self) -> bool {
+        self.bucket_count > 0
+    }
+
     /// Returns DML for updating `target_vshard_config_version` of corresponding tier record in '_pico_tier'
     pub fn get_vshard_config_version_bump_op(tier: &Tier) -> Result<Dml, Error> {
         let mut uops = UpdateOps::new();
