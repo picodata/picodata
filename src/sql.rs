@@ -1777,7 +1777,9 @@ fn ddl_ir_node_to_op_or_result(
             let mut opts: Vec<IndexOption> = Vec::with_capacity(9);
             opts.push(IndexOption::Unique(*unique));
             if let Some(bloom_fpr) = bloom_fpr {
-                opts.push(IndexOption::BloomFalsePositiveRate(*bloom_fpr));
+                let decimal = Decimal::try_from(bloom_fpr.value)
+                    .map_err(|e| Error::other(format!("invalid bloom_fpr value: {e}")))?;
+                opts.push(IndexOption::BloomFalsePositiveRate(decimal));
             }
             if let Some(page_size) = page_size {
                 opts.push(IndexOption::PageSize(*page_size));
@@ -1789,7 +1791,9 @@ fn ddl_ir_node_to_op_or_result(
                 opts.push(IndexOption::RunCountPerLevel(*run_count_per_level));
             }
             if let Some(run_size_ratio) = run_size_ratio {
-                opts.push(IndexOption::RunSizeRatio(*run_size_ratio));
+                let decimal = Decimal::try_from(run_size_ratio.value)
+                    .map_err(|e| Error::other(format!("invalid run_size_ratio value: {e}")))?;
+                opts.push(IndexOption::RunSizeRatio(decimal));
             }
             if let Some(compression_level) = compression_level {
                 opts.push(IndexOption::CompressionLevel(*compression_level));

@@ -27,7 +27,7 @@ use crate::ir::{
     distribution::Distribution,
     helpers::RepeatableState,
     transformation::redistribution::{ColumnPosition, MotionPolicy, Program},
-    value::Value,
+    value::{double::Double, Value},
 };
 use plugin::{
     AppendServiceToTier, ChangeConfig, CreatePlugin, DisablePlugin, DropPlugin, EnablePlugin,
@@ -1140,11 +1140,11 @@ pub struct CreateIndex {
     pub unique: bool,
     pub if_not_exists: bool,
     pub index_type: IndexType,
-    pub bloom_fpr: Option<Decimal>,
+    pub bloom_fpr: Option<Double>,
     pub page_size: Option<u32>,
     pub range_size: Option<u32>,
     pub run_count_per_level: Option<u32>,
-    pub run_size_ratio: Option<Decimal>,
+    pub run_size_ratio: Option<Double>,
     pub compression_level: Option<i8>,
     pub dimension: Option<u8>,
     pub distance: Option<RtreeIndexDistanceType>,

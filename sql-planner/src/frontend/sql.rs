@@ -73,6 +73,7 @@ use crate::ir::tree::traversal::{
 };
 use crate::ir::types::CastType;
 use crate::ir::types::DomainType;
+use crate::ir::value::double::Double;
 use crate::ir::value::Value;
 use crate::ir::ExplainType::{Explain, ExplainQueryPlan, ExplainQueryPlanFmt};
 use crate::ir::{node::plugin, Plan};
@@ -642,7 +643,7 @@ fn parse_create_index(
             .get_node(*child_id)
             .expect("Expected to see first child node")
     };
-    let parse_decimal = |node: &ParseNode, option_name: &str| -> Result<Decimal, SbroadError> {
+    let parse_double = |node: &ParseNode, option_name: &str| -> Result<Double, SbroadError> {
         let child = first_child(node);
         let value_str = child.value.as_ref().ok_or_else(|| {
             SbroadError::Invalid(
@@ -650,11 +651,11 @@ fn parse_create_index(
                 Some(format_smolstr!("missing value for {option_name}")),
             )
         })?;
-        Decimal::from_str(value_str.as_str()).map_err(|e| {
+        value_str.parse::<f64>().map(Double::from).map_err(|e| {
             SbroadError::Invalid(
                 Entity::Value,
                 Some(format_smolstr!(
-                    "invalid value '{value_str}' for {option_name}: {e:?}"
+                    "invalid value '{value_str}' for {option_name}: {e}"
                 )),
             )
         })
@@ -727,7 +728,7 @@ fn parse_create_index(
                     );
                     let param_node = first_child(option_param_node);
                     match param_node.rule {
-                        Rule::BloomFpr => bloom_fpr = Some(parse_decimal(param_node, "bloom_fpr")?),
+                        Rule::BloomFpr => bloom_fpr = Some(parse_double(param_node, "bloom_fpr")?),
                         Rule::PageSize => {
                             page_size = Some(parse_int(first_child(param_node), "page_size")?)
                         }
@@ -739,7 +740,7 @@ fn parse_create_index(
                                 Some(parse_int(first_child(param_node), "run_count_per_level")?)
                         }
                         Rule::RunSizeRatio => {
-                            run_size_ratio = Some(parse_decimal(param_node, "run_size_ratio")?)
+                            run_size_ratio = Some(parse_double(param_node, "run_size_ratio")?)
                         }
                         Rule::CompressionLevel => {
                             compression_level =
