@@ -51,6 +51,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Add suppoort for anonymous blocks. An anonymous block is a sequence of statements that execute
   queries transactionally. Blocks are single-bucket, meaning that all the queries within the
   block must be executed on the same bucket (or have distribution any).
+- Add support for Kubernetes startup,liveness and readiness probes.
 
   Supported statements are:
   - QUERY: execute the given query;
