@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 
+@functools.cache
 def rustc_target_triple() -> str:
     """
     Rust compiler target triple, e.g. `x86_64-unknown-linux-gnu`.

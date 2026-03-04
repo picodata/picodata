@@ -1,12 +1,12 @@
-import subprocess
-
 from pathlib import Path
 
 
 def project_root_path() -> Path:
-    git_command = ["git", "rev-parse", "--show-toplevel"]
-    git_output = subprocess.check_output(git_command, text=True)
-    return Path(git_output.strip())
+    utils_dir = Path(__file__).parent
+    framework_dir = utils_dir.parent
+    tests_dir = framework_dir.parent
+    root_dir = tests_dir.parent
+    return root_dir
 
 
 def project_tests_path() -> Path:
