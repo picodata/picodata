@@ -361,7 +361,7 @@ dnf install tarantool-picodata
 curl -L https://download.binary.picodata.io/tarantool-picodata/install.sh | bash
 ```
 
-!!! warning "Внимание"
+!!! warning "Внимание!"
     Одновременное использование репозиториев Picodata
     для релизных сборок и ночных невозможно!
 
