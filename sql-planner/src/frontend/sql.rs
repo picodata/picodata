@@ -108,6 +108,70 @@ fn get_default_timeout() -> Decimal {
     Decimal::from_str(&format!("{DEFAULT_TIMEOUT_F64}")).expect("default timeout casting failed")
 }
 
+/// Parse a double value from an option node's first child.
+/// The node is expected to have a child node containing the numeric value.
+fn parse_option_double(
+    ast: &AbstractSyntaxTree,
+    node: &ParseNode,
+    option_name: &str,
+) -> Result<Double, SbroadError> {
+    let child_id = node.children.first().ok_or_else(|| {
+        SbroadError::Invalid(
+            Entity::Query,
+            Some(format_smolstr!("missing child node for {option_name}")),
+        )
+    })?;
+    let child = ast.nodes.get_node(*child_id)?;
+    let value_str = child.value.as_ref().ok_or_else(|| {
+        SbroadError::Invalid(
+            Entity::Value,
+            Some(format_smolstr!("missing value for {option_name}")),
+        )
+    })?;
+    value_str.parse::<f64>().map(Double::from).map_err(|e| {
+        SbroadError::Invalid(
+            Entity::Value,
+            Some(format_smolstr!(
+                "invalid value '{value_str}' for {option_name}: {e}"
+            )),
+        )
+    })
+}
+
+/// Parse an integer value from an option node's first child.
+/// The node is expected to have a child node containing the numeric value.
+fn parse_option_int<T>(
+    ast: &AbstractSyntaxTree,
+    node: &ParseNode,
+    option_name: &str,
+) -> Result<T, SbroadError>
+where
+    T: std::str::FromStr,
+    <T as std::str::FromStr>::Err: std::fmt::Display,
+{
+    let child_id = node.children.first().ok_or_else(|| {
+        SbroadError::Invalid(
+            Entity::Query,
+            Some(format_smolstr!("missing child node for {option_name}")),
+        )
+    })?;
+    let child = ast.nodes.get_node(*child_id)?;
+    let value_str = child.value.as_ref().ok_or_else(|| {
+        SbroadError::Invalid(
+            Entity::Value,
+            Some(format_smolstr!("missing value for {option_name}")),
+        )
+    })?;
+    value_str.parse().map_err(|e| {
+        SbroadError::Invalid(
+            Entity::Value,
+            Some(format_smolstr!(
+                "invalid value '{value_str}' for {option_name}: {e}"
+            )),
+        )
+    })
+}
+
 /// Matches appropriate [`tarantool::auth::AuthMethod`] with passed `Rule`.
 /// Panics as unreachable code if no appropriate method was found.
 #[inline(always)]
@@ -643,43 +707,6 @@ fn parse_create_index(
             .get_node(*child_id)
             .expect("Expected to see first child node")
     };
-    let parse_double = |node: &ParseNode, option_name: &str| -> Result<Double, SbroadError> {
-        let child = first_child(node);
-        let value_str = child.value.as_ref().ok_or_else(|| {
-            SbroadError::Invalid(
-                Entity::Value,
-                Some(format_smolstr!("missing value for {option_name}")),
-            )
-        })?;
-        value_str.parse::<f64>().map(Double::from).map_err(|e| {
-            SbroadError::Invalid(
-                Entity::Value,
-                Some(format_smolstr!(
-                    "invalid value '{value_str}' for {option_name}: {e}"
-                )),
-            )
-        })
-    };
-    fn parse_int<T>(node: &ParseNode, option_name: &str) -> Result<T, SbroadError>
-    where
-        T: std::str::FromStr,
-        <T as FromStr>::Err: std::fmt::Display,
-    {
-        let value_str = node.value.as_ref().ok_or_else(|| {
-            SbroadError::Invalid(
-                Entity::Value,
-                Some(format_smolstr!("missing value for {option_name}")),
-            )
-        })?;
-        value_str.parse().map_err(|e| {
-            SbroadError::Invalid(
-                Entity::Value,
-                Some(format_smolstr!(
-                    "invalid value '{value_str}' for {option_name}: {e}"
-                )),
-            )
-        })
-    }
     let bool_value = |node: &ParseNode| -> bool {
         let node = first_child(node);
         match node.rule {
@@ -728,26 +755,29 @@ fn parse_create_index(
                     );
                     let param_node = first_child(option_param_node);
                     match param_node.rule {
-                        Rule::BloomFpr => bloom_fpr = Some(parse_double(param_node, "bloom_fpr")?),
+                        Rule::BloomFpr => {
+                            bloom_fpr = Some(parse_option_double(ast, param_node, "bloom_fpr")?)
+                        }
                         Rule::PageSize => {
-                            page_size = Some(parse_int(first_child(param_node), "page_size")?)
+                            page_size = Some(parse_option_int(ast, param_node, "page_size")?)
                         }
                         Rule::RangeSize => {
-                            range_size = Some(parse_int(first_child(param_node), "range_size")?)
+                            range_size = Some(parse_option_int(ast, param_node, "range_size")?)
                         }
                         Rule::RunCountPerLevel => {
                             run_count_per_level =
-                                Some(parse_int(first_child(param_node), "run_count_per_level")?)
+                                Some(parse_option_int(ast, param_node, "run_count_per_level")?)
                         }
                         Rule::RunSizeRatio => {
-                            run_size_ratio = Some(parse_double(param_node, "run_size_ratio")?)
+                            run_size_ratio =
+                                Some(parse_option_double(ast, param_node, "run_size_ratio")?)
                         }
                         Rule::CompressionLevel => {
                             compression_level =
-                                Some(parse_int(first_child(param_node), "compression_level")?)
+                                Some(parse_option_int(ast, param_node, "compression_level")?)
                         }
                         Rule::Dimension => {
-                            dimension = Some(parse_int(first_child(param_node), "dimension")?)
+                            dimension = Some(parse_option_int(ast, param_node, "dimension")?)
                         }
                         Rule::Distance => {
                             let distance_node = first_child(param_node);
