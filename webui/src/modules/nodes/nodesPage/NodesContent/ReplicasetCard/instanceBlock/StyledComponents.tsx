@@ -139,3 +139,8 @@ export const InstanceBackgroundInner = styled(Background)<{
     ? `4px 10px ${$withBottomPadding ? "10px" : "0"} 10px`
     : "unset",
 }));
+
+export const VersionRoot = styled(Box)({
+  display: "grid",
+  gridTemplateColumns: "1fr max-content",
+});

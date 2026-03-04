@@ -10,6 +10,7 @@ import { InfoNoData } from "shared/ui/InfoNoData/InfoNoData";
 import {
   Cell,
   CellLabel,
+  CellValue,
   ContentFlexCell,
   ContentFlexCenteredCell,
   Ellipsis,
@@ -28,6 +29,7 @@ import {
   InstanceNameCell,
   LeaderBlock,
   ValueHidden,
+  VersionRoot,
 } from "./StyledComponents";
 
 type InstanceCardAltProps = {
@@ -86,7 +88,7 @@ export const InstanceCardAlt = memo(
                   ) : null}
                   <Ellipsis>
                     <Tooltip title={instance.name}>
-                      <>{instance.name}</>
+                      <CellValue>{instance.name}</CellValue>
                     </Tooltip>
                   </Ellipsis>
                 </ContentFlexCenteredNameCell>
@@ -146,17 +148,20 @@ function VersionBlock(props: {
   noData?: ReactNode;
 }) {
   return (
-    <ContentFlexCenteredCell>
-      <CellLabel>{props.label}</CellLabel>
-      <Box>
-        {props.version ? (
-          <ValueHidden>
-            <HiddenWrapper>{props.version}</HiddenWrapper>
-          </ValueHidden>
-        ) : (
-          props.noData
-        )}
-      </Box>
-    </ContentFlexCenteredCell>
+    <VersionRoot>
+      <Box></Box>
+      <ContentFlexCenteredCell>
+        <CellLabel>{props.label}</CellLabel>
+        <Box>
+          {props.version ? (
+            <ValueHidden>
+              <HiddenWrapper>{props.version}</HiddenWrapper>
+            </ValueHidden>
+          ) : (
+            props.noData
+          )}
+        </Box>
+      </ContentFlexCenteredCell>
+    </VersionRoot>
   );
 }
