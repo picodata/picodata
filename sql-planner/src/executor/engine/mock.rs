@@ -25,6 +25,7 @@ use crate::ir::bucket::{BucketSet, Buckets};
 use crate::ir::explain::LogicalExplain;
 use crate::ir::function::Function;
 use crate::ir::node::NodeId;
+use crate::ir::options::Forward;
 use crate::ir::relation::{Column, ColumnRole, SpaceEngine, Table};
 use crate::ir::tree::Snapshot;
 use crate::ir::types::{DerivedType, UnrestrictedType};
@@ -1991,6 +1992,23 @@ impl Router for RouterRuntimeMock {
             metrics: SchedulerMetrics::noop(),
         }
     }
+
+    fn enforce_forward_option(
+        &self,
+        _forward_option: Forward,
+        _buckets: &Buckets,
+        _target_replicaset: &mut Option<String>,
+    ) -> Result<(), SbroadError> {
+        Ok(())
+    }
+
+    fn get_possible_forward_option(
+        &self,
+        _buckets: &Buckets,
+        _target_replicaset: &mut Option<String>,
+    ) -> Result<Forward, SbroadError> {
+        Ok(Forward::On)
+    }
 }
 
 impl<C: Router> ExecutingQuery<'_, C> {
@@ -2003,7 +2021,13 @@ impl<C: Router> ExecutingQuery<'_, C> {
 
         if self.is_raw_explain() {
             return Err(SbroadError::Other(
-                "raw explain is not supported for mocks".to_smolstr(),
+                "RAW mode of EXPLAIN is not supported for mocks".to_smolstr(),
+            ));
+        }
+
+        if self.is_explain_forward() {
+            return Err(SbroadError::Other(
+                "FORWARD mode of EXPLAIN is not supported for mocks".to_smolstr(),
             ));
         }
 

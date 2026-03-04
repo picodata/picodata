@@ -23,6 +23,7 @@ use crate::executor::protocol::SchemaInfo;
 use crate::executor::vtable::VirtualTable;
 use crate::ir::bucket::Buckets;
 use crate::ir::function::Function;
+use crate::ir::options::Forward;
 use crate::ir::relation::Table;
 use crate::ir::types::UnrestrictedType;
 use crate::ir::value::Value;
@@ -434,6 +435,28 @@ pub trait Router: QueryCache {
 
     /// Get scheduler options from the runtime.
     fn get_scheduler_options(&self) -> SchedulerOptions;
+
+    /// Enforces the user-requested `FORWARD` option against the actual
+    /// buckets for a single execution step.
+    fn enforce_forward_option(
+        &self,
+        forward_option: Forward,
+        buckets: &Buckets,
+        target_replicaset: &mut Option<String>,
+    ) -> Result<(), SbroadError>;
+
+    /// Determines the strictest FORWARD option that can be satisfied
+    /// for the given bucket set on the current node.
+    /// The `target_replicaset` parameter serves as cross-step memory:
+    /// on the first call it is set to the resolved replicaset; on
+    /// subsequent calls within the same query it is compared against
+    /// the new resolution to detect multi-replicaset access that would
+    /// break the `ro_to_rw` guarantee.
+    fn get_possible_forward_option(
+        &self,
+        buckets: &Buckets,
+        target_replicaset: &mut Option<String>,
+    ) -> Result<Forward, SbroadError>;
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

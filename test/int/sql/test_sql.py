@@ -844,13 +844,19 @@ def test_dml_on_global_tbls(cluster: Cluster):
     # test explain
     lines = i1.sql("explain insert into global_t select * from t")
     assert "\n".join(lines) == snapshot("""\
+# Logical plan
+
 insert "global_t" on conflict: fail
     motion [policy: full, program: ReshardIfNeeded]
         projection ("t"."x"::int -> "x", "t"."y"::int -> "y")
             scan "t"
+
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
+
+# Buckets
+
 buckets = [1-3000]\
 """)
 

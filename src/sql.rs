@@ -530,6 +530,12 @@ fn dispatch_bound_statement_impl<'p>(
             None
         };
 
+        let forward_explain = if query.is_explain_forward() {
+            Some(query.explain_forward()?)
+        } else {
+            None
+        };
+
         if query.is_raw_explain() {
             let mut tmp_port = runtime.new_port();
             let request_id =
@@ -542,6 +548,10 @@ fn dispatch_bound_statement_impl<'p>(
             if !raw_explain.is_empty() {
                 explain.push(raw_explain);
             }
+        }
+
+        if let Some(forward) = forward_explain {
+            explain.push(forward);
         }
 
         if let Some(buckets) = buckets_explain {

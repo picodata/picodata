@@ -9,7 +9,7 @@ use crate::{
 };
 use pgwire::messages::{startup::Startup, SslNegotiationMetaMessage};
 use smol_str::format_smolstr;
-use sql::ir::options::{PartialOptions, ReadPreference};
+use sql::ir::options::{Forward, PartialOptions, ReadPreference};
 use std::{
     collections::BTreeMap,
     io::{self, Read, Write},
@@ -104,6 +104,14 @@ impl ClientParams {
                             ))
                         })?;
                         options_accumulator.read_preference = Some(value)
+                    }
+                    "forward" => {
+                        let value = Forward::from_str(val).map_err(|_| {
+                            PgError::other(format!(
+                                "unknown forward value: '{val}', expected one of on, off, ro_to_rw"
+                            ))
+                        })?;
+                        options_accumulator.forward = Some(value)
                     }
                     _ => {
                         // We prefer using warnings instead of errors for these reasons:

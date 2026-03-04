@@ -7,6 +7,7 @@ use smol_str::format_smolstr;
 use sql_protocol::dql_encoder::DQLOptions;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
+use tarantool::define_str_enum;
 
 pub const DEFAULT_SQL_MOTION_ROW_MAX: u64 = 5000;
 pub const DEFAULT_SQL_VDBE_OPCODE_MAX: u64 = 45000;
@@ -66,6 +67,39 @@ impl Timeout {
 impl From<&Timeout> for std::time::Duration {
     fn from(t: &Timeout) -> Self {
         std::time::Duration::from_micros(t.us)
+    }
+}
+
+define_str_enum! {
+    #[derive(Default)]
+    pub enum Forward {
+        Off = "off",
+        RoToRw = "ro_to_rw",
+        #[default]
+        On = "on",
+    }
+}
+
+impl TryFrom<&Value> for Forward {
+    type Error = SbroadError;
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::String(ref s) => Forward::from_str(s).map_err(|_| {
+                SbroadError::Invalid(
+                    Entity::OptionSpec,
+                    Some(format_smolstr!(
+                        "expected forward to be one of [on, off, ro_to_rw], got: {s:?}"
+                    )),
+                )
+            }),
+            other => Err(SbroadError::Invalid(
+                Entity::OptionSpec,
+                Some(format_smolstr!(
+                    "expected forward to be one of [on, off, ro_to_rw], got: {other:?}"
+                )),
+            )),
+        }
     }
 }
 
@@ -145,6 +179,20 @@ pub struct Options {
     pub read_preference: ReadPreference,
     /// Default timeout for DDL/ACL statements (microseconds).
     pub sql_ddl_timeout_us: u64,
+    /// Controls how the query is routed with respect to bucket ownership:
+    ///
+    /// - `on` – buckets involved in the query may reside on different
+    ///   nodes; the query is executed via scatter-gather across
+    ///   the leaders of the affected replica sets.
+    /// - `ro_to_rw` – all buckets must belong to the same node, but the
+    ///   coordinator is allowed to forward the query to the
+    ///   leader of the corresponding replica set. An error is
+    ///   raised if the buckets span multiple nodes.
+    /// - `off` – all buckets must belong to the same node, and the
+    ///   client is responsible for sending the query directly
+    ///   to the leader that owns the buckets. An error is
+    ///   raised otherwise.
+    pub forward: Forward,
 }
 
 /// Default DDL/ACL timeout: 24 hours in microseconds.
@@ -157,6 +205,7 @@ impl Default for Options {
             sql_vdbe_opcode_max: DEFAULT_SQL_VDBE_OPCODE_MAX as i64,
             read_preference: ReadPreference::default(),
             sql_ddl_timeout_us: DEFAULT_SQL_DDL_TIMEOUT_US,
+            forward: Forward::default(),
         }
     }
 }
@@ -200,6 +249,7 @@ pub struct PartialOptions {
     pub sql_motion_row_max: Option<i64>,
     pub sql_vdbe_opcode_max: Option<i64>,
     pub read_preference: Option<ReadPreference>,
+    pub forward: Option<Forward>,
 }
 
 impl PartialOptions {
@@ -217,6 +267,7 @@ impl PartialOptions {
                 .unwrap_or(defaults.sql_vdbe_opcode_max),
             read_preference: self.read_preference.unwrap_or(defaults.read_preference),
             sql_ddl_timeout_us: defaults.sql_ddl_timeout_us,
+            forward: self.forward.unwrap_or(defaults.forward),
         }
     }
 }
@@ -252,6 +303,8 @@ pub enum OptionKind {
     MotionRowMax,
     /// `read_preference`
     ReadPreference,
+    /// `forward`
+    Forward,
 }
 
 impl Display for OptionKind {
@@ -260,6 +313,7 @@ impl Display for OptionKind {
             OptionKind::VdbeOpcodeMax => "sql_vdbe_opcode_max",
             OptionKind::MotionRowMax => "sql_motion_row_max",
             OptionKind::ReadPreference => "read_preference",
+            OptionKind::Forward => "forward",
         };
         write!(f, "{s}")
     }
@@ -325,6 +379,7 @@ pub(super) struct LoweredOptions {
     sql_motion_row_max: LoweredOptionValue<i64>,
     sql_vdbe_opcode_max: LoweredOptionValue<i64>,
     read_preference: LoweredOptionValue<ReadPreference>,
+    forward: LoweredOptionValue<Forward>,
 }
 
 impl LoweredOptions {
@@ -334,6 +389,7 @@ impl LoweredOptions {
             sql_vdbe_opcode_max: self.sql_vdbe_opcode_max.unwrap(default.sql_vdbe_opcode_max),
             read_preference: self.read_preference.unwrap(default.read_preference),
             sql_ddl_timeout_us: default.sql_ddl_timeout_us,
+            forward: self.forward.unwrap(default.forward),
         }
     }
 }
@@ -367,6 +423,10 @@ pub(super) fn lower_options(
         ReadPreference::try_from(val)
     }
 
+    fn lower_forward(val: &Value) -> Result<Forward, SbroadError> {
+        Forward::try_from(val)
+    }
+
     let mut result = LoweredOptions::default();
 
     for &OptionSpec { kind, ref val } in resolved_options {
@@ -391,6 +451,10 @@ pub(super) fn lower_options(
             OptionKind::ReadPreference => {
                 let value = val.as_ref().map(lower_read_preference).transpose()?;
                 result.read_preference.specify_opt(value);
+            }
+            OptionKind::Forward => {
+                let value = val.as_ref().map(lower_forward).transpose()?;
+                result.forward.specify_opt(value);
             }
         }
     }
@@ -424,7 +488,8 @@ impl Plan {
     /// Validate options usage.
     ///
     /// # Errors
-    /// - This is an insert query, and it has more than `sql_motion_row_max` values.
+    /// - This is an INSERT query, and it has more than `sql_motion_row_max` values.
+    /// - This is DML query and `read_preference` options is specified.
     pub(super) fn validate_options_usage(
         &self,
         lowered: &LoweredOptions,
@@ -435,6 +500,24 @@ impl Plan {
             return Err(SbroadError::Invalid(
                 Entity::OptionSpec,
                 Some("read_preference option is supported only for DQL queries".into()),
+            ));
+        }
+
+        let forward_off = matches!(lowered.forward, LoweredOptionValue::Known(Forward::Off));
+        let read_preference_not_leader = !matches!(
+            lowered.read_preference,
+            LoweredOptionValue::Known(ReadPreference::Leader)
+        );
+        if forward_off && read_preference_specified && read_preference_not_leader {
+            let option = lowered
+                .read_preference
+                .try_get_value()
+                .expect("value must be specified");
+            return Err(SbroadError::Invalid(
+                Entity::OptionSpec,
+                Some(format_smolstr!(
+                    "\"forward = off\" is not compatible with \"read_preference = {option}\"",
+                )),
             ));
         }
 

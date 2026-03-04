@@ -474,3 +474,226 @@ execution options:
 # Buckets
 ''
 buckets = [1-3000]
+
+-- TEST: raw-buckets-forward-logical-select
+-- SQL:
+explain (raw, buckets, logical, forward) select a from t union all select b from t group by 1 order by 1 limit 1;
+-- EXPECTED:
+# Logical plan
+''
+limit 1
+  projection (a::double)
+    order by (1)
+      motion [policy: full, program: ReshardIfNeeded]
+        limit 1
+          projection (a::double)
+            order by (1)
+              scan
+                union all
+                  projection (t.a::int -> a)
+                    scan t
+                  motion [policy: segment([ref(b)]), program: ReshardIfNeeded]
+                    projection (gr_expr_1::double -> b)
+                      group by (gr_expr_1::double) output (gr_expr_1::double)
+                        motion [policy: full, program: ReshardIfNeeded]
+                          projection (t.b::double -> gr_expr_1)
+                            group by (t.b::double) output (t.a::int -> a, t.b::double -> b, t.c::string -> c, t.bucket_id::int -> bucket_id)
+                              scan t
+''
+execution options:
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
+''
+# Raw plan
+''
+1. Query (STORAGE):
+''
+SELECT "t"."b" as "gr_expr_1" FROM "t" GROUP BY "t"."b"
+''
+plan:
+    [0] SCAN TABLE t (~1048576 rows)
+    [0] USE TEMP B-TREE FOR GROUP BY
+''
+2. Query (ROUTER):
+''
+SELECT "COL_0" as "b" FROM ( SELECT "COL_0" FROM "TMP_360955720146140810_0136" ) GROUP BY "COL_0"
+''
+plan:
+    [0] SCAN TABLE TMP_360955720146140810_0136 (~1048576 rows)
+    [0] USE TEMP B-TREE FOR GROUP BY
+''
+3. Query (STORAGE):
+''
+SELECT "a" FROM ( SELECT "t"."a" FROM "t" UNION ALL SELECT "COL_0" FROM "TMP_14578838286934790748_0136" ) ORDER BY 1 LIMIT 1
+''
+plan:
+    [1] SCAN TABLE t (~1048576 rows)
+    [1] USE TEMP B-TREE FOR ORDER BY
+    [2] SCAN TABLE TMP_14578838286934790748_0136 (~1048576 rows)
+    [2] USE TEMP B-TREE FOR ORDER BY
+    [0] COMPOUND SUBQUERIES 1 AND 2 (UNION ALL)
+''
+4. Query (ROUTER):
+''
+SELECT "COL_0" as "a" FROM ( SELECT "COL_0" FROM "TMP_4568982083100930460_0136" ) ORDER BY 1 LIMIT 1
+''
+plan:
+    [0] SCAN TABLE TMP_4568982083100930460_0136 (~1048576 rows)
+    [0] USE TEMP B-TREE FOR ORDER BY
+''
+# Forward
+''
+forward analysis (on > ro_to_rw > off):
+  forward = on
+''
+# Buckets
+''
+buckets = unknown
+
+-- TEST: raw-buckets-forward-logical-fmt-select-join
+-- SQL:
+explain (raw, buckets, logical, forward, fmt) select a from t join (select b from t) tt on tt.b = t.a group by 1 order by 1 limit 1;
+-- EXPECTED:
+# Logical plan
+''
+limit 1
+  projection (a::int)
+    order by (1)
+      scan
+        projection (gr_expr_1::int -> a)
+          group by (gr_expr_1::int) output (gr_expr_1::int)
+            motion [policy: full, program: ReshardIfNeeded]
+              limit 1
+                projection (gr_expr_1::int)
+                  order by (1)
+                    scan
+                      projection (t.a::int -> gr_expr_1)
+                        group by (t.a::int) output (
+                          t.a::int -> a,
+                          t.b::double -> b,
+                          t.c::string -> c,
+                          t.bucket_id::int -> bucket_id,
+                          tt.b::double -> b
+                        )
+                          join on (tt.b::double = t.a::int)
+                            scan t
+                            motion [policy: full, program: ReshardIfNeeded]
+                              scan tt
+                                projection (t.b::double -> b)
+                                  scan t
+''
+execution options:
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
+''
+# Raw plan
+''
+1. Query (STORAGE):
+''
+SELECT "t"."b" FROM "t"
+''
+plan:
+    [0] SCAN TABLE t (~1048576 rows)
+''
+2. Query (STORAGE):
+''
+SELECT
+  "gr_expr_1"
+FROM
+  (
+    SELECT
+      "t"."a" as "gr_expr_1"
+    FROM
+      "t"
+      INNER JOIN (
+        SELECT
+          "COL_0"
+        FROM
+          "TMP_1724946765736423630_0136"
+      ) as "tt" ON "tt"."COL_0" = "t"."a"
+    GROUP BY
+      "t"."a"
+  )
+ORDER BY
+'  1'
+LIMIT
+'  1'
+''
+plan:
+    [0] SCAN TABLE t (~1048576 rows)
+        [0] SCAN TABLE TMP_1724946765736423630_0136 (~1048576 rows)
+    [0] USE TEMP B-TREE FOR GROUP BY
+''
+3. Query (ROUTER):
+''
+SELECT
+  "a"
+FROM
+  (
+    SELECT
+      "COL_0" as "a"
+    FROM
+      (
+        SELECT
+          "COL_0"
+        FROM
+          "TMP_5710276931428869830_0136"
+      )
+    GROUP BY
+      "COL_0"
+  )
+ORDER BY
+'  1'
+LIMIT
+'  1'
+''
+plan:
+    [0] SCAN TABLE TMP_5710276931428869830_0136 (~1048576 rows)
+    [0] USE TEMP B-TREE FOR GROUP BY
+''
+# Forward
+''
+forward analysis (on > ro_to_rw > off):
+  forward = on
+''
+# Buckets
+''
+buckets = [1-3000]
+
+-- TEST: raw-forward-delete
+-- SQL:
+explain (raw, forward) delete from t where a = 1 and c = '2' or a in (1, 2, 3);
+-- EXPECTED:
+# Raw plan
+''
+1. Query (STORAGE):
+''
+SELECT "t"."c" as "pk_col_0", "t"."a" as "pk_col_1" FROM "t" WHERE "t"."a" = CAST(1 AS int) and "t"."c" = CAST('2' AS string) or "t"."a" in ( CAST(1 AS int), CAST(2 AS int), CAST(3 AS int) )
+''
+plan:
+    [0] SCAN TABLE t (~983040 rows)
+    [0] EXECUTE LIST SUBQUERY 1
+''
+# Forward
+''
+forward analysis (on > ro_to_rw > off):
+  forward = on
+
+-- TEST: raw-forward-select
+-- SQL:
+explain (raw, forward) select a from t where a = 1 and c = '2' union select id::int from _pico_table;
+-- EXPECTED:
+# Raw plan
+''
+1. Query (FILTERED STORAGE):
+''
+SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST(1 AS int) and "t"."c" = CAST('2' AS string) UNION select cast(null as int) as "col_1" where false
+''
+plan:
+    [1] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
+    [0] COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (UNION)
+''
+# Forward
+''
+forward analysis (on > ro_to_rw > off):
+  forward = off

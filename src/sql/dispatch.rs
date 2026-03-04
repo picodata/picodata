@@ -1331,7 +1331,7 @@ fn port_append_mp<'p>(port: &mut impl Port<'p>, mp: &[u8], row_len: u32) -> IoRe
     Ok(())
 }
 
-fn replicasets_from_buckets(
+pub fn replicasets_from_buckets(
     lua: &LuaThread,
     buckets: &Buckets,
     tier: Option<&str>,

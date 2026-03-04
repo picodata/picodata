@@ -2547,6 +2547,7 @@ pub struct DynamicConfigProviders {
     pub sql_preemption_opcode_max: AtomicObserverProvider<u64>,
     pub sql_log: AtomicObserverProvider<bool>,
     pub sql_ddl_timeout_us: AtomicObserverProvider<u64>,
+    pub forward: AtomicObserverProvider<u8>,
 }
 
 impl DynamicConfigProviders {
@@ -2563,6 +2564,7 @@ impl DynamicConfigProviders {
             sql_preemption_opcode_max: AtomicObserverProvider::new(),
             sql_log: AtomicObserverProvider::new(),
             sql_ddl_timeout_us: AtomicObserverProvider::new(),
+            forward: AtomicObserverProvider::new(),
         }
     }
 
@@ -2581,6 +2583,11 @@ impl DynamicConfigProviders {
                 .sql_ddl_timeout_us
                 .try_current_value()
                 .unwrap_or(options::DEFAULT_SQL_DDL_TIMEOUT_US),
+            forward: self
+                .forward
+                .try_current_value()
+                .map(|raw| options::Forward::try_from(raw).expect("invalid forward value"))
+                .unwrap_or_default(),
         })
     }
 }

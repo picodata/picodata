@@ -2509,6 +2509,33 @@ fn parse_unsigned(ast_node: &ParseNode) -> Result<i64, SbroadError> {
     }
 }
 
+fn parse_parameter_for_option<M: Metadata>(
+    type_analyzer: &mut TypeAnalyzer,
+    option_node_id: usize,
+    pairs_map: &mut ParsingPairsMap,
+    worker: &mut ExpressionsWorker<M>,
+    plan: &mut Plan,
+    ty: UnrestrictedType,
+) -> Result<OptionParamValue, SbroadError> {
+    let plan_id = parse_scalar_expr(
+        Pairs::single(pairs_map.remove_pair(option_node_id)),
+        type_analyzer,
+        DerivedType::new(ty),
+        &[],
+        worker,
+        plan,
+        true,
+    )?;
+
+    let Expression::Parameter(&Parameter { index, .. }) = plan.get_expression_node(plan_id)? else {
+        panic!("Expected Parameter expression under Parameter node");
+    };
+
+    Ok(OptionParamValue::Parameter {
+        index: (index - 1) as usize,
+    })
+}
+
 /// Common logic for [`crate::ir::options::OptionKind::VdbeOpcodeMax`]
 /// and [`crate::ir::options::OptionKind::MotionRowMax`] parsing.
 fn parse_option<M: Metadata>(
@@ -2521,30 +2548,14 @@ fn parse_option<M: Metadata>(
 ) -> Result<OptionParamValue, SbroadError> {
     let ast_node = ast.nodes.get_node(option_node_id)?;
     let value = match ast_node.rule {
-        Rule::Parameter => {
-            let plan_id = parse_scalar_expr(
-                Pairs::single(pairs_map.remove_pair(option_node_id)),
-                type_analyzer,
-                DerivedType::new(UnrestrictedType::Integer),
-                &[],
-                worker,
-                plan,
-                true,
-            )?;
-
-            let Expression::Parameter(&Parameter { index, .. }) =
-                plan.get_expression_node(plan_id)?
-            else {
-                unreachable!("Expected Parameter expression under Parameter node");
-            };
-
-            OptionParamValue::Parameter {
-                index: index.checked_sub(1).ok_or(SbroadError::Invalid(
-                    AST,
-                    Some("Parameter position 0 is not allowed".into()),
-                ))? as usize,
-            }
-        }
+        Rule::Parameter => parse_parameter_for_option(
+            type_analyzer,
+            option_node_id,
+            pairs_map,
+            worker,
+            plan,
+            UnrestrictedType::Integer,
+        )?,
         Rule::Unsigned => {
             let v = parse_unsigned(ast_node)?;
             OptionParamValue::Value {
@@ -2573,30 +2584,14 @@ fn parse_read_preference_option<M: Metadata>(
 ) -> Result<OptionParamValue, SbroadError> {
     let ast_node = ast.nodes.get_node(option_node_id)?;
     let value = match ast_node.rule {
-        Rule::Parameter => {
-            let plan_id = parse_scalar_expr(
-                Pairs::single(pairs_map.remove_pair(option_node_id)),
-                type_analyzer,
-                DerivedType::new(UnrestrictedType::String),
-                &[],
-                worker,
-                plan,
-                true,
-            )?;
-
-            let Expression::Parameter(&Parameter { index, .. }) =
-                plan.get_expression_node(plan_id)?
-            else {
-                unreachable!("Expected Parameter expression under Parameter node");
-            };
-
-            OptionParamValue::Parameter {
-                index: index.checked_sub(1).ok_or(SbroadError::Invalid(
-                    AST,
-                    Some("Parameter position 0 is not allowed".into()),
-                ))? as usize,
-            }
-        }
+        Rule::Parameter => parse_parameter_for_option(
+            type_analyzer,
+            option_node_id,
+            pairs_map,
+            worker,
+            plan,
+            UnrestrictedType::String,
+        )?,
         Rule::Leader | Rule::Replica | Rule::Any => {
             let value = match ast_node.rule {
                 Rule::Leader => "leader",
@@ -2616,6 +2611,41 @@ fn parse_read_preference_option<M: Metadata>(
                 )),
             ))
         }
+    };
+
+    Ok(value)
+}
+
+fn parse_forward_option<M: Metadata>(
+    ast: &AbstractSyntaxTree,
+    type_analyzer: &mut TypeAnalyzer,
+    option_node_id: usize,
+    pairs_map: &mut ParsingPairsMap,
+    worker: &mut ExpressionsWorker<M>,
+    plan: &mut Plan,
+) -> Result<OptionParamValue, SbroadError> {
+    let ast_node = ast.nodes.get_node(option_node_id)?;
+    let value = match ast_node.rule {
+        Rule::Parameter => parse_parameter_for_option(
+            type_analyzer,
+            option_node_id,
+            pairs_map,
+            worker,
+            plan,
+            UnrestrictedType::String,
+        )?,
+        Rule::ForwardOn | Rule::ForwardOff | Rule::ForwardROtoRW => {
+            let value = match ast_node.rule {
+                Rule::ForwardOn => "on",
+                Rule::ForwardOff => "off",
+                Rule::ForwardROtoRW => "ro_to_rw",
+                _ => unreachable!(),
+            };
+            OptionParamValue::Value {
+                val: Value::String(value.into()),
+            }
+        }
+        _ => panic!("unexpected child of forward option. id: {option_node_id}"),
     };
 
     Ok(value)
@@ -6447,6 +6477,24 @@ impl AbstractSyntaxTree {
                         val,
                     });
                 }
+                Rule::Forward => {
+                    let ast_child_id = node
+                        .children
+                        .first()
+                        .expect("no children for read_preference option");
+                    let val = parse_forward_option(
+                        self,
+                        &mut type_analyzer,
+                        *ast_child_id,
+                        pairs_map,
+                        &mut worker,
+                        &mut plan,
+                    )?;
+                    plan.raw_options.push(OptionSpec {
+                        kind: OptionKind::Forward,
+                        val,
+                    });
+                }
                 Rule::VdbeOpcodeMax => {
                     let ast_child_id = node
                         .children
@@ -6969,6 +7017,7 @@ impl AbstractSyntaxTree {
                                 Rule::ExplainFmt => explain_options |= ExplainOptions::Fmt,
                                 Rule::ExplainBuckets => explain_options |= ExplainOptions::Buckets,
                                 Rule::ExplainLogical => explain_options |= ExplainOptions::Logical,
+                                Rule::ExplainForward => explain_options |= ExplainOptions::Forward,
                                 _ => panic!(
                                     "unknown explain option rule: {:?}",
                                     explain_option_node.rule

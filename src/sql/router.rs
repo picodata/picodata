@@ -18,11 +18,13 @@ use sql::frontend::sql::ast::AbstractSyntaxTree;
 use sql::ir::bucket::{BucketSet, Buckets};
 use sql::ir::helpers::RepeatableState;
 use sql::ir::node::NodeId;
+use sql::ir::options::Forward;
 use sql::ir::value::{MsgPackValue, Value};
 use sql::ir::Plan;
 use sql::utils::MutexLike;
 use tarantool::fiber::Mutex;
 use tarantool::session::with_su;
+use tarantool::time::Instant;
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -41,6 +43,7 @@ use sql::ir::function::Function;
 use sql::ir::relation::{space_pk_columns, Column, ColumnRole, Table};
 use sql::ir::types::{DerivedType, UnrestrictedType};
 
+use crate::sql::dispatch::replicasets_from_buckets;
 use crate::sql::storage::StorageRuntime;
 use crate::traft::node;
 
@@ -494,6 +497,81 @@ impl Router for RouterRuntime {
 
     fn get_scheduler_options(&self) -> SchedulerOptions {
         scheduler_options()
+    }
+
+    fn enforce_forward_option(
+        &self,
+        forward_option: Forward,
+        buckets: &Buckets,
+        target_replicaset: &mut Option<String>,
+    ) -> Result<(), SbroadError> {
+        let option = self.get_possible_forward_option(buckets, target_replicaset)?;
+        if option > forward_option {
+            let reason = match forward_option {
+                Forward::RoToRw => "buckets span multiple nodes",
+                Forward::Off if matches!(option, Forward::RoToRw) => {
+                    "buckets are not present on the current node"
+                }
+                Forward::Off => {
+                    "buckets span multiple nodes and are not present on the current node"
+                }
+                Forward::On => panic!("it is always possible to specify \"forward = on\""),
+            };
+
+            return Err(SbroadError::Invalid(
+                Entity::Option,
+                Some(format_smolstr!(
+                    "cannot satisfy \"forward = {forward_option}\": {reason}, try using \"forward = {option}\" instead"
+                )),
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn get_possible_forward_option(
+        &self,
+        buckets: &Buckets,
+        target_replicaset: &mut Option<String>,
+    ) -> Result<Forward, SbroadError> {
+        match buckets {
+            Buckets::All => Ok(Forward::On),
+            Buckets::Any => Ok(Forward::Off),
+            Buckets::Filtered(_) => {
+                let lua = tarantool::lua_state();
+                let tier = get_current_tier_name()?;
+                let timeout = DEFAULT_QUERY_TIMEOUT;
+                let deadline = Instant::now_fiber().saturating_add(timeout);
+                let replicasets = replicasets_from_buckets(&lua, buckets, Some(tier), deadline)?;
+
+                let Some(replicaset) = replicasets.first() else {
+                    return Ok(Forward::Off);
+                };
+
+                if replicasets.len() != 1 {
+                    return Ok(Forward::On);
+                }
+
+                if let Some(target_replicaset) = target_replicaset {
+                    if replicaset != target_replicaset {
+                        return Ok(Forward::On);
+                    }
+                }
+
+                let node = node::global().expect("raft node must be initialized");
+                let my_replicaset_name = node.topology_cache.my_replicaset_uuid();
+
+                if my_replicaset_name != replicaset {
+                    return Ok(Forward::RoToRw);
+                }
+
+                if node.is_readonly() {
+                    return Ok(Forward::RoToRw);
+                }
+
+                Ok(Forward::Off)
+            }
+        }
     }
 }
 

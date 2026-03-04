@@ -15,10 +15,11 @@ from conftest import (
 )
 from framework.util.build import Executable
 from inline_snapshot import snapshot
+from test_plugin import _PLUGIN, _PLUGIN_VERSION_1, PluginReflection
+
 from tarantool.error import (  # type: ignore
     NetworkError,
 )
-from test_plugin import _PLUGIN, _PLUGIN_VERSION_1, PluginReflection
 
 
 def test_admin_ux(cluster: Cluster):

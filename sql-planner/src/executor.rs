@@ -318,6 +318,15 @@ pub trait Port<'p>: io::Write {
     fn size(&self) -> u32;
 }
 
+/// The purpose of that structure is to persist data
+/// across query execution process.
+/// Currently, it contains only target replicaset uuid
+/// to validate `ro_to_rw` forward option.
+#[derive(Debug, Default)]
+struct ExecutionContext {
+    target_replicaset: Option<String>,
+}
+
 /// Query to execute.
 #[derive(Debug)]
 pub struct ExecutingQuery<'a, C>
@@ -331,6 +340,7 @@ where
     /// Bucket map of view { plan output_id (Expression::Row) -> `Buckets` }.
     /// It's supposed to denote relational nodes' output buckets destination.
     bucket_map: HashMap<NodeId, Buckets>,
+    exec_ctx: ExecutionContext,
 }
 
 impl<'a, C> ExecutingQuery<'a, C>
@@ -342,6 +352,7 @@ where
             exec_plan: ExecutionPlan::new(*statement.plan),
             coordinator: runtime,
             bucket_map: HashMap::new(),
+            exec_ctx: ExecutionContext::default(),
         }
     }
 
@@ -452,6 +463,8 @@ where
                     .get_motion_subtree_root(*motion_id)?;
 
                 let buckets = self.bucket_discovery(top_id)?;
+                self.enforce_forward_option(&buckets)?;
+
                 let mut virtual_table = self.coordinator.materialize_motion(
                     &mut self.exec_plan,
                     motion_id,
@@ -530,6 +543,8 @@ where
             }
 
             let buckets = block_buckets.unwrap_or(Buckets::Any);
+            self.enforce_forward_option(&buckets)?;
+
             return self
                 .coordinator
                 .dispatch(&mut self.exec_plan, top_id, &buckets, port);
@@ -564,7 +579,9 @@ where
         if let Some(node_id) = plan_id_target {
             self.exec_plan.set_plan_id(node_id)?;
         }
+
         let buckets = self.bucket_discovery(top_id)?;
+        self.enforce_forward_option(&buckets)?;
 
         self.coordinator
             .dispatch(&mut self.exec_plan, top_id, &buckets, port)?;
@@ -576,7 +593,7 @@ where
         let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
         let err = || -> Result<(), SbroadError> {
             Err(SbroadError::Other(
-                "LOGICAL and BUCKETS modes for explain are not implemented for transactions"
+                "LOGICAL, BUCKETS, and FORWARD modes for explain are not implemented for transactions"
                     .to_smolstr(),
             ))
         };
@@ -606,6 +623,10 @@ where
 
     pub fn is_buckets_explain(&self) -> bool {
         self.exec_plan.get_ir_plan().is_buckets_explain()
+    }
+
+    pub fn is_explain_forward(&self) -> bool {
+        self.exec_plan.get_ir_plan().is_explain_forward()
     }
 
     pub fn is_block(&self) -> Result<bool, SbroadError> {
@@ -697,6 +718,28 @@ where
         write!(&mut buf, "{info}").unwrap();
 
         Ok(buf)
+    }
+
+    /// Enforces the requested `FORWARD` option against the actual
+    /// buckets for an execution step.
+    ///
+    /// When query contains RAW mode of EXPLAIN and FORWARD option is specified
+    /// the check is skipped so that the explain output is always produced
+    /// regardless of whether the requested forward level is achievable. Only
+    /// RAW mode must be skipped here since other EXPLAIN modes do not trigger
+    /// dispatch or motion materialization machinery.
+    fn enforce_forward_option(&mut self, buckets: &Buckets) -> Result<(), SbroadError> {
+        if self.is_raw_explain() {
+            return Ok(());
+        }
+
+        let ir_plan = self.exec_plan.get_ir_plan();
+        let forward_option = ir_plan.effective_options.forward;
+        self.coordinator.enforce_forward_option(
+            forward_option,
+            buckets,
+            &mut self.exec_ctx.target_replicaset,
+        )
     }
 }
 

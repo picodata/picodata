@@ -292,9 +292,10 @@ CallProc = ${ CallProcImpl ~ (W ~ DqlOption)? }
         ProcValues = !{ (ProcValue ~ ("," ~ ProcValue)*)? }
             ProcValue = _{ Literal | Parameter }
 
-ExplainFacet = _{ (ExplainRaw | ExplainFmt | ExplainBuckets | ExplainLogical) }
+ExplainFacet = _{ (ExplainRaw | ExplainFmt | ExplainBuckets | ExplainLogical | ExplainForward) }
     ExplainBuckets = { ^"buckets" }
     ExplainFmt = { ^"fmt" }
+    ExplainForward = { ^"forward" }
     ExplainLogical = { ^"logical" }
     ExplainRaw = { ^"raw" }
 ExplainQueryPlan    = { ( "(" ~ WO ~ ExplainFacet ~ (WO ~ "," ~ WO ~ ExplainFacet)* ~ WO ~ ")" ) }
@@ -366,7 +367,7 @@ Query = { (SelectFull | Values | Insert | Update | Delete) ~ WO ~ DqlOption? }
 
     DqlOption = !{ ^"option" ~ "(" ~ OprionParams ~ ")" }
         OprionParams = _{ OptionParam ~ (WO ~ "," ~ WO ~ OptionParam)* }
-    OptionParam = _{ VdbeOpcodeMax | MotionRowMax | ReadPreference }
+    OptionParam = _{ VdbeOpcodeMax | MotionRowMax | ReadPreference | Forward }
     Timeout = !{ ^"timeout" ~ "=" ~ Duration }
        Duration = @{ Unsigned ~ ("." ~ Unsigned)? }
     TimeoutOption = _{ ^"option" ~ WO ~ "(" ~ WO ~ Timeout ~ WO ~ ")" }
@@ -376,6 +377,10 @@ Query = { (SelectFull | Values | Insert | Update | Delete) ~ WO ~ DqlOption? }
         Leader = { ^"leader" }
         Replica = { ^"replica" }
         Any = { ^"any" }
+    Forward = { ^"forward" ~ "=" ~ (ForwardOn | ForwardOff | ForwardROtoRW | Parameter) }
+        ForwardOn = { ^"on" }
+        ForwardOff = { ^"off" }
+        ForwardROtoRW = { ^"ro_to_rw" }
     Delete = ${ ^"delete" ~ W ~ ^"from" ~ W ~ (PublicSchema)? ~ IndexedTableScan ~ (W ~ ^"where" ~ W ~ DeleteFilter)? }
     	DeleteFilter = { Expr }
 

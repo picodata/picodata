@@ -49,6 +49,11 @@ with the `YY.MINOR.MICRO` scheme.
   plan representation. The numbers in square brackets can indicate that a group
   of operations is performed on the same relation; in addition, they can be
   used as references to other operations.
+- Implement the `forward` option for DQL/DML queries that controls how queries
+  are routed with respect to bucket ownership:
+  - `on`: scatter-gather across replica set leaders;
+  - `ro_to_rw`: all buckets on one node, forwarding allowed;
+  - `off`: true locality, error if client is not on the correct node.
 
 ### Fixes
 
