@@ -835,6 +835,9 @@ pub enum Ddl {
         owner: UserId,
         #[serde(default)]
         opts: Vec<TableOption>,
+        /// Vinyl options for indexes created with this table (primary key, bucket_id).
+        #[serde(default)]
+        index_opts: Vec<IndexOption>,
     },
     DropTable {
         id: SpaceId,

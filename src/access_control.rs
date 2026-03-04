@@ -961,6 +961,7 @@ mod tests {
                 engine: SpaceEngineType::Blackhole,
                 owner: user_id,
                 opts: vec![],
+                index_opts: vec![],
             };
 
             let e = access_check_ddl(&storage, &space_to_be_created, user_id).unwrap_err();

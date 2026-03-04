@@ -3049,3 +3049,63 @@ def test_vinyl_options_applied_to_indices(cluster: Cluster):
     assert opts.get("run_count_per_level") == custom_run_count_per_level, (
         f"run_count_per_level should use instance default: expected {custom_run_count_per_level}, got {opts}"
     )
+
+    # Test per-table vinyl options via CREATE TABLE ... WITH (...)
+    # These should override instance-level defaults for all implicit indexes
+    table_page_size = 65536  # 64K (different from instance default 16K)
+    table_bloom_fpr = 0.05
+    table_compression_level = 10
+
+    i1.sql(
+        f"""
+        CREATE TABLE vinyl_with_opts (
+            id INT NOT NULL,
+            data TEXT,
+            PRIMARY KEY (id)
+        ) USING vinyl
+        WITH (
+            page_size = {table_page_size},
+            bloom_fpr = {table_bloom_fpr},
+            compression_level = {table_compression_level}
+        )
+        DISTRIBUTED BY (id)
+        """
+    )
+
+    space_id_with_opts = i1.eval("return box.space.vinyl_with_opts.id")
+
+    # Check primary key index has table-level options
+    pk_with_opts = i1.call("box.space._index:get", [space_id_with_opts, 0])
+    assert pk_with_opts is not None, "Primary key index should exist"
+    pk_opts = pk_with_opts[4]
+    assert pk_opts.get("page_size") == table_page_size, (
+        f"Table pk page_size mismatch: expected {table_page_size}, got {pk_opts}"
+    )
+    assert abs(pk_opts.get("bloom_fpr") - table_bloom_fpr) < 0.001, (
+        f"Table pk bloom_fpr mismatch: expected {table_bloom_fpr}, got {pk_opts}"
+    )
+    assert pk_opts.get("compression_level") == table_compression_level, (
+        f"Table pk compression_level mismatch: expected {table_compression_level}, got {pk_opts}"
+    )
+
+    # Check bucket_id index also has table-level options
+    bucket_with_opts = i1.call("box.space._index:get", [space_id_with_opts, 1])
+    assert bucket_with_opts is not None, "bucket_id index should exist"
+    bucket_opts = bucket_with_opts[4]
+    assert bucket_opts.get("page_size") == table_page_size, (
+        f"Table bucket_id page_size mismatch: expected {table_page_size}, got {bucket_opts}"
+    )
+    assert abs(bucket_opts.get("bloom_fpr") - table_bloom_fpr) < 0.001, (
+        f"Table bucket_id bloom_fpr mismatch: expected {table_bloom_fpr}, got {bucket_opts}"
+    )
+    assert bucket_opts.get("compression_level") == table_compression_level, (
+        f"Table bucket_id compression_level mismatch: expected {table_compression_level}, got {bucket_opts}"
+    )
+
+    # Verify non-specified options still use instance defaults
+    assert pk_opts.get("range_size") == custom_range_size, (
+        f"Table pk range_size should use instance default: expected {custom_range_size}, got {pk_opts}"
+    )
+    assert pk_opts.get("run_count_per_level") == custom_run_count_per_level, (
+        f"Table pk run_count_per_level should use instance default: expected {custom_run_count_per_level}, got {pk_opts}"
+    )

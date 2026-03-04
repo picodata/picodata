@@ -339,7 +339,7 @@ const fn default_bucket_id_field() -> SmolStr {
 /// using materialized views instead of tarantool indexes. Therefore,
 /// it's important to maintain a distinction between these features,
 /// emphasizing that it is specific to picodata.
-#[derive(Clone, Debug, Deserialize, Serialize, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize, Hash, PartialEq, Eq, LuaRead)]
 pub enum IndexOption {
     /// Vinyl only. The false positive rate for the bloom filter.
     #[serde(rename = "bloom_fpr")]
@@ -2244,6 +2244,8 @@ pub struct CreateTableParams {
     pub(crate) tier: SmolStr,
     /// Table options.
     pub(crate) opts: Vec<TableOption>,
+    /// Vinyl options for indexes created with this table (primary key, bucket_id).
+    pub(crate) index_opts: Vec<IndexOption>,
     /// Timeout in seconds.
     ///
     /// Specifying the timeout identifies how long user is ready to wait for ddl to be applied.
@@ -2485,6 +2487,7 @@ impl CreateTableParams {
             engine: self.engine.unwrap_or_default(),
             owner: self.owner,
             opts: self.opts,
+            index_opts: self.index_opts,
         };
         Ok(res)
     }
@@ -2725,6 +2728,7 @@ mod tests {
             owner: ADMIN_ID,
             tier: DEFAULT_TIER.into(),
             opts: vec![],
+            index_opts: vec![],
         }
         .test_create_space(&storage)
         .unwrap();
@@ -2744,6 +2748,7 @@ mod tests {
             owner: ADMIN_ID,
             tier: DEFAULT_TIER.into(),
             opts: vec![],
+            index_opts: vec![],
         }
         .test_create_space(&storage)
         .unwrap();
@@ -2763,6 +2768,7 @@ mod tests {
             owner: ADMIN_ID,
             tier: DEFAULT_TIER.into(),
             opts: vec![],
+            index_opts: vec![],
         }
         .test_create_space(&storage)
         .unwrap_err();
@@ -2801,6 +2807,7 @@ mod tests {
             owner: ADMIN_ID,
             tier: DEFAULT_TIER.into(),
             opts: vec![],
+            index_opts: vec![],
         }
         .validate()
         .unwrap_err();
@@ -2820,6 +2827,7 @@ mod tests {
             owner: ADMIN_ID,
             tier: DEFAULT_TIER.into(),
             opts: vec![],
+            index_opts: vec![],
         }
         .validate()
         .unwrap_err();
@@ -2839,6 +2847,7 @@ mod tests {
             owner: ADMIN_ID,
             tier: DEFAULT_TIER.into(),
             opts: vec![],
+            index_opts: vec![],
         }
         .validate()
         .unwrap_err();
@@ -2858,6 +2867,7 @@ mod tests {
             owner: ADMIN_ID,
             tier: DEFAULT_TIER.into(),
             opts: vec![],
+            index_opts: vec![],
         }
         .validate()
         .unwrap_err();
@@ -2877,6 +2887,7 @@ mod tests {
             owner: ADMIN_ID,
             tier: DEFAULT_TIER.into(),
             opts: vec![],
+            index_opts: vec![],
         }
         .validate()
         .unwrap_err();
@@ -2896,6 +2907,7 @@ mod tests {
             owner: ADMIN_ID,
             tier: DEFAULT_TIER.into(),
             opts: vec![],
+            index_opts: vec![],
         }
         .validate()
         .unwrap_err();
@@ -2918,6 +2930,7 @@ mod tests {
             owner: ADMIN_ID,
             tier: DEFAULT_TIER.into(),
             opts: vec![],
+            index_opts: vec![],
         }
         .validate()
         .unwrap_err();
@@ -2940,6 +2953,7 @@ mod tests {
             owner: ADMIN_ID,
             tier: DEFAULT_TIER.into(),
             opts: vec![],
+            index_opts: vec![],
         }
         .validate()
         .unwrap();
@@ -2958,6 +2972,7 @@ mod tests {
             owner: ADMIN_ID,
             tier: DEFAULT_TIER.into(),
             opts: vec![],
+            index_opts: vec![],
         }
         .validate()
         .unwrap_err();

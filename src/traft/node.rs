@@ -2290,6 +2290,7 @@ impl NodeImpl {
                 engine,
                 owner,
                 opts,
+                index_opts,
             } => {
                 for pk_part in &mut primary_key {
                     let name = &pk_part.field;
@@ -2334,12 +2335,17 @@ impl NodeImpl {
                     );
                 }
 
+                // Build primary key options: unique + vinyl options from table.
+                let mut pk_opts = Vec::with_capacity(1 + index_opts.len());
+                pk_opts.push(IndexOption::Unique(true));
+                pk_opts.extend(index_opts.iter().cloned());
+
                 let primary_key_def = IndexDef {
                     table_id: id,
                     id: 0,
                     name: format_smolstr!("{id}_pkey"),
                     ty: IndexType::Tree,
-                    opts: vec![IndexOption::Unique(true)],
+                    opts: pk_opts,
                     parts: primary_key,
                     operable: false,
                     schema_version,

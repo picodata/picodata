@@ -952,6 +952,12 @@ fn parse_create_table(
     let mut unlogged = DEFAULT_UNLOGGED;
     let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
     let mut pk_contains_bucket_id = false;
+    let mut bloom_fpr = None;
+    let mut page_size = None;
+    let mut range_size = None;
+    let mut run_count_per_level = None;
+    let mut run_size_ratio = None;
+    let mut compression_level = None;
 
     let nullable_primary_key_column_error = Err(SbroadError::Invalid(
         Entity::Column,
@@ -1147,6 +1153,49 @@ fn parse_create_table(
             Rule::Partition => {
                 warn!(None, "PARTITION BY option is not supported yet.");
             }
+            Rule::TableOptions => {
+                let table_options_node = ast.nodes.get_node(*child_id)?;
+                for option_id in &table_options_node.children {
+                    let option_param_node = ast.nodes.get_node(*option_id)?;
+                    assert!(
+                        option_param_node.rule == Rule::TableOptionParam,
+                        "Unexpected option node: {option_param_node:?}"
+                    );
+                    let param_node_id = option_param_node.first_child();
+                    let param_node = ast.nodes.get_node(param_node_id)?;
+                    match param_node.rule {
+                        Rule::BloomFpr => {
+                            bloom_fpr = Some(parse_option_double(ast, param_node, "bloom_fpr")?);
+                        }
+                        Rule::PageSize => {
+                            page_size = Some(parse_option_int(ast, param_node, "page_size")?);
+                        }
+                        Rule::RangeSize => {
+                            range_size = Some(parse_option_int(ast, param_node, "range_size")?);
+                        }
+                        Rule::RunCountPerLevel => {
+                            run_count_per_level =
+                                Some(parse_option_int(ast, param_node, "run_count_per_level")?);
+                        }
+                        Rule::RunSizeRatio => {
+                            run_size_ratio =
+                                Some(parse_option_double(ast, param_node, "run_size_ratio")?);
+                        }
+                        Rule::CompressionLevel => {
+                            compression_level =
+                                Some(parse_option_int(ast, param_node, "compression_level")?);
+                        }
+                        _ => {
+                            return Err(SbroadError::Invalid(
+                                Entity::Query,
+                                Some(format_smolstr!(
+                                    "unexpected table option param: {param_node:?}"
+                                )),
+                            ));
+                        }
+                    }
+                }
+            }
             _ => panic!("Unexpected rule met under CreateTable."),
         }
     }
@@ -1272,6 +1321,12 @@ fn parse_create_table(
         timeout,
         tier,
         pk_contains_bucket_id,
+        bloom_fpr,
+        page_size,
+        range_size,
+        run_count_per_level,
+        run_size_ratio,
+        compression_level,
     })
 }
 

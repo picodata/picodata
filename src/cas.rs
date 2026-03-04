@@ -1330,6 +1330,7 @@ mod tests {
             engine: SpaceEngineType::Memtx,
             owner: ADMIN_ID,
             opts: vec![],
+            index_opts: vec![],
         });
         let drop_space = builder.with_op(Ddl::DropTable {
             id: space_id,

@@ -1006,6 +1006,13 @@ pub struct CreateTable {
     /// When this is enabled, there is no separate 'bucket_id' index in the table.
     /// Instead, 'bucket_id' is included as the first part of the primary key index.
     pub pk_contains_bucket_id: bool,
+    /// Vinyl options for table indexes (primary key, bucket_id, and inherited by secondary indexes).
+    pub bloom_fpr: Option<Double>,
+    pub page_size: Option<u32>,
+    pub range_size: Option<u32>,
+    pub run_count_per_level: Option<u32>,
+    pub run_size_ratio: Option<Double>,
+    pub compression_level: Option<i8>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]

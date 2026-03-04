@@ -1522,6 +1522,12 @@ fn ddl_ir_node_to_op_or_result(
             if_not_exists,
             unlogged,
             pk_contains_bucket_id,
+            bloom_fpr,
+            page_size,
+            range_size,
+            run_count_per_level,
+            run_size_ratio,
+            compression_level,
             ..
         }) => {
             let format = format
@@ -1548,6 +1554,31 @@ fn ddl_ir_node_to_op_or_result(
                 opts.push(TableOption::PkContainsBucketId(*pk_contains_bucket_id));
             }
 
+            // Build index options from vinyl options.
+            let mut index_opts = vec![];
+            if let Some(bloom_fpr) = bloom_fpr {
+                let decimal = Decimal::try_from(bloom_fpr.value)
+                    .map_err(|e| Error::other(format!("invalid bloom_fpr value: {e}")))?;
+                index_opts.push(IndexOption::BloomFalsePositiveRate(decimal));
+            }
+            if let Some(page_size) = page_size {
+                index_opts.push(IndexOption::PageSize(*page_size));
+            }
+            if let Some(range_size) = range_size {
+                index_opts.push(IndexOption::RangeSize(*range_size));
+            }
+            if let Some(run_count_per_level) = run_count_per_level {
+                index_opts.push(IndexOption::RunCountPerLevel(*run_count_per_level));
+            }
+            if let Some(run_size_ratio) = run_size_ratio {
+                let decimal = Decimal::try_from(run_size_ratio.value)
+                    .map_err(|e| Error::other(format!("invalid run_size_ratio value: {e}")))?;
+                index_opts.push(IndexOption::RunSizeRatio(decimal));
+            }
+            if let Some(compression_level) = compression_level {
+                index_opts.push(IndexOption::CompressionLevel(*compression_level));
+            }
+
             let topology_cache = node.topology_cache.get();
 
             let id = schema::choose_table_id(name, governor_op_id)?;
@@ -1567,6 +1598,7 @@ fn ddl_ir_node_to_op_or_result(
                 owner: current_user,
                 tier,
                 opts,
+                index_opts,
             };
             params.validate()?;
 

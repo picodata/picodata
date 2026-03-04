@@ -131,8 +131,11 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable
     CreateTable = ${
         ^"create" ~ (W ~ Unlogged)? ~ W ~ ^"table" ~ W ~ (IfNotExists ~ W)? ~ (PublicSchema)? ~ NewTable ~ WO ~
         "(" ~ WO ~ Columns ~ WO ~ ("," ~ WO ~ PrimaryKey)? ~ WO ~ ")" ~
-        (W ~ Engine)? ~ (W ~ Distribution)? ~ (W ~ WaitApplied)? ~ (W ~ Partition)? ~ (W ~ TimeoutOption)?
+        (W ~ Engine)? ~ (W ~ TableOptions)? ~ (W ~ Distribution)? ~ (W ~ WaitApplied)? ~ (W ~ Partition)? ~ (W ~ TimeoutOption)?
     }
+        TableOptions = ${ ^"with" ~ WO ~ "(" ~ WO ~ TableOptionsParams ~ WO ~ ")" }
+            TableOptionsParams = _{ TableOptionParam ~ (WO ~ "," ~ WO ~ TableOptionParam)* }
+        TableOptionParam = { VinylOptionParam }
         NewTable = @{Table}
         Columns = !{ ColumnDef ~ ("," ~ ColumnDef)* }
             ColumnDef = ${ Identifier ~ W ~ ColumnDefType ~ (W ~ ColumnDefIsNull)? ~ (W ~ PrimaryKeyMark)? }
@@ -225,19 +228,19 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable
     Parts = !{ Identifier ~ ("," ~ Identifier)* }
     IndexOptions = ${ ^"with" ~ WO ~ "(" ~ WO ~ IndexOptionsParams ~ WO ~ ")" }
         IndexOptionsParams = _{ IndexOptionParam ~ (WO ~ "," ~ WO ~ IndexOptionParam)* }
-    IndexOptionParam = { BloomFpr | PageSize | RangeSize | RunCountPerLevel | RunSizeRatio
-                         | CompressionLevel | Dimension | Distance | Hint }
+    IndexOptionParam = { VinylOptionParam | Dimension | Distance | Hint }
+        Dimension = !{ ^"dimension" ~ "=" ~ Unsigned }
+        Distance = !{ ^"distance" ~ "=" ~ (Euclid | Manhattan) }
+            Euclid = { ^"euclid" }
+            Manhattan = { ^"manhattan" }
+        Hint = !{ ^"hint" ~ "=" ~ (True | False) }
+    VinylOptionParam = _{ BloomFpr | PageSize | RangeSize | RunCountPerLevel | RunSizeRatio | CompressionLevel }
         BloomFpr = !{ ^"bloom_fpr" ~ "=" ~ Decimal }
         PageSize = !{ ^"page_size" ~ "=" ~ Unsigned }
         RangeSize = !{ ^"range_size" ~ "=" ~ Unsigned }
         RunCountPerLevel = !{ ^"run_count_per_level" ~ "=" ~ Unsigned }
         RunSizeRatio = !{ ^"run_size_ratio" ~ "=" ~ Decimal }
         CompressionLevel = !{ ^"compression_level" ~ "=" ~ Integer }
-        Dimension = !{ ^"dimension" ~ "=" ~ Unsigned }
-        Distance = !{ ^"distance" ~ "=" ~ (Euclid | Manhattan) }
-            Euclid = { ^"euclid" }
-            Manhattan = { ^"manhattan" }
-        Hint = !{ ^"hint" ~ "=" ~ (True | False) }
     DropIndex = ${ ^"drop" ~ W ~ ^"index" ~ W ~ (IfExists ~ W)? ~ (PublicSchema)? ~ Identifier ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
     RenameIndex = ${
         ^"alter" ~ W ~ ^"index" ~ W ~ (IfExists ~ W)? ~ Identifier ~ W ~

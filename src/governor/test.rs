@@ -890,6 +890,7 @@ fn do_governor_loop_proc_apply_schema_change_batching(params: BatchingRpcTestPar
         engine: tarantool::space::SpaceEngineType::Memtx,
         owner: ADMIN_ID,
         opts: vec![],
+        index_opts: vec![],
     };
     node.storage
         .properties

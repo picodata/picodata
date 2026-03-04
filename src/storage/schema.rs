@@ -429,12 +429,16 @@ pub fn ddl_create_space_on_master(
         if has_bucket_id_in_pk {
             None
         } else {
+            // Inherit vinyl options from the primary key.
+            let mut bucket_id_opts = vec![IndexOption::Unique(false)];
+            bucket_id_opts.extend(pico_pk_def.opts.iter().filter(|o| o.is_vinyl()).cloned());
+
             let index = IndexDef {
                 table_id: pico_table_def.id,
                 id: 1,
                 name: DEFAULT_BUCKET_ID_COLUMN_NAME.into(),
                 ty: IndexType::Tree,
-                opts: vec![IndexOption::Unique(false)],
+                opts: bucket_id_opts,
                 parts: vec![Part::field(DEFAULT_BUCKET_ID_COLUMN_NAME)
                     .field_type(IndexFieldType::Unsigned)
                     .is_nullable(false)],
