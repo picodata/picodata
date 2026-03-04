@@ -1,6 +1,11 @@
 import { InstanceNodeType, InstanceType } from "shared/entity/instance";
 import { sortByString } from "shared/utils/string/sort";
-import { NodeType, TierNodeType, TierType } from "shared/entity/tier";
+import {
+  NodeType,
+  sortTiers,
+  TierNodeType,
+  TierType,
+} from "shared/entity/tier";
 import { ReplicasetNodeType } from "shared/entity/replicaset";
 
 import { TSortValue } from "./TopBar/SortBy/config";
@@ -142,7 +147,8 @@ export const getNodesListByOpenedNodes = (
     return sortedInstances as InstanceNodeType[];
   }
 
-  tiers.forEach((tier) => {
+  const sortedTiers = sortTiers(tiers);
+  sortedTiers.forEach((tier) => {
     const tierIsOpened = Boolean(
       openedNodes.includes(tier.syntheticId) && tier.replicasets.length
     );
