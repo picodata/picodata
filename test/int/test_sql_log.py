@@ -1,4 +1,5 @@
 import os
+
 import pg8000.dbapi as pg  # type: ignore
 import pytest
 from conftest import (
@@ -12,6 +13,12 @@ from conftest import (
     [("pgproto"), ("iproto")],
 )
 def test_sql_log(instance: Instance, protocol_type: str):
+    def set_sql_log(val: bool, fn):
+        # Run ALTER SYSTEM twice to wait for parameter application.
+        # See https://git.picodata.io/core/picodata/-/issues/2667
+        fn(f"ALTER SYSTEM SET sql_log = {val};")
+        fn(f"ALTER SYSTEM SET sql_log = {val};")
+
     instance.start()
 
     user = "pico_service"
@@ -28,7 +35,7 @@ def test_sql_log(instance: Instance, protocol_type: str):
     else:
         execute_func = instance.sql
 
-    execute_func("ALTER SYSTEM SET sql_log = true;")
+    set_sql_log(True, execute_func)
 
     sql_list = [
         "CREATE TABLE test (id UNSIGNED NOT NULL PRIMARY KEY, value TEXT)",
@@ -46,14 +53,14 @@ def test_sql_log(instance: Instance, protocol_type: str):
         execute_func(sql)
         lc.wait_matched()
 
-    # logging is disabled
+    set_sql_log(False, execute_func)
     sql = "INSERT INTO test VALUES (43, 'my_value')"
     lc = log_crawler(instance, f"sql-log: {sql}")
     execute_func(sql)
     with pytest.raises(AssertionError):
         lc.wait_matched(timeout=2)
 
-    execute_func("ALTER SYSTEM SET sql_log = true;")
+    set_sql_log(True, execute_func)
     # do not log ACL
     sql = "ALTER USER admin WITH PASSWORD 'P@ssw0rd'"
     lc = log_crawler(instance, f"sql-log: {sql}")
