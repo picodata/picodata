@@ -915,7 +915,7 @@ picodata run -c instance.pg.ssl=true -c instance.pg.cert_file=tls/server.crt -c 
 Данные:
 
 * Тип: *str*
-* Значение по умолчанию: `null`
+* Значение по умолчанию: `/usr/share/picodata`
 
 Аналогичная переменная окружения: `PICODATA_SHARE_DIR`<br>
 Задание параметра в командной строке: [`picodata run --share-dir`]
