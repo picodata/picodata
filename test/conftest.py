@@ -74,6 +74,7 @@ CLI_TIMEOUT = 10  # seconds
 TOO_LONG_FOR_LOGS = 512
 
 WAIT_ONLINE_TIMEOUT = int(os.getenv("WAIT_ONLINE_TIMEOUT") or 30)
+SSL_DIR = Path(os.path.realpath(__file__)).parent / "ssl_certs"
 
 
 # Note: our tarantool.error.tnt_strerror only knows about first 113 error codes..
@@ -2169,6 +2170,17 @@ Last governor error is:
         lua = self.eval("return box.snapshot()")
         assert lua == "ok"
 
+    def prepare_instance_for_iproto_tls(self):
+        self.iproto_tls_enabled = True
+        self.iproto_tls_cert = str(SSL_DIR / "server-with-ext.crt")
+        self.iproto_tls_key = str(SSL_DIR / "server.key")
+        self.iproto_tls_ca = str(SSL_DIR / "combined-ca.crt")
+        self.iproto_tls = (
+            Path(self.iproto_tls_cert),
+            Path(self.iproto_tls_key),
+            Path(self.iproto_tls_ca),
+        )
+
 
 CLUSTER_COLORS = (
     ColorCode.Cyan,
@@ -3406,16 +3418,15 @@ class Postgres:
         i1.pg_ssl_ca_file = self.ca_file
 
         if i1.pg_ssl_cert_file is None or i1.pg_ssl_key_file is None or i1.pg_ssl_ca_file is None:
-            ssl_dir = Path(os.path.realpath(__file__)).parent / "ssl_certs"
             instance_dir = Path(i1.instance_dir)
             instance_dir.mkdir(exist_ok=True)
             if i1.pg_ssl_cert_file is None:
-                shutil.copyfile(ssl_dir / "server.crt", instance_dir / "server.crt")
+                shutil.copyfile(SSL_DIR / "server.crt", instance_dir / "server.crt")
             if i1.pg_ssl_key_file is None:
-                shutil.copyfile(ssl_dir / "server.key", instance_dir / "server.key")
+                shutil.copyfile(SSL_DIR / "server.key", instance_dir / "server.key")
 
             if i1.pg_ssl_ca_file is None and self.ssl_verify:
-                shutil.copyfile(ssl_dir / "combined-ca.crt", instance_dir / "ca.crt")
+                shutil.copyfile(SSL_DIR / "combined-ca.crt", instance_dir / "ca.crt")
 
         self.cluster.wait_online()
         return self
@@ -3456,10 +3467,9 @@ def postgres_with_mtls(cluster: Cluster, pg_port: int):
 
 @pytest.fixture
 def postgres_with_custom_cert_paths(cluster: Cluster, pg_port: int):
-    ssl_dir = Path(os.path.realpath(__file__)).parent / "ssl_certs"
-    cert_file = str(ssl_dir / "server-with-ext.crt")
-    key_file = str(ssl_dir / "my-server.key")
-    ca_file = str(ssl_dir / "my-combined-ca.crt")
+    cert_file = str(SSL_DIR / "server-with-ext.crt")
+    key_file = str(SSL_DIR / "my-server.key")
+    ca_file = str(SSL_DIR / "my-combined-ca.crt")
     return Postgres(
         cluster, port=pg_port, ssl=True, ssl_verify=True, cert_file=cert_file, key_file=key_file, ca_file=ca_file
     ).install()

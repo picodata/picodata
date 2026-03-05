@@ -1,9 +1,6 @@
-import os
-import pathlib
 import pytest
 import re
 import time
-from pathlib import Path
 
 from conftest import (
     Cluster,
@@ -680,13 +677,8 @@ def test_iproto_tls_with_replication(cluster: Cluster):
     i2 = cluster.add_instance(replicaset_name="r1", wait_online=False)
     i3 = cluster.add_instance(replicaset_name="r1", wait_online=False)
 
-    ssl_dir = pathlib.Path(os.path.realpath(__file__)).parent.parent / "ssl_certs"
     for i in cluster.instances:
-        i.iproto_tls_enabled = True
-        i.iproto_tls_cert = str(ssl_dir / "server-with-ext.crt")
-        i.iproto_tls_key = str(ssl_dir / "server.key")
-        i.iproto_tls_ca = str(ssl_dir / "combined-ca.crt")
-        i.iproto_tls = (Path(i.iproto_tls_cert), Path(i.iproto_tls_key), Path(i.iproto_tls_ca))
+        i.prepare_instance_for_iproto_tls()
 
     cluster.wait_online()
 
@@ -708,13 +700,8 @@ def test_iproto_tls_enable_after_bootstrap(cluster: Cluster):
 
     assert_box_replication_follow(cluster)
 
-    ssl_dir = pathlib.Path(os.path.realpath(__file__)).parent.parent / "ssl_certs"
     for i in cluster.instances:
-        i.iproto_tls_enabled = True
-        i.iproto_tls_cert = str(ssl_dir / "server-with-ext.crt")
-        i.iproto_tls_key = str(ssl_dir / "server.key")
-        i.iproto_tls_ca = str(ssl_dir / "combined-ca.crt")
-        i.iproto_tls = (Path(i.iproto_tls_cert), Path(i.iproto_tls_key), Path(i.iproto_tls_ca))
+        i.prepare_instance_for_iproto_tls()
 
     i1.terminate()
     i2.terminate()

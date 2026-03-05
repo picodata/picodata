@@ -1,26 +1,24 @@
-import os
 import pexpect  # type: ignore
 import pytest
 import sys
-from pathlib import Path
-from conftest import CLI_TIMEOUT, Cluster, Instance
+from conftest import (
+    CLI_TIMEOUT,
+    Cluster,
+    Instance,
+    SSL_DIR,
+)
 
 TEST_USER = "Client"
 TEST_PASSWORD = "Testpa55"
 SERVICE_USER = "pico_service"
 SERVICE_PASSWORD = "Testpa77"
-SSL_DIR = Path(os.path.realpath(__file__)).parent.parent / "ssl_certs"
 
 
 @pytest.fixture(scope="class")
 def instance_with_tls(cluster: Cluster) -> Instance:
     cluster.set_service_password(SERVICE_PASSWORD)
     i = cluster.add_instance(wait_online=False)
-    i.iproto_tls_enabled = True
-    i.iproto_tls_cert = str(SSL_DIR / "server-with-ext.crt")
-    i.iproto_tls_key = str(SSL_DIR / "server.key")
-    i.iproto_tls_ca = str(SSL_DIR / "combined-ca.crt")
-    i.iproto_tls = (Path(i.iproto_tls_cert), Path(i.iproto_tls_key), Path(i.iproto_tls_ca))
+    i.prepare_instance_for_iproto_tls()
     i.start_and_wait()
     acl = i.sql(f"CREATE USER \"{TEST_USER}\" WITH PASSWORD '{TEST_PASSWORD}'", sudo=True)
     assert acl["row_count"] == 1
