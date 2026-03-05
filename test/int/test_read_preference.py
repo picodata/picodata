@@ -1,6 +1,6 @@
 import pytest
 
-from conftest import Cluster, Instance, TarantoolError
+from conftest import Cluster, Instance, Retriable, TarantoolError
 
 
 def init_table(i: Instance):
@@ -140,13 +140,37 @@ def test_replica_alter_system(cluster: Cluster):
 
 
 def test_any(cluster: Cluster):
-    i1 = cluster.add_instance(wait_online=True, replicaset_name="r99")
-    i2 = cluster.add_instance(wait_online=True, replicaset_name="r99")
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        router:
+            replication_factor: 1
+            can_vote: true
+        storage:
+            replication_factor: 2
+            can_vote: true
+"""
+    )
+
+    router = cluster.add_instance(wait_online=True, tier="router")
+    i1 = cluster.add_instance(wait_online=True, tier="storage", replicaset_name="r99")
+    i2 = cluster.add_instance(wait_online=True, tier="storage", replicaset_name="r99")
     # i1 is leader as the first member of the replicaset
     assert i2.replicaset_master_name() == i1.name
 
-    # prepare data for DQL
-    init_table(i1)
+    i1.sql(
+        """
+        create table wonderland (
+            id int primary key,
+            creature string,
+            count int
+        ) distributed by (id) in tier storage
+        """
+    )
+    i1.sql("insert into wonderland values (1, 'alice', 1), (2, 'krolik', 1), (3, 'gorilla', 0)")
+
     dql_query = """
         select pico_instance_name(pico_instance_uuid()), creature
         from wonderland
@@ -156,16 +180,21 @@ def test_any(cluster: Cluster):
     dql_expect_1 = ["alice", "gorilla", "krolik"]
     dql_names = set()
 
-    for _ in range(10):
-        dql = i1.sql(dql_query)
+    def collect_one_query_target() -> None:
+        dql = router.sql(dql_query)
         names = set(map(lambda x: x[0], dql))
         # sanity check
         assert len(names) == 1
-        dql_names |= names
+        dql_names.update(names)
+        assert dql_names <= {i1.name, i2.name}
         assert list(map(lambda x: x[1], dql)) == dql_expect_1
 
-    # probability of failure is 1/2^10
-    assert i2.name in dql_names
+    def assert_replica_used() -> None:
+        collect_one_query_target()
+        assert i2.name in dql_names
+
+    collect_one_query_target()
+    Retriable(timeout=5).call(assert_replica_used)
 
 
 def test_any_one(cluster: Cluster):
@@ -184,6 +213,49 @@ def test_any_one(cluster: Cluster):
     # dql must not failed
     dql = i1.sql(dql_query)
     assert dql == dql_expect
+
+
+def test_any_local_path_uses_current_instance(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=True, replicaset_name="r99")
+    i2 = cluster.add_instance(wait_online=True, replicaset_name="r99")
+    assert i2.replicaset_master_name() == i1.name
+
+    i1.sql(
+        """
+        create table wonderland (
+            id int primary key,
+            creature string,
+            count int
+        ) distributed by (id)
+        """
+    )
+    i1.sql("insert into wonderland values (1, 'alice', 1), (2, 'krolik', 1), (3, 'gorilla', 0)")
+
+    def assert_uses_current_instance(query: str, expected_creatures: list[str]) -> None:
+        dql = i1.sql(query)
+        assert dql == [[i1.name, creature] for creature in expected_creatures]
+
+    # The whole-table query goes through `Buckets::All`.
+    assert_uses_current_instance(
+        """
+        select pico_instance_name(pico_instance_uuid()), creature
+        from wonderland
+        order by creature
+        option(read_preference = any)
+        """,
+        ["alice", "gorilla", "krolik"],
+    )
+
+    # Equality on the sharding key produces a filtered single-RS route.
+    assert_uses_current_instance(
+        """
+        select pico_instance_name(pico_instance_uuid()), creature
+        from wonderland
+        where id = 1
+        option(read_preference = any)
+        """,
+        ["alice"],
+    )
 
 
 def test_replica_many(cluster: Cluster):

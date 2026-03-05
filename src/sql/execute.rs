@@ -6,7 +6,9 @@ use crate::sql::lock::{lock_temp_table, TempTableLockRef};
 use crate::sql::lua::{lua_decode_ibufs, lua_query_metadata};
 use crate::sql::port::PicoPortOwned;
 use crate::sql::router::{get_index_version_by_pk, get_table_version_by_id, VersionMap};
-use crate::sql::storage::{ExpandedPlanInfo, FullDeleteInfo, PlanInfo};
+use crate::sql::storage::{
+    ExpandedLocalExecutionInfo, ExpandedPlanInfo, FullDeleteInfo, LocalExecutionInfo, PlanInfo,
+};
 use crate::sql::PicoPortC;
 use crate::tlog;
 use crate::traft::node;
@@ -17,7 +19,10 @@ use rmp::encode::{write_array_len, write_uint};
 use smol_str::{format_smolstr, ToSmolStr};
 use sql::backend::sql::ADMIN_ID;
 use sql::errors::{Action, Entity, SbroadError};
-use sql::executor::engine::helpers::{build_insert_args, TupleBuilderCommand, TupleBuilderPattern};
+use sql::executor::engine::helpers::{
+    build_insert_args, write_shared_update_args, TupleBuilderCommand, TupleBuilderPattern,
+};
+use sql::executor::engine::protocol::{ExecutionCacheMissData, ExecutionData};
 use sql::executor::engine::{QueryCache, StorageCache, Vshard};
 use sql::executor::preemption::Scheduler;
 use sql::executor::protocol::SchemaInfo;
@@ -32,6 +37,7 @@ use sql::ir::helpers::RepeatableState;
 use sql::ir::options::Options;
 use sql::ir::relation::SpaceEngine;
 use sql::ir::relation::{Column, ColumnRole};
+use sql::ir::transformation::redistribution::{MotionKey, Target};
 use sql::ir::value::{EncodedValue, MsgPackValue, Value};
 use sql::ir::ExplainType;
 use sql::utils::MutexLike;
@@ -47,17 +53,17 @@ use sql_protocol::dml::update::{
     UpdateIterator, UpdateResult, UpdateSharedKeyIterator, UpdateSharedKeyResult,
 };
 use sql_protocol::dql::{DQLCacheMissResult, DQLPacketPayloadIterator, DQLResult};
-use sql_protocol::dql_encoder::MsgpackEncode;
 use sql_protocol::dql_encoder::{ColumnType, DQLOptions};
+use sql_protocol::dql_encoder::{DQLDataSource, MsgpackEncode};
 use sql_protocol::error::ProtocolError;
-use sql_protocol::iterators::{MsgpackArrayIterator, MsgpackMapIterator, TupleIterator};
+use sql_protocol::iterators::{MsgpackMapIterator, TupleIterator};
 use std::collections::HashMap;
 use std::io::{Cursor, Write};
 use std::sync::OnceLock;
 use tarantool::error::{Error, TarantoolErrorCode};
 use tarantool::ffi::sql::Port as TarantoolPort;
 use tarantool::index::{FieldType, IndexOptions, IndexType, Part};
-use tarantool::msgpack;
+use tarantool::msgpack::{self, Encode};
 use tarantool::session::with_su;
 use tarantool::space::{Field, Space, SpaceCreateOptions, SpaceType};
 use tarantool::transaction::transaction;
@@ -186,17 +192,17 @@ where
     let iter = msg.get_iter()?;
 
     match iter {
-        ProtocolMessageIter::DmlInsert(iter) => insert_execute(runtime, iter, port)?,
-        ProtocolMessageIter::DmlUpdate(iter) => update_execute(runtime, iter, port)?,
-        ProtocolMessageIter::DmlDelete(iter) => delete_execute(runtime, iter, port)?,
+        ProtocolMessageIter::DmlInsert(iter) => tuple_insert_from_proto(runtime, iter, port)?,
+        ProtocolMessageIter::DmlUpdate(iter) => shared_update_from_proto(runtime, iter, port)?,
+        ProtocolMessageIter::DmlDelete(iter) => full_delete_from_proto(runtime, iter, port)?,
         ProtocolMessageIter::LocalDmlInsert(iter) => {
-            local_insert_execute(runtime, msg.request_id, iter, port, timeout)?
+            materialized_insert_from_proto(runtime, msg.request_id, iter, port, timeout)?
         }
         ProtocolMessageIter::LocalDmlUpdate(iter) => {
-            local_update_execute(runtime, msg.request_id, iter, port, timeout)?
+            materialized_update_from_proto(runtime, msg.request_id, iter, port, timeout)?
         }
         ProtocolMessageIter::LocalDmlDelete(iter) => {
-            local_delete_execute(runtime, msg.request_id, iter, port, timeout)?
+            filtered_delete_from_proto(runtime, msg.request_id, iter, port, timeout)?
         }
         _ => {
             return Err(SbroadError::Invalid(
@@ -484,6 +490,39 @@ where
 ///
 /// The query is checked for presence in the cache. If not found, a cache miss
 /// request is performed and the query is added to the cache for future use.
+fn execute_dql_with_cache<'p, R, I, P, FMiss>(
+    runtime: &R,
+    plan_id: u64,
+    info: &I,
+    port: &mut P,
+    rpc_type: &str,
+    on_miss: FMiss,
+) -> Result<(), SbroadError>
+where
+    R: QueryCache,
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
+    I: PlanInfo,
+    P: Port<'p>,
+    FMiss: FnOnce(&R, &I, &mut P) -> Result<(), SbroadError>,
+{
+    let cached = {
+        let mut cache_guarded = runtime.cache().lock();
+        cache_guarded.get(&plan_id)?
+    };
+    if let Some(cached) = cached {
+        let _table_lease = lock_temp_table(&cached.table_lock)?;
+        let mut stmt_guard = cached.stmt.lock();
+        match stmt_execute(&mut stmt_guard, info, port)? {
+            Nothing => report_storage_cache_hit("dql", rpc_type),
+            BusyStmt => report_storage_cache_miss("dql", rpc_type, "busy"),
+            StaleStmt => report_storage_cache_miss("dql", rpc_type, "stale"),
+        }
+        Ok(())
+    } else {
+        on_miss(runtime, info, port)
+    }
+}
+
 pub(crate) fn dql_execute<'p, 'b, R: Vshard + QueryCache>(
     runtime: &R,
     request_id: &str,
@@ -520,34 +559,91 @@ where
         params: protocol_get!(info, DQLResult::Params),
     };
 
-    let cached = {
-        let mut cache_guarded = runtime.cache().lock();
-        cache_guarded.get(&plan_id)?
-    };
-    if let Some(cached) = cached {
-        let _table_lease = lock_temp_table(&cached.table_lock)?;
-        let mut stmt_guard = cached.stmt.lock();
-        match stmt_execute(&mut stmt_guard, &info, port)? {
-            Nothing => report_storage_cache_hit("dql", "1st"),
-            BusyStmt => report_storage_cache_miss("dql", "1st", "busy"),
-            StaleStmt => report_storage_cache_miss("dql", "1st", "stale"),
+    let res = execute_dql_with_cache(
+        runtime,
+        plan_id,
+        &info,
+        port,
+        "1st",
+        |runtime, info, port| {
+            report_storage_cache_miss("dql", "1st", "true");
+            let res = dql_cache_miss_execute(
+                runtime, request_id, plan_id, sender_id, info, port, timeout,
+            );
+            let result = if res.is_err() { "err" } else { "ok" };
+            STORAGE_2ND_REQUESTS_TOTAL
+                .with_label_values(&["dql", result])
+                .inc();
+            res
+        },
+    );
+    port.set_type(PortType::ExecuteDql);
+    res
+}
+
+pub(crate) fn dql_execute_locally_from_plan<'p, R: QueryCache>(
+    runtime: &R,
+    dql: &ExecutionData,
+    port: &mut impl Port<'p>,
+) -> Result<(), SbroadError>
+where
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
+{
+    validate_dql_source_schema(dql)?;
+
+    let options = dql.options();
+    let info = LocalExecutionInfo::new(
+        dql.vtables(),
+        options.sql_motion_row_max,
+        options.sql_vdbe_opcode_max,
+        dql.encoded_params(),
+    );
+
+    let res = execute_dql_with_cache(
+        runtime,
+        dql.plan_id(),
+        &info,
+        port,
+        "local",
+        |runtime, info, port| {
+            let miss = ExecutionCacheMissData::try_from(dql)?;
+            let schema_info = SchemaInfo::new(
+                miss.schema_info.table_version_map,
+                miss.schema_info.index_version_map,
+            );
+            let miss_info = ExpandedLocalExecutionInfo::new(
+                schema_info,
+                dql.plan_id(),
+                dql.vtables(),
+                miss.sql,
+            );
+
+            match sql_execute::<R>(runtime, info, &miss_info, port)? {
+                Nothing => report_storage_cache_miss("dql", "local", "true"),
+                BusyStmt => report_storage_cache_miss("dql", "local", "busy"),
+                StaleStmt => report_storage_cache_miss("dql", "local", "stale"),
+            }
+            Ok(())
+        },
+    );
+    port.set_type(PortType::ExecuteDql);
+    res
+}
+
+fn validate_dql_source_schema(dql: &impl DQLDataSource) -> Result<(), SbroadError> {
+    for (table, version) in dql.get_table_schema_info() {
+        if version != get_table_version_by_id(table)? {
+            return Err(SbroadError::OutdatedStorageSchema);
         }
-
-        port.set_type(PortType::ExecuteDql);
-        Ok(())
-    } else {
-        report_storage_cache_miss("dql", "1st", "true");
-
-        let res = dql_cache_miss_execute(
-            runtime, request_id, plan_id, sender_id, &info, port, timeout,
-        );
-        port.set_type(PortType::ExecuteDql);
-        let result = if res.is_err() { "err" } else { "ok" };
-        STORAGE_2ND_REQUESTS_TOTAL
-            .with_label_values(&["dql", result])
-            .inc();
-        res
     }
+
+    for (pk, version) in dql.get_index_schema_info() {
+        if version != get_index_version_by_pk(pk[0], pk[1])? {
+            return Err(SbroadError::OutdatedStorageSchema);
+        }
+    }
+
+    Ok(())
 }
 
 fn create_row_from_tuple(mp: &[u8]) -> Row {
@@ -765,24 +861,14 @@ fn table_create(
 }
 
 /// Helper function to materialize a virtual table on storage.
-fn virtual_table_materialize<'a, R: Vshard + QueryCache>(
+fn build_virtual_table_from_port<'a, R: Vshard>(
     runtime: &R,
-    request_id: &str,
-    columns: MsgpackArrayIterator<'a, ColumnType>,
+    column_types: &[ColumnType],
     builder: &TupleBuilderPattern,
-    info: DQLPacketPayloadIterator<'a>,
-    timeout: f64,
-) -> Result<VirtualTable, SbroadError>
-where
-    R::Cache: StorageCache<LockRef = TempTableLockRef>,
-{
-    let mut port = TarantoolPort::new_port_c();
-    let mut pico_port = PicoPortC::from(unsafe { port.as_mut_port_c() });
-    dql_execute(runtime, request_id, info, &mut pico_port, timeout)?;
-
-    let mut vcolumns = Vec::with_capacity(columns.len());
-    for (i, column) in columns.enumerate() {
-        let column_type = column?;
+    tuples: impl Iterator<Item = &'a [u8]>,
+) -> Result<VirtualTable, SbroadError> {
+    let mut vcolumns = Vec::with_capacity(column_types.len());
+    for (i, column_type) in column_types.iter().copied().enumerate() {
         vcolumns.push(Column {
             name: vtable_indexed_column_name(i),
             r#type: column_type.into(),
@@ -793,7 +879,7 @@ where
     let mut vtable = VirtualTable::with_columns(vcolumns);
     let scheduler_opts = scheduler_options();
     let mut ys = Scheduler::new(&scheduler_opts);
-    for tuple in pico_port.iter() {
+    for tuple in tuples {
         ys.maybe_yield(&scheduler_opts)
             .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
         vtable.write_all(tuple).map_err(|e| {
@@ -820,6 +906,22 @@ where
     }
 
     Ok(vtable)
+}
+
+pub(crate) fn materialize_with_dql<R, F>(
+    runtime: &R,
+    column_types: &[ColumnType],
+    builder: &TupleBuilderPattern,
+    fill: F,
+) -> Result<VirtualTable, SbroadError>
+where
+    R: Vshard,
+    F: for<'p> FnOnce(&mut PicoPortC<'p>) -> Result<(), SbroadError>,
+{
+    let mut port = TarantoolPort::new_port_c();
+    let mut pico_port = PicoPortC::from(unsafe { port.as_mut_port_c() });
+    fill(&mut pico_port)?;
+    build_virtual_table_from_port(runtime, column_types, builder, pico_port.iter())
 }
 
 struct UpdateArgs<'vtable_tuple> {
@@ -938,7 +1040,454 @@ fn delete_args<'t>(
     Ok(delete_tuple)
 }
 
-fn insert_execute<'p, 'ip, R: Vshard + QueryCache>(
+fn ensure_target_space<R: QueryCache>(
+    runtime: &R,
+    table_id: u32,
+    version: u64,
+) -> Result<Space, SbroadError> {
+    if runtime.get_table_version_by_id(table_id)? != version {
+        return Err(SbroadError::OutdatedStorageSchema);
+    }
+
+    // SAFETY: `table_id` already exists. Checked by `get_table_version_by_id`.
+    Ok(unsafe { Space::from_id_unchecked(table_id) })
+}
+
+fn maybe_reshard_vtable<R: Vshard>(
+    runtime: &R,
+    vtable: &mut VirtualTable,
+    builder: &TupleBuilderPattern,
+) -> Result<(), SbroadError> {
+    if !vtable.get_bucket_index().is_empty() {
+        return Ok(());
+    }
+
+    for elem in builder.iter() {
+        let TupleBuilderCommand::CalculateBucketId(motion_key) = elem else {
+            continue;
+        };
+
+        if motion_key.targets.is_empty() {
+            continue;
+        }
+
+        vtable.reshard(motion_key, runtime)?;
+        break;
+    }
+
+    Ok(())
+}
+
+fn apply_insert_with_conflict(
+    insert_result: Result<(), Error>,
+    conflict_strategy: ConflictPolicy,
+    insert_tuple: &impl std::fmt::Debug,
+    replace_on_conflict: impl FnOnce() -> Result<(), SbroadError>,
+) -> Result<bool, SbroadError> {
+    match insert_result {
+        Ok(()) => Ok(true),
+        Err(Error::Tarantool(tnt_err))
+            if tnt_err.error_code() == TarantoolErrorCode::TupleFound as u32 =>
+        {
+            match conflict_strategy {
+                ConflictPolicy::DoNothing => {
+                    tlog!(
+                        Debug,
+                        "failed to insert tuple: {insert_tuple:?}. Skipping according to conflict strategy",
+                    );
+                    Ok(false)
+                }
+                ConflictPolicy::DoReplace => {
+                    tlog!(
+                        Debug,
+                        "failed to insert tuple: {insert_tuple:?}. Trying to replace according to conflict strategy"
+                    );
+                    replace_on_conflict()?;
+                    Ok(true)
+                }
+                ConflictPolicy::DoFail => Err(SbroadError::FailedTo(
+                    Action::Insert,
+                    Some(Entity::Space),
+                    format_smolstr!("{tnt_err}"),
+                )),
+            }
+        }
+        Err(e) => Err(SbroadError::FailedTo(
+            Action::Insert,
+            Some(Entity::Space),
+            format_smolstr!("{e}"),
+        )),
+    }
+}
+
+fn find_insert_motion_key(builder: &TupleBuilderPattern) -> Option<&MotionKey> {
+    builder.iter().find_map(|command| match command {
+        TupleBuilderCommand::CalculateBucketId(motion_key) if !motion_key.targets.is_empty() => {
+            Some(motion_key)
+        }
+        _ => None,
+    })
+}
+
+fn determine_insert_bucket_id<R: Vshard>(
+    runtime: &R,
+    vt_tuple: &VTableTuple,
+    motion_key: &MotionKey,
+) -> Result<u64, SbroadError> {
+    let mut shard_key_tuple = Vec::with_capacity(motion_key.targets.len());
+    for target in &motion_key.targets {
+        match target {
+            Target::Reference(col_idx) => {
+                let value = vt_tuple.get(*col_idx).ok_or_else(|| {
+                    SbroadError::NotFound(
+                        Entity::DistributionKey,
+                        format_smolstr!(
+                            "failed to find a distribution key column {col_idx} in the tuple {vt_tuple:?}."
+                        ),
+                    )
+                })?;
+                shard_key_tuple.push(value);
+            }
+            Target::Value(value) => shard_key_tuple.push(value),
+        }
+    }
+
+    runtime.determine_bucket_id(&shard_key_tuple)
+}
+
+fn build_insert_bucket_index<R: Vshard>(
+    runtime: &R,
+    builder: &TupleBuilderPattern,
+    vtable: &VirtualTable,
+) -> Result<Option<HashMap<u64, Vec<usize>, RepeatableState>>, SbroadError> {
+    if !vtable.get_bucket_index().is_empty() {
+        return Ok(None);
+    }
+
+    let Some(motion_key) = find_insert_motion_key(builder) else {
+        return Ok(None);
+    };
+
+    let mut bucket_index: HashMap<u64, Vec<usize>, RepeatableState> =
+        HashMap::with_hasher(RepeatableState);
+    for (pos, vt_tuple) in vtable.get_tuples().iter().enumerate() {
+        let bucket_id = determine_insert_bucket_id(runtime, vt_tuple, motion_key)?;
+        bucket_index.entry(bucket_id).or_default().push(pos);
+    }
+    Ok(Some(bucket_index))
+}
+
+fn tuple_insert_impl<R: Vshard>(
+    runtime: &R,
+    space: &Space,
+    conflict_strategy: ConflictPolicy,
+    builder: &TupleBuilderPattern,
+    vtable: &VirtualTable,
+) -> Result<u64, SbroadError> {
+    let mut result = ConsumerResult::default();
+    let computed_bucket_index = build_insert_bucket_index(runtime, builder, vtable)?;
+    let bucket_index = computed_bucket_index
+        .as_ref()
+        .unwrap_or_else(|| vtable.get_bucket_index());
+
+    transaction(|| -> Result<(), SbroadError> {
+        if bucket_index.is_empty() {
+            for vt_tuple in vtable.get_tuples() {
+                let insert_tuple = build_insert_args(vt_tuple, builder, None)?;
+                let insert_result = space.insert(&insert_tuple).map(|_| ());
+                if apply_insert_with_conflict(
+                    insert_result,
+                    conflict_strategy,
+                    &insert_tuple,
+                    || {
+                        space.replace(&insert_tuple).map(|_| ()).map_err(|e| {
+                            SbroadError::FailedTo(
+                                Action::ReplaceOnConflict,
+                                Some(Entity::Space),
+                                format_smolstr!("{e}"),
+                            )
+                        })
+                    },
+                )? {
+                    result.row_count += 1;
+                }
+            }
+            return Ok(());
+        }
+
+        for (bucket_id, positions) in bucket_index {
+            for pos in positions {
+                let vt_tuple = vtable.get_tuples().get(*pos).ok_or_else(|| {
+                    SbroadError::Invalid(
+                        Entity::VirtualTable,
+                        Some(format_smolstr!(
+                            "tuple at position {pos} not found in virtual table"
+                        )),
+                    )
+                })?;
+                let insert_tuple = build_insert_args(vt_tuple, builder, Some(bucket_id))?;
+                let insert_result = space.insert(&insert_tuple).map(|_| ());
+                if apply_insert_with_conflict(
+                    insert_result,
+                    conflict_strategy,
+                    &insert_tuple,
+                    || {
+                        space.replace(&insert_tuple).map(|_| ()).map_err(|e| {
+                            SbroadError::FailedTo(
+                                Action::ReplaceOnConflict,
+                                Some(Entity::Space),
+                                format_smolstr!("{e}"),
+                            )
+                        })
+                    },
+                )? {
+                    result.row_count += 1;
+                }
+            }
+        }
+
+        Ok(())
+    })?;
+
+    Ok(result.row_count)
+}
+
+pub(crate) fn tuple_insert_from_plan<R: Vshard + QueryCache>(
+    runtime: &R,
+    table_id: u32,
+    version: u64,
+    conflict_strategy: ConflictPolicy,
+    builder: &TupleBuilderPattern,
+    vtable: &VirtualTable,
+) -> Result<u64, SbroadError>
+where
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
+{
+    let space = ensure_target_space(runtime, table_id, version)?;
+    tuple_insert_impl(runtime, &space, conflict_strategy, builder, vtable)
+}
+
+fn local_update_impl(
+    space: &Space,
+    builder: &TupleBuilderPattern,
+    vtable: &VirtualTable,
+) -> Result<u64, SbroadError> {
+    let mut result = ConsumerResult::default();
+
+    transaction(|| -> Result<(), SbroadError> {
+        for vt_tuple in vtable.get_tuples() {
+            let args = update_args(vt_tuple, builder)?;
+            let update_res = space.update(&args.key_tuple, &args.ops);
+            update_res.map_err(|e| {
+                SbroadError::FailedTo(Action::Update, Some(Entity::Space), format_smolstr!("{e}"))
+            })?;
+            result.row_count += 1;
+        }
+
+        Ok(())
+    })?;
+
+    Ok(result.row_count)
+}
+
+pub(crate) fn materialized_update_from_plan<R: Vshard + QueryCache>(
+    runtime: &R,
+    table_id: u32,
+    version: u64,
+    columns: &[Column],
+    builder: &TupleBuilderPattern,
+    dql: &ExecutionData,
+) -> Result<u64, SbroadError>
+where
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
+{
+    let space = ensure_target_space(runtime, table_id, version)?;
+    let column_types = columns
+        .iter()
+        .map(|column| column.r#type.into())
+        .collect::<Vec<_>>();
+    let vtable = materialize_with_dql(runtime, &column_types, builder, |pico_port| {
+        dql_execute_locally_from_plan(runtime, dql, pico_port)
+    })?;
+    local_update_impl(&space, builder, &vtable)
+}
+
+pub(crate) fn shared_update_from_plan<R: Vshard + QueryCache>(
+    runtime: &R,
+    table_id: u32,
+    version: u64,
+    delete_tuple_len: usize,
+    builder: &TupleBuilderPattern,
+    vtable: &VirtualTable,
+) -> Result<u64, SbroadError>
+where
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
+{
+    let space = ensure_target_space(runtime, table_id, version)?;
+    let mut vtable = vtable.clone();
+    maybe_reshard_vtable(runtime, &mut vtable, builder)?;
+    let mut result = ConsumerResult::default();
+
+    transaction(|| -> Result<(), SbroadError> {
+        let mut tuple_data = Vec::new();
+
+        for tuple in vtable
+            .get_tuples()
+            .iter()
+            .filter(|tuple| tuple.len() == delete_tuple_len)
+        {
+            encode_delete_tuple(&mut tuple_data, tuple)?;
+            let delete_tuple = RawBytes::new(tuple_data.as_slice());
+            space.delete(delete_tuple).map_err(|e| {
+                SbroadError::FailedTo(
+                    Action::Delete,
+                    Some(Entity::Tuple),
+                    format_smolstr!("{e:?}"),
+                )
+            })?;
+        }
+
+        if vtable.get_bucket_index().is_empty() {
+            for tuple in vtable
+                .get_tuples()
+                .iter()
+                .filter(|tuple| tuple.len() != delete_tuple_len)
+            {
+                let replace_tuple = build_insert_args(tuple, builder, None)?;
+                space.replace(&replace_tuple).map_err(|e| {
+                    SbroadError::FailedTo(
+                        Action::Insert,
+                        Some(Entity::Tuple),
+                        format_smolstr!("{e:?}"),
+                    )
+                })?;
+                result.row_count += 1;
+            }
+            return Ok(());
+        }
+
+        for (bucket_id, positions) in vtable.get_bucket_index() {
+            for pos in positions {
+                let tuple = vtable.get_tuples().get(*pos).ok_or_else(|| {
+                    SbroadError::Invalid(
+                        Entity::VirtualTable,
+                        Some(format_smolstr!(
+                            "tuple at position {pos} not found in virtual table"
+                        )),
+                    )
+                })?;
+                if tuple.len() == delete_tuple_len {
+                    continue;
+                }
+                encode_shared_update_tuple(&mut tuple_data, tuple, builder, *bucket_id)?;
+                let replace_tuple = RawBytes::new(tuple_data.as_slice());
+                space.replace(replace_tuple).map_err(|e| {
+                    SbroadError::FailedTo(
+                        Action::Insert,
+                        Some(Entity::Tuple),
+                        format_smolstr!("{e:?}"),
+                    )
+                })?;
+                result.row_count += 1;
+            }
+        }
+
+        Ok(())
+    })?;
+
+    Ok(result.row_count)
+}
+
+fn encode_delete_tuple(data: &mut Vec<u8>, tuple: &VTableTuple) -> Result<(), SbroadError> {
+    data.clear();
+    write_array_len(data, tuple.len() as u32).map_err(|e| {
+        SbroadError::Invalid(
+            Entity::Tuple,
+            Some(format_smolstr!(
+                "failed to encode sharded update delete tuple header: {e}"
+            )),
+        )
+    })?;
+    for elem in tuple {
+        elem.encode(data, &msgpack::Context::DEFAULT).map_err(|e| {
+            SbroadError::Invalid(
+                Entity::Tuple,
+                Some(format_smolstr!(
+                    "failed to encode sharded update delete tuple: {e}"
+                )),
+            )
+        })?;
+    }
+    Ok(())
+}
+
+fn encode_shared_update_tuple(
+    data: &mut Vec<u8>,
+    tuple: &VTableTuple,
+    builder: &TupleBuilderPattern,
+    bucket_id: u64,
+) -> Result<(), SbroadError> {
+    data.clear();
+    write_array_len(data, builder.len() as u32).map_err(|e| {
+        SbroadError::Invalid(
+            Entity::Tuple,
+            Some(format_smolstr!(
+                "failed to encode sharded update tuple header: {e}"
+            )),
+        )
+    })?;
+    write_shared_update_args(tuple, builder, bucket_id, data)?;
+    Ok(())
+}
+
+fn filtered_delete_impl(
+    space: &Space,
+    builder: &TupleBuilderPattern,
+    vtable: &VirtualTable,
+) -> Result<u64, SbroadError> {
+    let mut result = ConsumerResult::default();
+
+    transaction(|| -> Result<(), SbroadError> {
+        for vt_tuple in vtable.get_tuples() {
+            let delete_tuple = delete_args(vt_tuple, builder)?;
+            if let Err(Error::Tarantool(tnt_err)) = space.delete(&delete_tuple) {
+                return Err(SbroadError::FailedTo(
+                    Action::Delete,
+                    Some(Entity::Tuple),
+                    format_smolstr!("{tnt_err:?}"),
+                ));
+            }
+            result.row_count += 1;
+        }
+        Ok(())
+    })?;
+
+    Ok(result.row_count)
+}
+
+pub(crate) fn filtered_delete_from_plan<R: Vshard + QueryCache>(
+    runtime: &R,
+    table_id: u32,
+    version: u64,
+    columns: &[Column],
+    builder: &TupleBuilderPattern,
+    dql: &ExecutionData,
+) -> Result<u64, SbroadError>
+where
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
+{
+    let space = ensure_target_space(runtime, table_id, version)?;
+    let column_types = columns
+        .iter()
+        .map(|column| column.r#type.into())
+        .collect::<Vec<_>>();
+    let vtable = materialize_with_dql(runtime, &column_types, builder, |pico_port| {
+        dql_execute_locally_from_plan(runtime, dql, pico_port)
+    })?;
+    filtered_delete_impl(&space, builder, &vtable)
+}
+
+fn tuple_insert_from_proto<'p, 'ip, R: Vshard + QueryCache>(
     runtime: &R,
     mut iter: InsertIterator<'ip>,
     port: &mut impl Port<'p>,
@@ -962,51 +1511,24 @@ where
     let tuples = protocol_get!(iter, InsertResult::Tuples);
     transaction(|| -> Result<(), SbroadError> {
         for tuple in tuples {
-            let insert_tuple = RawBytes::new(tuple?);
+            let tuple_data = tuple?;
+            let insert_tuple = RawBytes::new(tuple_data);
             // TODO: should we care of default and so on
-            let insert_result = space.insert(insert_tuple);
-            if let Err(Error::Tarantool(tnt_err)) = &insert_result {
-                if tnt_err.error_code() == TarantoolErrorCode::TupleFound as u32 {
-                    match conflict_strategy {
-                        ConflictPolicy::DoNothing => {
-                            tlog!(
-                                    Debug,
-                                    "failed to insert tuple: {insert_tuple:?}. Skipping according to conflict strategy",
-                                );
-                        }
-                        ConflictPolicy::DoReplace => {
-                            tlog!(
-                                    Debug,
-                                    "failed to insert tuple: {insert_tuple:?}. Trying to replace according to conflict strategy"
-                                );
-                            space.replace(insert_tuple).map_err(|e| {
-                                SbroadError::FailedTo(
-                                    Action::ReplaceOnConflict,
-                                    Some(Entity::Space),
-                                    format_smolstr!("{e}"),
-                                )
-                            })?;
-                            result.row_count += 1;
-                        }
-                        ConflictPolicy::DoFail => {
-                            return Err(SbroadError::FailedTo(
-                                Action::Insert,
-                                Some(Entity::Space),
-                                format_smolstr!("{tnt_err}"),
-                            ));
-                        }
-                    }
-                    // if either DoReplace or DoNothing was done,
-                    // jump to next tuple iteration. Otherwise
-                    // the error is not DuplicateKey, and we
-                    // should throw it back to user.
-                    continue;
-                };
+            let insert_result = space.insert(insert_tuple).map(|_| ());
+            if apply_insert_with_conflict(insert_result, conflict_strategy, &insert_tuple, || {
+                space
+                    .replace(RawBytes::new(tuple_data))
+                    .map(|_| ())
+                    .map_err(|e| {
+                        SbroadError::FailedTo(
+                            Action::ReplaceOnConflict,
+                            Some(Entity::Space),
+                            format_smolstr!("{e}"),
+                        )
+                    })
+            })? {
+                result.row_count += 1;
             }
-            insert_result.map_err(|e| {
-                SbroadError::FailedTo(Action::Insert, Some(Entity::Space), format_smolstr!("{e}"))
-            })?;
-            result.row_count += 1;
         }
         Ok(())
     })?;
@@ -1015,7 +1537,7 @@ where
     Ok(())
 }
 
-fn update_execute<'p, 'ip, R: Vshard + QueryCache>(
+fn shared_update_from_proto<'p, 'ip, R: Vshard + QueryCache>(
     runtime: &R,
     mut iter: UpdateSharedKeyIterator<'ip>,
     port: &mut impl Port<'p>,
@@ -1071,7 +1593,7 @@ where
     Ok(())
 }
 
-fn local_insert_execute<'p, 'ip, R: Vshard + QueryCache>(
+fn materialized_insert_from_proto<'p, 'ip, R: Vshard + QueryCache>(
     runtime: &R,
     request_id: &str,
     mut iter: InsertMaterializedIterator<'ip>,
@@ -1081,18 +1603,9 @@ fn local_insert_execute<'p, 'ip, R: Vshard + QueryCache>(
 where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
-    let mut result = ConsumerResult::default();
-
     let table_id = protocol_get!(iter, InsertMaterializedResult::TableId);
     let version = protocol_get!(iter, InsertMaterializedResult::TableVersion);
-
-    if runtime.get_table_version_by_id(table_id)? != version {
-        return Err(SbroadError::OutdatedStorageSchema);
-    }
-
-    // SAFETY: space_id already exists. Checked by get_table_version_by_id
-    let space = unsafe { Space::from_id_unchecked(table_id) };
-
+    let space = ensure_target_space(runtime, table_id, version)?;
     let conflict_strategy = protocol_get!(iter, InsertMaterializedResult::ConflictPolicy);
     let columns = protocol_get!(iter, InsertMaterializedResult::Columns);
     let raw_builder = protocol_get!(iter, InsertMaterializedResult::Builder);
@@ -1101,78 +1614,17 @@ where
     })?;
 
     let dql = protocol_get!(iter, InsertMaterializedResult::DqlInfo);
-
-    let vtable = virtual_table_materialize(runtime, request_id, columns, &builder, dql, timeout)?;
-
-    transaction(|| -> Result<(), SbroadError> {
-        for (bucket_id, positions) in vtable.get_bucket_index() {
-            for pos in positions {
-                let vt_tuple = vtable.get_tuples().get(*pos).ok_or_else(|| {
-                    SbroadError::Invalid(
-                        Entity::VirtualTable,
-                        Some(format_smolstr!(
-                            "tuple at position {pos} not found in virtual table"
-                        )),
-                    )
-                })?;
-                let insert_tuple = build_insert_args(vt_tuple, &builder, Some(bucket_id))?;
-                let insert_result = space.insert(&insert_tuple);
-                if let Err(Error::Tarantool(tnt_err)) = &insert_result {
-                    if tnt_err.error_code() == TarantoolErrorCode::TupleFound as u32 {
-                        match conflict_strategy {
-                            ConflictPolicy::DoNothing => {
-                                tlog!(
-                                    Debug,
-                                    "failed to insert tuple: {insert_tuple:?}. Skipping according to conflict strategy",
-                                );
-                            }
-                            ConflictPolicy::DoReplace => {
-                                tlog!(
-                                    Debug,
-                                    "failed to insert tuple: {insert_tuple:?}. Trying to replace according to conflict strategy"
-                                );
-                                space.replace(&insert_tuple).map_err(|e| {
-                                    SbroadError::FailedTo(
-                                        Action::ReplaceOnConflict,
-                                        Some(Entity::Space),
-                                        format_smolstr!("{e}"),
-                                    )
-                                })?;
-                                result.row_count += 1;
-                            }
-                            ConflictPolicy::DoFail => {
-                                return Err(SbroadError::FailedTo(
-                                    Action::Insert,
-                                    Some(Entity::Space),
-                                    format_smolstr!("{tnt_err}"),
-                                ));
-                            }
-                        }
-                        // if either DoReplace or DoNothing was done,
-                        // jump to next tuple iteration. Otherwise
-                        // the error is not DuplicateKey, and we
-                        // should throw it back to user.
-                        continue;
-                    };
-                }
-                insert_result.map_err(|e| {
-                    SbroadError::FailedTo(
-                        Action::Insert,
-                        Some(Entity::Space),
-                        format_smolstr!("{e}"),
-                    )
-                })?;
-                result.row_count += 1;
-            }
-        }
-        Ok(())
+    let column_types = columns.collect::<Result<Vec<_>, _>>()?;
+    let vtable = materialize_with_dql(runtime, &column_types, &builder, |pico_port| {
+        dql_execute(runtime, request_id, dql, pico_port, timeout)
     })?;
-    port_write_execute_dml(port, result.row_count);
+    let row_count = tuple_insert_impl(runtime, &space, conflict_strategy, &builder, &vtable)?;
+    port_write_execute_dml(port, row_count);
 
     Ok(())
 }
 
-fn local_update_execute<'p, 'ip, R: Vshard + QueryCache>(
+fn materialized_update_from_proto<'p, 'ip, R: Vshard + QueryCache>(
     runtime: &R,
     request_id: &str,
     mut iter: UpdateIterator<'ip>,
@@ -1182,18 +1634,9 @@ fn local_update_execute<'p, 'ip, R: Vshard + QueryCache>(
 where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
-    let mut result = ConsumerResult::default();
-
     let table_id = protocol_get!(iter, UpdateResult::TableId);
     let version = protocol_get!(iter, UpdateResult::TableVersion);
-
-    if runtime.get_table_version_by_id(table_id)? != version {
-        return Err(SbroadError::OutdatedStorageSchema);
-    }
-
-    // SAFETY: space_id already exists. Checked by get_table_version_by_id
-    let space = unsafe { Space::from_id_unchecked(table_id) };
-
+    let space = ensure_target_space(runtime, table_id, version)?;
     let columns = protocol_get!(iter, UpdateResult::Columns);
     let raw_builder = protocol_get!(iter, UpdateResult::Builder);
     let builder: TupleBuilderPattern = msgpack::decode(raw_builder).map_err(|e| {
@@ -1201,27 +1644,17 @@ where
     })?;
 
     let dql = protocol_get!(iter, UpdateResult::DqlInfo);
-
-    let vtable = virtual_table_materialize(runtime, request_id, columns, &builder, dql, timeout)?;
-
-    transaction(|| -> Result<(), SbroadError> {
-        for vt_tuple in vtable.get_tuples() {
-            let args = update_args(vt_tuple, &builder)?;
-            let update_res = space.update(&args.key_tuple, &args.ops);
-            update_res.map_err(|e| {
-                SbroadError::FailedTo(Action::Update, Some(Entity::Space), format_smolstr!("{e}"))
-            })?;
-            result.row_count += 1;
-        }
-
-        Ok(())
+    let column_types = columns.collect::<Result<Vec<_>, _>>()?;
+    let vtable = materialize_with_dql(runtime, &column_types, &builder, |pico_port| {
+        dql_execute(runtime, request_id, dql, pico_port, timeout)
     })?;
-    port_write_execute_dml(port, result.row_count);
+    let row_count = local_update_impl(&space, &builder, &vtable)?;
+    port_write_execute_dml(port, row_count);
 
     Ok(())
 }
 
-fn local_delete_execute<'p, 'ip, R: Vshard + QueryCache>(
+fn filtered_delete_from_proto<'p, 'ip, R: Vshard + QueryCache>(
     runtime: &R,
     request_id: &str,
     mut iter: DeleteFilteredIterator<'ip>,
@@ -1231,18 +1664,9 @@ fn local_delete_execute<'p, 'ip, R: Vshard + QueryCache>(
 where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
-    let mut result = ConsumerResult::default();
-
     let table_id = protocol_get!(iter, DeleteFilteredResult::TableId);
     let version = protocol_get!(iter, DeleteFilteredResult::TableVersion);
-
-    if runtime.get_table_version_by_id(table_id)? != version {
-        return Err(SbroadError::OutdatedStorageSchema);
-    }
-
-    // SAFETY: space_id already exists. Checked by get_table_version_by_id
-    let space = unsafe { Space::from_id_unchecked(table_id) };
-
+    let space = ensure_target_space(runtime, table_id, version)?;
     let columns = protocol_get!(iter, DeleteFilteredResult::Columns);
     let raw_builder = protocol_get!(iter, DeleteFilteredResult::Builder);
     let builder: TupleBuilderPattern = msgpack::decode(raw_builder).map_err(|e| {
@@ -1250,29 +1674,17 @@ where
     })?;
 
     let dql = protocol_get!(iter, DeleteFilteredResult::DqlInfo);
-
-    let vtable = virtual_table_materialize(runtime, request_id, columns, &builder, dql, timeout)?;
-
-    transaction(|| -> Result<(), SbroadError> {
-        for vt_tuple in vtable.get_tuples() {
-            let delete_tuple = delete_args(vt_tuple, &builder)?;
-            if let Err(Error::Tarantool(tnt_err)) = space.delete(&delete_tuple) {
-                return Err(SbroadError::FailedTo(
-                    Action::Delete,
-                    Some(Entity::Tuple),
-                    format_smolstr!("{tnt_err:?}"),
-                ));
-            }
-            result.row_count += 1;
-        }
-        Ok(())
+    let column_types = columns.collect::<Result<Vec<_>, _>>()?;
+    let vtable = materialize_with_dql(runtime, &column_types, &builder, |pico_port| {
+        dql_execute(runtime, request_id, dql, pico_port, timeout)
     })?;
-    port_write_execute_dml(port, result.row_count);
+    let row_count = filtered_delete_impl(&space, &builder, &vtable)?;
+    port_write_execute_dml(port, row_count);
 
     Ok(())
 }
 
-fn delete_execute<'p, 'ip, R: Vshard + QueryCache>(
+fn full_delete_from_proto<'p, 'ip, R: Vshard + QueryCache>(
     runtime: &R,
     mut iter: DeleteFullIterator<'ip>,
     port: &mut impl Port<'p>,

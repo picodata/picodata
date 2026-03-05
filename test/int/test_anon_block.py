@@ -59,6 +59,26 @@ def test_remote_block_dispatch(cluster: Cluster):
             assert cur.fetchall() == [(42,)]
 
 
+def test_local_filtered_dml_block_dispatch(cluster: Cluster):
+    leader, *_ = cluster.deploy(instance_count=2)
+    cluster.wait_balanced()
+
+    local_pk = find_routed_pk(leader, is_local=True)
+
+    leader.sql("CREATE TABLE t (pk INTEGER PRIMARY KEY, a INTEGER)")
+    leader.sql("INSERT INTO t VALUES (?, ?)", local_pk, 0)
+
+    dml = leader.sql(
+        f"""
+        DO $$ BEGIN
+            UPDATE t SET a = a + 1 WHERE pk = {local_pk};
+        END $$;
+        """
+    )
+    assert dml == {"row_count": 1}
+    assert leader.sql("SELECT a FROM t WHERE pk = ?", local_pk) == [[1]]
+
+
 def test_r_block_atomicity(postgres: Postgres):
     """
     Ensure that 2 reads within the same block always return

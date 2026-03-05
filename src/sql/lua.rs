@@ -639,6 +639,13 @@ where
     }
 }
 
+pub(crate) fn dispatch_session_id() -> Result<String> {
+    let lua = tarantool::lua_state();
+    let func = dispatch_get_func(&lua, "session_id")?;
+    func.call::<String>()
+        .map_err(|e| TarantoolError::new(TarantoolErrorCode::ProcLua, format!("{e}")).into())
+}
+
 pub(crate) fn bucket_into_rs(
     lua: &LuaThread,
     bucket_id: u64,

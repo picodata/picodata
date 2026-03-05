@@ -337,6 +337,28 @@ pub static STORAGE_2ND_REQUESTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|
     .unwrap()
 });
 
+pub static SQL_LOCAL_QUERY_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    IntCounterVec::new(
+        Opts::new(
+            "pico_sql_local_query_total",
+            "Total number of local SQL query executions that bypass iproto since startup",
+        ),
+        &["query_type", "result"],
+    )
+    .unwrap()
+});
+
+pub static SQL_LOCAL_QUERY_DURATION: LazyLock<HistogramVec> = LazyLock::new(|| {
+    HistogramVec::new(
+        HistogramOpts::new(
+            "pico_sql_local_query_duration",
+            "Histogram of local SQL query execution durations that bypass iproto (in seconds)",
+        ),
+        &["query_type", "result"],
+    )
+    .unwrap()
+});
+
 pub static STORAGE_CACHE_HITS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     IntCounterVec::new(
         Opts::new(
@@ -363,6 +385,18 @@ pub fn report_storage_cache_hit(query_type: &str, rpc_type: &str) {
     STORAGE_CACHE_HITS_TOTAL
         .with_label_values(&[query_type, rpc_type])
         .inc()
+}
+
+pub fn record_sql_local_query_total(query_type: &str, result: &str) {
+    SQL_LOCAL_QUERY_TOTAL
+        .with_label_values(&[query_type, result])
+        .inc()
+}
+
+pub fn observe_sql_local_query_duration(query_type: &str, result: &str, duration: &Duration) {
+    SQL_LOCAL_QUERY_DURATION
+        .with_label_values(&[query_type, result])
+        .observe(duration.as_secs_f64())
 }
 
 pub fn report_storage_cache_miss(query_type: &str, rpc_type: &str, miss_type: &str) {
@@ -542,6 +576,8 @@ pub fn register_metrics(registry: &prometheus::Registry) -> prometheus::Result<(
     registry.register(Box::new(STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL.clone()))?;
     registry.register(Box::new(STORAGE_1ST_REQUESTS_TOTAL.clone()))?;
     registry.register(Box::new(STORAGE_2ND_REQUESTS_TOTAL.clone()))?;
+    registry.register(Box::new(SQL_LOCAL_QUERY_DURATION.clone()))?;
+    registry.register(Box::new(SQL_LOCAL_QUERY_TOTAL.clone()))?;
     registry.register(Box::new(ROUTER_CACHE_STATEMENTS_ADDED_TOTAL.clone()))?;
     registry.register(Box::new(ROUTER_CACHE_STATEMENTS_EVICTED_TOTAL.clone()))?;
     registry.register(Box::new(ROUTER_CACHE_HITS_TOTAL.clone()))?;

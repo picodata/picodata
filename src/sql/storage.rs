@@ -813,6 +813,20 @@ impl StorageRuntime {
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
         let is_dql = block.returns_rows;
+        self.validate_block_schema(&block)?;
+
+        execute_block_locally(block, port)?;
+
+        if is_dql {
+            port.set_type(PortType::ExecuteDql);
+        } else {
+            port.set_type(PortType::ExecuteDml);
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn validate_block_schema(&self, block: &BlockExecData) -> Result<(), SbroadError> {
         for (table_id, version) in &block.table_versions {
             if self.get_table_version_by_id(*table_id)? != *version {
                 return Err(SbroadError::OutdatedStorageSchema);
@@ -824,14 +838,6 @@ impl StorageRuntime {
             if self.get_index_version_by_pk(table_id, index_id)? != *version {
                 return Err(SbroadError::OutdatedStorageSchema);
             }
-        }
-
-        execute_block_locally(block, port)?;
-
-        if is_dql {
-            port.set_type(PortType::ExecuteDql);
-        } else {
-            port.set_type(PortType::ExecuteDml);
         }
 
         Ok(())

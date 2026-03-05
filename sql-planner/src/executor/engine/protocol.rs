@@ -62,6 +62,27 @@ pub struct ExecutionData {
     plan: ExecutionPlan, // TODO: maybe Rc<> + top_id is better
 }
 
+impl ExecutionData {
+    pub fn plan_id(&self) -> u64 {
+        self.plan_id
+    }
+
+    pub fn vtables(&self) -> &HashMap<SmolStr, Rc<VirtualTable>> {
+        &self.vtables
+    }
+
+    pub fn options(&self) -> DQLOptions {
+        self.plan
+            .get_ir_plan()
+            .effective_options
+            .to_protocol_options()
+    }
+
+    pub fn encoded_params(&self) -> Vec<u8> {
+        tarantool::msgpack::encode(self.plan.get_ir_plan().get_params())
+    }
+}
+
 impl DQLDataSource for ExecutionData {
     fn get_table_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
         self.plan
@@ -615,10 +636,10 @@ pub struct ExecutionCacheMissData {
     pub sql: String,
 }
 
-impl TryFrom<ExecutionData> for ExecutionCacheMissData {
+impl TryFrom<&ExecutionData> for ExecutionCacheMissData {
     type Error = SbroadError;
 
-    fn try_from(value: ExecutionData) -> Result<Self, Self::Error> {
+    fn try_from(value: &ExecutionData) -> Result<Self, Self::Error> {
         let sql = {
             let plan_id = value.get_plan_id();
             let plan = value.plan.get_ir_plan();
@@ -651,16 +672,30 @@ impl TryFrom<ExecutionData> for ExecutionCacheMissData {
                 .collect::<HashMap<_, _>>()
         };
 
-        let index_version_map = value.plan.plan.index_version_map;
         let schema_info = PlanVersion {
-            table_version_map: value.plan.plan.table_version_map,
-            index_version_map,
+            table_version_map: value.plan.plan.table_version_map.clone(),
+            index_version_map: value.plan.plan.index_version_map.clone(),
         };
         Ok(Self {
             schema_info,
             vtables_meta,
             sql,
         })
+    }
+}
+
+impl TryFrom<ExecutionData> for ExecutionCacheMissData {
+    type Error = SbroadError;
+
+    fn try_from(mut value: ExecutionData) -> Result<Self, Self::Error> {
+        // Take version maps before borrowing to avoid unnecessary cloning.
+        let schema_info = PlanVersion {
+            table_version_map: std::mem::take(&mut value.plan.plan.table_version_map),
+            index_version_map: std::mem::take(&mut value.plan.plan.index_version_map),
+        };
+        let mut result = Self::try_from(&value)?;
+        result.schema_info = schema_info;
+        Ok(result)
     }
 }
 

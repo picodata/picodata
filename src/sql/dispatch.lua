@@ -477,6 +477,9 @@ local function init()
     end
     _G.pico.dispatch = dispatch
     _G.pico.dispatch.lref = require('vshard.lref')
+    -- Expose the session UUID for the Rust local fast-path so it shares the
+    -- same vshard lref session as the normal Lua dispatch path.
+    _G.pico.dispatch.session_id = session_current
 end
 
 return {

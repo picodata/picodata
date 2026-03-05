@@ -47,8 +47,8 @@ use crate::metrics::{
     ROUTER_CACHE_HITS_TOTAL, ROUTER_CACHE_MISSES_TOTAL, ROUTER_CACHE_STATEMENTS_ADDED_TOTAL,
     ROUTER_CACHE_STATEMENTS_EVICTED_TOTAL,
 };
-use ::tarantool::tuple::{KeyDef, Tuple};
 use tarantool::space::SpaceId;
+use tarantool::tuple::{KeyDef, Tuple};
 
 use super::dispatch::{custom_plan_dispatch, single_plan_dispatch};
 use super::port::PicoPortOwned;
@@ -113,22 +113,25 @@ impl Tier {
 /// # Errors:
 /// - errors on access to system table
 pub fn get_index_version_by_pk(space_id: u32, index_id: u32) -> Result<u64, SbroadError> {
-    let node = node::global().map_err(|e| {
-        SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
-    })?;
-    let indexes = &node.storage.indexes;
-    let index = indexes.get(space_id, index_id).map_err(|e| {
-        SbroadError::FailedTo(Action::Get, None, format_smolstr!("index_def: {}", e))
-    })?;
+    with_su(ADMIN_ID, || -> Result<u64, SbroadError> {
+        let node = node::global().map_err(|e| {
+            SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
+        })?;
+        let indexes = &node.storage.indexes;
+        let index = indexes.get(space_id, index_id).map_err(|e| {
+            SbroadError::FailedTo(Action::Get, None, format_smolstr!("index_def: {}", e))
+        })?;
 
-    let Some(index) = index else {
-        return Err(SbroadError::NotFound(
-            Entity::Index,
-            format_smolstr!("with id: {}", index_id),
-        ));
-    };
+        let Some(index) = index else {
+            return Err(SbroadError::NotFound(
+                Entity::Index,
+                format_smolstr!("with id: {}", index_id),
+            ));
+        };
 
-    Ok(index.schema_version)
+        Ok(index.schema_version)
+    })
+    .map_err(|e| SbroadError::FailedTo(Action::Get, None, format_smolstr!("with_su: {}", e)))?
 }
 
 /// Get the schema version for the given table.
@@ -142,20 +145,23 @@ pub fn get_index_version_by_pk(space_id: u32, index_id: u32) -> Result<u64, Sbro
 /// - errors on access to system table
 /// - table with given name not found
 pub fn get_table_version(table_name: &str) -> Result<u64, SbroadError> {
-    let node = node::global().map_err(|e| {
-        SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
-    })?;
-    let pico_table = &node.storage.pico_table;
-    if let Some(table_def) = pico_table.by_name(table_name).map_err(|e| {
-        SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
-    })? {
-        Ok(table_def.schema_version)
-    } else {
-        Err(SbroadError::NotFound(
-            Entity::SpaceMetadata,
-            format_smolstr!("for table: {}", table_name),
-        ))
-    }
+    with_su(ADMIN_ID, || -> Result<u64, SbroadError> {
+        let node = node::global().map_err(|e| {
+            SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
+        })?;
+        let pico_table = &node.storage.pico_table;
+        if let Some(table_def) = pico_table.by_name(table_name).map_err(|e| {
+            SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
+        })? {
+            Ok(table_def.schema_version)
+        } else {
+            Err(SbroadError::NotFound(
+                Entity::SpaceMetadata,
+                format_smolstr!("for table: {}", table_name),
+            ))
+        }
+    })
+    .map_err(|e| SbroadError::FailedTo(Action::Get, None, format_smolstr!("with_su: {}", e)))?
 }
 
 /// Get the schema version for the given table.
@@ -167,20 +173,23 @@ pub fn get_table_version(table_name: &str) -> Result<u64, SbroadError> {
 /// - errors on access to system table
 /// - table with given id not found
 pub fn get_table_version_by_id(id: SpaceId) -> Result<u64, SbroadError> {
-    let node = node::global().map_err(|e| {
-        SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
-    })?;
-    let storage_tables = &node.storage.pico_table;
-    if let Some(table_def) = storage_tables.by_id(id).map_err(|e| {
-        SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
-    })? {
-        Ok(table_def.schema_version)
-    } else {
-        Err(SbroadError::NotFound(
-            Entity::SpaceMetadata,
-            format_smolstr!("for table: {}", id),
-        ))
-    }
+    with_su(ADMIN_ID, || -> Result<u64, SbroadError> {
+        let node = node::global().map_err(|e| {
+            SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
+        })?;
+        let storage_tables = &node.storage.pico_table;
+        if let Some(table_def) = storage_tables.by_id(id).map_err(|e| {
+            SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
+        })? {
+            Ok(table_def.schema_version)
+        } else {
+            Err(SbroadError::NotFound(
+                Entity::SpaceMetadata,
+                format_smolstr!("for table: {}", id),
+            ))
+        }
+    })
+    .map_err(|e| SbroadError::FailedTo(Action::Get, None, format_smolstr!("with_su: {}", e)))?
 }
 
 pub fn get_index_id(index_name: &str, table_name: &str) -> Result<u32, SbroadError> {
@@ -213,20 +222,23 @@ pub fn get_index_id(index_name: &str, table_name: &str) -> Result<u32, SbroadErr
 /// - errors on access to system table
 /// - table with given id not found
 pub fn get_table_name_and_version(id: SpaceId) -> Result<(SmolStr, u64), SbroadError> {
-    let node = node::global().map_err(|e| {
-        SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
-    })?;
-    let storage_tables = &node.storage.pico_table;
-    if let Some(table_def) = storage_tables.by_id(id).map_err(|e| {
-        SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
-    })? {
-        Ok((table_def.name, table_def.schema_version))
-    } else {
-        Err(SbroadError::NotFound(
-            Entity::SpaceMetadata,
-            format_smolstr!("for table: {}", id),
-        ))
-    }
+    with_su(ADMIN_ID, || -> Result<(SmolStr, u64), SbroadError> {
+        let node = node::global().map_err(|e| {
+            SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
+        })?;
+        let storage_tables = &node.storage.pico_table;
+        if let Some(table_def) = storage_tables.by_id(id).map_err(|e| {
+            SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
+        })? {
+            Ok((table_def.name, table_def.schema_version))
+        } else {
+            Err(SbroadError::NotFound(
+                Entity::SpaceMetadata,
+                format_smolstr!("for table: {}", id),
+            ))
+        }
+    })
+    .map_err(|e| SbroadError::FailedTo(Action::Get, None, format_smolstr!("with_su: {}", e)))?
 }
 
 type IsAuditEnabledFunc = fn(&Plan) -> Result<bool, SbroadError>;

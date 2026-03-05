@@ -121,6 +121,24 @@ search:
 
 Тип: counter
 
+### pico_sql_local_query_duration
+
+Гистограмма длительности локальных SQL-запросов, выполненных в обход `iproto`
+на текущем инстансе (в секундах)
+
+Метки: `query_type` (`dql`, `dml`), `result` (`ok`, `err`)
+
+Тип: histogram
+
+### pico_sql_local_query_total
+
+Общее количество локальных SQL-запросов, выполненных в обход `iproto`
+на текущем инстансе
+
+Метки: `query_type` (`dql`, `dml`), `result` (`ok`, `err`)
+
+Тип: counter
+
 ### pico_sql_replicas_read_total
 
 Общее количество исполнений DQL-запросов на репликах (см. [read_preference](./db_config.md#read_preference))

@@ -91,6 +91,9 @@ with the `YY.MINOR.MICRO` scheme.
 - Support reading from global tables in anonymous blocks; writing is not supported yet.
 - Upgrade Tarantool from 2.11.5 to 2.11.8.
 - Add migration context validation API into plugin SDK.
+- Introduce a local SQL execution path for eligible queries that bypasses
+  `iproto` on the current instance; usage is exposed via the
+  `pico_sql_local_query_total` and `pico_sql_local_query_duration` metrics.
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:
