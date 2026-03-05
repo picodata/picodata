@@ -1678,6 +1678,7 @@ class Instance:
                 time.sleep(next_retry - now)
             next_retry = time.monotonic() + 1 / rps
 
+            state, target_state = (None, None)
             try:
                 # Fetch state
                 (state, incarnation), (target_state, _) = self.states()
@@ -1704,9 +1705,15 @@ class Instance:
                         # this crutch in for that special case. The logic is:
                         # if tarantool is taking too long to bootstrap it's
                         # probably not our fault.
-                        raise Exception(self._wait_online_failure_message(state, target_state)) from e
+                        if state is not None and target_state is not None:
+                            raise Exception(self._wait_online_failure_message(state, target_state)) from e
+                        else:
+                            raise e from e
                     case _ if time.monotonic() > deadline:
-                        raise Exception(self._wait_online_failure_message(state, target_state)) from e
+                        if state is not None and target_state is not None:
+                            raise Exception(self._wait_online_failure_message(state, target_state)) from e
+                        else:
+                            raise e from e
                     case (str(message),) if "target_state_reason: Replication broken" in message:
                         raise ReplicationBroken(e) from e
 
