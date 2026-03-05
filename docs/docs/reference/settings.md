@@ -516,7 +516,7 @@ table.legend {
         <tr>
             <td><span class="instance">share-dir</span></td>
             <td>Путь к директории, содержащей файлы плагинов</td>
-            <td>null</td>
+            <td>/usr/share/picodata</td>
             <td>[picodata run --share-dir](cli.md#run_share_dir)</td>
             <td>[instance.share_dir](config.md#instance_share_dir)</td>
             <td>PICODATA_SHARE_DIR</td>
