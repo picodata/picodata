@@ -984,6 +984,17 @@ impl From<AuditPolicy> for NodeAligned {
     }
 }
 
+/// Vinyl-specific index options for LSM tree configuration.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+pub struct VinylOptions {
+    pub bloom_fpr: Option<Double>,
+    pub page_size: Option<u32>,
+    pub range_size: Option<u32>,
+    pub run_count_per_level: Option<u32>,
+    pub run_size_ratio: Option<Double>,
+    pub compression_level: Option<i8>,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct CreateTable {
     pub name: SmolStr,
@@ -1007,12 +1018,7 @@ pub struct CreateTable {
     /// Instead, 'bucket_id' is included as the first part of the primary key index.
     pub pk_contains_bucket_id: bool,
     /// Vinyl options for table indexes (primary key, bucket_id, and inherited by secondary indexes).
-    pub bloom_fpr: Option<Double>,
-    pub page_size: Option<u32>,
-    pub range_size: Option<u32>,
-    pub run_count_per_level: Option<u32>,
-    pub run_size_ratio: Option<Double>,
-    pub compression_level: Option<i8>,
+    pub vinyl_options: VinylOptions,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -1147,12 +1153,7 @@ pub struct CreateIndex {
     pub unique: bool,
     pub if_not_exists: bool,
     pub index_type: IndexType,
-    pub bloom_fpr: Option<Double>,
-    pub page_size: Option<u32>,
-    pub range_size: Option<u32>,
-    pub run_count_per_level: Option<u32>,
-    pub run_size_ratio: Option<Double>,
-    pub compression_level: Option<i8>,
+    pub vinyl_options: VinylOptions,
     pub dimension: Option<u8>,
     pub distance: Option<RtreeIndexDistanceType>,
     pub hint: Option<bool>,

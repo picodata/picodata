@@ -60,7 +60,7 @@ use crate::ir::node::{
     AlterSystem, AlterUser, AuditPolicy, BoolExpr, CallProcedure, Constant, CountAsterisk,
     CreateIndex, CreateProc, CreateRole, CreateTable, CreateUser, DropIndex, DropProc, DropRole,
     DropTable, DropUser, GrantPrivilege, Node, NodeId, RenameRoutine, RevokePrivilege, ScanCte,
-    ScanRelation, SetParam, SetTransaction, Trim,
+    ScanRelation, SetParam, SetTransaction, Trim, VinylOptions,
 };
 use crate::ir::operator::{
     Arithmetic, Bool, ConflictStrategy, JoinKind, OrderByElement, OrderByEntity, OrderByType, Unary,
@@ -688,12 +688,7 @@ fn parse_create_index(
     let mut columns = Vec::new();
     let mut unique = false;
     let mut index_type = IndexType::Tree;
-    let mut bloom_fpr = None;
-    let mut page_size = None;
-    let mut range_size = None;
-    let mut run_count_per_level = None;
-    let mut run_size_ratio = None;
-    let mut compression_level = None;
+    let mut vinyl_options = VinylOptions::default();
     let mut dimension = None;
     let mut distance = None;
     let mut hint = None;
@@ -756,24 +751,27 @@ fn parse_create_index(
                     let param_node = first_child(option_param_node);
                     match param_node.rule {
                         Rule::BloomFpr => {
-                            bloom_fpr = Some(parse_option_double(ast, param_node, "bloom_fpr")?)
+                            vinyl_options.bloom_fpr =
+                                Some(parse_option_double(ast, param_node, "bloom_fpr")?)
                         }
                         Rule::PageSize => {
-                            page_size = Some(parse_option_int(ast, param_node, "page_size")?)
+                            vinyl_options.page_size =
+                                Some(parse_option_int(ast, param_node, "page_size")?)
                         }
                         Rule::RangeSize => {
-                            range_size = Some(parse_option_int(ast, param_node, "range_size")?)
+                            vinyl_options.range_size =
+                                Some(parse_option_int(ast, param_node, "range_size")?)
                         }
                         Rule::RunCountPerLevel => {
-                            run_count_per_level =
+                            vinyl_options.run_count_per_level =
                                 Some(parse_option_int(ast, param_node, "run_count_per_level")?)
                         }
                         Rule::RunSizeRatio => {
-                            run_size_ratio =
+                            vinyl_options.run_size_ratio =
                                 Some(parse_option_double(ast, param_node, "run_size_ratio")?)
                         }
                         Rule::CompressionLevel => {
-                            compression_level =
+                            vinyl_options.compression_level =
                                 Some(parse_option_int(ast, param_node, "compression_level")?)
                         }
                         Rule::Dimension => {
@@ -810,12 +808,7 @@ fn parse_create_index(
         unique,
         if_not_exists,
         index_type,
-        bloom_fpr,
-        page_size,
-        range_size,
-        run_count_per_level,
-        run_size_ratio,
-        compression_level,
+        vinyl_options,
         dimension,
         distance,
         hint,
@@ -952,12 +945,7 @@ fn parse_create_table(
     let mut unlogged = DEFAULT_UNLOGGED;
     let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
     let mut pk_contains_bucket_id = false;
-    let mut bloom_fpr = None;
-    let mut page_size = None;
-    let mut range_size = None;
-    let mut run_count_per_level = None;
-    let mut run_size_ratio = None;
-    let mut compression_level = None;
+    let mut vinyl_options = VinylOptions::default();
 
     let nullable_primary_key_column_error = Err(SbroadError::Invalid(
         Entity::Column,
@@ -1165,24 +1153,27 @@ fn parse_create_table(
                     let param_node = ast.nodes.get_node(param_node_id)?;
                     match param_node.rule {
                         Rule::BloomFpr => {
-                            bloom_fpr = Some(parse_option_double(ast, param_node, "bloom_fpr")?);
+                            vinyl_options.bloom_fpr =
+                                Some(parse_option_double(ast, param_node, "bloom_fpr")?);
                         }
                         Rule::PageSize => {
-                            page_size = Some(parse_option_int(ast, param_node, "page_size")?);
+                            vinyl_options.page_size =
+                                Some(parse_option_int(ast, param_node, "page_size")?);
                         }
                         Rule::RangeSize => {
-                            range_size = Some(parse_option_int(ast, param_node, "range_size")?);
+                            vinyl_options.range_size =
+                                Some(parse_option_int(ast, param_node, "range_size")?);
                         }
                         Rule::RunCountPerLevel => {
-                            run_count_per_level =
+                            vinyl_options.run_count_per_level =
                                 Some(parse_option_int(ast, param_node, "run_count_per_level")?);
                         }
                         Rule::RunSizeRatio => {
-                            run_size_ratio =
+                            vinyl_options.run_size_ratio =
                                 Some(parse_option_double(ast, param_node, "run_size_ratio")?);
                         }
                         Rule::CompressionLevel => {
-                            compression_level =
+                            vinyl_options.compression_level =
                                 Some(parse_option_int(ast, param_node, "compression_level")?);
                         }
                         _ => {
@@ -1321,12 +1312,7 @@ fn parse_create_table(
         timeout,
         tier,
         pk_contains_bucket_id,
-        bloom_fpr,
-        page_size,
-        range_size,
-        run_count_per_level,
-        run_size_ratio,
-        compression_level,
+        vinyl_options,
     })
 }
 

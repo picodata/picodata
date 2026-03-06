@@ -70,6 +70,7 @@ use sql::ir::node::plugin::{
     MigrateTo, Plugin, RemoveServiceFromTier, SettingsPair,
 };
 use sql::ir::node::relational::Relational;
+use sql::ir::node::VinylOptions;
 use sql::ir::node::{
     AlterColumn, AlterSystem, AlterTableOp, AlterUser, AnonymousBlock, ArenaType, AuditPolicy,
     CallProcedure, Constant, CreateIndex, CreateProc, CreateRole, CreateTable, CreateUser, Delete,
@@ -80,7 +81,6 @@ use sql::ir::node::{
 use sql::ir::node::{NodeId, TruncateTable};
 use sql::ir::operator::ConflictStrategy;
 use sql::ir::types::UnrestrictedType;
-use sql::ir::value::double::Double;
 use sql::ir::value::Value;
 use sql::ir::Plan as IrPlan;
 use sql_protocol::decode::{
@@ -1501,36 +1501,29 @@ fn get_new_backup_timestamp(storage: &Catalog) -> i64 {
     }
 }
 
-/// Builds vinyl-specific index options from the provided values.
-fn build_vinyl_index_options(
-    bloom_fpr: Option<&Double>,
-    page_size: Option<u32>,
-    range_size: Option<u32>,
-    run_count_per_level: Option<u32>,
-    run_size_ratio: Option<&Double>,
-    compression_level: Option<i8>,
-) -> traft::Result<Vec<IndexOption>> {
+/// Builds vinyl-specific index options from VinylOptions.
+fn build_vinyl_index_options(vinyl_options: &VinylOptions) -> traft::Result<Vec<IndexOption>> {
     let mut opts = Vec::new();
-    if let Some(bloom_fpr) = bloom_fpr {
+    if let Some(ref bloom_fpr) = vinyl_options.bloom_fpr {
         let decimal = Decimal::try_from(bloom_fpr.value)
             .map_err(|e| Error::other(format!("invalid bloom_fpr value: {e}")))?;
         opts.push(IndexOption::BloomFalsePositiveRate(decimal));
     }
-    if let Some(page_size) = page_size {
+    if let Some(page_size) = vinyl_options.page_size {
         opts.push(IndexOption::PageSize(page_size));
     }
-    if let Some(range_size) = range_size {
+    if let Some(range_size) = vinyl_options.range_size {
         opts.push(IndexOption::RangeSize(range_size));
     }
-    if let Some(run_count_per_level) = run_count_per_level {
+    if let Some(run_count_per_level) = vinyl_options.run_count_per_level {
         opts.push(IndexOption::RunCountPerLevel(run_count_per_level));
     }
-    if let Some(run_size_ratio) = run_size_ratio {
+    if let Some(ref run_size_ratio) = vinyl_options.run_size_ratio {
         let decimal = Decimal::try_from(run_size_ratio.value)
             .map_err(|e| Error::other(format!("invalid run_size_ratio value: {e}")))?;
         opts.push(IndexOption::RunSizeRatio(decimal));
     }
-    if let Some(compression_level) = compression_level {
+    if let Some(compression_level) = vinyl_options.compression_level {
         opts.push(IndexOption::CompressionLevel(compression_level));
     }
     Ok(opts)
@@ -1558,12 +1551,7 @@ fn ddl_ir_node_to_op_or_result(
             if_not_exists,
             unlogged,
             pk_contains_bucket_id,
-            bloom_fpr,
-            page_size,
-            range_size,
-            run_count_per_level,
-            run_size_ratio,
-            compression_level,
+            vinyl_options,
             ..
         }) => {
             let format = format
@@ -1591,14 +1579,7 @@ fn ddl_ir_node_to_op_or_result(
             }
 
             // Build index options from vinyl options.
-            let index_opts = build_vinyl_index_options(
-                bloom_fpr.as_ref(),
-                *page_size,
-                *range_size,
-                *run_count_per_level,
-                run_size_ratio.as_ref(),
-                *compression_level,
-            )?;
+            let index_opts = build_vinyl_index_options(vinyl_options)?;
 
             let topology_cache = node.topology_cache.get();
 
@@ -1815,12 +1796,7 @@ fn ddl_ir_node_to_op_or_result(
             columns,
             unique,
             index_type,
-            bloom_fpr,
-            page_size,
-            range_size,
-            run_count_per_level,
-            run_size_ratio,
-            compression_level,
+            vinyl_options,
             dimension,
             distance,
             hint,
@@ -1828,14 +1804,7 @@ fn ddl_ir_node_to_op_or_result(
             ..
         }) => {
             let mut opts: Vec<IndexOption> = vec![IndexOption::Unique(*unique)];
-            opts.append(&mut build_vinyl_index_options(
-                bloom_fpr.as_ref(),
-                *page_size,
-                *range_size,
-                *run_count_per_level,
-                run_size_ratio.as_ref(),
-                *compression_level,
-            )?);
+            opts.append(&mut build_vinyl_index_options(vinyl_options)?);
             if let Some(dimension) = dimension {
                 opts.push(IndexOption::Dimension(*dimension));
             }
