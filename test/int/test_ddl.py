@@ -3109,3 +3109,17 @@ def test_vinyl_options_applied_to_indices(cluster: Cluster):
     assert pk_opts.get("run_count_per_level") == custom_run_count_per_level, (
         f"Table pk run_count_per_level should use instance default: expected {custom_run_count_per_level}, got {pk_opts}"
     )
+
+    # Test that vinyl options are rejected for memtx engine
+    with pytest.raises(TarantoolError) as exc:
+        i1.sql(
+            """
+            CREATE TABLE memtx_with_vinyl_opts (
+                id INT NOT NULL,
+                PRIMARY KEY (id)
+            ) USING memtx
+            WITH (page_size = 16384)
+            DISTRIBUTED BY (id)
+            """
+        )
+    assert "table engine memtx does not support option page_size" in str(exc.value)
