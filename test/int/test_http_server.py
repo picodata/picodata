@@ -6,6 +6,7 @@ from pathlib import Path
 from conftest import (
     Cluster,
     Instance,
+    Retriable,
     TarantoolError,
 )
 from urllib.request import urlopen, Request
@@ -790,6 +791,129 @@ cluster:
         body = json.loads(e.read())
         assert body["status"] == "not_ready"
         assert "offline" in body["reason"].lower()
+
+    # Cleanup
+    i1.call("pico._inject_error", "SENTINEL_CONNECTION_POOL_CALL_FAILURE", False)
+
+
+def test_healthcheck_status_api(cluster: Cluster):
+    """
+    Test health check status API (/api/v1/health/status) lifecycle.
+
+    This test validates:
+    1. Healthy state with data accuracy (instance info, raft, buckets, cluster)
+    2. Degraded state when limbo_owner != 0
+    3. Unhealthy state when instance is offline (includes degraded reasons)
+    """
+    i1, i2, i3 = cluster.deploy(instance_count=3, enable_http=True)
+    http_listen = i1.env["PICODATA_HTTP_LISTEN"]
+    status_url = f"http://{http_listen}/api/v1/health/status"
+
+    create_user(i1)
+    auth_token = get_auth_token(i1)
+
+    # Wait for startup and bucket distribution
+    Retriable(timeout=30, rps=2).call(lambda: get_authorized(f"http://{http_listen}/api/v1/health/startup", auth_token))
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1000)
+
+    # Validate healthy status with data accuracy
+    with get_authorized(status_url, auth_token) as response:
+        assert response.status == 200, "Status endpoint should return 200"
+        body = json.load(response)
+
+    # Get actual instance info for comparison
+    instance_info = i1.call(".proc_instance_info")
+    raft_info = i1.call(".proc_raft_info")
+
+    # Instance info
+    assert body["name"] == i1.name
+    assert body["uuid"] == instance_info["uuid"]
+    assert body["raftId"] == instance_info["raft_id"]
+    assert body["tier"] == instance_info["tier"]
+    assert body["replicaset"] == instance_info["replicaset_name"]
+    assert body["currentState"] == instance_info["current_state"]["variant"]
+    assert body["targetState"] == instance_info["target_state"]["variant"]
+    assert body["version"] == i1.picodata_version()
+
+    # Raft status
+    raft = body["raft"]
+    assert raft["term"] == raft_info["term"]
+    assert raft["leaderId"] == raft_info["leader_id"]
+    assert raft["appliedIndex"] == raft_info["applied"]
+
+    # Bucket status
+    buckets = body["buckets"]
+    tier_name = instance_info["tier"]
+    expected_bucket_count = i1.sql(f"SELECT bucket_count FROM _pico_tier WHERE name = '{tier_name}'")[0][0]
+    assert buckets["total"] == expected_bucket_count
+    assert buckets["active"] > 0
+    assert buckets["sending"] == 0
+    assert buckets["garbage"] == 0
+
+    # Cluster info
+    cluster_info = body["cluster"]
+    assert cluster_info["uuid"] == i1.cluster_uuid
+    expected_version = i1.call("box.space._pico_property:get", "cluster_version")[1]
+    assert cluster_info["version"] == expected_version
+
+    # Timestamp and uptime
+    assert body["timestamp"] > 0
+    assert body["uptimeSeconds"] > 0
+
+    # Healthy status
+    assert body["status"] == "healthy", f"Expected healthy, got: {body['status']}"
+    assert len(body.get("reasons", [])) == 0, "Expected no reasons for healthy status"
+
+    # Validate degraded status (limbo_owner != 0)
+    i1.eval("box.ctl.promote()")
+    time.sleep(0.2)
+
+    limbo_owner = i1.eval("return box.info.synchro.queue.owner")
+    assert limbo_owner != 0, "box.ctl.promote() should set limbo_owner"
+
+    with get_authorized(status_url, auth_token) as response:
+        assert response.status == 200
+        body = json.load(response)
+
+    assert body["status"] == "degraded", f"Expected degraded, got: {body['status']}"
+    assert body["limboOwner"] == limbo_owner, f"Expected limboOwner={limbo_owner}, got: {body['limboOwner']}"
+    reasons = body.get("reasons", [])
+    assert any("limbo" in r.lower() for r in reasons), f"Expected limbo reason: {reasons}"
+
+    # Validate unhealthy status
+    # inject SENTINEL_CONNECTION_POOL_CALL_FAILURE to disable instance auto-online
+    i1.call("pico._inject_error", "SENTINEL_CONNECTION_POOL_CALL_FAILURE", True)
+
+    assert i1.cluster_name is not None
+    assert i1.cluster_uuid is not None
+    leader = cluster.leader()
+    leader.call(
+        ".proc_update_instance_v2",
+        [
+            i1.name,
+            i1.cluster_name,
+            i1.cluster_uuid,
+            None,
+            "Offline",
+            None,
+            False,
+            None,
+        ],
+        "status_api_test",
+    )
+    cluster.wait_has_states(i1, "Offline", "Offline", timeout=10)
+
+    with get_authorized(status_url, auth_token) as response:
+        assert response.status == 200
+        body = json.load(response)
+
+    # Unhealthy overrides degraded
+    assert body["status"] == "unhealthy", f"Expected unhealthy, got: {body['status']}"
+    assert body["targetStateReason"] == "status_api_test"
+    reasons = body.get("reasons", [])
+    # Should include both unhealthy and degraded reasons
+    assert any("offline" in r.lower() for r in reasons), f"Expected offline reason: {reasons}"
+    assert any("limbo" in r.lower() for r in reasons), f"Expected limbo reason: {reasons}"
 
     # Cleanup
     i1.call("pico._inject_error", "SENTINEL_CONNECTION_POOL_CALL_FAILURE", False)
