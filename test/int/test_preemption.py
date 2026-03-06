@@ -1,7 +1,12 @@
 from conftest import Cluster
+import pytest
 
 
+@pytest.mark.flaky(reruns=3)
 def test_dql_truncate_concurrent(cluster: Cluster):
+    """
+    flaky: https://git.picodata.io/core/picodata/-/issues/2770
+    """
     cluster.deploy(instance_count=2)
     i1 = cluster.instances[0]
     i2 = cluster.instances[1]
