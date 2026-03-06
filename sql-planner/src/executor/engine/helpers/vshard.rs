@@ -11,7 +11,7 @@ use crate::ir::tree::relation::RelationalIterator;
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
 use crate::ir::Plan;
 use ahash::AHashMap;
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use smol_str::format_smolstr;
 use std::collections::{HashMap, HashSet};
 
 tarantool::define_str_enum! {
@@ -146,16 +146,17 @@ impl Plan {
 pub fn prepare_rs_to_ir_map(
     rs_bucket_vec: &[(String, Vec<u64>)],
     mut sub_plan: ExecutionPlan,
-) -> Result<(HashMap<String, ExecutionPlan>, Option<SmolStr>), SbroadError> {
+) -> Result<(HashMap<String, ExecutionPlan>, Option<u64>), SbroadError> {
     let mut rs_ir = HashMap::new();
     rs_ir.reserve(rs_bucket_vec.len());
-    let mut last_rs = None;
+    let mut extra_plan_id = None;
     if let Some((last, other)) = rs_bucket_vec.split_last() {
         let mut sae_info = sub_plan.get_ir_plan().serialize_as_empty_info()?;
         let mut other_plan = sub_plan.clone();
 
         if let Some(info) = sae_info.as_mut() {
             apply_serialize_as_empty_opcode(&mut other_plan, info)?;
+            extra_plan_id = Some(other_plan.salt_plan_id()?);
         }
         if let Some((other_last, other_other)) = other.split_last() {
             for (rs, bucket_ids) in other_other {
@@ -172,12 +173,11 @@ pub fn prepare_rs_to_ir_map(
             disable_serialize_as_empty_opcode(&mut sub_plan, info)?;
         }
         let (rs, bucket_ids) = last;
-        last_rs = Some(rs.to_smolstr());
         filter_vtable(&mut sub_plan, bucket_ids)?;
         rs_ir.insert(rs.clone(), sub_plan);
     }
 
-    Ok((rs_ir, last_rs))
+    Ok((rs_ir, extra_plan_id))
 }
 
 fn apply_serialize_as_empty_opcode(

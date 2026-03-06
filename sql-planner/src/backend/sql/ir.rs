@@ -203,6 +203,24 @@ impl ExecutionPlan {
         Ok(hash)
     }
 
+    /// Changes `plan_id` by inverting its bits.
+    /// This is only useful for plans with `SerializeAsEmptyTable(true)`.
+    /// Checkout out `prepare_rs_to_ir_map` for use case.
+    ///
+    /// # Errors
+    /// - If `plan_id` is not set.
+    pub fn salt_plan_id(&mut self) -> Result<u64, SbroadError> {
+        let plan_id = !self.plan_id.ok_or_else(|| {
+            SbroadError::FailedTo(
+                Action::Get,
+                Some(Entity::PlanId),
+                format_smolstr!("must be already initialized"),
+            )
+        })?;
+        self.plan_id = Some(plan_id);
+        Ok(plan_id)
+    }
+
     pub fn get_plan_id(&self) -> Result<u64, SbroadError> {
         let plan_id = self.plan_id.ok_or_else(|| {
             SbroadError::FailedTo(

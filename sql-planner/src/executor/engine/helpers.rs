@@ -23,7 +23,7 @@ use crate::{
     },
 };
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
-use std::{any::Any, cmp::Ordering, collections::HashMap, hash::Hasher, rc::Rc, sync::OnceLock};
+use std::{any::Any, cmp::Ordering, collections::HashMap, rc::Rc, sync::OnceLock};
 
 use super::{BlockExecData, Metadata, Router, Vshard};
 use crate::executor::Port;

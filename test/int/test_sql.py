@@ -5718,8 +5718,9 @@ def test_create_role_and_user_with_empty_name(cluster: Cluster):
         i1.sql("""ALTER USER "andy" RENAME TO "" """)
 
 
+# Some tricky queries with `SerializeAsEmptyTable(true)` plans.
 def test_plan_id_determinism(cluster: Cluster):
-    cluster.deploy(instance_count=5)
+    cluster.deploy(instance_count=3)
     [i1, *_] = cluster.instances
 
     cluster.wait_balanced()
@@ -5748,14 +5749,57 @@ def test_plan_id_determinism(cluster: Cluster):
         """
     )
 
-    data = i1.retriable_sql(
-        """
-        SELECT * FROM "t"
-        UNION
-        SELECT * FROM "g"
-        """
-    )
-    assert data == [[1, 1], [1, 2], [2, 1], [2, 2]]
+    for _ in range(2):
+        data = i1.retriable_sql(
+            """
+            SELECT * FROM "t"
+            UNION
+            SELECT * FROM "g"
+            """
+        )
+        assert data == [[1, 1], [1, 2], [2, 1], [2, 2]]
+
+    for _ in range(2):
+        data = i1.retriable_sql(
+            """
+            SELECT * FROM "g"
+            UNION ALL
+            SELECT * FROM "t"
+            """
+        )
+        assert sorted(data) == [[1, 1], [1, 2], [2, 1], [2, 2]]
+
+    for _ in range(2):
+        data = i1.retriable_sql(
+            """
+            SELECT * FROM "g"
+            WHERE "n" IN (SELECT "n" FROM "t")
+            UNION
+            SELECT "n", "id" FROM "t"
+            """
+        )
+        assert data == [[1, 1], [1, 2], [2, 1], [2, 2]]
+
+    for _ in range(2):
+        data = i1.retriable_sql(
+            """
+            WITH cte(a) AS (VALUES(8))
+            SELECT "a" FROM cte
+            UNION
+            SELECT "n" FROM "t"
+            """
+        )
+        assert data == [[1], [2], [8]]
+
+    for _ in range(2):
+        data = i1.retriable_sql(
+            """
+            WITH cte1(a) AS (VALUES(1)),
+            cte2(a) AS (SELECT a1.a FROM cte1 a1 JOIN "t" ON true UNION SELECT * FROM cte1 a2)
+            SELECT * FROM cte2
+            """
+        )
+        assert data == [[1]]
 
 
 def test_limit(cluster: Cluster):

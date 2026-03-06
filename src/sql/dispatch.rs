@@ -487,16 +487,14 @@ fn custom_plan_dispatch_dql<'lua, 'p>(
 ) -> SqlResult<()> {
     let row_len = row_len(&ex_plan)?;
     let read_preference = effective_read_preference(&ex_plan)?;
-    let (rs_plan, rs_last) = prepare_rs_to_ir_map(&rs_buckets, ex_plan)?;
-    let rs_last = rs_last.ok_or_else(|| {
-        SbroadError::DispatchError("Custom plan must have the last replicaset".into())
-    })?;
+    let (rs_plan, extra_plan_id) = prepare_rs_to_ir_map(&rs_buckets, ex_plan)?;
     let plans = rs_plan.len();
     let mut first_args = HashMap::with_capacity(rs_plan.len());
     let raft_id = node::global()
         .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?
         .raft_id;
     let mut exec_plan = None;
+    let mut extra_exec_plan = None;
     for (rs, ex_plan) in rs_plan {
         let temp_exec_plan = build_dql_data_source(ex_plan, raft_id)?;
         let mut bc = ByteCounter::default();
@@ -509,15 +507,28 @@ fn custom_plan_dispatch_dql<'lua, 'p>(
         let tuple = tb
             .into_tuple()
             .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
-        if rs_last == rs {
-            exec_plan = Some(temp_exec_plan);
-        }
         first_args.insert(rs, tuple);
+        if Some(temp_exec_plan.get_plan_id()) != extra_plan_id {
+            exec_plan = Some(temp_exec_plan);
+        } else {
+            extra_exec_plan = Some(temp_exec_plan);
+        }
     }
-    let exec_plan = exec_plan.expect("last replicaset exists in rs_plan");
+    let Some(exec_plan) = exec_plan else {
+        return Err(SbroadError::DispatchError(format_smolstr!(
+            "Custom plan must have at least one replicaset"
+        )));
+    };
     let query_meta_storage = QueryMetaStorage::new();
     let key = exec_plan.get_plan_id();
     let _guard = query_meta_storage.put(key, exec_plan)?;
+
+    let _guard_extra = if let Some(extra_exec_plan) = extra_exec_plan {
+        let key = extra_exec_plan.get_plan_id();
+        Some(query_meta_storage.put(key, extra_exec_plan)?)
+    } else {
+        None
+    };
 
     let lua_table = lua_custom_plan_dispatch(
         lua,
