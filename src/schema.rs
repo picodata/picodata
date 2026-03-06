@@ -1855,6 +1855,8 @@ pub enum CreateTableError {
     ConflictingShardingPolicy,
     #[error("global spaces only support memtx engine")]
     IncompatibleGlobalSpaceEngine,
+    #[error("table engine {engine} does not support option {option}")]
+    IncompatibleTableEngineOption { engine: SmolStr, option: SmolStr },
     #[error("specified tier '{tier_name}' doesn't exist")]
     UnexistingTier { tier_name: String },
     #[error("specified tier '{tier_name}' doesn't contain at least one instance")]
@@ -2364,6 +2366,17 @@ impl CreateTableParams {
                     Warning,
                     "`sharding_fn` is specified but will be ignored, as `distribution` is `global`"
                 );
+            }
+        }
+        // Vinyl index options can only be used with vinyl engine
+        let engine = self.engine.unwrap_or_default();
+        for opt in &self.index_opts {
+            if engine != SpaceEngineType::Vinyl && opt.is_vinyl() {
+                return Err(CreateTableError::IncompatibleTableEngineOption {
+                    engine: engine.to_smolstr(),
+                    option: opt.type_name().into(),
+                }
+                .into());
             }
         }
         Ok(())
