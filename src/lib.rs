@@ -2058,8 +2058,8 @@ fn start_join(
     crate::error_injection!("STALL_BEFORE_STORAGE_INIT_IN_START_JOIN" => { fiber::sleep(Duration::from_secs(10)); });
 
     // XXX: Initialize cluster uuid before opening any iproto connections.
-    let uuid = resp
-        .cluster_uuid
+    let cluster_uuid = &resp.cluster_uuid;
+    let uuid = cluster_uuid
         .parse()
         .expect("invalid cluster_uuid received from join response");
 
@@ -2078,6 +2078,10 @@ fn start_join(
     };
 
     let raft_id = resp.instance.raft_id;
+    let instance_name = &resp.instance.name;
+    let my_tier_name = config.effective_instance_tier();
+    debug_assert_eq!(resp.instance.tier, my_tier_name);
+
     transaction(|| -> Result<(), TntError> {
         storage.instances.put(&resp.instance).unwrap();
         for (raft_id, address) in &resp.peer_addresses {
@@ -2087,21 +2091,15 @@ fn start_join(
                 .unwrap();
         }
         raft_storage.persist_raft_id(raft_id).unwrap();
-        raft_storage
-            .persist_instance_name(&resp.instance.name)
-            .unwrap();
+        raft_storage.persist_instance_name(instance_name).unwrap();
         raft_storage
             .persist_instance_uuid(&resp.instance.uuid)
             .unwrap();
         raft_storage
             .persist_cluster_name(config.cluster_name())
             .unwrap();
-        raft_storage
-            .persist_cluster_uuid(&resp.cluster_uuid)
-            .unwrap();
-        raft_storage
-            .persist_tier(config.effective_instance_tier())
-            .unwrap();
+        raft_storage.persist_cluster_uuid(cluster_uuid).unwrap();
+        raft_storage.persist_tier(my_tier_name).unwrap();
         raft_storage
             .persist_join_state("confirm".to_owned())
             .unwrap();
@@ -2113,21 +2111,14 @@ fn start_join(
     // persisted in the final storage and we don't rebootstrap after this point.
     remove_instance_uuid_file(config)?;
 
-    let cluster_uuid = raft_storage
-        .cluster_uuid()
-        .expect("storage should never fail");
-
-    let my_tier_name = config.effective_instance_tier();
-    debug_assert_eq!(resp.instance.tier, my_tier_name);
-
-    tlog!(Info, "cluster_uuid {}", cluster_uuid);
+    tlog!(Info, "cluster_uuid {cluster_uuid}");
     tlog!(Info, "joined cluster {}", config.cluster_name());
-    tlog!(Info, "raft_id: {}", resp.instance.raft_id);
-    tlog!(Info, "instance name: {}", resp.instance.name);
+    tlog!(Info, "raft_id: {raft_id}");
+    tlog!(Info, "instance name: {instance_name}");
     tlog!(Info, "instance uuid: {}", resp.instance.uuid);
     tlog!(Info, "replicaset name: {}", resp.instance.replicaset_name);
     tlog!(Info, "replicaset uuid: {}", resp.instance.replicaset_uuid);
-    tlog!(Info, "tier name: {}", resp.instance.tier);
+    tlog!(Info, "tier name: {my_tier_name}");
 
     // XXX: We should only do this after we've called tarantool::init_cluster_uuid!
     tlog!(Info, "enabling replication via box.cfg.replication");
@@ -2144,7 +2135,6 @@ fn start_join(
     // global struct for efficient and type-safe access.
     reapply_dynamic_parameters(&alter_system_parameters, &storage, my_tier_name)?;
 
-    let instance_name = resp.instance.name.clone();
     postjoin(
         config,
         storage,
