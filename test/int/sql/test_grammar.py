@@ -22,3 +22,8 @@ class TestAuditPolicy(ClusterSingleInstance):
 @sql_test_file("create_table_with_bucket_id.sql")
 class TestCreateTableWithBucketId(ClusterSingleInstance):
     pass
+
+
+@sql_test_file("create_table_with_options.sql")
+class TestCreateTableWithOptions(ClusterSingleInstance):
+    pass
