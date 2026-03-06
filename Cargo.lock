@@ -431,17 +431,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-scoped"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4042078ea593edffc452eef14e99fdb2b120caa4ad9618bcdeabc4a023b98740"
-dependencies = [
- "futures",
- "pin-project",
- "tokio",
-]
-
-[[package]]
 name = "async-trait"
 version = "0.1.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1870,15 +1859,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hash32"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47d60b12902ba28e2730cd37e95b8c9223af2808df9e902d4df49588d1470606"
-dependencies = [
- "byteorder",
-]
-
-[[package]]
 name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1905,17 +1885,6 @@ dependencies = [
  "allocator-api2",
  "equivalent",
  "foldhash 0.2.0",
-]
-
-[[package]]
-name = "heapless"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bfb9eb618601c89945a70e254898da93b13be0388091d42117462b265bb3fad"
-dependencies = [
- "hash32 0.3.1",
- "serde",
- "stable_deref_trait",
 ]
 
 [[package]]
@@ -3218,10 +3187,8 @@ dependencies = [
  "serde_json",
  "smol_str",
  "tarantool",
- "tarolog",
  "thiserror 2.0.18",
  "threadpool",
- "tros",
 ]
 
 [[package]]
@@ -3230,26 +3197,6 @@ version = "25.6.0"
 dependencies = [
  "quote",
  "syn 1.0.109",
-]
-
-[[package]]
-name = "pin-project"
-version = "1.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "677f1add503faace112b9f1373e43e9e054bfdd22ff1a63c1bc485eaec6a6a8a"
-dependencies = [
- "pin-project-internal",
-]
-
-[[package]]
-name = "pin-project-internal"
-version = "1.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e918e4ff8c4549eb882f14b3a4bc8c8bc93de829416eacf579f1207a8fbf861"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.116",
 ]
 
 [[package]]
@@ -4226,17 +4173,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde-json-core"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b81787e655bd59cecadc91f7b6b8651330b2be6c33246039a65e5cd6f4e0828"
-dependencies = [
- "heapless",
- "ryu",
- "serde",
-]
-
-[[package]]
 name = "serde_bytes"
 version = "0.11.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4573,7 +4509,7 @@ dependencies = [
  "blake3",
  "chrono",
  "comfy-table",
- "hash32 0.2.1",
+ "hash32",
  "insta",
  "itertools 0.10.5",
  "lazy_static",
@@ -4832,22 +4768,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
-]
-
-[[package]]
-name = "tarolog"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34dfbde512631bd8cab960cb78a04b50ee2e036dfe7668cb6cfeed01ecaffc53"
-dependencies = [
- "chrono",
- "libc",
- "nix 0.29.0",
- "once_cell",
- "serde",
- "serde-json-core",
- "serde_json",
- "tarantool",
 ]
 
 [[package]]
@@ -5273,21 +5193,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
-]
-
-[[package]]
-name = "tros"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ba5bf240df5aeb7907292f4cfdbfbd05ce84e9edd402a3f6f2a7d461eb34c75"
-dependencies = [
- "async-scoped",
- "derive_builder",
- "once_cell",
- "parking_lot",
- "tarantool",
- "thiserror 1.0.69",
- "tokio",
 ]
 
 [[package]]

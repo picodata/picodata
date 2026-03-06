@@ -25,8 +25,8 @@
 //!
 //! Here is how to do async http request with `tros`:
 //!
-//! ```no_run
-//! use picodata_plugin::interplay::tros;
+//! ```no_compile
+//! use tros;
 //! use picodata_plugin::system::tarantool::fiber;
 //!
 //! let text = tros::TokioExecutor::new(tros::transport::PicodataTransport::default())
@@ -139,7 +139,6 @@
 //! ```
 
 pub use tarantool::cbus;
-pub use tros;
 
 pub mod channel {
     /// ***For internal usage***

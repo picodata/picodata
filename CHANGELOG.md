@@ -168,6 +168,11 @@ with the `YY.MINOR.MICRO` scheme.
   `pico_sql_temp_table_leases_total` and
   `pico_sql_temp_table_lock_waits_total`.
 
+### Breaking changes
+
+- Remove `tros` and `tarolog` dependencies from `picodata-plugin`. These
+  libraries can still be used as direct dependencies when needed.
+
 
 ## [25.5.5] - 2026-01-26
 

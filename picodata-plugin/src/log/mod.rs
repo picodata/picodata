@@ -3,11 +3,6 @@
 
 pub use log as rs_log;
 
-pub use tarolog::set_default_logger_format;
-pub use tarolog::Format;
-pub use tarolog::JsonInjector;
-pub use tarolog::PlainInjector;
-
 pub use crate::pico_debug as debug;
 pub use crate::pico_error as error;
 pub use crate::pico_info as info;
