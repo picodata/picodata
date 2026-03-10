@@ -986,6 +986,74 @@ def test_backup_does_not_break_new_replicaset_ddl_catching_up_no_restore(cluster
     assert ddl["row_count"] == 1
 
 
+def test_backup_manual_abort(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
+    i1 = cluster.add_instance(replicaset_name="r1", wait_online=False)
+    i2 = cluster.add_instance(replicaset_name="r2", wait_online=False)
+    i3 = cluster.add_instance(replicaset_name="r2", wait_online=False)
+    cluster.set_share_dir(shared_dir)
+
+    cluster.set_unique_configs_for_instances(share_dir_path=shared_dir)
+
+    for i in [i1, i2, i3]:
+        i.start()
+
+    for i in [i1, i2, i3]:
+        i.wait_online()
+
+    for i in [i1, i2]:
+        cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
+
+    i1.promote_or_fail()
+
+    # give the admin account a known password to let us call pico.abort_ddl
+    # `pico_service` does not have enough privileges
+    admin_password = "Password1"
+    i1.sql(f"ALTER USER admin WITH PASSWORD '{admin_password}' USING chap-sha1")
+
+    # we will use this table to check that we are out of read-only mode after the backup finishes
+    ddl = i1.sql("create table t1(a int primary key)")
+    assert ddl["row_count"] == 1
+
+    # Prevent backup from executing on node 3.
+    error_injection = "ERROR_AFTER_DATA_IS_BACKUPED"
+    injection_log = f"ERROR INJECTION '{error_injection}'"
+    i3.call("pico._inject_error", error_injection, True)
+
+    # Backup is not completed because a replica is down.
+    lc = log_crawler(i3, injection_log)
+    with pytest.raises(TimeoutError):
+        i2.sql("BACKUP")
+    lc.wait_matched()
+
+    # we cannot insert into t1 due to an in-progress backup DDL
+    with pytest.raises(
+        TarantoolError, match="TableNotOperable: table t1 cannot be modified now as DDL operation is in progress"
+    ):
+        i1.sql(f"insert into t1 values ({1})")
+
+    # Abort backup DDL with a lua function
+    i1.call("pico.abort_ddl", user="admin", password=admin_password)
+
+    # Wait until backup abort is finished.
+    Retriable().call(check_no_pending_schema_change, i1)
+
+    # Now that the backup is aborted, check that we can
+    # 1. write to tables
+    i1.sql(f"insert into t1 values ({1})")
+
+    # 2. execute DDL operations
+    ddl = i1.sql("create table t2(a int primary key)")
+    assert ddl["row_count"] == 1
+
+    # 3. call box.backup.start() on each node
+    # this would have failed if aborting backup did not call box.backup.stop() for us
+    for i in [i1, i2, i3]:
+        i.call("box.backup.start")
+
+    # NOTE: currently picodata does not remove the partially completed backup directories on manual DDL abort
+    # so "no leftover backup directories" property is not checked here
+
 ################### RESTORE TESTS ###################
 
 
