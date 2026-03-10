@@ -21,7 +21,6 @@ use std::ffi::CString;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use tarantool::auth::AuthDef;
 use tarantool::coio::coio_call;
 use tarantool::error::{BoxError, Error as TntError, TarantoolErrorCode as TntErrorCode};
@@ -33,7 +32,7 @@ use tarantool::schema::index::{create_index, drop_index};
 use tarantool::session::UserId;
 use tarantool::space::UpdateOps;
 use tarantool::space::{Space, SpaceId, SystemSpace};
-use tarantool::tlua::{self, LuaError};
+use tarantool::tlua::{self, LuaError, LuaThread};
 use tarantool::tuple::Encode;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -728,11 +727,47 @@ pub fn copy_dir_async(src: &Path, dst: &Path, use_hardlink: bool) -> traft::Resu
     Ok(())
 }
 
+struct BackupGuard {
+    lua: LuaThread,
+}
+
+impl Drop for BackupGuard {
+    fn drop(&mut self) {
+        if let Err(e) = self.lua.exec("box.backup.stop()") {
+            tlog!(Error, "Got an error while calling box.backup.stop(): {}", e)
+        }
+    }
+}
+
+fn tarantool_start_backup(lua: LuaThread) -> Result<(Vec<PathBuf>, BackupGuard), TntError> {
+    let box_backup_str_paths: Vec<String> = match lua.eval("return box.backup.start();") {
+        Ok(box_backup_files) => box_backup_files,
+        Err(e) => {
+            // E.g. somebody have called box.backup.start() manually.
+            return Err(e.into());
+        }
+    };
+
+    let box_backup_paths = box_backup_str_paths
+        .into_iter()
+        .map(PathBuf::from)
+        .collect();
+
+    let guard = BackupGuard { lua };
+
+    Ok((box_backup_paths, guard))
+}
+
 /// Returns errors in the following cases:
 /// 1. Instance is out of memory to create/copy additional files
 /// 2. Backup directory already exists (probably created by somebody manually)
 /// 3. Can't take snapshot (file already exists). Possible for vinyl files (e.g. .run)
 /// 4. Backup is already in progress (box.backup.start() is called twice)
+///
+/// # Return value
+///
+/// - `Err(...)` - a retriable error has happened. Governor should retry backup on this instance.
+/// - `Ok(Some(...))` - a fatal error has happened. Governor should abort the clusterwide backup operation.
 pub fn backup_local(
     config: &InstanceConfig,
     backup_path: &PathBuf,
@@ -761,11 +796,11 @@ pub fn backup_local(
 
     // Inform Tarantool not to drop .snap files during backup execution.
     // Get names of the files that we should backup.
-    let box_backup_files: Vec<String> = match lua.eval("return box.backup.start();") {
-        Ok(box_backup_files) => box_backup_files,
+    let (box_backup_files, _backup_guard) = match tarantool_start_backup(lua) {
+        Ok(r) => r,
         Err(e) => {
             // E.g. somebody have called box.backup.start() manually.
-            return Ok(Some(e.into()));
+            return Ok(Some(e));
         }
     };
 
@@ -779,13 +814,10 @@ pub fn backup_local(
     tlog!(Info, "Created backup dir {}", backup_path.display());
 
     // Backup files from box.backup.
-    for box_backup_path_str in box_backup_files {
-        let box_backup_path = PathBuf::from_str(&box_backup_path_str)
-            .expect("box.backup.start() should return correct file paths");
-
+    for box_backup_path in box_backup_files {
         let box_backup_file_name = box_backup_path
             .strip_prefix(instance_dir)
-            .expect("box.backup.start() should return valid path");
+            .expect("box.backup.start() should return paths inside the instance directory");
         let dest_path = backup_path.join(box_backup_file_name);
 
         if let Some(parent) = dest_path.parent() {
@@ -797,6 +829,7 @@ pub fn backup_local(
     }
 
     crate::error_injection!(block "BLOCK_AFTER_DATA_IS_BACKUPED");
+    crate::error_injection!("ERROR_AFTER_DATA_IS_BACKUPED" => return Err(traft::error::Error::other("retriably failed proc_apply_backup due to injection")));
 
     // Backup config file.
     if let Some(config_file_path) = config_file {
@@ -848,8 +881,6 @@ pub fn backup_local(
             share_dir.display()
         );
     }
-
-    lua.exec("box.backup.stop()")?;
 
     Ok(None)
 }
