@@ -107,8 +107,6 @@ fn get_default_timeout() -> Decimal {
     Decimal::from_str(&format!("{DEFAULT_TIMEOUT_F64}")).expect("default timeout casting failed")
 }
 
-/// Parse a double value from an option node's first child.
-/// The node is expected to have a child node containing the numeric value.
 /// Parse a value from an option node's first child.
 /// The node is expected to have a child node containing the value.
 fn parse_option_value<T>(
