@@ -218,15 +218,13 @@ centos7-cmake3:
 	fi
 	sudo find {/opt,/usr} -name libgomp.spec -delete
 
+.PHONY: publish-picodata-plugin
 publish-picodata-plugin:
 	cargo publish --dry-run -p picodata-plugin-proc-macro
 	cargo publish -p picodata-plugin-proc-macro
 
 	cargo publish --dry-run -p picodata-plugin
 	cargo publish -p picodata-plugin
-
-install_release:
-	(cd sbroad; make install_release)
 
 .PHONY: sbom
 sbom:
