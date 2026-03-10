@@ -1,7 +1,5 @@
 import time
 
-import pytest
-
 from conftest import Cluster, Retriable, log_crawler
 
 
@@ -65,11 +63,7 @@ def test_revoke_default_privileges_then_bootstrap_from_raft_snapshot(cluster: Cl
     assert before == after, error
 
 
-@pytest.mark.flaky(reruns=3)
 def test_catchup_by_snapshot(cluster: Cluster):
-    """
-    flaky: https://git.picodata.io/core/picodata/-/issues/1029
-    """
     i1, i2, i3 = cluster.deploy(instance_count=3)
     i1.assert_raft_status("Leader")
     ret, _ = i1.cas("insert", "_pico_property", ["animal", "tiger"])
@@ -93,9 +87,11 @@ def test_catchup_by_snapshot(cluster: Cluster):
     assert i3.call("box.space._pico_property:get", "animal") is None
     assert i3.call("box.space._pico_property:get", "tree") == ["tree", "birch"]
 
-    # Since there were no cas requests since log compaction, the indexes
-    # should be equal.
-    assert i3.raft_first_index() == ret + 1
+    # Sending a snapshot and handling new DML operation
+    # (target_state=Online for i3) are not synchronized.
+    # As a result, the operation may sometimes be included
+    # in the snapshot and sometimes not. Let's check both cases.
+    assert i3.raft_first_index() in (ret + 1, ret + 2)
 
     # There used to be a problem: catching snapshot used to cause
     # inconsistent raft state so the second restart used to panic.
