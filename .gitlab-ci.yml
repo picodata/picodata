@@ -285,6 +285,34 @@ clone:
     # the build scripts. Without them the job fails.
     - ./tools/get_tags.py
 
+
+.poetry-install: &poetry-install |
+  # Poetry install
+  ci-log-section start "poetry-install" Installing python dependencies ...
+  POETRY_VIRTUALENVS_IN_PROJECT=1 PIP_NO_CACHE_DIR=true poetry install --no-interaction --ansi
+  ci-log-section end "poetry-install"
+
+make-py-cache:
+  stage: clone
+  cache:
+    - <<: *py_cache
+      policy: $CACHE_POLICY
+  rules:
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
+      variables:
+        # $MAIN_BRANCH should use a push cache policy so that master doesn't pull
+        # the previous master. This is important because there may be uncommitted
+        # changes when using git fetch -uf
+        CACHE_POLICY: push
+        # dev branches should use a pull-push cache policy so that tests have the
+        # corresponding dev branch that we fetched during the clone step. This is
+        # important because tests should check the dev branch, not the master.
+    - <<: *if-build-base-changes-on-dev-branch
+    - <<: *if-no-docs
+  script:
+    - *poetry-install
+
+
 .test_rules:
   variables:
     RUST_BACKTRACE: full
@@ -321,12 +349,6 @@ clone:
         TARGET: *release-target
       - BUILD_PROFILE: dev
         TARGET: debug
-
-.poetry-install: &poetry-install |
-  # Poetry install
-  ci-log-section start "poetry-install" Installing python dependencies ...
-  POETRY_VIRTUALENVS_IN_PROJECT=1 PIP_NO_CACHE_DIR=true poetry install --no-interaction --ansi
-  ci-log-section end "poetry-install"
 
 
 build-linux:
