@@ -73,7 +73,6 @@ use crate::ir::tree::traversal::{
 };
 use crate::ir::types::CastType;
 use crate::ir::types::DomainType;
-use crate::ir::value::double::Double;
 use crate::ir::value::Value;
 use crate::ir::ExplainType::{Explain, ExplainQueryPlan, ExplainQueryPlanFmt};
 use crate::ir::{node::plugin, Plan};
@@ -110,37 +109,9 @@ fn get_default_timeout() -> Decimal {
 
 /// Parse a double value from an option node's first child.
 /// The node is expected to have a child node containing the numeric value.
-fn parse_option_double(
-    ast: &AbstractSyntaxTree,
-    node: &ParseNode,
-    option_name: &str,
-) -> Result<Double, SbroadError> {
-    let child_id = node.children.first().ok_or_else(|| {
-        SbroadError::Invalid(
-            Entity::Query,
-            Some(format_smolstr!("missing child node for {option_name}")),
-        )
-    })?;
-    let child = ast.nodes.get_node(*child_id)?;
-    let value_str = child.value.as_ref().ok_or_else(|| {
-        SbroadError::Invalid(
-            Entity::Value,
-            Some(format_smolstr!("missing value for {option_name}")),
-        )
-    })?;
-    value_str.parse::<f64>().map(Double::from).map_err(|e| {
-        SbroadError::Invalid(
-            Entity::Value,
-            Some(format_smolstr!(
-                "invalid value '{value_str}' for {option_name}: {e}"
-            )),
-        )
-    })
-}
-
-/// Parse an integer value from an option node's first child.
-/// The node is expected to have a child node containing the numeric value.
-fn parse_option_int<T>(
+/// Parse a value from an option node's first child.
+/// The node is expected to have a child node containing the value.
+fn parse_option_value<T>(
     ast: &AbstractSyntaxTree,
     node: &ParseNode,
     option_name: &str,
@@ -752,30 +723,30 @@ fn parse_create_index(
                     match param_node.rule {
                         Rule::BloomFpr => {
                             vinyl_options.bloom_fpr =
-                                Some(parse_option_double(ast, param_node, "bloom_fpr")?)
+                                Some(parse_option_value(ast, param_node, "bloom_fpr")?)
                         }
                         Rule::PageSize => {
                             vinyl_options.page_size =
-                                Some(parse_option_int(ast, param_node, "page_size")?)
+                                Some(parse_option_value(ast, param_node, "page_size")?)
                         }
                         Rule::RangeSize => {
                             vinyl_options.range_size =
-                                Some(parse_option_int(ast, param_node, "range_size")?)
+                                Some(parse_option_value(ast, param_node, "range_size")?)
                         }
                         Rule::RunCountPerLevel => {
                             vinyl_options.run_count_per_level =
-                                Some(parse_option_int(ast, param_node, "run_count_per_level")?)
+                                Some(parse_option_value(ast, param_node, "run_count_per_level")?)
                         }
                         Rule::RunSizeRatio => {
                             vinyl_options.run_size_ratio =
-                                Some(parse_option_double(ast, param_node, "run_size_ratio")?)
+                                Some(parse_option_value(ast, param_node, "run_size_ratio")?)
                         }
                         Rule::CompressionLevel => {
                             vinyl_options.compression_level =
-                                Some(parse_option_int(ast, param_node, "compression_level")?)
+                                Some(parse_option_value(ast, param_node, "compression_level")?)
                         }
                         Rule::Dimension => {
-                            dimension = Some(parse_option_int(ast, param_node, "dimension")?)
+                            dimension = Some(parse_option_value(ast, param_node, "dimension")?)
                         }
                         Rule::Distance => {
                             let distance_node = first_child(param_node);
@@ -1154,27 +1125,27 @@ fn parse_create_table(
                     match param_node.rule {
                         Rule::BloomFpr => {
                             vinyl_options.bloom_fpr =
-                                Some(parse_option_double(ast, param_node, "bloom_fpr")?);
+                                Some(parse_option_value(ast, param_node, "bloom_fpr")?);
                         }
                         Rule::PageSize => {
                             vinyl_options.page_size =
-                                Some(parse_option_int(ast, param_node, "page_size")?);
+                                Some(parse_option_value(ast, param_node, "page_size")?);
                         }
                         Rule::RangeSize => {
                             vinyl_options.range_size =
-                                Some(parse_option_int(ast, param_node, "range_size")?);
+                                Some(parse_option_value(ast, param_node, "range_size")?);
                         }
                         Rule::RunCountPerLevel => {
                             vinyl_options.run_count_per_level =
-                                Some(parse_option_int(ast, param_node, "run_count_per_level")?);
+                                Some(parse_option_value(ast, param_node, "run_count_per_level")?);
                         }
                         Rule::RunSizeRatio => {
                             vinyl_options.run_size_ratio =
-                                Some(parse_option_double(ast, param_node, "run_size_ratio")?);
+                                Some(parse_option_value(ast, param_node, "run_size_ratio")?);
                         }
                         Rule::CompressionLevel => {
                             vinyl_options.compression_level =
-                                Some(parse_option_int(ast, param_node, "compression_level")?);
+                                Some(parse_option_value(ast, param_node, "compression_level")?);
                         }
                         _ => {
                             return Err(SbroadError::Invalid(
