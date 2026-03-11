@@ -52,6 +52,7 @@ from framework.port_distributor import PortDistributor
 from framework.rolling.registry import Registry
 from framework.rolling.runtime import Runtime
 from framework.rolling.version import VersionAlias
+from framework.util.build import copy_testable_plugins
 from framework.util.build import perform_cargo_build
 from framework.util.path import project_root_path
 from framework.util import parse_version_exc
@@ -3133,6 +3134,7 @@ def current_runtime(cargo_build_fixt: None) -> Runtime:
 def cargo_build_fixt(pytestconfig: pytest.Config) -> None:
     enable_webui = pytestconfig.getoption("--with-webui")
     perform_cargo_build(bool(enable_webui))
+    copy_testable_plugins()
 
 
 @pytest.fixture(scope="session")

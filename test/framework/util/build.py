@@ -1,3 +1,4 @@
+import functools
 import json
 import os
 import shlex
@@ -9,6 +10,7 @@ from framework.util import copy_plugin_library
 from framework.util import eprint
 from framework.util import is_in_ci
 from pathlib import Path
+from typing import Any
 
 
 def rustc_target_triple() -> str:
@@ -59,11 +61,13 @@ def perform_cargo_build(enable_webui: bool = False) -> None:
     subprocess.check_call(make_command)
 
 
-def picodata_executable_path(copy_plugins: bool = True) -> Path:
+def _cargo_metadata_json() -> dict[str, Any]:
     """
-    Path to Picodata executable binary according to Cargo, e.g. `target/debug/picodata`.
-
-    NOTE: this function also sets up plugin libraries needed for tests.
+    Returns the parsed JSON output from `cargo metadata` command. The command is
+    invoked with `--frozen` and `--no-deps` flags so that it never touches the
+    network or resolves transitive dependencies. The result is cached for the
+    lifetime of the process. Note that it is not cached, because it is private
+    and called only once, but Cargo output is very-very verbose, be careful.
     """
     metadata_command = [
         "cargo",
@@ -72,20 +76,20 @@ def picodata_executable_path(copy_plugins: bool = True) -> Path:
         "--frozen",
         "--no-deps",
     ]
-
-    # STEP: collect Cargo metadata with possible target directory.
-
     raw_metadata = subprocess.check_output(metadata_command)
-    serialized_metadata = json.loads(raw_metadata)
-    cargo_target_directory = Path(serialized_metadata["target_directory"])
+    return json.loads(raw_metadata)
 
-    # NOTE: metadata from Cargo is huge and to avoid printing all of its
-    # contents in case of raised exception somewhere in this function we should
-    # delete them from stack to avoid interpreter see them.
-    del raw_metadata
-    del serialized_metadata
 
-    # STEP: determine valid Cargo build profile and path to it.
+@functools.cache
+def cargo_build_path() -> Path:
+    """
+    Returns the directory where Cargo places build artifacts for the current profile.
+    Note that When an ASan profile is active and `CARGO_BUILD_TARGET` is not set, the
+    host target triple is inserted into the path to mirror the layout Cargo uses when
+    flag `--target` is passed.
+    """
+    cargo_metadata_dict = _cargo_metadata_json()
+    cargo_target_directory = Path(cargo_metadata_dict["target_directory"])
 
     # HACK: in order to disable sanitizers (e.g., ASan) for build.rs, we have to
     # pass `--target` or set `CARGO_BUILD_TARGET`, which will affect the path.
@@ -97,13 +101,15 @@ def picodata_executable_path(copy_plugins: bool = True) -> Path:
     build_profile_directory = "debug" if profile == "dev" else profile
     cargo_profile_directory = cargo_target_directory / build_profile_directory
 
-    # STEP: copy test plugin, which is a library, into
-    # project tests directory, to make it usable in tests.
-    # TODO: it's too messy to have all of these files being copied in one place.
-    # We should just remove this and call `copy_plugin_library` in each
-    # corresponding test directly. That way the tests would be more self
-    # contained and this function would be much simpler.
+    return cargo_profile_directory
 
+
+def copy_testable_plugins() -> None:
+    """
+    Copy compiled test plugin shared libraries into the expected test fixture directories.
+    Must be called after `perform_cargo_build` so that the compiled library already exists.
+    """
+    source_directory = cargo_build_path()
     tests_path = project_tests_path() / "testplug"
     plugin_destinations = [
         f"{tests_path}/testplug/0.1.0",
@@ -118,10 +124,12 @@ def picodata_executable_path(copy_plugins: bool = True) -> Path:
         f"{tests_path}/testplug_w_migration/0.2.0_changed",
         f"{tests_path}/testplug_sdk/0.1.0",
     ]
-    if copy_plugins:
-        for destination_directory in plugin_destinations:
-            copy_plugin_library(cargo_profile_directory, destination_directory, "libtestplug")
+    for destination_directory in plugin_destinations:
+        copy_plugin_library(source_directory, destination_directory, "libtestplug")
 
-    # STEP: determine Picodata executable binary path.
 
-    return cargo_profile_directory / "picodata"
+def picodata_executable_path() -> Path:
+    """
+    Path to Picodata executable binary according to Cargo, e.g. `target/debug/picodata`.
+    """
+    return cargo_build_path() / "picodata"
