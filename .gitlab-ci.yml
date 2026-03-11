@@ -510,7 +510,7 @@ lint:
 
     - *poetry-install
     - make lint
-    - pushd webui && yarn lint; popd
+    - pushd webui && corepack set version from source && yarn lint; popd
 
     # Show sccache statistics
     - |

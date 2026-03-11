@@ -47,6 +47,9 @@ RUN rm -f /etc/yum.repos.d/pgdg-redhat-all.repo \
            zlib-devel \
            postgresql \
            cpio \
+    && npm install -g corepack \
+    # use corepack to install and manage yarn version
+    && corepack enable \
     && ln -fs /usr/bin/python3 /usr/bin/python \
     && dnf clean all && \
     mkdir -p $(go env GOPATH)/bin && \

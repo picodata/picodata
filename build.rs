@@ -292,10 +292,7 @@ pub fn build_webui(build_root: &Path) {
 
     Command::new("yarn")
         .arg("install")
-        .arg("--prefer-offline")
-        .arg("--frozen-lockfile")
-        .arg("--no-progress")
-        .arg("--non-interactive")
+        .arg("--immutable")
         .current_dir(&src_dir)
         .run();
 
