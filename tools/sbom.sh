@@ -16,6 +16,14 @@ cargo install --quiet --locked \
 
 cargo cyclonedx --format json --spec-version 1.6
 
+# build separate SBOM file for webui
+# see "sbom" script in package.json
+# we use a full
+pushd webui
+yarn install --immutable
+yarn cyclonedx --prod --gather-license-texts --output-reproducible -o ../webui_sbom.json
+popd
+
 # Not a submodule because we have github mirror, so we would have to mirror this repo there as well for
 # --recurse-submodules to work during git clone
 if [ ! -d "$SBOM_CHECKER_DIR" ]; then
