@@ -32,7 +32,7 @@ fn insert_values_rows() {
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
-    buckets = unknown
+    buckets = [369]
     "#);
 }
 

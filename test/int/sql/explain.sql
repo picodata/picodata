@@ -1152,3 +1152,93 @@ END $$;
 -- ERROR:
 block queries have different buckets: \[1934\] and \[1410\]
 
+-- TEST: explain-insert-with-buckets-setup
+-- SQL:
+DROP TABLE IF EXISTS t;
+DROP TABLE IF EXISTS tt;
+DROP TABLE IF EXISTS g;
+CREATE TABLE t (a INT, b DOUBLE, c TEXT, PRIMARY KEY (c, a));
+CREATE TABLE tt (d DOUBLE PRIMARY KEY);
+CREATE TABLE g (a INT PRIMARY KEY, d DOUBLE) DISTRIBUTED GLOBALLY;
+
+-- TEST: explain-insert-with-buckets-1
+-- SQL:
+EXPLAIN INSERT INTO t VALUES (1, 1.0, '1'), (2, 2.0, '2'), (3, 3.0, '3');
+-- EXPECTED:
+insert "t" on conflict: fail
+    motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
+        values
+            value row (data=ROW(1::int, 1.0::decimal, '1'::string))
+            value row (data=ROW(2::int, 2.0::decimal, '2'::string))
+            value row (data=ROW(3::int, 3.0::decimal, '3'::string))
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [898,1787,2356]
+
+-- TEST: explain-insert-with-buckets-2
+-- SQL:
+EXPLAIN SELECT * FROM t WHERE a = 1 and c = '1' or a = 2 and c = '2' or a = 3 and c = '3';
+-- EXPECTED:
+projection ("t"."a"::int -> "a", "t"."b"::double -> "b", "t"."c"::string -> "c")
+    selection ((("t"."a"::int = 1::int) and ("t"."c"::string = '1'::string)) or (("t"."a"::int = 2::int) and ("t"."c"::string = '2'::string))) or (("t"."a"::int = 3::int) and ("t"."c"::string = '3'::string))
+        scan "t"
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [898,1787,2356]
+
+-- TEST: explain-insert-with-buckets-3
+-- SQL:
+EXPLAIN INSERT INTO t VALUES (1 + 1, 1.0, '1'), (2, 2.0, '2'), (3, 3.0, '3');
+-- EXPECTED:
+insert "t" on conflict: fail
+    motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
+        values
+            value row (data=ROW(1::int + 1::int, 1.0::decimal, '1'::string))
+            value row (data=ROW(2::int, 2.0::decimal, '2'::string))
+            value row (data=ROW(3::int, 3.0::decimal, '3'::string))
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = unknown
+
+-- TEST: explain-insert-with-buckets-4
+-- SQL:
+EXPLAIN INSERT INTO t VALUES (1, (SELECT d FROM tt LIMIT 1), '2')
+-- EXPECTED:
+insert "t" on conflict: fail
+    motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
+        values
+            value row (data=ROW(1::int, ROW($0), '2'::string))
+subquery $0:
+motion [policy: full, program: ReshardIfNeeded]
+                    scan
+                        limit 1
+                            motion [policy: full, program: ReshardIfNeeded]
+                                limit 1
+                                    projection ("tt"."d"::double -> "d")
+                                        scan "tt"
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = unknown
+
+-- TEST: explain-insert-with-buckets-5
+-- SQL:
+EXPLAIN INSERT INTO t VALUES (1, (SELECT d FROM g LIMIT 1), '2')
+-- EXPECTED:
+insert "t" on conflict: fail
+    motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
+        values
+            value row (data=ROW(1::int, ROW($0), '2'::string))
+subquery $0:
+scan
+                    limit 1
+                        projection ("g"."d"::double -> "d")
+                            scan "g"
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [2997]
+

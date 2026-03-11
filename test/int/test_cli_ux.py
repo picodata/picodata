@@ -483,7 +483,7 @@ def test_sql_explain_ok(cluster: Cluster):
     cli.expect_exact("execution options:")
     cli.expect_exact("sql_vdbe_opcode_max = 45000")
     cli.expect_exact("sql_motion_row_max = 5000")
-    cli.expect_exact("buckets = unknown")
+    cli.expect_exact("buckets = [1934]")
 
     cli.sendline("""EXPLAIN UPDATE "characters" SET "year" = 2010;""")
 

@@ -6674,8 +6674,7 @@ buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
 
     # ---------------------- DML ----------------------
-    # For non-local motion child of DML we can't estimate
-    # buckets.
+    # Segment motion
     lines = i1.sql("explain insert into t values (1, 2)")
     expected_explain = """insert "t" on conflict: fail
     motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
@@ -6684,10 +6683,10 @@ buckets = [1-3000]"""
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
-buckets = unknown"""
+buckets = [1934]"""
     assert "\n".join(lines) == expected_explain
 
-    # For local motion: we can
+    # Local motion
     lines = i1.sql("explain insert into t select a, b from t")
     expected_explain = """insert "t" on conflict: fail
     motion [policy: local segment([ref("a")]), program: ReshardIfNeeded]

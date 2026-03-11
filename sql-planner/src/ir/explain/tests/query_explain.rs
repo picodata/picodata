@@ -99,7 +99,7 @@ fn test_query_explain_6() {
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
-    buckets = unknown
+    buckets = [6691]
     "#);
 }
 

@@ -59,6 +59,21 @@ impl BucketsInfo {
         query: &mut ExecutingQuery<'_, R>,
     ) -> Result<Self, SbroadError> {
         let ir = query.get_exec_plan().get_ir_plan();
+
+        if ir.is_sharded_insert()? {
+            let buckets = query.try_calculate_sharded_insert_buckets()?;
+
+            return Ok(buckets.map_or(BucketsInfo::Unknown, |buckets| {
+                let bucket_count = query
+                    .get_coordinator()
+                    .get_current_vshard_object()
+                    .expect("node must be initialized")
+                    .bucket_count();
+
+                BucketsInfo::new_calculated(buckets, true, bucket_count)
+            }));
+        }
+
         if !Self::can_estimate_buckets(ir)? {
             return Ok(BucketsInfo::Unknown);
         }
@@ -149,11 +164,12 @@ impl BucketsInfo {
         Ok(buckets_info)
     }
 
-    /// Currently we can't estimate buckets for DML queries with
+    /// Currently we don't estimate buckets for DML queries with
     /// non-local motions:
     /// insert
     ///    Motion(Segment)
     ///        Values (...)
+    /// Use `try_calculate_sharded_insert_buckets()` instead.
     ///
     /// If we estimate whole query buckets by buckets of its leaf subtree,
     /// we get that the whole query will be executed on no more than one

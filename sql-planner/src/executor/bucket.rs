@@ -16,7 +16,7 @@ use crate::ir::node::{
     Selection, Union, UnionAll, Update, Values, ValuesRow,
 };
 use crate::ir::operator::{Bool, JoinKind};
-use crate::ir::transformation::redistribution::MotionPolicy;
+use crate::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target};
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
@@ -324,6 +324,101 @@ where
         }
 
         Ok(Buckets::All)
+    }
+
+    fn try_calculate_values_row_bucket_id(
+        &self,
+        row_list: &[NodeId],
+        motion_key: &MotionKey,
+    ) -> Result<Option<u64>, SbroadError> {
+        let mut values = Vec::with_capacity(motion_key.targets.len());
+        for target in motion_key.targets.iter() {
+            match target {
+                Target::Reference(pos) => {
+                    let column_id = row_list
+                        .get(*pos)
+                        .expect("Reference position should point to column");
+                    match self
+                        .exec_plan
+                        .get_ir_plan()
+                        .get_expression_node(*column_id)?
+                    {
+                        Expression::Constant(const_node) => {
+                            values.push(&const_node.value);
+                        }
+                        _ => {
+                            return Ok(None);
+                        }
+                    };
+                }
+                Target::Value(val) => {
+                    values.push(val);
+                }
+            }
+        }
+
+        let vshard_object = self.get_coordinator().get_current_vshard_object()?;
+        let bucket_id = vshard_object.determine_bucket_id(&values)?;
+
+        Ok(Some(bucket_id))
+    }
+
+    // Calculates buckets for sharded insert queries(e.g.
+    // `INSERT INTO t VALUES (1, 2)`). In case when it's not
+    // possible to calculate buckets it returns None.
+    pub fn try_calculate_sharded_insert_buckets(&self) -> Result<Option<Buckets>, SbroadError> {
+        let plan = self.get_exec_plan().get_ir_plan();
+        let insert_id = plan.get_top()?;
+        let child_id = plan.dml_child_id(insert_id)?;
+        let Relational::Motion(Motion { child, policy, .. }) = plan.get_relation_node(child_id)?
+        else {
+            return Ok(None);
+        };
+
+        let motion_key = match policy {
+            MotionPolicy::Segment(motion_key) => motion_key,
+            MotionPolicy::LocalSegment(_) => return Ok(Some(Buckets::All)),
+            _ => return Ok(None),
+        };
+
+        // We have to ensure that there are no motions below in IR.
+        let dfs = PostOrderWithFilter::new(
+            |x| plan.nodes.rel_iter(x),
+            |id| {
+                matches!(
+                    plan.get_node(id),
+                    Ok(Node::Relational(Relational::Motion(_)))
+                )
+            },
+            REL_CAPACITY,
+        );
+        let child = child.expect("MOTION must contain child");
+        if dfs.traverse_into_iter(child).next().is_some() {
+            return Ok(None);
+        }
+
+        let Relational::Values(Values { children, .. }) = plan.get_relation_node(child)? else {
+            return Ok(None);
+        };
+
+        let mut bucket_set = HashSet::with_hasher(RepeatableState);
+        for values_row_id in children {
+            let row_node = plan.get_relation_node(*values_row_id)?;
+            let Relational::ValuesRow(ValuesRow { data, .. }) = row_node else {
+                panic!("Expected ValuesRow under Values. Got {row_node:?}.")
+            };
+            let row_list = plan.get_row_list(*data)?;
+
+            if let Some(bucket_id) =
+                self.try_calculate_values_row_bucket_id(row_list, motion_key)?
+            {
+                bucket_set.insert(bucket_id);
+            } else {
+                return Ok(None);
+            }
+        }
+
+        Ok(Some(Buckets::Filtered(bucket_set)))
     }
 
     /// Discover required buckets to execute the query subtree.

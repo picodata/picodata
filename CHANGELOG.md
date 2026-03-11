@@ -75,6 +75,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Add support for `EXPLAIN (RAW)` for block queries.
 - Speed up instance restart by actively trying to identify the raft leader instead of waiting for it to send a heartbeat to us.
 - Refactor the plan id calculation for more accurate and faster caching.
+- Add bucket estimation for INSERT queries in explain.
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:

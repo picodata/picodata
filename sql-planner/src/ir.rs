@@ -30,9 +30,9 @@ use crate::ir::node::plugin::{MutPlugin, Plugin};
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
     Alias, ArenaType, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, GroupBy, Having,
-    IndexExpr, Limit, Motion, MutNode, Node, Node136, Node232, Node32, Node64, Node96, NodeId,
-    NodeOwned, OrderBy, Projection, Reference, Row, ScalarFunction, ScanRelation, Selection,
-    SubQueryReference, Trim, UnaryExpr,
+    IndexExpr, Insert, Limit, Motion, MutNode, Node, Node136, Node232, Node32, Node64, Node96,
+    NodeId, NodeOwned, OrderBy, Projection, Reference, Row, ScalarFunction, ScanRelation,
+    Selection, SubQueryReference, Trim, UnaryExpr,
 };
 use crate::ir::operator::{Bool, OrderByEntity};
 use crate::ir::relation::Column;
@@ -1364,11 +1364,30 @@ impl Plan {
     /// - top node doesn't exist in the plan or is invalid.
     pub fn is_insert(&self) -> Result<bool, SbroadError> {
         let top_id = self.get_top()?;
-        if let Ok(rel) = self.get_relation_node(top_id) {
-            Ok(rel.is_insert())
-        } else {
-            Ok(false)
+
+        Ok(matches!(
+            self.get_node(top_id)?,
+            Node::Relational(Relational::Insert(_))
+        ))
+    }
+
+    /// Checks that top node of the plan is sharded insert.
+    ///
+    /// # Errors
+    /// - top node doesn't exist in the plan or is invalid.
+    pub fn is_sharded_insert(&self) -> Result<bool, SbroadError> {
+        let top_id = self.get_top()?;
+        if let Node::Relational(Relational::Insert(Insert { relation, .. })) =
+            self.get_node(top_id)?
+        {
+            let table = self
+                .relations
+                .get(relation)
+                .expect("relation must be present in Plan");
+            return Ok(!table.is_global());
         }
+
+        Ok(false)
     }
 
     /// Checks that plan is a deallocate query.
