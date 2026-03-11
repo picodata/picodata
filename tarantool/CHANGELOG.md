@@ -58,6 +58,9 @@
   `BoxError::from_ptr` and (and consequently `BoxError::from_last`) now extract extended error fields from tarantool.
   This change is breaking because it adds a dependency on tarantool symbols which might not be available in older
   versions of picodata.
+- `watch::Sender::send_modify` now panics instead of returning an error, `try_send_modify` is added to provide ability
+  to handle an error. This change was made to make code cleaner, since in current codebase all call sites of
+  `send_modify` were using `expect` or `unwrap` which just polluted the code for no good reason.
 
 
 # [10.1.0] Dec 29 2025

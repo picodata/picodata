@@ -137,13 +137,22 @@ impl<T> Sender<T> {
 
     /// Modifies the watched value in place, notifying all receivers.
     ///
+    /// Panics in case there is a receiver currently holding a reference
+    /// to the previous value.
+    pub fn send_modify(&self, modify: impl FnOnce(&mut T)) {
+        self.try_send_modify(modify)
+            .expect("no receivers referencing the old value")
+    }
+
+    /// Modifies the watched value in place, notifying all receivers.
+    ///
     /// This can be useful for modifying the watched value,
     /// without having to allocate a new instance.
     /// This method permits sending values even when there are no receivers.
     ///
-    /// This method fails if any of receivers is currently holding a reference
+    /// Returns an error in case there is a receiver currently holding a reference
     /// to the previous value.
-    pub fn send_modify(&self, modify: impl FnOnce(&mut T)) -> Result<(), SendError<()>> {
+    pub fn try_send_modify(&self, modify: impl FnOnce(&mut T)) -> Result<(), SendError<()>> {
         let mut value_ref = self
             .state
             .value
@@ -456,7 +465,7 @@ mod tests {
             fiber::block_on(rx.changed()).unwrap();
             rx.get_cloned()
         });
-        tx.send_modify(|v| v.push(37)).unwrap();
+        tx.send_modify(|v| v.push(37));
         assert_eq!(jh.join(), [13, 37]);
     }
 
@@ -485,10 +494,10 @@ mod tests {
 
         // and sending fails until the ref is dropped
         // really don't do that
-        tx.send_modify(|v| v.get_mut().push(1.61)).unwrap_err();
+        tx.try_send_modify(|v| v.get_mut().push(1.61)).unwrap_err();
         drop(value_ref);
 
-        tx.send_modify(|v| v.get_mut().push(1.61)).unwrap();
+        tx.send_modify(|v| v.get_mut().push(1.61));
         fiber::block_on(rx.changed()).unwrap();
         assert_eq!(*rx.get_cloned().borrow(), [3.14, 2.71, 1.61]);
     }

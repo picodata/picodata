@@ -2940,9 +2940,7 @@ impl NodeImpl {
         }
 
         tlog!(Debug, "main_loop_status = '{status}'");
-        self.status
-            .send_modify(|s| s.main_loop_status = status)
-            .expect("status shouldn't ever be borrowed across yields");
+        self.status.send_modify(|s| s.main_loop_status = status);
     }
 
     #[inline]
@@ -3031,12 +3029,10 @@ impl NodeImpl {
         // Apply soft state changes before anything else, so that this info is
         // available for other fibers as soon as main loop yields.
         if let Some(ss) = ready.ss() {
-            self.status
-                .send_modify(|s| {
-                    s.leader_id = (ss.leader_id != INVALID_ID).then_some(ss.leader_id);
-                    s.raft_state = ss.raft_state.into();
-                })
-                .expect("status shouldn't ever be borrowed across yields");
+            self.status.send_modify(|s| {
+                s.leader_id = (ss.leader_id != INVALID_ID).then_some(ss.leader_id);
+                s.raft_state = ss.raft_state.into();
+            });
 
             let leader: Option<u64> = (ss.leader_id != INVALID_ID).then_some(ss.leader_id);
             metrics::record_raft_leader_id(leader);
@@ -3075,9 +3071,7 @@ impl NodeImpl {
                     // This is needed so that `proc_replication` doesn't stop
                     // working if raft leader changes while we're blocked waiting on
                     // tarantool replication.
-                    self.status
-                        .send_modify(|s| s.term = hard_state.term)
-                        .expect("status shouldn't ever be borrowed across yields");
+                    self.status.send_modify(|s| s.term = hard_state.term);
                 }
 
                 return Err(e);
@@ -3156,9 +3150,7 @@ impl NodeImpl {
             }
 
             if let Some(new_term) = new_term {
-                self.status
-                    .send_modify(|s| s.term = new_term)
-                    .expect("status shouldn't ever be borrowed across yields");
+                self.status.send_modify(|s| s.term = new_term);
             }
 
             if let Some(new_commit) = new_commit {
@@ -3912,8 +3904,7 @@ mod tests {
         // Set leader known
         node_impl
             .status
-            .send_modify(|s| s.leader_id = Some(node.raft_id()))
-            .unwrap();
+            .send_modify(|s| s.leader_id = Some(node.raft_id()));
 
         // Set instance Offline and replicaset Ready
         let instance = make_instance(node.raft_id(), StateVariant::Offline);
@@ -3942,8 +3933,7 @@ mod tests {
         // Set leader known
         node_impl
             .status
-            .send_modify(|s| s.leader_id = Some(node.raft_id()))
-            .unwrap();
+            .send_modify(|s| s.leader_id = Some(node.raft_id()));
 
         // Set instance Online but replicaset NotReady
         let instance = make_instance(node.raft_id(), StateVariant::Online);
@@ -3972,8 +3962,7 @@ mod tests {
         // Set leader known
         node_impl
             .status
-            .send_modify(|s| s.leader_id = Some(node.raft_id()))
-            .unwrap();
+            .send_modify(|s| s.leader_id = Some(node.raft_id()));
 
         // Set instance Online and replicaset Ready
         let instance = make_instance(node.raft_id(), StateVariant::Online);
@@ -4017,8 +4006,7 @@ mod tests {
         // Simulate Raft soft state update with leader_id
         node_impl
             .status
-            .send_modify(|s| s.leader_id = Some(node.raft_id()))
-            .unwrap();
+            .send_modify(|s| s.leader_id = Some(node.raft_id()));
         node_impl.try_notify_startup_complete();
 
         assert!(
@@ -4036,8 +4024,7 @@ mod tests {
 
         node_impl
             .status
-            .send_modify(|s| s.leader_id = Some(node.raft_id()))
-            .unwrap();
+            .send_modify(|s| s.leader_id = Some(node.raft_id()));
 
         let instance_offline = make_instance(node.raft_id(), StateVariant::Offline);
         let replicaset = make_replicaset(&instance_offline, ReplicasetState::Ready);
@@ -4074,8 +4061,7 @@ mod tests {
         // Pre-conditions: leader known, instance Online, but replicaset NotReady
         node_impl
             .status
-            .send_modify(|s| s.leader_id = Some(node.raft_id()))
-            .unwrap();
+            .send_modify(|s| s.leader_id = Some(node.raft_id()));
 
         let instance = make_instance(node.raft_id(), StateVariant::Online);
         let replicaset_not_ready = make_replicaset(&instance, ReplicasetState::NotReady);
@@ -4111,8 +4097,7 @@ mod tests {
         // Complete startup
         node_impl
             .status
-            .send_modify(|s| s.leader_id = Some(node.raft_id()))
-            .unwrap();
+            .send_modify(|s| s.leader_id = Some(node.raft_id()));
 
         let instance_online = make_instance(node.raft_id(), StateVariant::Online);
         let replicaset = make_replicaset(&instance_online, ReplicasetState::Ready);

@@ -250,16 +250,13 @@ impl Loop {
             Err(e) => {
                 tlog!(Warning, "failed constructing an action plan: {e}");
                 governor_status
-                    .send_modify(|s| s.last_error = Some(e.into_box_error()))
-                    .expect("status shouldn't ever be borrowed across yields");
+                    .send_modify(|s| s.last_error = Some(e.into_box_error()));
                 waker.mark_seen();
                 return IterationEnd::Sleep(Loop::RETRY_TIMEOUT);
             }
         );
         last_step_info.on_next_step(&plan);
-        governor_status
-            .send_modify(|s| s.last_step_kind = Some(plan.kind()))
-            .expect("status shouldn't ever be borrowed across yields");
+        governor_status.send_modify(|s| s.last_step_kind = Some(plan.kind()));
 
         // NOTE: this is a macro, because borrow checker is hot garbage
         macro_rules! set_status {
@@ -281,8 +278,7 @@ impl Loop {
                     tlog!(Warning, ::std::concat!("failed ", $desc, ": {}"), e, $(; $($kv)*)?);
 
                     governor_status
-                        .send_modify(|s| s.last_error = Some(e.into_box_error()))
-                        .expect("status shouldn't ever be borrowed across yields");
+                        .send_modify(|s| s.last_error = Some(e.into_box_error()));
 
                     waker.mark_seen();
                     return IterationEnd::Sleep(Loop::RETRY_TIMEOUT);
@@ -1740,12 +1736,10 @@ impl Loop {
         }
 
         // The step ended successfully
-        governor_status
-            .send_modify(|s| {
-                s.step_counter += 1;
-                s.last_error = None;
-            })
-            .expect("status shouldn't ever be borrowed across yields");
+        governor_status.send_modify(|s| {
+            s.step_counter += 1;
+            s.last_error = None;
+        });
 
         if let Some(timeout) = sleep_timeout {
             return IterationEnd::Sleep(timeout);
@@ -1829,9 +1823,7 @@ fn set_status(status: &mut watch::Sender<GovernorStatus>, msg: &'static str) {
     tlog!(Debug, "governor_loop_status = #{counter} '{msg}'");
     drop(status_ref);
 
-    status
-        .send_modify(|s| s.governor_loop_status = msg)
-        .expect("status shouldn't ever be borrowed across yields");
+    status.send_modify(|s| s.governor_loop_status = msg);
 
     metrics::record_governor_change();
 }
