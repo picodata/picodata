@@ -10,7 +10,7 @@ use crate::{
     ir::{
         node::{relational::Relational, Motion, Node, NodeId},
         transformation::redistribution::MotionPolicy,
-        tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter, REL_CAPACITY},
+        tree::traversal::{LevelNode, PostOrder, REL_CAPACITY},
         Plan,
     },
 };
@@ -165,24 +165,19 @@ impl BucketsInfo {
     fn can_estimate_buckets(plan: &Plan) -> Result<bool, SbroadError> {
         let top_id = plan.get_top()?;
 
-        let mut contains_segment_motion = false;
-        let filter = Box::new(|id: NodeId| -> bool {
-            if !contains_segment_motion {
-                contains_segment_motion = matches!(
-                    plan.get_node(id),
-                    Ok(Node::Relational(Relational::Motion(Motion {
-                        policy: MotionPolicy::Segment(_),
-                        ..
-                    })))
-                );
-            }
-            false
-        });
-        let dfs = PostOrderWithFilter::new(|x| plan.nodes.rel_iter(x), filter, 0);
-        dfs.traverse_into_iter(top_id).for_each(|_| {});
+        let dfs = PostOrder::new(|node| plan.nodes.rel_iter(node), 0);
+        for LevelNode(_, node) in dfs.traverse_into_iter(top_id) {
+            let has_segment_motion = matches!(
+                plan.get_node(node),
+                Ok(Node::Relational(Relational::Motion(Motion {
+                    policy: MotionPolicy::Segment(_),
+                    ..
+                })))
+            );
 
-        if contains_segment_motion {
-            return Ok(false);
+            if has_segment_motion {
+                return Ok(false);
+            }
         }
 
         let node = plan.get_relation_node(top_id)?;
