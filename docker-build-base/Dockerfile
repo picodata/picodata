@@ -37,6 +37,7 @@ RUN rm -f /etc/yum.repos.d/pgdg-redhat-all.repo \
            nodejs \
            openldap-devel \
            openssl-devel \
+           patch \
            python3.11 \
            python3-gevent \
            python3.11-pip \

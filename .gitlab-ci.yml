@@ -129,6 +129,7 @@ variables:
   paths:
     - .cargo/
     - .sccache/
+    - tarantool-sys/.cmake-downloads/
   key: "base_cache-${TARGET}-$CI_COMMIT_REF_SLUG"
   fallback_keys:
     - base_cache-${TARGET}-$MAIN_BRANCH
