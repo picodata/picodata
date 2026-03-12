@@ -1,15 +1,14 @@
 use serde::Serialize;
 use smol_str::SmolStr;
 
-use crate::{
-    errors::{Entity, SbroadError},
-    ir::api::children::{Children, MutChildren},
-};
-
 use super::{
     ArenaType, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion,
     NodeAligned, NodeId, OrderBy, Projection, ScanCte, ScanRelation, ScanSubQuery,
     SelectWithoutScan, Selection, Union, UnionAll, Update, Values, ValuesRow,
+};
+use crate::{
+    errors::{Entity, SbroadError},
+    ir::api::children::{Children, MutChildren},
 };
 
 #[allow(clippy::module_name_repetitions)]
@@ -102,39 +101,7 @@ impl RelOwned {
     /// - wrong number of children for the given node
     pub fn set_children(&mut self, children: Vec<NodeId>) {
         match self {
-            RelOwned::Join(Join {
-                children: ref mut old,
-                ..
-            })
-            | RelOwned::Projection(Projection {
-                children: ref mut old,
-                ..
-            })
-            | RelOwned::Selection(Selection {
-                children: ref mut old,
-                ..
-            })
-            | RelOwned::SelectWithoutScan(SelectWithoutScan {
-                children: ref mut old,
-                ..
-            })
-            | RelOwned::Values(Values {
-                children: ref mut old,
-                ..
-            })
-            | RelOwned::GroupBy(GroupBy {
-                children: ref mut old,
-                ..
-            })
-            | RelOwned::Having(Having {
-                children: ref mut old,
-                ..
-            })
-            | RelOwned::OrderBy(OrderBy {
-                children: ref mut old,
-                ..
-            })
-            | RelOwned::ValuesRow(ValuesRow {
+            RelOwned::Values(Values {
                 children: ref mut old,
                 ..
             }) => {
@@ -143,7 +110,8 @@ impl RelOwned {
             RelOwned::Except(Except { left, right, .. })
             | RelOwned::UnionAll(UnionAll { left, right, .. })
             | RelOwned::Intersect(Intersect { left, right, .. })
-            | RelOwned::Union(Union { left, right, .. }) => {
+            | RelOwned::Union(Union { left, right, .. })
+            | RelOwned::Join(Join { left, right, .. }) => {
                 if children.len() != 2 {
                     unreachable!("Node has only two children!");
                 }
@@ -162,15 +130,36 @@ impl RelOwned {
             | RelOwned::Insert(Insert { ref mut child, .. })
             | RelOwned::ScanSubQuery(ScanSubQuery { ref mut child, .. })
             | RelOwned::ScanCte(ScanCte { ref mut child, .. })
-            | RelOwned::Limit(Limit { ref mut child, .. }) => {
+            | RelOwned::Limit(Limit { ref mut child, .. })
+            | RelOwned::Selection(Selection { ref mut child, .. })
+            | RelOwned::Having(Having { ref mut child, .. })
+            | RelOwned::GroupBy(GroupBy { ref mut child, .. })
+            | RelOwned::OrderBy(OrderBy { ref mut child, .. }) => {
                 if children.len() != 1 {
                     unreachable!("{self:?} may have only a single relational child");
                 }
                 // It is safe to unwrap here, because the length is already checked above.
                 *child = children[0];
             }
-            RelOwned::ScanRelation(ScanRelation { .. }) => {
+            RelOwned::SelectWithoutScan(SelectWithoutScan { .. })
+            | RelOwned::ValuesRow(ValuesRow { .. })
+            | RelOwned::ScanRelation(ScanRelation { .. }) => {
                 assert!(children.is_empty(), "scan must have no children!");
+            }
+            RelOwned::Projection(Projection {
+                child,
+                group_by,
+                having,
+                ..
+            }) => {
+                if having.is_some() || group_by.is_some() {
+                    assert!(
+                        children.is_empty(),
+                        "projection with having or group_by must have no children!"
+                    );
+                } else {
+                    *child = Some(children[0]);
+                }
             }
         }
     }
@@ -189,23 +178,37 @@ impl RelOwned {
                 child: Some(child), ..
             })
             | RelOwned::ScanSubQuery(ScanSubQuery { child, .. })
-            | RelOwned::ScanCte(ScanCte { child, .. }) => Children::Single(child),
+            | RelOwned::ScanCte(ScanCte { child, .. })
+            | RelOwned::Having(Having { child, .. })
+            | RelOwned::Selection(Selection { child, .. })
+            | RelOwned::GroupBy(GroupBy { child, .. })
+            | RelOwned::OrderBy(OrderBy { child, .. }) => Children::Single(child),
             RelOwned::Except(Except { left, right, .. })
             | RelOwned::Intersect(Intersect { left, right, .. })
             | RelOwned::UnionAll(UnionAll { left, right, .. })
-            | RelOwned::Union(Union { left, right, .. }) => Children::Couple(left, right),
-            RelOwned::GroupBy(GroupBy { children, .. })
-            | RelOwned::Join(Join { children, .. })
-            | RelOwned::Having(Having { children, .. })
-            | RelOwned::OrderBy(OrderBy { children, .. })
-            | RelOwned::Projection(Projection { children, .. })
-            | RelOwned::Selection(Selection { children, .. })
-            | RelOwned::SelectWithoutScan(SelectWithoutScan { children, .. })
-            | RelOwned::ValuesRow(ValuesRow { children, .. })
-            | RelOwned::Values(Values { children, .. }) => Children::Many(children),
+            | RelOwned::Union(Union { left, right, .. })
+            | RelOwned::Join(Join { left, right, .. }) => Children::Couple(left, right),
+            RelOwned::Values(Values { children, .. }) => Children::Many(children),
             RelOwned::Delete(Delete { child: None, .. })
             | RelOwned::Motion(Motion { child: None, .. })
-            | RelOwned::ScanRelation(_) => Children::None,
+            | RelOwned::ScanRelation(_)
+            | RelOwned::SelectWithoutScan(_)
+            | RelOwned::ValuesRow(_) => Children::None,
+
+            RelOwned::Projection(Projection {
+                child,
+                having,
+                group_by,
+                ..
+            }) => {
+                if having.is_some() || group_by.is_some() {
+                    Children::None
+                } else if child.is_some() {
+                    Children::Single(child.as_ref().unwrap())
+                } else {
+                    unreachable!("nothing was set")
+                }
+            }
         }
     }
 
@@ -224,9 +227,11 @@ impl RelOwned {
                 ..
             })
             | RelOwned::Insert(Insert { ref mut child, .. })
-            | RelOwned::ScanSubQuery(ScanSubQuery { ref mut child, .. }) => {
-                MutChildren::Single(child)
-            }
+            | RelOwned::ScanSubQuery(ScanSubQuery { ref mut child, .. })
+            | RelOwned::Having(Having { ref mut child, .. })
+            | RelOwned::Selection(Selection { ref mut child, .. })
+            | RelOwned::GroupBy(GroupBy { ref mut child, .. })
+            | RelOwned::OrderBy(OrderBy { ref mut child, .. }) => MutChildren::Single(child),
             RelOwned::Except(Except {
                 ref mut left,
                 ref mut right,
@@ -246,37 +251,65 @@ impl RelOwned {
                 ref mut left,
                 ref mut right,
                 ..
-            }) => MutChildren::Couple(left, right),
-            RelOwned::GroupBy(GroupBy {
-                ref mut children, ..
             })
             | RelOwned::Join(Join {
-                ref mut children, ..
-            })
-            | RelOwned::OrderBy(OrderBy {
-                ref mut children, ..
-            })
-            | RelOwned::Having(Having {
-                ref mut children, ..
-            })
-            | RelOwned::Projection(Projection {
-                ref mut children, ..
-            })
-            | RelOwned::Selection(Selection {
-                ref mut children, ..
-            })
-            | RelOwned::SelectWithoutScan(SelectWithoutScan {
-                ref mut children, ..
-            })
-            | RelOwned::ValuesRow(ValuesRow {
-                ref mut children, ..
-            })
-            | RelOwned::Values(Values {
+                ref mut left,
+                ref mut right,
+                ..
+            }) => MutChildren::Couple(left, right),
+            RelOwned::Values(Values {
                 ref mut children, ..
             }) => MutChildren::Many(children),
             RelOwned::Delete(Delete { child: None, .. })
             | RelOwned::Motion(Motion { child: None, .. })
-            | RelOwned::ScanRelation(_) => MutChildren::None,
+            | RelOwned::ScanRelation(_)
+            | RelOwned::SelectWithoutScan(_)
+            | RelOwned::ValuesRow(_) => MutChildren::None,
+            RelOwned::Projection(Projection {
+                ref mut child,
+                group_by,
+                having,
+                ..
+            }) => {
+                if group_by.is_some() || having.is_some() {
+                    MutChildren::None
+                } else if child.is_some() {
+                    MutChildren::Single(child.as_mut().unwrap())
+                } else {
+                    unreachable!("nothing was set")
+                }
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn mut_subqueries(&mut self) -> MutChildren<'_> {
+        match self {
+            RelOwned::Join(Join {
+                ref mut subqueries, ..
+            })
+            | RelOwned::Having(Having {
+                ref mut subqueries, ..
+            })
+            | RelOwned::Selection(Selection {
+                ref mut subqueries, ..
+            })
+            | RelOwned::SelectWithoutScan(SelectWithoutScan {
+                ref mut subqueries, ..
+            })
+            | RelOwned::ValuesRow(ValuesRow {
+                ref mut subqueries, ..
+            })
+            | RelOwned::GroupBy(GroupBy {
+                ref mut subqueries, ..
+            })
+            | RelOwned::OrderBy(OrderBy {
+                ref mut subqueries, ..
+            })
+            | RelOwned::Projection(Projection {
+                ref mut subqueries, ..
+            }) => MutChildren::Many(subqueries),
+            _ => MutChildren::None,
         }
     }
 
@@ -413,41 +446,38 @@ impl MutRelational<'_> {
                 child: Some(child), ..
             })
             | MutRelational::Insert(Insert { child, .. })
-            | MutRelational::ScanSubQuery(ScanSubQuery { child, .. }) => MutChildren::Single(child),
+            | MutRelational::ScanSubQuery(ScanSubQuery { child, .. })
+            | MutRelational::Selection(Selection { child, .. })
+            | MutRelational::Having(Having { child, .. })
+            | MutRelational::GroupBy(GroupBy { child, .. })
+            | MutRelational::OrderBy(OrderBy { child, .. }) => MutChildren::Single(child),
             MutRelational::Except(Except { left, right, .. })
             | MutRelational::Intersect(Intersect { left, right, .. })
             | MutRelational::UnionAll(UnionAll { left, right, .. })
-            | MutRelational::Union(Union { left, right, .. }) => MutChildren::Couple(left, right),
-            MutRelational::GroupBy(GroupBy {
-                ref mut children, ..
-            })
-            | MutRelational::OrderBy(OrderBy {
-                ref mut children, ..
-            })
-            | MutRelational::Having(Having {
-                ref mut children, ..
-            })
-            | MutRelational::Join(Join {
-                ref mut children, ..
-            })
-            | MutRelational::Projection(Projection {
-                ref mut children, ..
-            })
-            | MutRelational::Selection(Selection {
-                ref mut children, ..
-            })
-            | MutRelational::SelectWithoutScan(SelectWithoutScan {
-                ref mut children, ..
-            })
-            | MutRelational::ValuesRow(ValuesRow {
-                ref mut children, ..
-            })
-            | MutRelational::Values(Values {
+            | MutRelational::Union(Union { left, right, .. })
+            | MutRelational::Join(Join { left, right, .. }) => MutChildren::Couple(left, right),
+            MutRelational::Values(Values {
                 ref mut children, ..
             }) => MutChildren::Many(children),
             MutRelational::Delete(Delete { child: None, .. })
             | MutRelational::Motion(Motion { child: None, .. })
-            | MutRelational::ScanRelation(_) => MutChildren::None,
+            | MutRelational::ScanRelation(_)
+            | MutRelational::SelectWithoutScan(_)
+            | MutRelational::ValuesRow(_) => MutChildren::None,
+            MutRelational::Projection(Projection {
+                child,
+                group_by,
+                having,
+                ..
+            }) => {
+                if group_by.is_some() || having.is_some() {
+                    MutChildren::None
+                } else if child.is_some() {
+                    MutChildren::Single(child.as_mut().unwrap())
+                } else {
+                    unreachable!("nothing was set")
+                }
+            }
         }
     }
 
@@ -457,39 +487,7 @@ impl MutRelational<'_> {
     /// - wrong number of children for the given node
     pub fn set_children(&mut self, children: Vec<NodeId>) {
         match self {
-            MutRelational::Join(Join {
-                children: ref mut old,
-                ..
-            })
-            | MutRelational::Projection(Projection {
-                children: ref mut old,
-                ..
-            })
-            | MutRelational::Selection(Selection {
-                children: ref mut old,
-                ..
-            })
-            | MutRelational::SelectWithoutScan(SelectWithoutScan {
-                children: ref mut old,
-                ..
-            })
-            | MutRelational::Values(Values {
-                children: ref mut old,
-                ..
-            })
-            | MutRelational::GroupBy(GroupBy {
-                children: ref mut old,
-                ..
-            })
-            | MutRelational::Having(Having {
-                children: ref mut old,
-                ..
-            })
-            | MutRelational::OrderBy(OrderBy {
-                children: ref mut old,
-                ..
-            })
-            | MutRelational::ValuesRow(ValuesRow {
+            MutRelational::Values(Values {
                 children: ref mut old,
                 ..
             }) => {
@@ -498,7 +496,8 @@ impl MutRelational<'_> {
             MutRelational::Except(Except { left, right, .. })
             | MutRelational::UnionAll(UnionAll { left, right, .. })
             | MutRelational::Intersect(Intersect { left, right, .. })
-            | MutRelational::Union(Union { left, right, .. }) => {
+            | MutRelational::Union(Union { left, right, .. })
+            | MutRelational::Join(Join { left, right, .. }) => {
                 if children.len() != 2 {
                     unreachable!("Node has only two children!");
                 }
@@ -509,16 +508,76 @@ impl MutRelational<'_> {
             | MutRelational::Limit(Limit { child, .. })
             | MutRelational::Update(Update { child, .. })
             | MutRelational::Insert(Insert { child, .. })
-            | MutRelational::ScanSubQuery(ScanSubQuery { child, .. }) => {
+            | MutRelational::ScanSubQuery(ScanSubQuery { child, .. })
+            | MutRelational::Having(Having { child, .. })
+            | MutRelational::Selection(Selection { child, .. })
+            | MutRelational::GroupBy(GroupBy { child, .. })
+            | MutRelational::OrderBy(OrderBy { child, .. }) => {
                 *child = children[0];
             }
             MutRelational::Delete(Delete { child, .. })
             | MutRelational::Motion(Motion { child, .. }) => {
                 *child = Some(children[0]);
             }
-            MutRelational::ScanRelation(ScanRelation { .. }) => {
+            MutRelational::SelectWithoutScan(SelectWithoutScan { .. })
+            | MutRelational::ValuesRow(ValuesRow { .. })
+            | MutRelational::ScanRelation(ScanRelation { .. }) => {
                 assert!(children.is_empty(), "scan must have no children!");
             }
+            MutRelational::Projection(Projection {
+                child,
+                having,
+                group_by,
+                ..
+            }) => {
+                if having.is_some() || group_by.is_some() {
+                    assert!(
+                        children.is_empty(),
+                        "projection with group_by or having must have no children!"
+                    );
+                } else {
+                    *child = Some(children[0]);
+                }
+            }
+        }
+    }
+
+    pub fn set_subqueries(&mut self, subqueries: Vec<NodeId>) {
+        match self {
+            MutRelational::Join(Join {
+                subqueries: ref mut old,
+                ..
+            })
+            | MutRelational::Having(Having {
+                subqueries: ref mut old,
+                ..
+            })
+            | MutRelational::Selection(Selection {
+                subqueries: ref mut old,
+                ..
+            })
+            | MutRelational::SelectWithoutScan(SelectWithoutScan {
+                subqueries: ref mut old,
+                ..
+            })
+            | MutRelational::ValuesRow(ValuesRow {
+                subqueries: ref mut old,
+                ..
+            })
+            | MutRelational::OrderBy(OrderBy {
+                subqueries: ref mut old,
+                ..
+            })
+            | MutRelational::GroupBy(GroupBy {
+                subqueries: ref mut old,
+                ..
+            })
+            | MutRelational::Projection(Projection {
+                subqueries: ref mut old,
+                ..
+            }) => *old = subqueries,
+
+            _ => unreachable!("Node has no subqueries!"),
         }
     }
 
@@ -528,14 +587,14 @@ impl MutRelational<'_> {
     /// - Trying to add subquery to inapplicable relational node.
     pub fn add_sq_child(&mut self, sq_id: NodeId) {
         match self {
-            MutRelational::Join(Join { children, .. })
-            | MutRelational::Projection(Projection { children, .. })
-            | MutRelational::Selection(Selection { children, .. })
-            | MutRelational::GroupBy(GroupBy { children, .. })
-            | MutRelational::Having(Having { children, .. })
-            | MutRelational::OrderBy(OrderBy { children, .. })
-            | MutRelational::SelectWithoutScan(SelectWithoutScan { children, .. })
-            | MutRelational::ValuesRow(ValuesRow { children, .. }) => children.push(sq_id),
+            MutRelational::Join(Join { subqueries, .. })
+            | MutRelational::Selection(Selection { subqueries, .. })
+            | MutRelational::Having(Having { subqueries, .. })
+            | MutRelational::SelectWithoutScan(SelectWithoutScan { subqueries, .. })
+            | MutRelational::ValuesRow(ValuesRow { subqueries, .. })
+            | MutRelational::GroupBy(GroupBy { subqueries, .. })
+            | MutRelational::OrderBy(OrderBy { subqueries, .. })
+            | MutRelational::Projection(Projection { subqueries, .. }) => subqueries.push(sq_id),
             _ => panic!("Unable to add SubQuery child to {self:?}."),
         }
     }
@@ -617,23 +676,50 @@ impl Relational<'_> {
                 child: Some(child), ..
             })
             | Relational::Insert(Insert { child, .. })
-            | Relational::ScanCte(ScanCte { child, .. }) => Children::Single(child),
+            | Relational::ScanCte(ScanCte { child, .. })
+            | Relational::Having(Having { child, .. })
+            | Relational::Selection(Selection { child, .. })
+            | Relational::GroupBy(GroupBy { child, .. })
+            | Relational::OrderBy(OrderBy { child, .. }) => Children::Single(child),
             Relational::Except(Except { left, right, .. })
             | Relational::Intersect(Intersect { left, right, .. })
             | Relational::UnionAll(UnionAll { left, right, .. })
-            | Relational::Union(Union { left, right, .. }) => Children::Couple(left, right),
-            Relational::GroupBy(GroupBy { children, .. })
-            | Relational::Join(Join { children, .. })
-            | Relational::OrderBy(OrderBy { children, .. })
-            | Relational::Having(Having { children, .. })
-            | Relational::Projection(Projection { children, .. })
-            | Relational::Selection(Selection { children, .. })
-            | Relational::SelectWithoutScan(SelectWithoutScan { children, .. })
-            | Relational::ValuesRow(ValuesRow { children, .. })
-            | Relational::Values(Values { children, .. }) => Children::Many(children),
+            | Relational::Union(Union { left, right, .. })
+            | Relational::Join(Join { left, right, .. }) => Children::Couple(left, right),
+            Relational::Values(Values { children, .. }) => Children::Many(children),
             Relational::Delete(Delete { child: None, .. })
             | Relational::Motion(Motion { child: None, .. })
-            | Relational::ScanRelation(_) => Children::None,
+            | Relational::ScanRelation(_)
+            | Relational::SelectWithoutScan(SelectWithoutScan { .. })
+            | Relational::ValuesRow(ValuesRow { .. }) => Children::None,
+            Relational::Projection(Projection {
+                child,
+                having,
+                group_by,
+                ..
+            }) => {
+                if having.is_some() || group_by.is_some() {
+                    Children::None
+                } else if child.is_some() {
+                    Children::Single(child.as_ref().unwrap())
+                } else {
+                    unreachable!("nothing was set")
+                }
+            }
+        }
+    }
+
+    pub fn subqueries(&self) -> Children<'_> {
+        match self {
+            Relational::Join(Join { subqueries, .. })
+            | Relational::Having(Having { subqueries, .. })
+            | Relational::Selection(Selection { subqueries, .. })
+            | Relational::SelectWithoutScan(SelectWithoutScan { subqueries, .. })
+            | Relational::ValuesRow(ValuesRow { subqueries, .. })
+            | Relational::GroupBy(GroupBy { subqueries, .. })
+            | Relational::OrderBy(OrderBy { subqueries, .. })
+            | Relational::Projection(Projection { subqueries, .. }) => Children::Many(subqueries),
+            _ => Children::None,
         }
     }
 
@@ -698,36 +784,6 @@ impl Relational<'_> {
     #[must_use]
     pub fn is_non_local_motion(&self) -> bool {
         self.is_motion() && !self.is_local_motion()
-    }
-
-    /// Return true, if this node serves as a
-    /// data source node: it provides data to
-    /// upper operators and does not have children.
-    #[must_use]
-    pub fn is_data_source(&self) -> bool {
-        match self {
-            Relational::ScanRelation(_) => true,
-            Relational::SelectWithoutScan(SelectWithoutScan { children, .. })
-            | Relational::Values(Values { children, .. }) => children.is_empty(),
-            Relational::ScanCte(_)
-            | Relational::Motion(_)
-            | Relational::Except(_)
-            | Relational::Delete(_)
-            | Relational::Insert(_)
-            | Relational::Intersect(_)
-            | Relational::Update(_)
-            | Relational::Join(_)
-            | Relational::Limit(_)
-            | Relational::Projection(_)
-            | Relational::ScanSubQuery(_)
-            | Relational::Selection(_)
-            | Relational::GroupBy(_)
-            | Relational::Having(_)
-            | Relational::OrderBy(_)
-            | Relational::UnionAll(_)
-            | Relational::Union(_)
-            | Relational::ValuesRow(_) => false,
-        }
     }
 
     /// Checks that the node is a sub-query or CTE scan.

@@ -1356,20 +1356,17 @@ impl FullExplain {
         }
     }
 
-    /// Retrieve SubQueryRefMap from relational node children and update
-    /// `current_node` children.
+    /// Retrieve SubQueryRefMap from relational node children
     fn get_sq_ref_map(
         &mut self,
-        current_node: &mut ExplainTreePart,
         stack: &mut Vec<ExplainTreePart>,
-        children: &[NodeId],
-        req_children_number: usize,
+        subqueries: &[NodeId],
     ) -> SubQueryRefMap {
-        let mut sq_ref_map: SubQueryRefMap = HashMap::with_capacity(children.len());
+        let mut sq_ref_map: SubQueryRefMap = HashMap::with_capacity(subqueries.len());
 
         // Note that subqueries are added to the stack in the `children` reversed order
         // because of the PostOrder traversal. That's why we apply `rev` here.
-        for sq_id in children.iter().skip(req_children_number).rev() {
+        for sq_id in subqueries.iter().rev() {
             let sq_node = stack
                 .pop()
                 .unwrap_or_else(|| panic!("Rel node failed to pop a sub-query."));
@@ -1384,19 +1381,6 @@ impl FullExplain {
                 .map(|(offset, _)| offset)
                 .expect("sq should be found for explain");
             sq_ref_map.insert(*sq_id, offset);
-        }
-
-        let mut children_to_add = Vec::with_capacity(req_children_number);
-        for _ in 0..req_children_number {
-            children_to_add.push(
-                stack.pop().unwrap_or_else(|| {
-                    panic!("Expected to pop required child for {current_node:?}")
-                }),
-            );
-        }
-        children_to_add.reverse();
-        for child in children_to_add {
-            current_node.children.push(child);
         }
 
         sq_ref_map
@@ -1423,94 +1407,86 @@ impl FullExplain {
 
             current_node.current = match &node {
                 Relational::Intersect { .. } => {
-                    if let (Some(right), Some(left)) = (stack.pop(), stack.pop()) {
-                        current_node.children.push(left);
-                        current_node.children.push(right);
-                    } else {
-                        return Err(SbroadError::UnexpectedNumberOfValues(
+                    let right = stack.pop().ok_or_else(|| {
+                        SbroadError::UnexpectedNumberOfValues(
                             "Intersect node must have exactly two children".into(),
-                        ));
-                    }
+                        )
+                    })?;
+                    let left = stack.pop().ok_or_else(|| {
+                        SbroadError::UnexpectedNumberOfValues(
+                            "Intersect node must have exactly two children".into(),
+                        )
+                    })?;
+                    current_node.children.push(left);
+                    current_node.children.push(right);
                     Some(ExplainNode::Intersect)
                 }
                 Relational::Except { .. } => {
-                    if let (Some(right), Some(left)) = (stack.pop(), stack.pop()) {
-                        current_node.children.push(left);
-                        current_node.children.push(right);
-                    } else {
-                        return Err(SbroadError::UnexpectedNumberOfValues(
+                    let right = stack.pop().ok_or_else(|| {
+                        SbroadError::UnexpectedNumberOfValues(
                             "Exception node must have exactly two children".into(),
-                        ));
-                    }
+                        )
+                    })?;
+                    let left = stack.pop().ok_or_else(|| {
+                        SbroadError::UnexpectedNumberOfValues(
+                            "Exception node must have exactly two children".into(),
+                        )
+                    })?;
+                    current_node.children.push(left);
+                    current_node.children.push(right);
                     Some(ExplainNode::Except)
                 }
                 Relational::GroupBy(node::GroupBy {
                     gr_exprs,
                     output,
-                    children,
+                    subqueries,
                     ..
                 }) => {
-                    let req_children_cnt = ir.get_required_children_len(id)?.unwrap_or_else(|| {
-                        unreachable!("GroupBy expected to have required children count")
-                    });
-                    let sq_ref_map = result.get_sq_ref_map(
-                        &mut current_node,
-                        &mut stack,
-                        children,
-                        req_children_cnt,
-                    );
+                    let sq_ref_map = result.get_sq_ref_map(&mut stack, subqueries);
+                    let child = stack.pop().ok_or_else(|| {
+                        SbroadError::UnexpectedNumberOfValues(
+                            "GroupBy must have exactly one child".into(),
+                        )
+                    })?;
+                    current_node.children.push(child);
                     let p = GroupBy::new(ir, gr_exprs, *output, &sq_ref_map)?;
                     Some(ExplainNode::GroupBy(p))
                 }
                 Relational::OrderBy(node::OrderBy {
                     order_by_elements,
-                    children,
+                    subqueries,
                     ..
                 }) => {
-                    let req_children_cnt = ir.get_required_children_len(id)?.unwrap_or_else(|| {
-                        unreachable!("OrderBy expected to have required children count")
-                    });
-                    let sq_ref_map = result.get_sq_ref_map(
-                        &mut current_node,
-                        &mut stack,
-                        children,
-                        req_children_cnt,
-                    );
+                    let sq_ref_map = result.get_sq_ref_map(&mut stack, subqueries);
+                    let child = stack.pop().ok_or_else(|| {
+                        SbroadError::UnexpectedNumberOfValues(
+                            "OrderBy must have exactly one child".into(),
+                        )
+                    })?;
+                    current_node.children.push(child);
                     let o_b = OrderBy::new(ir, order_by_elements, &sq_ref_map)?;
                     Some(ExplainNode::OrderBy(o_b))
                 }
                 Relational::Projection(node::Projection {
-                    output,
-                    children,
-                    having,
-                    group_by,
-                    ..
+                    output, subqueries, ..
                 }) => {
-                    let mut res_children = Vec::with_capacity(children.len() + 1);
-                    if let Some(having) = *having {
-                        res_children.push(having);
-                    } else if let Some(group_by) = *group_by {
-                        res_children.push(group_by);
-                    }
-                    res_children.extend(children);
                     let sq_ref_map: HashMap<NodeId, usize> =
-                        result.get_sq_ref_map(&mut current_node, &mut stack, &res_children, 1);
-
+                        result.get_sq_ref_map(&mut stack, subqueries);
+                    let child = stack.pop().ok_or_else(|| {
+                        SbroadError::UnexpectedNumberOfValues(
+                            "Projection must have exactly one child".into(),
+                        )
+                    })?;
+                    current_node.children.push(child);
                     let p = Projection::new(ir, *output, &sq_ref_map)?;
                     Some(ExplainNode::Projection(p))
                 }
                 Relational::SelectWithoutScan(node::SelectWithoutScan {
-                    output, children, ..
+                    output,
+                    subqueries,
+                    ..
                 }) => {
-                    let req_children_cnt = ir.get_required_children_len(id)?.unwrap_or_else(|| {
-                        unreachable!("SelectWithoutScan expected to have required children count")
-                    });
-                    let sq_ref_map = result.get_sq_ref_map(
-                        &mut current_node,
-                        &mut stack,
-                        children,
-                        req_children_cnt,
-                    );
+                    let sq_ref_map = result.get_sq_ref_map(&mut stack, subqueries);
                     let p = Projection::new(ir, *output, &sq_ref_map)?;
                     Some(ExplainNode::Projection(p))
                 }
@@ -1540,13 +1516,18 @@ impl FullExplain {
                     Some(ExplainNode::Cte(alias.clone(), Ref::new(pos)))
                 }
                 Relational::Selection(Selection {
-                    children, filter, ..
+                    subqueries, filter, ..
                 })
                 | Relational::Having(Having {
-                    children, filter, ..
+                    subqueries, filter, ..
                 }) => {
-                    let sq_ref_map =
-                        result.get_sq_ref_map(&mut current_node, &mut stack, children, 1);
+                    let sq_ref_map = result.get_sq_ref_map(&mut stack, subqueries);
+                    let child = stack.pop().ok_or_else(|| {
+                        SbroadError::UnexpectedNumberOfValues(
+                            "Selection or Having must have exactly one child".into(),
+                        )
+                    })?;
+                    current_node.children.push(child);
                     let filter_id = *ir.undo.get_oldest(filter);
                     let selection = ColExpr::new(ir, filter_id, &sq_ref_map)?;
                     let explain_node = match &node {
@@ -1557,14 +1538,18 @@ impl FullExplain {
                     Some(explain_node)
                 }
                 u @ (Relational::UnionAll { .. } | Relational::Union { .. }) => {
-                    if let (Some(right), Some(left)) = (stack.pop(), stack.pop()) {
-                        current_node.children.push(left);
-                        current_node.children.push(right);
-                    } else {
-                        return Err(SbroadError::UnexpectedNumberOfValues(
-                            "Union all node must have exactly two children".into(),
-                        ));
-                    }
+                    let right = stack.pop().ok_or_else(|| {
+                        SbroadError::UnexpectedNumberOfValues(
+                            "Union node must have exactly two children".into(),
+                        )
+                    })?;
+                    let left = stack.pop().ok_or_else(|| {
+                        SbroadError::UnexpectedNumberOfValues(
+                            "Union node must have exactly two children".into(),
+                        )
+                    })?;
+                    current_node.children.push(left);
+                    current_node.children.push(right);
                     if matches!(u, Relational::Union { .. }) {
                         Some(ExplainNode::Union)
                     } else {
@@ -1645,22 +1630,34 @@ impl FullExplain {
                     Some(ExplainNode::Motion(m))
                 }
                 Relational::Join(Join {
-                    children,
+                    subqueries,
                     condition,
                     kind,
                     ..
                 }) => {
-                    let sq_ref_map =
-                        result.get_sq_ref_map(&mut current_node, &mut stack, children, 2);
+                    let sq_ref_map = result.get_sq_ref_map(&mut stack, subqueries);
+                    let right = stack.pop().ok_or_else(|| {
+                        SbroadError::UnexpectedNumberOfValues(
+                            "Join node must have exactly two children".into(),
+                        )
+                    })?;
+                    let left = stack.pop().ok_or_else(|| {
+                        SbroadError::UnexpectedNumberOfValues(
+                            "Join node must have exactly two children".into(),
+                        )
+                    })?;
+                    current_node.children.push(left);
+                    current_node.children.push(right);
                     let condition = ColExpr::new(ir, *condition, &sq_ref_map)?;
                     Some(ExplainNode::InnerJoin(InnerJoin {
                         condition,
                         kind: kind.clone(),
                     }))
                 }
-                Relational::ValuesRow(ValuesRow { data, children, .. }) => {
-                    let sq_ref_map =
-                        result.get_sq_ref_map(&mut current_node, &mut stack, children, 0);
+                Relational::ValuesRow(ValuesRow {
+                    data, subqueries, ..
+                }) => {
+                    let sq_ref_map = result.get_sq_ref_map(&mut stack, subqueries);
                     let row = ColExpr::new(ir, *data, &sq_ref_map)?;
 
                     Some(ExplainNode::ValueRow(row))

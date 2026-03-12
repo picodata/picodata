@@ -1,6 +1,7 @@
 use smol_str::{SmolStr, ToSmolStr};
 
 use crate::ir::node::relational::Relational;
+use crate::ir::node::Join;
 use crate::ir::node::{Motion, NodeId};
 use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use crate::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target};
@@ -85,13 +86,20 @@ fn check_join_motions(
         })
         .unwrap();
     let join_id = level_node.1;
-    let children = plan.get_relation_children(join_id).unwrap();
-    let (left_id, right_id, sq_nodes_ids) = (children[0], children[1], &children[2..]);
-    let (left_actual, right_actual) = (plan.to_test_motion(left_id), plan.to_test_motion(right_id));
+    let Relational::Join(Join {
+        left,
+        right,
+        subqueries,
+        ..
+    }) = plan.get_relation_node(join_id).unwrap()
+    else {
+        panic!("Expected join node");
+    };
+    let (left_actual, right_actual) = (plan.to_test_motion(*left), plan.to_test_motion(*right));
     assert_eq!(left_expected, left_actual);
     assert_eq!(right_expected, right_actual);
     if let Some(expected_sq_policies) = sq_policies {
-        let actual_sq_policies = sq_nodes_ids
+        let actual_sq_policies = subqueries
             .iter()
             .map(|x| plan.to_test_motion(*x))
             .collect::<Vec<Policy>>();

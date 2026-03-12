@@ -636,10 +636,11 @@ impl From<Update> for NodeAligned {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Join {
-    /// Contains at least two elements: left and right node indexes
-    /// from the plan node arena. Every element other than those
-    /// two should be treated as a `SubQuery` node.
-    pub children: Vec<NodeId>,
+    /// Left and right children ids of join
+    pub left: NodeId,
+    pub right: NodeId,
+    /// Subqueries from condition which are dependencies
+    pub subqueries: Vec<NodeId>,
     /// Left and right tuple comparison condition.
     /// In fact it is an expression tree top index from the plan node arena.
     pub condition: NodeId,
@@ -696,11 +697,10 @@ impl From<Motion> for NodeAligned {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Projection {
-    /// Contains at least one single element: child node index
-    /// from the plan node arena. Every element other than the
-    /// first one should be treated as a `SubQuery` node from
-    /// the output tree.
-    pub children: Vec<NodeId>,
+    /// Child node index
+    pub child: Option<NodeId>,
+    /// Subqueries, which are dependencies
+    pub subqueries: Vec<NodeId>,
     pub windows: Vec<NodeId>,
     /// Outputs tuple node index in the plan node arena.
     pub output: NodeId,
@@ -719,8 +719,8 @@ impl From<Projection> for NodeAligned {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct SelectWithoutScan {
-    /// Additional subquery children
-    pub children: Vec<NodeId>,
+    /// Subqueries, which are dependencies
+    pub subqueries: Vec<NodeId>,
     /// Outputs tuple node index in the plan node arena.
     pub output: NodeId,
 }
@@ -766,11 +766,10 @@ impl From<ScanSubQuery> for NodeAligned {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Selection {
-    /// Contains at least one single element: child node index
-    /// from the plan node arena. Every element other than the
-    /// first one should be treated as a `SubQuery` node from
-    /// the filter tree.
-    pub children: Vec<NodeId>,
+    /// Child node index
+    pub child: NodeId,
+    /// Subqueries, which are dependencies
+    pub subqueries: Vec<NodeId>,
     /// Filters expression node index in the plan node arena.
     pub filter: NodeId,
     /// Outputs tuple node index in the plan node arena.
@@ -785,12 +784,12 @@ impl From<Selection> for NodeAligned {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct GroupBy {
-    /// The first child is a
+    /// Child is a
     /// * Scan in case it's local GroupBy
     /// * Motion with policy Segment in case two stage aggregation was applied
-    ///
-    /// Other children are subqueries used under grouping expressions.
-    pub children: Vec<NodeId>,
+    pub child: NodeId,
+    /// Subqueries, which are dependencies
+    pub subqueries: Vec<NodeId>,
     pub gr_exprs: Vec<NodeId>,
     pub output: NodeId,
 }
@@ -803,7 +802,8 @@ impl From<GroupBy> for NodeAligned {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Having {
-    pub children: Vec<NodeId>,
+    pub child: NodeId,
+    pub subqueries: Vec<NodeId>,
     pub output: NodeId,
     pub filter: NodeId,
 }
@@ -816,7 +816,8 @@ impl From<Having> for NodeAligned {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct OrderBy {
-    pub children: Vec<NodeId>,
+    pub child: NodeId,
+    pub subqueries: Vec<NodeId>,
     pub output: NodeId,
     pub order_by_elements: Vec<OrderByElement>,
 }
@@ -863,12 +864,12 @@ pub struct ValuesRow {
     pub output: NodeId,
     /// The data tuple.
     pub data: NodeId,
-    /// A list of children is required for the rows containing
+    /// A list of subqueries is required for the rows containing
     /// sub-queries. For example, the row `(1, (select a from t))`
-    /// requires `children` to keep projection node. If the row
-    /// contains only constants (i.e. `(1, 2)`), then `children`
+    /// requires `subqueries` to keep projection node. If the row
+    /// contains only constants (i.e. `(1, 2)`), then `subqueries`
     /// should be empty.
-    pub children: Vec<NodeId>,
+    pub subqueries: Vec<NodeId>,
 }
 
 impl From<ValuesRow> for NodeAligned {

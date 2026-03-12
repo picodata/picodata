@@ -5627,7 +5627,7 @@ impl AbstractSyntaxTree {
 
         let windows = worker.curr_windows.clone();
         let projection_id =
-            plan.add_proj_internal(vec![plan_rel_child_id], &proj_columns, is_distinct, windows)?;
+            plan.add_proj_internal(plan_rel_child_id, &proj_columns, is_distinct, windows)?;
 
         plan.fix_subquery_rows(worker, projection_id)?;
         map.add(node_id, projection_id);
@@ -6472,10 +6472,8 @@ impl AbstractSyntaxTree {
                     )?;
 
                     let plan_node_id = match &node.rule {
-                        Rule::Selection => {
-                            plan.add_select(&[plan_rel_child_id], expr_plan_node_id)?
-                        }
-                        Rule::Having => plan.add_having(&[plan_rel_child_id], expr_plan_node_id)?,
+                        Rule::Selection => plan.add_select(plan_rel_child_id, expr_plan_node_id)?,
+                        Rule::Having => plan.add_having(plan_rel_child_id, expr_plan_node_id)?,
                         _ => panic!("Expected to see Selection or Having."),
                     };
                     plan.fix_subquery_rows(&mut worker, plan_node_id)?;
@@ -6751,7 +6749,7 @@ impl AbstractSyntaxTree {
                             )?;
 
                             let plan_select_id =
-                                plan.add_select(&[plan_scan_id], expr_plan_node_id)?;
+                                plan.add_select(plan_scan_id, expr_plan_node_id)?;
                             plan.fix_subquery_rows(&mut worker, plan_select_id)?;
 
                             let relation = if let Some(indexed_by_id) = node.children.get(1) {
@@ -6833,12 +6831,7 @@ impl AbstractSyntaxTree {
                                 .add_alias(&format!("pk_col_{pk_pos}"), *pk_column_id)?;
                             alias_ids.push(pk_alias_id);
                         }
-                        Some(plan.add_proj_internal(
-                            vec![proj_child_id],
-                            &alias_ids,
-                            false,
-                            vec![],
-                        )?)
+                        Some(plan.add_proj_internal(proj_child_id, &alias_ids, false, vec![])?)
                     } else {
                         None
                     };

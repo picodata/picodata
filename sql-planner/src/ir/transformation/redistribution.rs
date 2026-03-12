@@ -749,13 +749,15 @@ impl Plan {
     fn insert_motion_nodes(&mut self, mut strategy: Strategy) -> Result<(), SbroadError> {
         let parent_id = strategy.parent_id;
         let children = self.get_relation_children(parent_id)?;
-        if children.is_empty() {
+        let subqueries = self.get_relation_subqueries(parent_id)?;
+        if children.is_empty() && subqueries.is_empty() {
             // E.g., case of ValuesRow without SubQueries children.
             return Ok(());
         }
 
         // Check that all children we need to add motions exist in the current relational node.
-        let children_set: HashSet<NodeId> = children.iter().copied().collect();
+        let children_set: HashSet<NodeId> =
+            children.iter().chain(subqueries.iter()).copied().collect();
         if !strategy
             .children_policy
             .iter()
@@ -767,35 +769,58 @@ impl Plan {
         // Add motions.
 
         // Children nodes covered with Motions (if needed from `strategy`).
-        let mut children_with_motions: Vec<NodeId> = Vec::new();
-        let children_owned = children.to_vec();
-        for child in children_owned {
-            if let Some((policy, ref mut program)) = strategy.children_policy.get_mut(&child) {
-                let program = std::mem::take(program);
-                if let MotionPolicy::None = policy {
-                    children_with_motions.push(child);
-                } else {
-                    let motion_id = self.add_motion(child, policy, program)?;
-                    self.replace_target_in_relational(parent_id, child, motion_id)?;
-                    children_with_motions.push(motion_id);
-                }
-            } else {
-                children_with_motions.push(child);
+        let mut children_with_motions = children.to_vec();
+        for child in children_with_motions.iter_mut() {
+            let Some((policy, ref mut program)) = strategy.children_policy.get_mut(child) else {
+                continue;
+            };
+
+            if let MotionPolicy::None = policy {
+                continue;
             }
+
+            let program = std::mem::take(program);
+            let motion_id = self.add_motion(*child, policy, program)?;
+            self.replace_target_in_relational(parent_id, *child, motion_id)?;
+            *child = motion_id;
         }
         self.set_relational_children(parent_id, children_with_motions);
+
+        let subqueries = self.get_relation_subqueries(parent_id)?;
+        if subqueries.is_empty() {
+            return Ok(());
+        }
+
+        let mut subqueries_with_motion = subqueries.to_vec();
+        for sq in subqueries_with_motion.iter_mut() {
+            let Some((policy, ref mut program)) = strategy.children_policy.get_mut(sq) else {
+                continue;
+            };
+
+            if let MotionPolicy::None = policy {
+                continue;
+            }
+
+            let program = std::mem::take(program);
+            let motion_id = self.add_motion(*sq, policy, program)?;
+            self.replace_target_in_relational(parent_id, *sq, motion_id)?;
+            *sq = motion_id;
+        }
+        self.set_relational_subqueries(parent_id, subqueries_with_motion);
+
         Ok(())
     }
     /// Get `Relational::SubQuery` node that is referenced by passed `row_id`.
-    /// Only returns `SubQuery` that is an additional child of passed `rel_id` node.
-    fn get_additional_sq(
+    /// Only returns `SubQuery` that is a subquery of passed `rel_id` node.
+    fn get_sq_from_rel(
         &self,
         rel_id: NodeId,
         row_id: NodeId,
     ) -> Result<Option<NodeId>, SbroadError> {
         if self.get_expression_node(row_id)?.is_row() {
             if let Some(sq_id) = self.get_sub_query_from_row_node(row_id)? {
-                if self.is_additional_child_of_rel(rel_id, sq_id)? {
+                let subqueries = self.get_relation_subqueries(rel_id)?;
+                if subqueries.iter().any(|&c| c == sq_id) {
                     return Ok(Some(sq_id));
                 }
             }
@@ -811,8 +836,8 @@ impl Plan {
     ) -> Result<Vec<(NodeId, MotionPolicy)>, SbroadError> {
         let mut strategies: Vec<(NodeId, MotionPolicy)> = Vec::new();
         let bool_op = BoolOp::from_expr(self, op_id)?;
-        let left = self.get_additional_sq(rel_id, bool_op.left)?;
-        let right = self.get_additional_sq(rel_id, bool_op.right)?;
+        let left = self.get_sq_from_rel(rel_id, bool_op.left)?;
+        let right = self.get_sq_from_rel(rel_id, bool_op.right)?;
 
         // If we eq/in where both rows contain bucket_id in same position
         // we don't need Motion nodes.
@@ -887,7 +912,7 @@ impl Plan {
         };
 
         if let Unary::Exists = op {
-            let child_sq = self.get_additional_sq(rel_id, *child)?;
+            let child_sq = self.get_sq_from_rel(rel_id, *child)?;
             if let Some(child_sq) = child_sq {
                 if let Distribution::Global = self.get_rel_distribution(child_sq)? {
                     return Ok(Some((child_sq, MotionPolicy::None)));
@@ -1510,30 +1535,25 @@ impl Plan {
         }
 
         // Init the strategy (motion policy map) for all the join children except the outer child.
-        let join_children = self.get_join_children(rel_id)?;
+        let Relational::Join(Join {
+            left,
+            right,
+            subqueries,
+            ..
+        }) = self.get_relation_node(rel_id)?
+        else {
+            unreachable!("Relation should be Join")
+        };
         let mut strategy = Strategy::new(rel_id);
-        for child_id in &join_children[1..] {
+        for child_id in subqueries.iter().chain([right]) {
             if !matches!(self.get_rel_distribution(*child_id)?, Distribution::Global) {
                 strategy.upsert_child(*child_id, MotionPolicy::Full, Program::default());
             }
         }
 
         // Let's improve the full motion policy for the join children (sub-queries and the inner child).
-        let (inner_child, outer_child) = {
-            let outer = *join_children.get(0).ok_or_else(|| {
-                SbroadError::NotFound(
-                    Entity::Node,
-                    "that is Join node inner child with index 0.".into(),
-                )
-            })?;
-            let inner = *join_children.get(1).ok_or_else(|| {
-                SbroadError::NotFound(
-                    Entity::Node,
-                    "that is Join node inner child with index 1.".into(),
-                )
-            })?;
-            (inner, outer)
-        };
+        let outer_child = *left;
+        let inner_child = *right;
 
         let mut policy_map: AHashMap<NodeId, MotionPolicy> = AHashMap::new();
         let mut new_inner_policy = MotionPolicy::Full;
@@ -1724,7 +1744,7 @@ impl Plan {
                 }) = self.get_expression_node(node_id)?
                 {
                     for child_id in [left, right] {
-                        if let Some(sq_id) = self.get_additional_sq(rel_id, *child_id)? {
+                        if let Some(sq_id) = self.get_sq_from_rel(rel_id, *child_id)? {
                             if let Distribution::Segment { .. } | Distribution::Single =
                                 self.get_rel_distribution(sq_id)?
                             {
@@ -1849,21 +1869,17 @@ impl Plan {
         condition_id: NodeId,
         join_kind: &JoinKind,
     ) -> Result<Option<Strategy>, SbroadError> {
-        let (outer_id, inner_id) = {
-            let children = self.get_relation_children(join_id)?;
-            (
-                *children.get(0).ok_or_else(|| {
-                    SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                        "join {join_id:?} has no children!"
-                    ))
-                })?,
-                *children.get(1).ok_or_else(|| {
-                    SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                        "join {join_id:?} has one child!"
-                    ))
-                })?,
-            )
+        let Relational::Join(Join {
+            left,
+            right,
+            subqueries,
+            ..
+        }) = self.get_relation_node(join_id)?
+        else {
+            unreachable!("Relation should be Join")
         };
+        let outer_id = *left;
+        let inner_id = *right;
         let outer_dist = self.get_rel_distribution(outer_id)?;
         let inner_dist = self.get_rel_distribution(inner_id)?;
 
@@ -1876,7 +1892,7 @@ impl Plan {
 
         let mut strategy = Strategy::new(join_id);
 
-        for sq in &self.get_relation_children(join_id)?[2..] {
+        for sq in subqueries {
             // todo: improve subqueries motions
             strategy.upsert_child(*sq, MotionPolicy::Full, Program::default());
         }
@@ -2492,20 +2508,9 @@ impl Plan {
         to_skip: &AHashSet<NodeId>,
     ) -> Result<(), SbroadError> {
         let mut strategy = Strategy::new(rel_id);
-        let rel_required_children_len = self
-            .get_required_children_len(rel_id)?
-            .unwrap_or_else(|| panic!("Unexpected node to get required children number."));
-        let rel_children_len = self.get_relation_children(rel_id)?.len();
-        for sq_index in rel_required_children_len..rel_children_len {
-            let sq_id = match self.get_relation_node(rel_id)? {
-                Relational::Projection(Projection {
-                    group_by, having, ..
-                }) => match (*group_by, *having) {
-                    (None, None) => self.get_rel_child(rel_id, sq_index)?,
-                    (_, _) => self.get_rel_child(rel_id, sq_index + 1)?,
-                },
-                _ => self.get_rel_child(rel_id, sq_index)?,
-            };
+
+        let subqueries = self.get_relation_subqueries(rel_id)?.to_vec();
+        for sq_id in subqueries {
             if to_skip.contains(&sq_id) {
                 continue;
             }
@@ -2927,7 +2932,7 @@ impl Plan {
         }
 
         let slices = self.calculate_slices(top_id)?;
-        self.set_slices(slices);
+        self.slices = slices.into();
         Ok(self)
     }
 
@@ -2950,9 +2955,10 @@ impl Plan {
         let mut visited_motions_ids = AHashSet::with_capacity(REL_CAPACITY);
         for LevelNode(_, id) in dfs_tree.traverse_into_iter(top_id) {
             let rel = self.get_relation_node(id)?;
+            let subqueries_len = rel.subqueries().len();
 
             let mut max_motions_in_path = 0;
-            for _ in 0..rel.children_len() {
+            for _ in 0..rel.children_len() + subqueries_len {
                 // We can use unwrap here, because:
                 // 1. We traverse nodes in DFS, bottom up manner.
                 // So we will first iterate over node's children

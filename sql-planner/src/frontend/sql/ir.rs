@@ -287,7 +287,7 @@ impl SubtreeCloner {
             | ExprOwned::ScalarFunction(ScalarFunction {
                 ref mut children, ..
             }) => {
-                *children = self.copy_list(&*children)?;
+                *children = self.copy_list(children)?;
             }
         }
 
@@ -300,21 +300,9 @@ impl SubtreeCloner {
         let mut copied: RelOwned = old_relational.get_rel_owned();
 
         // All relational nodes have output and children lists, which must be copied.
-        // The exception is subqueries - we don't copy them and they will be added as is.
+        // We don't need to copy subqueries because we reuse them
         let children = old_relational.children().to_vec();
-        let mut additonal_index = None;
-        for (index, child) in children.iter().enumerate() {
-            if plan.is_additional_child_of_rel(id, *child)? {
-                additonal_index = Some(index);
-            }
-        }
-        let new_children = if let Some(additonal_index) = additonal_index {
-            let mut new_children = self.copy_list(&children[..additonal_index])?;
-            new_children.extend(children[additonal_index..].iter().clone());
-            new_children
-        } else {
-            self.copy_list(&children)?
-        };
+        let new_children = self.copy_list(&children)?;
         copied.set_children(new_children);
         let new_output_id = self.get_new_id(old_relational.output())?;
         *copied.mut_output() = new_output_id;
@@ -330,11 +318,12 @@ impl SubtreeCloner {
                 children: _,
             })
             | RelOwned::SelectWithoutScan(SelectWithoutScan {
-                children: _,
+                subqueries: _,
                 output: _,
             })
             | RelOwned::Projection(Projection {
-                children: _,
+                child: _,
+                subqueries: _,
                 windows: _,
                 output: _,
                 is_distinct: _,
@@ -403,17 +392,21 @@ impl SubtreeCloner {
                 output: _,
             }) => {}
             RelOwned::Selection(Selection {
-                children: _,
+                child: _,
+                subqueries: _,
                 filter,
                 output: _,
             })
             | RelOwned::Having(Having {
-                children: _,
+                child: _,
+                subqueries: _,
                 output: _,
                 filter,
             })
             | RelOwned::Join(Join {
-                children: _,
+                left: _,
+                right: _,
+                subqueries: _,
                 condition: filter,
                 output: _,
                 kind: _,
@@ -451,14 +444,16 @@ impl SubtreeCloner {
                 }
             }
             RelOwned::GroupBy(GroupBy {
-                children: _,
+                child: _,
+                subqueries: _,
                 gr_exprs,
                 output: _,
             }) => {
                 *gr_exprs = self.copy_list(gr_exprs)?;
             }
             RelOwned::OrderBy(OrderBy {
-                children: _,
+                child: _,
+                subqueries: _,
                 order_by_elements,
                 output: _,
             }) => {
@@ -483,7 +478,7 @@ impl SubtreeCloner {
             RelOwned::ValuesRow(ValuesRow {
                 output: _,
                 data,
-                children: _,
+                subqueries: _,
             }) => {
                 *data = self.get_new_id(*data)?;
             }

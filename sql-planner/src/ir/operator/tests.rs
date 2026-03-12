@@ -140,7 +140,7 @@ fn selection() {
     let gt_id = plan.nodes.add_bool(ref_row, Bool::Gt, const_row).unwrap();
 
     // Correct Selection operator
-    plan.add_select(&[scan_id], gt_id).unwrap();
+    plan.add_select(scan_id, gt_id).unwrap();
 
     // Non-trivalent filter
     assert_eq!(
@@ -148,7 +148,7 @@ fn selection() {
             Entity::Expression,
             Some("filter expression is not a trivalent expression.".into())
         ),
-        plan.add_select(&[scan_id], const_row).unwrap_err()
+        plan.add_select(scan_id, const_row).unwrap_err()
     );
 }
 

@@ -599,23 +599,19 @@ impl Plan {
     ) -> Result<Option<Distribution>, SbroadError> {
         let node = self.get_relation_node(node_id)?;
 
-        let required_children_len = self
-            .get_required_children_len(node_id)?
-            .unwrap_or_else(|| panic!("Unexpected node to get required children number: {node:?}"));
         // Check all required children have Global distribution.
-        for child_idx in 0..required_children_len {
-            let child_id = self.get_rel_child(node_id, child_idx)?;
-            let child_dist = self.get_rel_distribution(child_id)?;
+        for child_id in node.children().iter() {
+            let child_dist = self.get_rel_distribution(*child_id)?;
             if !matches!(child_dist, Distribution::Global) {
                 return Ok(None);
             }
         }
 
-        let children_len = node.children_len();
+        let subqueries = self.get_relation_subqueries(node_id)?;
+
         let mut suggested_dist = Some(Distribution::Global);
-        for sq_idx in required_children_len..children_len {
-            let sq_id = self.get_rel_child(node_id, sq_idx)?;
-            let sq_dist = self.get_rel_distribution(sq_id)?;
+        for sq_id in subqueries.iter() {
+            let sq_dist = self.get_rel_distribution(*sq_id)?;
             match sq_dist {
                 Distribution::Segment { .. } => {
                     suggested_dist = Some(Distribution::Any);

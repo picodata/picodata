@@ -1,4 +1,4 @@
-use std::ops::{Index, Range, RangeFrom, RangeFull};
+use std::ops::Index;
 
 use crate::ir::node::NodeId;
 
@@ -27,33 +27,6 @@ impl Index<usize> for Children<'_> {
             },
             Children::Many(i) => &i[idx],
         }
-    }
-}
-
-impl Index<Range<usize>> for Children<'_> {
-    type Output = [NodeId];
-
-    fn index(&self, range: Range<usize>) -> &Self::Output {
-        match self {
-            Children::Many(i) => &i[range],
-            _ => panic!("range indexing is only for nodes with additional children: Join, Selection, Having"),
-        }
-    }
-}
-
-impl Index<RangeFrom<usize>> for Children<'_> {
-    type Output = [NodeId];
-
-    fn index(&self, range: RangeFrom<usize>) -> &Self::Output {
-        &self[range.start..self.len()]
-    }
-}
-
-impl Index<RangeFull> for Children<'_> {
-    type Output = [NodeId];
-
-    fn index(&self, _: RangeFull) -> &Self::Output {
-        &self[0..self.len()]
     }
 }
 
@@ -137,7 +110,18 @@ impl<'c> Iterator for ChildrenIter<'c> {
         self.step += 1;
         Some(child)
     }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = match self.inner {
+            Children::None => 0,
+            Children::Single(_) => 1,
+            Children::Couple(_, _) => 2,
+            Children::Many(i) => i.len(),
+        };
+        let len = len.saturating_sub(self.step);
+        (len, Some(len))
+    }
 }
+impl ExactSizeIterator for ChildrenIter<'_> {}
 
 impl Children<'_> {
     #[must_use]
@@ -182,16 +166,6 @@ impl<'r> MutChildren<'r> {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
-    }
-
-    #[must_use]
-    pub fn to_vec(&self) -> Vec<NodeId> {
-        match self {
-            MutChildren::None => vec![],
-            MutChildren::Single(i) => vec![**i],
-            MutChildren::Couple(l, r) => vec![**l, **r],
-            MutChildren::Many(inner) => inner.to_vec(),
-        }
     }
 
     // TODO: change self to &mut self, rust somewhy tells that

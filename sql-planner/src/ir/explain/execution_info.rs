@@ -111,10 +111,11 @@ impl BucketsInfo {
         let mut cur_children_without_motions: Vec<NodeId> = Vec::new();
         for LevelNode(_, id) in dfs_tree.traverse_into_iter(top_id) {
             let rel = ir.get_relation_node(id)?;
+            let rel_deps_len = rel.children_len() + rel.subqueries().len();
 
             // true if this subtree has non-local motion
             let mut has_non_local_motion = false;
-            for _ in 0..rel.children_len() {
+            for _ in 0..rel_deps_len {
                 let (child_id, child_value) = stack.pop().expect("rel iter visits all children");
 
                 if !child_value {

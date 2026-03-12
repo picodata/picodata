@@ -732,6 +732,17 @@ impl ExecutionPlan {
                         }
                     }
 
+                    for subquery_id in rel.mut_subqueries() {
+                        *subquery_id = subtree_map.get_id(*subquery_id);
+
+                        let child_rel_node = new_plan.get_relation_node(*subquery_id)?;
+                        if let Relational::Motion(Motion { output, .. }) = child_rel_node {
+                            let motion_output_list: Vec<NodeId> =
+                                new_plan.get_row_list(*output)?.to_vec();
+                            rel_renamed_output_lists.insert(*subquery_id, motion_output_list);
+                        }
+                    }
+
                     if rel.has_output() {
                         let output = rel.mut_output();
                         *rel.mut_output() = subtree_map.get_id(*output);

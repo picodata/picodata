@@ -1409,7 +1409,8 @@ fn take_subtree_projection_windows_transfer() {
         let output = plan.nodes.add_row(vec![col_1], None);
 
         let projection = Projection {
-            children: vec![scan_relation],
+            child: Some(scan_relation),
+            subqueries: vec![],
             windows: vec![window],
             output,
             is_distinct: false,

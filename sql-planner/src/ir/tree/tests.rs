@@ -92,7 +92,7 @@ fn relational_post() {
     let a = plan.add_row_from_child(scan_t2_id, &["a"]).unwrap();
     let const1 = plan.add_const(Value::from(1_i64));
     let eq = plan.nodes.add_bool(a, Bool::Eq, const1).unwrap();
-    let selection_id = plan.add_select(&[scan_t2_id], eq).unwrap();
+    let selection_id = plan.add_select(scan_t2_id, eq).unwrap();
 
     let union_id = plan.add_union(scan_t1_id, selection_id, false).unwrap();
     plan.set_top(union_id).unwrap();
@@ -165,7 +165,7 @@ fn selection_subquery_dfs_post() {
     let b = plan.add_row_from_child(scan_t2_id, &["b"]).unwrap();
     let const1 = plan.add_const(Value::from(1));
     let eq_op = plan.nodes.add_bool(b, Bool::Eq, const1).unwrap();
-    let selection_t2_id = plan.add_select(&[scan_t2_id], eq_op).unwrap();
+    let selection_t2_id = plan.add_select(scan_t2_id, eq_op).unwrap();
     let proj_id = plan
         .add_proj(selection_t2_id, vec![], &["c"], false, false)
         .unwrap();
@@ -173,7 +173,11 @@ fn selection_subquery_dfs_post() {
     let c = plan.get_row_from_rel_node(sq_id).unwrap();
 
     let in_op = plan.nodes.add_bool(a, Bool::In, c).unwrap();
-    let selection_t1_id = plan.add_select(&[scan_t1_id, sq_id], in_op).unwrap();
+    let selection_t1_id = plan.add_select(scan_t1_id, in_op).unwrap();
+    {
+        let mut selection = plan.get_mut_relation_node(selection_t1_id).unwrap();
+        selection.add_sq_child(sq_id);
+    }
 
     plan.set_top(selection_t1_id).unwrap();
     let top = plan.get_top().unwrap();
@@ -241,7 +245,7 @@ fn subtree_dfs_post() {
     let a = plan.add_row_from_child(scan_t1_id, &["a"]).unwrap();
     let const1 = plan.add_const(Value::from(1_i64));
     let eq_op = plan.nodes.add_bool(a, Bool::Eq, const1).unwrap();
-    let selection_t1_id = plan.add_select(&[scan_t1_id], eq_op).unwrap();
+    let selection_t1_id = plan.add_select(scan_t1_id, eq_op).unwrap();
     let proj_id = plan
         .add_proj(selection_t1_id, vec![], &["c"], false, false)
         .unwrap();

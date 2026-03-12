@@ -278,7 +278,8 @@ impl Plan {
     ) -> Result<NodeId, SbroadError> {
         let final_output = self.add_row_for_output(child_id, &[], true, None)?;
         let groupby = GroupBy {
-            children: [child_id].to_vec(),
+            child: child_id,
+            subqueries: vec![],
             gr_exprs: grouping_exprs.to_vec(),
             output: final_output,
         };
@@ -624,12 +625,12 @@ impl Plan {
 
             let child = self.get_first_rel_child(groupby_info.id)?;
 
-            // Move scalar subqueries that came from DISTINCT qualifier to GroupBy children.
+            // Move scalar subqueries that came from DISTINCT qualifier to GroupBy subqueries.
             let groupby = self.get_mut_relation_node(groupby_info.id)?;
-            let MutRelational::GroupBy(GroupBy { children, .. }) = groupby else {
+            let MutRelational::GroupBy(GroupBy { subqueries, .. }) = groupby else {
                 unreachable!("GroupBy node should be met for groupby info")
             };
-            children.extend(scalar_sqs.iter());
+            subqueries.extend(scalar_sqs.iter());
 
             for gr_expr_local in &grouping_exprs_local {
                 self.set_target_in_subtree(*gr_expr_local, child)?;
@@ -815,8 +816,8 @@ impl Plan {
         let proj_output_cols = self.create_columns_for_local_proj(aggrs, groupby_info)?;
         let proj_output: NodeId = self.nodes.add_row(proj_output_cols, None);
 
-        let (mut children, having_id, group_by_id) = match self.get_relation_node(child)? {
-            Relational::GroupBy(_) => (vec![], None, Some(child)),
+        let (child_id, having_id, group_by_id) = match self.get_relation_node(child)? {
+            Relational::GroupBy(_) => (None, None, Some(child)),
             Relational::Having(_) => {
                 let having = child;
                 let group_by = self.get_first_rel_child(having)?;
@@ -826,18 +827,17 @@ impl Plan {
                         format_smolstr!("having for entire set group"),
                     ));
                 };
-                (vec![], Some(having), Some(group_by))
+                (None, Some(having), Some(group_by))
             }
-            _ => (vec![child], None, None),
+            _ => (Some(child), None, None),
         };
-
-        // Handle scalar subqueries which we have to move
-        // from final Projection to this local one.
-        children.extend(scalar_sqs.iter());
 
         let proj = Projection {
             output: proj_output,
-            children,
+            child: child_id,
+            // Handle scalar subqueries which we have to move
+            // from final Projection to this local one.
+            subqueries: scalar_sqs.iter().copied().collect(),
             windows: vec![],
             is_distinct: false,
             group_by: group_by_id,
@@ -906,7 +906,8 @@ impl Plan {
         let final_id = self.nodes.next_id(ArenaType::Arena64);
         let final_groupby = GroupBy {
             gr_exprs,
-            children: vec![upper_local_proj],
+            child: upper_local_proj,
+            subqueries: vec![],
             output,
         };
         self.add_relational(final_groupby.into())?;
@@ -1124,21 +1125,21 @@ impl Plan {
         };
 
         if let Some(having) = having {
-            if let Relational::Having(Having { children, .. }) = self.get_relation_node(having)? {
-                let filtered_children = filter(children);
+            if let Relational::Having(Having { subqueries, .. }) = self.get_relation_node(having)? {
+                let filtered_subqueries = filter(subqueries);
                 let mut having_node = self.get_mut_relation_node(having)?;
-                having_node.set_children(filtered_children);
+                having_node.set_subqueries(filtered_subqueries);
             } else {
                 unreachable!("expected Having IR node");
             }
         }
 
-        if let Relational::Projection(Projection { children, .. }) =
+        if let Relational::Projection(Projection { subqueries, .. }) =
             self.get_relation_node(final_proj)?
         {
-            let filtered_children = filter(children);
+            let filtered_subqueries = filter(subqueries);
             let mut proj_node = self.get_mut_relation_node(final_proj)?;
-            proj_node.set_children(filtered_children);
+            proj_node.set_subqueries(filtered_subqueries);
         } else {
             unreachable!("expected Projection IR node");
         }
@@ -1292,12 +1293,12 @@ impl Plan {
                 //
                 // Example: `select distinct a, b + 42 from t`.
                 if let MutRelational::Projection(Projection {
-                    group_by, children, ..
+                    group_by, child, ..
                 }) = self.get_mut_relation_node(final_proj)?
                 {
                     if group_by.is_none() {
-                        // Remove the first child because it is linked through the `distinct_group_by` GroupBy IR node
-                        children.remove(0);
+                        // Remove the child because it is linked through the `distinct_group_by` GroupBy IR node
+                        *child = None;
                     }
                     *group_by = Some(distinct_group_by);
                 }

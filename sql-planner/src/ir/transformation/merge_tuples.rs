@@ -297,21 +297,16 @@ impl Plan {
         right: &[NodeId],
     ) -> Result<Option<GroupedRows>, SbroadError> {
         let parent_node = self.get_relation_node(parent_id)?;
-        let Relational::Join(Join { children, .. }) = parent_node else {
+        let Relational::Join(Join {
+            left: first_child_target,
+            right: second_child_target,
+            ..
+        }) = parent_node
+        else {
             return Ok(None);
         };
-        let first_child_target: NodeId = *children.first().ok_or_else(|| {
-            SbroadError::Invalid(
-                Entity::Relational,
-                Some(format_smolstr!("cannot get first join child")),
-            )
-        })?;
-        let second_child_target: NodeId = *children.get(1).ok_or_else(|| {
-            SbroadError::Invalid(
-                Entity::Relational,
-                Some(format_smolstr!("cannot get second join child")),
-            )
-        })?;
+        let first_child_target: NodeId = *first_child_target;
+        let second_child_target: NodeId = *second_child_target;
 
         // First check that we are in join
         let contains_join_refs = |row: &[NodeId]| -> bool {

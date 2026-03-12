@@ -2044,11 +2044,6 @@ impl Plan {
 
         Ok(!should_not_cover)
     }
-
-    /// Set slices of the plan.
-    pub fn set_slices(&mut self, slices: Vec<Vec<NodeId>>) {
-        self.slices = slices.into();
-    }
 }
 
 impl Plan {
@@ -2156,10 +2151,14 @@ impl ShardColumnsMap {
         }
 
         let children = node.children();
-        if children.is_empty() {
+        let subqueries = node.subqueries();
+        if children.is_empty() && subqueries.is_empty() {
             return Ok(());
         };
-        let children_contain_shard_positions = children.iter().any(|c| self.memo.contains_key(c));
+        let children_contain_shard_positions = children
+            .iter()
+            .chain(subqueries.iter())
+            .any(|c| self.memo.contains_key(c));
         if !children_contain_shard_positions {
             // The children do not contain any shard columns, no need to check
             // the output.

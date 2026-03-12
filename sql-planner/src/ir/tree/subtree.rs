@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::cmp::Ordering;
 
 use super::{PlanTreeIterator, Snapshot, TreeIterator};
 use crate::ir::node::expression::Expression;
@@ -331,7 +330,8 @@ fn subtree_next<'plan>(
             },
             Node::Relational(r) => match r {
                 Relational::Join(Join {
-                    children,
+                    left,
+                    right,
                     condition,
                     output,
                     ..
@@ -339,17 +339,16 @@ fn subtree_next<'plan>(
                     let step = *iter.get_child().borrow();
 
                     *iter.get_child().borrow_mut() += 1;
-                    match step.cmp(&2) {
-                        Ordering::Less => {
-                            return children.get(step).copied();
-                        }
-                        Ordering::Equal => match snapshot {
+                    match step {
+                        0 => Some(*left),
+                        1 => Some(*right),
+                        2 => match snapshot {
                             Snapshot::Latest => Some(*condition),
                             Snapshot::Oldest => {
                                 return Some(*iter.get_plan().undo.get_oldest(condition));
                             }
                         },
-                        Ordering::Greater => {
+                        _ => {
                             if step == 3 && iter.need_output() {
                                 return Some(*output);
                             }
@@ -364,12 +363,17 @@ fn subtree_next<'plan>(
                 | Relational::Union(Union { output, .. })
                 | Relational::UnionAll(UnionAll { output, .. }) => {
                     let step = *iter.get_child().borrow();
-                    let children = r.children();
                     *iter.get_child().borrow_mut() += 1;
+                    let children = r.children();
                     if step < children.len() {
                         return children.get(step).copied();
                     }
-                    if iter.need_output() && step == children.len() {
+                    let step = step - children.len();
+                    let subqueries = r.subqueries();
+                    if step < subqueries.len() {
+                        return subqueries.get(step).copied();
+                    }
+                    if iter.need_output() && step == subqueries.len() {
                         return Some(*output);
                     }
                     None
@@ -403,7 +407,7 @@ fn subtree_next<'plan>(
                     None
                 }
                 Relational::GroupBy(GroupBy {
-                    children,
+                    child,
                     output,
                     gr_exprs,
                     ..
@@ -411,7 +415,7 @@ fn subtree_next<'plan>(
                     let step = *iter.get_child().borrow();
                     if step == 0 {
                         *iter.get_child().borrow_mut() += 1;
-                        return children.get(step).copied();
+                        return Some(*child);
                     }
                     let col_idx = step - 1;
                     if col_idx < gr_exprs.len() {
@@ -425,7 +429,7 @@ fn subtree_next<'plan>(
                     None
                 }
                 Relational::OrderBy(OrderBy {
-                    children,
+                    child,
                     output,
                     order_by_elements,
                     ..
@@ -433,7 +437,7 @@ fn subtree_next<'plan>(
                     let step = *iter.get_child().borrow();
                     if step == 0 {
                         *iter.get_child().borrow_mut() += 1;
-                        return children.get(step).copied();
+                        return Some(*child);
                     }
                     let mut col_idx = step - 1;
                     while col_idx < order_by_elements.len() {
@@ -484,32 +488,38 @@ fn subtree_next<'plan>(
                 }
                 Relational::Values(Values {
                     output, children, ..
-                })
-                | Relational::SelectWithoutScan(SelectWithoutScan {
-                    output, children, ..
                 }) => {
                     let step = *iter.get_child().borrow();
                     *iter.get_child().borrow_mut() += 1;
+
+                    let once_output = std::iter::once(*output);
+                    let children_iter = children.iter().copied();
+
                     if iter.output_first() {
-                        if step == 0 {
-                            return Some(*output);
-                        }
-                        if step <= children.len() {
-                            return children.get(step - 1).copied();
-                        }
+                        once_output.chain(children_iter).nth(step)
                     } else {
-                        if step < children.len() {
-                            return children.get(step).copied();
-                        }
-                        if step == children.len() {
-                            return Some(*output);
-                        }
+                        children_iter.chain(once_output).nth(step)
                     }
-                    None
+                }
+                Relational::SelectWithoutScan(SelectWithoutScan {
+                    output, subqueries, ..
+                }) => {
+                    let step = *iter.get_child().borrow();
+                    *iter.get_child().borrow_mut() += 1;
+
+                    let once_output = std::iter::once(*output);
+                    let sub_iter = subqueries.iter().copied();
+
+                    if iter.output_first() {
+                        once_output.chain(sub_iter).nth(step)
+                    } else {
+                        sub_iter.chain(once_output).nth(step)
+                    }
                 }
                 Relational::Projection(Projection {
                     output,
-                    children,
+                    child,
+                    subqueries,
                     group_by,
                     having,
                     ..
@@ -533,13 +543,22 @@ fn subtree_next<'plan>(
                             return *group_by;
                         }
                         step_shift += 1;
+                    } else if child.is_some() {
+                        if step - step_shift == 0 {
+                            return *child;
+                        }
+                        step_shift += 1;
+                    } else {
+                        unreachable!("nothing was set");
                     }
-                    let child_idx = step - step_shift;
-                    if child_idx < children.len() {
-                        return children.get(child_idx).copied();
-                    } else if !iter.output_first() && child_idx == children.len() {
+
+                    let subquery_idx = step - step_shift;
+                    if subquery_idx < subqueries.len() {
+                        return subqueries.get(subquery_idx).copied();
+                    } else if !iter.output_first() && subquery_idx == subqueries.len() {
                         return Some(*output);
                     }
+
                     None
                 }
                 Relational::Update(Update { output, child, .. }) => {
@@ -567,30 +586,32 @@ fn subtree_next<'plan>(
                     None
                 }
                 Relational::Selection(Selection {
-                    children,
+                    child,
+                    subqueries: _,
                     filter,
                     output,
                     ..
                 })
                 | Relational::Having(Having {
-                    children,
+                    child,
+                    subqueries: _,
                     filter,
                     output,
                 }) => {
                     let step = *iter.get_child().borrow();
 
                     *iter.get_child().borrow_mut() += 1;
-                    match step.cmp(&1) {
-                        Ordering::Less => {
-                            return children.get(step).copied();
+                    match step {
+                        0 => {
+                            return Some(*child);
                         }
-                        Ordering::Equal => match snapshot {
+                        1 => match snapshot {
                             Snapshot::Latest => Some(*filter),
                             Snapshot::Oldest => {
                                 return Some(*iter.get_plan().undo.get_oldest(filter));
                             }
                         },
-                        Ordering::Greater => {
+                        _ => {
                             if step == 2 && iter.need_output() {
                                 return Some(*output);
                             }

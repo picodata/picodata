@@ -84,15 +84,23 @@ fn relational_next<'nodes>(iter: &mut impl RelationalTreeIterator<'nodes>) -> Op
                 | Relational::Values { .. }
                 | Relational::ValuesRow { .. }) => {
                     let step = *iter.get_child().borrow();
+                    *iter.get_child().borrow_mut() += 1;
                     let children = node.children();
                     if step < children.len() {
-                        *iter.get_child().borrow_mut() += 1;
                         return children.get(step).copied();
                     }
+
+                    let step = step - children.len();
+                    let subqueries = node.subqueries();
+                    if step < subqueries.len() {
+                        return subqueries.get(step).copied();
+                    }
+
                     None
                 }
                 Relational::Projection(Projection {
-                    children,
+                    child,
+                    subqueries,
                     group_by,
                     having,
                     ..
@@ -110,10 +118,17 @@ fn relational_next<'nodes>(iter: &mut impl RelationalTreeIterator<'nodes>) -> Op
                             return *group_by;
                         }
                         step_shift += 1;
+                    } else if child.is_some() {
+                        if step - step_shift == 0 {
+                            return *child;
+                        }
+                        step_shift += 1;
+                    } else {
+                        unreachable!("nothing was set");
                     }
-                    let child_idx = step - step_shift;
-                    if child_idx < children.len() {
-                        return children.get(child_idx).copied();
+                    let subqueries_idx = step - step_shift;
+                    if subqueries_idx < subqueries.len() {
+                        return subqueries.get(subqueries_idx).copied();
                     }
                     None
                 }

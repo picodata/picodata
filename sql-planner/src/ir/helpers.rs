@@ -430,7 +430,8 @@ impl Plan {
                         }
                     }
                     Relational::Selection(Selection {
-                        children: _,
+                        child: _,
+                        subqueries: _,
                         filter,
                         output: _,
                     }) => {
@@ -545,6 +546,18 @@ impl Plan {
                     }
                     Relational::ScanRelation { .. } => {
                         writeln_with_tabulation(buf, tabulation_number + 1, "[No children]")?;
+                    }
+                }
+                // Print subqueries.
+                let subqueries = relation.subqueries();
+                if !subqueries.is_empty() {
+                    writeln_with_tabulation(buf, tabulation_number + 1, "Subqueries:")?;
+                    for subquery in &subqueries {
+                        writeln_with_tabulation(
+                            buf,
+                            tabulation_number + 2,
+                            format!("Subquery_id = {subquery}").as_str(),
+                        )?;
                     }
                 }
                 // Print output.

@@ -657,7 +657,8 @@ impl Plan {
         }
         let proj_output = self.nodes.add_row(projection_cols, None);
         let proj_node = Projection {
-            children: vec![rel_child_id],
+            child: Some(rel_child_id),
+            subqueries: vec![],
             windows: vec![],
             output: proj_output,
             is_distinct: false,
@@ -834,7 +835,9 @@ impl Plan {
 
         let output = self.add_row_for_join(left, right)?;
         let join = Join {
-            children: vec![left, right],
+            left,
+            right,
+            subqueries: Vec::new(),
             condition,
             output,
             kind,
@@ -952,20 +955,21 @@ impl Plan {
     ) -> Result<NodeId, SbroadError> {
         let output = self.add_row_for_output(child, col_names, needs_shard_col, None)?;
 
-        let (children, having_id, group_by_id) = match self.get_relation_node(child)? {
-            Relational::GroupBy(_) => (vec![], None, Some(child)),
+        let (child_id, having_id, group_by_id) = match self.get_relation_node(child)? {
+            Relational::GroupBy(_) => (None, None, Some(child)),
             Relational::Having(_) => {
                 let gb_id = self.get_first_rel_child(child)?;
                 match self.get_relation_node(gb_id)? {
-                    Relational::GroupBy(_) => (vec![], Some(child), Some(gb_id)),
-                    _ => (vec![], Some(child), None),
+                    Relational::GroupBy(_) => (None, Some(child), Some(gb_id)),
+                    _ => (None, Some(child), None),
                 }
             }
-            _ => (vec![child], None, None),
+            _ => (Some(child), None, None),
         };
 
         let proj = Projection {
-            children,
+            child: child_id,
+            subqueries: vec![],
             windows,
             output,
             is_distinct,
@@ -1086,20 +1090,21 @@ impl Plan {
             }
         };
 
-        let (children, having_id, group_by_id) = match self.get_relation_node(child_rel_id)? {
-            Relational::GroupBy(_) => (vec![], None, Some(child_rel_id)),
+        let (child_id, having_id, group_by_id) = match self.get_relation_node(child_rel_id)? {
+            Relational::GroupBy(_) => (None, None, Some(child_rel_id)),
             Relational::Having(_) => {
                 let gb_id = self.get_first_rel_child(child_rel_id)?;
                 match self.get_relation_node(gb_id)? {
-                    Relational::GroupBy(_) => (vec![], Some(child_rel_id), Some(gb_id)),
-                    _ => (vec![], Some(child_rel_id), None),
+                    Relational::GroupBy(_) => (None, Some(child_rel_id), Some(gb_id)),
+                    _ => (None, Some(child_rel_id), None),
                 }
             }
-            _ => (vec![child_rel_id], None, None),
+            _ => (Some(child_rel_id), None, None),
         };
 
         let proj = Projection {
-            children,
+            child: child_id,
+            subqueries: vec![],
             windows: vec![],
             output,
             is_distinct,
@@ -1118,37 +1123,28 @@ impl Plan {
     /// - columns are not aliases or have duplicate names
     pub fn add_proj_internal(
         &mut self,
-        children: Vec<NodeId>,
+        child: NodeId,
         columns: &[NodeId],
         is_distinct: bool,
         windows: Vec<NodeId>,
     ) -> Result<NodeId, SbroadError> {
         let output = self.nodes.add_row(columns.to_vec(), None);
 
-        let child = *children
-            .first()
-            .expect("Projection expected to have at least one child");
-
-        let (having_id, group_by_id) = match self.get_relation_node(child)? {
-            Relational::GroupBy(_) => (None, Some(child)),
+        let (child_id, having_id, group_by_id) = match self.get_relation_node(child)? {
+            Relational::GroupBy(_) => (None, None, Some(child)),
             Relational::Having(_) => {
                 let gb_id = self.get_first_rel_child(child)?;
                 match self.get_relation_node(gb_id)? {
-                    Relational::GroupBy(_) => (Some(child), Some(gb_id)),
-                    _ => (Some(child), None),
+                    Relational::GroupBy(_) => (None, Some(child), Some(gb_id)),
+                    _ => (None, Some(child), None),
                 }
             }
-            _ => (None, None),
+            _ => (Some(child), None, None),
         };
 
         let proj = Projection {
-            children: match (having_id, group_by_id) {
-                (None, None) => children,
-                _ => {
-                    let (_, sqs) = children.split_first().expect("expected to be non-empty");
-                    sqs.to_vec()
-                }
-            },
+            child: child_id,
+            subqueries: vec![],
             windows,
             output,
             is_distinct,
@@ -1168,7 +1164,7 @@ impl Plan {
     pub fn add_select_without_scan(&mut self, columns: &[NodeId]) -> Result<NodeId, SbroadError> {
         let output = self.nodes.add_row(columns.to_vec(), None);
         let sel = SelectWithoutScan {
-            children: vec![],
+            subqueries: vec![],
             output,
         };
 
@@ -1210,15 +1206,10 @@ impl Plan {
                 // Try to retrieve GroupBy node and its first child (target)
                 let group_by_node = self.get_relation_node(group_by_id)?;
                 if let Relational::GroupBy(GroupBy {
-                    gr_exprs, children, ..
+                    gr_exprs, child, ..
                 }) = group_by_node
                 {
-                    (
-                        gr_exprs,
-                        *children
-                            .first()
-                            .expect("at least one child expected in group by"),
-                    )
+                    (gr_exprs, *child)
                 } else {
                     continue;
                 }
@@ -1390,15 +1381,7 @@ impl Plan {
     ///
     /// # Panics
     /// - `children` is empty
-    pub fn add_select(
-        &mut self,
-        children: &[NodeId],
-        filter: NodeId,
-    ) -> Result<NodeId, SbroadError> {
-        let first_child: NodeId = *children
-            .first()
-            .expect("No children passed to `add_select`");
-
+    pub fn add_select(&mut self, child: NodeId, filter: NodeId) -> Result<NodeId, SbroadError> {
         if !self.is_trivalent(filter)? {
             return Err(SbroadError::Invalid(
                 Entity::Expression,
@@ -1406,9 +1389,10 @@ impl Plan {
             ));
         }
 
-        let output = self.add_row_for_output(first_child, &[], true, None)?;
+        let output = self.add_row_for_output(child, &[], true, None)?;
         let select = Selection {
-            children: children.into(),
+            child,
+            subqueries: Vec::new(),
             filter,
             output,
         };
@@ -1423,20 +1407,7 @@ impl Plan {
     /// - filter expression is not boolean
     /// - children nodes are not relational
     /// - first child output tuple is not valid
-    pub fn add_having(
-        &mut self,
-        children: &[NodeId],
-        filter: NodeId,
-    ) -> Result<NodeId, SbroadError> {
-        let first_child: NodeId = match children.len() {
-            0 => {
-                return Err(SbroadError::UnexpectedNumberOfValues(
-                    "children list is empty".into(),
-                ))
-            }
-            _ => children[0],
-        };
-
+    pub fn add_having(&mut self, child: NodeId, filter: NodeId) -> Result<NodeId, SbroadError> {
         if !self.is_trivalent(filter)? {
             return Err(SbroadError::Invalid(
                 Entity::Expression,
@@ -1444,16 +1415,10 @@ impl Plan {
             ));
         }
 
-        for child in children {
-            if let Node::Relational(_) = self.get_node(*child)? {
-            } else {
-                return Err(SbroadError::Invalid(Entity::Relational, None));
-            }
-        }
-
-        let output = self.add_row_for_output(first_child, &[], true, None)?;
+        let output = self.add_row_for_output(child, &[], true, None)?;
         let having = Having {
-            children: children.into(),
+            child,
+            subqueries: Vec::new(),
             filter,
             output,
         };
@@ -1480,7 +1445,8 @@ impl Plan {
     ) -> Result<(NodeId, NodeId), SbroadError> {
         let output = self.add_row_for_output(child, &[], true, None)?;
         let order_by = OrderBy {
-            children: vec![child],
+            child,
+            subqueries: vec![],
             output,
             order_by_elements: order_by_elements.clone(),
         };
@@ -1666,7 +1632,7 @@ impl Plan {
         let values_row = ValuesRow {
             output,
             data: expr_row_id,
-            children: vec![],
+            subqueries: vec![],
         };
         self.add_relational(values_row.into())
     }
@@ -1793,6 +1759,14 @@ impl Plan {
         }
     }
 
+    pub fn get_relation_subqueries(&self, rel_id: NodeId) -> Result<Children<'_>, SbroadError> {
+        if let Node::Relational(_) = self.get_node(rel_id)? {
+            self.subqueries(rel_id)
+        } else {
+            panic!("Expected relational node for getting children.")
+        }
+    }
+
     /// Gets child with specified index
     ///
     /// # Errors
@@ -1806,10 +1780,20 @@ impl Plan {
             Relational::Projection(Projection {
                 having,
                 group_by,
-                children,
+                child,
                 ..
             }) => match (having, group_by) {
-                (None, None) => Ok(children[child_idx]),
+                (None, None) => {
+                    if child_idx == 0 {
+                        if let Some(child) = child {
+                            Ok(*child)
+                        } else {
+                            unreachable!("only 1 child can be in Projection");
+                        }
+                    } else {
+                        unreachable!("only 1 child can be in Projection")
+                    }
+                }
                 _ => {
                     if child_idx == 0 {
                         if let Some(having) = having {
@@ -1819,8 +1803,14 @@ impl Plan {
                         } else {
                             unreachable!("either Having or GroupBy must exist");
                         }
+                    } else if child_idx == 1 {
+                        if let Some(child) = child {
+                            Ok(*child)
+                        } else {
+                            unreachable!("only 1 child can be in Projection with group by");
+                        }
                     } else {
-                        Ok(children[child_idx - 1])
+                        unreachable!("only 1 or 2 child can be in Projection with group by");
                     }
                 }
             },
@@ -1848,34 +1838,6 @@ impl Plan {
 			.get_mut(child_idx)
 			.unwrap_or_else(|| panic!("cannot access child with index {child_idx} in Relational IR node with id: {rel_id}")) = val;
         Ok(())
-    }
-
-    /// Some nodes (like Having, Selection, Join),
-    /// may have 0 or more subqueries in addition to
-    /// their required children. This is a helper method
-    /// to return the number of required children.
-    ///
-    /// # Errors
-    /// - Node is not Join, Having, Selection
-    pub fn get_required_children_len(&self, rel_id: NodeId) -> Result<Option<usize>, SbroadError> {
-        let rel_node = self.get_relation_node(rel_id)?;
-        let len = match rel_node {
-            Relational::Join(_) => 2,
-            Relational::Having(_)
-            | Relational::Selection(_)
-            | Relational::Projection(Projection {
-                having: None,
-                group_by: None,
-                ..
-            })
-            | Relational::GroupBy(_)
-            | Relational::OrderBy(_) => 1,
-            Relational::Projection(_)
-            | Relational::ValuesRow(_)
-            | Relational::SelectWithoutScan(_) => 0,
-            _ => return Ok(None),
-        };
-        Ok(Some(len))
     }
 
     /// Finds the parent of the given relational node.
@@ -2035,6 +1997,16 @@ impl Plan {
         }
     }
 
+    pub fn set_relational_subqueries(&mut self, rel_id: NodeId, subqueries: Vec<NodeId>) {
+        if let MutNode::Relational(ref mut rel) =
+            self.get_mut_node(rel_id).expect("Rel node must be valid.")
+        {
+            rel.set_subqueries(subqueries);
+        } else {
+            panic!("Expected relational node for {rel_id}.");
+        }
+    }
+
     /// Get relational Scan name that given `output_alias_position` (`Expression::Alias`)
     /// references to.
     ///
@@ -2111,26 +2083,6 @@ impl Plan {
         }
     }
 
-    /// Checks that the sub-query is an additional child of the parent relational node.
-    ///
-    /// # Errors
-    /// - If the node is not relational.
-    pub fn is_additional_child_of_rel(
-        &self,
-        rel_id: NodeId,
-        sq_id: NodeId,
-    ) -> Result<bool, SbroadError> {
-        let children = self.get_relation_children(rel_id)?;
-        let to_skip = self.get_required_children_len(rel_id)?;
-        let Some(to_skip) = to_skip else {
-            return Ok(false);
-        };
-        if children.iter().skip(to_skip).any(|&c| c == sq_id) {
-            return Ok(true);
-        }
-        Ok(false)
-    }
-
     /// Get `Motion`'s node policy
     ///
     /// # Errors
@@ -2162,23 +2114,56 @@ impl Plan {
                 child: Some(child), ..
             })
             | Relational::Insert(Insert { child, .. })
-            | Relational::ScanSubQuery(ScanSubQuery { child, .. }) => Children::Single(child),
+            | Relational::ScanSubQuery(ScanSubQuery { child, .. })
+            | Relational::Having(Having { child, .. })
+            | Relational::Selection(Selection { child, .. })
+            | Relational::GroupBy(GroupBy { child, .. })
+            | Relational::OrderBy(OrderBy { child, .. }) => Children::Single(child),
             Relational::Except(Except { left, right, .. })
             | Relational::Intersect(Intersect { left, right, .. })
             | Relational::UnionAll(UnionAll { left, right, .. })
-            | Relational::Union(Union { left, right, .. }) => Children::Couple(left, right),
-            Relational::GroupBy(GroupBy { children, .. })
-            | Relational::Join(Join { children, .. })
-            | Relational::Having(Having { children, .. })
-            | Relational::OrderBy(OrderBy { children, .. })
-            | Relational::Projection(Projection { children, .. })
-            | Relational::Selection(Selection { children, .. })
-            | Relational::SelectWithoutScan(SelectWithoutScan { children, .. })
-            | Relational::ValuesRow(ValuesRow { children, .. })
-            | Relational::Values(Values { children, .. }) => Children::Many(children),
+            | Relational::Union(Union { left, right, .. })
+            | Relational::Join(Join { left, right, .. }) => Children::Couple(left, right),
+            Relational::Values(Values { children, .. }) => Children::Many(children),
             Relational::Motion(Motion { child: None, .. })
             | Relational::Delete(Delete { child: None, .. })
-            | Relational::ScanRelation(_) => Children::None,
+            | Relational::ScanRelation(_)
+            | Relational::SelectWithoutScan(_)
+            | Relational::ValuesRow(_)
+            | Relational::Projection(Projection { child: None, .. }) => Children::None,
+            Relational::Projection(Projection {
+                child,
+                group_by,
+                having,
+                ..
+            }) => {
+                if group_by.is_some() || having.is_some() {
+                    Children::None
+                } else if child.is_some() {
+                    Children::Single(child.as_ref().unwrap())
+                } else {
+                    unreachable!("nothing was set")
+                }
+            }
+        }
+    }
+
+    // Gets an immutable reference to the subqueries nodes.
+    /// # Panics
+    pub fn subqueries(&self, rel_id: NodeId) -> Result<Children<'_>, SbroadError> {
+        let node = self.get_relation_node(rel_id)?;
+        match node {
+            Relational::Join(Join { subqueries, .. })
+            | Relational::Having(Having { subqueries, .. })
+            | Relational::Selection(Selection { subqueries, .. })
+            | Relational::SelectWithoutScan(SelectWithoutScan { subqueries, .. })
+            | Relational::ValuesRow(ValuesRow { subqueries, .. })
+            | Relational::GroupBy(GroupBy { subqueries, .. })
+            | Relational::OrderBy(OrderBy { subqueries, .. })
+            | Relational::Projection(Projection { subqueries, .. }) => {
+                Ok(Children::Many(subqueries))
+            }
+            _ => Ok(Children::None),
         }
     }
 }

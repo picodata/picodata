@@ -1166,12 +1166,8 @@ impl<'p> SyntaxPlan<'p> {
 
     fn add_selection_having(&mut self, id: NodeId) {
         let (plan, rel) = self.prologue_rel(id);
-        let (Relational::Selection(Selection {
-            children, filter, ..
-        })
-        | Relational::Having(Having {
-            children, filter, ..
-        })) = rel
+        let (Relational::Selection(Selection { child, filter, .. })
+        | Relational::Having(Having { child, filter, .. })) = rel
         else {
             panic!("Expected FILTER node");
         };
@@ -1180,7 +1176,7 @@ impl<'p> SyntaxPlan<'p> {
             Snapshot::Latest => *filter,
             Snapshot::Oldest => *plan.undo.get_oldest(filter),
         };
-        let child_plan_id = *children.first().expect("FILTER child");
+        let child_plan_id = *child;
         let filter_sn_id = self.pop_from_stack(filter_id, id);
         let child_sn_id = self.pop_from_stack(child_plan_id, id);
         let right = vec![filter_sn_id];
@@ -1191,12 +1187,12 @@ impl<'p> SyntaxPlan<'p> {
     fn add_group_by(&mut self, id: NodeId) {
         let (_, gb) = self.prologue_rel(id);
         let Relational::GroupBy(GroupBy {
-            children, gr_exprs, ..
+            child, gr_exprs, ..
         }) = gb
         else {
             panic!("Expected GROUP BY node");
         };
-        let child_plan_id = *children.first().expect("GROUP BY child");
+        let child_plan_id = *child;
         // The columns on the stack are in reverse order.
         let plan_gr_exprs = gr_exprs.iter().rev().copied().collect::<Vec<_>>();
         let mut syntax_gr_exprs = Vec::with_capacity(plan_gr_exprs.len());
@@ -1223,7 +1219,8 @@ impl<'p> SyntaxPlan<'p> {
     fn add_join(&mut self, id: NodeId) {
         let (plan, join) = self.prologue_rel(id);
         let Relational::Join(Join {
-            children,
+            left,
+            right,
             condition,
             ..
         }) = join
@@ -1234,8 +1231,8 @@ impl<'p> SyntaxPlan<'p> {
             Snapshot::Latest => *condition,
             Snapshot::Oldest => *plan.undo.get_oldest(condition),
         };
-        let inner_plan_id = *children.get(1).expect("JOIN inner child");
-        let outer_plan_id = *children.first().expect("JOIN outer child");
+        let inner_plan_id = *right;
+        let outer_plan_id = *left;
         let cond_sn_id = self.pop_from_stack(cond_plan_id, id);
         let inner_sn_id = self.pop_from_stack(inner_plan_id, id);
         let outer_sn_id = self.pop_from_stack(outer_plan_id, id);
@@ -1405,15 +1402,13 @@ impl<'p> SyntaxPlan<'p> {
         let (_, order_by) = self.prologue_rel(id);
         let Relational::OrderBy(OrderBy {
             order_by_elements,
-            children,
+            child,
             ..
         }) = order_by
         else {
             panic!("expect ORDER BY node");
         };
-        let child_plan_id = *children
-            .first()
-            .expect("OrderBy must have first relational child.");
+        let child_plan_id = *child;
         let mut elems = order_by_elements.clone();
 
         let children = self.order_by_elements_sn_nodes(&mut elems, id);
@@ -1427,20 +1422,22 @@ impl<'p> SyntaxPlan<'p> {
     fn add_select_without_scan(&mut self, id: NodeId) {
         let (_, proj) = self.prologue_rel(id);
         let Relational::SelectWithoutScan(SelectWithoutScan {
-            children, output, ..
+            subqueries, output, ..
         }) = proj
         else {
             panic!("Expected SelectWithoutScan node");
         };
         let output = *output;
 
-        // We can't hold onto children, because
+        // We can't hold onto subqueries, because
         // we mutate self, so use indices
-        for child_idx in (0..children.len()).rev() {
-            let sq_id = self
+        for child_idx in (0..subqueries.len()).rev() {
+            let sq_id = *self
                 .plan
                 .get_ir_plan()
-                .get_rel_child(id, child_idx)
+                .get_relation_subqueries(id)
+                .expect("node should be in plan")
+                .get(child_idx)
                 .expect("node can't change between iters");
             // Pop sq from the stack and do nothing with them.
             // We've already handled them as a part of the `output`.
@@ -1468,23 +1465,15 @@ impl<'p> SyntaxPlan<'p> {
     fn add_proj(&mut self, id: NodeId) {
         let (_, proj) = self.prologue_rel(id);
         let Relational::Projection(Projection {
-            children, output, ..
+            subqueries, output, ..
         }) = proj
         else {
             panic!("Expected PROJECTION node");
         };
         let output = *output;
-        let children = children.clone();
+        let subqueries = subqueries.clone();
 
-        let required_children_cnt = {
-            let err_msg = "Projection IR node expected to have required children count";
-            self.plan
-                .get_ir_plan()
-                .get_required_children_len(id)
-                .expect(err_msg)
-                .unwrap_or_else(|| unreachable!("{err_msg}"))
-        };
-        for sq_id in children.iter().skip(required_children_cnt).rev() {
+        for sq_id in subqueries.iter().rev() {
             // Pop sq from the stack and do nothing with them.
             // We've already handled them as a part of the `output`.
             self.pop_from_stack(*sq_id, id);

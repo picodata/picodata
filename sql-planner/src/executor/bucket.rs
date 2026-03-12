@@ -269,6 +269,7 @@ where
         &self,
         expr_id: NodeId,
         rel_children: &[NodeId],
+        subqueries: &[NodeId],
     ) -> Result<Buckets, SbroadError> {
         let ir_plan = self.exec_plan.get_ir_plan();
         let chains = ir_plan.get_dnf_chains(expr_id)?;
@@ -292,7 +293,7 @@ where
         // otherwise we should use Buckets::Any.
         let default_buckets = {
             let mut default_buckets = Buckets::Any;
-            for child_id in rel_children {
+            for child_id in rel_children.iter().chain(subqueries) {
                 let child_dist = ir_plan.get_rel_distribution(*child_id)?;
                 if matches!(child_dist, Distribution::Any | Distribution::Segment { .. }) {
                     default_buckets = Buckets::All;
@@ -673,20 +674,15 @@ where
                     self.bucket_map.insert(*output, buckets);
                 }
                 Relational::Selection(Selection {
-                    children,
+                    child,
+                    subqueries,
                     filter,
                     output,
                     ..
                 }) => {
                     // We need to get the buckets of the child node for the case
                     // when the filter returns no buckets to reduce.
-                    let child_id = children.first().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "current node should have exactly one child".to_smolstr(),
-                        )
-                    })?;
-
-                    let child_rel = ir_plan.get_relation_node(*child_id)?;
+                    let child_rel = ir_plan.get_relation_node(*child)?;
                     let child_buckets = self
                         .bucket_map
                         .get(&child_rel.output())
@@ -707,61 +703,60 @@ where
                     {
                         Buckets::new_empty()
                     } else {
-                        self.get_expression_tree_buckets(filter_id, children)?
+                        self.get_expression_tree_buckets(filter_id, &[*child], subqueries)?
                     };
 
                     self.bucket_map
                         .insert(output_id, child_buckets.conjuct(&filter_buckets)?);
                 }
                 Relational::Join(Join {
-                    children,
+                    left,
+                    right,
+                    subqueries,
                     condition,
                     output,
                     kind,
                 }) => {
-                    if let (Some(inner_id), Some(outer_id)) = (children.first(), children.get(1)) {
-                        let inner_rel = ir_plan.get_relation_node(*inner_id)?;
-                        let outer_rel = ir_plan.get_relation_node(*outer_id)?;
-                        let inner_buckets = self
-                            .bucket_map
-                            .get(&inner_rel.output())
-                            .ok_or_else(|| {
-                                SbroadError::FailedTo(
-                                    Action::Retrieve,
-                                    Some(Entity::Buckets),
-                                    "of the inner child from the bucket map.".to_smolstr(),
-                                )
-                            })?
-                            .clone();
-                        let outer_buckets = self
-                            .bucket_map
-                            .get(&outer_rel.output())
-                            .ok_or_else(|| {
-                                SbroadError::FailedTo(
-                                    Action::Retrieve,
-                                    Some(Entity::Buckets),
-                                    "of the outer child from the bucket map.".to_smolstr(),
-                                )
-                            })?
-                            .clone();
-                        let output_id = *output;
-                        let condition_id = *condition;
-                        let join_buckets = match kind {
-                            JoinKind::Inner => {
-                                let filter_buckets =
-                                    self.get_expression_tree_buckets(condition_id, children)?;
-                                inner_buckets
-                                    .disjunct(&outer_buckets)?
-                                    .conjuct(&filter_buckets)?
-                            }
-                            JoinKind::LeftOuter => inner_buckets.disjunct(&outer_buckets)?,
-                        };
-                        self.bucket_map.insert(output_id, join_buckets);
-                    } else {
-                        return Err(SbroadError::UnexpectedNumberOfValues(
-                            "current node should have at least two children".to_smolstr(),
-                        ));
-                    }
+                    let inner_rel = ir_plan.get_relation_node(*left)?;
+                    let outer_rel = ir_plan.get_relation_node(*right)?;
+                    let inner_buckets = self
+                        .bucket_map
+                        .get(&inner_rel.output())
+                        .ok_or_else(|| {
+                            SbroadError::FailedTo(
+                                Action::Retrieve,
+                                Some(Entity::Buckets),
+                                "of the inner child from the bucket map.".to_smolstr(),
+                            )
+                        })?
+                        .clone();
+                    let outer_buckets = self
+                        .bucket_map
+                        .get(&outer_rel.output())
+                        .ok_or_else(|| {
+                            SbroadError::FailedTo(
+                                Action::Retrieve,
+                                Some(Entity::Buckets),
+                                "of the outer child from the bucket map.".to_smolstr(),
+                            )
+                        })?
+                        .clone();
+                    let output_id = *output;
+                    let condition_id = *condition;
+                    let join_buckets = match kind {
+                        JoinKind::Inner => {
+                            let filter_buckets = self.get_expression_tree_buckets(
+                                condition_id,
+                                &[*left, *right],
+                                subqueries,
+                            )?;
+                            inner_buckets
+                                .disjunct(&outer_buckets)?
+                                .conjuct(&filter_buckets)?
+                        }
+                        JoinKind::LeftOuter => inner_buckets.disjunct(&outer_buckets)?,
+                    };
+                    self.bucket_map.insert(output_id, join_buckets);
                 }
                 Relational::Values(Values { output, .. })
                 | Relational::ValuesRow(ValuesRow { output, .. }) => {
