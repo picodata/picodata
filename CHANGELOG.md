@@ -53,7 +53,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Add suppoort for anonymous blocks. An anonymous block is a sequence of statements that execute
   queries transactionally. Blocks are single-bucket, meaning that all the queries within the
   block must be executed on the same bucket (or have distribution any).
-- Add support for Kubernetes startup,liveness and readiness probes.
+- Add detailed health status endpoint (`/api/v1/health/status`) with instance, Raft, bucket, and cluster information.
+- Add support for Kubernetes startup, liveness and readiness probes.
 - Support `bucket_count=0` for tiers. A tier with `bucket_count=0` has no sharded data
   (only global system tables) and is intended for "arbiter" tiers used in Raft consensus.
   Vshard bootstrap and configuration are skipped for such tiers, and replicaset expel
