@@ -47,6 +47,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed the `query for request_id with plan_id not found` error that occurred
   on queries with `UNION` of `CTE` on a cluster consisting of multiple instances.
 - Logical `EXPLAIN` (the default mode) now preserves subquery indentation.
+- Backup operation will now be automatically aborted if there are offline instances.
+  This prevents cluster being locked in a readonly state.
 
 
 ## [26.1.1] - 2026-03-24
@@ -231,7 +233,6 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed a caching bug that caused some different queries to tables with `bucket_id` in the primary key to have the same plan id.
 - Fixed SUM/AVG type resolution for Double
 - Fixed incorrect filter pushdown into compound queries containing window functions.
-- Fixed a bug preventing scalar functions from being used in GROUP BY.
 
 ### Observability
 

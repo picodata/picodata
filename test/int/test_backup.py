@@ -535,7 +535,7 @@ def _test_backup_executes_correctly_on_instance_termination(cluster: Cluster):
         assert [data] in dql
 
 
-def test_backup_is_failing_with_timeout_when_replica_is_terminated(cluster: Cluster):
+def test_backup_aborts_on_instance_restart(cluster: Cluster):
     shared_dir = create_share_dir_in_tmp(cluster)
     i1 = cluster.add_instance(replicaset_name="r1", wait_online=False)
     i2 = cluster.add_instance(replicaset_name="r2", wait_online=False)
@@ -553,19 +553,27 @@ def test_backup_is_failing_with_timeout_when_replica_is_terminated(cluster: Clus
     for i in [i1, i2]:
         cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
 
-    i3.terminate()
+    # prevent backup from progressing
+    error_injection = "ERROR_AFTER_DATA_IS_BACKUPED"
+    injection_log = f"ERROR INJECTION '{error_injection}'"
+    i3.call("pico._inject_error", error_injection, True)
 
-    # Backup is not executed because replica is down.
+    # Backup is not executed because of the error injection.
+    lc = log_crawler(i3, injection_log)
     with pytest.raises(TimeoutError):
         i2.sql("BACKUP")
+    lc.wait_matched()
 
-    # Restart replica i3.
+    # now restart i3
+    # after marking i3 as offline, the governor will re-check that all instances are online and abort the backup
+    i3.terminate()
+    cluster.wait_has_states(i3, "Offline", "Offline")
+
     i3.start()
-
     i3.wait_online()
 
-    # Wait until the schema change is finalized (BACKUP execution is finalized).
-    Retriable().call(check_last_backup_timestamp, i1)
+    # The pending backup operation should be aborted now
+    Retriable().call(check_no_pending_schema_change, i1)
 
 
 # TODO: Doesn't pass.
@@ -1053,6 +1061,49 @@ def test_backup_manual_abort(cluster: Cluster):
 
     # NOTE: currently picodata does not remove the partially completed backup directories on manual DDL abort
     # so "no leftover backup directories" property is not checked here
+
+
+def test_backup_aborts_with_offline_nodes(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
+    i1 = cluster.add_instance(replicaset_name="r1", wait_online=False)
+    i2 = cluster.add_instance(replicaset_name="r2", wait_online=False)
+    i3 = cluster.add_instance(replicaset_name="r2", wait_online=False)
+    cluster.set_share_dir(shared_dir)
+
+    cluster.set_unique_configs_for_instances(share_dir_path=shared_dir)
+
+    for i in [i1, i2, i3]:
+        i.start()
+
+    for i in [i1, i2, i3]:
+        i.wait_online()
+
+    for i in [i1, i2]:
+        cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
+
+    i1.promote_or_fail()
+
+    # stop i3. this will prevent the backup from starting
+    i3.terminate()
+    i1.wait_has_states("Offline", "Offline", target=i3)
+
+    # Backup command errors out because one of the nodes is down.
+    with pytest.raises(
+        TarantoolError, match=r"Instance will not respond: Its state is Offline\(\d+\) -> Offline\(\d+\)"
+    ):
+        i1.sql("BACKUP")
+
+    # this failure has not created a stuck DDL
+    check_no_pending_schema_change(i1)
+
+    # re-start i3
+    i3.start()
+    i3.wait_online()
+
+    # backup works now
+    ddl = i1.sql("BACKUP")
+    assert ddl[0][0] is not None
+
 
 ################### RESTORE TESTS ###################
 

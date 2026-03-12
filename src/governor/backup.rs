@@ -211,7 +211,7 @@ pub async fn collect_proc_backup_abort_clear(
     rpc: &rpc::ddl_backup::RequestClear,
     pool: &ConnectionPool,
     rpc_timeout: Duration,
-) -> Result<Result<Vec<()>>> {
+) -> Result<Vec<()>> {
     let mut fs = vec![];
     for instance_name in targets {
         tlog!(Info, "calling proc_backup_abort_clear"; "instance_name" => %instance_name);
@@ -238,6 +238,5 @@ pub async fn collect_proc_backup_abort_clear(
             }
         });
     }
-    let res = try_join_all(fs).await;
-    Ok(res)
+    try_join_all(fs).await
 }

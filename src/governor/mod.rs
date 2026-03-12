@@ -8,6 +8,7 @@ use crate::governor::batch::LastStepInfo;
 use crate::governor::ddl::collect_proc_apply_schema_change;
 use crate::governor::ddl::collect_vshard_map_callrw_proc_apply_schema_change;
 use crate::governor::ddl::OnError;
+use crate::instance::InstanceName;
 use crate::metrics;
 use crate::op::Op;
 use crate::proc_name;
@@ -1057,8 +1058,42 @@ impl Loop {
                 governor_substep! {
                     "applying pending BACKUP" [ "pending_schema_version" => pending_schema_version ]
                     async {
+                        // only perform the online check for the first batch
+                        // online states can't change while the batches are being processed
+                        // NOTE: the progress will reset will be reset if governor will switch to do a different step
+                        // For example: instance going offline will cause us to re-check that all instances are online
+                        if !last_step_info.has_completions() {
+                            let topology_ref = node.topology_cache.get();
+
+                            let check_instance_online = |instance: &InstanceName| -> Option<ErrorInfo> {
+                                // the instance name comes from `handle_backup`, which takes it from topology cache itself
+                                // we should always be able to retrieve the instance back from the topology cache by its name
+                                let instance = topology_ref.instance_by_name(instance).expect("instance has to exist");
+                                if !instance.may_respond() {
+                                    tlog!(Info, "aborting BACKUP because {} won't respond. Its state is {} -> {}", instance.name, instance.current_state, instance.target_state);
+                                    return Some(ErrorInfo {
+                                        error_code: ErrorCode::Other as _,
+                                        message: format!("Instance will not respond: Its state is {} -> {}", instance.current_state, instance.target_state),
+                                        instance_name: instance.name.clone(),
+                                    })
+                                }
+
+                                None
+                            };
+                            // 0. abort if any instances we need to send an RPC to are offline
+                            // this prevents a retry loop with cluster being locked in a read-only state
+                            for instance in masters_total.iter().chain(&replicas_total) {
+                                if abort_cause.is_some() {
+                                    break;
+                                }
+                                abort_cause = check_instance_online(instance);
+                            }
+
+                            drop(topology_ref);
+                        }
+
                         let masters_batch_is_empty = masters_batch.is_empty();
-                        if !masters_batch.is_empty() {
+                        if abort_cause.is_none() && !masters_batch.is_empty() {
                             // 1. Call `proc_apply_backup` on all masters.
                             tlog!(Info, "calling BACKUP on masters");
                             let res = collect_proc_apply_backup(
@@ -1134,12 +1169,14 @@ impl Loop {
                             // errors.
 
                             // Call `proc_backup_abort_clear` on `targets`
-                            collect_proc_backup_abort_clear(
+                            if let Err(e) = collect_proc_backup_abort_clear(
                                 &targets_total,
                                 &rpc_clear,
                                 pool,
                                 rpc_timeout,
-                            ).await??;
+                            ).await {
+                                tlog!(Error, "Clearing failed backup failed, ignoring the error and continuing abort: {}", e);
+                            }
                         }
                     }
 
