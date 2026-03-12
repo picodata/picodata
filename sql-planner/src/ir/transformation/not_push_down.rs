@@ -72,7 +72,7 @@ fn call_expr_tree_not_push_down(
     // the previous tree.
     let remember_old_top_id = SubtreeCloner::clone_subtree(plan, top_id)?;
 
-    let subtree = PostOrderWithFilter::with_capacity(
+    let subtree = PostOrderWithFilter::new(
         |node| plan.nodes.expr_iter(node, false),
         |node| {
             matches!(
@@ -82,7 +82,7 @@ fn call_expr_tree_not_push_down(
         },
         EXPR_CAPACITY,
     );
-    let nodes = subtree.populate_nodes(new_top_id);
+    let nodes = subtree.traverse_into_vec(new_top_id);
     for level_node in &nodes {
         let id = level_node.1;
 

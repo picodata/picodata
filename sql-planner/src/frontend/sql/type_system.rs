@@ -681,13 +681,13 @@ fn coerce_scalar_expr(
             }
         };
 
-        let post_order = PostOrderWithFilter::with_capacity(
+        let post_order = PostOrderWithFilter::new(
             |node| plan.subtree_iter(node, false),
             filter_string_to_be_coerced,
             0,
         );
 
-        let strings = post_order.populate_nodes(expr_id);
+        let strings = post_order.traverse_into_vec(expr_id);
 
         // Filter strings literals that require coercion and aren't casted explicitly.
         strings

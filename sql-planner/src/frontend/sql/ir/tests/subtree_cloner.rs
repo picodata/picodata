@@ -34,11 +34,8 @@ fn test_clone_dag() {
     let new_row_id = cloner.clone(&mut plan, row_id, 0).unwrap();
 
     let new_ids: Vec<NodeId> = {
-        let dfs = PostOrder::with_capacity(|x| plan.subtree_iter(x, true), 0);
-        dfs.populate_nodes(new_row_id)
-            .into_iter()
-            .map(|n| n.1)
-            .collect()
+        let dfs = PostOrder::new(|x| plan.subtree_iter(x, true), 0);
+        dfs.traverse_into_iter(new_row_id).map(|n| n.1).collect()
     };
 
     // Check we cloned subtree correctly
@@ -146,11 +143,8 @@ fn subtree_external_links() {
     let new_output = cloner.clone(&mut plan, output, 0).unwrap();
 
     let new_ids: Vec<NodeId> = {
-        let dfs = PostOrder::with_capacity(|x| plan.subtree_iter(x, true), 0);
-        dfs.populate_nodes(new_output)
-            .into_iter()
-            .map(|n| n.1)
-            .collect()
+        let dfs = PostOrder::new(|x| plan.subtree_iter(x, true), 0);
+        dfs.traverse_into_iter(new_output).map(|n| n.1).collect()
     };
 
     assert_eq!(new_ids.len(), 3);

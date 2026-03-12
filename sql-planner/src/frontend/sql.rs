@@ -2013,8 +2013,8 @@ fn parse_anonymous_block(
         update_id: NodeId,
         plan: &Plan,
     ) -> Result<(), SbroadError> {
-        let dfs = PostOrder::with_capacity(|x| plan.nodes.rel_iter(x), REL_CAPACITY);
-        for LevelNode(_, id) in dfs.into_iter(update_id) {
+        let dfs = PostOrder::new(|x| plan.nodes.rel_iter(x), REL_CAPACITY);
+        for LevelNode(_, id) in dfs.traverse_into_iter(update_id) {
             match plan.get_relation_node(id)? {
                 Relational::ScanSubQuery(_) => {
                     return Err(SbroadError::other("UPDATE in block cannot have subqueries"))
@@ -3078,8 +3078,8 @@ impl Plan {
         if !matches!(self.get_node(top)?, Node::Relational(_)) {
             return Ok(());
         }
-        let post_tree = PostOrder::with_capacity(|node| self.nodes.rel_iter(node), REL_CAPACITY);
-        let nodes = post_tree.populate_nodes(top);
+        let post_tree = PostOrder::new(|node| self.nodes.rel_iter(node), REL_CAPACITY);
+        let nodes = post_tree.traverse_into_vec(top);
         for LevelNode(_, id) in nodes {
             if matches!(self.get_relation_node(id)?, Relational::Projection(_)) {
                 self.adjust_grouping_exprs(id)?;
@@ -3142,7 +3142,7 @@ impl Plan {
     }
 
     fn check_grouping_expr_subtree(&self, group_expr: NodeId) -> Result<(), SbroadError> {
-        let dfs = PostOrderWithFilter::with_capacity(
+        let dfs = PostOrderWithFilter::new(
             |node| self.nodes.expr_iter(node, false),
             |node| {
                 matches!(
@@ -3153,7 +3153,7 @@ impl Plan {
             EXPR_CAPACITY,
         );
 
-        for LevelNode(_, node_id) in dfs.into_iter(group_expr) {
+        for LevelNode(_, node_id) in dfs.traverse_into_iter(group_expr) {
             let node = self.get_expression_node(node_id)?;
             if let Expression::ScalarFunction(ScalarFunction {
                 name, is_window, ..
@@ -5846,9 +5846,9 @@ impl AbstractSyntaxTree {
                         // Check that at least one reference is met in expression tree.
                         // Otherwise, ordering expression has no sense.
                         let expr_tree =
-                            PostOrder::with_capacity(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
+                            PostOrder::new(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
                         let mut reference_met = false;
-                        for LevelNode(_, node_id) in expr_tree.into_iter(expr_plan_node_id) {
+                        for LevelNode(_, node_id) in expr_tree.traverse_into_iter(expr_plan_node_id) {
 							let node = plan.get_expression_node(node_id)?;
 							match node {
 								Expression::Reference(Reference { target, .. }) => {
@@ -6175,7 +6175,7 @@ impl AbstractSyntaxTree {
             return Err(SbroadError::Invalid(Entity::AST, None));
         };
         let capacity = self.nodes.arena.len();
-        let dft_post = PostOrder::with_capacity(|node| self.nodes.ast_iter(node), capacity);
+        let dft_post = PostOrder::new(|node| self.nodes.ast_iter(node), capacity);
         // Map of { ast `ParseNode` id -> plan `Node` id }.
         let mut map = Translation::with_capacity(self.nodes.next_id());
         let mut worker =
@@ -6189,7 +6189,7 @@ impl AbstractSyntaxTree {
         let mut used_aliases = HashSet::new();
         let mut unnamed_subqueries = Vec::new();
 
-        for level_node in dft_post.into_iter(top) {
+        for level_node in dft_post.traverse_into_iter(top) {
             let id = level_node.1;
             let node = self.nodes.get_node(id)?;
             match &node.rule {

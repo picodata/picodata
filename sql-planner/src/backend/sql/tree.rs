@@ -2534,11 +2534,11 @@ impl<'p> SyntaxPlan<'p> {
     fn gather_selects(&self) -> Result<Option<Vec<Select>>, SbroadError> {
         let mut selects: Vec<Select> = Vec::new();
         let top = self.get_top()?;
-        let dfs = PostOrder::with_capacity(
+        let dfs = PostOrder::new(
             |node| self.nodes.iter(node),
             self.plan.get_ir_plan().nodes.len(),
         );
-        let nodes = dfs.populate_nodes(top);
+        let nodes = dfs.traverse_into_vec(top);
         for LevelNode(_, pos) in nodes {
             let node = self.nodes.get_sn(pos);
             if pos == top {
@@ -2613,9 +2613,8 @@ impl<'p> SyntaxPlan<'p> {
         let capacity = ir_plan.nodes.len();
         match snapshot {
             Snapshot::Latest => {
-                let dft_post =
-                    PostOrder::with_capacity(|node| ir_plan.subtree_iter(node, false), capacity);
-                for level_node in dft_post.into_iter(top) {
+                let dft_post = PostOrder::new(|node| ir_plan.subtree_iter(node, false), capacity);
+                for level_node in dft_post.traverse_into_iter(top) {
                     let id = level_node.1;
                     // it works only for post-order traversal
                     sp.add_plan_node(id);
@@ -2627,9 +2626,9 @@ impl<'p> SyntaxPlan<'p> {
             }
             Snapshot::Oldest => {
                 let dft_post =
-                    PostOrder::with_capacity(|node| ir_plan.flashback_subtree_iter(node), capacity);
+                    PostOrder::new(|node| ir_plan.flashback_subtree_iter(node), capacity);
 
-                for level_node in dft_post.into_iter(top) {
+                for level_node in dft_post.traverse_into_iter(top) {
                     let id = level_node.1;
                     // it works only for post-order traversal
                     sp.add_plan_node(id);

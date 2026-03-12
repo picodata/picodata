@@ -122,10 +122,9 @@ impl Plan {
     pub fn update_value_rows(&mut self) -> Result<(), SbroadError> {
         // Note: `need_output` is set to false for `subtree_iter` specially to avoid traversing
         //       the same nodes twice. See `update_values_row` for more info.
-        let tree =
-            PostOrder::with_capacity(|node| self.subtree_iter(node, false), self.nodes.len());
+        let tree = PostOrder::new(|node| self.subtree_iter(node, false), self.nodes.len());
         let top_id = self.get_top()?;
-        let nodes = tree.populate_nodes(top_id);
+        let nodes = tree.traverse_into_vec(top_id);
 
         for LevelNode(_, id) in nodes {
             if let Ok(Node::Relational(Relational::ValuesRow(_))) = self.get_node(id) {
@@ -137,7 +136,7 @@ impl Plan {
 
     pub fn recalculate_ref_types(&mut self) -> Result<(), SbroadError> {
         let ref_nodes = {
-            let tree = PostOrderWithFilter::with_capacity(
+            let tree = PostOrderWithFilter::new(
                 |node| self.parameter_iter(node, true),
                 |node| {
                     matches!(
@@ -148,7 +147,7 @@ impl Plan {
                 EXPR_CAPACITY,
             );
             let top_id = self.get_top()?;
-            tree.populate_nodes(top_id)
+            tree.traverse_into_vec(top_id)
         };
 
         for LevelNode(_, id) in &ref_nodes {

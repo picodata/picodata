@@ -30,12 +30,9 @@ fn collect_relational(
     plan: &Plan,
     predicate: impl FnMut(NodeId) -> bool,
 ) -> Vec<LevelNode<NodeId>> {
-    let rel_tree = PostOrderWithFilter::with_capacity(
-        |node| plan.nodes.rel_iter(node),
-        predicate,
-        REL_CAPACITY,
-    );
-    let nodes = rel_tree.populate_nodes(plan.get_top().unwrap());
+    let rel_tree =
+        PostOrderWithFilter::new(|node| plan.nodes.rel_iter(node), predicate, REL_CAPACITY);
+    let nodes = rel_tree.traverse_into_vec(plan.get_top().unwrap());
     nodes
 }
 

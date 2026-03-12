@@ -71,16 +71,19 @@ impl Plan {
             self.nodes.rel_iter(node_id)
         };
         let filter_empty_motion = |node| self.is_serialize_as_empty_motion(node, true);
-        let dfs = PostOrderWithFilter::with_capacity(iter_children, filter_empty_motion, 4);
+        let dfs = PostOrderWithFilter::new(iter_children, filter_empty_motion, 4);
 
-        Ok(dfs.into_iter(self.get_top()?).map(|id| id.1).collect())
+        Ok(dfs
+            .traverse_into_iter(self.get_top()?)
+            .map(|id| id.1)
+            .collect())
     }
 
     fn serialize_as_empty_info(&self) -> Result<Option<SerializeAsEmptyInfo>, SbroadError> {
         let top_ids = self.collect_top_ids()?;
 
         let mut motions_ref_count: AHashMap<NodeId, usize> = AHashMap::new();
-        let dfs = PostOrderWithFilter::with_capacity(
+        let dfs = PostOrderWithFilter::new(
             |node| self.nodes.rel_iter(node),
             |node| {
                 matches!(
@@ -90,7 +93,7 @@ impl Plan {
             },
             0,
         );
-        for LevelNode(_, motion_id) in dfs.into_iter(self.get_top()?) {
+        for LevelNode(_, motion_id) in dfs.traverse_into_iter(self.get_top()?) {
             motions_ref_count
                 .entry(motion_id)
                 .and_modify(|cnt| *cnt += 1)
@@ -106,7 +109,7 @@ impl Plan {
         let all_motion_nodes = {
             let mut all_motions = Vec::new();
             for top_id in &top_ids {
-                let dfs = PostOrderWithFilter::with_capacity(
+                let dfs = PostOrderWithFilter::new(
                     |node| self.nodes.rel_iter(node),
                     |node| {
                         matches!(
@@ -116,7 +119,7 @@ impl Plan {
                     },
                     REL_CAPACITY,
                 );
-                all_motions.extend(dfs.into_iter(*top_id).map(|id| id.1));
+                all_motions.extend(dfs.traverse_into_iter(*top_id).map(|id| id.1));
             }
             all_motions
         };

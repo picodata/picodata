@@ -356,13 +356,13 @@ where
 
         // We use a `exec_plan_subtree_iter()` because we need DNF version of the
         // filter/condition expressions to determine buckets.
-        let tree = PostOrderWithFilter::with_capacity(
+        let tree = PostOrderWithFilter::new(
             |node| ir_plan.exec_plan_subtree_iter(node, Snapshot::Latest),
             |node| matches!(ir_plan.get_node(node), Ok(Node::Relational(..))),
             REL_CAPACITY,
         );
 
-        for LevelNode(_, node_id) in tree.into_iter(top_id) {
+        for LevelNode(_, node_id) in tree.traverse_into_iter(top_id) {
             if self.bucket_map.contains_key(&node_id) {
                 continue;
             }

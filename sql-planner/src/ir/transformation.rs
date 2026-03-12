@@ -158,7 +158,7 @@ impl Plan {
         top_id: NodeId,
         f: TransformFunctionOldNew,
     ) -> Result<(), SbroadError> {
-        let ir_tree = PostOrderWithFilter::with_capacity(
+        let ir_tree = PostOrderWithFilter::new(
             |node| self.nodes.rel_iter(node),
             |node| {
                 matches!(
@@ -169,7 +169,7 @@ impl Plan {
             },
             EXPR_CAPACITY,
         );
-        let nodes = ir_tree.populate_nodes(top_id);
+        let nodes = ir_tree.traverse_into_vec(top_id);
         for level_node in &nodes {
             let id: NodeId = level_node.1;
             let rel: Relational<'_> = self.get_relation_node(id)?;
@@ -247,12 +247,12 @@ impl Plan {
                 ))
             )
         };
-        let subtree = PostOrderWithFilter::with_capacity(
+        let subtree = PostOrderWithFilter::new(
             |node_id| self.nodes.expr_iter(node_id, false),
             filter_certain_exprs,
             EXPR_CAPACITY,
         );
-        let nodes = subtree.populate_nodes(top_id);
+        let nodes = subtree.traverse_into_vec(top_id);
         for level_node in &nodes {
             let bool_id = level_node.1;
             let expr = self.get_expression_node(bool_id)?;

@@ -431,13 +431,13 @@ impl Plan {
             }
             visited.insert(*id);
 
-            let tree_and = BreadthFirst::with_capacity(
+            let tree_and = BreadthFirst::new(
                 |node| self.nodes.and_iter(node),
                 EXPR_CAPACITY,
                 EXPR_CAPACITY,
             );
             let nodes_and: Vec<NodeId> = tree_and
-                .into_iter(*id)
+                .traverse_into_iter(*id)
                 .map(|level_node| level_node.1)
                 .collect();
             let mut nodes_for_chain: Vec<NodeId> = Vec::with_capacity(nodes_and.len());
@@ -495,13 +495,13 @@ impl Plan {
             -> Result<HashMap<NodeId, Chain, RepeatableState>, SbroadError>,
         f_to_plan: &dyn Fn(NodeId, &Chain, &mut Plan) -> Result<NodeId, SbroadError>,
     ) -> Result<ExprId, SbroadError> {
-        let tree = BreadthFirst::with_capacity(
+        let tree = BreadthFirst::new(
             |node| self.nodes.expr_iter(node, false),
             EXPR_CAPACITY,
             EXPR_CAPACITY,
         );
         let nodes: Vec<NodeId> = tree
-            .into_iter(expr_id)
+            .traverse_into_iter(expr_id)
             .map(|level_node| level_node.1)
             .collect();
         let chains = f_build_chains(self, &nodes)?;

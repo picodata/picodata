@@ -1083,7 +1083,7 @@ impl Plan {
         expr_id: NodeId,
         check_top: bool,
     ) -> Result<bool, SbroadError> {
-        let dfs = PostOrderWithFilter::with_capacity(
+        let dfs = PostOrderWithFilter::new(
             |node| self.nodes.expr_iter(node, false),
             |node| {
                 matches!(
@@ -1093,7 +1093,7 @@ impl Plan {
             },
             EXPR_CAPACITY,
         );
-        for level_node in dfs.into_iter(expr_id) {
+        for level_node in dfs.traverse_into_iter(expr_id) {
             let id = level_node.1;
             if !check_top && id == expr_id {
                 continue;
@@ -1544,7 +1544,7 @@ impl Plan {
 
     /// Get vec of references from the subtree of the given expression.
     pub fn get_refs_from_subtree(&self, expr_id: NodeId) -> Result<Vec<NodeId>, SbroadError> {
-        let dfs = PostOrderWithFilter::with_capacity(
+        let dfs = PostOrderWithFilter::new(
             |node| self.nodes.expr_iter(node, false),
             |node| {
                 matches!(
@@ -1554,13 +1554,13 @@ impl Plan {
             },
             EXPR_CAPACITY,
         );
-        let ref_ids = dfs.populate_nodes(expr_id).iter().map(|n| n.1).collect();
+        let ref_ids = dfs.traverse_into_vec(expr_id).iter().map(|n| n.1).collect();
         Ok(ref_ids)
     }
 
     /// Get vec of subquery references from the subtree of the given expression.
     pub fn get_sq_refs_from_subtree(&self, expr_id: NodeId) -> Result<Vec<NodeId>, SbroadError> {
-        let dfs = PostOrderWithFilter::with_capacity(
+        let dfs = PostOrderWithFilter::new(
             |node| self.nodes.expr_iter(node, false),
             |node| {
                 matches!(
@@ -1570,7 +1570,7 @@ impl Plan {
             },
             EXPR_CAPACITY,
         );
-        let ref_ids = dfs.populate_nodes(expr_id).iter().map(|n| n.1).collect();
+        let ref_ids = dfs.traverse_into_vec(expr_id).iter().map(|n| n.1).collect();
         Ok(ref_ids)
     }
 
@@ -2248,8 +2248,8 @@ impl ShardColumnsMap {
     }
 
     fn update_subtree(&mut self, node_id: NodeId, plan: &Plan) -> Result<(), SbroadError> {
-        let dfs = PostOrder::with_capacity(|x| plan.nodes.rel_iter(x), REL_CAPACITY);
-        for LevelNode(_, id) in dfs.into_iter(node_id) {
+        let dfs = PostOrder::new(|x| plan.nodes.rel_iter(x), REL_CAPACITY);
+        for LevelNode(_, id) in dfs.traverse_into_iter(node_id) {
             self.update_node(id, plan)?;
             self.invalid_ids.remove(&id);
         }

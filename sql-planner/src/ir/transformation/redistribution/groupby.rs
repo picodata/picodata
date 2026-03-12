@@ -476,7 +476,7 @@ impl Plan {
     fn check_refs_out_of_aggregates(&self, proj: NodeId) -> Result<(), SbroadError> {
         let output = self.get_relational_output(proj)?;
         for col in self.get_row_list(output)? {
-            let dfs = PostOrderWithFilter::with_capacity(
+            let dfs = PostOrderWithFilter::new(
                 |node| self.nodes.aggregate_iter(node, false),
                 |node| {
                     matches!(
@@ -486,7 +486,7 @@ impl Plan {
                 },
                 EXPR_CAPACITY,
             );
-            let nodes = dfs.populate_nodes(*col);
+            let nodes = dfs.traverse_into_vec(*col);
             for LevelNode(_, id) in nodes {
                 let n = self.get_expression_node(id)?;
                 if matches!(n, Expression::Reference(_)) {
@@ -513,8 +513,8 @@ impl Plan {
             unreachable!("expected having node");
         };
 
-        let dfs = PostOrder::with_capacity(|x| self.nodes.aggregate_iter(x, false), EXPR_CAPACITY);
-        let nodes = dfs.populate_nodes(*filter);
+        let dfs = PostOrder::new(|x| self.nodes.aggregate_iter(x, false), EXPR_CAPACITY);
+        let nodes = dfs.traverse_into_vec(*filter);
         for LevelNode(_, id) in nodes {
             if matches!(self.get_expression_node(id)?, Expression::Reference(_)) {
                 return Err(SbroadError::Invalid(

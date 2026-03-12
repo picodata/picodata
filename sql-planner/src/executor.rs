@@ -158,8 +158,8 @@ impl Plan {
     }
 
     fn subtree_has_motions(&self, top_id: NodeId) -> Result<bool, SbroadError> {
-        let post_tree = PostOrder::with_capacity(|node| self.nodes.rel_iter(node), REL_CAPACITY);
-        for node in post_tree.populate_nodes(top_id) {
+        let post_tree = PostOrder::new(|node| self.nodes.rel_iter(node), REL_CAPACITY);
+        for node in post_tree.traverse_into_vec(top_id) {
             if let Relational::Motion(_) = self.get_relation_node(node.1)? {
                 return Ok(true);
             }

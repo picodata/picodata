@@ -535,9 +535,8 @@ impl SubtreeCloner {
     ) -> Result<NodeId, SbroadError> {
         // We don't copy the subquery's children because otherwise it would create a new subquery.
         // All references would then point to the same subquery.
-        let dfs =
-            PostOrder::with_capacity(|x| plan.subtree_iter_except_subquery(x, true), capacity);
-        let nodes = dfs.populate_nodes(top_id);
+        let dfs = PostOrder::new(|x| plan.subtree_iter_except_subquery(x, true), capacity);
+        let nodes = dfs.traverse_into_vec(top_id);
         let mut invalid_refs = Vec::new();
         for LevelNode(_, id) in nodes {
             if self.old_new_map.contains_key(&id) {

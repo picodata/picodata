@@ -12,9 +12,9 @@ pub struct PostOrder<ChildrenFn, T> {
 }
 
 impl<ChildrenFn, T> PostOrder<ChildrenFn, T> {
-    pub fn with_capacity(children_fn: ChildrenFn, capacity: usize) -> Self {
+    pub fn new(children_fn: ChildrenFn, capacity: usize) -> Self {
         Self {
-            inner: PostOrderWithFilter::with_capacity(children_fn, |_| true, capacity),
+            inner: PostOrderWithFilter::new(children_fn, |_| true, capacity),
         }
     }
 }
@@ -25,12 +25,12 @@ where
     I: Iterator<Item = T>,
     T: Copy,
 {
-    pub fn into_iter(self, root: T) -> impl Iterator<Item = LevelNode<T>> {
-        self.inner.into_iter(root)
+    pub fn traverse_into_iter(self, root: T) -> impl Iterator<Item = LevelNode<T>> {
+        self.traverse_into_vec(root).into_iter()
     }
 
-    pub fn populate_nodes(self, root: T) -> Vec<LevelNode<T>> {
-        self.inner.populate_nodes(root)
+    pub fn traverse_into_vec(self, root: T) -> Vec<LevelNode<T>> {
+        self.inner.traverse_into_vec(root)
     }
 }
 
@@ -41,7 +41,7 @@ pub struct PostOrderWithFilter<ChildrenFn, FilterFn, T> {
 }
 
 impl<ChildrenFn, FilterFn, T> PostOrderWithFilter<ChildrenFn, FilterFn, T> {
-    pub fn with_capacity(children_fn: ChildrenFn, filter_fn: FilterFn, capacity: usize) -> Self {
+    pub fn new(children_fn: ChildrenFn, filter_fn: FilterFn, capacity: usize) -> Self {
         Self {
             children_fn,
             filter_fn,
@@ -66,13 +66,11 @@ where
         }
     }
 
-    pub fn into_iter(self, root: T) -> impl Iterator<Item = LevelNode<T>> {
-        let nodes = self.populate_nodes(root);
-        nodes.into_iter()
+    pub fn traverse_into_iter(self, root: T) -> impl Iterator<Item = LevelNode<T>> {
+        self.traverse_into_vec(root).into_iter()
     }
 
-    pub fn populate_nodes(mut self, root: T) -> Vec<LevelNode<T>> {
-        self.nodes.clear();
+    pub fn traverse_into_vec(mut self, root: T) -> Vec<LevelNode<T>> {
         self.traverse(root, 0);
         self.nodes
     }
@@ -85,11 +83,7 @@ pub struct BreadthFirst<ChildrenFn, T> {
 }
 
 impl<ChildrenFn, T> BreadthFirst<ChildrenFn, T> {
-    pub fn with_capacity(
-        iter_children: ChildrenFn,
-        node_capacity: usize,
-        queue_capacity: usize,
-    ) -> Self {
+    pub fn new(iter_children: ChildrenFn, node_capacity: usize, queue_capacity: usize) -> Self {
         Self {
             children_fn: iter_children,
             queue: VecDeque::with_capacity(queue_capacity),
@@ -104,11 +98,11 @@ where
     I: Iterator<Item = T>,
     T: Copy,
 {
-    pub fn into_iter(self, root: T) -> impl Iterator<Item = LevelNode<T>> {
-        self.populate_nodes(root).into_iter()
+    pub fn traverse_into_iter(self, root: T) -> impl Iterator<Item = LevelNode<T>> {
+        self.traverse_into_vec(root).into_iter()
     }
 
-    pub fn populate_nodes(mut self, root: T) -> Vec<LevelNode<T>> {
+    pub fn traverse_into_vec(mut self, root: T) -> Vec<LevelNode<T>> {
         self.queue.push_back(LevelNode(0, root));
         while let Some(LevelNode(level, node)) = self.queue.pop_front() {
             self.nodes.push(LevelNode(level, node));

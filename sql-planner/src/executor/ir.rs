@@ -439,7 +439,7 @@ impl ExecutionPlan {
         // EXCEPT implementation logic.
         let mut nodes_to_save = AHashSet::default();
         if !dont_mutate {
-            let rel_tree = PostOrderWithFilter::with_capacity(
+            let rel_tree = PostOrderWithFilter::new(
                 |node| plan.nodes.rel_iter(node),
                 |node| {
                     matches!(
@@ -449,27 +449,27 @@ impl ExecutionPlan {
                 },
                 REL_CAPACITY,
             );
-            let nodes = rel_tree.populate_nodes(top_id);
+            let nodes = rel_tree.traverse_into_vec(top_id);
 
             // Preallocate memory for all subqueries and CTE subtrees.
             nodes_to_save.reserve(SQ_IDS_CAPACITY * 2);
 
             for LevelNode(_, node_id) in nodes.iter() {
-                let subtree = PostOrder::with_capacity(
+                let subtree = PostOrder::new(
                     |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
                     REL_CAPACITY,
                 );
-                for LevelNode(_, id) in subtree.into_iter(*node_id) {
+                for LevelNode(_, id) in subtree.traverse_into_iter(*node_id) {
                     nodes_to_save.insert(id);
                 }
             }
         }
 
-        let subtree = PostOrder::with_capacity(
+        let subtree = PostOrder::new(
             |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
             plan.nodes.len(),
         );
-        let nodes = subtree.populate_nodes(subtree_id);
+        let nodes = subtree.traverse_into_vec(subtree_id);
 
         let mut subtree_map = SubtreeMap::with_capacity(nodes.len());
         let vtables_capacity = self.get_vtables().len();

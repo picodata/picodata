@@ -78,8 +78,8 @@ fn projection_any_dist_for_expr() {
 
     // check that local Projection has Distribution::Any
     let local_proj_id = {
-        let dfs = PostOrder::with_capacity(|x| plan.nodes.rel_iter(x), REL_CAPACITY);
-        dfs.into_iter(plan.top.unwrap())
+        let dfs = PostOrder::new(|x| plan.nodes.rel_iter(x), REL_CAPACITY);
+        dfs.traverse_into_iter(plan.top.unwrap())
             .find(|level_node| {
                 matches!(
                     plan.get_relation_node(level_node.1).unwrap(),

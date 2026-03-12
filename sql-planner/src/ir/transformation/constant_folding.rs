@@ -193,7 +193,7 @@ impl Plan {
                 Relational::Join(Join { condition, .. }) => *condition,
                 _ => unreachable!("expected Selection or Join node"),
             };
-            let dfs = PostOrderWithFilter::with_capacity(
+            let dfs = PostOrderWithFilter::new(
                 |node| self.nodes.expr_iter(node, false),
                 |node| {
                     matches!(
@@ -203,7 +203,7 @@ impl Plan {
                 },
                 EXPR_CAPACITY,
             );
-            let op_nodes = dfs.populate_nodes(filter);
+            let op_nodes = dfs.traverse_into_vec(filter);
 
             for LevelNode(_, op_id) in op_nodes.iter() {
                 match self.get_mut_expression_node(*op_id)? {

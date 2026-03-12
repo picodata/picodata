@@ -399,7 +399,7 @@ fn compare_window_dist(this: &Distribution, other: &Distribution) -> Distributio
 impl Plan {
     /// Get unary NOT expression nodes.
     pub(crate) fn get_not_unary_nodes(&self, top: NodeId) -> Vec<LevelNode<NodeId>> {
-        let post_tree = PostOrderWithFilter::with_capacity(
+        let post_tree = PostOrderWithFilter::new(
             |node| self.nodes.expr_iter(node, false),
             |node| {
                 matches!(
@@ -412,7 +412,7 @@ impl Plan {
             },
             EXPR_CAPACITY,
         );
-        post_tree.populate_nodes(top)
+        post_tree.traverse_into_vec(top)
     }
 
     /// Get boolean expressions with at least one row or ref children in the sub-tree.
@@ -456,12 +456,12 @@ impl Plan {
 
             left_is_row || right_is_row
         };
-        let post_tree = PostOrderWithFilter::with_capacity(
+        let post_tree = PostOrderWithFilter::new(
             |node| self.nodes.expr_iter(node, false),
             filter_bool_expr_with_row,
             EXPR_CAPACITY,
         );
-        post_tree.populate_nodes(top)
+        post_tree.traverse_into_vec(top)
     }
 
     /// Get unary expressions with row children in the sub-tree.
@@ -485,12 +485,12 @@ impl Plan {
                 Ok(Node::Expression(Expression::Row(_)))
             )
         };
-        let post_tree = PostOrderWithFilter::with_capacity(
+        let post_tree = PostOrderWithFilter::new(
             |node| self.nodes.expr_iter(node, false),
             filter_unary_expr_with_row,
             EXPR_CAPACITY,
         );
-        post_tree.populate_nodes(top)
+        post_tree.traverse_into_vec(top)
     }
 
     /// Get a single sub-query from the row node.
@@ -521,7 +521,7 @@ impl Plan {
                 Some("Node is not a row".into()),
             ));
         };
-        let post_tree = PostOrderWithFilter::with_capacity(
+        let post_tree = PostOrderWithFilter::new(
             |node| self.nodes.expr_iter(node, false),
             |node| {
                 matches!(
@@ -531,7 +531,7 @@ impl Plan {
             },
             capacity,
         );
-        let nodes = post_tree.populate_nodes(row_id);
+        let nodes = post_tree.traverse_into_vec(row_id);
         // We don't expect much relational references in a row (5 is a reasonable number).
         let mut ref_nodes: Vec<NodeId> = Vec::with_capacity(capacity);
         for LevelNode(_, id) in nodes {
@@ -1537,7 +1537,7 @@ impl Plan {
 
         let mut policy_map: AHashMap<NodeId, MotionPolicy> = AHashMap::new();
         let mut new_inner_policy = MotionPolicy::Full;
-        let expr_tree = PostOrderWithFilter::with_capacity(
+        let expr_tree = PostOrderWithFilter::new(
             |node| self.nodes.expr_iter(node, true),
             |node| {
                 matches!(
@@ -1547,7 +1547,7 @@ impl Plan {
             },
             EXPR_CAPACITY,
         );
-        for LevelNode(_, node_id) in expr_tree.into_iter(cond_id) {
+        for LevelNode(_, node_id) in expr_tree.traverse_into_iter(cond_id) {
             let expr = self.get_expression_node(node_id)?;
             if matches!(expr, Expression::Unary(_)) {
                 new_inner_policy = MotionPolicy::Full;
@@ -2589,8 +2589,8 @@ impl Plan {
         type CteChildId = ChildId;
         type MotionId = ChildId;
         let mut cte_motions: AHashMap<CteChildId, MotionId> = AHashMap::with_capacity(CTE_CAPACITY);
-        let post_tree = PostOrder::with_capacity(|node| self.nodes.rel_iter(node), REL_CAPACITY);
-        let nodes = post_tree.populate_nodes(top_id);
+        let post_tree = PostOrder::new(|node| self.nodes.rel_iter(node), REL_CAPACITY);
+        let nodes = post_tree.traverse_into_vec(top_id);
         // Set of already visited nodes. Used for the case of BETWEEN where two expressions may
         // refer to the same relational node.
         let mut visited = AHashSet::with_capacity(nodes.len());
@@ -2941,14 +2941,14 @@ impl Plan {
         // to some leaf node. For motion node this number
         // is the slice index.
         let mut slices: Vec<Vec<NodeId>> = Vec::new();
-        let dfs_tree = PostOrder::with_capacity(|node| self.nodes.rel_iter(node), REL_CAPACITY);
+        let dfs_tree = PostOrder::new(|node| self.nodes.rel_iter(node), REL_CAPACITY);
         // When visiting new node this stack stores
         // all the children of the current node.
         let mut stack = Vec::new();
         // Our plan is a DAG, we must not add the same motion twice
         // to slices.
         let mut visited_motions_ids = AHashSet::with_capacity(REL_CAPACITY);
-        for LevelNode(_, id) in dfs_tree.into_iter(top_id) {
+        for LevelNode(_, id) in dfs_tree.traverse_into_iter(top_id) {
             let rel = self.get_relation_node(id)?;
 
             let mut max_motions_in_path = 0;

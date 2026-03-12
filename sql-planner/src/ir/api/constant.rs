@@ -66,7 +66,7 @@ impl Plan {
     pub fn get_const_list(&self, top_id: NodeId, snapshot: Snapshot) -> Vec<NodeId> {
         // Here we need to output first so that constants have the right order.
         // Otherwise they will be in reverse order (e.g., $1 $2 $3 becomes $3 $2 $1).
-        let tree = PostOrderWithFilter::with_capacity(
+        let tree = PostOrderWithFilter::new(
             |node| self.exec_plan_subtree_output_first_iter(node, snapshot),
             |node| {
                 matches!(
@@ -79,7 +79,7 @@ impl Plan {
 
         let mut set = HashSet::new();
         let mut vec = Vec::new();
-        for LevelNode(_, node_id) in tree.into_iter(top_id) {
+        for LevelNode(_, node_id) in tree.traverse_into_iter(top_id) {
             if !set.contains(&node_id) {
                 vec.push(node_id);
                 set.insert(node_id);

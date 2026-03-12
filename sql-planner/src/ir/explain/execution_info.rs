@@ -65,7 +65,7 @@ impl BucketsInfo {
 
         let top_id = ir.get_top()?;
 
-        let dfs_tree = PostOrder::with_capacity(|node| ir.nodes.rel_iter(node), REL_CAPACITY);
+        let dfs_tree = PostOrder::new(|node| ir.nodes.rel_iter(node), REL_CAPACITY);
         // Stores previously computed results for each
         // child of the current node: weather the child
         // has non-local motion in its subtree.
@@ -94,7 +94,7 @@ impl BucketsInfo {
         // some children have such motions in their subtrees, then
         // such children are to be used for buckets estimation.
         let mut cur_children_without_motions: Vec<NodeId> = Vec::new();
-        for LevelNode(_, id) in dfs_tree.into_iter(top_id) {
+        for LevelNode(_, id) in dfs_tree.traverse_into_iter(top_id) {
             let rel = ir.get_relation_node(id)?;
 
             // true if this subtree has non-local motion
@@ -178,8 +178,8 @@ impl BucketsInfo {
             }
             false
         });
-        let dfs = PostOrderWithFilter::with_capacity(|x| plan.nodes.rel_iter(x), filter, 0);
-        let _ = dfs.populate_nodes(top_id);
+        let dfs = PostOrderWithFilter::new(|x| plan.nodes.rel_iter(x), filter, 0);
+        let _ = dfs.traverse_into_vec(top_id);
 
         if contains_segment_motion {
             return Ok(false);

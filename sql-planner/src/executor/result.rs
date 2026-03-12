@@ -125,7 +125,7 @@ impl Plan {
     /// # Errors
     /// - If relational iterator fails to return a correct node.
     pub fn subtree_contains_values(&self, top_id: NodeId) -> Result<bool, SbroadError> {
-        let rel_tree = PostOrderWithFilter::with_capacity(
+        let rel_tree = PostOrderWithFilter::new(
             |node| self.nodes.rel_iter(node),
             |node| {
                 matches!(
@@ -135,6 +135,6 @@ impl Plan {
             },
             REL_CAPACITY,
         );
-        Ok(rel_tree.into_iter(top_id).next().is_some())
+        Ok(rel_tree.traverse_into_iter(top_id).next().is_some())
     }
 }

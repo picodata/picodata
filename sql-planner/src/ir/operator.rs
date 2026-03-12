@@ -984,7 +984,7 @@ impl Plan {
         needs_shard_col: bool,
     ) -> Result<(NodeId, Option<HashMap<usize, usize>>), SbroadError> {
         let get_leaf_refs = |expr_id: NodeId| -> Vec<LevelNode<NodeId>> {
-            let post_tree = PostOrderWithFilter::with_capacity(
+            let post_tree = PostOrderWithFilter::new(
                 |node| self.nodes.expr_iter(node, false),
                 |node| {
                     matches!(
@@ -995,7 +995,7 @@ impl Plan {
                 },
                 EXPR_CAPACITY,
             );
-            post_tree.populate_nodes(expr_id)
+            post_tree.traverse_into_vec(expr_id)
         };
 
         fn collect_columns(
@@ -1184,7 +1184,7 @@ impl Plan {
     /// ```
     pub fn fix_groupby_aliases(&mut self) -> Result<(), SbroadError> {
         let top = self.get_top()?;
-        let dft = PostOrderWithFilter::with_capacity(
+        let dft = PostOrderWithFilter::new(
             |node| self.subtree_iter(node, false),
             |node| {
                 matches!(
@@ -1198,7 +1198,7 @@ impl Plan {
             REL_CAPACITY,
         );
 
-        let nodes = dft.populate_nodes(top);
+        let nodes = dft.traverse_into_vec(top);
 
         for LevelNode(_, proj_id) in nodes {
             let group_by_id = self.get_group_by(proj_id)?;
@@ -1322,13 +1322,13 @@ impl Plan {
 
                 // Fill the `gr_alias_mappings` with alias name mapped to alias itself with its parent
                 for gr_expr_id in gr_exprs {
-                    let dft = PostOrderWithFilter::with_capacity(
+                    let dft = PostOrderWithFilter::new(
                         |node| self.nodes.expr_iter(node, false),
                         filter_alias,
                         EXPR_CAPACITY,
                     );
 
-                    let alias_parents = dft.populate_nodes(*gr_expr_id);
+                    let alias_parents = dft.traverse_into_vec(*gr_expr_id);
 
                     for LevelNode(_, alias_parent_id) in alias_parents {
                         // Add all Expression::Alias nodes among expression children

@@ -76,9 +76,8 @@ impl ReferredMap {
         let outer_child = plan.get_rel_child(join_id, 0)?;
         let inner_child = plan.get_rel_child(join_id, 1)?;
         let mut referred = ReferredMap::with_capacity(EXPR_CAPACITY);
-        let expr_tree =
-            PostOrder::with_capacity(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
-        for LevelNode(_, node_id) in expr_tree.into_iter(condition_id) {
+        let expr_tree = PostOrder::new(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
+        for LevelNode(_, node_id) in expr_tree.traverse_into_iter(condition_id) {
             let expr = plan.get_expression_node(node_id)?;
             let res = match expr {
                 Expression::Window(_) => {
@@ -519,7 +518,7 @@ impl EqualityCols {
         let mut node_eq_cols: EqualityColsMap = EqualityColsMap::new();
         let outer_id = plan.get_first_rel_child(join_id)?;
         let refers_to = ReferredMap::new_from_join_condition(plan, condition_id, join_id)?;
-        let expr_tree = PostOrderWithFilter::with_capacity(
+        let expr_tree = PostOrderWithFilter::new(
             |node| plan.nodes.expr_iter(node, true),
             |node| {
                 matches!(
@@ -529,7 +528,7 @@ impl EqualityCols {
             },
             EXPR_CAPACITY,
         );
-        for level_node in expr_tree.into_iter(condition_id) {
+        for level_node in expr_tree.traverse_into_iter(condition_id) {
             let node_id = level_node.1;
             let bool_op = BoolOp::from_expr(plan, node_id)?;
             let left_expr = plan.get_expression_node(bool_op.left)?;
