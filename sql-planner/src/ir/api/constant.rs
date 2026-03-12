@@ -64,18 +64,17 @@ impl Plan {
     #[must_use]
     /// # Panics
     pub fn get_const_list(&self, top_id: NodeId, snapshot: Snapshot) -> Vec<NodeId> {
-        let filter = |node_id: NodeId| -> bool {
-            if let Ok(Node::Expression(Expression::Constant(..))) = self.get_node(node_id) {
-                return true;
-            }
-            false
-        };
         // Here we need to output first so that constants have the right order.
         // Otherwise they will be in reverse order (e.g., $1 $2 $3 becomes $3 $2 $1).
         let tree = PostOrderWithFilter::with_capacity(
             |node| self.exec_plan_subtree_output_first_iter(node, snapshot),
+            |node| {
+                matches!(
+                    self.get_node(node),
+                    Ok(Node::Expression(Expression::Constant(_)))
+                )
+            },
             REL_CAPACITY,
-            Box::new(filter),
         );
 
         let mut set = HashSet::new();

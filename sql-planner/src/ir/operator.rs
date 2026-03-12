@@ -983,18 +983,17 @@ impl Plan {
         is_distinct: bool,
         needs_shard_col: bool,
     ) -> Result<(NodeId, Option<HashMap<usize, usize>>), SbroadError> {
-        let filter = |node_id: NodeId| -> bool {
-            matches!(
-                self.get_node(node_id).expect("node in the plan must exist"),
-                Node::Expression(Expression::Reference { .. })
-                    | Node::Expression(Expression::SubQueryReference { .. })
-            )
-        };
         let get_leaf_refs = |expr_id: NodeId| -> Vec<LevelNode<NodeId>> {
             let post_tree = PostOrderWithFilter::with_capacity(
                 |node| self.nodes.expr_iter(node, false),
+                |node| {
+                    matches!(
+                        self.get_node(node),
+                        Ok(Node::Expression(Expression::Reference(_))
+                            | Node::Expression(Expression::SubQueryReference(_)))
+                    )
+                },
                 EXPR_CAPACITY,
-                Box::new(filter),
             );
             post_tree.populate_nodes(expr_id)
         };
@@ -1185,19 +1184,18 @@ impl Plan {
     /// ```
     pub fn fix_groupby_aliases(&mut self) -> Result<(), SbroadError> {
         let top = self.get_top()?;
-        let filter = |id: NodeId| -> bool {
-            matches!(
-                self.get_node(id),
-                Ok(Node::Relational(Relational::Projection(Projection {
-                    group_by: Some(_),
-                    ..
-                })))
-            )
-        };
         let dft = PostOrderWithFilter::with_capacity(
-            |x| self.subtree_iter(x, false),
+            |node| self.subtree_iter(node, false),
+            |node| {
+                matches!(
+                    self.get_node(node),
+                    Ok(Node::Relational(Relational::Projection(Projection {
+                        group_by: Some(_),
+                        ..
+                    })))
+                )
+            },
             REL_CAPACITY,
-            Box::new(filter),
         );
 
         let nodes = dft.populate_nodes(top);
@@ -1306,29 +1304,28 @@ impl Plan {
                 // Mapping from alias_name to its parent_id and alias_id
                 let mut gr_alias_mappings = HashMap::<SmolStr, (NodeId, NodeId)>::new();
 
-                // Any Expression::Alias in gr_expr[i] subtree is the alias from projection
-                // We retrieve it to replace with corresponding original subtree body
-                // The parent is needed for `replace_expression`
-                let filter = |id: NodeId| -> bool {
-                    if matches!(self.get_node(id), Ok(Node::Expression(_))) {
-                        for child in self.nodes.expr_iter(id, false) {
-                            if matches!(
-                                self.get_node(child),
-                                Ok(Node::Expression(Expression::Alias(_)))
-                            ) {
-                                return true;
-                            }
-                        }
+                // Any Expression::Alias in gr_expr[i] subtree is the alias from projection.
+                // We retrieve it to replace with corresponding original subtree body.
+                // The parent is needed for `replace_expression`.
+                let filter_alias = |id: NodeId| -> bool {
+                    if !matches!(self.get_node(id), Ok(Node::Expression(_))) {
+                        return false;
                     }
-                    false
+
+                    self.nodes.expr_iter(id, false).any(|child| {
+                        matches!(
+                            self.get_node(child),
+                            Ok(Node::Expression(Expression::Alias(_)))
+                        )
+                    })
                 };
 
                 // Fill the `gr_alias_mappings` with alias name mapped to alias itself with its parent
                 for gr_expr_id in gr_exprs {
                     let dft = PostOrderWithFilter::with_capacity(
-                        |x| self.nodes.expr_iter(x, false),
+                        |node| self.nodes.expr_iter(node, false),
+                        filter_alias,
                         EXPR_CAPACITY,
-                        Box::new(filter),
                     );
 
                     let alias_parents = dft.populate_nodes(*gr_expr_id);

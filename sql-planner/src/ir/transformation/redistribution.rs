@@ -399,19 +399,18 @@ fn compare_window_dist(this: &Distribution, other: &Distribution) -> Distributio
 impl Plan {
     /// Get unary NOT expression nodes.
     pub(crate) fn get_not_unary_nodes(&self, top: NodeId) -> Vec<LevelNode<NodeId>> {
-        let filter = |node_id: NodeId| -> bool {
-            matches!(
-                self.get_node(node_id),
-                Ok(Node::Expression(Expression::Unary(UnaryExpr {
-                    op: Unary::Not,
-                    ..
-                })))
-            )
-        };
         let post_tree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.expr_iter(node, false),
+            |node| {
+                matches!(
+                    self.get_node(node),
+                    Ok(Node::Expression(Expression::Unary(UnaryExpr {
+                        op: Unary::Not,
+                        ..
+                    })))
+                )
+            },
             EXPR_CAPACITY,
-            Box::new(filter),
         );
         post_tree.populate_nodes(top)
     }
@@ -427,43 +426,40 @@ impl Plan {
         &self,
         top: NodeId,
     ) -> Vec<LevelNode<NodeId>> {
-        let filter = |node_id: NodeId| -> bool {
+        let filter_bool_expr_with_row = |node_id| {
             // Append only booleans with row children.
-            if let Ok(Node::Expression(Expression::Bool(BoolExpr { left, right, .. }))) =
+            let Ok(Node::Expression(Expression::Bool(BoolExpr { left, right, .. }))) =
                 self.get_node(node_id)
-            {
-                let left_is_row = {
-                    let node_id = self.get_child_under_cast(*left);
-                    let node = node_id.and_then(|id| self.get_node(id));
+            else {
+                return false;
+            };
 
-                    matches!(
-                        node,
-                        Ok(Node::Expression(Expression::Row(_)))
-                            | Ok(Node::Expression(Expression::Reference(_)))
-                    )
-                };
+            let left = self
+                .get_child_under_cast(*left)
+                .and_then(|id| self.get_node(id));
 
-                let right_is_row = {
-                    let node_id = self.get_child_under_cast(*right);
-                    let node = node_id.and_then(|id| self.get_node(id));
+            let right = self
+                .get_child_under_cast(*right)
+                .and_then(|id| self.get_node(id));
 
-                    matches!(
-                        node,
-                        Ok(Node::Expression(Expression::Row(_)))
-                            | Ok(Node::Expression(Expression::Reference(_)))
-                    )
-                };
+            let left_is_row = matches!(
+                left,
+                Ok(Node::Expression(Expression::Row(_)))
+                    | Ok(Node::Expression(Expression::Reference(_)))
+            );
 
-                if left_is_row || right_is_row {
-                    return true;
-                }
-            }
-            false
+            let right_is_row = matches!(
+                right,
+                Ok(Node::Expression(Expression::Row(_)))
+                    | Ok(Node::Expression(Expression::Reference(_)))
+            );
+
+            left_is_row || right_is_row
         };
         let post_tree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.expr_iter(node, false),
+            filter_bool_expr_with_row,
             EXPR_CAPACITY,
-            Box::new(filter),
         );
         post_tree.populate_nodes(top)
     }
@@ -476,25 +472,23 @@ impl Plan {
     /// # Errors
     /// - some of the expression nodes are invalid
     pub(crate) fn get_unary_nodes_with_row_children(&self, top: NodeId) -> Vec<LevelNode<NodeId>> {
-        let filter = |node_id: NodeId| -> bool {
+        let filter_unary_expr_with_row = |node_id| {
             // Append only unaries with row children.
-            if let Ok(Node::Expression(Expression::Unary(UnaryExpr { child, .. }))) =
+            let Ok(Node::Expression(Expression::Unary(UnaryExpr { child, .. }))) =
                 self.get_node(node_id)
-            {
-                let child_is_row = matches!(
-                    self.get_node(*child),
-                    Ok(Node::Expression(Expression::Row(_)))
-                );
-                if child_is_row {
-                    return true;
-                }
-            }
-            false
+            else {
+                return false;
+            };
+
+            matches!(
+                self.get_node(*child),
+                Ok(Node::Expression(Expression::Row(_)))
+            )
         };
         let post_tree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.expr_iter(node, false),
+            filter_unary_expr_with_row,
             EXPR_CAPACITY,
-            Box::new(filter),
         );
         post_tree.populate_nodes(top)
     }
@@ -527,16 +521,15 @@ impl Plan {
                 Some("Node is not a row".into()),
             ));
         };
-        let filter = |node_id: NodeId| -> bool {
-            matches!(
-                self.get_node(node_id),
-                Ok(Node::Expression(Expression::SubQueryReference { .. }))
-            )
-        };
         let post_tree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.expr_iter(node, false),
+            |node| {
+                matches!(
+                    self.get_node(node),
+                    Ok(Node::Expression(Expression::SubQueryReference(_)))
+                )
+            },
             capacity,
-            Box::new(filter),
         );
         let nodes = post_tree.populate_nodes(row_id);
         // We don't expect much relational references in a row (5 is a reasonable number).
@@ -1544,16 +1537,15 @@ impl Plan {
 
         let mut policy_map: AHashMap<NodeId, MotionPolicy> = AHashMap::new();
         let mut new_inner_policy = MotionPolicy::Full;
-        let filter = |node_id: NodeId| -> bool {
-            matches!(
-                self.get_node(node_id),
-                Ok(Node::Expression(Expression::Bool(_) | Expression::Unary(_)))
-            )
-        };
         let expr_tree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.expr_iter(node, true),
+            |node| {
+                matches!(
+                    self.get_node(node),
+                    Ok(Node::Expression(Expression::Bool(_) | Expression::Unary(_)))
+                )
+            },
             EXPR_CAPACITY,
-            Box::new(filter),
         );
         for LevelNode(_, node_id) in expr_tree.into_iter(cond_id) {
             let expr = self.get_expression_node(node_id)?;

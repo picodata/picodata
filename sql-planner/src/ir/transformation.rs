@@ -158,17 +158,16 @@ impl Plan {
         top_id: NodeId,
         f: TransformFunctionOldNew,
     ) -> Result<(), SbroadError> {
-        let filter = |id: NodeId| -> bool {
-            matches!(
-                self.get_node(id),
-                Ok(Node::Relational(Relational::Join(_)))
-                    | Ok(Node::Relational(Relational::Selection(_)))
-            )
-        };
         let ir_tree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.rel_iter(node),
+            |node| {
+                matches!(
+                    self.get_node(node),
+                    Ok(Node::Relational(Relational::Join(_)))
+                        | Ok(Node::Relational(Relational::Selection(_)))
+                )
+            },
             EXPR_CAPACITY,
-            Box::new(filter),
         );
         let nodes = ir_tree.populate_nodes(top_id);
         for level_node in &nodes {
@@ -233,26 +232,25 @@ impl Plan {
         // Note, that filter accepts nodes:
         // * On which we'd like to apply transformation
         // * That will contain transformed nodes as children
-        let filter = |node_id: NodeId| -> bool {
-            if let Ok(Node::Expression(
-                Expression::Bool(_)
-                | Expression::Arithmetic(_)
-                | Expression::Alias(_)
-                | Expression::Row(_)
-                | Expression::Cast(_)
-                | Expression::Case(_)
-                | Expression::ScalarFunction(_)
-                | Expression::Unary(_),
-            )) = self.get_node(node_id)
-            {
-                return true;
-            }
-            false
+        let filter_certain_exprs = |node_id| {
+            matches!(
+                self.get_node(node_id),
+                Ok(Node::Expression(
+                    Expression::Bool(_)
+                        | Expression::Arithmetic(_)
+                        | Expression::Alias(_)
+                        | Expression::Row(_)
+                        | Expression::Cast(_)
+                        | Expression::Case(_)
+                        | Expression::ScalarFunction(_)
+                        | Expression::Unary(_),
+                ))
+            )
         };
         let subtree = PostOrderWithFilter::with_capacity(
             |node_id| self.nodes.expr_iter(node_id, false),
+            filter_certain_exprs,
             EXPR_CAPACITY,
-            Box::new(filter),
         );
         let nodes = subtree.populate_nodes(top_id);
         for level_node in &nodes {

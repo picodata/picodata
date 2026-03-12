@@ -178,7 +178,7 @@ impl BucketsInfo {
             }
             false
         });
-        let dfs = PostOrderWithFilter::with_capacity(|x| plan.nodes.rel_iter(x), 0, filter);
+        let dfs = PostOrderWithFilter::with_capacity(|x| plan.nodes.rel_iter(x), filter, 0);
         let _ = dfs.populate_nodes(top_id);
 
         if contains_segment_motion {

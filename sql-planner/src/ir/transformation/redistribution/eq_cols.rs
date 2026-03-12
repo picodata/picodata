@@ -519,16 +519,15 @@ impl EqualityCols {
         let mut node_eq_cols: EqualityColsMap = EqualityColsMap::new();
         let outer_id = plan.get_first_rel_child(join_id)?;
         let refers_to = ReferredMap::new_from_join_condition(plan, condition_id, join_id)?;
-        let filter = |node_id: NodeId| -> bool {
-            if let Ok(Node::Expression(Expression::Bool(_))) = plan.get_node(node_id) {
-                return true;
-            }
-            false
-        };
         let expr_tree = PostOrderWithFilter::with_capacity(
             |node| plan.nodes.expr_iter(node, true),
+            |node| {
+                matches!(
+                    plan.get_node(node),
+                    Ok(Node::Expression(Expression::Bool(_)))
+                )
+            },
             EXPR_CAPACITY,
-            Box::new(filter),
         );
         for level_node in expr_tree.into_iter(condition_id) {
             let node_id = level_node.1;

@@ -7,21 +7,21 @@ pub const REL_CAPACITY: usize = 32;
 #[derive(Debug, PartialEq)]
 pub struct LevelNode<T>(pub usize, pub T);
 
-pub struct PostOrder<F, T> {
-    inner: PostOrderWithFilter<'static, F, T>,
+pub struct PostOrder<ChildrenFn, T> {
+    inner: PostOrderWithFilter<ChildrenFn, fn(T) -> bool, T>,
 }
 
-impl<F, T> PostOrder<F, T> {
-    pub fn with_capacity(iter_children: F, capacity: usize) -> Self {
+impl<ChildrenFn, T> PostOrder<ChildrenFn, T> {
+    pub fn with_capacity(children_fn: ChildrenFn, capacity: usize) -> Self {
         Self {
-            inner: PostOrderWithFilter::with_capacity(iter_children, capacity, Box::new(|_| true)),
+            inner: PostOrderWithFilter::with_capacity(children_fn, |_| true, capacity),
         }
     }
 }
 
-impl<F, I, T> PostOrder<F, T>
+impl<ChildrenFn, I, T> PostOrder<ChildrenFn, T>
 where
-    F: FnMut(T) -> I,
+    ChildrenFn: FnMut(T) -> I,
     I: Iterator<Item = T>,
     T: Copy,
 {
@@ -34,32 +34,31 @@ where
     }
 }
 
-pub type FilterFn<'filter, T> = Box<dyn FnMut(T) -> bool + 'filter>;
-
-pub struct PostOrderWithFilter<'filter, F, T> {
-    iter_children: F,
+pub struct PostOrderWithFilter<ChildrenFn, FilterFn, T> {
+    children_fn: ChildrenFn,
+    filter_fn: FilterFn,
     nodes: Vec<LevelNode<T>>,
-    filter_fn: FilterFn<'filter, T>,
 }
 
-impl<'filter, F, T> PostOrderWithFilter<'filter, F, T> {
-    pub fn with_capacity(iter_children: F, capacity: usize, filter: FilterFn<'filter, T>) -> Self {
+impl<ChildrenFn, FilterFn, T> PostOrderWithFilter<ChildrenFn, FilterFn, T> {
+    pub fn with_capacity(children_fn: ChildrenFn, filter_fn: FilterFn, capacity: usize) -> Self {
         Self {
-            iter_children,
+            children_fn,
+            filter_fn,
             nodes: Vec::with_capacity(capacity),
-            filter_fn: filter,
         }
     }
 }
 
-impl<F, I, T> PostOrderWithFilter<'_, F, T>
+impl<ChildrenFn, FilterFn, I, T> PostOrderWithFilter<ChildrenFn, FilterFn, T>
 where
-    F: FnMut(T) -> I,
+    ChildrenFn: FnMut(T) -> I,
+    FilterFn: FnMut(T) -> bool,
     I: Iterator<Item = T>,
     T: Copy,
 {
     fn traverse(&mut self, root: T, level: usize) {
-        for child in (self.iter_children)(root) {
+        for child in (self.children_fn)(root) {
             self.traverse(child, level + 1);
         }
         if (self.filter_fn)(root) {
@@ -79,25 +78,29 @@ where
     }
 }
 
-pub struct BreadthFirst<F, T> {
-    iter_children: F,
+pub struct BreadthFirst<ChildrenFn, T> {
+    children_fn: ChildrenFn,
     queue: VecDeque<LevelNode<T>>,
     nodes: Vec<LevelNode<T>>,
 }
 
-impl<F, T> BreadthFirst<F, T> {
-    pub fn with_capacity(iter_children: F, node_capacity: usize, queue_capacity: usize) -> Self {
+impl<ChildrenFn, T> BreadthFirst<ChildrenFn, T> {
+    pub fn with_capacity(
+        iter_children: ChildrenFn,
+        node_capacity: usize,
+        queue_capacity: usize,
+    ) -> Self {
         Self {
-            iter_children,
+            children_fn: iter_children,
             queue: VecDeque::with_capacity(queue_capacity),
             nodes: Vec::with_capacity(node_capacity),
         }
     }
 }
 
-impl<F, I, T> BreadthFirst<F, T>
+impl<ChildrenFn, I, T> BreadthFirst<ChildrenFn, T>
 where
-    F: FnMut(T) -> I,
+    ChildrenFn: FnMut(T) -> I,
     I: Iterator<Item = T>,
     T: Copy,
 {
@@ -109,7 +112,7 @@ where
         self.queue.push_back(LevelNode(0, root));
         while let Some(LevelNode(level, node)) = self.queue.pop_front() {
             self.nodes.push(LevelNode(level, node));
-            for child in (self.iter_children)(node) {
+            for child in (self.children_fn)(node) {
                 self.queue.push_back(LevelNode(level + 1, child));
             }
         }

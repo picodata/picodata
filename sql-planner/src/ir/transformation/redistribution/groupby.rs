@@ -476,16 +476,15 @@ impl Plan {
     fn check_refs_out_of_aggregates(&self, proj: NodeId) -> Result<(), SbroadError> {
         let output = self.get_relational_output(proj)?;
         for col in self.get_row_list(output)? {
-            let filter = |node_id: NodeId| -> bool {
-                matches!(
-                    self.get_node(node_id),
-                    Ok(Node::Expression(Expression::Reference(_)))
-                )
-            };
             let dfs = PostOrderWithFilter::with_capacity(
-                |x| self.nodes.aggregate_iter(x, false),
+                |node| self.nodes.aggregate_iter(node, false),
+                |node| {
+                    matches!(
+                        self.get_node(node),
+                        Ok(Node::Expression(Expression::Reference(_)))
+                    )
+                },
                 EXPR_CAPACITY,
-                Box::new(filter),
             );
             let nodes = dfs.populate_nodes(*col);
             for LevelNode(_, id) in nodes {

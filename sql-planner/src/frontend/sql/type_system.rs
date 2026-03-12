@@ -658,7 +658,7 @@ fn coerce_scalar_expr(
         // Explicit casts can be the only way to fix coercion errors,
         // so we shouldn't coerce casted values.
         let mut casted_strings = Vec::new();
-        let string_to_be_coerced_filter = |id| {
+        let filter_string_to_be_coerced = |id| {
             let Ok(expr) = plan.get_expression_node(id) else {
                 return false;
             };
@@ -683,8 +683,8 @@ fn coerce_scalar_expr(
 
         let post_order = PostOrderWithFilter::with_capacity(
             |node| plan.subtree_iter(node, false),
+            filter_string_to_be_coerced,
             0,
-            Box::new(string_to_be_coerced_filter),
         );
 
         let strings = post_order.populate_nodes(expr_id);

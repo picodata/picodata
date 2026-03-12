@@ -2,7 +2,7 @@ use crate::ir::distribution::Distribution;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Node, NodeId};
 use crate::ir::transformation::helpers::sql_to_optimized_ir;
-use crate::ir::tree::traversal::{FilterFn, LevelNode, PostOrderWithFilter, REL_CAPACITY};
+use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use pretty_assertions::assert_eq;
@@ -26,11 +26,14 @@ impl From<&Distribution> for DistMock {
     }
 }
 
-fn collect_relational(plan: &Plan, predicate: FilterFn<'_, NodeId>) -> Vec<LevelNode<NodeId>> {
+fn collect_relational(
+    plan: &Plan,
+    predicate: impl FnMut(NodeId) -> bool,
+) -> Vec<LevelNode<NodeId>> {
     let rel_tree = PostOrderWithFilter::with_capacity(
         |node| plan.nodes.rel_iter(node),
-        REL_CAPACITY,
         predicate,
+        REL_CAPACITY,
     );
     let nodes = rel_tree.populate_nodes(plan.get_top().unwrap());
     nodes
@@ -62,7 +65,7 @@ fn check_selection_dist(plan: &Plan, expected_dist: DistMock) {
             Ok(Node::Relational(Relational::Selection(_)))
         )
     };
-    let nodes = collect_relational(plan, Box::new(filter));
+    let nodes = collect_relational(plan, filter);
     check_distributions(plan, &nodes, &[expected_dist]);
 }
 
@@ -359,7 +362,7 @@ fn check_join_dist(plan: &Plan, expected_distributions: &[DistMock]) {
     let filter = |id: NodeId| -> bool {
         matches!(plan.get_node(id), Ok(Node::Relational(Relational::Join(_))))
     };
-    let nodes = collect_relational(plan, Box::new(filter));
+    let nodes = collect_relational(plan, filter);
     check_distributions(plan, &nodes, expected_distributions);
 }
 
@@ -868,7 +871,7 @@ fn check_union_dist(plan: &Plan, expected_distributions: &[DistMock]) {
             Ok(Node::Relational(Relational::UnionAll { .. }))
         )
     };
-    let nodes = collect_relational(plan, Box::new(filter));
+    let nodes = collect_relational(plan, filter);
     check_distributions(plan, &nodes, expected_distributions);
 }
 

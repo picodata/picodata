@@ -3142,16 +3142,15 @@ impl Plan {
     }
 
     fn check_grouping_expr_subtree(&self, group_expr: NodeId) -> Result<(), SbroadError> {
-        let filter = |node_id: NodeId| -> bool {
-            matches!(
-                self.get_node(node_id),
-                Ok(Node::Expression(Expression::ScalarFunction(_)))
-            )
-        };
         let dfs = PostOrderWithFilter::with_capacity(
-            |x| self.nodes.expr_iter(x, false),
+            |node| self.nodes.expr_iter(node, false),
+            |node| {
+                matches!(
+                    self.get_node(node),
+                    Ok(Node::Expression(Expression::ScalarFunction(_)))
+                )
+            },
             EXPR_CAPACITY,
-            Box::new(filter),
         );
 
         for LevelNode(_, node_id) in dfs.into_iter(group_expr) {

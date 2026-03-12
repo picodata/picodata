@@ -70,8 +70,8 @@ impl Plan {
             }
             self.nodes.rel_iter(node_id)
         };
-        let filter = |node_id: NodeId| -> bool { self.is_serialize_as_empty_motion(node_id, true) };
-        let dfs = PostOrderWithFilter::with_capacity(iter_children, 4, Box::new(filter));
+        let filter_empty_motion = |node| self.is_serialize_as_empty_motion(node, true);
+        let dfs = PostOrderWithFilter::with_capacity(iter_children, filter_empty_motion, 4);
 
         Ok(dfs.into_iter(self.get_top()?).map(|id| id.1).collect())
     }
@@ -80,14 +80,16 @@ impl Plan {
         let top_ids = self.collect_top_ids()?;
 
         let mut motions_ref_count: AHashMap<NodeId, usize> = AHashMap::new();
-        let filter = |node_id: NodeId| -> bool {
-            matches!(
-                self.get_node(node_id),
-                Ok(Node::Relational(Relational::Motion(_)))
-            )
-        };
-        let dfs =
-            PostOrderWithFilter::with_capacity(|x| self.nodes.rel_iter(x), 0, Box::new(filter));
+        let dfs = PostOrderWithFilter::with_capacity(
+            |node| self.nodes.rel_iter(node),
+            |node| {
+                matches!(
+                    self.get_node(node),
+                    Ok(Node::Relational(Relational::Motion(_)))
+                )
+            },
+            0,
+        );
         for LevelNode(_, motion_id) in dfs.into_iter(self.get_top()?) {
             motions_ref_count
                 .entry(motion_id)
@@ -102,18 +104,17 @@ impl Plan {
         // all motion nodes that are inside the subtrees
         // defined by `top_ids`
         let all_motion_nodes = {
-            let is_motion = |node_id: NodeId| -> bool {
-                matches!(
-                    self.get_node(node_id),
-                    Ok(Node::Relational(Relational::Motion(_)))
-                )
-            };
             let mut all_motions = Vec::new();
             for top_id in &top_ids {
                 let dfs = PostOrderWithFilter::with_capacity(
-                    |x| self.nodes.rel_iter(x),
+                    |node| self.nodes.rel_iter(node),
+                    |node| {
+                        matches!(
+                            self.get_node(node),
+                            Ok(Node::Relational(Relational::Motion(_)))
+                        )
+                    },
                     REL_CAPACITY,
-                    Box::new(is_motion),
                 );
                 all_motions.extend(dfs.into_iter(*top_id).map(|id| id.1));
             }

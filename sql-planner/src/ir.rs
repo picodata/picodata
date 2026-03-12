@@ -1083,16 +1083,15 @@ impl Plan {
         expr_id: NodeId,
         check_top: bool,
     ) -> Result<bool, SbroadError> {
-        let filter = |id: NodeId| -> bool {
-            matches!(
-                self.get_node(id),
-                Ok(Node::Expression(Expression::ScalarFunction(_)))
-            )
-        };
         let dfs = PostOrderWithFilter::with_capacity(
-            |x| self.nodes.expr_iter(x, false),
+            |node| self.nodes.expr_iter(node, false),
+            |node| {
+                matches!(
+                    self.get_node(node),
+                    Ok(Node::Expression(Expression::ScalarFunction(_)))
+                )
+            },
             EXPR_CAPACITY,
-            Box::new(filter),
         );
         for level_node in dfs.into_iter(expr_id) {
             let id = level_node.1;
@@ -1545,35 +1544,33 @@ impl Plan {
 
     /// Get vec of references from the subtree of the given expression.
     pub fn get_refs_from_subtree(&self, expr_id: NodeId) -> Result<Vec<NodeId>, SbroadError> {
-        let filter = |node_id: NodeId| -> bool {
-            matches!(
-                self.get_node(node_id),
-                Ok(Node::Expression(Expression::Reference(_)))
-            )
-        };
         let dfs = PostOrderWithFilter::with_capacity(
-            |x| self.nodes.expr_iter(x, false),
+            |node| self.nodes.expr_iter(node, false),
+            |node| {
+                matches!(
+                    self.get_node(node),
+                    Ok(Node::Expression(Expression::Reference(_)))
+                )
+            },
             EXPR_CAPACITY,
-            Box::new(filter),
         );
-        let ref_ids: Vec<NodeId> = dfs.populate_nodes(expr_id).iter().map(|n| n.1).collect();
+        let ref_ids = dfs.populate_nodes(expr_id).iter().map(|n| n.1).collect();
         Ok(ref_ids)
     }
 
     /// Get vec of subquery references from the subtree of the given expression.
     pub fn get_sq_refs_from_subtree(&self, expr_id: NodeId) -> Result<Vec<NodeId>, SbroadError> {
-        let filter = |node_id: NodeId| -> bool {
-            matches!(
-                self.get_node(node_id),
-                Ok(Node::Expression(Expression::SubQueryReference(_)))
-            )
-        };
         let dfs = PostOrderWithFilter::with_capacity(
-            |x| self.nodes.expr_iter(x, false),
+            |node| self.nodes.expr_iter(node, false),
+            |node| {
+                matches!(
+                    self.get_node(node),
+                    Ok(Node::Expression(Expression::SubQueryReference(_)))
+                )
+            },
             EXPR_CAPACITY,
-            Box::new(filter),
         );
-        let ref_ids: Vec<NodeId> = dfs.populate_nodes(expr_id).iter().map(|n| n.1).collect();
+        let ref_ids = dfs.populate_nodes(expr_id).iter().map(|n| n.1).collect();
         Ok(ref_ids)
     }
 

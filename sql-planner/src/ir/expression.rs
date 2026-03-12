@@ -1673,17 +1673,16 @@ impl Plan {
                 Some("Node is not a row".into()),
             ));
         };
-        let filter = |node_id: NodeId| -> bool {
-            matches!(
-                self.get_node(node_id).expect("node in the plan must exist"),
-                Node::Expression(Expression::Reference { .. })
-                    | Node::Expression(Expression::SubQueryReference { .. })
-            )
-        };
         let post_tree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.expr_iter(node, false),
+            |node| {
+                matches!(
+                    self.get_node(node),
+                    Ok(Node::Expression(Expression::Reference(_))
+                        | Node::Expression(Expression::SubQueryReference(_)))
+                )
+            },
             capacity,
-            Box::new(filter),
         );
         let nodes = post_tree.populate_nodes(row_id);
         // We don't expect much relational references in a row (5 is a reasonable number).
@@ -1927,17 +1926,16 @@ impl Plan {
         from_id: NodeId,
         to_id: NodeId,
     ) -> Result<(), SbroadError> {
-        let filter = |node_id: NodeId| -> bool {
-            matches!(
-                self.get_node(node_id).expect("node in the plan must exist"),
-                Node::Expression(Expression::Reference { .. })
-                    | Node::Expression(Expression::SubQueryReference { .. })
-            )
-        };
         let subtree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.expr_iter(node, false),
+            |node| {
+                matches!(
+                    self.get_node(node),
+                    Ok(Node::Expression(Expression::Reference(_))
+                        | Node::Expression(Expression::SubQueryReference(_)))
+                )
+            },
             EXPR_CAPACITY,
-            Box::new(filter),
         );
         let references = subtree.populate_nodes(node_id);
         for LevelNode(_, id) in references {
@@ -1985,16 +1983,15 @@ impl Plan {
         expr_id: NodeId,
         rel_id: NodeId,
     ) -> Result<(), SbroadError> {
-        let filter = |node_id: NodeId| -> bool {
-            if let Ok(Node::Expression(Expression::Reference { .. })) = self.get_node(node_id) {
-                return true;
-            }
-            false
-        };
         let subtree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.expr_iter(node, false),
+            |node| {
+                matches!(
+                    self.get_node(node),
+                    Ok(Node::Expression(Expression::Reference(..)))
+                )
+            },
             EXPR_CAPACITY,
-            Box::new(filter),
         );
         let references = subtree.populate_nodes(expr_id);
         for LevelNode(_, id) in references {

@@ -439,18 +439,15 @@ impl ExecutionPlan {
         // EXCEPT implementation logic.
         let mut nodes_to_save = AHashSet::default();
         if !dont_mutate {
-            let filter = |node_id: NodeId| -> bool {
-                if let Ok(Relational::ScanCte(_) | Relational::ScanSubQuery(_)) =
-                    plan.get_relation_node(node_id)
-                {
-                    return true;
-                }
-                false
-            };
             let rel_tree = PostOrderWithFilter::with_capacity(
                 |node| plan.nodes.rel_iter(node),
+                |node| {
+                    matches!(
+                        plan.get_relation_node(node),
+                        Ok(Relational::ScanCte(_) | Relational::ScanSubQuery(_))
+                    )
+                },
                 REL_CAPACITY,
-                Box::new(filter),
             );
             let nodes = rel_tree.populate_nodes(top_id);
 

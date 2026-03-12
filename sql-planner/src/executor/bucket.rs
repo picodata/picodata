@@ -354,18 +354,12 @@ where
             }
         }
 
-        let filter = |node_id: NodeId| -> bool {
-            if let Ok(Node::Relational(..)) = ir_plan.get_node(node_id) {
-                return true;
-            }
-            false
-        };
         // We use a `exec_plan_subtree_iter()` because we need DNF version of the
         // filter/condition expressions to determine buckets.
         let tree = PostOrderWithFilter::with_capacity(
             |node| ir_plan.exec_plan_subtree_iter(node, Snapshot::Latest),
+            |node| matches!(ir_plan.get_node(node), Ok(Node::Relational(..))),
             REL_CAPACITY,
-            Box::new(filter),
         );
 
         for LevelNode(_, node_id) in tree.into_iter(top_id) {

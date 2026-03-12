@@ -193,16 +193,15 @@ impl Plan {
                 Relational::Join(Join { condition, .. }) => *condition,
                 _ => unreachable!("expected Selection or Join node"),
             };
-            let bool_filter = |id: NodeId| -> bool {
-                matches!(
-                    self.get_node(id),
-                    Ok(Node::Expression(Expression::Bool(_) | Expression::Unary(_)))
-                )
-            };
             let dfs = PostOrderWithFilter::with_capacity(
-                |node_id| self.nodes.expr_iter(node_id, false),
+                |node| self.nodes.expr_iter(node, false),
+                |node| {
+                    matches!(
+                        self.get_node(node),
+                        Ok(Node::Expression(Expression::Bool(_) | Expression::Unary(_)))
+                    )
+                },
                 EXPR_CAPACITY,
-                Box::new(bool_filter),
             );
             let op_nodes = dfs.populate_nodes(filter);
 

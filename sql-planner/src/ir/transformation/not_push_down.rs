@@ -72,16 +72,15 @@ fn call_expr_tree_not_push_down(
     // the previous tree.
     let remember_old_top_id = SubtreeCloner::clone_subtree(plan, top_id)?;
 
-    let filter = |node_id: NodeId| -> bool {
-        matches!(
-            plan.get_node(node_id),
-            Ok(Node::Expression(Expression::Bool(_) | Expression::Row(_)))
-        )
-    };
     let subtree = PostOrderWithFilter::with_capacity(
         |node| plan.nodes.expr_iter(node, false),
+        |node| {
+            matches!(
+                plan.get_node(node),
+                Ok(Node::Expression(Expression::Bool(_) | Expression::Row(_)))
+            )
+        },
         EXPR_CAPACITY,
-        Box::new(filter),
     );
     let nodes = subtree.populate_nodes(new_top_id);
     for level_node in &nodes {

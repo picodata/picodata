@@ -137,16 +137,15 @@ impl Plan {
 
     pub fn recalculate_ref_types(&mut self) -> Result<(), SbroadError> {
         let ref_nodes = {
-            let filter = |node_id| {
-                matches!(
-                    self.get_node(node_id),
-                    Ok(Node::Expression(Expression::Reference(_)))
-                )
-            };
             let tree = PostOrderWithFilter::with_capacity(
                 |node| self.parameter_iter(node, true),
+                |node| {
+                    matches!(
+                        self.get_node(node),
+                        Ok(Node::Expression(Expression::Reference(_)))
+                    )
+                },
                 EXPR_CAPACITY,
-                Box::new(filter),
             );
             let top_id = self.get_top()?;
             tree.populate_nodes(top_id)
