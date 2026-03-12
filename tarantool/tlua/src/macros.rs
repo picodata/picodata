@@ -123,7 +123,7 @@ macro_rules! error {
             $crate::ffi::lua_pushlstring(lua, msg.as_ptr() as _, msg.len());
             $crate::ffi::lua_error($crate::AsLua::as_lua(l));
         }
-        unreachable!("luaL_error never returns")
+        unreachable!("luaL_error never returns");
     }};
 }
 
