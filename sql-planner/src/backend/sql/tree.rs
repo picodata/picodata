@@ -2531,7 +2531,7 @@ impl<'p> SyntaxPlan<'p> {
     ///
     /// # Errors
     /// - got unexpected nodes under projection
-    fn gather_selects(&self) -> Result<Option<Vec<Select>>, SbroadError> {
+    fn gather_selects(&self) -> Result<Vec<Select>, SbroadError> {
         let mut selects: Vec<Select> = Vec::new();
         let top = self.get_top()?;
         let dfs = PostOrder::new(
@@ -2560,11 +2560,7 @@ impl<'p> SyntaxPlan<'p> {
             }
         }
 
-        if selects.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(selects))
-        }
+        Ok(selects)
     }
 
     /// Move projection nodes under their scans
@@ -2573,10 +2569,8 @@ impl<'p> SyntaxPlan<'p> {
     /// - got unexpected nodes under some projection
     fn move_proj_under_scan(&mut self) -> Result<(), SbroadError> {
         let selects = self.gather_selects()?;
-        if let Some(selects) = selects {
-            for select in &selects {
-                self.reorder(select)?;
-            }
+        for select in &selects {
+            self.reorder(select)?;
         }
         Ok(())
     }
