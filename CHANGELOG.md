@@ -46,6 +46,8 @@ with the `YY.MINOR.MICRO` scheme.
   from `admin` user is forbidden, for same reasons as for the `pico_service` user.
 - Fixed `ALTER PLUGIN ADD SERVICE TO TIER` accepting nonexistent tier names.
   Now validates that the specified tier exists and returns an error otherwise.
+- Backup operation will now be automatically aborted if there are offline instances.
+  This prevents cluster being locked in a readonly state.
 
 ## [26.1.2] - 2026-04-14 
 
@@ -260,7 +262,6 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed a caching bug that caused some different queries to tables with `bucket_id` in the primary key to have the same plan id.
 - Fixed SUM/AVG type resolution for Double
 - Fixed incorrect filter pushdown into compound queries containing window functions.
-- Fixed a bug preventing scalar functions from being used in GROUP BY.
 
 ### Observability
 

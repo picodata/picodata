@@ -96,6 +96,11 @@ impl LastStepInfo {
             .or_insert_with(ErrorTracker::new)
     }
 
+    /// Returns true if there are any recorded RPC completions (either successful or not)
+    pub fn has_completions(&self) -> bool {
+        !self.ok_instances.is_empty() || !self.err_instances.is_empty()
+    }
+
     #[inline]
     pub fn ok_instances(&self) -> impl Iterator<Item = &InstanceName> {
         self.ok_instances.iter()
