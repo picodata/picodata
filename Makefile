@@ -14,7 +14,7 @@ endif
 
 # It should be possible to keep the flags to the bare minimum.
 # Hence, we don't use `override` here but add it to all build prerequisites.
-CARGO_FLAGS := --features webui --all
+CARGO_FLAGS := --features webui --workspace
 
 PYTEST_FLAGS :=
 
@@ -102,13 +102,23 @@ build-asan-dev: build
 # which at the end leads to OOM.
 .PHONY: test-rs
 test-rs:
-	cargo test $(LOCKED) $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) $(CARGO_FLAGS_EXTRA) $(ERROR_INJECTION) \
+	cargo test \
+	  $(LOCKED) $(MAKE_JOBSERVER_ARGS) \
+	  $(filter-out --workspace, $(CARGO_FLAGS)) \
+	  $(filter-out --workspace, $(CARGO_FLAGS_EXTRA)) \
+	  $(ERROR_INJECTION) \
+	  --workspace
 	  --exclude sql-planner \
 	  --exclude tarantool \
 	  --exclude tlua \
 	  --tests
 
-	cargo test $(LOCKED) $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) $(CARGO_FLAGS_EXTRA) $(ERROR_INJECTION) \
+	cargo test \
+	  $(LOCKED) $(MAKE_JOBSERVER_ARGS) \
+	  $(filter-out --workspace, $(CARGO_FLAGS)) \
+	  $(filter-out --workspace, $(CARGO_FLAGS_EXTRA)) \
+	  $(ERROR_INJECTION) \
+	  --workspace \
 	  --exclude sql-planner \
 	  --exclude tarantool \
 	  --exclude tlua \
@@ -131,18 +141,29 @@ lint-rs:
 
 	cargo fmt --check
 
-	RUSTFLAGS="-Dwarnings -Adeprecated" cargo check --tests --all --benches $(LOCKED) $(MAKE_JOBSERVER_ARGS)
+	RUSTFLAGS="-Dwarnings -Adeprecated" \
+	  cargo check \
+	    $(LOCKED) $(MAKE_JOBSERVER_ARGS) \
+	    $(filter-out --workspace, $(CARGO_FLAGS)) \
+	    --workspace \
+	    --benches \
+	    --tests
 
 	cargo clippy --version
 	cargo clippy \
-		$(LOCKED) $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) \
-		--features=load_test,error_injection \
-		-- --deny clippy::all --no-deps
+	  $(LOCKED) $(MAKE_JOBSERVER_ARGS) \
+	  $(filter-out --workspace, $(CARGO_FLAGS)) \
+	  --workspace \
+	  --features=load_test,error_injection \
+	  -- --deny clippy::all --no-deps
 
 	RUSTDOCFLAGS="-Dwarnings -Arustdoc::private_intra_doc_links" \
-		cargo doc \
-			$(LOCKED) $(MAKE_JOBSERVER_ARGS) \
-			--workspace --no-deps --document-private-items
+	  cargo doc \
+	    $(LOCKED) $(MAKE_JOBSERVER_ARGS) \
+	    $(filter-out --workspace, $(CARGO_FLAGS)) \
+	    --workspace \
+	    --document-private-items \
+	    --no-deps
 
 .PHONY: lint-py
 lint-py:
