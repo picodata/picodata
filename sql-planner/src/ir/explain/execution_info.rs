@@ -179,7 +179,7 @@ impl BucketsInfo {
             false
         });
         let dfs = PostOrderWithFilter::new(|x| plan.nodes.rel_iter(x), filter, 0);
-        let _ = dfs.traverse_into_vec(top_id);
+        dfs.traverse_into_iter(top_id).for_each(|_| {});
 
         if contains_segment_motion {
             return Ok(false);

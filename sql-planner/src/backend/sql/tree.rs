@@ -2538,8 +2538,7 @@ impl<'p> SyntaxPlan<'p> {
             |node| self.nodes.iter(node),
             self.plan.get_ir_plan().nodes.len(),
         );
-        let nodes = dfs.traverse_into_vec(top);
-        for LevelNode(_, pos) in nodes {
+        for LevelNode(_, pos) in dfs.traverse_into_iter(top) {
             let node = self.nodes.get_sn(pos);
             if pos == top {
                 let select = Select::new(self, None, None, pos)?;

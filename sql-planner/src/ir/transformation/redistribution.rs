@@ -531,12 +531,12 @@ impl Plan {
             },
             capacity,
         );
-        let nodes = post_tree.traverse_into_vec(row_id);
         // We don't expect much relational references in a row (5 is a reasonable number).
-        let mut ref_nodes: Vec<NodeId> = Vec::with_capacity(capacity);
-        for LevelNode(_, id) in nodes {
-            ref_nodes.push(id);
-        }
+        let ref_nodes = post_tree
+            .traverse_into_iter(row_id)
+            .map(|LevelNode(_, id)| id)
+            .collect();
+
         Ok(ref_nodes)
     }
 

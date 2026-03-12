@@ -1684,11 +1684,10 @@ impl Plan {
             },
             capacity,
         );
-        let nodes = post_tree.traverse_into_vec(row_id);
         // We don't expect much relational references in a row (5 is a reasonable number).
         let mut rel_nodes: HashSet<NodeId, RandomState> =
             HashSet::with_capacity_and_hasher(5, RandomState::new());
-        for LevelNode(_, id) in nodes {
+        for LevelNode(_, id) in post_tree.traverse_into_iter(row_id) {
             self.get_relational_nodes_from_references_into(id, &mut rel_nodes)?;
         }
         Ok(rel_nodes)

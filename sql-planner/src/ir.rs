@@ -1554,7 +1554,7 @@ impl Plan {
             },
             EXPR_CAPACITY,
         );
-        let ref_ids = dfs.traverse_into_vec(expr_id).iter().map(|n| n.1).collect();
+        let ref_ids = dfs.traverse_into_iter(expr_id).map(|n| n.1).collect();
         Ok(ref_ids)
     }
 
@@ -1570,7 +1570,7 @@ impl Plan {
             },
             EXPR_CAPACITY,
         );
-        let ref_ids = dfs.traverse_into_vec(expr_id).iter().map(|n| n.1).collect();
+        let ref_ids = dfs.traverse_into_iter(expr_id).map(|n| n.1).collect();
         Ok(ref_ids)
     }
 

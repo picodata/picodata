@@ -575,10 +575,9 @@ impl Plan {
     /// Fail to format one of the relational node.
     pub fn formatted_arena_subtree(&self, node_id: NodeId) -> Result<String, SbroadError> {
         let ir_tree = PostOrder::new(|node| self.nodes.rel_iter(node), EXPR_CAPACITY);
-        let nodes = ir_tree.traverse_into_vec(node_id);
 
         let mut buf = String::new();
-        for level_node in &nodes {
+        for level_node in ir_tree.traverse_into_iter(node_id) {
             let id = level_node.1;
             if self.formatted_arena_node(&mut buf, 0, id).is_err() {
                 return Err(SbroadError::FailedTo(

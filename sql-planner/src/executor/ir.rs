@@ -449,17 +449,16 @@ impl ExecutionPlan {
                 },
                 REL_CAPACITY,
             );
-            let nodes = rel_tree.traverse_into_vec(top_id);
 
             // Preallocate memory for all subqueries and CTE subtrees.
             nodes_to_save.reserve(SQ_IDS_CAPACITY * 2);
 
-            for LevelNode(_, node_id) in nodes.iter() {
+            for LevelNode(_, node_id) in rel_tree.traverse_into_iter(top_id) {
                 let subtree = PostOrder::new(
                     |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
                     REL_CAPACITY,
                 );
-                for LevelNode(_, id) in subtree.traverse_into_iter(*node_id) {
+                for LevelNode(_, id) in subtree.traverse_into_iter(node_id) {
                     nodes_to_save.insert(id);
                 }
             }
