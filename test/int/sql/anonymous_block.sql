@@ -6,6 +6,7 @@ CREATE INDEX ta ON t(a);
 INSERT INTO t VALUES (1,1,1), (2,2,2), (3,3,3), (4,4,4);
 DROP TABLE IF EXISTS g;
 CREATE TABLE g (pk INT PRIMARY KEY, a INT, b INT) DISTRIBUTED GLOBALLY;
+INSERT INTO g VALUES (1,1,1);
 
 -- TEST: return query-1
 -- SQL:
@@ -210,24 +211,62 @@ END $$;
 -- ERROR:
 RETURN QUERY types cannot be matched \(\[int\] and \[string\, unknown]\)
 
--- TEST: all-tables-must-be-sharded-error-1
+-- TEST: can-read-system-table
 -- SQL:
 DO $$
 BEGIN
-  RETURN QUERY SELECT * FROM _pico_table;
-  UPDATE t SET a = a + 1 WHERE pk = 2;
+  RETURN QUERY SELECT name FROM _pico_table where name = 't';
 END $$;
--- ERROR:
-all block tables must be sharded, but '_pico_table' is system
+-- EXPECTED:
+'t'
 
--- TEST: all-tables-must-be-sharded-error-2
+-- TEST: cannot-modify-system-table
 -- SQL:
 DO $$
 BEGIN
-  RETURN QUERY SELECT * FROM g WHERE pk = 2;
+  UPDATE _pico_table SET name = 'lame';
 END $$;
 -- ERROR:
-all block tables must be sharded, but 'g' is global
+cannot modify system table _pico_table within block
+
+-- TEST: can-read-global-table-1
+-- SQL:
+DO $$
+BEGIN
+  RETURN QUERY SELECT * FROM g;
+END $$;
+-- EXPECTED:
+1,1,1
+
+-- TEST: can-read-global-table-2
+-- SQL:
+DO $$
+BEGIN
+  RETURN QUERY SELECT * FROM g ORDER BY 1 LIMIT 1;
+END $$;
+-- EXPECTED:
+1,1,1
+
+-- TEST: can-read-global-and-sharded-table
+-- SQL:
+DO $$
+BEGIN
+  RETURN QUERY SELECT * FROM g ORDER BY 1 LIMIT 1;
+  RETURN QUERY SELECT * FROM t WHERE pk = 4;
+END $$;
+-- EXPECTED:
+1,1,1,
+4,4,4,
+
+-- TEST: cannot-modify-global-table
+-- SQL:
+DO $$
+BEGIN
+  RETURN QUERY SELECT * FROM g ORDER BY 1 LIMIT 1;
+  UPDATE g SET b = a WHERE b = 1;
+END $$;
+-- ERROR:
+cannot modify global table g within block
 
 -- TEST: block-query-stmt-must-be-dml-error
 -- SQL:

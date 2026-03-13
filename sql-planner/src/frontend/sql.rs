@@ -2111,21 +2111,9 @@ fn parse_anonymous_block(
         }
     }
 
-    // Ensure block can operate on all the tables.
+    // Ensure tables belong to the same tier.
     let mut block_tier = None;
-    for (name, table) in &plan.relations.tables {
-        let tables_must_be_sharded_error = |name, kind| {
-            SbroadError::Other(format_smolstr!(
-                "all block tables must be sharded, but '{name}' is {kind}"
-            ))
-        };
-
-        match table.kind {
-            TableKind::ShardedSpace { .. } => (),
-            TableKind::GlobalSpace => return Err(tables_must_be_sharded_error(name, "global")),
-            TableKind::SystemSpace => return Err(tables_must_be_sharded_error(name, "system")),
-        }
-
+    for table in plan.relations.tables.values() {
         if let (Some(block_tier), Some(table_tier)) = (block_tier, &table.tier) {
             if block_tier != table_tier {
                 // TODO: more context
@@ -2135,6 +2123,28 @@ fn parse_anonymous_block(
             }
         }
         block_tier = block_tier.or(table.tier.as_ref());
+    }
+
+    // Ensure we don't write to global tables.
+    for stmt in &statements {
+        let relation: &str = match plan.get_relation_node(*stmt.get())? {
+            Relational::Delete(d) => &d.relation,
+            Relational::Insert(i) => &i.relation,
+            Relational::Update(u) => &u.relation,
+            _ => continue,
+        };
+
+        let relation = plan.relations.get(relation).expect("can't be missed");
+        let cannot_modify_error = |kind, name| {
+            SbroadError::Other(format_smolstr!(
+                "cannot modify {kind} table {name} within block",
+            ))
+        };
+        match relation.kind {
+            TableKind::GlobalSpace => return Err(cannot_modify_error("global", &relation.name)),
+            TableKind::SystemSpace => return Err(cannot_modify_error("system", &relation.name)),
+            TableKind::ShardedSpace { .. } => (),
+        }
     }
 
     // Ensure `generate_pattern_with_params_for_block` can handle queries.

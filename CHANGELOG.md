@@ -76,6 +76,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Speed up instance restart by actively trying to identify the raft leader instead of waiting for it to send a heartbeat to us.
 - Refactor the plan id calculation for more accurate and faster caching.
 - Add bucket estimation for INSERT queries in explain.
+- Support reading from global tables in anonymous blocks; writing is not supported yet.
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:
