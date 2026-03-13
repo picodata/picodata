@@ -103,7 +103,7 @@ macro_rules! c_ptr {
 /// ```no_run
 /// let lua = tlua::Lua::new();
 /// lua.set("rust_callback_which_may_throw",
-///     tlua::Function::new(|arg1: i32, arg2: String, lua: tlua::LuaState| {
+///     tlua::Function::new(|arg1: i32, arg2: String, lua: tlua::LuaState| -> () {
 ///         // - `arg1` & `arg2` are passed by caller from lua
 ///         // - `lua` is a special argument inserted by tlua.
 ///         //    Only it should be used with `tlua::error!()`!
