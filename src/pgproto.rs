@@ -6,7 +6,7 @@ use crate::{
     traft::error::Error,
 };
 use prometheus::IntCounter;
-use smol_str::{format_smolstr, SmolStr};
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 #[cfg(target_os = "linux")]
 use std::os::linux::net::SocketAddrExt;
 use std::{
@@ -109,18 +109,6 @@ impl Config {
     }
 }
 
-/// Format arbitrary byte sequence as a somewhat readable string.
-/// Valid ascii symbols are preserved, but anything else is escaped.
-/// Unlike [`String::from_utf8_lossy`], this function does not replace
-/// invalid utf-8 sequences with the question marks, meaning that
-/// it can be trusted when comparing two byte slices.
-fn to_readable_string(raw: &[u8]) -> SmolStr {
-    // TODO: consider supporting utf-8 for better formatting (unlikely to be useful atm)
-    raw.iter()
-        .flat_map(|x| std::ascii::escape_default(*x).map(|c| c as char))
-        .collect()
-}
-
 fn get_peer_address(raw: &CoIOStream) -> io::Result<SmolStr> {
     let addr = socket2::SockRef::from(raw).peer_addr()?;
 
@@ -135,7 +123,7 @@ fn get_peer_address(raw: &CoIOStream) -> io::Result<SmolStr> {
 
         #[cfg(target_os = "linux")]
         if let Some(name) = unix.as_abstract_name() {
-            return Ok(format_smolstr!("{}", to_readable_string(name)));
+            return Ok(name.escape_ascii().to_smolstr());
         }
 
         return Ok(format_smolstr!("<unix>"));
@@ -307,24 +295,4 @@ pub fn start_once() -> Result<(), Error> {
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_to_readable_string() {
-        let s = to_readable_string(&[1, 2, 3]);
-        assert_eq!(s, "\\x01\\x02\\x03");
-
-        let s = to_readable_string("hello".as_bytes());
-        assert_eq!(s, "hello");
-
-        let s = to_readable_string("привет".as_bytes());
-        assert_eq!(
-            s,
-            "\\xd0\\xbf\\xd1\\x80\\xd0\\xb8\\xd0\\xb2\\xd0\\xb5\\xd1\\x82"
-        );
-    }
 }
