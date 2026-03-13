@@ -1,116 +1,56 @@
-use itertools::FoldWhile::{Continue, Done};
-use itertools::Itertools;
-use smol_str::{format_smolstr, ToSmolStr};
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::HashSet;
+use std::ops::Not;
 
 use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::engine::{Router, Vshard};
+use crate::executor::ir::ExecutionPlan;
 use crate::executor::ExecutingQuery;
+use crate::ir::bucket::{Buckets, BucketsResolver};
 use crate::ir::distribution::Distribution;
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    BoolExpr, Constant, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion,
-    Node, NodeId, OrderBy, Projection, Row, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan,
+    Constant, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion, Node,
+    NodeId, OrderBy, Projection, Row, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan,
     Selection, Union, UnionAll, Update, Values, ValuesRow,
 };
-use crate::ir::operator::{Bool, JoinKind};
+use crate::ir::operator::JoinKind;
 use crate::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target};
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
-use smallvec::SmallVec;
-use std::fmt::Display;
 
-/// Buckets are used to determine which nodes to send the query to.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Buckets {
-    // We don't want to keep thousands of buckets in memory
-    // so we use a special enum to represent all the buckets
-    // in a cluster.
-    All,
-    // A filtered set of buckets.
-    Filtered(HashSet<u64, RepeatableState>),
-    // Execute query on any single node, maybe locally.
-    Any,
+struct ExecutorBucketsResolver<'p, C: Router> {
+    coordinator: &'p C,
+    exec_plan: &'p ExecutionPlan,
 }
 
-impl Buckets {
-    /// Get no buckets in the cluster (coordinator).
-    #[must_use]
-    pub fn new_empty() -> Self {
-        Buckets::Filtered(HashSet::with_hasher(RepeatableState))
-    }
+impl<C: Router> BucketsResolver for ExecutorBucketsResolver<'_, C> {
+    fn buckets_from_motion(&self, motion_id: NodeId) -> Result<Option<Buckets>, SbroadError> {
+        let virtual_table = self.exec_plan.get_motion_vtable(motion_id)?;
+        let bucket_ids: HashSet<_, _> = virtual_table.get_bucket_index().keys().copied().collect();
+        let buckets = bucket_ids
+            .is_empty()
+            .not()
+            .then(|| Buckets::new_filtered(bucket_ids));
 
-    /// Get a filtered set of buckets.
-    #[must_use]
-    pub fn new_filtered(buckets: HashSet<u64, RepeatableState>) -> Self {
-        Buckets::Filtered(buckets)
-    }
-
-    pub fn determine_exec_location(&self) -> &str {
-        match self {
-            Buckets::Any => "ROUTER",
-            Buckets::All => "STORAGE",
-            Buckets::Filtered(_) => "FILTERED STORAGE",
-        }
-    }
-
-    /// Conjuction of two sets of buckets.
-    ///
-    /// # Errors
-    /// - Buckets that can't be conjucted
-    pub fn conjuct(&self, buckets: &Buckets) -> Result<Buckets, SbroadError> {
-        let buckets = match (self, buckets) {
-            (Buckets::All, Buckets::All) => Buckets::All,
-            (Buckets::Filtered(b), Buckets::All) | (Buckets::All, Buckets::Filtered(b)) => {
-                Buckets::Filtered(b.clone())
-            }
-            (Buckets::Filtered(a), Buckets::Filtered(b)) => {
-                Buckets::Filtered(a.intersection(b).copied().collect())
-            }
-            (Buckets::Any, _) => buckets.clone(),
-            (_, Buckets::Any) => self.clone(),
-        };
         Ok(buckets)
     }
 
-    /// Disjunction of two sets of buckets.
-    ///
-    /// # Errors
-    /// - Buckets that can't be disjuncted
-    pub fn disjunct(&self, buckets: &Buckets) -> Result<Buckets, SbroadError> {
-        let buckets = match (self, buckets) {
-            (Buckets::All, _) | (_, Buckets::All) => Buckets::All,
-            (Buckets::Filtered(a), Buckets::Filtered(b)) => {
-                Buckets::Filtered(a.union(b).copied().collect())
-            }
-            (Buckets::Any, _) => buckets.clone(),
-            (_, Buckets::Any) => self.clone(),
-        };
-        Ok(buckets)
-    }
-}
+    fn buckets_from_values(
+        &self,
+        values: &[&Value],
+        tier: Option<&SmolStr>,
+    ) -> Result<Buckets, SbroadError> {
+        let bucket = self
+            .coordinator
+            .get_vshard_object_by_tier(tier)?
+            .determine_bucket_id(values)?;
+        let bucket_set = [bucket].into_iter().collect();
 
-impl Display for Buckets {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Buckets::All => write!(f, "all"),
-            Buckets::Any => write!(f, "any"),
-            Buckets::Filtered(hash_set) => {
-                let mut buckets = hash_set.iter().collect::<SmallVec<[_; 16]>>();
-                buckets.sort_unstable();
-                write!(f, "[")?;
-                if let Some((first, others)) = buckets.split_first() {
-                    write!(f, "{}", first)?;
-                    for bucket in others {
-                        write!(f, ", {}", bucket)?;
-                    }
-                }
-                write!(f, "]")
-            }
-        }
+        Ok(Buckets::new_filtered(bucket_set))
     }
 }
 
@@ -118,215 +58,6 @@ impl<T> ExecutingQuery<'_, T>
 where
     T: Router,
 {
-    /// Inner logic of `get_expression_tree_buckets` for simple expressions (without OR and AND
-    /// operators).
-    /// In general it returns `Buckets::All`, but in some cases (e.g. `Eq` and `In` operators) it
-    /// will return `Buckets::Filtered` (if such a result is met in SELECT or JOIN filter, it means
-    /// that we can execute the query only on some of the replicasets).
-    fn get_buckets_from_expr(&self, expr_id: NodeId) -> Result<Option<Buckets>, SbroadError> {
-        // The only possible case there will be several `Buckets` in the vec is when we have `Eq`.
-        // See the logic of its handling below.
-        let mut buckets: Vec<Buckets> = vec![];
-        let ir_plan = self.exec_plan.get_ir_plan();
-        let tier = ir_plan.tier.as_ref();
-        let expr = ir_plan.get_expression_node(expr_id)?;
-
-        // Try to collect buckets from expression of type `sharding_key = value`
-        if let Expression::Bool(BoolExpr {
-            op: op @ (Bool::Eq | Bool::In),
-            left,
-            right,
-            ..
-        }) = expr
-        {
-            let pairs = [(*left, *right), (*right, *left)];
-            for (left_id, right_id) in pairs {
-                let left_expr = ir_plan.get_expression_node(left_id)?;
-                if !matches!(left_expr, Expression::Row(_) | Expression::Reference(_)) {
-                    continue;
-                }
-
-                let right_expr = ir_plan.get_expression_node(right_id)?;
-                let right_columns = match right_expr {
-                    Expression::Row(_) => right_expr.get_row_list()?.as_slice(),
-                    Expression::Constant(_) | Expression::Reference(_) => &[right_id],
-                    _ => continue,
-                };
-
-                // Get the distribution of the left row.
-                let left_dist = ir_plan.get_distribution(left_id)?;
-
-                // Gather buckets from the right row.
-                if let Distribution::Segment { keys } = left_dist {
-                    // If the right side is a row referencing the motion
-                    // it means that the corresponding virtual table contains
-                    // tuple with the same distribution as the left side (because this motion
-                    // was specially added in order to fulfill `Eq` of `In` conditions).
-                    let motion_id = match right_expr {
-                        Expression::Row(_) => ir_plan.get_motion_from_row(right_id)?,
-                        Expression::Reference(_) => ir_plan.get_motion_from_ref(right_id)?,
-                        _ => None,
-                    };
-
-                    if let Some(motion_id) = motion_id {
-                        let virtual_table = self.exec_plan.get_motion_vtable(motion_id)?;
-                        let bucket_ids: HashSet<u64, RepeatableState> =
-                            virtual_table.get_bucket_index().keys().copied().collect();
-                        if !bucket_ids.is_empty() {
-                            return Ok(Some(Buckets::new_filtered(bucket_ids)));
-                        }
-                    }
-
-                    let mut values: Vec<&Value> = Vec::new();
-                    // The right side is a regular row or subquery which distribution
-                    // didn't result in Motion creation (e.g. `"a" in (select "a" from t)`).
-                    // So we have a case of `Eq` operator.
-                    // If we have a case of constants on the positions of the left keys,
-                    // we can return `Buckets::Filtered`.
-                    // E.g. we have query
-                    // `SELECT * FROM (SELECT A.a, B.b FROM A JOIN B ON A.a = B.b)
-                    //  WHERE (a, b) = (0, 1)`.
-                    // Here (a, b) row will have Distribution::Segment(keys = {[a], [b]}).
-                    // After handling key "a" we will leave buckets which satisfy `a = 0`.
-                    // After handling key "b" we will leave buckets which satisfy `b = 1`.
-                    // In the end (when `conjuct` function is called) we will leave buckets
-                    // which satisfy `(a, b) = (0, 1)`.
-                    for key in keys.iter() {
-                        // For cases with composite keys, we check that the condition fields
-                        // are at least the size of the composite key.
-                        // E.g. t1 sharded by (a, b), and we have query, with single value of
-                        // the condition:
-                        // `SELECT * FROM t1 JOIN t1 AS t ON 1 IN (t.a, t.b)`
-                        // Since in this case it is not possible to calculate the buckets,
-                        // therefore there is no need for further action.
-                        if key.positions.len() > right_columns.len() {
-                            continue;
-                        }
-                        values.clear();
-                        values.reserve(key.positions.len());
-                        for position in &key.positions {
-                            // Since the sides in the "In" query can be of different lengths,
-                            // we need to find a suitable position, as if they were the
-                            // same length.
-                            let pos = if *op == Bool::In {
-                                *position % right_columns.len()
-                            } else {
-                                *position
-                            };
-                            let right_column_id = *right_columns.get(pos).ok_or_else(|| {
-                                SbroadError::NotFound(
-                                    Entity::Column,
-                                    format_smolstr!("at position {position} for right row"),
-                                )
-                            })?;
-
-                            let right_column_expr = ir_plan.get_expression_node(right_column_id)?;
-                            if let Expression::Constant(_) = right_column_expr {
-                                values.push(ir_plan.as_const_value_ref(right_column_id)?);
-                            } else {
-                                // One of the columns is not a constant. Skip this key.
-                                values.clear();
-                                break;
-                            }
-                        }
-                        if !values.is_empty() {
-                            let bucket = self
-                                .coordinator
-                                .get_vshard_object_by_tier(tier)?
-                                .determine_bucket_id(&values)?;
-                            let bucket_set: HashSet<u64, RepeatableState> =
-                                vec![bucket].into_iter().collect();
-                            buckets.push(Buckets::new_filtered(bucket_set));
-                        }
-                    }
-                }
-            }
-        }
-
-        if buckets.is_empty() {
-            return Ok(None);
-        }
-
-        let merged = buckets
-            .into_iter()
-            .fold_while(Ok(Buckets::Any), |acc, b| match acc {
-                Ok(a) => Continue(a.conjuct(&b)),
-                Err(_) => Done(acc),
-            })
-            .into_inner()?;
-
-        Ok(Some(merged))
-    }
-
-    /// Inner logic of `bucket_discovery` for expressions (currently it's called only on
-    /// `Selection` or `Join` filters).
-    /// `rel_children` is a set of relational children of `Selection` or `Join` node.
-    /// It splits given expression into DNF chains (`ORed` expressions) and calls `get_buckets_from_expr` on each simple
-    /// chain subexpression, later disjuncting results.
-    ///
-    /// In case there is just one expression (not `ANDed`) `chains` will remain empty.
-    fn get_expression_tree_buckets(
-        &self,
-        expr_id: NodeId,
-        rel_children: &[NodeId],
-        subqueries: &[NodeId],
-    ) -> Result<Buckets, SbroadError> {
-        let ir_plan = self.exec_plan.get_ir_plan();
-        let chains = ir_plan.get_dnf_chains(expr_id)?;
-        // When we can't extract buckets from expression,
-        // we use default buckets for that expression with
-        // idea that expression does not influence the result
-        // bucket set for given subtree. But we must choose
-        // between Buckets::Any and Buckets::All, we can't use
-        // one of them in all cases:
-        // `select a from global where true`
-        // If expression `true` gives Buckets::All,
-        // then we will get that query must be executed on all
-        // nodes, which is wrong.
-        // On the other hand, if Buckets::Any is the default:
-        // `select a from segment_a where a = 1 or true`
-        // `true` -> Buckets::Any || `a=1` -> Buckets::Filtered = Buckets::Filtered
-        // which is wrong, because query must be executed on all nodes.
-        // So, we should choose default buckets depending on
-        // children's buckets: if some child subtree must be
-        // executed on several nodes, we must use Buckets::All,
-        // otherwise we should use Buckets::Any.
-        let default_buckets = {
-            let mut default_buckets = Buckets::Any;
-            for child_id in rel_children.iter().chain(subqueries) {
-                let child_dist = ir_plan.get_rel_distribution(*child_id)?;
-                if matches!(child_dist, Distribution::Any | Distribution::Segment { .. }) {
-                    default_buckets = Buckets::All;
-                    break;
-                }
-            }
-            default_buckets
-        };
-        let mut result: Vec<Buckets> = Vec::new();
-        for mut chain in chains {
-            let mut chain_buckets = default_buckets.clone();
-            let nodes = chain.get_mut_nodes();
-            // Nodes in the chain are in the top-down order (from left to right).
-            // We need to pop back the chain to get nodes in the bottom-up order.
-            while let Some(node_id) = nodes.pop_back() {
-                let node_buckets = self
-                    .get_buckets_from_expr(node_id)?
-                    .unwrap_or(default_buckets.clone());
-                chain_buckets = chain_buckets.conjuct(&node_buckets)?;
-            }
-            result.push(chain_buckets);
-        }
-
-        if let Some((first, other)) = result.split_first_mut() {
-            for buckets in other {
-                *first = first.disjunct(buckets)?;
-            }
-            return Ok(first.clone());
-        }
-
-        Ok(Buckets::All)
-    }
-
     fn try_calculate_values_row_bucket_id(
         &self,
         row_list: &[NodeId],
@@ -419,7 +150,7 @@ where
             }
         }
 
-        Ok(Some(Buckets::Filtered(bucket_set)))
+        Ok(Some(Buckets::new_filtered(bucket_set)))
     }
 
     /// Discover required buckets to execute the query subtree.
@@ -457,6 +188,10 @@ where
             |node| matches!(ir_plan.get_node(node), Ok(Node::Relational(..))),
             REL_CAPACITY,
         );
+        let resolver = ExecutorBucketsResolver {
+            coordinator: self.coordinator,
+            exec_plan: &self.exec_plan,
+        };
 
         for LevelNode(_, node_id) in tree.traverse_into_iter(top_id) {
             if self.bucket_map.contains_key(&node_id) {
@@ -492,7 +227,7 @@ where
                             .get_bucket_index()
                             .keys()
                             .copied()
-                            .collect::<HashSet<u64, RepeatableState>>();
+                            .collect::<HashSet<_, _>>();
                         self.bucket_map
                             .insert(*output, Buckets::new_filtered(buckets));
                     }
@@ -523,7 +258,7 @@ where
                                 .get_bucket_index()
                                 .keys()
                                 .copied()
-                                .collect::<HashSet<u64, RepeatableState>>();
+                                .collect::<HashSet<_, _>>();
                             self.bucket_map
                                 .insert(*output, Buckets::new_filtered(buckets));
                         } else {
@@ -703,11 +438,16 @@ where
                     {
                         Buckets::new_empty()
                     } else {
-                        self.get_expression_tree_buckets(filter_id, &[*child], subqueries)?
+                        ir_plan.get_expression_tree_buckets(
+                            filter_id,
+                            &[*child],
+                            subqueries,
+                            &resolver,
+                        )?
                     };
 
                     self.bucket_map
-                        .insert(output_id, child_buckets.conjuct(&filter_buckets)?);
+                        .insert(output_id, child_buckets.conjunct(&filter_buckets)?);
                 }
                 Relational::Join(Join {
                     left,
@@ -745,14 +485,15 @@ where
                     let condition_id = *condition;
                     let join_buckets = match kind {
                         JoinKind::Inner => {
-                            let filter_buckets = self.get_expression_tree_buckets(
+                            let filter_buckets = ir_plan.get_expression_tree_buckets(
                                 condition_id,
                                 &[*left, *right],
                                 subqueries,
+                                &resolver,
                             )?;
                             inner_buckets
                                 .disjunct(&outer_buckets)?
-                                .conjuct(&filter_buckets)?
+                                .conjunct(&filter_buckets)?
                         }
                         JoinKind::LeftOuter => inner_buckets.disjunct(&outer_buckets)?,
                     };

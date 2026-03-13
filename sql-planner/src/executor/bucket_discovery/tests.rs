@@ -2,11 +2,10 @@ use pretty_assertions::assert_eq;
 use std::collections::HashSet;
 
 use crate::collection;
-use crate::executor::bucket::Buckets;
 use crate::executor::engine::mock::RouterRuntimeMock;
 use crate::executor::engine::Vshard;
 use crate::executor::ExecutingQuery;
-use crate::ir::helpers::RepeatableState;
+use crate::ir::bucket::{BucketSet, Buckets};
 use crate::ir::value::Value;
 
 #[test]
@@ -28,7 +27,7 @@ fn simple_union_query() {
     let param1 = Value::from(1);
 
     let bucket1 = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
-    let bucket_set: HashSet<u64, RepeatableState> = vec![bucket1].into_iter().collect();
+    let bucket_set: HashSet<_, _> = vec![bucket1].into_iter().collect();
     let expected = Buckets::new_filtered(bucket_set);
 
     assert_eq!(expected, buckets);
@@ -56,7 +55,7 @@ fn simple_disjunction_in_union_query() {
     let param100 = Value::from(100);
     let bucket100 = query.coordinator.determine_bucket_id(&[&param100]).unwrap();
 
-    let bucket_set: HashSet<u64, RepeatableState> = vec![bucket1, bucket100].into_iter().collect();
+    let bucket_set: HashSet<_, _> = vec![bucket1, bucket100].into_iter().collect();
     let expected = Buckets::new_filtered(bucket_set);
 
     assert_eq!(expected, buckets);
@@ -88,7 +87,7 @@ fn complex_shard_key_union_query() {
         .coordinator
         .determine_bucket_id(&[&param1, &param222])
         .unwrap();
-    let bucket_set: HashSet<u64, RepeatableState> = vec![bucket].into_iter().collect();
+    let bucket_set: HashSet<_, _> = vec![bucket].into_iter().collect();
     let expected = Buckets::new_filtered(bucket_set);
 
     assert_eq!(expected, buckets);
@@ -150,7 +149,7 @@ fn union_complex_cond_query() {
         .determine_bucket_id(&[&param1000, &param111])
         .unwrap();
 
-    let bucket_set: HashSet<u64, RepeatableState> = vec![
+    let bucket_set: HashSet<_, _> = vec![
         bucket1222,
         bucket100222,
         bucket1000222,
@@ -184,7 +183,7 @@ fn union_query_conjunction() {
 
     let param2 = Value::from(2);
     let bucket2 = query.coordinator.determine_bucket_id(&[&param2]).unwrap();
-    let bucket_set: HashSet<u64, RepeatableState> = vec![bucket1, bucket2].into_iter().collect();
+    let bucket_set: HashSet<_, _> = vec![bucket1, bucket2].into_iter().collect();
     let expected = Buckets::new_filtered(bucket_set);
 
     assert_eq!(expected, buckets);
@@ -208,7 +207,7 @@ fn simple_except_query() {
 
     let param1 = Value::from(1);
     let bucket1 = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
-    let bucket_set: HashSet<u64, RepeatableState> = vec![bucket1].into_iter().collect();
+    let bucket_set: HashSet<_, _> = vec![bucket1].into_iter().collect();
     let expected = Buckets::new_filtered(bucket_set);
 
     assert_eq!(expected, buckets);
@@ -396,7 +395,7 @@ fn global_tbl_join3() {
         .coordinator
         .determine_bucket_id(&[&param, &param])
         .unwrap();
-    let bucket_set: HashSet<u64, RepeatableState> = vec![bucket].into_iter().collect();
+    let bucket_set: HashSet<_, _> = vec![bucket].into_iter().collect();
 
     assert_eq!(Buckets::new_filtered(bucket_set), buckets);
 }
@@ -464,7 +463,7 @@ fn tbl_join_single_constant_condition1() {
     let buckets = query.bucket_discovery(top).unwrap();
     let param = Value::from(1);
     let bucket = query.coordinator.determine_bucket_id(&[&param]).unwrap();
-    let bucket_set: HashSet<u64, RepeatableState> = vec![bucket].into_iter().collect();
+    let bucket_set: HashSet<_, _> = vec![bucket].into_iter().collect();
 
     assert_eq!(Buckets::new_filtered(bucket_set), buckets);
 }
@@ -485,7 +484,7 @@ fn tbl_join_single_constant_condition2() {
     let buckets = query.bucket_discovery(top).unwrap();
     let param = Value::from(1);
     let bucket = query.coordinator.determine_bucket_id(&[&param]).unwrap();
-    let bucket_set: HashSet<u64, RepeatableState> = vec![bucket].into_iter().collect();
+    let bucket_set: HashSet<_, _> = vec![bucket].into_iter().collect();
 
     assert_eq!(Buckets::new_filtered(bucket_set), buckets);
 }
@@ -547,8 +546,7 @@ fn tbl_join_tuple_constant_condition1() {
     let bucket1 = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
     let bucket2 = query.coordinator.determine_bucket_id(&[&param2]).unwrap();
     let bucket3 = query.coordinator.determine_bucket_id(&[&param3]).unwrap();
-    let bucket_set: HashSet<u64, RepeatableState> =
-        vec![bucket1, bucket2, bucket3].into_iter().collect();
+    let bucket_set: HashSet<_, _> = vec![bucket1, bucket2, bucket3].into_iter().collect();
 
     assert_eq!(Buckets::new_filtered(bucket_set), buckets);
 }
@@ -576,7 +574,10 @@ fn update_local() {
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
-    assert_eq!(Buckets::Filtered(collection!(6691)), buckets);
+    assert_eq!(
+        Buckets::Filtered(BucketSet::Exact(collection!(6691))),
+        buckets
+    );
 }
 
 #[test]
@@ -589,7 +590,10 @@ fn delete_local() {
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
-    assert_eq!(Buckets::Filtered(collection!(6691)), buckets);
+    assert_eq!(
+        Buckets::Filtered(BucketSet::Exact(collection!(6691))),
+        buckets
+    );
 }
 
 #[test]
@@ -602,7 +606,7 @@ fn same_multicolumn_sk_in_eq() {
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
-    assert_eq!(Buckets::Filtered(collection!()), buckets);
+    assert_eq!(Buckets::Filtered(BucketSet::Exact(collection!())), buckets);
 }
 
 #[test]
@@ -615,5 +619,5 @@ fn same_column_in_eq() {
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
-    assert_eq!(Buckets::Filtered(collection!()), buckets);
+    assert_eq!(Buckets::Filtered(BucketSet::Exact(collection!())), buckets);
 }

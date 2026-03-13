@@ -12,7 +12,6 @@ use rmp::decode::{read_array_len, read_bool};
 use rmp::encode::{write_array_len, write_uint};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql::errors::{Action, Entity, SbroadError};
-use sql::executor::bucket::Buckets;
 use sql::executor::engine::helpers::vshard::prepare_rs_to_ir_map;
 use sql::executor::engine::helpers::{
     init_delete_tuple_builder, init_insert_tuple_builder, init_local_update_tuple_builder,
@@ -28,6 +27,7 @@ use sql::executor::ir::{ExecutionPlan, QueryType};
 use sql::executor::result::MetadataColumn;
 use sql::executor::Port;
 use sql::ir::api::children::Children;
+use sql::ir::bucket::{BucketSet, Buckets};
 use sql::ir::node::relational::Relational;
 use sql::ir::node::{Delete, Insert, Motion, Update};
 use sql::ir::operator::UpdateStrategy;
@@ -696,7 +696,13 @@ fn replicasets_from_buckets(
             ));
         }
         Buckets::All => return Ok(Vec::new()),
-        Buckets::Filtered(list) => list.iter(),
+        Buckets::Filtered(BucketSet::Exact(list)) => list.iter(),
+        Buckets::Filtered(_) => {
+            return Err(SbroadError::Invalid(
+                Entity::Buckets,
+                Some("buckets are not discovered".into()),
+            ))
+        }
     };
     let mut replicasets: Vec<Rc<String>> = Vec::new();
     // Make sure that only replicasets owns reference to its Rc elements.
@@ -755,7 +761,13 @@ fn buckets_by_replicasets(
             ));
         }
         Buckets::All => BucketIter::All(1..=max_buckets),
-        Buckets::Filtered(list) => BucketIter::Filtered(list.iter()),
+        Buckets::Filtered(BucketSet::Exact(list)) => BucketIter::Filtered(list.iter()),
+        Buckets::Filtered(_) => {
+            return Err(SbroadError::Invalid(
+                Entity::Buckets,
+                Some("buckets are not discovered".into()),
+            ))
+        }
     };
     let mut map: AHashMap<String, Vec<u64>> = AHashMap::new();
     for id in iter {

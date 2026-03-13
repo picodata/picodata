@@ -32,12 +32,12 @@ use crate::ir::value::{EncodedValue, MsgPackValue};
 use crate::{
     errors::{Action, Entity, SbroadError},
     executor::{
-        bucket::Buckets,
         ir::{ExecutionPlan, QueryType},
         result::MetadataColumn,
         vtable::{calculate_unified_types, VTableTuple, VirtualTable},
     },
     ir::{
+        bucket::Buckets,
         relation::{Column, ColumnRole},
         transformation::redistribution::MotionKey,
         value::Value,

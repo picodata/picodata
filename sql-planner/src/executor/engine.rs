@@ -19,10 +19,10 @@ use std::rc::Rc;
 use std::sync::OnceLock;
 
 use crate::errors::SbroadError;
-use crate::executor::bucket::Buckets;
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::protocol::SchemaInfo;
 use crate::executor::vtable::VirtualTable;
+use crate::ir::bucket::Buckets;
 use crate::ir::function::Function;
 use crate::ir::relation::Table;
 use crate::ir::types::UnrestrictedType;

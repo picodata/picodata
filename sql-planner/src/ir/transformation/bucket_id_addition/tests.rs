@@ -1,7 +1,7 @@
 use crate::collection;
-use crate::executor::bucket::Buckets;
 use crate::executor::engine::mock::RouterRuntimeMock;
 use crate::executor::ExecutingQuery;
+use crate::ir::bucket::{BucketSet, Buckets};
 use pretty_assertions::assert_eq;
 
 #[test]
@@ -32,7 +32,10 @@ fn test_bucket_id_addition1() {
         sql_motion_row_max = 5000
     "#);
 
-    assert_eq!(Buckets::Filtered(collection!(5815)), buckets);
+    assert_eq!(
+        Buckets::Filtered(BucketSet::Exact(collection!(5815))),
+        buckets
+    );
 }
 
 #[test]
@@ -63,7 +66,10 @@ fn test_bucket_id_addition2() {
         sql_motion_row_max = 5000
     "#);
 
-    assert_eq!(Buckets::Filtered(collection!(5815, 7100)), buckets);
+    assert_eq!(
+        Buckets::Filtered(BucketSet::Exact(collection!(5815, 7100))),
+        buckets
+    );
 }
 
 #[test]
@@ -96,7 +102,10 @@ fn test_bucket_id_addition3() {
         sql_motion_row_max = 5000
     "#);
 
-    assert_eq!(Buckets::Filtered(collection!(5815)), buckets);
+    assert_eq!(
+        Buckets::Filtered(BucketSet::Exact(collection!(5815))),
+        buckets
+    );
 }
 
 #[test]
@@ -127,7 +136,10 @@ fn test_bucket_id_addition4() {
         sql_motion_row_max = 5000
     "#);
 
-    assert_eq!(Buckets::Filtered(collection!(307, 518)), buckets);
+    assert_eq!(
+        Buckets::Filtered(BucketSet::Exact(collection!(307, 518))),
+        buckets
+    );
 }
 
 #[test]
@@ -158,7 +170,10 @@ fn test_bucket_id_addition5() {
         sql_motion_row_max = 5000
     "#);
 
-    assert_eq!(Buckets::Filtered(collection!(5815)), buckets);
+    assert_eq!(
+        Buckets::Filtered(BucketSet::Exact(collection!(5815))),
+        buckets
+    );
 }
 
 #[test]
@@ -189,5 +204,8 @@ fn test_bucket_id_addition6() {
         sql_motion_row_max = 5000
     "#);
 
-    assert_eq!(Buckets::Filtered(collection!(5815)), buckets);
+    assert_eq!(
+        Buckets::Filtered(BucketSet::Exact(collection!(5815))),
+        buckets
+    );
 }

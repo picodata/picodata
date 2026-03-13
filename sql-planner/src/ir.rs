@@ -47,6 +47,7 @@ use self::node::{Bound, BoundType, Like, Over, Window};
 pub mod acl;
 pub mod aggregates;
 pub mod block;
+pub mod bucket;
 pub mod ddl;
 pub mod distribution;
 pub mod expression;

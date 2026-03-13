@@ -6,10 +6,10 @@ use serde::Serialize;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 
 use crate::errors::{Entity, SbroadError};
-use crate::executor::bucket::Buckets;
 use crate::executor::engine::helpers::to_user;
 use crate::executor::engine::Router;
 use crate::executor::ExecutingQuery;
+use crate::ir::bucket::{BucketSet, Buckets};
 use crate::ir::explain::execution_info::BucketsInfo;
 use crate::ir::expression::TrimKind;
 use crate::ir::node::{
@@ -1272,7 +1272,7 @@ struct FullExplain {
 fn buckets_repr(buckets: &Buckets, bucket_count: u64) -> String {
     match buckets {
         Buckets::All => format!("[1-{bucket_count}]"),
-        Buckets::Filtered(buckets_set) => 'f: {
+        Buckets::Filtered(BucketSet::Exact(buckets_set)) => 'f: {
             if buckets_set.is_empty() {
                 break 'f "[]".into();
             }
@@ -1303,6 +1303,7 @@ fn buckets_repr(buckets: &Buckets, bucket_count: u64) -> String {
 
             format!("[{}]", ranges.join(","))
         }
+        Buckets::Filtered(BucketSet::Unknown(count)) => format!("unknown({count})"),
         Buckets::Any => "any".into(),
     }
 }

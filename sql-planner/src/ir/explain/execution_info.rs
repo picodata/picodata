@@ -3,11 +3,11 @@ use ahash::AHashSet;
 use crate::{
     errors::SbroadError,
     executor::{
-        bucket::Buckets,
         engine::{Router, Vshard},
         ExecutingQuery,
     },
     ir::{
+        bucket::Buckets,
         node::{relational::Relational, Motion, Node, NodeId},
         transformation::redistribution::MotionPolicy,
         tree::traversal::{LevelNode, PostOrder, REL_CAPACITY},

@@ -13,7 +13,7 @@
 //! ```
 
 use crate::errors::SbroadError;
-use crate::executor::bucket::Buckets;
+use crate::ir::bucket::{BucketSet, Buckets};
 use crate::ir::distribution::Distribution;
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::{ArenaType, Node64, NodeId, Reference};
@@ -28,7 +28,7 @@ impl Plan {
     /// Add condition on "bucket_id" if needed.
     pub fn add_condition_on_bucket_id(&mut self, buckets: &Buckets) -> Result<(), SbroadError> {
         // We need to have exact number of buckets.
-        let Buckets::Filtered(filtered) = buckets else {
+        let Buckets::Filtered(BucketSet::Exact(filtered)) = buckets else {
             return Ok(());
         };
         if filtered.is_empty() {

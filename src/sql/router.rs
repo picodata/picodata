@@ -4,7 +4,6 @@
 
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql::errors::{Action, Entity, SbroadError};
-use sql::executor::bucket::Buckets;
 use sql::executor::engine::helpers::vshard::get_random_bucket;
 use sql::executor::engine::helpers::{
     dispatch_impl, empty_plan_write, explain_format, materialize_motion, materialize_values,
@@ -16,6 +15,7 @@ use sql::executor::lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY};
 use sql::executor::preemption::SchedulerOptions;
 use sql::executor::vtable::VirtualTable;
 use sql::frontend::sql::ast::AbstractSyntaxTree;
+use sql::ir::bucket::{BucketSet, Buckets};
 use sql::ir::helpers::RepeatableState;
 use sql::ir::node::NodeId;
 use sql::ir::value::{MsgPackValue, Value};
@@ -412,7 +412,7 @@ impl Router for RouterRuntime {
         &self,
         plan: &mut sql::executor::ir::ExecutionPlan,
         motion_node_id: &NodeId,
-        buckets: &sql::executor::bucket::Buckets,
+        buckets: &sql::ir::bucket::Buckets,
     ) -> Result<sql::executor::vtable::VirtualTable, SbroadError> {
         materialize_motion(self, plan, *motion_node_id, buckets)
     }
@@ -421,7 +421,7 @@ impl Router for RouterRuntime {
         &self,
         plan: &mut sql::executor::ir::ExecutionPlan,
         top_id: NodeId,
-        buckets: &sql::executor::bucket::Buckets,
+        buckets: &sql::ir::bucket::Buckets,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
         dispatch_impl(self, plan, top_id, buckets, port)
@@ -820,7 +820,7 @@ fn bucket_dispatch<'p>(
     buckets: &Buckets,
     tier: Option<&str>,
 ) -> Result<(), SbroadError> {
-    if let Buckets::Filtered(bucket_set) = buckets {
+    if let Buckets::Filtered(BucketSet::Exact(bucket_set)) = buckets {
         if bucket_set.is_empty() {
             empty_plan_write(port, &ex_plan)?;
             return Ok(());

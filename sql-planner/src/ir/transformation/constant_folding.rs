@@ -280,9 +280,9 @@ impl Plan {
 #[cfg(test)]
 #[cfg(feature = "mock")]
 mod tests {
-    use crate::executor::bucket::Buckets;
     use crate::executor::engine::mock::RouterRuntimeMock;
     use crate::executor::ExecutingQuery;
+    use crate::ir::bucket::Buckets;
 
     #[test]
     fn test_bool_folding1() {

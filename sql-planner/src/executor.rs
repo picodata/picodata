@@ -23,10 +23,10 @@
 //! 5. Repeats step 3 till we are done with motion layers.
 //! 6. Executes the final IR top subtree and returns the final result to the user.
 use crate::errors::{Action, Entity, SbroadError};
-use crate::executor::bucket::Buckets;
 use crate::executor::engine::{Router, Vshard};
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::vdbe::ExecutionInsight;
+use crate::ir::bucket::{BucketSet, Buckets};
 use crate::ir::node::block::{BlockOwned, MutBlock};
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{AnonymousBlock, Motion, NodeId};
@@ -43,7 +43,7 @@ use std::rc::Rc;
 use tarantool::msgpack;
 use vdbe::{SqlError, SqlStmt};
 
-pub mod bucket;
+pub mod bucket_discovery;
 pub mod engine;
 pub mod hash;
 pub mod ir;
@@ -432,7 +432,7 @@ where
                             "block cannot be executed on all buckets"
                         )))
                     }
-                    Buckets::Filtered(ref filtered) => {
+                    Buckets::Filtered(BucketSet::Exact(ref filtered)) => {
                         if filtered.len() != 1 {
                             return Err(SbroadError::Other(format_smolstr!(
                                 "block can only be executed on a single bucket, got {buckets}"
@@ -448,6 +448,12 @@ where
                         } else {
                             block_buckets = Some(buckets);
                         }
+                    }
+                    Buckets::Filtered(_) => {
+                        return Err(SbroadError::Invalid(
+                            Entity::Buckets,
+                            Some("buckets are not discovered".into()),
+                        ))
                     }
                     Buckets::Any => (),
                 }

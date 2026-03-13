@@ -9,7 +9,6 @@ use std::fmt::Debug;
 
 use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use crate::errors::{Entity, SbroadError};
-use crate::executor::bucket::Buckets;
 use crate::executor::engine::{
     helpers::{sharding_key_from_map, sharding_key_from_tuple, vshard::get_random_bucket},
     Router, Vshard,
@@ -21,6 +20,7 @@ use crate::executor::preemption::{SchedulerMetrics, SchedulerOptions};
 use crate::executor::vtable::VirtualTable;
 use crate::executor::{Port, PortType};
 use crate::frontend::sql::ast::AbstractSyntaxTree;
+use crate::ir::bucket::{BucketSet, Buckets};
 use crate::ir::function::Function;
 use crate::ir::node::NodeId;
 use crate::ir::relation::{Column, ColumnRole, SpaceEngine, Table};
@@ -1581,7 +1581,7 @@ impl VshardMock {
                     res.insert(name, ((*start)..(*end)).collect());
                 }
             }
-            Buckets::Filtered(buckets_set) => {
+            Buckets::Filtered(BucketSet::Exact(buckets_set)) => {
                 for bucket_id in buckets_set {
                     let comparator = |block: &(u64, u64)| -> Ordering {
                         let start = block.0;
@@ -1611,6 +1611,7 @@ impl VshardMock {
                     }
                 }
             }
+            Buckets::Filtered(_) => panic!("buckets are not discovered"),
             Buckets::Any => {
                 res.insert(Self::generate_rs_name(0), vec![0]);
             }
