@@ -47,12 +47,12 @@ class Registry:
             case VersionAlias.PREVIOUS_MAJOR:
                 current = repository.current_version()
                 for tag in repository.rolling_versions():
-                    if tag.major - current.major == 1:
+                    if current.major - tag.major == 1:
                         self.entries[version.value] = Runtime(tag, version)
             case VersionAlias.BEFORELAST_MAJOR:
                 current = repository.current_version()
                 for tag in repository.rolling_versions():
-                    if tag.major - current.major == 2:
+                    if current.major - tag.major == 2:
                         self.entries[version.value] = Runtime(tag, version)
 
     def populate(self, skip_resolution: bool = False) -> None:
