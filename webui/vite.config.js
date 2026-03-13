@@ -66,6 +66,9 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
 
   return {
+    build: {
+      target: "esnext",
+    },
     plugins: [react(), generateBuildFolder(), svgr()],
     resolve: {
       alias: {

@@ -37,8 +37,7 @@ export const DomainField: React.FC<DomainFieldProps> = (props) => {
 
   useEffect(() => {
     if (
-      filter.value &&
-      filter.value.length &&
+      filter.value?.length &&
       !isArrayContainsOtherArray(values, filter.value)
     ) {
       updateKeyValueFilter(filter.id, { value: [] });

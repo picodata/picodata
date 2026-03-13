@@ -18,7 +18,7 @@ export const formatFailDomain = (domain: {
 }) => {
   return `${domain.key}: ${
     Array.isArray(domain.value)
-      ? domain.value.slice().sort().join(", ")
+      ? domain.value.slice().sort((a, b) => a.localeCompare(b)).join(", ")
       : domain.value
   }`;
 };
@@ -26,7 +26,7 @@ export const formatFailDomain = (domain: {
 export const formatFailDomains = (
   domains: Array<{ key: string; value: string }>
 ) => {
-  return domains.map(formatFailDomain).sort().join(", ");
+  return domains.map(formatFailDomain).sort((a, b) => a.localeCompare(b)).join(", ");
 };
 
 export const sortInstances = (
@@ -38,7 +38,6 @@ export const sortInstances = (
   if (!sortBy) return instances;
 
   switch (sortBy.by) {
-    default:
     case "NAME":
       return sortByStringProp(instances, (a) => a.name, {
         order: sortBy.order,
@@ -68,6 +67,7 @@ export const sortInstances = (
           }
         );
       });
+    default:
   }
 };
 

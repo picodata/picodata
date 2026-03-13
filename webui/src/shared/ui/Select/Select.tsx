@@ -1,5 +1,10 @@
 import { useMemo } from "react";
-import RNSelect, { MultiValue, Props as RNSelectProps } from "react-select";
+import RNSelect, {
+  MultiValue,
+  MultiValueProps,
+  OptionProps,
+  Props as RNSelectProps,
+} from "react-select";
 import cn from "classnames";
 
 import { CircleCloseIcon } from "shared/icons/CircleCloseIcon";
@@ -17,6 +22,55 @@ type SelectProps<T extends TOption> = RNSelectProps<T> & {
   size?: "normal";
   showMoreButtonCount?: number;
 };
+
+function SelectOption<T extends TOption>(args: OptionProps<T>) {
+  return (
+    <Option isSelected={args.isSelected} {...args.innerProps}>
+      {args.children}
+    </Option>
+  );
+}
+
+function SelectMultiValue<T extends TOption>(
+  args: MultiValueProps<T> & { selectProps: SelectProps<T> }
+) {
+  const { showMoreButtonCount = 3 } = args.selectProps;
+  const value = args.selectProps.value as MultiValue<T>;
+
+  if (!args.selectProps.menuIsOpen) {
+    if (args.index > showMoreButtonCount) {
+      return null;
+    }
+
+    if (args.index === showMoreButtonCount) {
+      return (
+        <Tag
+          size="extraSmall"
+          theme="secondary"
+          isSelectValue
+          // className={args.innerProps?.className} ToDo sx
+        >
+          See all ({value.length})
+        </Tag>
+      );
+    }
+  }
+
+  return (
+    <Tag
+      size="extraSmall"
+      // className={args.innerProps?.className} ToDo sx
+      isSelectValue
+      rightIcon={
+        <div {...args.removeProps}>
+          <CircleCloseIcon />
+        </div>
+      }
+    >
+      {args.children}
+    </Tag>
+  );
+}
 
 export const Select = <T extends TOption>(props: SelectProps<T>) => {
   const {
@@ -56,53 +110,14 @@ export const Select = <T extends TOption>(props: SelectProps<T>) => {
     <RNSelect
       closeMenuOnSelect={other.isMulti ? false : true}
       {...other}
+      showMoreButtonCount={showMoreButtonCount}
       classNames={classNames}
       menuPlacement="auto"
       menuPortalTarget={document.body}
       components={{
-        Option: (args) => (
-          <Option isSelected={args.isSelected} {...args.innerProps}>
-            {args.children}
-          </Option>
-        ),
+        Option: SelectOption,
         IndicatorSeparator: null,
-        MultiValue: (args) => {
-          const value = args.selectProps.value as MultiValue<T>;
-
-          if (!args.selectProps.menuIsOpen) {
-            if (args.index > showMoreButtonCount) {
-              return null;
-            }
-
-            if (args.index === showMoreButtonCount) {
-              return (
-                <Tag
-                  size="extraSmall"
-                  theme="secondary"
-                  isSelectValue
-                  // className={args.innerProps?.className} ToDo sx
-                >
-                  See all ({value.length})
-                </Tag>
-              );
-            }
-          }
-
-          return (
-            <Tag
-              size="extraSmall"
-              // className={args.innerProps?.className} ToDo sx
-              isSelectValue
-              rightIcon={
-                <div {...args.removeProps}>
-                  <CircleCloseIcon />
-                </div>
-              }
-            >
-              {args.children}
-            </Tag>
-          );
-        },
+        MultiValue: SelectMultiValue,
       }}
     />
   );

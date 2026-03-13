@@ -83,7 +83,7 @@ export const UserRoleModal = ({
         <MultiSelect>
           {foundPrivilege.items.map((elem, i, arr) => {
             return (
-              <MultiItem key={i}>
+              <MultiItem key={elem}>
                 <div>{elem}</div>
                 {i !== arr.length - 1 && <Divider />}
               </MultiItem>
@@ -96,10 +96,10 @@ export const UserRoleModal = ({
     return (
       <>
         <ButtonsRow>
-          {privileges.map((privilege, index) => {
+          {privileges.map((privilege) => {
             return (
               <ButtonElement
-                key={index}
+                key={privilege.type}
                 $isActive={selectedElement === privilege.type}
                 onClick={() => setSelectedItem(privilege.type)}
               >
@@ -138,7 +138,7 @@ export const UserRoleModal = ({
             <Label>{roles}</Label>
             <Row>
               {item.roles.map((role, index, arr) => (
-                <React.Fragment key={index}>
+                <React.Fragment key={role}>
                   <Value>{role}</Value>
                   {index !== arr.length - 1 && <Divider />}
                 </React.Fragment>
@@ -151,7 +151,7 @@ export const UserRoleModal = ({
           {item.privilegesForRoles && !!item.privilegesForRoles.length ? (
             <Row>
               {item.privilegesForRoles.map((role, index, arr) => (
-                <React.Fragment key={index}>
+                <React.Fragment key={role}>
                   <Value>{role}</Value>
                   {index !== arr.length - 1 && <Divider />}
                 </React.Fragment>

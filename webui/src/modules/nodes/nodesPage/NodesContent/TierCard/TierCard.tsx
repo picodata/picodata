@@ -57,7 +57,7 @@ export const TierCardAlt = memo(
             <ServicesList>
               {tier.services.length ? (
                 tier.services.map((service) => (
-                  <Tooltip title={service}>
+                  <Tooltip key={service} title={service}>
                     <CellValue>{service}</CellValue>
                   </Tooltip>
                 ))

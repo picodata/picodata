@@ -27,7 +27,7 @@ export const FailureDomainLabel: React.FC<FailureDomainLabelProps> = (
         .map((domain, index) => {
           const isLastItem = index === failureDomain.length - 1;
           return (
-            <React.Fragment key={index}>
+            <React.Fragment key={domain}>
               <Clippable text={domain} inline>
                 <Text>
                   {domain}

@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
 
 import { TierNodeType, TierType } from "shared/entity/tier";
@@ -52,14 +52,28 @@ export const NodesContent = memo(({ data }: NodesContentProps) => {
     setNodesData(getInitialNodesData(data?.tiers || []));
   }, [data?.tiers]);
 
-  const nodeClickHandler = (id: string) => {
+  const nodeClickHandler = useCallback((id: string) => {
     setOpenedNodes((_openedNodes) => {
       if (_openedNodes.includes(id)) {
         return _openedNodes.filter((_id) => _id !== id);
       }
       return [..._openedNodes, id];
     });
-  };
+  }, []);
+
+  const itemContent = useCallback(
+    (index: number, node: TierNodeType | ReplicasetNodeType | InstanceNodeType) => (
+      <NodesFork
+        key={node.syntheticId}
+        nodesList={nodesList || []}
+        index={index}
+        node={node}
+        onClick={nodeClickHandler}
+        fromReplicaset={groupedByTiers}
+      />
+    ),
+    [nodesList, nodeClickHandler, groupedByTiers]
+  );
 
   return (
     <>
@@ -79,18 +93,7 @@ export const NodesContent = memo(({ data }: NodesContentProps) => {
             }}
             totalCount={nodesList?.length}
             data={nodesList}
-            itemContent={(index, node) => {
-              return (
-                <NodesFork
-                  key={node.syntheticId}
-                  nodesList={nodesList || []}
-                  index={index}
-                  node={node}
-                  onClick={nodeClickHandler}
-                  fromReplicaset={groupedByTiers}
-                />
-              );
-            }}
+            itemContent={itemContent}
           />
         ) : (
           <NodesNoData>{instancesTranslations.noData.text}</NodesNoData>

@@ -24,10 +24,10 @@ export const Roles = ({
 
           return true;
         })
-        .map((item, i) => {
+        .map((item) => {
           return (
             <UserRoleCard
-              key={i}
+              key={item.name}
               // className={styles.item} ToDo
               type="ROLES"
               onClick={() => setSelectedItem(item)}

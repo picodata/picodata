@@ -134,11 +134,14 @@ export const InstanceBackground = styled(Background)<{
 export const InstanceBackgroundInner = styled(Background)<{
   $withBottomPadding: boolean;
   $fromReplicaset: boolean;
-}>(({ $withBottomPadding, $fromReplicaset }) => ({
-  padding: $fromReplicaset
-    ? `4px 10px ${$withBottomPadding ? "10px" : "0"} 10px`
-    : "unset",
-}));
+}>(({ $withBottomPadding, $fromReplicaset }) => {
+  const bottomPadding = $withBottomPadding ? "10px" : "0";
+  return {
+    padding: $fromReplicaset
+      ? `4px 10px ${bottomPadding} 10px`
+      : "unset",
+  };
+});
 
 export const VersionRoot = styled(Box)({
   display: "grid",

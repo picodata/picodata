@@ -12,7 +12,6 @@ export const Root = styled("button", {
 }>(({ $disabled, $size, $theme, theme }) => {
   let padding: string;
   switch ($size) {
-    default:
     case "large":
       padding = "16px 24px";
       break;
@@ -28,6 +27,7 @@ export const Root = styled("button", {
       padding = "6px 16px";
       break;
     }
+    default:
   }
   return {
     display: "inline-flex",
@@ -76,36 +76,44 @@ export const Content = styled("span", {
   slot: "content",
 })<{
   $size: Required<ButtonProps>["size"];
-}>(({ $size, theme }) => ({
-  display: "flex",
-  alignItems: "center",
-  fontSize:
-    $size === "small" ? "16px" : $size === "extraSmall" ? "14px" : "20px",
-  fontWeight: 400,
-  lineHeight: "20px",
-  color: theme.common.colors.typography.colorTextBlack,
-}));
+}>(({ $size, theme }) => {
+  let fontSize: string;
+  if ($size === "small") fontSize = "16px";
+  else if ($size === "extraSmall") fontSize = "14px";
+  else fontSize = "20px";
+
+  return {
+    display: "flex",
+    alignItems: "center",
+    fontSize,
+    fontWeight: 400,
+    lineHeight: "20px",
+    color: theme.common.colors.typography.colorTextBlack,
+  };
+});
 
 export const Icon = styled("span")<{
   $type: "left" | "right";
   $size: Required<ButtonProps>["size"];
-}>(({ $size, $type }) => ({
-  height: $size === "large" ? "24px" : "16px",
-  width: $size === "large" ? "24px" : "16px",
-  marginRight:
-    $type === "left" && $size !== "normal"
-      ? $size === "extraSmall"
-        ? "6px"
-        : "8px"
-      : "none",
-  marginLeft:
-    $type === "right" && $size !== "normal"
-      ? $size === "extraSmall"
-        ? "6px"
-        : "8px"
-      : "none",
-  "& svg": {
-    height: "100%",
-    width: "100%",
-  },
-}));
+}>(({ $size, $type }) => {
+  const iconSize = $size === "large" ? "24px" : "16px";
+  let iconMargin: string;
+  if ($size === "normal") {
+    iconMargin = "none";
+  } else if ($size === "extraSmall") {
+    iconMargin = "6px";
+  } else {
+    iconMargin = "8px";
+  }
+
+  return {
+    height: iconSize,
+    width: iconSize,
+    marginRight: $type === "left" ? iconMargin : "none",
+    marginLeft: $type === "right" ? iconMargin : "none",
+    "& svg": {
+      height: "100%",
+      width: "100%",
+    },
+  };
+});

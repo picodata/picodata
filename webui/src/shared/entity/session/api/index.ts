@@ -20,11 +20,13 @@ export function refreshSession(config: AxiosRequestConfig) {
     return refreshSession.lastResult;
   }
 
-  return (refreshSession.lastResult = axios
+  refreshSession.lastResult = axios
     .get<SessionModel>(sessionURL, config)
     .finally(() => {
       refreshSession.lastResult = null;
-    }));
+    });
+
+  return refreshSession.lastResult;
 }
 
 // Simple request deduplication technique
@@ -33,7 +35,7 @@ refreshSession.lastResult = null as Promise<AxiosResponse<SessionModel>> | null;
 // TODO: enable when DELETE /session works
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const deleteSession = (config: AxiosRequestConfig) => {
-  return Promise.resolve(); //axios.delete(sessionURL, config);
+  return Promise.resolve(); //TODO: make it as axios.delete(sessionURL, config);
 };
 
 export function isAuthError(e: AxiosError) {

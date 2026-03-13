@@ -37,7 +37,7 @@ export const InstanceModal: FC<InstanceModalProps> = ({
         {keys.map((key, index) => {
           if (typeof instance[key as keyof InstanceType] === "string") {
             return (
-              <BoxInfoRaw key={index} $isGrayRow={index % 2 !== 0}>
+              <BoxInfoRaw key={key} $isGrayRow={index % 2 !== 0}>
                 <span>
                   <TitleText>{key}</TitleText>
                 </span>
