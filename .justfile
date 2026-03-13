@@ -50,10 +50,7 @@ alias bw := build-webui
 [doc("`bw`: webui bundle")]
 build-webui:
 	yarn --cwd webui install \
-		--prefer-offline \
-		--frozen-lockfile \
-		--no-progress \
-		--non-interactive
+		--immutable
 	yarn --cwd webui vite build \
 		--outDir dist \
 		--emptyOutDir
