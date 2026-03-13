@@ -209,9 +209,120 @@ WHERE "_pico_instance"."raft_id" = 2;
 ```
 
 Дальнейшие шаги зависят от варианта запуска. При развёртывании кластера
-через Ansible потребуется подключиться к серверу по ssh и открыть
+через Ansible потребуется подключиться к серверу по SSH и открыть
 диагностический журнал через `journalctl`, см. [Просмотр отладочного
 журнала](#reading_log).
+
+## Проверка состояния инстанса по HTTP API {: #instance_health_check }
+
+Инстанс Picodata отдаёт сведения о своём состоянии и работоспособности
+по HTTP API на эндпоинт `/api/v1/health/status`. HTTP-код `200` означает
+положительный результат, `503` — ошибку.
+
+<!--
+|         Эндпоинт         |                       Описание                       |  HTTP-коды   | Авторизация |
+|:------------------------:|:----------------------------------------------------:|:------------:|:-----------:|
+| `/api/v1/health/startup` |          Признак того, что инстанс запущен           | `200`/`503`  | опциональна |
+|  `/api/v1/health/live`   |      Признак того, что инстанс доступен в сети       | всегда `200` | опциональна |
+|  `/api/v1/health/ready`  | Признак того, что инстанс может обрабатывать запросы | `200`/`503`  | опциональна |
+| `/api/v1/health/status`  |        Подробная сводка о состоянии инстанса         | всегда `200` | обязательна |
+-->
+
+Для формирования корректного URL используйте адрес, указанный для
+параметра [HTTP_LISTEN], например:
+
+```shell
+http://127.0.0.1:8081/api/v1/health/status
+```
+
+<!--
+Эндпоинты, не требующие авторизации, могут использоваться как в адресной
+строке веб-браузера, так и в терминале (например, с `curl`).
+-->
+
+Эндпоинт `/api/v1/health/status` требует авторизации на инстансе
+Picodata. Для получения данных авторизации отправьте в терминале запрос
+следующего вида, указав данные [ранее созданного пользователя]:
+
+```shell
+curl -X POST http://127.0.0.1:8081/api/v1/session   -H "Content-Type: application/json"   -d '{
+    "username": "alice",
+    "password": "T0psecret"
+  }' | jq
+```
+
+[ранее созданного пользователя]: access_control.md#create_user
+
+!!! note "Примечание"
+    В этом и последующих примерах используется форматирование JSON-вывода
+    при помощи консольной утилиты [`jq`](https://jqlang.org).
+
+В ответ Picodata пришлёт два токена (`auth` и `refresh`). Пример:
+
+```shell
+{
+  "auth": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGljZSIsImV4cCI6MTc3MzQ5NzQwNSwidHlwIjoiYXV0aCIsInJvbGVzIjpbImV4ZWN1dGUiLCJjcmVhdGUiLCJyZWFkIiwid3JpdGUiLCJsb2dpbiIsImFsdGVyIl19.-NXOef7e9ckRwGlJBuzOdXtRhI2nBhEZj5P1Wip7w30",
+  "refresh": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGljZSIsImV4cCI6MTgwNDk0NzAwNSwidHlwIjoicmVmcmVzaCJ9.gEP-qlJjhlIhzg_05-8ntAaf9MeH4qiFw0ib_DiRM7U"
+}
+```
+
+Токен `auth` действует в течение 24 часов. Теперь вы можете получить
+данные о состоянии инстанса, указав токен в заголовке `Authorization:
+Bearer <token>`:
+
+```shell
+curl -s "http://127.0.0.1:8081/api/v1/health/status"     -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGljZSIsImV4cCI6MTc3MzQ5NzQwNSwidHlwIjoiYXV0aCIsInJvbGVzIjpbImV4ZWN1dGUiLCJjcmVhdGUiLCJyZWFkIiwid3JpdGUiLCJsb2dpbiIsImFsdGVyIl19.-NXOef7e9ckRwGlJBuzOdXtRhI2nBhEZj5P1Wip7w30" | jq
+```
+
+??? note "Пример вывода"
+    ```json
+    {
+      "status": "healthy",
+      "timestamp": 1773411090,
+      "uptimeSeconds": 14573,
+      "name": "i1",
+      "uuid": "2c4a425b-49c7-4e0f-86bd-1a479cd6ce4a",
+      "version": "25.5.0-1848-g41efc83dc",
+      "raftId": 1,
+      "tier": "default",
+      "replicaset": "default_1",
+      "currentState": "Online",
+      "targetState": "Online",
+      "targetStateReason": "wakeup",
+      "targetStateChangeTime": "2026-03-12 14:45:55.637123218 +00:00:00",
+      "limboOwner": 0,
+      "raft": {
+        "state": "Follower",
+        "term": 9,
+        "leaderId": 3,
+        "leaderName": "i3",
+        "appliedIndex": 162,
+        "commitedIndex": 162,
+        "compactedIndex": 0,
+        "persistedIndex": 162
+      },
+      "buckets": {
+        "active": 8192,
+        "pinned": 0,
+        "sending": 0,
+        "receiving": 0,
+        "garbage": 0,
+        "total": 16384
+      },
+      "cluster": {
+        "uuid": "24502c90-de10-4172-9a4c-82b8856caaf1",
+        "version": "25.5.0-1609-g92f7550fa"
+      }
+    }
+    ```
+
+Токен `refresh` действует в течение 1 года. Он предназначен для того,
+чтобы обновить auth-токен без предоставления данных авторизации. Пример
+запроса на выдачу новых токенов с помощью refresh-токена:
+
+```shell
+curl -s "http://127.0.0.1:8081/api/v1/session"     -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGljZSIsImV4cCI6MTgwNDk0NzAwNSwidHlwIjoicmVmcmVzaCJ9.gEP-qlJjhlIhzg_05-8ntAaf9MeH4qiFw0ib_DiRM7U" | jq
+```
 
 ## Метрики инстанса {: #instance_metrics }
 
@@ -235,6 +346,7 @@ picodata run --http-listen '127.0.0.1:8081'
 - Параметр конфигурации [instance.http.listen]
 
 [instance.http.listen]: ../reference/config.md#instance_http_listen
+[HTTP_LISTEN]: ../reference/config.md#instance_http_listen
 
 ### Метрики в консоли {: #curl_metrics }
 
