@@ -410,61 +410,95 @@ https://git.picodata.io/core/picodata/-/blob/master/Cargo.toml#L6
 - gcc, g++
 - libstdc++-static
 - openssl
-- NodeJS и Yarn (требуются для работы веб-интерфейса Picodata)
+- NodeJS и Yarn 4 (требуются для сборки веб-интерфейса Picodata)
+
+### Установка зависимостей для сборки {: #build_dependencies }
+
+#### Rust и Cargo {: #rust_and_cargo }
 
 Установка Rust и Cargo универсальна для всех поддерживаемых ОС:
 
-```bash
+```shell
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 ```
 
-### Установка зависимостей для сборки {: #build_dependencies }
+#### NodeJS  {: #nodejs }
+
+Установите NodeJS для вашей ОС:
+
+??? example "RHEL 8/9 и деривативы, Fedora 41-43"
+    ```shell
+    curl -sL https://rpm.nodesource.com/setup_lts.x | sudo bash -
+    curl -sL https://dl.yarnpkg.com/rpm/yarn.repo | sudo tee /etc/yum.repos.d/yarn.repo
+    sudo dnf install nodejs
+    ```
+
+??? example "Ubuntu 22.04 и 24.04"
+    ```shell
+    curl -sL https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -
+    echo "deb https://dl.yarnpkg.com/debian/ stable main" | sudo tee /etc/apt/sources.list.d/yarn.list
+    sudo apt install npm -y
+    sudo curl --compressed -o- -L https://yarnpkg.com/install.sh | bash
+    ```
+
+??? example "Alt Server p10"
+    ```shell
+    su -
+    apt-get install -y node
+    ```
+
+??? example "macOS"
+    Установите NodeJS при помощи пакетного менеджера [Brew](https://brew.sh).<br>
+    Установка Brew:
+    ```shell
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    ```
+    Установка NodeJS:
+    ```
+    brew install node
+    ```
+
+#### Yarn {: #yarn }
+
+Рекомендуем использовать Yarn, установленный через Corepack, поэтому
+придерживайтесь следующего порядка действий:
+
+- установите Corepack: `npm install -g corepack` (возможно, потребуются права администратора ОС)
+- включите Corepack: `corepack enable`
+- убедитесь, что в системе не используется Yarn, поставляемый в виде пакета для ОС (`which yarn`)
+
+#### Прочие зависимости  {: #other_dependencies }
 
 Далее приведены команды для установки остальных зависимостей под разные ОС.
 
 ??? example "RHEL 8/9 и деривативы, Fedora 39-43"
     Только для ОС, основанных на RHEL 8/9:
-    ```bash
+    ```shell
     sudo dnf config-manager --set-enabled powertools
     ```
     Установка общих зависимостей для сборки:
-    ```bash
+    ```shell
     sudo dnf in -y gcc gcc-c++ make perl automake libtool cmake git patch libstdc++-static openssl-devel
     ```
-    Установка NodeJS и Yarn:
-    ```bash
-    curl -sL https://rpm.nodesource.com/setup_lts.x | sudo bash -
-    curl -sL https://dl.yarnpkg.com/rpm/yarn.repo | sudo tee /etc/yum.repos.d/yarn.repo
-    sudo dnf install yarn nodejs
-    ```
+
 
 ??? example "Ubuntu 22.04 и 24.04"
     Установка общих зависимостей для сборки:
-    ```bash
+    ```shell
     sudo apt-get install build-essential git cmake autoconf libtool curl libssl-dev pkg-config -y
     ```
-    Установка NodeJS и Yarn:
-    ```bash
-    curl -sL https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -
-    echo "deb https://dl.yarnpkg.com/debian/ stable main" | sudo tee /etc/apt/sources.list.d/yarn.list
-    sudo apt install yarn npm -y
-    sudo curl --compressed -o- -L https://yarnpkg.com/install.sh | bash
-    ```
+
 
 ??? example "Alt Server p10"
     Установка общих зависимостей для сборки:
-    ```bash
+    ```shell
     su -
     apt-get install -y gcc gcc-c++ cmake git patch libstdc++-devel-static libgomp-devel-static libssl-devel-static
     ```
-    Установка NodeJS и Yarn:
-    ```bash
-    su -
-    apt-get install -y node yarn
-    ```
+
     <!--
-    ```bash
+    ```shell
     cargo build --features dynamic_build
     ```
 
@@ -484,45 +518,49 @@ source "$HOME/.cargo/env"
 ??? example "macOS"
     Сборка под macOS почти не отличается от таковой в Linux. Потребуется
     macOS 10.15 Catalina, либо более новая версия (11+).
-    Для начала следует установить актуальные версии [Rust и
-    Cargo](https://rustup.rs).<br>
-    Для работы веб-интерфейса Picodata следует установить дополнительно
-    NodeJS и Yarn при помощи пакетного менеджера [Brew](https://brew.sh).<br>
-    Установка Brew:
-    ```bash
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    ```
-    Установка NodeJS и Yarn:
-    ```
-    brew install node yarn
-    ```
+    Установите актуальные версии [Rust и
+    Cargo](https://rustup.rs), а также NodeJS и Yarn 4.
+
 
 ### Получение исходного кода {: #getting_sources }
 
 Загрузка с Gitlab:
 
-```bash
+```shell
 git clone https://git.picodata.io/core/picodata.git --recursive
 ```
 
 Загрузка с зеркала GitHub:
 
-```bash
+```shell
 git clone https://github.com/picodata/picodata.git --recursive
 ```
 
 ### Сборка {: #building }
 
+Убедитесь, что установленный в системе Yarn указывает на актуальную
+версию 4.х (stable), а не на устаревшую версию 1.2.х (classic):
+
+```shell
+yarn --version
+```
+
+При необходимости переключите Yarn на использование актуальной версии:
+
+```shell
+yarn set version stable
+```
+
 Используйте приведенные ниже команды для сборки Picodata. Для получения
 debug-версии:
 
-```bash
+```shell
 make build
 ```
 
 Для получения release-версии:
 
-```bash
+```shell
 make build-release-pkg
 ```
 
@@ -537,7 +575,7 @@ make build-release-pkg
 наличие в системе основного исполняемого файла `picodata`, используя
 следующую команду:
 
-```bash
+```shell
 which picodata
 ```
 
@@ -546,7 +584,7 @@ which picodata
 включенное в `$PATH`. Чтобы убедиться в работоспособности ПО, а также
 посмотреть его версию, используйте следующую команду:
 
-```bash
+```shell
 picodata --help
 ```
 
@@ -554,13 +592,13 @@ picodata --help
 работоспособность основных функций. Юнит-тесты можно запустить следующей
 командой:
 
-```bash
+```shell
 picodata test
 ```
 
 Пример вывода команды:
 
-```bash
+```shell
 running 6 tests
 test test_traft_pool ... ok
 test test_storage_peers ... ok
