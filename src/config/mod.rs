@@ -728,7 +728,7 @@ Using configuration file '{args_path}'.");
 
         if !has_votable_tier {
             return Err(Error::InvalidConfiguration(
-                "at least one trier must be votable (`can_vote = true`)".into(),
+                "at least one tier must be allowed to vote (`can_vote = true`)".into(),
             ));
         }
 
