@@ -148,7 +148,7 @@ instance:
 
     i1 = cluster.add_instance(wait_online=False, tier="storage")
 
-    c1 = log_crawler(i1, "CRITICAL: invalid configuration: at least one trier must be votable (`can_vote = true`)")
+    c1 = log_crawler(i1, "CRITICAL: invalid configuration: at least one tier must be allowed to vote (`can_vote = true`)")
 
     i1.fail_to_start()
 
