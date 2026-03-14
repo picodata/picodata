@@ -699,7 +699,7 @@ table.legend {
     <tbody>
         <tr>
             <td><span class="sql-cluster">[auth_login_attempt_max](db_config.md#auth_login_attempt_max){.link}</span></td>
-            <td>Максимальное количество неуспешных попыток аутентификации через `picodata connect`</td>
+            <td>Максимальное количество неуспешных попыток аутентификации</td>
             <td>4</td>
             <td>
             ```sql

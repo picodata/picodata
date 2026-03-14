@@ -30,6 +30,40 @@
 - [Справочник psql](https://www.postgresql.org/docs/current/app-psql.html)
 - [Работа с данными SQL](sql_examples.md)
 
+## Быстрый старт {: #quickstart }
+
+Для быстрого начала работы с Picodata выполните следующие шаги:
+
+1. Запустите инстанс Picodata (см. [Запуск](run.md))
+
+2. В другом терминале подключитесь к консоли администратора:
+
+    ```shell
+    picodata admin ./admin.sock
+    ```
+
+3. Задайте пароль администратора и создайте пользователя:
+
+    ```sql
+    ALTER USER "admin" WITH PASSWORD 'T0psecret';
+    CREATE USER "alice" WITH PASSWORD 'T0psecret';
+    GRANT CREATE TABLE TO "alice";
+    GRANT READ TABLE TO "alice";
+    GRANT WRITE TABLE TO "alice";
+    ```
+
+4. Подключитесь через `psql`:
+
+    ```shell
+    psql postgres://alice:T0psecret@127.0.0.1:4327
+    ```
+
+!!! note "Примечание"
+    Новые пользователи по умолчанию создаются с методом аутентификации
+    `md5`, который совместим с протоколом PostgreSQL. Метод `chap-sha1`
+    **не поддерживается** при подключении через `psql` — используйте
+    `md5` или `scram-sha256`.
+
 ## Консоль администратора {: #admin_console }
 
 ### Настройка и подключение {: #admin_console_connect }
