@@ -3919,9 +3919,23 @@ def test_sql_user_password_checks(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, _ = cluster.instances
 
+    # Password '1234' violates length, uppercase, and lowercase rules.
+    # All violations must be reported at once.
     with pytest.raises(
         TarantoolError,
-        match="invalid password: password should contain at least one uppercase letter",
+        match=r"invalid password: too short \(expected at least 8 characters, got 4\); missing uppercase letter; missing lowercase letter",
+    ):
+        i1.sql(
+            """
+            create user noname with password '1234'
+            using md5 option (timeout = 3)
+            """
+        )
+
+    # This password violates both uppercase and digit rules.
+    with pytest.raises(
+        TarantoolError,
+        match="invalid password: missing uppercase letter; missing digit",
     ):
         i1.sql(
             """
@@ -3932,7 +3946,7 @@ def test_sql_user_password_checks(cluster: Cluster):
 
     with pytest.raises(
         TarantoolError,
-        match="invalid password: password should contain at least one lowercase letter",
+        match="invalid password: missing lowercase letter",
     ):
         i1.sql(
             """
@@ -3943,7 +3957,7 @@ def test_sql_user_password_checks(cluster: Cluster):
 
     with pytest.raises(
         TarantoolError,
-        match="invalid password: password should contain at least one digit",
+        match="invalid password: missing digit",
     ):
         i1.sql(
             """
@@ -3977,7 +3991,7 @@ def test_sql_user_password_checks(cluster: Cluster):
 
     with pytest.raises(
         TarantoolError,
-        match="invalid password: password should contain at least one special character",
+        match="invalid password: missing special character",
     ):
         i1.sql(
             """

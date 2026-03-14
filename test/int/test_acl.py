@@ -8,7 +8,7 @@ PASSWORD_MIN_LENGTH_KEY = "password_min_length"
 
 
 def expected_min_password_violation_error(min_length: int):
-    return f"password is too short: expected at least {min_length}, got"
+    return f"invalid password: too short (expected at least {min_length} characters, got"
 
 
 def set_min_password_len(cluster: Cluster, i1: Instance, min_password_len: int):

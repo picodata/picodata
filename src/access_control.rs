@@ -124,53 +124,51 @@ pub fn validate_password(
         return Ok(());
     }
 
+    // Collect all password policy violations at once so the user can fix
+    // them in a single attempt instead of playing whack-a-mole.
+    let mut violations: Vec<String> = Vec::new();
+
     // This check is called from user facing API.
     // A user is not expected to have access to _pico_property
     let password_min_length = parameters.borrow().auth_password_length_min as usize;
     if password.len() < password_min_length {
-        return Err(Error::Other(
-            format!(
-                "password is too short: expected at least {}, got {}",
-                password_min_length,
-                password.len()
-            )
-            .into(),
+        violations.push(format!(
+            "too short (expected at least {} characters, got {})",
+            password_min_length,
+            password.len()
         ));
     }
 
     let password_enforce_uppercase = parameters.borrow().auth_password_enforce_uppercase;
     if password_enforce_uppercase && !password.chars().any(|ch| ch.is_uppercase()) {
-        return Err(Error::Other(
-            "invalid password: password should contain at least one uppercase letter".into(),
-        ));
+        violations.push("missing uppercase letter".into());
     }
 
     let password_enforce_lowercase = parameters.borrow().auth_password_enforce_lowercase;
     if password_enforce_lowercase && !password.chars().any(|ch| ch.is_lowercase()) {
-        return Err(Error::Other(
-            "invalid password: password should contain at least one lowercase letter".into(),
-        ));
+        violations.push("missing lowercase letter".into());
     }
 
     let password_enforce_digits = parameters.borrow().auth_password_enforce_digits;
     if password_enforce_digits && !password.chars().any(|ch| ch.is_ascii_digit()) {
-        return Err(Error::Other(
-            "invalid password: password should contain at least one digit".into(),
-        ));
+        violations.push("missing digit".into());
     }
 
     let password_enforce_specialchars = parameters.borrow().auth_password_enforce_specialchars;
     if password_enforce_specialchars && !password.chars().any(|ch| SPECIAL_CHARACTERS.contains(&ch))
     {
-        return Err(Error::Other(
-            format!(
-                "invalid password: password should contain at least one special character - {SPECIAL_CHARACTERS:?}",
-            )
-            .into(),
+        violations.push(format!(
+            "missing special character ({SPECIAL_CHARACTERS:?})",
         ));
     }
 
-    Ok(())
+    if violations.is_empty() {
+        return Ok(());
+    }
+
+    Err(Error::Other(
+        format!("invalid password: {}", violations.join("; ")).into(),
+    ))
 }
 
 fn forbid_drop_if_system_space(storage: &Catalog, space_id: u32) -> tarantool::Result<()> {
