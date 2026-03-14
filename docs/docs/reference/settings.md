@@ -850,7 +850,7 @@ table.legend {
         <tr>
             <td><span class="sql-cluster">[pg_portal_max](db_config.md#pg_portal_max){.link}</span></td>
             <td>Размер хранилища порталов PostgreSQL</td>
-            <td>1024</td>
+            <td>100000</td>
             <td>
             ```sql
             ALTER SYSTEM SET pg_portal_max = 2048;
@@ -860,7 +860,7 @@ table.legend {
         <tr>
             <td><span class="sql-cluster">[pg_statement_max](db_config.md#pg_statement_max){.link}</span></td>
             <td>Размер хранилища стейтментов PostgreSQL</td>
-            <td>1024</td>
+            <td>100000</td>
             <td>
             ```sql
             ALTER SYSTEM SET pg_statement_max = 2048;
