@@ -106,6 +106,17 @@ export const theme = createTheme({
     },
   },
   components: {
+    MuiTextField: {
+      defaultProps: {
+        size: "small",
+        fullWidth: true,
+      },
+    },
+    MuiAutocomplete: {
+      defaultProps: {
+        fullWidth: true,
+      },
+    },
     MuiCssBaseline: {
       styleOverrides: `
         /* cyrillic-ext */

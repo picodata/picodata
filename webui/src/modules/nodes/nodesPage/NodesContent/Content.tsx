@@ -4,12 +4,12 @@ import { TopBar } from "./TopBar/TopBar";
 import { ContentContainer, Root, ToolBarContainer } from "./StyledComponents";
 import { GroupByFilterProps } from "./TopBar/GroupByFilter/GroupByFilter";
 import { SortByProps } from "./TopBar/SortBy/SortBy";
-import { FilterByProps } from "./TopBar/FilterBy/FilterBy";
+import { FilterModuleProps } from "./TopBar/Filter";
 
 type ContentWrapperProps = PropsWithChildren<
   Pick<GroupByFilterProps, "setGroupByFilterValue" | "groupByFilterValue"> &
     Pick<SortByProps, "sortByValue" | "setSortByValue"> &
-    Pick<FilterByProps, "filterByValue" | "setFilterByValue">
+    FilterModuleProps
 >;
 
 export const ContentWrapper = forwardRef<
@@ -21,10 +21,11 @@ export const ContentWrapper = forwardRef<
       groupByFilterValue,
       setGroupByFilterValue,
       sortByValue,
-      setFilterByValue,
-      filterByValue,
       setSortByValue,
       children,
+      filterTags,
+      filterValue,
+      onFilterValueChange,
     },
     ref
   ) => {
@@ -39,9 +40,9 @@ export const ContentWrapper = forwardRef<
             sortByValue={sortByValue}
             showSortBy={groupedByInstances}
             setSortByValue={setSortByValue}
-            showFilterBy={groupedByInstances}
-            filterByValue={filterByValue}
-            setFilterByValue={setFilterByValue}
+            filterTags={filterTags}
+            filterValue={filterValue}
+            onFilterValueChange={onFilterValueChange}
           />
         </ToolBarContainer>
         <ContentContainer>{children}</ContentContainer>

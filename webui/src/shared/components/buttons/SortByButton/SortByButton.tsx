@@ -20,6 +20,7 @@ export const SortByButton = <T extends string | number>(
 
   return (
     <ButtonSelect
+      sx={{ height: 40 }}
       size="small"
       rightIcon={
         <ArrowsUpDown

@@ -8,11 +8,11 @@ import { InstanceNodeType, InstanceType } from "shared/entity/instance";
 
 import { useGroupByFilter } from "./TopBar/GroupByFilter/hooks";
 import { useSortBy } from "./TopBar/SortBy/hooks";
-import { useFilterBy } from "./TopBar/FilterBy/hooks";
 import { getInitialNodesData, getNodesListByOpenedNodes } from "./utils";
 import { NodesFork } from "./NodesFork";
 import { ContentWrapper } from "./Content";
 import { NodesNoData } from "./StyledComponents";
+import { useFilterTags, useFilterValue } from "./hooks";
 
 type NodesContentProps = {
   data?: {
@@ -24,7 +24,8 @@ type NodesContentProps = {
 export const NodesContent = memo(({ data }: NodesContentProps) => {
   const [groupByFilterValue, setGroupByFilterValue] = useGroupByFilter();
   const [sortByValue, setSortByValue] = useSortBy();
-  const [filterByValue, setFilterByValue] = useFilterBy();
+  const filterTags = useFilterTags(data);
+  const [filterValue, setFilterValue] = useFilterValue();
   const { translation } = useTranslation();
   const instancesTranslations = translation.pages.instances;
   const groupedByTiers = groupByFilterValue === "TIERS";
@@ -41,12 +42,12 @@ export const NodesContent = memo(({ data }: NodesContentProps) => {
       getNodesListByOpenedNodes(
         nodesData,
         openedNodes,
+        filterValue,
         groupByFilterValue,
-        sortByValue,
-        filterByValue
+        sortByValue
       )
     );
-  }, [nodesData, openedNodes, groupByFilterValue, sortByValue, filterByValue]);
+  }, [nodesData, openedNodes, groupByFilterValue, sortByValue, filterValue]);
 
   useEffect(() => {
     setNodesData(getInitialNodesData(data?.tiers || []));
@@ -62,7 +63,10 @@ export const NodesContent = memo(({ data }: NodesContentProps) => {
   }, []);
 
   const itemContent = useCallback(
-    (index: number, node: TierNodeType | ReplicasetNodeType | InstanceNodeType) => (
+    (
+      index: number,
+      node: TierNodeType | ReplicasetNodeType | InstanceNodeType
+    ) => (
       <NodesFork
         key={node.syntheticId}
         nodesList={nodesList || []}
@@ -81,9 +85,10 @@ export const NodesContent = memo(({ data }: NodesContentProps) => {
         groupByFilterValue={groupByFilterValue}
         setGroupByFilterValue={setGroupByFilterValue}
         sortByValue={sortByValue}
-        setFilterByValue={setFilterByValue}
-        filterByValue={filterByValue}
         setSortByValue={setSortByValue}
+        filterTags={filterTags}
+        filterValue={filterValue}
+        onFilterValueChange={setFilterValue}
       >
         {nodesList?.length ? (
           <Virtuoso

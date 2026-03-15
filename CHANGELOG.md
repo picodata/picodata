@@ -111,6 +111,12 @@ with the `YY.MINOR.MICRO` scheme.
 - Webui now displays the value of `cluster_version` instead of current
   instance's version. That way you can easily tell if the cluster has been
   upgraded successfully or not yet.
+- the display of the target state in the instance card has been removed
+- the ability to group by replicas has been removed
+- added a visual indication of the problem status for the offline instance counter
+- virtualization has been applied to the tiers and instance list
+- the cluster information is displayed in the header
+- the filter has been redesigned, now it is constantly displayed in front of the list of shooting ranges or instances. Added the ability to filter by text and by tags, such as dash name, replica set name, instance name, version, status.
 
 ### Fixes
 

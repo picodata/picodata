@@ -137,9 +137,7 @@ export const InstanceBackgroundInner = styled(Background)<{
 }>(({ $withBottomPadding, $fromReplicaset }) => {
   const bottomPadding = $withBottomPadding ? "10px" : "0";
   return {
-    padding: $fromReplicaset
-      ? `4px 10px ${bottomPadding} 10px`
-      : "unset",
+    padding: $fromReplicaset ? `4px 10px ${bottomPadding} 10px` : "unset",
   };
 });
 
