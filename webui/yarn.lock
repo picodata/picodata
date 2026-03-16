@@ -2546,10 +2546,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"concat-map@npm:0.0.1":
-  version: 0.0.1
-  resolution: "concat-map@npm:0.0.1"
-  checksum: 10c0/c996b1cfdf95b6c90fee4dae37e332c8b6eb7d106430c17d538034c0ad9a1630cb194d2ab37293b1bdd4d779494beee7786d586a50bd9376fd6f7bcc2bd4c98f
+"concat-map@npm:0.0.2":
+  version: 0.0.2
+  resolution: "concat-map@npm:0.0.2"
+  checksum: 10c0/478d3dd398dfde98debe9640adb635e54495836a86bba1fa1772b969ffa6e7626d8dba93ed2240066f22984264c7e8cc4a315f027eff7ce46772f32b63eb1373
   languageName: node
   linkType: hard
 
