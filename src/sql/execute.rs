@@ -2,7 +2,7 @@ use crate::metrics::{
     report_storage_cache_hit, report_storage_cache_miss, STORAGE_2ND_REQUESTS_TOTAL,
 };
 use crate::preemption::scheduler_options;
-use crate::sql::lock::{lock_temp_table, TempTableLockRef};
+use crate::sql::lock::{lock_temp_table, TempTableLease, TempTableLockRef};
 use crate::sql::lua::{lua_decode_ibufs, lua_query_metadata};
 use crate::sql::port::PicoPortOwned;
 use crate::sql::router::{get_index_version_by_pk, get_table_version_by_id, VersionMap};
@@ -16,14 +16,14 @@ use ahash::HashMapExt;
 use comfy_table::{Cell, ContentArrangement, Row, Table};
 use rmp::decode::read_array_len;
 use rmp::encode::{write_array_len, write_uint};
-use smol_str::{format_smolstr, ToSmolStr};
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql::backend::sql::ADMIN_ID;
 use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::engine::helpers::{
     build_insert_args, write_shared_update_args, TupleBuilderCommand, TupleBuilderPattern,
 };
 use sql::executor::engine::protocol::{ExecutionCacheMissData, ExecutionData};
-use sql::executor::engine::{QueryCache, StorageCache, Vshard};
+use sql::executor::engine::{CachedStmtRef, QueryCache, StorageCache, Vshard};
 use sql::executor::preemption::Scheduler;
 use sql::executor::protocol::SchemaInfo;
 use sql::executor::result::ConsumerResult;
@@ -162,7 +162,11 @@ fn populate_table(
         })?;
         let scheduler_opts = scheduler_options();
         let mut ys = Scheduler::new(&scheduler_opts);
+        let mut inserted_rows = 0usize;
         while let Some(tuple) = tuples.next_tuple() {
+            if inserted_rows > 0 {
+                crate::error_injection!(block_cancellable "BLOCK_POPULATE_TABLE_BEFORE_YIELD");
+            }
             ys.maybe_yield(&scheduler_opts)
                 .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
             let tuple = tuple?;
@@ -174,6 +178,7 @@ fn populate_table(
                     Some(Entity::Tuple),
                     format_smolstr!("tuple {tuple:?}, temporary table {table_name}: {e}"),
                 ))?;
+            inserted_rows = inserted_rows.saturating_add(1);
         }
         Ok(())
     })??;
@@ -283,8 +288,10 @@ pub fn stmt_execute<'p, 'b>(
     let pcall = || -> Result<ExecutionInsight, SbroadError> {
         for vtable_data in vtables {
             let (vtable, tuples) = vtable_data?;
-            populate_table(vtable, tuples)?;
+            // Register the current temp table before population starts so
+            // cleanup still truncates it if populate_table() aborts mid-stream.
             tables_names.push(vtable);
+            populate_table(vtable, tuples)?;
         }
 
         with_su(ADMIN_ID, || -> Result<ExecutionInsight, SqlError> {
@@ -319,6 +326,55 @@ pub fn stmt_execute<'p, 'b>(
     }
 
     Ok(res)
+}
+
+pub(crate) struct PlanGuard {
+    plan_id: u64,
+    lease: Option<TempTableLease>,
+}
+
+impl PlanGuard {
+    fn new(plan_id: u64, lease: TempTableLease) -> Self {
+        crate::sql::storage::finalize_retired_plan(plan_id);
+        Self {
+            plan_id,
+            lease: Some(lease),
+        }
+    }
+}
+
+impl Drop for PlanGuard {
+    fn drop(&mut self) {
+        crate::sql::storage::finalize_retired_plan(self.plan_id);
+        drop(self.lease.take());
+    }
+}
+
+fn acquire_plan_guard<R: QueryCache>(runtime: &R, plan_id: u64) -> Result<PlanGuard, SbroadError>
+where
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
+{
+    let plan_lock = {
+        let mut cache_guarded = runtime.cache().lock();
+        cache_guarded.get_or_create_lock(plan_id)
+    };
+    let table_lease = lock_temp_table(&plan_lock)?;
+    Ok(PlanGuard::new(plan_id, table_lease))
+}
+
+pub(crate) fn acquire_cached_stmt_or_retry<R: QueryCache>(
+    runtime: &R,
+    plan_id: u64,
+) -> Result<Option<(CachedStmtRef<TempTableLockRef>, PlanGuard)>, SbroadError>
+where
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
+{
+    let plan_guard = acquire_plan_guard(runtime, plan_id)?;
+    let cached = {
+        let mut cache_guarded = runtime.cache().lock();
+        cache_guarded.get(&plan_id)?
+    };
+    Ok(cached.map(|cached| (cached, plan_guard)))
 }
 
 /// Handle a cache miss for a DQL query.
@@ -395,13 +451,7 @@ where
         index_versions.insert(pk, version);
     }
 
-    let cached = {
-        let mut cache_guarded = runtime.cache().lock();
-        cache_guarded.get(&plan_id)?
-    };
-
-    if let Some(cached) = cached {
-        let _table_lease = lock_temp_table(&cached.table_lock)?;
+    if let Some((cached, _table_lease)) = acquire_cached_stmt_or_retry(runtime, plan_id)? {
         let mut stmt_guard = cached.stmt.lock();
         match stmt_execute(&mut stmt_guard, info, port)? {
             Nothing => report_storage_cache_hit("dql", "2nd"),
@@ -440,11 +490,7 @@ pub fn sql_execute<'a, 'p, R: QueryCache>(
 where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
-    let plan_lock = {
-        let mut cache_guarded = runtime.cache().lock();
-        cache_guarded.get_or_create_lock(miss_info.plan_id())
-    };
-    let _table_lease = lock_temp_table(&plan_lock)?;
+    let _plan_guard = acquire_plan_guard(runtime, miss_info.plan_id())?;
 
     // Re-check cache after acquiring the plan lock to avoid duplicate
     // temporary table creation on concurrent cache misses for the same plan.
@@ -458,7 +504,7 @@ where
     }
 
     let metadata = miss_info.vtable_metadata();
-    let mut tables = Vec::with_capacity(metadata.len());
+    let mut tables = TempTablesCleanupGuard::with_capacity(metadata.len());
     for data in metadata {
         let (name, meta) = data?;
         let pk_name = generate_pk_for_tmp_table(name);
@@ -475,14 +521,19 @@ where
     })?;
     let cached = {
         let mut cache_guarded = runtime.cache().lock();
-        cache_guarded.put(miss_info.plan_id(), stmt, miss_info.schema_info(), tables)?;
+        cache_guarded.put(
+            miss_info.plan_id(),
+            stmt,
+            miss_info.schema_info(),
+            tables.disarm(),
+        )?;
         let Some(cached) = cache_guarded.get(&miss_info.plan_id())? else {
             unreachable!("was just added, should be in the cache")
         };
         cached
     };
     // Process any evictions that were deferred while the cache mutex was held.
-    crate::sql::storage::process_deferred_evictions();
+    crate::sql::storage::process_deferred_evictions()?;
     let mut stmt_guard = cached.stmt.lock();
     stmt_execute(&mut stmt_guard, info, port)
 }
@@ -506,12 +557,7 @@ where
     P: Port<'p>,
     FMiss: FnOnce(&R, &I, &mut P) -> Result<(), SbroadError>,
 {
-    let cached = {
-        let mut cache_guarded = runtime.cache().lock();
-        cache_guarded.get(&plan_id)?
-    };
-    if let Some(cached) = cached {
-        let _table_lease = lock_temp_table(&cached.table_lock)?;
+    if let Some((cached, _table_lease)) = acquire_cached_stmt_or_retry(runtime, plan_id)? {
         let mut stmt_guard = cached.stmt.lock();
         match stmt_execute(&mut stmt_guard, info, port)? {
             Nothing => report_storage_cache_hit("dql", rpc_type),
@@ -760,6 +806,55 @@ fn generate_pk_for_tmp_table(table_name: &str) -> String {
     )
 }
 
+fn drop_temp_table(name: &str) {
+    match with_su(ADMIN_ID, || Space::find(name)) {
+        Ok(Some(space)) => {
+            if let Err(e) = with_su(ADMIN_ID, || space.drop()) {
+                tlog!(Error, "Failed to drop temporary table {name}: {e}");
+            }
+        }
+        Ok(None) => {}
+        Err(e) => {
+            tlog!(
+                Error,
+                "Failed to switch to admin user while dropping temporary table {name}: {e}"
+            );
+        }
+    }
+}
+
+pub(crate) fn drop_temp_tables(tables: &[SmolStr]) {
+    for table in tables {
+        drop_temp_table(table.as_str());
+    }
+}
+
+struct TempTablesCleanupGuard {
+    tables: Vec<SmolStr>,
+}
+
+impl TempTablesCleanupGuard {
+    fn with_capacity(capacity: usize) -> Self {
+        Self {
+            tables: Vec::with_capacity(capacity),
+        }
+    }
+
+    fn push(&mut self, table: SmolStr) {
+        self.tables.push(table);
+    }
+
+    fn disarm(&mut self) -> Vec<SmolStr> {
+        std::mem::take(&mut self.tables)
+    }
+}
+
+impl Drop for TempTablesCleanupGuard {
+    fn drop(&mut self) {
+        drop_temp_tables(&self.tables);
+    }
+}
+
 pub fn explain_execute<'p, R: QueryCache>(
     runtime: &R,
     miss_info: impl ExpandedPlanInfo,
@@ -770,13 +865,16 @@ pub fn explain_execute<'p, R: QueryCache>(
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
-    R::Cache: StorageCache,
+    R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
-    let _lock = runtime.cache().lock();
-    for motion_id in miss_info.vtable_metadata() {
+    let _plan_guard = acquire_plan_guard(runtime, miss_info.plan_id())?;
+    let metadata = miss_info.vtable_metadata();
+    let mut tables = TempTablesCleanupGuard::with_capacity(metadata.len());
+    for motion_id in metadata {
         let (table_name, columns) = motion_id?;
         let pk_name = generate_pk_for_tmp_table(table_name);
         table_create(table_name, &pk_name, &columns)?;
+        tables.push(table_name.to_smolstr());
     }
 
     explain_execute_guarded(
@@ -791,17 +889,9 @@ where
 }
 
 fn table_create_impl(name: &str, pk_name: &str, fields: Vec<Field>) -> Result<(), SbroadError> {
-    let cleanup = |space: Space, name: &str| {
-        if let Err(e) = with_su(ADMIN_ID, || space.drop()) {
-            tlog!(Error, "Failed to drop temporary table {name}: {e}")
-        }
-    };
-
     // If the space already exists, it is possible that admin has
     // populated it with data (by mistake?). Clean the space up.
-    if let Some(space) = with_su(ADMIN_ID, || Space::find(name))? {
-        cleanup(space, name);
-    }
+    drop_temp_table(name);
 
     let options = SpaceCreateOptions {
         format: Some(fields),
@@ -832,7 +922,7 @@ fn table_create_impl(name: &str, pk_name: &str, fields: Vec<Field>) -> Result<()
     match create_index_res {
         Ok(Ok(_)) => {}
         Err(e) | Ok(Err(e)) => {
-            cleanup(space, name);
+            drop_temp_table(name);
             return Err(SbroadError::FailedTo(
                 Action::Create,
                 Some(Entity::Index),
@@ -1747,12 +1837,7 @@ pub fn full_delete_execute<'p, 'ip, R: Vshard + QueryCache>(
 where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
-    let cached = {
-        let mut cache_guarded = runtime.cache().lock();
-        cache_guarded.get(&info.plan_id())?
-    };
-    if let Some(cached) = cached {
-        let _table_lease = lock_temp_table(&cached.table_lock)?;
+    if let Some((cached, _table_lease)) = acquire_cached_stmt_or_retry(runtime, info.plan_id())? {
         let mut stmt_guard = cached.stmt.lock();
         stmt_execute(&mut stmt_guard, info, port)?;
     } else {

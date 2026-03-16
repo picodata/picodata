@@ -3087,7 +3087,12 @@ pub fn apply_parameter(
             }
             res
         })?;
-        crate::sql::storage::process_deferred_evictions();
+        if let Err(e) = crate::sql::storage::process_deferred_evictions() {
+            tlog!(
+                Warning,
+                "failed to finalize retired SQL plans after cache resize: {e}"
+            );
+        }
     } else if name == system_parameter_name!(sql_storage_cache_size_max) {
         let value = v.as_u64().expect("type is already checked") as _;
 
@@ -3105,7 +3110,12 @@ pub fn apply_parameter(
             }
             res
         })?;
-        crate::sql::storage::process_deferred_evictions();
+        if let Err(e) = crate::sql::storage::process_deferred_evictions() {
+            tlog!(
+                Warning,
+                "failed to finalize retired SQL plans after cache resize: {e}"
+            );
+        }
     } else if name == system_parameter_name!(sql_log) {
         let value = v.as_bool().expect("type is already checked");
         // Cache the value.

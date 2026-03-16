@@ -355,6 +355,7 @@ pub enum SbroadError {
     /// Second param represents description or name that let to identify object.
     /// and can be empty (None).
     Unsupported(Entity, Option<SmolStr>),
+    FiberCancelled,
     OutdatedStorageSchema,
     UseOfBothParamsStyles,
     GlobalDml(SmolStr),
@@ -399,6 +400,7 @@ impl fmt::Display for SbroadError {
             SbroadError::UseOfBothParamsStyles => {
                 "invalid parameters usage. Got $n and ? parameters in one query!".into()
             }
+            SbroadError::FiberCancelled => "fiber is cancelled".into(),
             SbroadError::OutdatedStorageSchema => {
                 "storage schema version different from router".into()
             }
@@ -424,7 +426,10 @@ impl std::error::Error for SbroadError {}
 
 impl<E: fmt::Display> From<TransactionError<E>> for SbroadError {
     fn from(error: TransactionError<E>) -> Self {
-        SbroadError::Invalid(Entity::Transaction, Some(format_smolstr!("{error}")))
+        match error {
+            TransactionError::FiberCancelled => SbroadError::FiberCancelled,
+            other => SbroadError::Invalid(Entity::Transaction, Some(format_smolstr!("{other}"))),
+        }
     }
 }
 

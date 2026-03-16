@@ -1,6 +1,7 @@
 use std::cell::Cell;
 use std::time::{Duration, Instant};
 use tarantool::error::TarantoolError;
+use tarantool::fiber;
 use tarantool::transaction::{begin, commit, is_in_transaction, TransactionError};
 
 thread_local!(static SCHEDULER_START_TIME: Cell<Option<Instant>> = const { Cell::new(None) });
@@ -62,6 +63,13 @@ impl Scheduler {
         }
 
         (options.yield_impl)();
+
+        // Check cancellation before recording metrics to ensure that
+        // failed or aborted yields are not counted, providing accurate metrics.
+        // This matches the behavior in vdbe_yield_handler.
+        if fiber::is_cancelled() {
+            return Err(TransactionError::FiberCancelled);
+        }
 
         // Resume after yield and restart the timer.
         (options.metrics.record_yields_total)();

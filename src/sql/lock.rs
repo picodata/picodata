@@ -39,11 +39,22 @@ impl TempTableLock {
                 return Err(LockError::Cancelled);
             }
         }
+        Ok(Self::acquire_now(lock))
+    }
+
+    fn try_acquire(lock: &TempTableLockRef) -> Option<TempTableLease> {
+        if lock.locked.get() {
+            return None;
+        }
+        Some(Self::acquire_now(lock))
+    }
+
+    fn acquire_now(lock: &TempTableLockRef) -> TempTableLease {
         lock.locked.set(true);
         metrics::record_sql_temp_table_leases_total();
-        Ok(TempTableLease {
+        TempTableLease {
             lock: Rc::clone(lock),
-        })
+        }
     }
 }
 
@@ -65,10 +76,10 @@ pub(crate) fn new_temp_table_lock() -> TempTableLockRef {
     Rc::new(TempTableLock::new())
 }
 
-pub(crate) fn downgrade_temp_table_lock(lock: &TempTableLockRef) -> TempTableLockWeak {
-    Rc::downgrade(lock)
-}
-
 pub(crate) fn lock_temp_table(lock: &TempTableLockRef) -> Result<TempTableLease, LockError> {
     TempTableLock::acquire(lock)
+}
+
+pub(crate) fn try_lock_temp_table(lock: &TempTableLockRef) -> Option<TempTableLease> {
+    TempTableLock::try_acquire(lock)
 }

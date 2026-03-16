@@ -44,6 +44,9 @@ pub enum TransactionError<E> {
 
     #[error("transaction rolled-back: {0}")]
     RolledBack(E),
+
+    #[error("fiber is cancelled")]
+    FiberCancelled,
 }
 
 /// Executes a transaction in the current fiber.

@@ -7,6 +7,7 @@ use crate::tarantool::VdbeYieldArgs;
 use sql::executor::preemption::{SchedulerMetrics, SchedulerOptions};
 use std::time::Duration;
 use tarantool::clock::monotonic64;
+use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
 use tarantool::transaction::is_in_transaction;
 
@@ -14,6 +15,12 @@ use tarantool::transaction::is_in_transaction;
 pub(crate) fn yield_sql_execution() {
     // Yield the fiber execution, collect all IO events and reschedule the fiber
     // to the tail of the event loop queue.
+    //
+    // NOTE: this function is called from multiple contexts:
+    // 1. VDBE preemption yields (via vdbe_yield_handler)
+    // 2. Scheduler yields (via SchedulerOptions::yield_impl)
+    // The BLOCK_SQL_PREEMPTION_BEFORE_YIELD injection affects ALL of them.
+    crate::error_injection!(block_cancellable "BLOCK_SQL_PREEMPTION_BEFORE_YIELD");
     fiber::sleep(Duration::ZERO);
 }
 
@@ -53,6 +60,10 @@ pub(crate) extern "C" fn vdbe_yield_handler(args: *mut VdbeYieldArgs) -> libc::c
     if !is_in_transaction() {
         unsafe { *start_mut = current };
         yield_sql_execution();
+        if fiber::is_cancelled() {
+            tarantool::set_error!(TarantoolErrorCode::ProcC, "fiber is cancelled");
+            return -1;
+        }
 
         // NOTE: we track SQL yields here to measure only successful yield
         // events. Recording is done AFTER the yield completes to ensure that

@@ -202,6 +202,9 @@ where
                 "transaction has already been started",
             )
             .into(),
+            TransactionError::FiberCancelled => {
+                BoxError::new(TarantoolErrorCode::ProcC, "fiber is cancelled").into()
+            }
         }
     }
 }

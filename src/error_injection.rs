@@ -93,6 +93,26 @@ macro_rules! error_injection {
             $crate::tlog!(Info, "################################################################");
         };
     }};
+    (block_cancellable $error:expr) => {{
+        let error = $error;
+        #[rustfmt::skip]
+        if $crate::error_injection::is_enabled(error) {
+            $crate::tlog!(Info, "################################################################");
+            $crate::tlog!(Info, "ERROR INJECTION '{}': BLOCKING", error);
+            $crate::tlog!(Info, "################################################################");
+
+            while $crate::error_injection::is_enabled(error) {
+                if ::tarantool::fiber::is_cancelled() {
+                    break;
+                }
+                ::tarantool::fiber::sleep(::std::time::Duration::from_millis(100));
+            }
+
+            $crate::tlog!(Info, "################################################################");
+            $crate::tlog!(Info, "ERROR INJECTION '{}': UNBLOCKING", error);
+            $crate::tlog!(Info, "################################################################");
+        };
+    }};
     ($error:expr => return $result:expr) => {{
         let error = $error;
         if $crate::error_injection::is_enabled(error) {
