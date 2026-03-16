@@ -59,12 +59,12 @@ ACL = _{ DropRole | DropUser | CreateRole | CreateUser | AlterUser | GrantPrivil
     CreateUser = ${
         ^"create" ~ W ~ ^"user" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ W ~
         (
-            ((^"with" ~ W)? ~ ^"password" ~ W ~ SingleQuotedString ~ (W ~ ^"using" ~ W ~ (ChapSha1 | Md5 | ScramSha256))? ~ (W ~ TimeoutOption)?) |
-            ((^"using" ~ W ~ Ldap) ~ (W ~ TimeoutOption)?)
+            ((^"with" ~ W)? ~ ^"password" ~ W ~ SingleQuotedString ~ (W ~ ^"using" ~ W ~ (ChapSha1 | Md5 | ScramSha256))? ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)?) |
+            ((^"using" ~ W ~ Ldap) ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)?)
         )
     }
     AlterUser = ${
-        ^"alter" ~ W ~ ^"user" ~ W ~ Identifier ~ W ~ (^"with" ~ W)? ~ AlterOption ~ (W ~ TimeoutOption)?
+        ^"alter" ~ W ~ ^"user" ~ W ~ Identifier ~ W ~ (^"with" ~ W)? ~ AlterOption ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)?
     }
         AlterOption = _{ AlterLogin | AlterNoLogin | AlterPassword | AlterRename }
             AlterLogin = { ^"login" }
@@ -75,11 +75,11 @@ ACL = _{ DropRole | DropUser | CreateRole | CreateUser | AlterUser | GrantPrivil
             ChapSha1 = { ^"chap-sha1" }
             Md5 = { ^"md5" }
             Ldap = { ^"ldap" }
-    DropUser = ${ ^"drop" ~ W ~ ^"user" ~ W ~ (IfExists ~ W)? ~ Identifier ~ (W ~ TimeoutOption)? }
-    CreateRole = ${ ^"create" ~ W ~ ^"role" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ (W ~ TimeoutOption)? }
-    DropRole = ${ ^"drop" ~ W ~ ^"role" ~ W ~ (IfExists ~ W)? ~ Identifier ~ (W ~ TimeoutOption)? }
-    GrantPrivilege = ${ ^"grant" ~ W ~ PrivBlock ~ W ~ ^"to" ~ W ~ Identifier ~ (W ~ TimeoutOption)? }
-    RevokePrivilege = ${ ^"revoke" ~ W ~ PrivBlock ~ W ~ ^"from" ~ W ~ Identifier ~ (W ~ TimeoutOption)? }
+    DropUser = ${ ^"drop" ~ W ~ ^"user" ~ W ~ (IfExists ~ W)? ~ Identifier ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+    CreateRole = ${ ^"create" ~ W ~ ^"role" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+    DropRole = ${ ^"drop" ~ W ~ ^"role" ~ W ~ (IfExists ~ W)? ~ Identifier ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+    GrantPrivilege = ${ ^"grant" ~ W ~ PrivBlock ~ W ~ ^"to" ~ W ~ Identifier ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+    RevokePrivilege = ${ ^"revoke" ~ W ~ PrivBlock ~ W ~ ^"from" ~ W ~ Identifier ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
         PrivBlock = _{ PrivBlockPrivilege | PrivBlockRolePass }
             PrivBlockPrivilege = ${Privilege ~ W ~ (PrivBlockUser | PrivBlockSpecificUser | PrivBlockRole
                                                 | PrivBlockSpecificRole | PrivBlockTable | PrivBlockSpecificTable
@@ -104,7 +104,7 @@ ACL = _{ DropRole | DropUser | CreateRole | CreateUser | AlterUser | GrantPrivil
             PrivilegeSession = { ^"session" }
             PrivilegeUsage = { ^"usage" }
             PrivilegeWrite = { ^"write" }
-    AuditPolicy = ${ ^"audit" ~ W ~ ^"policy" ~ W ~ Identifier ~ W ~ AuditPolicyOption ~ (W ~ TimeoutOption)? }
+    AuditPolicy = ${ ^"audit" ~ W ~ ^"policy" ~ W ~ Identifier ~ W ~ AuditPolicyOption ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
         AuditPolicyOption = _{ AuditPolicyOptionOn | AuditPolicyOptionOff }
             AuditPolicyOptionOn = { ^"by" ~ W ~ Identifier }
             AuditPolicyOptionOff = { ^"except" ~ W ~ Identifier }

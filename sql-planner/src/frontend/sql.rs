@@ -2268,7 +2268,7 @@ fn parse_normalized_identifier(
 fn parse_grant_revoke(
     node: &ParseNode,
     ast: &AbstractSyntaxTree,
-) -> Result<(GrantRevokeType, SmolStr, Timeout), SbroadError> {
+) -> Result<(GrantRevokeType, SmolStr, bool, Timeout), SbroadError> {
     let privilege_block_node_id = node
         .children
         .first()
@@ -2375,11 +2375,23 @@ fn parse_grant_revoke(
     let grantee_name = parse_identifier(ast, *grantee_name_node_id)?;
 
     let mut timeout = get_default_timeout();
-    if let Some(timeout_child_id) = node.children.get(2) {
-        timeout = get_timeout(ast, *timeout_child_id)?;
+    let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
+    for child_id in node.children.iter().skip(2) {
+        let child_node = ast.nodes.get_node(*child_id)?;
+        match child_node.rule {
+            Rule::WaitAppliedGlobally => wait_applied_globally = true,
+            Rule::WaitAppliedLocally => wait_applied_globally = false,
+            Rule::Timeout => timeout = get_timeout(ast, *child_id)?,
+            _ => {}
+        }
     }
 
-    Ok((grant_revoke_type, grantee_name, timeout))
+    Ok((
+        grant_revoke_type,
+        grantee_name,
+        wait_applied_globally,
+        timeout,
+    ))
 }
 
 fn parse_trim<M: Metadata>(
@@ -2703,13 +2715,21 @@ fn parse_audit_policy(
     };
 
     let mut timeout = get_default_timeout();
-    if let Some(timeout_node_id) = node.children.get(2) {
-        timeout = get_timeout(ast, *timeout_node_id)?;
+    let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
+    for child_id in node.children.iter().skip(2) {
+        let child_node = ast.nodes.get_node(*child_id)?;
+        match child_node.rule {
+            Rule::WaitAppliedGlobally => wait_applied_globally = true,
+            Rule::WaitAppliedLocally => wait_applied_globally = false,
+            Rule::Timeout => timeout = get_timeout(ast, *child_id)?,
+            _ => {}
+        }
     }
 
     Ok(AuditPolicy {
         policy_name,
         audit_option,
+        wait_applied_globally,
         timeout,
     })
 }
@@ -7038,20 +7058,24 @@ impl AbstractSyntaxTree {
                     ));
                 }
                 Rule::GrantPrivilege => {
-                    let (grant_type, grantee_name, timeout) = parse_grant_revoke(node, self)?;
+                    let (grant_type, grantee_name, wait_applied_globally, timeout) =
+                        parse_grant_revoke(node, self)?;
                     let grant_privilege = GrantPrivilege {
                         grant_type,
                         grantee_name,
+                        wait_applied_globally,
                         timeout,
                     };
                     let plan_id = plan.nodes.push(grant_privilege.into());
                     map.add(id, plan_id);
                 }
                 Rule::RevokePrivilege => {
-                    let (revoke_type, grantee_name, timeout) = parse_grant_revoke(node, self)?;
+                    let (revoke_type, grantee_name, wait_applied_globally, timeout) =
+                        parse_grant_revoke(node, self)?;
                     let revoke_privilege = RevokePrivilege {
                         revoke_type,
                         grantee_name,
+                        wait_applied_globally,
                         timeout,
                     };
                     let plan_id = plan.nodes.push(revoke_privilege.into());
@@ -7076,11 +7100,14 @@ impl AbstractSyntaxTree {
                     let mut name = None;
                     let mut timeout = get_default_timeout();
                     let mut if_exists = DEFAULT_IF_EXISTS;
+                    let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
                     for child_id in &node.children {
                         let child_node = self.nodes.get_node(*child_id)?;
                         match child_node.rule {
                             Rule::Identifier => name = Some(parse_identifier(self, *child_id)?),
                             Rule::IfExists => if_exists = true,
+                            Rule::WaitAppliedGlobally => wait_applied_globally = true,
+                            Rule::WaitAppliedLocally => wait_applied_globally = false,
                             Rule::Timeout => timeout = get_timeout(self, *child_id)?,
                             _ => {
                                 return Err(SbroadError::Invalid(
@@ -7096,6 +7123,7 @@ impl AbstractSyntaxTree {
                     let drop_role = DropRole {
                         name,
                         if_exists,
+                        wait_applied_globally,
                         timeout,
                     };
 
@@ -7214,13 +7242,21 @@ impl AbstractSyntaxTree {
                     };
 
                     let mut timeout = get_default_timeout();
-                    if let Some(timeout_node_id) = node.children.get(2) {
-                        timeout = get_timeout(self, *timeout_node_id)?;
+                    let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
+                    for child_id in node.children.iter().skip(2) {
+                        let child_node = self.nodes.get_node(*child_id)?;
+                        match child_node.rule {
+                            Rule::WaitAppliedGlobally => wait_applied_globally = true,
+                            Rule::WaitAppliedLocally => wait_applied_globally = false,
+                            Rule::Timeout => timeout = get_timeout(self, *child_id)?,
+                            _ => {}
+                        }
                     }
 
                     let alter_user = AlterUser {
                         name: user_name,
                         alter_option,
+                        wait_applied_globally,
                         timeout,
                     };
                     let plan_id = plan.nodes.push(alter_user.into());
@@ -7232,6 +7268,7 @@ impl AbstractSyntaxTree {
                     let mut if_not_exists = DEFAULT_IF_NOT_EXISTS;
                     let mut timeout = get_default_timeout();
                     let mut auth_method = DEFAULT_AUTH_METHOD;
+                    let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
                     for child_id in &node.children {
                         let child_node = self.nodes.get_node(*child_id)?;
                         match child_node.rule {
@@ -7242,6 +7279,8 @@ impl AbstractSyntaxTree {
                                 password = Some(escape_single_quotes(&password_literal));
                             }
                             Rule::IfNotExists => if_not_exists = true,
+                            Rule::WaitAppliedGlobally => wait_applied_globally = true,
+                            Rule::WaitAppliedLocally => wait_applied_globally = false,
                             Rule::Timeout => {
                                 timeout = get_timeout(self, *child_id)?;
                             }
@@ -7269,6 +7308,7 @@ impl AbstractSyntaxTree {
                         password,
                         if_not_exists,
                         auth_method,
+                        wait_applied_globally,
                         timeout,
                     };
 
@@ -7284,11 +7324,14 @@ impl AbstractSyntaxTree {
                     let mut name = None;
                     let mut timeout = get_default_timeout();
                     let mut if_exists = DEFAULT_IF_EXISTS;
+                    let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
                     for child_id in &node.children {
                         let child_node = self.nodes.get_node(*child_id)?;
                         match child_node.rule {
                             Rule::Identifier => name = Some(parse_identifier(self, *child_id)?),
                             Rule::IfExists => if_exists = true,
+                            Rule::WaitAppliedGlobally => wait_applied_globally = true,
+                            Rule::WaitAppliedLocally => wait_applied_globally = false,
                             Rule::Timeout => timeout = get_timeout(self, *child_id)?,
                             _ => {
                                 return Err(SbroadError::Invalid(
@@ -7304,6 +7347,7 @@ impl AbstractSyntaxTree {
                     let drop_user = DropUser {
                         name,
                         if_exists,
+                        wait_applied_globally,
                         timeout,
                     };
                     let plan_id = plan.nodes.push(drop_user.into());
@@ -7313,11 +7357,14 @@ impl AbstractSyntaxTree {
                     let mut name = None;
                     let mut if_not_exists = DEFAULT_IF_NOT_EXISTS;
                     let mut timeout = get_default_timeout();
+                    let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
                     for child_id in &node.children {
                         let child_node = self.nodes.get_node(*child_id)?;
                         match child_node.rule {
                             Rule::Identifier => name = Some(parse_identifier(self, *child_id)?),
                             Rule::IfNotExists => if_not_exists = true,
+                            Rule::WaitAppliedGlobally => wait_applied_globally = true,
+                            Rule::WaitAppliedLocally => wait_applied_globally = false,
                             Rule::Timeout => timeout = get_timeout(self, *child_id)?,
                             _ => {
                                 return Err(SbroadError::Invalid(
@@ -7334,6 +7381,7 @@ impl AbstractSyntaxTree {
                     let create_role = CreateRole {
                         name,
                         if_not_exists,
+                        wait_applied_globally,
                         timeout,
                     };
 

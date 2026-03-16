@@ -1016,3 +1016,252 @@ def test_same_error_from_different_auth_methods(cluster: Cluster):
         errors.append(e.value.args[0].args)
 
     assert set(errors) == set(((47, "User not found or supplied credentials are invalid"),))
+
+
+def test_acl_wait_applied_options(cluster: Cluster):
+    i1, i2, _ = cluster.deploy(instance_count=3)
+
+    # WAIT APPLIED options shouldn't affect operations in stable networks.
+    acl = i1.sql(
+        """
+        CREATE USER u1 WITH PASSWORD 'Passw0rd'
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    acl = i2.sql(
+        """
+        CREATE USER u2 WITH PASSWORD 'Passw0rd'
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        """
+        CREATE ROLE r1
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        """
+        CREATE ROLE r2
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        """
+        ALTER USER u1 WITH PASSWORD 'Newpassw0rd'
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        """
+        GRANT r1 TO u1
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        """
+        REVOKE r1 FROM u1
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        """
+        DROP USER u1
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        """
+        DROP USER u2
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        """
+        DROP ROLE r1
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        """
+        DROP ROLE r2
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    # Simulate unstable network by injecting an error blocking wait index RPC
+    # that is called by the client to get acknowledgements from other
+    # replicasets that the ACL operation is applied.
+    i2.call("pico._inject_error", "BLOCK_PROC_WAIT_INDEX", True)
+
+    # i2 doesn't acknowledge operation commitment, so WAIT APPLIED GLOBALLY
+    # (which is the default) results in an error.
+    with pytest.raises(
+        TarantoolError,
+        match="acl operation committed, but failed to receive acknowledgements from all instances",
+    ):
+        i1.sql(
+            """
+            CREATE USER u3 WITH PASSWORD 'Passw0rd'
+            WAIT APPLIED GLOBALLY
+            OPTION (TIMEOUT = 1)
+            """
+        )
+
+    # Verify that the user was created despite the timeout error.
+    acl = i1.sql(
+        """
+        CREATE USER IF NOT EXISTS u3 WITH PASSWORD 'Passw0rd'
+        OPTION (TIMEOUT = 1)
+        """
+    )
+    assert acl["row_count"] == 0
+
+    # Default behavior (no explicit WAIT APPLIED) should also be globally.
+    with pytest.raises(
+        TarantoolError,
+        match="acl operation committed, but failed to receive acknowledgements from all instances",
+    ):
+        i1.sql(
+            """
+            CREATE ROLE r3
+            OPTION (TIMEOUT = 1)
+            """
+        )
+
+    # WAIT APPLIED LOCALLY doesn't require acknowledgements from other
+    # replicasets, so operation should be performed with no errors.
+    acl = i1.sql(
+        """
+        CREATE USER u4 WITH PASSWORD 'Passw0rd'
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        """
+        CREATE ROLE r4
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        """
+        GRANT r4 TO u4
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        """
+        REVOKE r4 FROM u4
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        """
+        ALTER USER u4 WITH PASSWORD 'Newpassw0rd'
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        """
+        DROP USER u4
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        """
+        DROP ROLE r4
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    # Disable injection.
+    i2.call("pico._inject_error", "BLOCK_PROC_WAIT_INDEX", False)
+
+    # After disabling injection, WAIT APPLIED GLOBALLY should work again.
+    acl = i1.sql(
+        """
+        CREATE USER u5 WITH PASSWORD 'Passw0rd'
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        """
+        DROP USER u3
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        """
+        DROP USER u5
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        """
+        DROP ROLE r3
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert acl["row_count"] == 1

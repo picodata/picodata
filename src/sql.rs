@@ -2500,9 +2500,10 @@ pub(crate) fn reenterable_schema_change_request(
 
         let schema_version = storage.properties.next_schema_version()?;
 
-        let mut wait_applied_globally = false;
+        let wait_applied_globally;
         let op_or_result = match &ir_node {
             NodeOwned::Acl(acl) => {
+                wait_applied_globally = acl.wait_applied_globally();
                 acl_ir_node_to_op_or_result(acl, current_user, schema_version, node, storage)?
             }
             NodeOwned::Ddl(ddl) => {
@@ -2599,6 +2600,17 @@ pub(crate) fn reenterable_schema_change_request(
                     )
                 })?;
             }
+        }
+
+        if !matches!(op, Op::DdlPrepare { .. }) && wait_applied_globally {
+            wait_for_index_globally(&node.topology_cache, Rc::clone(&node.pool), index, deadline)
+                .map_err(|_| {
+                Error::Other(
+                    "acl operation committed, but failed to receive \
+                     acknowledgements from all instances"
+                        .into(),
+                )
+            })?;
         }
 
         let tuple = match op {

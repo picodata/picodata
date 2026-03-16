@@ -87,6 +87,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Add support for `EXPLAIN (RAW)` for block queries.
 - Speed up instance restart by actively trying to identify the raft leader instead of waiting for it to send a heartbeat to us.
 - Refactor the plan id calculation for more accurate and faster caching.
+- ACL operations now support WAIT APPLIED GLOBALLY / WAIT APPLIED LOCALLY syntax and
+  default to globally, matching DDL behavior.
 - Add bucket estimation for INSERT queries in explain.
 - Support reading from global tables in anonymous blocks; writing is not supported yet.
 - Upgrade Tarantool from 2.11.5 to 2.11.8.

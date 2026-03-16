@@ -19,6 +19,43 @@ pub enum AclOwned {
 }
 
 impl AclOwned {
+    pub fn wait_applied_globally(&self) -> bool {
+        match self {
+            AclOwned::DropRole(DropRole {
+                wait_applied_globally,
+                ..
+            })
+            | AclOwned::DropUser(DropUser {
+                wait_applied_globally,
+                ..
+            })
+            | AclOwned::CreateRole(CreateRole {
+                wait_applied_globally,
+                ..
+            })
+            | AclOwned::CreateUser(CreateUser {
+                wait_applied_globally,
+                ..
+            })
+            | AclOwned::AlterUser(AlterUser {
+                wait_applied_globally,
+                ..
+            })
+            | AclOwned::GrantPrivilege(GrantPrivilege {
+                wait_applied_globally,
+                ..
+            })
+            | AclOwned::RevokePrivilege(RevokePrivilege {
+                wait_applied_globally,
+                ..
+            })
+            | AclOwned::AuditPolicy(AuditPolicy {
+                wait_applied_globally,
+                ..
+            }) => *wait_applied_globally,
+        }
+    }
+
     /// Return ACL node timeout.
     pub fn timeout(&self) -> &crate::ir::options::Timeout {
         match self {

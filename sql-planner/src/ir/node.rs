@@ -882,6 +882,7 @@ impl From<ValuesRow> for NodeAligned {
 pub struct DropRole {
     pub name: SmolStr,
     pub if_exists: bool,
+    pub wait_applied_globally: bool,
     pub timeout: Timeout,
 }
 
@@ -895,6 +896,7 @@ impl From<DropRole> for NodeAligned {
 pub struct DropUser {
     pub name: SmolStr,
     pub if_exists: bool,
+    pub wait_applied_globally: bool,
     pub timeout: Timeout,
 }
 
@@ -908,6 +910,7 @@ impl From<DropUser> for NodeAligned {
 pub struct CreateRole {
     pub name: SmolStr,
     pub if_not_exists: bool,
+    pub wait_applied_globally: bool,
     pub timeout: Timeout,
 }
 
@@ -923,6 +926,7 @@ pub struct CreateUser {
     pub password: SmolStr,
     pub if_not_exists: bool,
     pub auth_method: tarantool::auth::AuthMethod,
+    pub wait_applied_globally: bool,
     pub timeout: Timeout,
 }
 
@@ -936,6 +940,7 @@ impl From<CreateUser> for NodeAligned {
 pub struct AlterUser {
     pub name: SmolStr,
     pub alter_option: AlterOption,
+    pub wait_applied_globally: bool,
     pub timeout: Timeout,
 }
 
@@ -949,6 +954,7 @@ impl From<AlterUser> for NodeAligned {
 pub struct GrantPrivilege {
     pub grant_type: GrantRevokeType,
     pub grantee_name: SmolStr,
+    pub wait_applied_globally: bool,
     pub timeout: Timeout,
 }
 
@@ -962,6 +968,7 @@ impl From<GrantPrivilege> for NodeAligned {
 pub struct RevokePrivilege {
     pub revoke_type: GrantRevokeType,
     pub grantee_name: SmolStr,
+    pub wait_applied_globally: bool,
     pub timeout: Timeout,
 }
 
@@ -975,6 +982,7 @@ impl From<RevokePrivilege> for NodeAligned {
 pub struct AuditPolicy {
     pub policy_name: SmolStr,
     pub audit_option: AuditPolicyOption,
+    pub wait_applied_globally: bool,
     pub timeout: Timeout,
 }
 
