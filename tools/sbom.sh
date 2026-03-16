@@ -6,6 +6,24 @@ PROJECT_DIR=$(dirname "$(dirname "$(realpath "$0")")")
 SBOM_METADATA_DIR=$PROJECT_DIR/certification/sbom/metadata
 SBOM_CHECKER_DIR=${SBOM_CHECKER_DIR:-$PROJECT_DIR/certification/sbom/sbom-checker}
 SBOM_VERIFY=${SBOM_VERIFY:-1}
+SBOM_RUST=${SBOM_RUST:-1}
+SBOM_JS=${SBOM_JS:-1}
+
+
+if [ "$SBOM_JS" == "1" ]; then
+    # build separate SBOM file for webui
+    # see "sbom" script in package.json
+    # we use a full
+    pushd webui
+    yarn install --immutable
+    yarn cyclonedx --prod --gather-license-texts --output-reproducible -o ../webui_sbom.json
+    popd
+fi
+
+if [ "$SBOM_RUST" != "1" ]; then
+    # all the lines below are rust sbom building
+    exit 0
+fi
 
 # Needed for CI when toolchain is installed and immediatly used in the same shell session
 if test -f "$HOME"/.cargo/env; then . "$HOME"/.cargo/env; fi
@@ -16,13 +34,6 @@ cargo install --quiet --locked \
 
 cargo cyclonedx --format json --spec-version 1.6
 
-# build separate SBOM file for webui
-# see "sbom" script in package.json
-# we use a full
-pushd webui
-yarn install --immutable
-yarn cyclonedx --prod --gather-license-texts --output-reproducible -o ../webui_sbom.json
-popd
 
 # Not a submodule because we have github mirror, so we would have to mirror this repo there as well for
 # --recurse-submodules to work during git clone

@@ -12,7 +12,7 @@ override_dh_auto_build:
 	make install-cargo
 	make build-release-pkg
 ifeq ($(USE_DYNAMIC_BUILD),1)
-	make sbom SBOM_CHECKER_DIR=/opt/sbom-checker SBOM_VERIFY=0
+	make sbom-rust SBOM_CHECKER_DIR=/opt/sbom-checker SBOM_VERIFY=0
 	mv -v picodata-fixed.cdx.json ../../build_*/
 endif
 

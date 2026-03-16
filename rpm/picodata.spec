@@ -15,6 +15,7 @@
 
 %define use_cmake3 0%{?rhel} == 7
 %define use_dynamic_build 0%{getenv:USE_DYNAMIC_BUILD} == 1
+%define make_sbom 0%{getenv:MAKE_SBOM} == 1
 
 Name: picodata
 # ${major}.${major}.${minor}.${patch}, e.g. 1.0.0.35
@@ -112,8 +113,8 @@ make centos7-cmake3
 
 make build-release-pkg
 
-%if %use_dynamic_build && 0%{?rhel} != 8
-make sbom  SBOM_CHECKER_DIR=/opt/sbom-checker SBOM_VERIFY=0
+%if %make_sbom && 0%{?rhel} != 8
+make sbom-rust SBOM_CHECKER_DIR=/opt/sbom-checker SBOM_VERIFY=0
 mkdir -p %{_rpmdir}
 mv -v picodata-fixed.cdx.json %{_rpmdir}/../
 %endif

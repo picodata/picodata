@@ -244,6 +244,15 @@ publish-picodata-plugin:
 	cargo publish --dry-run -p picodata-plugin
 	cargo publish -p picodata-plugin
 
+
+.PHONY: sbom-rust
+sbom-rust:
+	SBOM_JS=0 ./tools/sbom.sh
+
+.PHONY: sbom-js
+sbom-js:
+	SBOM_RUST=0 ./tools/sbom.sh
+
 .PHONY: sbom
 sbom:
 	./tools/sbom.sh
