@@ -118,6 +118,10 @@ impl DdlOwned {
             | DdlOwned::AlterSystem(AlterSystem {
                 wait_applied_globally,
                 ..
+            })
+            | DdlOwned::RenameIndex(RenameIndex {
+                wait_applied_globally,
+                ..
             }) => *wait_applied_globally,
             _ => false,
         }
@@ -283,6 +287,10 @@ impl Ddl<'_> {
                 ..
             })
             | Ddl::AlterSystem(AlterSystem {
+                wait_applied_globally,
+                ..
+            })
+            | Ddl::RenameIndex(RenameIndex {
                 wait_applied_globally,
                 ..
             }) => *wait_applied_globally,

@@ -1643,6 +1643,24 @@ def test_wait_applied_options(cluster: Cluster):
     )
     assert ddl["row_count"] == 1
 
+    ddl = i1.sql(
+        """
+        CREATE INDEX t1_index_1 ON t1 (id)
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = i1.sql(
+        """
+        CREATE INDEX t1_index_2 ON t1 (id)
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert ddl["row_count"] == 1
+
     # Simulate unstable network by injecting an error blocking wait index RPC
     # that is called by the client to get acknowledgements from other
     # replicasets that the DDL operation is committed locally.
@@ -1683,6 +1701,28 @@ def test_wait_applied_options(cluster: Cluster):
     )
     assert ddl["row_count"] == 1
 
+    # i2 doesn't acknowledge operation commitment, so WAIT APPLIED GLOBALLY
+    # option results in an error.
+    with pytest.raises(
+        TarantoolError,
+        match="ddl operation committed, but failed to receive acknowledgements from all instances",
+    ):
+        i1.sql(
+            """
+            ALTER INDEX t1_index_1 RENAME TO t1_index_3
+            OPTION (TIMEOUT = 1)
+            """
+        )
+
+    ddl = i1.sql(
+        """
+        ALTER INDEX t1_index_2 RENAME TO t1_index_4
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert ddl["row_count"] == 1
+
     # Disable injection.
     i2.call("pico._inject_error", "BLOCK_PROC_WAIT_INDEX", False)
 
@@ -1707,7 +1747,16 @@ def test_wait_applied_options(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        DROP INDEX index
+        ALTER INDEX index RENAME to index2
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = i1.sql(
+        """
+        DROP INDEX index2
         WAIT APPLIED GLOBALLY
         OPTION (TIMEOUT = 10)
         """
