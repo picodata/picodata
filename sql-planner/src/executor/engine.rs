@@ -13,7 +13,6 @@ use crate::{
     frontend::sql::get_real_function_name, ir::helpers::RepeatableState, ir::node::BlockStatement,
 };
 use std::any::Any;
-use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::OnceLock;
@@ -253,27 +252,11 @@ pub type CachedStmt = Rc<Mutex<SqlStmt>>;
 pub struct CachedStmtRef<L> {
     pub stmt: CachedStmt,
     pub table_lock: L,
-    in_use: Rc<Cell<usize>>,
 }
 
 impl<L> CachedStmtRef<L> {
-    pub fn new(stmt: CachedStmt, table_lock: L, in_use: Rc<Cell<usize>>) -> Self {
-        let prev = in_use.get();
-        debug_assert!(prev < usize::MAX, "cached stmt lease overflow");
-        in_use.set(prev.saturating_add(1));
-        Self {
-            stmt,
-            table_lock,
-            in_use,
-        }
-    }
-}
-
-impl<L> Drop for CachedStmtRef<L> {
-    fn drop(&mut self) {
-        let prev = self.in_use.get();
-        debug_assert!(prev > 0, "cached stmt lease underflow");
-        self.in_use.set(prev.saturating_sub(1));
+    pub fn new(stmt: CachedStmt, table_lock: L) -> Self {
+        Self { stmt, table_lock }
     }
 }
 

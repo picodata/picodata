@@ -3,8 +3,6 @@
 //! for execution of the dispatched query plan subtrees.
 
 use crate::sql::dispatch::port_write_metadata;
-use crate::sql::execute::explain_execute_guarded;
-use crate::sql::execute::{dml_execute, dql_execute, explain_execute};
 use crate::sql::router::{
     calculate_bucket_id, get_index_version_by_pk, get_table_name_and_version, get_table_version,
     get_table_version_by_id, VersionMap,
@@ -23,7 +21,7 @@ use sql::executor::{Port, PortType};
 use sql::ir::bucket::Buckets;
 use sql::ir::helpers::RepeatableState;
 use sql::ir::options::Options;
-use std::cell::{Cell, OnceCell, RefCell};
+use std::cell::{OnceCell, RefCell};
 
 use crate::metrics::{
     report_storage_cache_hit, report_storage_cache_miss, STORAGE_CACHE_STATEMENTS_ADDED_TOTAL,
@@ -39,18 +37,19 @@ use sql_protocol::decode::{ProtocolMessage, ProtocolMessageIter, ProtocolMessage
 use sql_protocol::dql_encoder::ColumnType;
 use sql_protocol::error::ProtocolError;
 use sql_protocol::iterators::TupleIterator;
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 use std::rc::Rc;
-use tarantool::space::{Space, SpaceId};
+use tarantool::space::SpaceId;
 
 use super::execute::port_write_execute_dml;
 use crate::schema::ADMIN_ID;
 use crate::sql::execute::{
-    sql_execute, stmt_execute, LazyVirtualTableEncoder, LendingTupleIterator,
+    acquire_cached_stmt_or_retry, dml_execute, dql_execute, drop_temp_tables, explain_execute,
+    explain_execute_guarded, sql_execute, stmt_execute, LazyVirtualTableEncoder,
+    LendingTupleIterator,
 };
 use crate::sql::lock::{
-    downgrade_temp_table_lock, lock_temp_table, new_temp_table_lock, TempTableLockRef,
-    TempTableLockWeak,
+    new_temp_table_lock, try_lock_temp_table, TempTableLockRef, TempTableLockWeak,
 };
 use crate::sql::port::PicoPortOwned;
 use crate::tlog;
@@ -63,20 +62,65 @@ use tarantool::session::with_su;
 thread_local!(
     // OnceCell is used for interior mutability
     pub static STATEMENT_CACHE: OnceCell<Rc<Mutex<PicoStorageCache>>> = const { OnceCell::new() };
-    static PENDING_EVICTIONS: RefCell<Vec<PendingEviction>> = const { RefCell::new(Vec::new()) };
+    static RETIRED_PLANS: RefCell<HashMap<u64, RetiredPlan>> = RefCell::new(HashMap::new());
+    static RECENTLY_RETIRED: RefCell<Vec<RecentlyRetiredPlan>> = const { RefCell::new(Vec::new()) };
 );
-
-const DEFERRED_EVICTION_MAX_YIELDS: usize = 1024;
 
 type TableLocksMap = Rc<RefCell<HashMap<u64, TempTableLockWeak>>>;
 
-struct PendingEviction {
-    plan_id: u64,
-    in_use: Rc<Cell<usize>>,
-    stmt: CachedStmt,
+struct RetiredPlan {
     motion_ids: Vec<SmolStr>,
-    table_lock: TempTableLockWeak,
-    table_locks: TableLocksMap,
+}
+
+struct RecentlyRetiredPlan {
+    plan_id: u64,
+    table_lock: TempTableLockRef,
+}
+
+fn take_recently_retired() -> Vec<RecentlyRetiredPlan> {
+    RECENTLY_RETIRED.with(|cell| std::mem::take(&mut *cell.borrow_mut()))
+}
+
+fn retire_plan(plan_id: u64, entry: &mut StorageCacheEntry) {
+    if entry.motion_ids.is_empty() {
+        return;
+    }
+
+    let mut retired = RetiredPlan {
+        motion_ids: std::mem::take(&mut entry.motion_ids),
+    };
+    RETIRED_PLANS.with(|cell| {
+        let mut retired_plans = cell.borrow_mut();
+        match retired_plans.entry(plan_id) {
+            Entry::Occupied(mut current) => {
+                tlog!(
+                    Warning,
+                    "SQL plan retirement is already pending cleanup; merging temp tables";
+                    "plan_id" => plan_id
+                );
+                current.get_mut().motion_ids.append(&mut retired.motion_ids);
+            }
+            Entry::Vacant(slot) => {
+                slot.insert(retired);
+            }
+        }
+    });
+    RECENTLY_RETIRED.with(|cell| {
+        cell.borrow_mut().push(RecentlyRetiredPlan {
+            plan_id,
+            table_lock: Rc::clone(&entry.table_lock),
+        });
+    });
+}
+
+pub(crate) fn finalize_retired_plan(plan_id: u64) {
+    crate::error_injection!(block "BLOCK_PROCESS_DEFERRED_EVICTIONS");
+    let retired = RETIRED_PLANS.with(|cell| cell.borrow_mut().remove(&plan_id));
+    let Some(retired) = retired else {
+        return;
+    };
+
+    drop_temp_tables(&retired.motion_ids);
 }
 
 pub fn init_statement_cache(count_max: usize, size_max: usize) {
@@ -90,65 +134,19 @@ pub fn init_statement_cache(count_max: usize, size_max: usize) {
     });
 }
 
-/// Process evictions that were deferred while the cache mutex was held.
+/// Try to finalize plans retired under the cache mutex.
 ///
 /// Must be called after releasing the cache mutex whenever evictions may
 /// have occurred (after `put`, `adjust_count_max`, `adjust_size_max`).
-pub fn process_deferred_evictions() {
-    let pending = PENDING_EVICTIONS.with(|cell| cell.take());
-    let mut deferred = Vec::new();
-    'evictions: for eviction in pending {
-        let mut yields = 0usize;
-        while eviction.in_use.get() > 0 {
-            if yields >= DEFERRED_EVICTION_MAX_YIELDS {
-                tlog!(
-                    Warning,
-                    "deferred SQL statement eviction is still in use; postponing cleanup";
-                    "plan_id" => eviction.plan_id,
-                    "in_use" => eviction.in_use.get(),
-                    "wait_yields" => yields
-                );
-                deferred.push(eviction);
-                continue 'evictions;
-            }
-            yields += 1;
-            crate::preemption::yield_sql_execution();
+/// It only finalizes idle retired plans immediately. Active same-plan owners
+/// finalize their retired generations in `PlanGuard::drop`.
+pub fn process_deferred_evictions() -> Result<(), SbroadError> {
+    for retired in take_recently_retired() {
+        if let Some(_lease) = try_lock_temp_table(&retired.table_lock) {
+            finalize_retired_plan(retired.plan_id);
         }
-        let _stmt_guard = eviction.stmt.lock();
-        for table in &eviction.motion_ids {
-            Space::find(table.as_str()).map(|space| {
-                with_su(ADMIN_ID, || {
-                    space.drop().inspect_err(|e| {
-                        tlog!(Error, "failed to drop temporary table {table}: {e:?}")
-                    })
-                })
-            });
-        }
-        cleanup_table_lock_entry(
-            eviction.plan_id,
-            &eviction.table_lock,
-            &eviction.table_locks,
-        );
     }
-    if !deferred.is_empty() {
-        PENDING_EVICTIONS.with(|cell| cell.borrow_mut().extend(deferred));
-    }
-}
-
-fn cleanup_table_lock_entry(
-    plan_id: u64,
-    evicted_lock: &TempTableLockWeak,
-    table_locks: &TableLocksMap,
-) {
-    let mut locks = table_locks.borrow_mut();
-    let should_remove = if let Some(current) = locks.get(&plan_id) {
-        current.ptr_eq(evicted_lock) && current.upgrade().is_none()
-    } else {
-        false
-    };
-    if should_remove {
-        locks.remove(&plan_id);
-    }
+    Ok(())
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -160,7 +158,6 @@ pub struct StorageRuntime {
 pub(crate) struct StorageCacheEntry {
     stmt: CachedStmt,
     table_lock: TempTableLockRef,
-    in_use: Rc<Cell<usize>>,
     stmt_size: usize,
     table_versions: VersionMap,
     index_versions: HashMap<[u32; 2], u64, RepeatableState>,
@@ -169,25 +166,12 @@ pub(crate) struct StorageCacheEntry {
 
 /// Build a lightweight eviction closure that defers actual cleanup.
 ///
-/// The closure captures `table_locks` and pushes a `PendingEviction`
-/// into the thread-local vec for later processing outside the cache mutex.
-/// Table-lock map cleanup is done in `process_deferred_evictions`.
-fn make_evict_fn(table_locks: TableLocksMap) -> EvictFn<u64, StorageCacheEntry> {
+/// It only records per-plan retirement metadata under the cache mutex.
+/// Actual table drops are attempted later outside the mutex.
+fn make_evict_fn() -> EvictFn<u64, StorageCacheEntry> {
     Box::new(move |plan_id: &u64, val: &mut StorageCacheEntry| {
         STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL.inc();
-
-        // Defer actual cleanup (waiting + table drops) to outside the mutex.
-        PENDING_EVICTIONS.with(|cell| {
-            cell.borrow_mut().push(PendingEviction {
-                plan_id: *plan_id,
-                in_use: Rc::clone(&val.in_use),
-                stmt: Rc::clone(&val.stmt),
-                motion_ids: std::mem::take(&mut val.motion_ids),
-                table_lock: downgrade_temp_table_lock(&val.table_lock),
-                table_locks: Rc::clone(&table_locks),
-            });
-        });
-
+        retire_plan(*plan_id, val);
         Ok(())
     })
 }
@@ -206,7 +190,7 @@ pub struct PicoStorageCache {
 impl PicoStorageCache {
     pub(crate) fn new(count_max: usize, size_max: usize) -> Result<Self, SbroadError> {
         let table_locks: TableLocksMap = Rc::new(RefCell::new(HashMap::new()));
-        let evict_fn = make_evict_fn(Rc::clone(&table_locks));
+        let evict_fn = make_evict_fn();
 
         Ok(PicoStorageCache {
             cache: LRUCache::new(count_max, Some(evict_fn))?,
@@ -265,7 +249,7 @@ impl PicoStorageCache {
         let lock = new_temp_table_lock();
         self.table_locks
             .borrow_mut()
-            .insert(plan_id, downgrade_temp_table_lock(&lock));
+            .insert(plan_id, Rc::downgrade(&lock));
         lock
     }
 }
@@ -318,7 +302,6 @@ impl StorageCache for PicoStorageCache {
             StorageCacheEntry {
                 stmt,
                 table_lock,
-                in_use: Rc::new(Cell::new(0)),
                 stmt_size: mem_added,
                 table_versions: table_version_map,
                 index_versions: index_version_map,
@@ -367,7 +350,6 @@ impl StorageCache for PicoStorageCache {
         Ok(Some(CachedStmtRef::new(
             Rc::clone(&entry.stmt),
             Rc::clone(&entry.table_lock),
-            Rc::clone(&entry.in_use),
         )))
     }
 
@@ -654,8 +636,6 @@ impl Vshard for StorageRuntime {
             return Ok(());
         }
 
-        port_write_metadata(port, &ex_plan)?;
-
         let query_type = ex_plan.query_type()?;
         if let QueryType::DML = query_type {
             // DML queries are not supported on arbitrary nodes
@@ -663,6 +643,8 @@ impl Vshard for StorageRuntime {
                 "DML queries are not supported on arbitrary nodes".into(),
             ));
         }
+
+        port_write_metadata(port, &ex_plan)?;
 
         let plan_id = ex_plan.get_plan_id()?;
         let vtables = ex_plan
@@ -678,16 +660,10 @@ impl Vshard for StorageRuntime {
         );
 
         use sql::executor::vdbe::ExecutionInsight::*;
-        let cached = {
-            let mut cache_guarded = self.cache().lock();
-            cache_guarded.get(&plan_id)?
-        };
-
-        if let Some(cached) = cached {
+        if let Some((cached, _table_lease)) = acquire_cached_stmt_or_retry(self, plan_id)? {
             // Transaction rollbacks are very expensive in Tarantool, so we're going to
             // avoid transactions for DQL queries. We can achieve atomicity by truncating
             // temporary tables. Isolation is guaranteed by a lock tied to plan_id.
-            let _table_lease = lock_temp_table(&cached.table_lock)?;
             let mut stmt_guard = cached.stmt.lock();
             match stmt_execute(&mut stmt_guard, &info, port)? {
                 Nothing => report_storage_cache_hit("dql", "local"),
