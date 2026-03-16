@@ -129,10 +129,10 @@ def test_snapshot_and_dynamic_parameters(cluster: Cluster):
 
     i2.kill()
 
-    i1.sql("ALTER SYSTEM SET iproto_net_msg_max = 100 FOR ALL TIERS")
+    i1.sql("ALTER SYSTEM SET iproto_net_msg_max = 100 FOR ALL TIERS WAIT APPLIED LOCALLY")
 
     # Trigger raft log compaction
-    i1.sql("ALTER SYSTEM SET raft_wal_count_max TO 1")
+    i1.sql("ALTER SYSTEM SET raft_wal_count_max TO 1 WAIT APPLIED LOCALLY")
 
     # Add a new instance and restart `i2`, which catches up by raft snapshot
     i2.start_and_wait()
@@ -552,3 +552,121 @@ def test_alter_system_pg_params(cluster: Cluster):
         match=f"""invalid value for '{pg_statement_max}': expected unsigned, got string""",
     ):
         instance.sql(f"ALTER SYSTEM SET {pg_statement_max} = 'y'")
+
+
+def test_alter_system_wait_applied_options(cluster: Cluster):
+    i1, i2, _ = cluster.deploy(instance_count=3)
+
+    # WAIT APPLIED options shouldn't affect operations in stable networks.
+    ddl = i1.sql(
+        """
+        ALTER SYSTEM SET auth_password_enforce_digits TO false
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = i2.sql(
+        """
+        ALTER SYSTEM SET auth_password_enforce_digits TO true
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    # Simulate unstable network by injecting an error blocking wait index RPC
+    # that is called by the client to get acknowledgements from other
+    # replicasets that the operation is applied.
+    i2.call("pico._inject_error", "BLOCK_PROC_WAIT_INDEX", True)
+
+    # i2 doesn't acknowledge operation commitment, so WAIT APPLIED GLOBALLY
+    # (which is the default) results in an error.
+    with pytest.raises(
+        TarantoolError,
+        match="alter system operation committed, but failed to receive acknowledgements from all instances",
+    ):
+        i1.sql(
+            """
+            ALTER SYSTEM SET auth_password_enforce_digits TO false
+            WAIT APPLIED GLOBALLY
+            OPTION (TIMEOUT = 1)
+            """
+        )
+
+    # Default behavior (no explicit WAIT APPLIED) should also be globally.
+    with pytest.raises(
+        TarantoolError,
+        match="alter system operation committed, but failed to receive acknowledgements from all instances",
+    ):
+        i1.sql(
+            """
+            ALTER SYSTEM SET auth_password_enforce_digits TO true
+            OPTION (TIMEOUT = 1)
+            """
+        )
+
+    # WAIT APPLIED LOCALLY doesn't require acknowledgements from other
+    # replicasets, so operation should be performed with no errors.
+    ddl = i1.sql(
+        """
+        ALTER SYSTEM SET auth_password_enforce_digits TO false
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    # RESET with WAIT APPLIED LOCALLY should also work.
+    ddl = i1.sql(
+        """
+        ALTER SYSTEM RESET auth_password_enforce_digits
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    # Disable injection.
+    i2.call("pico._inject_error", "BLOCK_PROC_WAIT_INDEX", False)
+
+    # After disabling injection, WAIT APPLIED GLOBALLY should work again.
+    ddl = i1.sql(
+        """
+        ALTER SYSTEM SET auth_password_enforce_digits TO false
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    # RESET with WAIT APPLIED GLOBALLY.
+    ddl = i1.sql(
+        """
+        ALTER SYSTEM RESET auth_password_enforce_digits
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    # FOR TIER with WAIT APPLIED GLOBALLY.
+    ddl = i1.sql(
+        """
+        ALTER SYSTEM SET auth_password_enforce_digits TO true
+        FOR ALL TIERS
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    # Cleanup.
+    i1.sql(
+        """
+        ALTER SYSTEM RESET auth_password_enforce_digits
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )

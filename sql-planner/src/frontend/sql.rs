@@ -585,32 +585,36 @@ fn parse_alter_system<M: Metadata>(
         _ => unreachable!("Unexpected rule: {:?}", alter_system_type_node.rule),
     };
 
-    let tier_name = if let Some(tier_node_id) = node.children.get(1) {
-        let tier_node = ast.nodes.get_node(*tier_node_id)?;
-        let tier_node_child_id = tier_node
-            .children
-            .first()
-            .expect("Expected mandatory child node under AlterSystemTier.");
-        let tier_node_child = ast.nodes.get_node(*tier_node_child_id)?;
-        match tier_node_child.rule {
-            Rule::AlterSystemTiersAll => None,
-            Rule::AlterSystemTierSingle => {
-                let node_child_id = tier_node_child
-                    .children
-                    .first()
-                    .expect("Child node expected under AlterSystemTierSingle.");
-                Some(parse_identifier(ast, *node_child_id)?)
+    let mut tier_name = None;
+    let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
+    let mut timeout = get_default_timeout();
+    for child_id in node.children.iter().skip(1) {
+        let child_node = ast.nodes.get_node(*child_id)?;
+        match child_node.rule {
+            Rule::AlterSystemTier => {
+                let tier_node_child_id = child_node.first_child();
+                let tier_node_child = ast.nodes.get_node(tier_node_child_id)?;
+                tier_name = match tier_node_child.rule {
+                    Rule::AlterSystemTiersAll => None,
+                    Rule::AlterSystemTierSingle => {
+                        let node_child_id = tier_node_child.first_child();
+                        Some(parse_identifier(ast, node_child_id)?)
+                    }
+                    _ => panic!("Unexpected rule met under AlterSystemTier."),
+                };
             }
-            _ => panic!("Unexpected rule met under AlterSystemTier."),
+            Rule::WaitAppliedGlobally => wait_applied_globally = true,
+            Rule::WaitAppliedLocally => wait_applied_globally = false,
+            Rule::Timeout => timeout = get_timeout(ast, *child_id)?,
+            _ => {}
         }
-    } else {
-        None
-    };
+    }
 
     Ok(AlterSystem {
         ty,
         tier_name,
-        timeout: get_default_timeout(),
+        wait_applied_globally,
+        timeout,
     })
 }
 

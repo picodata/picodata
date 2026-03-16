@@ -280,7 +280,7 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable
                 Deferrable = ${ (NotFlag ~ W)? ~ ^"deferrable" }
             TransactionSnapshot = ${ ^"snapshot" ~ W ~ SingleQuotedString }
 
-    AlterSystem = ${ ^"alter" ~ W ~ ^"system" ~ W ~ (AlterSystemSet | AlterSystemReset) ~ (W ~ AlterSystemTier)? }
+    AlterSystem = ${ ^"alter" ~ W ~ ^"system" ~ W ~ (AlterSystemSet | AlterSystemReset) ~ (W ~ AlterSystemTier)? ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
         		AlterSystemReset = ${^"reset" ~ W ~ (^"all" | Identifier) }
         		AlterSystemSet = ${^"set" ~ W ~ Identifier ~ ((WO ~ "=" ~ WO) | (W ~ ^"to" ~ W)) ~ (^"default" | Expr) }
         		AlterSystemTier = ${ ^"for" ~ W ~ (AlterSystemTiersAll | AlterSystemTierSingle) }

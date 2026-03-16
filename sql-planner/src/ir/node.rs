@@ -1301,6 +1301,7 @@ pub struct AlterSystem {
     /// In case of None, ALTER is supposed
     /// to be executed on all tiers.
     pub tier_name: Option<SmolStr>,
+    pub wait_applied_globally: bool,
     pub timeout: Timeout,
 }
 

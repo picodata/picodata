@@ -515,7 +515,9 @@ cluster:
     storage_1_2.call("pico._inject_error", injected_error_3, True)
 
     # Trigger log compaction now
-    leader.sql("ALTER SYSTEM SET raft_wal_count_max = 1")
+    # WAIT APPLIED LOCALLY is needed because `storage_1_2`
+    # is blocked by the injection
+    leader.sql("ALTER SYSTEM SET raft_wal_count_max = 1 WAIT APPLIED LOCALLY")
 
     # Fix raft message handling, now it will receive a raft snapshot instead of any raft log entries
     storage_1_2.call("pico._inject_error", injected_error_1, False)

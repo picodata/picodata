@@ -2605,11 +2605,19 @@ pub(crate) fn reenterable_schema_change_request(
         if !matches!(op, Op::DdlPrepare { .. }) && wait_applied_globally {
             wait_for_index_globally(&node.topology_cache, Rc::clone(&node.pool), index, deadline)
                 .map_err(|_| {
-                Error::Other(
-                    "acl operation committed, but failed to receive \
-                     acknowledgements from all instances"
-                        .into(),
-                )
+                if matches!(op, Op::Acl(_)) {
+                    Error::Other(
+                        "acl operation committed, but failed to receive \
+                         acknowledgements from all instances"
+                            .into(),
+                    )
+                } else {
+                    Error::Other(
+                        "alter system operation committed, but failed to receive \
+                         acknowledgements from all instances"
+                            .into(),
+                    )
+                }
             })?;
         }
 

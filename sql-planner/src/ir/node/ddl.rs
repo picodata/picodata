@@ -114,6 +114,10 @@ impl DdlOwned {
             | DdlOwned::RenameRoutine(RenameRoutine {
                 wait_applied_globally,
                 ..
+            })
+            | DdlOwned::AlterSystem(AlterSystem {
+                wait_applied_globally,
+                ..
             }) => *wait_applied_globally,
             _ => false,
         }
@@ -275,6 +279,10 @@ impl Ddl<'_> {
                 ..
             })
             | Ddl::RenameRoutine(RenameRoutine {
+                wait_applied_globally,
+                ..
+            })
+            | Ddl::AlterSystem(AlterSystem {
                 wait_applied_globally,
                 ..
             }) => *wait_applied_globally,
