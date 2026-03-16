@@ -123,7 +123,10 @@ impl DdlOwned {
                 wait_applied_globally,
                 ..
             }) => *wait_applied_globally,
-            _ => false,
+            DdlOwned::SetParam(_)
+            | DdlOwned::SetTransaction(_)
+            | DdlOwned::CreateSchema
+            | DdlOwned::DropSchema => false,
         }
     }
 }
@@ -294,7 +297,9 @@ impl Ddl<'_> {
                 wait_applied_globally,
                 ..
             }) => *wait_applied_globally,
-            _ => false,
+            Ddl::SetParam(_) | Ddl::SetTransaction(_) | Ddl::CreateSchema | Ddl::DropSchema => {
+                false
+            }
         }
     }
 
