@@ -98,7 +98,7 @@ instance:
   - 127.0.0.1:3301
   http_listen: null # (13)!
   https:
-    enabled: true (14)!
+    enabled: true # (14)!
   admin_socket: ./admin.sock # (8)!
   share_dir: null # (29)!
   audit: null # (10)!
