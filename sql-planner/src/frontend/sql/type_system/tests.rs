@@ -482,7 +482,7 @@ fn windows() {
 
     assert_fails_with_error(
         "WITH t AS (SELECT 'a' as a) \
-        SELECT sum(a::int + false) over(PARTITION BY a ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) from t;",
+        SELECT count(a::int + false) over(PARTITION BY a ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) from t;",
         "could not resolve operator overload for +(int, bool)",
     );
 }

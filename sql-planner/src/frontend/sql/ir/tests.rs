@@ -1590,7 +1590,7 @@ fn front_sql_avg_aggregate() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (sum(("avg_1"::decimal::double))::decimal / sum(("avg_2"::decimal::double))::decimal -> "col_1", avg(distinct ("gr_expr_1"::decimal::double))::decimal -> "col_2", (sum(("avg_1"::decimal::double))::decimal / sum(("avg_2"::decimal::double))::decimal) * (sum(("avg_1"::decimal::double))::decimal / sum(("avg_2"::decimal::double))::decimal) -> "col_3")
+    projection (sum(("avg_1"::decimal::double))::double / sum(("avg_2"::decimal::double))::double -> "col_1", avg(distinct ("gr_expr_1"::decimal::double))::double -> "col_2", (sum(("avg_1"::decimal::double))::double / sum(("avg_2"::decimal::double))::double) * (sum(("avg_1"::decimal::double))::double / sum(("avg_2"::decimal::double))::double) -> "col_3")
         motion [policy: full, program: ReshardIfNeeded]
             projection ("t"."b"::int::int -> "gr_expr_1", sum(("t"."b"::int::int))::decimal -> "avg_1", count(("t"."b"::int::int))::int -> "avg_2")
                 group by ("t"."b"::int::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")

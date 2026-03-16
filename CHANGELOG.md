@@ -159,6 +159,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed local SQL iterators to survive fiber yields during table truncation.
 - Fixed a caching bug affecting `UNION` queries with global and sharded tables in a cluster of several replicasets.
 - Fixed a caching bug that caused some different queries to tables with `bucket_id` in the primary key to have the same plan id.
+- Fixed SUM/AVG type resolution for Double 
 
 ### Observability
 

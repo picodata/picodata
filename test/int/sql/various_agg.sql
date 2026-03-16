@@ -46,3 +46,15 @@ could not resolve function overload for group_concat\(text, int\)
 select group_concat(a, b) from t2;
 -- ERROR:
 GROUP_CONCAT aggregate function second argument must be a string literal
+
+-- TEST: issue_2645_1
+-- SQL:
+select sum('inf'::double);
+-- EXPECTED:
+inf
+
+-- TEST: issue_2645_2
+-- SQL:
+select avg('inf'::double);
+-- EXPECTED:
+inf

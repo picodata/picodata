@@ -364,3 +364,93 @@ fn test_query_explain_18() {
     buckets = any
     "#);
 }
+
+#[test]
+fn test_query_explain_19() {
+    let sql = r#"select sum(1.0)"#;
+
+    let metadata = &RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
+    projection (sum((1.0::decimal))::decimal -> "col_1")
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    buckets = any
+    "#);
+}
+
+#[test]
+fn test_query_explain_20() {
+    let sql = r#"select sum(1)"#;
+
+    let metadata = &RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
+    projection (sum((1::int))::decimal -> "col_1")
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    buckets = any
+    "#);
+}
+
+#[test]
+fn test_query_explain_21() {
+    let sql = r#"select sum(1::double)"#;
+
+    let metadata = &RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
+    projection (sum((1::double))::double -> "col_1")
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    buckets = any
+    "#);
+}
+
+#[test]
+fn test_query_explain_22() {
+    let sql = r#"select avg(1.0)"#;
+
+    let metadata = &RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
+    projection (avg((1.0::decimal))::decimal -> "col_1")
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    buckets = any
+    "#);
+}
+
+#[test]
+fn test_query_explain_23() {
+    let sql = r#"select avg(1)"#;
+
+    let metadata = &RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
+    projection (avg((1::int))::decimal -> "col_1")
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    buckets = any
+    "#);
+}
+
+#[test]
+fn test_query_explain_24() {
+    let sql = r#"select avg(1::double)"#;
+
+    let metadata = &RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
+    projection (avg((1::double))::double -> "col_1")
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    buckets = any
+    "#);
+}

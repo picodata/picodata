@@ -71,20 +71,34 @@ impl AggregateKind {
 
     /// Get type of the corresponding aggregate function.
     pub fn get_type(self, plan: &Plan, args: &[NodeId]) -> Result<DerivedType, SbroadError> {
-        let ty =
-            match self {
-                AggregateKind::COUNT => RelType::Integer,
-                AggregateKind::TOTAL => RelType::Double,
-                AggregateKind::GRCONCAT => RelType::String,
-                AggregateKind::SUM | AggregateKind::AVG => RelType::Decimal,
-                AggregateKind::MIN | AggregateKind::MAX => {
-                    let child_node = args.first().ok_or(SbroadError::UnexpectedNumberOfValues(
-                        format_smolstr!("expected at least 1 argument, got 0"),
-                    ))?;
-                    let expr_node = plan.get_expression_node(*child_node)?;
-                    return expr_node.calculate_type(plan);
+        let ty = match self {
+            AggregateKind::COUNT => RelType::Integer,
+            AggregateKind::TOTAL => RelType::Double,
+            AggregateKind::GRCONCAT => RelType::String,
+            AggregateKind::MIN | AggregateKind::MAX => {
+                let child_node = args.first().ok_or_else(|| {
+                    SbroadError::UnexpectedNumberOfValues(format_smolstr!(
+                        "expected at least 1 argument, got 0"
+                    ))
+                })?;
+                let expr_node = plan.get_expression_node(*child_node)?;
+                return expr_node.calculate_type(plan);
+            }
+            AggregateKind::AVG | AggregateKind::SUM => {
+                let child_node = args.first().ok_or_else(|| {
+                    SbroadError::UnexpectedNumberOfValues(format_smolstr!(
+                        "expected at least 1 argument, got 0"
+                    ))
+                })?;
+                let expr_node = plan.get_expression_node(*child_node)?;
+                let ty = expr_node.calculate_type(plan)?;
+                if let Some(RelType::Double) = ty.get() {
+                    RelType::Double
+                } else {
+                    RelType::Decimal
                 }
-            };
+            }
+        };
         Ok(DerivedType::new(ty))
     }
 
