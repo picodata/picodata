@@ -738,7 +738,7 @@ test-mac-m1:
     - cargo +$RUST_VERSION -V
     - cargo +$RUST_VERSION build --locked --timings
     - cp target/cargo-timings/cargo-timing.html cargo-timing-without-webui.html
-    - pushd webui && corepack set version from source && popd
+    - corepack enable && cd webui && yarn set version stable && cd ..
     - cargo +$RUST_VERSION build --features webui --locked --timings
     - cp target/cargo-timings/cargo-timing.html cargo-timing-with-webui.html
     # There are no Rust tests for `webui` feature.
