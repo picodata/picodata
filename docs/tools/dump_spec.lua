@@ -67,8 +67,11 @@ local function main()
         for _, field in ipairs(tbl.format) do
             local name = field.name
             local type = field.field_type
-            local nullable = field.is_nullable
-            res = append(res, "* `%s`: (_%s_)\n", name, type)
+            local nullable = ""
+            if field.is_nullable then
+                nullable = "_NULL_ "
+            end
+            res = append(res, "* `%s`: (%s_%s_)\n", name, nullable, type)
         end
 
         res = append(res, "\nИндексы:\n\n")
