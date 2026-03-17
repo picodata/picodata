@@ -80,6 +80,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Refactor the plan id calculation for more accurate and faster caching.
 - Add bucket estimation for INSERT queries in explain.
 - Support reading from global tables in anonymous blocks; writing is not supported yet.
+- Add migration context validation API into plugin SDK.
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:
