@@ -661,6 +661,12 @@ cluster:
         default:
 instance:
     cluster_name: test
+    plugin:
+        testplug_listener:
+            service:
+                listenerservice:
+                    listener:
+                        enabled: false
 """
         )
     i2 = cluster.add_instance(wait_online=False)

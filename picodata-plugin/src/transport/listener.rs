@@ -36,22 +36,20 @@
 //! }
 //! ```
 
+use crate::internal::types::FfiListenerConfigError;
 use crate::plugin::interface::PicoContext;
 use crate::transport::stream::{PicoStream, PicoStreamError, TlsHandshakeError};
 use log::info;
 use openssl::error::ErrorStack;
-use openssl::ssl::{HandshakeError, SslAcceptor, SslFiletype, SslMethod, SslStream};
+use openssl::ssl::{HandshakeError, SslAcceptor, SslMethod, SslStream};
 use openssl::x509::store::X509StoreBuilder;
 use openssl::x509::{X509NameEntries, X509};
-use std::fs;
 use std::io::{self, Read, Write};
 use std::net::SocketAddr;
 use std::os::fd::{AsRawFd, BorrowedFd};
-use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use tarantool::coio::{CoIOListener, CoIOStream};
 use thiserror::Error;
-
 ////////////////////////////////////////////////////////////////////////////////
 // Errors
 ////////////////////////////////////////////////////////////////////////////////
@@ -63,21 +61,8 @@ pub enum TlsConfigError {
     #[error("openssl error: {0}")]
     OpenSsl(#[from] ErrorStack),
 
-    /// Error reading certificate file.
-    #[error("cert file error '{0}': {1}")]
-    CertFile(PathBuf, io::Error),
-
-    /// Error reading key file.
-    #[error("key file error '{0}': {1}")]
-    KeyFile(PathBuf, io::Error),
-
-    /// Error reading CA file.
-    #[error("ca file error '{0}': {1}")]
-    CaFile(PathBuf, io::Error),
-
-    /// Error reading password file.
-    #[error("password file error '{0}': {1}")]
-    PasswordFile(PathBuf, io::Error),
+    #[error("The provided certificate chain did not contain any certificates")]
+    EmptyCertificateChain,
 }
 
 /// Error that can occur when creating a PicoListener.
@@ -97,69 +82,6 @@ pub enum PicoListenerError {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// TlsConfig
-////////////////////////////////////////////////////////////////////////////////
-
-/// TLS configuration for a listener.
-#[derive(Debug, Clone)]
-pub struct TlsConfig {
-    cert: PathBuf,
-    key: PathBuf,
-    ca_cert: Option<PathBuf>,
-    password: Option<String>,
-}
-
-impl TlsConfig {
-    /// Creates a new TLS configuration.
-    ///
-    /// # Arguments
-    ///
-    /// * `cert_file` - Path to the certificate file (PEM format).
-    /// * `key_file` - Path to the private key file (PEM format).
-    /// * `ca_file` - Optional path to CA certificate for mTLS.
-    /// * `password_file` - Optional path to password file for encrypted keys.
-    pub fn new(
-        cert_file: impl AsRef<Path>,
-        key_file: impl AsRef<Path>,
-        ca_file: Option<impl AsRef<Path>>,
-        password_file: Option<impl AsRef<Path>>,
-    ) -> Result<Self, TlsConfigError> {
-        let cert = fs::canonicalize(cert_file.as_ref())
-            .map_err(|e| TlsConfigError::CertFile(cert_file.as_ref().to_path_buf(), e))?;
-
-        let key = fs::canonicalize(key_file.as_ref())
-            .map_err(|e| TlsConfigError::KeyFile(key_file.as_ref().to_path_buf(), e))?;
-
-        let ca_cert = match ca_file {
-            Some(path) => {
-                let path = path.as_ref();
-                let p = fs::canonicalize(path)
-                    .map_err(|e| TlsConfigError::CaFile(path.to_path_buf(), e))?;
-                Some(p)
-            }
-            None => None,
-        };
-
-        let password = match password_file {
-            Some(path) => {
-                let path = path.as_ref();
-                let content = fs::read_to_string(path)
-                    .map_err(|e| TlsConfigError::PasswordFile(path.to_path_buf(), e))?;
-                Some(content.trim().to_string())
-            }
-            None => None,
-        };
-
-        Ok(Self {
-            cert,
-            key,
-            ca_cert,
-            password,
-        })
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // TlsAcceptor
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -169,46 +91,31 @@ pub struct TlsAcceptor(Rc<SslAcceptor>);
 
 impl TlsAcceptor {
     /// Creates a new TLS acceptor from the given configuration.
-    pub fn new(config: &TlsConfig) -> Result<Self, TlsConfigError> {
+    pub fn new(config: &ListenerTlsConfig) -> Result<Self, TlsConfigError> {
         let mut builder = SslAcceptor::mozilla_intermediate_v5(SslMethod::tls())?;
 
-        info!("TLS: found key: {}", config.key.display());
-        if let Some(ref password) = config.password {
-            let key_pem = fs::read(&config.key)
-                .map_err(|e| TlsConfigError::KeyFile(config.key.clone(), e))?;
-            let pkey = openssl::pkey::PKey::private_key_from_pem_passphrase(
-                &key_pem,
-                password.as_bytes(),
-            )?;
-            builder.set_private_key(&pkey)?;
-        } else {
-            builder
-                .set_private_key_file(&config.key, SslFiletype::PEM)
-                .map_err(|e| TlsConfigError::KeyFile(config.key.clone(), e.into()))?;
-        }
+        let pkey = openssl::pkey::PKey::private_key_from_pem(&config.key_pem)?;
+        builder.set_private_key(&pkey)?;
 
-        info!("TLS: found certificate: {}", config.cert.display());
-        builder
-            .set_certificate_chain_file(&config.cert)
-            .map_err(|e| TlsConfigError::CertFile(config.cert.clone(), e.into()))?;
+        let cert_chain = X509::stack_from_pem(&config.cert_chain_pem)?;
+        info!("TLS: cert stack: {}", certs_to_string(&cert_chain)?);
 
-        let pem =
-            fs::read(&config.cert).map_err(|e| TlsConfigError::CertFile(config.cert.clone(), e))?;
-        let certs = X509::stack_from_pem(&pem)?;
-        if let Ok(cert_info) = certs_to_string(&certs) {
-            info!("TLS: cert stack: {}", cert_info);
-        }
-
-        if let Some(ref ca) = config.ca_cert {
-            info!("TLS: found CA certificate: {}", ca.display());
-            let pem = fs::read(ca).map_err(|e| TlsConfigError::CaFile(ca.clone(), e))?;
-            let certs = X509::stack_from_pem(&pem)?;
-            if let Ok(cert_info) = certs_to_string(&certs) {
-                info!("TLS: CA cert stack: {}", cert_info);
+        if let [head, tail @ ..] = cert_chain.as_slice() {
+            builder.set_certificate(head)?;
+            for cert in tail {
+                builder.add_extra_chain_cert(cert.clone())?;
             }
+        } else {
+            return Err(TlsConfigError::EmptyCertificateChain);
+        };
+
+        if let Some(mtls_ca_chain_pem) = &config.mtls_ca_chain_pem {
+            info!("TLS: found CA certificate; mTLS will be enabled");
+            let mtls_ca_chain = X509::stack_from_pem(mtls_ca_chain_pem)?;
+            info!("TLS: CA cert stack: {}", certs_to_string(&mtls_ca_chain)?);
 
             let mut store_builder = X509StoreBuilder::new()?;
-            for cert in certs {
+            for cert in mtls_ca_chain {
                 store_builder.add_cert(cert)?;
             }
             builder.set_verify_cert_store(store_builder.build())?;
@@ -306,40 +213,71 @@ fn certs_to_string(certs: &[X509]) -> Result<String, openssl::error::ErrorStack>
 // ListenerConfig (internal)
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Internal configuration structure for creating a PicoListener.
-#[derive(Debug, Clone, Default)]
+/// Contains configuration needed to setup a [`PicoListener`].
+///
+/// [`PicoListener`]: PicoListener
+#[derive(Clone, Debug)]
 pub struct ListenerConfig {
-    /// Whether the listener is enabled.
-    pub enabled: bool,
     /// The address to listen on.
-    pub listen: Option<String>,
+    pub listen: String,
     /// The address to advertise.
-    pub advertise: Option<String>,
-    /// TLS settings.
-    pub tls_enabled: bool,
-    pub cert_file: Option<PathBuf>,
-    pub key_file: Option<PathBuf>,
-    pub ca_file: Option<PathBuf>,
-    pub password_file: Option<PathBuf>,
+    pub advertise: String,
+    /// Whether TLS is enabled.
+    pub tls: Option<ListenerTlsConfig>,
 }
 
-impl From<&crate::internal::types::FfiListenerConfig> for ListenerConfig {
-    fn from(ffi: &crate::internal::types::FfiListenerConfig) -> Self {
+/// Contains TLS configuration needed to setup TLS for [`PicoListener`].
+///
+/// [`PicoListener`]: PicoListener
+#[derive(Clone, Debug)]
+pub struct ListenerTlsConfig {
+    /// PEM-encoded certificate chain.
+    pub cert_chain_pem: Vec<u8>,
+    /// PEM-encoded private key to the certificate.
+    pub key_pem: Vec<u8>,
+    /// PEM-encoded CA certificate chain to verify connecting clients against. None if mTLS is not used.
+    pub mtls_ca_chain_pem: Option<Vec<u8>>,
+}
+
+impl From<ListenerConfig> for crate::internal::types::FfiListenerConfig {
+    fn from(cfg: ListenerConfig) -> Self {
+        crate::internal::types::FfiListenerConfig {
+            listen: cfg.listen.into(),
+            advertise: cfg.advertise.into(),
+            tls: cfg
+                .tls
+                .map(|tls| crate::internal::types::FfiListenerTlsConfig {
+                    cert_chain_pem: tls.cert_chain_pem.into(),
+                    key_pem: tls.key_pem.into(),
+                    mtls_ca_chain_pem: tls.mtls_ca_chain_pem.map(|chain| chain.into()).into(),
+                })
+                .into(),
+        }
+    }
+}
+
+impl From<crate::internal::types::FfiListenerConfig> for ListenerConfig {
+    fn from(ffi: crate::internal::types::FfiListenerConfig) -> Self {
         ListenerConfig {
-            enabled: ffi.is_enabled(),
-            listen: ffi.listen().map(String::from),
-            advertise: ffi.advertise().map(String::from),
-            tls_enabled: ffi.is_tls_enabled(),
-            cert_file: ffi.cert_file().map(PathBuf::from),
-            key_file: ffi.key_file().map(PathBuf::from),
-            ca_file: ffi.ca_file().map(PathBuf::from),
-            password_file: ffi.password_file().map(PathBuf::from),
+            listen: ffi.listen.to_string(),
+            advertise: ffi.advertise.to_string(),
+            tls: ffi.tls.into_option().map(|tls_ffi| ListenerTlsConfig {
+                cert_chain_pem: tls_ffi.cert_chain_pem.into_vec(),
+                key_pem: tls_ffi.key_pem.into_vec(),
+                mtls_ca_chain_pem: tls_ffi
+                    .mtls_ca_chain_pem
+                    .into_option()
+                    .map(|chain_ffi| chain_ffi.into_vec()),
+            }),
         }
     }
 }
 
 /// Get listener configuration by calling picodata via FFI.
-fn get_listener_config(plugin: &str, service: &str) -> Option<ListenerConfig> {
+fn get_listener_config(
+    plugin: &str,
+    service: &str,
+) -> Result<ListenerConfig, FfiListenerConfigError> {
     use crate::util::FfiSafeStr;
 
     let ffi_config = unsafe {
@@ -349,9 +287,7 @@ fn get_listener_config(plugin: &str, service: &str) -> Option<ListenerConfig> {
         )
     };
 
-    ffi_config
-        .into_option()
-        .map(|cfg| ListenerConfig::from(&cfg))
+    ffi_config.into_result().map(ListenerConfig::from)
 }
 
 /// Parse a listen address string into SocketAddr.
@@ -417,51 +353,23 @@ impl PicoListener {
     /// Returns an error if:
     /// - The socket cannot be bound
     /// - TLS is enabled but certificate files cannot be read
-    pub fn bind_with_config(config: &ListenerConfig) -> Result<Option<Self>, PicoListenerError> {
-        if !config.enabled {
-            return Ok(None);
-        }
-
-        let listen_addr = config
-            .listen
-            .as_ref()
-            .ok_or_else(|| PicoListenerError::Config("listen address not specified".into()))?;
-
-        let socket_addr = parse_listen_addr(listen_addr)?;
+    pub fn bind_with_config(config: &ListenerConfig) -> Result<Self, PicoListenerError> {
+        let socket_addr = parse_listen_addr(&config.listen)?;
 
         let listener = create_coio_listener(socket_addr)?;
 
-        let tls_acceptor = if config.tls_enabled {
-            let cert_file = config.cert_file.as_ref().ok_or_else(|| {
-                PicoListenerError::Config("TLS enabled but cert_file not specified".into())
-            })?;
-
-            let key_file = config.key_file.as_ref().ok_or_else(|| {
-                PicoListenerError::Config("TLS enabled but key_file not specified".into())
-            })?;
-
-            let tls_config = TlsConfig::new(
-                cert_file,
-                key_file,
-                config.ca_file.as_ref(),
-                config.password_file.as_ref(),
-            )?;
-
-            Some(TlsAcceptor::new(&tls_config)?)
-        } else {
-            None
+        let mut tls_acceptor = None;
+        if let Some(tls) = &config.tls {
+            tls_acceptor = Some(TlsAcceptor::new(tls)?)
         };
 
-        let advertise = config
-            .advertise
-            .clone()
-            .unwrap_or_else(|| listen_addr.clone());
+        let advertise = config.advertise.clone();
 
-        Ok(Some(Self {
+        Ok(Self {
             listener,
             tls_acceptor,
             advertise,
-        }))
+        })
     }
 
     /// Creates a new listener for the service associated with the given context.
@@ -484,11 +392,16 @@ impl PicoListener {
         let plugin = context.plugin_name();
         let service = context.service_name();
 
-        let Some(config) = get_listener_config(plugin, service) else {
-            return Ok(None);
-        };
-
-        Self::bind_with_config(&config)
+        match get_listener_config(plugin, service) {
+            Ok(config) => Ok(Some(Self::bind_with_config(&config)?)),
+            Err(FfiListenerConfigError::Disabled) => Ok(None),
+            Err(FfiListenerConfigError::Undefined) => Err(PicoListenerError::Config(format!(
+                "configuration for plugin {plugin}.{service} is undefined"
+            ))),
+            Err(FfiListenerConfigError::Malformed) => Err(PicoListenerError::Config(format!(
+                "configuration for plugin {plugin}.{service} is malformed. See picodata logs for more details."
+            ))),
+        }
     }
 
     /// Accepts a new connection.

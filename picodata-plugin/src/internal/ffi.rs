@@ -42,7 +42,7 @@ extern "C" {
     pub fn pico_ffi_get_listener_config(
         plugin: FfiSafeStr,
         service: FfiSafeStr,
-    ) -> ROption<types::FfiListenerConfig>;
+    ) -> RResult<types::FfiListenerConfig, types::FfiListenerConfigError>;
 
     // There is false positive warning by `improper_ctypes` here.
     // We assume that this function is ffi safe because using only

@@ -6,7 +6,7 @@ use crate::sql::port::{dispatch_dump_mp, PicoPortOwned};
 use crate::traft::node;
 use crate::traft::op::{Dml, Op};
 use crate::util::effective_user_id;
-use crate::{cas, sql, traft};
+use crate::{cas, config, sql, tlog, traft};
 use ::sql::ir::operator::ConflictStrategy;
 use ::sql::ir::value::double::Double;
 use ::sql::ir::value::{Tuple, Value};
@@ -477,6 +477,126 @@ pub extern "C" fn pico_ffi_background_set_jobs_shutdown_timeout(
     0
 }
 
+fn load_plugin_listener_config(
+    plugin_name: &str,
+    service_name: &str,
+    config: &config::PluginListenerConfig,
+) -> Result<Option<picodata_plugin::transport::listener::ListenerConfig>, traft::error::Error> {
+    if !config.enabled() {
+        return Ok(None);
+    }
+
+    // this should already be validated when loading the config file, but let's be safe here
+    let listen = config
+        .listen
+        .as_ref()
+        .ok_or_else(|| {
+            traft::error::Error::InvalidConfiguration(format!(
+                "missing listen address for enabled plugin {plugin_name}.{service_name} listener"
+            ))
+        })?
+        .to_string();
+    let advertise = config
+        .advertise()
+        .ok_or_else(|| {
+            traft::error::Error::InvalidConfiguration(
+                format!("missing advertise address for enabled plugin {plugin_name}.{service_name} listener"),
+            )
+        })?
+        .to_string();
+
+    let tls = if config.tls.enabled() {
+        let cert_file = config.tls.cert_file.as_ref().ok_or_else(|| {
+            traft::error::Error::InvalidConfiguration(
+                "missing cert_file for enabled TLS in plugin listener".to_string(),
+            )
+        })?;
+        tlog!(
+            Info,
+            "plugin TLS({plugin_name}.{service_name}): loading certificate {}",
+            cert_file.display()
+        );
+        let cert_chain_pem = std::fs::read(cert_file).map_err(|e| {
+            traft::error::Error::InvalidConfiguration(format!("could not load cert_file: {e:?}"))
+        })?;
+
+        let key_file = config.tls.key_file.as_ref().ok_or_else(|| {
+            traft::error::Error::InvalidConfiguration(
+                "missing key_file for enabled TLS in plugin listener".to_string(),
+            )
+        })?;
+        tlog!(
+            Info,
+            "plugin TLS({plugin_name}.{service_name}): loading key {}",
+            key_file.display()
+        );
+        let mut key_pem = std::fs::read(key_file).map_err(|e| {
+            traft::error::Error::InvalidConfiguration(format!("could not load key_file: {e:?}"))
+        })?;
+
+        // try to decrypt the key PEM if password file is provided
+        if let Some(password_file) = &config.tls.password_file {
+            tlog!(
+                Info,
+                "plugin TLS({plugin_name}.{service_name}): loading key password {}",
+                password_file.display()
+            );
+
+            // NB: we read the password as a string and them trim it
+            // this prevents issues with trailing whitespace (like a newline at the end of the file),
+            // but limits the password to use UTF-8 characters only
+            let password = std::fs::read_to_string(password_file).map_err(|e| {
+                traft::error::Error::InvalidConfiguration(format!(
+                    "could not load password_file: {e:?}"
+                ))
+            })?;
+            let password = password.trim();
+
+            let pkey =
+                openssl::pkey::PKey::private_key_from_pem_passphrase(&key_pem, password.as_bytes())
+                    .map_err(|e| {
+                        traft::error::Error::InvalidConfiguration(format!(
+                            "could not decrypt key_file: {e:?}"
+                        ))
+                    })?;
+
+            key_pem = pkey.private_key_to_pem_pkcs8().map_err(|e| {
+                traft::error::Error::InvalidConfiguration(format!(
+                    "could not serialize the decrypted key_file: {e:?}"
+                ))
+            })?;
+        }
+
+        let mtls_ca_chain_pem = if let Some(ca_file) = &config.tls.ca_file {
+            tlog!(
+                Info,
+                "plugin TLS({plugin_name}.{service_name}): loading mTLS CA {}",
+                cert_file.display()
+            );
+
+            Some(std::fs::read(ca_file).map_err(|e| {
+                traft::error::Error::InvalidConfiguration(format!("could not load ca_file: {e:?}"))
+            })?)
+        } else {
+            None
+        };
+
+        Some(picodata_plugin::transport::listener::ListenerTlsConfig {
+            cert_chain_pem,
+            key_pem,
+            mtls_ca_chain_pem,
+        })
+    } else {
+        None
+    };
+
+    Ok(Some(picodata_plugin::transport::listener::ListenerConfig {
+        listen,
+        advertise,
+        tls,
+    }))
+}
+
 /// Get listener configuration for a plugin service.
 ///
 /// Returns `RNone` if no `plugin.<name>.service.<name>.listener` section
@@ -485,7 +605,7 @@ pub extern "C" fn pico_ffi_background_set_jobs_shutdown_timeout(
 extern "C" fn pico_ffi_get_listener_config(
     plugin: FfiSafeStr,
     service: FfiSafeStr,
-) -> ROption<types::FfiListenerConfig> {
+) -> RResult<types::FfiListenerConfig, types::FfiListenerConfigError> {
     // SAFETY: strings are passed from the same process and outlive this function call
     let plugin_name = unsafe { plugin.as_str() };
     let service_name = unsafe { service.as_str() };
@@ -499,33 +619,17 @@ extern "C" fn pico_ffi_get_listener_config(
         .map(|service_cfg| &service_cfg.listener);
 
     let Some(cfg) = listener_cfg else {
-        return RNone;
+        return RErr(types::FfiListenerConfigError::Undefined);
     };
 
-    let mut builder = types::FfiListenerConfig::builder()
-        .enabled(cfg.enabled())
-        .tls_enabled(cfg.tls.enabled());
-
-    if let Some(listen) = &cfg.listen {
-        builder = builder.listen(listen.to_string());
+    match load_plugin_listener_config(plugin_name, service_name, cfg) {
+        Ok(Some(cfg)) => ROk(cfg.into()),
+        Ok(None) => RErr(types::FfiListenerConfigError::Disabled),
+        Err(e) => {
+            tlog!(Error, "Failed to load plugin listener config: {:?}", e);
+            RErr(types::FfiListenerConfigError::Malformed)
+        }
     }
-    if let Some(advertise) = cfg.advertise() {
-        builder = builder.advertise(advertise.to_string());
-    }
-    if let Some(cert_file) = &cfg.tls.cert_file {
-        builder = builder.cert_file(cert_file.to_string_lossy());
-    }
-    if let Some(key_file) = &cfg.tls.key_file {
-        builder = builder.key_file(key_file.to_string_lossy());
-    }
-    if let Some(ca_file) = &cfg.tls.ca_file {
-        builder = builder.ca_file(ca_file.to_string_lossy());
-    }
-    if let Some(password_file) = &cfg.tls.password_file {
-        builder = builder.password_file(password_file.to_string_lossy());
-    }
-
-    RSome(builder.build())
 }
 
 /// See [`crate::auth::authenticate_with_password`] for more information.

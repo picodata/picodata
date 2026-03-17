@@ -3667,6 +3667,20 @@ def test_plugin_listener_config_validation(cluster: Cluster):
     version = "0.1.0"
     service = "listenerservice"
 
+    cluster.set_config_file(
+        yaml=f"""
+        cluster:
+            name: test
+        instance:
+            plugin:
+                {plugin}:
+                    service:
+                        {service}:
+                            listener:
+                                enabled: false
+    """
+    )
+
     # Deploy cluster
     i1, *_ = cluster.deploy(instance_count=1)
 
