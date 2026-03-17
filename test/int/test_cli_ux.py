@@ -20,84 +20,6 @@ from tarantool.error import (  # type: ignore
 )
 
 
-def test_connect_ux(cluster: Cluster):
-    i1 = cluster.add_instance(wait_online=False)
-    i1.start()
-    i1.wait_online()
-    i1.create_user(with_name="andy", with_password="Testpa55")
-    i1.sql('GRANT CREATE TABLE TO "andy"', sudo=True)
-
-    cli = pexpect.spawn(
-        command=i1.runtime.command,
-        args=["connect", f"{i1.host}:{i1.port}", "-u", "andy"],
-        encoding="utf-8",
-        timeout=CLI_TIMEOUT,
-    )
-    cli.logfile = sys.stdout
-
-    cli.expect_exact("Enter password for andy: ")
-    cli.sendline("Testpa55")
-
-    cli.expect_exact(f'Connected to interactive console by address "{i1.host}:{i1.port}" under "andy" user')
-    cli.expect_exact("type '\\help' for interactive help")
-    cli.expect_exact("sql> ")
-
-    # sql console doesn't know about language switching
-    cli.sendline("\\lua")
-    cli.expect_exact("Language cannot be changed in this console")
-
-    cli.sendline("\\sql")
-    cli.expect_exact("Language cannot be changed in this console")
-
-    # for not registried command nothing can happen
-    cli.sendline("\\lya")
-    cli.expect_exact("Unknown special sequence")
-    cli.sendline("\\scl")
-    cli.expect_exact("Unknown special sequence")
-    cli.sendline("\\set language lua")
-    cli.expect_exact("Language cannot be changed in this console")
-
-    # nothing happens for completion
-    cli.sendline("\t\t")
-    cli.expect_exact("sql> ")
-
-    # ensure that server responds on correct query
-    cli.sendline("CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id)) USING MEMTX DISTRIBUTED BY (id);")
-    cli.expect_exact("1")
-    cli.expect_exact("sql> ")
-
-    # ensure that server responds on invalid query
-    cli.sendline("invalid query;")
-    cli.expect_exact("rule parsing error")
-    cli.expect_exact("sql> ")
-
-    # ensure that server responds after processing invalid query
-    cli.sendline("INSERT INTO ids VALUES(1);")
-    cli.expect_exact("1")
-    cli.expect_exact("sql> ")
-
-    cli.sendline("SELECT * FROM ids;")
-    cli.expect_exact("+----+")
-    cli.expect_exact("| id |")
-    cli.expect_exact("+====+")
-    cli.expect_exact("| 1  |")
-    cli.expect_exact("+----+")
-    cli.expect_exact("(1 rows)")
-    cli.expect_exact("sql> ")
-
-    cli.sendline("EXPLAIN SELECT * FROM ids;")
-    cli.expect_exact('projection ("ids"."id"::int -> "id")')
-    cli.expect_exact('scan "ids"')
-    cli.expect_exact("execution options:")
-    cli.expect_exact("sql_vdbe_opcode_max = 45000")
-    cli.expect_exact("sql_motion_row_max = 5000")
-    cli.expect_exact("buckets = [1-3000]")
-
-    # hitting enter sends query to the server
-    cli.sendline("")
-    cli.expect_exact("0")
-
-
 def test_admin_ux(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.start()
@@ -541,36 +463,15 @@ def test_lua_console_sql_error_messages(cluster: Cluster):
     )
 
 
-def test_connect_pretty_message_on_server_crash(cluster: Cluster):
+def test_admin_pretty_message_on_server_crash(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.start()
     i1.wait_online()
 
-    i2 = cluster.add_instance(wait_online=False)
-    i2.start()
-    i2.wait_online()
-
-    # test crash error when run with `picodata connect`
-    cli = pexpect.spawn(
-        command=i1.runtime.command,
-        args=["connect", f"{i1.host}:{i1.port}"],
-        encoding="utf-8",
-        timeout=CLI_TIMEOUT,
-    )
-    cli.logfile = sys.stdout
-    cli.expect_exact(f'Connected to interactive console by address "{i1.host}:{i1.port}" under "guest" user')
-    cli.expect_exact("type '\\help' for interactive help")
-    cli.expect_exact("sql> ")
-
-    i1.terminate()
-    cli.sendline("ping;")
-    cli.expect("lost connection to the server: io error: unexpected end of file")
-    cli.terminate()
-
     # test crash error when run with `picodata admin`
     cli = pexpect.spawn(
-        cwd=i2.instance_dir,
-        command=i2.runtime.command,
+        cwd=i1.instance_dir,
+        command=i1.runtime.command,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -578,7 +479,7 @@ def test_connect_pretty_message_on_server_crash(cluster: Cluster):
     cli.logfile = sys.stdout
     cli.expect_exact("sql> ")
 
-    i2.terminate()
+    i1.terminate()
     cli.sendline("ping;")
     cli.expect_exact("lost connection to the server: Broken pipe (os error 32)")
 
@@ -587,23 +488,19 @@ def test_input_with_delimiter(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.start()
     i1.wait_online()
-    i1.create_user(with_name="andy", with_password="Testpa55")
-    i1.sql('GRANT CREATE TABLE TO "andy"', sudo=True)
 
     cli = pexpect.spawn(
+        cwd=i1.instance_dir,
         command=i1.runtime.command,
-        args=["connect", f"{i1.host}:{i1.port}", "-u", "andy"],
+        args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("Enter password for andy: ")
-    cli.sendline("Testpa55")
-
-    cli.expect_exact(f'Connected to interactive console by address "{i1.host}:{i1.port}" under "andy" user')
+    cli.expect_exact('Connected to admin console by socket path "./admin.sock"')
     cli.expect_exact("type '\\help' for interactive help")
-    cli.expect_exact("sql> ")
+    cli.expect_exact("(admin) sql> ")
 
     # several commands in one line
     cli.sendline(
@@ -626,11 +523,11 @@ def test_input_with_delimiter(cluster: Cluster):
     cli.expect_exact("(1 rows)")
 
     cli.sendline("DROP    TAB LE\tids;")
-    cli.expect_exact("SqlUnrecognizedSyntax: rule parsing error:  --> 1:1")
+    cli.expect_exact("rule parsing error:  --> 1:1")
 
     # client doesn't send query until delimiter
     cli.sendline("invalid query")
-    cli.expect_exact("sql> ")
+    cli.expect_exact("(admin) sql> ")
     cli.sendline("waiting until delimiter")
     cli.expect_exact("   > ")
     cli.sendline(";")
@@ -642,7 +539,7 @@ def test_input_with_delimiter(cluster: Cluster):
     cli.expect_exact("0")
     cli.expect_exact("0")
 
-    cli.expect_exact("sql>")
+    cli.expect_exact("(admin) sql>")
 
     # formatting remains correct when copying and pasting a large piece of code
     # empty symbols after delimiter should be skipped
@@ -659,7 +556,7 @@ def test_input_with_delimiter(cluster: Cluster):
     cli.expect_exact("| 2  |")
     cli.expect_exact("+----+")
     cli.expect_exact("(1 rows)")
-    cli.expect_exact("sql>")
+    cli.expect_exact("(admin) sql>")
 
     # test enter delimiter
     cli.sendline("\\set delimiter enter")
@@ -674,6 +571,28 @@ def test_input_with_delimiter(cluster: Cluster):
 
 def test_cat_file_to_picodata_admin_stdin(cluster: Cluster):
     instance = cluster.add_instance()
+
+    # Test CREATE USER and GRANT via picodata admin stdin
+    data = subprocess.check_output(
+        [cluster.runtime.command, "admin", "--prompts", f"{instance.instance_dir}/admin.sock"],
+        input=b"""\
+CREATE USER "alice" WITH PASSWORD 'T0psecret';
+GRANT CREATE TABLE TO "alice"
+""",
+    )
+
+    assert (
+        data
+        == f"""\
+Connected to admin console by socket path "{instance.instance_dir}/admin.sock"
+type '\\help' for interactive help
+1
+1
+Bye
+""".encode()
+    )
+
+    # Test CREATE TABLE, INSERT, SELECT via picodata admin stdin
     data = subprocess.check_output(
         [cluster.runtime.command, "admin", "--prompts", f"{instance.instance_dir}/admin.sock"],
         input=b"""\
@@ -855,85 +774,6 @@ SELECT * FROM warehouse;
     )
 
 
-def test_cat_file_to_picodata_connect_stdin(cluster: Cluster):
-    i1 = cluster.add_instance()
-
-    data = subprocess.check_output(
-        [cluster.runtime.command, "admin", "--prompts", f"{i1.instance_dir}/admin.sock"],
-        input=b"""\
-CREATE USER "alice" WITH PASSWORD 'T0psecret';
-GRANT CREATE TABLE TO "alice"
-""",
-    )
-
-    assert (
-        data
-        == f"""\
-Connected to admin console by socket path "{i1.instance_dir}/admin.sock"
-type '\\help' for interactive help
-1
-1
-Bye
-""".encode()
-    )
-
-    cli = pexpect.spawn(
-        command=i1.runtime.command,
-        args=["connect", f"{i1.host}:{i1.port}", "-u", "alice"],
-        encoding="utf-8",
-        timeout=CLI_TIMEOUT,
-    )
-    cli.logfile = sys.stdout
-
-    cli.expect_exact("Enter password for alice: ")
-    cli.sendline("T0psecret")
-    cli.expect_exact(f'Connected to interactive console by address "{i1.host}:{i1.port}" under "alice" user')
-    cli.expect_exact("type '\\help' for interactive help")
-    cli.expect_exact("sql> ")
-
-    cli.sendline(
-        "CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id)) USING MEMTX DISTRIBUTED BY (id);"
-        "INSERT INTO ids VALUES(1);"
-        "INSERT INTO ids VALUES(11);"
-        "INSERT INTO ids VALUES(111);"
-        "INSERT INTO ids VALUES(1111);"
-        "DELETE FROM ids where id = 1;"
-        "DELETE FROM ids where id = 11;"
-        "DELETE FROM ids where id = 111;"
-        "DELETE FROM ids where id = 1111;"
-        "SELECT * FROM ids;"
-    )
-
-    cli.expect_exact("1")
-    cli.expect_exact("1")
-    cli.expect_exact("1")
-    cli.expect_exact("1")
-    cli.expect_exact("1")
-    cli.expect_exact("1")
-    cli.expect_exact("1")
-    cli.expect_exact("1")
-    cli.expect_exact("1")
-    cli.expect_exact("+----+")
-    cli.expect_exact("| id |")
-    cli.expect_exact("+====+")
-    cli.expect_exact("+----+")
-    cli.expect_exact("(0 rows)")
-
-    cli.sendline("DROP")
-    cli.expect_exact("   > ")
-
-    cli.sendline("TABLE")
-    cli.expect_exact("   > ")
-
-    cli.sendline("ids")
-    cli.expect_exact("   > ")
-
-    cli.sendline("OPTION (TIMEOUT = 3.0)")
-    cli.expect_exact("   > ")
-    cli.sendline(";")
-    cli.expect_exact("1")
-
-
 def test_do_not_ban_admin_via_unix_socket(cluster: Cluster):
     password = "secret"
     cluster.set_service_password(password)
@@ -1005,23 +845,19 @@ def test_command_history_with_delimiter(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.start()
     i1.wait_online()
-    i1.create_user(with_name="andy", with_password="Testpa55")
-    i1.sql('GRANT CREATE TABLE TO "andy"', sudo=True)
 
     cli = pexpect.spawn(
+        cwd=i1.instance_dir,
         command=i1.runtime.command,
-        args=["connect", f"{i1.host}:{i1.port}", "-u", "andy"],
+        args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("Enter password for andy: ")
-    cli.sendline("Testpa55")
-
-    cli.expect_exact(f'Connected to interactive console by address "{i1.host}:{i1.port}" under "andy" user')
+    cli.expect_exact('Connected to admin console by socket path "./admin.sock"')
     cli.expect_exact("type '\\help' for interactive help")
-    cli.expect_exact("sql> ")
+    cli.expect_exact("(admin) sql> ")
 
     # Set custom delimiter
     cli.sendline("\\set delimiter ?123")
@@ -1037,7 +873,7 @@ def test_command_history_with_delimiter(cluster: Cluster):
 
     # Press the down arrow key to clean the input
     cli.sendline("\033[B")  # \033[B is the escape sequence for the down arrow key
-    cli.expect_exact("sql> ")
+    cli.expect_exact("(admin) sql> ")
 
     # Set delimiter back to ;
     cli.sendline("\\set delimiter ;")
@@ -1057,7 +893,7 @@ def test_command_history_with_delimiter(cluster: Cluster):
 
     # Press the down arrow key to clean the input
     cli.sendline("\033[B")  # \033[B is the escape sequence for the down arrow key
-    cli.expect_exact("sql> ")
+    cli.expect_exact("(admin) sql> ")
 
 
 def test_picodata_version(cluster: Cluster):

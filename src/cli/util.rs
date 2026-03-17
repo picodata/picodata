@@ -1,7 +1,6 @@
 use crate::address::IprotoAddress;
 use crate::cli;
 use crate::cli::args;
-use crate::config::DEFAULT_USERNAME;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::traft;
 use crate::traft::error::Error;
@@ -355,35 +354,6 @@ impl TryFrom<&args::Expel> for Credentials {
     }
 }
 
-impl TryFrom<&args::Connect> for Credentials {
-    type Error = traft::error::Error;
-
-    fn try_from(value: &args::Connect) -> Result<Self, Self::Error> {
-        let username = value
-            .address
-            .user
-            .clone()
-            .unwrap_or_else(|| value.user.clone());
-
-        let password = if username == DEFAULT_USERNAME {
-            String::new()
-        } else {
-            match value.password_file.clone() {
-                Some(path) => read_password_from_file(&path)?,
-                None if !value.tls.cert_auth => {
-                    let prompt_message = format!("Enter password for {username}: ");
-                    prompt_password(&prompt_message).map_err(|e| {
-                        Error::other(format!("Failed to prompt for a password: {e}"))
-                    })?
-                }
-                _ => String::new(),
-            }
-        };
-
-        Ok(Credentials::new(username, password, value.auth_method))
-    }
-}
-
 impl TryFrom<&args::Status> for Credentials {
     type Error = traft::error::Error;
 
@@ -490,8 +460,8 @@ fn read_password_from_file(path: &Path) -> traft::Result<String> {
 ///
 /// # Internals
 ///
-/// This function bypasses `stdin` redirection (like `cat script.lua |
-/// picodata connect`) and always prompts a password from a TTY.
+/// This function bypasses `stdin` redirection and always prompts a
+/// password from a TTY.
 fn prompt_password(prompt: &str) -> std::io::Result<String> {
     // See also: <https://man7.org/linux/man-pages/man3/termios.3.html>.
     let mut tty = std::fs::File::options()

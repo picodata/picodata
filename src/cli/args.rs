@@ -1,5 +1,5 @@
 use crate::address::{HttpAddress, IprotoAddress, PgprotoAddress};
-use crate::config::{ByteSize, DEFAULT_USERNAME};
+use crate::config::ByteSize;
 use crate::util::Uppercase;
 
 use std::borrow::Cow;
@@ -38,7 +38,6 @@ pub enum Command {
     Tarantool(Tarantool),
     Expel(Expel),
     Test(Test),
-    Connect(Connect),
     Admin(Admin),
     Status(Status),
     #[clap(subcommand)]
@@ -278,8 +277,7 @@ pub struct Run {
 
     #[clap(long, value_name = "PATH", env = "PICODATA_ADMIN_SOCK")]
     /// Unix socket for the interactive console to connect using
-    /// `picodata admin`. Unlike connecting via `picodata connect`
-    /// console communication occurs in plain text
+    /// `picodata admin`. Console communication occurs in plain text
     /// and always operates under the admin account.
     ///
     /// By default the "admin.sock" in the instance directory is used.
@@ -557,69 +555,6 @@ fn try_parse_kv_uppercase(s: &str) -> Result<(Uppercase, Uppercase), String> {
         .split_once('=')
         .ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
     Ok((key.into(), value.into()))
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Connect
-////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Debug, Parser)]
-#[clap(about = "Connect to the Distributed SQL console")]
-#[clap(hide(true))]
-#[clap(after_help = "SPECIAL COMMANDS:
-    \\e            Open the editor specified by the EDITOR environment variable
-    \\help         Show this screen
-
-HOTKEYS:
-    Enter         Submit the request
-    Alt  + Enter  Insert a newline character
-    Ctrl + C      Discard current input
-    Ctrl + D      Quit interactive console
-")]
-pub struct Connect {
-    #[clap(
-        short = 'u',
-        long = "user",
-        value_name = "USER",
-        default_value = DEFAULT_USERNAME,
-        env = "PICODATA_USER"
-    )]
-    /// The username to connect with. Ignored if provided in `ADDRESS`.
-    pub user: String,
-
-    #[clap(short = 'a', long = "auth-type", value_name = "METHOD")]
-    /// The preferred authentication method.
-    pub auth_method: Option<AuthMethod>,
-
-    #[clap(value_name = "ADDRESS")]
-    /// Picodata instance address to connect. Format:
-    /// `[user@]host:port`.
-    pub address: IprotoAddress,
-
-    #[clap(long, env = "PICODATA_PASSWORD_FILE")]
-    /// Path to a plain-text file with a password.
-    /// If this option isn't provided, the password is prompted from the terminal.
-    pub password_file: Option<PathBuf>,
-
-    #[clap(
-        short = 't',
-        long = "timeout",
-        value_name = "TIMEOUT",
-        default_value = "20",
-        env = "PICODATA_CONNECT_TIMEOUT"
-    )]
-    /// Connection timeout in seconds.
-    pub timeout: u64,
-
-    #[clap(flatten)]
-    pub tls: IprotoTlsArgs,
-}
-
-impl Connect {
-    /// Get the arguments that will be passed to `tarantool_main`
-    pub fn tt_args(&self) -> Result<Vec<CString>, String> {
-        Ok(vec![current_exe()?])
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

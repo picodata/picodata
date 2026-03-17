@@ -27,7 +27,6 @@ fn main() -> ! {
             Command::Tarantool(args) => cli::tarantool::main(args),
             Command::Expel(args) => cli::expel::main(args),
             Command::Status(args) => cli::status::main(args),
-            Command::Connect(args) => cli::connect::main(args),
             Command::Admin(args) => cli::admin::main(args),
             Command::Config(cli::args::Config::Default(args)) => cli::default_config::main(args),
             Command::Plugin(args) => cli::plugin::main(args),

@@ -2245,7 +2245,7 @@ pub struct AlterSystemParameters {
     #[introspection(config_default = false)]
     pub auth_password_enforce_specialchars: bool,
 
-    /// Maximum number of login attempts through `picodata connect`.
+    /// Maximum number of login attempts.
     /// Each failed login attempt increases a local per user counter of failed attempts.
     /// When the counter reaches the value of this property any subsequent logins
     /// of this user will be denied.

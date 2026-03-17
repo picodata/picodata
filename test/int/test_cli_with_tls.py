@@ -32,43 +32,6 @@ class TestCliWithTls:
         [False, True],
         ids=["cert_auth_disabled", "cert_auth_enabled"],
     )
-    def test_connect_tls(self, instance_with_tls: Instance, cert_auth_enabled: bool):
-        i = instance_with_tls
-        user = TEST_USER
-
-        args = [
-            "connect",
-            f"{i.host}:{i.port}",
-            "-u",
-            user,
-            "--tls-cert",
-            str(SSL_DIR / "client.crt"),
-            "--tls-key",
-            str(SSL_DIR / "client.key"),
-            "--tls-ca",
-            str(SSL_DIR / "combined-ca.crt"),
-        ]
-        if cert_auth_enabled:
-            args.append("--tls-auth")
-        cli = pexpect.spawn(
-            command=i.runtime.command,
-            args=args,
-            encoding="utf-8",
-            timeout=CLI_TIMEOUT,
-        )
-        cli.logfile = sys.stdout
-
-        if not cert_auth_enabled:
-            cli.expect_exact(f"Enter password for {user}: ")
-            cli.sendline(TEST_PASSWORD)
-
-        cli.expect_exact("sql> ")
-
-    @pytest.mark.parametrize(
-        "cert_auth_enabled",
-        [False, True],
-        ids=["cert_auth_disabled", "cert_auth_enabled"],
-    )
     def test_status_tls(self, instance_with_tls: Instance, cert_auth_enabled: bool):
         i = instance_with_tls
         user = SERVICE_USER
