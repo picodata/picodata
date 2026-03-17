@@ -96,6 +96,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Introduce a local SQL execution path for eligible queries that bypasses
   `iproto` on the current instance; usage is exposed via the
   `pico_sql_local_query_total` and `pico_sql_local_query_duration` metrics.
+- Remove unnecessary `Motion(Full)` for queries that are guaranteed to be routed to a single node due to the sharding key filter.
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:

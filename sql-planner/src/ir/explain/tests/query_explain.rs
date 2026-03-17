@@ -70,6 +70,99 @@ fn test_query_explain_4() {
 }
 
 #[test]
+fn test_query_explain_prepared_single_key_aggregate_stays_single_node() {
+    let sql = r#"select count(*)
+        from t5
+        where a = $1"#;
+
+    let metadata = &RouterRuntimeMock::new();
+    let mut query =
+        ExecutingQuery::from_text_and_params(metadata, sql, vec![Value::Integer(1)]).unwrap();
+    insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
+    projection (count((*::int))::int -> "col_1")
+        selection "t5"."a"::int = 1::int
+            scan "t5"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    buckets = [3940]
+    "#);
+}
+
+#[test]
+fn test_query_explain_prepared_single_key_with_constant_keeps_reduce_stage() {
+    let sql = r#"select count(*)
+        from t5
+        where a = $1 and a = 1"#;
+
+    let metadata = &RouterRuntimeMock::new();
+    let mut query =
+        ExecutingQuery::from_text_and_params(metadata, sql, vec![Value::Integer(1)]).unwrap();
+    insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
+    projection (sum(("count_1"::int))::int -> "col_1")
+        motion [policy: full, program: ReshardIfNeeded]
+            projection (count((*::int))::int -> "count_1")
+                selection ("t5"."a"::int = 1::int) and ("t5"."a"::int = 1::int)
+                    scan "t5"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    buckets <= [3940]
+    "#);
+}
+
+#[test]
+fn test_query_explain_prepared_reused_parameters_keep_reduce_stage() {
+    let sql = r#"select count(*)
+        from t5
+        where a = $1 and a = $1 and a = $2"#;
+
+    let metadata = &RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(
+        metadata,
+        sql,
+        vec![Value::Integer(1), Value::Integer(1)],
+    )
+    .unwrap();
+    insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
+    projection (sum(("count_1"::int))::int -> "col_1")
+        motion [policy: full, program: ReshardIfNeeded]
+            projection (count((*::int))::int -> "count_1")
+                selection (("t5"."a"::int = 1::int) and ("t5"."a"::int = 1::int)) and ("t5"."a"::int = 1::int)
+                    scan "t5"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    buckets <= [3940]
+    "#);
+}
+
+#[test]
+fn test_query_explain_prepared_partial_composite_key_keeps_reduce_stage() {
+    let sql = r#"select count(*)
+        from "hash_testing"
+        where ("identification_number", "product_code") = ($1, trim("product_code"))"#;
+
+    let metadata = &RouterRuntimeMock::new();
+    let mut query =
+        ExecutingQuery::from_text_and_params(metadata, sql, vec![Value::Integer(1)]).unwrap();
+    let explain = query.to_explain().unwrap();
+
+    assert!(
+        explain.contains(r#"projection (sum(("count_1"::int))::int -> "col_1")"#),
+        "expected final aggregation in explain:\n{explain}"
+    );
+    assert!(
+        explain.contains(r#"motion [policy: full, program: ReshardIfNeeded]"#),
+        "expected full motion in explain:\n{explain}"
+    );
+    assert!(
+        explain.contains(r#"projection (count((*::int))::int -> "count_1")"#),
+        "expected local aggregation in explain:\n{explain}"
+    );
+}
+
+#[test]
 fn test_query_explain_5() {
     let sql = r#"select a from global_t"#;
 

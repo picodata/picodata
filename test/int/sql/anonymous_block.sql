@@ -290,8 +290,20 @@ QUERY statements must follow LET and RETURN QUERY statements
 -- TEST: block-with-motions
 -- SQL:
 DO $$ BEGIN RETURN QUERY SELECT * FROM t WHERE pk = 1 LIMIT 1; END $$;
--- ERROR:
-LIMIT query has motions which are not allowed in transactions
+-- EXPECTED:
+1,3,1
+
+-- TEST: block-with-subquery
+-- SQL:
+DO $$ BEGIN RETURN QUERY SELECT pk FROM (SELECT * FROM t WHERE pk = 1) s ORDER BY pk LIMIT 1; END $$;
+-- EXPECTED:
+1
+
+-- TEST: block-with-cte
+-- SQL:
+DO $$ BEGIN RETURN QUERY WITH cte AS (SELECT * FROM t WHERE pk = 1) SELECT pk FROM cte ORDER BY pk LIMIT 1; END $$;
+-- EXPECTED:
+1
 
 -- TEST: multibucket-block-1
 -- SQL:

@@ -19,9 +19,9 @@ use crate::ir::Plan;
 pub enum BucketSet {
     /// The actual `bucket_id`, which we can only determine at runtime.
     Exact(HashSet<u64, RepeatableState>),
-    /// The number of distinct `bucket_id`s in the worst-case scenario.
+    /// Lower and upper bound, inclusive for the number of distinct `bucket_id`s.
     /// This field is used only for static analysis during planning.
-    Unknown(usize),
+    Unknown(usize, usize),
 }
 
 impl BucketSet {
@@ -30,11 +30,13 @@ impl BucketSet {
             (BucketSet::Exact(a), BucketSet::Exact(b)) => {
                 Ok(BucketSet::Exact(a.intersection(b).copied().collect()))
             }
-            (BucketSet::Unknown(a), BucketSet::Unknown(b)) => Ok(BucketSet::Unknown(*a.min(b))),
-            _ => Err(SbroadError::Invalid(
-                Entity::Buckets,
-                Some("conjunct of exact and unknown sets".into()),
-            )),
+            (BucketSet::Exact(a), BucketSet::Unknown(_, rb))
+            | (BucketSet::Unknown(_, rb), BucketSet::Exact(a)) => {
+                Ok(BucketSet::Unknown(0, a.len().min(*rb)))
+            }
+            (BucketSet::Unknown(_, ra), BucketSet::Unknown(_, rb)) => {
+                Ok(BucketSet::Unknown(0, *ra.min(rb)))
+            }
         }
     }
 
@@ -43,12 +45,14 @@ impl BucketSet {
             (BucketSet::Exact(a), BucketSet::Exact(b)) => {
                 Ok(BucketSet::Exact(a.union(b).copied().collect()))
             }
-            (BucketSet::Unknown(a), BucketSet::Unknown(b)) => {
-                Ok(BucketSet::Unknown(a.saturating_add(*b)))
-            }
-            _ => Err(SbroadError::Invalid(
-                Entity::Buckets,
-                Some("disjunct of exact and unknown sets".into()),
+            (BucketSet::Exact(a), BucketSet::Unknown(lb, rb))
+            | (BucketSet::Unknown(lb, rb), BucketSet::Exact(a)) => Ok(BucketSet::Unknown(
+                a.len().saturating_add(*lb),
+                a.len().saturating_add(*rb),
+            )),
+            (BucketSet::Unknown(la, ra), BucketSet::Unknown(lb, rb)) => Ok(BucketSet::Unknown(
+                la.saturating_add(*lb),
+                ra.saturating_add(*rb),
             )),
         }
     }
@@ -78,6 +82,27 @@ impl Buckets {
     #[must_use]
     pub fn new_filtered(buckets: HashSet<u64, RepeatableState>) -> Self {
         Buckets::Filtered(BucketSet::Exact(buckets))
+    }
+
+    /// Get an unknown set of buckets.
+    #[must_use]
+    pub fn new_unknown(count: usize) -> Self {
+        Buckets::Filtered(BucketSet::Unknown(count, count))
+    }
+
+    /// Returns `true` if a query with these buckets can be executed
+    /// on a single node and does not require motion.
+    ///
+    /// For queries with conflicting conditions, such as `a = 1 and a = 2`,
+    /// returns `false` to avoid skipping the reduce stage.
+    pub fn is_single_node(&self) -> bool {
+        match self {
+            // We should insert `Motion(Full)` when lower bound is 0.
+            // https://git.picodata.io/core/picodata/-/issues/2788
+            Buckets::Filtered(BucketSet::Unknown(1, 1)) => true,
+            Buckets::Filtered(BucketSet::Exact(a)) if a.len() == 1 => true,
+            Buckets::Any | Buckets::All | Buckets::Filtered(_) => false,
+        }
     }
 
     pub fn determine_exec_location(&self) -> &str {
@@ -137,7 +162,13 @@ impl Display for Buckets {
                 }
                 write!(f, "]")
             }
-            Buckets::Filtered(BucketSet::Unknown(count)) => write!(f, "unknown({count})"),
+            Buckets::Filtered(BucketSet::Unknown(l, r)) => {
+                if l != r {
+                    write!(f, "unknown({l}..={r})")
+                } else {
+                    write!(f, "unknown({l})")
+                }
+            }
         }
     }
 }
@@ -188,7 +219,9 @@ impl Plan {
                 let right_expr = self.get_expression_node(right_id)?;
                 let right_columns = match right_expr {
                     Expression::Row(_) => right_expr.get_row_list()?.as_slice(),
-                    Expression::Constant(_) | Expression::Reference(_) => &[right_id],
+                    Expression::Constant(_)
+                    | Expression::Reference(_)
+                    | Expression::Parameter(_) => &[right_id],
                     _ => continue,
                 };
 
@@ -240,6 +273,8 @@ impl Plan {
                         }
                         values.clear();
                         values.reserve(key.positions.len());
+                        let mut has_parameter = false;
+                        let mut is_fixed_key = true;
                         for position in &key.positions {
                             // Since the sides in the "In" query can be of different lengths,
                             // we need to find a suitable position, as if they were the
@@ -257,15 +292,32 @@ impl Plan {
                             })?;
 
                             let right_column_expr = self.get_expression_node(right_column_id)?;
-                            if let Expression::Constant(_) = right_column_expr {
-                                values.push(self.as_const_value_ref(right_column_id)?);
-                            } else {
-                                // One of the columns is not a constant. Skip this key.
-                                values.clear();
-                                break;
+                            match right_column_expr {
+                                Expression::Constant(_) => {
+                                    values.push(self.as_const_value_ref(right_column_id)?)
+                                }
+                                // Before `bind_params` we can't get actual value, but the
+                                // query is still single-node if all sharding-key columns are
+                                // fixed by constants or parameters.
+                                Expression::Parameter(_) => {
+                                    has_parameter = true;
+                                }
+                                _ => {
+                                    // Row-dependent expressions on any sharding-key column make
+                                    // the whole candidate key unresolved, even if other columns
+                                    // are fixed by constants or parameters.
+                                    is_fixed_key = false;
+                                    values.clear();
+                                    break;
+                                }
                             }
                         }
-                        if !values.is_empty() {
+                        if !is_fixed_key {
+                            continue;
+                        }
+                        if has_parameter {
+                            buckets.push(Buckets::new_unknown(1));
+                        } else if !values.is_empty() {
                             let values_buckets = resolver.buckets_from_values(&values, tier)?;
                             buckets.push(values_buckets);
                         }
@@ -342,7 +394,7 @@ impl Plan {
             while let Some(node_id) = nodes.pop_back() {
                 let node_buckets = self
                     .get_buckets_from_expr(node_id, resolver)?
-                    .unwrap_or(default_buckets.clone());
+                    .unwrap_or_else(|| default_buckets.clone());
                 chain_buckets = chain_buckets.conjunct(&node_buckets)?;
             }
             result.push(chain_buckets);

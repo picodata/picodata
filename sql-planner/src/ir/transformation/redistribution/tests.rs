@@ -3,11 +3,33 @@ use crate::ir::node::Motion;
 use crate::ir::relation::Column;
 use crate::ir::relation::Table;
 use crate::ir::transformation::helpers::sql_to_ir;
+use crate::ir::transformation::helpers::sql_to_ir_without_bind;
 use crate::ir::transformation::helpers::sql_to_optimized_ir;
+use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::Plan;
 use crate::ir::Slices;
 use pretty_assertions::assert_eq;
 use rand::random;
+
+fn prepared_optimized_ir(query: &str, params: &[DerivedType]) -> Plan {
+    sql_to_ir_without_bind(query, params).optimize().unwrap()
+}
+
+fn has_full_motion(plan: &Plan) -> bool {
+    plan.slices
+        .slices()
+        .iter()
+        .flat_map(|slice| slice.positions().iter())
+        .any(|motion_id| {
+            matches!(
+                plan.get_relation_node(*motion_id).unwrap(),
+                Relational::Motion(Motion {
+                    policy: MotionPolicy::Full,
+                    ..
+                })
+            )
+        })
+}
 
 #[test]
 fn union_all_in_sq() {
@@ -416,6 +438,96 @@ fn test_slices_3() {
     ];
 
     assert_eq!(slices, expected);
+}
+
+#[test]
+fn prepared_partial_composite_key_keeps_full_motion_for_aggregate() {
+    let query = r#"SELECT count(*)
+        FROM "hash_testing"
+        WHERE ("identification_number", "product_code") = ($1, trim("product_code"))"#;
+
+    let plan = prepared_optimized_ir(query, &[DerivedType::new(UnrestrictedType::Integer)]);
+
+    assert!(
+        has_full_motion(&plan),
+        "expected a full motion for aggregate prepared-path, got slices: {:?}",
+        plan.slices
+    );
+}
+
+#[test]
+fn prepared_partial_composite_key_keeps_full_motion_for_order_limit() {
+    let query = r#"SELECT "product_code"
+        FROM "hash_testing"
+        WHERE ("identification_number", "product_code") = ($1, trim("product_code"))
+        ORDER BY "product_code"
+        LIMIT 1"#;
+
+    let plan = prepared_optimized_ir(query, &[DerivedType::new(UnrestrictedType::Integer)]);
+
+    assert!(
+        has_full_motion(&plan),
+        "expected a full motion for ORDER BY / LIMIT prepared-path, got slices: {:?}",
+        plan.slices
+    );
+}
+
+#[test]
+fn prepared_all_composite_sharding_key_columns_fixed_stays_single_node() {
+    let query = r#"SELECT count(*)
+        FROM "hash_testing"
+        WHERE ("identification_number", "product_code") = ($1, '111')"#;
+
+    let plan = prepared_optimized_ir(query, &[DerivedType::new(UnrestrictedType::Integer)]);
+
+    assert_eq!(Slices::empty(), plan.slices);
+}
+
+#[test]
+fn prepared_single_sharding_key_aggregate_stays_single_node() {
+    let query = r#"SELECT count(*)
+        FROM "t5"
+        WHERE "a" = $1"#;
+
+    let plan = prepared_optimized_ir(query, &[DerivedType::new(UnrestrictedType::Integer)]);
+
+    assert_eq!(Slices::empty(), plan.slices);
+}
+
+#[test]
+fn prepared_single_sharding_key_with_constant_keeps_full_motion_for_aggregate() {
+    let query = r#"SELECT count(*)
+        FROM "t5"
+        WHERE "a" = $1 AND "a" = 1"#;
+
+    let plan = prepared_optimized_ir(query, &[DerivedType::new(UnrestrictedType::Integer)]);
+
+    assert!(
+        has_full_motion(&plan),
+        "expected a full motion for aggregate prepared-path, got slices: {:?}",
+        plan.slices
+    );
+}
+
+#[test]
+fn prepared_reused_single_sharding_key_parameters_keep_full_motion_for_aggregate() {
+    let query = r#"SELECT count(*)
+        FROM "t5"
+        WHERE "a" = $1 AND "a" = $1 AND "a" = $2"#;
+
+    let plan = prepared_optimized_ir(
+        query,
+        &[
+            DerivedType::new(UnrestrictedType::Integer),
+            DerivedType::new(UnrestrictedType::Integer),
+        ],
+    );
+
+    assert!(
+        has_full_motion(&plan),
+        "expected a full motion for aggregate prepared-path, got slices: {:?}",
+        plan.slices
+    );
 }
 
 mod between;

@@ -321,23 +321,13 @@ SELECT "id", "name", "product_units" FROM ( SELECT "testing_space"."id", "testin
 | 0        | 0     | 0    | SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row) |
 +----------+-------+------+--------------------------------------------------------------+
 ''
-2. Query (ROUTER):
-SELECT "COL_0" as "id", "COL_1" as "name", "COL_2" as "product_units" FROM ( SELECT "COL_0", "COL_1", "COL_2" FROM "TMP_18001703636096001449_0136" ) ORDER BY 1 LIMIT 1
-+----------+-------+------+----------------------------------------------------------+
-| selectid | order | from | detail                                                   |
-+====================================================================================+
-| 0        | 0     | 0    | SCAN TABLE TMP_18001703636096001449_0136 (~1048576 rows) |
-|----------+-------+------+----------------------------------------------------------|
-| 0        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY                             |
-+----------+-------+------+----------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-4
 -- SQL:
 EXPLAIN (RAW) SELECT * from testing_space WHERE "id" = 1 GROUP BY 1, 2, 3 ORDER BY 1 LIMIT 1;
 -- EXPECTED:
 1. Query (FILTERED STORAGE):
-SELECT "gr_expr_1", "gr_expr_2", "gr_expr_3" FROM ( SELECT "testing_space"."id" as "gr_expr_1", "testing_space"."name" as "gr_expr_2", "testing_space"."product_units" as "gr_expr_3" FROM "testing_space" WHERE "testing_space"."id" = CAST(1 AS int) GROUP BY "testing_space"."id", "testing_space"."name", "testing_space"."product_units" ) ORDER BY 1 LIMIT 1
+SELECT "id", "name", "product_units" FROM ( SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = CAST(1 AS int) GROUP BY "testing_space"."id", "testing_space"."name", "testing_space"."product_units" ) ORDER BY 1 LIMIT 1
 +----------+-------+------+--------------------------------------------------------------+
 | selectid | order | from | detail                                                       |
 +========================================================================================+
@@ -345,18 +335,6 @@ SELECT "gr_expr_1", "gr_expr_2", "gr_expr_3" FROM ( SELECT "testing_space"."id" 
 |----------+-------+------+--------------------------------------------------------------|
 | 0        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY                                 |
 +----------+-------+------+--------------------------------------------------------------+
-''
-2. Query (ROUTER):
-SELECT "id", "name", "product_units" FROM ( SELECT "COL_0" as "id", "COL_1" as "name", "COL_2" as "product_units" FROM ( SELECT "COL_0", "COL_1", "COL_2" FROM "TMP_9550002613441822564_0136" ) GROUP BY "COL_0", "COL_1", "COL_2" ) ORDER BY 1 LIMIT 1
-+----------+-------+------+---------------------------------------------------------+
-| selectid | order | from | detail                                                  |
-+===================================================================================+
-| 0        | 0     | 0    | SCAN TABLE TMP_9550002613441822564_0136 (~1048576 rows) |
-|----------+-------+------+---------------------------------------------------------|
-| 0        | 0     | 0    | USE TEMP B-TREE FOR GROUP BY                            |
-|----------+-------+------+---------------------------------------------------------|
-| 0        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY                            |
-+----------+-------+------+---------------------------------------------------------+
 ''
 
 -- TEST: test_raw_explain-5

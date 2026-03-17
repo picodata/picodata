@@ -159,6 +159,33 @@ fn reuse_cte_values() {
 }
 
 #[test]
+fn reuse_single_node_cte_does_not_materialize() {
+    let sql = r#"
+        WITH cte (a) AS (
+            SELECT a FROM t
+            WHERE (a, b) = (1, 2)
+            LIMIT 1
+        )
+        SELECT * FROM cte c1 JOIN cte c2 ON true
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+    let explain = plan.as_explain().unwrap();
+
+    assert!(
+        explain.contains(r#"scan cte c1($0)"#),
+        "expected the first reused CTE reference to read from the shared subquery:\n{explain}"
+    );
+    assert!(
+        explain.contains(r#"scan cte c2($0)"#),
+        "expected the second reused CTE reference to read from the shared subquery:\n{explain}"
+    );
+    assert!(
+        !explain.contains("subquery $0:\nmotion [policy: full, program: ReshardIfNeeded]"),
+        "expected the reused single-node CTE to stay local without CTE-level full motion:\n{explain}"
+    );
+}
+
+#[test]
 fn join_cte() {
     let sql = r#"
         WITH cte (a) AS (SELECT "FIRST_NAME" FROM "test_space")
@@ -277,6 +304,34 @@ fn limit_pushdown_does_not_mutate_used_once_cte_with_aggr_over_it() {
     motion [policy: full, program: ReshardIfNeeded]
                     projection ("t"."a"::int -> "a")
                         scan "t"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn used_once_single_node_cte_does_not_materialize() {
+    let sql = r#"
+        WITH cte (a) AS (
+            SELECT a FROM t
+            WHERE (a, b) = (1, 2)
+            LIMIT 1
+        )
+        SELECT * FROM cte
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    projection ("cte"."a"::int -> "a")
+        scan cte cte($0)
+    subquery $0:
+    projection ("cte"."a"::int -> "a")
+                scan "cte"
+                    limit 1
+                        projection ("t"."a"::int -> "a")
+                            selection ROW("t"."a"::int, "t"."b"::int) = ROW(1::int, 2::int)
+                                scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000

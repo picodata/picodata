@@ -1303,7 +1303,13 @@ fn buckets_repr(buckets: &Buckets, bucket_count: u64) -> String {
 
             format!("[{}]", ranges.join(","))
         }
-        Buckets::Filtered(BucketSet::Unknown(count)) => format!("unknown({count})"),
+        Buckets::Filtered(BucketSet::Unknown(l, r)) => {
+            if l != r {
+                format!("unknown({l}..={r})")
+            } else {
+                format!("unknown({l})")
+            }
+        }
         Buckets::Any => "any".into(),
     }
 }

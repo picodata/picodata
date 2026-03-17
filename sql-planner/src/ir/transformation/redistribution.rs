@@ -7,10 +7,13 @@ use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
+use std::hash::{Hash, Hasher};
+use twox_hash::XxHash3_64;
 
 use crate::errors::{Entity, SbroadError};
 use crate::frontend::sql::ir::SubtreeCloner;
 use crate::ir::api::children::Children;
+use crate::ir::bucket::{Buckets, BucketsResolver};
 use crate::ir::distribution::{Distribution, Key, KeySet};
 use crate::ir::expression::ColumnPositionMap;
 use crate::ir::node::expression::Expression;
@@ -609,6 +612,63 @@ impl Plan {
                 Ok(Some(*motion_id))
             }
             Ordering::Less => Ok(None),
+        }
+    }
+
+    /// Recursively traverses to the first `Selection` node and
+    /// tries to prove that we will end up in exactly one bucket.
+    pub(crate) fn is_single_node_subtree(&self, rel_id: NodeId) -> Result<bool, SbroadError> {
+        struct StaticResolver;
+
+        impl BucketsResolver for StaticResolver {
+            fn buckets_from_motion(
+                &self,
+                _motion_id: NodeId,
+            ) -> Result<Option<Buckets>, SbroadError> {
+                Ok(None)
+            }
+
+            fn buckets_from_values(
+                &self,
+                values: &[&Value],
+                _tier: Option<&SmolStr>,
+            ) -> Result<Buckets, SbroadError> {
+                let mut hasher = XxHash3_64::new();
+                values.iter().for_each(|value| value.hash(&mut hasher));
+                let hash = hasher.finish();
+                Ok(Buckets::new_filtered(HashSet::from_iter([hash])))
+            }
+        }
+
+        let rel = self.get_relation_node(rel_id)?;
+        match rel {
+            Relational::Projection(_)
+            | Relational::ScanSubQuery(_)
+            | Relational::ScanCte(_)
+            | Relational::GroupBy(_)
+            | Relational::Having(_)
+            | Relational::OrderBy(_)
+            | Relational::Limit(_) => {
+                let child_id = self.get_first_rel_child(rel_id)?;
+                self.is_single_node_subtree(child_id)
+            }
+            Relational::Selection(sel) => {
+                let child_dist = self.get_rel_distribution(sel.child)?;
+                if !matches!(child_dist, Distribution::Segment { .. }) {
+                    return Ok(false);
+                }
+                let buckets = self.get_expression_tree_buckets(
+                    sel.filter,
+                    &[sel.child],
+                    &sel.subqueries,
+                    &StaticResolver {},
+                )?;
+                if buckets.is_single_node() {
+                    return Ok(true);
+                }
+                self.is_single_node_subtree(sel.child)
+            }
+            _ => Ok(false),
         }
     }
 
@@ -2188,8 +2248,12 @@ impl Plan {
         Ok(map)
     }
 
-    fn resolve_cte_conflicts(&mut self, cte_id: NodeId) -> Result<Strategy, SbroadError> {
-        // We always gather CTE data on the router node.
+    fn resolve_cte_conflicts(
+        &mut self,
+        cte_id: NodeId,
+        force_materialize: bool,
+    ) -> Result<Strategy, SbroadError> {
+        // Distributed CTEs and reused router-resident CTEs are gathered on the router node.
         let mut map = Strategy::new(cte_id);
         let child_id = self.get_first_rel_child(cte_id)?;
 
@@ -2202,7 +2266,9 @@ impl Plan {
 
         let child_dist = self.get_rel_distribution(child_id)?;
         match child_dist {
-            Distribution::Global | Distribution::Single if !contains_values => {
+            Distribution::Global | Distribution::Single
+                if !contains_values && !force_materialize =>
+            {
                 // The data is already on the router node, no need to build a virtual table.
                 map.upsert_child(child_id, MotionPolicy::None, Program::default());
             }
@@ -2596,6 +2662,17 @@ impl Plan {
         let mut cte_motions: AHashMap<CteChildId, MotionId> = AHashMap::with_capacity(CTE_CAPACITY);
         let post_tree = PostOrder::new(|node| self.nodes.rel_iter(node), REL_CAPACITY);
         let nodes = post_tree.traverse_into_vec(top_id);
+        let mut cte_ref_counts: AHashMap<CteChildId, usize> = AHashMap::with_capacity(CTE_CAPACITY);
+        let mut counted_cte_refs = AHashSet::with_capacity(nodes.len());
+        for LevelNode(_, id) in &nodes {
+            if !counted_cte_refs.insert(*id) {
+                continue;
+            }
+
+            if let Relational::ScanCte(ScanCte { child, .. }) = self.get_relation_node(*id)? {
+                *cte_ref_counts.entry(*child).or_insert(0) += 1;
+            }
+        }
         // Set of already visited nodes. Used for the case of BETWEEN where two expressions may
         // refer to the same relational node.
         let mut visited = AHashSet::with_capacity(nodes.len());
@@ -2661,6 +2738,12 @@ impl Plan {
                         Distribution::Single | Distribution::Global => {
                             self.set_dist(output, child_dist)?;
                             self.pushdown_limit(id)?;
+                        }
+                        Distribution::Any | Distribution::Segment { .. }
+                            if self.is_single_node_subtree(rel_child_id)? =>
+                        {
+                            // All data is on a single shard, no motion needed.
+                            self.set_dist(output, child_dist)?;
                         }
                         Distribution::Any | Distribution::Segment { .. } => {
                             // Rows are distributed, so motion needed with full policy to
@@ -2740,16 +2823,29 @@ impl Plan {
                     self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
 
                     let child_dist = self.get_rel_distribution(rel_child_id)?;
-                    if !matches!(child_dist, Distribution::Single | Distribution::Global) {
-                        // We must execute OrderBy on a single node containing all the rows
-                        // that child relational node outputs.
-                        // In case child node has distribution `Single` or `Global` we already have
-                        // all the needed rows on one of the instances.
-                        let mut strategy = Strategy::new(id);
-                        strategy.upsert_child(rel_child_id, MotionPolicy::Full, Program::default());
-                        self.insert_motion_nodes(strategy)?;
+                    match child_dist {
+                        Distribution::Single | Distribution::Global => {
+                            self.set_dist(output, Distribution::Single)?
+                        }
+                        Distribution::Any | Distribution::Segment { .. }
+                            if self.is_single_node_subtree(rel_child_id)? =>
+                        {
+                            // We don't need any motion, since all data is located in a single shard.
+                            self.set_dist(output, child_dist.clone())?;
+                        }
+                        _ => {
+                            // We must execute OrderBy on a single node containing all the rows
+                            // that child relational node outputs.
+                            let mut strategy = Strategy::new(id);
+                            strategy.upsert_child(
+                                rel_child_id,
+                                MotionPolicy::Full,
+                                Program::default(),
+                            );
+                            self.insert_motion_nodes(strategy)?;
+                            self.set_dist(output, Distribution::Single)?
+                        }
                     }
-                    self.set_dist(output, Distribution::Single)?;
                 }
                 RelOwned::Projection(Projection {
                     output,
@@ -2817,7 +2913,10 @@ impl Plan {
                         continue;
                     }
 
-                    if windows.is_empty() && self.add_two_stage_aggregation(id)? {
+                    if windows.is_empty()
+                        && !self.is_single_node_subtree(target_dist_node)?
+                        && self.add_two_stage_aggregation(id)?
+                    {
                         // We have successfully added two stage aggregation.
                         continue;
                     }
@@ -2897,23 +2996,32 @@ impl Plan {
                             *motion_id,
                         )?;
                     } else {
-                        let strategy = self.resolve_cte_conflicts(id)?;
-                        self.insert_motion_nodes(strategy)?;
-                        let new_child_id = self.get_first_rel_child(id)?;
-                        let new_child_node = self.get_relation_node(new_child_id)?;
-                        if let Relational::Motion { .. } = new_child_node {
-                            cte_motions.insert(child, new_child_id);
+                        let is_single_node = self.is_single_node_subtree(child)?;
+                        let is_reused = cte_ref_counts.get(&child).copied().unwrap_or(0) > 1;
+                        if !is_single_node {
+                            let strategy = self.resolve_cte_conflicts(id, is_reused)?;
+                            self.insert_motion_nodes(strategy)?;
+                            let new_child_id = self.get_first_rel_child(id)?;
+                            let new_child_node = self.get_relation_node(new_child_id)?;
+                            if let Relational::Motion { .. } = new_child_node {
+                                cte_motions.insert(child, new_child_id);
+                            }
                         }
                     }
-                    // We don't materialize CTEs with global and single distribution.
-                    // So, for global child let's preserve global distribution for CTE.
-                    // Otherwise force a single distribution.
                     let child_id = self.get_first_rel_child(id)?;
                     let child_dist = self.get_rel_distribution(child_id)?;
-                    if matches!(child_dist, Distribution::Global) {
-                        self.set_dist(output, Distribution::Global)?;
-                    } else {
-                        self.set_dist(output, Distribution::Single)?;
+                    match child_dist {
+                        Distribution::Global => {
+                            self.set_dist(output, Distribution::Global)?;
+                        }
+                        Distribution::Single => {
+                            self.set_dist(output, Distribution::Single)?;
+                        }
+                        // Single-node subtree: preserve the distribution so that
+                        // bucket_discovery can route the query to the correct shard.
+                        other => {
+                            self.set_dist(output, other.clone())?;
+                        }
                     }
                 }
             }

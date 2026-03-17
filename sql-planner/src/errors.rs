@@ -27,7 +27,7 @@ pub enum Entity {
     AggregateSignature,
     /// corresponding to struct 'AggregateCollector'
     AggregateCollector,
-    /// corresponding to struct Buckets
+    /// corresponding to enum Buckets
     Buckets,
     /// raw bytes
     Bytes,
