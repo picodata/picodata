@@ -90,10 +90,9 @@ crate::define_rpc_request! {
         }
 
         let mut replication_cfg = Vec::with_capacity(req.replicaset_peers.len());
-        let tls_config = &PicodataConfig::get().instance.iproto_tls;
+        let tls_config = &PicodataConfig::get().instance.iproto.tls;
         for address in &req.replicaset_peers {
-            replication_cfg.push(ListenConfig::new_for_pico_service(address,
-                tls_config));
+            replication_cfg.push(ListenConfig::new_for_pico_service(address, tls_config));
         }
 
         crate::error_injection!("BROKEN_REPLICATION" => { replication_cfg.clear(); });

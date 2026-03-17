@@ -2927,7 +2927,7 @@ def test_sdk_metrics(instance: Instance):
     plugin = _PLUGIN_W_SDK
     [service] = _PLUGIN_W_SDK_SERVICES
 
-    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+    http_listen = instance.http_listen
 
     install_and_enable_plugin(
         instance,
@@ -3654,3 +3654,28 @@ DROP TABLE author;
         match=f"migration context validation for plugin `{plugin}:0.1.0` failed: PluginError: this context is too long, man",
     ):
         i1.sql(f'ALTER PLUGIN "{plugin}" MIGRATE TO 0.1.0')
+
+
+################################################################################
+# PicoListener API Tests
+################################################################################
+
+
+def test_plugin_listener_config_validation(cluster: Cluster):
+    """Test that listener configuration is validated."""
+    plugin = "testplug_listener"
+    version = "0.1.0"
+    service = "listenerservice"
+
+    # Deploy cluster
+    i1, *_ = cluster.deploy(instance_count=1)
+
+    # Install and enable plugin - listener not configured in instance config
+    # so it should handle gracefully (disabled)
+    i1.sql(f"CREATE PLUGIN {plugin} {version}")
+    i1.sql(f"ALTER PLUGIN {plugin} {version} ADD SERVICE {service} TO TIER default")
+    i1.sql(f"ALTER PLUGIN {plugin} {version} ENABLE")
+
+    # Plugin should handle missing config gracefully
+    # Instance should still be online
+    i1.wait_online()

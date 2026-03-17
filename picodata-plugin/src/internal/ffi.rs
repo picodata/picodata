@@ -38,6 +38,12 @@ extern "C" {
 
     pub fn pico_ffi_raft_info() -> types::RaftInfo;
 
+    #[allow(improper_ctypes)]
+    pub fn pico_ffi_get_listener_config(
+        plugin: FfiSafeStr,
+        service: FfiSafeStr,
+    ) -> ROption<types::FfiListenerConfig>;
+
     // There is false positive warning by `improper_ctypes` here.
     // We assume that this function is ffi safe because using only
     // `stable_abi` and repr "C" types here.

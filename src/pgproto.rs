@@ -1,17 +1,15 @@
 #![warn(clippy::or_fun_call)]
 
 use self::{client::PgClient, error::PgResult, tls::TlsAcceptor};
-use crate::{
-    address::PgprotoAddress, introspection::Introspection, static_ref, storage::Catalog, tlog,
-    traft::error::Error,
-};
+use crate::config::PgprotoConfig;
+use crate::{static_ref, storage::Catalog, tlog, traft::error::Error};
 use prometheus::IntCounter;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 #[cfg(target_os = "linux")]
 use std::os::linux::net::SocketAddrExt;
 use std::{
     io,
-    path::{Path, PathBuf},
+    path::Path,
     sync::{
         atomic::{AtomicBool, Ordering},
         LazyLock,
@@ -69,45 +67,6 @@ pub fn register_metrics(registry: &prometheus::Registry) -> prometheus::Result<(
 /// WARNING: if it is initialized, it does not directly mean
 /// that PostgreSQL server protocol is currently running.
 static mut CONTEXT: Option<Context> = None;
-
-/// Main postgres server configuration.
-#[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
-#[serde(deny_unknown_fields)]
-pub struct Config {
-    #[introspection(config_default = PgprotoAddress::default())]
-    pub listen: Option<PgprotoAddress>,
-
-    #[introspection(config_default = self.listen())]
-    pub advertise: Option<PgprotoAddress>,
-
-    #[introspection(config_default = false)]
-    pub ssl: Option<bool>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cert_file: Option<PathBuf>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_file: Option<PathBuf>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ca_file: Option<PathBuf>,
-}
-
-impl Config {
-    pub fn listen(&self) -> PgprotoAddress {
-        self.listen
-            .clone()
-            .expect("must be checked before the call")
-    }
-
-    pub fn advertise(&self) -> PgprotoAddress {
-        self.advertise
-            .clone()
-            .expect("must be checked before the call")
-    }
-
-    pub fn ssl(&self) -> bool {
-        self.ssl.expect("set by default")
-    }
-}
 
 fn get_peer_address(raw: &CoIOStream) -> io::Result<SmolStr> {
     let addr = socket2::SockRef::from(raw).peer_addr()?;
@@ -214,7 +173,11 @@ struct Context {
 }
 
 impl Context {
-    fn new(config: &Config, instance_dir: &Path, storage: &'static Catalog) -> Result<Self, Error> {
+    fn new(
+        config: &PgprotoConfig,
+        instance_dir: &Path,
+        storage: &'static Catalog,
+    ) -> Result<Self, Error> {
         let listen = config.listen();
         let host = listen.host.as_str();
         let port = listen.port.parse::<u16>().map_err(|_| {
@@ -222,13 +185,21 @@ impl Context {
         })?;
 
         let tls_acceptor = config
-            .ssl()
+            .tls
+            .enabled()
             .then(|| {
+                if config.tls.password_file.is_some() {
+                    tlog!(
+                        Warning,
+                        "Ignoring password_file option when creating a pgproto TlsAcceptor"
+                    );
+                }
+
                 TlsAcceptor::new_from_paths(
                     instance_dir,
-                    config.cert_file.as_deref(),
-                    config.key_file.as_deref(),
-                    config.ca_file.as_deref(),
+                    config.tls.cert_file.as_deref(),
+                    config.tls.key_file.as_deref(),
+                    config.tls.ca_file.as_deref(),
                 )
             })
             .transpose()
@@ -255,7 +226,7 @@ impl Context {
 /// variable, instead of returning a context back to the caller.
 /// **XXX: panics if called more than once!**
 pub fn init_once(
-    config: &Config,
+    config: &PgprotoConfig,
     instance_dir: &Path,
     storage: &'static Catalog,
 ) -> Result<(), Error> {

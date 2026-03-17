@@ -36,7 +36,7 @@ def set_jwt_enabled(instance: Instance, enabled: bool):
 
 def authorize(instance: Instance, username: str, password) -> Tuple[Dict[str, str], int]:
     create_user(instance)
-    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+    http_listen = instance.http_listen
     request = Request(
         f"http://{http_listen}/api/v1/session",
         data=json.dumps({"username": username, "password": password}).encode(),
@@ -97,7 +97,7 @@ def test_http_routes(instance: Instance):
         end)
         """
     )
-    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+    http_listen = instance.http_listen
     with urlopen(f"http://{http_listen}/hello") as response:
         assert response.read() == b"world"
 
@@ -105,7 +105,7 @@ def test_http_routes(instance: Instance):
 @pytest.mark.webui
 @pytest.mark.parametrize("auth_token", ["authorized", "unauthorized"], indirect=True)
 def test_webui_basic(instance: Instance, auth_token: Optional[str]):
-    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+    http_listen = instance.http_listen
 
     instance_version = instance.eval("return pico.PICODATA_VERSION")
     instance_slab = instance.call("box.slab.info")
@@ -199,7 +199,7 @@ def test_webui_with_plugin(cluster: Cluster):
     plugin_2_service = "testservice_1"
     version_1 = "0.1.0"
 
-    i1 = cluster.add_instance(wait_online=True, tier="red", enable_http=True)
+    i1 = cluster.add_instance(wait_online=True, tier="red")
     i2 = cluster.add_instance(wait_online=True, tier="blue")
     i3 = cluster.add_instance(wait_online=True, tier="green")
 
@@ -227,7 +227,7 @@ def test_webui_with_plugin(cluster: Cluster):
         "blue",
     )
 
-    http_listen = i1.env["PICODATA_HTTP_LISTEN"]
+    http_listen = i1.http_listen
     instance_version = i1.eval("return pico.PICODATA_VERSION")
 
     with urlopen(f"http://{http_listen}/") as response:
@@ -248,21 +248,21 @@ def test_webui_with_plugin(cluster: Cluster):
         "name": "red_1_1",
         "binaryAddress": i1.iproto_listen,
         "pgAddress": i1.pg_listen,
-        "httpAddress": http_listen,
+        "httpAddress": i1.http_listen,
     }
     instance_2 = {
         **instance_template,
         "name": "blue_1_1",
         "binaryAddress": i2.iproto_listen,
         "pgAddress": i2.pg_listen,
-        "httpAddress": "",
+        "httpAddress": i2.http_listen,
     }
     instance_3 = {
         **instance_template,
         "name": "green_1_1",
         "binaryAddress": i3.iproto_listen,
         "pgAddress": i3.pg_listen,
-        "httpAddress": "",
+        "httpAddress": i3.http_listen,
     }
 
     replicaset_template = {
@@ -363,7 +363,7 @@ def test_webui_replicaset_state(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=True, tier="red")
     i2 = cluster.add_instance(wait_online=True, tier="red")
     i3 = cluster.add_instance(wait_online=True, tier="red")
-    i4 = cluster.add_instance(wait_online=True, tier="red", enable_http=True)
+    i4 = cluster.add_instance(wait_online=True, tier="red")
 
     # 1. Make sure i3 is leader
     # 2. Kill i3
@@ -379,7 +379,7 @@ def test_webui_replicaset_state(cluster: Cluster):
     # data from global tables (as instance state etc) could be
     # distributed in cluster with delay significant enough to
     # cause flaks in tests
-    http_listen = i4.env["PICODATA_HTTP_LISTEN"]
+    http_listen = i4.http_listen
     instance_version = i1.eval("return pico.PICODATA_VERSION")
 
     with urlopen(f"http://{http_listen}/") as response:
@@ -393,7 +393,6 @@ def test_webui_replicaset_state(cluster: Cluster):
         "currentState": "Online",
         "targetState": "Online",
         "version": instance_version,
-        "httpAddress": "",
     }
     instance_1 = {
         **instance_template,
@@ -401,6 +400,7 @@ def test_webui_replicaset_state(cluster: Cluster):
         "isLeader": True,
         "binaryAddress": i1.iproto_listen,
         "pgAddress": i1.pg_listen,
+        "httpAddress": i1.http_listen,
     }
     instance_2 = {
         **instance_template,
@@ -408,6 +408,7 @@ def test_webui_replicaset_state(cluster: Cluster):
         "isLeader": False,
         "binaryAddress": i2.iproto_listen,
         "pgAddress": i2.pg_listen,
+        "httpAddress": i2.http_listen,
     }
     instance_3 = {
         **instance_template,
@@ -417,6 +418,8 @@ def test_webui_replicaset_state(cluster: Cluster):
         "targetState": "Offline",
         "binaryAddress": i3.iproto_listen,
         "pgAddress": i3.pg_listen,
+        # i3 is down, so can't get the http address
+        "httpAddress": "",
     }
     instance_4 = {
         **instance_template,
@@ -424,7 +427,7 @@ def test_webui_replicaset_state(cluster: Cluster):
         "isLeader": True,
         "binaryAddress": i4.iproto_listen,
         "pgAddress": i4.pg_listen,
-        "httpAddress": http_listen,
+        "httpAddress": i4.http_listen,
     }
 
     replicaset_template = {
@@ -509,10 +512,10 @@ def test_webui_can_vote_flag(cluster: Cluster):
     """
     cluster.set_config_file(yaml=cluster_cfg)
 
-    i1 = cluster.add_instance(wait_online=True, tier="red", enable_http=True)
+    i1 = cluster.add_instance(wait_online=True, tier="red")
     i2 = cluster.add_instance(wait_online=True, tier="blue")
 
-    http_listen = i1.env["PICODATA_HTTP_LISTEN"]
+    http_listen = i1.http_listen
     instance_version = i1.eval("return pico.PICODATA_VERSION")
 
     with urlopen(f"http://{http_listen}/") as response:
@@ -533,14 +536,14 @@ def test_webui_can_vote_flag(cluster: Cluster):
         "name": "red_1_1",
         "binaryAddress": i1.iproto_listen,
         "pgAddress": i1.pg_listen,
-        "httpAddress": http_listen,
+        "httpAddress": i1.http_listen,
     }
     instance_2 = {
         **instance_template,
         "name": "blue_1_1",
         "binaryAddress": i2.iproto_listen,
         "pgAddress": i2.pg_listen,
-        "httpAddress": "",
+        "httpAddress": i2.http_listen,
     }
 
     replicaset_template = {
@@ -613,17 +616,18 @@ def test_webui_https(cluster: Cluster):
             red:
                 replication_factor: 1
     instance:
-        https:
-            enabled: true
-            key_file: {https_certs_path / "key.pem"}
-            cert_file: {https_certs_path / "cert.pem"}
-            password_file: {https_certs_path / "password.txt"}
+        http:
+            tls:
+                enabled: true
+                key_file: {https_certs_path / "key.pem"}
+                cert_file: {https_certs_path / "cert.pem"}
+                password_file: {https_certs_path / "password.txt"}
     """
     cluster.set_config_file(yaml=cluster_cfg)
 
     i1 = cluster.add_instance(wait_online=True, tier="red", enable_http=True)
 
-    https_listen = i1.env["PICODATA_HTTP_LISTEN"]
+    https_listen = i1.http_listen
 
     # Create contxext to validate SSL over self-signed cert
     context = ssl.create_default_context()
@@ -663,7 +667,7 @@ def test_jwt_session_login_invalid_credentials(instance: Instance):
 
 @pytest.mark.webui
 def test_jwt_session_refresh_success(instance: Instance):
-    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+    http_listen = instance.http_listen
 
     response_data, _ = authorize(instance, USERNAME, PASSWORD)
     refresh_token = response_data["refresh"]
@@ -685,7 +689,7 @@ def test_jwt_session_refresh_success(instance: Instance):
 @pytest.mark.webui
 @pytest.mark.parametrize("auth_token", ["authorized", "unauthorized"], indirect=True)
 def test_ui_config(instance: Instance, auth_token):
-    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+    http_listen = instance.http_listen
 
     with get_url(f"http://{http_listen}/api/v1/config", auth_token) as response:
         assert response.headers.get("content-type") == "application/json"
@@ -718,7 +722,7 @@ cluster:
 
     # Step 1: Deploy 2 instances - RF=3 so replicaset is not ready
     i1, i2 = cluster.deploy(instance_count=2, tier="default", enable_http=True)
-    http_listen = i1.env["PICODATA_HTTP_LISTEN"]
+    http_listen = i1.http_listen
     base_url = f"http://{http_listen}/api/v1/health"
 
     # Startup probe should return 503 (replicaset not ready - only 2 of 3)
@@ -806,7 +810,7 @@ def test_healthcheck_status_api(cluster: Cluster):
     3. Unhealthy state when instance is offline (includes degraded reasons)
     """
     i1, i2, i3 = cluster.deploy(instance_count=3, enable_http=True)
-    http_listen = i1.env["PICODATA_HTTP_LISTEN"]
+    http_listen = i1.http_listen
     status_url = f"http://{http_listen}/api/v1/health/status"
 
     create_user(i1)

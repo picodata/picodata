@@ -1,4 +1,4 @@
-use abi_stable::std_types::{RString, RVec};
+use abi_stable::std_types::{ROption, ROption::RNone, ROption::RSome, RString, RVec};
 use abi_stable::StableAbi;
 use tarantool::session::UserId;
 use tarantool::space::{SpaceId, UpdateOps};
@@ -379,5 +379,186 @@ impl RaftInfo {
     /// - PreCandidate
     pub fn state(&self) -> RaftState {
         self.state
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ListenerConfig
+////////////////////////////////////////////////////////////////////////////////
+
+/// FFI-safe listener configuration passed from picodata to plugins.
+///
+/// Contains all the information needed to create a [`PicoListener`].
+///
+/// [`PicoListener`]: crate::transport::listener::PicoListener
+#[derive(Clone, Debug, Default)]
+#[repr(C)]
+pub struct FfiListenerConfig {
+    /// Whether the listener is enabled.
+    pub enabled: bool,
+    /// The address to listen on.
+    pub listen: ROption<RString>,
+    /// The address to advertise.
+    pub advertise: ROption<RString>,
+    /// Whether TLS is enabled.
+    pub tls_enabled: bool,
+    /// Path to certificate file.
+    pub cert_file: ROption<RString>,
+    /// Path to private key file.
+    pub key_file: ROption<RString>,
+    /// Path to CA certificate file for mTLS.
+    pub ca_file: ROption<RString>,
+    /// Path to password file for encrypted keys.
+    pub password_file: ROption<RString>,
+}
+
+/// Builder for creating `FfiListenerConfig` instances.
+///
+/// This builder provides a safer and more readable way to construct
+/// `FfiListenerConfig` compared to passing many arguments to a constructor.
+///
+/// # Example
+///
+/// ```ignore
+/// let config = FfiListenerConfigBuilder::new()
+///     .enabled(true)
+///     .listen("127.0.0.1:8080")
+///     .tls_enabled(true)
+///     .cert_file("/path/to/cert.pem")
+///     .key_file("/path/to/key.pem")
+///     .build();
+/// ```
+#[derive(Default)]
+pub struct FfiListenerConfigBuilder {
+    enabled: bool,
+    listen: Option<String>,
+    advertise: Option<String>,
+    tls_enabled: bool,
+    cert_file: Option<String>,
+    key_file: Option<String>,
+    ca_file: Option<String>,
+    password_file: Option<String>,
+}
+
+impl FfiListenerConfigBuilder {
+    /// Creates a new builder with default values.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets whether the listener is enabled.
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    /// Sets the address to listen on.
+    pub fn listen(mut self, listen: impl Into<String>) -> Self {
+        self.listen = Some(listen.into());
+        self
+    }
+
+    /// Sets the address to advertise.
+    pub fn advertise(mut self, advertise: impl Into<String>) -> Self {
+        self.advertise = Some(advertise.into());
+        self
+    }
+
+    /// Sets whether TLS is enabled.
+    pub fn tls_enabled(mut self, tls_enabled: bool) -> Self {
+        self.tls_enabled = tls_enabled;
+        self
+    }
+
+    /// Sets the path to the certificate file.
+    pub fn cert_file(mut self, cert_file: impl Into<String>) -> Self {
+        self.cert_file = Some(cert_file.into());
+        self
+    }
+
+    /// Sets the path to the private key file.
+    pub fn key_file(mut self, key_file: impl Into<String>) -> Self {
+        self.key_file = Some(key_file.into());
+        self
+    }
+
+    /// Sets the path to the CA certificate file for mTLS.
+    pub fn ca_file(mut self, ca_file: impl Into<String>) -> Self {
+        self.ca_file = Some(ca_file.into());
+        self
+    }
+
+    /// Sets the path to the password file for encrypted keys.
+    pub fn password_file(mut self, password_file: impl Into<String>) -> Self {
+        self.password_file = Some(password_file.into());
+        self
+    }
+
+    /// Builds the `FfiListenerConfig`.
+    pub fn build(self) -> FfiListenerConfig {
+        let to_roption = |opt: Option<String>| match opt {
+            Some(s) => RSome(RString::from(s)),
+            None => RNone,
+        };
+        FfiListenerConfig {
+            enabled: self.enabled,
+            listen: to_roption(self.listen),
+            advertise: to_roption(self.advertise),
+            tls_enabled: self.tls_enabled,
+            cert_file: to_roption(self.cert_file),
+            key_file: to_roption(self.key_file),
+            ca_file: to_roption(self.ca_file),
+            password_file: to_roption(self.password_file),
+        }
+    }
+}
+
+impl FfiListenerConfig {
+    /// Returns a new builder for creating `FfiListenerConfig`.
+    pub fn builder() -> FfiListenerConfigBuilder {
+        FfiListenerConfigBuilder::new()
+    }
+
+    /// Returns true if listener is enabled.
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
+    /// Returns the listen address, or None if not specified.
+    pub fn listen(&self) -> Option<&str> {
+        self.listen.as_ref().into_option().map(|s| s.as_str())
+    }
+
+    /// Returns the advertise address, or None if not specified.
+    pub fn advertise(&self) -> Option<&str> {
+        self.advertise.as_ref().into_option().map(|s| s.as_str())
+    }
+
+    /// Returns true if TLS is enabled.
+    pub fn is_tls_enabled(&self) -> bool {
+        self.tls_enabled
+    }
+
+    /// Returns the certificate file path, or None if not specified.
+    pub fn cert_file(&self) -> Option<&str> {
+        self.cert_file.as_ref().into_option().map(|s| s.as_str())
+    }
+
+    /// Returns the key file path, or None if not specified.
+    pub fn key_file(&self) -> Option<&str> {
+        self.key_file.as_ref().into_option().map(|s| s.as_str())
+    }
+
+    /// Returns the CA file path, or None if not specified.
+    pub fn ca_file(&self) -> Option<&str> {
+        self.ca_file.as_ref().into_option().map(|s| s.as_str())
+    }
+
+    /// Returns the password file path, or None if not specified.
+    pub fn password_file(&self) -> Option<&str> {
+        self.password_file
+            .as_ref()
+            .into_option()
+            .map(|s| s.as_str())
     }
 }

@@ -40,8 +40,8 @@ pub(super) fn prepare(
             storage::PeerAddresses::TABLE_ID,
             &traft::PeerAddress {
                 raft_id: instance.raft_id,
-                address: config.instance.iproto_advertise().to_host_port(),
-                connection_type: traft::ConnectionType::Iproto,
+                address: config.instance.iproto.advertise().to_host_port(),
+                connection_type: traft::ConnectionType::System(traft::SystemConnectionType::Iproto),
             },
             ADMIN_ID,
         )
@@ -52,13 +52,43 @@ pub(super) fn prepare(
             storage::PeerAddresses::TABLE_ID,
             &traft::PeerAddress {
                 raft_id: instance.raft_id,
-                address: config.instance.pgproto_advertise().to_host_port(),
-                connection_type: traft::ConnectionType::Pgproto,
+                address: config.instance.pgproto.advertise().to_host_port(),
+                connection_type: traft::ConnectionType::System(
+                    traft::SystemConnectionType::Pgproto,
+                ),
             },
             ADMIN_ID,
         )
         .expect("serialization cannot fail"),
     );
+    ops.push(
+        op::Dml::replace(
+            storage::PeerAddresses::TABLE_ID,
+            &traft::PeerAddress {
+                raft_id: instance.raft_id,
+                address: config.instance.http.advertise().to_host_port().into(),
+                connection_type: traft::ConnectionType::System(traft::SystemConnectionType::Http),
+            },
+            ADMIN_ID,
+        )
+        .expect("serialization cannot fail"),
+    );
+
+    for (plugin_name, service_name, advertise) in config.plugin_listener_addresses() {
+        ops.push(
+            op::Dml::replace(
+                storage::PeerAddresses::TABLE_ID,
+                &traft::PeerAddress {
+                    raft_id: instance.raft_id,
+                    address: advertise.into(),
+                    connection_type: traft::ConnectionType::plugin(plugin_name, service_name),
+                },
+                ADMIN_ID,
+            )
+            .expect("serialization cannot fail"),
+        );
+    }
+
     ops.push(
         op::Dml::insert(storage::Instances::TABLE_ID, &instance, ADMIN_ID)
             .expect("serialization cannot fail"),

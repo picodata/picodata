@@ -156,7 +156,10 @@ impl PoolWorker {
         let (stop_sender, stop_receiver) = oneshot::channel();
         let (inbox_ready_sender, inbox_ready_receiver) = watch::channel(());
         let instance_name = instance_name.into();
-        let full_address = storage.try_get(raft_id, &traft::ConnectionType::Iproto)?;
+        let full_address = storage.try_get(
+            raft_id,
+            &traft::ConnectionType::System(traft::SystemConnectionType::Iproto),
+        )?;
         let (address, port) = full_address
             .rsplit_once(':')
             .ok_or_else(|| Error::AddressParseFailure(full_address.clone()))?;
@@ -514,9 +517,10 @@ impl ConnectionPool {
         // Check if address of this peer is known.
         // No need to store the result,
         // because it will be updated in the loop
-        let _ = self
-            .peer_addresses
-            .try_get(raft_id, &traft::ConnectionType::Iproto)?;
+        let _ = self.peer_addresses.try_get(
+            raft_id,
+            &traft::ConnectionType::System(traft::SystemConnectionType::Iproto),
+        )?;
         let worker = PoolWorker::run(
             raft_id,
             instance_name.clone(),
@@ -797,7 +801,11 @@ mod tests {
         node.storage.instances.put(&instance).unwrap();
         node.storage
             .peer_addresses
-            .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
+            .put(
+                instance.raft_id,
+                &listen,
+                &traft::ConnectionType::System(traft::SystemConnectionType::Iproto),
+            )
             .unwrap();
 
         crate::luamod::setup();
@@ -860,7 +868,11 @@ mod tests {
         node.storage.instances.put(&instance).unwrap();
         node.storage
             .peer_addresses
-            .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
+            .put(
+                instance.raft_id,
+                &listen,
+                &traft::ConnectionType::System(traft::SystemConnectionType::Iproto),
+            )
             .unwrap();
 
         crate::luamod::setup();
@@ -955,7 +967,11 @@ mod tests {
         node.storage.instances.put(&instance).unwrap();
         node.storage
             .peer_addresses
-            .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
+            .put(
+                instance.raft_id,
+                &listen,
+                &traft::ConnectionType::System(traft::SystemConnectionType::Iproto),
+            )
             .unwrap();
 
         crate::luamod::setup();
@@ -1039,7 +1055,11 @@ mod tests {
         storage.instances.put(&instance).unwrap();
         storage
             .peer_addresses
-            .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
+            .put(
+                instance.raft_id,
+                &listen,
+                &traft::ConnectionType::System(traft::SystemConnectionType::Iproto),
+            )
             .unwrap();
         tlog!(Info, "TEST: connecting {listen}");
 

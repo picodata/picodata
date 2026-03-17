@@ -15,7 +15,6 @@
 
 use crate::access_control::user_by_id;
 use crate::address::HttpAddress;
-use crate::http_server::HttpsConfig;
 use crate::instance::Instance;
 use crate::instance::StateVariant::*;
 use crate::rpc::join::compress_join_response;
@@ -28,6 +27,7 @@ use crate::storage::schema::copy_dir_async;
 use crate::storage::schema::copy_file_async;
 use crate::storage::schema::ddl_meta_space_update_operable;
 use crate::storage::PropertyName;
+use crate::storage::SystemTable;
 use crate::tarantool::{rm_tarantool_files, ListenConfig};
 use crate::traft::error::Error;
 use crate::traft::op;
@@ -335,10 +335,10 @@ fn preload_http() {
 
 fn start_http_server(
     HttpAddress { host, port, .. }: &HttpAddress,
-    https_config: HttpsConfig,
+    tls: config::socket::TlsSettings,
     registry: &'static prometheus::Registry,
 ) -> Result<(), Error> {
-    let (cert_path, key_path, password_file_path, ca_file_path) = if https_config.enabled() {
+    let (cert_path, key_path, password_file_path, ca_file_path) = if tls.enabled() {
         // Helper lambda to extract path as Option<String>
         let extract_path = |option: &Option<PathBuf>| {
             option
@@ -346,10 +346,10 @@ fn start_http_server(
                 .map(|path| path.to_string_lossy().into_owned())
         };
 
-        let cert_path = extract_path(&https_config.cert_file);
-        let key_path = extract_path(&https_config.key_file);
-        let password_file_path = extract_path(&https_config.password_file);
-        let ca_file_path = extract_path(&https_config.ca_file);
+        let cert_path = extract_path(&tls.cert_file);
+        let key_path = extract_path(&tls.key_file);
+        let password_file_path = extract_path(&tls.password_file);
+        let ca_file_path = extract_path(&tls.ca_file);
 
         (cert_path, key_path, password_file_path, ca_file_path)
     } else {
@@ -362,12 +362,16 @@ fn start_http_server(
     lua.exec_with(
         r#"
         local host, port, ssl_cert, ssl_key, ssl_password_file, ssl_ca_file_path = ...;
-        local httpd = require('http.server').new(host, port, {
+        local opts = {
             ssl_cert_file = ssl_cert,
             ssl_key_file = ssl_key,
             ssl_password_file = ssl_password_file,
-            ssl_ca_file = ssl_ca_file_path
-        });
+            ssl_ca_file = ssl_ca_file_path,
+        }
+        if ssl_ca_file_path ~= nil then
+            opts.ssl_verify_client = "on"
+        end
+        local httpd = require('http.server').new(host, port, opts);
         httpd:start();
         _G.pico.httpd = httpd
         "#,
@@ -1112,7 +1116,8 @@ fn init_common(
     // See doc comments in tlog.rs for explanation.
     tlog::set_core_logger_is_initialized(true);
 
-    iproto::tls_init_once(&config.instance.iproto_tls)?;
+    let effective_iproto_tls = &config.instance.iproto.tls;
+    iproto::tls_init_once(effective_iproto_tls)?;
 
     if let Err(e) = tarantool::set_cfg(cfg) {
         // Tarantool error is taken separately as in `set_cfg`
@@ -1423,15 +1428,15 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
 
     // Start listening only after we've checked if this is a restart.
     // Postjoin phase has its own idea of when to start listening.
-    let tls_config = &config.instance.iproto_tls;
+    let tls_config = &config.instance.iproto.tls;
     let listen_config = ListenConfig::new(
-        config.instance.iproto_listen().to_host_port().into(),
+        config.instance.iproto.listen().to_host_port().into(),
         tls_config,
     );
     tarantool::set_cfg_field("listen", listen_config).map_err(|err| {
         Error::other(format!(
             "failed to start listening on iproto {}: {}",
-            config.instance.iproto_listen().to_host_port(),
+            config.instance.iproto.listen().to_host_port(),
             err
         ))
     })?;
@@ -1727,7 +1732,8 @@ fn start_pre_join(
         // case we simply send another proc_raft_join RPC with the same
         // instance_uuid and everything works correctly.
         instance_uuid = uuid;
-        iproto::tls_init_once(&config.instance.iproto_tls)?;
+        let effective_iproto_tls = &config.instance.iproto.tls;
+        iproto::tls_init_once(effective_iproto_tls)?;
     } else {
         // This is this initial attempt to join the cluster as a new picodata
         // instance. We need to generate a new instance_uuid and persist it to
@@ -1785,16 +1791,30 @@ fn start_pre_join(
         }
     });
 
+    let plugin_listener_addresses: Vec<_> = config
+        .plugin_listener_addresses()
+        .into_iter()
+        .map(|(plugin, service, addr)| {
+            (
+                SmolStr::from(plugin),
+                SmolStr::from(service),
+                SmolStr::from(addr),
+            )
+        })
+        .collect();
+
     let req = rpc::join::Request {
         cluster_name: config.cluster_name().into(),
         instance_name: config.instance.name(),
         replicaset_name: config.instance.replicaset_name(),
-        advertise_address: config.instance.iproto_advertise().to_host_port(),
-        pgproto_advertise_address: config.instance.pgproto_advertise().to_host_port(),
+        advertise_address: config.instance.iproto.advertise().to_host_port(),
+        pgproto_advertise_address: config.instance.pgproto.advertise().to_host_port(),
         failure_domain: config.instance.failure_domain().clone(),
         tier: config.effective_instance_tier().to_smolstr(),
         picodata_version: version,
         uuid: instance_uuid,
+        http_advertise_address: config.instance.http.advertise().to_host_port().into(),
+        plugin_listener_addresses,
     };
 
     const INITIAL_TIMEOUT: Duration = Duration::from_secs(1);
@@ -1867,13 +1887,15 @@ fn setup_metrics_and_start_http_server(
         Box::leak(Box::new(reg))
     };
 
-    if let Some(addr) = config
-        .instance
-        .http_listen
-        .as_ref()
-        .or(config.instance.http_listen.as_ref())
-    {
-        start_http_server(addr, config.instance.https.clone(), registry)?;
+    let http_config = if config.instance.http.enabled() {
+        let addr = config.instance.http.listen.clone().unwrap_or_default();
+        Some((addr, config.instance.http.tls.clone()))
+    } else {
+        None
+    };
+
+    if let Some((addr, tls)) = http_config {
+        start_http_server(&addr, tls, registry)?;
 
         if cfg!(feature = "webui") {
             tlog!(Info, "Web UI is enabled");
@@ -1905,6 +1927,115 @@ fn setup_metrics_and_start_http_server(
                 &instance.current_state.variant,
             );
         }
+    }
+
+    Ok(())
+}
+
+/// Migrates HTTP advertise address to `_pico_peer_address` for instances that
+/// were created before HTTP address tracking was implemented.
+///
+/// This is done per-instance rather than via a governor-driven catalog upgrade
+/// because the governor doesn't have enough information to populate addresses
+/// for all instances (e.g. some may be offline at upgrade time). Instead, each
+/// instance writes its own HTTP address on startup, ensuring the migration
+/// completes naturally as instances restart during a rolling upgrade.
+///
+/// The HTTP address is needed by webui to display instance information.
+fn migrate_http_peer_address_if_missing(
+    config: &PicodataConfig,
+    node: &traft::node::Node,
+) -> Result<(), Error> {
+    // Skip migration if the cluster is not fully upgraded to the version that
+    // supports ConnectionType::Http. Writing "http" to _pico_peer_address
+    // while older instances (25.5.x) are still running would cause them to
+    // panic: their EntryIter calls `.expect()` on decode, and "http" is an
+    // unknown ConnectionType variant in those versions.
+    //
+    // Use properties.get() directly instead of cluster_version() to avoid
+    // panicking when ClusterVersion is not yet replicated at postjoin time.
+    let cluster_version = node
+        .storage
+        .properties
+        .get::<SmolStr>(PropertyName::ClusterVersion.as_str())?;
+    let Some(cluster_version) = cluster_version else {
+        tlog!(
+            Info,
+            "skipping HTTP peer address migration: cluster_version not yet available"
+        );
+        return Ok(());
+    };
+    let Ok(cv) = crate::version::Version::try_from(cluster_version.as_str()) else {
+        tlog!(
+            Info,
+            "skipping HTTP peer address migration: cluster_version {cluster_version} is not parseable"
+        );
+        return Ok(());
+    };
+    if cv.major < 25 || (cv.major == 25 && cv.minor < 6) {
+        tlog!(
+            Info,
+            "skipping HTTP peer address migration: cluster_version {cluster_version} \
+             does not yet support ConnectionType::Http"
+        );
+        return Ok(());
+    }
+
+    let raft_id = node.raft_id();
+
+    let http_conn_type = traft::ConnectionType::System(traft::SystemConnectionType::Http);
+    let existing = node.storage.peer_addresses.get(raft_id, &http_conn_type)?;
+
+    if existing.is_some() {
+        return Ok(());
+    }
+
+    tlog!(
+        Info,
+        "migrating HTTP advertise address to _pico_peer_address"
+    );
+
+    let http_advertise = config.instance.http.advertise().to_host_port();
+    let peer_address = traft::PeerAddress {
+        raft_id,
+        address: http_advertise.into(),
+        connection_type: http_conn_type,
+    };
+
+    let op = traft::op::Dml::replace(
+        storage::PeerAddresses::TABLE_ID,
+        &peer_address,
+        schema::ADMIN_ID,
+    )
+    .expect("encoding should not fail");
+
+    let timeout = std::time::Duration::from_secs(30);
+    let deadline = fiber::clock().saturating_add(timeout);
+
+    loop {
+        if fiber::clock() > deadline {
+            return Err(Error::other(
+                "timeout while migrating HTTP peer address to storage",
+            ));
+        }
+
+        // Recreate the predicate on each iteration to get fresh applied_index.
+        // This is necessary because the applied_index can change between iterations
+        // due to concurrent operations (e.g., rebalancing, other raft entries).
+        let ranges = vec![cas::Range::new(storage::PeerAddresses::TABLE_ID)];
+        let predicate = cas::Predicate::with_applied_index(ranges);
+        let cas_req =
+            cas::Request::new(traft::op::Op::Dml(op.clone()), predicate, schema::ADMIN_ID)?;
+
+        let res = cas::compare_and_swap_and_wait(&cas_req, deadline)?;
+        if let Some(e) = res.into_retriable_error() {
+            tlog!(Debug, "CaS for HTTP address migration rejected: {e}");
+            fiber::sleep(std::time::Duration::from_millis(250));
+            continue;
+        }
+
+        tlog!(Info, "HTTP advertise address migration completed");
+        break;
     }
 
     Ok(())
@@ -1965,7 +2096,7 @@ fn postjoin(
     );
     let node = node.expect("failed initializing raft node");
 
-    let pg_config = &config.instance.pg;
+    let pg_config = &config.instance.pgproto;
     let instance_dir = config.instance.instance_dir();
     pgproto::init_once(pg_config, instance_dir, &node.storage)?;
 
@@ -1988,15 +2119,15 @@ fn postjoin(
         // assert!(node.status().raft_state.is_leader());
     }
 
-    let tls_config = &config.instance.iproto_tls;
+    let tls_config = &config.instance.iproto.tls;
     let listen_config = ListenConfig::new(
-        config.instance.iproto_listen().to_host_port().into(),
+        config.instance.iproto.listen().to_host_port().into(),
         tls_config,
     );
     tarantool::set_cfg_field("listen", listen_config).map_err(|err| {
         Error::other(format!(
             "failed to change listen address to {}: {}",
-            config.instance.iproto_listen().to_host_port(),
+            config.instance.iproto.listen().to_host_port(),
             err
         ))
     })?;
@@ -2030,6 +2161,12 @@ fn postjoin(
         config.instance.failure_domain(),
         boot_timeout,
     )?;
+
+    // Migrate HTTP advertise address for instances upgraded from older versions.
+    // This ensures that HTTP address is present in _pico_peer_address for webui.
+    // Must be done after update_our_target_state_to_online, which establishes
+    // connection with the leader.
+    migrate_http_peer_address_if_missing(config, node)?;
 
     // Wait for target state to change to Online, so that sentinel doesn't send
     // a redundant update instance request.
@@ -2105,7 +2242,11 @@ fn start_join(
         for (raft_id, address) in &resp.peer_addresses {
             storage
                 .peer_addresses
-                .put(*raft_id, address, &traft::ConnectionType::Iproto)
+                .put(
+                    *raft_id,
+                    address,
+                    &traft::ConnectionType::System(traft::SystemConnectionType::Iproto),
+                )
                 .unwrap();
         }
         raft_storage.persist_raft_id(raft_id).unwrap();

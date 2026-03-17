@@ -1,3 +1,4 @@
+use crate::config::PicodataConfig;
 use crate::info::{InstanceInfo, RaftInfo, VersionInfo};
 use crate::instance::StateVariant;
 use crate::plugin::{rpc, PluginIdentifier};
@@ -474,6 +475,57 @@ pub extern "C" fn pico_ffi_background_set_jobs_shutdown_timeout(
     );
 
     0
+}
+
+/// Get listener configuration for a plugin service.
+///
+/// Returns `RNone` if no `plugin.<name>.service.<name>.listener` section
+/// was defined in the configuration file.
+#[no_mangle]
+extern "C" fn pico_ffi_get_listener_config(
+    plugin: FfiSafeStr,
+    service: FfiSafeStr,
+) -> ROption<types::FfiListenerConfig> {
+    // SAFETY: strings are passed from the same process and outlive this function call
+    let plugin_name = unsafe { plugin.as_str() };
+    let service_name = unsafe { service.as_str() };
+
+    let listener_cfg = PicodataConfig::get()
+        .instance
+        .plugin
+        .as_ref()
+        .and_then(|plugins| plugins.get(plugin_name))
+        .and_then(|plugin_cfg| plugin_cfg.service.get(service_name))
+        .map(|service_cfg| &service_cfg.listener);
+
+    let Some(cfg) = listener_cfg else {
+        return RNone;
+    };
+
+    let mut builder = types::FfiListenerConfig::builder()
+        .enabled(cfg.enabled())
+        .tls_enabled(cfg.tls.enabled());
+
+    if let Some(listen) = &cfg.listen {
+        builder = builder.listen(listen.to_string());
+    }
+    if let Some(advertise) = cfg.advertise() {
+        builder = builder.advertise(advertise.to_string());
+    }
+    if let Some(cert_file) = &cfg.tls.cert_file {
+        builder = builder.cert_file(cert_file.to_string_lossy());
+    }
+    if let Some(key_file) = &cfg.tls.key_file {
+        builder = builder.key_file(key_file.to_string_lossy());
+    }
+    if let Some(ca_file) = &cfg.tls.ca_file {
+        builder = builder.ca_file(ca_file.to_string_lossy());
+    }
+    if let Some(password_file) = &cfg.tls.password_file {
+        builder = builder.password_file(password_file.to_string_lossy());
+    }
+
+    RSome(builder.build())
 }
 
 /// See [`crate::auth::authenticate_with_password`] for more information.

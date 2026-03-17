@@ -14,7 +14,7 @@ import psycopg
 
 @pytest.mark.webui
 def test_metrics_ok(instance: Instance) -> None:
-    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+    http_listen = instance.http_listen
     response = requests.get(f"http://{http_listen}/metrics")
     assert response.ok
 
@@ -23,8 +23,8 @@ def test_metrics_ok(instance: Instance) -> None:
 # and accessible on /metrics endpoint
 @pytest.mark.webui
 def test_picodata_metrics(cluster: Cluster) -> None:
-    instance = cluster.add_instance(name="i1", init_replication_factor=2, enable_http=True)
-    i2 = cluster.add_instance(name="i2", enable_http=True)
+    instance = cluster.add_instance(name="i1", init_replication_factor=2)
+    i2 = cluster.add_instance(name="i2")
 
     instance.wait_online()
     instance.sql("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT) DISTRIBUTED GLOBALLY")
@@ -39,7 +39,7 @@ def test_picodata_metrics(cluster: Cluster) -> None:
         instance.sql("INSERT INTO test VALUES (2, 'two')")
         assert e.value.args[:2] == ("SbroadError", "sbroad: Lua error (IR dispatch)")
 
-    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+    http_listen = instance.http_listen
     url = f"http://{http_listen}/metrics"
     response = requests.get(url)
     assert response.ok, f"Metrics endpoint {url} did not return OK: {response.status_code}"
@@ -340,7 +340,7 @@ def all_but_first_report_online(cluster: Cluster, offline_name):
 
 
 def test_instance_state_metric(cluster: Cluster):
-    i1, i2, i3 = cluster.deploy(instance_count=3, enable_http=True)
+    i1, i2, i3 = cluster.deploy(instance_count=3)
 
     # check after startup all instances report all other instances as Online
     for instance in cluster.instances:
@@ -382,7 +382,7 @@ def test_instance_state_metric(cluster: Cluster):
     assert i3.call("box.space._raft_log:len") == 0
 
     # add new instance to trigger snapshot transfer, to check that metrics are updated with snapshot
-    i4 = cluster.add_instance(enable_http=True, peers=[i2.iproto_listen])
+    i4 = cluster.add_instance(peers=[i2.iproto_listen])
 
     for instance in cluster.instances[1:]:
         samples_by_instance_name = get_instance_state_metric(instance)

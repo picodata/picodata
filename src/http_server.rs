@@ -5,9 +5,9 @@ use crate::storage::Catalog;
 use crate::storage::ToEntryIter as _;
 use crate::tier::Tier;
 use crate::traft::network::ConnectionPool;
-use crate::traft::{self, node, ConnectionType};
+use crate::traft::{self, node, Result};
 use crate::util::Uppercase;
-use crate::{has_states, introspection::Introspection, tlog, unwrap_ok_or};
+use crate::{has_states, tlog, unwrap_ok_or};
 use futures::future::join_all;
 use http::StatusCode;
 use raft::Storage as _;
@@ -15,7 +15,6 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use smol_str::{format_smolstr, ToSmolStr};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tarantool::fiber;
 use tarantool::fiber::r#async::timeout::IntoTimeout;
@@ -85,30 +84,6 @@ impl From<HttpResponse> for HttpResponseTable {
                 tarantool::tlua::AsTable((("content-type", content_type),)),
             ),
         ))
-    }
-}
-
-#[derive(
-    Clone, Debug, Default, Eq, Introspection, PartialEq, serde::Deserialize, serde::Serialize,
-)]
-pub struct HttpsConfig {
-    #[introspection(config_default = false)]
-    pub enabled: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cert_file: Option<PathBuf>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_file: Option<PathBuf>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ca_file: Option<PathBuf>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub password_file: Option<PathBuf>,
-}
-
-impl HttpsConfig {
-    #[inline]
-    pub fn enabled(&self) -> bool {
-        self.enabled
-            .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 }
 
@@ -447,29 +422,29 @@ fn get_peer_addresses(
         })
         .map(|item| (item.raft_id, true))
         .collect();
+    use crate::traft::{ConnectionType, SystemConnectionType};
     let i = storage.peer_addresses.iter()?.filter(|peer| {
-        peer.connection_type == ConnectionType::Iproto
-            || peer.connection_type == ConnectionType::Pgproto
+        matches!(
+            peer.connection_type,
+            ConnectionType::System(SystemConnectionType::Iproto)
+                | ConnectionType::System(SystemConnectionType::Pgproto)
+        )
     });
     Ok(i.filter(|pa| leaders.get(&pa.raft_id) == Some(&true)).fold(
         HashMap::new(),
         |mut acc, pa| {
-            acc.entry(pa.raft_id)
-                .and_modify(|(iproto, pgproto)| {
-                    // Destructure the tuple for clarity
-                    match pa.connection_type {
-                        ConnectionType::Iproto => *iproto = pa.address.clone(),
-                        ConnectionType::Pgproto => *pgproto = pa.address.clone(),
-                    }
-                })
-                .or_insert_with(|| {
-                    // Use or_insert_with for lazy evaluation
-                    match pa.connection_type {
-                        ConnectionType::Iproto => (pa.address, "".into()),
-                        ConnectionType::Pgproto => ("".into(), pa.address),
-                    }
-                });
-            acc // Only inserts if key doesn't exist
+            let (iproto, pgproto) = acc.entry(pa.raft_id).or_default();
+            match pa.connection_type {
+                ConnectionType::System(SystemConnectionType::Iproto) => {
+                    *iproto = pa.address.clone()
+                }
+                ConnectionType::System(SystemConnectionType::Pgproto) => {
+                    *pgproto = pa.address.clone()
+                }
+                ConnectionType::System(SystemConnectionType::Http)
+                | ConnectionType::Plugin { .. } => {}
+            };
+            acc
         },
     ))
 }

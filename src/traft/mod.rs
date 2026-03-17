@@ -35,10 +35,78 @@ pub const INIT_RAFT_TERM: RaftTerm = 1;
 pub type Result<T, E = error::Error> = std::result::Result<T, E>;
 
 ::tarantool::define_str_enum! {
-    /// An enumeration of all connection types that picodata supports.
-    pub enum ConnectionType {
+    /// An enumeration of system connection types that picodata supports.
+    pub enum SystemConnectionType {
         Iproto = "iproto",
         Pgproto = "pgproto",
+        Http = "http",
+    }
+}
+
+/// Connection type that includes both system protocols and plugin listeners.
+///
+/// For system protocols (iproto, pgproto, http), use `ConnectionType::System`.
+/// For plugin listeners, use `ConnectionType::Plugin { plugin, service }`.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ConnectionType {
+    /// System protocol connection type.
+    System(SystemConnectionType),
+    /// Plugin service listener.
+    /// Stored as "plugin_name.service_name" in the database.
+    Plugin { plugin: SmolStr, service: SmolStr },
+}
+
+impl ConnectionType {
+    /// Creates a new plugin connection type.
+    #[inline]
+    pub fn plugin(plugin: impl Into<SmolStr>, service: impl Into<SmolStr>) -> Self {
+        Self::Plugin {
+            plugin: plugin.into(),
+            service: service.into(),
+        }
+    }
+
+    /// Returns the string representation for storage in _pico_peer_address.
+    #[inline]
+    pub fn as_storage_string(&self) -> SmolStr {
+        match self {
+            Self::System(ct) => ct.as_str().into(),
+            Self::Plugin { plugin, service } => {
+                smol_str::format_smolstr!("plugin:{}.{}", plugin, service)
+            }
+        }
+    }
+
+    /// Parses a storage string back into a ConnectionType.
+    pub fn from_storage_string(s: &str) -> Self {
+        if let Ok(ct) = s.parse::<SystemConnectionType>() {
+            return Self::System(ct);
+        }
+
+        if let Some(rest) = s.strip_prefix("plugin:") {
+            if let Some((plugin, service)) = rest.split_once('.') {
+                return Self::Plugin {
+                    plugin: plugin.into(),
+                    service: service.into(),
+                };
+            }
+            return Self::Plugin {
+                plugin: rest.into(),
+                service: SmolStr::default(),
+            };
+        }
+
+        panic!("unknown connection type: {s}");
+    }
+
+    /// Returns the system connection type if this is a system type, or `None`
+    /// for plugin listeners.
+    #[inline]
+    pub fn as_system(&self) -> Option<SystemConnectionType> {
+        match self {
+            Self::System(ct) => Some(*ct),
+            Self::Plugin { .. } => None,
+        }
     }
 }
 
@@ -133,8 +201,12 @@ impl ReadStateContext {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
-/// Serializable struct representing an address of a member of raft group
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+/// Serializable struct representing an address of a member of raft group.
+///
+/// Supports both system connection types ("iproto", "pgproto", "http") and
+/// plugin service listeners. The `connection_type` field is stored as a plain
+/// string in `_pico_peer_address`, so custom serde impls are used.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PeerAddress {
     /// Used for identifying raft nodes.
     /// Must be unique in the raft group.
@@ -145,10 +217,48 @@ pub struct PeerAddress {
     pub address: Address,
 
     /// Used for identifying the connection type.
-    /// For example "iproto", "pgproto".
+    /// For example "iproto", "pgproto", or "plugin_name.service_name".
     pub connection_type: ConnectionType,
 }
 impl Encode for PeerAddress {}
+
+// connection_type is stored as a plain string in the database, so we need
+// custom serde impls that go through ConnectionType::as_storage_string /
+// from_storage_string rather than the derived representation.
+impl<'de> serde::Deserialize<'de> for PeerAddress {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct Raw {
+            raft_id: RaftId,
+            address: Address,
+            connection_type: SmolStr,
+        }
+
+        let raw = Raw::deserialize(deserializer)?;
+        Ok(Self {
+            raft_id: raw.raft_id,
+            address: raw.address,
+            connection_type: ConnectionType::from_storage_string(&raw.connection_type),
+        })
+    }
+}
+
+impl serde::Serialize for PeerAddress {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("PeerAddress", 3)?;
+        state.serialize_field("raft_id", &self.raft_id)?;
+        state.serialize_field("address", &self.address)?;
+        state.serialize_field("connection_type", &self.connection_type.as_storage_string())?;
+        state.end()
+    }
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////
 /// Serializable representation of `raft::prelude::Entry`.
@@ -689,6 +799,131 @@ fn invalid_msgpack(error: impl ToString) -> BoxError {
 mod test {
     use super::*;
     use tarantool::tuple::ToTupleBuffer;
+
+    // =========================================================================
+    // ConnectionType tests
+    // =========================================================================
+
+    #[test]
+    fn test_extended_connection_type_plugin_constructor() {
+        let ct = ConnectionType::plugin("myplugin", "myservice");
+        match ct {
+            ConnectionType::Plugin { plugin, service } => {
+                assert_eq!(plugin.as_str(), "myplugin");
+                assert_eq!(service.as_str(), "myservice");
+            }
+            _ => panic!("Expected Plugin variant"),
+        }
+    }
+
+    #[test]
+    fn test_extended_connection_type_as_storage_string_system() {
+        let ct = ConnectionType::System(SystemConnectionType::Iproto);
+        assert_eq!(ct.as_storage_string().as_str(), "iproto");
+
+        let ct = ConnectionType::System(SystemConnectionType::Pgproto);
+        assert_eq!(ct.as_storage_string().as_str(), "pgproto");
+
+        let ct = ConnectionType::System(SystemConnectionType::Http);
+        assert_eq!(ct.as_storage_string().as_str(), "http");
+    }
+
+    #[test]
+    fn test_extended_connection_type_as_storage_string_plugin() {
+        let ct = ConnectionType::plugin("radix", "api");
+        assert_eq!(ct.as_storage_string().as_str(), "plugin:radix.api");
+
+        let ct = ConnectionType::plugin("my_plugin", "my_service");
+        assert_eq!(
+            ct.as_storage_string().as_str(),
+            "plugin:my_plugin.my_service"
+        );
+    }
+
+    #[test]
+    fn test_extended_connection_type_from_storage_string_system() {
+        assert!(matches!(
+            ConnectionType::from_storage_string("iproto"),
+            ConnectionType::System(SystemConnectionType::Iproto)
+        ));
+        assert!(matches!(
+            ConnectionType::from_storage_string("pgproto"),
+            ConnectionType::System(SystemConnectionType::Pgproto)
+        ));
+        assert!(matches!(
+            ConnectionType::from_storage_string("http"),
+            ConnectionType::System(SystemConnectionType::Http)
+        ));
+    }
+
+    #[test]
+    fn test_extended_connection_type_from_storage_string_plugin() {
+        let ct = ConnectionType::from_storage_string("plugin:myplugin.myservice");
+        match ct {
+            ConnectionType::Plugin { plugin, service } => {
+                assert_eq!(plugin.as_str(), "myplugin");
+                assert_eq!(service.as_str(), "myservice");
+            }
+            _ => panic!("Expected Plugin variant"),
+        }
+    }
+
+    #[test]
+    fn test_extended_connection_type_roundtrip() {
+        // Test roundtrip for plugin type
+        let original = ConnectionType::plugin("test", "svc");
+        let s = original.as_storage_string();
+        let restored = ConnectionType::from_storage_string(&s);
+        assert_eq!(original, restored);
+
+        // Test roundtrip for system types
+        for ct in [
+            SystemConnectionType::Iproto,
+            SystemConnectionType::Pgproto,
+            SystemConnectionType::Http,
+        ] {
+            let original = ConnectionType::System(ct);
+            let s = original.as_storage_string();
+            let restored = ConnectionType::from_storage_string(&s);
+            assert_eq!(original, restored);
+        }
+    }
+
+    // =========================================================================
+    // PeerAddress tests
+    // =========================================================================
+
+    #[test]
+    fn test_peer_address_serialization_roundtrip() {
+        let original = PeerAddress {
+            raft_id: 42,
+            address: "10.0.0.1:8080".into(),
+            connection_type: ConnectionType::plugin("myplug", "mysvc"),
+        };
+
+        let serialized = rmp_serde::to_vec(&original).unwrap();
+        let restored: PeerAddress = rmp_serde::from_slice(&serialized).unwrap();
+
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn test_peer_address_serialization_system_type() {
+        let original = PeerAddress {
+            raft_id: 1,
+            address: "127.0.0.1:3301".into(),
+            connection_type: ConnectionType::System(SystemConnectionType::Iproto),
+        };
+
+        let serialized = rmp_serde::to_vec(&original).unwrap();
+        let restored: PeerAddress = rmp_serde::from_slice(&serialized).unwrap();
+
+        assert_eq!(original, restored);
+    }
+
+    // =========================================================================
+    // Existing tests
+    // =========================================================================
 
     #[test]
     fn traft_entry_tuple_size_calculation() {

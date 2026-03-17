@@ -202,7 +202,7 @@ invalid configuration: instance restarted with a different `replicaset_name`, wh
     instance.env["PICODATA_IPROTO_ADVERTISE"] = "example.com:1234"
     assert instance.env["PICODATA_IPROTO_ADVERTISE"] != was
     err = f"""\
-invalid configuration: instance restarted with a different `iproto_advertise`, which is not allowed, was: '{was}' became: 'example.com:1234'
+invalid configuration: instance restarted with a different iproto advertise address, which is not allowed, was: '{was}' became: 'example.com:1234'
 """  # noqa: E501
     crawler = log_crawler(instance, err)
     instance.fail_to_start()
@@ -379,6 +379,7 @@ def test_pico_raft_log(instance: Instance):
 |  0  | 1  |BatchDml(
 Replace(_pico_peer_address, [1,"127.0.0.1:{p}","iproto"]),
 Replace(_pico_peer_address, [1,"127.0.0.1:{pg_port}","pgproto"]),
+Replace(_pico_peer_address, [1,"127.0.0.1:{http_port}","http"]),
 Insert(_pico_instance, ["default_1_1","{i1_uuid}",1,"default_1","{r1_uuid}",["Offline",0],["Offline",0],{b},"default","{picodata_version}",0,"","<datetime>"]),
 Insert(_pico_replicaset, ["default_1","{r1_uuid}","default_1_1","default_1_1","default",0.0,"auto","not-ready",0,0,{{}},0,0,0]))|
 |  0  | 1  |BatchDml(Insert(_pico_tier, ["default",1,true,0,0,false,3000,true,0,0]))|
@@ -530,6 +531,7 @@ Update(_pico_tier, ["default"], [["=","target_vshard_config_version",3]])
 """.format(  # noqa: E501
         p=instance.port,
         pg_port=instance.pg_port,
+        http_port=instance.http_port,
         b="{}",
         i1_uuid=instance.uuid(),
         r1_uuid=instance.replicaset_uuid(),
@@ -855,7 +857,7 @@ def test_proc_runtime_info(instance: Instance):
     version_info = instance.call(".proc_version_info")
     slab_info = instance.call("box.slab.info")
 
-    host_port = instance.env["PICODATA_HTTP_LISTEN"]
+    host_port = instance.http_listen
     host, port = host_port.split(":")
     port = int(port)  # type: ignore
 

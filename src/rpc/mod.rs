@@ -5,7 +5,7 @@ use crate::instance::InstanceName;
 use crate::static_ref;
 use crate::topology_cache::TopologyCacheRef;
 use crate::traft::error::Error;
-use crate::traft::{node, ConnectionType, Result};
+use crate::traft::{node, Result};
 use crate::util::relay_connection_config;
 use crate::warn_or_panic;
 use ::tarantool::network::AsClient as _;
@@ -170,10 +170,10 @@ where
 {
     let node = node::global()?;
     let leader_id = node.status().leader_id.ok_or(Error::LeaderUnknown)?;
-    let leader_address = node
-        .storage
-        .peer_addresses
-        .try_get(leader_id, &ConnectionType::Iproto)?;
+    let leader_address = node.storage.peer_addresses.try_get(
+        leader_id,
+        &crate::traft::ConnectionType::System(crate::traft::SystemConnectionType::Iproto),
+    )?;
     let resp = network_call(&leader_address, proc_name, request).await?;
     Ok(resp)
 }

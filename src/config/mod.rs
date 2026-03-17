@@ -1,7 +1,9 @@
+mod legacy;
 pub mod observer;
+pub mod socket;
 
 use crate::access_control::validate_password;
-use crate::address::{HttpAddress, IprotoAddress, ListenAddress, PgprotoAddress};
+use crate::address::{HttpAddress, IprotoAddress, ListenAddress};
 use crate::cli::args;
 use crate::cli::args::CONFIG_PARAMETERS_ENV;
 use crate::failure_domain::FailureDomain;
@@ -21,6 +23,7 @@ use crate::tier::Tier;
 use crate::tier::TierConfig;
 use crate::tier::DEFAULT_TIER;
 use crate::tlog;
+use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::op::Dml;
 use crate::traft::RaftSpaceAccess;
@@ -28,7 +31,6 @@ use crate::util::file_exists;
 use crate::util::NoYieldsRefCell;
 use crate::util::{cast_and_encode, edit_distance};
 use crate::{config_parameter_path, sql};
-use crate::{pgproto, traft};
 use ::sql::ir::options;
 use ::sql::ir::value::{EncodedValue, Value};
 use observer::AtomicObserverProvider;
@@ -51,6 +53,11 @@ pub use crate::address::{
     DEFAULT_IPROTO_PORT, DEFAULT_LISTEN_HOST, DEFAULT_PGPROTO_PORT, DEFAULT_USERNAME,
 };
 
+pub use socket::{
+    HttpConfig, IprotoConfig, PgprotoConfig, PluginConfig, PluginListenerConfig,
+    PluginServiceConfig, TlsSettings,
+};
+
 pub const DEFAULT_CONFIG_FILE_NAME: &str = "picodata.yaml";
 pub(crate) const DEFAULT_SQL_PREEMPTION: bool = false;
 pub(crate) const DEFAULT_SQL_PREEMPTION_INTERVAL_US: u64 = 500;
@@ -59,7 +66,6 @@ pub(crate) const DEFAULT_SQL_LOG: bool = false;
 pub(crate) const DEFAULT_SQL_RUNTIME_CONCURRENCY_MAX: u64 = 50;
 
 pub use ::sql::ir::types::DomainType as SbroadType;
-
 ////////////////////////////////////////////////////////////////////////////////
 // PicodataConfig
 ////////////////////////////////////////////////////////////////////////////////
@@ -285,6 +291,11 @@ Using configuration file '{args_path}'.");
         // in the config file.
         config.cluster.name = Some("demo".into());
 
+        // Same story as with `cluster.tier`: instance.tier must be specified
+        // explicitly in the config file but for `picodata config default` we
+        // provide the default value.
+        config.instance.tier = Some(DEFAULT_TIER.to_string());
+
         config
     }
 
@@ -303,6 +314,36 @@ Using configuration file '{args_path}'.");
     pub fn read_yaml_contents(contents: &str) -> Result<Box<Self>, Error> {
         let config = serde_yaml::from_str(contents).map_err(Error::invalid_configuration)?;
         Ok(config)
+    }
+
+    /// Returns all enabled plugin listener advertise addresses from the configuration.
+    ///
+    /// Returns a vector of (plugin_name, service_name, advertise_address) tuples.
+    /// Only includes listeners that are enabled and have an advertise address.
+    pub fn plugin_listener_addresses(&self) -> Vec<(&str, &str, String)> {
+        let mut result = Vec::new();
+
+        if let Some(plugins) = &self.instance.plugin {
+            for (plugin_name, plugin_cfg) in plugins {
+                for (service_name, service_cfg) in &plugin_cfg.service {
+                    let listener = &service_cfg.listener;
+
+                    if !listener.enabled() {
+                        continue;
+                    }
+
+                    if let Some(advertise) = listener.advertise() {
+                        result.push((
+                            plugin_name.as_str(),
+                            service_name.as_str(),
+                            advertise.to_string(),
+                        ));
+                    }
+                }
+            }
+        }
+
+        result
     }
 
     /// Sets parameters of `self` to values from `args` as well as current
@@ -374,7 +415,7 @@ Using configuration file '{args_path}'.");
         }
 
         if let Some(address) = args.iproto_advertise {
-            config_from_args.instance.iproto_advertise = Some(address);
+            config_from_args.instance.iproto.advertise = Some(address);
         }
 
         #[allow(deprecated)]
@@ -383,7 +424,7 @@ Using configuration file '{args_path}'.");
         }
 
         if let Some(iproto_listen) = args.iproto_listen {
-            config_from_args.instance.iproto_listen = Some(iproto_listen);
+            config_from_args.instance.iproto.listen = Some(iproto_listen);
         }
 
         #[allow(deprecated)]
@@ -392,15 +433,15 @@ Using configuration file '{args_path}'.");
         }
 
         if let Some(http_listen) = args.http_listen {
-            config_from_args.instance.http_listen = Some(http_listen);
+            config_from_args.instance.http.listen = Some(http_listen);
         }
 
         if let Some(pg_advertise) = args.pg_advertise {
-            config_from_args.instance.pg.advertise = Some(pg_advertise);
+            config_from_args.instance.pgproto.advertise = Some(pg_advertise);
         }
 
         if let Some(pg_listen) = args.pg_listen {
-            config_from_args.instance.pg.listen = Some(pg_listen);
+            config_from_args.instance.pgproto.listen = Some(pg_listen);
         }
 
         if !args.peers.is_empty() {
@@ -611,11 +652,16 @@ Using configuration file '{args_path}'.");
     /// Only stuff related to deprecated parameters goes here.
     ///
     /// Must be called before [`Self::set_defaults_explicitly`]!.
-    #[allow(deprecated)]
+    #[expect(deprecated)]
     fn handle_deprecated_parameters(
         &mut self,
         parameter_sources: &mut ParameterSourcesMap,
     ) -> Result<(), Error> {
+        // Before applying renames check that there are no conflicts between "old" and "new" socket options
+        // As per the socket options ADR, we don't allow specifying "old" and "new" options piecewise
+        // They should be either all "new", or all "old".
+        self.check_deprecated_socket_parameters_conflicts()?;
+
         // In the future when renaming configuration file parameters just
         // add a pair of names into this array.
         let renamed_parameters = &[
@@ -631,6 +677,81 @@ Using configuration file '{args_path}'.");
             (
                 config_parameter_path!(instance.advertise_address),
                 config_parameter_path!(instance.iproto_advertise),
+            ),
+            // "new" iproto section
+            (
+                config_parameter_path!(instance.iproto_listen),
+                config_parameter_path!(instance.iproto.listen),
+            ),
+            (
+                config_parameter_path!(instance.iproto_advertise),
+                config_parameter_path!(instance.iproto.advertise),
+            ),
+            (
+                config_parameter_path!(instance.iproto_tls.enabled),
+                config_parameter_path!(instance.iproto.tls.enabled),
+            ),
+            (
+                config_parameter_path!(instance.iproto_tls.cert_file),
+                config_parameter_path!(instance.iproto.tls.cert_file),
+            ),
+            (
+                config_parameter_path!(instance.iproto_tls.key_file),
+                config_parameter_path!(instance.iproto.tls.key_file),
+            ),
+            (
+                config_parameter_path!(instance.iproto_tls.ca_file),
+                config_parameter_path!(instance.iproto.tls.ca_file),
+            ),
+            // "new" pgproto section
+            (
+                config_parameter_path!(instance.pg.listen),
+                config_parameter_path!(instance.pgproto.listen),
+            ),
+            (
+                config_parameter_path!(instance.pg.advertise),
+                config_parameter_path!(instance.pgproto.advertise),
+            ),
+            (
+                config_parameter_path!(instance.pg.ssl),
+                config_parameter_path!(instance.pgproto.tls.enabled),
+            ),
+            (
+                config_parameter_path!(instance.pg.cert_file),
+                config_parameter_path!(instance.pgproto.tls.cert_file),
+            ),
+            (
+                config_parameter_path!(instance.pg.key_file),
+                config_parameter_path!(instance.pgproto.tls.key_file),
+            ),
+            (
+                config_parameter_path!(instance.pg.ca_file),
+                config_parameter_path!(instance.pgproto.tls.ca_file),
+            ),
+            // "new" http section
+            (
+                config_parameter_path!(instance.http_listen),
+                config_parameter_path!(instance.http.listen),
+            ),
+            (
+                config_parameter_path!(instance.https.enabled),
+                config_parameter_path!(instance.http.tls.enabled),
+            ),
+            (
+                config_parameter_path!(instance.https.cert_file),
+                config_parameter_path!(instance.http.tls.cert_file),
+            ),
+            (
+                config_parameter_path!(instance.https.key_file),
+                config_parameter_path!(instance.http.tls.key_file),
+            ),
+            (
+                config_parameter_path!(instance.https.ca_file),
+                config_parameter_path!(instance.http.tls.ca_file),
+            ),
+            (
+                config_parameter_path!(instance.https.password_file),
+                config_parameter_path!(instance.http.tls.password_file),
             ),
         ];
 
@@ -689,6 +810,82 @@ Using configuration file '{args_path}'.");
         Ok(())
     }
 
+    #[expect(deprecated)]
+    fn check_deprecated_socket_parameters_conflicts(&self) -> Result<(), Error> {
+        let instance = &self.instance;
+
+        let has_old_iproto = instance.listen.is_some()
+            || instance.advertise_address.is_some()
+            || instance.iproto_listen.is_some()
+            || instance.iproto_advertise.is_some()
+            || instance.iproto_tls.enabled.is_some()
+            || instance.iproto_tls.cert_file.is_some()
+            || instance.iproto_tls.key_file.is_some()
+            || instance.iproto_tls.ca_file.is_some();
+
+        if has_old_iproto {
+            if instance.iproto.has_any_setting() {
+                return Err(Error::invalid_configuration(
+                    "cannot use both old iproto settings (iproto_listen, iproto_advertise, iproto_tls) \
+                     and new `iproto` section simultaneously; please use only one configuration style",
+                ));
+            }
+        }
+
+        if instance.iproto.has_any_setting() {
+            if has_old_iproto {
+                return Err(Error::invalid_configuration(
+                    "cannot use both old iproto settings (iproto_listen, iproto_advertise, iproto_tls) \
+                     and new `iproto` section simultaneously; please use only one configuration style",
+                ));
+            }
+
+            // iproto.enabled defaults to true if not specified
+            if instance.iproto.enabled == Some(false) {
+                return Err(Error::invalid_configuration(
+                    "iproto cannot be disabled as it is required for picodata operation",
+                ));
+            }
+        }
+
+        // Check HTTP conflicts
+        // Note: we check https.enabled == Some(true) instead of is_some() because
+        // the default value is Some(false) which shouldn't trigger conflict detection
+        let has_old_http = instance.http_listen.is_some()
+            || instance.https.enabled == Some(true)
+            || instance.https.cert_file.is_some()
+            || instance.https.key_file.is_some()
+            || instance.https.ca_file.is_some()
+            || instance.https.password_file.is_some();
+
+        if instance.http.has_any_setting() {
+            if has_old_http {
+                return Err(Error::invalid_configuration(
+                    "cannot use both old http settings (http_listen, https) \
+                     and new `http` section simultaneously; please use only one configuration style",
+                ));
+            }
+        }
+
+        let has_old_pg = instance.pg.listen.is_some()
+            || instance.pg.advertise.is_some()
+            || instance.pg.ssl.is_some()
+            || instance.pg.cert_file.is_some()
+            || instance.pg.key_file.is_some()
+            || instance.pg.ca_file.is_some();
+
+        if instance.pgproto.has_any_setting() {
+            if has_old_pg {
+                return Err(Error::invalid_configuration(
+                    "cannot use both old pg settings (pg.listen, pg.advertise, pg.ssl, etc.) \
+                     and new `pgproto` section simultaneously; please use only one configuration style",
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
     /// Does basic config validation. This function checks constraints
     /// applicable for all configuration updates.
     ///
@@ -701,6 +898,8 @@ Using configuration file '{args_path}'.");
         self.validate_listen_addresses()?;
 
         self.validate_tiers()?;
+
+        self.validate_plugin_tls_config()?;
 
         Ok(())
     }
@@ -737,48 +936,214 @@ Using configuration file '{args_path}'.");
 
     /// Validates that various listen addresses don't conflict
     fn validate_listen_addresses(&self) -> Result<(), Error> {
-        let conflict_error = |left_id, left: &dyn Display, right_id, right: &dyn Display| {
-            Error::InvalidConfiguration(format!("`instance.{left_id}` ({left}) conflicts with `instance.{right_id}` ({right}): both bind to the same address"))
+        // Collect all effective listen addresses as (config_path, host, port).
+        let mut addresses: Vec<(String, String, String)> = Vec::new();
+
+        if let Some(ref listen) = self.instance.iproto.listen {
+            addresses.push((
+                "iproto.listen".into(),
+                listen.host().into(),
+                listen.port().into(),
+            ));
+        }
+
+        if self.instance.http.enabled() {
+            if let Some(ref listen) = self.instance.http.listen {
+                addresses.push((
+                    "http.listen".into(),
+                    listen.host().into(),
+                    listen.port().into(),
+                ));
+            }
+        }
+
+        if let Some(ref listen) = self.instance.pgproto.listen {
+            addresses.push((
+                "pgproto.listen".into(),
+                listen.host().into(),
+                listen.port().into(),
+            ));
+        }
+
+        // Plugin listener addresses.
+        if let Some(ref plugins) = self.instance.plugin {
+            for (plugin_name, plugin_cfg) in plugins {
+                for (service_name, service_cfg) in &plugin_cfg.service {
+                    let listener = &service_cfg.listener;
+                    if !listener.enabled() {
+                        continue;
+                    }
+                    if let Some(ref listen) = listener.listen {
+                        addresses.push((
+                            format!("plugin.{plugin_name}.service.{service_name}.listener.listen"),
+                            listen.host().into(),
+                            listen.port().into(),
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Check all pairs for conflicts.
+        const WILDCARD: &str = "0.0.0.0";
+        for i in 0..addresses.len() {
+            for j in (i + 1)..addresses.len() {
+                let (ref id_a, ref host_a, ref port_a) = addresses[i];
+                let (ref id_b, ref host_b, ref port_b) = addresses[j];
+                if port_a != port_b {
+                    continue;
+                }
+                if host_a == host_b || host_a == WILDCARD || host_b == WILDCARD {
+                    return Err(Error::InvalidConfiguration(format!(
+                        "`instance.{id_a}` ({host_a}:{port_a}) conflicts with \
+                         `instance.{id_b}` ({host_b}:{port_b}): both bind to the same address"
+                    )));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validates TLS configuration for all plugin listeners.
+    ///
+    /// When TLS is enabled for a plugin listener, verifies:
+    /// - cert_file exists and is readable
+    /// - key_file exists and is readable
+    /// - ca_file exists and is readable (if specified)
+    /// - password_file exists and is readable (if specified)
+    /// - private key can be loaded with the password (if specified)
+    fn validate_plugin_tls_config(&self) -> Result<(), Error> {
+        let Some(plugins) = &self.instance.plugin else {
+            return Ok(());
         };
 
-        const HTTP_LISTEN_CFG_OPTION: &'static str = "http_listen";
-        const IPROTO_LISTEN_CFG_OPTION: &'static str = "iproto_listen";
-        const PGPROTO_LISTEN_CFG_OPTION: &'static str = "pg.listen";
+        for (plugin_name, plugin_cfg) in plugins {
+            for (service_name, service_cfg) in &plugin_cfg.service {
+                let listener = &service_cfg.listener;
 
-        let ipr = &self.instance.iproto_listen;
-        let http = &self.instance.http_listen;
-        let pg = &self.instance.pg.listen;
+                if listener.enabled() && listener.listen.is_none() {
+                    return Err(Error::InvalidConfiguration(format!(
+                        "instance.plugin.{plugin_name}.service.{service_name}.listener: \
+                         `listen` must be specified when listener is enabled"
+                    )));
+                }
 
-        if let (Some(ipr), Some(http)) = (ipr, http) {
-            if ipr.conflicts_with(http) {
-                return Err(conflict_error(
-                    IPROTO_LISTEN_CFG_OPTION,
-                    ipr,
-                    HTTP_LISTEN_CFG_OPTION,
-                    http,
-                ));
-            }
-        }
+                let tls = &listener.tls;
 
-        if let (Some(ipr), Some(pg)) = (ipr, pg) {
-            if ipr.conflicts_with(pg) {
-                return Err(conflict_error(
-                    IPROTO_LISTEN_CFG_OPTION,
-                    ipr,
-                    PGPROTO_LISTEN_CFG_OPTION,
-                    pg,
-                ));
-            }
-        }
+                if !tls.enabled() {
+                    continue;
+                }
 
-        if let (Some(http), Some(pg)) = (http, pg) {
-            if http.conflicts_with(pg) {
-                return Err(conflict_error(
-                    HTTP_LISTEN_CFG_OPTION,
-                    http,
-                    PGPROTO_LISTEN_CFG_OPTION,
-                    pg,
-                ));
+                let config_path =
+                    format!("instance.plugin.{plugin_name}.service.{service_name}.listener.tls");
+
+                if let Some(cert_path) = &tls.cert_file {
+                    if !cert_path.exists() {
+                        return Err(Error::InvalidConfiguration(format!(
+                            "{config_path}.cert_file: file '{}' does not exist",
+                            cert_path.display()
+                        )));
+                    }
+                    if std::fs::metadata(cert_path)
+                        .map(|m| !m.is_file())
+                        .unwrap_or(true)
+                    {
+                        return Err(Error::InvalidConfiguration(format!(
+                            "{config_path}.cert_file: '{}' is not a regular file",
+                            cert_path.display()
+                        )));
+                    }
+                } else {
+                    return Err(Error::InvalidConfiguration(format!(
+                        "{config_path}: TLS is enabled but cert_file is not specified"
+                    )));
+                }
+
+                if let Some(key_path) = &tls.key_file {
+                    if !key_path.exists() {
+                        return Err(Error::InvalidConfiguration(format!(
+                            "{config_path}.key_file: file '{}' does not exist",
+                            key_path.display()
+                        )));
+                    }
+                    if std::fs::metadata(key_path)
+                        .map(|m| !m.is_file())
+                        .unwrap_or(true)
+                    {
+                        return Err(Error::InvalidConfiguration(format!(
+                            "{config_path}.key_file: '{}' is not a regular file",
+                            key_path.display()
+                        )));
+                    }
+                } else {
+                    return Err(Error::InvalidConfiguration(format!(
+                        "{config_path}: TLS is enabled but key_file is not specified"
+                    )));
+                }
+
+                if let Some(ca_path) = &tls.ca_file {
+                    if !ca_path.exists() {
+                        return Err(Error::InvalidConfiguration(format!(
+                            "{config_path}.ca_file: file '{}' does not exist",
+                            ca_path.display()
+                        )));
+                    }
+                    if std::fs::metadata(ca_path)
+                        .map(|m| !m.is_file())
+                        .unwrap_or(true)
+                    {
+                        return Err(Error::InvalidConfiguration(format!(
+                            "{config_path}.ca_file: '{}' is not a regular file",
+                            ca_path.display()
+                        )));
+                    }
+                }
+
+                if let Some(password_path) = &tls.password_file {
+                    if !password_path.exists() {
+                        return Err(Error::InvalidConfiguration(format!(
+                            "{config_path}.password_file: file '{}' does not exist",
+                            password_path.display()
+                        )));
+                    }
+                    if std::fs::metadata(password_path)
+                        .map(|m| !m.is_file())
+                        .unwrap_or(true)
+                    {
+                        return Err(Error::InvalidConfiguration(format!(
+                            "{config_path}.password_file: '{}' is not a regular file",
+                            password_path.display()
+                        )));
+                    }
+                }
+
+                if let (Some(key_path), Some(password_path)) = (&tls.key_file, &tls.password_file) {
+                    let password = std::fs::read_to_string(password_path).map_err(|e| {
+                        Error::InvalidConfiguration(format!(
+                            "{config_path}.password_file: cannot read '{}': {e}",
+                            password_path.display()
+                        ))
+                    })?;
+                    let password = password.trim();
+
+                    let key_pem = std::fs::read(key_path).map_err(|e| {
+                        Error::InvalidConfiguration(format!(
+                            "{config_path}.key_file: cannot read '{}': {e}",
+                            key_path.display()
+                        ))
+                    })?;
+
+                    openssl::pkey::PKey::private_key_from_pem_passphrase(
+                        &key_pem,
+                        password.as_bytes(),
+                    )
+                    .map_err(|e| {
+                        Error::InvalidConfiguration(format!(
+                            "{config_path}: cannot load private key with provided password: {e}"
+                        ))
+                    })?;
+                }
             }
         }
 
@@ -853,38 +1218,84 @@ Using configuration file '{args_path}'.");
 
         // Advertise addresses
         if let Some(raft_id) = raft_storage.raft_id()? {
+            let iproto_advertise = self.instance.iproto.advertise().to_host_port();
             match (
-                storage
-                    .peer_addresses
-                    .get(raft_id, &traft::ConnectionType::Iproto)?,
-                &self.instance.iproto_advertise,
+                storage.peer_addresses.get(
+                    raft_id,
+                    &traft::ConnectionType::System(traft::SystemConnectionType::Iproto),
+                )?,
+                iproto_advertise,
             ) {
-                (Some(from_storage), Some(from_config))
-                    if from_storage != from_config.to_host_port() =>
-                {
+                (Some(from_storage), from_config) if from_storage != from_config => {
                     return Err(Error::InvalidConfiguration(format!(
-                        "instance restarted with a different `iproto_advertise`, \
+                        "instance restarted with a different iproto advertise address, \
                          which is not allowed, was: '{from_storage}' became: '{from_config}'"
                     )));
                 }
                 _ => {}
             }
 
+            let pgproto_advertise = self.instance.pgproto.advertise().to_host_port();
             match (
-                storage
-                    .peer_addresses
-                    .get(raft_id, &traft::ConnectionType::Pgproto)?,
-                &self.instance.pg.advertise,
+                storage.peer_addresses.get(
+                    raft_id,
+                    &traft::ConnectionType::System(traft::SystemConnectionType::Pgproto),
+                )?,
+                pgproto_advertise,
             ) {
-                (Some(from_storage), Some(from_config))
-                    if from_storage != from_config.to_host_port() =>
-                {
+                (Some(from_storage), from_config) if from_storage != from_config => {
                     return Err(Error::InvalidConfiguration(format!(
-                        "instance restarted with a different `pg.advertise`, \
+                        "instance restarted with a different pgproto advertise address, \
                          which is not allowed, was: '{from_storage}' became: '{from_config}'"
                     )));
                 }
                 _ => {}
+            }
+
+            let http_advertise = self.instance.http.advertise();
+            match (
+                storage.peer_addresses.get(
+                    raft_id,
+                    &traft::ConnectionType::System(traft::SystemConnectionType::Http),
+                )?,
+                http_advertise.to_host_port(),
+            ) {
+                (Some(from_storage), from_config) if from_storage != from_config => {
+                    return Err(Error::InvalidConfiguration(format!(
+                        "instance restarted with a different `http.advertise`, \
+                         which is not allowed, was: '{from_storage}' became: '{from_config}'"
+                    )));
+                }
+                _ => {}
+            }
+
+            if let Some(plugins) = &self.instance.plugin {
+                for (plugin_name, plugin_cfg) in plugins {
+                    for (service_name, service_cfg) in &plugin_cfg.service {
+                        let listener = &service_cfg.listener;
+
+                        if !listener.enabled() {
+                            continue;
+                        }
+
+                        let Some(advertise) = listener.advertise() else {
+                            continue;
+                        };
+
+                        let conn_type = traft::ConnectionType::plugin(plugin_name, service_name);
+                        let from_storage = storage.peer_addresses.get(raft_id, &conn_type)?;
+
+                        if let Some(from_storage) = from_storage {
+                            let advertise_str = advertise.to_host_port();
+                            if from_storage != advertise_str {
+                                return Err(Error::InvalidConfiguration(format!(
+                                    "instance restarted with a different `plugin.{plugin_name}.service.{service_name}.listener.advertise`, \
+                                     which is not allowed, was: '{from_storage}' became: '{advertise_str}'"
+                                )));
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -1365,28 +1776,30 @@ pub struct InstanceConfig {
     #[introspection(config_default = FailureDomain::default())]
     pub failure_domain: Option<FailureDomain>,
 
-    #[deprecated = "use iproto_listen instead"]
+    #[deprecated = "use iproto.listen instead"]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub listen: Option<IprotoAddress>,
 
-    #[introspection(config_default = IprotoAddress::default())]
+    #[deprecated = "use iproto.listen instead"]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub iproto_listen: Option<IprotoAddress>,
 
-    #[deprecated = "use iproto_advertise instead"]
+    #[deprecated = "use iproto.advertise instead"]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub advertise_address: Option<IprotoAddress>,
 
-    #[introspection(config_default = self.iproto_listen())]
+    #[deprecated = "use iproto.advertise instead"]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub iproto_advertise: Option<IprotoAddress>,
 
-    #[introspection(config_default = vec![self.iproto_advertise()])]
-    pub peer: Option<Vec<IprotoAddress>>,
-
+    #[deprecated = "use http.listen instead"]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub http_listen: Option<HttpAddress>,
 
-    #[serde(default)]
+    #[deprecated = "use http.tls instead"]
+    #[serde(default, skip_serializing_if = "legacy::LegacyHttpsConfig::is_default")]
     #[introspection(nested)]
-    pub https: crate::http_server::HttpsConfig,
+    pub https: legacy::LegacyHttpsConfig,
 
     #[introspection(config_default = self.instance_dir.as_ref().map(|dir| dir.join("admin.sock")))]
     pub admin_socket: Option<PathBuf>,
@@ -1419,16 +1832,54 @@ pub struct InstanceConfig {
     #[introspection(nested)]
     pub vinyl: VinylSection,
 
-    #[serde(default)]
+    #[deprecated = "use pgproto instead"]
+    #[serde(default, skip_serializing_if = "legacy::LegacyPgConfig::is_default")]
     #[introspection(nested)]
-    pub pg: pgproto::Config,
+    pub pg: legacy::LegacyPgConfig,
 
-    #[serde(default)]
+    #[deprecated = "use iproto.tls instead"]
+    #[serde(
+        default,
+        skip_serializing_if = "legacy::LegacyIprotoTlsConfig::is_default"
+    )]
     #[introspection(nested)]
-    pub iproto_tls: crate::iproto::TlsConfig,
+    pub iproto_tls: legacy::LegacyIprotoTlsConfig,
 
     #[introspection(config_default = 2 * 60 * 60)]
     pub boot_timeout: Option<u64>,
+
+    /// HTTP listener configuration.
+    ///
+    /// When present, replaces `http_listen` and `https` settings.
+    #[serde(default, skip_serializing_if = "socket::HttpConfig::is_default")]
+    #[introspection(nested)]
+    pub http: socket::HttpConfig,
+
+    /// Iproto listener configuration.
+    ///
+    /// When present, replaces `iproto_listen`, `iproto_advertise`, and `iproto_tls` settings.
+    #[serde(default, skip_serializing_if = "socket::IprotoConfig::is_default")]
+    #[introspection(nested)]
+    pub iproto: socket::IprotoConfig,
+
+    /// Pgproto listener configuration.
+    ///
+    /// When present, replaces the `pg` section.
+    #[serde(default, skip_serializing_if = "socket::PgprotoConfig::is_default")]
+    #[introspection(nested)]
+    pub pgproto: socket::PgprotoConfig,
+
+    // NB: this parameter has to be defined after the `iproto` section. Its default value may depend on
+    // the default value for `iproto.advertise`, and default evaluation order is defined by definition order.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[introspection(config_default = vec![self.iproto.advertise()])]
+    pub peer: Option<Vec<IprotoAddress>>,
+
+    /// Plugin listener configurations.
+    /// Maps plugin names to their configuration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[introspection(ignore)]
+    pub plugin: Option<HashMap<String, socket::PluginConfig>>,
 
     /// Special catch-all field which will be filled by serde with all unknown
     /// fields from the yaml file.
@@ -1477,20 +1928,6 @@ impl InstanceConfig {
     }
 
     #[inline]
-    pub fn iproto_advertise(&self) -> &IprotoAddress {
-        self.iproto_advertise
-            .as_ref()
-            .expect("is set in PicodataConfig::set_defaults_explicitly")
-    }
-
-    #[inline]
-    pub fn iproto_listen(&self) -> &IprotoAddress {
-        self.iproto_listen
-            .as_ref()
-            .expect("is set in PicodataConfig::set_defaults_explicitly")
-    }
-
-    #[inline]
     pub fn admin_socket(&self) -> &PathBuf {
         self.admin_socket
             .as_ref()
@@ -1515,16 +1952,6 @@ impl InstanceConfig {
     pub fn boot_timeout(&self) -> u64 {
         self.boot_timeout
             .expect("is set in PicodataConfig::set_defaults_explicitly")
-    }
-
-    #[inline]
-    pub fn pgproto_listen(&self) -> PgprotoAddress {
-        self.pg.listen()
-    }
-
-    #[inline]
-    pub fn pgproto_advertise(&self) -> PgprotoAddress {
-        self.pg.advertise()
     }
 }
 
@@ -2983,19 +3410,21 @@ instance:
 
         let yaml = r###"
 instance:
-    iproto_listen:  kevin->  :spacey   # <- some more trailing space
+    iproto:
+        listen:  kevin->  :spacey   # <- some more trailing space
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim_start()).unwrap();
-        let listen = config.instance.iproto_listen.unwrap();
+        let listen = config.instance.iproto.listen.unwrap();
         assert_eq!(listen.host, "kevin->  ");
         assert_eq!(listen.port, "spacey");
 
         let yaml = r###"
 instance:
-    iproto_listen:  kevin->  <-spacey:3301
+    iproto:
+        listen:  kevin->  <-spacey:3301
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim_start()).unwrap();
-        let listen = config.instance.iproto_listen.unwrap();
+        let listen = config.instance.iproto.listen.unwrap();
         assert_eq!(listen.host, "kevin->  <-spacey");
         assert_eq!(listen.port, "3301");
     }
@@ -3004,10 +3433,11 @@ instance:
     fn default_http_port() {
         let yaml = r###"
 instance:
-    http_listen: 127.0.0.1:8080
+    http:
+        listen: 127.0.0.1:8080
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim_start()).unwrap();
-        let listen = config.instance.http_listen.unwrap();
+        let listen = config.instance.http.listen.unwrap();
         assert_eq!(listen.host, "127.0.0.1");
         assert_eq!(listen.port, "8080");
     }
@@ -3112,10 +3542,10 @@ cluster:
                 vec![IprotoAddress::default()]
             );
             assert_eq!(config.instance.name(), None);
-            assert_eq!(config.instance.iproto_listen().to_host_port(), IprotoAddress::default_host_port());
-            assert_eq!(config.instance.iproto_advertise().to_host_port(), IprotoAddress::default_host_port());
-            assert_eq!(config.instance.pgproto_listen().to_host_port(), PgprotoAddress::default_host_port());
-            assert_eq!(config.instance.pgproto_advertise().to_host_port(), PgprotoAddress::default_host_port());
+            assert_eq!(config.instance.iproto.listen().to_host_port(), IprotoAddress::default_host_port());
+            assert_eq!(config.instance.iproto.advertise().to_host_port(), IprotoAddress::default_host_port());
+            assert_eq!(config.instance.pgproto.listen().to_host_port(), PgprotoAddress::default_host_port());
+            assert_eq!(config.instance.pgproto.advertise().to_host_port(), PgprotoAddress::default_host_port());
             assert_eq!(config.instance.log_level(), SayLevel::Info);
             assert!(config.instance.failure_domain().data.is_empty());
         }
@@ -3289,8 +3719,8 @@ instance:
             std::env::set_var("PICODATA_LISTEN", "L-ENVIRON:3301");
             let config = setup_for_tests(Some(""), &["run"]).unwrap();
 
-            assert_eq!(config.instance.iproto_listen().to_host_port(), "L-ENVIRON:3301");
-            assert_eq!(config.instance.iproto_advertise().to_host_port(), "L-ENVIRON:3301");
+            assert_eq!(config.instance.iproto.listen().to_host_port(), "L-ENVIRON:3301");
+            assert_eq!(config.instance.iproto.advertise().to_host_port(), "L-ENVIRON:3301");
 
             let yaml = r###"
 instance:
@@ -3298,39 +3728,41 @@ instance:
 "###;
             let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
 
-            assert_eq!(config.instance.iproto_listen().to_host_port(), "L-ENVIRON:3301");
-            assert_eq!(config.instance.iproto_advertise().to_host_port(), "A-CONFIG:3301");
+            assert_eq!(config.instance.iproto.listen().to_host_port(), "L-ENVIRON:3301");
+            assert_eq!(config.instance.iproto.advertise().to_host_port(), "A-CONFIG:3301");
 
             let config = setup_for_tests(Some(yaml), &["run", "-l", "L-COMMANDLINE:3301"]).unwrap();
 
-            assert_eq!(config.instance.iproto_listen().to_host_port(), "L-COMMANDLINE:3301");
-            assert_eq!(config.instance.iproto_advertise().to_host_port(), "A-CONFIG:3301");
+            assert_eq!(config.instance.iproto.listen().to_host_port(), "L-COMMANDLINE:3301");
+            assert_eq!(config.instance.iproto.advertise().to_host_port(), "A-CONFIG:3301");
         }
 
         //
         // Pgproto advertise = listen unless specified explicitly
         //
         {
+            // env PICODATA_PG_LISTEN sets new pgproto section
             std::env::set_var("PICODATA_PG_LISTEN", "L-ENVIRON:3301");
             let config = setup_for_tests(Some(""), &["run"]).unwrap();
 
-            assert_eq!(config.instance.pgproto_listen().to_host_port(), "L-ENVIRON:3301");
-            assert_eq!(config.instance.pgproto_advertise().to_host_port(), "L-ENVIRON:3301");
+            assert_eq!(config.instance.pgproto.listen().to_host_port(), "L-ENVIRON:3301");
+            assert_eq!(config.instance.pgproto.advertise().to_host_port(), "L-ENVIRON:3301");
 
+            // advertise via new pgproto section in yaml
             let yaml = r###"
 instance:
-    pg:
+    pgproto:
         advertise: A-CONFIG:3301
 "###;
             let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
 
-            assert_eq!(config.instance.pgproto_listen().to_host_port(), "L-ENVIRON:3301");
-            assert_eq!(config.instance.pgproto_advertise().to_host_port(), "A-CONFIG:3301");
+            assert_eq!(config.instance.pgproto.listen().to_host_port(), "L-ENVIRON:3301");
+            assert_eq!(config.instance.pgproto.advertise().to_host_port(), "A-CONFIG:3301");
 
             let config = setup_for_tests(Some(yaml), &["run", "--pg-listen", "L-COMMANDLINE:3301"]).unwrap();
 
-            assert_eq!(config.instance.pgproto_listen().to_host_port(), "L-COMMANDLINE:3301");
-            assert_eq!(config.instance.pgproto_advertise().to_host_port(), "A-CONFIG:3301");
+            assert_eq!(config.instance.pgproto.listen().to_host_port(), "L-COMMANDLINE:3301");
+            assert_eq!(config.instance.pgproto.advertise().to_host_port(), "A-CONFIG:3301");
         }
 
         //
@@ -3451,10 +3883,10 @@ instance:
 instance:
 "###;
         let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
-        let pg = config.instance.pg;
+        let pgproto = config.instance.pgproto;
         // pg section wasn't specified, but it should be enabled by default
         assert_eq!(
-            pg.listen().to_host_port(),
+            pgproto.listen().to_host_port(),
             PgprotoAddress::default_host_port()
         );
 
@@ -3465,9 +3897,9 @@ instance:
         ssl: true
 "###;
         let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
-        let pg = config.instance.pg;
-        assert_eq!(&pg.listen().to_host_port(), "127.0.0.1:5432");
-        assert!(pg.ssl());
+        let pgproto = config.instance.pgproto;
+        assert_eq!(&pgproto.listen().to_host_port(), "127.0.0.1:5432");
+        assert!(pgproto.tls.enabled());
 
         // test defaults
         let yaml = r###"
@@ -3476,41 +3908,37 @@ instance:
         listen: "127.0.0.1:5432"
 "###;
         let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
-        let pg = config.instance.pg;
+        let pgproto = config.instance.pgproto;
         assert_eq!(
-            pg.listen(),
+            pgproto.listen(),
             PgprotoAddress::from_str("127.0.0.1:5432").unwrap()
         );
-        assert!(!pg.ssl());
+        assert!(!pgproto.tls.enabled());
 
         // test config with -c option
         let config =
             setup_for_tests(None, &["run", "-c", "instance.pg.listen=127.0.0.1:5432"]).unwrap();
-        let pg = config.instance.pg;
+        let pgproto = config.instance.pgproto;
         assert_eq!(
-            pg.listen(),
+            pgproto.listen(),
             PgprotoAddress::from_str("127.0.0.1:5432").unwrap()
         );
-        assert!(!pg.ssl());
+        assert!(!pgproto.tls.enabled());
 
-        // test config from run args
+        // test config from run args (--pg-listen sets new pgproto section)
         let config = setup_for_tests(None, &["run", "--pg-listen", "127.0.0.1:5432"]).unwrap();
-        let pg = config.instance.pg;
         assert_eq!(
-            pg.listen(),
+            config.instance.pgproto.listen(),
             PgprotoAddress::from_str("127.0.0.1:5432").unwrap()
         );
-        assert!(!pg.ssl());
 
-        // test config from env
+        // test config from env (PICODATA_PG_LISTEN sets new pgproto section)
         std::env::set_var("PICODATA_PG_LISTEN", "127.0.0.1:1234");
         let config = setup_for_tests(None, &["run"]).unwrap();
-        let pg = config.instance.pg;
         assert_eq!(
-            pg.listen(),
+            config.instance.pgproto.listen(),
             PgprotoAddress::from_str("127.0.0.1:1234").unwrap()
         );
-        assert!(!pg.ssl());
     }
 
     #[test]
@@ -3565,7 +3993,7 @@ instance:
 "###;
         let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
         assert_eq!(
-            config.instance.iproto_listen().to_host_port(),
+            config.instance.iproto.listen().to_host_port(),
             "localhost:3301"
         );
 
@@ -3599,7 +4027,7 @@ instance:
 "###;
         let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
         assert_eq!(
-            config.instance.iproto_advertise().to_host_port(),
+            config.instance.iproto.advertise().to_host_port(),
             "localhost:3301"
         );
 
@@ -3687,12 +4115,14 @@ cluster:
 cluster:
     name: test
 instance:
-    iproto_listen: 127.0.0.1:3301
-    http_listen: 127.0.0.1:8080
-    pg:
+    iproto:
+        listen: 127.0.0.1:3301
+    http:
+        listen: 127.0.0.1:8080
+    pgproto:
         listen: 127.0.0.1:4327
 "###;
-        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
         assert!(config.validate_listen_addresses().is_ok());
     }
 
@@ -3703,10 +4133,12 @@ instance:
 cluster:
     name: test
 instance:
-    iproto_listen: 127.0.0.1:3301
-    http_listen: 127.0.0.1:3301
+    iproto:
+        listen: 127.0.0.1:3301
+    http:
+        listen: 127.0.0.1:3301
 "###;
-        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
         assert!(config.validate_listen_addresses().is_err());
     }
 
@@ -3717,7 +4149,8 @@ instance:
 cluster:
     name: test
 instance:
-    http_listen: 127.0.0.1:4327
+    http:
+        listen: 127.0.0.1:4327
 "###;
         let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
         assert!(config.validate_listen_addresses().is_err());
@@ -3728,11 +4161,12 @@ instance:
 cluster:
     name: test
 instance:
-    iproto_listen: 127.0.0.1:3301
-    pg:
+    iproto:
+        listen: 127.0.0.1:3301
+    pgproto:
         listen: 127.0.0.1:3301
 "###;
-        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
         assert!(config.validate_listen_addresses().is_err());
     }
 
@@ -3743,11 +4177,12 @@ instance:
 cluster:
     name: test
 instance:
-    http_listen: 0.0.0.0:5000
-    pg:
+    http:
+        listen: 0.0.0.0:5000
+    pgproto:
         listen: 0.0.0.0:5000
 "###;
-        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
         assert!(config.validate_listen_addresses().is_err());
     }
 
@@ -3758,10 +4193,12 @@ instance:
 cluster:
     name: test
 instance:
-    iproto_listen: 0.0.0.0:3301
-    http_listen: 127.0.0.1:3301
+    iproto:
+        listen: 0.0.0.0:3301
+    http:
+        listen: 127.0.0.1:3301
 "###;
-        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
         assert!(config.validate_listen_addresses().is_err());
     }
 
@@ -3772,11 +4209,642 @@ instance:
 cluster:
     name: test
 instance:
-    iproto_listen: 192.168.1.1:3301
-    http_listen: 127.0.0.1:3301
+    iproto:
+        listen: 192.168.1.1:3301
+    http:
+        listen: 127.0.0.1:3301
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        assert!(config.validate_listen_addresses().is_ok());
+    }
+
+    #[test]
+    fn new_iproto_config_basic() {
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    iproto:
+        enabled: true
+        listen: 127.0.0.1:3301
+        advertise: 10.0.0.1:3301
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let iproto = &config.instance.iproto;
+        assert_eq!(iproto.enabled, Some(true));
+        assert_eq!(
+            iproto.listen.as_ref().unwrap().to_string(),
+            "127.0.0.1:3301"
+        );
+        assert_eq!(
+            iproto.advertise.as_ref().unwrap().to_string(),
+            "10.0.0.1:3301"
+        );
+    }
+
+    #[test]
+    fn new_http_config_basic() {
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    http:
+        enabled: true
+        listen: 127.0.0.1:8080
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let http = &config.instance.http;
+        assert_eq!(http.enabled, Some(true));
+        assert_eq!(http.listen.as_ref().unwrap().to_string(), "127.0.0.1:8080");
+    }
+
+    #[test]
+    fn new_pgproto_config_basic() {
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    pgproto:
+        enabled: true
+        listen: 127.0.0.1:5432
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let pgproto = &config.instance.pgproto;
+        assert_eq!(pgproto.enabled, Some(true));
+        assert_eq!(
+            pgproto.listen.as_ref().unwrap().to_string(),
+            "127.0.0.1:5432"
+        );
+    }
+
+    #[test]
+    fn new_iproto_config_with_tls() {
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    iproto:
+        enabled: true
+        listen: 127.0.0.1:3301
+        tls:
+            enabled: true
+            cert_file: /path/to/cert.pem
+            key_file: /path/to/key.pem
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let iproto = &config.instance.iproto;
+        assert!(iproto.tls.enabled());
+        assert_eq!(
+            iproto.tls.cert_file,
+            Some(PathBuf::from("/path/to/cert.pem"))
+        );
+        assert_eq!(iproto.tls.key_file, Some(PathBuf::from("/path/to/key.pem")));
+    }
+
+    #[test]
+    fn socket_config_conflict_iproto() {
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    iproto_listen: 127.0.0.1:3301
+    iproto:
+        enabled: true
+        listen: 127.0.0.1:3302
+"###;
+        let err = setup_for_tests(Some(yaml), &["run"]).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("cannot use both old iproto settings"));
+    }
+
+    #[test]
+    fn socket_config_conflict_iproto_advertise() {
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    iproto_advertise: 127.0.0.1:3301
+    iproto:
+        enabled: true
+        listen: 127.0.0.1:3302
+"###;
+        let err = setup_for_tests(Some(yaml), &["run"]).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("cannot use both old iproto settings"));
+    }
+
+    #[test]
+    fn socket_config_conflict_http() {
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    http_listen: 127.0.0.1:8080
+    http:
+        enabled: true
+        listen: 127.0.0.1:8081
+"###;
+        let err = setup_for_tests(Some(yaml), &["run"]).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("cannot use both old http settings"));
+    }
+
+    #[test]
+    fn socket_config_conflict_https() {
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    https:
+        enabled: true
+    http:
+        enabled: true
+        listen: 127.0.0.1:8080
+"###;
+        let err = setup_for_tests(Some(yaml), &["run"]).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("cannot use both old http settings"));
+    }
+
+    #[test]
+    fn socket_config_conflict_pgproto() {
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    pg:
+        listen: 127.0.0.1:5432
+    pgproto:
+        enabled: true
+        listen: 127.0.0.1:5433
+"###;
+        let err = setup_for_tests(Some(yaml), &["run"]).unwrap_err();
+        assert!(err.to_string().contains("cannot use both old pg settings"));
+    }
+
+    #[test]
+    fn socket_config_iproto_cannot_be_disabled() {
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    iproto:
+        enabled: false
+        listen: 127.0.0.1:3301
+"###;
+        let err = setup_for_tests(Some(yaml), &["run"]).unwrap_err();
+        assert!(err.to_string().contains("iproto cannot be disabled"));
+    }
+
+    #[test]
+    fn socket_config_enabled_defaults_when_not_specified() {
+        // iproto defaults to enabled=true
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    iproto:
+        listen: 127.0.0.1:3301
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        assert!(config.instance.iproto.enabled()); // defaults to true
+    }
+
+    #[test]
+    fn socket_config_http_defaults_to_enabled() {
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    http:
+        listen: 127.0.0.1:8080
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        assert!(config.instance.http.enabled());
+    }
+
+    #[test]
+    fn socket_config_plugin_listener_defaults_to_enabled() {
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    plugin:
+        my_plugin:
+            service:
+                my_service:
+                    listener:
+                        listen: 127.0.0.1:7777
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+
+        let plugins = config.instance.plugin.as_ref().unwrap();
+        let my_plugin = plugins.get("my_plugin").unwrap();
+        let my_service = my_plugin.service.get("my_service").unwrap();
+        assert!(my_service.listener.enabled());
+    }
+
+    #[test]
+    fn plugin_listener_config() {
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    plugin:
+        my_plugin:
+            service:
+                my_service:
+                    listener:
+                        enabled: true
+                        listen: 127.0.0.1:7777
+                        tls:
+                            enabled: true
+                            cert_file: /path/to/cert.pem
+                            key_file: /path/to/key.pem
 "###;
         let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
-        assert!(config.validate_listen_addresses().is_ok());
+        let plugins = config.instance.plugin.as_ref().unwrap();
+        let my_plugin = plugins.get("my_plugin").unwrap();
+        let my_service = my_plugin.service.get("my_service").unwrap();
+        assert_eq!(my_service.listener.enabled, Some(true));
+        assert_eq!(
+            my_service.listener.listen.as_ref().map(|a| a.to_string()),
+            Some("127.0.0.1:7777".to_string())
+        );
+        assert!(my_service.listener.tls.enabled());
+    }
+
+    #[test]
+    fn test_plugin_listener_addresses_empty() {
+        let config = PicodataConfig::default();
+        let addresses = config.plugin_listener_addresses();
+        assert!(addresses.is_empty());
+    }
+
+    #[test]
+    fn test_plugin_listener_addresses_disabled() {
+        let yaml = r###"
+instance:
+    plugin:
+        testplug:
+            service:
+                testsvc:
+                    listener:
+                        enabled: false
+                        listen: "127.0.0.1:7777"
+"###;
+        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+        let addresses = config.plugin_listener_addresses();
+        assert!(addresses.is_empty());
+    }
+
+    #[test]
+    fn test_plugin_listener_addresses_enabled_with_advertise() {
+        let yaml = r###"
+instance:
+    plugin:
+        testplug:
+            service:
+                testsvc:
+                    listener:
+                        enabled: true
+                        listen: "127.0.0.1:7777"
+                        advertise: "public.example.com:7777"
+"###;
+        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+        let addresses = config.plugin_listener_addresses();
+
+        assert_eq!(addresses.len(), 1);
+        assert_eq!(addresses[0].0, "testplug");
+        assert_eq!(addresses[0].1, "testsvc");
+        assert_eq!(addresses[0].2, "public.example.com:7777");
+    }
+
+    #[test]
+    fn test_plugin_listener_addresses_fallback_to_listen() {
+        let yaml = r###"
+instance:
+    plugin:
+        testplug:
+            service:
+                testsvc:
+                    listener:
+                        enabled: true
+                        listen: "127.0.0.1:7777"
+"###;
+        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+        let addresses = config.plugin_listener_addresses();
+
+        assert_eq!(addresses.len(), 1);
+        assert_eq!(addresses[0].2, "127.0.0.1:7777");
+    }
+
+    #[test]
+    fn test_plugin_listener_addresses_multiple_services() {
+        let yaml = r###"
+instance:
+    plugin:
+        plugin1:
+            service:
+                svc1:
+                    listener:
+                        enabled: true
+                        listen: "127.0.0.1:7001"
+                svc2:
+                    listener:
+                        enabled: true
+                        listen: "127.0.0.1:7002"
+        plugin2:
+            service:
+                svc1:
+                    listener:
+                        enabled: true
+                        listen: "127.0.0.1:7003"
+"###;
+        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+        let addresses = config.plugin_listener_addresses();
+
+        assert_eq!(addresses.len(), 3);
+    }
+
+    #[test]
+    fn test_plugin_listener_addresses_mixed_enabled_disabled() {
+        let yaml = r###"
+instance:
+    plugin:
+        testplug:
+            service:
+                enabled_svc:
+                    listener:
+                        enabled: true
+                        listen: "127.0.0.1:7001"
+                disabled_svc:
+                    listener:
+                        enabled: false
+                        listen: "127.0.0.1:7002"
+"###;
+        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+        let addresses = config.plugin_listener_addresses();
+
+        assert_eq!(addresses.len(), 1);
+        assert_eq!(addresses[0].1, "enabled_svc");
+    }
+
+    #[test]
+    fn test_legacy_iproto_config_still_works() {
+        let yaml = r###"
+instance:
+    iproto_listen: "127.0.0.1:3301"
+    iproto_advertise: "127.0.0.1:3301"
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+
+        assert_eq!(
+            config.instance.iproto.listen().to_string(),
+            "127.0.0.1:3301"
+        );
+        assert_eq!(
+            config.instance.iproto.advertise().to_string(),
+            "127.0.0.1:3301"
+        );
+    }
+
+    #[test]
+    fn test_legacy_pgproto_config_still_works() {
+        let yaml = r###"
+instance:
+    pg:
+        listen: "127.0.0.1:5432"
+"###;
+
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+
+        // The config should parse without errors
+        assert_eq!(
+            config.instance.pgproto.listen().to_string(),
+            "127.0.0.1:5432"
+        );
+    }
+
+    #[test]
+    fn test_legacy_http_config_still_works() {
+        let yaml = r###"
+instance:
+    http_listen: "127.0.0.1:8080"
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        assert_eq!(
+            config.instance.http.listen().to_host_port(),
+            "127.0.0.1:8080"
+        );
+    }
+
+    #[test]
+    fn test_new_plugin_config_with_legacy_iproto() {
+        let yaml = r###"
+instance:
+    iproto_listen: "127.0.0.1:3301"
+    plugin:
+        testplug:
+            service:
+                testsvc:
+                    listener:
+                        enabled: true
+                        listen: "127.0.0.1:7777"
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        assert_eq!(
+            config.instance.iproto.listen().to_host_port(),
+            "127.0.0.1:3301"
+        );
+        let addresses = config.plugin_listener_addresses();
+        assert_eq!(
+            addresses,
+            vec![("testplug", "testsvc", "127.0.0.1:7777".to_string())]
+        );
+    }
+
+    #[test]
+    fn config_parameter_new_iproto_section() {
+        let config = setup_for_tests(
+            None,
+            &["run", "-c", "instance.iproto.listen=127.0.0.1:3305"],
+        )
+        .unwrap();
+        assert_eq!(
+            config.instance.iproto.listen().to_string(),
+            "127.0.0.1:3305"
+        );
+        assert_eq!(
+            config.instance.iproto.advertise().to_string(),
+            "127.0.0.1:3305"
+        );
+    }
+
+    #[test]
+    fn config_parameter_new_pgproto_section() {
+        let config = setup_for_tests(
+            None,
+            &["run", "-c", "instance.pgproto.listen=127.0.0.1:5433"],
+        )
+        .unwrap();
+        assert_eq!(
+            config.instance.pgproto.listen().to_string(),
+            "127.0.0.1:5433"
+        );
+        assert_eq!(
+            config.instance.pgproto.advertise().to_string(),
+            "127.0.0.1:5433"
+        );
+    }
+
+    #[test]
+    fn config_parameter_new_http_section() {
+        let config =
+            setup_for_tests(None, &["run", "-c", "instance.http.listen=127.0.0.1:9090"]).unwrap();
+        assert_eq!(
+            config.instance.http.advertise().to_string(),
+            "127.0.0.1:9090"
+        );
+    }
+
+    #[test]
+    fn config_parameter_new_iproto_tls() {
+        let config = setup_for_tests(
+            None,
+            &[
+                "run",
+                "-c",
+                "instance.iproto.listen=127.0.0.1:3305",
+                "-c",
+                "instance.iproto.tls.enabled=true",
+                "-c",
+                "instance.iproto.tls.cert_file=/path/cert.pem",
+                "-c",
+                "instance.iproto.tls.key_file=/path/key.pem",
+            ],
+        )
+        .unwrap();
+        let tls = &config.instance.iproto.tls;
+        assert!(tls.enabled());
+        assert_eq!(tls.cert_file, Some("/path/cert.pem".into()));
+        assert_eq!(tls.key_file, Some("/path/key.pem".into()));
+    }
+
+    #[test]
+    fn config_parameter_new_section_conflicts_with_old() {
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    iproto_listen: 127.0.0.1:3301
+    iproto:
+        listen: 127.0.0.1:3302
+"###;
+        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+        let err = config
+            .check_deprecated_socket_parameters_conflicts()
+            .unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("cannot use both old iproto settings"));
+    }
+
+    #[test]
+    fn config_parameter_new_section_no_conflict_when_only_new() {
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    iproto:
+        listen: 127.0.0.1:3301
+"###;
+        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+        config
+            .check_deprecated_socket_parameters_conflicts()
+            .unwrap();
+    }
+
+    #[test]
+    fn config_parameter_new_section_effective_params_override_old() {
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    iproto:
+        listen: 127.0.0.1:3305
+        advertise: 127.0.0.1:3306
+"###;
+
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+
+        assert_eq!(
+            config.instance.iproto.listen().to_host_port(),
+            "127.0.0.1:3305"
+        );
+        assert_eq!(
+            config.instance.iproto.advertise().to_host_port(),
+            "127.0.0.1:3306"
+        );
+    }
+
+    #[test]
+    fn config_parameter_old_fields_used_when_new_section_empty() {
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    iproto_listen: 127.0.0.1:3301
+    iproto_advertise: 127.0.0.1:3302
+"###;
+
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+
+        assert_eq!(
+            config.instance.iproto.listen().to_host_port(),
+            "127.0.0.1:3301"
+        );
+        assert_eq!(
+            config.instance.iproto.advertise().to_host_port(),
+            "127.0.0.1:3302"
+        );
+    }
+
+    #[test]
+    fn config_parameter_new_pgproto_effective_config() {
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    pgproto:
+        listen: 127.0.0.1:5433
+        tls:
+            enabled: true
+            cert_file: /path/cert.pem
+            key_file: /path/key.pem
+"###;
+
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+
+        let pgproto = config.instance.pgproto;
+        assert_eq!(pgproto.listen().to_string(), "127.0.0.1:5433");
+        assert!(pgproto.tls.enabled());
+        assert_eq!(pgproto.tls.cert_file, Some("/path/cert.pem".into()));
+    }
+
+    #[test]
+    fn config_parameter_without_plugin_section() {
+        let yaml = r###"
+instance:
+    cluster_name: test
+"###;
+        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+        let addresses = config.plugin_listener_addresses();
+        assert!(addresses.is_empty());
     }
 
     #[test]

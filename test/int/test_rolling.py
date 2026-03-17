@@ -525,8 +525,7 @@ cluster:
     cluster.runtime = runtime_v1
     leader = cluster.add_instance(wait_online=False, name="leader", tier="arbiter")
 
-    http_listen = f"{cluster.base_host}:{cluster.port_distributor.get()}"
-    leader.env["PICODATA_HTTP_LISTEN"] = http_listen
+    http_listen = leader.http_listen
 
     storage = cluster.add_instance(wait_online=False, name="storage", tier="storage")
     cluster.wait_online()

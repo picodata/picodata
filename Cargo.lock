@@ -3179,6 +3179,7 @@ version = "25.6.0"
 dependencies = [
  "abi_stable",
  "log",
+ "openssl",
  "picodata-plugin-proc-macro",
  "reqwest 0.13.2",
  "rmp",
@@ -3187,6 +3188,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smol_str",
+ "socket2 0.5.10",
  "tarantool",
  "thiserror 2.0.18",
  "threadpool",
@@ -4785,9 +4787,9 @@ dependencies = [
 
 [[package]]
 name = "tempfile"
-version = "3.27.0"
+version = "3.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
+checksum = "0136791f7c95b1f6dd99f9cc786b91bb81c3800b639b3478e561ddb7be95e5f1"
 dependencies = [
  "fastrand",
  "getrandom 0.4.2",
@@ -6137,18 +6139,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.42"
+version = "0.8.39"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2578b716f8a7a858b7f02d5bd870c14bf4ddbbcf3a4c05414ba6503640505e3"
+checksum = "db6d35d663eadb6c932438e763b262fe1a70987f9ae936e60158176d710cae4a"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.42"
+version = "0.8.39"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e6cc098ea4d3bd6246687de65af3f920c430e236bee1e3bf2e441463f08a02f"
+checksum = "4122cd3169e94605190e77839c9a40d40ed048d305bfdc146e7df40ab0f3e517"
 dependencies = [
  "proc-macro2",
  "quote",

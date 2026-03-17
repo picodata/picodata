@@ -199,7 +199,10 @@ impl InstanceInfo {
         let peer_address = node
             .storage
             .peer_addresses
-            .get(instance.raft_id, &traft::ConnectionType::Iproto)?
+            .get(
+                instance.raft_id,
+                &traft::ConnectionType::System(traft::SystemConnectionType::Iproto),
+            )?
             .unwrap_or_else(|| "<unknown>".into());
 
         let cluster_name = node.topology_cache.cluster_name.into();

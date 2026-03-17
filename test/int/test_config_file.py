@@ -46,7 +46,8 @@ cluster:
         deluxe:
 instance:
     instance_dir: {instance_dir}
-    iproto_listen: {listen}
+    iproto:
+        listen: {listen}
     peer:
         - {listen}
     cluster_name: my-cluster
@@ -89,7 +90,6 @@ instance:
         ),
         instance=dict(
             admin_socket=dict(value=f"{instance_dir}/admin.sock", source="default"),
-            iproto_advertise=dict(value=f"{host}:{port}", source="default"),
             failure_domain=dict(value=dict(), source="default"),
             cluster_name=dict(value="my-cluster", source="config_file"),
             name=dict(value="my-instance", source="config_file"),
@@ -100,8 +100,6 @@ instance:
             config_file=dict(value=f"{instance.config_path}", source="commandline_or_environment"),
             instance_dir=dict(value=instance_dir, source="config_file"),
             backup_dir=dict(value=f"{instance_dir}/backup", source="default"),
-            iproto_listen=dict(value=f"{host}:{port}", source="config_file"),
-            https=dict(enabled=dict(value=False, source="default")),
             log=dict(
                 level=dict(value="verbose", source="commandline_or_environment"),
                 format=dict(value="plain", source="default"),
@@ -125,16 +123,26 @@ instance:
                 write_threads=dict(value=4, source="default"),
                 timeout=dict(value=60.0, source="default"),
             ),
-            pg=dict(
+            iproto=dict(
+                enabled=dict(source="default", value=True),
+                listen=dict(source="config_file", value=f"{host}:{port}"),
+                advertise=dict(source="default", value=f"{host}:{port}"),
+                tls=dict(enabled=dict(source="default", value=False)),
+            ),
+            pgproto=dict(
                 # pg is enabled by default, so listen should be set
+                enabled=dict(source="default", value=True),
                 listen=dict(source="default", value="127.0.0.1:4327"),
                 advertise=dict(source="default", value="127.0.0.1:4327"),
-                ssl=dict(source="default", value=False),
+                tls=dict(enabled=dict(source="default", value=False)),
+            ),
+            http=dict(
+                enabled=dict(source="default", value=True),
+                listen=dict(source="default", value="127.0.0.1:5327"),
+                advertise=dict(source="default", value="127.0.0.1:5327"),
+                tls=dict(enabled=dict(source="default", value=False)),
             ),
             boot_timeout=dict(value=7200, source="default"),
-            iproto_tls=dict(
-                enabled=dict(value=False, source="default"),
-            ),
         ),
     )
 
@@ -428,17 +436,69 @@ def test_picodata_default_config(cluster: Cluster):
     #
     # Check that running with the generated config file works
     #
-    cluster.set_config_file(yaml=default_config)
+    # Modify the default config to remove the new iproto section and use old settings
+    # to avoid conflicts with test harness which uses --iproto-listen flag
+    default_config_dict = yaml.safe_load(default_config)
+    if "iproto" in default_config_dict.get("instance", {}):
+        del default_config_dict["instance"]["iproto"]
+    if "http" in default_config_dict.get("instance", {}):
+        del default_config_dict["instance"]["http"]
+    if "pgproto" in default_config_dict.get("instance", {}):
+        del default_config_dict["instance"]["pgproto"]
+    modified_config = yaml.dump(default_config_dict, default_flow_style=False)
+
+    cluster.set_config_file(yaml=modified_config)
     i = cluster.add_instance(wait_online=False)
 
-    # Default config contains default values for `iproto_listen`, `advertise` & `peers`,
-    # but our testing harness overrides the `iproto_listen` & `peers` values so that
-    # running tests in parallel doesn't result in binding to conflicting ports.
-    # For this reason we must also specify `advertise` explictily.
+    # Old-style settings will be provided via command line arguments by test harness
     i.env["PICODATA_IPROTO_ADVERTISE"] = i.iproto_listen  # type: ignore
 
     i.start()
     i.wait_online()
+
+
+def test_picodata_default_config_has_unified_socket_sections(cluster: Cluster):
+    """Test that picodata config default generates unified socket configuration sections
+    and does not contain deprecated socket options."""
+    data = subprocess.check_output([cluster.runtime.command, "config", "default"])
+    default_config = data.decode()
+    config = yaml.safe_load(default_config)
+
+    instance = config["instance"]
+
+    # Check that new unified sections have expected values
+    assert instance["iproto"] == {
+        "advertise": "127.0.0.1:3301",
+        "enabled": True,
+        "listen": "127.0.0.1:3301",
+        "tls": {"enabled": False},
+    }, f"Unexpected iproto section: {instance.get('iproto')}"
+    assert instance["pgproto"] == {
+        "advertise": "127.0.0.1:4327",
+        "enabled": True,
+        "listen": "127.0.0.1:4327",
+        "tls": {"enabled": False},
+    }, f"Unexpected pgproto section: {instance.get('pgproto')}"
+    assert instance["http"] == {
+        "advertise": "127.0.0.1:5327",
+        "enabled": True,
+        "listen": "127.0.0.1:5327",
+        "tls": {"enabled": False},
+    }, f"Unexpected http section: {instance.get('http')}"
+
+    # Check that deprecated socket options are not present
+    deprecated_options = [
+        "iproto_listen",
+        "iproto_advertise",
+        "iproto_tls",
+        "http_listen",
+        "https",
+        "pg",
+        "listen",
+        "advertise_address",
+    ]
+    for option in deprecated_options:
+        assert option not in instance, f"Deprecated option '{option}' should not be present in default config"
 
 
 def test_default_tier_is_not_created_with_configuration_file(cluster: Cluster):
@@ -489,8 +549,8 @@ def test_output_config_parameters(cluster: Cluster):
         'instance.replicaset_name': "with-love"
         'instance.failure_domain': {}
         'instance.peer':
-        'instance.iproto_listen':
-        'instance.iproto_advertise':
+        'instance.iproto.listen':
+        'instance.iproto.advertise':
         'instance.admin_socket':
         'instance.share_dir':
         'instance.audit':
@@ -565,11 +625,12 @@ def test_iproto_tls_parameters(cluster: Cluster):
         yaml=f"""
 instance:
     cluster_name: test
-    iproto_tls:
-        enabled: true
-        cert_file: {cert_file}
-        key_file: {key_file}
-        ca_file: {ca_file}
+    iproto:
+        tls:
+            enabled: true
+            cert_file: {cert_file}
+            key_file: {key_file}
+            ca_file: {ca_file}
     """
     )
 
@@ -579,7 +640,7 @@ instance:
 
     source = "config_file"
     configuration = instance.call(".proc_get_config")
-    assert configuration["instance"]["iproto_tls"] == dict(
+    assert configuration["instance"]["iproto"]["tls"] == dict(
         enabled=dict(value=True, source=source),
         cert_file=dict(value=str(cert_file), source=source),
         key_file=dict(value=str(key_file), source=source),

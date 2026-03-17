@@ -5,7 +5,7 @@ use tarantool::tlua;
 
 pub const DEFAULT_USERNAME: &str = "guest";
 pub const DEFAULT_LISTEN_HOST: &str = "127.0.0.1";
-pub const DEFAULT_HTTP_PORT: &str = "8080";
+pub const DEFAULT_HTTP_PORT: &str = "5327";
 pub const DEFAULT_IPROTO_PORT: &str = "3301";
 pub const DEFAULT_PGPROTO_PORT: &str = "4327";
 
@@ -28,6 +28,7 @@ pub(crate) trait ListenAddress {
     /// conflicts occur when:
     /// - both addresses share same host and port
     /// - one binds to a wildcard (0.0.0.0) and ports match
+    #[cfg(test)]
     fn conflicts_with(&self, other: &impl ListenAddress) -> bool {
         const IPV4_WILDCARD_ADDR: &'static str = "0.0.0.0";
         if self.port() != other.port() {
@@ -175,7 +176,7 @@ impl HttpAddress {
     pub const fn default_host_port() -> &'static str {
         // TODO: "only literals can be passed to `concat!()`"
         // concat!(DEFAULT_LISTEN_HOST, ":", DEFAULT_HTTP_PORT)
-        "127.0.0.1:8080"
+        "127.0.0.1:5327"
     }
 
     #[inline(always)]
@@ -309,6 +310,73 @@ impl ListenAddress for PgprotoAddress {
     }
 }
 
+//////////////////////
+// PLUGIN ADDRESS //
+//////////////////////
+
+/// Address type for plugin listener configuration.
+///
+/// Validates HOST:PORT format during deserialization, consistent with
+/// `IprotoAddress`, `HttpAddress`, and `PgprotoAddress`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginAddress {
+    pub host: String,
+    pub port: String,
+}
+
+impl PluginAddress {
+    #[inline(always)]
+    pub fn to_host_port(&self) -> SmolStr {
+        format_smolstr!("{}:{}", self.host, self.port)
+    }
+}
+
+impl std::fmt::Display for PluginAddress {
+    #[inline(always)]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.host, self.port)
+    }
+}
+
+impl FromStr for PluginAddress {
+    type Err = String;
+
+    fn from_str(addr: &str) -> Result<Self, Self::Err> {
+        let (host, port) = parse_host_and_port(addr)?;
+        Ok(Self { host, port })
+    }
+}
+
+impl serde::Serialize for PluginAddress {
+    #[inline(always)]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.to_string().serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for PluginAddress {
+    #[inline(always)]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s: &str = serde::Deserialize::deserialize(deserializer)?;
+        Self::from_str(s).map_err(serde::de::Error::custom)
+    }
+}
+
+impl ListenAddress for PluginAddress {
+    fn host(&self) -> &str {
+        &self.host
+    }
+    fn port(&self) -> &str {
+        &self.port
+    }
+}
+
 ///////////
 // TESTS //
 ///////////
@@ -426,11 +494,11 @@ mod tests {
     fn addresses_conflict_same() {
         let http = HttpAddress {
             host: "127.0.0.1".into(),
-            port: "8080".into(),
+            port: "5327".into(),
         };
         let pg = PgprotoAddress {
             host: "127.0.0.1".into(),
-            port: "8080".into(),
+            port: "5327".into(),
         };
         assert!(http.conflicts_with(&pg));
     }
@@ -439,7 +507,7 @@ mod tests {
     fn addresses_conflict_different_ports() {
         let http = HttpAddress {
             host: "127.0.0.1".into(),
-            port: "8080".into(),
+            port: "5327".into(),
         };
         let pg = PgprotoAddress {
             host: "127.0.0.1".into(),
@@ -466,11 +534,11 @@ mod tests {
     fn addresses_no_conflict_different_hosts() {
         let http = HttpAddress {
             host: "192.168.1.1".into(),
-            port: "8080".into(),
+            port: "5327".into(),
         };
         let pg = PgprotoAddress {
             host: "127.0.0.1".into(),
-            port: "8080".into(),
+            port: "5327".into(),
         };
         assert!(!http.conflicts_with(&pg));
     }

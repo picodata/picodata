@@ -18,6 +18,7 @@ use picodata_plugin::system::tarantool::tuple::Tuple;
 use picodata_plugin::system::tarantool::util::DisplayAsHexBytes;
 use picodata_plugin::system::tarantool::{fiber, index, tlua};
 use picodata_plugin::transport::context::Context;
+use picodata_plugin::transport::listener::PicoListener;
 use picodata_plugin::transport::rpc;
 use picodata_plugin::{internal, log, system};
 use serde::{Deserialize, Serialize};
@@ -937,6 +938,88 @@ pub fn migration_validator(mv: &mut MigrationValidator) {
 // ...
 ////////////////////////////////////////////////////////////////////////////////
 
+////////////////////////////////////////////////////////////////////////////////
+/// ListenerService - for testing PicoListener API
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Deserialize)]
+struct ListenerServiceConfig {
+    #[allow(dead_code)]
+    enabled: bool,
+}
+
+struct ListenerService;
+
+impl Service for ListenerService {
+    type Config = ListenerServiceConfig;
+
+    fn on_start(&mut self, ctx: &PicoContext, _cfg: Self::Config) -> CallbackResult<()> {
+        use std::io::{Read, Write};
+
+        eprintln!("ListenerService on_start called");
+
+        let Some(listener) = PicoListener::bind(ctx)? else {
+            eprintln!("Listener is disabled in configuration");
+            return Ok(());
+        };
+
+        eprintln!("Listener bound successfully");
+        eprintln!("Advertise address: {}", listener.advertise_address());
+        eprintln!("TLS enabled: {}", listener.is_tls());
+        if let Some(kind) = listener.tls_kind() {
+            eprintln!("TLS kind: {}", kind);
+        }
+
+        ctx.register_job(move |cancel| {
+            eprintln!("Listener job started");
+
+            loop {
+                if cancel
+                    .wait_timeout(std::time::Duration::from_millis(100))
+                    .is_ok()
+                {
+                    eprintln!("Listener job cancelled");
+                    break;
+                }
+
+                match listener.accept() {
+                    Ok((mut stream, addr)) => {
+                        eprintln!("Accepted connection from {}", addr);
+                        eprintln!("Connection is TLS: {}", stream.is_tls());
+                        if let Err(e) = stream.set_nodelay(true) {
+                            eprintln!("Failed to set TCP_NODELAY: {}", e);
+                        }
+
+                        let mut buf = [0u8; 1024];
+                        match stream.read(&mut buf) {
+                            Ok(n) if n > 0 => {
+                                eprintln!("Read {} bytes", n);
+                                if let Err(e) = stream.write_all(&buf[..n]) {
+                                    eprintln!("Write error: {}", e);
+                                }
+                            }
+                            Ok(_) => eprintln!("Connection closed by peer"),
+                            Err(e) => eprintln!("Read error: {}", e),
+                        }
+                    }
+                    Err(e) => {
+                        if !e.to_string().contains("would block") {
+                            eprintln!("Accept error: {}", e);
+                        }
+                    }
+                }
+            }
+        })?;
+
+        Ok(())
+    }
+
+    fn on_stop(&mut self, _ctx: &PicoContext) -> CallbackResult<()> {
+        eprintln!("ListenerService stopped");
+        Ok(())
+    }
+}
+
 // Ensures that macros usage at least compiles.
 #[tarantool::proc]
 fn example_stored_proc() {}
@@ -982,4 +1065,6 @@ pub fn service_registrar(reg: &mut ServiceRegistry) {
 
     reg.add("testservice_4", "0.3.0", Service4::new);
     reg.add("testservice_4", "0.4.0", Service4WithExtendedConfig::new);
+
+    reg.add("listenerservice", "0.1.0", || ListenerService);
 }

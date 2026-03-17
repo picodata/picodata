@@ -64,13 +64,19 @@ impl TlsConfig {
         let key = fs::canonicalize(&key).map_err(|e| TlsConfigError::KeyFile(key, e))?;
 
         let ca_cert = match ca_file {
-            Some(ca_file) => ca_file.to_path_buf(),
-            None => instance_dir.join("ca.crt"),
-        };
-        let ca_cert = match fs::canonicalize(&ca_cert) {
-            Ok(path) => Some(path),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => None,
-            Err(e) => Err(TlsConfigError::CaFile(ca_cert, e))?,
+            Some(ca_file) => {
+                let path = fs::canonicalize(ca_file)
+                    .map_err(|e| TlsConfigError::CaFile(ca_file.to_path_buf(), e))?;
+                Some(path)
+            }
+            None => {
+                let default_path = instance_dir.join("ca.crt");
+                match fs::canonicalize(&default_path) {
+                    Ok(path) => Some(path),
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => None,
+                    Err(e) => return Err(TlsConfigError::CaFile(default_path, e)),
+                }
+            }
         };
 
         // TODO: Make sure that the file permissions are set to 0640 or 0600.
@@ -180,6 +186,7 @@ impl TlsAcceptor {
     }
 }
 
+// TODO: This function is duplicated in picodata-plugin/src/transport/listener.rs
 fn x509_name_entries_to_string(
     entries: X509NameEntries,
 ) -> Result<String, openssl::error::ErrorStack> {
@@ -196,6 +203,8 @@ fn x509_name_entries_to_string(
     Ok(s.join(", "))
 }
 
+// TODO: This function is duplicated in picodata-plugin/src/transport/listener.rs
+// Consider creating a shared TLS utilities crate for both picodata and plugins.
 fn cert_to_string(cert: &X509) -> Result<String, openssl::error::ErrorStack> {
     let issuer = x509_name_entries_to_string(cert.issuer_name().entries())?;
     let subject = x509_name_entries_to_string(cert.subject_name().entries())?;
@@ -218,6 +227,7 @@ fn cert_to_string(cert: &X509) -> Result<String, openssl::error::ErrorStack> {
     Ok(s)
 }
 
+// TODO: This function is duplicated in picodata-plugin/src/transport/listener.rs
 fn certs_to_string(certs: &[X509]) -> Result<String, openssl::error::ErrorStack> {
     let mut s = String::new();
 

@@ -13,9 +13,9 @@ use crate::topology_cache::TopologyCacheRef;
 use crate::traft::error::Error as TraftError;
 use crate::traft::error::Error;
 use crate::traft::node;
-use crate::traft::ConnectionType;
 use crate::traft::RaftId;
 use crate::traft::Result;
+use crate::traft::SystemConnectionType;
 use ::tarantool::msgpack::ViaMsgpack;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -281,7 +281,7 @@ impl VshardConfig {
             .storage
             .peer_addresses
             .iter()?
-            .filter(|peer| peer.connection_type == ConnectionType::Iproto)
+            .filter(|peer| peer.connection_type.as_system() == Some(SystemConnectionType::Iproto))
             .map(|pa| (pa.raft_id, pa.address))
             .collect();
 
@@ -322,7 +322,7 @@ impl VshardConfig {
                     ..Default::default()
                 });
 
-            let tls_config = &PicodataConfig::get().instance.iproto_tls;
+            let tls_config = &PicodataConfig::get().instance.iproto.tls;
             replicaset.replicas.insert(
                 peer.uuid.clone(),
                 ReplicaSpec {

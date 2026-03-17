@@ -17,7 +17,7 @@ use crate::storage::{Catalog, SystemTable};
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft::op::{Dml, Op};
-use crate::traft::{error::Error, node, ConnectionType};
+use crate::traft::{error::Error, node, ConnectionType, SystemConnectionType};
 use crate::traft::{Address, RaftId, Result};
 use crate::util::Uppercase;
 use crate::version::version_is_new_enough;
@@ -497,10 +497,10 @@ fn choose_random_node_with_known_address(
         let candidate_index = rng.random_range(0..candidate_instances.len());
 
         let candidate_id = candidate_instances[candidate_index];
-        if let Some(candidate_address) = storage
-            .peer_addresses
-            .get(candidate_id, &ConnectionType::Iproto)?
-        {
+        if let Some(candidate_address) = storage.peer_addresses.get(
+            candidate_id,
+            &ConnectionType::System(SystemConnectionType::Iproto),
+        )? {
             return Ok(Some((candidate_id, candidate_address)));
         }
 
@@ -618,7 +618,12 @@ pub fn update_our_target_state_to_online(
         let leader_address = leader_id.and_then(|id| {
             node.storage
                 .peer_addresses
-                .try_get(id, &crate::traft::ConnectionType::Iproto)
+                .try_get(
+                    id,
+                    &crate::traft::ConnectionType::System(
+                        crate::traft::SystemConnectionType::Iproto,
+                    ),
+                )
                 .ok()
         });
 

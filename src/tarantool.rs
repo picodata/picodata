@@ -1,5 +1,5 @@
-use crate::config::WalMode;
 use crate::config::{BootstrapStrategy, ByteSize, ElectionMode, PicodataConfig};
+use crate::config::{TlsSettings, WalMode};
 use crate::config_parameter_path;
 use crate::instance::Instance;
 use crate::introspection::Introspection;
@@ -290,9 +290,16 @@ pub struct ListenConfig {
 }
 
 impl ListenConfig {
-    pub fn new(uri: String, config: &crate::iproto::TlsConfig) -> Self {
+    pub fn new(uri: String, config: &TlsSettings) -> Self {
         let mut result = Self { uri, params: None };
         if config.enabled() {
+            if config.password_file.is_some() {
+                tlog!(
+                    Warning,
+                    "Ignoring password_file option when creating an iproto TLS ListenConfig"
+                );
+            }
+
             result.params = Some(ListenConfigParams {
                 transport: "ssl".to_string(),
                 ssl_cert_file: config.cert_file.clone(),
@@ -303,7 +310,7 @@ impl ListenConfig {
         result
     }
 
-    pub fn new_for_pico_service(uri: &str, tls_config: &crate::iproto::TlsConfig) -> Self {
+    pub fn new_for_pico_service(uri: &str, tls_config: &TlsSettings) -> Self {
         if tls_config.enabled() {
             return Self::new(format!("{PICO_SERVICE_USER_NAME}@{uri}"), tls_config);
         }
@@ -474,7 +481,7 @@ impl Cfg {
         resp: &join::Response,
     ) -> Result<Self, Error> {
         let mut replication_cfg = Vec::with_capacity(resp.box_replication.len());
-        let tls_config = &config.instance.iproto_tls;
+        let tls_config = &config.instance.iproto.tls;
         for address in &resp.box_replication {
             replication_cfg.push(ListenConfig::new_for_pico_service(address, tls_config));
         }
@@ -488,7 +495,7 @@ impl Cfg {
             // Needs to be set, because an applier will attempt to connect to
             // self and will block box.cfg() call until it succeeds.
             listen: Some(ListenConfig::new(
-                config.instance.iproto_listen().to_host_port().into(),
+                config.instance.iproto.listen().to_host_port().into(),
                 tls_config,
             )),
 

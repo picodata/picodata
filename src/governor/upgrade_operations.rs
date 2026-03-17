@@ -174,6 +174,7 @@ tarantool::define_str_enum! {
         /// ALTER TABLE _pico_table ADD COLUMN opts ARRAY NULL;
         /// ```
         AlterPicoTableAddOptsField = "alter_pico_table_add_opts_field",
+
     }
 }
 
@@ -213,6 +214,7 @@ crate::define_rpc_request! {
 
             InternalScript::AlterPicoTableAddOptsField =>
                 execute_alter_pico_table_add_opts_field(),
+
         }
     }
 

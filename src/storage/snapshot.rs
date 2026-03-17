@@ -950,8 +950,8 @@ mod tests {
         });
 
         let tuples = [
-            (1, "google.com", traft::ConnectionType::Iproto),
-            (2, "ya.ru", traft::ConnectionType::Pgproto),
+            (1, "google.com", traft::SystemConnectionType::Iproto),
+            (2, "ya.ru", traft::SystemConnectionType::Pgproto),
         ]
         .to_tuple_buffer()
         .unwrap();
@@ -988,13 +988,19 @@ mod tests {
         assert_eq!(storage.peer_addresses.space.len().unwrap(), 2);
         let addr = storage
             .peer_addresses
-            .get(1, &traft::ConnectionType::Iproto)
+            .get(
+                1,
+                &traft::ConnectionType::System(traft::SystemConnectionType::Iproto),
+            )
             .unwrap()
             .unwrap();
         assert_eq!(addr, "google.com", "iproto");
         let addr = storage
             .peer_addresses
-            .get(2, &traft::ConnectionType::Pgproto)
+            .get(
+                2,
+                &traft::ConnectionType::System(traft::SystemConnectionType::Pgproto),
+            )
             .unwrap()
             .unwrap();
         assert_eq!(addr, "ya.ru", "pgproto");
@@ -1018,12 +1024,12 @@ mod tests {
         storage
             .peer_addresses
             .space
-            .insert(&(1, "google.com", traft::ConnectionType::Iproto))
+            .insert(&(1, "google.com", traft::SystemConnectionType::Iproto))
             .unwrap();
         storage
             .peer_addresses
             .space
-            .insert(&(2, "ya.ru", traft::ConnectionType::Pgproto))
+            .insert(&(2, "ya.ru", traft::SystemConnectionType::Pgproto))
             .unwrap();
 
         // Reset the contents of _pico_property to be independent from Catalog::for_tests

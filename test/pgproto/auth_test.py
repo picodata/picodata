@@ -70,7 +70,7 @@ def test_user_blocking_after_a_series_of_unsuccessful_auth_attempts(
         tier:
             default:
     instance:
-        pg:
+        pgproto:
             listen: "{host}:{port}"
     """
     )

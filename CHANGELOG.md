@@ -12,6 +12,13 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### Features
 
+- Unified socket configuration: introduce new `instance.iproto`, `instance.http`,
+  and `instance.pgproto` config sections that consolidate listen/advertise/TLS settings
+  per protocol. Old top-level parameters (`instance.iproto_listen`,
+  `instance.iproto_advertise`, `instance.http_listen`, `instance.pg`) are deprecated
+  but remain functional. HTTP server is now enabled by default on port 5327.
+  HTTP and pgproto peer addresses are stored in `_pico_peer_address` system table
+  with corresponding connection types (`http`, `pgproto`, `plugin:<name>.<service>`).
 - Rework SQL execution protocol for DML queries to reduce data transfer.
 - Support JSON_EXTRACT_PATH function.
 - Introduce non-blocking SQL execution to prevent fiber starvation.

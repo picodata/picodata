@@ -843,7 +843,8 @@ impl PeerAddresses {
         address: &traft::Address,
         connection_type: &traft::ConnectionType,
     ) -> tarantool::Result<()> {
-        self.space.replace(&(raft_id, address, connection_type))?;
+        self.space
+            .replace(&(raft_id, address, connection_type.as_storage_string()))?;
         Ok(())
     }
 
@@ -854,7 +855,8 @@ impl PeerAddresses {
         raft_id: RaftId,
         connection_type: &traft::ConnectionType,
     ) -> tarantool::Result<()> {
-        self.space.delete(&(raft_id, connection_type))?;
+        self.space
+            .delete(&(raft_id, connection_type.as_storage_string()))?;
         Ok(())
     }
 
@@ -864,7 +866,8 @@ impl PeerAddresses {
         raft_id: RaftId,
         connection_type: &traft::ConnectionType,
     ) -> Result<Option<traft::Address>> {
-        let Some(tuple) = self.space.get(&(raft_id, connection_type))? else {
+        let conn_type_str = connection_type.as_storage_string();
+        let Some(tuple) = self.space.get(&(raft_id, conn_type_str))? else {
             return Ok(None);
         };
         tuple.field(1).map_err(Into::into)
@@ -886,7 +889,12 @@ impl PeerAddresses {
         ids: impl IntoIterator<Item = RaftId>,
     ) -> Result<HashSet<traft::Address>> {
         ids.into_iter()
-            .map(|id| self.try_get(id, &traft::ConnectionType::Iproto))
+            .map(|id| {
+                self.try_get(
+                    id,
+                    &traft::ConnectionType::System(traft::SystemConnectionType::Iproto),
+                )
+            })
             .collect()
     }
 }
@@ -3530,7 +3538,7 @@ mod tests {
         ] {
             space_by_name(Instances::TABLE_NAME).unwrap().put(&instance).unwrap();
             let (_, _, raft_id, ..) = instance;
-            space_peer_addresses.put(&(raft_id, format!("addr:{raft_id}"), &traft::ConnectionType::Iproto)).unwrap();
+            space_peer_addresses.put(&(raft_id, format!("addr:{raft_id}"), &traft::SystemConnectionType::Iproto)).unwrap();
         }
 
         let instance = storage.instances.all_instances().unwrap();
@@ -3568,8 +3576,8 @@ mod tests {
         {
             // Ensure traft storage doesn't impose restrictions
             // on peer_address uniqueness.
-            storage_peer_addresses.put(10, &traft::Address::from("addr:collision"), &traft::ConnectionType::Iproto).unwrap();
-            storage_peer_addresses.put(11, &traft::Address::from("addr:collision"), &traft::ConnectionType::Iproto).unwrap();
+            storage_peer_addresses.put(10, &traft::Address::from("addr:collision"), &traft::ConnectionType::System(traft::SystemConnectionType::Iproto)).unwrap();
+            storage_peer_addresses.put(11, &traft::Address::from("addr:collision"), &traft::ConnectionType::System(traft::SystemConnectionType::Iproto)).unwrap();
         }
 
         {
@@ -3597,7 +3605,7 @@ mod tests {
 
         let box_replication = |replicaset_name: &str| -> Vec<traft::Address> {
             storage.instances.replicaset_instances(replicaset_name).unwrap()
-                .map(|instance| storage_peer_addresses.try_get(instance.raft_id, &traft::ConnectionType::Iproto).unwrap())
+                .map(|instance| storage_peer_addresses.try_get(instance.raft_id, &traft::ConnectionType::System(traft::SystemConnectionType::Iproto)).unwrap())
                 .collect::<Vec<_>>()
         };
 
@@ -3626,17 +3634,20 @@ mod tests {
 
         space_by_name(PeerAddresses::TABLE_NAME)
             .unwrap()
-            .insert(&(1, "foo", &traft::ConnectionType::Iproto))
+            .insert(&(1, "foo", &traft::SystemConnectionType::Iproto))
             .unwrap();
         space_by_name(PeerAddresses::TABLE_NAME)
             .unwrap()
-            .insert(&(2, "bar", &traft::ConnectionType::Pgproto))
+            .insert(&(2, "bar", &traft::SystemConnectionType::Pgproto))
             .unwrap();
 
         assert_eq!(
             storage
                 .peer_addresses
-                .get(1, &traft::ConnectionType::Iproto)
+                .get(
+                    1,
+                    &traft::ConnectionType::System(traft::SystemConnectionType::Iproto)
+                )
                 .unwrap()
                 .unwrap(),
             "foo"
@@ -3644,7 +3655,10 @@ mod tests {
         assert_eq!(
             storage
                 .peer_addresses
-                .get(2, &traft::ConnectionType::Pgproto)
+                .get(
+                    2,
+                    &traft::ConnectionType::System(traft::SystemConnectionType::Pgproto)
+                )
                 .unwrap()
                 .unwrap(),
             "bar"

@@ -325,7 +325,11 @@ mod tests {
         node.storage.instances.put(&instance).unwrap();
         node.storage
             .peer_addresses
-            .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
+            .put(
+                instance.raft_id,
+                &listen,
+                &traft::ConnectionType::System(traft::SystemConnectionType::Iproto),
+            )
             .unwrap();
 
         crate::luamod::setup();

@@ -740,6 +740,8 @@ class Instance:
     pg_ssl_cert_file: str | None = None
     pg_ssl_key_file: str | None = None
     pg_ssl_ca_file: str | None = None
+    http_host: str | None = None
+    http_port: int | None = None
     audit: str | bool = True
     tier: str | None = None
     init_replication_factor: int | None = None
@@ -789,6 +791,12 @@ class Instance:
         if self.pg_host is None or self.pg_port is None:
             return None
         return f"{self.pg_host}:{self.pg_port}"
+
+    @property
+    def http_listen(self):
+        if self.http_host is None or self.http_port is None:
+            return None
+        return f"{self.http_host}:{self.http_port}"
 
     def current_state(self, target: "Instance | None" = None) -> tuple[str, int]:
         return self.states(target)[0]
@@ -841,10 +849,11 @@ class Instance:
             *([f"--share-dir={self.share_dir}"] if self.share_dir else []),
             *([f"--iproto-listen={self.iproto_listen}"] if self.iproto_listen else []),
             *([f"--pg-listen={self.pg_listen}"] if self.pg_listen else []),
-            *([f"-c instance.pg.ssl={self.pg_ssl}"] if self.pg_ssl else []),
-            *([f"-c instance.pg.cert_file={self.pg_ssl_cert_file}"] if self.pg_ssl and self.pg_ssl_cert_file else []),
-            *([f"-c instance.pg.key_file={self.pg_ssl_key_file}"] if self.pg_ssl and self.pg_ssl_key_file else []),
-            *([f"-c instance.pg.ca_file={self.pg_ssl_ca_file}"] if self.pg_ssl and self.pg_ssl_ca_file else []),
+            *([f"--http-listen={self.http_listen}"] if self.http_listen else []),
+            *([f"-c instance.pgproto.tls.enabled={self.pg_ssl}"] if self.pg_ssl else []),
+            *([f"-c instance.pgproto.tls.cert_file={self.pg_ssl_cert_file}"] if self.pg_ssl and self.pg_ssl_cert_file else []),
+            *([f"-c instance.pgproto.tls.key_file={self.pg_ssl_key_file}"] if self.pg_ssl and self.pg_ssl_key_file else []),
+            *([f"-c instance.pgproto.tls.ca_file={self.pg_ssl_ca_file}"] if self.pg_ssl and self.pg_ssl_ca_file else []),
             *([f"--peer={str.join(',', self.peers)}"] if self.peers else []),
             *(f"--failure-domain={k}={v}" for k, v in self.failure_domain.items()),
             *(["--init-replication-factor", f"{self.init_replication_factor}"]
@@ -852,10 +861,10 @@ class Instance:
             *(["--config", self.config_path] if self.config_path is not None else []),
             *(["--tier", self.tier] if self.tier is not None else []),
             *(["--audit", audit] if audit else []),
-            *(["-c instance.iproto_tls.enabled=true"] if self.iproto_tls_enabled else []),
-            *([f"-c instance.iproto_tls.cert_file={self.iproto_tls_cert}"] if self.iproto_tls_cert else []),
-            *([f"-c instance.iproto_tls.key_file={self.iproto_tls_key}"] if self.iproto_tls_key else []),
-            *([f"-c instance.iproto_tls.ca_file={self.iproto_tls_ca}"] if self.iproto_tls_ca else []),
+            *(["-c instance.iproto.tls.enabled=true"] if self.iproto_tls_enabled else []),
+            *([f"-c instance.iproto.tls.cert_file={self.iproto_tls_cert}"] if self.iproto_tls_cert else []),
+            *([f"-c instance.iproto.tls.key_file={self.iproto_tls_key}"] if self.iproto_tls_key else []),
+            *([f"-c instance.iproto.tls.ca_file={self.iproto_tls_ca}"] if self.iproto_tls_ca else []),
         ]
         # fmt: on
 
@@ -1309,30 +1318,8 @@ class Instance:
         log.info(f"removing instance_dir of {self}")
         shutil.rmtree(self.instance_dir)
 
-    def http_listen(self):
-        if isinstance(self._http_listen, str):
-            return self._http_listen
-
-        def error_message():
-            return f"Http server is disabled on instance {self}\nconsider passing enable_http=True to Cluster.add_instance()"
-
-        if self._http_listen is False:
-            raise Exception(error_message())
-
-        assert self._http_listen is None
-
-        info = self.call(".proc_runtime_info")
-        if "http" not in info:
-            self._http_listen = False
-            raise Exception(error_message())
-
-        http = info["http"]
-        self._http_listen = "{}:{}".format(http["host"], http["port"])
-
-        return self._http_listen
-
     def get_metrics(self) -> dict[str, Metric]:
-        response = requests.get(f"http://{self.http_listen()}/metrics")
+        response = requests.get(f"http://{self.http_listen}/metrics")
         response.raise_for_status()
 
         metrics = dict()
@@ -2251,7 +2238,6 @@ class Cluster:
         default_config = data.decode()
         config_yaml_obj = yaml_lib.safe_load(default_config)
 
-        # Fix config values which we generate in our test framework.
         for i in self.instances:
             config_yaml_obj_i = config_yaml_obj
 
@@ -2264,8 +2250,8 @@ class Cluster:
             config_yaml_obj_i["instance"]["tier"] = i.tier
             config_yaml_obj_i["instance"]["instance_dir"] = str(i.instance_dir)
             config_yaml_obj_i["instance"]["backup_dir"] = str(i.backup_dir)
-            config_yaml_obj_i["instance"]["iproto_listen"] = i.iproto_listen
-            config_yaml_obj_i["instance"]["iproto_advertise"] = i.iproto_listen
+            config_yaml_obj_i["instance"]["iproto"]["listen"] = i.iproto_listen
+            config_yaml_obj_i["instance"]["iproto"]["advertise"] = i.iproto_listen
             if init_replication_factor:
                 config_yaml_obj_i["cluster"]["default_replication_factor"] = init_replication_factor
 
@@ -2275,8 +2261,10 @@ class Cluster:
                     tier_to_set = "default"
                 config_yaml_obj_i["cluster"]["tier"][tier_to_set]["replication_factor"] = init_replication_factor
             config_yaml_obj_i["instance"]["peer"] = [i.iproto_listen]
-            config_yaml_obj_i["instance"]["pg"]["listen"] = i.pg_listen
-            config_yaml_obj_i["instance"]["pg"]["advertise"] = i.pg_listen
+            config_yaml_obj_i["instance"]["pgproto"]["listen"] = i.pg_listen
+            config_yaml_obj_i["instance"]["pgproto"]["advertise"] = i.pg_listen
+            config_yaml_obj_i["instance"]["http"]["listen"] = i.http_listen
+            config_yaml_obj_i["instance"]["http"]["advertise"] = i.http_listen
 
             config_path = os.path.join(i.instance_dir, "picodata.yaml")
             with open(config_path, "w") as f:
@@ -2522,6 +2510,10 @@ class Cluster:
             if bootstrap_port == pg_port or port == pg_port:
                 pg_port = self.port_distributor.get()
 
+        http_port = self.port_distributor.get()
+        if bootstrap_port == http_port or port == http_port:
+            http_port = self.port_distributor.get()
+
         instance_dir = self.choose_instance_dir(name or str(port))
 
         if log_to_file:
@@ -2540,6 +2532,8 @@ class Cluster:
             port=port,
             pg_host=self.base_host,
             pg_port=pg_port,
+            http_host=self.base_host,
+            http_port=http_port,
             peers=peers or [f"{self.base_host}:{bootstrap_port}"],
             color_code=CLUSTER_COLORS[len(self.instances) % len(CLUSTER_COLORS)],
             failure_domain=failure_domain,
@@ -2557,10 +2551,6 @@ class Cluster:
             instance.set_service_password(service_password)
         elif self.service_password:
             instance.set_service_password(self.service_password)
-
-        if enable_http:
-            listen = f"{self.base_host}:{self.port_distributor.get()}"
-            instance.env["PICODATA_HTTP_LISTEN"] = listen
 
         # Tweak the on_shutdown timeout so that tests don't run for too long
         instance.env["PICODATA_INTERNAL_ON_SHUTDOWN_TIMEOUT"] = "5"
@@ -3203,11 +3193,6 @@ def unstarted_instance(
     """Returns a deployed instance forming a single-node cluster."""
     cluster.set_service_password("s3cr3t")
     instance = cluster.add_instance(wait_online=False)
-
-    has_webui = bool(pytestconfig.getoption("--with-webui"))
-    if has_webui:
-        listen = f"{cluster.base_host}:{port_distributor.get()}"
-        instance.env["PICODATA_HTTP_LISTEN"] = listen
 
     yield instance
 

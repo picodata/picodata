@@ -84,7 +84,7 @@ crate::define_rpc_request! {
 
             let mut config = VshardConfig::from_storage(node, &tier.name, tier.bucket_count)?;
 
-            let tls_config = &PicodataConfig::get().instance.iproto_tls;
+            let tls_config = &PicodataConfig::get().instance.iproto.tls;
             let listen_config = crate::tarantool::ListenConfig::new(
                 lua.eval("return box.info.listen")?,
                 tls_config);

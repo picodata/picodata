@@ -1,30 +1,7 @@
-use crate::introspection::Introspection;
-use crate::static_ref;
+use crate::config::TlsSettings;
 use crate::traft::error::Error;
-use std::path::PathBuf;
+use crate::{static_ref, tlog};
 use tarantool::network::client::tls;
-
-#[derive(
-    Clone, Debug, Default, Eq, Introspection, PartialEq, serde::Deserialize, serde::Serialize,
-)]
-pub struct TlsConfig {
-    #[introspection(config_default = false)]
-    pub enabled: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cert_file: Option<PathBuf>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_file: Option<PathBuf>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ca_file: Option<PathBuf>,
-}
-
-impl TlsConfig {
-    #[inline]
-    pub fn enabled(&self) -> bool {
-        self.enabled
-            .expect("is set in PicodataConfig::set_defaults_explicitly")
-    }
-}
 
 static mut TLS_CONTEXT: Option<TlsContext> = None;
 
@@ -32,7 +9,7 @@ struct TlsContext {
     tls_connector: Option<tls::TlsConnector>,
 }
 
-pub fn tls_init_once(config: &TlsConfig) -> Result<(), Error> {
+pub fn tls_init_once(config: &TlsSettings) -> Result<(), Error> {
     let context = TlsContext::new(config.clone())?;
 
     // SAFETY: safe as long as only called from tx thread.
@@ -55,11 +32,18 @@ pub fn get_tls_connector() -> Option<&'static tls::TlsConnector> {
 }
 
 impl TlsContext {
-    fn new(config: TlsConfig) -> Result<Self, Error> {
+    fn new(config: TlsSettings) -> Result<Self, Error> {
         if !config.enabled() {
             return Ok(Self {
                 tls_connector: None,
             });
+        }
+
+        if config.password_file.is_some() {
+            tlog!(
+                Warning,
+                "Ignoring password_file option when creating an iproto TLS connector"
+            );
         }
 
         let cert_file = config

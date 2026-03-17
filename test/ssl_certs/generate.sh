@@ -51,6 +51,12 @@ openssl x509 -in server.crt          >> server-fullchain.crt
 # Test
 openssl verify -CAfile server-fullchain.crt server-fullchain.crt
 
+# Encrypted private key (password: testpassword)
+# Used for testing TLS with password-protected keys
+echo "testpassword" > server-password.txt
+openssl pkcs8 -topk8 -inform PEM -outform PEM -in server.key -out server-encrypted.key \
+    -v2 aes-256-cbc -passout pass:testpassword
+
 # Certificate authentication for user "pico_service"
 openssl req -new -key server.key -out server.csr -subj "/CN=pico_service@example.com"
 # Generate server-with-ext.crt with SAN.IP field (for iproto tls)

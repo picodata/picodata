@@ -12,12 +12,14 @@ crate-type = ["lib"]
 [dependencies]
 abi_stable = "0.11"
 log = "0.4"
+openssl = { workspace = true }
 picodata-plugin-proc-macro = { path = "../picodata-plugin-proc-macro", version = "25.6.0" }
 rmp = "0.8"
 rmp-serde = "1.1"
 rmpv = { version = "1.0", features = ["with-serde"] }
 serde = "1.0"
-smol_str = "0.3"
+smol_str = { workspace = true }
+socket2 = { workspace = true }
 tarantool = { path = "../tarantool/tarantool", version = "10.2", features = ["picodata", "test", "tokio_components"] }
 thiserror = "2"
 

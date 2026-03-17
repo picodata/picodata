@@ -59,6 +59,10 @@ crate::define_rpc_request! {
         pub tier: SmolStr,
         pub picodata_version: SmolStr,
         pub uuid: String,
+        #[serde(default)]
+        pub http_advertise_address: SmolStr,
+        #[serde(default)]
+        pub plugin_listener_addresses: Vec<(SmolStr, SmolStr, SmolStr)>,
     }
 
     pub struct Response {
@@ -131,7 +135,9 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
                 .storage
                 .peer_addresses
                 .iter()?
-                .filter(|peer| peer.connection_type == traft::ConnectionType::Iproto)
+                .filter(|peer| {
+                    peer.connection_type.as_system() == Some(traft::SystemConnectionType::Iproto)
+                })
                 .map(|peer| (peer.raft_id, peer.address))
                 .collect();
 
@@ -168,15 +174,20 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
         let peer_address = traft::PeerAddress {
             raft_id: instance.raft_id,
             address: req.advertise_address.clone(),
-            connection_type: traft::ConnectionType::Iproto,
+            connection_type: traft::ConnectionType::System(traft::SystemConnectionType::Iproto),
         };
         let pgproto_peer_address = traft::PeerAddress {
             raft_id: instance.raft_id,
             address: req.pgproto_advertise_address.clone(),
-            connection_type: traft::ConnectionType::Pgproto,
+            connection_type: traft::ConnectionType::System(traft::SystemConnectionType::Pgproto),
+        };
+        let http_peer_address = traft::PeerAddress {
+            raft_id: instance.raft_id,
+            address: req.http_advertise_address.clone(),
+            connection_type: traft::ConnectionType::System(traft::SystemConnectionType::Http),
         };
 
-        let mut ops = Vec::with_capacity(4);
+        let mut ops = Vec::with_capacity(5 + req.plugin_listener_addresses.len());
         ops.push(
             Dml::replace(storage::PeerAddresses::TABLE_ID, &peer_address, ADMIN_ID)
                 .expect("encoding should not fail"),
@@ -189,6 +200,33 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             )
             .expect("encoding should not fail"),
         );
+        ops.push(
+            Dml::replace(
+                storage::PeerAddresses::TABLE_ID,
+                &http_peer_address,
+                ADMIN_ID,
+            )
+            .expect("encoding should not fail"),
+        );
+
+        for (plugin_name, service_name, advertise) in &req.plugin_listener_addresses {
+            ops.push(
+                Dml::replace(
+                    storage::PeerAddresses::TABLE_ID,
+                    &traft::PeerAddress {
+                        raft_id: instance.raft_id,
+                        address: advertise.clone(),
+                        connection_type: traft::ConnectionType::plugin(
+                            plugin_name.clone(),
+                            service_name.clone(),
+                        ),
+                    },
+                    ADMIN_ID,
+                )
+                .expect("encoding should not fail"),
+            );
+        }
+
         ops.push(
             Dml::replace(storage::Instances::TABLE_ID, &instance, ADMIN_ID)
                 .expect("encoding should not fail"),
@@ -233,7 +271,9 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             .storage
             .peer_addresses
             .iter()?
-            .filter(|peer| peer.connection_type == traft::ConnectionType::Iproto)
+            .filter(|peer| {
+                peer.connection_type.as_system() == Some(traft::SystemConnectionType::Iproto)
+            })
             .map(|peer| (peer.raft_id, peer.address))
             .collect();
         let replicas = storage

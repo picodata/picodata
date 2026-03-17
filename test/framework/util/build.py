@@ -124,6 +124,7 @@ def copy_testable_plugins() -> None:
         f"{tests_path}/testplug_w_migration/0.2.0",
         f"{tests_path}/testplug_w_migration/0.2.0_changed",
         f"{tests_path}/testplug_sdk/0.1.0",
+        f"{tests_path}/testplug_listener/0.1.0",
     ]
     for destination_directory in plugin_destinations:
         copy_plugin_library(source_directory, destination_directory, "libtestplug")
