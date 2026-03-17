@@ -19,6 +19,10 @@
             {
                 "name": "GOST:security_function",
                 "value": "yes"
+            },
+            {
+                "name": "GOST:source_langs",
+                "value": "C"
             }
         ]
     }
