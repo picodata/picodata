@@ -836,7 +836,7 @@ cargo pike run --topology topology.toml --data-dir ./tmp
     # настройки плагинов
     [plugin.sp] # в примере настройки для плагина sp
     # переменные, которые будут подставлены в миграции
-    # подробнее тут: https://docs.picodata.io/picodata/stable/architecture/plugins/#use_plugin_config
+    # подробнее тут: https://docs.picodata.io/picodata/stable/architecture/plugins/#migration_context
     migration_context = [
         { name = "example_name", value = "example_value" },
     ]
