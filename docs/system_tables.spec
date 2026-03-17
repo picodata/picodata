@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `25.5.0-1435-g159ade393`.
+Описание соответствует версии Picodata `25.5.8`.
 
 ### _pico_table
 
@@ -110,6 +110,9 @@
 * `failure_domain`: (_map_)
 * `tier`: (_string_)
 * `picodata_version`: (_string_)
+* `sync_incarnation`: (_NULL_ _unsigned_)
+* `target_state_reason`: (_NULL_ _string_)
+* `target_state_change_time`: (_NULL_ _datetime_)
 
 Индексы:
 
@@ -133,9 +136,9 @@
 * `current_config_version`: (_unsigned_)
 * `target_config_version`: (_unsigned_)
 * `promotion_vclock`: (_map_)
-* `master_change_counter`: (_unsigned_)
-* `current_bucket_state_version`: (_unsigned_)
-* `target_bucket_state_version`: (_unsigned_)
+* `master_change_counter`: (_NULL_ _unsigned_)
+* `current_bucket_state_version`: (_NULL_ _unsigned_)
+* `target_bucket_state_version`: (_NULL_ _unsigned_)
 
 Индексы:
 
@@ -153,9 +156,9 @@
 * `target_vshard_config_version`: (_unsigned_)
 * `vshard_bootstrapped`: (_boolean_)
 * `bucket_count`: (_unsigned_)
-* `is_default`: (_boolean_)
-* `current_bucket_state_version`: (_unsigned_)
-* `target_bucket_state_version`: (_unsigned_)
+* `is_default`: (_NULL_ _boolean_)
+* `current_bucket_state_version`: (_NULL_ _unsigned_)
+* `target_bucket_state_version`: (_NULL_ _unsigned_)
 
 Индексы:
 
@@ -168,7 +171,7 @@
 * `id`: (_unsigned_)
 * `name`: (_string_)
 * `schema_version`: (_unsigned_)
-* `auth`: (_array_)
+* `auth`: (_NULL_ _array_)
 * `owner`: (_unsigned_)
 * `type`: (_string_)
 
@@ -257,7 +260,7 @@
 * `version`: (_string_)
 * `entity`: (_string_)
 * `key`: (_string_)
-* `value`: (_any_)
+* `value`: (_NULL_ _any_)
 
 Индексы:
 
