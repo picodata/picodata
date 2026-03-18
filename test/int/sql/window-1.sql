@@ -161,3 +161,28 @@ FROM
 | 0        | 0     | 0    | SCAN SUBQUERY 1 (~1 row)      |
 +----------+-------+------+-------------------------------+
 ''
+
+-- TEST: window0-compound-query-with-outer-filter
+-- SQL:
+SELECT * FROM (
+	SELECT count(*) OVER () AS id FROM (SELECT 1 AS id)
+	UNION ALL
+	SELECT 1
+) WHERE id = 1;
+-- EXPECTED:
+1, 1
+
+-- TEST: window0-cte-compound-query-with-outer-cast-filter
+-- SQL:
+WITH
+a AS (
+	SELECT 1 AS id
+),
+b AS (
+	SELECT row_number() OVER (PARTITION BY id ORDER BY id) AS id FROM a
+	UNION ALL
+	SELECT 1 AS id
+)
+SELECT * FROM b WHERE 1 = 1 AND CAST(id AS INT) = 1;
+-- EXPECTED:
+1, 1
