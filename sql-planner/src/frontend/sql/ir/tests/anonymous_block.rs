@@ -94,7 +94,7 @@ fn anonymous_blocks_parsing_errors() {
         // DDL is not supported in blocks.
         (
             "DO LANGUAGE SQL $$ BEGIN CREATE TABLE t(a INT PRIMARY KEY); END $$",
-            // TODO: change it to smth like "DDL queries are not supported in blocks"
+            // TODO: change it to smth like "DDL queries are not supported in transactions"
             "rule parsing error",
         ),
         // DDL is not supported in blocks.
@@ -126,12 +126,12 @@ fn anonymous_blocks_parsing_errors() {
         // Options must be specified only for a block.
         (
             "DO $$ BEGIN RETURN QUERY SELECT 1 OPTION (SQL_VDBE_OPCODE_MAX = 1); END $$",
-            "OPTION cannot be specified for a query from block; they can be specified for the whole block only",
+            "OPTION cannot be specified for individual queries within a transaction; specify it for the entire DO block instead",
         ),
         // Can't set SQL_MOTION_ROW_MAX for a block.
         (
             "DO $$ BEGIN RETURN QUERY SELECT 1; END $$ OPTION (SQL_MOTION_ROW_MAX = 1)",
-            "block cannot have any motions; SQL_MOTION_ROW_MAX doesn't make sense",
+            "transaction cannot have any motions; SQL_MOTION_ROW_MAX is not applicable to transactions",
         ),
     ];
 
@@ -237,7 +237,7 @@ fn block_query_has_motions_errors() {
         let error = plan.optimize_block().unwrap_err();
         assert_eq!(
             error.to_string(),
-            format!("{keyword} query has motions which is not allowed for block queries")
+            format!("{keyword} query has motions which are not allowed in transactions")
         );
     }
 }

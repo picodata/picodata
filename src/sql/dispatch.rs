@@ -240,7 +240,7 @@ pub(crate) fn block_dispatch<'p>(
         if matches!(explain_type, ExplainType::Explain) {
             return Err(SbroadError::NotImplemented(
                 Entity::Explain,
-                "for blocks".to_smolstr(),
+                "for transactions".to_smolstr(),
             ));
         }
 
@@ -248,8 +248,8 @@ pub(crate) fn block_dispatch<'p>(
     }
 
     match buckets {
-        Buckets::All => Err(SbroadError::Other(
-            "cannot execute block on all buckets".into(),
+        Buckets::All => Err(SbroadError::other(
+            "cannot execute transaction on all buckets",
         )),
         Buckets::Any => {
             write_metadata(

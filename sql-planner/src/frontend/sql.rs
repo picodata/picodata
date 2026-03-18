@@ -2058,10 +2058,14 @@ fn parse_anonymous_block(
         for LevelNode(_, id) in dfs.traverse_into_iter(update_id) {
             match plan.get_relation_node(id)? {
                 Relational::ScanSubQuery(_) => {
-                    return Err(SbroadError::other("UPDATE in block cannot have subqueries"))
+                    return Err(SbroadError::other(
+                        "UPDATE in transaction cannot have subqueries",
+                    ))
                 }
                 Relational::Join(_) => {
-                    return Err(SbroadError::other("UPDATE in block cannot have joins"))
+                    return Err(SbroadError::other(
+                        "UPDATE in transaction cannot have joins",
+                    ))
                 }
                 _ => (),
             }
@@ -2125,14 +2129,14 @@ fn parse_anonymous_block(
     // All options must be specified for this block.
     if block_options_count != plan.raw_options.len() {
         return Err(SbroadError::other(
-            "OPTION cannot be specified for a query from block; they can be specified for the whole block only"
+            "OPTION cannot be specified for individual queries within a transaction; specify it for the entire DO block instead"
         ));
     }
 
     for opt in &plan.raw_options {
         if opt.kind == OptionKind::MotionRowMax {
             return Err(SbroadError::other(
-                "block cannot have any motions; SQL_MOTION_ROW_MAX doesn't make sense",
+                "transaction cannot have any motions; SQL_MOTION_ROW_MAX is not applicable to transactions",
             ));
         }
     }
@@ -2159,7 +2163,7 @@ fn parse_anonymous_block(
             if block_tier != table_tier {
                 // TODO: more context
                 return Err(SbroadError::Other(format_smolstr!(
-                    "all block tables must belong to the same tier"
+                    "all tables in a transaction must belong to the same tier"
                 )));
             }
         }
@@ -2178,7 +2182,7 @@ fn parse_anonymous_block(
         let relation = plan.relations.get(relation).expect("can't be missed");
         let cannot_modify_error = |kind, name| {
             SbroadError::Other(format_smolstr!(
-                "cannot modify {kind} table {name} within block",
+                "cannot modify {kind} table {name} within transaction",
             ))
         };
         match relation.kind {

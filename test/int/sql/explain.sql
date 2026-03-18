@@ -1041,7 +1041,7 @@ SELECT CAST(4 AS int) as "col_1"
 -- TEST: explain-raw-updates-1
 -- SQL:
 EXPLAIN (RAW) DO $$
-BEGIN 
+BEGIN
   RETURN QUERY SELECT * FROM t WHERE pk = 1;
   UPDATE t SET a = a + 1 WHERE pk = 1;
   UPDATE t SET a = a + 1 WHERE pk = 1;
@@ -1140,7 +1140,7 @@ BEGIN
   UPDATE t SET a = a * 2 WHERE pk = 3;
 END $$;
 -- ERROR:
-sbroad: explain for blocks not implemented
+sbroad: explain for transactions not implemented
 
 -- TEST: explain-query-different-buckets
 -- SQL:
@@ -1150,7 +1150,7 @@ BEGIN
   UPDATE t SET a = a * 2 WHERE pk = 2;
 END $$;
 -- ERROR:
-block queries have different buckets: \[1934\] and \[1410\]
+transaction queries have different buckets: \[1934\] and \[1410\]
 
 -- TEST: explain-insert-with-buckets-setup
 -- SQL:
@@ -1241,4 +1241,3 @@ execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
 buckets = [2997]
-

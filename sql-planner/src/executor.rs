@@ -137,7 +137,7 @@ impl Plan {
             // Ensure no motions.
             if self.subtree_has_motions(new_top)? {
                 return Err(SbroadError::Other(format_smolstr!(
-                    "{keyword} query has motions which is not allowed for block queries"
+                    "{keyword} query has motions which are not allowed in transactions"
                 )));
             }
         }
@@ -429,20 +429,20 @@ where
                 match buckets {
                     Buckets::All => {
                         return Err(SbroadError::Other(format_smolstr!(
-                            "block cannot be executed on all buckets"
+                            "transaction cannot be executed on all buckets"
                         )))
                     }
                     Buckets::Filtered(BucketSet::Exact(ref filtered)) => {
                         if filtered.len() != 1 {
                             return Err(SbroadError::Other(format_smolstr!(
-                                "block can only be executed on a single bucket, got {buckets}"
+                                "transaction can only be executed on a single bucket, got {buckets}"
                             )));
                         }
 
                         if let Some(block_buckets) = &block_buckets {
                             if block_buckets != &buckets {
                                 return Err(SbroadError::Other(format_smolstr!(
-                                    "block queries have different buckets: {block_buckets} and {buckets}"
+                                    "transaction queries have different buckets: {block_buckets} and {buckets}"
                                 )));
                             }
                         } else {

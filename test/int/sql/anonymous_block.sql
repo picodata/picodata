@@ -15,7 +15,7 @@ BEGIN
   RETURN QUERY SELECT a FROM t WHERE a = 1;
 END $$;
 -- ERROR:
-block cannot be executed on all buckets
+transaction cannot be executed on all buckets
 
 -- TEST: return query-2
 -- SQL:
@@ -71,7 +71,7 @@ BEGIN
   RETURN QUERY SELECT b FROM t WHERE pk = 2;
 END $$;
 -- ERROR:
-block queries have different buckets: \[1934\] and \[1410\]
+transaction queries have different buckets: \[1934\] and \[1410\]
 
 -- TEST: updates-1
 -- SQL:
@@ -227,7 +227,7 @@ BEGIN
   UPDATE _pico_table SET name = 'lame';
 END $$;
 -- ERROR:
-cannot modify system table _pico_table within block
+cannot modify system table _pico_table within transaction
 
 -- TEST: can-read-global-table-1
 -- SQL:
@@ -266,7 +266,7 @@ BEGIN
   UPDATE g SET b = a WHERE b = 1;
 END $$;
 -- ERROR:
-cannot modify global table g within block
+cannot modify global table g within transaction
 
 -- TEST: block-query-stmt-must-be-dml-error
 -- SQL:
@@ -291,19 +291,19 @@ QUERY statements must follow LET and RETURN QUERY statements
 -- SQL:
 DO $$ BEGIN RETURN QUERY SELECT * FROM t WHERE pk = 1 LIMIT 1; END $$;
 -- ERROR:
-LIMIT query has motions which is not allowed for block queries
+LIMIT query has motions which are not allowed in transactions
 
 -- TEST: multibucket-block-1
 -- SQL:
 DO $$ BEGIN RETURN QUERY SELECT * FROM t WHERE pk = 1 AND pk = 2; END $$;
 -- ERROR:
-block can only be executed on a single bucket, got \[\]
+transaction can only be executed on a single bucket, got \[\]
 
 -- TEST: multibucket-block-2
 -- SQL:
 DO $$ BEGIN RETURN QUERY SELECT * FROM t WHERE pk = 1 OR pk = 2; END $$;
 -- ERROR:
-block can only be executed on a single bucket, got \[1410, 1934\]
+transaction can only be executed on a single bucket, got \[1410, 1934\]
 
 -- TEST: block-with-sql_vdbe_opcode_max-0
 -- SQL:
@@ -321,40 +321,40 @@ Reached a limit on max executed vdbe opcodes. Limit: 1
 -- SQL:
 do $$ BEGIN DELETE FROM t WHERE pk = 1; END $$;
 -- ERROR:
-DELETE query has motions which is not allowed for block queries
+DELETE query has motions which are not allowed in transactions
 
 -- TEST: block-delete-2
 -- SQL:
 do $$ BEGIN DELETE FROM t; END $$;
 -- ERROR:
-block cannot be executed on all buckets
+transaction cannot be executed on all buckets
 
 -- TEST: block-insert-1
 -- SQL:
 do $$ BEGIN INSERT INTO t VALUES (1,2,3); END $$;
 -- ERROR:
-INSERT query has motions which is not allowed for block queries
+INSERT query has motions which are not allowed in transactions
 
 -- TEST: block-insert-2
 -- SQL:
 do $$ BEGIN INSERT INTO t SELECT * FROM t WHERE pk = 1; END $$;
 -- ERROR:
-INSERT query has motions which is not allowed for block queries
+INSERT query has motions which are not allowed in transactions
 
 -- TEST: update-with-subquery-1
 -- SQL:
 do $$ BEGIN UPDATE t SET b = (SELECT 1) WHERE pk = 1; END $$;
 -- ERROR:
-UPDATE in block cannot have subqueries
+UPDATE in transaction cannot have subqueries
 
 -- TEST: update-with-subquery-2
 -- SQL:
 do $$ BEGIN UPDATE t SET b = 1 WHERE pk = 1 AND a = (SELECT 1); END $$;
 -- ERROR:
-UPDATE in block cannot have subqueries
+UPDATE in transaction cannot have subqueries
 
 -- TEST: update-with-subquery-3
 -- SQL:
 do $$ BEGIN UPDATE t SET b = 1 FROM (SELECT 1) WHERE pk = 1; END $$;
 -- ERROR:
-UPDATE in block cannot have subqueries
+UPDATE in transaction cannot have subqueries
