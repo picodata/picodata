@@ -23,6 +23,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Introduce `sql_preemption_opcode_max` to control the VDBE opcode interval
   between execution time checks when `sql_preemption` is enabled.
 - Fixed local SQL iterators to survive fiber yields during table truncation.
+- Fixed incorrect filter pushdown into compound queries containing window functions.
 
 ### Fixes
 
