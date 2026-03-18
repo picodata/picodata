@@ -289,11 +289,7 @@ pub(crate) fn block_dispatch<'p>(
                     )
                 })?;
             }
-            let columns = Some(metadata.len());
-
-            let columns =
-                columns.ok_or_else(|| SbroadError::Other("block must return rows!".into()))?;
-
+            let columns = metadata.len();
             let data = rmp_serde::encode::to_vec(&block).map_err(|e| {
                 SbroadError::DispatchError(format_smolstr!(
                     "failed to encode block mesasge payload: {e}"
