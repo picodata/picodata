@@ -765,14 +765,15 @@ def test_plugin_listener_tls_with_intermediate_ca(cluster: Cluster, port_distrib
     """Test plugin listener with certificate signed by intermediate CA.
 
     This tests the scenario where the server certificate is signed by an intermediate CA,
-    which is in turn signed by a root CA. The client must verify using the full CA chain.
+    which is in turn signed by a root CA. The server is configured to send the full chain,
+    so the client can verify with just the root CA.
 
     Certificate chain: root-ca.crt -> intermediate-ca.crt -> server.crt
     """
     ssl_dir = pathlib.Path(os.path.realpath(__file__)).parent.parent / "ssl_certs"
-    cert_file = ssl_dir / "server.crt"
+    cert_file = ssl_dir / "server-fullchain.crt"
     key_file = ssl_dir / "server.key"
-    ca_file = ssl_dir / "combined-ca.crt"
+    ca_file = ssl_dir / "root-ca.crt"
 
     host = cluster.base_host
     plugin_port = port_distributor.get()

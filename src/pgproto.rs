@@ -184,27 +184,7 @@ impl Context {
             Error::invalid_configuration(format!("bad postgres port {}", listen.port))
         })?;
 
-        let tls_acceptor = config
-            .tls
-            .enabled()
-            .then(|| {
-                if config.tls.password_file.is_some() {
-                    tlog!(
-                        Warning,
-                        "Ignoring password_file option when creating a pgproto TlsAcceptor"
-                    );
-                }
-
-                TlsAcceptor::new_from_paths(
-                    instance_dir,
-                    config.tls.cert_file.as_deref(),
-                    config.tls.key_file.as_deref(),
-                    config.tls.ca_file.as_deref(),
-                )
-            })
-            .transpose()
-            .map_err(Error::invalid_configuration)?
-            .inspect(|tls| tlog!(Info, "configured {} for pgproto", tls.kind()));
+        let tls_acceptor = tls::configure_tls_acceptor(instance_dir, &config.tls)?;
 
         let addr = (host, port);
         tlog!(Info, "starting postgres server at {:?}...", addr);

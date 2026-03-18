@@ -44,9 +44,9 @@ openssl verify -CAfile combined-ca.crt server.crt
 openssl verify -CAfile combined-ca.crt client.crt
 
 rm -f server-fullchain.crt
-openssl x509 -in root-ca.crt         >> server-fullchain.crt
-openssl x509 -in intermediate-ca.crt >> server-fullchain.crt
 openssl x509 -in server.crt          >> server-fullchain.crt
+openssl x509 -in intermediate-ca.crt >> server-fullchain.crt
+openssl x509 -in root-ca.crt         >> server-fullchain.crt
 
 # Test
 openssl verify -CAfile server-fullchain.crt server-fullchain.crt

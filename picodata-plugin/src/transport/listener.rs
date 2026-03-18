@@ -39,11 +39,10 @@
 use crate::internal::types::FfiListenerConfigError;
 use crate::plugin::interface::PicoContext;
 use crate::transport::stream::{PicoStream, PicoStreamError, TlsHandshakeError};
-use log::info;
-use openssl::error::ErrorStack;
+use openssl::pkey::{PKey, Private};
 use openssl::ssl::{HandshakeError, SslAcceptor, SslMethod, SslStream};
 use openssl::x509::store::X509StoreBuilder;
-use openssl::x509::{X509NameEntries, X509};
+use openssl::x509::X509;
 use std::io::{self, Read, Write};
 use std::net::SocketAddr;
 use std::os::fd::{AsRawFd, BorrowedFd};
@@ -59,7 +58,7 @@ use thiserror::Error;
 pub enum TlsConfigError {
     /// OpenSSL internal error.
     #[error("openssl error: {0}")]
-    OpenSsl(#[from] ErrorStack),
+    OpenSsl(#[from] openssl::error::ErrorStack),
 
     #[error("The provided certificate chain did not contain any certificates")]
     EmptyCertificateChain,
@@ -91,16 +90,12 @@ pub struct TlsAcceptor(Rc<SslAcceptor>);
 
 impl TlsAcceptor {
     /// Creates a new TLS acceptor from the given configuration.
-    pub fn new(config: &ListenerTlsConfig) -> Result<Self, TlsConfigError> {
+    pub fn new(config: &LoadedListenerTlsConfig) -> Result<Self, TlsConfigError> {
         let mut builder = SslAcceptor::mozilla_intermediate_v5(SslMethod::tls())?;
 
-        let pkey = openssl::pkey::PKey::private_key_from_pem(&config.key_pem)?;
-        builder.set_private_key(&pkey)?;
+        builder.set_private_key(&config.key)?;
 
-        let cert_chain = X509::stack_from_pem(&config.cert_chain_pem)?;
-        info!("TLS: cert stack: {}", certs_to_string(&cert_chain)?);
-
-        if let [head, tail @ ..] = cert_chain.as_slice() {
+        if let [head, tail @ ..] = config.cert_chain.as_slice() {
             builder.set_certificate(head)?;
             for cert in tail {
                 builder.add_extra_chain_cert(cert.clone())?;
@@ -109,14 +104,10 @@ impl TlsAcceptor {
             return Err(TlsConfigError::EmptyCertificateChain);
         };
 
-        if let Some(mtls_ca_chain_pem) = &config.mtls_ca_chain_pem {
-            info!("TLS: found CA certificate; mTLS will be enabled");
-            let mtls_ca_chain = X509::stack_from_pem(mtls_ca_chain_pem)?;
-            info!("TLS: CA cert stack: {}", certs_to_string(&mtls_ca_chain)?);
-
+        if let Some(mtls_ca_chain) = &config.mtls_ca_chain {
             let mut store_builder = X509StoreBuilder::new()?;
             for cert in mtls_ca_chain {
-                store_builder.add_cert(cert)?;
+                store_builder.add_cert(cert.clone())?;
             }
             builder.set_verify_cert_store(store_builder.build())?;
 
@@ -153,63 +144,6 @@ impl TlsAcceptor {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Certificate formatting helpers
-////////////////////////////////////////////////////////////////////////////////
-
-// TODO: This function is duplicated in src/pgproto/tls.rs
-fn x509_name_entries_to_string(
-    entries: X509NameEntries,
-) -> Result<String, openssl::error::ErrorStack> {
-    let mut s = vec![];
-
-    for entry in entries {
-        s.push(format!(
-            "{key} = {val:?}",
-            key = entry.object(),
-            val = entry.data().as_utf8()?,
-        ));
-    }
-
-    Ok(s.join(", "))
-}
-
-// TODO: This function is duplicated in src/pgproto/tls.rs
-// Consider creating a shared TLS utilities crate for both picodata and plugins.
-fn cert_to_string(cert: &X509) -> Result<String, openssl::error::ErrorStack> {
-    let issuer = x509_name_entries_to_string(cert.issuer_name().entries())?;
-    let subject = x509_name_entries_to_string(cert.subject_name().entries())?;
-    let serial = cert.serial_number().to_bn()?.to_hex_str()?;
-
-    let not_before = cert.not_before().to_string();
-    let not_after = cert.not_after().to_string();
-
-    let s = format!(
-        "\
-        \n    Serial number: {serial}\
-        \n    Issuer:  {issuer}\
-        \n    Subject: {subject}\
-        \n    Validity:\
-        \n        Not before: {not_before}\
-        \n        Not after:  {not_after}\
-        "
-    );
-
-    Ok(s)
-}
-
-// TODO: This function is duplicated in src/pgproto/tls.rs
-fn certs_to_string(certs: &[X509]) -> Result<String, openssl::error::ErrorStack> {
-    let mut s = String::new();
-
-    for cert in certs {
-        use std::fmt::Write;
-        writeln!(&mut s, "{}", cert_to_string(cert)?).unwrap();
-    }
-
-    Ok(s)
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // ListenerConfig (internal)
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -226,7 +160,7 @@ pub struct ListenerConfig {
     pub tls: Option<ListenerTlsConfig>,
 }
 
-/// Contains TLS configuration needed to setup TLS for [`PicoListener`].
+/// Contains PEM-encoded TLS configuration needed to set up TLS for [`PicoListener`].
 ///
 /// [`PicoListener`]: PicoListener
 #[derive(Clone, Debug)]
@@ -237,6 +171,26 @@ pub struct ListenerTlsConfig {
     pub key_pem: Vec<u8>,
     /// PEM-encoded CA certificate chain to verify connecting clients against. None if mTLS is not used.
     pub mtls_ca_chain_pem: Option<Vec<u8>>,
+}
+
+impl ListenerTlsConfig {
+    /// Inflate the stored PEM-encoded representations of certificates and keys into a [`LoadedListenerTlsConfig`]
+    pub fn load(&self) -> Result<LoadedListenerTlsConfig, TlsConfigError> {
+        let cert_chain = X509::stack_from_pem(&self.cert_chain_pem)?;
+        let key = PKey::private_key_from_pem(&self.key_pem)?;
+
+        let mtls_ca_chain = if let Some(mtls_ca_chain_pem) = &self.mtls_ca_chain_pem {
+            Some(X509::stack_from_pem(mtls_ca_chain_pem)?)
+        } else {
+            None
+        };
+
+        Ok(LoadedListenerTlsConfig {
+            cert_chain,
+            key,
+            mtls_ca_chain,
+        })
+    }
 }
 
 impl From<ListenerConfig> for crate::internal::types::FfiListenerConfig {
@@ -360,7 +314,9 @@ impl PicoListener {
 
         let mut tls_acceptor = None;
         if let Some(tls) = &config.tls {
-            tls_acceptor = Some(TlsAcceptor::new(tls)?)
+            let loaded_tls = tls.load()?;
+
+            tls_acceptor = Some(TlsAcceptor::new(&loaded_tls)?)
         };
 
         let advertise = config.advertise.clone();
@@ -445,5 +401,45 @@ impl PicoListener {
     /// Returns the TLS mode description if TLS is enabled.
     pub fn tls_kind(&self) -> Option<&'static str> {
         self.tls_acceptor.as_ref().map(|a| a.kind())
+    }
+}
+
+/// Contains TLS configuration needed to set up TLS for [`PicoListener`] as loaded openssl objects.
+///
+/// [`PicoListener`]: PicoListener
+pub struct LoadedListenerTlsConfig {
+    /// Server certificate chain.
+    pub cert_chain: Vec<X509>,
+    /// Private key to the server certificate.
+    pub key: PKey<Private>,
+    /// CA certificate chain to verify connecting clients against. None if mTLS is not used.
+    pub mtls_ca_chain: Option<Vec<X509>>,
+}
+
+impl LoadedListenerTlsConfig {
+    /// Encodes the loaded TLS settings as PEM.
+    pub fn serialize(&self) -> Result<ListenerTlsConfig, openssl::error::ErrorStack> {
+        let mut cert_chain_pem = Vec::new();
+        for cert in &self.cert_chain {
+            cert_chain_pem.append(&mut cert.to_pem()?);
+        }
+
+        let key_pem = self.key.private_key_to_pem_pkcs8()?;
+
+        let mtls_ca_chain_pem = if let Some(ca_chain) = &self.mtls_ca_chain {
+            let mut result = Vec::new();
+            for cert in ca_chain {
+                result.append(&mut cert.to_pem()?);
+            }
+            Some(result)
+        } else {
+            None
+        };
+
+        Ok(ListenerTlsConfig {
+            cert_chain_pem,
+            key_pem,
+            mtls_ca_chain_pem,
+        })
     }
 }

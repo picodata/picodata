@@ -505,90 +505,19 @@ fn load_plugin_listener_config(
         })?
         .to_string();
 
-    let tls = if config.tls.enabled() {
-        let cert_file = config.tls.cert_file.as_ref().ok_or_else(|| {
-            traft::error::Error::InvalidConfiguration(
-                "missing cert_file for enabled TLS in plugin listener".to_string(),
-            )
-        })?;
-        tlog!(
-            Info,
-            "plugin TLS({plugin_name}.{service_name}): loading certificate {}",
-            cert_file.display()
-        );
-        let cert_chain_pem = std::fs::read(cert_file).map_err(|e| {
-            traft::error::Error::InvalidConfiguration(format!("could not load cert_file: {e:?}"))
-        })?;
-
-        let key_file = config.tls.key_file.as_ref().ok_or_else(|| {
-            traft::error::Error::InvalidConfiguration(
-                "missing key_file for enabled TLS in plugin listener".to_string(),
-            )
-        })?;
-        tlog!(
-            Info,
-            "plugin TLS({plugin_name}.{service_name}): loading key {}",
-            key_file.display()
-        );
-        let mut key_pem = std::fs::read(key_file).map_err(|e| {
-            traft::error::Error::InvalidConfiguration(format!("could not load key_file: {e:?}"))
-        })?;
-
-        // try to decrypt the key PEM if password file is provided
-        if let Some(password_file) = &config.tls.password_file {
-            tlog!(
-                Info,
-                "plugin TLS({plugin_name}.{service_name}): loading key password {}",
-                password_file.display()
-            );
-
-            // NB: we read the password as a string and them trim it
-            // this prevents issues with trailing whitespace (like a newline at the end of the file),
-            // but limits the password to use UTF-8 characters only
-            let password = std::fs::read_to_string(password_file).map_err(|e| {
-                traft::error::Error::InvalidConfiguration(format!(
-                    "could not load password_file: {e:?}"
-                ))
-            })?;
-            let password = password.trim();
-
-            let pkey =
-                openssl::pkey::PKey::private_key_from_pem_passphrase(&key_pem, password.as_bytes())
-                    .map_err(|e| {
-                        traft::error::Error::InvalidConfiguration(format!(
-                            "could not decrypt key_file: {e:?}"
-                        ))
-                    })?;
-
-            key_pem = pkey.private_key_to_pem_pkcs8().map_err(|e| {
-                traft::error::Error::InvalidConfiguration(format!(
-                    "could not serialize the decrypted key_file: {e:?}"
-                ))
-            })?;
-        }
-
-        let mtls_ca_chain_pem = if let Some(ca_file) = &config.tls.ca_file {
-            tlog!(
-                Info,
-                "plugin TLS({plugin_name}.{service_name}): loading mTLS CA {}",
-                cert_file.display()
-            );
-
-            Some(std::fs::read(ca_file).map_err(|e| {
-                traft::error::Error::InvalidConfiguration(format!("could not load ca_file: {e:?}"))
-            })?)
-        } else {
-            None
-        };
-
-        Some(picodata_plugin::transport::listener::ListenerTlsConfig {
-            cert_chain_pem,
-            key_pem,
-            mtls_ca_chain_pem,
-        })
-    } else {
-        None
-    };
+    let tls = crate::tls::load_listener_tls_config_from_files(
+        &crate::tls::TlsConfigurationSource::Plugin {
+            plugin: plugin_name,
+            service: service_name,
+        },
+        &config.tls,
+        false,
+    )
+    .map_err(traft::error::Error::invalid_configuration)?
+    .map(|tls| tls.serialize())
+    .transpose()
+    // this shouldn't really fail
+    .map_err(traft::error::Error::other)?;
 
     Ok(Some(picodata_plugin::transport::listener::ListenerConfig {
         listen,
