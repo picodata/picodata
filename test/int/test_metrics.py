@@ -2,9 +2,8 @@ from typing import Dict, Callable
 
 from conftest import (
     Cluster,
+    find_routed_pk,
     Instance,
-    KeyDef,
-    KeyPart,
     TarantoolError,
 )
 import pytest
@@ -102,23 +101,6 @@ def check_metric(
                 sample = filtered_samples[0]
                 real_value = sample.value
             assert real_value == value, "Labeled metric has unexpected value"
-
-
-def find_block_pk(instance: Instance, *, is_local: bool, start: int = 1, stop: int = 512) -> int:
-    key_def = KeyDef([KeyPart(1, "integer", True)])
-    for pk in range(start, stop):
-        bucket_id = instance.hash((pk,), key_def) % 3000 + 1
-        info = instance.eval(
-            f"""
-                local router = pico.router["default"]
-                return router:callro({bucket_id}, ".proc_instance_info")
-            """
-        )
-        if (info["name"] == instance.name) == is_local:
-            return pk
-
-    kind = "local" if is_local else "remote"
-    raise AssertionError(f"failed to find a {kind} pk")
 
 
 @pytest.mark.webui
@@ -838,7 +820,7 @@ def test_filtered_local_block_bypasses_iproto(cluster: Cluster):
     pgproto = psycopg.connect(f"postgres://postgres:Passw0rd@{host}:{port}")
     pgproto.autocommit = True  # do not make a transaction
 
-    local_pk = find_block_pk(leader, is_local=True)
+    local_pk = find_routed_pk(leader, is_local=True)
 
     with pgproto.cursor() as cur:
         cur.execute("CREATE TABLE t (pk INTEGER PRIMARY KEY, a INTEGER)")

@@ -1,7 +1,7 @@
 import psycopg
 import threading
 
-from conftest import Cluster, KeyDef, KeyPart, Postgres
+from conftest import Cluster, find_routed_pk, Postgres
 
 
 def setup_user_and_table(instance):
@@ -22,28 +22,12 @@ def setup_user_and_table(instance):
     return conn_info
 
 
-def find_remote_pk(instance, start=2, stop=512):
-    key_def = KeyDef([KeyPart(1, "integer", True)])
-    for pk in range(start, stop):
-        bucket_id = instance.hash((pk,), key_def) % 3000 + 1
-        info = instance.eval(
-            f"""
-                local router = pico.router["default"]
-                return router:callro({bucket_id}, ".proc_instance_info")
-            """
-        )
-        if info["name"] != instance.name:
-            return pk
-
-    raise AssertionError("failed to find a key routed to a remote instance")
-
-
 def test_remote_block_dispatch(cluster: Cluster):
     leader, *_ = cluster.deploy(instance_count=2)
     cluster.wait_balanced()
 
     conn_info = setup_user_and_table(leader)
-    remote_pk = find_remote_pk(leader)
+    remote_pk = find_routed_pk(leader, is_local=False, start=2)
 
     with psycopg.connect(conn_info, autocommit=True) as conn:
         with conn.cursor() as cur:

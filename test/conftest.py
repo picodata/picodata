@@ -466,6 +466,23 @@ class KeyDef:
         return """{{ {} }}""".format(parts)
 
 
+def find_routed_pk(instance, *, is_local: bool, start: int = 1, stop: int = 512) -> int:
+    key_def = KeyDef([KeyPart(1, "integer", True)])
+    for pk in range(start, stop):
+        bucket_id = instance.hash((pk,), key_def) % 3000 + 1
+        info = instance.eval(
+            f"""
+                local router = pico.router["default"]
+                return router:callro({bucket_id}, ".proc_instance_info")
+            """
+        )
+        if (info["name"] == instance.name) == is_local:
+            return pk
+
+    kind = "local" if is_local else "remote"
+    raise AssertionError(f"failed to find a {kind} pk")
+
+
 class CasRange:
     # FIXME: these values are associated with the class, not the object.
     # All objects have access to the same variables
