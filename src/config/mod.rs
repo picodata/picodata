@@ -3,7 +3,7 @@ pub mod observer;
 pub mod socket;
 
 use crate::access_control::validate_password;
-use crate::address::{HttpAddress, IprotoAddress, ListenAddress};
+use crate::address::{AddressConflict, AddressConflictChecker, HttpAddress, IprotoAddress};
 use crate::cli::args;
 use crate::cli::args::CONFIG_PARAMETERS_ENV;
 use crate::failure_domain::FailureDomain;
@@ -1014,35 +1014,20 @@ Using configuration file '{args_path}'.");
 
     /// Validates that various listen addresses don't conflict
     fn validate_listener_conflicts(&self) -> Result<(), Error> {
-        // Collect all effective listen addresses as (config_path, host, port).
-        let mut addresses: Vec<(String, String, String)> = Vec::new();
+        let mut checker = AddressConflictChecker::new();
 
         if let Some(ref listen) = self.instance.iproto.listen {
-            addresses.push((
-                "iproto.listen".into(),
-                listen.host().into(),
-                listen.port().into(),
-            ));
+            checker.push("iproto.listen", listen);
         }
 
         if self.instance.http.enabled() {
             if let Some(ref listen) = self.instance.http.listen {
-                addresses.push((
-                    "http.listen".into(),
-                    listen.host().into(),
-                    listen.port().into(),
-                ));
+                checker.push("http.listen", listen);
             }
         }
-
         if let Some(ref listen) = self.instance.pgproto.listen {
-            addresses.push((
-                "pgproto.listen".into(),
-                listen.host().into(),
-                listen.port().into(),
-            ));
+            checker.push("pgproto.listen", listen);
         }
-
         // Plugin listener addresses.
         if let Some(ref plugins) = self.instance.plugin {
             for (plugin_name, plugin_cfg) in plugins {
@@ -1052,32 +1037,28 @@ Using configuration file '{args_path}'.");
                         continue;
                     }
                     if let Some(ref listen) = listener.listen {
-                        addresses.push((
+                        checker.push(
                             format!("plugin.{plugin_name}.service.{service_name}.listener.listen"),
-                            listen.host().into(),
-                            listen.port().into(),
-                        ));
+                            listen,
+                        );
                     }
                 }
             }
         }
 
-        // Check all pairs for conflicts.
-        const WILDCARD: &str = "0.0.0.0";
-        for i in 0..addresses.len() {
-            for j in (i + 1)..addresses.len() {
-                let (ref id_a, ref host_a, ref port_a) = addresses[i];
-                let (ref id_b, ref host_b, ref port_b) = addresses[j];
-                if port_a != port_b {
-                    continue;
-                }
-                if host_a == host_b || host_a == WILDCARD || host_b == WILDCARD {
-                    return Err(Error::InvalidConfiguration(format!(
-                        "`instance.{id_a}` ({host_a}:{port_a}) conflicts with \
-                         `instance.{id_b}` ({host_b}:{port_b}): both bind to the same address"
-                    )));
-                }
-            }
+        if let Some(AddressConflict {
+            source_a,
+            source_b,
+            host_a,
+            host_b,
+            port_a,
+            port_b,
+        }) = checker.check()
+        {
+            return Err(Error::InvalidConfiguration(format!(
+                "`instance.{source_a}` ({host_a}:{port_a}) conflicts with \
+                         `instance.{source_b}` ({host_b}:{port_b}): both bind to the same address"
+            )));
         }
 
         Ok(())

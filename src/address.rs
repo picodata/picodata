@@ -20,28 +20,9 @@ fn parse_host_and_port(addr: &str) -> Result<(String, String), String> {
     Ok((host.into(), port.into()))
 }
 
-pub(crate) trait ListenAddress {
+pub trait ListenAddress {
     fn host(&self) -> &str;
     fn port(&self) -> &str;
-
-    /// Check if two listen addresses would conflict when binding.
-    /// conflicts occur when:
-    /// - both addresses share same host and port
-    /// - one binds to a wildcard (0.0.0.0) and ports match
-    #[cfg(test)]
-    fn conflicts_with(&self, other: &impl ListenAddress) -> bool {
-        const IPV4_WILDCARD_ADDR: &'static str = "0.0.0.0";
-        if self.port() != other.port() {
-            return false;
-        }
-
-        if self.host() == other.host() {
-            return true;
-        }
-
-        // wildcard addresses bind all interfaces, conflict with any host on same port
-        self.host() == IPV4_WILDCARD_ADDR || other.host() == IPV4_WILDCARD_ADDR
-    }
 }
 
 ////////////////////
@@ -377,6 +358,89 @@ impl ListenAddress for PluginAddress {
     }
 }
 
+///////////////////////////////
+// Address conflict checking //
+///////////////////////////////
+
+#[derive(Clone)]
+struct ConflictCheckerItem {
+    source: String,
+    host: String,
+    port: String,
+}
+
+impl ConflictCheckerItem {
+    fn conflicts_with(&self, other: &ConflictCheckerItem) -> bool {
+        const IPV4_WILDCARD: &str = "0.0.0.0";
+
+        let shares_host =
+            self.host == other.host || self.host == IPV4_WILDCARD || other.host == IPV4_WILDCARD;
+
+        shares_host && self.port == other.port
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct AddressConflict {
+    pub source_a: String,
+    pub source_b: String,
+    pub host_a: String,
+    pub host_b: String,
+    pub port_a: String,
+    pub port_b: String,
+}
+
+impl AddressConflict {
+    fn new(a: ConflictCheckerItem, b: ConflictCheckerItem) -> Self {
+        Self {
+            source_a: a.source,
+            source_b: b.source,
+            host_a: a.host,
+            host_b: b.host,
+            port_a: a.port,
+            port_b: b.port,
+        }
+    }
+}
+
+pub struct AddressConflictChecker {
+    items: Vec<ConflictCheckerItem>,
+}
+
+impl AddressConflictChecker {
+    #[allow(clippy::new_without_default)] // this is a very specific type with a very specific expected usage flow
+    pub fn new() -> Self {
+        Self { items: Vec::new() }
+    }
+
+    pub fn push(&mut self, source: impl Into<String>, address: &impl ListenAddress) {
+        self.items.push(ConflictCheckerItem {
+            source: source.into(),
+            host: address.host().into(),
+            port: address.port().into(),
+        })
+    }
+
+    pub fn check(self) -> Option<AddressConflict> {
+        // Perhaps, doing a quadratic search is not the wisest
+        // For now we don't expect to have many listeners, but this may become slow if it changes
+
+        // Check all pairs for conflicts.
+        for i in 0..self.items.len() {
+            for j in (i + 1)..self.items.len() {
+                if self.items[i].conflicts_with(&self.items[j]) {
+                    return Some(AddressConflict::new(
+                        self.items[i].clone(),
+                        self.items[j].clone(),
+                    ));
+                }
+            }
+        }
+
+        None
+    }
+}
+
 ///////////
 // TESTS //
 ///////////
@@ -492,54 +556,103 @@ mod tests {
     }
     #[test]
     fn addresses_conflict_same() {
-        let http = HttpAddress {
-            host: "127.0.0.1".into(),
-            port: "5327".into(),
-        };
-        let pg = PgprotoAddress {
-            host: "127.0.0.1".into(),
-            port: "5327".into(),
-        };
-        assert!(http.conflicts_with(&pg));
-    }
+        let mut checker = AddressConflictChecker::new();
 
+        checker.push(
+            "http.listen",
+            &HttpAddress {
+                host: "127.0.0.1".into(),
+                port: "5327".into(),
+            },
+        );
+        checker.push(
+            "pgproto.listen",
+            &PgprotoAddress {
+                host: "127.0.0.1".into(),
+                port: "5327".into(),
+            },
+        );
+
+        assert_eq!(
+            checker.check().unwrap(),
+            AddressConflict {
+                source_a: "http.listen".to_string(),
+                source_b: "pgproto.listen".to_string(),
+                host_a: "127.0.0.1".to_string(),
+                host_b: "127.0.0.1".to_string(),
+                port_a: "5327".to_string(),
+                port_b: "5327".to_string(),
+            }
+        );
+    }
     #[test]
     fn addresses_conflict_different_ports() {
-        let http = HttpAddress {
-            host: "127.0.0.1".into(),
-            port: "5327".into(),
-        };
-        let pg = PgprotoAddress {
-            host: "127.0.0.1".into(),
-            port: "9090".into(),
-        };
-        assert!(!http.conflicts_with(&pg));
+        let mut checker = AddressConflictChecker::new();
+        checker.push(
+            "http.listen",
+            &HttpAddress {
+                host: "127.0.0.1".into(),
+                port: "5327".into(),
+            },
+        );
+        checker.push(
+            "pgproto.listen",
+            &PgprotoAddress {
+                host: "127.0.0.1".into(),
+                port: "9090".into(),
+            },
+        );
+        assert_eq!(checker.check(), None);
     }
 
     #[test]
     fn addresses_conflict_wildcard_ipv4() {
-        let ipr = IprotoAddress {
-            user: None,
-            host: "0.0.0.0".into(),
-            port: "3301".into(),
-        };
-        let http = HttpAddress {
-            host: "127.0.0.1".into(),
-            port: "3301".into(),
-        };
-        assert!(ipr.conflicts_with(&http));
+        let mut checker = AddressConflictChecker::new();
+        checker.push(
+            "iproto.listen",
+            &IprotoAddress {
+                user: None,
+                host: "0.0.0.0".into(),
+                port: "3301".into(),
+            },
+        );
+        checker.push(
+            "http.listen",
+            &HttpAddress {
+                host: "127.0.0.1".into(),
+                port: "3301".into(),
+            },
+        );
+        assert_eq!(
+            checker.check().unwrap(),
+            AddressConflict {
+                source_a: "iproto.listen".to_string(),
+                source_b: "http.listen".to_string(),
+                host_a: "0.0.0.0".to_string(),
+                host_b: "127.0.0.1".to_string(),
+                port_a: "3301".to_string(),
+                port_b: "3301".to_string(),
+            }
+        );
     }
 
     #[test]
     fn addresses_no_conflict_different_hosts() {
-        let http = HttpAddress {
-            host: "192.168.1.1".into(),
-            port: "5327".into(),
-        };
-        let pg = PgprotoAddress {
-            host: "127.0.0.1".into(),
-            port: "5327".into(),
-        };
-        assert!(!http.conflicts_with(&pg));
+        let mut checker = AddressConflictChecker::new();
+        checker.push(
+            "http.listen",
+            &HttpAddress {
+                host: "192.168.1.1".into(),
+                port: "5327".into(),
+            },
+        );
+        checker.push(
+            "pgproto.listen",
+            &PgprotoAddress {
+                host: "127.0.0.1".into(),
+                port: "5327".into(),
+            },
+        );
+        assert_eq!(checker.check(), None);
     }
 }
