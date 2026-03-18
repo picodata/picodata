@@ -9,16 +9,15 @@ ENV PATH=/root/.cargo/bin:${PATH}
 RUN dnf -y install dnf-plugins-core epel-release \
     && dnf config-manager --set-enabled powertools \
     && dnf module -y enable nodejs:22 \
-    && curl --silent --location https://dl.yarnpkg.com/rpm/yarn.repo -o /etc/yum.repos.d/yarn.repo \
-    && rpm --import https://dl.yarnpkg.com/rpm/pubkey.gpg \
     && dnf install -y --nobest \
                 openssl-devel libunwind libunwind-devel \
                 gcc gcc-c++ make cmake git libstdc++-static libtool \
-                nodejs yarn \
+                nodejs npm \
     && dnf clean all
 
 WORKDIR /build/picodata
 COPY . .
+RUN npm install -g corepack && corepack enable
 RUN cargo build --locked --release --features webui
 
 FROM almalinux:8
