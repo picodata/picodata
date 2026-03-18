@@ -210,6 +210,7 @@ create_index ::= 'CREATE' 'UNIQUE'? 'INDEX' ('IF' 'NOT' 'EXISTS')? index 'ON' ta
                          | ('DIMENSION' '=' unsigned)
                          | ('DISTANCE' '=' ('EUCLID' | 'MANHATTAN'))
                          | ('HINT' '=' ('TRUE' | 'FALSE'))
+                         | ('COMPRESSION_LEVEL' '=' integer)
                      )
                      (
                         ','
@@ -222,6 +223,7 @@ create_index ::= 'CREATE' 'UNIQUE'? 'INDEX' ('IF' 'NOT' 'EXISTS')? index 'ON' ta
                              | ('DIMENSION' '=' unsigned)
                              | ('DISTANCE' '=' ('EUCLID' | 'MANHATTAN'))
                              | ('HINT' '=' ('TRUE' | 'FALSE'))
+                             | ('COMPRESSION_LEVEL' '=' integer)
                          )
                      )*
                  ')')?
@@ -240,7 +242,29 @@ create_table   ::= 'CREATE' 'UNLOGGED'? 'TABLE' ('IF' 'NOT' 'EXISTS')? table
                        column column_def_type ('NOT'? 'NULL')? ('PRIMARY' 'KEY')? (',' column column_def_type ('NOT'? 'NULL')? ('PRIMARY' 'KEY')?)*
                        (',' 'PRIMARY' 'KEY' '(' (bucket_id ',')? column (',' column)* ')')?
                    ')'
-                   ('USING' ('MEMTX' | 'VINYL'))?
+                   ('USING' ('MEMTX' | 'VINYL' 
+                   ('WITH' '('
+                     (
+                         ('BLOOM_FPR' '=' decimal)
+                         | ('PAGE_SIZE' '=' unsigned)
+                         | ('RANGE_SIZE' '=' unsigned)
+                         | ('RUN_COUNT_PER_LEVEL' '=' unsigned)
+                         | ('RUN_SIZE_RATIO' '=' decimal)
+                         | ('COMPRESSION_LEVEL' '=' integer)
+                     )
+                     (
+                        ','
+                         (
+                             ('BLOOM_FPR' '=' decimal)
+                             | ('PAGE_SIZE' '=' unsigned)
+                             | ('RANGE_SIZE' '=' unsigned)
+                             | ('RUN_COUNT_PER_LEVEL' '=' unsigned)
+                             | ('RUN_SIZE_RATIO' '=' decimal)
+                             | ('COMPRESSION_LEVEL' '=' integer)
+                         )
+                     )*
+                 ')')?
+                   ))?
                    (('DISTRIBUTED' (('BY' '(' column (',' column)* ')' ('IN' 'TIER' tier)?) | 'GLOBALLY'))?)?
                    ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
