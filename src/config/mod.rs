@@ -4099,6 +4099,8 @@ instance:
 
     #[test]
     fn listen_addresses_all_default_no_conflict() {
+        let _guard = protect_env();
+
         // All default addresses have no conflict
         let yaml = r###"
 cluster:
@@ -4110,6 +4112,8 @@ cluster:
 
     #[test]
     fn listen_addresses_no_conflict() {
+        let _guard = protect_env();
+
         // Different ports cause no conflict
         let yaml = r###"
 cluster:
@@ -4128,6 +4132,8 @@ instance:
 
     #[test]
     fn listen_addresses_conflict_same_address() {
+        let _guard = protect_env();
+
         // iproto and http can't use the same address
         let yaml = r###"
 cluster:
@@ -4144,6 +4150,8 @@ instance:
 
     #[test]
     fn listen_addresses_conflict_implicit_address() {
+        let _guard = protect_env();
+
         // pgproto (implicit) and http can't use the same address
         let yaml = r###"
 cluster:
@@ -4157,6 +4165,8 @@ instance:
     }
     #[test]
     fn listen_addresses_conflict_iproto_pg() {
+        let _guard = protect_env();
+
         let yaml = r###"
 cluster:
     name: test
@@ -4172,6 +4182,8 @@ instance:
 
     #[test]
     fn listen_addresses_conflict_http_pg() {
+        let _guard = protect_env();
+
         // Disallow wildcard hosts if using the same port
         let yaml = r###"
 cluster:
@@ -4188,6 +4200,8 @@ instance:
 
     #[test]
     fn listen_addresses_conflict_wildcard() {
+        let _guard = protect_env();
+
         // 0.0.0.0 conflicts with any host on same port
         let yaml = r###"
 cluster:
@@ -4204,6 +4218,8 @@ instance:
 
     #[test]
     fn listen_addresses_different_interfaces_ok() {
+        let _guard = protect_env();
+
         // Different interfaces, same port - OK (user's explicit choice)
         let yaml = r###"
 cluster:
@@ -4220,6 +4236,8 @@ instance:
 
     #[test]
     fn new_iproto_config_basic() {
+        let _guard = protect_env();
+
         let yaml = r###"
 cluster:
     name: test
@@ -4244,6 +4262,8 @@ instance:
 
     #[test]
     fn new_http_config_basic() {
+        let _guard = protect_env();
+
         let yaml = r###"
 cluster:
     name: test
@@ -4260,6 +4280,8 @@ instance:
 
     #[test]
     fn new_pgproto_config_basic() {
+        let _guard = protect_env();
+
         let yaml = r###"
 cluster:
     name: test
@@ -4279,6 +4301,8 @@ instance:
 
     #[test]
     fn new_iproto_config_with_tls() {
+        let _guard = protect_env();
+
         let yaml = r###"
 cluster:
     name: test
@@ -4670,6 +4694,8 @@ instance:
 
     #[test]
     fn config_parameter_new_iproto_section() {
+        let _guard = protect_env();
+
         let config = setup_for_tests(
             None,
             &["run", "-c", "instance.iproto.listen=127.0.0.1:3305"],
@@ -4687,6 +4713,8 @@ instance:
 
     #[test]
     fn config_parameter_new_pgproto_section() {
+        let _guard = protect_env();
+
         let config = setup_for_tests(
             None,
             &["run", "-c", "instance.pgproto.listen=127.0.0.1:5433"],
@@ -4704,6 +4732,8 @@ instance:
 
     #[test]
     fn config_parameter_new_http_section() {
+        let _guard = protect_env();
+
         let config =
             setup_for_tests(None, &["run", "-c", "instance.http.listen=127.0.0.1:9090"]).unwrap();
         assert_eq!(
@@ -4714,6 +4744,8 @@ instance:
 
     #[test]
     fn config_parameter_new_iproto_tls() {
+        let _guard = protect_env();
+
         let config = setup_for_tests(
             None,
             &[
@@ -4771,6 +4803,8 @@ instance:
 
     #[test]
     fn config_parameter_new_section_effective_params_override_old() {
+        let _guard = protect_env();
+
         let yaml = r###"
 cluster:
     name: test
@@ -4794,6 +4828,8 @@ instance:
 
     #[test]
     fn config_parameter_old_fields_used_when_new_section_empty() {
+        let _guard = protect_env();
+
         let yaml = r###"
 cluster:
     name: test
@@ -4816,6 +4852,8 @@ instance:
 
     #[test]
     fn config_parameter_new_pgproto_effective_config() {
+        let _guard = protect_env();
+
         let yaml = r###"
 cluster:
     name: test
@@ -4849,6 +4887,8 @@ instance:
 
     #[test]
     fn parse_cluster_tier_via_cli() {
+        let _guard = protect_env();
+
         // `cluster.tier` is parsed correctly when passed through --config-parameter
         {
             let config = setup_for_tests(
