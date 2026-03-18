@@ -17,12 +17,12 @@ use crate::common::{QueryOperation, S1Record, S2Record};
 use std::cell::{Cell, RefCell};
 
 fn default_conn() -> Conn {
-    Conn::new(("localhost", listen_port()), ConnOptions::default(), None).unwrap()
+    Conn::new(("127.0.0.1", listen_port()), ConnOptions::default(), None).unwrap()
 }
 
 fn test_user_conn() -> Conn {
     Conn::new(
-        ("localhost", listen_port()),
+        ("127.0.0.1", listen_port()),
         ConnOptions {
             user: "test_user".into(),
             password: "password".into(),
@@ -36,7 +36,7 @@ fn test_user_conn() -> Conn {
 
 pub fn immediate_close() {
     let port = listen_port();
-    let _ = Conn::new(("localhost", port), ConnOptions::default(), None).unwrap();
+    let _ = Conn::new(("127.0.0.1", port), ConnOptions::default(), None).unwrap();
 }
 
 pub fn ping() {

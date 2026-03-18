@@ -43,7 +43,7 @@ box.cfg{
     log_level = 'verbose',
     listen = {
         {
-            uri = 'localhost:0'
+            uri = '127.0.0.1:0'
         },
         {
             uri = '127.0.0.1:0',
