@@ -13,6 +13,10 @@ This page is an entry point for documents in `doc/dev`.
 - [Инструкция по смене адресов погашенного кластера](./change_iproto_advertise.md)
 - [Инструкция по смене `pg_advertise` адреса](./change_pgproto_advertise.md)
 
+## Schema and Upgrades
+
+- [How to add schema changes to the catalog upgrade flow](./catalog_upgrade_guide.md)
+
 ## Build and Performance
 
 - [Sccache in Picodata](./sccache.md)
