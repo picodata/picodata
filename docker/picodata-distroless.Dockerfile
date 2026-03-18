@@ -1,4 +1,4 @@
-FROM debian:12 AS builder
+FROM debian:13 AS builder
 
 RUN set -e; \
     apt update -y && \
@@ -39,7 +39,7 @@ COPY . .
 RUN cargo build --locked --release --features webui
 
 
-FROM docker-public.binary.picodata.io/distroless/cc-debian12
+FROM docker-public.binary.picodata.io/distroless/cc-debian13
 
 COPY --from=builder /build/picodata/target/release/picodata /usr/bin/picodata
 
