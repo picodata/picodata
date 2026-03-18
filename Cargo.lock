@@ -4161,7 +4161,7 @@ dependencies = [
 
 [[package]]
 name = "tarantool"
-version = "11.0.0"
+version = "11.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4407,7 +4407,7 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tlua"
-version = "8.0.0"
+version = "8.1.0"
 dependencies = [
  "libc",
  "linkme",

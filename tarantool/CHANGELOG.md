@@ -38,6 +38,17 @@
 
 # Change Log
 
+# [?.?.?] Unreleased
+
+### Added
+
+- `tlua::Ignore` helper struct for handling multiple return values when some of them are not important
+
+### Fixed
+
+- ?
+
+
 # [11.0.0] Mar 19 2026
 
 ### Added

@@ -1,3 +1,4 @@
+use tarantool::tlua;
 use tarantool::tlua::{AnyHashableLuaValue, AnyLuaString, AnyLuaValue, Lua};
 
 pub fn read_numbers() {
@@ -301,4 +302,26 @@ pub fn non_utf_8_string() {
         }
         _ => panic!("Decoded to wrong variant"),
     }
+}
+
+#[tarantool::test]
+pub fn push_and_read_ignore() {
+    let lua = Lua::new();
+    // Lua returns us 3 values one of which is very complicated and we don't
+    // care about it, we only want the 1st and the 3rd returned values.
+    let (a, tlua::Ignore, b) = lua
+        .eval("return 111, {big={complicated={lua=69, table='nice'}}}, 'some text'")
+        .unwrap();
+    let a: i32 = a;
+    let b: String = b;
+    assert_eq!(a, 111);
+    assert_eq!(b, "some text");
+
+    // tlua::Ignore also implements Push
+    let (tlua::Typename(a), tlua::Typename(b), tlua::Typename(c)) = lua
+        .eval_with("return 111, ..., 'some text'", tlua::Ignore)
+        .unwrap();
+    assert_eq!(a, "number");
+    assert_eq!(b, "nil");
+    assert_eq!(c, "string");
 }

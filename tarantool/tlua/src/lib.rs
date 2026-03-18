@@ -133,7 +133,7 @@ pub use ::tlua_derive::*;
 /// ```
 pub use ::tlua_derive::test;
 
-pub use any::{AnyHashableLuaValue, AnyLuaString, AnyLuaValue};
+pub use any::{AnyHashableLuaValue, AnyLuaString, AnyLuaValue, Ignore};
 pub use cdata::{AsCData, CData, CDataOnStack};
 pub use functions_write::{
     function0, function1, function10, function2, function3, function4, function5, function6,

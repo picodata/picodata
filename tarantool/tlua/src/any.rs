@@ -136,3 +136,62 @@ macro_rules! impl_any_lua_value {
 
 impl_any_lua_value! {AnyLuaValue}
 impl_any_lua_value! {AnyHashableLuaValue}
+
+/// A helper struct which is useful when used as one of the values in multiple
+/// return values from lua, if you don't care about the actual value, but need
+/// to put something in there so that the code compiles and runs correctly.
+///
+/// This struct's [`LuaRead`] implementation always returns `Ok(Ignore)` no
+/// matter what the type of the value on the lua stack, or even if there is a
+/// value or not.
+///
+/// This struct also implements the [`Push`] family of traits for your
+/// convenience. The implementation simply pushes a `nil` value.
+///
+/// You can also use `Option<Ignore>` to see if there was a value, but don't
+/// care to check the value's type.
+///
+/// See also [`crate::Typename`].
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Ignore;
+
+impl<L> LuaRead<L> for Ignore
+where
+    L: AsLua,
+{
+    fn lua_read_at_maybe_zero_position(_lua: L, _index: i32) -> ReadResult<Ignore, L> {
+        Ok(Ignore)
+    }
+
+    fn lua_read_at_position(_lua: L, _index: NonZeroI32) -> ReadResult<Ignore, L> {
+        Ok(Ignore)
+    }
+}
+
+impl<L> Push<L> for Ignore
+where
+    L: AsLua,
+{
+    type Err = Void;
+
+    #[inline(always)]
+    fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
+        crate::Nil.push_to_lua(lua)
+    }
+}
+
+impl<L> PushOne<L> for Ignore where L: AsLua {}
+
+impl<L> PushInto<L> for Ignore
+where
+    L: AsLua,
+{
+    type Err = Void;
+
+    #[inline(always)]
+    fn push_into_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
+        crate::Nil.push_to_lua(lua)
+    }
+}
+
+impl<L> PushOneInto<L> for Ignore where L: AsLua {}
