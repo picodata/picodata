@@ -180,48 +180,58 @@ fn validate_config(config: &LoadedListenerTlsConfig) -> Result<(), TlsConfigLoad
 
 /// Reads certificate files specified by the [`crate::config::TlsSettings`] into memory.
 ///
-/// The `source` parameter is used for logging and should specify the picodata subsystem for which
-///  the TLS configuration is being loaded.
-///
 /// This function will also attempt to validate the provided files:
 /// 1. The server certificate chain is non-empty.
 /// 2. The provided private key matches the server certificate.
 /// 3. The CA certificate chain (if provided) is non-empty.
+///
+/// The `source` parameter is used for logging and should specify the picodata subsystem for which
+///  the TLS configuration is being loaded.
+///
+/// The `should_log` parameter specifies whether the function should log the paths it tries to access
+///  and the loaded certificate chain. It exists because for some code paths (currently pgproto and
+///  plugin listeners) we load the certificate twice: once during config validation and once during
+///  actual listener creation. Having it logged twice is confusing, so we only do so when actually
+///  creating the listener for those code paths.
 ///
 /// The function will also log information about the loaded certificates for ease of debugging.
 pub fn load_listener_tls_config_from_files(
     source: &TlsConfigurationSource,
     config: &crate::config::TlsSettings,
     allow_missing_ca: bool,
+    should_log: bool,
 ) -> Result<Option<LoadedListenerTlsConfig>, TlsConfigLoadError> {
     use TlsConfigLoadError::InvalidConfiguration;
 
+    macro_rules! log {
+        ($($args:tt)*) => {
+            if should_log {
+                tlog!(Info, $($args)*);
+            }
+        };
+    }
+
     if !config.enabled() {
-        tlog!(Info, "TLS({source}): disabled");
+        log!("TLS({source}): disabled");
         return Ok(None);
     }
 
     let cert_file = config.cert_file.as_ref().ok_or_else(|| {
         InvalidConfiguration("missing cert_file for enabled TLS in plugin listener".to_string())
     })?;
-    tlog!(
-        Info,
-        "TLS({source}): loading certificate {}",
-        cert_file.display()
-    );
+    log!("TLS({source}): loading certificate {}", cert_file.display());
     let cert_chain_pem = std::fs::read(cert_file).map_err(TlsConfigLoadError::ReadCert)?;
     let cert_chain = X509::stack_from_pem(&cert_chain_pem).map_err(TlsConfigLoadError::LoadCert)?;
 
     let key_file = config.key_file.as_ref().ok_or_else(|| {
         InvalidConfiguration("missing key_file for enabled TLS in plugin listener".to_string())
     })?;
-    tlog!(Info, "TLS({source}): loading key {}", key_file.display());
+    log!("TLS({source}): loading key {}", key_file.display());
     let key_pem = std::fs::read(key_file).map_err(TlsConfigLoadError::ReadKey)?;
 
     // try to decrypt the key PEM if password file is provided
     let key = if let Some(password_file) = &config.password_file {
-        tlog!(
-            Info,
+        log!(
             "TLS({source}): reading key password {}",
             password_file.display()
         );
@@ -240,17 +250,12 @@ pub fn load_listener_tls_config_from_files(
     };
 
     let mtls_ca_chain_pem = if let Some(ca_file) = &config.ca_file {
-        tlog!(
-            Info,
-            "TLS({source}): reading mTLS CA cert {}",
-            ca_file.display()
-        );
+        log!("TLS({source}): reading mTLS CA cert {}", ca_file.display());
 
         match std::fs::read(ca_file) {
             Ok(ca_pem) => Some(ca_pem),
             Err(e) if allow_missing_ca && e.kind() == std::io::ErrorKind::NotFound => {
-                tlog!(
-                    Info,
+                log!(
                     "TLS({source}): CA file {} is missing, mTLS will be disabled",
                     ca_file.display()
                 );
@@ -275,7 +280,9 @@ pub fn load_listener_tls_config_from_files(
     };
 
     // Log certificate information and validate
-    log_cert_info(source, &config).map_err(TlsConfigLoadError::LoggingCerts)?;
+    if should_log {
+        log_cert_info(source, &config).map_err(TlsConfigLoadError::LoggingCerts)?;
+    }
     validate_config(&config)?;
 
     Ok(Some(config))

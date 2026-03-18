@@ -1,6 +1,5 @@
 use crate::config::{BootstrapStrategy, ByteSize, ElectionMode, PicodataConfig};
 use crate::config::{TlsSettings, WalMode};
-use crate::config_parameter_path;
 use crate::instance::Instance;
 use crate::introspection::Introspection;
 use crate::pico_service::pico_service_password;
@@ -10,6 +9,7 @@ use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::sql::port::{dispatch_dump_mp, PicoPortOwned};
 use crate::tlog;
 use crate::traft::{self, error::Error};
+use crate::{config_parameter_path, tls};
 use ::tarantool::error::{Error as TntError, IntoBoxError};
 use ::tarantool::ffi::uuid::tt_uuid;
 use ::tarantool::fiber;
@@ -482,6 +482,17 @@ impl Cfg {
     ) -> Result<Self, Error> {
         let mut replication_cfg = Vec::with_capacity(resp.box_replication.len());
         let tls_config = &config.instance.iproto.tls;
+
+        // load the TLS settings to log them to console
+        // we won't use the openssl objects right here, tarantool codebase will load its own copy from the files
+        let _ = tls::load_listener_tls_config_from_files(
+            &tls::TlsConfigurationSource::Iproto,
+            tls_config,
+            false,
+            true,
+        )
+        .map_err(Error::invalid_configuration)?;
+
         for address in &resp.box_replication {
             replication_cfg.push(ListenConfig::new_for_pico_service(address, tls_config));
         }

@@ -936,11 +936,10 @@ Using configuration file '{args_path}'.");
     /// Checks specific to reloading a config file on an initialized istance are
     /// done in [`Self::validate_reload`].
     fn validate_common(&self) -> Result<(), Error> {
-        self.validate_listen_addresses()?;
-
         self.validate_tiers()?;
 
-        self.validate_plugin_tls_config()?;
+        self.validate_plugin_listeners_configuration()?;
+        self.validate_listener_conflicts()?;
 
         Ok(())
     }
@@ -975,8 +974,46 @@ Using configuration file '{args_path}'.");
         Ok(())
     }
 
+    /// Validates for all plugin listeners:
+    ///
+    /// 1. If the listener is enabled, the listen address should be present.
+    /// 2. If TLS is enabled, the certificate and key files should be valid.
+    fn validate_plugin_listeners_configuration(&self) -> Result<(), Error> {
+        if let Some(plugins) = &self.instance.plugin {
+            for (plugin, plugin_cfg) in plugins {
+                for (service, service_cfg) in &plugin_cfg.service {
+                    let listener = &service_cfg.listener;
+
+                    let config_path =
+                        format!("instance.plugin.{plugin}.service.{service}.listener");
+
+                    if listener.enabled() && listener.listen.is_none() {
+                        return Err(Error::InvalidConfiguration(format!(
+                            "{config_path}: `listen` must be specified when listener is enabled"
+                        )));
+                    }
+
+                    if let Err(err) = crate::tls::load_listener_tls_config_from_files(
+                        &crate::tls::TlsConfigurationSource::Plugin { plugin, service },
+                        &listener.tls,
+                        false,
+                        // plugin will call `load_listener_tls_config_from_files` once more when creating the listener,
+                        // so don't want to log anything here
+                        false,
+                    ) {
+                        return Err(Error::InvalidConfiguration(format!(
+                            "{config_path}.tls: loading TLS config failed: {err}"
+                        )));
+                    };
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Validates that various listen addresses don't conflict
-    fn validate_listen_addresses(&self) -> Result<(), Error> {
+    fn validate_listener_conflicts(&self) -> Result<(), Error> {
         // Collect all effective listen addresses as (config_path, host, port).
         let mut addresses: Vec<(String, String, String)> = Vec::new();
 
@@ -1039,151 +1076,6 @@ Using configuration file '{args_path}'.");
                         "`instance.{id_a}` ({host_a}:{port_a}) conflicts with \
                          `instance.{id_b}` ({host_b}:{port_b}): both bind to the same address"
                     )));
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Validates TLS configuration for all plugin listeners.
-    ///
-    /// When TLS is enabled for a plugin listener, verifies:
-    /// - cert_file exists and is readable
-    /// - key_file exists and is readable
-    /// - ca_file exists and is readable (if specified)
-    /// - password_file exists and is readable (if specified)
-    /// - private key can be loaded with the password (if specified)
-    fn validate_plugin_tls_config(&self) -> Result<(), Error> {
-        let Some(plugins) = &self.instance.plugin else {
-            return Ok(());
-        };
-
-        for (plugin_name, plugin_cfg) in plugins {
-            for (service_name, service_cfg) in &plugin_cfg.service {
-                let listener = &service_cfg.listener;
-
-                if listener.enabled() && listener.listen.is_none() {
-                    return Err(Error::InvalidConfiguration(format!(
-                        "instance.plugin.{plugin_name}.service.{service_name}.listener: \
-                         `listen` must be specified when listener is enabled"
-                    )));
-                }
-
-                let tls = &listener.tls;
-
-                if !tls.enabled() {
-                    continue;
-                }
-
-                let config_path =
-                    format!("instance.plugin.{plugin_name}.service.{service_name}.listener.tls");
-
-                if let Some(cert_path) = &tls.cert_file {
-                    if !cert_path.exists() {
-                        return Err(Error::InvalidConfiguration(format!(
-                            "{config_path}.cert_file: file '{}' does not exist",
-                            cert_path.display()
-                        )));
-                    }
-                    if std::fs::metadata(cert_path)
-                        .map(|m| !m.is_file())
-                        .unwrap_or(true)
-                    {
-                        return Err(Error::InvalidConfiguration(format!(
-                            "{config_path}.cert_file: '{}' is not a regular file",
-                            cert_path.display()
-                        )));
-                    }
-                } else {
-                    return Err(Error::InvalidConfiguration(format!(
-                        "{config_path}: TLS is enabled but cert_file is not specified"
-                    )));
-                }
-
-                if let Some(key_path) = &tls.key_file {
-                    if !key_path.exists() {
-                        return Err(Error::InvalidConfiguration(format!(
-                            "{config_path}.key_file: file '{}' does not exist",
-                            key_path.display()
-                        )));
-                    }
-                    if std::fs::metadata(key_path)
-                        .map(|m| !m.is_file())
-                        .unwrap_or(true)
-                    {
-                        return Err(Error::InvalidConfiguration(format!(
-                            "{config_path}.key_file: '{}' is not a regular file",
-                            key_path.display()
-                        )));
-                    }
-                } else {
-                    return Err(Error::InvalidConfiguration(format!(
-                        "{config_path}: TLS is enabled but key_file is not specified"
-                    )));
-                }
-
-                if let Some(ca_path) = &tls.ca_file {
-                    if !ca_path.exists() {
-                        return Err(Error::InvalidConfiguration(format!(
-                            "{config_path}.ca_file: file '{}' does not exist",
-                            ca_path.display()
-                        )));
-                    }
-                    if std::fs::metadata(ca_path)
-                        .map(|m| !m.is_file())
-                        .unwrap_or(true)
-                    {
-                        return Err(Error::InvalidConfiguration(format!(
-                            "{config_path}.ca_file: '{}' is not a regular file",
-                            ca_path.display()
-                        )));
-                    }
-                }
-
-                if let Some(password_path) = &tls.password_file {
-                    if !password_path.exists() {
-                        return Err(Error::InvalidConfiguration(format!(
-                            "{config_path}.password_file: file '{}' does not exist",
-                            password_path.display()
-                        )));
-                    }
-                    if std::fs::metadata(password_path)
-                        .map(|m| !m.is_file())
-                        .unwrap_or(true)
-                    {
-                        return Err(Error::InvalidConfiguration(format!(
-                            "{config_path}.password_file: '{}' is not a regular file",
-                            password_path.display()
-                        )));
-                    }
-                }
-
-                if let (Some(key_path), Some(password_path)) = (&tls.key_file, &tls.password_file) {
-                    let password = std::fs::read_to_string(password_path).map_err(|e| {
-                        Error::InvalidConfiguration(format!(
-                            "{config_path}.password_file: cannot read '{}': {e}",
-                            password_path.display()
-                        ))
-                    })?;
-                    let password = password.trim();
-
-                    let key_pem = std::fs::read(key_path).map_err(|e| {
-                        Error::InvalidConfiguration(format!(
-                            "{config_path}.key_file: cannot read '{}': {e}",
-                            key_path.display()
-                        ))
-                    })?;
-
-                    openssl::pkey::PKey::private_key_from_pem_passphrase(
-                        &key_pem,
-                        password.as_bytes(),
-                    )
-                    .map_err(|e| {
-                        Error::InvalidConfiguration(format!(
-                            "{config_path}: cannot load private key with provided password: {e}"
-                        ))
-                    })?;
                 }
             }
         }
@@ -4279,7 +4171,7 @@ cluster:
     name: test
 "###;
         let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
-        assert!(config.validate_listen_addresses().is_ok());
+        assert!(config.validate_listener_conflicts().is_ok());
     }
 
     #[test]
@@ -4299,7 +4191,7 @@ instance:
         listen: 127.0.0.1:4327
 "###;
         let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
-        assert!(config.validate_listen_addresses().is_ok());
+        assert!(config.validate_listener_conflicts().is_ok());
     }
 
     #[test]
@@ -4317,7 +4209,7 @@ instance:
         listen: 127.0.0.1:3301
 "###;
         let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
-        assert!(config.validate_listen_addresses().is_err());
+        assert!(config.validate_listener_conflicts().is_err());
     }
 
     #[test]
@@ -4333,7 +4225,7 @@ instance:
         listen: 127.0.0.1:4327
 "###;
         let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
-        assert!(config.validate_listen_addresses().is_err());
+        assert!(config.validate_listener_conflicts().is_err());
     }
     #[test]
     fn listen_addresses_conflict_iproto_pg() {
@@ -4349,7 +4241,7 @@ instance:
         listen: 127.0.0.1:3301
 "###;
         let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
-        assert!(config.validate_listen_addresses().is_err());
+        assert!(config.validate_listener_conflicts().is_err());
     }
 
     #[test]
@@ -4367,7 +4259,7 @@ instance:
         listen: 0.0.0.0:5000
 "###;
         let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
-        assert!(config.validate_listen_addresses().is_err());
+        assert!(config.validate_listener_conflicts().is_err());
     }
 
     #[test]
@@ -4385,7 +4277,7 @@ instance:
         listen: 127.0.0.1:3301
 "###;
         let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
-        assert!(config.validate_listen_addresses().is_err());
+        assert!(config.validate_listener_conflicts().is_err());
     }
 
     #[test]
@@ -4403,7 +4295,7 @@ instance:
         listen: 127.0.0.1:3301
 "###;
         let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
-        assert!(config.validate_listen_addresses().is_ok());
+        assert!(config.validate_listener_conflicts().is_ok());
     }
 
     #[test]

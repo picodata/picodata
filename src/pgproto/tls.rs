@@ -53,6 +53,7 @@ pub fn configure_tls_acceptor(
         &crate::tls::TlsConfigurationSource::Pgproto,
         &tls_config,
         true,
+        true,
     )
     .map_err(Error::invalid_configuration)?;
 

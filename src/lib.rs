@@ -340,6 +340,16 @@ fn start_http_server(
     kubernetes_probes: bool,
     registry: &'static prometheus::Registry,
 ) -> Result<(), Error> {
+    // load the TLS settings to log them to console
+    // we won't use the openssl objects right here, the lua codebase will load its own copy
+    let _ = tls::load_listener_tls_config_from_files(
+        &tls::TlsConfigurationSource::Http,
+        &tls,
+        false,
+        true,
+    )
+    .map_err(Error::invalid_configuration)?;
+
     let (cert_path, key_path, password_file_path, ca_file_path) = if tls.enabled() {
         // Helper lambda to extract path as Option<String>
         let extract_path = |option: &Option<PathBuf>| {
@@ -1451,6 +1461,17 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
     // Start listening only after we've checked if this is a restart.
     // Postjoin phase has its own idea of when to start listening.
     let tls_config = &config.instance.iproto.tls;
+
+    // load the TLS settings to log them to console
+    // we won't use the openssl objects right here, tarantool codebase will load its own copy from the files
+    let _ = tls::load_listener_tls_config_from_files(
+        &tls::TlsConfigurationSource::Iproto,
+        tls_config,
+        false,
+        true,
+    )
+    .map_err(Error::invalid_configuration)?;
+
     let listen_config = ListenConfig::new(
         config.instance.iproto.listen().to_host_port().into(),
         tls_config,
@@ -2146,6 +2167,17 @@ fn postjoin(
     }
 
     let tls_config = &config.instance.iproto.tls;
+
+    // load the TLS settings to log them to console
+    // we won't use the openssl objects right here, tarantool codebase will load its own copy from the files
+    let _ = tls::load_listener_tls_config_from_files(
+        &tls::TlsConfigurationSource::Iproto,
+        tls_config,
+        false,
+        true,
+    )
+    .map_err(Error::invalid_configuration)?;
+
     let listen_config = ListenConfig::new(
         config.instance.iproto.listen().to_host_port().into(),
         tls_config,

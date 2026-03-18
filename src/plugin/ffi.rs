@@ -512,6 +512,8 @@ fn load_plugin_listener_config(
         },
         &config.tls,
         false,
+        // we didn't log this during validation, so make sure to log it now
+        true,
     )
     .map_err(traft::error::Error::invalid_configuration)?
     .map(|tls| tls.serialize())
