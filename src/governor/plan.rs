@@ -144,7 +144,7 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // special case read_only = false for this instance
-    if let Some(plan) = handle_self_read_only(topology_ref) {
+    if let Some(plan) = handle_self_read_only(topology_ref, db_config) {
         debug_assert_plan_kind!(plan, Plan::SelfReadOnlyFalse { .. });
 
         return Ok(plan);
@@ -230,7 +230,8 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // configure replication
-    if let Some(plan) = handle_replication_config(topology_ref, peer_addresses, applied)? {
+    if let Some(plan) = handle_replication_config(topology_ref, db_config, peer_addresses, applied)?
+    {
         debug_assert_plan_kind!(plan, Plan::ConfigureReplication { .. });
 
         return Ok(plan);
@@ -794,7 +795,9 @@ pub mod stage {
         }
 
         /// See comments in [`handle_self_read_only`] for explanation.
-        pub struct SelfReadOnlyFalse {}
+        pub struct SelfReadOnlyFalse {
+            pub synchronous_replication_enabled: bool,
+        }
 
         pub struct UpdateCurrentVshardConfig {
             /// All instances which need to handle `rpc` request before `cas` can be applied.

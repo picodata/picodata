@@ -90,6 +90,13 @@ pub enum TableOption {
     #[serde(rename = "pk_contains_bucket_id")]
     #[encode(rename = "pk_contains_bucket_id")]
     PkContainsBucketId(bool),
+
+    /// When this is enabled, the underlying Tarantool space uses synchronous
+    /// replication (`is_sync = true`). A quorum of replicas must confirm
+    /// writes before the transaction returns success.
+    #[serde(rename = "synchronous")]
+    #[encode(rename = "synchronous")]
+    Synchronous(bool),
 }
 
 /// Database table definition.
@@ -163,6 +170,9 @@ impl TableDef {
         if self.is_unlogged() {
             flags.insert("temporary".into(), true.into());
         }
+        if self.is_synchronous() {
+            flags.insert("is_sync".into(), true.into());
+        }
 
         let space_def = SpaceMetadata {
             id: self.id,
@@ -180,6 +190,11 @@ impl TableDef {
     #[inline(always)]
     pub fn is_unlogged(&self) -> bool {
         self.opts.contains(&TableOption::Unlogged(true))
+    }
+
+    #[inline(always)]
+    pub fn is_synchronous(&self) -> bool {
+        self.opts.contains(&TableOption::Synchronous(true))
     }
 }
 

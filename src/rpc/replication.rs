@@ -33,7 +33,7 @@
 //! itself or wait for the tarantool replication.
 //!
 use crate::catalog::pico_table::PicoTable;
-use crate::config::PicodataConfig;
+use crate::config::{PicodataConfig, ReplicationMode, DEFAULT_REPLICATION_MODE};
 use crate::error_code::ErrorCode;
 #[allow(unused_imports)]
 use crate::governor;
@@ -44,7 +44,7 @@ use crate::luamod::lua_function;
 #[allow(unused_imports)]
 use crate::rpc;
 use crate::sync::wait_vclock;
-use crate::tarantool::{box_ro_reason, set_cfg_field, ListenConfig};
+use crate::tarantool::{box_promote, box_ro_reason, set_cfg_field, ListenConfig};
 use crate::tlog;
 use crate::traft::error::Error;
 #[allow(unused_imports)]
@@ -54,12 +54,13 @@ use crate::traft::op::Op;
 use crate::traft::{node, RaftTerm, Result};
 use smol_str::SmolStr;
 use std::time::Duration;
+use tarantool::clock::INFINITY;
 use tarantool::error::BoxError;
 use tarantool::index::IteratorType;
 use tarantool::space::{Space, SystemSpace};
 use tarantool::tlua::Object;
 use tarantool::tlua::StringInLua;
-use tarantool::transaction::transaction;
+use tarantool::transaction::transaction_force_async;
 use tarantool::vclock::Vclock;
 
 crate::define_rpc_request! {
@@ -102,7 +103,20 @@ crate::define_rpc_request! {
         set_cfg_field("replication", &replication_cfg)?;
 
         if req.is_master {
-            set_read_only(false)?;
+            let (replication_mode, replication_factor) = get_this_tier_replication_mode_and_factor()?;
+            let synchronous_replication_enabled = replication_mode.is_sync();
+            if synchronous_replication_enabled {
+                let quorum = (replication_factor / 2 + 1) as usize;
+                set_cfg_field("replication_synchro_quorum", quorum)?;
+                // Intentionally large timeout. We do not want the limbo
+                // to be rollbacked upon short timeout expiration.
+                set_cfg_field("replication_synchro_timeout", INFINITY.as_secs())?;
+            }
+
+            // If synchro is enabled, call box_promote() to take ownership
+            // of the txn limbo. This is idempotent — if already the leader, it
+            // returns immediately.
+            set_read_only(false, synchronous_replication_enabled)?;
             // _cluster is replicated from master to replicas, so we need to
             // update it on the master only.
             // Errors are not fatal here, we do not need to stop the process,
@@ -113,7 +127,7 @@ crate::define_rpc_request! {
             }
         } else {
             // Everybody else should be read-only
-            set_read_only(true)?;
+            set_read_only(true, false)?;
         }
 
         Ok(Response {})
@@ -274,7 +288,10 @@ fn update_sys_cluster() -> Result<()> {
 
     // All operations on _cluster are done in a single transaction
     // to be written to WAL in one batch.
-    transaction(|| -> Result<()> {
+    // Make asynchronous intentionally because instance
+    // which we want to delete may be dead and cannot
+    // acknowledge the transaction about this deletion.
+    transaction_force_async(|| -> Result<()> {
         for id in ids_to_delete {
             sys_cluster.delete(&[id])?;
         }
@@ -287,14 +304,18 @@ fn update_sys_cluster() -> Result<()> {
 /// Changes the current instance's read-only parameter.
 /// See [tarantool documentation](https://www.tarantool.io/en/doc/latest/reference/configuration/#cfg-basic-read-only)
 /// for more.
+/// If `need_promote` is true then also call box_promote().
 ///
 /// Calls the [`Service::on_leader_change`] callbacks if the parameter actually
 /// changed.
 ///
 /// [`Service::on_leader_change`]: picodata_plugin::plugin::interface::Service::on_leader_change
-pub fn set_read_only(new_read_only: bool) -> Result<()> {
-    let node = node::global()?;
+pub fn set_read_only(new_read_only: bool, need_promote: bool) -> Result<()> {
+    if need_promote {
+        box_promote()?;
+    }
 
+    let node = node::global()?;
     // XXX: Currently we just change the box.cfg.read_only option of the
     // instance but at some point we will implement support for
     // tarantool synchronous transactions then this operation will probably
@@ -310,8 +331,13 @@ pub fn set_read_only(new_read_only: bool) -> Result<()> {
             return Err(Error::other(format!("instance is still in read only mode: {ro_reason}")));
         };
     } else {
-        let pico_table = PicoTable::new();
-        pico_table.truncate_unlogged_tables()?;
+        // Make asynchronous intentionally because do not want to block
+        // "configure replication" step due to synchronous transactions.
+        transaction_force_async(|| -> Result<()> {
+            let pico_table = PicoTable::new();
+            pico_table.truncate_unlogged_tables()?;
+            Ok(())
+        })?;
     }
 
     if old_read_only != new_read_only {
@@ -323,6 +349,36 @@ pub fn set_read_only(new_read_only: bool) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Get replication mode and replication factor for current instance's tier.
+///
+/// We do not use wait_index in [`proc_replication`] (see header of this file),
+/// so cannot get values from topology_cache reliably.
+/// That's why we get values from config.
+fn get_this_tier_replication_mode_and_factor() -> Result<(ReplicationMode, u8)> {
+    let config = &PicodataConfig::get();
+    let my_tier_name = config.effective_instance_tier();
+    let Some(tiers) = &config.cluster.tier else {
+        return Ok((
+            DEFAULT_REPLICATION_MODE,
+            config.cluster.default_replication_factor(),
+        ));
+    };
+    let (_, tier) = tiers
+        .iter()
+        .find(|(tier_name, _)| my_tier_name == tier_name)
+        .ok_or_else(|| {
+            Error::other(format!(
+                "failed to get tier info from config: tier name = {my_tier_name}"
+            ))
+        })?;
+
+    Ok((
+        tier.replication_mode,
+        tier.replication_factor
+            .unwrap_or(config.cluster.default_replication_factor()),
+    ))
 }
 
 crate::define_rpc_request! {
@@ -338,7 +394,7 @@ crate::define_rpc_request! {
         // of the file for explanation.
         node.status().check_term(req.term)?;
 
-        set_read_only(true)?;
+        set_read_only(true, false)?;
 
         let vclock = Vclock::current();
         let vclock = vclock.ignore_zero();

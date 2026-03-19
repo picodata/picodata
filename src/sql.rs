@@ -1631,6 +1631,21 @@ fn ddl_ir_node_to_op_or_result(
             let id = schema::choose_table_id(name, governor_op_id)?;
             let tier = schema::choose_table_tier(tier.as_deref(), &topology_cache)?;
 
+            // If this is a sharded table in a sync tier, add the Synchronous option.
+            let synchronous_replication_enabled;
+            if matches!(distribution, DistributionParam::Sharded) {
+                synchronous_replication_enabled = node
+                    .alter_system_parameters
+                    .borrow()
+                    .replication_mode(&tier)
+                    .is_sync();
+                if synchronous_replication_enabled {
+                    opts.push(TableOption::Synchronous(true));
+                }
+            } else {
+                synchronous_replication_enabled = false;
+            }
+
             let params = CreateTableParams {
                 id,
                 name: name.clone(),
@@ -1659,7 +1674,9 @@ fn ddl_ir_node_to_op_or_result(
 
             params.validate_tier(&topology_cache)?;
             params.check_primary_key(storage)?;
-            params.test_create_space(storage)?;
+            if !synchronous_replication_enabled {
+                params.test_create_space(storage)?;
+            }
             let ddl = params.into_ddl()?;
             Ok(Continue(Op::DdlPrepare {
                 schema_version,

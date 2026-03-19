@@ -1,5 +1,6 @@
 use crate::cas;
 use crate::column_name;
+use crate::config::AlterSystemParameters;
 use crate::governor::plan::get_replicaset_config_version_bump_op;
 use crate::governor::plan::stage::Plan;
 use crate::governor::plan::stage::*;
@@ -7,6 +8,7 @@ use crate::has_states;
 use crate::instance::Instance;
 use crate::instance::InstanceName;
 use crate::replicaset::Replicaset;
+use crate::replicaset::ReplicasetState;
 use crate::rpc;
 use crate::schema::ADMIN_ID;
 use crate::storage;
@@ -32,7 +34,10 @@ use tarantool::space::UpdateOps;
 // handle_self_read_only
 ////////////////////////////////////////////////////////////////////////////////
 
-pub fn handle_self_read_only<'i>(topology_ref: &TopologyCacheRef) -> Option<Plan<'i>> {
+pub fn handle_self_read_only<'i>(
+    topology_ref: &TopologyCacheRef,
+    db_config: &AlterSystemParameters,
+) -> Option<Plan<'i>> {
     if !box_is_ro() {
         return None;
     }
@@ -60,7 +65,42 @@ pub fn handle_self_read_only<'i>(topology_ref: &TopologyCacheRef) -> Option<Plan
     // without any RPC and/or global DML. Those will still be performed on the
     // corresponding step.
 
-    Some(SelfReadOnlyFalse {}.into())
+    let synchronous_replication_enabled = db_config.is_synchronous_replication();
+
+    // For a sync replicaset the self-unfence must respect the synchro quorum,
+    // exactly like `proc_replication` does (see the quorum/Ready checks in
+    // src/rpc/replication.rs). Otherwise, when the raft leader happens to be the
+    // master of a sync replicaset that has lost its quorum, the governor would
+    // `box_promote()` it back to writable — undoing the fencing (or hanging,
+    // waiting for a quorum that can no longer be reached). We only apply this
+    // when the replicaset is `Ready`; while it is still bootstrapping the master
+    // is expected to be promoted below quorum, same as in `proc_replication`.
+    if synchronous_replication_enabled && this_replicaset.state == ReplicasetState::Ready {
+        let this_tier = topology_ref.try_this_tier()?;
+        let quorum = (this_tier.replication_factor / 2 + 1) as usize;
+        let online_count = topology_ref
+            .all_instances()
+            .filter(|instance| {
+                instance.replicaset_name == this_replicaset.name && instance.may_respond()
+            })
+            .count();
+        if online_count < quorum {
+            // The replicaset cannot form a synchro quorum, so keep it fenced
+            // read-only instead of self-promoting.
+            tlog!(
+                Warning,
+                "raft leader cannot be promoted to read_only=false due to synchro quorum loss"
+            );
+            return None;
+        }
+    }
+
+    Some(
+        SelfReadOnlyFalse {
+            synchronous_replication_enabled,
+        }
+        .into(),
+    )
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -69,6 +109,7 @@ pub fn handle_self_read_only<'i>(topology_ref: &TopologyCacheRef) -> Option<Plan
 
 pub fn handle_replication_config<'i>(
     topology_ref: &TopologyCacheRef,
+    db_config: &AlterSystemParameters,
     peer_addresses: &'i HashMap<RaftId, SmolStr>,
     applied: RaftIndex,
 ) -> Result<Option<Plan<'i>>> {
@@ -83,7 +124,17 @@ pub fn handle_replication_config<'i>(
     debug_assert!(!targets.is_empty());
     let replicaset_name = replicaset.name.clone();
 
-    let master_name = replicaset.effective_master_name().cloned();
+    let mut master_name = replicaset.effective_master_name().cloned();
+
+    let tier = topology_ref.tier_by_name(&replicaset.tier)?;
+    let synchronous_replication_enabled = db_config.replication_mode(&tier.name).is_sync();
+    if synchronous_replication_enabled {
+        let quorum = (tier.replication_factor / 2 + 1) as usize;
+        if replicaset_peers.len() < quorum && replicaset.state == ReplicasetState::Ready {
+            tlog!(Info, "synchronous replication quorum is lost, trying to set read_only=true for all instances of replicaset '{replicaset_name}'");
+            master_name = None;
+        }
+    }
 
     let mut ops = UpdateOps::new();
     ops.assign(

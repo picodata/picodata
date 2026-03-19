@@ -316,12 +316,18 @@ impl Loop {
                 sleep_timeout = Some(Loop::RETRY_TIMEOUT);
             }
 
-            Plan::SelfReadOnlyFalse(SelfReadOnlyFalse {}) => {
+            Plan::SelfReadOnlyFalse(SelfReadOnlyFalse {
+                synchronous_replication_enabled,
+            }) => {
                 set_status!("make raft leader read_only = false");
                 governor_substep! {
-                    "making governor read_only = false"
+                    "making governor read_only = false" [
+                        "synchronous_replication_enabled" => ?synchronous_replication_enabled,
+                    ]
                     async {
-                        set_read_only(false)?;
+                        // If synchro is enabled, call box_promote() to take ownership
+                        // of the txn limbo.
+                        set_read_only(false, synchronous_replication_enabled)?;
                         // Add a short sleep to avoid infinite looping in case of bugs
                         sleep_timeout = Some(Loop::RETRY_TIMEOUT);
                     }

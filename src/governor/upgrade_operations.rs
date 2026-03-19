@@ -2,6 +2,7 @@ use crate::catalog::pico_bucket::PicoBucket;
 use crate::catalog::pico_resharding_state::PicoReshardingState;
 use crate::catalog::pico_table::PicoTable;
 use crate::config::DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION;
+use crate::config::DEFAULT_REPLICATION_MODE;
 use crate::storage::schema::ddl_change_format_on_master;
 use crate::storage::{Instances, Replicasets, SystemTable, Tiers};
 use crate::tier::DEFAULT_TIER;
@@ -118,6 +119,7 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("proc_name", "proc_instance_health_status"),
             ("proc_name", "proc_raft_transfer_leader"),
             ("exec_script", InternalScript::InsertExperimentalShardingImplementationIntoPicoDbConfig.as_str()),
+            ("exec_script", InternalScript::InsertReplicationModeIntoPicoDbConfig.as_str()),
             ("proc_name", "proc_instance_details"),
         ]
     ),
@@ -192,6 +194,12 @@ tarantool::define_str_enum! {
         /// INSERT INTO _pico_db_config VALUES ('experimental_sharding_implementation', ?, false)
         /// ```
         InsertExperimentalShardingImplementationIntoPicoDbConfig = "insert_experimental_sharding_implementation_into_pico_db_config",
+
+        /// Default configuration parameter for each tier:
+        /// ```ignore
+        /// INSERT INTO _pico_db_config VALUES ('replication_mode', ?, 'async')
+        /// ```
+        InsertReplicationModeIntoPicoDbConfig = "insert_replication_mode_into_pico_db_config",
     }
 }
 
@@ -234,6 +242,9 @@ crate::define_rpc_request! {
 
             InternalScript::InsertExperimentalShardingImplementationIntoPicoDbConfig =>
                 insert_experimental_sharding_implementation_into_pico_db_config(),
+
+            InternalScript::InsertReplicationModeIntoPicoDbConfig =>
+                insert_replication_mode_into_pico_db_config(),
         }
     }
 
@@ -307,13 +318,37 @@ fn insert_experimental_sharding_implementation_into_pico_db_config() -> traft::R
     // For each tier insert a tuple
     // `("experimental_sharding_implementation", tier.name, false)` into
     // _pico_db_config
-    transaction::transaction(|| -> traft::Result<()> {
+    transaction::transaction_force_async(|| -> traft::Result<()> {
         let topology_ref = node.topology_cache.get();
         for tier in topology_ref.all_tiers() {
             node.storage.db_config.replace(
                 system_parameter_name!(experimental_sharding_implementation),
                 &tier.name,
                 &DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION,
+            )?;
+        }
+
+        Ok(())
+    })?;
+
+    Ok(Response {})
+}
+
+fn insert_replication_mode_into_pico_db_config() -> traft::Result<Response> {
+    let node = traft::node::global()?;
+
+    // For each tier insert a tuple `("replication_mode", tier.name, "async")`
+    // into _pico_db_config. Without this row the per-tier config stays partially
+    // populated on upgraded clusters and `replication_mode(tier)` would have to
+    // guess the default; persisting it keeps the catalog explicit and
+    // consistent with freshly bootstrapped clusters.
+    transaction::transaction_force_async(|| -> traft::Result<()> {
+        let topology_ref = node.topology_cache.get();
+        for tier in topology_ref.all_tiers() {
+            node.storage.db_config.replace(
+                system_parameter_name!(replication_mode),
+                &tier.name,
+                &DEFAULT_REPLICATION_MODE.to_string(),
             )?;
         }
 
@@ -354,7 +389,7 @@ fn actualize_system_table_format<T: SystemTable>() -> traft::Result<()> {
         transaction::transaction(|| ddl_change_format_on_master(table_id, &expected_format))?;
     }
 
-    transaction::transaction(|| -> traft::Result<()> {
+    transaction::transaction_force_async(|| -> traft::Result<()> {
         let rename_mapping = traft::op::RenameMappingBuilder::new().build();
         node.storage
             .pico_table

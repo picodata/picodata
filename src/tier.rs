@@ -1,4 +1,6 @@
-use crate::config::DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION;
+use crate::config::{
+    ReplicationMode, DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION, DEFAULT_REPLICATION_MODE,
+};
 use ::tarantool::tlua;
 use smol_str::SmolStr;
 use tarantool::{space::UpdateOps, tuple::Encode};
@@ -185,6 +187,9 @@ pub struct TierConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub experimental_sharding_implementation: Option<bool>,
+
+    #[serde(default)]
+    pub replication_mode: ReplicationMode,
 }
 
 impl TierConfig {
@@ -210,6 +215,7 @@ impl TierConfig {
             experimental_sharding_implementation: Some(
                 DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION,
             ),
+            replication_mode: DEFAULT_REPLICATION_MODE,
         }
     }
 }

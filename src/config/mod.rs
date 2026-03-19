@@ -74,9 +74,38 @@ pub(crate) const DEFAULT_SQL_PREEMPTION_OPCODE_MAX: u64 = 1024;
 pub(crate) const DEFAULT_SQL_LOG: bool = false;
 pub(crate) const DEFAULT_SQL_RUNTIME_CONCURRENCY_MAX: u64 = 50;
 pub const DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION: bool = false;
+pub const DEFAULT_REPLICATION_MODE: ReplicationMode = ReplicationMode::Async;
 
 pub use ::sql::ir::types::DomainType as SbroadType;
 pub use tls::{TlsClientMethod, TlsClientSettings, TlsListenerSettings};
+
+////////////////////////////////////////////////////////////////////////////////
+// ReplicationMode
+////////////////////////////////////////////////////////////////////////////////
+
+::tarantool::define_str_enum! {
+    /// Replication mode of a tier.
+    ///
+    /// In [`Async`](Self::Async) mode (the default) writes are confirmed by the
+    /// master without waiting for replicas. In [`Sync`](Self::Sync) mode sharded
+    /// tables created in the tier use Tarantool's `is_sync` flag and a quorum of
+    /// replicas must confirm a write before it returns success.
+    #[derive(Default)]
+    pub enum ReplicationMode {
+        #[default]
+        Async = "async",
+        Sync = "sync",
+    }
+}
+
+impl ReplicationMode {
+    /// Returns `true` if this is the [`Sync`](Self::Sync) mode.
+    #[inline(always)]
+    pub fn is_sync(&self) -> bool {
+        matches!(self, ReplicationMode::Sync)
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // PicodataConfig
 ////////////////////////////////////////////////////////////////////////////////
@@ -1325,6 +1354,20 @@ Using configuration file '{args_path}'.");
             ));
         }
 
+        let replication_mode_from_storage = storage
+            .db_config
+            .get(system_parameter_name!(replication_mode), tier_name)?
+            .unwrap_or(DEFAULT_REPLICATION_MODE);
+        let replication_mode_from_config = tier_config.replication_mode;
+        if replication_mode_from_config != replication_mode_from_storage {
+            return Err(invalid_tier_parameter(
+                tier_name,
+                system_parameter_name!(replication_mode),
+                replication_mode_from_config,
+                replication_mode_from_storage,
+            ));
+        }
+
         Ok(())
     }
 
@@ -1807,6 +1850,15 @@ impl ClusterConfig {
                         initiator,
                     )?);
                 }
+                dmls.push(Dml::replace(
+                    DbConfig::TABLE_ID,
+                    &(
+                        system_parameter_name!(replication_mode),
+                        &tier_name,
+                        tier_config.replication_mode.to_string(),
+                    ),
+                    initiator,
+                )?);
             }
         }
 
@@ -2693,6 +2745,15 @@ pub struct AlterSystemParameters {
     #[introspection(scope = tier)]
     pub experimental_sharding_implementation: bool,
 
+    /// Replication mode of a tier: `"async"` (the default) or `"sync"`. When
+    /// set to `"sync"`, sharded tables created in the tier use Tarantool's
+    /// `is_sync` flag, and the synchro quorum is automatically configured based
+    /// on the tier's replication factor.
+    #[introspection(sbroad_type = SbroadType::String)]
+    #[introspection(config_default = DEFAULT_REPLICATION_MODE.to_string())]
+    #[introspection(scope = tier)]
+    pub replication_mode: String,
+
     // TODO: factor out all `scope = tier` parameters into a separate struct
     // and store them in this map, instead of simple the TierConfig.
     #[introspection(ignore)]
@@ -2704,6 +2765,7 @@ pub struct AlterSystemParameters {
 pub const READ_ONLY_ALTER_SYSTEM_PARAMETERS: &'static [&'static str] = &[
     SHREDDING_PARAM_NAME,
     system_parameter_name!(experimental_sharding_implementation),
+    system_parameter_name!(replication_mode),
 ];
 
 fn generate_secure_token() -> String {
@@ -2819,6 +2881,22 @@ impl AlterSystemParameters {
         };
 
         tier_config.experimental_sharding_implementation()
+    }
+
+    /// Returns the [`ReplicationMode`] configured for the given tier.
+    pub fn replication_mode(&self, tier_name: &str) -> ReplicationMode {
+        self.per_tier
+            .get(tier_name)
+            .map(|t| t.replication_mode)
+            .unwrap_or(DEFAULT_REPLICATION_MODE)
+    }
+
+    /// Returns `true` if synchronous replication is enabled for the current
+    /// instance's tier (read from the global `replication_mode` field).
+    pub fn is_synchronous_replication(&self) -> bool {
+        ReplicationMode::from_str(&self.replication_mode)
+            .unwrap_or_default()
+            .is_sync()
     }
 }
 
@@ -3028,6 +3106,18 @@ pub fn validate_alter_system_parameter_value<'v>(
         }
     }
 
+    if name == system_parameter_name!(replication_mode) {
+        if let Value::String(s) = value {
+            let _ = ReplicationMode::from_str(s).map_err(|_| {
+                Error::other(format!(
+                    "invalid value for '{name}': expected 'sync' or 'async', got {s}",
+                ))
+            })?;
+        } else {
+            panic!("invalid type for '{name}': expected string ('sync' or 'async'), got {value}")
+        }
+    }
+
     if name == system_parameter_name!(sql_preemption) {
         let _ = casted_value
             .bool()
@@ -3228,6 +3318,15 @@ pub fn apply_parameter(
                 .entry(target_tier_name.into())
                 .or_default()
                 .experimental_sharding_implementation = Some(value);
+        } else if name == system_parameter_name!(replication_mode) {
+            let value = v.as_str().expect("type is already checked");
+            parameters
+                .borrow_mut()
+                .per_tier
+                .entry(target_tier_name.into())
+                .or_default()
+                .replication_mode =
+                ReplicationMode::from_str(value).unwrap_or(DEFAULT_REPLICATION_MODE);
         }
 
         if target_tier_name != current_tier {
@@ -5733,5 +5832,46 @@ instance:
 
             let _config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         }
+    }
+
+    #[test]
+    fn bootstrap_read_only_parameters_persists_all_tier_params() {
+        // A tier that enables both `experimental_sharding_implementation` and
+        // `replication_mode: sync` must get a `_pico_db_config` row for *each*
+        // parameter at bootstrap.
+        let yaml = r###"
+cluster:
+    name: test
+    tier:
+        storage:
+            replication_factor: 3
+            experimental_sharding_implementation: true
+            replication_mode: sync
+"###
+        .trim();
+        let config = PicodataConfig::read_yaml_contents(yaml).unwrap();
+        let dmls = config.cluster.bootstrap_read_only_parameters().unwrap();
+
+        // Decode every persisted (name, scope) pair so we can assert both
+        // per-tier parameters are present (alongside the global "shredding" row).
+        let mut persisted = std::collections::HashSet::new();
+        for dml in &dmls {
+            assert_eq!(dml.table_id(), DbConfig::TABLE_ID);
+            let (Dml::Replace { tuple, .. } | Dml::Insert { tuple, .. }) = dml else {
+                panic!("unexpected dml kind: {dml:?}");
+            };
+            let (name, scope, _value): (String, String, rmpv::Value) =
+                rmp_serde::from_slice(tuple.as_ref()).unwrap();
+            persisted.insert((name, scope));
+        }
+
+        assert!(persisted.contains(&(
+            system_parameter_name!(experimental_sharding_implementation).to_string(),
+            "storage".to_string(),
+        )));
+        assert!(persisted.contains(&(
+            system_parameter_name!(replication_mode).to_string(),
+            "storage".to_string(),
+        )));
     }
 }

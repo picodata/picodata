@@ -656,6 +656,7 @@ def test_read_from_system_tables(cluster: Cluster):
         "raft_wal_count_max",
         "raft_wal_size_max",
         "read_preference",
+        "replication_mode",
         "shredding",
         "sql_ddl_timeout",
         "sql_log",

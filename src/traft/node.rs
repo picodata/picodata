@@ -97,7 +97,7 @@ use ::tarantool::space::FieldType as SFT;
 use ::tarantool::space::SpaceId;
 use ::tarantool::time::Instant;
 use ::tarantool::tlua;
-use ::tarantool::transaction::transaction;
+use ::tarantool::transaction::transaction_force_async;
 use ::tarantool::tuple::RawByteBuf;
 use ::tarantool::tuple::{Decode, Tuple};
 use picodata_plugin::util::DisplayErrorLocation;
@@ -669,7 +669,9 @@ impl NodeImpl {
         let term: RaftTerm = raft_storage.term()?;
         let lc = {
             let gen = raft_storage.gen().unwrap() + 1;
-            raft_storage.persist_gen(gen).unwrap();
+            // Make asynchronous intentionally because do not want to block
+            // raft state modification due to synchronous transactions.
+            transaction_force_async(|| -> tarantool::Result<()> { raft_storage.persist_gen(gen) })?;
             LogicalClock::new(raft_id, gen)
         };
 
@@ -1053,7 +1055,14 @@ impl NodeImpl {
             self.main_loop_info.borrow_mut().last_entry = Some(entry.clone());
 
             let mut apply_entry_result = EntryApplied(vec![]);
-            transaction(|| -> tarantool::Result<()> {
+            // Make asynchronous intentionally because do not want to block
+            // raft state and global system tables modification due to
+            // synchronous transactions.
+            // One exception: handle DdlCommit and instance is catching up. In this case
+            // we need to modify tarantool system spaces. It is okay to do it
+            // with asynchronous transaction because when instance is catching up
+            // it replays entries which already applied on other instances.
+            transaction_force_async(|| -> tarantool::Result<()> {
                 self.main_loop_status("handling committed entries");
 
                 match entry.entry_type {
@@ -3119,7 +3128,9 @@ impl NodeImpl {
             let mut received_snapshot = false;
             let mut changed_parameters = Vec::new();
 
-            if let Err(e) = transaction(|| -> Result<(), Error> {
+            // Make asynchronous intentionally because do not want to block
+            // raft state modification due to synchronous transactions.
+            if let Err(e) = transaction_force_async(|| -> Result<(), Error> {
                 // Raft HardState changed, and we need to persist it.
                 if let Some(hard_state) = hard_state {
                     tlog!(Debug, "hard state: {hard_state:?}");
@@ -3290,7 +3301,9 @@ impl NodeImpl {
         if let Some(commit) = light_rd.commit_index() {
             debug_assert!(self.raw_node.raft.state == RaftStateRole::Leader);
 
-            if let Err(e) = transaction(|| -> Result<(), Error> {
+            // Make asynchronous intentionally because do not want to block
+            // raft state modification due to synchronous transactions.
+            if let Err(e) = transaction_force_async(|| -> Result<(), Error> {
                 self.main_loop_status("persisting commit index");
 
                 self.raft_storage.persist_commit(commit)?;
@@ -3393,7 +3406,9 @@ impl NodeImpl {
 
         let compact_until = self.get_adjusted_compaction_index(old_last_index)?;
 
-        transaction(|| -> traft::Result<()> {
+        // Make asynchronous intentionally because do not want to block
+        // raft state modification due to synchronous transactions.
+        transaction_force_async(|| -> traft::Result<()> {
             self.main_loop_status("log auto compaction");
             self.raft_storage.compact_log(compact_until)?;
 

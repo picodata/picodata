@@ -40,7 +40,7 @@ use ::tarantool::error::Error as TntError;
 use ::tarantool::fiber::r#async::timeout::{self, IntoTimeout};
 use ::tarantool::time::Instant;
 use ::tarantool::tlua;
-use ::tarantool::transaction::transaction;
+use ::tarantool::transaction::transaction_force_async;
 use ::tarantool::{fiber, session};
 use backoff::SimpleBackoffManager;
 use config::apply_parameter;
@@ -1626,7 +1626,9 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
         ..Default::default()
     };
 
-    transaction(|| -> Result<(), TntError> {
+    // Make asynchronous intentionally because do not want to block
+    // raft state modification due to synchronous transactions.
+    transaction_force_async(|| -> Result<(), TntError> {
         raft_storage.persist_raft_id(raft_id).unwrap();
         raft_storage.persist_instance_name(&instance_name).unwrap();
         raft_storage.persist_tier(my_tier_name).unwrap();
@@ -1759,7 +1761,9 @@ fn restore_from_backup(config: &PicodataConfig, backup_path: &PathBuf) -> Result
         &(current_schema_version - 1),
     )?;
 
-    let _ = transaction(|| -> Result<()> {
+    // Make asynchronous intentionally because do not want to block
+    // raft state modification due to synchronous transactions.
+    let _ = transaction_force_async(|| -> Result<()> {
         // Call log compaction to remove stale DdlPrepare opcode saved during BACKUP execution
         let last_index = raft_storage
             .last_index()
@@ -1854,7 +1858,9 @@ fn start_pre_join(
         init_common(config, &tnt_cfg, false)?;
 
         let (_, raft_storage) = bootstrap_storage_on_master()?;
-        transaction(|| -> Result<(), TntError> {
+        // Make asynchronous intentionally because do not want to block
+        // raft state modification due to synchronous transactions.
+        transaction_force_async(|| -> Result<(), TntError> {
             raft_storage.persist_instance_uuid(&uuid)?;
             raft_storage
                 .persist_join_state("prepare".to_owned())
@@ -2337,7 +2343,9 @@ fn start_join(
     let my_tier_name = config.effective_instance_tier();
     debug_assert_eq!(resp.instance.tier, my_tier_name);
 
-    transaction(|| -> Result<(), TntError> {
+    // Make asynchronous intentionally because do not want to block
+    // raft state modification due to synchronous transactions.
+    transaction_force_async(|| -> Result<(), TntError> {
         storage.instances.put(&resp.instance).unwrap();
         for (raft_id, address) in &resp.peer_addresses {
             storage

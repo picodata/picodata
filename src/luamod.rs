@@ -24,7 +24,7 @@ use ::tarantool::msgpack::ViaMsgpack;
 use ::tarantool::session;
 use ::tarantool::tlua;
 use ::tarantool::tlua::{LuaState, LuaThread, PushOneInto, Void};
-use ::tarantool::transaction::transaction;
+use ::tarantool::transaction::transaction_force_async;
 use ::tarantool::tuple::Decode;
 use ::tarantool::vclock::Vclock;
 use indoc::formatdoc;
@@ -1050,7 +1050,9 @@ pub(crate) fn setup() {
                 let applied = node.get_index();
                 let up_to = up_to.min(applied + 1);
                 let raft_storage = &node.raft_storage;
-                let ret = transaction(|| raft_storage.compact_log(up_to));
+                // Make asynchronous intentionally because do not want to block
+                // raft state modification due to synchronous transactions.
+                let ret = transaction_force_async(|| raft_storage.compact_log(up_to));
                 Ok(ret?)
             })
         },
