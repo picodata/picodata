@@ -1656,7 +1656,9 @@ class Instance:
             timeout (int | float, default=6): time limit since last grade change
 
         Raises:
-            AssertionError: if doesn't succeed
+            AssertionError: if doesn't succeed within timeout
+            ReplicationBroken: if instance is Offline due to replication
+                conflicts (e.g., issue #2701 - master switchover during DDL)
         """
 
         log.info(f"Instance.wait_online({self})")
@@ -1688,6 +1690,13 @@ class Instance:
                     last_state = (state, incarnation)
                     deadline = time.monotonic() + timeout
 
+                # Check if instance is intentionally Offline due to replication issues
+                # This can happen during master switchover with DDL conflicts (issue #2701)
+                if state == "Offline" and target_state == "Offline":
+                    target_state_reason = self._get_target_state_reason()
+                    if target_state_reason and "Replication broken" in target_state_reason:
+                        raise ReplicationBroken(f"Instance '{self.name}' has replication broken: {target_state_reason}")
+
                 # Check state
                 assert state == "Online"
                 if expected_incarnation is not None:
@@ -1718,16 +1727,39 @@ class Instance:
                             raise Exception(self._wait_online_failure_message(state, target_state)) from e
                         else:
                             raise e from e
-                    case (str(message),) if "target_state_reason: Replication broken" in message:
-                        raise ReplicationBroken(e) from e
 
         log.info(f"{self} is online")
+
+    def _get_target_state_reason(self) -> str | None:
+        """Fetch target_state_reason for this instance from _pico_instance.
+
+        Uses direct space query instead of SQL to avoid incrementing
+        pico_sql_query metrics (which would break metrics tests).
+
+        Returns None if the reason cannot be fetched (no cluster, no leader, etc).
+        """
+        if not self.cluster:
+            return None
+        try:
+            leader = self.cluster.leader()
+            return leader.eval(
+                """
+                local name = ...
+                local tuple = box.space._pico_instance.index.name:get(name)
+                if tuple then
+                    return tuple.target_state_reason
+                end
+                return nil
+                """,
+                self.name,
+            )
+        except Exception:
+            return None
 
     def _wait_online_failure_message(self, current_state: str, target_state: str) -> str:
         last_error = None
         governor_status = None
         leader = None
-        target_state_reason = None
 
         try:
             if self.cluster:
@@ -1736,9 +1768,6 @@ class Instance:
                 last_error = leader_runtime_info["internal"].get("governor_loop_last_error")
                 governor_status = leader_runtime_info["internal"].get("governor_loop_status")
                 del leader_runtime_info
-                [[target_state_reason]] = leader.sql(
-                    "SELECT target_state_reason FROM _pico_instance WHERE name = ?", self.name
-                )
 
         except ProcessDead as e:
             raise e from e
@@ -1746,6 +1775,7 @@ class Instance:
             log.warning(f"Failed getting governor info: {e}")
 
         state_repr = current_state if current_state == target_state else f"{current_state} -> {target_state}"
+        target_state_reason = self._get_target_state_reason()
 
         message = f"""
 Timed out waiting for instance '{self.name_or_port()}' state 'Online'.
