@@ -82,6 +82,24 @@ def test_upgrade_from_previous_minor_to_current(factory: Factory):
 @pytest.mark.xdist_group(name="rolling")
 @pytest.mark.required_rolling_versions(
     versions=[
+        Version.PREVIOUS_MAJOR,
+        Version.CURRENT,
+    ]
+)
+def test_upgrade_from_previous_major_to_current(factory: Factory):
+    cluster = factory(of=Version.PREVIOUS_MAJOR)
+    cluster.terminate()
+
+    assert cluster.registry
+    executable_current = cluster.registry.get(Version.CURRENT)
+    cluster.runtime = executable_current
+    cluster.wait_online()
+    assert cluster.is_healthy()
+
+
+@pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
         Version.BEFORELAST_MINOR,
         Version.PREVIOUS_MINOR,
         Version.CURRENT,
