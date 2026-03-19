@@ -921,3 +921,34 @@ def test_healthcheck_status_api(cluster: Cluster):
 
     # Cleanup
     i1.call("pico._inject_error", "SENTINEL_CONNECTION_POOL_CALL_FAILURE", False)
+
+
+def test_kubernetes_probes_disabled(cluster: Cluster):
+    """
+    Test that kubernetes_probes: false disables K8s health probe endpoints.
+    The endpoints should return 404 when disabled.
+    """
+    cluster.set_config_file(
+        yaml=f"""
+cluster:
+    name: {cluster.id}
+    tier:
+        default:
+            replication_factor: 1
+instance:
+    http:
+        kubernetes_probes: false
+"""
+    )
+
+    i1 = cluster.add_instance(wait_online=True, tier="default", enable_http=True)
+    http_listen = i1.http_listen
+    base_url = f"http://{http_listen}/api/v1/health"
+
+    # K8s probes should return 404 when disabled
+    for endpoint in ["live", "ready", "startup"]:
+        try:
+            with get_unauthorized(f"{base_url}/{endpoint}") as response:
+                assert False, f"Expected 404 for {endpoint}, got {response.status}"
+        except HTTPError as e:
+            assert e.code == 404, f"Expected 404 for {endpoint}, got {e.code}"

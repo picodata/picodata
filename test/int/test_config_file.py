@@ -138,6 +138,7 @@ instance:
             ),
             http=dict(
                 enabled=dict(source="default", value=True),
+                kubernetes_probes=dict(source="default", value=True),
                 listen=dict(source="default", value="127.0.0.1:5327"),
                 advertise=dict(source="default", value="127.0.0.1:5327"),
                 tls=dict(enabled=dict(source="default", value=False)),
@@ -482,6 +483,7 @@ def test_picodata_default_config_has_unified_socket_sections(cluster: Cluster):
     assert instance["http"] == {
         "advertise": "127.0.0.1:5327",
         "enabled": True,
+        "kubernetes_probes": True,
         "listen": "127.0.0.1:5327",
         "tls": {"enabled": False},
     }, f"Unexpected http section: {instance.get('http')}"
