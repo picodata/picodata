@@ -109,7 +109,6 @@ make build-release-pkg
 
 %files
 %{_bindir}/picodata
-%{_bindir}/gostech-audit-log
 %doc README.md
 %{!?_licensedir:%global license %doc}
 %if "%{?_build_vendor}" == "alt"

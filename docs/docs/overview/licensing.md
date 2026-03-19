@@ -104,8 +104,6 @@ Picodata Enterprise включает все функции открытой ве
 - **Обеспечение безопасности**
     - Синхронизация учетных данных между сервером LDAP и Picodata
       (плагин [Argus])
-    - Внешний модуль аудита для экспорта событий журнала аудита в
-      Logstash (плагин [Gostech-audit-log])
 
 - **Управление данными**
     - однонаправленная асинхронная логическая репликация данных между
@@ -124,6 +122,5 @@ Picodata Enterprise включает все функции открытой ве
 [Silver]: ../plugins/silver.md
 [Synapse]: ../plugins/synapse.md
 [Ouroboros]: ../plugins/ouroboros.md
-[Gostech-audit-log]: ../plugins/gostech_audit_log.md
 
 
