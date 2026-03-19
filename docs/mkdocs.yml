@@ -80,6 +80,7 @@ nav:
       - reference/sql/object.md
       - reference/sql_types.md
       - reference/sql/parametrization.md
+      - reference/sql/transactions.md
       - reference/ansi_sql.md
       - Команды:
           - reference/sql/alter_index.md
