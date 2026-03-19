@@ -39,21 +39,25 @@ class Registry:
                 for tag in repository.rolling_versions():
                     if tag.major == current.major and current.minor - tag.minor == 1:
                         self.entries[version.value] = Runtime(tag, version)
+                        break
             case RelativeVersion.BEFORELAST_MINOR:
                 current = repository.current_version()
                 for tag in repository.rolling_versions():
                     if tag.major == current.major and current.minor - tag.minor == 2:
                         self.entries[version.value] = Runtime(tag, version)
+                        break
             case RelativeVersion.PREVIOUS_MAJOR:
                 current = repository.current_version()
                 for tag in repository.rolling_versions():
-                    if current.major - tag.major == 1:
+                    if tag.micro != 0 and current.major - tag.major == 1:
                         self.entries[version.value] = Runtime(tag, version)
+                        break
             case RelativeVersion.BEFORELAST_MAJOR:
                 current = repository.current_version()
                 for tag in repository.rolling_versions():
                     if current.major - tag.major == 2:
                         self.entries[version.value] = Runtime(tag, version)
+                        break
 
     def populate(self) -> None:
         self._fetch(RelativeVersion.CURRENT)
