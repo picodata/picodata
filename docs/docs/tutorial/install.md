@@ -8,7 +8,7 @@
 Мы предоставляем готовые пакеты с Picodata для следующих операционных систем:
 
 - [RHEL 8-9 и совместимые с ним дистрибутивы, например Rocky Linux](#rhel8)
-- [Fedora 39-43](#fedora)
+- [Fedora 41-43](#fedora)
 - [РЕД ОС 7.3 “Муром”](#redos)
 - [Astra Linux 1.7 и 1.8 SE](#astra)
 - [Debian 11 "Bullseye", 12 "Bookworm" и 13 "Trixie"](#debian)
@@ -430,16 +430,12 @@ source "$HOME/.cargo/env"
 ??? example "RHEL 8/9 и деривативы, Fedora 41-43"
     ```shell
     curl -sL https://rpm.nodesource.com/setup_lts.x | sudo bash -
-    curl -sL https://dl.yarnpkg.com/rpm/yarn.repo | sudo tee /etc/yum.repos.d/yarn.repo
     sudo dnf install nodejs
     ```
 
 ??? example "Ubuntu 22.04 и 24.04"
     ```shell
-    curl -sL https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -
-    echo "deb https://dl.yarnpkg.com/debian/ stable main" | sudo tee /etc/apt/sources.list.d/yarn.list
     sudo apt install npm -y
-    sudo curl --compressed -o- -L https://yarnpkg.com/install.sh | bash
     ```
 
 ??? example "Alt Server p10"
@@ -461,18 +457,23 @@ source "$HOME/.cargo/env"
 
 #### Yarn {: #yarn }
 
-Рекомендуем использовать Yarn, установленный через Corepack, поэтому
+Для сборки веб-интерфейса требуется Yarn 4. Рекомендуем использовать
+Corepack, который сам установит необходимую версию Yarn, поэтому
 придерживайтесь следующего порядка действий:
 
-- установите Corepack: `npm install -g corepack` (возможно, потребуются права администратора ОС)
+- убедитесь, что в системе не используется Yarn, поставляемый в виде пакета для ОС
 - включите Corepack: `corepack enable`
-- убедитесь, что в системе не используется Yarn, поставляемый в виде пакета для ОС (`which yarn`)
+- если предыдущая команда не выполняется из-за отсутствия Corepack,
+  установите его командой `npm install -g corepack` (возможно,
+  потребуются права администратора ОС), после чего выполните команду
+  `corepack enable`
+
 
 #### Прочие зависимости  {: #other_dependencies }
 
 Далее приведены команды для установки остальных зависимостей под разные ОС.
 
-??? example "RHEL 8/9 и деривативы, Fedora 39-43"
+??? example "RHEL 8/9 и деривативы, Fedora 41-43"
     Только для ОС, основанных на RHEL 8/9:
     ```shell
     sudo dnf config-manager --set-enabled powertools
@@ -519,7 +520,7 @@ source "$HOME/.cargo/env"
     Сборка под macOS почти не отличается от таковой в Linux. Потребуется
     macOS 10.15 Catalina, либо более новая версия (11+).
     Установите актуальные версии [Rust и
-    Cargo](https://rustup.rs), а также NodeJS и Yarn 4.
+    Cargo](https://rustup.rs), а также NodeJS и Corepack.
 
 
 ### Получение исходного кода {: #getting_sources }
@@ -537,19 +538,6 @@ git clone https://github.com/picodata/picodata.git --recursive
 ```
 
 ### Сборка {: #building }
-
-Убедитесь, что установленный в системе Yarn указывает на актуальную
-версию 4.х (stable), а не на устаревшую версию 1.2.х (classic):
-
-```shell
-yarn --version
-```
-
-При необходимости переключите Yarn на использование актуальной версии:
-
-```shell
-yarn set version stable
-```
 
 Используйте приведенные ниже команды для сборки Picodata. Для получения
 debug-версии:
