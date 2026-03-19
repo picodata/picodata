@@ -60,6 +60,7 @@ from framework.util.path import project_root_path
 from framework.util.version import ExecutableVersion
 from framework.util.version import parse_version_exc
 from framework.util import BASE_HOST
+from framework.util import ExpectedError
 
 pytest_plugins = "framework.sqltester"
 
@@ -1332,10 +1333,17 @@ class Instance:
                 daemon=True,
             ).start()
 
-    def fail_to_start(self, timeout: int = 10, rolling: bool = False):
+    def fail_to_start(self, timeout: int = 10, error: ExpectedError | None = None):
         assert self.process is None, "process is already running"
+
+        if error is not None and error.expects_log:
+            pattern = error.log_pattern
+            assert pattern is not None
+            lc = log_crawler(self, pattern)
+
         self.start()
         assert self.process
+
         try:
             rc = self.process.wait(timeout)
 
@@ -1348,10 +1356,13 @@ class Instance:
         except Exception as e:
             self.kill()
 
-            if rolling:
-                return
-            else:
+            if error is None:
                 raise e from e
+
+            if error.expects_log:
+                lc.wait_matched()
+            else:
+                assert error.matches_exception(e)
 
     def wait_process_stopped(self, timeout: int = 10):
         if self.process is None:
@@ -2193,15 +2204,15 @@ Last governor error is:
     def change_executable(
         self,
         to: Executable,
-        fail: bool = False,
+        error: ExpectedError | None = None,
     ) -> None:
-        log.info(f"Instance.change_executable({self.name}, from={self.executable.version}, to={to}, fail={fail})")
+        log.info(f"Instance.change_executable({self.name}, from={self.executable.version}, to={to}, error={error})")
 
         (_, incarnation), _ = self.states()
         self.terminate()
         self.executable = to
-        if fail:
-            self.fail_to_start(rolling=True)
+        if error is not None:
+            self.fail_to_start(error=error)
             return
 
         self.start()
@@ -3013,9 +3024,13 @@ class Cluster:
                     return False
         return True
 
-    def change_executable(self, to: Executable, fail: bool = False):
+    def change_executable(
+        self,
+        to: Executable,
+        error: ExpectedError | None = None,
+    ):
         for instance in self.instances:
-            instance.change_executable(to, fail)
+            instance.change_executable(to, error)
 
     def pick_random_instance(
         self,
