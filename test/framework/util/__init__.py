@@ -3,6 +3,7 @@ import os
 import shutil
 import sys
 
+from dataclasses import dataclass
 from framework.log import log
 from pathlib import Path
 from typing import Union
@@ -86,3 +87,64 @@ def ask_yes_no(prompt: str, repeat: bool = False) -> bool:
             hint = f"expected: 'y' or 'n', got: {answer}"
             message = f"{error}, {hint}"
             raise ValueError(message)
+
+
+@dataclass(frozen=True)
+class ExpectedError:
+    """
+    Declares what kind of error an entity is expected to produce.
+    """
+
+    log_pattern: str | None = None
+    """
+    A substring expected in instance logs.
+    """
+
+    exception_type: type[Exception] | None = None
+    """
+    The type of exception expected to be raised.
+    """
+
+    exception_match: str | None = None
+    """
+    A substring expected in the exception message.
+    """
+
+    def __post_init__(self) -> None:
+        all_fields = self.__dict__.values()
+        set_fields = filter(None, all_fields)
+        set_count = len(list(set_fields))
+        if set_count != 1:
+            error = "only one of the fields must be set"
+            hint = f"got {set_count}: {repr(self)}"
+            raise ValueError(f"{error}, {hint}")
+
+        hint = f"expected error state: {repr(self)}"
+        if self.exception_match is not None and len(self.exception_match) == 0:
+            error = "`self.exception_match` is set, but is empty"
+            raise ValueError(f"{error}, {hint}")
+        elif self.log_pattern is not None and len(self.log_pattern) == 0:
+            error = "`self.log_pattern` is set, but is empty"
+            raise ValueError(f"{error}, {hint}")
+
+    def matches_exception(self, exc: Exception) -> bool:
+        if self.exception_type is not None:
+            return isinstance(exc, self.exception_type)
+        if self.exception_match is not None:
+            return self.exception_match in str(exc)
+        # `log_pattern` is not matchable against an exception.
+        return False
+
+    @property
+    def expects_log(self) -> bool:
+        return self.log_pattern is not None
+
+    @property
+    def description(self) -> str:
+        if self.log_pattern is not None:
+            return f"log pattern '{self.log_pattern}'"
+        if self.exception_type is not None:
+            return f"exception type {self.exception_type.__name__}"
+        if self.exception_match is not None:
+            return f"exception containing '{self.exception_match}'"
+        return "unknown"
