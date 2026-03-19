@@ -208,7 +208,7 @@ def test_large_snapshot(cluster: Cluster):
         def inner():
             assert i.call("box.space.BIG:count") == param["N"]
 
-        Retriable(timeout, 5).call(inner)
+        Retriable(timeout).call(inner)
 
     cluster.cas("replace", "_pico_property", ["snapshot_chunk_max_size", 1024 * 1024])
     cluster.create_table(

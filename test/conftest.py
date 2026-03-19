@@ -47,6 +47,7 @@ from multiprocessing import Queue
 from pathlib import Path
 
 from framework import ldap
+import logging
 from framework.log import log
 from framework.port_distributor import PortDistributor
 from framework.rolling.registry import Registry
@@ -571,7 +572,7 @@ class Retriable:
             assert x % 5 == 0
             return x
 
-        fizzuzz = Retriable(timeout=3, rps=5).call(guess_fizzbuzz)
+        fizzuzz = Retriable(timeout=3).call(guess_fizzbuzz)
 
     It calls `guess_fizzbuzz` function repeatedly during 3 seconds until
     it succeeds to find a random number that satisfies criteria. The
@@ -584,7 +585,6 @@ class Retriable:
     def __init__(
         self,
         timeout: int | float = 10,
-        rps: int | float = 4,
         fatal: Type[Exception] | Tuple[Exception, ...] = ProcessDead,
         fatal_predicate: Callable[[Exception], bool] = lambda x: False,
     ) -> None:
@@ -593,7 +593,6 @@ class Retriable:
 
         Args:
             timeout (int | float): total time limit.
-            rps (int | float): retries per second.
             fatal (Exception | Tuple[Exception, ...], default=()):
                 unsuppressed exception class or a tuple of classes
                 that should never be retried.
@@ -601,7 +600,8 @@ class Retriable:
 
         now = time.monotonic()
         self.deadline = now + timeout
-        self.retry_period = 1 / rps
+        self.retry_period = 0.05
+        self.max_retry_period = 2.0
         self.next_retry = now
         self.fatal = fatal
         self.fatal_predicate = fatal_predicate
@@ -643,6 +643,7 @@ class Retriable:
             now = time.monotonic()
 
         self.next_retry = now + self.retry_period
+        self.retry_period = min(self.retry_period * 1.5, self.max_retry_period)
         return True
 
 
@@ -801,9 +802,13 @@ class Instance:
     def current_state(self, target: "Instance | None" = None) -> tuple[str, int]:
         return self.states(target)[0]
 
-    def states(self, instance: "Instance | None" = None) -> tuple[tuple[str, int], tuple[str, int]]:
+    def states(
+        self,
+        instance: "Instance | None" = None,
+        error_log_level: int = logging.ERROR,
+    ) -> tuple[tuple[str, int], tuple[str, int]]:
         """Returns a pairs (current_state, target_state). State is pair (variant, incarnation)"""
-        info = self.instance_info(instance)
+        info = self.instance_info(instance, error_log_level=error_log_level)
         current = info["current_state"]
         target = info["target_state"]
         return (current["variant"], current["incarnation"]), (target["variant"], target["incarnation"])
@@ -935,6 +940,7 @@ class Instance:
         user: str | None = None,
         password: str | None = None,
         timeout: int | float = 10,
+        error_log_level: int = logging.ERROR,
     ):
         log.info(f"{self.name or self.port} RPC CALL {fn}{clamp_for_logs(args)}", stacklevel=2)
         try:
@@ -943,7 +949,7 @@ class Instance:
                 log.info(f"{self.name or self.port} RPC CALL {fn} result: {clamp_for_logs(result)}", stacklevel=2)
                 return result
         except Exception as e:
-            log.error(f"{self.name or self.port} RPC CALL {fn} failed: {e}", stacklevel=2)
+            log.log(error_log_level, f"{self.name or self.port} RPC CALL {fn} failed: {e}", stacklevel=2)
             if can_cause_fail(e):
                 self.check_process_alive()
             raise e from e
@@ -955,6 +961,7 @@ class Instance:
         user: str | None = None,
         password: str | None = None,
         timeout: int | float = 10,
+        error_log_level: int = logging.ERROR,
     ):
         # NOTE: Not using short_expr at first intentionally
         log.info(f"{self.name or self.port} RPC EVAL `{expr}` {clamp_for_logs(args)}", stacklevel=2)
@@ -968,7 +975,7 @@ class Instance:
                 )
                 return result
         except Exception as e:
-            log.error(f"{self.name or self.port} RPC EVAL `{short_expr}` failed: {e}", stacklevel=2)
+            log.log(error_log_level, f"{self.name or self.port} RPC EVAL `{short_expr}` failed: {e}", stacklevel=2)
             if can_cause_fail(e):
                 self.check_process_alive()
             raise e from e
@@ -1018,7 +1025,7 @@ class Instance:
             assert current_master_name
             return current_master_name
 
-        return Retriable(timeout=timeout, rps=4).call(make_attempt)  # type: ignore
+        return Retriable(timeout=timeout).call(make_attempt)  # type: ignore
 
     def sql(
         self,
@@ -1030,6 +1037,7 @@ class Instance:
         user: str | None = None,
         password: str | None = None,
         timeout: int | float = 10,
+        error_log_level: int = logging.ERROR,
     ):
         """
         Run SQL query and return result.
@@ -1054,7 +1062,7 @@ class Instance:
                 return result["rows"]
             return result
         except Exception as e:
-            log.error(f"{self.name or self.port} RPC SQL to `{short_sql}` failed: {e}", stacklevel=2)
+            log.log(error_log_level, f"{self.name or self.port} RPC SQL to `{short_sql}` failed: {e}", stacklevel=2)
             if can_cause_fail(e):
                 self.check_process_alive()
             raise e from e
@@ -1063,7 +1071,6 @@ class Instance:
         self,
         sql: str,
         *params,
-        rps: int | float = 2,
         retry_timeout: int | float = 25,
         sudo: bool = False,
         user: str | None = None,
@@ -1094,7 +1101,6 @@ class Instance:
 
         return Retriable(
             timeout=retry_timeout,
-            rps=rps,
             fatal=fatal,
             fatal_predicate=predicate,
         ).call(do_sql)
@@ -1593,7 +1599,12 @@ class Instance:
             # Make it so we can call Instance.start later
             self.process = None
 
-    def instance_info(self, target: "Instance | None" = None, timeout: int | float = 10) -> dict[str, Any]:
+    def instance_info(
+        self,
+        target: "Instance | None" = None,
+        timeout: int | float = 10,
+        error_log_level: int = logging.ERROR,
+    ) -> dict[str, Any]:
         """Call .proc_instance_info on the instance
         and update the related properties on the object.
         """
@@ -1601,7 +1612,7 @@ class Instance:
             # Normalize the arguments
             target = self
 
-        info = self.call(".proc_instance_info", target.name, timeout=timeout)
+        info = self.call(".proc_instance_info", target.name, timeout=timeout, error_log_level=error_log_level)
         assert isinstance(info, dict)
 
         assert isinstance(info["raft_id"], int)
@@ -1634,7 +1645,6 @@ class Instance:
     def wait_online(
         self,
         timeout: int | float = WAIT_ONLINE_TIMEOUT,
-        rps: int | float = 5,
         expected_incarnation: int | None = None,
     ):
         """Wait until instance attains Online grade.
@@ -1644,7 +1654,6 @@ class Instance:
 
         Args:
             timeout (int | float, default=6): time limit since last grade change
-            rps (int | float, default=5): retries per second
 
         Raises:
             AssertionError: if doesn't succeed
@@ -1658,20 +1667,23 @@ class Instance:
         start = time.monotonic()
         deadline = start + timeout
         next_retry = start
+        retry_interval = 0.05
+        max_retry_interval = 2.0
         last_state = None
         while True:
             now = time.monotonic()
             assert now < deadline, "timeout"
 
-            # Throttling
+            # Throttling with exponential backoff
             if now < next_retry:
                 time.sleep(next_retry - now)
-            next_retry = time.monotonic() + 1 / rps
+            next_retry = time.monotonic() + retry_interval
+            retry_interval = min(retry_interval * 1.5, max_retry_interval)
 
             state, target_state = (None, None)
             try:
                 # Fetch state
-                (state, incarnation), (target_state, _) = self.states()
+                (state, incarnation), (target_state, _) = self.states(error_log_level=logging.WARNING)
                 if (state, incarnation) != last_state:
                     last_state = (state, incarnation)
                     deadline = time.monotonic() + timeout
@@ -1682,6 +1694,8 @@ class Instance:
                     assert incarnation == expected_incarnation
 
                 # Success!
+                elapsed = time.monotonic() - start
+                log.info(f"Instance.wait_online({self}) succeeded in {elapsed:.3f}s")
                 break
 
             except ProcessDead as e:
@@ -1768,7 +1782,6 @@ Last governor error is:
         target_state: str,
         target: "Instance | None" = None,
         timeout: int | float = WAIT_ONLINE_TIMEOUT,
-        rps: int | float = 5,
     ):
         """Block until instance has the given states.
         Note that this seems similar to Instance.wait_online, but is a little bit
@@ -1779,10 +1792,10 @@ Last governor error is:
         )
 
         def check():
-            (actual_current, _), (actual_target, _) = self.states(target)
+            (actual_current, _), (actual_target, _) = self.states(target, error_log_level=logging.WARNING)
             assert (actual_current, actual_target) == (current_state, target_state)
 
-        Retriable(timeout, rps, fatal=ProcessDead).call(check)
+        Retriable(timeout, fatal=ProcessDead).call(check)
 
     def raft_term(self) -> int:
         """Get current raft `term`"""
@@ -1834,7 +1847,7 @@ Last governor error is:
                 timeout=timeout + 1,  # this timeout is for network call
             )
 
-        index = Retriable(timeout=timeout + 1, rps=10).call(make_attempt)
+        index = Retriable(timeout=timeout + 1).call(make_attempt)
 
         assert index is not None
         return index
@@ -1894,14 +1907,14 @@ Last governor error is:
 
             return step_counter
 
-        return Retriable(timeout=timeout, rps=1, fatal=NotALeader).call(impl)
+        return Retriable(timeout=timeout, fatal=NotALeader).call(impl)
 
     def promote_or_fail(self, timeout: int | float = 10):
         log.info(f"Instance.promote_or_fail({self})")
 
         attempt = 0
 
-        def make_attempt(timeout, rps):
+        def make_attempt(timeout):
             nonlocal attempt
             attempt = attempt + 1
             log.info(f"{self} is trying to become a leader, {attempt=}")
@@ -1910,9 +1923,9 @@ Last governor error is:
             self.call(".proc_raft_promote")
 
             # 2. Wait until the miracle occurs.
-            Retriable(timeout, rps).call(self.assert_raft_status, "Leader")
+            Retriable(timeout).call(self.assert_raft_status, "Leader")
 
-        Retriable(timeout=timeout, rps=1).call(make_attempt, timeout=1, rps=10)
+        Retriable(timeout=timeout).call(make_attempt, timeout=1)
         log.info(f"{self} is a leader now")
 
     def grant_privilege(self, user, privilege: str, object_type: str, object_name: Optional[str] = None):
@@ -2838,7 +2851,7 @@ class Cluster:
             if len(instances_with_rebalancer) > 1:
                 log.error(f"multiple instances are running vshard rebalancer: {instances_with_rebalancer}")
 
-            actual_active = Retriable(timeout=10, rps=4).call(lambda: i.call("vshard.storage.info")["bucket"]["active"])
+            actual_active = Retriable(timeout=10).call(lambda: i.call("vshard.storage.info")["bucket"]["active"])
             if actual_active == expected:
                 return
 
@@ -2872,14 +2885,13 @@ class Cluster:
         current_state: str,
         target_state: str,
         timeout: int | float = 30,
-        rps: int | float = 5,
     ):
         def do_attempt():
             leader = self.leader()
-            leader.wait_has_states(current_state, target_state, target=target, timeout=timeout, rps=rps)
+            leader.wait_has_states(current_state, target_state, target=target, timeout=timeout)
 
         # This retriable call is needed so that we can handled leader changes
-        Retriable(fatal=AssertionError, timeout=timeout, rps=rps).call(do_attempt)
+        Retriable(fatal=AssertionError, timeout=timeout).call(do_attempt)
 
     def masters(self) -> List[Instance]:
         leader = self.leader()
@@ -3316,7 +3328,7 @@ class log_crawler:
             assert self.matched
 
         try:
-            Retriable(timeout=timeout, rps=4).call(func=must_match)
+            Retriable(timeout=timeout).call(func=must_match)
         except Exception as e:
             # Check if a panic happened while we were waiting for a message in logs
             self.instance.check_process_alive()

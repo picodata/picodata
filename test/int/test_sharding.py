@@ -195,7 +195,7 @@ def wait_current_vshard_config_changed(peer: Instance, old_version, timeout=5):
         new_version = rows[0][0]
         assert new_version != old_version
 
-    Retriable(timeout=timeout, rps=10).call(impl)
+    Retriable(timeout=timeout).call(impl)
 
 
 def test_vshard_updates_on_master_change(cluster: Cluster):
@@ -304,7 +304,7 @@ def test_gitlab_763_no_missing_buckets_after_proc_sharding_failure(cluster: Clus
 
     # All buckets are eventually available to the whole cluster
     for i in cluster.instances:
-        Retriable(timeout=10, rps=4).call(check_available_buckets, i, 3000)
+        Retriable(timeout=10).call(check_available_buckets, i, 3000)
 
 
 def get_table_size(instance: Instance, table_name: str):

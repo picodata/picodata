@@ -88,7 +88,7 @@ def test_discovery(cluster3: Cluster):
 
     # Wait until i1 knows that i2 is elected to reduce test flakiness
     # (proc_discover may return an error during raft leader elections).
-    Retriable(timeout=5, rps=4).call(i1.assert_raft_status, "Follower", i2.raft_id)
+    Retriable(timeout=5).call(i1.assert_raft_status, "Follower", i2.raft_id)
 
     def req_discover(instance: Instance) -> dict:
         request = dict(tmp_id="unused", peers=["test:3301"], can_vote=True, votable_peers=[])
@@ -167,7 +167,7 @@ def test_basic_replication_setup(cluster: Cluster):
             [2, i2.uuid()],
         ]
 
-        Retriable(timeout=10, rps=2).call(check_replicated, instance)
+        Retriable(timeout=10).call(check_replicated, instance)
 
     # It doesn't affect replication setup
     # but speeds up the test by eliminating failover.
@@ -175,14 +175,14 @@ def test_basic_replication_setup(cluster: Cluster):
 
     i2.assert_raft_status("Follower")
     i2.restart()
-    Retriable(timeout=10, rps=2).call(check_replicated, i2)
+    Retriable(timeout=10).call(check_replicated, i2)
 
     i2.wait_online()
     i2.promote_or_fail()
 
     i1.assert_raft_status("Follower")
     i1.restart()
-    Retriable(timeout=10, rps=2).call(check_replicated, i1)
+    Retriable(timeout=10).call(check_replicated, i1)
 
 
 def test_tier_replication_factor(cluster: Cluster):

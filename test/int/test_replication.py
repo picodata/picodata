@@ -65,7 +65,7 @@ def test_2_of_3_writable(cluster: Cluster):
         master_name = i2.replicaset_master_name()
         assert master_name != old_master_name
 
-    Retriable(timeout=6, rps=4).call(check_master_changed)
+    Retriable(timeout=6).call(check_master_changed)
     assert i3.replicaset_master_name() == master_name
 
     old_leader = master

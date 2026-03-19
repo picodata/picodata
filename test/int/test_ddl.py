@@ -1042,7 +1042,7 @@ def test_ddl_drop_table_partial_failure(cluster: Cluster):
     i4.wait_online()
 
     # Wait until the schema change is finalized
-    Retriable(timeout=5, rps=2).call(check_no_pending_schema_change, i1)
+    Retriable(timeout=5).call(check_no_pending_schema_change, i1)
 
     # Now space is dropped.
     assert i1.call("box.space._space.index.name:get", table_name) is None
@@ -2110,7 +2110,7 @@ def test_truncate_is_applied_during_node_wakeup_for_sharded_table(cluster: Clust
     i2.wait_online()
 
     # Wait until the schema change is finalized.
-    Retriable(timeout=5, rps=2).call(check_no_pending_schema_change, i1)
+    Retriable(timeout=5).call(check_no_pending_schema_change, i1)
 
     # Check that data was erased by TRUNCATE.
     data = i1.sql("SELECT * FROM t")
@@ -2143,7 +2143,7 @@ def test_truncate_is_applied_during_node_wakeup_for_global_table(cluster: Cluste
     i2.wait_online()
 
     # Wait until the schema change is finalized.
-    Retriable(timeout=5, rps=2).call(check_no_pending_schema_change, i1)
+    Retriable(timeout=5).call(check_no_pending_schema_change, i1)
 
     # Check that data was erased by TRUNCATE.
     data = i1.sql("SELECT * FROM gt")
@@ -2185,7 +2185,7 @@ def test_truncate_is_applied_from_snapshot_for_sharded_table(cluster: Cluster):
     i2.wait_online()
 
     # # Wait until the schema change is finalized.
-    Retriable(timeout=5, rps=2).call(check_no_pending_schema_change, i1)
+    Retriable(timeout=5).call(check_no_pending_schema_change, i1)
     t_is_opearable = i1.sql("select operable from _pico_table where name = 't'")
     assert t_is_opearable[0][0]
 
@@ -2259,7 +2259,7 @@ def test_truncate_is_applied_from_snapshot_for_global_table(cluster: Cluster):
     i2.wait_online()
 
     # Wait until the schema change is finalized.
-    Retriable(timeout=5, rps=2).call(check_no_pending_schema_change, i2)
+    Retriable(timeout=5).call(check_no_pending_schema_change, i2)
     [[t_is_opearable]] = i1.sql("SELECT operable FROM _pico_table WHERE name = 'gt'")
     assert t_is_opearable
 
@@ -2323,19 +2323,19 @@ def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
         OPTION (TIMEOUT = 10)
         """
     )
-    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
 
     i2.sql(""" TRUNCATE TABLE t1 OPTION (TIMEOUT = 10) """)
-    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
 
     i2.sql(""" ALTER TABLE t1 RENAME TO t2 OPTION (TIMEOUT = 10) """)
-    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
 
     i2.sql(""" CREATE INDEX t2_index ON t2 (id) OPTION (TIMEOUT = 10) """)
-    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
 
     i2.sql(""" DROP INDEX t2_index OPTION (TIMEOUT = 10) """)
-    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
 
     i2.sql(
         """
@@ -2343,13 +2343,13 @@ def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
         OPTION (TIMEOUT = 10)
         """
     )
-    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
 
     i2.sql(""" DROP PROCEDURE proc OPTION (TIMEOUT = 10) """)
-    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
 
     i2.sql(""" DROP TABLE t2 OPTION (TIMEOUT = 10) """)
-    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
 
     # Test CREATE TABLE (commit and abort cases)
     # actually it's `not yet applied` case
@@ -2361,7 +2361,7 @@ def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
     )
 
     # Wait until the schema change is finalized
-    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
 
     # proof that it was `not yet applied` case - table should be operable
     rows = leader.sql("SELECT operable from _pico_table where name = 't1'")
@@ -2392,7 +2392,7 @@ def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
         )
 
     # Wait until the schema change is finalized
-    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
 
     # proof that it is `aborted`
     result = leader.sql(f"SELECT * FROM _pico_table WHERE name = '{conflict_table_name}'")
@@ -2433,8 +2433,8 @@ def test_alter_table_rename_ddl_execution(cluster: Cluster):
     table_id = int(table_id[0][0])
 
     # Wait until the schema change is finalized
-    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, r1_leader)
-    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, r2_leader)
+    Retriable(timeout=10).call(check_no_pending_schema_change, r1_leader)
+    Retriable(timeout=10).call(check_no_pending_schema_change, r2_leader)
 
     initial_schema_version = r1_leader.sql(f"SELECT schema_version FROM _pico_table WHERE name = '{table_name}'")
     initial_schema_version = int(initial_schema_version[0][0])
@@ -2457,8 +2457,8 @@ def test_alter_table_rename_ddl_execution(cluster: Cluster):
         )
 
     # Wait until the schema change is finalized
-    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, r1_leader)
-    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, r2_leader)
+    Retriable(timeout=10).call(check_no_pending_schema_change, r1_leader)
+    Retriable(timeout=10).call(check_no_pending_schema_change, r2_leader)
 
     # proof that it is `aborted`
     result = r1_leader.sql(f"SELECT * FROM _pico_table WHERE name = '{conflict_table_name}'")
@@ -2479,8 +2479,8 @@ def test_alter_table_rename_ddl_execution(cluster: Cluster):
     )
 
     # Wait until the schema change is finalized
-    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, r1_leader)
-    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, r2_leader)
+    Retriable(timeout=10).call(check_no_pending_schema_change, r1_leader)
+    Retriable(timeout=10).call(check_no_pending_schema_change, r2_leader)
 
     renamed_schema_version = r1_leader.sql(f"SELECT schema_version FROM _pico_table WHERE name = '{new_table_name}'")
     renamed_schema_version = int(renamed_schema_version[0][0])
@@ -2553,7 +2553,7 @@ def test_drop_table_pause_rebalancing(cluster: Cluster):
     lc.wait_matched(timeout=15)
 
     # Wait until the schema change is finalized
-    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, r1_leader)
+    Retriable(timeout=10).call(check_no_pending_schema_change, r1_leader)
 
     # Ensure that table deleted
     result = r1_leader.sql("SELECT * FROM _pico_table WHERE name = 'sharded_table'")

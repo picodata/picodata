@@ -773,7 +773,7 @@ def test_rotation(cluster: Cluster):
     assert instance.process is not None
     instance.process.send_signal(sig=signal.SIGHUP)
 
-    Retriable(timeout=10, rps=1, fatal=json.decoder.JSONDecodeError).call(check_audit_log_rotate, audit)
+    Retriable(timeout=10, fatal=json.decoder.JSONDecodeError).call(check_audit_log_rotate, audit)
 
 
 def test_rename_user(instance_with_audit_file: Instance):

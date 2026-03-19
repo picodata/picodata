@@ -24,7 +24,7 @@ def uninitialized_instance(cluster: Cluster) -> Generator[Instance, None, None]:
         assert instance.eval("return box.info.status") == "running"
         eprint(f"{instance} is running (but stuck in discovery phase)")
 
-    Retriable(timeout=6, rps=5).call(check_running, instance)
+    Retriable(timeout=6).call(check_running, instance)
     yield instance
 
 

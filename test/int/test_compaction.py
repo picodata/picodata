@@ -41,7 +41,7 @@ def raft_wait_commit_index(i: Instance, expected, timeout=1):
         commit = i.eval("return box.space._raft_state:get('commit').value")
         assert commit == expected
 
-    Retriable(timeout=timeout, rps=10).call(make_attempt)
+    Retriable(timeout=timeout).call(make_attempt)
 
 
 def test_unapplied_entries_arent_compacted(instance: Instance):

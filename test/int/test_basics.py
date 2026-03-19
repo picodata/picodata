@@ -950,7 +950,7 @@ def check_file_shredding_common(i1: Instance):
     # generated (and shredded) so we do a retriable call. If this starts getting
     # flaky try increasing the timeout, although it's very sad if we need to
     # wait more than 5 seconds for the shredding to take place...
-    Retriable(timeout=5, rps=5).call(lambda: verify_files_were_shredded(snapshots))
+    Retriable(timeout=5).call(lambda: verify_files_were_shredded(snapshots))
 
 
 def test_file_shredding(cluster: Cluster):

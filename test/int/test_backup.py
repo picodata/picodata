@@ -525,7 +525,7 @@ def _test_backup_executes_correctly_on_instance_termination(cluster: Cluster):
     i1.wait_online()
 
     # Wait until the schema change is finalized (BACKUP execution is finalized).
-    Retriable(timeout=20, rps=2).call(check_last_backup_timestamp, i1)
+    Retriable(timeout=20).call(check_last_backup_timestamp, i1)
     new_backup_timestamp = get_backup_timestamp_finished(i1)
     new_backup_folder_name = backup_folder_name_from_timestamp(new_backup_timestamp)
 
@@ -568,7 +568,7 @@ def test_backup_is_failing_with_timeout_when_replica_is_terminated(cluster: Clus
     i3.wait_online()
 
     # Wait until the schema change is finalized (BACKUP execution is finalized).
-    Retriable(timeout=20, rps=2).call(check_last_backup_timestamp, i1)
+    Retriable(timeout=20).call(check_last_backup_timestamp, i1)
 
 
 # TODO: Doesn't pass.
@@ -614,7 +614,7 @@ def _test_backup_makes_replica_read_only_on_master_down(cluster: Cluster):
     def check_read_only(i: Instance):
         assert i.eval("return box.cfg.read_only")
 
-    Retriable(timeout=20, rps=2).call(check_read_only, i2)
+    Retriable(timeout=20).call(check_read_only, i2)
 
     # i2 is in read-only mode too.
     with pytest.raises(TarantoolError, match="a read-only instance"):
@@ -720,7 +720,7 @@ def test_backup_removes_partially_created_dir_on_abort(cluster: Cluster):
     lc.wait_matched(timeout=30)
 
     # Wait until backup execution is finished.
-    Retriable(timeout=20, rps=2).call(check_no_pending_schema_change, i1)
+    Retriable(timeout=20).call(check_no_pending_schema_change, i1)
 
     # Check that backup dir was removed on i1.
     assert not os.path.isdir(backup_dir), "Backup directory should be removed on i1"
@@ -770,7 +770,7 @@ def test_backup_does_not_fail_when_backup_retries(cluster: Cluster):
     i1.call("pico._inject_error", error_injection, False)
 
     # Wait until backup execution is finished.
-    Retriable(timeout=30, rps=2).call(check_no_pending_schema_change, i2)
+    Retriable(timeout=30).call(check_no_pending_schema_change, i2)
 
     # Check that backup dir was created on i2.
     assert os.path.isdir(backup_dir_i2), "Backup directory should be created on i2"
@@ -912,8 +912,8 @@ def test_backup_does_not_break_new_replicaset_ddl_catching_up_with_restore(clust
     i4.wait_online()
 
     # Wait until new instances catch up with DDL operations.
-    Retriable(timeout=20, rps=2).call(check_no_pending_schema_change, i3)
-    Retriable(timeout=20, rps=2).call(check_no_pending_schema_change, i4)
+    Retriable(timeout=20).call(check_no_pending_schema_change, i3)
+    Retriable(timeout=20).call(check_no_pending_schema_change, i4)
 
     for i in [i1, i3]:
         cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
@@ -968,8 +968,8 @@ def test_backup_does_not_break_new_replicaset_ddl_catching_up_no_restore(cluster
     i4.wait_online()
 
     # Wait until new instances catch up with DDL operations.
-    Retriable(timeout=30, rps=2).call(check_no_pending_schema_change, i3)
-    Retriable(timeout=30, rps=2).call(check_no_pending_schema_change, i4)
+    Retriable(timeout=30).call(check_no_pending_schema_change, i3)
+    Retriable(timeout=30).call(check_no_pending_schema_change, i4)
 
     # Check t1 is created on new replicaset instances.
     assert i3.call("box.space._space.index.name:get", "t1") is not None

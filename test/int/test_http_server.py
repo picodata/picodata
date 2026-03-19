@@ -817,7 +817,7 @@ def test_healthcheck_status_api(cluster: Cluster):
     auth_token = get_auth_token(i1)
 
     # Wait for startup and bucket distribution
-    Retriable(timeout=30, rps=2).call(lambda: get_authorized(f"http://{http_listen}/api/v1/health/startup", auth_token))
+    Retriable(timeout=30).call(lambda: get_authorized(f"http://{http_listen}/api/v1/health/startup", auth_token))
     cluster.wait_until_instance_has_this_many_active_buckets(i1, 1000)
 
     # Validate healthy status with data accuracy
