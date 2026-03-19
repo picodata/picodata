@@ -87,6 +87,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Refactor the plan id calculation for more accurate and faster caching.
 - Add bucket estimation for INSERT queries in explain.
 - Support reading from global tables in anonymous blocks; writing is not supported yet.
+- Upgrade Tarantool from 2.11.5 to 2.11.8.
 - Add migration context validation API into plugin SDK.
 
 ### CLI
@@ -189,6 +190,14 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Remove `tros` and `tarolog` dependencies from `picodata-plugin`. These
   libraries can still be used as direct dependencies when needed.
+- Hashing behavior changed for `DOUBLE` type fields in primary keys
+  and distribution keys. Previously, values were always re-encoded as MP_DOUBLE
+  (9 bytes) before hashing. Now, integer-representable doubles (e.g., `1.0`)
+  are converted to integer encoding before hashing, making them hash identically
+  to their integer equivalents (e.g., `1`). This is correct behavior that allows
+  lookups like `SELECT * FROM t WHERE double_col = 1` to find rows inserted with
+  `double_col = 1.0`. However, existing data sharded on `DOUBLE` keys containing
+  integer values may have different bucket assignments after upgrade.
 
 
 ## [25.5.5] - 2026-01-26
