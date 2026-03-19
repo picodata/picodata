@@ -43,7 +43,7 @@ from tarantool.error import (  # type: ignore
     tnt_strerror,
     DatabaseError,
 )
-from multiprocessing import Process, Queue
+from multiprocessing import Queue
 from pathlib import Path
 
 from framework import ldap
@@ -3345,47 +3345,6 @@ def server(queue: Queue, host: str, port: int) -> None:
 
     httpd = HTTPServer((host, port), SimpleHTTPRequestHandler)
     httpd.serve_forever()
-
-
-class AuditServer:
-    def __init__(self, port: int) -> None:
-        self.port = port
-        self.process: Process | None = None
-        self.queue: Queue[Dict[str, Any]] = Queue(maxsize=10_000)
-
-    def start(self) -> None:
-        if self.process is not None:
-            return None
-
-        self.process = Process(target=server, args=(self.queue, BASE_HOST, self.port))
-        self.process.start()
-
-    def cmd(self, binary_path: str) -> str:
-        target_dir = os.path.dirname(binary_path)
-        binary = os.path.realpath(os.path.join(target_dir, "gostech-audit-log"))
-        assert os.path.exists(binary)
-        args = f"--url http://{BASE_HOST}:{self.port}/log --debug"
-
-        return f"| {binary} {args}"
-
-    def logs(self) -> List[Dict[str, Any]]:
-        result = []
-        while not self.queue.empty():
-            result.append(self.queue.get())
-        return result
-
-    def take_until_name(self, name: str):
-        while True:
-            event = self.queue.get(timeout=2)
-            if event["name"] == name:
-                return event
-
-    def stop(self):
-        if self.process is None:
-            return None
-        self.process.terminate()
-        self.process.join()
-        self.process = None
 
 
 @dataclass

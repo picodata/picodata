@@ -14,4 +14,3 @@
 - [Sirin](sirin.md) — плагин, реализующий поддержку API Apache Cassandra (CQL и протокол Cassandra v4) поверх Picodata
 - [Synapse](synapse.md) — инструмент миграции с кластера проприетарной СУБД Oracle (например, Oracle Exadata) на кластер PostgreSQL
 - [Ouroboros](ouroboros.md) — плагин для однонаправленной асинхронной логической репликации данных между двумя кластерами Picodata
-- [Внешний аудит](gostech_audit_log.md) — плагин для экспорта событий журнала аудита в Logstash

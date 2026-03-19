@@ -391,7 +391,6 @@ build-linux:
     paths:
       - ./target/cargo-timings/cargo-timing.html
       - target/$TARGET/picodata
-      - target/$TARGET/gostech-audit-log
       - target/$TARGET/libtestplug.so
       - test/plug_wrong_version/target/debug/libplug_wrong_version.so
 

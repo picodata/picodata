@@ -134,7 +134,6 @@ mv -v picodata-fixed.cdx.json %{_rpmdir}/../
 
 %files
 %{_bindir}/picodata
-%{_bindir}/gostech-audit-log
 %doc README.md
 %{!?_licensedir:%global license %doc}
 %if "%{?_build_vendor}" == "alt"
