@@ -976,7 +976,7 @@ fn exec_plan_order_by() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT "COL_1" as "identification_number" FROM (SELECT "COL_1" FROM "TMP_0_0136") as "hash_testing" ORDER BY "COL_1""#.to_string(),
+            r#"SELECT "COL_1" as "identification_number" FROM (SELECT "COL_1" FROM "TMP_0_0136") as "hash_testing" ORDER BY "hash_testing"."COL_1""#.to_string(),
             vec![]
         ));
 }
@@ -1201,7 +1201,7 @@ fn exec_plan_order_by_with_subquery() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT "COL_1" as "identification_number" FROM (SELECT "COL_1" FROM "TMP_0_0136") as "hash_testing" ORDER BY "COL_1""#.to_string(),
+            r#"SELECT "COL_1" as "identification_number" FROM (SELECT "COL_1" FROM "TMP_0_0136") as "hash_testing" ORDER BY "hash_testing"."COL_1""#.to_string(),
             vec![]
         ));
 }

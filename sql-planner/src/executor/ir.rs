@@ -199,11 +199,20 @@ impl ExecutionPlan {
 
     /// Get motion virtual table
     pub fn get_motion_vtable(&self, motion_id: NodeId) -> Result<Rc<VirtualTable>, SbroadError> {
+        let node = self.get_ir_plan().get_relation_node(motion_id)?;
+        if !node.is_motion() {
+            return Err(SbroadError::Invalid(
+                Entity::Motion,
+                Some(format_smolstr!("got {node:?}")),
+            ));
+        }
         if let Some(result) = self.get_vtables().get(&motion_id) {
             return Ok(Rc::clone(result));
         }
-        let motion_node = self.get_ir_plan().get_relation_node(motion_id)?;
-        panic!("Virtual table for motion {motion_node:?} with id {motion_id} not found.")
+        Err(SbroadError::NotFound(
+            Entity::VirtualTable,
+            format_smolstr!("for {node:?} with id {motion_id}"),
+        ))
     }
 
     /// Add materialize motion result to map of virtual tables.

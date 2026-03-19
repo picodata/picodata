@@ -51,15 +51,15 @@ fn empty_motion1_test() {
             r#"(SELECT "t"."a", "t"."b" FROM"#,
             r#""t""#,
             r#"INNER JOIN"#,
-            r#"(SELECT "COL_1","COL_2" FROM "TMP_0_0136") as "t2""#,
-            r#"ON ("t"."a" = "t2"."g") and ("t"."b" = "t2"."h")"#,
+            r#"(SELECT "COL_1","COL_2","COL_3","COL_4" FROM "TMP_0_0136") as "t2""#,
+            r#"ON ("t"."a" = "t2"."COL_3") and ("t"."b" = "t2"."COL_4")"#,
             r#"WHERE "t"."a" = CAST($1 AS int)"#,
             r#"EXCEPT"#,
             r#"SELECT "t"."a", "t"."b" FROM"#,
             r#""t""#,
             r#"INNER JOIN"#,
-            r#"(SELECT "COL_1","COL_2" FROM "TMP_0_1136") as "t2""#,
-            r#"ON ("t"."a" = "t2"."g") and ("t"."b" = "t2"."h")"#,
+            r#"(SELECT "COL_1","COL_2","COL_3","COL_4" FROM "TMP_0_1136") as "t2""#,
+            r#"ON ("t"."a" = "t2"."COL_3") and ("t"."b" = "t2"."COL_4")"#,
             r#"WHERE "t"."a" = CAST($2 AS int)) as "Q""#,
         ),
     );
@@ -69,8 +69,10 @@ fn empty_motion1_test() {
 fn t2_empty() -> VirtualTable {
     let mut virtual_table = VirtualTable::new();
 
+    // t2 has four columns: e, f, g, h
     virtual_table.add_column(vcolumn_integer_user_non_null());
-
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    virtual_table.add_column(vcolumn_integer_user_non_null());
     virtual_table.add_column(vcolumn_integer_user_non_null());
 
     virtual_table.set_alias("t2");

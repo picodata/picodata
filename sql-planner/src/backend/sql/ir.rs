@@ -521,25 +521,24 @@ impl ExecutionPlan {
                                     let rel_node = ir_plan.get_relation_node(rel_id)?;
 
                                     if rel_node.is_motion() {
-                                        if let Ok(vt) = self.get_motion_vtable(*id) {
-                                            let alias = (*vt)
-                                                .get_columns()
-                                                .get(*position)
-                                                .map(|column| &column.name)
-                                                .ok_or_else(|| {
-                                                    SbroadError::NotFound(
-                                                        Entity::Name,
-                                                        format_smolstr!(
-                                                            "for column at position {position}"
-                                                        ),
-                                                    )
-                                                })?;
-                                            if let Some(name) = (*vt).get_alias() {
-                                                push_identifier(&mut sql, name);
-                                                sql.push('.');
-                                                push_identifier(&mut sql, alias);
-                                                continue;
-                                            }
+                                        let vt = self.get_motion_vtable(rel_id)?;
+                                        let alias = (*vt)
+                                            .get_columns()
+                                            .get(*position)
+                                            .map(|column| &column.name)
+                                            .ok_or_else(|| {
+                                                SbroadError::NotFound(
+                                                    Entity::Name,
+                                                    format_smolstr!(
+                                                        "for column at position {position}"
+                                                    ),
+                                                )
+                                            })?;
+                                        if let Some(name) = (*vt).get_alias() {
+                                            push_identifier(&mut sql, name);
+                                            sql.push('.');
+                                            push_identifier(&mut sql, alias);
+                                            continue;
                                         }
                                     }
 
@@ -567,25 +566,24 @@ impl ExecutionPlan {
                                     let sq_node = ir_plan.get_relation_node(*rel_id)?;
 
                                     if sq_node.is_motion() {
-                                        if let Ok(vt) = self.get_motion_vtable(*id) {
-                                            let alias = (*vt)
-                                                .get_columns()
-                                                .get(*position)
-                                                .map(|column| &column.name)
-                                                .ok_or_else(|| {
-                                                    SbroadError::NotFound(
-                                                        Entity::Name,
-                                                        format_smolstr!(
-                                                            "for column at position {position}"
-                                                        ),
-                                                    )
-                                                })?;
-                                            if let Some(name) = (*vt).get_alias() {
-                                                push_identifier(&mut sql, name);
-                                                sql.push('.');
-                                                push_identifier(&mut sql, alias);
-                                                continue;
-                                            }
+                                        let vt = self.get_motion_vtable(*rel_id)?;
+                                        let alias = (*vt)
+                                            .get_columns()
+                                            .get(*position)
+                                            .map(|column| &column.name)
+                                            .ok_or_else(|| {
+                                                SbroadError::NotFound(
+                                                    Entity::Name,
+                                                    format_smolstr!(
+                                                        "for column at position {position}"
+                                                    ),
+                                                )
+                                            })?;
+                                        if let Some(name) = (*vt).get_alias() {
+                                            push_identifier(&mut sql, name);
+                                            sql.push('.');
+                                            push_identifier(&mut sql, alias);
+                                            continue;
                                         }
                                     }
 
