@@ -916,7 +916,7 @@ pub fn dispatch_impl<'p>(
             index_versions,
             vdbe_max_steps,
             returns_rows: !block.return_columns.is_empty(),
-            explain_type: plan.get_ir_plan().get_explain_type(),
+            explain_options: plan.get_ir_plan().explain_options,
         };
         return tier_runtime.exec_block_on_buckets(
             metadata,
@@ -1473,7 +1473,7 @@ pub fn try_get_metadata_from_plan(
 ) -> Result<Option<Vec<MetadataColumn>>, SbroadError> {
     fn is_dql_exec_plan(plan: &ExecutionPlan) -> Result<bool, SbroadError> {
         let ir = plan.get_ir_plan();
-        Ok(matches!(plan.query_type()?, QueryType::DQL) && !ir.is_explain())
+        Ok(matches!(plan.query_type()?, QueryType::DQL) && !ir.is_raw_explain())
     }
 
     if !is_dql_exec_plan(plan)? {

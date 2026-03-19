@@ -39,7 +39,7 @@ use sql::ir::relation::SpaceEngine;
 use sql::ir::relation::{Column, ColumnRole};
 use sql::ir::transformation::redistribution::{MotionKey, Target};
 use sql::ir::value::{EncodedValue, MsgPackValue, Value};
-use sql::ir::ExplainType;
+use sql::ir::ExplainOptions;
 use sql::utils::MutexLike;
 use sql_protocol::decode::{ProtocolMessage, ProtocolMessageIter};
 use sql_protocol::dml::delete::{
@@ -684,12 +684,27 @@ fn repack_vdbe_error(err: String) -> String {
     format!("{table}\n")
 }
 
-fn format_sql(explain: &str, params: &[Value], explain_type: ExplainType) -> String {
-    let sql = explain.strip_prefix("EXPLAIN QUERY PLAN ").unwrap_or("");
+fn default_raw_options() -> sqlformat::FormatOptions<'static> {
     let mut fmt_options = sqlformat::FormatOptions::default();
-    if !matches!(explain_type, ExplainType::ExplainQueryPlanFmt) || sql.len() < LINE_WIDTH {
-        fmt_options.joins_as_top_level = true;
-        fmt_options.inline = true;
+    fmt_options.joins_as_top_level = true;
+    fmt_options.inline = true;
+
+    fmt_options
+}
+
+fn format_sql(explain: &str, params: &[Value], explain_options: ExplainOptions) -> String {
+    let sql = explain.strip_prefix("EXPLAIN QUERY PLAN ").unwrap_or("");
+    let mut fmt_options = default_raw_options();
+    for option in explain_options {
+        match option {
+            ExplainOptions::Fmt if sql.len() >= LINE_WIDTH => {
+                fmt_options.joins_as_top_level = false;
+                fmt_options.inline = false;
+            }
+            ExplainOptions::Fmt | ExplainOptions::Raw => {}
+            ExplainOptions::Logical => panic!("Ir explain doesn't contain any sql output"),
+            _ => panic!("unknown explain option"),
+        }
     }
     let params = params
         .iter()
@@ -703,7 +718,7 @@ pub fn explain_execute_guarded<'p>(
     explain: &str,
     params: &[Value],
     sql_vdbe_opcode_max: u64,
-    explain_type: ExplainType,
+    explain_options: ExplainOptions,
     query: &str,
     location: &str,
     port: &mut impl Port<'p>,
@@ -712,7 +727,7 @@ pub fn explain_execute_guarded<'p>(
     let mp_header = rmp_serde::to_vec(&[header])?;
     port.add_mp(&mp_header);
 
-    let sql = format_sql(explain, params, explain_type);
+    let sql = format_sql(explain, params, explain_options);
     let mp_sql = rmp_serde::to_vec(&[sql])?;
     port.add_mp(&mp_sql);
 
@@ -749,7 +764,7 @@ pub fn explain_execute<'p, R: QueryCache>(
     miss_info: impl ExpandedPlanInfo,
     params: &[Value],
     sql_vdbe_opcode_max: u64,
-    explain_type: ExplainType,
+    explain_options: ExplainOptions,
     location: &str,
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
@@ -767,7 +782,7 @@ where
         miss_info.sql(),
         params,
         sql_vdbe_opcode_max,
-        explain_type,
+        explain_options,
         "Query",
         location,
         port,

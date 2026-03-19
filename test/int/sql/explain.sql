@@ -646,7 +646,7 @@ SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_un
 
 -- TEST: test_raw_explain-16
 -- SQL:
-EXPLAIN (RAW,FMT) INSERT INTO testing_space SELECT * FROM testing_space WHERE id = 42;
+EXPLAIN (RAW, FMT) INSERT INTO testing_space SELECT * FROM testing_space WHERE id = 42;
 -- EXPECTED:
 1. Query (FILTERED STORAGE):
 SELECT
@@ -781,7 +781,7 @@ SELECT "name", "global_rows", "global_units", "local_units" FROM ( SELECT "COL_0
 
 -- TEST: test_raw_explain-23
 -- SQL:
-EXPLAIN (RAW,FMT) DELETE FROM testing_space_global WHERE id = 15 OR product_units < 10;
+EXPLAIN (FMT, RAW) DELETE FROM testing_space_global WHERE id = 15 OR product_units < 10;
 -- EXPECTED:
 1. Query (ROUTER):
 SELECT
@@ -848,6 +848,38 @@ SELECT upper (CAST ("testing_space_global"."name" as string)) as "col_0", "testi
 +===========================================================================+
 | 0        | 0     | 0    | SCAN TABLE testing_space_global (~1048576 rows) |
 +----------+-------+------+-------------------------------------------------+
+''
+
+-- TEST: test-explain-fmt-option
+-- SQL:
+EXPLAIN (FMT) SELECT * FROM testing_space WHERE id = 1;
+-- EXPECTED:
+projection ("testing_space"."id"::int -> "id", "testing_space"."name"::string -> "name", "testing_space"."product_units"::int -> "product_units")
+    selection "testing_space"."id"::int = 1::int
+        scan "testing_space"
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [1934]
+
+-- TEST: test-explain-options-repetitions
+-- SQL:
+EXPLAIN (RAW, FMT, FMT, RAW, FMT) SELECT * FROM testing_space WHERE id = 1;
+-- EXPECTED:
+1. Query (FILTERED STORAGE):
+SELECT
+  "testing_space"."id",
+  "testing_space"."name",
+  "testing_space"."product_units"
+FROM
+  "testing_space"
+WHERE
+  "testing_space"."id" = CAST(1 AS int)
++----------+-------+------+--------------------------------------------------------------+
+| selectid | order | from | detail                                                       |
++========================================================================================+
+| 0        | 0     | 0    | SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row) |
++----------+-------+------+--------------------------------------------------------------+
 ''
 
 -- TEST: test_raw_explain_for_query_from-gl1394-1

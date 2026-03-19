@@ -46,7 +46,7 @@ use sql::ir::node::{Delete, Insert, Motion, Update};
 use sql::ir::operator::UpdateStrategy;
 use sql::ir::options::{Options, ReadPreference};
 use sql::ir::transformation::redistribution::MotionPolicy;
-use sql::ir::{ExplainType, Plan};
+use sql::ir::{ExplainOptions, Plan};
 use sql::utils::ByteCounter;
 use sql_protocol::block::write_block_packet;
 use sql_protocol::decode::{execute_read_response, SqlExecute, TupleIter};
@@ -562,15 +562,15 @@ pub(crate) fn block_dispatch<'p>(
     timeout: u64,
     tier: Option<&str>,
 ) -> Result<(), SbroadError> {
-    if let Some(explain_type) = block.explain_type {
-        if matches!(explain_type, ExplainType::Explain) {
+    if !block.explain_options.is_empty() {
+        if block.explain_options.contains(ExplainOptions::Logical) {
             return Err(SbroadError::NotImplemented(
                 Entity::Explain,
                 "for transactions".to_smolstr(),
             ));
         }
 
-        return explain_execute_block(block, explain_type, buckets.determine_exec_location(), port);
+        return explain_execute_block(block, buckets.determine_exec_location(), port);
     }
 
     match buckets {

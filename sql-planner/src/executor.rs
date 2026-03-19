@@ -484,7 +484,7 @@ where
                 return Err(err("there are other references for the virtual table"));
             };
 
-            // Skip metadata in case of `EXPLAIN (RAW, FMT)`
+            // Skip metadata in case of `EXPLAIN (RAW)`
             if !self.exec_plan.get_ir_plan().is_raw_explain() {
                 table
                     .dump_mp(aliases.iter().map(|s| s.as_str()), port)
@@ -515,8 +515,8 @@ where
     }
 
     /// Checks that query is explain and have not to be executed
-    pub fn is_explain(&self) -> bool {
-        self.exec_plan.get_ir_plan().is_plain_explain()
+    pub fn is_logical_explain(&self) -> bool {
+        self.exec_plan.get_ir_plan().is_logical_explain()
     }
 
     /// Checks that query is a statement block.

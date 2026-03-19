@@ -278,7 +278,7 @@ fn dispatch_bound_statement_impl<'p>(
 
     if query.get_exec_plan().get_ir_plan().is_raw_explain() {
         port.set_type(PortType::DispatchQueryPlan);
-    } else if query.is_explain() {
+    } else if query.is_logical_explain() {
         port.set_type(PortType::DispatchExplain);
     } else if query.get_exec_plan().get_ir_plan().is_dql()? || query.is_backup()? {
         port.set_type(PortType::DispatchDql);
@@ -604,7 +604,7 @@ fn dispatch_bound_statement_impl<'p>(
         let plan = query.get_exec_plan().get_ir_plan();
         check_table_privileges(plan)?;
 
-        if query.is_explain() {
+        if query.is_logical_explain() {
             port.set_type(PortType::DispatchExplain);
             let mut mp: Vec<u8> = Vec::new();
             for line in query.as_explain()?.lines() {

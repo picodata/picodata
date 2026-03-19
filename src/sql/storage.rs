@@ -23,7 +23,6 @@ use sql::executor::{Port, PortType};
 use sql::ir::bucket::Buckets;
 use sql::ir::helpers::RepeatableState;
 use sql::ir::options::Options;
-use sql::ir::ExplainType;
 use std::cell::{Cell, OnceCell, RefCell};
 
 use crate::metrics::{
@@ -612,10 +611,9 @@ impl Vshard for StorageRuntime {
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
         let plan = ex_plan.get_ir_plan();
-        let explain_type = plan.get_explain_type();
         let top_id = plan.get_top()?;
 
-        if let Some(explain_type) = explain_type {
+        if plan.is_raw_explain() {
             let sql_vdbe_opcode_max = plan.effective_options.sql_vdbe_opcode_max as u64;
 
             let plan_id = ex_plan.get_plan_id()?;
@@ -648,7 +646,7 @@ impl Vshard for StorageRuntime {
                 miss_info,
                 ex_plan.to_params(),
                 sql_vdbe_opcode_max,
-                explain_type,
+                ex_plan.get_ir_plan().explain_options,
                 location,
                 port,
             )?;
@@ -846,7 +844,6 @@ impl StorageRuntime {
 
 pub fn explain_execute_block<'p>(
     block: BlockExecData,
-    explain_type: ExplainType,
     location: &str,
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError> {
@@ -858,7 +855,7 @@ pub fn explain_execute_block<'p>(
             &sql,
             &params,
             block.vdbe_max_steps,
-            explain_type,
+            block.explain_options,
             stmt_kind,
             location,
             port,

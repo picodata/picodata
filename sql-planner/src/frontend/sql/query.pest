@@ -292,9 +292,10 @@ CallProc = ${ CallProcImpl ~ (W ~ DqlOption)? }
         ProcValues = !{ (ProcValue ~ ("," ~ ProcValue)*)? }
             ProcValue = _{ Literal | Parameter }
 
-
-ExplainQueryPlanFmt = { ( "," ~ WO ~ ^"fmt" ~ WO ) }
-ExplainQueryPlan    = { ( "(" ~ WO ~ ^"raw" ~ WO ~ (ExplainQueryPlanFmt)? ~ ")" ) }
+ExplainFacet = _{ (ExplainRaw | ExplainFmt ) }
+    ExplainRaw = { ^"raw" }
+    ExplainFmt = { ^"fmt" }
+ExplainQueryPlan    = { ( "(" ~ WO ~ ExplainFacet ~ (WO ~ "," ~ WO ~ ExplainFacet)* ~ WO ~ ")" ) }
 
 ExplainQuery = _{ Explain }
     Explain = ${ ^"explain" ~ (WO ~ ExplainQueryPlan)? ~ W ~ (Query | AnonymousBlock) }

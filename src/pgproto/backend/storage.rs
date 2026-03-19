@@ -637,7 +637,7 @@ impl PortalInner {
             }
             QueryType::Explain => {
                 let ir_plan = self.statement.prepared_statement().as_plan();
-                let rows = if ir_plan.is_plain_explain() {
+                let rows = if ir_plan.is_logical_explain() {
                     port_read_explain(port.iter(), port.size() as usize, self.describe.metadata())?
                 } else {
                     let mut rows: Vec<Vec<PgValue>> = Vec::new();

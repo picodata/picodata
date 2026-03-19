@@ -1,5 +1,6 @@
 //! Contains the logical plan tree and helpers.
 use ahash::AHashMap;
+use bitflags::bitflags;
 use expression::Position;
 use node::acl::{Acl, MutAcl};
 use node::block::{Block, MutBlock};
@@ -634,6 +635,15 @@ impl Slices {
     }
 }
 
+bitflags! {
+    #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+    pub struct ExplainOptions: u8 {
+        const Logical = 1;
+        const Raw = 1 << 1;
+        const Fmt = 1 << 2;
+    }
+}
+
 /// Logical plan tree structure.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Plan {
@@ -656,9 +666,7 @@ pub struct Plan {
     /// We build the plan tree in a bottom-up manner, so the top would
     /// be added last. The plan without a top should be treated as invalid.
     top: Option<NodeId>,
-    /// The field indicates whether user wants to see query explain.
-    /// Possible variants: None, Explain, ExplainPlanQuery
-    explain_type: Option<ExplainType>,
+    pub explain_options: ExplainOptions,
     /// The undo log keeps the history of the plan transformations. It can
     /// be used to revert the plan subtree to some previous snapshot if needed.
     pub(crate) undo: TransformationLog,
@@ -757,13 +765,6 @@ impl Default for Plan {
     fn default() -> Self {
         Self::new()
     }
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
-pub enum ExplainType {
-    Explain,
-    ExplainQueryPlan,
-    ExplainQueryPlanFmt,
 }
 
 #[allow(dead_code)]
@@ -871,7 +872,7 @@ impl Plan {
             indexes: Indexes::new(),
             slices: Slices { slices: vec![] },
             top: None,
-            explain_type: None,
+            explain_options: ExplainOptions::empty(),
             undo: TransformationLog::new(),
             constants: Vec::new(),
             raw_options: vec![],
@@ -1281,40 +1282,19 @@ impl Plan {
         self.nodes.add_bool(left, op, right)
     }
 
-    /// Marks plan as query explain
-    pub fn mark_as_explain(&mut self, explain_type: Option<ExplainType>) {
-        self.explain_type = explain_type;
-    }
-
-    /// Checks that plan is explain query
     #[must_use]
-    pub fn is_plain_explain(&self) -> bool {
-        self.explain_type == Some(ExplainType::Explain)
+    pub fn is_logical_explain(&self) -> bool {
+        self.explain_options.contains(ExplainOptions::Logical)
     }
 
-    /// Checks that plan is explain(raw, fmt) query
-    #[must_use]
-    pub fn is_formatted_explain(&self) -> bool {
-        self.explain_type == Some(ExplainType::ExplainQueryPlanFmt)
-    }
-
-    /// Checks that plan is explain(raw, fmt) query
-    #[must_use]
-    pub fn is_raw_explain(&self) -> bool {
-        self.explain_type == Some(ExplainType::ExplainQueryPlan)
-            || self.explain_type == Some(ExplainType::ExplainQueryPlanFmt)
-    }
-
-    /// Checks that plan is explain query
     #[must_use]
     pub fn is_explain(&self) -> bool {
-        self.explain_type.is_some()
+        !self.explain_options.is_empty()
     }
 
-    /// Returns plan explain type
     #[must_use]
-    pub fn get_explain_type(&self) -> Option<ExplainType> {
-        self.explain_type
+    pub fn is_raw_explain(&self) -> bool {
+        self.explain_options.contains(ExplainOptions::Raw)
     }
 
     /// Checks that plan is a block of queries.

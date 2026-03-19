@@ -74,8 +74,7 @@ use crate::ir::tree::traversal::{
 use crate::ir::types::CastType;
 use crate::ir::types::DomainType;
 use crate::ir::value::Value;
-use crate::ir::ExplainType::{Explain, ExplainQueryPlan, ExplainQueryPlanFmt};
-use crate::ir::{node::plugin, Plan};
+use crate::ir::{node::plugin, ExplainOptions, Plan};
 use crate::warn;
 use sql_type_system::error::Error as TypeSystemError;
 use tarantool::auth::AuthMethod;
@@ -6952,19 +6951,33 @@ impl AbstractSyntaxTree {
                     let mut explain_child_id = child_iter.next().expect("Explain has no children.");
                     let explain_child = self.nodes.get_node(*explain_child_id)?;
                     if let Rule::ExplainQueryPlan = explain_child.rule {
-                        if !explain_child.children.is_empty() {
-                            let explain_fmt_child =
-                                explain_child.children.first().expect("child must exist");
-                            let explain_fmt_node = self.nodes.get_node(*explain_fmt_child)?;
-                            if let Rule::ExplainQueryPlanFmt = explain_fmt_node.rule {
-                                plan.mark_as_explain(Some(ExplainQueryPlanFmt));
-                            }
-                        } else {
-                            plan.mark_as_explain(Some(ExplainQueryPlan));
+                        let mut explain_options = ExplainOptions::empty();
+
+                        for child in &explain_child.children {
+                            let explain_option_node = self.nodes.get_node(*child)?;
+                            match explain_option_node.rule {
+                                Rule::ExplainRaw => explain_options |= ExplainOptions::Raw,
+                                Rule::ExplainFmt => explain_options |= ExplainOptions::Fmt,
+                                _ => panic!(
+                                    "unknown explain option rule: {:?}",
+                                    explain_option_node.rule
+                                ),
+                            };
                         }
-                        explain_child_id = child_iter.next().expect("Explain has no children.");
+
+                        if explain_options.contains(ExplainOptions::Fmt)
+                            && explain_options - ExplainOptions::Fmt == ExplainOptions::empty()
+                        {
+                            // `EXPLAIN (FMT)` => `EXPLAIN` currently. However, we are going to add
+                            // formatting to it in the future as well.
+                            plan.explain_options |= ExplainOptions::Logical;
+                        } else {
+                            plan.explain_options = explain_options;
+                        }
+
+                        explain_child_id = child_iter.next().expect("explain has no children");
                     } else {
-                        plan.mark_as_explain(Some(Explain));
+                        plan.explain_options |= ExplainOptions::Logical;
                     }
 
                     map.add(0, map.get(*explain_child_id)?);

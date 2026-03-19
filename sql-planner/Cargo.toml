@@ -12,6 +12,7 @@ edition.workspace = true
 ahash = { workspace = true }
 base64ct = { version = "1.5", features = ["alloc"] }
 bincode = "1.3"
+bitflags = { version = "2.9.1", features = ["serde"] }
 blake3 = "1.3"
 chrono = { workspace = true }
 comfy-table = { workspace = true }

@@ -27,7 +27,7 @@ use crate::ir::function::Function;
 use crate::ir::relation::Table;
 use crate::ir::types::UnrestrictedType;
 use crate::ir::value::Value;
-use crate::ir::ExplainType;
+use crate::ir::ExplainOptions;
 
 use super::preemption::SchedulerOptions;
 use super::Port;
@@ -467,7 +467,7 @@ pub struct BlockExecData {
     pub index_versions: HashMap<[u32; 2], u64, RepeatableState>,
     pub vdbe_max_steps: u64,
     pub returns_rows: bool,
-    pub explain_type: Option<ExplainType>,
+    pub explain_options: ExplainOptions,
 }
 
 pub trait Vshard {

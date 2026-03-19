@@ -427,7 +427,7 @@ impl ExecutionPlan {
             HashMap::with_capacity(vtables_capacity);
 
         let mut new_plan = Plan::new();
-        new_plan.mark_as_explain(plan.get_explain_type());
+        new_plan.explain_options = plan.explain_options;
         // In case we have a Motion among rel node children (maybe not direct), we
         // need to rename rel output aliases, because Motion
         // may have changed them according to its vtable column names.
