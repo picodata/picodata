@@ -2,10 +2,8 @@ use super::{
     AlterSystem, AlterTable, Backup, CreateIndex, CreateProc, CreateTable, DropIndex, DropProc,
     DropTable, NodeAligned, RenameIndex, RenameRoutine, SetParam, SetTransaction, TruncateTable,
 };
-use crate::errors::{Entity, SbroadError};
 use crate::ir::Node32;
 use serde::Serialize;
-use smol_str::{format_smolstr, ToSmolStr};
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -30,10 +28,7 @@ pub enum DdlOwned {
 
 impl DdlOwned {
     /// Return DDL node timeout.
-    ///
-    /// # Errors
-    /// - timeout parsing error
-    pub fn timeout(&self) -> Result<f64, SbroadError> {
+    pub fn timeout(&self) -> &crate::ir::options::Timeout {
         match self {
             DdlOwned::CreateTable(CreateTable { ref timeout, .. })
             | DdlOwned::DropTable(DropTable { ref timeout, .. })
@@ -48,15 +43,8 @@ impl DdlOwned {
             | DdlOwned::CreateProc(CreateProc { ref timeout, .. })
             | DdlOwned::DropProc(DropProc { ref timeout, .. })
             | DdlOwned::RenameIndex(RenameIndex { ref timeout, .. })
-            | DdlOwned::RenameRoutine(RenameRoutine { ref timeout, .. }) => {
-                timeout.to_smolstr().parse().map_err(|e| {
-                    SbroadError::Invalid(
-                        Entity::SpaceMetadata,
-                        Some(format_smolstr!("timeout parsing error {e:?}")),
-                    )
-                })
-            }
-            DdlOwned::CreateSchema | DdlOwned::DropSchema => Ok(0.0),
+            | DdlOwned::RenameRoutine(RenameRoutine { ref timeout, .. }) => timeout,
+            DdlOwned::CreateSchema | DdlOwned::DropSchema => &crate::ir::options::Timeout::ZERO,
         }
     }
 
@@ -176,6 +164,29 @@ pub enum MutDdl<'a> {
     RenameIndex(&'a mut RenameIndex),
 }
 
+impl MutDdl<'_> {
+    /// Return a mutable reference to the timeout, if present.
+    pub fn timeout_mut(&mut self) -> Option<&mut crate::ir::options::Timeout> {
+        match self {
+            MutDdl::CreateTable(n) => Some(&mut n.timeout),
+            MutDdl::DropTable(n) => Some(&mut n.timeout),
+            MutDdl::TruncateTable(n) => Some(&mut n.timeout),
+            MutDdl::AlterTable(n) => Some(&mut n.timeout),
+            MutDdl::CreateProc(n) => Some(&mut n.timeout),
+            MutDdl::DropProc(n) => Some(&mut n.timeout),
+            MutDdl::RenameRoutine(n) => Some(&mut n.timeout),
+            MutDdl::AlterSystem(n) => Some(&mut n.timeout),
+            MutDdl::CreateIndex(n) => Some(&mut n.timeout),
+            MutDdl::DropIndex(n) => Some(&mut n.timeout),
+            MutDdl::SetParam(n) => Some(&mut n.timeout),
+            MutDdl::SetTransaction(n) => Some(&mut n.timeout),
+            MutDdl::Backup(n) => Some(&mut n.timeout),
+            MutDdl::RenameIndex(n) => Some(&mut n.timeout),
+            MutDdl::CreateSchema | MutDdl::DropSchema => None,
+        }
+    }
+}
+
 #[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum Ddl<'a> {
@@ -199,10 +210,7 @@ pub enum Ddl<'a> {
 
 impl Ddl<'_> {
     /// Return DDL node timeout.
-    ///
-    /// # Errors
-    /// - timeout parsing error
-    pub fn timeout(&self) -> Result<f64, SbroadError> {
+    pub fn timeout(&self) -> &crate::ir::options::Timeout {
         match self {
             Ddl::CreateTable(CreateTable { ref timeout, .. })
             | Ddl::DropTable(DropTable { ref timeout, .. })
@@ -217,15 +225,14 @@ impl Ddl<'_> {
             | Ddl::CreateProc(CreateProc { ref timeout, .. })
             | Ddl::DropProc(DropProc { ref timeout, .. })
             | Ddl::RenameIndex(RenameIndex { ref timeout, .. })
-            | Ddl::RenameRoutine(RenameRoutine { ref timeout, .. }) => {
-                timeout.to_smolstr().parse().map_err(|e| {
-                    SbroadError::Invalid(
-                        Entity::SpaceMetadata,
-                        Some(format_smolstr!("timeout parsing error {e:?}")),
-                    )
-                })
+            | Ddl::RenameRoutine(RenameRoutine { ref timeout, .. }) => timeout,
+            Ddl::CreateSchema | Ddl::DropSchema => {
+                static ZERO: crate::ir::options::Timeout = crate::ir::options::Timeout {
+                    us: 0,
+                    source: crate::ir::options::TimeoutSource::Explicit,
+                };
+                &ZERO
             }
-            Ddl::CreateSchema | Ddl::DropSchema => Ok(0.0),
         }
     }
 

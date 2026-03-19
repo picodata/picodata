@@ -1,7 +1,4 @@
 use serde::Serialize;
-use smol_str::{format_smolstr, ToSmolStr};
-
-use crate::errors::{Entity, SbroadError};
 
 use super::{
     AlterUser, AuditPolicy, CreateRole, CreateUser, DropRole, DropUser, GrantPrivilege,
@@ -23,10 +20,7 @@ pub enum AclOwned {
 
 impl AclOwned {
     /// Return ACL node timeout.
-    ///
-    /// # Errors
-    /// - timeout parsing error
-    pub fn timeout(&self) -> Result<f64, SbroadError> {
+    pub fn timeout(&self) -> &crate::ir::options::Timeout {
         match self {
             AclOwned::DropRole(DropRole { ref timeout, .. })
             | AclOwned::DropUser(DropUser { ref timeout, .. })
@@ -37,14 +31,6 @@ impl AclOwned {
             | AclOwned::GrantPrivilege(GrantPrivilege { ref timeout, .. })
             | AclOwned::AuditPolicy(AuditPolicy { ref timeout, .. }) => timeout,
         }
-        .to_smolstr()
-        .parse()
-        .map_err(|e| {
-            SbroadError::Invalid(
-                Entity::SpaceMetadata,
-                Some(format_smolstr!("timeout parsing error {e:?}")),
-            )
-        })
     }
 }
 
@@ -76,6 +62,22 @@ pub enum MutAcl<'a> {
     AuditPolicy(&'a mut AuditPolicy),
 }
 
+impl MutAcl<'_> {
+    /// Return a mutable reference to the timeout.
+    pub fn timeout_mut(&mut self) -> &mut crate::ir::options::Timeout {
+        match self {
+            MutAcl::DropRole(n) => &mut n.timeout,
+            MutAcl::DropUser(n) => &mut n.timeout,
+            MutAcl::CreateRole(n) => &mut n.timeout,
+            MutAcl::CreateUser(n) => &mut n.timeout,
+            MutAcl::AlterUser(n) => &mut n.timeout,
+            MutAcl::GrantPrivilege(n) => &mut n.timeout,
+            MutAcl::RevokePrivilege(n) => &mut n.timeout,
+            MutAcl::AuditPolicy(n) => &mut n.timeout,
+        }
+    }
+}
+
 #[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum Acl<'a> {
@@ -91,10 +93,7 @@ pub enum Acl<'a> {
 
 impl Acl<'_> {
     /// Return ACL node timeout.
-    ///
-    /// # Errors
-    /// - timeout parsing error
-    pub fn timeout(&self) -> Result<f64, SbroadError> {
+    pub fn timeout(&self) -> &crate::ir::options::Timeout {
         match self {
             Acl::DropRole(DropRole { ref timeout, .. })
             | Acl::DropUser(DropUser { ref timeout, .. })
@@ -105,14 +104,6 @@ impl Acl<'_> {
             | Acl::GrantPrivilege(GrantPrivilege { ref timeout, .. })
             | Acl::AuditPolicy(AuditPolicy { ref timeout, .. }) => timeout,
         }
-        .to_smolstr()
-        .parse()
-        .map_err(|e| {
-            SbroadError::Invalid(
-                Entity::SpaceMetadata,
-                Some(format_smolstr!("timeout parsing error {e:?}")),
-            )
-        })
     }
 
     #[must_use]

@@ -47,7 +47,6 @@ def test_dql_truncate_concurrent(cluster: Cluster):
         using memtx
         distributed by (a)
         wait applied globally
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1

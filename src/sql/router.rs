@@ -577,13 +577,14 @@ impl Vshard for Tier {
         request_id: &str,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
+        let timeout = DEFAULT_QUERY_TIMEOUT;
         block_dispatch(
             port,
             metadata,
             block,
             buckets,
             request_id,
-            DEFAULT_QUERY_TIMEOUT,
+            timeout,
             self.name().as_deref(),
         )
     }
@@ -638,13 +639,14 @@ impl Vshard for &Tier {
         request_id: &str,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
+        let timeout = DEFAULT_QUERY_TIMEOUT;
         block_dispatch(
             port,
             metadata,
             block,
             buckets,
             request_id,
-            DEFAULT_QUERY_TIMEOUT,
+            timeout,
             self.name().as_deref(),
         )
     }

@@ -25,7 +25,7 @@ use crate::traft::error::{self, Error};
 use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op, RenameMappingBuilder};
 use crate::traft::{self, node};
-use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
+use crate::util::effective_user_id;
 use crate::version::Version;
 use crate::{audit, schema};
 use crate::{cas, has_states, plugin, tlog};
@@ -384,17 +384,13 @@ fn dispatch_bound_statement_impl<'p>(
         let ir_plan = query.get_exec_plan().get_ir_plan();
         let top_id = ir_plan.get_top()?;
         let plugin = ir_plan.get_plugin_node(top_id)?;
-        let timeout_from_decimal = |decimal: Decimal| -> traft::Result<_> {
-            let secs = decimal
-                .to_smolstr()
-                .parse::<f64>()
-                .map_err(|e| Error::Other(e.into()))?;
-            let mut timeout = duration_from_secs_f64_clamped(secs);
+        let clamp_timeout = |t: &sql::ir::options::Timeout| -> Duration {
+            let mut timeout = Duration::from(t);
             if let Some(override_deadline) = override_deadline {
                 let override_deadline = override_deadline.duration_since(Instant::now_fiber());
                 timeout = timeout.min(override_deadline);
             }
-            Ok(timeout)
+            timeout
         };
 
         // NOTE: this is different from how access checks are done for DDL, because:
@@ -414,7 +410,7 @@ fn dispatch_bound_statement_impl<'p>(
                 timeout,
             }) => plugin::create_plugin(
                 PluginIdentifier::new(name.clone(), version.clone()),
-                timeout_from_decimal(*timeout)?,
+                clamp_timeout(timeout),
                 *if_not_exists,
                 InheritOpts {
                     // config and topology inheritance always enabled currently
@@ -430,7 +426,7 @@ fn dispatch_bound_statement_impl<'p>(
                 &PluginIdentifier::new(name.clone(), version.clone()),
                 // TODO this option should be un-hardcoded and moved into picodata configuration
                 Duration::from_secs(10),
-                timeout_from_decimal(*timeout)?,
+                clamp_timeout(timeout),
             )?,
             Plugin::Disable(DisablePlugin {
                 name,
@@ -438,7 +434,7 @@ fn dispatch_bound_statement_impl<'p>(
                 timeout,
             }) => plugin::disable_plugin(
                 &PluginIdentifier::new(name.clone(), version.clone()),
-                timeout_from_decimal(*timeout)?,
+                clamp_timeout(timeout),
             )?,
             Plugin::Drop(DropPlugin {
                 name,
@@ -450,7 +446,7 @@ fn dispatch_bound_statement_impl<'p>(
                 &PluginIdentifier::new(name.clone(), version.clone()),
                 *with_data,
                 *if_exists,
-                timeout_from_decimal(*timeout)?,
+                clamp_timeout(timeout),
             )?,
             Plugin::MigrateTo(MigrateTo {
                 name,
@@ -458,8 +454,8 @@ fn dispatch_bound_statement_impl<'p>(
                 opts,
             }) => plugin::migration_up(
                 &PluginIdentifier::new(name.clone(), version.clone()),
-                timeout_from_decimal(opts.timeout)?,
-                timeout_from_decimal(opts.rollback_timeout)?,
+                clamp_timeout(&opts.timeout),
+                clamp_timeout(&opts.rollback_timeout),
             )?,
             Plugin::AppendServiceToTier(AppendServiceToTier {
                 service_name,
@@ -472,7 +468,7 @@ fn dispatch_bound_statement_impl<'p>(
                 service_name,
                 tier,
                 TopologyUpdateOpKind::Add,
-                timeout_from_decimal(*timeout)?,
+                clamp_timeout(timeout),
             )?,
             Plugin::RemoveServiceFromTier(RemoveServiceFromTier {
                 service_name,
@@ -485,7 +481,7 @@ fn dispatch_bound_statement_impl<'p>(
                 service_name,
                 tier,
                 TopologyUpdateOpKind::Remove,
-                timeout_from_decimal(*timeout)?,
+                clamp_timeout(timeout),
             )?,
             Plugin::ChangeConfig(ChangeConfig {
                 plugin_name,
@@ -510,7 +506,7 @@ fn dispatch_bound_statement_impl<'p>(
                 plugin::change_config_atom(
                     &PluginIdentifier::new(plugin_name.clone(), version.clone()),
                     &config,
-                    timeout_from_decimal(*timeout)?,
+                    clamp_timeout(timeout),
                 )?
             }
         };
@@ -2458,15 +2454,16 @@ pub(crate) fn reenterable_schema_change_request(
     // Save current user as later user is switched to admin
     let current_user = effective_user_id();
 
-    // This timeout comes from `OPTION (TIMEOUT = ?)` part of the SQL query
+    // This timeout comes from `OPTION (TIMEOUT = ?)` part of the SQL query,
+    // or from the ALTER SYSTEM default if no explicit timeout was specified.
     let timeout = match &ir_node {
-        NodeOwned::Ddl(ddl) => ddl.timeout()?,
-        NodeOwned::Acl(acl) => acl.timeout()?,
+        NodeOwned::Ddl(ddl) => ddl.timeout(),
+        NodeOwned::Acl(acl) => acl.timeout(),
         n => {
             unreachable!("this function should only be called for ddl or acl nodes, not {n:?}")
         }
     };
-    let timeout = duration_from_secs_f64_clamped(timeout);
+    let timeout = Duration::from(timeout);
     let mut deadline = Instant::now_fiber().saturating_add(timeout);
     // This timeout comes from the arugments to this function.
     // For example this could be a timeout passed to `ALTER PLUGIN MIGRATE TO`.

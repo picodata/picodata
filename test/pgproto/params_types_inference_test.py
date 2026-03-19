@@ -31,7 +31,7 @@ def test_params_specified_via_cast(postgres: Postgres):
             primary key ("id")
         )
         using memtx distributed by ("id")
-        option (timeout = 3);
+;
     """
     )
 

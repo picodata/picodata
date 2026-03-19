@@ -1303,7 +1303,7 @@ where
         Options {
             sql_motion_row_max: options.sql_motion_row_max as i64,
             sql_vdbe_opcode_max: options.sql_vdbe_opcode_max as i64,
-            read_preference: Default::default(),
+            ..Default::default()
         },
         table_name.as_str(),
     );

@@ -19,7 +19,7 @@ def test_large_messages(postgres: Postgres):
             "id" int not null primary key,
             "value" text
         )
-        option (timeout = 3);
+;
         """
     )
 

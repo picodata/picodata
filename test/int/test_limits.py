@@ -19,7 +19,7 @@ def test_user_limit(cluster: Cluster):
         acl = i1.sql(
             f"""
             create user {username} with password '{password}'
-            using md5 option (timeout = 3)
+            using md5
             """
         )
         assert acl["row_count"] == 1

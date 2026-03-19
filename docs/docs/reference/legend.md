@@ -23,7 +23,6 @@ CREATE TABLE warehouse (
     type TEXT NOT NULL,
     PRIMARY KEY (id))
 USING memtx DISTRIBUTED BY (id)
-OPTION (TIMEOUT = 3.0);
 ```
 
 ``` sql title="Создание таблицы ITEMS"
@@ -33,7 +32,6 @@ CREATE TABLE items (
     stock INTEGER,
     PRIMARY KEY (id))
 USING memtx DISTRIBUTED BY (id)
-OPTION (TIMEOUT = 3.0);
 ```
 
 ```sql title="Создание таблицы ORDERS"
@@ -44,7 +42,6 @@ CREATE TABLE orders (
     since DATETIME,
     PRIMARY KEY (id))
 USING memtx DISTRIBUTED BY (id)
-OPTION (TIMEOUT = 3.0);
 ```
 
 ```sql title="Создание таблицы DELIVERIES"
@@ -54,7 +51,6 @@ CREATE TABLE deliveries (
     quantity INTEGER,
     PRIMARY KEY (nmbr))
 USING vinyl DISTRIBUTED BY (product)
-OPTION (TIMEOUT = 3.0);
 ```
 
 ## Заполнение таблиц {: #populate_test_tables }

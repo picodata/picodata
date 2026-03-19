@@ -72,7 +72,6 @@ def test_select(cluster: Cluster):
         create table t (a int, primary key (a))
         using memtx
         distributed by (a)
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -112,7 +111,6 @@ def test_uuid(
         create table t1 (id uuid, primary key (id))
         using memtx
         distributed by (id)
-        option (timeout = 3)
     """
     )
     # check the creation of the first table
@@ -124,7 +122,6 @@ def test_uuid(
         create table t2 (id uuid not null,t1_id uuid not null, primary key (id))
         using memtx
         distributed by (id)
-        option (timeout = 3)
     """
     )
     # check the creation of the second table
@@ -170,7 +167,6 @@ def test_select_with_scan(cluster: Cluster):
         create table tmp (value INT primary key)
         using memtx
         distributed by (value)
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -213,7 +209,6 @@ def test_pg_params(cluster: Cluster):
         create table t (a int, b int, primary key (a))
         using memtx
         distributed by (a)
-        option (timeout = 3)
         """
     )
     assert ddl["row_count"] == 1
@@ -376,7 +371,6 @@ def test_pg_params(cluster: Cluster):
         c unsigned, d unsigned, primary key (b))
         using memtx
         distributed by (a, b)
-        option (timeout = 3)
     """
     )
     # check the creation of the first table
@@ -388,7 +382,6 @@ def test_pg_params(cluster: Cluster):
         create table test_params_2 (a string, b integer, primary key (a, b))
         using memtx
         distributed by (a, b)
-        option (timeout = 3)
     """
     )
     # check the creation of the second table
@@ -419,7 +412,6 @@ def test_pg_params(cluster: Cluster):
         CREATE TABLE test_params_3(x INTEGER PRIMARY KEY, y TEXT)
         using memtx
         distributed by (x)
-        option (timeout = 3)
     """
     )
     # check the creation of the third table
@@ -534,7 +526,6 @@ def test_window_functions(cluster: Cluster):
         CREATE TABLE t7 (x INTEGER PRIMARY KEY, y DECIMAL)
         using memtx
         distributed by (x)
-        option (timeout = 3)
     """)
 
     # Insert test data
@@ -664,6 +655,7 @@ def test_read_from_system_tables(cluster: Cluster):
         "raft_wal_size_max",
         "read_preference",
         "shredding",
+        "sql_ddl_timeout",
         "sql_log",
         "sql_motion_row_max",
         "sql_preemption",
@@ -739,7 +731,6 @@ def test_dml_on_global_tbls(cluster: Cluster):
         create table t (x int not null, y int not null, primary key (x))
         using memtx
         distributed by (y)
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -749,7 +740,6 @@ def test_dml_on_global_tbls(cluster: Cluster):
         create table global_t (id int not null, a int not null, primary key (id))
         using memtx
         distributed globally
-        option (timeout = 3)
         """
     )
     assert ddl["row_count"] == 1
@@ -948,7 +938,6 @@ def test_datetime(cluster: Cluster):
         create table t (a int, d datetime not null, primary key (a))
         using memtx
         distributed by (a)
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -1019,7 +1008,6 @@ def test_datetime(cluster: Cluster):
         create table t2 (a int, d datetime not null, primary key (a))
         using memtx
         distributed by (d)
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -1091,7 +1079,6 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
         create table g (a int, b int not null, primary key (a))
         using memtx
         distributed globally
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -1109,7 +1096,6 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
         create table s (c int, primary key (c))
         using memtx
         distributed by (c)
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -1215,7 +1201,6 @@ def test_aggregates_on_global_tbl(cluster: Cluster):
         create table g (a int, b int not null, primary key (a))
         using memtx
         distributed globally
-        option (timeout = 3)
         """
     )
     assert ddl["row_count"] == 1
@@ -1262,7 +1247,6 @@ def test_join_with_global_tbls(cluster: Cluster):
         create table g (a int, b int not null, primary key (a))
         using memtx
         distributed globally
-        option (timeout = 3)
         """
     )
     assert ddl["row_count"] == 1
@@ -1279,7 +1263,6 @@ def test_join_with_global_tbls(cluster: Cluster):
         create table s (c int, primary key (c))
         using memtx
         distributed by (c)
-        option (timeout = 3)
         """
     )
     assert ddl["row_count"] == 1
@@ -1425,7 +1408,6 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         create table g (a int, b int not null, primary key (a))
         using memtx
         distributed globally
-        option (timeout = 3)
         """
     )
     assert ddl["row_count"] == 1
@@ -1442,7 +1424,6 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         create table s (c int, d int not null, primary key (c))
         using memtx
         distributed by (c)
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -1585,7 +1566,6 @@ def test_union_on_global_tbls(cluster: Cluster):
         create table g (a int, b int not null, primary key (a))
         using memtx
         distributed globally
-        option (timeout = 3)
         """
     )
     assert ddl["row_count"] == 1
@@ -1602,7 +1582,6 @@ def test_union_on_global_tbls(cluster: Cluster):
         create table s (c int, d int not null, primary key (c))
         using memtx
         distributed by (c)
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -2095,7 +2074,6 @@ def test_except_on_global_tbls(cluster: Cluster):
         create table g (a int, b int not null, primary key (a))
         using memtx
         distributed globally
-        option (timeout = 3)
         """
     )
     assert ddl["row_count"] == 1
@@ -2113,7 +2091,6 @@ def test_except_on_global_tbls(cluster: Cluster):
         create table s (c int, d int not null, primary key (c))
         using memtx
         distributed by (c)
-        option (timeout = 3)
         """
     )
     assert ddl["row_count"] == 1
@@ -2349,7 +2326,6 @@ def test_create_drop_table(cluster: Cluster):
         create table "t" ("a" integer, "b" int, primary key ("b", "a"))
         using memtx
         distributed by ("a", "b")
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -2362,14 +2338,12 @@ def test_create_drop_table(cluster: Cluster):
             create table "t" ("a" integer, "b" int, primary key ("b", "a"))
             using memtx
             distributed by ("a", "b")
-            option (timeout = 3)
         """
         )
 
     ddl = i2.sql(
         """
         drop table "t"
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -2380,7 +2354,6 @@ def test_create_drop_table(cluster: Cluster):
         i2.sql(
             """
             drop table "t"
-            option (timeout = 3)
         """
         )
 
@@ -2408,7 +2381,6 @@ def test_create_drop_table(cluster: Cluster):
         create table "t" ("key" string, "value" string not null, primary key ("key"))
         using vinyl
         distributed by ("key")
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -2417,7 +2389,6 @@ def test_create_drop_table(cluster: Cluster):
     ddl = i2.sql(
         """
         drop table "t"
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -2441,7 +2412,6 @@ def test_create_drop_table(cluster: Cluster):
     ddl = i2.sql(
         """
         drop table "t"
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -2454,7 +2424,6 @@ def test_create_drop_table(cluster: Cluster):
         primary key ("key"))
         using memtx
         distributed globally
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -2484,7 +2453,6 @@ def test_create_drop_table(cluster: Cluster):
             primary key ("key"))
             using vinyl
             distributed globally
-            option (timeout = 3)
             """
         )
 
@@ -2572,7 +2540,6 @@ def test_check_format(cluster: Cluster):
             )
         using memtx
         distributed by ("non_nullable")
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -2680,7 +2647,6 @@ def test_insert_on_conflict(cluster: Cluster):
         create table "t" ("a" integer not null, "b" int not null, primary key ("a"))
         using memtx
         distributed by ("b")
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -2726,7 +2692,6 @@ def test_insert_on_conflict(cluster: Cluster):
         """
         create table "t" ("a" integer not null, "b" int not null, primary key ("a"))
         distributed globally
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -2828,7 +2793,6 @@ def test_sql_limits(cluster: Cluster):
         create table "t" ("a" integer not null, "b" int not null, primary key ("a"))
         using memtx
         distributed by ("b")
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -2876,7 +2840,7 @@ def test_sql_acl_password_length(cluster: Cluster):
     acl = i1.sql(
         f"""
         create user {username} with password '{password_long}'
-        using md5 option (timeout = 3)
+        using md5
         """
     )
     assert acl["row_count"] == 1
@@ -2886,7 +2850,7 @@ def test_sql_acl_password_length(cluster: Cluster):
     acl = i1.sql(
         f"""
         create user {username}
-        using ldap option (timeout = 3)
+        using ldap
     """
     )
     assert acl["row_count"] == 1
@@ -2900,13 +2864,13 @@ def test_sql_acl_password_length(cluster: Cluster):
         i1.sql(
             f"""
             create user {username} with password '{password_empty}'
-            using ldap option (timeout = 3)
+            using ldap
         """
         )
         i1.sql(
             f"""
             create user {username} with password '{password_long}'
-            using ldap option (timeout = 3)
+            using ldap
         """
         )
 
@@ -2925,7 +2889,7 @@ def test_sql_acl_users_roles(cluster: Cluster):
     acl = i1.sql(
         f"""
         create user "{username}" with password '{password}'
-        using md5 option (timeout = 3)
+        using md5
     """
     )
     assert acl["row_count"] == 1
@@ -2964,7 +2928,6 @@ def test_sql_acl_users_roles(cluster: Cluster):
     acl = i1.sql(
         f"""
         create user {upper_username} with password '{password}'
-        option (timeout = 3)
     """
     )
     assert acl["row_count"] == 1
@@ -3598,7 +3561,7 @@ def test_distributed_sql_via_set_language(cluster: Cluster):
         {prelude}
         return console.eval('create table t \
             (a integer not null, b int not null, primary key (a)) \
-                using memtx distributed globally option (timeout = 3);')
+                using memtx distributed globally;')
     """
     )
 
@@ -3640,7 +3603,6 @@ def test_sql_privileges(cluster: Cluster):
         create table "{table_name}" ("a" int not null, "b" int, primary key ("a"))
         using memtx
         distributed by ("a")
-        option (timeout = 3)
     """
     )
     assert ddl["row_count"] == 1
@@ -3652,7 +3614,7 @@ def test_sql_privileges(cluster: Cluster):
     acl = i1.sql(
         f"""
         create user "{username}" with password '{alice_pwd}'
-        using chap-sha1 option (timeout = 3)
+        using chap-sha1
     """
     )
     assert acl["row_count"] == 1
@@ -3754,7 +3716,7 @@ def test_sql_privileges_vtables(cluster: Cluster):
     acl = i1.sql(
         f"""
         create user "{username}" with password '{pwd}'
-        using chap-sha1 option (timeout = 3)
+        using chap-sha1
     """
     )
     assert acl["row_count"] == 1
@@ -3856,7 +3818,6 @@ def test_create_drop_procedure(cluster: Cluster):
             create procedure proc1(int, int)
             language SQL
             as $$insert into t values($1, $2)$$
-            option(timeout=3)
             """
         )
     with pytest.raises(TarantoolError, match="procedure proc1 already exists"):
@@ -4003,7 +3964,7 @@ def test_sql_user_password_checks(cluster: Cluster):
         i1.sql(
             """
             create user noname with password 'withoutdigitsanduppercase'
-            using md5 option (timeout = 3)
+            using md5
             """
         )
 
@@ -4014,7 +3975,7 @@ def test_sql_user_password_checks(cluster: Cluster):
         i1.sql(
             """
             create user noname with password 'PASSWORD3'
-            using md5 option (timeout = 3)
+            using md5
             """
         )
 
@@ -4025,14 +3986,14 @@ def test_sql_user_password_checks(cluster: Cluster):
         i1.sql(
             """
             create user noname with password 'Withoutdigits'
-            using md5 option (timeout = 3)
+            using md5
             """
         )
 
     acl = i1.sql(
         """
         create user success with password 'Withdigit1'
-        using md5 option (timeout = 3)
+        using md5
         """
     )
     assert acl["row_count"] == 1
@@ -4059,7 +4020,7 @@ def test_sql_user_password_checks(cluster: Cluster):
         i1.sql(
             """
             create user noname with password 'withoutspecialchar14'
-            using md5 option (timeout = 3)
+            using md5
             """
         )
 
@@ -4067,7 +4028,7 @@ def test_sql_user_password_checks(cluster: Cluster):
     acl = i1.sql(
         """
         create user noname with password '!withdigit1@'
-        using md5 option (timeout = 3)
+        using md5
         """
     )
     assert acl["row_count"] == 1
@@ -4144,7 +4105,7 @@ def test_call_procedure(cluster: Cluster):
     acl = i1.sql(
         f"""
         create user "{username}" with password '{alice_pwd}'
-        using chap-sha1 option (timeout = 3)
+        using chap-sha1
     """
     )
     assert acl["row_count"] == 1
@@ -4250,7 +4211,7 @@ def test_rename_procedure(cluster: Cluster):
     acl = i1.sql(
         f"""
         create user "{username}" with password '{alice_pwd}'
-        using chap-sha1 option (timeout = 3)
+        using chap-sha1
     """
     )
     assert acl["row_count"] == 1
@@ -4320,7 +4281,6 @@ def test_procedure_privileges(cluster: Cluster):
         create table "{table_name}" ("a" int not null, "b" int, primary key ("a"))
         using memtx
         distributed by ("a")
-        option (timeout = 3)
         """
     )
     assert ddl["row_count"] == 1
@@ -4335,7 +4295,7 @@ def test_procedure_privileges(cluster: Cluster):
         acl = i1.sql(
             f"""
             create user "{user}" with password '{pwd}'
-            using chap-sha1 option (timeout = 3)
+            using chap-sha1
             """
         )
         assert acl["row_count"] == 1
@@ -4696,7 +4656,6 @@ def test_drop_user(cluster: Cluster):
         create table t (a text not null, b text not null, c text, primary key (a))
         using memtx
         distributed by (a)
-        option (timeout = 3)
         """,
         user=user,
         password=password,
@@ -4785,7 +4744,6 @@ def test_index(cluster: Cluster):
         create table t (a text not null, b text not null, c text, primary key (a))
         using memtx
         distributed by (a)
-        option (timeout = 3)
         """
     )
     assert ddl["row_count"] == 1
@@ -4795,7 +4753,6 @@ def test_index(cluster: Cluster):
         """
         create table g (a int not null, b text not null, c text, primary key (a))
         distributed globally
-        option (timeout = 3)
         """
     )
     assert ddl["row_count"] == 1
@@ -4806,12 +4763,11 @@ def test_index(cluster: Cluster):
         create table v (a int not null, b text not null, c text, primary key (a))
         using vinyl
         distributed by (a)
-        option (timeout = 3)
         """
     )
 
     # Check that created index appears in _pico_index table.
-    ddl = i1.sql(""" create index i0 on t (a) option (timeout = 3) """)
+    ddl = i1.sql(""" create index i0 on t (a) """)
     assert ddl["row_count"] == 1
     data = i1.sql(""" select * from "_pico_index" where "name" = 'i0' """)
     assert data != []
@@ -4913,7 +4869,7 @@ def test_index(cluster: Cluster):
 
     # Drop non-existing index.
     with pytest.raises(TarantoolError, match="index i0 does not exist"):
-        ddl = i1.sql(""" drop index i0 option (timeout = 3) """)
+        ddl = i1.sql(""" drop index i0 """)
 
     ddl = i1.sql(""" create index i19 on t (b)""")
     assert ddl["row_count"] == 1
@@ -5117,7 +5073,6 @@ def test_cte(cluster: Cluster):
         """
         create table t (a int not null, b int, primary key (a))
         distributed by (b)
-        option (timeout = 3)
         """
     )
     assert ddl["row_count"] == 1
@@ -5133,7 +5088,6 @@ def test_cte(cluster: Cluster):
         """
         create table g (a int not null, b int, primary key (a))
         distributed globally
-        option (timeout = 3)
         """
     )
     assert ddl["row_count"] == 1
@@ -5355,7 +5309,6 @@ def test_unique_index_name_for_sharded_table(cluster: Cluster):
             f"""
             create table {table_name} (a int not null, b int, primary key (a))
             distributed by (b)
-            option (timeout = 3)
             """
         )
         assert ddl["row_count"] == 1
@@ -5368,7 +5321,7 @@ def test_unique_index_name_for_sharded_table(cluster: Cluster):
             # try to create existing index
             i1.sql(
                 f""" create index "bucket_id"
-                on "{table_name}" (a) option (timeout = 3) """
+                on "{table_name}" (a) """
             )
 
         with pytest.raises(
@@ -5378,7 +5331,7 @@ def test_unique_index_name_for_sharded_table(cluster: Cluster):
             # try to create non existing index with existing name
             i1.sql(
                 f""" create index "bucket_id"
-                on "{other_table_name}" (a) option (timeout = 3) """
+                on "{other_table_name}" (a) """
             )
 
         # ensure that index on field bucket_id of sharded table exists in space _index
@@ -5391,7 +5344,6 @@ def test_metadata(instance: Instance):
         """
         create table t (a int not null, primary key (a))
         distributed by (a)
-        option (timeout = 3)
         """
     )
     assert ddl["row_count"] == 1
@@ -6069,7 +6021,6 @@ def test_limit(cluster: Cluster):
         """
         create table t1 (a int not null, b int, primary key (a))
         distributed by (b)
-        option (timeout = 3)
         """
     )
     assert ddl["row_count"] == 1
@@ -6286,6 +6237,16 @@ def test_alter_system_property_errors(cluster: Cluster):
                 """
             )
         assert e.value.args[1] == "timeout value cannot be negative"
+
+    # extreme timeout values are rejected
+    for param in ["governor_auto_offline_timeout", "sql_ddl_timeout"]:
+        with pytest.raises(TarantoolError) as e:
+            i1.sql(
+                f"""
+                ALTER SYSTEM SET {param} TO 1e100
+                """
+            )
+        assert "invalid" in e.value.args[1].lower()
 
 
 def test_already_exists_error(instance: Instance):

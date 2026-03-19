@@ -9,7 +9,6 @@ def test_extended_ddl(pg_client: PgClient):
         create table "t" ("key" int not null, "value" string not null, primary key ("key"))
         using vinyl
         distributed by ("key")
-        option (timeout = 3)
     """
     pg_client.parse("", ddl)
     assert len(pg_client.statements["available"]) == 1
@@ -38,7 +37,6 @@ def test_extended_dml(pg_client: PgClient):
         create table "t" ("key" int not null, "value" string not null, primary key ("key"))
         using vinyl
         distributed by ("key")
-        option (timeout = 3)
     """
     )
 
@@ -76,7 +74,6 @@ def test_extended_dql(pg_client: PgClient):
         create table "t" ("key" int not null, "value" string not null, primary key ("key"))
         using vinyl
         distributed by ("key")
-        option (timeout = 3)
     """
     )
 
@@ -155,7 +152,6 @@ def test_updates_with_unnamed(pg_client: PgClient):
         create table "t" ("val" int not null, primary key ("val"))
         using vinyl
         distributed by ("val")
-        option (timeout = 3)
     """
     pg_client.parse("", sql)
     pg_client.bind("", "", [], [])
@@ -209,7 +205,6 @@ def test_updates_with_named(pg_client: PgClient):
         create table "t" ("val" int not null, primary key ("val"))
         using vinyl
         distributed by ("val")
-        option (timeout = 3)
     """
     pg_client.parse(name, sql)
     with pytest.raises(
@@ -242,7 +237,6 @@ def test_statement_close(pg_client: PgClient):
         create table "t" ("val" int not null, primary key ("val"))
         using vinyl
         distributed by ("val")
-        option (timeout = 3)
     """
     pg_client.parse("", sql)
     assert len(pg_client.statements["available"]) == 1
@@ -283,7 +277,6 @@ def test_visibility(pg_storage: PgStorage):
         create table "t" ("key" int not null, "value" string not null, primary key ("key"))
         using vinyl
         distributed by ("key")
-        option (timeout = 3)
     """
     instance.sql(ddl)
 
@@ -327,7 +320,6 @@ def test_param_oids(pg_client: PgClient):
         create table "t" ("key" int not null, "value" string not null, primary key ("key"))
         using vinyl
         distributed by ("key")
-        option (timeout = 3)
     """
     )
 
@@ -375,7 +367,6 @@ def test_interactive_portals(pg_client: PgClient):
         create table "t" ("key" int not null, "value" string not null, primary key ("key"))
         using vinyl
         distributed by ("key")
-        option (timeout = 3)
     """
     )
 

@@ -21,7 +21,7 @@ def test_user_can_read_from_query_cache(postgres: Postgres):
             primary key ("id")
         )
         using memtx distributed by ("id")
-        option (timeout = 3);
+;
     """
     )
     conn.execute(

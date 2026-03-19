@@ -1387,6 +1387,30 @@ impl Plan {
         Ok(matches!(self.get_node(top_id)?, Node::Plugin(_)))
     }
 
+    /// Replace the parser default timeout with the system default
+    /// from `Options`, based on the IR node category.
+    /// Only replaces if `source == TimeoutSource::Default`.
+    pub fn resolve_default_timeout(&mut self, opts: &Options) {
+        use node::MutNode;
+        use options::TimeoutSource;
+
+        let Ok(top_id) = self.get_top() else { return };
+        let Ok(mut mut_node) = self.get_mut_node(top_id) else {
+            return;
+        };
+        let timeout = match mut_node {
+            MutNode::Ddl(ref mut ddl) => ddl.timeout_mut(),
+            MutNode::Acl(ref mut acl) => Some(acl.timeout_mut()),
+            MutNode::Plugin(ref mut plugin) => plugin.timeout_mut(),
+            _ => None,
+        };
+        if let Some(t) = timeout {
+            if t.source == TimeoutSource::Default {
+                t.us = opts.sql_ddl_timeout_us;
+            }
+        }
+    }
+
     pub fn is_backup(&self) -> Result<bool, SbroadError> {
         let top_id = self.get_top()?;
         Ok(matches!(self.get_node(top_id)?, Node::Ddl(Ddl::Backup(_))))

@@ -55,7 +55,7 @@ def test_simple_flow_session(postgres: Postgres):
             primary key ("id")
         )
         using memtx distributed by ("id")
-        option (timeout = 3);
+;
     """
     )
 
@@ -103,7 +103,7 @@ def test_explain(postgres: Postgres):
             primary key ("id")
         )
         using memtx distributed by ("id")
-        option (timeout = 3);
+;
     """
     )
 
@@ -167,7 +167,7 @@ def test_aggregates(postgres: Postgres):
             primary key ("id")
         )
         using memtx distributed by ("id")
-        option (timeout = 3);
+;
     """
     )
 

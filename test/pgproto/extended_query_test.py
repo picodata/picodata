@@ -31,7 +31,7 @@ def test_extended_query(postgres: Postgres):
             primary key ("id")
         )
         using memtx distributed by ("id")
-        option (timeout = 3);
+;
     """
     )
 
@@ -111,7 +111,7 @@ def test_parameterized_queries(postgres: Postgres):
             primary key ("id")
         )
         using memtx distributed by ("id")
-        option (timeout = 3);
+;
     """
     )
 

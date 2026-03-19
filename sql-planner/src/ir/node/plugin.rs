@@ -1,19 +1,19 @@
 use crate::errors::{Entity, SbroadError};
 use crate::ir::node::{Node136, Node232, Node96, NodeAligned};
+use crate::ir::options::Timeout;
 use crate::ir::{Node, NodeId, Plan};
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr};
-use tarantool::decimal::Decimal;
 
 #[must_use]
-pub fn get_default_timeout() -> Decimal {
-    Decimal::from(600)
+pub fn get_default_timeout() -> Timeout {
+    Timeout::default_ddl()
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MigrateToOpts {
-    pub timeout: Decimal,
-    pub rollback_timeout: Decimal,
+    pub timeout: Timeout,
+    pub rollback_timeout: Timeout,
 }
 
 impl Default for MigrateToOpts {
@@ -42,7 +42,7 @@ pub struct CreatePlugin {
     pub name: SmolStr,
     pub version: SmolStr,
     pub if_not_exists: bool,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<CreatePlugin> for NodeAligned {
@@ -55,7 +55,7 @@ impl From<CreatePlugin> for NodeAligned {
 pub struct EnablePlugin {
     pub name: SmolStr,
     pub version: SmolStr,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<EnablePlugin> for NodeAligned {
@@ -68,7 +68,7 @@ impl From<EnablePlugin> for NodeAligned {
 pub struct DisablePlugin {
     pub name: SmolStr,
     pub version: SmolStr,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<DisablePlugin> for NodeAligned {
@@ -83,7 +83,7 @@ pub struct DropPlugin {
     pub version: SmolStr,
     pub if_exists: bool,
     pub with_data: bool,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<DropPlugin> for NodeAligned {
@@ -111,7 +111,7 @@ pub struct AppendServiceToTier {
     pub version: SmolStr,
     pub service_name: SmolStr,
     pub tier: SmolStr,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<AppendServiceToTier> for NodeAligned {
@@ -126,7 +126,7 @@ pub struct RemoveServiceFromTier {
     pub version: SmolStr,
     pub service_name: SmolStr,
     pub tier: SmolStr,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<RemoveServiceFromTier> for NodeAligned {
@@ -140,7 +140,7 @@ pub struct ChangeConfig {
     pub plugin_name: SmolStr,
     pub version: SmolStr,
     pub key_value_grouped: Vec<ServiceSettings>,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<ChangeConfig> for NodeAligned {
@@ -159,6 +159,22 @@ pub enum MutPlugin<'a> {
     AppendServiceToTier(&'a mut AppendServiceToTier),
     RemoveServiceFromTier(&'a mut RemoveServiceFromTier),
     ChangeConfig(&'a mut ChangeConfig),
+}
+
+impl MutPlugin<'_> {
+    /// Return a mutable reference to the timeout, if present.
+    pub fn timeout_mut(&mut self) -> Option<&mut Timeout> {
+        match self {
+            MutPlugin::Create(n) => Some(&mut n.timeout),
+            MutPlugin::Enable(n) => Some(&mut n.timeout),
+            MutPlugin::Disable(n) => Some(&mut n.timeout),
+            MutPlugin::Drop(n) => Some(&mut n.timeout),
+            MutPlugin::MigrateTo(n) => Some(&mut n.opts.timeout),
+            MutPlugin::AppendServiceToTier(n) => Some(&mut n.timeout),
+            MutPlugin::RemoveServiceFromTier(n) => Some(&mut n.timeout),
+            MutPlugin::ChangeConfig(n) => Some(&mut n.timeout),
+        }
+    }
 }
 
 /// Represent a plugin query.
@@ -270,9 +286,9 @@ mod test {
     use crate::frontend::sql::ast::AbstractSyntaxTree;
     use crate::frontend::Ast;
     use crate::ir::node::{ArenaType, NodeId};
+    use crate::ir::options::Timeout;
     use crate::ir::Plan;
     use smol_str::SmolStr;
-    use tarantool::decimal::Decimal;
 
     #[test]
     fn test_plugin_parsing() {
@@ -320,7 +336,7 @@ mod test {
                     name: SmolStr::from("abcde"),
                     version: SmolStr::from("0.1.2"),
                     if_not_exists: true,
-                    timeout: Decimal::from(1),
+                    timeout: Timeout::from_secs(1),
                 }),
             },
             TestCase {
@@ -338,7 +354,7 @@ mod test {
                 expected: PluginOwned::Enable(EnablePlugin {
                     name: SmolStr::from("abc"),
                     version: SmolStr::from("1.1.1"),
-                    timeout: Decimal::from(1),
+                    timeout: Timeout::from_secs(1),
                 }),
             },
             TestCase {
@@ -347,7 +363,7 @@ mod test {
                 expected: PluginOwned::Disable(DisablePlugin {
                     name: SmolStr::from("abc"),
                     version: SmolStr::from("1.1.1"),
-                    timeout: Decimal::from(1),
+                    timeout: Timeout::from_secs(1),
                 }),
             },
             TestCase {
@@ -369,7 +385,7 @@ mod test {
                     version: SmolStr::from("1.1.1"),
                     if_exists: false,
                     with_data: false,
-                    timeout: Decimal::from(1),
+                    timeout: Timeout::from_secs(1),
                 }),
             },
             TestCase {
@@ -380,7 +396,7 @@ mod test {
                     version: SmolStr::from("1.1.1"),
                     if_exists: true,
                     with_data: true,
-                    timeout: Decimal::from(11),
+                    timeout: Timeout::from_secs(11),
                 }),
             },
             TestCase {
@@ -413,8 +429,8 @@ mod test {
                     name: SmolStr::from("abc"),
                     version: SmolStr::from("0.1.0"),
                     opts: MigrateToOpts {
-                        timeout: Decimal::from(11),
-                        rollback_timeout: Decimal::from(12),
+                        timeout: Timeout::from_secs(11),
+                        rollback_timeout: Timeout::from_secs(12),
                     },
                 }),
             },
@@ -426,7 +442,7 @@ mod test {
                     plugin_name: SmolStr::from("abc"),
                     version: SmolStr::from("0.1.0"),
                     tier: SmolStr::from("tier1"),
-                    timeout: Decimal::from(1),
+                    timeout: Timeout::from_secs(1),
                 }),
             },
             TestCase {
@@ -437,7 +453,7 @@ mod test {
                     plugin_name: SmolStr::from("abc"),
                     version: SmolStr::from("0.1.0"),
                     tier: SmolStr::from("tier1"),
-                    timeout: Decimal::from(11),
+                    timeout: Timeout::from_secs(11),
                 }),
             },
             TestCase {
@@ -453,7 +469,7 @@ mod test {
                             value: SmolStr::from("{\"a\": 1, \"b\": 2}"),
                         }],
                     }],
-                    timeout: Decimal::from(12),
+                    timeout: Timeout::from_secs(12),
                 }),
             },
             TestCase {
@@ -485,7 +501,7 @@ mod test {
                             }],
                         },
                     ],
-                    timeout: Decimal::from(11),
+                    timeout: Timeout::from_secs(11),
                 }),
             },
             TestCase {

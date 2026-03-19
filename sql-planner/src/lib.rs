@@ -180,6 +180,11 @@ impl PreparedStatement {
             None
         };
 
+        // Replace parser default timeouts with system defaults
+        // from ALTER SYSTEM settings. Must be done before bind_params
+        // which consumes default_options.
+        plan.resolve_default_timeout(&default_options);
+
         if plan.is_empty() {
             // Empty query, do nothing
         } else if plan.is_dql_or_dml()? || plan.is_block()? {

@@ -33,7 +33,6 @@ def test_access_global_table(cluster: Cluster):
             "species" string not null,
             primary key ("name")
         ) using memtx distributed globally
-        option (timeout = 3)
     """
 
     with pytest.raises(
@@ -92,7 +91,6 @@ def test_access_sharded_table(cluster: Cluster):
             "count" integer,
             primary key ("creature")
         ) using memtx distributed by ("creature")
-        option (timeout = 3.0)
     """
 
     with pytest.raises(

@@ -11,6 +11,64 @@ use std::str::FromStr;
 pub const DEFAULT_SQL_MOTION_ROW_MAX: u64 = 5000;
 pub const DEFAULT_SQL_VDBE_OPCODE_MAX: u64 = 45000;
 
+/// Whether the timeout was explicitly specified in the SQL statement
+/// or should be replaced with the system default at bind time.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TimeoutSource {
+    /// Parser default — will be replaced with the ALTER SYSTEM
+    /// value during bind.
+    Default,
+    /// User wrote OPTION(TIMEOUT = N) explicitly.
+    Explicit,
+}
+
+/// Timeout for DDL/ACL statements.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Timeout {
+    /// Timeout value in microseconds.
+    pub us: u64,
+    /// Whether this was explicitly specified by the user.
+    pub source: TimeoutSource,
+}
+
+impl Timeout {
+    /// Zero timeout for schema stubs (CreateSchema/DropSchema).
+    pub const ZERO: Self = Self {
+        us: 0,
+        source: TimeoutSource::Explicit,
+    };
+
+    /// Create a timeout from an explicit user-specified value in microseconds.
+    pub fn explicit(us: u64) -> Self {
+        Self {
+            us,
+            source: TimeoutSource::Explicit,
+        }
+    }
+
+    /// Create a timeout from an explicit user-specified value in seconds.
+    pub fn from_secs(secs: u64) -> Self {
+        Self {
+            us: secs * 1_000_000,
+            source: TimeoutSource::Explicit,
+        }
+    }
+
+    /// Create a parser default timeout (to be overridden at bind time).
+    pub fn default_ddl() -> Self {
+        Self {
+            us: DEFAULT_SQL_DDL_TIMEOUT_US,
+            source: TimeoutSource::Default,
+        }
+    }
+}
+
+impl From<&Timeout> for std::time::Duration {
+    fn from(t: &Timeout) -> Self {
+        std::time::Duration::from_micros(t.us)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize, Hash)]
 #[repr(u8)]
 pub enum ReadPreference {
@@ -85,7 +143,12 @@ pub struct Options {
     ///   if there is only one node in the replicaset (leader), an error will be returned
     /// - `Any` reading is performed from any node in the replicaset
     pub read_preference: ReadPreference,
+    /// Default timeout for DDL/ACL statements (microseconds).
+    pub sql_ddl_timeout_us: u64,
 }
+
+/// Default DDL/ACL timeout: 24 hours in microseconds.
+pub const DEFAULT_SQL_DDL_TIMEOUT_US: u64 = 86_400_000_000;
 
 impl Default for Options {
     fn default() -> Self {
@@ -93,6 +156,7 @@ impl Default for Options {
             sql_motion_row_max: DEFAULT_SQL_MOTION_ROW_MAX as i64,
             sql_vdbe_opcode_max: DEFAULT_SQL_VDBE_OPCODE_MAX as i64,
             read_preference: ReadPreference::default(),
+            sql_ddl_timeout_us: DEFAULT_SQL_DDL_TIMEOUT_US,
         }
     }
 }
@@ -152,6 +216,7 @@ impl PartialOptions {
                 .sql_vdbe_opcode_max
                 .unwrap_or(defaults.sql_vdbe_opcode_max),
             read_preference: self.read_preference.unwrap_or(defaults.read_preference),
+            sql_ddl_timeout_us: defaults.sql_ddl_timeout_us,
         }
     }
 }
@@ -268,6 +333,7 @@ impl LoweredOptions {
             sql_motion_row_max: self.sql_motion_row_max.unwrap(default.sql_motion_row_max),
             sql_vdbe_opcode_max: self.sql_vdbe_opcode_max.unwrap(default.sql_vdbe_opcode_max),
             read_preference: self.read_preference.unwrap(default.read_preference),
+            sql_ddl_timeout_us: default.sql_ddl_timeout_us,
         }
     }
 }

@@ -2476,6 +2476,15 @@ pub struct AlterSystemParameters {
     #[introspection(sbroad_type = SbroadType::Boolean)]
     #[introspection(config_default = DEFAULT_SQL_LOG)]
     pub sql_log: bool,
+
+    /// Default timeout in seconds for DDL and ACL statements
+    /// (CREATE TABLE, ALTER TABLE, GRANT, etc.) when no explicit
+    /// OPTION(TIMEOUT = N) is specified in the SQL statement.
+    /// Accepts fractional seconds (e.g. 3.5).
+    /// Stored internally as microseconds (u64).
+    #[introspection(sbroad_type = SbroadType::Double)]
+    #[introspection(config_default = 86400.0)]
+    pub sql_ddl_timeout: f64,
 }
 
 fn generate_secure_token() -> String {
@@ -2617,6 +2626,7 @@ pub struct DynamicConfigProviders {
     pub sql_preemption_interval_us: AtomicObserverProvider<u64>,
     pub sql_preemption_opcode_max: AtomicObserverProvider<u64>,
     pub sql_log: AtomicObserverProvider<bool>,
+    pub sql_ddl_timeout_us: AtomicObserverProvider<u64>,
 }
 
 impl DynamicConfigProviders {
@@ -2632,6 +2642,7 @@ impl DynamicConfigProviders {
             sql_preemption_interval_us: AtomicObserverProvider::new(),
             sql_preemption_opcode_max: AtomicObserverProvider::new(),
             sql_log: AtomicObserverProvider::new(),
+            sql_ddl_timeout_us: AtomicObserverProvider::new(),
         }
     }
 
@@ -2646,6 +2657,10 @@ impl DynamicConfigProviders {
                     options::ReadPreference::try_from(raw).expect("invalid read_preference value")
                 })
                 .unwrap_or_default(),
+            sql_ddl_timeout_us: self
+                .sql_ddl_timeout_us
+                .try_current_value()
+                .unwrap_or(options::DEFAULT_SQL_DDL_TIMEOUT_US),
         })
     }
 }
@@ -2679,6 +2694,10 @@ pub fn validate_alter_system_parameter_value<'v>(
         if value < 0.0 {
             return Err(Error::other("timeout value cannot be negative"));
         }
+        // Guard against values that would panic in Duration::from_secs_f64
+        // (e.g. 1e100, NaN, infinity).
+        std::time::Duration::try_from_secs_f64(value)
+            .map_err(|_| Error::other(format!("timeout value is invalid: {value}")))?;
     }
 
     if name == system_parameter_name!(iproto_net_msg_max) {
@@ -3050,6 +3069,12 @@ pub fn apply_parameter(
         let value = v.as_bool().expect("type is already checked");
         // Cache the value.
         DYNAMIC_CONFIG.sql_log.update(value);
+    } else if name == system_parameter_name!(sql_ddl_timeout) {
+        let secs = v.as_f64().expect("type is already checked");
+        let us = std::time::Duration::try_from_secs_f64(secs)
+            .map_err(|e| Error::other(format!("invalid sql_ddl_timeout value: {e}")))?
+            .as_micros() as u64;
+        DYNAMIC_CONFIG.sql_ddl_timeout_us.update(us);
     }
 
     Ok(())

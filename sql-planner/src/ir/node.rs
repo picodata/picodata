@@ -1,5 +1,6 @@
 use std::{collections::HashMap, fmt::Display};
 
+use super::options::Timeout;
 use acl::{Acl, AclOwned, MutAcl};
 use block::{Block, BlockOwned, MutBlock};
 use ddl::{Ddl, DdlOwned, MutDdl};
@@ -9,7 +10,6 @@ use relational::{MutRelational, RelOwned, Relational};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use tarantool::{
-    decimal::Decimal,
     index::{IndexType, RtreeIndexDistanceType},
     space::SpaceEngineType,
 };
@@ -882,7 +882,7 @@ impl From<ValuesRow> for NodeAligned {
 pub struct DropRole {
     pub name: SmolStr,
     pub if_exists: bool,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<DropRole> for NodeAligned {
@@ -895,7 +895,7 @@ impl From<DropRole> for NodeAligned {
 pub struct DropUser {
     pub name: SmolStr,
     pub if_exists: bool,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<DropUser> for NodeAligned {
@@ -908,7 +908,7 @@ impl From<DropUser> for NodeAligned {
 pub struct CreateRole {
     pub name: SmolStr,
     pub if_not_exists: bool,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<CreateRole> for NodeAligned {
@@ -923,7 +923,7 @@ pub struct CreateUser {
     pub password: SmolStr,
     pub if_not_exists: bool,
     pub auth_method: tarantool::auth::AuthMethod,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<CreateUser> for NodeAligned {
@@ -936,7 +936,7 @@ impl From<CreateUser> for NodeAligned {
 pub struct AlterUser {
     pub name: SmolStr,
     pub alter_option: AlterOption,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<AlterUser> for NodeAligned {
@@ -949,7 +949,7 @@ impl From<AlterUser> for NodeAligned {
 pub struct GrantPrivilege {
     pub grant_type: GrantRevokeType,
     pub grantee_name: SmolStr,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<GrantPrivilege> for NodeAligned {
@@ -962,7 +962,7 @@ impl From<GrantPrivilege> for NodeAligned {
 pub struct RevokePrivilege {
     pub revoke_type: GrantRevokeType,
     pub grantee_name: SmolStr,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<RevokePrivilege> for NodeAligned {
@@ -975,7 +975,7 @@ impl From<RevokePrivilege> for NodeAligned {
 pub struct AuditPolicy {
     pub policy_name: SmolStr,
     pub audit_option: AuditPolicyOption,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<AuditPolicy> for NodeAligned {
@@ -1007,7 +1007,7 @@ pub struct CreateTable {
     pub unlogged: bool,
     pub if_not_exists: bool,
     pub wait_applied_globally: bool,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
     /// Shows which tier the sharded table belongs to.
     /// Field has value, only if it was specified in [ON TIER] part of CREATE TABLE statement.
     /// Field is None, if:
@@ -1025,7 +1025,7 @@ pub struct CreateTable {
 pub struct AlterTable {
     pub name: SmolStr,
     pub wait_applied_globally: bool,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
     pub op: AlterTableOp,
 }
 
@@ -1064,7 +1064,7 @@ pub struct DropTable {
     pub name: SmolStr,
     pub if_exists: bool,
     pub wait_applied_globally: bool,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<DropTable> for NodeAligned {
@@ -1076,7 +1076,7 @@ impl From<DropTable> for NodeAligned {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Backup {
     pub wait_applied_globally: bool,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<Backup> for NodeAligned {
@@ -1089,7 +1089,7 @@ impl From<Backup> for NodeAligned {
 pub struct TruncateTable {
     pub name: SmolStr,
     pub wait_applied_globally: bool,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<TruncateTable> for NodeAligned {
@@ -1106,7 +1106,7 @@ pub struct CreateProc {
     pub if_not_exists: bool,
     pub language: Language,
     pub wait_applied_globally: bool,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<CreateProc> for NodeAligned {
@@ -1121,7 +1121,7 @@ pub struct DropProc {
     pub params: Option<Vec<ParamDef>>,
     pub if_exists: bool,
     pub wait_applied_globally: bool,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<DropProc> for NodeAligned {
@@ -1136,7 +1136,7 @@ pub struct RenameRoutine {
     pub new_name: SmolStr,
     pub params: Option<Vec<ParamDef>>,
     pub wait_applied_globally: bool,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<RenameRoutine> for NodeAligned {
@@ -1158,7 +1158,7 @@ pub struct CreateIndex {
     pub distance: Option<RtreeIndexDistanceType>,
     pub hint: Option<bool>,
     pub wait_applied_globally: bool,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<CreateIndex> for NodeAligned {
@@ -1171,7 +1171,7 @@ impl From<CreateIndex> for NodeAligned {
 pub struct RenameIndex {
     pub old_name: SmolStr,
     pub new_name: SmolStr,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
     pub if_exists: bool,
     pub wait_applied_globally: bool,
 }
@@ -1271,7 +1271,7 @@ pub struct DropIndex {
     pub name: SmolStr,
     pub if_exists: bool,
     pub wait_applied_globally: bool,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<DropIndex> for NodeAligned {
@@ -1284,7 +1284,7 @@ impl From<DropIndex> for NodeAligned {
 pub struct SetParam {
     pub scope_type: SetParamScopeType,
     pub param_value: SetParamValue,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -1293,7 +1293,7 @@ pub struct AlterSystem {
     /// In case of None, ALTER is supposed
     /// to be executed on all tiers.
     pub tier_name: Option<SmolStr>,
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<AlterSystem> for NodeAligned {
@@ -1311,7 +1311,7 @@ impl From<SetParam> for NodeAligned {
 // TODO: Fill with actual values.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct SetTransaction {
-    pub timeout: Decimal,
+    pub timeout: Timeout,
 }
 
 impl From<SetTransaction> for NodeAligned {

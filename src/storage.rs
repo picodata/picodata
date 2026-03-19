@@ -3377,6 +3377,7 @@ impl DbConfig {
             sql_motion_row_max,
             sql_vdbe_opcode_max,
             read_preference,
+            ..Default::default()
         }
     }
 

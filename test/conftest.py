@@ -2256,6 +2256,10 @@ class Cluster:
 
     registry: Optional[Registry] = None
 
+    # Per-test timeout from pytest-timeout plugin.
+    # Used to set ALTER SYSTEM sql_ddl_timeout after cluster starts.
+    pytest_timeout: int | float | None = None
+
     def __repr__(self):
         ports = ",".join(str(i.port) for i in self.instances)
         return f'Cluster("{self.base_host}:{{{ports}}}", n={len(self.instances)})'
@@ -2481,6 +2485,20 @@ class Cluster:
                         i += 1
 
         log.info(f" {self} deployed ".center(80, "="))
+
+        # Set DDL timeout from the pytest-timeout setting so that
+        # tests don't need to hardcode OPTION(TIMEOUT = N) in SQL.
+        # Skip on old versions (e.g. rolling upgrade tests) that
+        # don't have the sql_ddl_timeout parameter.
+        if self.pytest_timeout and self.instances:
+            try:
+                self.instances[0].sql(
+                    f"ALTER SYSTEM SET sql_ddl_timeout = {self.pytest_timeout}",
+                    sudo=True,
+                )
+            except Exception:
+                pass
+
         return self.instances
 
     def set_config_file(self, config: dict | None = None, yaml: str | None = None):
@@ -3181,7 +3199,9 @@ def class_tmp_dir(tmpdir_factory):
 
 
 @pytest.fixture(scope="class")
-def cluster_factory(current_runtime, class_tmp_dir, cluster_names, port_distributor):
+def cluster_factory(current_runtime, class_tmp_dir, cluster_names, port_distributor, request):
+    pytest_timeout = request.config.getini("timeout")
+
     def cluster_factory_():
         # FIXME: instead of os.getcwd() construct a path relative to os.path.realpath(__file__)
         # see how it's done in def binary_path()
@@ -3193,6 +3213,7 @@ def cluster_factory(current_runtime, class_tmp_dir, cluster_names, port_distribu
             share_dir=share_dir,
             base_host=BASE_HOST,
             port_distributor=port_distributor,
+            pytest_timeout=pytest_timeout,
         )
         cluster.set_service_password("password")
         return cluster
@@ -3210,7 +3231,7 @@ def cluster(cluster_factory) -> Generator[Cluster, None, None]:
 
 
 @pytest.fixture
-def second_cluster(current_runtime, tmpdir, cluster_names, port_distributor):
+def second_cluster(current_runtime, tmpdir, cluster_names, port_distributor, request):
     cluster2_dir = os.path.join(tmpdir, "cluster2")
     os.makedirs(cluster2_dir, exist_ok=True)
 
@@ -3220,6 +3241,7 @@ def second_cluster(current_runtime, tmpdir, cluster_names, port_distributor):
         data_dir=cluster2_dir,
         base_host=BASE_HOST,
         port_distributor=port_distributor,
+        pytest_timeout=request.config.getini("timeout"),
     )
 
     cluster.set_service_password("password")

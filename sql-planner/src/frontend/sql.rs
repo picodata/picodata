@@ -84,8 +84,6 @@ use tarantool::decimal::Decimal;
 use tarantool::space::SpaceEngineType;
 use type_system::{get_parameter_derived_types, TypeAnalyzer};
 
-// DDL timeout in seconds (1 day).
-const DEFAULT_TIMEOUT_F64: f64 = 24.0 * 60.0 * 60.0;
 // TODO: implement and use `AuthMethod::DEFAULT`
 // when tarantool-module gets Md5 as default one
 const DEFAULT_AUTH_METHOD: AuthMethod = AuthMethod::Md5;
@@ -103,8 +101,10 @@ const MAX_PARAMETER_INDEX: usize = 65535;
 /// The sharding key is mapped (via hashing) to a `bucket_id` value stored in this column.
 pub const DEFAULT_BUCKET_ID_COLUMN_NAME: &str = "bucket_id";
 
-fn get_default_timeout() -> Decimal {
-    Decimal::from_str(&format!("{DEFAULT_TIMEOUT_F64}")).expect("default timeout casting failed")
+use crate::ir::options::Timeout;
+
+fn get_default_timeout() -> Timeout {
+    Timeout::default_ddl()
 }
 
 /// Parse a value from an option node's first child.
@@ -261,7 +261,7 @@ pub fn get_real_function_name(name_from_sql: &str) -> Option<&'static str> {
 type CTEs = AHashMap<SmolStr, NodeId>;
 
 #[allow(clippy::uninlined_format_args)]
-fn get_timeout(ast: &AbstractSyntaxTree, node_id: usize) -> Result<Decimal, SbroadError> {
+fn get_timeout(ast: &AbstractSyntaxTree, node_id: usize) -> Result<Timeout, SbroadError> {
     let param_node = ast.nodes.get_node(node_id)?;
     if let (Some(duration_id), None) = (param_node.children.first(), param_node.children.get(1)) {
         let duration_node = ast.nodes.get_node(*duration_id)?;
@@ -275,7 +275,7 @@ fn get_timeout(ast: &AbstractSyntaxTree, node_id: usize) -> Result<Decimal, Sbro
             ));
         }
         if let Some(duration_value) = duration_node.value.as_ref() {
-            let res = Decimal::from_str(duration_value).map_err(|_| {
+            let secs = Decimal::from_str(duration_value).map_err(|_| {
                 SbroadError::Invalid(
                     Entity::Node,
                     Some(format_smolstr!(
@@ -284,7 +284,24 @@ fn get_timeout(ast: &AbstractSyntaxTree, node_id: usize) -> Result<Decimal, Sbro
                     )),
                 )
             })?;
-            return Ok(res);
+            // Convert seconds (Decimal) to microseconds (u64).
+            let secs_f64: f64 = secs.to_smolstr().parse().map_err(|_| {
+                SbroadError::Invalid(
+                    Entity::Node,
+                    Some(format_smolstr!(
+                        "timeout value too large or negative: {duration_value}"
+                    )),
+                )
+            })?;
+            let us = std::time::Duration::try_from_secs_f64(secs_f64)
+                .map_err(|_| {
+                    SbroadError::Invalid(
+                        Entity::Node,
+                        Some(format_smolstr!("invalid timeout value: {duration_value}")),
+                    )
+                })?
+                .as_micros() as u64;
+            return Ok(Timeout::explicit(us));
         }
         return Err(SbroadError::Invalid(
             Entity::AST,
@@ -2251,7 +2268,7 @@ fn parse_normalized_identifier(
 fn parse_grant_revoke(
     node: &ParseNode,
     ast: &AbstractSyntaxTree,
-) -> Result<(GrantRevokeType, SmolStr, Decimal), SbroadError> {
+) -> Result<(GrantRevokeType, SmolStr, Timeout), SbroadError> {
     let privilege_block_node_id = node
         .children
         .first()
