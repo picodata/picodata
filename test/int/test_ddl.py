@@ -2697,8 +2697,10 @@ cluster:
 
     # Must call instance_info() to update the replicaset_name field
     # (retriable, because there's no way to sync, because wait_online won't work)
-    Retriable().call(storage_2_1.instance_info)
-    Retriable().call(storage_2_2.instance_info)
+    # Use a longer timeout (30s) because instances with error injection may take
+    # longer to start accepting connections, especially under CI load.
+    Retriable(timeout=30).call(storage_2_1.instance_info)
+    Retriable(timeout=30).call(storage_2_2.instance_info)
     assert storage_2_1.replicaset_name == storage_2_2.replicaset_name
     replicaset_storage_2 = storage_2_1.replicaset_name
 
@@ -2727,14 +2729,14 @@ cluster:
     # XXX: at this point we would timeout if the bug we're testing would reappear.
     # After that governor blocks trying to configure sharding, because the new
     # replicaset cannot advance in raft log application
-    leader.wait_governor_status("update current sharding configuration", old_step_counter=counter)
+    leader.wait_governor_status("update current sharding configuration", old_step_counter=counter, timeout=30)
 
     # Unblock them
     storage_2_1.call("pico._inject_error", error_injection, False)
     storage_2_2.call("pico._inject_error", error_injection, False)
 
     # Now the new replicaset successfully finishes catching up
-    leader.wait_governor_status("idle")
+    leader.wait_governor_status("idle", timeout=30)
 
     replication_errors = []
     try:
