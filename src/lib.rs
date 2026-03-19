@@ -336,6 +336,7 @@ fn preload_http() {
 fn start_http_server(
     HttpAddress { host, port, .. }: &HttpAddress,
     tls: config::socket::TlsSettings,
+    kubernetes_probes: bool,
     registry: &'static prometheus::Registry,
 ) -> Result<(), Error> {
     let (cert_path, key_path, password_file_path, ca_file_path) = if tls.enabled() {
@@ -484,58 +485,61 @@ fn start_http_server(
         ))
     })?;
 
-    // Health check endpoints
-    lua.exec_with(
-        r#"
-            local handler = ...
-            pico.httpd:route({method = 'GET', path = 'api/v1/health/live'}, function(req)
-                return handler()
-            end)
-        "#,
-        tlua::Function::new(|| -> _ {
-            http_server::wrap_api_result(http_server::http_api_health_live())
-        }),
-    )
-    .map_err(|err| {
-        Error::other(format!(
-            "failed to add route `/api/v1/health/live` to http server: {err}",
-        ))
-    })?;
+    // Kubernetes health probe endpoints (can be disabled via config)
+    if kubernetes_probes {
+        lua.exec_with(
+            r#"
+                local handler = ...
+                pico.httpd:route({method = 'GET', path = 'api/v1/health/live'}, function(req)
+                    return handler()
+                end)
+            "#,
+            tlua::Function::new(|| -> _ {
+                http_server::wrap_api_result(http_server::http_api_health_live())
+            }),
+        )
+        .map_err(|err| {
+            Error::other(format!(
+                "failed to add route `/api/v1/health/live` to http server: {err}",
+            ))
+        })?;
 
-    lua.exec_with(
-        r#"
-            local handler = ...
-            pico.httpd:route({method = 'GET', path = 'api/v1/health/ready'}, function(req)
-                return handler()
-            end)
-        "#,
-        tlua::Function::new(|| -> _ {
-            http_server::wrap_api_result(http_server::http_api_health_ready())
-        }),
-    )
-    .map_err(|err| {
-        Error::other(format!(
-            "failed to add route `/api/v1/health/ready` to http server: {err}",
-        ))
-    })?;
+        lua.exec_with(
+            r#"
+                local handler = ...
+                pico.httpd:route({method = 'GET', path = 'api/v1/health/ready'}, function(req)
+                    return handler()
+                end)
+            "#,
+            tlua::Function::new(|| -> _ {
+                http_server::wrap_api_result(http_server::http_api_health_ready())
+            }),
+        )
+        .map_err(|err| {
+            Error::other(format!(
+                "failed to add route `/api/v1/health/ready` to http server: {err}",
+            ))
+        })?;
 
-    lua.exec_with(
-        r#"
-            local handler = ...
-            pico.httpd:route({method = 'GET', path = 'api/v1/health/startup'}, function(req)
-                return handler()
-            end)
-        "#,
-        tlua::Function::new(|| -> _ {
-            http_server::wrap_api_result(http_server::http_api_health_startup())
-        }),
-    )
-    .map_err(|err| {
-        Error::other(format!(
-            "failed to add route `/api/v1/health/startup` to http server: {err}",
-        ))
-    })?;
+        lua.exec_with(
+            r#"
+                local handler = ...
+                pico.httpd:route({method = 'GET', path = 'api/v1/health/startup'}, function(req)
+                    return handler()
+                end)
+            "#,
+            tlua::Function::new(|| -> _ {
+                http_server::wrap_api_result(http_server::http_api_health_startup())
+            }),
+        )
+        .map_err(|err| {
+            Error::other(format!(
+                "failed to add route `/api/v1/health/startup` to http server: {err}",
+            ))
+        })?;
+    }
 
+    // Detailed health status endpoint (always available, requires auth)
     lua.exec_with(
         r#"
             local handler = ...
@@ -1889,13 +1893,17 @@ fn setup_metrics_and_start_http_server(
 
     let http_config = if config.instance.http.enabled() {
         let addr = config.instance.http.listen.clone().unwrap_or_default();
-        Some((addr, config.instance.http.tls.clone()))
+        Some((
+            addr,
+            config.instance.http.tls.clone(),
+            config.instance.http.kubernetes_probes(),
+        ))
     } else {
         None
     };
 
-    if let Some((addr, tls)) = http_config {
-        start_http_server(&addr, tls, registry)?;
+    if let Some((addr, tls, kubernetes_probes)) = http_config {
+        start_http_server(&addr, tls, kubernetes_probes, registry)?;
 
         if cfg!(feature = "webui") {
             tlog!(Info, "Web UI is enabled");

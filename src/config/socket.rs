@@ -99,6 +99,13 @@ pub struct HttpConfig {
     #[serde(default, skip_serializing_if = "TlsSettings::is_default")]
     #[introspection(nested)]
     pub tls: TlsSettings,
+
+    /// Whether Kubernetes health probe endpoints are enabled.
+    /// When false, /health/live, /health/ready, and /health/startup return 404.
+    /// Defaults to `true`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[introspection(config_default = true)]
+    pub kubernetes_probes: Option<bool>,
 }
 
 impl HttpConfig {
@@ -123,12 +130,20 @@ impl HttpConfig {
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
+    /// Returns whether Kubernetes health probe endpoints are enabled.
+    /// Defaults to `true`.
+    #[inline]
+    pub fn kubernetes_probes(&self) -> bool {
+        self.kubernetes_probes.unwrap_or(true)
+    }
+
     /// Returns true if this section has any configuration.
     pub fn has_any_setting(&self) -> bool {
         self.enabled.is_some()
             || self.listen.is_some()
             || self.advertise.is_some()
             || self.tls.has_any_setting()
+            || self.kubernetes_probes.is_some()
     }
 
     /// Returns true if this is the default (empty) configuration.
@@ -378,6 +393,7 @@ mod tests {
         assert!(http.enabled());
         assert_eq!(http.listen(), HttpAddress::default());
         assert!(!http.tls.enabled());
+        assert!(http.kubernetes_probes());
     }
 
     #[test]
@@ -420,6 +436,7 @@ instance:
     enabled: true
     listen: "127.0.0.1:8080"
     advertise: "public.example.com:8080"
+    kubernetes_probes: false
     tls:
       enabled: true
       cert_file: /path/to/cert.pem
@@ -435,6 +452,7 @@ instance:
         let config = PicodataConfig::read_yaml_contents(yaml).unwrap();
         let http = config.instance.http;
         assert!(http.enabled());
+        assert!(!http.kubernetes_probes());
         assert_eq!(http.listen.unwrap().to_string(), "127.0.0.1:8080");
         assert_eq!(
             http.advertise.unwrap().to_string(),
