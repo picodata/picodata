@@ -38,7 +38,7 @@
 
 # Change Log
 
-# [11.0.0] Unreleased
+# [11.0.0] Mar 19 2026
 
 ### Added
 

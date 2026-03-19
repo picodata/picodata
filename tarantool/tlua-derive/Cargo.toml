@@ -2,7 +2,7 @@
 authors = ["Georgy Moshkin <gmoshkin@picodata.io>"]
 name = "tlua-derive"
 description = "Tlua derive macro definitions"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2021"
 license = "BSD-2-Clause"
 documentation = "https://docs.rs/tlua-derive/"
