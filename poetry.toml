@@ -1,3 +1,9 @@
+[installer]
+max-workers = 6
+
+[requests]
+max-retries = 3
+
 [keyring]
 enabled = false
 
