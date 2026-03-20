@@ -8,11 +8,12 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-## [25.5.9] - Unreleased
+## [25.5.9] - 2026-03-20
 
-### Features
+### Fixes
 
 - Support cluster update to next major version (26.1.0).
+- Fixed incorrect filter pushdown into compound queries containing window functions.
 
 ## [25.5.8] - 2026-02-25
 
@@ -23,7 +24,6 @@ with the `YY.MINOR.MICRO` scheme.
 - Introduce `sql_preemption_opcode_max` to control the VDBE opcode interval
   between execution time checks when `sql_preemption` is enabled.
 - Fixed local SQL iterators to survive fiber yields during table truncation.
-- Fixed incorrect filter pushdown into compound queries containing window functions.
 
 ### Fixes
 
