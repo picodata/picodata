@@ -405,7 +405,16 @@ test-rs-linux:
       policy: pull
     - <<: *py_cache
       policy: pull
+    - <<: *base_cache
+      policy: pull
   script:
+    - tools/ensure_checkout.sh
+
+    # Setup sccache
+    - |
+      ci-log-section start "sccache-setup" Setting up sccache ...
+      sccache --show-stats
+      ci-log-section end "sccache-setup"
 
     - |
       ci-log-section start "test sql-planner" Test sql-planner
@@ -420,6 +429,12 @@ test-rs-linux:
       make test-rs \
         CARGO_FLAGS_EXTRA="--profile=$BUILD_PROFILE"
       ci-log-section end "test"
+
+    # Show sccache statistics
+    - |
+      ci-log-section start "sccache-stats" sccache statistics ...
+      sccache --show-stats
+      ci-log-section end "sccache-stats"
 
   artifacts:
     when: always
