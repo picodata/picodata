@@ -11,7 +11,7 @@ RUN dnf -y install dnf-plugins-core epel-release \
     && dnf module -y enable nodejs:22 \
     && dnf install -y --nobest \
                 openssl-devel libunwind libunwind-devel \
-                gcc gcc-c++ make cmake git libstdc++-static libtool \
+                gcc gcc-c++ make cmake git libstdc++-static libtool patch \
                 nodejs npm \
     && dnf clean all
 
