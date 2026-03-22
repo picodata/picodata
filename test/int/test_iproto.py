@@ -113,7 +113,7 @@ def test_cross_cluster_isolation(cluster: Cluster):
 
     # Step 1: Create cluster A with 3 nodes
     i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=3)
-    i1.promote_or_fail()
+    cluster.wait_leader_elected()
 
     first_cluster_uuid = i1.cluster_uuid
 
@@ -135,7 +135,7 @@ def test_cross_cluster_isolation(cluster: Cluster):
     i2.restart(remove_data=True)
     i1.wait_online()
     i2.wait_online()
-    i1.promote_or_fail()
+    cluster.wait_leader_elected()
 
     assert i1.cluster_uuid == i2.cluster_uuid
     assert i1.cluster_uuid != first_cluster_uuid

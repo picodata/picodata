@@ -2,7 +2,6 @@ import time
 
 from conftest import Cluster, log_crawler
 
-
 _3_SEC = 3
 
 
@@ -42,7 +41,7 @@ def test_revoke_default_privileges_then_bootstrap_from_raft_snapshot(cluster: Cl
     """
 
     i1, i2 = cluster.deploy(instance_count=2)
-    i1.promote_or_fail()
+    cluster.wait_leader_elected()
     i1.assert_raft_status("Leader")
 
     i1.sql(f"CREATE USER {user_name} WITH PASSWORD 'J333333nkins'")

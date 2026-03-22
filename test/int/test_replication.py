@@ -206,7 +206,7 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
     )
 
     # Make sure i1 is leader.
-    i1.promote_or_fail()
+    cluster.wait_leader_elected()
 
     # Initiate master switchover.
     index, _ = cluster.cas(
@@ -259,7 +259,7 @@ def test_expel_blocked_by_replicaset_master_switchover_to_online_replica(
     i4.sql(""" INSERT INTO mytable VALUES (0, 'foo'), (1, 'bar'), (2, 'baz') """)
 
     # Make sure i1 is leader.
-    i1.promote_or_fail()
+    cluster.wait_leader_elected()
 
     # Initiate master switchover by expelling i4.
     with pytest.raises(CommandFailed) as e:
@@ -319,7 +319,7 @@ def test_expel_blocked_by_replicaset_master_switchover_to_offline_replica(
     i4.sql(""" INSERT INTO mytable VALUES (0, 'foo'), (1, 'bar'), (2, 'baz') """)
 
     # Make sure i1 is leader.
-    i1.promote_or_fail()
+    cluster.wait_leader_elected()
 
     # Initiate master switchover by expelling i4.
     with pytest.raises(CommandFailed) as e:
@@ -472,8 +472,8 @@ def test_replication_rpc_protection_from_old_governor(cluster: Cluster):
     # wait till governor starts to configure replication and gets to injected failure
     injection_hit.wait_matched()
 
-    # bump term
-    i2.promote_or_fail()
+    # bump term by transferring leadership from i1 to i2
+    i1.raft_transfer_leadership(i2.raft_id)
 
     # remove injected error
     i1.call("pico._inject_error", "BLOCK_REPLICATION_RPC_ON_CLIENT", False)
@@ -511,9 +511,9 @@ def test_replication_demote_protection_from_old_governor(cluster: Cluster):
     # wait for the error injection to block the demotion process
     injection_hit.wait_matched()
 
-    # promote i2 to master. term is increased, new governor becomes active.
+    # transfer leadership to i2. term is increased, new governor becomes active.
     # starting from this point the cluster should not accept actions from old governors
-    i2.promote_or_fail()
+    i1.raft_transfer_leadership(i2.raft_id)
 
     # remove the injected error that blocks the demotion
     i1.call("pico._inject_error", "BLOCK_REPLICATION_DEMOTE", False)
@@ -549,8 +549,8 @@ def test_stale_governor_replication_requests(cluster: Cluster):
     # inject an error to cause a timeout during synchronization before promotion
     i1.call("pico._inject_error", "BLOCK_GOVERNOR_BEFORE_REPLICATION_CALL", True)
 
-    # promote i2 to master
-    i2.promote_or_fail()
+    # transfer leadership to i2
+    i1.raft_transfer_leadership(i2.raft_id)
 
     new_term = i2.raft_term()
     assert new_term > initial_term, "Term should increase after new leader election"
@@ -696,7 +696,7 @@ def test_iproto_tls_enable_after_bootstrap(cluster: Cluster):
     Test case when we setup cluster without tls first and then enable it
     """
     (i1, i2) = cluster.deploy(instance_count=2, init_replication_factor=2)
-    i1.promote_or_fail()
+    cluster.wait_leader_elected()
 
     assert_box_replication_follow(cluster)
 
@@ -708,7 +708,7 @@ def test_iproto_tls_enable_after_bootstrap(cluster: Cluster):
 
     i1.start()
     i2.start()
-    i2.promote_or_fail()
+    cluster.wait_leader_elected()
 
     cluster.wait_online()
 

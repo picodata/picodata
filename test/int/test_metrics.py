@@ -356,9 +356,13 @@ def test_instance_state_metric(cluster: Cluster):
             assert sample.labels["tier"] == "default"
             assert sample.labels["state"] == "Online"
 
-    # shut down one instance, ensure others see it as offline
+    # shut down one instance, ensure others see it as offline.
+    # With check_quorum, advance the raft clock to trigger immediate election.
     i1.terminate()
-    i3.promote_or_fail()
+    for i in [i2, i3]:
+        i.call("pico.raft_tick", 100)
+
+    cluster.wait_leader_elected([i2, i3])
 
     all_but_first_report_online(cluster, i1.name)
 
