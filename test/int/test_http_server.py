@@ -466,15 +466,20 @@ def test_webui_replicaset_state(cluster: Cluster):
     i3 = cluster.add_instance(wait_online=True, tier="red")
     i4 = cluster.add_instance(wait_online=True, tier="red")
 
-    # 1. Make sure i3 is leader
+    # 1. Make i3 the leader via transfer
     # 2. Kill i3
-    # 3. Make sure i4 was promoted
+    # 3. Wait for a new leader to be elected
     # 4. Check that replicaset status == Online
-    i3.promote_or_fail()
+    leader = cluster.leader()
+    leader.raft_transfer_leadership(i3.raft_id)
     i3.kill()
     cluster.wait_has_states(i3, "Offline", "Offline")
 
-    i4.promote_or_fail()
+    # With check_quorum, advance raft clock to trigger immediate election.
+    for i in [i1, i2, i4]:
+        i.call("pico.raft_tick", 100)
+
+    cluster.wait_leader_elected([i1, i2, i4])
 
     # we have to query i4 to avoid incosistency in cluster view
     # data from global tables (as instance state etc) could be

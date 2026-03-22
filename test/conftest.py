@@ -1972,6 +1972,18 @@ Last governor error is:
     def raft_leader_id(self):
         return self.call(".proc_raft_leader_id")
 
+    def raft_transfer_leadership(self, new_leader_id: int):
+        """Ask this instance (must be the current leader) to transfer
+        leadership to the given raft node. Retries until the transfer
+        succeeds and the new leader is confirmed."""
+
+        def do_transfer():
+            self.call(".proc_raft_transfer_leader", new_leader_id)
+            status = self.call(".proc_raft_info")
+            assert status["state"] != "Leader", "leadership not yet transferred"
+
+        Retriable().call(do_transfer)
+
     def raft_leader_uuid(self):
         return self.call(".proc_raft_leader_uuid")
 
@@ -2024,35 +2036,6 @@ Last governor error is:
             return step_counter
 
         return Retriable(fatal=NotALeader).call(impl)
-
-    def promote_or_fail(self):
-        log.info(f"Instance.promote_or_fail({self})")
-
-        attempt = 0
-
-        def make_attempt():
-            nonlocal attempt
-            attempt = attempt + 1
-            log.info(f"{self} is trying to become a leader, {attempt=}")
-
-            # 1. Force the node to campaign.
-            self.call(".proc_raft_promote")
-
-            # 2. Wait for the election to conclude. After campaign_and_yield,
-            #    the node is PreCandidate or Candidate. Raft guarantees the
-            #    election concludes within the election timeout (~10s), after
-            #    which the node becomes either Leader or Follower.
-            def election_concluded():
-                status = self.call(".proc_raft_info")
-                assert status["state"] not in ("Candidate", "PreCandidate")
-
-            Retriable().call(election_concluded)
-
-            # 3. Check that we actually won.
-            self.assert_raft_status("Leader")
-
-        Retriable().call(make_attempt)
-        log.info(f"{self} is a leader now")
 
     def grant_privilege(self, user, privilege: str, object_type: str, object_name: Optional[str] = None):
         if privilege == "execute" and object_type == "role":
@@ -2759,6 +2742,25 @@ class Cluster:
         )
         self.peer = self.get_instance_by_address(leader_address)
         return self.peer
+
+    def wait_leader_elected(self, instances: list["Instance"] | None = None) -> "Instance":
+        """Wait until one of the given instances becomes the raft leader.
+        If instances is None, checks all alive instances in the cluster.
+        Returns the leader instance."""
+
+        if instances is None:
+            return Retriable().call(self.leader)
+
+        def check():
+            for i in instances:
+                status = i.call(".proc_raft_info")
+                if status["leader_id"] != 0:
+                    for candidate in instances:
+                        if candidate.call(".proc_raft_info")["state"] == "Leader":
+                            return candidate
+            assert False, "no leader elected yet"
+
+        return Retriable().call(check)
 
     def cas(
         self,

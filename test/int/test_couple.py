@@ -13,28 +13,33 @@ def cluster2(cluster: Cluster):
 def test_switchover(cluster2: Cluster):
     i1, i2 = cluster2.instances
 
-    i1.promote_or_fail()
-    i1.assert_raft_status("Leader")
+    cluster2.wait_leader_elected()
 
-    i2.promote_or_fail()
-    i2.assert_raft_status("Leader")
+    # Transfer leadership from i1 to i2. With check_quorum enabled,
+    # a forced campaign cannot unseat an active leader.
+    # Leadership transfer is the correct way to do a switchover.
+    i1.raft_transfer_leadership(i2.raft_id)
 
-    # Check idempotency
-    i2.promote_or_fail()
+    # Transfer back
+    i2.raft_transfer_leadership(i1.raft_id)
 
 
-def test_failover(cluster2: Cluster):
-    i1, i2 = cluster2.instances
-    i1.promote_or_fail()
+def test_failover(cluster: Cluster):
+    # Need 3 instances for failover: after killing the leader, the
+    # remaining 2 must form a majority (2 of 3) to elect a new leader.
+    # With check_quorum, a 2-node cluster cannot elect after losing 1.
+    i1, i2, i3 = cluster.deploy(instance_count=3)
+    i1 = cluster.wait_leader_elected()
 
-    Retriable().call(i2.assert_raft_status, "Follower", leader_id=i1.raft_id)
+    # Kill the leader to trigger failover. With check_quorum, the
+    # remaining voters need the election timeout (~10s) to expire before
+    # they realize the leader is gone. Advance the raft clock on the
+    # surviving instances to trigger an immediate election.
+    i1.kill()
+    for i in [i2, i3]:
+        i.call("pico.raft_tick", 100)
 
-    def do_test():
-        i2.call("pico.raft_tick", 200)
-        i1.assert_raft_status("Follower", leader_id=i2.raft_id)
-        i2.assert_raft_status("Leader")
-
-    Retriable().call(do_test)
+    cluster.wait_leader_elected([i2, i3])
 
 
 def test_restart_follower(cluster2: Cluster):
@@ -44,8 +49,8 @@ def test_restart_follower(cluster2: Cluster):
 
     i1, i2 = cluster2.instances
 
-    # Make sure i1 is the leader
-    i1.promote_or_fail()
+    # Make sure there is a leader
+    cluster2.wait_leader_elected()
 
     assert i1.current_state() == ("Online", 1)
     assert i2.current_state() == ("Online", 1)
@@ -103,8 +108,8 @@ def test_restart_both(cluster2: Cluster):
     log.info("waiting for i2")
     i2.start()
 
-    # Speed up elections
-    i2.promote_or_fail()
+    # Wait for a leader to be elected
+    cluster2.wait_leader_elected()
 
     i1.wait_online()
     assert i1.current_state() == ("Online", 2)
@@ -121,8 +126,8 @@ def test_restart_both(cluster2: Cluster):
 def test_exit_after_persist_before_commit(cluster2: Cluster):
     [i1, i2] = cluster2.instances
 
-    # Make sure i1 is raft leader
-    i1.promote_or_fail()
+    # Make sure there is a raft leader
+    cluster2.wait_leader_elected()
 
     # Reduce the maximum interval between heartbeats, so that we don't have to
     # wait for eternity
@@ -146,8 +151,8 @@ def test_exit_after_persist_before_commit(cluster2: Cluster):
 def test_exit_after_commit_before_apply(cluster2: Cluster):
     [i1, i2] = cluster2.instances
 
-    # Make sure i1 is raft leader
-    i1.promote_or_fail()
+    # Make sure there is a raft leader
+    cluster2.wait_leader_elected()
 
     i2.call("pico._inject_error", "EXIT_AFTER_RAFT_PERSISTS_HARD_STATE", True)
 
@@ -166,8 +171,8 @@ def test_exit_after_commit_before_apply(cluster2: Cluster):
 def test_exit_after_apply(cluster2: Cluster):
     [i1, i2] = cluster2.instances
 
-    # Make sure i1 is raft leader
-    i1.promote_or_fail()
+    # Make sure there is a raft leader
+    cluster2.wait_leader_elected()
 
     i2.call("pico._inject_error", "EXIT_AFTER_RAFT_HANDLES_COMMITTED_ENTRIES", True)
 

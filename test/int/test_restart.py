@@ -23,13 +23,13 @@ cluster:
 """
     )
 
-    arbiter1 = cluster.add_instance(tier="arbiter", wait_online=False)
+    _arbiter1 = cluster.add_instance(tier="arbiter", wait_online=False)
     _arbiter2 = cluster.add_instance(tier="arbiter", wait_online=False)
     _arbiter3 = cluster.add_instance(tier="arbiter", wait_online=False)
     storage = cluster.add_instance(tier="storage", wait_online=False)
     cluster.wait_online()
 
-    arbiter1.promote_or_fail()
+    cluster.wait_leader_elected()
 
     # now restart the storage node 10 times and see how long each restart takes
     for _ in range(10):

@@ -117,17 +117,22 @@ def test_log_rollback(cluster3: Cluster):
     fix_picodata_procs(i2)
     fix_picodata_procs(i3)
 
-    # Help i2 to become a new leader
-    i2.promote_or_fail()
-    Retriable().call(lambda: i3.assert_raft_status("Follower", i2.raft_id))
+    # Advance raft clock to expire the election timeout and trigger
+    # a new election among i2 and i3.
+    for i in [i2, i3]:
+        i.call("pico.raft_tick", 100)
 
-    print(i2.call("pico.raft_log", dict(return_string=True)))
-    print(i2.call("box.space._raft_state:select"))
-    propose_state_change(i2, "i2 takes the leadership")
+    new_leader = cluster3.wait_leader_elected([i2, i3])
+    other = i3 if new_leader == i2 else i2
+    Retriable().call(lambda: other.assert_raft_status("Follower", new_leader.raft_id))
+
+    print(new_leader.call("pico.raft_log", dict(return_string=True)))
+    print(new_leader.call("box.space._raft_state:select"))
+    propose_state_change(new_leader, "new leader takes the leadership")
 
     # Now i1 has an uncommitted, but persisted entry that should be rolled back.
     fix_picodata_procs(i1)
-    Retriable().call(lambda: i1.assert_raft_status("Follower", i2.raft_id))
+    Retriable().call(lambda: i1.assert_raft_status("Follower", new_leader.raft_id))
 
     propose_state_change(i1, "i1 is alive again")
 
@@ -423,7 +428,7 @@ def test_automatic_offline_due_to_global_dml_conflict(cluster: Cluster):
 def test_automatic_offline_by_applied_index_is_not_too_eager(cluster: Cluster):
     leader, follower = cluster.deploy(instance_count=2)
 
-    leader.promote_or_fail()
+    cluster.wait_leader_elected()
     # Reduce the timeout so that the test doesn't take too long
     leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 10")
     leader.sql("CREATE TABLE global_table (id INT PRIMARY KEY) DISTRIBUTED GLOBALLY")

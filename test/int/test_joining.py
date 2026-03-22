@@ -81,10 +81,11 @@ def test_discovery(cluster3: Cluster):
     i1, i2, i3 = cluster3.instances
 
     # make sure i1 is leader
-    i1.promote_or_fail()
+    cluster3.wait_leader_elected()
 
-    # change leader
-    i2.promote_or_fail()
+    # change leader via transfer (check_quorum prevents forced campaign
+    # against an active leader)
+    i1.raft_transfer_leadership(i2.raft_id)
 
     # Wait until i1 knows that i2 is elected to reduce test flakiness
     # (proc_discover may return an error during raft leader elections).
@@ -117,20 +118,21 @@ def test_parallel(cluster3: Cluster):
     i1, i2, i3 = cluster3.instances
 
     # Make sure cluster is ready
-    i1.promote_or_fail()
+    cluster3.wait_leader_elected()
     i2.assert_raft_status("Follower", leader_id=i1.raft_id)
     i3.assert_raft_status("Follower", leader_id=i1.raft_id)
 
-    # Kill i1
+    # Kill i1. With check_quorum, advance the raft clock on surviving
+    # instances to trigger an immediate election.
     i1.terminate()
+    for i in [i2, i3]:
+        i.call("pico.raft_tick", 100)
 
-    # Make sure cluster is ready
-    i2.promote_or_fail()
-    i3.assert_raft_status("Follower", leader_id=i2.raft_id)
+    new_leader = cluster3.wait_leader_elected([i2, i3])
 
     # Add instance with the first instance being i1
     i4 = cluster3.add_instance(peers=[i1.iproto_listen, i2.iproto_listen, i3.iproto_listen])
-    i4.assert_raft_status("Follower", leader_id=i2.raft_id)
+    i4.assert_raft_status("Follower", leader_id=new_leader.raft_id)
 
 
 def test_basic_replication_setup(cluster: Cluster):
@@ -171,14 +173,14 @@ def test_basic_replication_setup(cluster: Cluster):
 
     # It doesn't affect replication setup
     # but speeds up the test by eliminating failover.
-    i1.promote_or_fail()
+    cluster.wait_leader_elected()
 
     i2.assert_raft_status("Follower")
     i2.restart()
     Retriable().call(check_replicated, i2)
 
     i2.wait_online()
-    i2.promote_or_fail()
+    i1.raft_transfer_leadership(i2.raft_id)
 
     i1.assert_raft_status("Follower")
     i1.restart()

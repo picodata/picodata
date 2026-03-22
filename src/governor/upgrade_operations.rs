@@ -108,7 +108,13 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             // See https://git.picodata.io/core/picodata/-/issues/2683
             ("sql", "UPDATE _pico_tier SET is_default = true WHERE 1 in (SELECT count(*) FROM _pico_tier)")
         ]
-    )
+    ),
+    (
+        "26.2.1",
+        &[
+            ("proc_name", "proc_raft_transfer_leader"),
+        ]
+    ),
 ];
 
 tarantool::define_str_enum! {

@@ -1012,7 +1012,7 @@ def test_backup_manual_abort(cluster: Cluster):
     for i in [i1, i2]:
         cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
 
-    i1.promote_or_fail()
+    cluster.wait_leader_elected()
 
     # give the admin account a known password to let us call pico.abort_ddl
     # `pico_service` does not have enough privileges
@@ -1081,7 +1081,7 @@ def test_backup_aborts_with_offline_nodes(cluster: Cluster):
     for i in [i1, i2]:
         cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
 
-    i1.promote_or_fail()
+    cluster.wait_leader_elected()
 
     # stop i3. this will prevent the backup from starting
     i3.terminate()

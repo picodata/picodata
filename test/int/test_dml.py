@@ -425,7 +425,7 @@ def do_test_global_dml_contention_load(
         followers.append(follower)
 
     cluster.wait_online()
-    leader.promote_or_fail()
+    cluster.wait_leader_elected()
 
     leader.sql("""
         CREATE TABLE test (id INT PRIMARY KEY, counter INT NOT NULL)

@@ -58,6 +58,7 @@ proc_raft_join
 proc_raft_leader_id
 proc_raft_leader_uuid
 proc_raft_promote
+proc_raft_transfer_leader
 proc_raft_snapshot_next_chunk
 proc_read_index
 proc_replicaset_name

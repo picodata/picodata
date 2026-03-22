@@ -27,7 +27,7 @@ def test_expel_follower(cluster: Cluster):
 
     cluster.set_service_password("secret")
     i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=3)
-    i1.promote_or_fail()
+    cluster.wait_leader_elected()
 
     i3.assert_raft_status("Follower", leader_id=i1.raft_id)
 
@@ -53,7 +53,7 @@ def test_expel_leader(cluster: Cluster):
 
     cluster.set_service_password("secret")
     i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=3)
-    i1.promote_or_fail()
+    cluster.wait_leader_elected()
 
     i1.assert_raft_status("Leader")
 
@@ -78,7 +78,7 @@ def test_expel_by_follower(cluster: Cluster):
 
     cluster.set_service_password("secret")
     i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=3)
-    i1.promote_or_fail()
+    cluster.wait_leader_elected()
 
     i2.assert_raft_status("Follower", leader_id=i1.raft_id)
     i3.assert_raft_status("Follower", leader_id=i1.raft_id)
@@ -418,7 +418,7 @@ cluster:
     arbiter_2 = cluster.add_instance(name="arbiter_2", tier="arbiter", wait_online=False)
     cluster.add_instance(name="arbiter_3", tier="arbiter", wait_online=False)
     cluster.wait_online()
-    arbiter_1.promote_or_fail()
+    cluster.wait_leader_elected()
     cluster.add_instance(name="storage_1", tier="storage")
 
     counter = arbiter_1.wait_governor_status("idle")

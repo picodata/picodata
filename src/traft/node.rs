@@ -677,6 +677,9 @@ impl NodeImpl {
             id: raft_id,
             applied,
             pre_vote: true,
+            // Deposed leader should step down if it can't reach
+            // a quorum of followers within the election timeout
+            check_quorum: true,
             // Send heartbeat every 10 raft main loop ticks (see MainLoop::TICK).
             heartbeat_tick: 10,
             // Raft-rs suggests this to be 10 * heartbeat_tick.
@@ -3760,6 +3763,20 @@ fn proc_raft_interact(data: RawByteBuf) -> traft::Result<()> {
 fn proc_raft_promote() -> traft::Result<()> {
     let node = global()?;
     node.campaign_and_yield()?;
+    Ok(())
+}
+
+/// Transfer raft leadership to the given node.
+///
+/// Must be called on the current leader. The leader sends a
+/// `MsgTimeoutNow` to the target, which triggers an immediate
+/// election on the target node. Unlike `proc_raft_promote`, this
+/// works correctly with `check_quorum` enabled because the
+/// transfer is initiated by the leader itself.
+#[proc(public = false)]
+fn proc_raft_transfer_leader(new_leader_id: RaftId) -> traft::Result<()> {
+    let node = global()?;
+    node.transfer_leadership_and_yield(new_leader_id);
     Ok(())
 }
 

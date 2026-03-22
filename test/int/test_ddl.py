@@ -901,7 +901,9 @@ cluster:
 
     # Switch the raft leader, to check that storage_2 handled it correctly while
     # being blocked by raft entry application
-    voter_2.promote_or_fail()
+    current_leader = cluster.wait_leader_elected()
+    if current_leader != voter_2:
+        current_leader.raft_transfer_leadership(voter_2.raft_id)
     assert cluster.leader() == voter_2
 
     # Kill the replicaset master to trigger master switchover
