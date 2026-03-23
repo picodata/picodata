@@ -67,11 +67,11 @@ SELECT * FROM t WHERE a = 1 OPTION (FORWARD = OFF);
 объяснением, почему комбинация невалидна.
 
 
-| `read_preference` / `forward` |  `on`  | `off`  | `ro_to_rw` |
-|:-----------------------------:|:------:|:------:|:----------:|
-|            `any`              |   ☑    |   ✖    |     ☑      |
-|           `leader`            |   ☑    |   ☑    |     ☑      |
-|           `replica`           |   ☑    |   ✖    |     ☑      |
+| `read_preference` / `forward` |  `on`  | `ro_to_rw` | `off` | 
+|:-----------------------------:|:------:|:----------:|:-----:|
+|            `any`              |   ☑    |     ☑      |   ✖   |
+|           `leader`            |   ☑    |     ☑      |   ☑   |
+|           `replica`           |   ☑    |     ☑      |   ✖   |
 
 В случае `read_preference = any | replica` запрос может быть выполнен на
 реплике, что противоречит `forward = off`. При указании такой комбинации
@@ -227,7 +227,7 @@ buckets = unknown
 `g`, будут находиться на одном узле. В таком случае запрос может быть выполнен с
 более строгими ограничениями.
 
-Иными словами, вывод допустимых опций в explain является `best-effort` попыткой
+Иными словами, вывод допустимых опций в explain является best-effort попыткой
 указать пользователю, с какими опциями запрос гарантированно может быть
 выполнен.
 
@@ -245,20 +245,27 @@ CREATE TABLE t (a INT PRIMARY KEY, b INT);
 
 Рассмотрим запрос:
 ```sql
+-- здесь используется расширенный синтаксис psql для параметров
 INSERT INTO t VALUES ($1, $2), ($3, $4) \bind 1 2 3 4 \g
 ```
 
 Пусть его `explain` выглядит так:
 ```sql
- forward analysis (on > ro_to_rw > off):
-     forward = off
- buckets = [1934,1958]
-(5 rows)
+forward analysis (on > ro_to_rw > off):
+    forward = off
+buckets = [1934,1958]
 ```
 
 Из этого сразу следует, что запрос может быть **гарантированно** выполнен с
-опцией `forward = off`. Это может быть полезно для случая "умной" вставки
-данных, когда нужно удостовериться в том, что данные заливаются правильно.
+опцией `forward = off`.
+
+```sql
+INSERT INTO t VALUES ($1, $2), ($3, $4) OPTION (FORWARD = OFF) \bind 1 2 3 4 \g
+```
+
+Это позволяет убедиться, что:
+1. в драйвере корректно реализован алгоритм вычисления `bucket_id`;
+2. драйвер корректно выбрал узел для записи порции данных;
 
 #### `SELECT` запросы
 
@@ -269,18 +276,32 @@ SELECT * FROM t WHERE a = $1 or a = $2 \bind 5 2 \g
 
 Его `explain`:
 ```sql
-                            QUERY PLAN                            
-------------------------------------------------------------------
- forward analysis (on > ro_to_rw > off):
-     forward = ro_to_rw
- buckets = [219, 1410]
-(4 rows)
+forward analysis (on > ro_to_rw > off):
+    forward = ro_to_rw
+buckets = [219, 1410]
 ```
 
-После этого пользователь может выполнить запрос с опцией `forward = ro_to_rw`,
-в результате чего будет совершено не более одной сетевой пересылки.
+Проанализировав полученную информацию, пользователь сможет прийти к выводу, что
+запрос будет выполним с опцией `ro_to_rw`. Таким образом, в конец запроса можно
+дописать опцию `forward`:
+
+```sql
+SELECT * FROM t WHERE a = $1 or a = $2 OPTION (FORWARD = OFF) \bind 5 2 \g
+```
 
 Аналогично опция применима для запросов `UPDATE` и `DELETE`.
+
+#### Указание опции в `connection_string` psql
+
+Помимо дописывания опции в SQL запрос можно также модифицировать
+`connection_string` psql.
+
+```
+psql "postgres://postgres:T0psecret@127.0.0.1:4327?options=forward%3Doff"
+```
+
+В результате опция будет применяться к каждому SQL запросу. Это позволит **не**
+дописывать значение опции `forward` в конец каждого SQL запроса.
 
 ## Decision Outcome
 
@@ -291,7 +312,7 @@ comes out best (see below). -->
 
 ### Consequences
 
-TBD
+Проверка выполнимости опции `forward` не должна сказаться на производительности.
 <!--
 * Good, because positive consequence, e.g., improvement of one or more desired
   qualities, …
