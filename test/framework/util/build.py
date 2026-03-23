@@ -186,6 +186,26 @@ class Executable:
             self.path = Path(path)
             return
 
+        # The latest tagged patch isn't available as a binary yet
+        # (e.g. `25.5.9` is tagged but only `25.5.8` is published),
+        # try to get the previous patch as a fallback entry.
+        #
+        # This is fine because rolling tests cover minor or major upgrade paths, not
+        # patch-specific behavior - those have dedicated tests with pinned versions.
+        if self.version.micro > 1:
+            # fmt: off
+            name = (
+                "picodata-"
+                f"{self.version.major}"
+                f"{self.version.minor}"
+                f"{self.version.micro - 1}"
+            )
+            # fmt: on
+            path = shutil.which(name)
+            if path is not None:
+                self.path = Path(path)
+                return
+
         message = f"'{name}' binary is required to test against {self.version}"
         raise ValueError(message) if is_in_ci() else pytest.skip(message)
 

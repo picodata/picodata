@@ -42,15 +42,40 @@ def extract_version(rpm: Path) -> Version:
 
 
 def download_rpm(version: Version, dest: Path) -> Path:
-    subprocess.check_call(["dnf", "download", f"picodata-{version}.*"], cwd=dest)
+    def impl(version: Version, dest: Path) -> Path:
+        subprocess.check_call(["dnf", "download", f"picodata-{version}.*"], cwd=dest)
 
-    rpms = list(dest.glob(f"picodata-{version}*.rpm"))
-    if len(rpms) != 1:
-        error = f"Expected exactly one RPM"
-        hint = f"for version {version!r}, found: {rpms}"
-        raise RuntimeError(f"{error} {hint}")
+        rpms = list(dest.glob(f"picodata-{version}*.rpm"))
+        if len(rpms) != 1:
+            error = f"Expected exactly one RPM"
+            hint = f"for version {version!r}, found: {rpms}"
+            raise RuntimeError(f"{error} {hint}")
 
-    return rpms[0]
+        return rpms[0]
+
+    try:
+        return impl(version, dest)
+    except (subprocess.CalledProcessError, RuntimeError) as error:
+        if version.micro < 2:
+            raise error
+
+        # The latest tagged patch isn't available as a binary yet
+        # (e.g. `25.5.9` is tagged but only `25.5.8` is published),
+        # try to get the previous patch as a fallback entry.
+        #
+        # This is fine because rolling tests cover minor or major upgrade paths, not
+        # patch-specific behavior - those have dedicated tests with pinned versions.
+        fallback = Version(f"{version.major}.{version.minor}.{version.micro - 1}")
+        print(
+            f"version {version!r} not found, trying {fallback!r}...",
+            file=sys.stderr,
+        )
+        try:
+            return impl(fallback, dest)
+        except (subprocess.CalledProcessError, RuntimeError) as error:
+            reason = f"Could not download picodata for {version!r}"
+            hint = f"or earlier patch {fallback!r}: {error}"
+            raise RuntimeError(f"{reason} {hint}")
 
 
 def extract_archive(rpm: Path, dest: Path) -> None:
