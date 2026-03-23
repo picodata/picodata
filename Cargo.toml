@@ -34,7 +34,7 @@ hmac = { version = "0.12", features = ["reset"] }
 http = "1.0"
 indoc = "2.0"
 itoa = "1.0"
-jsonwebtoken = { version = "10.3", features = ["aws_lc_rs"] }
+jsonwebtoken = { version = "10.3", features = ["rust_crypto"] }
 libc = "0.2"
 libloading = "0.8"
 md5 = "0.8"
