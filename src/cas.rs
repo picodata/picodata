@@ -191,7 +191,14 @@ pub fn compare_and_swap(
     }
 
     let Some(leader_id) = node.status().leader_id else {
-        return Err(TraftError::LeaderUnknown);
+        return if force_local {
+            // If we do not return it as a fatal error here, a preemptively sent
+            // `handle_update_instance_request_and_wait` will loop indefinitely and
+            // prevent a leader from being elected during a cold restart.
+            Err(TraftError::LeaderUnknown)
+        } else {
+            Ok(CasResult::RetriableError(TraftError::LeaderUnknown))
+        };
     };
 
     let i_am_leader = leader_id == node.raft_id;
