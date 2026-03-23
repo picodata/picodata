@@ -138,12 +138,14 @@ Most of the information checked for readiness conditions and some other is inclu
 
 The proposed design is to have a dedicated endpoint for each of the listed requirements, all scoped under `/api/v1/health`:
 
-|        Endpoint        |               Purpose               | HTTP codes  |   Auth   | 
+|        Endpoint        |               Purpose               | HTTP codes  |   Auth   |
 | :--------------------: | :----------------------------------:| :---------: | :------: |
-| `/api/v1/health/startup` | Startup: has instance started yet?  |  `200`/`503`    | Optional |
-| `/api/v1/health/live`    | Liveness: is instance alive?        |  always `200` | Optional |
-| `/api/v1/health/ready`   | Readiness: can serve user traffic?  |  `200`/`503`    | Optional |
+| `/api/v1/health/startup` | Startup: has instance started yet?  |  `200`/`503`    | ~~Optional~~ **Upd.** None |
+| `/api/v1/health/live`    | Liveness: is instance alive?        |  always `200` | ~~Optional~~ **Upd.** None |
+| `/api/v1/health/ready`   | Readiness: can serve user traffic?  |  `200`/`503`    | ~~Optional~~ **Upd.** None |
 | `/api/v1/health/status`  | Detailed health related information |  always `200` | Required |
+
+**Upd.** Kubernetes probe endpoints (`startup`, `live`, `ready`) do not require authentication. They can be disabled entirely by setting `instance.http.kubernetes_probes: false` in the configuration file. When disabled, these endpoints return HTTP 404. The `/api/v1/health/status` endpoint remains available regardless of this setting.
 
 1. Startup endpoint `/api/v1/health/startup`
 
@@ -176,7 +178,7 @@ For `503` code, a short human-readable message indicating the failed startup che
 }
 ```
 
-Access to this endpoint should normally not require authentication, however, we should optionally support it to satisfy customers that have stringent security requirements.
+~~Access to this endpoint should normally not require authentication, however, we should optionally support it to satisfy customers that have stringent security requirements.~~
 
 2. Liveness endpoint `/api/v1/health/live`
 
@@ -186,7 +188,7 @@ This verifies that the Tarantool event loop is running and the embedded HTTP ser
 
 The endpoint integrates naturally with the K8s liveness probe.
 
-Access to this endpoint should normally not require authentication, however, we should optionally support it to satisfy customers that have stringent security requirements.
+~~Access to this endpoint should normally not require authentication, however, we should optionally support it to satisfy customers that have stringent security requirements.~~
 
 Note that according to K8s specification the orchestrator only starts to query this endpoint after the startup probe succeeds.
 
@@ -226,7 +228,7 @@ For `503` code, a short human-readable message indicating the failed health chec
 
 The endpoint should be used with the K8s readiness probe. When the instance is not ready, the orchestrator stops routing any user traffic to it until it becomes ready again. Note that intra-POD and POD-to-POD traffic is still allowed which should let the governor bring the instance back to the Online state.
 
-Although this endpoint should normally not require authentication, we may want to optionally support it because the checks performed by the background, albeit reasonably lightweight (table lookups, Lua evals), still open a path for creating extra load on the server (think DoS). Besides, some customers may have very stringent security requirements.
+~~Although this endpoint should normally not require authentication, we may want to optionally support it because the checks performed by the background, albeit reasonably lightweight (table lookups, Lua evals), still open a path for creating extra load on the server (think DoS). Besides, some customers may have very stringent security requirements.~~
 
 Note that according to K8s specification the orchestrator only starts to query this endpoint after the startup probe succeeds.
 
@@ -239,46 +241,55 @@ It always returns `200` code.
 In addition to various instance-related details, it includes a `status` field that provides a subjective yet intuitive summary as follows:
  - `healthy` means the instance is functional and does not show signs of service deterioration, i.e., operating normally
  - `degraded` means the instance has certain ongoing issues that affect its functionality, performance or capabilities, but remains at least partially operational
- - `unhealty` means the instance is currently non-functional: down, in Offline state, being expelled, etc.
+ - `unhealthy` means the instance is currently non-functional: down, in Offline state, being expelled, etc.
 
 
 The `status` field draws inspiration from ElasticSearch's "traffic light" statuses as well as various other use cases: [ASP.NET Core](https://learn.microsoft.com/en-us/aspnet/core/host-and-deploy/health-checks?view=aspnetcore-10.0#basic-health-probe), [Azure](https://docs.azure.cn/en-us/service-health/resource-health-overview#health-status), [Envoy](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/health_checking) and others.
 
 This also aligns with the proposal for `picodata doctor` utility in [#1789](https://git.picodata.io/core/picodata/-/issues/1789#note_151431).
 
-For `degraded` and `unhealty` statuses, a human-readable `reason` field is added.
+For `degraded` and `unhealthy` statuses, a human-readable ~~`reason` field~~ **Upd.** `reasons` field (array of strings) is added.
 
 The following conditions can result in the `degraded` status:
-|              Check          |                  Rationale               |          Failure Message      | 
+
+~~|              Check          |                  Rationale               |          Failure Message      |~~
+~~| :-------------------------: | :---------------------------------------:| :---------------------------: |~~
+~~|  `limbo.owner == 0`         | Tarantool sync replication is turned off | "limbo owner is X"            |~~
+~~|  No ongoing resharding    | Known bug when resharding [#1971](https://git.picodata.io/core/picodata/-/issues/1971) | "currently resharding"        |~~
+
+~~Note that certain conditions for declaring an instance degraded can be removed in later releases as we improve stability and fix bugs - see the "No ongoing resharding" check caused by [#1971](https://git.picodata.io/core/picodata/-/issues/1971) as an example.~~
+
+**Upd.**
+|              Check          |                  Rationale               |          Failure Message      |
 | :-------------------------: | :---------------------------------------:| :---------------------------: |
-|  `limbo.owner == 0`         | Tarantool sync replication is turned off | "limbo owner is X"            |
-|  No ongoing resharding    | Known bug when resharding [#1971](https://git.picodata.io/core/picodata/-/issues/1971) | "currently resharding"        |
+|  `limbo_owner != 0`         | Limbo is owned by an instance            | "limbo is owned by instance X" |
+|  `buckets.sending > 0`      | Resharding is in progress                | "resharding in progress"       |
+|  `current_state == Online && target_state == Offline` | Instance is transitioning to Offline | "instance is transitioning Online -> Offline" |
 
-Note that certain conditions for declaring an instance degraded can be removed in later releases as we improve stability and fix bugs - see the "No ongoing resharding" check caused by [#1971](https://git.picodata.io/core/picodata/-/issues/1971) as an example.
-
-For the `unhealthy` status, the `reason` should be the same as in the readiness probe API (`api/v1/health/ready`).
+For the `unhealthy` status, the ~~`reason` should be the same~~ **Upd.** `reasons` are the same as failure messages in the readiness probe API (`api/v1/health/ready`).
 
 Example response:
 
+<details>
+<summary>Original (outdated)</summary>
+
 ```json
 {
-    "limboOwner": 1,
     "status": "degraded",
-    "reason": "limbo owner is 1",
-    "timestamp": "2026-01-15T10:30:00Z",
+    "reasons": ["limbo is owned by instance 1"],
+    "timestamp": 1736937000,
     "uptimeSeconds": 86400,
+    "name": "i1",
     "uuid": "451b5e9a-d91c-4fc0-9180-fd6ef3b7b52a",
     "version": "26.1",
-    "name": "i1",
     "raftId": 1,
+    "tier": "default",
+    "replicaset": "r1",
     "currentState": "Online",
     "targetState": "Online",
     "targetStateReason": "wakeup",
-    "targetStateChangeTime": "2026-01-12T11:20:00Z",
-    "tier": "default",
-    "replicaset": "r1",
-    "isReplicasetMaster": true,
-    "systemCatalogVersion": "25.5.3",
+    "targetStateChangeTime": "2026-01-12T11:20:00",
+    "limboOwner": 1,
     "raft": {
         "state": "Leader",
         "term": 5,
@@ -291,20 +302,101 @@ Example response:
     },
     "buckets": {
         "active": 20,
-        "garbage": 0,
         "pinned": 2,
-        "receiving": 1,
         "sending": 0,
+        "receiving": 1,
+        "garbage": 0,
         "total": 23
     },
-    cluster: {
-      "uuid": "781b5e9a-d91c-2fc0-9180-ac6ef3b7b52a",
-      "version": "25.5.5"
+    "cluster": {
+        "uuid": "781b5e9a-d91c-2fc0-9180-ac6ef3b7b52a",
+        "version": "25.5.5"
     }
 }
 ```
 
+</details>
+
+**Upd.** Example response:
+
+```json
+{
+    "status": "degraded",
+    "reasons": ["limbo is owned by instance 1"],
+    "timestamp": 1736937000,
+    "uptimeSeconds": 86400,
+    "name": "i1",
+    "uuid": "451b5e9a-d91c-4fc0-9180-fd6ef3b7b52a",
+    "version": "26.1",
+    "raftId": 1,
+    "tier": "default",
+    "replicaset": "r1",
+    "currentState": "Online",
+    "targetState": "Online",
+    "targetStateReason": "wakeup",
+    "targetStateChangeTime": "2026-01-12T11:20:00",
+    "limboOwner": 1,
+    "raft": {
+        "state": "Leader",
+        "term": 5,
+        "leaderId": 1,
+        "leaderName": "i1",
+        "appliedIndex": 1234,
+        "commitedIndex": 1237,
+        "compactedIndex": 1220,
+        "persistedIndex": 1235
+    },
+    "buckets": {
+        "active": 20,
+        "pinned": 2,
+        "sending": 0,
+        "receiving": 1,
+        "garbage": 0,
+        "total": 23
+    },
+    "cluster": {
+        "uuid": "781b5e9a-d91c-2fc0-9180-ac6ef3b7b52a",
+        "version": "25.5.5"
+    }
+}
+```
+
+**Upd.** Key changes from original:
+- `reason` (string) → `reasons` (array of strings)
+- `timestamp` is Unix epoch seconds (integer), not ISO 8601 string
+- Removed `isReplicasetMaster` and `systemCatalogVersion` fields
+- Field order matches actual serialization
+
 This endpoint requires authentication because it exposes a lot of information about the instance's state and internals which should not be available to unauthorized users.
+
+> **Note:** Authorization is based on JWT tokens as described in [WebUI Auth JWT ADR](./2025-09-22-webui-auth-jwt.md).
+>
+> <details>
+> <summary>Example: obtaining and using a JWT token</summary>
+>
+> ```bash
+> HOST="http://localhost:8080"
+>
+> # 1. Login
+> TOKENS=$(curl -s -X POST "$HOST/api/v1/session" \
+>   -H "Content-Type: application/json" \
+>   -d '{"username": "admin", "password": "T0psecret"}')
+>
+> AUTH=$(echo "$TOKENS" | jq -r '.auth')
+> REFRESH=$(echo "$TOKENS" | jq -r '.refresh')
+>
+> # 2. Get health status
+> curl -s "$HOST/api/v1/health/status" \
+>   -H "Authorization: Bearer $AUTH" | jq
+>
+> # 3. Refresh tokens (when needed)
+> NEW_TOKENS=$(curl -s "$HOST/api/v1/session" \
+>   -H "Authorization: Bearer $REFRESH")
+>
+> echo "$NEW_TOKENS" | jq
+> ```
+>
+> </details>
 
 ## Decision Outcome
 
