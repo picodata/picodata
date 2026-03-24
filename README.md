@@ -26,6 +26,9 @@
   </div>
 
   <div>
+    <a href="https://discord.gg/tC5kuRVDMa">
+      <img src="https://img.shields.io/badge/discord-join_us-e23956.svg?style=for-the-badge" alt="Discord"/>
+    </a>
     <a href="https://t.me/picodataru">
       <img src="https://img.shields.io/badge/telegram-follow_us-e23956.svg?style=for-the-badge" alt="Telegram"/>
     </a>
