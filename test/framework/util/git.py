@@ -19,5 +19,5 @@ def project_repo_instance() -> Repo:
 @functools.cache
 def project_git_version() -> Version:
     git_describe = project_git_instance().describe()
-    version_part, _ = git_describe.split("-", maxsplit=1)
+    version_part = git_describe.split("-", maxsplit=1)[0]
     return Version(version_part)
