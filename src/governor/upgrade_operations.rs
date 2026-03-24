@@ -99,7 +99,7 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
         ]
     ),
     (
-        "26.1.0",
+        "26.1.1",
         &[
             ("exec_script", InternalScript::AlterPicoTableAddOptsField.as_str()),
 
