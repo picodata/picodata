@@ -24,8 +24,8 @@ use tarantool::space::Space;
 use tarantool::tlua::{self, Index as _};
 
 const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
-const AUTH_TOKEN_EXPIRY_HOURS: u64 = 24;
-const REFRESH_TOKEN_EXPIRY_DAYS: u64 = 365;
+const AUTH_TOKEN_EXPIRY: chrono::Duration = chrono::Duration::hours(24);
+const REFRESH_TOKEN_EXPIRY: chrono::Duration = chrono::Duration::days(365);
 const CONTENT_TYPE_JSON: &'static str = "application/json";
 
 extern "C" {
@@ -94,7 +94,6 @@ fn as_admin<T>(f: impl FnOnce() -> T) -> T {
 #[derive(Debug, Serialize, Deserialize)]
 struct JwtClaims {
     sub: String,
-    exp: u64,
     typ: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     roles: Option<Vec<String>>,
@@ -138,16 +137,16 @@ pub(crate) enum AuthError {
     InvalidHeader,
     #[error("invalid token type")]
     InvalidType,
-    #[error("token expired")]
-    Expired,
     #[error("invalid credentials")]
     InvalidCredentials,
     #[error("insufficient privileges")]
     InsufficientPrivileges,
     #[error("failed to encode jwt: {0}")]
-    JWTEncoding(String),
+    JWTEncoding(jwt_compact::CreationError),
+    #[error("failed to decode jwt: {0}")]
+    JWTParsing(jwt_compact::ParseError),
     #[error("invalid jwt: {0}")]
-    JWTValidation(String),
+    JWTValidation(jwt_compact::ValidationError),
     #[error("failed to find user jwt: {0}")]
     UserLookup(String),
     #[error("failed to find privileges: {0}")]
@@ -159,7 +158,7 @@ impl AuthError {
         String::from(match self {
             AuthError::Inner(..) => "error",
             AuthError::InvalidCredentials => "wrongCredentials",
-            AuthError::Expired => "sessionExpired",
+            AuthError::JWTValidation(jwt_compact::ValidationError::Expired) => "sessionExpired",
             AuthError::Disabled => "authDisabled",
             _ => "authError",
         })
@@ -713,17 +712,19 @@ fn http_api_tiers() -> traft::Result<Vec<TierInfo>> {
     Ok(res.into_values().collect())
 }
 
-fn get_jwt_secret() -> AuthResult<Option<String>> {
+fn get_jwt_secret() -> AuthResult<Option<jwt_compact::alg::Hs256Key>> {
     let node = crate::traft::node::global().map_err(|e| AuthError::Inner(e.to_string()))?;
     let secret = node.alter_system_parameters.borrow().jwt_secret.clone();
 
     // Given successful db connection, secret cannot technically be None at this point,
     // as it is set to empty string to disable auth instead of NULL
     if secret.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(secret))
+        return Ok(None);
     }
+
+    let secret = jwt_compact::alg::Hs256Key::new(secret.as_bytes());
+
+    Ok(Some(secret))
 }
 
 fn get_unix_timestamp() -> u64 {
@@ -738,49 +739,62 @@ fn create_jwt_token(
     token_type: &str,
     roles: Option<Vec<String>>,
 ) -> AuthResult<String> {
-    let Some(secret) = get_jwt_secret()? else {
+    use jwt_compact::AlgorithmExt as _;
+
+    let Some(secret_key) = get_jwt_secret()? else {
         return Err(AuthError::Disabled);
     };
 
-    let expiry = match token_type {
-        "auth" => get_unix_timestamp() + (AUTH_TOKEN_EXPIRY_HOURS * 3600),
-        "refresh" => get_unix_timestamp() + (REFRESH_TOKEN_EXPIRY_DAYS * 24 * 3600),
+    let time_options = jwt_compact::TimeOptions::default();
+
+    let duration = match token_type {
+        "auth" => AUTH_TOKEN_EXPIRY,
+        "refresh" => REFRESH_TOKEN_EXPIRY,
         _ => return Err(AuthError::InvalidType),
     };
 
     let claims = JwtClaims {
         sub: username.to_string(),
-        exp: expiry,
         typ: token_type.to_string(),
         roles,
     };
 
-    let header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256);
-    jsonwebtoken::encode(
-        &header,
-        &claims,
-        &jsonwebtoken::EncodingKey::from_secret(secret.as_ref()),
-    )
-    .map_err(|e| AuthError::JWTEncoding(e.to_string()))
+    let header = jwt_compact::Header::empty();
+    let claims = jwt_compact::Claims::new(claims).set_duration(&time_options, duration);
+
+    jwt_compact::alg::Hs256
+        .token(&header, &claims, &secret_key)
+        .map_err(AuthError::JWTEncoding)
 }
 
 fn get_jwt_claims(auth_header: &str) -> AuthResult<JwtClaims> {
-    let Some(secret) = get_jwt_secret()? else {
+    use jwt_compact::AlgorithmExt as _;
+
+    let Some(secret_key) = get_jwt_secret()? else {
         return Err(AuthError::Disabled);
     };
+
+    let time_options = jwt_compact::TimeOptions::default();
 
     let token = auth_header
         .strip_prefix("Bearer ")
         .ok_or(AuthError::InvalidHeader)?;
 
-    let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
-    jsonwebtoken::decode::<JwtClaims>(
-        token,
-        &jsonwebtoken::DecodingKey::from_secret(secret.as_ref()),
-        &validation,
-    )
-    .map(|token_data| token_data.claims)
-    .map_err(|e| AuthError::JWTValidation(e.to_string()))
+    let validator = jwt_compact::alg::Hs256.validator(&secret_key);
+
+    let token = jwt_compact::UntrustedToken::new(&token).map_err(AuthError::JWTParsing)?;
+
+    let token = validator
+        .validate(&token)
+        .map_err(AuthError::JWTValidation)?;
+
+    let (_, claims) = token.into_parts();
+
+    claims
+        .validate_expiration(&time_options)
+        .map_err(AuthError::JWTValidation)?;
+
+    Ok(claims.custom)
 }
 
 fn authenticate_user(username: &str, password: Option<&str>) -> AuthResult<Vec<String>> {
@@ -850,10 +864,6 @@ pub(crate) fn http_api_refresh_session(auth_header: String) -> AuthResult<TokenR
                 return Err(AuthError::InvalidType);
             }
 
-            if claims.exp < get_unix_timestamp() {
-                return Err(AuthError::Expired);
-            }
-
             let user_roles = authenticate_user(&claims.sub, None)?;
 
             let auth_token = create_jwt_token(&claims.sub, "auth", Some(user_roles))?;
@@ -873,10 +883,6 @@ fn validate_auth(auth_header: &str) -> AuthResult<AuthContext> {
 
     if claims.typ != "auth" {
         return Err(AuthError::InvalidType);
-    }
-
-    if claims.exp < get_unix_timestamp() {
-        return Err(AuthError::Expired);
     }
 
     let roles = claims.roles.unwrap_or_default();
