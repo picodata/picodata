@@ -86,49 +86,57 @@ cluster:
   default_bucket_count: 3000 # (2)!
   shredding: false # (4)!
 instance:
-  instance_dir: . # (15)!
-  backup_dir: ./backup # (43)!
-  name: null # (24)!
-  replicaset_name: null # (30)!
-  tier: default # (31)!
+  instance_dir: . # (18)!
+  backup_dir: ./backup # (49)!
+  name: null # (29)!
+  replicaset_name: null # (36)!
+  tier: default # (37)!
   failure_domain: {} # (12)!
-  iproto_listen: 127.0.0.1:3301 # (16)!
-  iproto_advertise: 127.0.0.1:3301 # (9)!
-  peer: # (25)!
-  - 127.0.0.1:3301
-  http_listen: null # (13)!
-  https:
-    enabled: true # (14)!
   admin_socket: ./admin.sock # (8)!
-  share_dir: null # (29)!
+  share_dir: null # (35)!
   audit: null # (10)!
   log:
-    level: info # (20)!
-    destination: null # (18)!
-    format: plain # (19)!
+    level: info # (25)!
+    destination: null # (23)!
+    format: plain # (24)!
   memtx:
-    memory: 64M # (22)!
-    system_memory: 256M #(23)!
-    max_tuple_size: 1M # (21)!
+    memory: 64M # (27)!
+    system_memory: 256M # (28)!
+    max_tuple_size: 1M # (26)!
   vinyl:
-    memory: 128M # (33)!
-    cache: 128M # (32)!
-    bloom_fpr: 0.05 # (34)!
-    max_tuple_size: 1M # (35)!
-    page_size: 8K # (36)!
-    range_size: 1G # (37)!
-    run_count_per_level: 2 # (38)!
-    run_size_ratio: 3.5 # (39)!
-    read_threads: 1 # (40)!
-    write_threads: 4 # (41)!
-    timeout: 60.0 # (42)!
-  pg:
-    listen: 127.0.0.1:4327 # (27)!
-    advertise: 127.0.0.1:4327 # (26)!
-    ssl: false # (28)!
-  iproto_tls:
-    enabled: false # (17)!
+    memory: 128M # (39)!
+    cache: 128M # (38)!
+    bloom_fpr: 0.05 # (40)!
+    max_tuple_size: 1M # (41)!
+    page_size: 8K # (42)!
+    range_size: 1G # (43)!
+    run_count_per_level: 2 # (44)!
+    run_size_ratio: 3.5 # (45)!
+    read_threads: 1 # (46)!
+    write_threads: 4 # (47)!
+    timeout: 60.0 # (48)!
   boot_timeout: 7200 # (11)!
+  http:
+    enabled: true # (14)!
+    listen: 127.0.0.1:5327 # (16)!
+    advertise: 127.0.0.1:5327 # (13)!
+    tls:
+      enabled: false # (17)!
+    kubernetes_probes: true # (15)!
+  iproto:
+    enabled: true # (20)!
+    listen: 127.0.0.1:3301 # (21)!
+    advertise: 127.0.0.1:3301 # (19)!
+    tls:
+      enabled: false false # (22)!
+  pgproto:
+    enabled: true # (32)!
+    listen: 127.0.0.1:4327 # (33)!
+    advertise: 127.0.0.1:4327 # (31)!
+    tls:
+      enabled: false # (34)!
+  peer: # (30)!
+  - 127.0.0.1:3301
 ```
 
 1. [cluster.default_replication_factor](#cluster_default_replication_factor)
@@ -143,37 +151,43 @@ instance:
 10. [instance.audit](#instance_audit)
 11. [instance.boot_timeout](#instance_boot_timeout)
 12. [instance.failure_domain](#instance_failure_domain)
-13. [instance.http_listen](#instance_http_listen)
-14. [instance.https](#instance_https)
-15. [instance.instance_dir](#instance_instance_dir)
-16. [instance.iproto_listen](#instance_iproto_listen)
-17. [instance.iproto_tls](#instance_iproto_tls)
-18. [instance.log.destination](#instance_log_destination)
-19. [instance.log.format](#instance_log_format)
-20. [instance.log.level](#instance_log_level)
-21. [instance.memtx.max_tuple_size](#instance_memtx_max_tuple_size)
-22. [instance.memtx.memory](#instance_memtx_memory)
-23. [instance.memtx.system_memory](#instance_memtx_system_memory)
-24. [instance.name](#instance_name)
-25. [instance.peer](#instance_peer)
-26. [instance.pg.advertise](#instance_pg_advertise)
-27. [instance.pg.listen](#instance_pg_listen)
-28. [instance.pg.ssl](#instance_pg_ssl)
-29. [instance.share_dir](#instance_share_dir)
-30. [instance.replicaset_name](#instance_replicaset_name)
-31. [instance.tier](#instance_tier)
-32. [instance.vinyl.cache](#instance_vinyl_cache)
-33. [instance.vinyl.memory](#instance_vinyl_memory)
-34. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
-35. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
-36. [instance.vinyl.page_size](#instance_vinyl_page_size)
-37. [instance.vinyl.range_size](#instance_vinyl_range_size)
-38. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
-39. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
-40. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
-41. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
-42. [instance.vinyl.timeout](#instance_vinyl_timeout)
-43. [instance.backup_dir](#instance_backup_dir)
+13. [instance.http.advertise](#instance_http_advertise)
+14. [instance.http.enabled](#instance_http_enabled)
+15. [instance.http.kubernetes_probes](#instance_http_kubernetes_probes)
+16. [instance.http.listen](#instance_http_listen)
+17. [instance.http.tls](#instance_http_tls)
+18. [instance.instance_dir](#instance_instance_dir)
+19. [instance.iproto.advertise](#instance_iproto_advertise)
+20. [instance.iproto.enabled](#instance_iproto_enabled)
+21. [instance.iproto_listen](#instance_iproto_listen)
+22. [instance.iproto_tls](#instance_iproto_tls)
+23. [instance.log.destination](#instance_log_destination)
+24. [instance.log.format](#instance_log_format)
+25. [instance.log.level](#instance_log_level)
+26. [instance.memtx.max_tuple_size](#instance_memtx_max_tuple_size)
+27. [instance.memtx.memory](#instance_memtx_memory)
+28. [instance.memtx.system_memory](#instance_memtx_system_memory)
+29. [instance.name](#instance_name)
+30. [instance.peer](#instance_peer)
+31. [instance.pgproto.advertise](#instance_pg_advertise)
+32. [instance.pgproto.enabled](#instance_pg_enabled)
+33. [instance.pgproto.listen](#instance_pg_listen)
+34. [instance.pgproto.tls](#instance_pg_tls)
+35. [instance.share_dir](#instance_share_dir)
+36. [instance.replicaset_name](#instance_replicaset_name)
+37. [instance.tier](#instance_tier)
+38. [instance.vinyl.cache](#instance_vinyl_cache)
+39. [instance.vinyl.memory](#instance_vinyl_memory)
+40. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
+41. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
+42. [instance.vinyl.page_size](#instance_vinyl_page_size)
+43. [instance.vinyl.range_size](#instance_vinyl_range_size)
+44. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
+45. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
+46. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
+47. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
+48. [instance.vinyl.timeout](#instance_vinyl_timeout)
+49. [instance.backup_dir](#instance_backup_dir)
 
 См. также:
 
@@ -456,7 +470,50 @@ export PICODATA_FAILURE_DOMAIN=rack=12-90,server=srv_007,vm=rhel8
 
 [`picodata run --failure-domain`]: cli.md#run_failure_domain
 
-### instance.http_listen {: #instance_http_listen }
+### instance.http.advertise  {: #instance_http_advertise }
+
+<span class="supported">поддерживается с версии 26.1.1</span>
+
+Публичный сетевой адрес инстанса по протоколу HTTP. По умолчанию этот
+параметр равен [`instance.http.listen`](#instance_http_listen).
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `127.0.0.1:5327`
+
+### instance.http.enabled  {: #instance_http_enabled }
+
+<span class="supported">поддерживается с версии 26.1.1</span>
+
+Признак поддержки HTTP-сокета на стороне Picodata.
+
+Данные:
+
+* Тип: *bool*
+* Значение по умолчанию: `true`
+
+### instance.http.kubernetes_probes {: #instance_http_kubernetes_probes }
+
+<span class="supported">поддерживается с версии 26.1.1</span>
+
+Переключатель доступности набора следующих эндпоинтов для Kubernetes.
+
+- `/api/v1/health/live`
+- `/api/v1/health/ready`
+- `/api/v1/health/startup`
+
+* Тип: *bool*
+* Значение по умолчанию: `true`
+
+Если для параметра установлено значение false, то запрос на указанные
+эндпоинты вернет ошибку с кодом `404`.
+
+См. также:
+
+- [Проверка состояния инстанса по HTTP API](../admin/local_monitoring.md#instance_health_check)
+
+### instance.http.listen {: #instance_http_listen }
 
 <span class="supported">поддерживается с версии 26.1.1</span>
 
@@ -471,20 +528,26 @@ export PICODATA_FAILURE_DOMAIN=rack=12-90,server=srv_007,vm=rhel8
 Данные:
 
 * Тип: *str*
-* Значение по умолчанию: `null`
+* Значение по умолчанию: `127.0.0.1:5327`
 
 Аналогичная переменная окружения: `PICODATA_HTTP_LISTEN`<br>
 Задание параметра в командной строке: [`picodata run --http-listen`]
 
 [`picodata run --http-listen`]: cli.md#run_http_listen
 
-### instance.https {: #instance_https }
+### instance.http.tls {: #instance_http_tls }
 
-<span class="supported">поддерживается с версии 25.5.1</span>
+<span class="supported">поддерживается с версии 26.1.1</span>
+
+!!! note "Примечание"
+    Блок параметров `instance.http.tls` приходит на
+    смену `instance.https`, который объявлен устаревшим и будет удален в
+    будущих релизах Picodata. В файле конфигурации допускается
+    использование устаревших параметров, но сочетать их с новыми нельзя.
 
 Конфигурация защищенного режима для работы с кластером по протоколу
 HTTPS. Используется для получения метрик и доступа к веб-интерфейсу.
-Основной параметр `instance.https.enabled` отвечает за
+Основной параметр `instance.http.tls.enabled` отвечает за
 включение/отключение режима шифрования.
 
 * Тип: *bool*
@@ -505,17 +568,17 @@ HTTPS. Используется для получения метрик и дос
 настроек файла конфигурации будет иметь следующий вид:
 
 ```yaml
-https:
+tls:
     enabled: true
-    cert_file: cert.pem
-    key_file: key.pem
-    password_file: pass.txt
+    cert_file: https/cert.pem
+    key_file: https/key.pem
+    password_file: https/pass.txt
 ```
 
 Задание параметра в командной строке: [`picodata run --config-parameter`]. Пример:
 
 ```shell
-picodata run -c instance.https.enabled=true -c instance.https.cert_file=https/cert.pem -c instance.https.key_file=https/key.pem -c instance.https.password_file=https/pass.txt
+picodata run -c instance.http.tls.enabled=true -c instance.http.tls.cert_file=https/cert.pem -c instance.http.tls.key_file=https/key.pem -c instance.http.tls.password_file=https/pass.txt
 ```
 
 ### instance.instance_dir {: #instance_instance_dir }
@@ -534,7 +597,7 @@ picodata run -c instance.https.enabled=true -c instance.https.cert_file=https/ce
 
 [`picodata run --instance-dir`]: cli.md#run_instance_dir
 
-### instance.iproto_advertise {: #instance_iproto_advertise }
+### instance.iproto.advertise {: #instance_iproto_advertise }
 
 <span class="supported">поддерживается с версии 26.1.1</span>
 
@@ -593,13 +656,19 @@ picodata run -c instance.https.enabled=true -c instance.https.cert_file=https/ce
 
 [`picodata run --iproto-listen`]: cli.md#run_iproto_listen
 
-### instance.iproto_tls {: #instance_iproto_tls }
+### instance.iproto.tls {: #instance_iproto_tls }
 
-<span class="supported">поддерживается с версии 25.5.1</span>
+<span class="supported">поддерживается с версии 26.1.1</span>
+
+!!! note "Примечание"
+    Блок параметров `instance.iproto.tls` приходит на
+    смену `instance.iproto_tls`, который объявлен устаревшим и будет удален в
+    будущих релизах Picodata. В файле конфигурации допускается
+    использование устаревших параметров, но сочетать их с новыми нельзя.
 
 Конфигурация защищенного режима для внутренней коммуникации между узлами
 кластера по протоколу Iproto. Основной параметр
-`instance.iproto_tls.enabled` отвечает за включение/отключение режима
+`instance.iproto.tls.enabled` отвечает за включение/отключение режима
 шифрования mutual TLS (mTLS).
 
 * Тип: *bool*
@@ -607,28 +676,28 @@ picodata run -c instance.https.enabled=true -c instance.https.cert_file=https/ce
 
 При установке значения `true` требуется использовать 3 дополнительных параметра:
 
-- `instance.iproto_tls.cert_file` (*str*) — путь к файлу сертификата
-- `instance.iproto_tls.key_file` (*str*) — путь к файлу с закрытым ключом
-- `instance.iproto_tls.ca_file` (*str*) — путь к файлу корневого сертификата
+- `instance.iproto.tls.cert_file` (*str*) — путь к файлу сертификата
+- `instance.iproto.tls.key_file` (*str*) — путь к файлу с закрытым ключом
+- `instance.iproto.tls.ca_file` (*str*) — путь к файлу корневого сертификата
 
 При включенном mTLS блок настроек файла конфигурации будет иметь следующий вид:
 
 ```yaml
-  iproto_tls:
+  tls:
     enabled: true
-    cert_file: tls/server.crt
-    key_file: tls/server.key
-    ca_file: tls/ca.crt
+    cert_file: iproto/server.crt
+    key_file: iproto/server.key
+    ca_file: iproto/ca.crt
 ```
 
 Задание параметра в командной строке: [`picodata run --config-parameter`]. Пример:
 
 ```shell
-picodata run -c instance.iproto_tls.enabled=true -c instance.iproto_tls.cert_file=tls/server.crt -c instance.iproto_tls.key_file=tls/server.key -c instance.iproto_tls.ca_file=tls/ca.crt
+picodata run -c instance.iproto.tls.enabled=true -c instance.iproto.tls.cert_file=iproto/server.crt -c instance.iproto.tls.key_file=iproto/server.key -c instance.iproto.tls.ca_file=iproto/ca.crt
 ```
 
 Режим mTLS настраивается глобально во всем кластере. Для параметров
-`instance.iproto_tls.cert_file` и `instance.iproto_tls.key_file`
+`instance.iproto.tls.cert_file` и `instance.iproto.tls.key_file`
 содержимое файлов должно быть идентичным на каждом инстансе.
 
 ### instance.log.destination {: #instance_log_destination }
@@ -853,6 +922,17 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 
 [`picodata run --pg-advertise`]: cli.md#run_pg_advertise
 
+### instance.pg.enabled  {: #instance_pg_enabled }
+
+<span class="supported">поддерживается с версии 26.1.1</span>
+
+Признак поддержки PostgreSQL-протокола на стороне Picodata.
+
+Данные:
+
+* Тип: *bool*
+* Значение по умолчанию: `true`
+
 ### instance.pg.listen {: #instance_pg_listen }
 
 <span class="supported">поддерживается с версии 26.1.1</span>
@@ -876,18 +956,27 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 
 [`picodata run --pg-listen`]: cli.md#run_pg_listen
 
-### instance.pg.ssl {: #instance_pg_ssl }
+### instance.pg.tls {: #instance_pg_tls }
 
-<span class="supported">поддерживается с версии 25.5.1</span>
+<span class="supported">поддерживается с версии 26.1.1</span>
+
+!!! note "Примечание"
+    Блок параметров `instance.pg.tls` приходит на
+    смену `instance.pg.ssl`, который объявлен устаревшим и будет удален в
+    будущих релизах Picodata. В файле конфигурации допускается
+    использование устаревших параметров, но сочетать их с новыми нельзя.
 
 Признак использования протокола TLS/SSL или mTLS при подключении по протоколу PostgreSQL.
+Основной параметр `instance.pg.tls.enabled` отвечает за
+включение/отключение режима шифрования.
 
-Если для признака указано значение `true`, [в рабочей директории
-инстанса](cli.md#run_instance_dir) `<INSTANCE_DIR>` должны находиться
-TLS-сертификат и закрытый ключ:
+* Тип: *bool*
+* Значение по умолчанию: `false`
 
-* `server.crt`
-* `server.key`
+При установке значения `true` требуется использовать 2 дополнительных параметра:
+
+- `cert_file` (*str*) — путь к файлу сертификата
+- `key_file` (*str*) — путь к файлу с закрытым ключом
 
 Для двусторонней проверки подлинности (mTLS) требуется разместить рядом
 файл корневого сертификата:
@@ -902,30 +991,28 @@ TLS-сертификат и закрытый ключ:
 Размещение файлов сертификатов и закрытого ключа можно переопределить,
 используя следующие 3 дополнительных параметра:
 
-- `instance.pg.cert_file` (*str*) — путь к файлу сертификата
-- `instance.pg.key_file` (*str*) — путь к файлу с закрытым ключом
-- `instance.pg.ca_file` (*str*) — путь к файлу корневого сертификата
+- `instance.pg.tls.cert_file` (*str*) — путь к файлу сертификата
+- `instance.pg.tls.key_file` (*str*) — путь к файлу с закрытым ключом
+- `instance.pg.tls.ca_file` (*str*) — путь к файлу корневого сертификата
 
 При включенном mTLS блок настроек файла конфигурации будет иметь следующий вид:
 
 ```yaml
-  pg:
-    listen: <URI>
-    advertise: <URI>
-    ssl: true
-    cert_file: tls/server.crt
-    key_file: tls/server.key
-    ca_file: tls/ca.crt
+  tls:
+    enabled: true
+    cert_file: pgproto/server.crt
+    key_file: pgproto/server.key
+    ca_file: pgproto/ca.crt
 ```
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
 ```shell
-picodata run -c instance.pg.ssl=true -c instance.pg.cert_file=tls/server.crt -c instance.pg.key_file=tls/server.key -c instance.pg.ca_file=tls/ca.crt
+picodata run -c instance.pg.tls.enabled=true -c instance.pg.tls.cert_file=pgproto/server.crt -c instance.pg.tls.key_file=pgproto/server.key -c instance.pg.tls.ca_file=pgproto/ca.crt
 ```
 
 Режим mTLS настраивается глобально во всем кластере. Для параметров
-`instance.iproto_tls.cert_file` и `instance.iproto_tls.key_file`
+`instance.pg.tls.cert_file` и `instance.pg.tls.key_file`
 содержимое файлов должно быть идентичным на каждом инстансе.
 
 ### instance.replicaset_name {: #instance_replicaset_name }

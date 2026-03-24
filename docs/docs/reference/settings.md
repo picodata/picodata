@@ -258,6 +258,14 @@ table.legend {
             <td></td>
         </tr>
         <tr>
+            <td><span class="cluster">cluster.name</span></td>
+            <td>Имя кластера</td>
+            <td>demo</td>
+            <td></td>
+            <td>[cluster.name](config.md#cluster_name)</td>
+            <td></td>
+        </tr>
+        <tr>
             <td><span class="cluster">config</span></td>
             <td>Путь к файлу конфигурации в формате YAML</td>
             <td>null</td>
@@ -290,7 +298,31 @@ table.legend {
             <td>PICODATA_FAILURE_DOMAIN</td>
         </tr>
         <tr>
-            <td><span class="instance">http-listen</span></td>
+            <td><span class="instance">http.advertise</span></td>
+            <td>Публичный сетевой адрес инстанса по протоколу HTTP</td>
+            <td>{instance.http.listen}</td>
+            <td></td>
+            <td>[instance.http.advertise](config.md#instance_http_advertise)</td>
+            <td></td>
+        </tr>
+        <tr>
+            <td><span class="instance">http.enabled</span></td>
+            <td>Признак поддержки HTTP-сокета на стороне Picodata.</td>
+            <td>true</td>
+            <td></td>
+            <td>[instance.http.enabled](config.md#instance_http_enabled)</td>
+            <td></td>
+        </tr>
+        <tr>
+            <td><span class="instance">http.kubernetes_probes</span></td>
+            <td>Переключатель доступности набора дополнительных эндпоинтов для Kubernetes (`/api/v1/health/{live,ready,startup}`)</td>
+            <td>true</td>
+            <td></td>
+            <td>[instance.http.kubernetes_probes](config.md#instance_http_kubernetes_probes)</td>
+            <td></td>
+        </tr>
+        <tr>
+            <td><span class="instance">http.listen</span></td>
             <td>Адрес HTTP-сервера</td>
             <td>null</td>
             <td>[picodata run --http-listen](cli.md#run_http_listen)</td>
@@ -298,11 +330,27 @@ table.legend {
             <td>PICODATA_HTTP_LISTEN</td>
         </tr>
         <tr>
-            <td><span class="instance">https</span></td>
+            <td><span class="instance">http.tls.enabled</span></td>
             <td>Признак использования зашифрованного подключения (HTTPS) для работы с метриками и веб-интерфейсом</td>
             <td>false</td>
+            <td>[picodata run -c instance.http.tls.enabled=true](cli.md#run_config_parameter)</td>
+            <td>[instance.http.tls.enabled](config.md#instance_http_tls)</td>
             <td></td>
-            <td>[instance.https.enabled](config.md#instance_https)</td>
+        </tr>
+        </tr>
+            <td><span class="instance">http.tls.cert_file</span></td>
+            <td>Путь к файлу серверного сертификата для использования с TLS/SSL при подключении по протоколу HTTP</td>
+            <td></td>
+            <td>[picodata run -c instance.http.tls.cert_file=https/cert.pem](cli.md#run_config_parameter)</td>
+            <td>[instance.http.tls.cert_file](config.md#instance_http_tls)</td>
+            <td></td>
+        </tr>
+        <tr>
+            <td><span class="instance">http.tls.key_file</span></td>
+            <td>Путь к файлу закрытого ключа для использования с TLS/SSL при подключении по протоколу HTTP</td>
+            <td></td>
+            <td>[picodata run -c instance.http.tls.key_file=https/key.pem](cli.md#run_config_parameter)</td>
+            <td>[instance.http.tls.key_file](config.md#instance_http_tls)</td>
             <td></td>
         </tr>
         <tr>
@@ -322,7 +370,7 @@ table.legend {
             <td>PICODATA_INSTANCE_DIR</td>
         </tr>
         <tr>
-            <td><span class="instance">instance-name</span></td>
+            <td><span class="instance">instance.name</span></td>
             <td>Имя инстанса</td>
             <td>null</td>
             <td>[picodata run --instance-name](cli.md#run_instance_name)</td>
@@ -330,7 +378,7 @@ table.legend {
             <td>PICODATA_INSTANCE_NAME</td>
         </tr>
         <tr>
-            <td><span class="instance">iproto-advertise</span></td>
+            <td><span class="instance">iproto.advertise</span></td>
             <td>Публичный сетевой адрес инстанса</td>
             <td>127.0.0.1:3301</td>
             <td>[picodata run --iproto-advertise](cli.md#run_iproto_advertise)</td>
@@ -338,7 +386,7 @@ table.legend {
             <td>PICODATA_IPROTO_ADVERTISE</td>
         </tr>
         <tr>
-            <td><span class="instance">iproto-listen</span></td>
+            <td><span class="instance">iproto.listen</span></td>
             <td>Сетевой адрес инстанса</td>
             <td>127.0.0.1:3301</td>
             <td>[picodata run --iproto-listen](cli.md#run_iproto_listen)</td>
@@ -346,35 +394,35 @@ table.legend {
             <td>PICODATA_IPROTO_LISTEN</td>
         </tr>
         <tr>
-            <td><span class="cluster">iproto-tls</span></td>
-            <td>Признак использования аутентификации по сертификату при доступе к инстансу (mutual TLS, mTLS)</td>
+            <td><span class="cluster">iproto.tls.enabled</span></td>
+            <td>Признак использования аутентификации по сертификату при доступе к инстансу (mutual TLS, mTLS) по протоколу IPROTO</td>
             <td>false</td>
             <td></td>
-            <td>[instance.iproto_tls.enabled](config.md#instance_iproto_tls)</td>
+            <td>[instance.iproto.tls.enabled](config.md#instance_iproto_tls)</td>
             <td></td>
         </tr>
         <tr>
-            <td><span class="instance">iproto-tls.cert_file</span></td>
-            <td>Путь к файлу серверного сертификата для использования с mTLS</td>
+            <td><span class="instance">iproto.tls.cert_file</span></td>
+            <td>Путь к файлу серверного сертификата для использования с mTLS по протоколу IPROTO</td>
             <td></td>
-            <td></td>
-            <td>[instance.iproto_tls.cert_file](config.md#instance_iproto_tls)</td>
-            <td></td>
-        </tr>
-        <tr>
-            <td><span class="instance">iproto-tls.key_file</span></td>
-            <td>Путь к файлу закрытого ключа для использования с mTLS</td>
-            <td></td>
-            <td></td>
-            <td>[instance.iproto_tls.key_file](config.md#instance_iproto_tls)</td>
+            <td>[picodata run -c instance.iproto.tls.cert_file=iproto/server.crt](cli.md#run_config_parameter)</td>
+            <td>[instance.iproto.tls.cert_file](config.md#instance_iproto_tls)</td>
             <td></td>
         </tr>
         <tr>
-            <td><span class="cluster">iproto-tls.ca_file</span></td>
-            <td>Путь к файлу корневого сертификата для использования с mTLS</td>
+            <td><span class="instance">iproto.tls.key_file</span></td>
+            <td>Путь к файлу закрытого ключа для использования с mTLS по протоколу IPROTO</td>
             <td></td>
+            <td>[picodata run -c instance.iproto.tls.key_file=iproto/server.key](cli.md#run_config_parameter)</td>
+            <td>[instance.iproto.tls.key_file](config.md#instance_iproto_tls)</td>
             <td></td>
-            <td>[instance.iproto_tls.ca_file](config.md#instance_iproto_tls)</td>
+        </tr>
+        <tr>
+            <td><span class="cluster">iproto.tls.ca_file</span></td>
+            <td>Путь к файлу корневого сертификата для использования с mTLS по протоколу IPROTO</td>
+            <td></td>
+            <td>[picodata run -c instance.iproto.tls.ca_file=iproto/ca.crt](cli.md#run_config_parameter)</td>
+            <td>[instance.iproto.tls.ca_file](config.md#instance_iproto_tls)</td>
             <td></td>
         </tr>
         <tr>
@@ -440,7 +488,7 @@ table.legend {
             <td>PICODATA_PEER</td>
         </tr>
         <tr>
-            <td><span class="instance">pg-advertise</span></td>
+            <td><span class="instance">pg.advertise</span></td>
             <td>Публичный адрес сервера для подключения по протоколу PostgreSQL</td>
             <td>127.0.0.1:4327</td>
             <td>[picodata run --pg-advertise](cli.md#run_pg_advertise)</td>
@@ -448,7 +496,15 @@ table.legend {
             <td>PICODATA_PG_ADVERTISE</td>
         </tr>
         <tr>
-            <td><span class="instance">pg-listen</span></td>
+            <td><span class="instance">pg.enabled</span></td>
+            <td>Признак поддержки PostgreSQL-протокола на стороне Picodata</td>
+            <td>true</td>
+            <td></td>
+            <td>[instance.pg.enabled](config.md#instance_pg_enabled)</td>
+            <td></td>
+        </tr>
+        <tr>
+            <td><span class="instance">pg.listen</span></td>
             <td>Адрес сервера для подключения по протоколу PostgreSQL</td>
             <td>127.0.0.1:4327</td>
             <td>[picodata run --pg-listen](cli.md#run_pg_listen)</td>
@@ -456,34 +512,34 @@ table.legend {
             <td>PICODATA_PG_LISTEN</td>
         </tr>
         <tr>
-            <td><span class="instance">pg-ssl</span></td>
+            <td><span class="instance">pg.tls.enabled</span></td>
             <td>Признак использования протокола TSL/SSL или mTLS при подключении к SQL-консоли</td>
             <td>false</td>
-            <td>[picodata run -c instance.pg.ssl=true](cli.md#run_config_parameter)</td>
-            <td>[instance.pg.ssl](config.md#instance_pg_ssl)</td>
+            <td>[picodata run -c instance.pg.tls.enabled=true](cli.md#run_config_parameter)</td>
+            <td>[instance.pg.tls](config.md#instance_pg_tls)</td>
             <td></td>
         </tr>
-            <td><span class="instance">pg-cert_file</span></td>
+            <td><span class="instance">pg.tls.cert_file</span></td>
             <td>Путь к файлу серверного сертификата для использования с TLS/SSL или mTLS при подключении по протоколу PostgreSQL</td>
             <td></td>
-            <td></td>
-            <td>[instance.pg.cert_file](config.md#instance_pg_ssl)</td>
+            <td>[picodata run -c instance.pg.tls.cert_file=pgproto/server.crt](cli.md#run_config_parameter)</td>
+            <td>[instance.pg.tls.cert_file](config.md#instance_pg_tls)</td>
             <td></td>
         </tr>
         <tr>
-            <td><span class="instance">pg-key_file</span></td>
+            <td><span class="instance">pg.tls.key_file</span></td>
             <td>Путь к файлу закрытого ключа для использования с TLS/SSL или mTLS при подключении по протоколу PostgreSQL</td>
             <td></td>
-            <td></td>
-            <td>[instance.pg.key_file](config.md#instance_pg_ssl)</td>
+            <td>[picodata run -c instance.pg.tls.key_file=pgproto/server.key](cli.md#run_config_parameter)</td>
+            <td>[instance.pg.tls.key_file](config.md#instance_pg_tls)</td>
             <td></td>
         </tr>
         <tr>
-            <td><span class="cluster">pg-ca_file</span></td>
+            <td><span class="cluster">pg.tls.ca_file</span></td>
             <td>Путь к файлу корневого сертификата для использования с TLS/SSL или mTLS при подключении по протоколу PostgreSQL</td>
             <td></td>
-            <td></td>
-            <td>[instance.pg.ca_file](config.md#instance_pg_ssl)</td>
+            <td>[picodata run -c instance.pg.tls.ca_file=pgproto/ca.crt](cli.md#run_config_parameter)</td>
+            <td>[instance.pg.tls.ca_file](config.md#instance_pg_tls)</td>
             <td></td>
         </tr>
         <tr>
