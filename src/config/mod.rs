@@ -3517,7 +3517,12 @@ cluster:
     }
 
     #[track_caller]
-    fn setup_for_tests(yaml: Option<&str>, args: &[&str]) -> Result<Box<PicodataConfig>, Error> {
+    fn setup_for_tests(
+        yaml: Option<&str>,
+        args: &[&str],
+        // witness guard serves as a reminder so people will not forget to use protect_env in their tests
+        _witness_guard: &ScopeGuard<impl FnOnce() -> ()>,
+    ) -> Result<Box<PicodataConfig>, Error> {
         let mut config = if let Some(yaml) = yaml {
             PicodataConfig::read_yaml_contents(yaml).unwrap()
         } else {
@@ -3526,7 +3531,9 @@ cluster:
         let args = args::Run::try_parse_from(args).unwrap();
         let mut parameter_sources = Default::default();
         mark_non_none_field_sources(&mut parameter_sources, &config, ParameterSource::ConfigFile);
+        // here we read from env, env access in tests must be protected to avoid flakiness
         config.set_from_args_and_env(args, &mut parameter_sources)?;
+
         config.handle_deprecated_parameters(&mut parameter_sources)?;
         config.set_defaults_explicitly(&parameter_sources);
         config.parameter_sources = parameter_sources;
@@ -3564,13 +3571,13 @@ cluster:
     #[rustfmt::skip]
     #[test]
     fn parameter_source_precedence() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         //
         // Defaults
         //
         {
-            let config = setup_for_tests(None, &["run"]).unwrap();
+            let config = setup_for_tests(None, &["run"], &g).unwrap();
 
             assert_eq!(
                 *config.instance.peers(),
@@ -3595,29 +3602,29 @@ instance:
 "###;
 
             // only config
-            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
 
             assert_eq!(config.instance.name().unwrap(), "I-CONFIG");
 
             // PICODATA_CONFIG_PARAMETERS > config
             std::env::set_var("PICODATA_CONFIG_PARAMETERS", "instance.name=I-ENV-CONF-PARAM");
-            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
 
             assert_eq!(config.instance.name().unwrap(), "I-ENV-CONF-PARAM");
 
             // other env > PICODATA_CONFIG_PARAMETERS
             std::env::set_var("PICODATA_INSTANCE_NAME", "I-ENVIRON");
-            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
 
             assert_eq!(config.instance.name().unwrap(), "I-ENVIRON");
 
             // command line > env
-            let config = setup_for_tests(Some(yaml), &["run", "--instance-name=I-COMMANDLINE"]).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run", "--instance-name=I-COMMANDLINE"], &g).unwrap();
 
             assert_eq!(config.instance.name().unwrap(), "I-COMMANDLINE");
 
             // -c PARAMETER=VALUE > other command line
-            let config = setup_for_tests(Some(yaml), &["run", "-c", "instance.name=I-CLI-CONF-PARAM", "--instance-name=I-COMMANDLINE"]).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run", "-c", "instance.name=I-CLI-CONF-PARAM", "--instance-name=I-COMMANDLINE"], &g).unwrap();
 
             assert_eq!(config.instance.name().unwrap(), "I-CLI-CONF-PARAM");
         }
@@ -3631,7 +3638,7 @@ instance:
 instance:
     peer:
 "###;
-            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
 
             assert_eq!(
                 *config.instance.peers(),
@@ -3645,7 +3652,7 @@ instance:
         - bobbert:420
         - tomathan:69
 "###;
-            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
 
             assert_eq!(
                 *config.instance.peers(),
@@ -3665,7 +3672,7 @@ instance:
 
             // env > config
             std::env::set_var("PICODATA_PEER", "oops there's a space over here -> <-:13,             maybe we should at least strip these:37");
-            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
 
             assert_eq!(
                 *config.instance.peers(),
@@ -3687,7 +3694,7 @@ instance:
             let config = setup_for_tests(Some(yaml), &["run",
                 "--peer", "one:1",
                 "--peer", "two:2,    <- same problem here:3301,127.0.0.1:3,4:3301"
-            ]).unwrap();
+            ], &g).unwrap();
 
             assert_eq!(
                 *config.instance.peers(),
@@ -3723,7 +3730,7 @@ instance:
             // --config-parameter > --peer
             let config = setup_for_tests(Some(yaml), &["run",
                 "-c", "instance.peer=[  host:123  , ghost :321, гост:666]",
-            ]).unwrap();
+            ], &g).unwrap();
 
             assert_eq!(
                 *config.instance.peers(),
@@ -3752,7 +3759,7 @@ instance:
         //
             {
             std::env::set_var("PICODATA_LISTEN", "L-ENVIRON:3301");
-            let config = setup_for_tests(Some(""), &["run"]).unwrap();
+            let config = setup_for_tests(Some(""), &["run"], &g).unwrap();
 
             assert_eq!(config.instance.iproto.listen().to_host_port(), "L-ENVIRON:3301");
             assert_eq!(config.instance.iproto.advertise().to_host_port(), "L-ENVIRON:3301");
@@ -3761,12 +3768,12 @@ instance:
 instance:
     iproto_advertise: A-CONFIG:3301
 "###;
-            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
 
             assert_eq!(config.instance.iproto.listen().to_host_port(), "L-ENVIRON:3301");
             assert_eq!(config.instance.iproto.advertise().to_host_port(), "A-CONFIG:3301");
 
-            let config = setup_for_tests(Some(yaml), &["run", "-l", "L-COMMANDLINE:3301"]).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run", "-l", "L-COMMANDLINE:3301"], &g).unwrap();
 
             assert_eq!(config.instance.iproto.listen().to_host_port(), "L-COMMANDLINE:3301");
             assert_eq!(config.instance.iproto.advertise().to_host_port(), "A-CONFIG:3301");
@@ -3778,7 +3785,7 @@ instance:
         {
             // env PICODATA_PG_LISTEN sets new pgproto section
             std::env::set_var("PICODATA_PG_LISTEN", "L-ENVIRON:3301");
-            let config = setup_for_tests(Some(""), &["run"]).unwrap();
+            let config = setup_for_tests(Some(""), &["run"], &g).unwrap();
 
             assert_eq!(config.instance.pgproto.listen().to_host_port(), "L-ENVIRON:3301");
             assert_eq!(config.instance.pgproto.advertise().to_host_port(), "L-ENVIRON:3301");
@@ -3789,12 +3796,12 @@ instance:
     pgproto:
         advertise: A-CONFIG:3301
 "###;
-            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
 
             assert_eq!(config.instance.pgproto.listen().to_host_port(), "L-ENVIRON:3301");
             assert_eq!(config.instance.pgproto.advertise().to_host_port(), "A-CONFIG:3301");
 
-            let config = setup_for_tests(Some(yaml), &["run", "--pg-listen", "L-COMMANDLINE:3301"]).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run", "--pg-listen", "L-COMMANDLINE:3301"], &g).unwrap();
 
             assert_eq!(config.instance.pgproto.listen().to_host_port(), "L-COMMANDLINE:3301");
             assert_eq!(config.instance.pgproto.advertise().to_host_port(), "A-CONFIG:3301");
@@ -3813,7 +3820,7 @@ instance:
         kconf2: vconf2
         kconf2: vconf2-replaced
 "###;
-            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
             assert_eq!(
                 *config.instance.failure_domain(),
                 FailureDomain::from([("KCONF1", "VCONF1"), ("KCONF2", "VCONF2-REPLACED")])
@@ -3821,14 +3828,18 @@ instance:
 
             // environment
             std::env::set_var("PICODATA_FAILURE_DOMAIN", "kenv1=venv1,kenv2=venv2,kenv2=venv2-replaced");
-            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
             assert_eq!(
                 *config.instance.failure_domain(),
                 FailureDomain::from([("KENV1", "VENV1"), ("KENV2", "VENV2-REPLACED")])
             );
 
             // command line
-            let config = setup_for_tests(Some(yaml), &["run", "--failure-domain", "karg1=varg1,karg1=varg1-replaced"]).unwrap();
+            let config = setup_for_tests(
+                Some(yaml),
+                &["run", "--failure-domain", "karg1=varg1,karg1=varg1-replaced"],
+                &g,
+            ).unwrap();
             assert_eq!(
                 *config.instance.failure_domain(),
                 FailureDomain::from([("KARG1", "VARG1-REPLACED")])
@@ -3838,7 +3849,7 @@ instance:
             let config = setup_for_tests(Some(yaml), &["run",
                 "--failure-domain", "foo=1",
                 "--failure-domain", "bar=2,baz=3"
-            ]).unwrap();
+            ], &g).unwrap();
             assert_eq!(
                 *config.instance.failure_domain(),
                 FailureDomain::from([
@@ -3851,7 +3862,7 @@ instance:
             // --config-parameter
             let config = setup_for_tests(Some(yaml), &["run",
                 "-c", "instance.failure_domain={foo: '11', bar: '22'}"
-            ]).unwrap();
+            ], &g).unwrap();
             assert_eq!(
                 *config.instance.failure_domain(),
                 FailureDomain::from([
@@ -3878,7 +3889,7 @@ instance:
                 "--config-parameter", "instance. memtx . memory=  999",
                 "--config-parameter", "instance. memtx . system_memory=  666",
                 "--config-parameter", "instance. memtx . max_tuple_size=  998",
-            ]).unwrap();
+            ], &g).unwrap();
             assert_eq!(config.instance.tier.unwrap(), "ABC");
             assert_eq!(config.cluster.name.unwrap(), "DEF");
             assert_eq!(config.instance.log.level.unwrap(), args::LogLevel::Debug);
@@ -3895,7 +3906,7 @@ instance:
 "###;
             let e = setup_for_tests(Some(yaml), &["run",
                 "-c", "  instance.hoobabooba = malabar  ",
-            ]).unwrap_err();
+            ], &g).unwrap_err();
             assert!(dbg!(e.to_string()).starts_with("invalid configuration: instance: unknown field `hoobabooba`, expected one of"));
 
             let yaml = r###"
@@ -3905,19 +3916,19 @@ instance:
                 "  cluster.name=DEF  ;
                   cluster.asdfasdfbasdfbasd = "
             );
-            let e = setup_for_tests(Some(yaml), &["run"]).unwrap_err();
+            let e = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
             assert!(dbg!(e.to_string()).starts_with("invalid configuration: cluster: unknown field `asdfasdfbasdfbasd`, expected one of"));
         }
     }
 
     #[test]
     fn pg_config() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         let yaml = r###"
 instance:
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         let pgproto = config.instance.pgproto;
         // pg section wasn't specified, but it should be enabled by default
         assert_eq!(
@@ -3931,7 +3942,7 @@ instance:
         listen: "127.0.0.1:5432"
         ssl: true
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         let pgproto = config.instance.pgproto;
         assert_eq!(&pgproto.listen().to_host_port(), "127.0.0.1:5432");
         assert!(pgproto.tls.enabled());
@@ -3942,7 +3953,7 @@ instance:
     pg:
         listen: "127.0.0.1:5432"
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         let pgproto = config.instance.pgproto;
         assert_eq!(
             pgproto.listen(),
@@ -3951,8 +3962,12 @@ instance:
         assert!(!pgproto.tls.enabled());
 
         // test config with -c option
-        let config =
-            setup_for_tests(None, &["run", "-c", "instance.pg.listen=127.0.0.1:5432"]).unwrap();
+        let config = setup_for_tests(
+            None,
+            &["run", "-c", "instance.pg.listen=127.0.0.1:5432"],
+            &g,
+        )
+        .unwrap();
         let pgproto = config.instance.pgproto;
         assert_eq!(
             pgproto.listen(),
@@ -3961,7 +3976,7 @@ instance:
         assert!(!pgproto.tls.enabled());
 
         // test config from run args (--pg-listen sets new pgproto section)
-        let config = setup_for_tests(None, &["run", "--pg-listen", "127.0.0.1:5432"]).unwrap();
+        let config = setup_for_tests(None, &["run", "--pg-listen", "127.0.0.1:5432"], &g).unwrap();
         assert_eq!(
             config.instance.pgproto.listen(),
             PgprotoAddress::from_str("127.0.0.1:5432").unwrap()
@@ -3969,7 +3984,7 @@ instance:
 
         // test config from env (PICODATA_PG_LISTEN sets new pgproto section)
         std::env::set_var("PICODATA_PG_LISTEN", "127.0.0.1:1234");
-        let config = setup_for_tests(None, &["run"]).unwrap();
+        let config = setup_for_tests(None, &["run"], &g).unwrap();
         assert_eq!(
             config.instance.pgproto.listen(),
             PgprotoAddress::from_str("127.0.0.1:1234").unwrap()
@@ -4019,14 +4034,14 @@ instance:
 
     #[test]
     fn test_iproto_listen_listen_interaction() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         // iproto_listen should be equal to listen
         let yaml = r###"
 instance:
         listen: localhost:3301
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         assert_eq!(
             config.instance.iproto.listen().to_host_port(),
             "localhost:3301"
@@ -4038,7 +4053,7 @@ instance:
         listen: localhost:3302
         iproto_listen: localhost:3301
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]);
+        let config = setup_for_tests(Some(yaml), &["run"], &g);
 
         assert_eq!(config.unwrap_err().to_string(), "invalid configuration: instance.listen is deprecated, use instance.iproto_listen instead (cannot use both at the same time)");
 
@@ -4046,21 +4061,21 @@ instance:
 instance:
         iproto_listen: localhost:3302
 "###;
-        let config = setup_for_tests(Some(yaml), &["run", "--listen", "localhost:3303"]);
+        let config = setup_for_tests(Some(yaml), &["run", "--listen", "localhost:3303"], &g);
 
         assert_eq!(config.unwrap_err().to_string(), "invalid configuration: instance.listen is deprecated, use instance.iproto_listen instead (cannot use both at the same time)");
     }
 
     #[test]
     fn test_iproto_advertise_advertise_interaction() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         // iproto_advertise should be equal to listen
         let yaml = r###"
 instance:
         advertise_address: localhost:3301
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         assert_eq!(
             config.instance.iproto.advertise().to_host_port(),
             "localhost:3301"
@@ -4072,7 +4087,7 @@ instance:
         advertise_address: localhost:3302
         iproto_advertise: localhost:3301
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]);
+        let config = setup_for_tests(Some(yaml), &["run"], &g);
         assert_eq!(config.unwrap_err().to_string(), "invalid configuration: instance.advertise_address is deprecated, use instance.iproto_advertise instead (cannot use both at the same time)");
 
         // can't use both options
@@ -4080,7 +4095,7 @@ instance:
 instance:
         iproto_advertise: localhost:3302
 "###;
-        let config = setup_for_tests(Some(yaml), &["run", "--advertise", "localhost:3303"]);
+        let config = setup_for_tests(Some(yaml), &["run", "--advertise", "localhost:3303"], &g);
         assert_eq!(config.unwrap_err().to_string(), "invalid configuration: instance.advertise_address is deprecated, use instance.iproto_advertise instead (cannot use both at the same time)");
     }
 
@@ -4134,20 +4149,20 @@ instance:
 
     #[test]
     fn listen_addresses_all_default_no_conflict() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         // All default addresses have no conflict
         let yaml = r###"
 cluster:
     name: test
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         assert!(config.validate_listen_addresses().is_ok());
     }
 
     #[test]
     fn listen_addresses_no_conflict() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         // Different ports cause no conflict
         let yaml = r###"
@@ -4161,13 +4176,13 @@ instance:
     pgproto:
         listen: 127.0.0.1:4327
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         assert!(config.validate_listen_addresses().is_ok());
     }
 
     #[test]
     fn listen_addresses_conflict_same_address() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         // iproto and http can't use the same address
         let yaml = r###"
@@ -4179,13 +4194,13 @@ instance:
     http:
         listen: 127.0.0.1:3301
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         assert!(config.validate_listen_addresses().is_err());
     }
 
     #[test]
     fn listen_addresses_conflict_implicit_address() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         // pgproto (implicit) and http can't use the same address
         let yaml = r###"
@@ -4195,12 +4210,12 @@ instance:
     http:
         listen: 127.0.0.1:4327
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         assert!(config.validate_listen_addresses().is_err());
     }
     #[test]
     fn listen_addresses_conflict_iproto_pg() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         let yaml = r###"
 cluster:
@@ -4211,13 +4226,13 @@ instance:
     pgproto:
         listen: 127.0.0.1:3301
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         assert!(config.validate_listen_addresses().is_err());
     }
 
     #[test]
     fn listen_addresses_conflict_http_pg() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         // Disallow wildcard hosts if using the same port
         let yaml = r###"
@@ -4229,13 +4244,13 @@ instance:
     pgproto:
         listen: 0.0.0.0:5000
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         assert!(config.validate_listen_addresses().is_err());
     }
 
     #[test]
     fn listen_addresses_conflict_wildcard() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         // 0.0.0.0 conflicts with any host on same port
         let yaml = r###"
@@ -4247,13 +4262,13 @@ instance:
     http:
         listen: 127.0.0.1:3301
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         assert!(config.validate_listen_addresses().is_err());
     }
 
     #[test]
     fn listen_addresses_different_interfaces_ok() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         // Different interfaces, same port - OK (user's explicit choice)
         let yaml = r###"
@@ -4265,13 +4280,13 @@ instance:
     http:
         listen: 127.0.0.1:3301
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         assert!(config.validate_listen_addresses().is_ok());
     }
 
     #[test]
     fn new_iproto_config_basic() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         let yaml = r###"
 cluster:
@@ -4282,7 +4297,7 @@ instance:
         listen: 127.0.0.1:3301
         advertise: 10.0.0.1:3301
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         let iproto = &config.instance.iproto;
         assert_eq!(iproto.enabled, Some(true));
         assert_eq!(
@@ -4297,7 +4312,7 @@ instance:
 
     #[test]
     fn new_http_config_basic() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         let yaml = r###"
 cluster:
@@ -4307,7 +4322,7 @@ instance:
         enabled: true
         listen: 127.0.0.1:8080
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         let http = &config.instance.http;
         assert_eq!(http.enabled, Some(true));
         assert_eq!(http.listen.as_ref().unwrap().to_string(), "127.0.0.1:8080");
@@ -4315,7 +4330,7 @@ instance:
 
     #[test]
     fn new_pgproto_config_basic() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         let yaml = r###"
 cluster:
@@ -4325,7 +4340,7 @@ instance:
         enabled: true
         listen: 127.0.0.1:5432
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         let pgproto = &config.instance.pgproto;
         assert_eq!(pgproto.enabled, Some(true));
         assert_eq!(
@@ -4336,7 +4351,7 @@ instance:
 
     #[test]
     fn new_iproto_config_with_tls() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         let yaml = r###"
 cluster:
@@ -4350,7 +4365,7 @@ instance:
             cert_file: /path/to/cert.pem
             key_file: /path/to/key.pem
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         let iproto = &config.instance.iproto;
         assert!(iproto.tls.enabled());
         assert_eq!(
@@ -4362,6 +4377,8 @@ instance:
 
     #[test]
     fn socket_config_conflict_iproto() {
+        let g = protect_env();
+
         let yaml = r###"
 cluster:
     name: test
@@ -4371,7 +4388,7 @@ instance:
         enabled: true
         listen: 127.0.0.1:3302
 "###;
-        let err = setup_for_tests(Some(yaml), &["run"]).unwrap_err();
+        let err = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
         assert!(err
             .to_string()
             .contains("cannot use both old iproto settings"));
@@ -4379,6 +4396,8 @@ instance:
 
     #[test]
     fn socket_config_conflict_iproto_advertise() {
+        let g = protect_env();
+
         let yaml = r###"
 cluster:
     name: test
@@ -4388,7 +4407,7 @@ instance:
         enabled: true
         listen: 127.0.0.1:3302
 "###;
-        let err = setup_for_tests(Some(yaml), &["run"]).unwrap_err();
+        let err = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
         assert!(err
             .to_string()
             .contains("cannot use both old iproto settings"));
@@ -4396,6 +4415,8 @@ instance:
 
     #[test]
     fn socket_config_conflict_http() {
+        let g = protect_env();
+
         let yaml = r###"
 cluster:
     name: test
@@ -4405,7 +4426,7 @@ instance:
         enabled: true
         listen: 127.0.0.1:8081
 "###;
-        let err = setup_for_tests(Some(yaml), &["run"]).unwrap_err();
+        let err = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
         assert!(err
             .to_string()
             .contains("cannot use both old http settings"));
@@ -4413,6 +4434,8 @@ instance:
 
     #[test]
     fn socket_config_conflict_https() {
+        let g = protect_env();
+
         let yaml = r###"
 cluster:
     name: test
@@ -4423,7 +4446,7 @@ instance:
         enabled: true
         listen: 127.0.0.1:8080
 "###;
-        let err = setup_for_tests(Some(yaml), &["run"]).unwrap_err();
+        let err = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
         assert!(err
             .to_string()
             .contains("cannot use both old http settings"));
@@ -4431,6 +4454,8 @@ instance:
 
     #[test]
     fn socket_config_conflict_pgproto() {
+        let g = protect_env();
+
         let yaml = r###"
 cluster:
     name: test
@@ -4441,12 +4466,14 @@ instance:
         enabled: true
         listen: 127.0.0.1:5433
 "###;
-        let err = setup_for_tests(Some(yaml), &["run"]).unwrap_err();
+        let err = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
         assert!(err.to_string().contains("cannot use both old pg settings"));
     }
 
     #[test]
     fn socket_config_iproto_cannot_be_disabled() {
+        let g = protect_env();
+
         let yaml = r###"
 cluster:
     name: test
@@ -4455,12 +4482,14 @@ instance:
         enabled: false
         listen: 127.0.0.1:3301
 "###;
-        let err = setup_for_tests(Some(yaml), &["run"]).unwrap_err();
+        let err = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
         assert!(err.to_string().contains("iproto cannot be disabled"));
     }
 
     #[test]
     fn socket_config_enabled_defaults_when_not_specified() {
+        let g = protect_env();
+
         // iproto defaults to enabled=true
         let yaml = r###"
 cluster:
@@ -4469,12 +4498,14 @@ instance:
     iproto:
         listen: 127.0.0.1:3301
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         assert!(config.instance.iproto.enabled()); // defaults to true
     }
 
     #[test]
     fn socket_config_http_defaults_to_enabled() {
+        let g = protect_env();
+
         let yaml = r###"
 cluster:
     name: test
@@ -4482,12 +4513,14 @@ instance:
     http:
         listen: 127.0.0.1:8080
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         assert!(config.instance.http.enabled());
     }
 
     #[test]
     fn socket_config_plugin_listener_defaults_to_enabled() {
+        let g = protect_env();
+
         let yaml = r###"
 cluster:
     name: test
@@ -4499,7 +4532,7 @@ instance:
                     listener:
                         listen: 127.0.0.1:7777
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
 
         let plugins = config.instance.plugin.as_ref().unwrap();
         let my_plugin = plugins.get("my_plugin").unwrap();
@@ -4655,12 +4688,14 @@ instance:
 
     #[test]
     fn test_legacy_iproto_config_still_works() {
+        let g = protect_env();
+
         let yaml = r###"
 instance:
     iproto_listen: "127.0.0.1:3301"
     iproto_advertise: "127.0.0.1:3301"
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
 
         assert_eq!(
             config.instance.iproto.listen().to_string(),
@@ -4674,13 +4709,15 @@ instance:
 
     #[test]
     fn test_legacy_pgproto_config_still_works() {
+        let g = protect_env();
+
         let yaml = r###"
 instance:
     pg:
         listen: "127.0.0.1:5432"
 "###;
 
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
 
         // The config should parse without errors
         assert_eq!(
@@ -4691,11 +4728,13 @@ instance:
 
     #[test]
     fn test_legacy_http_config_still_works() {
+        let g = protect_env();
+
         let yaml = r###"
 instance:
     http_listen: "127.0.0.1:8080"
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         assert_eq!(
             config.instance.http.listen().to_host_port(),
             "127.0.0.1:8080"
@@ -4704,6 +4743,8 @@ instance:
 
     #[test]
     fn test_new_plugin_config_with_legacy_iproto() {
+        let g = protect_env();
+
         let yaml = r###"
 instance:
     iproto_listen: "127.0.0.1:3301"
@@ -4715,7 +4756,7 @@ instance:
                         enabled: true
                         listen: "127.0.0.1:7777"
 "###;
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         assert_eq!(
             config.instance.iproto.listen().to_host_port(),
             "127.0.0.1:3301"
@@ -4729,11 +4770,12 @@ instance:
 
     #[test]
     fn config_parameter_new_iproto_section() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         let config = setup_for_tests(
             None,
             &["run", "-c", "instance.iproto.listen=127.0.0.1:3305"],
+            &g,
         )
         .unwrap();
         assert_eq!(
@@ -4748,11 +4790,12 @@ instance:
 
     #[test]
     fn config_parameter_new_pgproto_section() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         let config = setup_for_tests(
             None,
             &["run", "-c", "instance.pgproto.listen=127.0.0.1:5433"],
+            &g,
         )
         .unwrap();
         assert_eq!(
@@ -4767,10 +4810,14 @@ instance:
 
     #[test]
     fn config_parameter_new_http_section() {
-        let _guard = protect_env();
+        let g = protect_env();
 
-        let config =
-            setup_for_tests(None, &["run", "-c", "instance.http.listen=127.0.0.1:9090"]).unwrap();
+        let config = setup_for_tests(
+            None,
+            &["run", "-c", "instance.http.listen=127.0.0.1:9090"],
+            &g,
+        )
+        .unwrap();
         assert_eq!(
             config.instance.http.advertise().to_string(),
             "127.0.0.1:9090"
@@ -4779,7 +4826,7 @@ instance:
 
     #[test]
     fn config_parameter_new_iproto_tls() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         let config = setup_for_tests(
             None,
@@ -4794,6 +4841,7 @@ instance:
                 "-c",
                 "instance.iproto.tls.key_file=/path/key.pem",
             ],
+            &g,
         )
         .unwrap();
         let tls = &config.instance.iproto.tls;
@@ -4838,7 +4886,7 @@ instance:
 
     #[test]
     fn config_parameter_new_section_effective_params_override_old() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         let yaml = r###"
 cluster:
@@ -4849,7 +4897,7 @@ instance:
         advertise: 127.0.0.1:3306
 "###;
 
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
 
         assert_eq!(
             config.instance.iproto.listen().to_host_port(),
@@ -4863,7 +4911,7 @@ instance:
 
     #[test]
     fn config_parameter_old_fields_used_when_new_section_empty() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         let yaml = r###"
 cluster:
@@ -4873,7 +4921,7 @@ instance:
     iproto_advertise: 127.0.0.1:3302
 "###;
 
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
 
         assert_eq!(
             config.instance.iproto.listen().to_host_port(),
@@ -4887,7 +4935,7 @@ instance:
 
     #[test]
     fn config_parameter_new_pgproto_effective_config() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         let yaml = r###"
 cluster:
@@ -4901,7 +4949,7 @@ instance:
             key_file: /path/key.pem
 "###;
 
-        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
 
         let pgproto = config.instance.pgproto;
         assert_eq!(pgproto.listen().to_string(), "127.0.0.1:5433");
@@ -4922,7 +4970,7 @@ instance:
 
     #[test]
     fn parse_cluster_tier_via_cli() {
-        let _guard = protect_env();
+        let g = protect_env();
 
         // `cluster.tier` is parsed correctly when passed through --config-parameter
         {
@@ -4933,6 +4981,7 @@ instance:
                     "--config-parameter",
                     "cluster.tier={\"default\":{\"can_vote\":true}}",
                 ],
+                &g,
             )
             .unwrap();
             assert_eq!(
