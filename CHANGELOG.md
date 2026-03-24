@@ -8,7 +8,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-## [26.1.0] - Unreleased
+## [26.1.1] - 2026-03-24
 
 ### Features
 
@@ -179,7 +179,7 @@ with the `YY.MINOR.MICRO` scheme.
   service of an existing plugin.
 - Fixed `proposal dropped` errors sometimes being returned from DDL commands for example when raft is unknown.
 - Fixed an RPC to avoid skipping metrics collection code path on early return in procedure implementation.
-- Make sure that single-tiered clusters upgraded from 25.3.x always have a default tier. 
+- Make sure that single-tiered clusters upgraded from 25.3.x always have a default tier.
 - Fixed that instances would fail with ER_READONLY while joining a replicaset
   whose master was still bootstrapping. Governor no longer triggers mastership
   failover for a master that is in the initial Offline(0) join state and has
@@ -187,7 +187,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed local SQL iterators to survive fiber yields during table truncation.
 - Fixed a caching bug affecting `UNION` queries with global and sharded tables in a cluster of several replicasets.
 - Fixed a caching bug that caused some different queries to tables with `bucket_id` in the primary key to have the same plan id.
-- Fixed SUM/AVG type resolution for Double 
+- Fixed SUM/AVG type resolution for Double
 - Fixed incorrect filter pushdown into compound queries containing window functions.
 
 ### Observability
