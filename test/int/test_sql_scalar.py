@@ -376,5 +376,5 @@ def test_scalar_function_version(cluster: Cluster):
     i1 = cluster.add_instance()
     i2 = cluster.add_instance()
 
-    assert i1.sql("SELECT version()") == [[git_version]]
-    assert i2.sql("SELECT VERSION()") == [[git_version]]
+    assert i1.sql("SELECT version()") == [["picodata " + git_version]]
+    assert i2.sql("SELECT VERSION()") == [["picodata " + git_version]]

@@ -12,7 +12,7 @@ use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::RaftTerm;
 use crate::vshard::VshardConfig;
-use smol_str::SmolStr;
+use smol_str::{format_smolstr, SmolStr};
 use std::borrow::Cow;
 use std::cell::OnceCell;
 use std::collections::HashMap;
@@ -143,8 +143,8 @@ impl VersionInfo {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[proc]
-pub fn proc_picodata_version() -> &'static str {
-    PICODATA_VERSION
+pub fn proc_picodata_version() -> SmolStr {
+    format_smolstr!("picodata {}", PICODATA_VERSION,)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

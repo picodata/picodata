@@ -97,6 +97,7 @@ with the `YY.MINOR.MICRO` scheme.
   `iproto` on the current instance; usage is exposed via the
   `pico_sql_local_query_total` and `pico_sql_local_query_duration` metrics.
 - Remove unnecessary `Motion(Full)` for queries that are guaranteed to be routed to a single node due to the sharding key filter.
+- SQL function `version` now prefixes picodata version with `picodata `, allowing PostgreSQL clients to easily detect the use of picodata.
 
 ### CLI
 - Completely re-architected `picodata demo` subcommand:
