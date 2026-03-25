@@ -161,6 +161,47 @@ fn get_replicaset_to_configure<'t>(
             }
         }
 
+        // If replication_config is empty but there are targets, it means all
+        // instances need sync (cold restart scenario) or master is transitioning.
+        // Only include the master to preserve conflict isolation: replicas sync
+        // FROM master first, preventing conflicts from spreading to healthy instances.
+        if replication_config.is_empty() && !targets.is_empty() {
+            let current_master = &replicaset.current_master_name;
+            let target_master = &replicaset.target_master_name;
+
+            let find_master_addr = |master_name: &InstanceName| -> Option<SmolStr> {
+                targets
+                    .iter()
+                    .find(|(name, _)| name == master_name)
+                    .and_then(|(_, raft_id)| peer_addresses.get(raft_id).cloned())
+            };
+
+            if let Some(addr) = find_master_addr(current_master) {
+                tlog!(
+                    Info,
+                    "all instances in replicaset {replicaset_name} need sync, \
+                            using current master {current_master} for replication"
+                );
+                replication_config.push(addr);
+            } else if let Some(addr) = find_master_addr(target_master) {
+                tlog!(
+                    Info,
+                    "all instances in replicaset {replicaset_name} need sync, \
+                            current master {current_master} not responsive, \
+                            using target master {target_master} for replication"
+                );
+                replication_config.push(addr);
+            } else {
+                tlog!(
+                    Warning,
+                    "all instances in replicaset {replicaset_name} need sync, \
+                               but neither current master {current_master} nor \
+                               target master {target_master} is responsive, \
+                               waiting for master or failover"
+                );
+            }
+        }
+
         if !targets.is_empty() {
             return Some((replicaset, targets, replication_config));
         }
