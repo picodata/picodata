@@ -458,7 +458,13 @@ export PICODATA_FAILURE_DOMAIN=rack=12-90,server=srv_007,vm=rhel8
 
 ### instance.http_listen {: #instance_http_listen }
 
-<span class="supported">поддерживается с версии 24.4.1</span>
+<span class="supported">поддерживается с версии 26.1.1</span>
+
+!!! note "Примечание"
+    Параметр `instance.http.listen` приходит на
+    смену `instance.http_listen`, который объявлен устаревшим и будет удален в
+    будущих релизах Picodata. В файле конфигурации допускается
+    использование устаревших параметров, но сочетать их с новыми нельзя.
 
 Адрес HTTP-сервера.
 
@@ -530,7 +536,13 @@ picodata run -c instance.https.enabled=true -c instance.https.cert_file=https/ce
 
 ### instance.iproto_advertise {: #instance_iproto_advertise }
 
-<span class="supported">поддерживается с версии 25.1.1</span>
+<span class="supported">поддерживается с версии 26.1.1</span>
+
+!!! note "Примечание"
+    Параметр `instance.iproto.advertise` приходит на
+    смену `instance.iproto_advertise`, который объявлен устаревшим и будет удален в
+    будущих релизах Picodata. В файле конфигурации допускается
+    использование устаревших параметров, но сочетать их с новыми нельзя.
 
 Публичный сетевой адрес инстанса. Анонсируется кластеру при запуске
 инстанса и используется для подключения к нему других инстансов.
@@ -545,9 +557,29 @@ picodata run -c instance.https.enabled=true -c instance.https.cert_file=https/ce
 
 [`picodata run --iproto-advertise`]: cli.md#run_iproto_advertise
 
-### instance.iproto_listen {: #instance_iproto_listen }
+### instance.iproto.enabled  {: #instance_iproto_enabled }
 
-<span class="supported">поддерживается с версии 25.1.1</span>
+<span class="supported">поддерживается с версии 26.1.1</span>
+
+Признак поддержки IPROTO-протокола на стороне Picodata.
+
+Данные:
+
+* Тип: *bool*
+* Значение по умолчанию: `true`
+
+!!! note "Примечание"
+    Для данного параметра поддерживается только значение `true`
+
+### instance.iproto.listen {: #instance_iproto_listen }
+
+<span class="supported">поддерживается с версии 26.1.1</span>
+
+!!! note "Примечание"
+    Параметр `instance.iproto.listen` приходит на
+    смену `instance.iproto_listen`, который объявлен устаревшим и будет удален в
+    будущих релизах Picodata. В файле конфигурации допускается
+    использование устаревших параметров, но сочетать их с новыми нельзя.
 
 Сетевой адрес инстанса.
 
@@ -799,7 +831,13 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 
 ### instance.pg.advertise {: #instance_pg_advertise }
 
-<span class="supported">поддерживается с версии 24.4.1</span>
+<span class="supported">поддерживается с версии 26.1.1</span>
+
+!!! note "Примечание"
+    Параметр `instance.pg.advertise` приходит на
+    смену `instance.pg_advertise`, который объявлен устаревшим и будет удален в
+    будущих релизах Picodata. В файле конфигурации допускается
+    использование устаревших параметров, но сочетать их с новыми нельзя.
 
 Публичный адрес сервера для подключения по протоколу
 [PostgreSQL](../tutorial/connecting.md#postgresql).
@@ -817,7 +855,13 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 
 ### instance.pg.listen {: #instance_pg_listen }
 
-<span class="supported">поддерживается с версии 24.4.1</span>
+<span class="supported">поддерживается с версии 26.1.1</span>
+
+!!! note "Примечание"
+    Параметр `instance.pg.listen` приходит на
+    смену `instance.pg_listen`, который объявлен устаревшим и будет удален в
+    будущих релизах Picodata. В файле конфигурации допускается
+    использование устаревших параметров, но сочетать их с новыми нельзя.
 
 Адрес сервера для подключения по протоколу
 [PostgreSQL](../tutorial/connecting.md#postgresql).
