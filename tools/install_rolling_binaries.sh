@@ -43,3 +43,4 @@ function install {
 install "25.3"
 install "25.4"
 install "25.5"
+install "26.1"
