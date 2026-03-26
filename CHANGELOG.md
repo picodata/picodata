@@ -10,6 +10,13 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## [26.2.1] - Unreleased
 
+### Fixes
+
+- Fix cold restart deadlock where all instances in a replicaset would get empty
+  replication configs, preventing synchronization. The governor now includes
+  only the master in the fallback replication config, preserving conflict
+  isolation while allowing the cluster to recover.
+
 ## [26.1.1] - 2026-03-24
 
 ### Features
