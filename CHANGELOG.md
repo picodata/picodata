@@ -27,6 +27,10 @@ with the `YY.MINOR.MICRO` scheme.
   `--http-listen` were triggering an error instead of overriding corresponding value
   in yaml config when deprecated listen options were used in the config.
 - Fixed a permission error occured during query planning for non-admin users.
+- Fix cold restart deadlock where all instances in a replicaset would get empty
+  replication configs, preventing synchronization. The governor now includes
+  only the master in the fallback replication config, preserving conflict
+  isolation while allowing the cluster to recover.
 
 ## [26.1.1] - 2026-03-24
 
