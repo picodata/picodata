@@ -656,7 +656,6 @@ impl Vshard for StorageRuntime {
                 miss_info,
                 ex_plan.to_params(),
                 sql_vdbe_opcode_max,
-                ex_plan.get_ir_plan().explain_options,
                 location,
                 port,
             )?;
@@ -859,7 +858,6 @@ pub fn explain_execute_block<'p>(
             &sql,
             &params,
             block.vdbe_max_steps,
-            block.explain_options,
             stmt_kind,
             location,
             port,

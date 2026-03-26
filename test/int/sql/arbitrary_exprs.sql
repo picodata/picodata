@@ -300,7 +300,6 @@ SELECT "_pico_instance"."current_state" [ CAST($1 AS int) ] as "col_1" FROM "_pi
 +=====================================================================+
 | 0        | 0     | 0    | SCAN TABLE _pico_instance (~1048576 rows) |
 +----------+-------+------+-------------------------------------------+
-''
 
 -- TEST: test_index_returns_any
 -- SQL:

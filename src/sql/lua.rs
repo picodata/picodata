@@ -39,40 +39,18 @@ pub(crate) unsafe extern "C" fn dispatch_explain_dump_lua(
     let len = port_c.size() as usize;
     lua::lua_createtable(l, len as i32, 0);
 
-    let iter = port_c.iter();
+    let iter = ExplainIter::new(port_c.iter());
 
-    for (idx, mp_bytes) in iter.enumerate() {
-        let mut cur = Cursor::new(mp_bytes);
+    for (idx, line) in iter.enumerate() {
+        let mp_bytes = rmp_serde::to_vec(&line).expect("failed to encode string as msgpack");
+        let mut cur = Cursor::new(mp_bytes.as_slice());
         push_mp_value_to_lua(l, &mut cur).unwrap_or_else(|_| {
             panic!(
                 "Failed to decode explain row, msgpack: {}",
-                escape_bytes(mp_bytes)
+                escape_bytes(&mp_bytes)
             )
         });
         lua::lua_rawseti(l, -2, idx as i32 + 1);
-    }
-}
-
-pub(crate) unsafe extern "C" fn dispatch_query_plan_dump_lua(
-    port: *mut Port,
-    l: *mut lua_State,
-    _is_flat: bool,
-) {
-    let port_c: &mut PortC = NonNull::new_unchecked(port as *mut PortC).as_mut();
-
-    // It should never happen that the port is empty, but let's be defensive.
-    if port_c.size() == 0 {
-        lua::lua_pushnil(l);
-        return;
-    }
-
-    lua::lua_createtable(l, 0, 0);
-    let mut idx: i32 = 0;
-
-    for line in ExplainIter::new(port_c.iter()) {
-        lua::lua_pushlstring(l, line.as_ptr() as *const c_char, line.len());
-        idx += 1;
-        lua::lua_rawseti(l, -2, idx);
     }
 }
 
@@ -937,7 +915,7 @@ mod tarantool_tests {
     #[tarantool::test]
     fn test_dispatch_explain_dump_lua() {
         // Prepare msgpack string "plan"
-        const EXPLAIN_MP: &[u8] = b"\xa4plan";
+        const EXPLAIN_MP: &[u8] = b"\x91\xa4plan";
 
         let mut port = Port::new_port_c();
         let port_c = unsafe { port.as_mut_port_c() };

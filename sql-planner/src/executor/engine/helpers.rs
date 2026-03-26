@@ -23,7 +23,7 @@ use crate::{
     },
 };
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
-use std::{any::Any, cmp::Ordering, collections::HashMap, rc::Rc, sync::OnceLock};
+use std::{cmp::Ordering, collections::HashMap, rc::Rc, sync::OnceLock};
 
 use super::{BlockExecData, Metadata, Router, Vshard};
 use crate::executor::Port;
@@ -50,7 +50,6 @@ use tarantool::msgpack;
 use tarantool::msgpack::rmp;
 use tarantool::msgpack::{decode_from_read, Context, Decode, DecodeError};
 use tarantool::msgpack::{Encode, EncodeError};
-use tarantool::tuple::Tuple;
 
 pub mod vshard;
 
@@ -651,23 +650,6 @@ pub fn write_shared_update_args<'t>(
     }
 
     Ok(())
-}
-
-/// Format explain output into a tuple.
-///
-/// # Errors
-/// - Failed to create a tuple.
-pub fn explain_format(explain: &str) -> Result<Box<dyn Any>, SbroadError> {
-    let e = explain.lines().collect::<Vec<&str>>();
-
-    match Tuple::new(&[e]) {
-        Ok(t) => Ok(Box::new(t)),
-        Err(e) => Err(SbroadError::FailedTo(
-            Action::Create,
-            Some(Entity::Tuple),
-            format_smolstr!("{e}"),
-        )),
-    }
 }
 
 /// Check if the plan has a LIMIT 0 clause.

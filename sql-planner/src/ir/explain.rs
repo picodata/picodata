@@ -1,15 +1,12 @@
 use std::collections::{HashMap, VecDeque};
-use std::fmt::{self, Display, Write as _};
+use std::fmt::{self, Display, Write};
 
 use itertools::Itertools;
 use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr, SmolStrBuilder, ToSmolStr};
 
 use crate::errors::{Entity, SbroadError};
-use crate::executor::engine::Router;
-use crate::executor::ExecutingQuery;
 use crate::ir::bucket::{BucketSet, Buckets};
-use crate::ir::explain::execution_info::BucketsInfo;
 use crate::ir::expression::TrimKind;
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Case, Cast, Constant, Delete, Having, IndexExpr, Insert, Join,
@@ -1513,20 +1510,14 @@ fn buckets_repr(buckets: &Buckets, bucket_count: u64) -> String {
     }
 }
 
-struct FullExplain {
-    /// Main sql subtree
+pub struct LogicalExplain {
     main_query: ExplainTreePart,
-    /// Independent sub-trees of main sql query (e.g. sub-queries in `WHERE` cause, CTEs, etc.)
     subqueries: OrderedMap<NodeId, ExplainTreePart, RepeatableState>,
-    /// Windows under Projection.
     windows: Vec<ExplainTreePart>,
-    /// Options imposed during query execution
     exec_options: Vec<(OptionKind, Value)>,
-    /// Info related to plan execution
-    buckets_info: Option<BucketsInfo>,
 }
 
-impl Display for FullExplain {
+impl Display for LogicalExplain {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.main_query)?;
         for (pos, (_, sq)) in self.subqueries.iter().enumerate() {
@@ -1539,23 +1530,10 @@ impl Display for FullExplain {
         }
         if !self.exec_options.is_empty() {
             writeln!(f, "execution options:")?;
-            for (key, value) in &self.exec_options {
-                writeln!(indent(f), "{key} = {value}")?;
-            }
-        }
-        if let Some(info) = &self.buckets_info {
-            match info {
-                BucketsInfo::Unknown => writeln!(f, "buckets = unknown")?,
-                BucketsInfo::Calculated(calculated) => {
-                    let repr = buckets_repr(&calculated.buckets, calculated.bucket_count);
-                    // For buckets ANY and ALL there is no sense to handle in the
-                    // output the case when bucket count is not exact.
-                    match calculated.buckets {
-                        Buckets::Any | Buckets::All => writeln!(f, "buckets = {repr}")?,
-                        _ if calculated.is_exact => writeln!(f, "buckets = {repr}")?,
-                        _ => writeln!(f, "buckets <= {repr}")?,
-                    }
-                }
+            let (key, value) = self.exec_options.first().expect("must be specified");
+            write!(indent(f), "{key} = {value}")?;
+            for (key, value) in self.exec_options.iter().skip(1) {
+                write!(indent(f), "\n{key} = {value}")?;
             }
         }
 
@@ -1563,7 +1541,7 @@ impl Display for FullExplain {
     }
 }
 
-impl FullExplain {
+impl LogicalExplain {
     /// Retrieve SubQueryRefMap from relational node children
     fn get_sq_ref_map(
         stack: &mut Vec<ExplainTreePart>,
@@ -1638,8 +1616,11 @@ impl FullExplain {
                     subqueries,
                     ..
                 }) => {
-                    let sq_ref_map =
-                        FullExplain::get_sq_ref_map(&mut stack, &mut known_subqueries, subqueries);
+                    let sq_ref_map = LogicalExplain::get_sq_ref_map(
+                        &mut stack,
+                        &mut known_subqueries,
+                        subqueries,
+                    );
                     let child = stack.pop().ok_or_else(|| {
                         SbroadError::UnexpectedNumberOfValues(
                             "GroupBy must have exactly one child".into(),
@@ -1654,8 +1635,11 @@ impl FullExplain {
                     subqueries,
                     ..
                 }) => {
-                    let sq_ref_map =
-                        FullExplain::get_sq_ref_map(&mut stack, &mut known_subqueries, subqueries);
+                    let sq_ref_map = LogicalExplain::get_sq_ref_map(
+                        &mut stack,
+                        &mut known_subqueries,
+                        subqueries,
+                    );
                     let child = stack.pop().ok_or_else(|| {
                         SbroadError::UnexpectedNumberOfValues(
                             "OrderBy must have exactly one child".into(),
@@ -1668,8 +1652,11 @@ impl FullExplain {
                 Relational::Projection(node::Projection {
                     output, subqueries, ..
                 }) => {
-                    let sq_ref_map =
-                        FullExplain::get_sq_ref_map(&mut stack, &mut known_subqueries, subqueries);
+                    let sq_ref_map = LogicalExplain::get_sq_ref_map(
+                        &mut stack,
+                        &mut known_subqueries,
+                        subqueries,
+                    );
                     let child = stack.pop().ok_or_else(|| {
                         SbroadError::UnexpectedNumberOfValues(
                             "Projection must have exactly one child".into(),
@@ -1684,8 +1671,11 @@ impl FullExplain {
                     subqueries,
                     ..
                 }) => {
-                    let sq_ref_map =
-                        FullExplain::get_sq_ref_map(&mut stack, &mut known_subqueries, subqueries);
+                    let sq_ref_map = LogicalExplain::get_sq_ref_map(
+                        &mut stack,
+                        &mut known_subqueries,
+                        subqueries,
+                    );
                     let projection = Projection::new(ir, *output, &sq_ref_map, should_fmt)?;
 
                     (ExplainNode::Projection(projection), vec![])
@@ -1718,8 +1708,11 @@ impl FullExplain {
                 | Relational::Having(Having {
                     subqueries, filter, ..
                 }) => {
-                    let sq_ref_map =
-                        FullExplain::get_sq_ref_map(&mut stack, &mut known_subqueries, subqueries);
+                    let sq_ref_map = LogicalExplain::get_sq_ref_map(
+                        &mut stack,
+                        &mut known_subqueries,
+                        subqueries,
+                    );
                     let child = stack.pop().ok_or_else(|| {
                         SbroadError::UnexpectedNumberOfValues(
                             "Selection or Having must have exactly one child".into(),
@@ -1836,8 +1829,11 @@ impl FullExplain {
                     kind,
                     ..
                 }) => {
-                    let sq_ref_map =
-                        FullExplain::get_sq_ref_map(&mut stack, &mut known_subqueries, subqueries);
+                    let sq_ref_map = LogicalExplain::get_sq_ref_map(
+                        &mut stack,
+                        &mut known_subqueries,
+                        subqueries,
+                    );
                     let right = stack.pop().ok_or_else(|| {
                         SbroadError::UnexpectedNumberOfValues(
                             "Join node must have exactly two children".into(),
@@ -1857,8 +1853,11 @@ impl FullExplain {
                 Relational::ValuesRow(ValuesRow {
                     data, subqueries, ..
                 }) => {
-                    let sq_ref_map =
-                        FullExplain::get_sq_ref_map(&mut stack, &mut known_subqueries, subqueries);
+                    let sq_ref_map = LogicalExplain::get_sq_ref_map(
+                        &mut stack,
+                        &mut known_subqueries,
+                        subqueries,
+                    );
                     let row = ColExpr::new(ir, *data, &sq_ref_map, should_fmt)?;
 
                     (ExplainNode::ValueRow(row), vec![])
@@ -1950,14 +1949,9 @@ impl FullExplain {
             subqueries: known_subqueries,
             windows: Vec::new(),
             exec_options,
-            buckets_info: None,
         };
 
         Ok(result)
-    }
-
-    fn add_execution_info(&mut self, info: BucketsInfo) {
-        self.buckets_info = Some(info);
     }
 }
 
@@ -1969,20 +1963,7 @@ impl Plan {
     /// - Failed to build explain
     pub fn as_explain(&self) -> Result<SmolStr, SbroadError> {
         let top_id = self.get_top()?;
-        let explain = FullExplain::new(self, top_id)?;
-        Ok(explain.to_smolstr())
-    }
-}
-
-impl<C: Router> ExecutingQuery<'_, C> {
-    pub fn as_explain(&mut self) -> Result<SmolStr, SbroadError> {
-        let plan = self.get_exec_plan().get_ir_plan();
-        let top_id = plan.get_top()?;
-        let mut explain = FullExplain::new(plan, top_id)?;
-
-        let info = BucketsInfo::new_from_query(self)?;
-        explain.add_execution_info(info);
-
+        let explain = LogicalExplain::new(self, top_id)?;
         Ok(explain.to_smolstr())
     }
 }
@@ -1991,4 +1972,4 @@ impl<C: Router> ExecutingQuery<'_, C> {
 #[cfg(test)]
 mod tests;
 
-mod execution_info;
+pub mod execution_info;

@@ -12,7 +12,6 @@ use crate::utils::MutexLike;
 use crate::{
     frontend::sql::get_real_function_name, ir::helpers::RepeatableState, ir::node::BlockStatement,
 };
-use std::any::Any;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::OnceLock;
@@ -339,13 +338,6 @@ pub trait Router: QueryCache {
     fn metadata(&self) -> &impl MutexLike<Self::MetadataProvider>;
 
     fn with_admin_su<T>(&self, f: impl FnOnce() -> T) -> Result<T, SbroadError>;
-
-    /// Setup output format of query explain
-    ///
-    /// # Errors
-    /// - Internal error. Under normal conditions we should always return
-    ///   formatted explain successfully.
-    fn explain_format(&self, explain: SmolStr) -> Result<Box<dyn Any>, SbroadError>;
 
     /// Extract a list of the sharding key values from a map for the given space.
     ///

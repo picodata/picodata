@@ -22,23 +22,25 @@
 //!    - builds a virtual table with query results that correspond to the original motion.
 //! 5. Repeats step 3 till we are done with motion layers.
 //! 6. Executes the final IR top subtree and returns the final result to the user.
-use crate::errors::{Action, Entity, SbroadError};
+use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::{Router, Vshard};
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::vdbe::ExecutionInsight;
 use crate::ir::bucket::{BucketSet, Buckets};
+use crate::ir::explain::{execution_info::BucketsInfo, LogicalExplain};
 use crate::ir::node::block::{BlockOwned, MutBlock};
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{AnonymousBlock, Motion, NodeId};
 use crate::ir::transformation::redistribution::MotionPolicy;
 use crate::ir::tree::traversal::{PostOrder, REL_CAPACITY};
 use crate::ir::value::Value;
-use crate::ir::{Plan, Slices};
+use crate::ir::{ExplainOptions, Plan, Slices};
 use crate::BoundStatement;
-use rmp::encode::write_str;
-use smol_str::{format_smolstr, SmolStr};
+use serde::{Deserialize, Serialize};
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::collections::HashMap;
-use std::io::Write;
+use std::fmt::Write as _;
+use std::io;
 use std::rc::Rc;
 use tarantool::msgpack;
 use vdbe::{SqlError, SqlStmt};
@@ -199,13 +201,12 @@ pub enum PortType {
     DispatchDql,
     DispatchDml,
     DispatchExplain,
-    DispatchQueryPlan,
     ExecuteDql,
     ExecuteDml,
     ExecuteMiss,
 }
 
-pub trait Port<'p>: Write {
+pub trait Port<'p>: io::Write {
     fn add_mp(&mut self, data: &[u8]);
 
     fn process_stmt(
@@ -393,26 +394,6 @@ where
         Ok(())
     }
 
-    /// Builds explain from current query
-    ///
-    /// # Errors
-    /// - Failed to build explain
-    pub fn produce_explain<'p>(&mut self, port: &mut impl Port<'p>) -> Result<(), SbroadError> {
-        let mut mp: Vec<u8> = Vec::new();
-        for line in self.as_explain()?.lines() {
-            write_str(&mut mp, line).map_err(|e| {
-                SbroadError::FailedTo(
-                    Action::Deserialize,
-                    Some(Entity::MsgPack),
-                    format_smolstr!("{e}"),
-                )
-            })?;
-            port.add_mp(&mp);
-            mp.clear();
-        }
-        Ok(())
-    }
-
     /// Dispatch a distributed query from coordinator to the segments.
     ///
     /// # Errors
@@ -500,23 +481,43 @@ where
             self.exec_plan.set_plan_id(node_id)?;
         }
         let buckets = self.bucket_discovery(top_id)?;
+
         self.coordinator
             .dispatch(&mut self.exec_plan, top_id, &buckets, port)?;
 
         Ok(())
     }
 
-    /// Query explain
-    ///
-    /// # Errors
-    /// - Failed to build explain
-    pub fn to_explain(&mut self) -> Result<SmolStr, SbroadError> {
-        self.as_explain()
+    pub fn validate_explain_options(&self) -> Result<(), SbroadError> {
+        if self.is_block()?
+            && self
+                .get_exec_plan()
+                .get_ir_plan()
+                .explain_options
+                .contains(ExplainOptions::Logical)
+        {
+            return Err(SbroadError::Other(
+                "logical explain is not implemented for transactions".to_smolstr(),
+            ));
+        }
+
+        Ok(())
     }
 
-    /// Checks that query is explain and have not to be executed
+    pub fn to_explain(&mut self) -> Result<String, SbroadError> {
+        self.explain()
+    }
+
+    pub fn is_explain(&self) -> bool {
+        self.exec_plan.get_ir_plan().is_explain()
+    }
+
     pub fn is_logical_explain(&self) -> bool {
         self.exec_plan.get_ir_plan().is_logical_explain()
+    }
+
+    pub fn is_raw_explain(&self) -> bool {
+        self.exec_plan.get_ir_plan().is_raw_explain()
     }
 
     /// Checks that query is a statement block.
@@ -563,10 +564,6 @@ where
             .unwrap()
     }
 
-    /// Checks that query is for plugin.
-    ///
-    /// # Errors
-    /// - Plan is invalid
     pub fn is_plugin(&self) -> Result<bool, SbroadError> {
         self.exec_plan.get_ir_plan().is_plugin()
     }
@@ -575,17 +572,223 @@ where
         self.exec_plan.get_ir_plan().is_backup()
     }
 
-    /// Checks that query is Deallocate.
-    ///
-    /// # Errors
-    /// - Plan is invalid
     pub fn is_deallocate(&self) -> Result<bool, SbroadError> {
         self.exec_plan.get_ir_plan().is_deallocate()
     }
 
-    /// Checks that query is an empty query.
     pub fn is_empty(&self) -> bool {
         self.exec_plan.get_ir_plan().is_empty()
+    }
+
+    pub fn explain(&mut self) -> Result<String, SbroadError> {
+        let plan = self.get_exec_plan().get_ir_plan();
+        let top_id = plan.get_top()?;
+
+        let logical = LogicalExplain::new(plan, top_id)?;
+        let info = BucketsInfo::new_from_query(self)?;
+
+        let mut explain = String::new();
+        writeln!(&mut explain, "{logical}").expect("cannnot fail");
+        write!(&mut explain, "{info}").expect("cannnot fail");
+
+        Ok(explain)
+    }
+
+    pub fn explain_raw<'p>(&mut self, port: &mut impl Port<'p>) -> Result<String, SbroadError> {
+        let is_fmt = self
+            .get_exec_plan()
+            .get_ir_plan()
+            .explain_options
+            .contains(ExplainOptions::Fmt);
+        let raw_explain = RawExplain::from_port(port, is_fmt)?;
+        let mut buf = String::new();
+        write!(&mut buf, "{raw_explain}").unwrap();
+        Ok(buf)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, msgpack::Encode, msgpack::Decode)]
+struct RawExplainTuple {
+    selectid: i64,
+    order: i64,
+    from: i64,
+    detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, msgpack::Encode, msgpack::Decode)]
+enum RawExplainRow {
+    Tuple(RawExplainTuple),
+    Error(String),
+}
+
+#[derive(Debug)]
+struct RawExplainEntry {
+    query: String,
+    location: String,
+    sql: String,
+    params: Vec<Value>,
+    tuples: Vec<RawExplainRow>,
+}
+
+fn format_rows(tuples: &[RawExplainRow]) -> comfy_table::Table {
+    let mut table = comfy_table::Table::default();
+    table.set_content_arrangement(comfy_table::ContentArrangement::Dynamic);
+
+    if let Some(RawExplainRow::Error(err)) = tuples.first() {
+        table.add_row(comfy_table::Row::from([comfy_table::Cell::new(err)]));
+        return table;
+    }
+
+    table.set_header(["selectid", "order", "from", "detail"]);
+    for tuple in tuples {
+        let RawExplainRow::Tuple(tuple) = tuple else {
+            panic!("error message must be handled earlier")
+        };
+        let cells = [
+            comfy_table::Cell::new(tuple.selectid),
+            comfy_table::Cell::new(tuple.order),
+            comfy_table::Cell::new(tuple.from),
+            comfy_table::Cell::new(tuple.detail.clone()),
+        ];
+
+        table.add_row(comfy_table::Row::from(cells));
+    }
+
+    table
+}
+
+fn default_raw_options() -> sqlformat::FormatOptions<'static> {
+    sqlformat::FormatOptions::<'_> {
+        joins_as_top_level: true,
+        inline: true,
+        ..Default::default()
+    }
+}
+
+fn format_sql(explain: &str, params: &[Value], is_fmt: bool) -> String {
+    let sql = explain.strip_prefix("EXPLAIN QUERY PLAN ").unwrap_or("");
+
+    const LINE_WIDTH: usize = 80;
+    let mut fmt_options = default_raw_options();
+    if is_fmt && sql.len() >= LINE_WIDTH {
+        fmt_options.joins_as_top_level = false;
+        fmt_options.inline = false;
+    }
+
+    let params = params
+        .iter()
+        .map(|p| p.to_string())
+        .collect::<Vec<String>>();
+
+    sqlformat::format(sql, &sqlformat::QueryParams::Indexed(params), &fmt_options)
+}
+
+fn write_raw_explain_entry(
+    f: &mut std::fmt::Formatter<'_>,
+    entry: &RawExplainEntry,
+    idx: usize,
+    is_fmt: bool,
+) -> std::fmt::Result {
+    writeln!(f, "{idx}. {} ({}):", entry.query, entry.location)?;
+    let formatted_sql = format_sql(&entry.sql, &entry.params, is_fmt);
+    writeln!(f, "{formatted_sql}")?;
+
+    let table = format_rows(&entry.tuples);
+    write!(f, "{table}")
+}
+
+#[derive(Debug)]
+struct RawExplain {
+    entries: Vec<RawExplainEntry>,
+    is_format: bool,
+}
+
+impl std::fmt::Display for RawExplain {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(entry) = self.entries.first() {
+            write_raw_explain_entry(f, entry, 1, self.is_format)?;
+        }
+
+        for (idx, entry) in self.entries.iter().skip(1).enumerate() {
+            write!(f, "\n\n")?;
+            write_raw_explain_entry(f, entry, idx + 2, self.is_format)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl RawExplain {
+    pub fn from_port<'p>(
+        port: &mut impl Port<'p>,
+        is_format: bool,
+    ) -> Result<RawExplain, SbroadError> {
+        // vec![string] - query
+        // vec![string] - location
+        // vec![string] - sql
+        // vec![params] - params
+        // vec![int] - num of raw lines
+        // vec![vec[tuple]] - raw
+        let mut port_iter = port.iter();
+        let mut entries = Vec::new();
+        while let Some(query_mp) = port_iter.next() {
+            let query_wrapped: Vec<String> = msgpack::decode(query_mp).map_err(|err| {
+                SbroadError::Other(format_smolstr!("unable to decode query: {err}"))
+            })?;
+            let query = query_wrapped[0].clone();
+
+            let location_mp = port_iter.next().expect("location must be in port");
+            let location_wrapped: Vec<String> = msgpack::decode(location_mp).map_err(|err| {
+                SbroadError::Other(format_smolstr!("unable to decode location: {err}"))
+            })?;
+            let location = location_wrapped[0].clone();
+
+            let sql_mp = port_iter.next().expect("sql query must be in port");
+            let sql_wrapped: Vec<String> = msgpack::decode(sql_mp).map_err(|err| {
+                SbroadError::Other(format_smolstr!("unable to decode sql query: {err}"))
+            })?;
+            let sql = sql_wrapped[0].clone();
+
+            let params_mp = port_iter.next().expect("params must be in port");
+            let params: Vec<Value> = msgpack::decode(params_mp).map_err(|err| {
+                SbroadError::Other(format_smolstr!("unable to decode params: {err}"))
+            })?;
+
+            let num_mp = port_iter.next().expect("num must be in port");
+            let num_wrapped: Vec<usize> = msgpack::decode(num_mp).map_err(|err| {
+                SbroadError::Other(format_smolstr!(
+                    "unable to decode the number of rows: {err}"
+                ))
+            })?;
+            let num = num_wrapped[0];
+
+            let mut tuples = Vec::new();
+            for _ in 0..num {
+                let raw_mp = port_iter.next().expect("raw must be in port");
+                // At this point `raw_mp` contains either error message or vdbe
+                // tuple.
+                if let Ok(raw_row_wrapped) = msgpack::decode::<RawExplainTuple>(raw_mp) {
+                    tuples.push(RawExplainRow::Tuple(raw_row_wrapped));
+                } else {
+                    let err_wrapped: Vec<String> = msgpack::decode(raw_mp).map_err(|err| {
+                        SbroadError::Other(format_smolstr!("unable to decode error: {err}"))
+                    })?;
+                    tuples.push(RawExplainRow::Error(err_wrapped[0].clone()));
+                }
+            }
+
+            let entry = RawExplainEntry {
+                query,
+                location,
+                sql,
+                params,
+                tuples,
+            };
+
+            entries.push(entry);
+        }
+
+        Ok(Self { entries, is_format })
     }
 }
 

@@ -6,7 +6,7 @@ use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::engine::helpers::vshard::get_random_bucket;
 use sql::executor::engine::helpers::{
-    dispatch_impl, empty_plan_write, explain_format, materialize_motion, materialize_values,
+    dispatch_impl, empty_plan_write, materialize_motion, materialize_values,
 };
 use sql::executor::engine::helpers::{sharding_key_from_map, sharding_key_from_tuple};
 use sql::executor::engine::{get_builtin_functions, BlockExecData, QueryCache, Router, Vshard};
@@ -438,10 +438,6 @@ impl Router for RouterRuntime {
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
         dispatch_impl(self, plan, top_id, buckets, port)
-    }
-
-    fn explain_format(&self, explain: SmolStr) -> Result<Box<dyn std::any::Any>, SbroadError> {
-        explain_format(&explain)
     }
 
     fn extract_sharding_key_from_map<'rec>(

@@ -3605,8 +3605,7 @@ fn front_sql_current_date() {
           value ROW('2010/10/10'::string)
 execution options:
   sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-"#
+  sql_motion_row_max = 5000"#
     );
 
     assert_eq!(expected_explain, plan.as_explain().unwrap());

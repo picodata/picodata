@@ -500,27 +500,6 @@ pub fn port_read_tuples<'bytes>(
     Ok(rows)
 }
 
-fn port_read_explain<'bytes>(
-    port: impl Iterator<Item = &'bytes [u8]>,
-    tuples: usize,
-    metadata: &[MetadataColumn],
-) -> PgResult<Vec<Vec<PgValue>>> {
-    if metadata.len() != 1 {
-        return Err(PgError::other(format!(
-            "Expected 1 column in EXPLAIN metadata, got {}",
-            metadata.len()
-        )));
-    }
-    let mut rows = Vec::with_capacity(tuples);
-    for mp in port {
-        let mut cur = Cursor::new(mp);
-        let val = rmpv::decode::read_value(&mut cur).map_err(PgError::other)?;
-        let pg_value = PgValue::try_from_rmpv(val, &metadata[0].ty)?;
-        rows.push(vec![pg_value]);
-    }
-    Ok(rows)
-}
-
 /// Get the number of changed rows from the port with DML result.
 fn port_read_changed<'bytes>(mut port: impl Iterator<Item = &'bytes [u8]>) -> PgResult<usize> {
     let first_mp = port.next().unwrap_or(b"\xcc\x00");
@@ -636,16 +615,11 @@ impl PortalInner {
                 PortalState::StreamingRows(rows.into_iter())
             }
             QueryType::Explain => {
-                let ir_plan = self.statement.prepared_statement().as_plan();
-                let rows = if ir_plan.is_logical_explain() {
-                    port_read_explain(port.iter(), port.size() as usize, self.describe.metadata())?
-                } else {
-                    let mut rows: Vec<Vec<PgValue>> = Vec::new();
-                    for line in ExplainIter::new(port.iter()) {
-                        rows.push(vec![PgValue::Text(line)]);
-                    }
-                    rows
-                };
+                let mut rows: Vec<Vec<PgValue>> = Vec::new();
+                for line in ExplainIter::new(port.iter()) {
+                    rows.push(vec![PgValue::Text(line)]);
+                }
+
                 PortalState::StreamingRows(rows.into_iter())
             }
             QueryType::Deallocate => {

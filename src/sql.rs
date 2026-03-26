@@ -276,9 +276,7 @@ fn dispatch_bound_statement_impl<'p>(
         return Ok(());
     }
 
-    if query.get_exec_plan().get_ir_plan().is_raw_explain() {
-        port.set_type(PortType::DispatchQueryPlan);
-    } else if query.is_logical_explain() {
+    if query.is_explain() {
         port.set_type(PortType::DispatchExplain);
     } else if query.get_exec_plan().get_ir_plan().is_dql()? || query.is_backup()? {
         port.set_type(PortType::DispatchDql);
@@ -513,6 +511,35 @@ fn dispatch_bound_statement_impl<'p>(
 
         port_write_dml_response(port, 1);
         Ok(())
+    } else if query.is_explain() {
+        query.validate_explain_options()?;
+        let plan = query.get_exec_plan().get_ir_plan();
+        check_table_privileges(plan)?;
+
+        if query.is_logical_explain() {
+            let explain = query.explain()?;
+            let explain_serialized = rmp_serde::to_vec(&[explain]).map_err(Error::other)?;
+            port.add_mp(&explain_serialized);
+
+            return Ok(());
+        }
+
+        if query.is_raw_explain() {
+            let mut tmp_port = runtime.new_port();
+            let request_id =
+                runtime_owner_key(query.get_exec_plan().get_request_id()).map_err(Error::Sbroad)?;
+            with_sql_runtime_limit(request_id, || -> traft::Result<()> {
+                query.dispatch(&mut tmp_port).map_err(Error::Sbroad)?;
+                Ok(())
+            })??;
+            let raw_explain = query.explain_raw(&mut tmp_port)?;
+            if !raw_explain.is_empty() {
+                let raw_serialized = rmp_serde::to_vec(&[raw_explain]).map_err(Error::other)?;
+                port.add_mp(&raw_serialized);
+            }
+        }
+
+        Ok(())
     } else if query.is_block()? {
         let code_block = {
             check_routine_privileges(query.get_exec_plan().get_ir_plan())?;
@@ -604,17 +631,7 @@ fn dispatch_bound_statement_impl<'p>(
         let plan = query.get_exec_plan().get_ir_plan();
         check_table_privileges(plan)?;
 
-        if query.is_logical_explain() {
-            port.set_type(PortType::DispatchExplain);
-            let mut mp: Vec<u8> = Vec::new();
-            for line in query.as_explain()?.lines() {
-                write_str(&mut mp, line).map_err(Error::other)?;
-                port.add_mp(&mp);
-                mp.clear();
-            }
-            return Ok(());
-        }
-
+        let plan = query.get_exec_plan().get_ir_plan();
         // check if table is operable
         with_su(ADMIN_ID, || {
             let top_id = plan.get_top()?;
@@ -635,7 +652,7 @@ fn dispatch_bound_statement_impl<'p>(
             Ok::<(), Error>(())
         })??;
 
-        let is_dml_on_global = plan.is_dml_on_global_table()? && !plan.is_raw_explain();
+        let is_dml_on_global = plan.is_dml_on_global_table()?;
         let request_id =
             runtime_owner_key(query.get_exec_plan().get_request_id()).map_err(Error::Sbroad)?;
         with_sql_runtime_limit(request_id, || -> traft::Result<()> {

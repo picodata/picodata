@@ -13,7 +13,6 @@ use crate::sql::PicoPortC;
 use crate::tlog;
 use crate::traft::node;
 use ahash::HashMapExt;
-use comfy_table::{Cell, ContentArrangement, Row, Table};
 use rmp::decode::read_array_len;
 use rmp::encode::{write_array_len, write_uint};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
@@ -39,7 +38,6 @@ use sql::ir::relation::SpaceEngine;
 use sql::ir::relation::{Column, ColumnRole};
 use sql::ir::transformation::redistribution::{MotionKey, Target};
 use sql::ir::value::{EncodedValue, MsgPackValue, Value};
-use sql::ir::ExplainOptions;
 use sql::utils::MutexLike;
 use sql_protocol::decode::{ProtocolMessage, ProtocolMessageIter};
 use sql_protocol::dml::delete::{
@@ -64,13 +62,11 @@ use std::time::Duration;
 use tarantool::error::{Error, TarantoolErrorCode};
 use tarantool::ffi::sql::Port as TarantoolPort;
 use tarantool::index::{FieldType, IndexOptions, IndexType, Part};
-use tarantool::msgpack::{self, Encode};
+use tarantool::msgpack::{self, encode, Encode};
 use tarantool::session::with_su;
 use tarantool::space::{Field, Space, SpaceCreateOptions, SpaceType};
 use tarantool::transaction::transaction;
 use tarantool::tuple::RawBytes;
-
-const LINE_WIDTH: usize = 80;
 
 #[macro_export]
 macro_rules! protocol_get {
@@ -693,105 +689,49 @@ fn validate_dql_source_schema(dql: &impl DQLDataSource) -> Result<(), SbroadErro
     Ok(())
 }
 
-fn create_row_from_tuple(mp: &[u8]) -> Row {
-    let mut cur = Cursor::new(mp);
-    let (select_id, order, from, detail) =
-        rmp_serde::from_read::<_, (i64, i64, i64, String)>(&mut cur)
-            .expect("explain format violation");
+fn repack_raw_explain<'p>(dst_port: &mut impl Port<'p>, src_port: &impl Port<'p>) {
+    // We have to save the port size as it will further be used to iterate over port contents.
+    let num_serialized = encode(&[src_port.size()]);
+    dst_port.add_mp(&num_serialized);
 
-    let cells = [
-        Cell::new(select_id),
-        Cell::new(order),
-        Cell::new(from),
-        Cell::new(detail),
-    ];
-
-    Row::from(cells)
-}
-
-fn repack_vdbe_explain<'p>(port: &mut impl Port<'p>) -> String {
-    let mut table = Table::default();
-    table.set_content_arrangement(ContentArrangement::Dynamic);
-    table.set_header(["selectid", "order", "from", "detail"]);
-
-    for tuple in port.iter() {
-        let row = create_row_from_tuple(tuple);
-        table.add_row(row);
+    for mp in src_port.iter() {
+        dst_port.add_mp(mp);
     }
-
-    format!("{table}\n")
-}
-
-fn repack_vdbe_error(err: String) -> String {
-    let mut table = Table::default();
-    table.set_content_arrangement(ContentArrangement::Dynamic);
-    let row = Row::from([Cell::new(err)]);
-    table.add_row(row);
-
-    format!("{table}\n")
-}
-
-fn default_raw_options() -> sqlformat::FormatOptions<'static> {
-    let mut fmt_options = sqlformat::FormatOptions::default();
-    fmt_options.joins_as_top_level = true;
-    fmt_options.inline = true;
-
-    fmt_options
-}
-
-fn format_sql(explain: &str, params: &[Value], explain_options: ExplainOptions) -> String {
-    let sql = explain.strip_prefix("EXPLAIN QUERY PLAN ").unwrap_or("");
-    let mut fmt_options = default_raw_options();
-    for option in explain_options {
-        match option {
-            ExplainOptions::Fmt if sql.len() >= LINE_WIDTH => {
-                fmt_options.joins_as_top_level = false;
-                fmt_options.inline = false;
-            }
-            ExplainOptions::Fmt | ExplainOptions::Raw => {}
-            ExplainOptions::Logical => panic!("Ir explain doesn't contain any sql output"),
-            _ => panic!("unknown explain option"),
-        }
-    }
-    let params = params
-        .iter()
-        .map(|p| p.to_string())
-        .collect::<Vec<String>>();
-
-    sqlformat::format(sql, &sqlformat::QueryParams::Indexed(params), &fmt_options)
 }
 
 pub fn explain_execute_guarded<'p>(
     explain: &str,
     params: &[Value],
     sql_vdbe_opcode_max: u64,
-    explain_options: ExplainOptions,
     query: &str,
     location: &str,
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError> {
-    let header = format!("{query} ({location}):");
-    let mp_header = rmp_serde::to_vec(&[header])?;
+    let mp_header = encode(&[query]);
     port.add_mp(&mp_header);
 
-    let sql = format_sql(explain, params, explain_options);
-    let mp_sql = rmp_serde::to_vec(&[sql])?;
-    port.add_mp(&mp_sql);
+    let mp_location = encode(&[location]);
+    port.add_mp(&mp_location);
+
+    let mp_query = encode(&[explain]);
+    port.add_mp(&mp_query);
+
+    let mp_params = encode(&params.to_vec());
+    port.add_mp(&mp_params);
 
     match SqlStmt::compile(explain) {
         Ok(mut stmt) => {
             let mut tmp_port = PicoPortOwned::new();
             tmp_port.process_stmt(&mut stmt, params, sql_vdbe_opcode_max)?;
 
-            let vdbe_explain = repack_vdbe_explain(&mut tmp_port);
-            let vdbe_explain_serialized = rmp_serde::to_vec(&[vdbe_explain])?;
-
-            port.add_mp(&vdbe_explain_serialized);
+            // At this point we have to save the port size as it will further be used to iterate over port contents.
+            repack_raw_explain(port, &tmp_port);
         }
         Err(err) => {
-            let err_msg = repack_vdbe_error(err.to_string());
-            let err_serialized = rmp_serde::to_vec(&[err_msg])?;
+            let num_serialized = encode(&[1]);
+            port.add_mp(&num_serialized);
 
+            let err_serialized = encode(&[err.to_string()]);
             port.add_mp(&err_serialized);
         }
     }
@@ -860,7 +800,6 @@ pub fn explain_execute<'p, R: QueryCache>(
     miss_info: impl ExpandedPlanInfo,
     params: &[Value],
     sql_vdbe_opcode_max: u64,
-    explain_options: ExplainOptions,
     location: &str,
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
@@ -881,7 +820,6 @@ where
         miss_info.sql(),
         params,
         sql_vdbe_opcode_max,
-        explain_options,
         "Query",
         location,
         port,

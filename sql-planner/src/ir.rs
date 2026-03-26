@@ -3190,6 +3190,6 @@ impl ShardColumnsMap {
 }
 
 pub mod api;
-mod explain;
+pub mod explain;
 #[cfg(test)]
 pub mod tests;

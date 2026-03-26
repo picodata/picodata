@@ -294,7 +294,6 @@ FROM
 |----------+-------+------+-------------------------------------------------------|
 | 0        | 0     | 0    | COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (UNION) |
 +----------+-------+------+-------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-2
 -- SQL:
@@ -307,7 +306,6 @@ SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_un
 +========================================================================================+
 | 0        | 0     | 0    | SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row) |
 +----------+-------+------+--------------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-3
 -- SQL:
@@ -320,7 +318,6 @@ SELECT "id", "name", "product_units" FROM ( SELECT "testing_space"."id", "testin
 +========================================================================================+
 | 0        | 0     | 0    | SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row) |
 +----------+-------+------+--------------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-4
 -- SQL:
@@ -335,7 +332,6 @@ SELECT "id", "name", "product_units" FROM ( SELECT "testing_space"."id", "testin
 |----------+-------+------+--------------------------------------------------------------|
 | 0        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY                                 |
 +----------+-------+------+--------------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-5
 -- SQL:
@@ -457,7 +453,6 @@ LIMIT
 |----------+-------+------+---------------------------------------------------------|
 | 0        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY                            |
 +----------+-------+------+---------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-6
 -- SQL:
@@ -469,7 +464,6 @@ VALUES ( CAST(1 AS int), CAST('1' AS string), CAST(1 AS int) )
 | selectid | order | from | detail |
 +==================================+
 +----------+-------+------+--------+
-''
 
 -- TEST: test_raw_explain-7
 -- SQL:
@@ -482,7 +476,6 @@ SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_sp
 +===================================================================+
 | 0        | 0     | 0    | SCAN TABLE testing_space (~262144 rows) |
 +----------+-------+------+-----------------------------------------+
-''
 
 -- TEST: test_raw_explain-8
 -- SQL:
@@ -507,12 +500,12 @@ SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_sp
 |----------+-------+------+---------------------------------------------------------|
 | 1        | 0     | 0    | SCAN TABLE TMP_6029770779943228052_0136 (~1048576 rows) |
 +----------+-------+------+---------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-9
 -- SQL:
 EXPLAIN (RAW) DELETE FROM testing_space;
 -- EXPECTED:
+
 
 -- TEST: test_raw_explain-10
 -- SQL:
@@ -547,7 +540,6 @@ SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_sp
 |----------+-------+------+----------------------------------------------------------------|
 | 1        | 0     | 0    | SCAN TABLE TMP_12108310727876432219_0136 (~1048576 rows)       |
 +----------+-------+------+----------------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-11
 -- SQL:
@@ -564,7 +556,6 @@ SELECT CAST(0 AS int) as "col_0", "testing_space"."id" as "col_1" FROM "testing_
 |----------+-------+------+----------------------------------------------------------------|
 | 1        | 0     | 0    | SCAN TABLE testing_space_hist (~983040 rows)                   |
 +----------+-------+------+----------------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-12
 -- SQL:
@@ -599,7 +590,6 @@ SELECT CAST(-1 AS int) as "col_0", "testing_space"."id" as "col_1" FROM "testing
 |----------+-------+------+----------------------------------------------------------------|
 | 1        | 0     | 0    | SCAN TABLE TMP_17388536538104774043_0136 (~1048576 rows)       |
 +----------+-------+------+----------------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-13
 -- SQL:
@@ -614,7 +604,6 @@ SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_sp
 |----------+-------+------+---------------------------------------------------------------|
 | 0        | 0     | 0    | EXECUTE LIST SUBQUERY 1                                       |
 +----------+-------+------+---------------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-14
 -- SQL:
@@ -629,7 +618,6 @@ SELECT "testing_space"."product_units" + CAST(10 AS int) as "col_0", "testing_sp
 |----------+-------+------+---------------------------------------------------------------|
 | 0        | 0     | 0    | EXECUTE LIST SUBQUERY 1                                       |
 +----------+-------+------+---------------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-15
 -- SQL:
@@ -642,7 +630,6 @@ SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_un
 +========================================================================================+
 | 0        | 0     | 0    | SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row) |
 +----------+-------+------+--------------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-16
 -- SQL:
@@ -662,7 +649,6 @@ WHERE
 +========================================================================================+
 | 0        | 0     | 0    | SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row) |
 +----------+-------+------+--------------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-17
 -- SQL:
@@ -675,7 +661,6 @@ VALUES ( CAST(42 AS int), CAST('beluga' AS string), ( SELECT CAST(1000 AS int) a
 +=====================================================+
 | 0        | 0     | 0    | EXECUTE SCALAR SUBQUERY 1 |
 +----------+-------+------+---------------------------+
-''
 
 -- TEST: test_raw_explain-18
 -- SQL:
@@ -700,7 +685,6 @@ SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_sp
 |----------+-------+------+---------------------------------------------------------|
 | 1        | 0     | 0    | SCAN TABLE TMP_8034078592994454592_0136 (~1048576 rows) |
 +----------+-------+------+---------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-19
 -- SQL:
@@ -721,7 +705,6 @@ SELECT * FROM ( SELECT "COL_0", "COL_1", "COL_2" FROM "TMP_13062017678802601205_
 +====================================================================================+
 | 0        | 0     | 0    | SCAN TABLE TMP_13062017678802601205_0136 (~1048576 rows) |
 +----------+-------+------+----------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-20
 -- SQL:
@@ -733,7 +716,6 @@ SELECT CAST(1 AS int) as "col_1", CAST('1' AS string) as "col_2", CAST(1 AS int)
 | selectid | order | from | detail |
 +==================================+
 +----------+-------+------+--------+
-''
 
 -- TEST: test_raw_explain-21
 -- SQL:
@@ -748,7 +730,6 @@ SELECT "id", "name", "product_units" FROM ( SELECT * FROM "testing_space_global"
 |----------+-------+------+------------------------------------------------|
 | 0        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY                   |
 +----------+-------+------+------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-22
 -- SQL:
@@ -777,7 +758,6 @@ SELECT "name", "global_rows", "global_units", "local_units" FROM ( SELECT "COL_0
 |----------+-------+------+---------------------------------------------------------|
 | 0        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY                            |
 +----------+-------+------+---------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-23
 -- SQL:
@@ -796,7 +776,6 @@ WHERE
 +==========================================================================+
 | 0        | 0     | 0    | SCAN TABLE testing_space_global (~983040 rows) |
 +----------+-------+------+------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-24
 -- SQL:
@@ -833,7 +812,6 @@ VALUES ( ( SELECT CAST(1 AS int) as "col_1"), ( SELECT "COL_0" FROM "TMP_1105075
 |----------+-------+------+----------------------------------------------------------|
 | 2        | 0     | 0    | SCAN TABLE TMP_11050758999591598030_0136 (~1048576 rows) |
 +----------+-------+------+----------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-25
 -- SQL:
@@ -846,7 +824,6 @@ SELECT upper (CAST ("testing_space_global"."name" as string)) as "col_0", "testi
 +===========================================================================+
 | 0        | 0     | 0    | SCAN TABLE testing_space_global (~1048576 rows) |
 +----------+-------+------+-------------------------------------------------+
-''
 
 -- TEST: test-explain-fmt-option
 -- SQL:
@@ -882,7 +859,6 @@ WHERE
 +========================================================================================+
 | 0        | 0     | 0    | SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row) |
 +----------+-------+------+--------------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain_for_query_from-gl1394-1
 -- SQL:
@@ -897,7 +873,6 @@ SELECT max (CAST ("g"."id" as int)) as "col_1" FROM "g" HAVING CAST(true AS bool
 +----------------------------------------------------------------------------------+
 | Failed to compile SQL statement: LIMIT clause should come after UNION not before |
 +----------------------------------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain-dbg
 -- SQL:
@@ -908,7 +883,6 @@ SELECT * FROM "g" WHERE max (CAST ("g"."id" as int)) = CAST(5 AS int)
 +---------------------------------------------------------------------+
 | Failed to compile SQL statement: misuse of aggregate function MAX() |
 +---------------------------------------------------------------------+
-''
 
 -- TEST: test_raw_explain_for_query_from-gl2666-1
 -- SQL:
@@ -940,7 +914,6 @@ SELECT "COL_0" FROM "TMP_9663148926645388081_0136" LIMIT 1
 +===================================================================================+
 | 0        | 0     | 0    | SCAN TABLE TMP_9663148926645388081_0136 (~1048576 rows) |
 +----------+-------+------+---------------------------------------------------------+
-
 ''
 4. Query (ROUTER):
 ''
@@ -961,7 +934,6 @@ SELECT CAST(1 AS int) as "col_1" FROM "t" INNER JOIN ( SELECT "COL_0" FROM "TMP_
 |----------+-------+------+---------------------------------------------------------|
 | 0        | 1     | 1    | SCAN TABLE TMP_9127633025172155963_0136 (~1048576 rows) |
 +----------+-------+------+---------------------------------------------------------+
-''
 
 -- TEST: init-block
 -- SQL:
@@ -993,7 +965,6 @@ SELECT "t"."b" + CAST(2 AS int) as "col_1" FROM "t" WHERE "t"."pk" = CAST(1 AS i
 +============================================================================+
 | 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
 +----------+-------+------+--------------------------------------------------+
-''
 
 
 -- TEST: explain-raw-return query-2
@@ -1010,7 +981,6 @@ SELECT CAST(1 AS int) as "col_1", CAST(2 AS int) as "col_2" UNION ALL SELECT CAS
 +===================================================================+
 | 0        | 0     | 0    | COMPOUND SUBQUERIES 1 AND 2 (UNION ALL) |
 +----------+-------+------+-----------------------------------------+
-''
 
 
 -- TEST: explain-raw-return-query-3
@@ -1034,7 +1004,6 @@ SELECT CAST(3 AS int) as "col_1", CAST(4 AS int) as "col_2"
 | selectid | order | from | detail |
 +==================================+
 +----------+-------+------+--------+
-''
 
 
 -- TEST: explain-raw-return-query-4
@@ -1067,7 +1036,6 @@ SELECT CAST(4 AS int) as "col_1"
 | selectid | order | from | detail |
 +==================================+
 +----------+-------+------+--------+
-''
 
 
 -- TEST: explain-raw-updates-1
@@ -1102,7 +1070,6 @@ UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(1 AS int)
 +============================================================================+
 | 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
 +----------+-------+------+--------------------------------------------------+
-''
 
 
 -- TEST: explain-raw-updates-2
@@ -1137,7 +1104,6 @@ UPDATE "t" SET "a" = "t"."a" * CAST(2 AS int) WHERE "t"."pk" = CAST(2 AS int)
 +============================================================================+
 | 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
 +----------+-------+------+--------------------------------------------------+
-''
 
 -- TEST: explain-raw-updates-no-return-query
 -- SQL:
@@ -1162,7 +1128,6 @@ UPDATE "t" SET "a" = "t"."a" * CAST(2 AS int) WHERE "t"."pk" = CAST(3 AS int)
 +============================================================================+
 | 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
 +----------+-------+------+--------------------------------------------------+
-''
 
 -- TEST: explain-not-supported
 -- SQL:
@@ -1172,7 +1137,7 @@ BEGIN
   UPDATE t SET a = a * 2 WHERE pk = 3;
 END $$;
 -- ERROR:
-sbroad: explain for transactions not implemented
+sbroad: logical explain is not implemented for transactions
 
 -- TEST: explain-query-different-buckets
 -- SQL:

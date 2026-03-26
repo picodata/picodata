@@ -567,14 +567,7 @@ pub(crate) fn block_dispatch<'p>(
     timeout: Duration,
     tier: Option<&str>,
 ) -> Result<(), SbroadError> {
-    if !block.explain_options.is_empty() {
-        if block.explain_options.contains(ExplainOptions::Logical) {
-            return Err(SbroadError::NotImplemented(
-                Entity::Explain,
-                "for transactions".to_smolstr(),
-            ));
-        }
-
+    if block.explain_options.contains(ExplainOptions::Raw) {
         return explain_execute_block(block, buckets.determine_exec_location(), port);
     }
 

@@ -11,7 +11,7 @@ fn simple_query_without_cond_plan() {
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @"
     projection (t.identification_number::int -> c1, t.product_code::string -> product_code)
@@ -29,7 +29,7 @@ fn simple_query_with_cond_plan() {
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @"
     projection (t.identification_number::int -> c1, t.product_code::string -> product_code)
@@ -50,7 +50,7 @@ fn union_query_plan() {
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @"
     union all
@@ -76,7 +76,7 @@ WHERE "id" = 1"#;
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection (t.id::int -> id, t."FIRST_NAME"::string -> "FIRST_NAME")
@@ -114,7 +114,7 @@ WHERE "id" IN (SELECT "id"
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection (t.id::int -> id, t."FIRST_NAME"::string -> "FIRST_NAME")
@@ -153,7 +153,7 @@ fn explain_except1() {
 
     let plan = sql_to_optimized_ir(query, vec![]);
     let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @"
     except
@@ -193,7 +193,7 @@ fn motion_subquery_plan() {
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection (t.id::int -> id, t."FIRST_NAME"::string -> "FIRST_NAME")
@@ -240,7 +240,7 @@ WHERE "t2"."product_code" = '123'"#;
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection (t1."FIRST_NAME"::string -> "FIRST_NAME")
@@ -269,7 +269,7 @@ FROM (SELECT "id", "FIRST_NAME" FROM "test_space" WHERE "id" = 3) as "t1"
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection (t1."FIRST_NAME"::string -> "FIRST_NAME")
@@ -299,7 +299,7 @@ fn unary_condition_plan() {
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
@@ -318,7 +318,7 @@ fn insert_plan() {
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     insert into test_space on conflict: fail
@@ -338,7 +338,7 @@ fn multiply_insert_plan() {
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     insert into test_space on conflict: fail
@@ -361,7 +361,7 @@ SELECT "identification_number", "product_code" FROM "hash_testing""#;
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @"
     insert into test_space on conflict: fail
@@ -381,7 +381,7 @@ fn select_value_plan() {
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1")
@@ -402,7 +402,7 @@ fn select_cast_plan1() {
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @"
     projection (test_space.id::int::int -> b)
@@ -420,7 +420,7 @@ fn select_cast_plan2() {
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
@@ -439,7 +439,7 @@ fn select_cast_plan_nested() {
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @"
     projection (TRIM(test_space.id::int::string)::string -> col_1)
@@ -457,7 +457,7 @@ fn select_cast_plan_nested_where() {
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @"
     projection (test_space.id::int -> id)
@@ -476,7 +476,7 @@ fn select_cast_plan_nested_where2() {
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @"
     projection (test_space.id::int -> id)

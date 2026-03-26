@@ -7,15 +7,14 @@ use rmp::encode::write_bool;
 use sql::executor::{Port as SqlPort, PortType as SqlPortType};
 use sql_protocol::encode::{
     dispatch_write_dml_response, dispatch_write_dql_response, dispatch_write_explain_response,
-    dispatch_write_query_plan_response, execute_write_dml_response, execute_write_dql_response,
-    execute_write_miss_response,
+    execute_write_dml_response, execute_write_dql_response, execute_write_miss_response,
 };
 use std::io::{Cursor, Error as IoError, Result as IoResult, Write};
 use std::os::raw::c_int;
 use std::ptr::NonNull;
 use tarantool::ffi::sql::{obuf_append, Obuf, Port, PortC, PortVTable};
 
-use super::lua::{dispatch_query_plan_dump_lua, escape_bytes};
+use super::lua::escape_bytes;
 use sql::executor::vdbe::{ExecutionInsight, SqlError, SqlStmt};
 use sql::ir::value::Value;
 
@@ -42,8 +41,6 @@ pub static DISPATCH_DQL_VTAB: PortVTable =
     PortVTable::new(dispatch_dql_dump_mp, dispatch_dql_dump_lua);
 pub static DISPATCH_EXPLAIN_VTAB: PortVTable =
     PortVTable::new(dispatch_explain_dump_mp, dispatch_explain_dump_lua);
-pub static DISPATCH_QUERY_PLAN_VTAB: PortVTable =
-    PortVTable::new(dispatch_query_plan_dump_mp, dispatch_query_plan_dump_lua);
 
 pub(crate) fn dispatch_dump_mp(writer: &mut impl Write, port: &PortC) -> IoResult<()> {
     if port.vtab == &DISPATCH_DML_VTAB {
@@ -52,9 +49,7 @@ pub(crate) fn dispatch_dump_mp(writer: &mut impl Write, port: &PortC) -> IoResul
         // The first msgpack in DQL response is metadata, the remaining ones are tuples.
         dispatch_write_dql_response(writer, port.size().saturating_sub(1) as u32, port.iter())?;
     } else if port.vtab == &DISPATCH_EXPLAIN_VTAB {
-        dispatch_write_explain_response(writer, port.size() as u32, port.iter())?;
-    } else if port.vtab == &DISPATCH_QUERY_PLAN_VTAB {
-        dispatch_write_query_plan_response(writer, port.iter())?;
+        dispatch_write_explain_response(writer, port.iter())?;
     } else {
         return Err(IoError::other("Unsupported port vtable for dispatch_dump"));
     }
@@ -76,15 +71,8 @@ unsafe extern "C" fn dispatch_dql_dump_mp(port: *mut Port, out: *mut Obuf) -> c_
 
 unsafe extern "C" fn dispatch_explain_dump_mp(port: *mut Port, out: *mut Obuf) -> c_int {
     let port_c: &PortC = NonNull::new_unchecked(port as *mut PortC).as_ref();
-    dispatch_write_explain_response(&mut ObufWriter(out), port_c.size() as u32, port_c.iter())
+    dispatch_write_explain_response(&mut ObufWriter(out), port_c.iter())
         .expect("Failed to dump EXPLAIN to obuf on router");
-    IPROTO_DATA_VALUE_LENGTH_DISPATCH
-}
-
-unsafe extern "C" fn dispatch_query_plan_dump_mp(port: *mut Port, out: *mut Obuf) -> c_int {
-    let port_c: &PortC = NonNull::new_unchecked(port as *mut PortC).as_ref();
-    dispatch_write_query_plan_response(&mut ObufWriter(out), port_c.iter())
-        .expect("Failed to dump QUERY PLAN to obuf on router");
     IPROTO_DATA_VALUE_LENGTH_DISPATCH
 }
 
@@ -207,7 +195,6 @@ impl SqlPort<'_> for PicoPortOwned {
             SqlPortType::DispatchDql => p.vtab = &DISPATCH_DQL_VTAB,
             SqlPortType::DispatchDml => p.vtab = &DISPATCH_DML_VTAB,
             SqlPortType::DispatchExplain => p.vtab = &DISPATCH_EXPLAIN_VTAB,
-            SqlPortType::DispatchQueryPlan => p.vtab = &DISPATCH_QUERY_PLAN_VTAB,
             SqlPortType::ExecuteDql => p.vtab = &EXECUTE_DQL_VTAB,
             SqlPortType::ExecuteDml => p.vtab = &EXECUTE_DML_VTAB,
             SqlPortType::ExecuteMiss => p.vtab = &EXECUTE_MISS_VTAB,
@@ -275,7 +262,6 @@ impl<'p> SqlPort<'p> for PicoPortC<'p> {
             SqlPortType::DispatchDql => self.port.vtab = &DISPATCH_DQL_VTAB,
             SqlPortType::DispatchDml => self.port.vtab = &DISPATCH_DML_VTAB,
             SqlPortType::DispatchExplain => self.port.vtab = &DISPATCH_EXPLAIN_VTAB,
-            SqlPortType::DispatchQueryPlan => self.port.vtab = &DISPATCH_QUERY_PLAN_VTAB,
             SqlPortType::ExecuteDql => self.port.vtab = &EXECUTE_DQL_VTAB,
             SqlPortType::ExecuteDml => self.port.vtab = &EXECUTE_DML_VTAB,
             SqlPortType::ExecuteMiss => self.port.vtab = &EXECUTE_MISS_VTAB,

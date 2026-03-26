@@ -1945,10 +1945,6 @@ impl Router for RouterRuntimeMock {
         Ok(())
     }
 
-    fn explain_format(&self, explain: SmolStr) -> Result<Box<dyn Any>, SbroadError> {
-        Ok(Box::new(explain))
-    }
-
     fn extract_sharding_key_from_map<'rec>(
         &self,
         space: SmolStr,

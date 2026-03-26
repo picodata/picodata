@@ -34,26 +34,6 @@ pub fn dispatch_write_dml_response<'bytes>(
 /// split into multiple lines.
 pub fn dispatch_write_explain_response<'bytes>(
     writer: &mut impl Write,
-    tuples: u32,
-    port: impl Iterator<Item = &'bytes [u8]>,
-) -> IoResult<()> {
-    // Write the explained plan msgpack inside a single element array
-    // (for iproto compatibility).
-    write_array_len(writer, 1)?;
-
-    // Write all the explain lines as an array of strings.
-    write_array_len(writer, tuples)?;
-    let len = copy_tuples(writer, port)?;
-    if len != tuples as usize {
-        return Err(IoError::other(format!(
-            "Expected {tuples} explain lines, but got {len}",
-        )));
-    }
-    Ok(())
-}
-
-pub fn dispatch_write_query_plan_response<'bytes>(
-    writer: &mut impl Write,
     port: impl Iterator<Item = &'bytes [u8]>,
 ) -> IoResult<()> {
     // Write the explained plan msgpack inside a single element array
@@ -249,9 +229,9 @@ mod tests {
 
     #[test]
     fn test_dispatch_write_explain_response() {
-        let port = vec![b"\xa7explain".as_ref(), b"\xa4plan".as_ref()];
+        let port = vec![b"\x91\xa7explain".as_ref(), b"\x91\xa4plan".as_ref()];
         let mut buf = Vec::new();
-        dispatch_write_explain_response(&mut buf, 2, port.into_iter()).unwrap();
+        dispatch_write_explain_response(&mut buf, port.into_iter()).unwrap();
         assert_eq!(buf.as_slice(), b"\x91\x92\xa7explain\xa4plan");
     }
 

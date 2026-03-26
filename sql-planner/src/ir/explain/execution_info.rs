@@ -1,4 +1,6 @@
+use super::buckets_repr;
 use ahash::AHashSet;
+use std::fmt::Display;
 
 use crate::{
     errors::SbroadError,
@@ -32,6 +34,26 @@ pub enum BucketsInfo {
     /// see `can_estimate_buckets`
     Unknown,
     Calculated(CalculatedBuckets),
+}
+
+impl Display for BucketsInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self {
+            BucketsInfo::Unknown => {
+                write!(f, "buckets = unknown")
+            }
+            BucketsInfo::Calculated(calculated) => {
+                let repr = buckets_repr(&calculated.buckets, calculated.bucket_count);
+                // For buckets ANY and ALL there is no sense to handle in the
+                // output the case when bucket count is not exact.
+                match calculated.buckets {
+                    Buckets::Any | Buckets::All => write!(f, "buckets = {repr}",),
+                    _ if calculated.is_exact => write!(f, "buckets = {repr}",),
+                    _ => write!(f, "buckets <= {repr}",),
+                }
+            }
+        }
+    }
 }
 
 impl BucketsInfo {
