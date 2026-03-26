@@ -212,7 +212,7 @@ impl Plan {
             let pairs = [(*left, *right), (*right, *left)];
             for (left_id, right_id) in pairs {
                 let left_expr = self.get_expression_node(left_id)?;
-                if !matches!(left_expr, Expression::Row(_) | Expression::Reference(_)) {
+                if !left_expr.is_row() && !left_expr.is_ref() {
                     continue;
                 }
 

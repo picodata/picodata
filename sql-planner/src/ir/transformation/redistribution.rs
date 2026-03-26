@@ -1174,10 +1174,10 @@ impl Plan {
         let bool_nodes = self.get_bool_nodes_for_resolve_subquery_conflicts(expr_id);
         for LevelNode(_, bool_node) in &bool_nodes {
             let bool_op = BoolOp::from_expr(self, *bool_node)?;
-            if self.is_row(bool_op.left)? {
+            if self.get_expression_node(bool_op.left)?.is_row() {
                 self.set_rel_expr_distribution(rel_id, bool_op.left)?;
             }
-            if self.is_row(bool_op.right)? {
+            if self.get_expression_node(bool_op.right)?.is_row() {
                 self.set_rel_expr_distribution(rel_id, bool_op.right)?;
             }
         }
@@ -1552,10 +1552,10 @@ impl Plan {
         for level_node in &nodes {
             let node = level_node.1;
             let bool_op = BoolOp::from_expr(self, node)?;
-            if self.is_row(bool_op.left)? {
+            if self.get_expression_node(bool_op.left)?.is_row() {
                 self.set_rel_expr_distribution(rel_id, bool_op.left)?;
             }
-            if self.is_row(bool_op.right)? {
+            if self.get_expression_node(bool_op.right)?.is_row() {
                 self.set_rel_expr_distribution(rel_id, bool_op.right)?;
             }
         }
@@ -1629,7 +1629,7 @@ impl Plan {
         );
         for LevelNode(_, node_id) in expr_tree.traverse_into_iter(cond_id) {
             let expr = self.get_expression_node(node_id)?;
-            if matches!(expr, Expression::Unary(_)) {
+            if expr.is_unary() {
                 new_inner_policy = MotionPolicy::Full;
                 continue;
             }
@@ -1670,8 +1670,8 @@ impl Plan {
                     let left_expr = self.get_expression_node(left_id)?;
                     let right_expr = self.get_expression_node(right_id)?;
 
-                    if matches!(left_expr, Expression::Reference(_) | Expression::Row(_))
-                        && matches!(right_expr, Expression::Reference(_) | Expression::Row(_))
+                    if (left_expr.is_ref() || left_expr.is_row())
+                        && (right_expr.is_ref() || right_expr.is_row())
                     {
                         self.join_policy_for_eq(rel_id, left_id, right_id)?
                     } else {

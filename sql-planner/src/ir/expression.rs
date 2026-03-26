@@ -29,7 +29,6 @@ use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::to_user;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{IndexExpr, Parameter, ReferenceAsteriskSource, SubQueryReference};
-use crate::ir::operator::Bool;
 use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::types::UnrestrictedType;
 use crate::ir::{Nodes, Plan};
@@ -1741,33 +1740,6 @@ impl Plan {
         Ok(())
     }
 
-    /// Check that the node is a boolean equality and its children are both rows.
-    #[must_use]
-    pub fn is_bool_eq_with_rows(&self, node_id: NodeId) -> bool {
-        let Ok(node) = self.get_expression_node(node_id) else {
-            return false;
-        };
-        if let Expression::Bool(BoolExpr { left, op, right }) = node {
-            if *op != Bool::Eq {
-                return false;
-            }
-
-            let Ok(left_node) = self.get_expression_node(*left) else {
-                return false;
-            };
-
-            let Ok(right_node) = self.get_expression_node(*right) else {
-                return false;
-            };
-
-            if left_node.is_row() && right_node.is_row() {
-                return true;
-            }
-        }
-
-        false
-    }
-
     /// The node is a trivalent (boolean or NULL).
     pub fn is_trivalent(&self, expr_id: NodeId) -> Result<bool, SbroadError> {
         let expr = self.get_expression_node(expr_id).map_err(|_| {
@@ -1799,36 +1771,6 @@ impl Plan {
             _ => {}
         }
         Ok(false)
-    }
-
-    /// The node is a reference (or a row of a single reference column).
-    ///
-    /// # Errors
-    /// - If node is not an expression.
-    pub fn is_ref(&self, expr_id: NodeId) -> Result<bool, SbroadError> {
-        let expr = self.get_expression_node(expr_id)?;
-        match expr {
-            Expression::Reference { .. } | Expression::SubQueryReference { .. } => return Ok(true),
-            Expression::Row(Row { list, .. }) => {
-                if let (Some(inner_id), None) = (list.first(), list.get(1)) {
-                    return self.is_ref(*inner_id);
-                }
-            }
-            _ => {}
-        }
-        Ok(false)
-    }
-
-    /// The node is a row
-    ///
-    /// # Errors
-    /// - If node is not an expression.
-    pub fn is_row(&self, expr_id: NodeId) -> Result<bool, SbroadError> {
-        let expr = self.get_expression_node(expr_id)?;
-        match expr {
-            Expression::Row(..) => Ok(true),
-            _ => Ok(false),
-        }
     }
 
     /// Changes reference targets in relational node fields (output and other fields except children)

@@ -16,17 +16,12 @@ mod split_columns;
 use ahash::AHashMap;
 use smol_str::format_smolstr;
 
-use super::node::expression::{Expression, MutExpression};
+use super::node::expression::Expression;
 use super::node::relational::{MutRelational, Relational};
-use super::node::{Bound, BoundType, Over, Window};
-use super::operator::OrderByEntity;
 use super::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
 use crate::errors::{Entity, SbroadError};
 use crate::frontend::sql::ir::SubtreeCloner;
-use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Case, Cast, IndexExpr, Join, NodeId, Row, ScalarFunction,
-    Selection, Trim, UnaryExpr,
-};
+use crate::ir::node::{BoolExpr, Join, NodeId, Selection};
 use crate::ir::operator::Bool;
 use crate::ir::{Node, Plan};
 
@@ -295,116 +290,9 @@ impl Plan {
         // Traverse top id and fix references got from the map.
         for level_node in &nodes {
             let id = level_node.1;
-            let expr = self.get_mut_expression_node(id)?;
-            // For all expressions in the subtree tries to replace their children
-            // with the new nodes from the map.
-            //
-            // XXX: If you add a new expression type to the match, make sure to
-            // add it to the filter above.
-            match expr {
-                MutExpression::Window(Window {
-                    partition,
-                    ordering,
-                    frame,
-                    ..
-                }) => {
-                    if let Some(partition) = partition {
-                        for id in partition {
-                            map.replace(id);
-                        }
-                    }
-                    if let Some(ordering) = ordering {
-                        for o_elem in ordering {
-                            if let OrderByEntity::Expression { mut expr_id } = o_elem.entity {
-                                map.replace(&mut expr_id);
-                            }
-                        }
-                    }
-                    if let Some(frame) = frame {
-                        match &frame.bound {
-                            Bound::Single(bound) => {
-                                if let BoundType::PrecedingOffset(mut node_id)
-                                | BoundType::FollowingOffset(mut node_id) = bound
-                                {
-                                    map.replace(&mut node_id);
-                                }
-                            }
-                            Bound::Between(bound_from, bound_to) => {
-                                for bound in &[bound_from, bound_to] {
-                                    if let BoundType::PrecedingOffset(mut node_id)
-                                    | BoundType::FollowingOffset(mut node_id) = bound
-                                    {
-                                        map.replace(&mut node_id);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                MutExpression::Over(Over {
-                    stable_func,
-                    filter,
-                    window,
-                    ..
-                }) => {
-                    map.replace(stable_func);
-                    if let Some(filter) = filter {
-                        map.replace(filter);
-                    }
-                    map.replace(window);
-                }
-                MutExpression::Alias(Alias { child, .. })
-                | MutExpression::Cast(Cast { child, .. })
-                | MutExpression::Unary(UnaryExpr { child, .. }) => {
-                    map.replace(child);
-                }
-                MutExpression::Index(IndexExpr { child, which }) => {
-                    map.replace(child);
-                    map.replace(which);
-                }
-                MutExpression::Case(Case {
-                    search_expr,
-                    when_blocks,
-                    else_expr,
-                }) => {
-                    if let Some(search_expr) = search_expr {
-                        map.replace(search_expr);
-                    }
-                    for (cond_expr, res_expr) in when_blocks {
-                        map.replace(cond_expr);
-                        map.replace(res_expr);
-                    }
-                    if let Some(else_expr) = else_expr {
-                        map.replace(else_expr);
-                    }
-                }
-                MutExpression::Bool(BoolExpr { left, right, .. })
-                | MutExpression::Arithmetic(ArithmeticExpr { left, right, .. }) => {
-                    map.replace(left);
-                    map.replace(right);
-                }
-                MutExpression::Trim(Trim {
-                    pattern, target, ..
-                }) => {
-                    if let Some(pattern) = pattern {
-                        map.replace(pattern);
-                    }
-                    map.replace(target);
-                }
-                MutExpression::Row(Row { list, .. })
-                | MutExpression::ScalarFunction(ScalarFunction { children: list, .. }) => {
-                    for id in list {
-                        map.replace(id);
-                    }
-                }
-                MutExpression::Concat(_)
-                | MutExpression::Constant(_)
-                | MutExpression::Like(_)
-                | MutExpression::Reference(_)
-                | MutExpression::SubQueryReference(_)
-                | MutExpression::CountAsterisk(_)
-                | MutExpression::Timestamp(_)
-                | MutExpression::Parameter(_) => {}
+            let mut expr = self.get_mut_expression_node(id)?;
+            for child in expr.expr_children_mut() {
+                map.replace(child);
             }
         }
 

@@ -92,11 +92,13 @@ impl Chain {
             // Merge expression into tuples only for equality operators.
             if let Bool::Eq = op {
                 // Try to put expressions with references to the left side.
-                let (left_id, right_id, group_op) =
-                    match (plan.is_ref(*left)?, plan.is_ref(*right)?) {
-                        (false, true) => (*right, *left, *op),
-                        _ => (*left, *right, *op),
-                    };
+                let (left_id, right_id, group_op) = match (
+                    plan.get_expression_node(*left)?.is_ref(),
+                    plan.get_expression_node(*right)?.is_ref(),
+                ) {
+                    (false, true) => (*right, *left, *op),
+                    _ => (*left, *right, *op),
+                };
 
                 if let Ok(Expression::Arithmetic(_)) = plan.get_expression_node(left_id) {
                     self.other.push(expr_id);
@@ -109,12 +111,12 @@ impl Chain {
                 }
 
                 // If boolean expression contains a SubQueryReference it should be added to the "other" list.
-                let left_sq = if plan.is_row(left_id)? {
+                let left_sq = if plan.get_expression_node(left_id)?.is_row() {
                     Some(plan.get_sq_ref_ids_from_row_node(left_id)?)
                 } else {
                     None
                 };
-                let right_sq = if plan.is_row(right_id)? {
+                let right_sq = if plan.get_expression_node(right_id)?.is_row() {
                     Some(plan.get_sq_ref_ids_from_row_node(right_id)?)
                 } else {
                     None

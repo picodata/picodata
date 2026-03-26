@@ -1,8 +1,13 @@
 use serde::Serialize;
+use smallvec::{smallvec, SmallVec};
 
 use crate::{
     errors::{Entity, SbroadError},
-    ir::{aggregates::AggregateKind, node::IndexExpr},
+    ir::{
+        aggregates::AggregateKind,
+        node::{Bound, BoundType, IndexExpr},
+        operator::OrderByEntity,
+    },
 };
 
 use super::{
@@ -10,6 +15,320 @@ use super::{
     NodeAligned, NodeId, Over, Parameter, Reference, Row, ScalarFunction, SubQueryReference,
     Timestamp, Trim, UnaryExpr, Window,
 };
+
+pub const EXPECTED_CHILDREN_CNT: usize = 4;
+
+/// Trait for accessing child `NodeId`s of an expression node.
+///
+/// Implemented for each inner expression struct (e.g. `Alias`, `BoolExpr`, `Row`).
+/// The three expression enums (`Expression`, `MutExpression`, `ExprOwned`) delegate
+/// to these impls via one-liner match dispatch.
+pub(crate) trait ExprChildren {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]>;
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]>;
+}
+
+// ── Leaf nodes (no children) ────────────────────────────────────────
+
+impl ExprChildren for Constant {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        SmallVec::new()
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        SmallVec::new()
+    }
+}
+
+impl ExprChildren for Reference {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        SmallVec::new()
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        SmallVec::new()
+    }
+}
+
+impl ExprChildren for SubQueryReference {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        SmallVec::new()
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        SmallVec::new()
+    }
+}
+
+impl ExprChildren for CountAsterisk {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        SmallVec::new()
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        SmallVec::new()
+    }
+}
+
+impl ExprChildren for Timestamp {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        SmallVec::new()
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        SmallVec::new()
+    }
+}
+
+impl ExprChildren for Parameter {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        SmallVec::new()
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        SmallVec::new()
+    }
+}
+
+// ── Single child ────────────────────────────────────────────────────
+
+impl ExprChildren for Alias {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        smallvec![self.child]
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        smallvec![&mut self.child]
+    }
+}
+
+impl ExprChildren for Cast {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        smallvec![self.child]
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        smallvec![&mut self.child]
+    }
+}
+
+impl ExprChildren for UnaryExpr {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        smallvec![self.child]
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        smallvec![&mut self.child]
+    }
+}
+
+// ── Two children ────────────────────────────────────────────────────
+
+impl ExprChildren for BoolExpr {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        smallvec![self.left, self.right]
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        smallvec![&mut self.left, &mut self.right]
+    }
+}
+
+impl ExprChildren for ArithmeticExpr {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        smallvec![self.left, self.right]
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        smallvec![&mut self.left, &mut self.right]
+    }
+}
+
+impl ExprChildren for Concat {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        smallvec![self.left, self.right]
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        smallvec![&mut self.left, &mut self.right]
+    }
+}
+
+impl ExprChildren for IndexExpr {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        smallvec![self.child, self.which]
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        smallvec![&mut self.child, &mut self.which]
+    }
+}
+
+// ── Three children ──────────────────────────────────────────────────
+
+impl ExprChildren for Like {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        smallvec![self.left, self.right, self.escape]
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        smallvec![&mut self.left, &mut self.right, &mut self.escape]
+    }
+}
+
+// ── Optional + required ─────────────────────────────────────────────
+
+impl ExprChildren for Trim {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        let mut children = SmallVec::new();
+        if let Some(p) = self.pattern {
+            children.push(p);
+        }
+        children.push(self.target);
+        children
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        let mut children = SmallVec::new();
+        if let Some(p) = &mut self.pattern {
+            children.push(p);
+        }
+        children.push(&mut self.target);
+        children
+    }
+}
+
+impl ExprChildren for Over {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        let mut children = smallvec![self.stable_func];
+        if let Some(flt) = self.filter {
+            children.push(flt);
+        }
+        children.push(self.window);
+        children
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        let mut children: SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> =
+            smallvec![&mut self.stable_func];
+        if let Some(flt) = &mut self.filter {
+            children.push(flt);
+        }
+        children.push(&mut self.window);
+        children
+    }
+}
+
+// ── Variadic ────────────────────────────────────────────────────────
+
+impl ExprChildren for Row {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        self.list.iter().copied().collect()
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        self.list.iter_mut().collect()
+    }
+}
+
+impl ExprChildren for ScalarFunction {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        self.children.iter().copied().collect()
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        self.children.iter_mut().collect()
+    }
+}
+
+// ── Case ────────────────────────────────────────────────────────────
+
+impl ExprChildren for Case {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        let mut children = SmallVec::new();
+        if let Some(e) = self.search_expr {
+            children.push(e);
+        }
+        for &(cond, res) in &self.when_blocks {
+            children.push(cond);
+            children.push(res);
+        }
+        if let Some(e) = self.else_expr {
+            children.push(e);
+        }
+        children
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        let mut children = SmallVec::new();
+        if let Some(e) = &mut self.search_expr {
+            children.push(e);
+        }
+        for (cond, res) in &mut self.when_blocks {
+            children.push(cond);
+            children.push(res);
+        }
+        if let Some(e) = &mut self.else_expr {
+            children.push(e);
+        }
+        children
+    }
+}
+
+// ── Window ──────────────────────────────────────────────────────────
+
+fn push_bound_children(bound: &Bound, out: &mut SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]>) {
+    let types = match bound {
+        Bound::Single(bt) => [Some(bt), None],
+        Bound::Between(a, b) => [Some(a), Some(b)],
+    };
+    for bt in types.into_iter().flatten() {
+        if let BoundType::PrecedingOffset(id) | BoundType::FollowingOffset(id) = bt {
+            out.push(*id);
+        }
+    }
+}
+
+fn push_bound_children_mut<'a>(
+    bound: &'a mut Bound,
+    out: &mut SmallVec<[&'a mut NodeId; EXPECTED_CHILDREN_CNT]>,
+) {
+    match bound {
+        Bound::Single(bt) => {
+            if let BoundType::PrecedingOffset(id) | BoundType::FollowingOffset(id) = bt {
+                out.push(id);
+            }
+        }
+        Bound::Between(a, b) => {
+            if let BoundType::PrecedingOffset(id) | BoundType::FollowingOffset(id) = a {
+                out.push(id);
+            }
+            if let BoundType::PrecedingOffset(id) | BoundType::FollowingOffset(id) = b {
+                out.push(id);
+            }
+        }
+    }
+}
+
+impl ExprChildren for Window {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        let mut children = SmallVec::new();
+        if let Some(p) = &self.partition {
+            children.extend_from_slice(p);
+        }
+        if let Some(ord) = &self.ordering {
+            for elem in ord {
+                if let OrderByEntity::Expression { expr_id } = &elem.entity {
+                    children.push(*expr_id);
+                }
+            }
+        }
+        if let Some(frame) = &self.frame {
+            push_bound_children(&frame.bound, &mut children);
+        }
+        children
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        let mut children = SmallVec::new();
+        if let Some(p) = &mut self.partition {
+            for id in p {
+                children.push(id);
+            }
+        }
+        if let Some(ord) = &mut self.ordering {
+            for elem in ord {
+                if let OrderByEntity::Expression { expr_id } = &mut elem.entity {
+                    children.push(expr_id);
+                }
+            }
+        }
+        if let Some(frame) = &mut self.frame {
+            push_bound_children_mut(&mut frame.bound, &mut children);
+        }
+        children
+    }
+}
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -166,6 +485,48 @@ impl Expression<'_> {
         matches!(self, Expression::Arithmetic(_))
     }
 
+    /// Returns all child `NodeId`s of this expression.
+    #[must_use]
+    pub fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        match self {
+            Expression::Alias(n) => n.expr_children(),
+            Expression::Bool(n) => n.expr_children(),
+            Expression::Arithmetic(n) => n.expr_children(),
+            Expression::Index(n) => n.expr_children(),
+            Expression::Cast(n) => n.expr_children(),
+            Expression::Concat(n) => n.expr_children(),
+            Expression::Constant(n) => n.expr_children(),
+            Expression::Like(n) => n.expr_children(),
+            Expression::Reference(n) => n.expr_children(),
+            Expression::SubQueryReference(n) => n.expr_children(),
+            Expression::Row(n) => n.expr_children(),
+            Expression::ScalarFunction(n) => n.expr_children(),
+            Expression::Trim(n) => n.expr_children(),
+            Expression::Unary(n) => n.expr_children(),
+            Expression::CountAsterisk(n) => n.expr_children(),
+            Expression::Case(n) => n.expr_children(),
+            Expression::Timestamp(n) => n.expr_children(),
+            Expression::Over(n) => n.expr_children(),
+            Expression::Window(n) => n.expr_children(),
+            Expression::Parameter(n) => n.expr_children(),
+        }
+    }
+
+    #[must_use]
+    pub fn is_ref(&self) -> bool {
+        matches!(self, Expression::Reference(_))
+    }
+
+    #[must_use]
+    pub fn is_subquery_ref(&self) -> bool {
+        matches!(self, Expression::SubQueryReference(_))
+    }
+
+    #[must_use]
+    pub fn is_unary(&self) -> bool {
+        matches!(self, Expression::Unary(_))
+    }
+
     #[must_use]
     pub fn get_expr_owned(&self) -> ExprOwned {
         match self {
@@ -196,6 +557,32 @@ impl Expression<'_> {
 }
 
 impl MutExpression<'_> {
+    /// Returns mutable references to all child `NodeId`s of this expression.
+    pub fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        match self {
+            MutExpression::Alias(n) => n.expr_children_mut(),
+            MutExpression::Bool(n) => n.expr_children_mut(),
+            MutExpression::Arithmetic(n) => n.expr_children_mut(),
+            MutExpression::Index(n) => n.expr_children_mut(),
+            MutExpression::Cast(n) => n.expr_children_mut(),
+            MutExpression::Concat(n) => n.expr_children_mut(),
+            MutExpression::Constant(n) => n.expr_children_mut(),
+            MutExpression::Like(n) => n.expr_children_mut(),
+            MutExpression::Reference(n) => n.expr_children_mut(),
+            MutExpression::SubQueryReference(n) => n.expr_children_mut(),
+            MutExpression::Row(n) => n.expr_children_mut(),
+            MutExpression::ScalarFunction(n) => n.expr_children_mut(),
+            MutExpression::Trim(n) => n.expr_children_mut(),
+            MutExpression::Unary(n) => n.expr_children_mut(),
+            MutExpression::CountAsterisk(n) => n.expr_children_mut(),
+            MutExpression::Case(n) => n.expr_children_mut(),
+            MutExpression::Timestamp(n) => n.expr_children_mut(),
+            MutExpression::Over(n) => n.expr_children_mut(),
+            MutExpression::Window(n) => n.expr_children_mut(),
+            MutExpression::Parameter(n) => n.expr_children_mut(),
+        }
+    }
+
     /// Get a mutable reference to the row children list.
     ///
     /// # Errors
@@ -208,5 +595,40 @@ impl MutExpression<'_> {
                 Some("node isn't Row type".into()),
             )),
         }
+    }
+}
+
+impl ExprOwned {
+    /// Apply a fallible function to every child `NodeId` in this expression.
+    pub fn try_map_children<E>(
+        &mut self,
+        mut f: impl FnMut(&mut NodeId) -> Result<(), E>,
+    ) -> Result<(), E> {
+        let children = match self {
+            ExprOwned::Alias(n) => n.expr_children_mut(),
+            ExprOwned::Bool(n) => n.expr_children_mut(),
+            ExprOwned::Arithmetic(n) => n.expr_children_mut(),
+            ExprOwned::Index(n) => n.expr_children_mut(),
+            ExprOwned::Cast(n) => n.expr_children_mut(),
+            ExprOwned::Concat(n) => n.expr_children_mut(),
+            ExprOwned::Constant(n) => n.expr_children_mut(),
+            ExprOwned::Like(n) => n.expr_children_mut(),
+            ExprOwned::Reference(n) => n.expr_children_mut(),
+            ExprOwned::SubQueryReference(n) => n.expr_children_mut(),
+            ExprOwned::Row(n) => n.expr_children_mut(),
+            ExprOwned::ScalarFunction(n) => n.expr_children_mut(),
+            ExprOwned::Trim(n) => n.expr_children_mut(),
+            ExprOwned::Unary(n) => n.expr_children_mut(),
+            ExprOwned::CountAsterisk(n) => n.expr_children_mut(),
+            ExprOwned::Case(n) => n.expr_children_mut(),
+            ExprOwned::Timestamp(n) => n.expr_children_mut(),
+            ExprOwned::Over(n) => n.expr_children_mut(),
+            ExprOwned::Window(n) => n.expr_children_mut(),
+            ExprOwned::Parameter(n) => n.expr_children_mut(),
+        };
+        for child in children {
+            f(child)?;
+        }
+        Ok(())
     }
 }

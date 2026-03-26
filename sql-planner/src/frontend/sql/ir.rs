@@ -11,11 +11,9 @@ use crate::frontend::sql::parse_trimmed_unsigned_from_str;
 use crate::ir::node::expression::{ExprOwned, Expression};
 use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant, Delete,
-    Except, GroupBy, Having, IndexExpr, Insert, Intersect, Join, Like, Limit, Motion, Node,
-    NodeAligned, NodeId, OrderBy, Over, Projection, Reference, ReferenceTarget, Row,
-    ScalarFunction, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, Trim,
-    UnaryExpr, Union, UnionAll, Update, Values, ValuesRow, Window,
+    Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion, Node, NodeAligned,
+    NodeId, OrderBy, Projection, Reference, ReferenceTarget, ScanCte, ScanRelation, ScanSubQuery,
+    SelectWithoutScan, Selection, Union, UnionAll, Update, Values, ValuesRow,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::transformation::redistribution::MotionOpcode;
@@ -148,149 +146,10 @@ impl SubtreeCloner {
 
     fn clone_expression(&mut self, expr: &Expression) -> Result<ExprOwned, SbroadError> {
         let mut copied = expr.get_expr_owned();
-
-        // note: all struct fields are listed explicitly (instead of `..`), so that
-        // when a new field is added to a struct, this match must
-        // be updated, or compilation will fail.
-        match &mut copied {
-            ExprOwned::Window(Window {
-                ref mut partition,
-                ref mut ordering,
-                ref mut frame,
-            }) => {
-                if let Some(partition) = partition {
-                    *partition = self.copy_list(partition)?;
-                }
-                if let Some(ordering) = ordering {
-                    for elem in ordering {
-                        if let OrderByEntity::Expression { expr_id } = &mut elem.entity {
-                            *expr_id = self.get_new_id(*expr_id)?;
-                        }
-                    }
-                }
-                if let Some(frame) = frame {
-                    let mut bound_types = [None, None];
-                    match &mut frame.bound {
-                        Bound::Single(b_type) => {
-                            bound_types[0] = Some(b_type);
-                        }
-                        Bound::Between(l_b_type, r_b_type) => {
-                            bound_types[0] = Some(l_b_type);
-                            bound_types[1] = Some(r_b_type);
-                        }
-                    }
-                    for b_type in bound_types.iter_mut() {
-                        match b_type {
-                            Some(BoundType::PrecedingOffset(expr_id))
-                            | Some(BoundType::FollowingOffset(expr_id)) => {
-                                *expr_id = self.get_new_id(*expr_id)?;
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
-            ExprOwned::Over(Over {
-                ref mut stable_func,
-                ref mut filter,
-                ref mut window,
-            }) => {
-                *stable_func = self.get_new_id(*stable_func)?;
-                if let Some(filter) = filter {
-                    *filter = self.get_new_id(*filter)?;
-                }
-                *window = self.get_new_id(*window)?;
-            }
-            ExprOwned::Constant(Constant { value: _ })
-            | ExprOwned::Timestamp(_)
-            | ExprOwned::Parameter(_)
-            | ExprOwned::Reference(_)
-            | ExprOwned::SubQueryReference(_)
-            | ExprOwned::CountAsterisk { .. } => {}
-            ExprOwned::Alias(Alias {
-                ref mut child,
-                name: _,
-            })
-            | ExprOwned::Cast(Cast {
-                ref mut child,
-                to: _,
-            })
-            | ExprOwned::Unary(UnaryExpr {
-                ref mut child,
-                op: _,
-            }) => {
-                *child = self.get_new_id(*child)?;
-            }
-            ExprOwned::Index(IndexExpr {
-                ref mut child,
-                ref mut which,
-            }) => {
-                *child = self.get_new_id(*child)?;
-                *which = self.get_new_id(*which)?;
-            }
-            ExprOwned::Case(Case {
-                ref mut search_expr,
-                ref mut when_blocks,
-                ref mut else_expr,
-            }) => {
-                if let Some(search_expr) = search_expr {
-                    *search_expr = self.get_new_id(*search_expr)?;
-                }
-                for (cond_expr, res_expr) in when_blocks {
-                    *cond_expr = self.get_new_id(*cond_expr)?;
-                    *res_expr = self.get_new_id(*res_expr)?;
-                }
-                if let Some(else_expr) = else_expr {
-                    *else_expr = self.get_new_id(*else_expr)?;
-                }
-            }
-            ExprOwned::Bool(BoolExpr {
-                ref mut left,
-                ref mut right,
-                op: _,
-            })
-            | ExprOwned::Arithmetic(ArithmeticExpr {
-                ref mut left,
-                ref mut right,
-                op: _,
-            })
-            | ExprOwned::Concat(Concat {
-                ref mut left,
-                ref mut right,
-            }) => {
-                *left = self.get_new_id(*left)?;
-                *right = self.get_new_id(*right)?;
-            }
-            ExprOwned::Like(Like {
-                ref mut left,
-                ref mut right,
-                ref mut escape,
-            }) => {
-                *left = self.get_new_id(*left)?;
-                *right = self.get_new_id(*right)?;
-                *escape = self.get_new_id(*escape)?;
-            }
-            ExprOwned::Trim(Trim {
-                ref mut pattern,
-                ref mut target,
-                ..
-            }) => {
-                if let Some(pattern) = pattern {
-                    *pattern = self.get_new_id(*pattern)?;
-                }
-                *target = self.get_new_id(*target)?;
-            }
-            ExprOwned::Row(Row {
-                list: ref mut children,
-                distribution: _,
-            })
-            | ExprOwned::ScalarFunction(ScalarFunction {
-                ref mut children, ..
-            }) => {
-                *children = self.copy_list(children)?;
-            }
-        }
-
+        copied.try_map_children(|id| -> Result<(), SbroadError> {
+            *id = self.get_new_id(*id)?;
+            Ok(())
+        })?;
         Ok(copied)
     }
 

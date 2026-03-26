@@ -152,7 +152,7 @@ impl<'plan> ExpressionMapper<'plan> {
     fn find(&mut self, current: NodeId, parent_expr: Option<NodeId>) -> Result<(), SbroadError> {
         let expr_node = self.plan.get_expression_node(current)?;
 
-        if matches!(expr_node, Expression::SubQueryReference { .. }) {
+        if expr_node.is_subquery_ref() {
             return Ok(());
         }
 
@@ -175,7 +175,7 @@ impl<'plan> ExpressionMapper<'plan> {
             }
             return Ok(());
         }
-        if matches!(expr_node, Expression::Reference(_)) {
+        if expr_node.is_ref() {
             // We found a column which is not inside aggregate function
             // and it is not a grouping expression:
             // select a from t group by b - is invalid
@@ -490,7 +490,7 @@ impl Plan {
             let nodes = dfs.traverse_into_vec(*col);
             for LevelNode(_, id) in nodes {
                 let n = self.get_expression_node(id)?;
-                if matches!(n, Expression::Reference(_)) {
+                if n.is_ref() {
                     let alias = match self.get_alias_from_reference_node(&n) {
                         Ok(v) => v.to_smolstr(),
                         Err(e) => e.to_smolstr(),
@@ -517,7 +517,7 @@ impl Plan {
         let dfs = PostOrder::new(|x| self.nodes.aggregate_iter(x, false), EXPR_CAPACITY);
         let nodes = dfs.traverse_into_vec(*filter);
         for LevelNode(_, id) in nodes {
-            if matches!(self.get_expression_node(id)?, Expression::Reference(_)) {
+            if self.get_expression_node(id)?.is_ref() {
                 return Err(SbroadError::Invalid(
 					Entity::Query,
 					Some("HAVING argument must appear in the GROUP BY clause or be used in an aggregate function".into())
