@@ -34,10 +34,6 @@ use tarantool::tlua;
 use tarantool::transaction;
 use tarantool::tuple::{Decode, KeyDef, ToTupleBuffer, Tuple, TupleBuffer};
 
-/// These configs are defined once at cluster bootstrap
-/// and they cannot be modified afterwards
-const PROHIBITED_CONFIGS: &[&str] = &[config::SHREDDING_PARAM_NAME];
-
 /// These tables cannot be changed directly dy a [`Dml`] operation. They have
 /// dedicated operation types (e.g. Ddl, Acl) because updating these tables
 /// requires automatically updating corresponding local spaces.
@@ -76,7 +72,7 @@ pub fn check_dml_prohibited(storage: &Catalog, dml: &Dml) -> traft::Result<()> {
     }
 
     let check_config_prohibited = |config_name| {
-        if PROHIBITED_CONFIGS.contains(&config_name) {
+        if config::AlterSystemParameters::is_read_only(config_name) {
             Err(Error::ConfigNotAllowed {
                 config: config_name.to_string(),
             })

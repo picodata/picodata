@@ -29,6 +29,7 @@ use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::op::Dml;
 use crate::traft::RaftSpaceAccess;
+use crate::traft::Result;
 use crate::util::file_exists;
 use crate::util::NoYieldsRefCell;
 use crate::util::{cast_and_encode, edit_distance};
@@ -1582,14 +1583,29 @@ impl ClusterConfig {
         self.shredding.unwrap_or(false)
     }
 
-    /// These configs are defined once at cluster bootstrap
+    /// These parameters are defined once at cluster bootstrap
     /// and they cannot be modified afterwards
-    pub fn bootstrap_configs(&self) -> Vec<(String, String, rmpv::Value)> {
-        vec![(
-            SHREDDING_PARAM_NAME.into(),
-            storage::DbConfig::GLOBAL_SCOPE.into(),
-            rmpv::Value::Boolean(self.shredding()),
-        )]
+    pub fn bootstrap_read_only_parameters(&self) -> Result<Vec<Dml>> {
+        // This function called when persisting bootstrap entries - `start_boot`, where initiator is ADMIN.
+        let initiator = ADMIN_ID;
+
+        let mut dmls = vec![];
+
+        //
+        // Global read-only parameters (currently just "shredding")
+        //
+
+        dmls.push(Dml::insert(
+            DbConfig::TABLE_ID,
+            &(
+                SHREDDING_PARAM_NAME,
+                DbConfig::GLOBAL_SCOPE,
+                self.shredding(),
+            ),
+            initiator,
+        )?);
+
+        Ok(dmls)
     }
 
     #[inline]
@@ -2407,6 +2423,12 @@ pub struct AlterSystemParameters {
     pub sql_ddl_timeout: f64,
 }
 
+/// These parameters can only be set during cluster bootstrap and cannot be
+/// changed afterwards.
+pub const READ_ONLY_ALTER_SYSTEM_PARAMETERS: &'static [&'static str] = &[
+    SHREDDING_PARAM_NAME,
+];
+
 fn generate_secure_token() -> String {
     use rand::rngs::SysRng;
 
@@ -2477,6 +2499,10 @@ impl AlterSystemParameters {
 
     pub fn has_scope_tier(parameter_name: &str) -> Result<bool, Error> {
         Self::has_scope(parameter_name, "tier")
+    }
+
+    pub fn is_read_only(parameter_name: &str) -> bool {
+        READ_ONLY_ALTER_SYSTEM_PARAMETERS.contains(&parameter_name)
     }
 
     /// See [`governor_auto_offline_timeout`](field@Self::governor_auto_offline_timeout).
@@ -2796,8 +2822,16 @@ pub fn get_default_value_of_alter_system_parameter(name: &str) -> Option<rmpv::V
 /// `tiers` is a list of names of all tiers in cluster.
 /// Returns an array of dmls that replacing all entries in _pico_db_config
 /// with default values for every possible scope.
-pub fn get_defaults_for_all_alter_system_parameters(
+///
+/// `include_read_only` is `true` only when this function is called during
+/// cluster bootstrap, in this case read-only parameters are also included in
+/// the result for the purpose of initialization.
+///
+/// `include_read_only` is `false` when it's called during
+/// ALTER SYSTEM RESET in which case read-only parameters are not changed.
+pub fn get_defaults_for_all_system_parameters(
     tier_names: &[&str],
+    include_read_only: bool,
 ) -> Result<Vec<Dml>, Error> {
     // NOTE: we need an instance of this struct because of how `Introspection::get_field_default_value_as_rmpv`
     // works. We allow default values to refer to other fields of the struct
@@ -2815,13 +2849,17 @@ pub fn get_defaults_for_all_alter_system_parameters(
 
     let mut dmls = vec![];
 
-    let global_scope = vec![DbConfig::GLOBAL_SCOPE];
+    let global_scope = &[DbConfig::GLOBAL_SCOPE];
 
     // This function called from two places: persisting bootstrap entries - `start_boot`, where
     // initiator is ADMIN, and ALTER SYSTEM which allowed only for ADMIN.
     let initiator = ADMIN_ID;
 
     for name in &leaf_field_paths::<AlterSystemParameters>() {
+        if !include_read_only && AlterSystemParameters::is_read_only(name) {
+            continue;
+        }
+
         let default = parameters
             .get_field_default_value_as_rmpv(name)
             .expect("paths are correct");
@@ -2830,7 +2868,7 @@ pub fn get_defaults_for_all_alter_system_parameters(
         let scope_values = if AlterSystemParameters::has_scope_tier(name)? {
             tier_names
         } else {
-            &global_scope
+            global_scope
         };
 
         for scope_value in scope_values {
@@ -2885,6 +2923,8 @@ pub fn apply_parameter(
         return Ok(());
     }
 
+    let v: rmpv::Value = get_field(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
+
     if AlterSystemParameters::has_scope_tier(name)
         .expect("apply_parameter called only with existing names")
     {
@@ -2898,7 +2938,6 @@ pub fn apply_parameter(
         }
     }
 
-    let v: rmpv::Value = get_field(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
     parameters
         .borrow_mut()
         .set_field_from_rmpv(name, &v)

@@ -1501,6 +1501,10 @@ fn alter_system_ir_node_to_op_or_result(
             param_name,
             param_value,
         } => {
+            if AlterSystemParameters::is_read_only(param_name) {
+                return Err(Error::other(format!("parameter '{param_name}' cannot be changed after cluster bootstrap")));
+            }
+
             let casted_value: sql::ir::value::EncodedValue<'_> = crate::config::validate_alter_system_parameter_value(param_name, param_value)?;
 
             let dmls = make_dmls(&casted_value, param_name, tier_name, storage, current_user)?;
@@ -1523,7 +1527,7 @@ fn alter_system_ir_node_to_op_or_result(
                 None => {
                     let tiers = storage.tiers.iter()?.map(|tier| tier.name).collect::<Vec<_>>();
                     let tiers = tiers.iter().map(|s| &**s).collect::<Vec<_>>();
-                    let dmls = crate::config::get_defaults_for_all_alter_system_parameters(&tiers)?;
+                    let dmls = crate::config::get_defaults_for_all_system_parameters(&tiers, false)?;
                     Ok(Continue(Op::BatchDml { ops: dmls }))
                 }
             }

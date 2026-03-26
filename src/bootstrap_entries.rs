@@ -178,9 +178,9 @@ pub(super) fn prepare(
     let tier_names = tiers.keys().map(AsRef::as_ref).collect::<Vec<_>>();
 
     //
-    // Populate "_pico_db_config" with initial values for cluster-wide properties
+    // Populate "_pico_db_config" with initial values for system parameters
     //
-    let db_config_entries = config::get_defaults_for_all_alter_system_parameters(&tier_names)?;
+    let db_config_entries = config::get_defaults_for_all_system_parameters(&tier_names, true)?;
 
     ops.extend(db_config_entries);
 
@@ -200,13 +200,7 @@ pub(super) fn prepare(
     // Unchangeable configs with cluster scope
     //
     {
-        let mut ops = vec![];
-        for config_tuple in config.cluster.bootstrap_configs() {
-            ops.push(
-                op::Dml::insert(storage::DbConfig::TABLE_ID, &config_tuple, ADMIN_ID)
-                    .expect("serialization can't fail"),
-            );
-        }
+        let ops = config.cluster.bootstrap_read_only_parameters()?;
         let context = traft::EntryContext::Op(op::Op::BatchDml { ops });
         init_entries.push(
             traft::Entry {
