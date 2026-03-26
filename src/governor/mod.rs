@@ -101,30 +101,15 @@ impl Loop {
             return IterationEnd::Continue;
         }
 
-        let node = node::global().expect("must be initialized");
+        let node = node::global().expect("node is initialized by the time raft_leader is chosen");
         let instance_reachability = &node.instance_reachability;
-
         let topology_ref = node.topology_cache.get();
+        let db_config = node.alter_system_parameters.borrow();
 
-        let raft_op_timeout = node
-            .alter_system_parameters
-            .borrow()
-            .governor_raft_op_timeout();
-
-        let rpc_timeout = node
-            .alter_system_parameters
-            .borrow()
-            .governor_common_rpc_timeout();
-
-        let plugin_rpc_timeout = node
-            .alter_system_parameters
-            .borrow()
-            .governor_plugin_rpc_timeout();
-
-        let batch_size = node
-            .alter_system_parameters
-            .borrow()
-            .governor_rpc_batch_size;
+        let raft_op_timeout = db_config.governor_raft_op_timeout();
+        let rpc_timeout = db_config.governor_common_rpc_timeout();
+        let plugin_rpc_timeout = db_config.governor_plugin_rpc_timeout();
+        let batch_size = db_config.governor_rpc_batch_size;
 
         let instances: Vec<_> = topology_ref.all_instances().cloned().collect();
         let peer_addresses: HashMap<_, _> = storage
@@ -223,6 +208,7 @@ impl Loop {
             cluster_uuid,
             sentinel_status,
             &topology_ref,
+            &db_config,
             &instances,
             &peer_addresses,
             &voters,
@@ -247,6 +233,7 @@ impl Loop {
 
         // Must be dropped before yielding
         drop(topology_ref);
+        drop(db_config);
 
         let plan = unwrap_ok_or!(plan,
             Err(e) => {

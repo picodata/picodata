@@ -1,3 +1,4 @@
+use crate::config::DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION;
 use ::tarantool::tlua;
 use smol_str::SmolStr;
 use tarantool::{space::UpdateOps, tuple::Encode};
@@ -139,7 +140,25 @@ impl Default for Tier {
     }
 }
 
-/// Tier definition struct which can be deserialized from the config file.
+/// Struct which describes the tier definition from the configuration file.
+///
+/// Note that some of the fields in this struct don't have corresponding ones
+/// in [`Tier`]. The configuration file is the main source for the defining
+/// tiers, but after the file is read the data is persisted into the storage.
+///
+/// The idea is that immutable tier charasteristics (`name`, `can_vote`, etc.)
+/// are persisted in the `_pico_tier` and therefore are listed in the
+/// corresponding [`Tier`] struct.
+///
+/// Whereas the user-configurable parameters of tiers
+/// (`experimental_sharding_implementation`, etc.) are persisted in
+/// `_pico_db_config` and the corresponding [`AlterSystemParameters`] struct.
+///
+/// TODO: For historical reasons `replication_factor` and `bucket_count` are
+/// persisted in `_pico_tier`, but we probably should move them over to
+/// `_pico_db_config`.
+///
+/// [`AlterSystemParameters`]: crate::config::AlterSystemParameters
 #[derive(
     PartialEq,
     Default,
@@ -153,7 +172,7 @@ impl Default for Tier {
 #[serde(deny_unknown_fields)]
 pub struct TierConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
+    pub name: Option<SmolStr>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replication_factor: Option<u8>,
@@ -163,6 +182,36 @@ pub struct TierConfig {
 
     #[serde(default = "default_can_vote")]
     pub can_vote: bool,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub experimental_sharding_implementation: Option<bool>,
+}
+
+impl TierConfig {
+    /// A convenience function for getting value of the `experimental_sharding_implementation`
+    /// parameter assumming it's value is known.
+    ///
+    /// # Panicking
+    /// This function panics if `experimental_sharding_implementation` is
+    /// `None`. This function should only be called when it's guaranteed that
+    /// the value is initialized
+    pub fn experimental_sharding_implementation(&self) -> bool {
+        self.experimental_sharding_implementation
+            .expect("must be known at this point")
+    }
+
+    /// This function is used in tests.
+    pub fn for_tier(tier: &Tier) -> Self {
+        Self {
+            name: Some(tier.name.clone()),
+            replication_factor: Some(tier.replication_factor),
+            bucket_count: Some(tier.bucket_count),
+            can_vote: tier.can_vote,
+            experimental_sharding_implementation: Some(
+                DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION,
+            ),
+        }
+    }
 }
 
 #[inline(always)]

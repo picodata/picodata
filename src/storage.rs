@@ -3323,6 +3323,28 @@ impl DbConfig {
         Ok(())
     }
 
+    pub fn get<T>(&self, key: &str, scope: &str) -> tarantool::Result<Option<T>>
+    where
+        T: for<'a> serde::Deserialize<'a>,
+    {
+        let Some(tuple) = self.primary.get(&(key, scope))? else {
+            return Ok(None);
+        };
+
+        let value: T = tuple.field(2)?.expect("database constraint violation");
+        Ok(Some(value))
+    }
+
+    pub fn replace(
+        &self,
+        key: &str,
+        scope: &str,
+        value: &impl serde::Serialize,
+    ) -> tarantool::Result<()> {
+        self.space.replace(&(key, scope, value))?;
+        Ok(())
+    }
+
     #[inline(always)]
     pub fn by_key(&self, key: &str) -> tarantool::Result<EntryIter<Tuple, MP_SERDE>> {
         let iter = self.secondary.select(IteratorType::Eq, &[key])?;

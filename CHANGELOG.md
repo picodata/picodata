@@ -63,6 +63,10 @@ with the `YY.MINOR.MICRO` scheme.
 - Added new `pico_instance_health_status` SQL scalar function to get current
   instance's health status, - SQL wrapper over `/api/v1/health/status`.
 - Improved accuracy of `space:len()` for Vinyl tables.
+- [picodata#760] New configuration parameter `experimental_sharding_implementation` which
+  enables the new behavior on the given tier. The parameter must be specified at
+  cluster bootstrap via the configuration file and cannot be changed after that
+  (in the future this restriction may be lifted).
 
 ### Fixes
 

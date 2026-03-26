@@ -30,6 +30,7 @@ use crate::storage::Properties;
 use crate::storage::PropertyName;
 use crate::storage::SystemTable;
 use crate::tier::Tier;
+use crate::tier::TierConfig;
 use crate::tlog;
 use crate::topology_cache::TopologyCacheRef;
 use crate::traft::error::Error;
@@ -197,6 +198,10 @@ fn setup_topology(
         // Callers want to control the tier setup
         for tier in tiers {
             node.storage.tiers.put(tier).unwrap();
+            node.alter_system_parameters
+                .borrow_mut()
+                .per_tier
+                .insert(tier.name.clone(), TierConfig::for_tier(tier));
             node.topology_cache.update_tier(None, Some(tier.clone()));
         }
     } else {
@@ -206,6 +211,10 @@ fn setup_topology(
         tier.name = instances[0].tier.clone();
 
         node.storage.tiers.put(&tier).unwrap();
+        node.alter_system_parameters
+            .borrow_mut()
+            .per_tier
+            .insert(tier.name.clone(), TierConfig::for_tier(&tier));
         node.topology_cache.update_tier(None, Some(tier));
     }
 

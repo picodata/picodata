@@ -1,6 +1,7 @@
 use crate::cas;
 use crate::catalog::governor_queue::GovernorOperationDef;
 use crate::column_name;
+use crate::config::AlterSystemParameters;
 use crate::governor::batch::get_next_batch_for_to_online;
 use crate::governor::batch::LastStepInfo;
 use crate::governor::conf_change::raft_conf_change;
@@ -64,6 +65,7 @@ pub(super) fn action_plan<'i>(
     cluster_uuid: &'static str,
     sentinel_status: SentinelStatus,
     topology_ref: &TopologyCacheRef,
+    db_config: &AlterSystemParameters,
     instances: &'i [Instance],
     peer_addresses: &'i HashMap<RaftId, SmolStr>,
     voters: &[RaftId],
@@ -328,9 +330,15 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // bootstrap sharding on each tier
-    if let Some(plan) =
-        handle_sharding_bootstrap(term, applied, tiers, instances, replicasets, sync_timeout)?
-    {
+    if let Some(plan) = handle_sharding_bootstrap(
+        term,
+        applied,
+        tiers,
+        instances,
+        replicasets,
+        db_config,
+        sync_timeout,
+    )? {
         debug_assert_plan_kind!(plan, Plan::ShardingBoot { .. });
 
         return Ok(plan);

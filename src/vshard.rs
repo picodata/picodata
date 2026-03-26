@@ -1,3 +1,4 @@
+use crate::config::AlterSystemParameters;
 use crate::config::PicodataConfig;
 use crate::instance::InstanceName;
 use crate::luamod::lua_function;
@@ -181,7 +182,12 @@ pub fn get_replicaset_uuid_by_bucket_id(tier: &str, bucket_id: u64) -> Result<Sm
 #[derive(Default, Clone, Debug, PartialEq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
 pub struct VshardConfig {
     pub sharding: HashMap<SmolStr, ReplicasetSpec>,
+
+    /// Mode of operation for the vshard discovery fiber.
     discovery_mode: DiscoveryMode,
+
+    /// Mode of operation for the vshard rebalancer fiber.
+    rebalancer_mode: RebalancerMode,
 
     /// Id of system table `_bucket`.
     space_bucket_id: SpaceId,
@@ -271,6 +277,32 @@ tarantool::define_str_enum! {
     }
 }
 
+tarantool::define_str_enum! {
+    /// Specifies the mode of operation for the bucket rebalancer fiber of vshard storage.
+    ///
+    /// See also code in "vshard/cfg.lua".
+    #[derive(Default)]
+    pub enum RebalancerMode {
+        /// Means that the rebalancer service location is chosen automatically
+        /// among all master instances in the cluster. Excluding those which
+        /// have `rebalancer = false` on them or on their replicaset. If there
+        /// are any `rebalancer = true`, then this mode works the same as
+        /// `'manual'`.
+        #[default]
+        Auto = "auto",
+
+        /// The rebalancer will run only if there is at least one `rebalancer =
+        /// true` in the config. And only on the given instance / replicaset
+        /// (depending on at which level the flag was specified - for a specific
+        /// instance or for a whole replicaset).
+        Manual = "manual",
+
+        /// The rebalancer will not run anywhere, regardless of all
+        /// the `rebalancer = true/false` specified in the config.
+        Off = "off",
+    }
+}
+
 impl VshardConfig {
     pub fn from_storage(
         node: &node::Node,
@@ -278,6 +310,7 @@ impl VshardConfig {
         bucket_count: u64,
     ) -> Result<Self, Error> {
         let topology = node.topology_cache.get();
+        let db_config = node.alter_system_parameters.borrow();
         let peer_addresses: HashMap<_, _> = node
             .storage
             .peer_addresses
@@ -286,12 +319,19 @@ impl VshardConfig {
             .map(|pa| (pa.raft_id, pa.address))
             .collect();
 
-        let result = Self::new(topology, &peer_addresses, tier_name, bucket_count);
+        let result = Self::new(
+            topology,
+            &db_config,
+            &peer_addresses,
+            tier_name,
+            bucket_count,
+        );
         Ok(result)
     }
 
     pub fn new(
         topology: TopologyCacheRef,
+        db_config: &AlterSystemParameters,
         peer_addresses: &HashMap<RaftId, SmolStr>,
         tier_name: &str,
         bucket_count: u64,
@@ -338,10 +378,18 @@ impl VshardConfig {
             );
         }
 
+        let rebalancer_mode = if db_config.experimental_sharding_implementation(tier_name) {
+            // This tier is managed via a different sharding implementation
+            RebalancerMode::Off
+        } else {
+            RebalancerMode::Auto
+        };
+
         Self {
             listen: None,
             sharding,
             discovery_mode: DiscoveryMode::On,
+            rebalancer_mode,
             space_bucket_id: TABLE_ID_BUCKET,
             failover_ping_timeout: VSHARD_FAILOVER_INTERVAL,
             failover_interval: VSHARD_FAILOVER_INTERVAL,

@@ -422,7 +422,8 @@ Replace(_pico_db_config, ["plugin_check_migration_hash","",true]),
 Replace(_pico_db_config, ["governor_check_replication_error","",true]),
 Replace(_pico_db_config, ["jwt_secret","","<jwt_secret>"]),
 Replace(_pico_db_config, ["sql_log","",false]),
-Replace(_pico_db_config, ["sql_ddl_timeout","",86400.0]))|
+Replace(_pico_db_config, ["sql_ddl_timeout","",86400.0]),
+Replace(_pico_db_config, ["experimental_sharding_implementation","default",false]))|
 |  0  | 1  |BatchDml(
 Insert(_pico_db_config, ["shredding","",false])
 )|
@@ -796,6 +797,7 @@ cluster:
 
     vshard_config_common = dict(
         discovery_mode="on",
+        rebalancer_mode="auto",
         space_bucket_id=space_bucket_id,
         bucket_count=total_bucket_count,
         box_cfg_mode="manual",

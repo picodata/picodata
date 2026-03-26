@@ -637,6 +637,7 @@ def test_read_from_system_tables(cluster: Cluster):
         "auth_password_enforce_specialchars",
         "auth_password_enforce_uppercase",
         "auth_password_length_min",
+        "experimental_sharding_implementation",
         "governor_auto_offline_timeout",
         "governor_check_replication_error",
         "governor_common_rpc_timeout",

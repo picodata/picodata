@@ -20,6 +20,7 @@ use crate::sql::storage::STATEMENT_CACHE;
 use crate::sql::value_type_str;
 use crate::static_ref;
 use crate::storage::{self, DbConfig, SystemTable};
+use crate::system_parameter_name;
 use crate::tarantool::{set_cfg_field_from_rmpv, set_vdbe_opcode_yield_count};
 use crate::tier::Tier;
 use crate::tier::TierConfig;
@@ -39,6 +40,7 @@ use ::sql::ir::value::{EncodedValue, Value};
 use observer::AtomicObserverProvider;
 use rand::TryRng;
 use serde_yaml::Value as YamlValue;
+use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::convert::{From, Into};
 use std::fmt::{Display, Formatter};
@@ -67,6 +69,7 @@ pub(crate) const DEFAULT_SQL_PREEMPTION_INTERVAL_US: u64 = 500;
 pub(crate) const DEFAULT_SQL_PREEMPTION_OPCODE_MAX: u64 = 1024;
 pub(crate) const DEFAULT_SQL_LOG: bool = false;
 pub(crate) const DEFAULT_SQL_RUNTIME_CONCURRENCY_MAX: u64 = 50;
+pub const DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION: bool = false;
 
 pub use ::sql::ir::types::DomainType as SbroadType;
 ////////////////////////////////////////////////////////////////////////////////
@@ -1605,6 +1608,26 @@ impl ClusterConfig {
             initiator,
         )?);
 
+        //
+        // Per tier read-only parameters
+        //
+
+        if let Some(tiers) = &self.tier {
+            for (tier_name, tier_config) in tiers {
+                if tier_config.experimental_sharding_implementation == Some(true) {
+                    dmls.push(Dml::replace(
+                        DbConfig::TABLE_ID,
+                        &(
+                            system_parameter_name!(experimental_sharding_implementation),
+                            &tier_name,
+                            true,
+                        ),
+                        initiator,
+                    )?);
+                }
+            }
+        }
+
         Ok(dmls)
     }
 
@@ -2144,14 +2167,17 @@ tarantool::define_str_enum! {
 // AlterSystemParameters
 ////////////////////////////////////////////////////////////////////////////////
 
-/// A struct which represents an enumeration of system parameters which can be
-/// configured via ALTER SYSTEM.
+/// A struct which represents system parameters persisted in the
+/// `_pico_db_config` system table.
+///
+/// Note that most of these parameters are modifiable via ALTER SYSTEM, but
+/// there are some exceptions. All of them are stored in `_pico_db_config`
+/// though.
+///
+/// TODO: should probably rename this struct.
 ///
 /// This struct uses the `Introspection` trait to associate with each paramater
 /// a `SbroadType` and a default value.
-///
-/// At the moment this struct is never actually used as a struct, but only as
-/// a container for the metadata described above.
 #[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 #[serde(deny_unknown_fields)]
 pub struct AlterSystemParameters {
@@ -2421,12 +2447,32 @@ pub struct AlterSystemParameters {
     #[introspection(sbroad_type = SbroadType::Double)]
     #[introspection(config_default = 86400.0)]
     pub sql_ddl_timeout: f64,
+
+    /// Enables the new experimental implementation for the sharding subsystem.
+    ///
+    /// **Not recommended for production.**
+    ///
+    /// Note that at the moment this parameter is duplicated in the `per_tier`
+    /// field, where we store a value of this parameter for each tier. This
+    /// field will always store the value for the current instance's tier.
+    /// TODO: this field should probably extracted into a separate struct for
+    /// all `scope = tier` parameters.
+    #[introspection(sbroad_type = SbroadType::Boolean)]
+    #[introspection(config_default = DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION)]
+    #[introspection(scope = tier)]
+    pub experimental_sharding_implementation: bool,
+
+    // TODO: factor out all `scope = tier` parameters into a separate struct
+    // and store them in this map, instead of simple the TierConfig.
+    #[introspection(ignore)]
+    pub per_tier: HashMap<SmolStr, TierConfig>,
 }
 
 /// These parameters can only be set during cluster bootstrap and cannot be
 /// changed afterwards.
 pub const READ_ONLY_ALTER_SYSTEM_PARAMETERS: &'static [&'static str] = &[
     SHREDDING_PARAM_NAME,
+    system_parameter_name!(experimental_sharding_implementation),
 ];
 
 fn generate_secure_token() -> String {
@@ -2533,6 +2579,15 @@ impl AlterSystemParameters {
     #[inline]
     pub fn raft_snapshot_read_view_close_timeout(&self) -> std::time::Duration {
         std::time::Duration::from_secs_f64(self.raft_snapshot_read_view_close_timeout)
+    }
+
+    pub fn experimental_sharding_implementation(&self, tier_name: &str) -> bool {
+        let Some(tier_config) = self.per_tier.get(tier_name) else {
+            // This is possible during upgrade
+            return DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION;
+        };
+
+        tier_config.experimental_sharding_implementation()
     }
 }
 
@@ -2932,6 +2987,17 @@ pub fn apply_parameter(
         // Clusterwide represented as empty string, and scope tier represented by it's name.
         let target_tier_name =
             get_field::<&str>(&pico_db_config_tuple, AlterSystemParameters::FIELD_SCOPE);
+
+        // FIXME: support all scope=tier parameters
+        if name == system_parameter_name!(experimental_sharding_implementation) {
+            let value = v.as_bool().expect("type is already checked");
+            parameters
+                .borrow_mut()
+                .per_tier
+                .entry(target_tier_name.into())
+                .or_default()
+                .experimental_sharding_implementation = Some(value);
+        }
 
         if target_tier_name != current_tier {
             return Ok(());

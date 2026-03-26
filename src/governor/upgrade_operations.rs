@@ -1,11 +1,12 @@
 use crate::catalog::pico_bucket::PicoBucket;
 use crate::catalog::pico_resharding_state::PicoReshardingState;
 use crate::catalog::pico_table::PicoTable;
+use crate::config::DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION;
 use crate::storage::schema::ddl_change_format_on_master;
 use crate::storage::{Instances, Replicasets, SystemTable, Tiers};
 use crate::tier::DEFAULT_TIER;
-use crate::tlog;
 use crate::traft;
+use crate::{system_parameter_name, tlog};
 use std::rc::Rc;
 use tarantool::{fiber, transaction};
 
@@ -116,6 +117,7 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("exec_script", InternalScript::CreateIfNotExistSqlBuiltins.as_str()),
             ("proc_name", "proc_instance_health_status"),
             ("proc_name", "proc_raft_transfer_leader"),
+            ("exec_script", InternalScript::InsertExperimentalShardingImplementationIntoPicoDbConfig.as_str()),
         ]
     ),
 ];
@@ -184,6 +186,11 @@ tarantool::define_str_enum! {
         /// ```
         AlterPicoTableAddOptsField = "alter_pico_table_add_opts_field",
 
+        /// Default configuration parameter for each tier:
+        /// ```ignore
+        /// INSERT INTO _pico_db_config VALUES ('experimental_sharding_implementation', ?, false)
+        /// ```
+        InsertExperimentalShardingImplementationIntoPicoDbConfig = "insert_experimental_sharding_implementation_into_pico_db_config",
     }
 }
 
@@ -224,6 +231,8 @@ crate::define_rpc_request! {
             InternalScript::AlterPicoTableAddOptsField =>
                 execute_alter_pico_table_add_opts_field(),
 
+            InternalScript::InsertExperimentalShardingImplementationIntoPicoDbConfig =>
+                insert_experimental_sharding_implementation_into_pico_db_config(),
         }
     }
 
@@ -288,6 +297,28 @@ fn execute_alter_pico_instance_add_target_state_reason_and_change_time() -> traf
 
 fn execute_alter_pico_table_add_opts_field() -> traft::Result<Response> {
     actualize_system_table_format::<PicoTable>()?;
+    Ok(Response {})
+}
+
+fn insert_experimental_sharding_implementation_into_pico_db_config() -> traft::Result<Response> {
+    let node = traft::node::global()?;
+
+    // For each tier insert a tuple
+    // `("experimental_sharding_implementation", tier.name, false)` into
+    // _pico_db_config
+    transaction::transaction(|| -> traft::Result<()> {
+        let topology_ref = node.topology_cache.get();
+        for tier in topology_ref.all_tiers() {
+            node.storage.db_config.replace(
+                system_parameter_name!(experimental_sharding_implementation),
+                &tier.name,
+                &DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION,
+            )?;
+        }
+
+        Ok(())
+    })?;
+
     Ok(Response {})
 }
 

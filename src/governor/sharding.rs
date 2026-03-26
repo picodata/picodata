@@ -3,6 +3,7 @@ use super::SleepDueToBackoff;
 use super::{Plan, ShardingBoot, UpdateCurrentVshardConfig};
 use crate::cas;
 use crate::column_name;
+use crate::config::AlterSystemParameters;
 use crate::governor::batch::get_next_batch;
 use crate::governor::batch::LastStepInfo;
 use crate::instance::Instance;
@@ -124,6 +125,7 @@ pub(super) fn handle_sharding_bootstrap<'i>(
     tiers: &HashMap<&str, &'i Tier>,
     instances: &'i [Instance],
     replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
+    db_config: &AlterSystemParameters,
     timeout: std::time::Duration,
 ) -> Result<Option<Plan<'i>>> {
     for (&tier_name, &tier) in tiers.iter() {
@@ -134,6 +136,12 @@ pub(super) fn handle_sharding_bootstrap<'i>(
         if !tier.has_buckets() {
             continue;
         }
+
+        if db_config.experimental_sharding_implementation(&tier.name) {
+            // This tier is managed via a different sharding implementation
+            continue;
+        }
+
         let Some(r) = get_first_ready_replicaset_in_tier(instances, replicasets, tier_name) else {
             continue;
         };
