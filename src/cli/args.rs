@@ -271,7 +271,12 @@ pub struct Run {
     /// HTTP server address.
     pub http_listen: Option<HttpAddress>,
 
-    #[clap(short = 'i', long = "interactive", env = "PICODATA_INTERACTIVE_MODE")]
+    #[clap(
+        hide = true,
+        short = 'i',
+        long = "interactive",
+        env = "PICODATA_INTERACTIVE_MODE"
+    )]
     /// Enable interactive console.
     pub interactive_mode: bool,
 
