@@ -78,7 +78,8 @@ def test_eval_normalization(instance: Instance):
     assert e4.value.args[:2] == ("ER_NO_SUCH_SPACE", "Space 'void' does not exist")
 
 
-def test_process_management(instance: Instance):
+def test_process_management(cluster: Cluster):
+    instance = cluster.add_instance(wait_online=True, log_to_file=False)
     assert instance.eval("return 'ok'") == "ok"
     assert instance.process is not None
     pid = instance.process.pid
