@@ -19,7 +19,7 @@ stages:
   - test
   - pack
   - docker
-  - stress-test
+  - postpack-test
   - deploy
 
 workflow:
@@ -958,6 +958,18 @@ docker-compose:
   after_script:
     - docker-compose -f docker/docker-compose.yml rm -fsv
     - sudo rm -rf pico/
+
+
+check-pycopin:
+  stage: postpack-test
+  rules:
+    - if: $CI_COMMIT_TAG
+  variables:
+    PICODATA_IMAGE: ${REGISTRY}/picodata:${CI_COMMIT_TAG}
+  inherit:
+    variables: false
+  trigger:
+    project: "core/drivers/picopyn"
 
 publish-picodata-plugin:
   stage: pack
