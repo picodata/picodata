@@ -197,7 +197,7 @@ Bye
 библиотек, написанных для PostgreSQL. Рекомендуемым способом подключения
 к инстансу Picodata является CLI-приложение <a href=#psql>`psql`</a>. По
 умолчанию используется порт 4327 (его можно переопределить, задав
-параметр конфигурации [`instance.pg.listen`]).
+параметр конфигурации [`instance.pgproto.listen`]).
 
 Строка подключения к Picodata по протоколу PostgreSQL имеет следующий формат:
 
@@ -210,7 +210,7 @@ postgres://[user]:[password]@[host]:[port]/[database]?options=value1&key2=value2
 - `host` — IP-адрес узла, к которому производится подключение
 - `port` — номер порта, по которому сервер принимает подключения. По
 умолчанию используется порт 4327 (его можно переопределить, задав
-параметр конфигурации [`instance.pg.listen`])
+параметр конфигурации [`instance.pgproto.listen`])
 - `database` — название базы данных. В случае с Picodata допускается
   любое значение (включая пустое)
 - `options` — дополнительные параметры сессии (см. [ниже](#session_options))
@@ -231,7 +231,7 @@ psql postgres://admin:T0psecret@127.0.0.1:4327?sslmode=require
 
 - [Безопасность кластера](../admin/ssl.md)
 
-[`instance.pg.listen`]: ../reference/config.md#instance_pg_listen
+[`instance.pgproto.listen`]: ../reference/config.md#instance_pgproto_listen
 
 В соответствии с доступными ему привилегиями, пользователь сможет
 работать в консоли с таблицами. Разделителем команд выступает знак

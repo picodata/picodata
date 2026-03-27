@@ -86,56 +86,56 @@ cluster:
   default_bucket_count: 3000 # (2)!
   shredding: false # (4)!
 instance:
-  instance_dir: . # (18)!
-  backup_dir: ./backup # (49)!
-  name: null # (29)!
-  replicaset_name: null # (36)!
-  tier: default # (37)!
-  failure_domain: {} # (12)!
+  instance_dir: . # (17)!
+  backup_dir: ./backup # (48)!
+  name: null # (28)!
+  replicaset_name: null # (35)!
+  tier: default # (36)!
+  failure_domain: {} # (11)!
   admin_socket: ./admin.sock # (8)!
-  share_dir: null # (35)!
-  audit: null # (10)!
+  share_dir: null # (34)!
+  audit: null # (9)!
   log:
-    level: info # (25)!
-    destination: null # (23)!
-    format: plain # (24)!
+    level: info # (24)!
+    destination: null # (22)!
+    format: plain # (23)!
   memtx:
-    memory: 64M # (27)!
-    system_memory: 256M # (28)!
-    max_tuple_size: 1M # (26)!
+    memory: 64M # (26)!
+    system_memory: 256M # (27)!
+    max_tuple_size: 1M # (25)!
   vinyl:
-    memory: 128M # (39)!
-    cache: 128M # (38)!
-    bloom_fpr: 0.05 # (40)!
-    max_tuple_size: 1M # (41)!
-    page_size: 8K # (42)!
-    range_size: 1G # (43)!
-    run_count_per_level: 2 # (44)!
-    run_size_ratio: 3.5 # (45)!
-    read_threads: 1 # (46)!
-    write_threads: 4 # (47)!
-    timeout: 60.0 # (48)!
-  boot_timeout: 7200 # (11)!
+    memory: 128M # (38)!
+    cache: 128M # (37)!
+    bloom_fpr: 0.05 # (39)!
+    max_tuple_size: 1M # (40)!
+    page_size: 8K # (41)!
+    range_size: 1G # (42)!
+    run_count_per_level: 2 # (43)!
+    run_size_ratio: 3.5 # (44)!
+    read_threads: 1 # (45)!
+    write_threads: 4 # (46)!
+    timeout: 60.0 # (47)!
+  boot_timeout: 7200 # (10)!
   http:
-    enabled: true # (14)!
-    listen: 127.0.0.1:5327 # (16)!
-    advertise: 127.0.0.1:5327 # (13)!
+    enabled: true # (13)!
+    listen: 127.0.0.1:5327 # (15)!
+    advertise: 127.0.0.1:5327 # (12)!
     tls:
-      enabled: false # (17)!
-    kubernetes_probes: true # (15)!
+      enabled: false # (16)!
+    kubernetes_probes: true # (14)!
   iproto:
-    enabled: true # (20)!
-    listen: 127.0.0.1:3301 # (21)!
-    advertise: 127.0.0.1:3301 # (19)!
+    enabled: true # (19)!
+    listen: 127.0.0.1:3301 # (20)!
+    advertise: 127.0.0.1:3301 # (18)!
     tls:
-      enabled: false false # (22)!
+      enabled: false false # (21)!
   pgproto:
-    enabled: true # (32)!
-    listen: 127.0.0.1:4327 # (33)!
-    advertise: 127.0.0.1:4327 # (31)!
+    enabled: true # (31)!
+    listen: 127.0.0.1:4327 # (32)!
+    advertise: 127.0.0.1:4327 # (30)!
     tls:
-      enabled: false # (34)!
-  peer: # (30)!
+      enabled: false # (33)!
+  peer: # (29)!
   - 127.0.0.1:3301
 ```
 
@@ -147,47 +147,46 @@ instance:
 6. [cluster.tier.<tier_name\>.can_vote](#cluster_tier_tier_can_vote)
 7. [cluster.tier.<tier_name\>.replication_factor](#cluster_tier_tier_replication_factor)
 8. [instance.admin_socket](#instance_admin_socket)
-9. [instance.iproto_advertise](#instance_iproto_advertise)
-10. [instance.audit](#instance_audit)
-11. [instance.boot_timeout](#instance_boot_timeout)
-12. [instance.failure_domain](#instance_failure_domain)
-13. [instance.http.advertise](#instance_http_advertise)
-14. [instance.http.enabled](#instance_http_enabled)
-15. [instance.http.kubernetes_probes](#instance_http_kubernetes_probes)
-16. [instance.http.listen](#instance_http_listen)
-17. [instance.http.tls](#instance_http_tls)
-18. [instance.instance_dir](#instance_instance_dir)
-19. [instance.iproto.advertise](#instance_iproto_advertise)
-20. [instance.iproto.enabled](#instance_iproto_enabled)
-21. [instance.iproto_listen](#instance_iproto_listen)
-22. [instance.iproto_tls](#instance_iproto_tls)
-23. [instance.log.destination](#instance_log_destination)
-24. [instance.log.format](#instance_log_format)
-25. [instance.log.level](#instance_log_level)
-26. [instance.memtx.max_tuple_size](#instance_memtx_max_tuple_size)
-27. [instance.memtx.memory](#instance_memtx_memory)
-28. [instance.memtx.system_memory](#instance_memtx_system_memory)
-29. [instance.name](#instance_name)
-30. [instance.peer](#instance_peer)
-31. [instance.pgproto.advertise](#instance_pg_advertise)
-32. [instance.pgproto.enabled](#instance_pg_enabled)
-33. [instance.pgproto.listen](#instance_pg_listen)
-34. [instance.pgproto.tls](#instance_pg_tls)
-35. [instance.share_dir](#instance_share_dir)
-36. [instance.replicaset_name](#instance_replicaset_name)
-37. [instance.tier](#instance_tier)
-38. [instance.vinyl.cache](#instance_vinyl_cache)
-39. [instance.vinyl.memory](#instance_vinyl_memory)
-40. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
-41. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
-42. [instance.vinyl.page_size](#instance_vinyl_page_size)
-43. [instance.vinyl.range_size](#instance_vinyl_range_size)
-44. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
-45. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
-46. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
-47. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
-48. [instance.vinyl.timeout](#instance_vinyl_timeout)
-49. [instance.backup_dir](#instance_backup_dir)
+9. [instance.audit](#instance_audit)
+10. [instance.boot_timeout](#instance_boot_timeout)
+11. [instance.failure_domain](#instance_failure_domain)
+12. [instance.http.advertise](#instance_http_advertise)
+13. [instance.http.enabled](#instance_http_enabled)
+14. [instance.http.kubernetes_probes](#instance_http_kubernetes_probes)
+15. [instance.http.listen](#instance_http_listen)
+16. [instance.http.tls](#instance_http_tls)
+17. [instance.instance_dir](#instance_instance_dir)
+18. [instance.iproto.advertise](#instance_iproto_advertise)
+19. [instance.iproto.enabled](#instance_iproto_enabled)
+20. [instance.iproto.listen](#instance_iproto_listen)
+21. [instance.iproto.tls](#instance_iproto_tls)
+22. [instance.log.destination](#instance_log_destination)
+23. [instance.log.format](#instance_log_format)
+24. [instance.log.level](#instance_log_level)
+25. [instance.memtx.max_tuple_size](#instance_memtx_max_tuple_size)
+26. [instance.memtx.memory](#instance_memtx_memory)
+27. [instance.memtx.system_memory](#instance_memtx_system_memory)
+28. [instance.name](#instance_name)
+29. [instance.peer](#instance_peer)
+30. [instance.pgproto.advertise](#instance_pgproto_advertise)
+31. [instance.pgproto.enabled](#instance_pgproto_enabled)
+32. [instance.pgproto.listen](#instance_pgproto_listen)
+33. [instance.pgproto.tls](#instance_pgproto_tls)
+34. [instance.share_dir](#instance_share_dir)
+35. [instance.replicaset_name](#instance_replicaset_name)
+36. [instance.tier](#instance_tier)
+37. [instance.vinyl.cache](#instance_vinyl_cache)
+38. [instance.vinyl.memory](#instance_vinyl_memory)
+39. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
+40. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
+41. [instance.vinyl.page_size](#instance_vinyl_page_size)
+42. [instance.vinyl.range_size](#instance_vinyl_range_size)
+43. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
+44. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
+45. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
+46. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
+47. [instance.vinyl.timeout](#instance_vinyl_timeout)
+48. [instance.backup_dir](#instance_backup_dir)
 
 См. также:
 
@@ -898,12 +897,12 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 
 [`picodata run --peer`]: cli.md#run_peer
 
-### instance.pg.advertise {: #instance_pg_advertise }
+### instance.pgproto.advertise {: #instance_pgproto_advertise }
 
 <span class="supported">поддерживается с версии 26.1.1</span>
 
 !!! note "Примечание"
-    Параметр `instance.pg.advertise` приходит на
+    Параметр `instance.pgproto.advertise` приходит на
     смену `instance.pg_advertise`, который объявлен устаревшим и будет удален в
     будущих релизах Picodata. В файле конфигурации допускается
     использование устаревших параметров, но сочетать их с новыми нельзя.
@@ -922,7 +921,7 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 
 [`picodata run --pg-advertise`]: cli.md#run_pg_advertise
 
-### instance.pg.enabled  {: #instance_pg_enabled }
+### instance.pgproto.enabled  {: #instance_pgproto_enabled }
 
 <span class="supported">поддерживается с версии 26.1.1</span>
 
@@ -933,12 +932,12 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 * Тип: *bool*
 * Значение по умолчанию: `true`
 
-### instance.pg.listen {: #instance_pg_listen }
+### instance.pgproto.listen {: #instance_pgproto_listen }
 
 <span class="supported">поддерживается с версии 26.1.1</span>
 
 !!! note "Примечание"
-    Параметр `instance.pg.listen` приходит на
+    Параметр `instance.pgproto.listen` приходит на
     смену `instance.pg_listen`, который объявлен устаревшим и будет удален в
     будущих релизах Picodata. В файле конфигурации допускается
     использование устаревших параметров, но сочетать их с новыми нельзя.
@@ -956,18 +955,18 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 
 [`picodata run --pg-listen`]: cli.md#run_pg_listen
 
-### instance.pg.tls {: #instance_pg_tls }
+### instance.pgproto.tls {: #instance_pgproto_tls }
 
 <span class="supported">поддерживается с версии 26.1.1</span>
 
 !!! note "Примечание"
-    Блок параметров `instance.pg.tls` приходит на
-    смену `instance.pg.ssl`, который объявлен устаревшим и будет удален в
+    Блок параметров `instance.pgproto.tls` приходит на
+    смену `instance.pgproto.ssl`, который объявлен устаревшим и будет удален в
     будущих релизах Picodata. В файле конфигурации допускается
     использование устаревших параметров, но сочетать их с новыми нельзя.
 
 Признак использования протокола TLS/SSL или mTLS при подключении по протоколу PostgreSQL.
-Основной параметр `instance.pg.tls.enabled` отвечает за
+Основной параметр `instance.pgproto.tls.enabled` отвечает за
 включение/отключение режима шифрования.
 
 * Тип: *bool*
@@ -991,9 +990,9 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 Размещение файлов сертификатов и закрытого ключа можно переопределить,
 используя следующие 3 дополнительных параметра:
 
-- `instance.pg.tls.cert_file` (*str*) — путь к файлу сертификата
-- `instance.pg.tls.key_file` (*str*) — путь к файлу с закрытым ключом
-- `instance.pg.tls.ca_file` (*str*) — путь к файлу корневого сертификата
+- `instance.pgproto.tls.cert_file` (*str*) — путь к файлу сертификата
+- `instance.pgproto.tls.key_file` (*str*) — путь к файлу с закрытым ключом
+- `instance.pgproto.tls.ca_file` (*str*) — путь к файлу корневого сертификата
 
 При включенном mTLS блок настроек файла конфигурации будет иметь следующий вид:
 
@@ -1008,12 +1007,8 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
 ```shell
-picodata run -c instance.pg.tls.enabled=true -c instance.pg.tls.cert_file=pgproto/server.crt -c instance.pg.tls.key_file=pgproto/server.key -c instance.pg.tls.ca_file=pgproto/ca.crt
+picodata run -c instance.pgproto.tls.enabled=true -c instance.pgproto.tls.cert_file=pgproto/server.crt -c instance.pgproto.tls.key_file=pgproto/server.key -c instance.pgproto.tls.ca_file=pgproto/ca.crt
 ```
-
-Режим mTLS настраивается глобально во всем кластере. Для параметров
-`instance.pg.tls.cert_file` и `instance.pg.tls.key_file`
-содержимое файлов должно быть идентичным на каждом инстансе.
 
 ### instance.replicaset_name {: #instance_replicaset_name }
 

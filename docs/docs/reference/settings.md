@@ -326,7 +326,7 @@ table.legend {
             <td>Адрес HTTP-сервера</td>
             <td>null</td>
             <td>[picodata run --http-listen](cli.md#run_http_listen)</td>
-            <td>[instance.http_listen](config.md#instance_http_listen)</td>
+            <td>[instance.http.listen](config.md#instance_http_listen)</td>
             <td>PICODATA_HTTP_LISTEN</td>
         </tr>
         <tr>
@@ -382,7 +382,7 @@ table.legend {
             <td>Публичный сетевой адрес инстанса</td>
             <td>127.0.0.1:3301</td>
             <td>[picodata run --iproto-advertise](cli.md#run_iproto_advertise)</td>
-            <td>[instance.iproto_advertise](config.md#instance_iproto_advertise)</td>
+            <td>[instance.iproto.advertise](config.md#instance_iproto_advertise)</td>
             <td>PICODATA_IPROTO_ADVERTISE</td>
         </tr>
         <tr>
@@ -390,7 +390,7 @@ table.legend {
             <td>Сетевой адрес инстанса</td>
             <td>127.0.0.1:3301</td>
             <td>[picodata run --iproto-listen](cli.md#run_iproto_listen)</td>
-            <td>[instance.iproto_listen](config.md#instance_iproto_listen)</td>
+            <td>[instance.listen](config.md#instance_iproto_listen)</td>
             <td>PICODATA_IPROTO_LISTEN</td>
         </tr>
         <tr>
@@ -488,58 +488,58 @@ table.legend {
             <td>PICODATA_PEER</td>
         </tr>
         <tr>
-            <td><span class="instance">pg.advertise</span></td>
+            <td><span class="instance">pgproto.advertise</span></td>
             <td>Публичный адрес сервера для подключения по протоколу PostgreSQL</td>
             <td>127.0.0.1:4327</td>
             <td>[picodata run --pg-advertise](cli.md#run_pg_advertise)</td>
-            <td>[instance.pg.advertise](config.md#instance_pg_advertise)</td>
+            <td>[instance.pgproto.advertise](config.md#instance_pgproto_advertise)</td>
             <td>PICODATA_PG_ADVERTISE</td>
         </tr>
         <tr>
-            <td><span class="instance">pg.enabled</span></td>
+            <td><span class="instance">pgproto.enabled</span></td>
             <td>Признак поддержки PostgreSQL-протокола на стороне Picodata</td>
             <td>true</td>
             <td></td>
-            <td>[instance.pg.enabled](config.md#instance_pg_enabled)</td>
+            <td>[instance.pgproto.enabled](config.md#instance_pgproto_enabled)</td>
             <td></td>
         </tr>
         <tr>
-            <td><span class="instance">pg.listen</span></td>
+            <td><span class="instance">pgproto.listen</span></td>
             <td>Адрес сервера для подключения по протоколу PostgreSQL</td>
             <td>127.0.0.1:4327</td>
             <td>[picodata run --pg-listen](cli.md#run_pg_listen)</td>
-            <td>[instance.pg.listen](config.md#instance_pg_listen)</td>
+            <td>[instance.pgproto.listen](config.md#instance_pgproto_listen)</td>
             <td>PICODATA_PG_LISTEN</td>
         </tr>
         <tr>
-            <td><span class="instance">pg.tls.enabled</span></td>
+            <td><span class="instance">pgproto.tls.enabled</span></td>
             <td>Признак использования протокола TSL/SSL или mTLS при подключении к SQL-консоли</td>
             <td>false</td>
-            <td>[picodata run -c instance.pg.tls.enabled=true](cli.md#run_config_parameter)</td>
-            <td>[instance.pg.tls](config.md#instance_pg_tls)</td>
+            <td>[picodata run -c instance.pgproto.tls.enabled=true](cli.md#run_config_parameter)</td>
+            <td>[instance.pgproto.tls](config.md#instance_pgproto_tls)</td>
             <td></td>
         </tr>
-            <td><span class="instance">pg.tls.cert_file</span></td>
+            <td><span class="instance">pgproto.tls.cert_file</span></td>
             <td>Путь к файлу серверного сертификата для использования с TLS/SSL или mTLS при подключении по протоколу PostgreSQL</td>
             <td></td>
-            <td>[picodata run -c instance.pg.tls.cert_file=pgproto/server.crt](cli.md#run_config_parameter)</td>
-            <td>[instance.pg.tls.cert_file](config.md#instance_pg_tls)</td>
+            <td>[picodata run -c instance.pgproto.tls.cert_file=pgproto/server.crt](cli.md#run_config_parameter)</td>
+            <td>[instance.pgproto.tls.cert_file](config.md#instance_pgproto_tls)</td>
             <td></td>
         </tr>
         <tr>
-            <td><span class="instance">pg.tls.key_file</span></td>
+            <td><span class="instance">pgproto.tls.key_file</span></td>
             <td>Путь к файлу закрытого ключа для использования с TLS/SSL или mTLS при подключении по протоколу PostgreSQL</td>
             <td></td>
-            <td>[picodata run -c instance.pg.tls.key_file=pgproto/server.key](cli.md#run_config_parameter)</td>
-            <td>[instance.pg.tls.key_file](config.md#instance_pg_tls)</td>
+            <td>[picodata run -c instance.pgproto.tls.key_file=pgproto/server.key](cli.md#run_config_parameter)</td>
+            <td>[instance.pgproto.tls.key_file](config.md#instance_pgproto_tls)</td>
             <td></td>
         </tr>
         <tr>
-            <td><span class="cluster">pg.tls.ca_file</span></td>
+            <td><span class="cluster">pgproto.tls.ca_file</span></td>
             <td>Путь к файлу корневого сертификата для использования с TLS/SSL или mTLS при подключении по протоколу PostgreSQL</td>
             <td></td>
-            <td>[picodata run -c instance.pg.tls.ca_file=pgproto/ca.crt](cli.md#run_config_parameter)</td>
-            <td>[instance.pg.tls.ca_file](config.md#instance_pg_tls)</td>
+            <td>[picodata run -c instance.pgproto.tls.ca_file=pgproto/ca.crt](cli.md#run_config_parameter)</td>
+            <td>[instance.pgproto.tls.ca_file](config.md#instance_pgproto_tls)</td>
             <td></td>
         </tr>
         <tr>
