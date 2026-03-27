@@ -70,10 +70,12 @@ bootstrap. В дальнейшем идентификация инстансов
       tier: 'default'
       peer: [ 127.0.0.1:3301 ]
 
-      iproto_listen: '0.0.0.0:3301'
-      iproto_advertise: '127.0.0.1:3301'
-      http_listen: '0.0.0.0:8081'
-      pg:
+      iproto:
+        listen: '0.0.0.0:3301'
+        advertise: '127.0.0.1:3301'
+      http:
+        listen: '0.0.0.0:8081'
+      pgproto:
         listen: '0.0.0.0:4327'
         advertise: '127.0.0.1:4327'
 
@@ -101,10 +103,12 @@ bootstrap. В дальнейшем идентификация инстансов
       tier: 'default'
       peer: [ 127.0.0.1:3301 ]
 
-      iproto_listen: '0.0.0.0:3302'
-      iproto_advertise: '127.0.0.1:3302'
-      http_listen: '0.0.0.0:8082'
-      pg:
+      iproto:
+        listen: '0.0.0.0:3302'
+        advertise: '127.0.0.1:3302'
+      http:
+        listen: '0.0.0.0:8082'
+      pgproto:
         listen: '0.0.0.0:4328'
         advertise: '127.0.0.1:4328'
 
@@ -132,10 +136,12 @@ bootstrap. В дальнейшем идентификация инстансов
       tier: 'default'
       peer: [ 127.0.0.1:3301 ]
 
-      iproto_listen: '0.0.0.0:3303'
-      iproto_advertise: '127.0.0.1:3303'
-      http_listen: '0.0.0.0:8083'
-      pg:
+      iproto:
+        listen: '0.0.0.0:3303'
+        advertise: '127.0.0.1:3303'
+      http:
+        listen: '0.0.0.0:8083'
+      pgproto:
         listen: '0.0.0.0:4329'
         advertise: '127.0.0.1:4329'
 
@@ -237,10 +243,12 @@ picodata run --config i3.yml
       peer:
       - 127.0.0.1:3301
 
-      iproto_listen: '0.0.0.0:3301'
-      iproto_advertise: '127.0.0.1:3301'
-      http_listen: '0.0.0.0:8081'
-      pg:
+      iproto:
+        listen: '0.0.0.0:3301'
+        advertise: '127.0.0.1:3301'
+      http:
+        listen: '0.0.0.0:8081'
+      pgproto:
         listen: '0.0.0.0:4327'
         advertise: '127.0.0.1:4327'
 
@@ -268,10 +276,12 @@ picodata run --config i3.yml
       peer:
       - 127.0.0.1:3301
 
-      iproto_listen: '0.0.0.0:3302'
-      iproto_advertise: '127.0.0.1:3302'
-      http_listen: '0.0.0.0:8082'
-      pg:
+      iproto:
+        listen: '0.0.0.0:3302'
+        advertise: '127.0.0.1:3302'
+      http:
+        listen: '0.0.0.0:8082'
+      pgproto:
         listen: '0.0.0.0:4328'
         advertise: '127.0.0.1:4328'
 
@@ -299,10 +309,12 @@ picodata run --config i3.yml
       peer:
       - 127.0.0.1:3301
 
-      iproto_listen: '0.0.0.0:3303'
-      iproto_advertise: '127.0.0.1:3303'
-      http_listen: '0.0.0.0:8083'
-      pg:
+      iproto:
+        listen: '0.0.0.0:3303'
+        advertise: '127.0.0.1:3303'
+      http:
+        listen: '0.0.0.0:8083'
+      pgproto:
         listen: '0.0.0.0:4329'
         advertise: '127.0.0.1:4329'
 
@@ -383,10 +395,12 @@ picodata run --config storage-2.yml
       share_dir: extra/plugins
       peer: [ 127.0.0.1:3301 ]
 
-      iproto_listen: '0.0.0.0:3301'
-      iproto_advertise: '127.0.0.1:3301'
-      http_listen: '0.0.0.0:8081'
-      pg:
+      iproto:
+        listen: '0.0.0.0:3301'
+        advertise: '127.0.0.1:3301'
+      http:
+        listen: '0.0.0.0:8081'
+      pgproto:
         listen: '0.0.0.0:4327'
         advertise: '127.0.0.1:4327'
 

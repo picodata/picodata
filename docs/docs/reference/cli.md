@@ -172,9 +172,9 @@ picodata run -c instance.log.level=verbose -c instance.instance_dir=/path/to/dir
 Адрес HTTP-сервера.
 
 Аналогичная переменная окружения: `PICODATA_HTTP_LISTEN`<br>
-Аналогичный параметр файла конфигурации: [`instance.http_listen`]
+Аналогичный параметр файла конфигурации: [`instance.http.listen`]
 
-[`instance.http_listen`]: config.md#instance_http_listen
+[`instance.http.listen`]: config.md#instance_http_listen
 
 ### --init-replication-factor {: #run_init_replication_factor }
 
@@ -236,9 +236,9 @@ picodata run --iproto-listen 0.0.0.0:3301 --iproto-advertise 192.168.0.1:3301
 ```
 
 Аналогичная переменная окружения: `PICODATA_IPROTO_ADVERTISE`<br>
-Аналогичный параметр файла конфигурации: [`instance.iproto_advertise`]
+Аналогичный параметр файла конфигурации: [`instance.iproto.advertise`]
 
-[`instance.iproto_advertise`]: config.md#instance_iproto_advertise
+[`instance.iproto.advertise`]: config.md#instance_iproto_advertise
 
 ### --iproto-listen {: #run_iproto_listen }
 
@@ -249,9 +249,9 @@ picodata run --iproto-listen 0.0.0.0:3301 --iproto-advertise 192.168.0.1:3301
 По умолчанию используется значение `127.0.0.1:3301`.
 
 Аналогичная переменная окружения: `PICODATA_IPROTO_LISTEN`<br>
-Аналогичный параметр файла конфигурации: [`instance.iproto_listen`]
+Аналогичный параметр файла конфигурации: [`instance.iproto.listen`]
 
-[`instance.iproto_listen`]: config.md#instance_iproto_listen
+[`instance.iproto.listen`]: config.md#instance_iproto_listen
 
 ### --log {: #run_log }
 
@@ -386,9 +386,9 @@ picodata run --pg-listen 0.0.0.0:5432 --pg-advertise 192.168.0.5432
 ```
 
 Аналогичная переменная окружения: `PICODATA_PG_ADVERTISE`<br>
-Аналогичный параметр файла конфигурации: [`instance.pg.advertise`]
+Аналогичный параметр файла конфигурации: [`instance.pgproto.advertise`]
 
-[`instance.pg.advertise`]: config.md#instance_pg_advertise
+[`instance.pgproto.advertise`]: config.md#instance_pgproto_advertise
 
 ### --pg-listen {: #run_pg_listen }
 
@@ -398,9 +398,9 @@ picodata run --pg-listen 0.0.0.0:5432 --pg-advertise 192.168.0.5432
 Значение по умолчанию: `127.0.0.1:4327`
 
 Аналогичная переменная окружения: `PICODATA_PG_LISTEN`<br>
-Аналогичный параметр файла конфигурации: [`instance.pg.listen`]
+Аналогичный параметр файла конфигурации: [`instance.pgproto.listen`]
 
-[`instance.pg.listen`]: config.md#instance_pg_listen
+[`instance.pgproto.listen`]: config.md#instance_pgproto_listen
 
 ### --replicaset-name {: #run_replicaset_name }
 
@@ -1074,7 +1074,7 @@ picodata status -t 10
 [файла журнала инстанса]: config.md#instance_log_destination
 [адрес HTTP-сервера инстанса]: config.md#instance_http_listen
 [порт]: config.md#instance_iproto_listen
-[адрес]: config.md#instance_pg_listen
+[адрес]: config.md#instance_pgproto_listen
 
 ??? example "Пример"
     ```shell

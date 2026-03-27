@@ -114,10 +114,12 @@
       peer:
       - 127.0.0.1:3301
 
-      iproto_listen: '0.0.0.0:3304'
-      iproto_advertise: '127.0.0.1:3304'
-      http_listen: '0.0.0.0:8084'
-      pg:
+      iproto:
+        listen: '0.0.0.0:3304'
+        advertise: '127.0.0.1:3304'
+      http:
+        listen: '0.0.0.0:8084'
+      pgproto:
         listen: '0.0.0.0:5435'
         advertise: '127.0.0.1:5435'
 

@@ -108,10 +108,12 @@ StartTLS); возможные значения: `true`, `false`. По умолч
       tier: 'default'
       peer: [ 127.0.0.1:3301 ]
 
-      iproto_listen: '0.0.0.0:3301'
-      iproto_advertise: '127.0.0.1:3301'
-      http_listen: '0.0.0.0:8081'
-      pg:
+      iproto:
+          listen: '0.0.0.0:3301'
+          advertise: '127.0.0.1:3301'
+      http:
+          listen: '0.0.0.0:8081'
+      pgproto:
         listen: '0.0.0.0:4327'
         advertise: '127.0.0.1:4327'
     ```
