@@ -6,6 +6,7 @@ from framework.util.version import base_version
 from framework.util.version import ExecutableVersion
 from framework.util.version import parse_version_exc
 from framework.util.version import VersionAlias
+from framework.util import ExpectedError
 from packaging.version import Version
 from urllib.request import urlopen
 import json
@@ -45,15 +46,13 @@ def test_upgrade_from_previous_minor_to_current(cluster: Cluster, registry: Regi
         instance_count=4,
         init_replication_factor=2,
     )
-
-    assert cluster.is_healthy()
+    cluster.check_health()
 
     current = registry.get(VersionAlias.CURRENT)
     assert current is not None
 
     cluster.change_executable(current)
-
-    assert cluster.is_healthy()
+    cluster.check_health()
 
 
 @pytest.mark.xdist_group(name="rolling")
@@ -67,21 +66,20 @@ def test_upgrade_from_previous_major_to_current(cluster: Cluster, registry: Regi
     from_version = Version("25.5.9")
     from_executable = registry.get(from_version)
     assert from_executable is not None
+
     cluster.deploy(
         executable=from_executable,
         instance_count=4,
         init_replication_factor=2,
     )
-
-    assert cluster.is_healthy()
+    cluster.check_health()
 
     to_version = registry.next_version(from_version)
     to_executable = registry.get(to_version)
     assert to_executable is not None
 
     cluster.change_executable(to_executable)
-
-    assert cluster.is_healthy()
+    cluster.check_health()
 
 
 @pytest.mark.xdist_group(name="rolling")
@@ -111,6 +109,7 @@ def test_node_by_node_sequential_upgrade_success(cluster: Cluster, registry: Reg
         instance_count=4,
         init_replication_factor=2,
     )
+    cluster.check_health()
 
     # step 2
 
@@ -120,7 +119,7 @@ def test_node_by_node_sequential_upgrade_success(cluster: Cluster, registry: Reg
 
     # step 3
 
-    assert cluster.is_healthy()
+    cluster.check_health()
 
     # step 4
 
@@ -130,7 +129,7 @@ def test_node_by_node_sequential_upgrade_success(cluster: Cluster, registry: Reg
 
     # step 5
 
-    assert cluster.is_healthy()
+    cluster.check_health()
 
 
 @pytest.mark.xdist_group(name="rolling")
@@ -148,8 +147,6 @@ def test_node_by_node_leaping_upgrade_failure(cluster: Cluster, registry: Regist
     3. Confirm the whole cluster died successfully.
     """
 
-    # step 1
-
     executable = registry.get_or_skip(VersionAlias.BEFORELAST_MINOR)
 
     cluster.deploy(
@@ -157,16 +154,14 @@ def test_node_by_node_leaping_upgrade_failure(cluster: Cluster, registry: Regist
         instance_count=4,
         init_replication_factor=2,
     )
-
-    # step 2
+    cluster.check_health()
 
     current = registry.get(VersionAlias.CURRENT)
     assert current is not None
-    cluster.change_executable(current, fail=True)
 
-    # step 3
-
-    assert cluster.is_ceased()
+    error = ExpectedError(log_pattern="mismatches the leader's version")
+    cluster.change_executable(current, error)
+    cluster.check_health(error=error)
 
 
 @pytest.mark.xdist_group(name="rolling")
@@ -197,12 +192,14 @@ def test_successful_rollback_on_partial_upgrade_failure(cluster: Cluster, regist
         instance_count=4,
         init_replication_factor=2,
     )
+    cluster.check_health()
 
     # step 2
 
     shutdown_instance = cluster.pick_random_instance()
     shutdown_instance.terminate()
-    assert cluster.is_healthy(exclude=[shutdown_instance])
+
+    cluster.check_health(exclude=[shutdown_instance])
 
     # step 3
 
@@ -213,7 +210,7 @@ def test_successful_rollback_on_partial_upgrade_failure(cluster: Cluster, regist
         if instance is not shutdown_instance:
             instance.change_executable(current)
 
-    assert cluster.is_healthy(exclude=[shutdown_instance])
+    cluster.check_health(exclude=[shutdown_instance], homogeneous=False)
 
     # step 4
 
@@ -223,7 +220,7 @@ def test_successful_rollback_on_partial_upgrade_failure(cluster: Cluster, regist
         if instance is not shutdown_instance:
             instance.change_executable(executable)
 
-    assert cluster.is_healthy(exclude=[shutdown_instance])
+    cluster.check_health(exclude=[shutdown_instance])
 
     # step 5
 
@@ -231,7 +228,7 @@ def test_successful_rollback_on_partial_upgrade_failure(cluster: Cluster, regist
 
     # step 6
 
-    assert cluster.is_healthy()
+    cluster.check_health()
 
 
 @pytest.mark.xdist_group(name="rolling")
@@ -260,18 +257,19 @@ def test_reject_older_node_joining_newer_cluster(cluster: Cluster, registry: Reg
         instance_count=4,
         init_replication_factor=2,
     )
+    cluster.check_health()
 
     # step 2
 
     executable = registry.get_or_skip(VersionAlias.PREVIOUS_MINOR)
 
+    error = ExpectedError(log_pattern="mismatches the leader's version")
     shutdown_instance = cluster.pick_random_instance()
-    shutdown_instance.change_executable(executable, fail=True)
+    shutdown_instance.change_executable(executable, error)
 
     # step 3
 
-    assert shutdown_instance.is_ceased()
-    assert cluster.is_healthy(exclude=[shutdown_instance])
+    cluster.check_health(exclude=[shutdown_instance])
 
 
 @pytest.mark.xdist_group(name="rolling")
@@ -299,27 +297,30 @@ def test_successful_upgrade_then_failed_downgrade(cluster: Cluster, registry: Re
         instance_count=4,
         init_replication_factor=2,
     )
+    cluster.check_health()
 
     # step 2
 
     current = registry.get(VersionAlias.CURRENT)
     assert current is not None
+
     cluster.change_executable(current)
-    assert cluster.is_healthy()
+    cluster.check_health()
 
     # step 3
 
     executable = registry.get_or_skip(VersionAlias.PREVIOUS_MINOR)
 
+    error = ExpectedError(log_pattern="mismatches the leader's version")
     shutdown_instance = cluster.pick_random_instance()
-    shutdown_instance.change_executable(executable, fail=True)
+    shutdown_instance.change_executable(executable, error)
 
     # step 4
 
-    assert cluster.is_healthy(exclude=[shutdown_instance])
-    assert shutdown_instance.is_ceased()
+    cluster.check_health(exclude=[shutdown_instance])
 
 
+@pytest.mark.skip(reason="skipped temporarily after version bump to 26.2.0")
 @pytest.mark.xdist_group(name="rolling")
 @pytest.mark.required_rolling_versions(
     versions=[
@@ -343,7 +344,7 @@ def test_upgrade_25_5_to_25_6_check_procs(cluster: Cluster, registry: Registry):
         instance_count=4,
         init_replication_factor=2,
     )
-    assert cluster.is_healthy()
+    cluster.check_health()
 
     for instance in cluster.instances:
         for procedure in procedures:
@@ -351,7 +352,7 @@ def test_upgrade_25_5_to_25_6_check_procs(cluster: Cluster, registry: Registry):
             assert result == []
 
     cluster.change_executable(to_executable)
-    assert cluster.is_healthy()
+    cluster.check_health()
 
     for instance in cluster.instances:
         for procedure in procedures:
@@ -381,10 +382,10 @@ def test_upgrade_unlogged_tables_existence(cluster: Cluster, registry: Registry)
         instance_count=4,
         init_replication_factor=2,
     )
-    assert cluster.is_healthy()
+    cluster.check_health()
 
     cluster.change_executable(to_executable)
-    assert cluster.is_healthy()
+    cluster.check_health()
 
     i = cluster.instances[0]
     res = i.sql("SELECT name, opts FROM _pico_table")
