@@ -62,11 +62,6 @@ impl PicoContext {
         ServiceWorkerManager::new(self.make_service_id())
     }
 
-    // TODO:
-    // pub fn register_job(&self) -> ServiceWorkerManager {
-    // pub fn register_tagged_job(&self) -> ServiceWorkerManager {
-    // pub fn cancel_job_by_tag(&self) -> ServiceWorkerManager {
-
     #[inline(always)]
     pub fn register_metrics_callback(&self, callback: impl Fn() -> String) -> Result<(), BoxError> {
         crate::metrics::register_metrics_handler(self, callback)
@@ -103,6 +98,7 @@ impl PicoContext {
     ///
     /// # }
     /// ```
+    #[track_caller]
     #[inline(always)]
     pub fn register_job<F>(&self, job: F) -> Result<(), BoxError>
     where

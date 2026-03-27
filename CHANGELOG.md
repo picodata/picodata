@@ -26,6 +26,8 @@ with the `YY.MINOR.MICRO` scheme.
   isolation while allowing the cluster to recover.
 - Fixed a SQL planner panic caused by stale type metadata after clone-based
   rewrites such as `BETWEEN` normalization and `GROUP BY` alias expansion.
+- Fixed plugin unnamed background jobs being marked with wrong source location
+  (missing `#[track_caller]` attribute).
 - Revoking privileges from `admin` user caused a panic. Now, revoking priviliges
   from `admin` user is forbidden, for same reasons as for the `pico_service` user.
 - Fixed a bug preventing scalar functions from being used in GROUP BY.
@@ -40,6 +42,7 @@ with the `YY.MINOR.MICRO` scheme.
   Now validates that the specified tier exists and returns an error otherwise.
 - Fixed the `query for request_id with plan_id not found` error that occurred
   on queries with `UNION` of `CTE` on a cluster consisting of multiple instances.
+
 
 ## [26.1.1] - 2026-03-24
 
