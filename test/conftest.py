@@ -2092,71 +2092,6 @@ Last governor error is:
                 password = password[:-1]
         return password
 
-    def is_healthy(self) -> bool:
-        (current_state, _), _ = self.states()
-        if current_state != "Online":
-            return False
-
-        res_all = self.sql("SELECT COUNT(*) FROM _pico_governor_queue")
-        res_done = self.sql("SELECT COUNT(*) FROM _pico_governor_queue WHERE status = 'done'")
-        if res_all != res_done:
-            return False
-
-        tt_procs = [
-            "proc_backup_abort_clear",
-            "proc_apply_backup",
-            "proc_internal_script",
-        ]
-        for proc_name in tt_procs:
-            res = self.call("box.space._func.index.name:select", [f".{proc_name}"])
-            if res[0][2] != f".{proc_name}":
-                return False
-
-        res = self.sql("SELECT name, is_default FROM _pico_tier")
-        if res != [["default", True]]:
-            return False
-
-        res = self.sql("SELECT format FROM _pico_table WHERE id = 523")
-        if res[0][0][7] != {"field_type": "boolean", "is_nullable": True, "name": "is_default"}:
-            return False
-
-        res = self.call("box.space._space:select", [523])
-        if res[0][6][7] != {"type": "boolean", "is_nullable": True, "name": "is_default"}:
-            return False
-
-        [[cluster_version]] = self.sql("SELECT value FROM _pico_property WHERE key = 'cluster_version'")
-        if parse_version_exc(cluster_version) >= Version("25.5.0"):
-            res = self.sql("SELECT name, id FROM _pico_table WHERE name = '_pico_bucket'")
-            if res != [["_pico_bucket", 533]]:
-                log.error(f"Invalid metadata for _pico_bucket: {res}")
-
-            res = self.sql("SELECT name, id FROM _pico_table WHERE name = '_pico_resharding_state'")
-            if res != [["_pico_resharding_state", 534]]:
-                log.error(f"Invalid metadata for _pico_bucket: {res}")
-
-        res = self.sql("SELECT value FROM _pico_property WHERE key = 'system_catalog_version'")
-        if res[0][0] not in ["25.3.7", "25.4.1", "25.5.1", "25.5.2", "25.5.3", "25.5.8", "26.1.1"]:
-            return False
-
-        self.sql("AUDIT POLICY dml_default BY pico_service", timeout=30)
-        res = self.sql("SELECT * FROM _pico_user_audit_policy")
-        if res != [[32, 0]]:
-            return False
-
-        self.sql("AUDIT POLICY dml_default EXCEPT pico_service")
-        res = self.sql("SELECT * FROM _pico_user_audit_policy")
-        if res != []:
-            return False
-
-        return True
-
-    def is_ceased(self) -> bool:
-        try:
-            print(f"{self.name}: called is_ceased")
-            return not self.is_healthy()
-        except ProcessDead:
-            return True
-
     def change_executable(
         self,
         to: Executable,
@@ -2961,29 +2896,23 @@ class Cluster:
 
         return Path(candidate)
 
-    def is_healthy(
+    def check_health(
         self,
-        exclude: List[Instance] = list(),
-    ) -> bool:
-        # Wait until governor finishes all ongoing activities
-        leader = Retriable().call(self.leader)
-        leader.wait_governor_status("idle")
+        exclude: list[Instance] | None = None,
+        error: ExpectedError | None = None,
+        homogeneous: bool = True,
+    ) -> None:
+        from framework.health_check import HealthCheck
 
-        for instance in self.instances:
-            if instance not in exclude:
-                if instance.is_ceased() and not instance.is_healthy():
-                    return False
-        return True
+        if exclude is None:
+            exclude = []
 
-    def is_ceased(
-        self,
-        exclude: List[Instance] = list(),
-    ) -> bool:
-        for instance in self.instances:
-            if instance not in exclude:
-                if not instance.is_ceased() and instance.is_healthy():
-                    return False
-        return True
+        HealthCheck(
+            cluster=self,
+            exclude=exclude,
+            error=error,
+            homogeneous=homogeneous,
+        ).perform()
 
     def change_executable(
         self,
