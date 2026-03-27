@@ -59,7 +59,7 @@ pub async fn callback() {
             // Dirty hack. Wait a little bit more before actually
             // shutting down. Raft commit index is a local value. Other
             // nodes may still be unaware that `me.current_state` is
-            // commmitted. Give them some more time to communicate.
+            // committed. Give them some more time to communicate.
             fiber::sleep(Duration::from_millis(100));
             break;
         }
