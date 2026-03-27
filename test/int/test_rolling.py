@@ -321,7 +321,6 @@ def test_successful_upgrade_then_failed_downgrade(cluster: Cluster, registry: Re
     cluster.check_health(exclude=[shutdown_instance])
 
 
-@pytest.mark.skip(reason="skipped temporarily after version bump to 26.2.0")
 @pytest.mark.xdist_group(name="rolling")
 @pytest.mark.required_rolling_versions(
     versions=[
