@@ -241,6 +241,7 @@ define_str_enum! {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Default, Clone, Debug, PartialEq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
 pub struct ReplicasetSpec {
+    name: SmolStr,
     replicas: HashMap<SmolStr, ReplicaSpec>,
     weight: Option<Weight>,
 }
@@ -318,6 +319,7 @@ impl VshardConfig {
             let replicaset = sharding
                 .entry(peer.replicaset_uuid.clone())
                 .or_insert_with(|| ReplicasetSpec {
+                    name: r.name.clone().into(),
                     weight: Some(r.weight),
                     ..Default::default()
                 });

@@ -753,9 +753,10 @@ cluster:
     router_instance_2 = cluster.add_instance(tier="router")
 
     storage_sharding = {
-        f"{storage_instance.replicaset_uuid()}": {
+        storage_instance.replicaset_uuid(): {
+            "name": storage_instance.replicaset_name,
             "replicas": {
-                f"{storage_instance.uuid()}": {
+                storage_instance.uuid(): {
                     "master": True,
                     "name": "storage_1_1",
                     "uri": {
@@ -768,16 +769,17 @@ cluster:
     }
 
     router_sharding = {
-        f"{router_instance_1.replicaset_uuid()}": {
+        router_instance_1.replicaset_uuid(): {
+            "name": router_instance_1.replicaset_name,
             "replicas": {
-                f"{router_instance_1.uuid()}": {
+                router_instance_1.uuid(): {
                     "master": True,
                     "name": "router_1_1",
                     "uri": {
                         "uri": f"pico_service@{router_instance_1.host}:{router_instance_1.port}",
                     },
                 },
-                f"{router_instance_2.uuid()}": {
+                router_instance_2.uuid(): {
                     "master": False,
                     "name": "router_1_2",
                     "uri": {

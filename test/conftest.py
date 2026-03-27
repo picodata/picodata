@@ -819,6 +819,7 @@ class Instance:
     version: str | None = None
     cluster_uuid: str | None = None
     replicaset_name: str | None = None
+    _replicaset_uuid: str | None = None
     failure_domain: dict[str, str] = field(default_factory=dict)
     _service_password: str | None = None
     service_password_file: str | None = None
@@ -887,7 +888,8 @@ class Instance:
         return self.eval("return box.info.uuid")
 
     def replicaset_uuid(self):
-        return self.eval("return box.info.cluster.uuid")
+        assert self._replicaset_uuid
+        return self._replicaset_uuid
 
     def picodata_version(self):
         return self.call(".proc_version_info")["picodata_version"]
@@ -1697,6 +1699,9 @@ class Instance:
 
         assert isinstance(info["replicaset_name"], str)
         target.replicaset_name = info["replicaset_name"]
+
+        assert isinstance(info["replicaset_uuid"], str)
+        target._replicaset_uuid = info["replicaset_uuid"]
 
         assert isinstance(info["cluster_name"], str)
         target.cluster_name = info["cluster_name"]
