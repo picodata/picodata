@@ -264,6 +264,19 @@ where
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// PrettyDuration
+////////////////////////////////////////////////////////////////////////////////
+
+/// A helper struct for displaying durations in a more human friendly way. Will
+/// only show at most one decimal after the comma.
+pub struct PrettyDuration(pub Duration);
+impl std::fmt::Display for PrettyDuration {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{:.1?}", self.0)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// Returns a unix socket uri from the given file path.
 ///
 /// Non-absolute paths are prepended with `./`.

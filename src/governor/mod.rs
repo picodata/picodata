@@ -48,6 +48,7 @@ use crate::traft::RaftId;
 use crate::traft::Result;
 use crate::traft::SystemConnectionType;
 use crate::unwrap_ok_or;
+use crate::util::PrettyDuration;
 use ::tarantool::error::BoxError;
 use ::tarantool::error::IntoBoxError;
 use ::tarantool::error::TarantoolErrorCode::Timeout;
@@ -298,7 +299,7 @@ impl Loop {
                 governor_substep! {
                     "sleeping due to backoff" [
                         "step_kind" => ?step_kind,
-                        "timeout" => ?timeout
+                        "timeout" => %PrettyDuration(timeout)
                     ]
                     async {
                         sleep_timeout = Some(timeout);
