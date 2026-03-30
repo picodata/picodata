@@ -48,6 +48,8 @@
 
 - `space::UpdateOps` now implements `Debug` & `Clone` builtin traits
 - `space::UpdateOps` `into_assign`, `into_add`, etc. methods for user convenience
+- `Index::meta` return value now states `'static` instead of `'_`
+  which now allows more correct usage code to compile.
 
 
 # [11.0.0] Mar 19 2026
