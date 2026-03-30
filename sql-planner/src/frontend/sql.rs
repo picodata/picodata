@@ -3215,12 +3215,6 @@ impl Plan {
 
                     self.replace_const_with_reference(&final_proj_cols, group_by, expr, pos)?;
                 }
-                Expression::ScalarFunction(ScalarFunction { name, .. }) => {
-                    return Err(SbroadError::Invalid(
-                        Entity::Query,
-                        Some(format_smolstr!("aggregate functions are not allowed in GROUP BY. Got aggregate: {name}"))
-                    ));
-                }
                 _ => {
                     self.check_grouping_expr_subtree(*expr)?;
                 }
@@ -3254,10 +3248,16 @@ impl Plan {
                 name, is_window, ..
             }) = node
             {
-                if Expression::is_aggregate_name(name) && !is_window {
+                if Expression::is_aggregate_name(name) {
+                    let kind = match is_window {
+                        true => "window",
+                        false => "aggregate",
+                    };
                     return Err(SbroadError::Invalid(
                         Entity::Query,
-                        Some(format_smolstr!("aggregate functions are not allowed inside grouping expression. Got aggregate: {name}"))
+                        Some(format_smolstr!(
+                            "{kind} function \"{name}\" is not allowed in GROUP BY"
+                        )),
                     ));
                 }
             }
@@ -3294,7 +3294,8 @@ impl Plan {
         };
         let alias_node = self.get_expression_node(alias_id)?;
         if let Expression::Alias(Alias { child, .. }) = alias_node {
-            let expr_node = self.get_expression_node(*child)?;
+            let child = *child;
+            let expr_node = self.get_expression_node(child)?;
             if let Expression::Reference(Reference {
                 position, col_type, ..
             }) = expr_node
@@ -3309,14 +3310,9 @@ impl Plan {
                 );
 
                 *expr = ref_id;
-            } else if let Expression::ScalarFunction(ScalarFunction { name, .. }) = expr_node {
-                return Err(SbroadError::Invalid(
-                    Entity::Query,
-                    Some(format_smolstr!(
-                        "aggregate functions are not allowed in GROUP BY. Got aggregate: {name}"
-                    )),
-                ));
             }
+
+            self.check_grouping_expr_subtree(child)?;
         }
 
         Ok(())

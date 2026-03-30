@@ -117,7 +117,7 @@ invalid query: column "c" is not found in grouping expressions!
 -- SQL:
 SELECT "id" + count("id") FROM "testing_space" GROUP BY "id" + count("id");
 -- ERROR:
-invalid query: aggregate functions are not allowed inside grouping expression. Got aggregate: count
+invalid query: aggregate function "count" is not allowed in GROUP BY
 
 -- TEST: invalid-5
 -- SQL:
@@ -1037,3 +1037,39 @@ ORDER BY a_2;
 select (select 1) as a from t group by a;
 -- EXPECTED:
 1, 1, 1
+
+-- TEST: test-groupby-with-function-1
+-- SQL:
+with t as (select 1) select upper('a') from t group by upper('a') having upper('A') < 'b';
+-- EXPECTED:
+'A'
+
+-- TEST: test-groupby-with-function-2
+-- SQL:
+with t as (select 1) select upper('a') from t group by 1
+-- EXPECTED:
+'A'
+
+-- TEST: test-groupby-with-aggr-function
+-- SQL:
+with t(a) as (select 1) select avg(a) from t group by avg(a);
+-- ERROR:
+aggregate function "avg" is not allowed in GROUP BY
+
+-- TEST: test-groupby-with-aggr-function-2
+-- SQL:
+with t as (select 1 a ) select coalesce(max(1),1) from t group by 1;
+-- ERROR:
+aggregate function "max" is not allowed in GROUP BY
+
+-- TEST: test-groupby-with-window-aggr-function
+-- SQL:
+with t as (select 1 a ) select max(1) + 1 bb from t group by max(a) over ();
+-- ERROR:
+window function "max" is not allowed in GROUP BY
+
+-- TEST: test-groupby-with-subquery-aggr-function
+-- SQL:
+with t(a) as (select 1) select max(a) from t group by (select max(1));
+-- EXPECTED:
+1
