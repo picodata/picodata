@@ -42,6 +42,8 @@ with the `YY.MINOR.MICRO` scheme.
     arbiter tier instances (bucket_count=0) where no vshard router exists.
 - [picodata#2888] Fixed a bug where cluster would fail to bootstrap if there were no voter
   instances in the initial `--peer` set.
+- Revoking privileges from `admin` user caused a panic. Now, revoking priviliges
+  from `admin` user is forbidden, for same reasons as for the `pico_service` user.
 
 ## [26.1.2] - 2026-04-14 
 

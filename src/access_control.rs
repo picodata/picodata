@@ -35,7 +35,7 @@ use crate::traft::op::Dml;
 use crate::{
     schema::{
         PrivilegeDef, PrivilegeType, SchemaObjectType as PicoSchemaObjectType, ADMIN_ID,
-        PICO_SERVICE_ID, PICO_SERVICE_USER_NAME,
+        ADMIN_NAME, PICO_SERVICE_ID, PICO_SERVICE_USER_NAME,
     },
     storage::{make_routine_not_found, space_by_id, Catalog, ToEntryIter},
     traft::{
@@ -490,16 +490,24 @@ fn access_check_grant_revoke(
         Some(object_id) => object_id,
     };
 
-    // Nobody should be able to revoke privileges from pico_service
-    // As it would break the cluster permanently.
-    if access == PrivType::Revoke && priv_def.grantee_id() == PICO_SERVICE_ID {
-        tarantool::set_error!(
-            tarantool::error::TarantoolErrorCode::AccessDenied,
-            "Revoke '{}' from '{}' is denied for all users",
-            priv_def.privilege(),
-            PICO_SERVICE_USER_NAME,
-        );
-        return Err(tarantool::error::TarantoolError::last().into());
+    // XXX: Revoking privileges from `admin` or `pico_service` will break the cluster permanently.
+    // See <https://git.picodata.io/core/picodata/issues/1733> for more context if needed.
+    if access == PrivType::Revoke {
+        let grantee = match priv_def.grantee_id() {
+            PICO_SERVICE_ID => Some(PICO_SERVICE_USER_NAME),
+            ADMIN_ID => Some(ADMIN_NAME),
+            _ => None,
+        };
+
+        if let Some(grantee) = grantee {
+            tarantool::set_error!(
+                tarantool::error::TarantoolErrorCode::AccessDenied,
+                "Revoke '{}' from '{}' is not possible",
+                priv_def.privilege(),
+                grantee,
+            );
+            return Err(tarantool::error::TarantoolError::last().into());
+        }
     }
 
     match object_type {
