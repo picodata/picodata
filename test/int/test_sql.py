@@ -3220,9 +3220,16 @@ def test_sql_alter_login(cluster: Cluster):
     # Login privilege cannot be removed from pico_service even by admin.
     with pytest.raises(
         Exception,
-        match="Revoke 'login' from 'pico_service' is denied for all users",
+        match="Revoke 'login' from 'pico_service' is not possible",
     ):
         i1.sql('alter user "pico_service" with nologin', sudo=True)
+
+    # Login privileges cannot be removed from admin, even by admin.
+    with pytest.raises(
+        Exception,
+        match="Revoke 'login' from 'admin' is not possible",
+    ):
+        i1.sql('alter user "admin" with nologin', sudo=True)
 
 
 def test_sql_acl_privileges(cluster: Cluster):

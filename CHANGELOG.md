@@ -26,6 +26,8 @@ with the `YY.MINOR.MICRO` scheme.
   isolation while allowing the cluster to recover.
 - Fixed a SQL planner panic caused by stale type metadata after clone-based
   rewrites such as `BETWEEN` normalization and `GROUP BY` alias expansion.
+- Revoking privileges from `admin` user caused a panic. Now, revoking priviliges
+  from `admin` user is forbidden, for same reasons as for the `pico_service` user.
 
 ## [26.1.1] - 2026-03-24
 
