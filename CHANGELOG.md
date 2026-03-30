@@ -204,6 +204,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed a caching bug that caused some different queries to tables with `bucket_id` in the primary key to have the same plan id.
 - Fixed SUM/AVG type resolution for Double
 - Fixed incorrect filter pushdown into compound queries containing window functions.
+- Fixed a bug preventing scalar functions from being used in GROUP BY.
 
 ### Observability
 

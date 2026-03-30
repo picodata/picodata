@@ -94,7 +94,7 @@ filter expression is not a trivalent expression
 -- SQL:
 SELECT * FROM t1 GROUP BY sum(b) OVER ();
 -- ERROR:
-misuse of window function SUM()
+window function "sum" is not allowed in GROUP BY
 
 -- TEST: window1-3.3
 -- SQL:

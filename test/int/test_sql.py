@@ -266,7 +266,7 @@ def test_pg_params(cluster: Cluster):
 
     # Test that using a numeric literal as an ordinal reference in GROUP BY
     # which ends up referring to an aggregate expression max(a) is not allowed.
-    with pytest.raises(TarantoolError, match="aggregate functions are not allowed in GROUP BY"):
+    with pytest.raises(TarantoolError, match='aggregate function "max" is not allowed in GROUP BY'):
         i1.sql("""select max(a), b from (select 1 as a, 2 as b) group by 1""")
 
     # Test that a parameter placeholder used in the GROUP BY clause is treated as an expression,
