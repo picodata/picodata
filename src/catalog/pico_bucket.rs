@@ -191,54 +191,48 @@ impl std::fmt::Debug for BucketRecord {
 // BucketState
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
-pub enum BucketState {
-    /// The bucket(s) are fully operable and data is stored only on the owner.
-    ///
-    /// Reading and writing data in such buckets is allowed.
-    ///
-    /// Legal transitions:
-    /// - `Active` -> `Sending`
-    /// - `Sent` -> `Active`
-    #[default]
-    Active,
+crate::define_str_enum_or_smol_str! {
+    #[derive(Default)]
+    pub enum BucketState {
+        /// The bucket(s) are fully operable and data is stored only on the owner.
+        ///
+        /// Reading and writing data in such buckets is allowed.
+        ///
+        /// Legal transitions:
+        /// - `Active` -> `Sending`
+        /// - `Sent` -> `Active`
+        #[default]
+        Active = "active",
 
-    /// The bucket(s) are being sent to the new owner.
-    ///
-    /// Nobody is allowed to write data in such buckets.
-    /// Reading is allowed.
-    ///
-    /// Legal transitions:
-    /// - `Active` -> `Sending`
-    /// - `Sending` -> `Sent`
-    Sending,
+        /// The bucket(s) are being sent to the new owner.
+        ///
+        /// Nobody is allowed to write data in such buckets.
+        /// Reading is allowed.
+        ///
+        /// Legal transitions:
+        /// - `Active` -> `Sending`
+        /// - `Sending` -> `Sent`
+        Sending = "sending",
 
-    /// The bucket(s) is fully sent to the new owner, but there's still a full
-    /// copy of the data on the old owner.
-    ///
-    /// Nobody is allowed to write data in such buckets.
-    /// Nobody is allowed to read data in such buckets unless they've been
-    /// reading it before the state changed to `Sent`.
-    ///
-    /// Legal transitions:
-    /// - `Sending` -> `Sent`
-    /// - `Sent` -> `Active`
-    Sent,
+        /// The bucket(s) is fully sent to the new owner, but there's still a full
+        /// copy of the data on the old owner.
+        ///
+        /// Nobody is allowed to write data in such buckets.
+        /// Nobody is allowed to read data in such buckets unless they've been
+        /// reading it before the state changed to `Sent`.
+        ///
+        /// Legal transitions:
+        /// - `Sending` -> `Sent`
+        /// - `Sent` -> `Active`
+        Sent = "sent",
 
-    /// For future compatibility
-    Unknown(SmolStr),
+        @unknown
+        /// For future compatibility
+        Unknown(SmolStr),
+    }
 }
 
 impl BucketState {
-    pub fn as_str(&self) -> &str {
-        match self {
-            BucketState::Active => "active",
-            BucketState::Sending => "sending",
-            BucketState::Sent => "sent",
-            BucketState::Unknown(s) => s,
-        }
-    }
-
     #[inline(always)]
     pub fn is_sending(&self) -> bool {
         matches!(self, BucketState::Sending)
@@ -252,51 +246,6 @@ impl BucketState {
     #[inline(always)]
     pub fn is_active(&self) -> bool {
         matches!(self, BucketState::Active)
-    }
-}
-
-impl From<BucketState> for SmolStr {
-    fn from(state: BucketState) -> Self {
-        match state {
-            BucketState::Active => SmolStr::new_static("active"),
-            BucketState::Sending => SmolStr::new_static("sending"),
-            BucketState::Sent => SmolStr::new_static("sent"),
-            BucketState::Unknown(s) => s,
-        }
-    }
-}
-
-impl std::str::FromStr for BucketState {
-    type Err = std::convert::Infallible;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let res = match s {
-            "active" => Self::Active,
-            "sending" => Self::Sending,
-            "sent" => Self::Sent,
-            unknown => Self::Unknown(unknown.into()),
-        };
-        Ok(res)
-    }
-}
-
-impl serde::Serialize for BucketState {
-    #[inline]
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(self.as_str())
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for BucketState {
-    #[inline]
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        deserializer.deserialize_str(tarantool::define_str_enum::FromStrVisitor::<Self>::default())
     }
 }
 

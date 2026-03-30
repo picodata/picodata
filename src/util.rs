@@ -13,6 +13,8 @@ use tarantool::fiber::NoYieldsGuard;
 use tarantool::network::Config;
 use tarantool::session::{self, UserId};
 
+pub mod define_str_enum;
+
 pub const INFINITY: Duration = Duration::from_secs(30 * 365 * 24 * 60 * 60);
 
 /// Converts `secs` to `Duration`. If `secs` is negative, it's clamped to zero.
