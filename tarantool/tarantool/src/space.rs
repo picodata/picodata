@@ -1115,6 +1115,7 @@ impl<'a> Builder<'a> {
 /// [`insert`]: UpdateOps::insert
 /// [`encode`]: UpdateOps::encode
 /// [`into_inner`]: UpdateOps::into_inner
+#[derive(Debug, Clone)]
 pub struct UpdateOps {
     ops: Vec<TupleBuffer>,
 }
@@ -1229,6 +1230,146 @@ impl UpdateOps {
     ) -> crate::Result<&mut Self>
     where
         K: Serialize,
+    {
+        self.ops
+            .push((':', field, start, count, value).to_tuple_buffer()?);
+        Ok(self)
+    }
+
+    /// Assignment operation.
+    /// Corresponds to tarantool's `{'=', field, value}`.
+    ///
+    /// Field indexing is zero based (first field has index 0).
+    /// Negative indexes are offset from array's end (last field has index -1).
+    #[inline(always)]
+    pub fn into_assign<K, V>(mut self, field: K, value: V) -> crate::Result<Self>
+    where
+        K: serde::Serialize,
+        V: serde::Serialize,
+    {
+        self.ops.push(('=', field, value).to_tuple_buffer()?);
+        Ok(self)
+    }
+
+    /// Insertion operation.
+    /// Corresponds to tarantool's `{'!', field, value}`.
+    ///
+    /// Field indexing is zero based (first field has index 0).
+    /// Negative indexes are offset from array's end (last field has index -1).
+    #[inline(always)]
+    pub fn into_insert<K, V>(mut self, field: K, value: V) -> crate::Result<Self>
+    where
+        K: serde::Serialize,
+        V: serde::Serialize,
+    {
+        self.ops.push(('!', field, value).to_tuple_buffer()?);
+        Ok(self)
+    }
+
+    /// Numeric addition operation.
+    /// Corresponds to tarantool's `{'+', field, value}`.
+    ///
+    /// Field indexing is zero based (first field has index 0).
+    /// Negative indexes are offset from array's end (last field has index -1).
+    #[inline(always)]
+    pub fn into_add<K, V>(mut self, field: K, value: V) -> crate::Result<Self>
+    where
+        K: serde::Serialize,
+        V: serde::Serialize,
+    {
+        self.ops.push(('+', field, value).to_tuple_buffer()?);
+        Ok(self)
+    }
+
+    /// Numeric subtraction operation.
+    /// Corresponds to tarantool's `{'-', field, value}`.
+    ///
+    /// Field indexing is zero based (first field has index 0).
+    /// Negative indexes are offset from array's end (last field has index -1).
+    #[inline(always)]
+    pub fn into_sub<K, V>(mut self, field: K, value: V) -> crate::Result<Self>
+    where
+        K: serde::Serialize,
+        V: serde::Serialize,
+    {
+        self.ops.push(('-', field, value).to_tuple_buffer()?);
+        Ok(self)
+    }
+
+    /// Bitwise AND operation.
+    /// Corresponds to tarantool's `{'&', field, value}`.
+    ///
+    /// Field indexing is zero based (first field has index 0).
+    /// Negative indexes are offset from array's end (last field has index -1).
+    #[inline(always)]
+    pub fn into_and<K, V>(mut self, field: K, value: V) -> crate::Result<Self>
+    where
+        K: serde::Serialize,
+        V: serde::Serialize,
+    {
+        self.ops.push(('&', field, value).to_tuple_buffer()?);
+        Ok(self)
+    }
+
+    /// Bitwise OR operation.
+    /// Corresponds to tarantool's `{'|', field, value}`.
+    ///
+    /// Field indexing is zero based (first field has index 0).
+    /// Negative indexes are offset from array's end (last field has index -1).
+    #[inline(always)]
+    pub fn into_or<K, V>(mut self, field: K, value: V) -> crate::Result<Self>
+    where
+        K: serde::Serialize,
+        V: serde::Serialize,
+    {
+        self.ops.push(('|', field, value).to_tuple_buffer()?);
+        Ok(self)
+    }
+
+    /// Bitwise XOR operation.
+    /// Corresponds to tarantool's `{'^', field, value}`.
+    ///
+    /// Field indexing is zero based (first field has index 0).
+    /// Negative indexes are offset from array's end (last field has index -1).
+    #[inline(always)]
+    pub fn into_xor<K, V>(mut self, field: K, value: V) -> crate::Result<Self>
+    where
+        K: serde::Serialize,
+        V: serde::Serialize,
+    {
+        self.ops.push(('^', field, value).to_tuple_buffer()?);
+        Ok(self)
+    }
+
+    /// Deletion operation.
+    /// Corresponds to tarantool's `{'#', field, count}`.
+    ///
+    /// Field indexing is zero based (first field has index 0).
+    /// Negative indexes are offset from array's end (last field has index -1).
+    #[inline]
+    pub fn into_delete<K>(mut self, field: K, count: usize) -> crate::Result<Self>
+    where
+        K: serde::Serialize,
+    {
+        self.ops.push(('#', field, count).to_tuple_buffer()?);
+        Ok(self)
+    }
+
+    /// String splicing operation.
+    /// Corresponds to tarantool's `{':', field, start, count, value}`.
+    ///
+    /// Field indexing is zero based (first field has index 0).
+    /// Negative indexes are offset from array's end (last field has index -1).
+    #[inline]
+    pub fn into_splice<K>(
+        mut self,
+        field: K,
+        start: isize,
+        count: usize,
+        value: &str,
+    ) -> crate::Result<Self>
+    where
+        K: serde::Serialize,
     {
         self.ops
             .push((':', field, start, count, value).to_tuple_buffer()?);

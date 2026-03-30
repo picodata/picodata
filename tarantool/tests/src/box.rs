@@ -608,6 +608,67 @@ pub fn update_ops() {
             .unwrap(),
         (1, 420),
     );
+
+    // Check the new `into_*` methods
+
+    let ops = UpdateOps::new()
+        .into_assign("a", 1)
+        .unwrap()
+        .into_insert("b", 2)
+        .unwrap()
+        .into_add("c", 3)
+        .unwrap()
+        .into_sub("d", 4)
+        .unwrap()
+        .into_and("e", 5)
+        .unwrap()
+        .into_or("f", 6)
+        .unwrap()
+        .into_xor("g", 7)
+        .unwrap()
+        .into_delete(8, 9)
+        .unwrap()
+        .into_splice("i", 10, 11, "str")
+        .unwrap()
+        .into_inner();
+
+    let mut ops = ops.iter();
+
+    let (op, key, value): (&str, &str, i32) =
+        rmp_serde::from_slice(ops.next().unwrap().as_ref()).unwrap();
+    assert_eq!((op, key, value), ("=", "a", 1));
+
+    let (op, key, value): (&str, &str, i32) =
+        rmp_serde::from_slice(ops.next().unwrap().as_ref()).unwrap();
+    assert_eq!((op, key, value), ("!", "b", 2));
+
+    let (op, key, value): (&str, &str, i32) =
+        rmp_serde::from_slice(ops.next().unwrap().as_ref()).unwrap();
+    assert_eq!((op, key, value), ("+", "c", 3));
+
+    let (op, key, value): (&str, &str, i32) =
+        rmp_serde::from_slice(ops.next().unwrap().as_ref()).unwrap();
+    assert_eq!((op, key, value), ("-", "d", 4));
+
+    let (op, key, value): (&str, &str, i32) =
+        rmp_serde::from_slice(ops.next().unwrap().as_ref()).unwrap();
+    assert_eq!((op, key, value), ("&", "e", 5));
+
+    let (op, key, value): (&str, &str, i32) =
+        rmp_serde::from_slice(ops.next().unwrap().as_ref()).unwrap();
+    assert_eq!((op, key, value), ("|", "f", 6));
+
+    let (op, key, value): (&str, &str, i32) =
+        rmp_serde::from_slice(ops.next().unwrap().as_ref()).unwrap();
+    assert_eq!((op, key, value), ("^", "g", 7));
+
+    let (op, start, count): (&str, i32, i32) =
+        rmp_serde::from_slice(ops.next().unwrap().as_ref()).unwrap();
+    assert_eq!((op, start, count), ("#", 8, 9));
+
+    let (op, key, start, count, value): (&str, &str, i32, i32, &str) =
+        rmp_serde::from_slice(ops.next().unwrap().as_ref()).unwrap();
+    assert_eq!((op, key, start, count, value), (":", "i", 10, 11, "str"));
 }
 
 pub fn upsert() {

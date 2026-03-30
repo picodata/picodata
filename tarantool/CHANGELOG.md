@@ -46,7 +46,8 @@
 
 ### Fixed
 
-- ?
+- `space::UpdateOps` now implements `Debug` & `Clone` builtin traits
+- `space::UpdateOps` `into_assign`, `into_add`, etc. methods for user convenience
 
 
 # [11.0.0] Mar 19 2026
