@@ -472,6 +472,14 @@ impl Service for Service3 {
             "authentication_ldap" => {
                 picodata_plugin::internal::authenticate("ldapuser", "ldappass").unwrap();
             }
+            "authentication_as_role" => {
+                let error = picodata_plugin::internal::authenticate("toy", "").unwrap_err();
+                assert_eq!(error.error_code(), 47);
+                assert_eq!(
+                    error.message(),
+                    "User not found or supplied credentials are invalid"
+                );
+            }
             "no_test" => {}
             "metrics" => {
                 let drop_check = DropCheck;

@@ -3040,6 +3040,20 @@ def test_sdk_authentication_ldap(cluster: Cluster, ldap_server: LdapServer):
     )
 
 
+def test_sdk_authentication_as_role(cluster: Cluster):
+    inst = cluster.add_instance()
+
+    inst.sql("CREATE ROLE toy;")
+
+    install_and_enable_plugin(
+        inst,
+        _PLUGIN_W_SDK,
+        _PLUGIN_W_SDK_SERVICES,
+        migrate=True,
+        default_config={"test_type": "authentication_as_role"},
+    )
+
+
 def test_sql_interface(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
     cluster.wait_until_buckets_balanced()
