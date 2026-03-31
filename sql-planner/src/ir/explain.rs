@@ -67,8 +67,9 @@ enum ColExpr {
     Arithmetic(Box<ColExpr>, Arithmetic, Box<ColExpr>),
     Bool(Box<ColExpr>, Bool, Box<ColExpr>),
     Unary(Unary, Box<ColExpr>),
-    Column(SmolStr, DerivedType),
+    Column(Option<SmolStr>, SmolStr, DerivedType),
     Asterisk,
+    Const(SmolStr, DerivedType),
     Index(Box<ColExpr>, Box<ColExpr>),
     Cast(Box<ColExpr>, CastType),
     Case(
@@ -117,9 +118,15 @@ impl Display for ColExpr {
                 }
             }
             ColExpr::Parentheses(child_expr) => write!(f, "({child_expr})")?,
-            ColExpr::Alias(expr, name) => {
-                write!(f, "{expr} -> {}", name_to_smolstr(name))?;
-            }
+            ColExpr::Alias(expr, alias_name) => match expr.as_ref() {
+                // If the unqualified column name matches the alias, drop the alias.
+                ColExpr::Column(None, col_name, _) if col_name == alias_name => {
+                    write!(f, "{expr}")?;
+                }
+                _otherwise => {
+                    write!(f, "{expr} -> {alias}", alias = name_to_smolstr(alias_name))?;
+                }
+            },
             ColExpr::Arithmetic(left, op, right) => write!(f, "{left} {op} {right}")?,
             ColExpr::Bool(left, op, right) => write!(f, "{left} {op} {right}")?,
             ColExpr::Unary(op, expr) => match op {
@@ -133,8 +140,21 @@ impl Display for ColExpr {
                     }
                 }
             },
-            ColExpr::Column(c, col_type) => write!(f, "{c}::{col_type}")?,
+            ColExpr::Column(tbl_name, col_name, col_typ) => match tbl_name {
+                Some(tbl_name) => write!(
+                    f,
+                    "{tbl_name}.{col_name}::{col_typ}",
+                    tbl_name = name_to_smolstr(tbl_name),
+                    col_name = name_to_smolstr(col_name),
+                )?,
+                None => write!(
+                    f,
+                    "{col_name}::{col_typ}",
+                    col_name = name_to_smolstr(col_name),
+                )?,
+            },
             ColExpr::Asterisk => write!(f, "*")?,
+            ColExpr::Const(value, typ) => write!(f, "{value}::{typ}")?,
             ColExpr::Index(v, i) => write!(f, "{v}[{i}]")?,
             ColExpr::Cast(v, t) => write!(f, "{v}::{t}")?,
             ColExpr::Case(search_expr, when_blocks, else_expr) => {
@@ -238,18 +258,11 @@ impl ColExpr {
         scan: NodeId,
         position: usize,
         reference: &Expression,
-    ) -> Result<SmolStr, SbroadError> {
-        let mut builder = SmolStrBuilder::new();
+    ) -> Result<(Option<SmolStr>, SmolStr), SbroadError> {
+        let tbl_name = plan.scan_name(scan, position)?;
+        let col_name = plan.get_alias_from_reference_node(reference)?;
 
-        if let Some(name) = plan.scan_name(scan, position)? {
-            smolstr_builder_write_name(&mut builder, name);
-            builder.push('.');
-        }
-
-        let alias = plan.get_alias_from_reference_node(reference)?;
-        smolstr_builder_write_name(&mut builder, alias);
-
-        Ok(builder.finish())
+        Ok((tbl_name.map(|s| s.into()), col_name.into()))
     }
 
     #[allow(clippy::too_many_lines)]
@@ -373,17 +386,19 @@ impl ColExpr {
                 }
                 Expression::Reference(Reference { position, .. }) => {
                     let rel_id = plan.get_relational_from_reference_node(id)?;
-                    let col_name =
+                    let (tbl_name, col_name) =
                         ColExpr::scan_column_name(plan, rel_id, *position, &current_node)?;
-                    let ref_expr = ColExpr::Column(col_name, current_node.calculate_type(plan)?);
+                    let ref_expr =
+                        ColExpr::Column(tbl_name, col_name, current_node.calculate_type(plan)?);
                     stack.push((ref_expr, id));
                 }
                 Expression::SubQueryReference(SubQueryReference {
                     position, rel_id, ..
                 }) => {
-                    let col_name =
+                    let (tbl_name, col_name) =
                         ColExpr::scan_column_name(plan, *rel_id, *position, &current_node)?;
-                    let ref_expr = ColExpr::Column(col_name, current_node.calculate_type(plan)?);
+                    let ref_expr =
+                        ColExpr::Column(tbl_name, col_name, current_node.calculate_type(plan)?);
                     stack.push((ref_expr, id));
                 }
                 Expression::Concat(_) => {
@@ -402,7 +417,7 @@ impl ColExpr {
                 }
                 Expression::Constant(Constant { value }) => {
                     let expr =
-                        ColExpr::Column(value.to_smolstr(), current_node.calculate_type(plan)?);
+                        ColExpr::Const(value.to_smolstr(), current_node.calculate_type(plan)?);
                     stack.push((expr, id));
                 }
                 Expression::Trim(Trim { kind, pattern, .. }) => {
@@ -482,7 +497,7 @@ impl ColExpr {
                         Timestamp::DateTime(_) => "DateTime",
                     };
                     let expr =
-                        ColExpr::Column(name.to_smolstr(), current_node.calculate_type(plan)?);
+                        ColExpr::Const(name.to_smolstr(), current_node.calculate_type(plan)?);
                     stack.push((expr, id));
                 }
                 Expression::Parameter(_) => (),
@@ -888,7 +903,9 @@ impl Display for Scan {
         write!(f, "scan {}", name_to_smolstr(&self.table))?;
 
         if let Some(alias) = &self.alias {
-            write!(f, " -> {}", name_to_smolstr(alias))?;
+            if *alias != self.table {
+                write!(f, " -> {}", name_to_smolstr(alias))?;
+            }
         }
 
         if let Some(index) = &self.indexed_by {

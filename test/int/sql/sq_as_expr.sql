@@ -340,7 +340,7 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN SELECT "id" FROM "testing_space" ORDER BY "id" + (VALUES (1));
 -- EXPECTED:
-projection (id::int -> id)
+projection (id::int)
   order by (id::int + ROW($0))
     motion [policy: full, program: ReshardIfNeeded]
       scan

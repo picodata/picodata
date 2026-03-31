@@ -704,7 +704,7 @@ fn front_order_by_with_simple_select() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (id::int -> id, "sysFrom"::int -> "sysFrom", "FIRST_NAME"::string -> "FIRST_NAME", sys_op::int -> sys_op)
+    projection (id::int, "sysFrom"::int, "FIRST_NAME"::string, sys_op::int)
       order by (id::int)
         motion [policy: full, program: ReshardIfNeeded]
           scan
@@ -755,7 +755,7 @@ fn front_order_by_with_order_type_specification() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (id::int -> id, "sysFrom"::int -> "sysFrom", "FIRST_NAME"::string -> "FIRST_NAME", sys_op::int -> sys_op)
+    projection (id::int, "sysFrom"::int, "FIRST_NAME"::string, sys_op::int)
       order by (id::int desc, "sysFrom"::int asc)
         motion [policy: full, program: ReshardIfNeeded]
           scan
@@ -774,7 +774,7 @@ fn front_order_by_with_indices() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (id::int -> id, "sysFrom"::int -> "sysFrom", "FIRST_NAME"::string -> "FIRST_NAME", sys_op::int -> sys_op)
+    projection (id::int, "sysFrom"::int, "FIRST_NAME"::string, sys_op::int)
       order by (2, 1 desc)
         motion [policy: full, program: ReshardIfNeeded]
           scan
@@ -794,7 +794,7 @@ fn front_order_by_ordering_by_expressions_from_projection() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
-    projection (my_col::int -> my_col, id::int -> id)
+    projection (my_col::int, id::int)
       order by (my_col::int, id::int, 1 desc, 2 asc)
         motion [policy: full, program: ReshardIfNeeded]
           scan
@@ -830,7 +830,7 @@ fn front_order_by_over_single_distribution_must_not_add_motion() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
-    projection (id_count::int -> id_count)
+    projection (id_count::int)
       order by (id_count::int)
         scan
           projection (unnamed_subquery.id_count::int -> id_count)
@@ -1282,7 +1282,7 @@ fn front_sql_groupby() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (gr_expr_1::int -> identification_number, gr_expr_2::string -> product_code)
-      group by (gr_expr_1::int, gr_expr_2::string) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::string -> gr_expr_2)
+      group by (gr_expr_1::int, gr_expr_2::string) output: (gr_expr_1::int, gr_expr_2::string)
         motion [policy: full, program: ReshardIfNeeded]
           projection (hash_testing.identification_number::int -> gr_expr_1, hash_testing.product_code::string -> gr_expr_2)
             group by (hash_testing.identification_number::int, hash_testing.product_code::string) output: (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op, hash_testing.bucket_id::int -> bucket_id)
@@ -1304,7 +1304,7 @@ fn front_sql_groupby_less_cols_in_proj() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (gr_expr_1::int -> identification_number)
-      group by (gr_expr_1::int, gr_expr_2::bool) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::bool -> gr_expr_2)
+      group by (gr_expr_1::int, gr_expr_2::bool) output: (gr_expr_1::int, gr_expr_2::bool)
         motion [policy: full, program: ReshardIfNeeded]
           projection (hash_testing.identification_number::int -> gr_expr_1, hash_testing.product_units::bool -> gr_expr_2)
             group by (hash_testing.identification_number::int, hash_testing.product_units::bool) output: (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op, hash_testing.bucket_id::int -> bucket_id)
@@ -1328,7 +1328,7 @@ fn front_sql_groupby_union_1() {
     union all
       motion [policy: segment([ref(identification_number)]), program: ReshardIfNeeded]
         projection (gr_expr_1::int -> identification_number)
-          group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1)
+          group by (gr_expr_1::int) output: (gr_expr_1::int)
             motion [policy: full, program: ReshardIfNeeded]
               projection (hash_testing.identification_number::int -> gr_expr_1)
                 group by (hash_testing.identification_number::int) output: (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op, hash_testing.bucket_id::int -> bucket_id)
@@ -1360,7 +1360,7 @@ fn front_sql_groupby_union_2() {
           union all
             motion [policy: segment([ref(identification_number)]), program: ReshardIfNeeded]
               projection (gr_expr_1::int -> identification_number)
-                group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1)
+                group by (gr_expr_1::int) output: (gr_expr_1::int)
                   motion [policy: full, program: ReshardIfNeeded]
                     projection (hash_testing.identification_number::int -> gr_expr_1)
                       group by (hash_testing.identification_number::int) output: (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op, hash_testing.bucket_id::int -> bucket_id)
@@ -1385,7 +1385,7 @@ fn front_sql_groupby_join_1() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (gr_expr_1::string -> product_code, gr_expr_2::bool -> product_units)
-      group by (gr_expr_1::string, gr_expr_2::bool) output: (gr_expr_1::string -> gr_expr_1, gr_expr_2::bool -> gr_expr_2)
+      group by (gr_expr_1::string, gr_expr_2::bool) output: (gr_expr_1::string, gr_expr_2::bool)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t2.product_code::string -> gr_expr_1, t2.product_units::bool -> gr_expr_2)
             group by (t2.product_code::string, t2.product_units::bool) output: (t2.product_units::bool -> product_units, t2.product_code::string -> product_code, t2.identification_number::int -> identification_number, t.id::int -> id)
@@ -1501,7 +1501,7 @@ fn front_sql_groupby_insert() {
     insert t on conflict: fail
       motion [policy: segment([value(NULL), ref(d)]), program: ReshardIfNeeded]
         projection (gr_expr_1::int -> b, gr_expr_2::int -> d)
-          group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2)
+          group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int, gr_expr_2::int)
             motion [policy: full, program: ReshardIfNeeded]
               projection (t.b::int -> gr_expr_1, t.d::int -> gr_expr_2)
                 group by (t.b::int, t.d::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -1547,7 +1547,7 @@ fn front_sql_aggregates() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (gr_expr_1::int -> b, sum(count_1::int)::int + sum(count_2::int)::int -> col_1)
-      group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1, count_1::int -> count_1, count_2::int -> count_2)
+      group by (gr_expr_1::int) output: (gr_expr_1::int, count_1::int, count_2::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.b::int -> gr_expr_1, count(t.a::int::int)::int -> count_1, count(t.b::int::int)::int -> count_2)
             group by (t.b::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -1565,7 +1565,7 @@ fn front_sql_distinct_asterisk() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (gr_expr_1::int -> id, gr_expr_2::int -> id)
-      group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2)
+      group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int, gr_expr_2::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (unnamed_subquery.id::int -> gr_expr_1, unnamed_subquery_1.id::int -> gr_expr_2)
             group by (unnamed_subquery.id::int, unnamed_subquery_1.id::int) output: (unnamed_subquery.id::int -> id, unnamed_subquery_1.id::int -> id)
@@ -1711,7 +1711,7 @@ fn front_sql_string_agg_alias_to_group_concat() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (gr_expr_1::int -> id, group_concat(group_concat_1::string, ','::string)::string -> col_1)
-      group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1, group_concat_1::string -> group_concat_1)
+      group by (gr_expr_1::int) output: (gr_expr_1::int, group_concat_1::string)
         motion [policy: full, program: ReshardIfNeeded]
           projection (test_space.id::int -> gr_expr_1, group_concat(test_space."FIRST_NAME"::string::string, ','::string)::string -> group_concat_1)
             group by (test_space.id::int) output: (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op, test_space.bucket_id::int -> bucket_id)
@@ -1747,7 +1747,7 @@ fn front_sql_count_asterisk2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (sum(count_1::int)::int -> col_1, gr_expr_1::int -> b)
-      group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1, count_1::int -> count_1)
+      group by (gr_expr_1::int) output: (gr_expr_1::int, count_1::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.b::int -> gr_expr_1, count(*)::int -> count_1)
             group by (t.b::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -1782,7 +1782,7 @@ fn front_sql_aggregates_with_subexpressions() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (gr_expr_1::int -> b, sum(count_1::int)::int -> col_1, sum(count_2::int)::int -> col_2)
-      group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1, count_2::int -> count_2, count_1::int -> count_1)
+      group by (gr_expr_1::int) output: (gr_expr_1::int, count_2::int, count_1::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.b::int -> gr_expr_1, count(TRIM(t.a::int::string)::string)::int -> count_2, count(((t.a::int * t.b::int) + 1::int)::int)::int -> count_1)
             group by (t.b::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -1802,7 +1802,7 @@ fn front_sql_aggregates_with_distinct1() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (gr_expr_1::int -> b, count(distinct gr_expr_2::int)::int -> col_1, count(distinct gr_expr_3::int)::int -> col_2)
-      group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2, gr_expr_3::int -> gr_expr_3)
+      group by (gr_expr_1::int) output: (gr_expr_1::int, gr_expr_2::int, gr_expr_3::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.b::int -> gr_expr_1, t.a::int::int -> gr_expr_2, t.b::int::int -> gr_expr_3)
             group by (t.b::int, t.a::int::int, t.b::int::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -1822,7 +1822,7 @@ fn front_sql_aggregates_with_distinct2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (gr_expr_1::int -> b, sum(distinct gr_expr_2::decimal)::decimal -> col_1)
-      group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2)
+      group by (gr_expr_1::int) output: (gr_expr_1::int, gr_expr_2::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.b::int -> gr_expr_1, ((t.a::int + t.b::int) + 3::int)::int -> gr_expr_2)
             group by (t.b::int, ((t.a::int + t.b::int) + 3::int)::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -1959,7 +1959,7 @@ fn front_sql_pg_style_params3() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (gr_expr_1::int -> col_1)
       having sum(count_1::int)::int > 42::int
-        group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1, count_1::int -> count_1)
+        group by (gr_expr_1::int) output: (gr_expr_1::int, count_1::int)
           motion [policy: full, program: ReshardIfNeeded]
             projection (t.a::int + 42::int -> gr_expr_1, count(t.b::int::int)::int -> count_1)
               group by (t.a::int + 42::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -2388,7 +2388,7 @@ fn front_sql_groupby_expression() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (gr_expr_1::int -> col_1)
-      group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1)
+      group by (gr_expr_1::int) output: (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.a::int + t.b::int -> gr_expr_1)
             group by (t.a::int + t.b::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -2408,7 +2408,7 @@ fn front_sql_groupby_expression2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (gr_expr_1::int + sum(count_1::int)::int -> col_1)
-      group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1, count_1::int -> count_1)
+      group by (gr_expr_1::int) output: (gr_expr_1::int, count_1::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.a::int + t.b::int -> gr_expr_1, count(t.a::int::int)::int -> count_1)
             group by (t.a::int + t.b::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -2428,7 +2428,7 @@ fn front_sql_groupby_expression3() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (gr_expr_1::int -> col_1, (gr_expr_2::int * sum(sum_1::decimal)::decimal) / sum(count_2::int)::int -> col_2)
-      group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2, count_2::int -> count_2, sum_1::decimal -> sum_1)
+      group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int, gr_expr_2::int, count_2::int, sum_1::decimal)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.a::int + t.b::int -> gr_expr_1, t.c::int * t.d::int -> gr_expr_2, count((t.a::int * t.b::int)::int)::int -> count_2, sum((t.c::int * t.d::int)::int)::decimal -> sum_1)
             group by (t.a::int + t.b::int, t.c::int * t.d::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -2448,7 +2448,7 @@ fn front_sql_groupby_expression4() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (gr_expr_1::int -> col_1, gr_expr_2::int -> a)
-      group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2)
+      group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int, gr_expr_2::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.a::int + t.b::int -> gr_expr_1, t.a::int -> gr_expr_2)
             group by (t.a::int + t.b::int, t.a::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -2472,14 +2472,14 @@ fn front_sql_groupby_with_aggregates() {
       join on ROW(t1.a::int, t1.b::int) = ROW(t2.e::int, t2.g::int)
         scan t1
           projection (gr_expr_1::int -> a, gr_expr_2::int -> b, sum(sum_1::decimal)::decimal -> c)
-            group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2, sum_1::decimal -> sum_1)
+            group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int, gr_expr_2::int, sum_1::decimal)
               motion [policy: full, program: ReshardIfNeeded]
                 projection (t.a::int -> gr_expr_1, t.b::int -> gr_expr_2, sum(t.c::int::int)::decimal -> sum_1)
                   group by (t.a::int, t.b::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                     scan t
         scan t2
           projection (gr_expr_1::int -> g, gr_expr_2::int -> e, sum(sum_1::decimal)::decimal -> f)
-            group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2, sum_1::decimal -> sum_1)
+            group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int, gr_expr_2::int, sum_1::decimal)
               motion [policy: full, program: ReshardIfNeeded]
                 projection (t2.g::int -> gr_expr_1, t2.e::int -> gr_expr_2, sum(t2.f::int::int)::decimal -> sum_1)
                   group by (t2.g::int, t2.e::int) output: (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
@@ -2646,7 +2646,7 @@ fn front_sql_having1() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (gr_expr_1::int -> a, sum(sum_1::decimal)::decimal -> col_1)
       having (gr_expr_1::int > 1::int) and (sum(distinct gr_expr_2::decimal)::decimal > 1::int)
-        group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2, sum_1::decimal -> sum_1)
+        group by (gr_expr_1::int) output: (gr_expr_1::int, gr_expr_2::int, sum_1::decimal)
           motion [policy: full, program: ReshardIfNeeded]
             projection (t.a::int -> gr_expr_1, t.b::int::int -> gr_expr_2, sum(t.b::int::int)::decimal -> sum_1)
               group by (t.a::int, t.b::int::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -2726,7 +2726,7 @@ fn front_sql_having_with_sq() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (gr_expr_1::int -> "sysFrom", sum(distinct gr_expr_2::decimal)::decimal -> sum, count(distinct gr_expr_2::int)::int -> count)
       having ROW($0) > count(distinct gr_expr_2::int)::int
-        group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2)
+        group by (gr_expr_1::int) output: (gr_expr_1::int, gr_expr_2::int)
           motion [policy: full, program: ReshardIfNeeded]
             projection (test_space."sysFrom"::int -> gr_expr_1, test_space.id::int::int -> gr_expr_2)
               group by (test_space."sysFrom"::int, test_space.id::int::int) output: (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op, test_space.bucket_id::int -> bucket_id)
@@ -2773,7 +2773,7 @@ fn front_sql_having_with_sq_segment_motion() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (gr_expr_1::int -> "sysFrom", gr_expr_2::int -> sys_op, sum(distinct gr_expr_3::decimal)::decimal -> sum, count(distinct gr_expr_3::int)::int -> count)
       having ROW(gr_expr_1::int, gr_expr_2::int) in ROW($0, $0)
-        group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2, gr_expr_3::int -> gr_expr_3)
+        group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int, gr_expr_2::int, gr_expr_3::int)
           motion [policy: full, program: ReshardIfNeeded]
             projection (test_space."sysFrom"::int -> gr_expr_1, test_space.sys_op::int -> gr_expr_2, test_space.id::int::int -> gr_expr_3)
               group by (test_space."sysFrom"::int, test_space.sys_op::int, test_space.id::int::int) output: (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op, test_space.bucket_id::int -> bucket_id)
@@ -2803,7 +2803,7 @@ fn front_sql_having_with_sq_segment_local_motion() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (gr_expr_1::int -> "sysFrom", gr_expr_2::int -> sys_op, sum(distinct gr_expr_3::decimal)::decimal -> sum, count(distinct gr_expr_3::int)::int -> count)
       having ROW(gr_expr_1::int, gr_expr_2::int) in ROW($0, $0)
-        group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2, gr_expr_3::int -> gr_expr_3)
+        group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int, gr_expr_2::int, gr_expr_3::int)
           motion [policy: full, program: ReshardIfNeeded]
             projection (test_space."sysFrom"::int -> gr_expr_1, test_space.sys_op::int -> gr_expr_2, test_space.id::int::int -> gr_expr_3)
               group by (test_space."sysFrom"::int, test_space.sys_op::int, test_space.id::int::int) output: (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op, test_space.bucket_id::int -> bucket_id)
@@ -2850,7 +2850,7 @@ fn front_sql_unique_local_groupings() {
     // here we must compute only two groupby columns at local stage: a, b
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (sum(distinct gr_expr_2::decimal)::decimal -> col_1, count(distinct gr_expr_2::int)::int -> col_2, count(distinct gr_expr_3::int)::int -> col_3)
-      group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2, gr_expr_3::int -> gr_expr_3)
+      group by (gr_expr_1::int) output: (gr_expr_1::int, gr_expr_2::int, gr_expr_3::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.b::int -> gr_expr_1, t.a::int::int -> gr_expr_2, t.b::int::int -> gr_expr_3)
             group by (t.b::int, t.a::int::int, t.b::int::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -2904,7 +2904,7 @@ fn front_sql_select_distinct() {
     // here we must compute only two groupby columns at local stage: a, b
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (gr_expr_1::int -> a, gr_expr_2::int -> col_1)
-      group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2)
+      group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int, gr_expr_2::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.a::int -> gr_expr_1, t.a::int + t.b::int -> gr_expr_2)
             group by (t.a::int, t.a::int + t.b::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -2923,7 +2923,7 @@ fn front_sql_select_distinct_asterisk() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (gr_expr_1::int -> a, gr_expr_2::int -> b, gr_expr_3::int -> c, gr_expr_4::int -> d)
-      group by (gr_expr_1::int, gr_expr_2::int, gr_expr_3::int, gr_expr_4::int) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2, gr_expr_3::int -> gr_expr_3, gr_expr_4::int -> gr_expr_4)
+      group by (gr_expr_1::int, gr_expr_2::int, gr_expr_3::int, gr_expr_4::int) output: (gr_expr_1::int, gr_expr_2::int, gr_expr_3::int, gr_expr_4::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.a::int -> gr_expr_1, t.b::int -> gr_expr_2, t.c::int -> gr_expr_3, t.d::int -> gr_expr_4)
             group by (t.a::int, t.b::int, t.c::int, t.d::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -2959,7 +2959,7 @@ fn front_sql_select_distinct_with_aggr() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (sum(sum_1::decimal)::decimal -> col_1, gr_expr_1::int -> b)
-      group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1, sum_1::decimal -> sum_1)
+      group by (gr_expr_1::int) output: (gr_expr_1::int, sum_1::decimal)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.b::int -> gr_expr_1, sum(t.a::int::int)::decimal -> sum_1)
             group by (t.b::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -3874,7 +3874,7 @@ fn front_subqueries_interpreted_as_expression_under_group_by() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(count_1::int)::int -> col_1)
-      group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1, count_1::int -> count_1)
+      group by (gr_expr_1::int) output: (gr_expr_1::int, count_1::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (test_space.id::int + ROW($0) -> gr_expr_1, count(*)::int -> count_1)
             group by (test_space.id::int + ROW($0)) output: (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op, test_space.bucket_id::int -> bucket_id)

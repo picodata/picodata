@@ -288,7 +288,7 @@ fn test_query_explain_11() {
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @"
     projection (gr_expr_1::string -> a, sum(count_1::int)::int -> col_1)
-      group by (gr_expr_1::string) output: (gr_expr_1::string -> gr_expr_1, count_1::int -> count_1)
+      group by (gr_expr_1::string) output: (gr_expr_1::string, count_1::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (unnamed_subquery_1.a::string -> gr_expr_1, count(unnamed_subquery_1.b::int::int)::int -> count_1)
             group by (unnamed_subquery_1.a::string) output: (unnamed_subquery.e::int -> e, unnamed_subquery.f::int -> f, unnamed_subquery_1.a::string -> a, unnamed_subquery_1.b::int -> b)

@@ -110,7 +110,7 @@ SELECT count(*) FROM t1 WHERE a = 1 OR a = 2 GROUP BY a;
 EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 OR a = 2 GROUP BY a;
 -- EXPECTED:
 projection (sum(count_1::int)::int -> col_1)
-  group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1, count_1::int -> count_1)
+  group by (gr_expr_1::int) output: (gr_expr_1::int, count_1::int)
     motion [policy: full, program: ReshardIfNeeded]
       projection (t1.a::int -> gr_expr_1, count(*)::int -> count_1)
         group by (t1.a::int) output: (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
@@ -131,7 +131,7 @@ SELECT count(*) FROM t1 WHERE a = 1 AND a < 10 AND a = 2 GROUP BY a;
 EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 AND a < 10 AND a = 2 GROUP BY a;
 -- EXPECTED:
 projection (sum(count_1::int)::int -> col_1)
-  group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1, count_1::int -> count_1)
+  group by (gr_expr_1::int) output: (gr_expr_1::int, count_1::int)
     motion [policy: full, program: ReshardIfNeeded]
       projection (t1.a::int -> gr_expr_1, count(*)::int -> count_1)
         group by (t1.a::int) output: (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
@@ -178,7 +178,7 @@ SELECT * FROM t WHERE a = 1 AND b = 1 ORDER BY id LIMIT 1;
 EXPLAIN SELECT * FROM t WHERE a = 1 AND b = 1 ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-  projection (id::int -> id, a::int -> a, b::int -> b)
+  projection (id::int, a::int, b::int)
     order by (id::int)
       scan
         projection (t.id::int -> id, t.a::int -> a, t.b::int -> b)
@@ -199,7 +199,7 @@ SELECT id FROM t WHERE a = 1 ORDER BY id;
 -- SQL:
 EXPLAIN SELECT id FROM t WHERE a = 1 ORDER BY id;
 -- EXPECTED:
-projection (id::int -> id)
+projection (id::int)
   order by (id::int)
     scan
       projection (t.id::int -> id)
@@ -278,7 +278,7 @@ SELECT id FROM (SELECT * FROM t WHERE a = 4) sub ORDER BY id LIMIT 1;
 EXPLAIN SELECT id FROM (SELECT * FROM t WHERE a = 4) sub ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-  projection (id::int -> id)
+  projection (id::int)
     order by (id::int)
       scan
         projection (sub.id::int -> id)
@@ -302,11 +302,11 @@ SELECT id FROM t WHERE b = 1 ORDER BY id LIMIT 1;
 EXPLAIN SELECT id FROM t WHERE b = 1 ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-  projection (id::int -> id)
+  projection (id::int)
     order by (id::int)
       motion [policy: full, program: ReshardIfNeeded]
         limit 1
-          projection (id::int -> id)
+          projection (id::int)
             order by (id::int)
               scan
                 projection (t.id::int -> id)
@@ -328,11 +328,11 @@ SELECT id FROM t ORDER BY id LIMIT 1;
 EXPLAIN SELECT id FROM t ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-  projection (id::int -> id)
+  projection (id::int)
     order by (id::int)
       motion [policy: full, program: ReshardIfNeeded]
         limit 1
-          projection (id::int -> id)
+          projection (id::int)
             order by (id::int)
               scan
                 projection (t.id::int -> id)
@@ -353,11 +353,11 @@ SELECT id FROM t WHERE a = 1 OR a = 4 ORDER BY id LIMIT 1;
 EXPLAIN SELECT id FROM t WHERE a = 1 OR a = 4 ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-  projection (id::int -> id)
+  projection (id::int)
     order by (id::int)
       motion [policy: full, program: ReshardIfNeeded]
         limit 1
-          projection (id::int -> id)
+          projection (id::int)
             order by (id::int)
               scan
                 projection (t.id::int -> id)
@@ -379,7 +379,7 @@ SELECT * FROM (SELECT * FROM t WHERE a = 4) s WHERE b = 5 ORDER BY a LIMIT 1;
 EXPLAIN SELECT * FROM (SELECT * FROM t WHERE a = 4) s WHERE b = 5 ORDER BY a LIMIT 1;
 -- EXPECTED:
 limit 1
-  projection (id::int -> id, a::int -> a, b::int -> b)
+  projection (id::int, a::int, b::int)
     order by (a::int)
       scan
         projection (s.id::int -> id, s.a::int -> a, s.b::int -> b)
@@ -404,7 +404,7 @@ WITH cte AS (SELECT * FROM t WHERE a = 1) SELECT id FROM cte ORDER BY id LIMIT 1
 EXPLAIN WITH cte AS (SELECT * FROM t WHERE a = 1) SELECT id FROM cte ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-  projection (id::int -> id)
+  projection (id::int)
     order by (id::int)
       scan
         projection (cte.id::int -> id)
@@ -429,7 +429,7 @@ WITH cte AS (SELECT * FROM t) SELECT id FROM cte WHERE a = 2 ORDER BY id LIMIT 1
 EXPLAIN WITH cte AS (SELECT * FROM t) SELECT id FROM cte WHERE a = 2 ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-  projection (id::int -> id)
+  projection (id::int)
     order by (id::int)
       scan
         projection (cte.id::int -> id)
@@ -480,11 +480,11 @@ SELECT * FROM cte c1 JOIN cte c2 ON c1.b = c2.b
 ORDER BY c1.id LIMIT 1;
 -- EXPECTED:
 limit 1
-  projection (id::int -> id, a::int -> a, b::int -> b, id::int -> id, a::int -> a, b::int -> b)
+  projection (id::int, a::int, b::int, id::int, a::int, b::int)
     order by (id::int)
       motion [policy: full, program: ReshardIfNeeded]
         limit 1
-          projection (id::int -> id, a::int -> a, b::int -> b, id::int -> id, a::int -> a, b::int -> b)
+          projection (id::int, a::int, b::int, id::int, a::int, b::int)
             order by (id::int)
               scan
                 projection (c1.id::int -> id, c1.a::int -> a, c1.b::int -> b, c2.id::int -> id, c2.a::int -> a, c2.b::int -> b)
@@ -512,7 +512,7 @@ WITH cte AS (SELECT * FROM t WHERE a = 4) SELECT id FROM (SELECT * FROM cte) s W
 EXPLAIN WITH cte AS (SELECT * FROM t WHERE a = 4) SELECT id FROM (SELECT * FROM cte) s WHERE b = 5 ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-  projection (id::int -> id)
+  projection (id::int)
     order by (id::int)
       scan
         projection (s.id::int -> id)
@@ -540,11 +540,11 @@ SELECT id FROM t WHERE a = 1 UNION ALL SELECT id FROM t WHERE a = 4 ORDER BY id 
 EXPLAIN SELECT id FROM t WHERE a = 1 UNION ALL SELECT id FROM t WHERE a = 4 ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-  projection (id::int -> id)
+  projection (id::int)
     order by (id::int)
       motion [policy: full, program: ReshardIfNeeded]
         limit 1
-          projection (id::int -> id)
+          projection (id::int)
             order by (id::int)
               scan
                 union all
@@ -570,12 +570,12 @@ SELECT id FROM t WHERE a = 1 UNION SELECT id FROM t WHERE a = 4 ORDER BY id LIMI
 EXPLAIN SELECT id FROM t WHERE a = 1 UNION SELECT id FROM t WHERE a = 4 ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-  projection (id::int -> id)
+  projection (id::int)
     order by (id::int)
       scan
         motion [policy: full, program: RemoveDuplicates]
           limit 1
-            projection (id::int -> id)
+            projection (id::int)
               order by (id::int)
                 scan
                   union
@@ -600,7 +600,7 @@ SELECT t1.id FROM t t1 JOIN t t2 ON t1.b = t2.b WHERE t1.a = 1 AND t2.a = 4 ORDE
 EXPLAIN SELECT t1.id FROM t t1 JOIN t t2 ON t1.b = t2.b WHERE t1.a = 1 AND t2.a = 4 ORDER BY t1.id LIMIT 1;
 -- EXPECTED:
 limit 1
-  projection (id::int -> id)
+  projection (id::int)
     order by (id::int)
       scan
         projection (t1.id::int -> id)
@@ -626,11 +626,11 @@ SELECT id FROM t WHERE a = 1 EXCEPT SELECT id FROM t WHERE a = 4 ORDER BY id LIM
 EXPLAIN SELECT id FROM t WHERE a = 1 EXCEPT SELECT id FROM t WHERE a = 4 ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-  projection (id::int -> id)
+  projection (id::int)
     order by (id::int)
       motion [policy: full, program: ReshardIfNeeded]
         limit 1
-          projection (id::int -> id)
+          projection (id::int)
             order by (id::int)
               scan
                 except

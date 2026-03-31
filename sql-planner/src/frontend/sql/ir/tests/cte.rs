@@ -248,7 +248,7 @@ fn limit_pushdown_does_not_mutate_cte() {
       motion [policy: full, program: ReshardIfNeeded]
         scan
           limit 1
-            projection (a::int -> a)
+            projection (a::int)
               order by (a::int)
                 scan
                   projection (cte.a::int -> a)
@@ -273,7 +273,7 @@ fn limit_pushdown_does_not_mutate_used_once_cte() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 1
-      projection (a::int -> a)
+      projection (a::int)
         order by (a::int)
           scan
             projection (cte.a::int -> a)
@@ -464,7 +464,7 @@ fn order_by_in_cte() {
     projection (cte."FIRST_NAME"::string -> "FIRST_NAME")
       scan cte cte($0)
     subquery $0:
-      projection ("FIRST_NAME"::string -> "FIRST_NAME")
+      projection ("FIRST_NAME"::string)
         order by (1)
           motion [policy: full, program: ReshardIfNeeded]
             scan

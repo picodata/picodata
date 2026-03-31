@@ -73,7 +73,7 @@ fn group_by() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 555
       projection (sum(count_1::int)::int -> col_1, gr_expr_1::int -> b)
-        group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1, count_1::int -> count_1)
+        group by (gr_expr_1::int) output: (gr_expr_1::int, count_1::int)
           motion [policy: full, program: ReshardIfNeeded]
             projection (t.b::int -> gr_expr_1, count(*)::int -> count_1)
               group by (t.b::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -314,14 +314,14 @@ fn limit_pushdown_distinct_order_by_alias() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 5
-      projection (x::int -> x)
+      projection (x::int)
         order by (x::int)
           scan
             projection (gr_expr_1::int -> x)
-              group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1)
+              group by (gr_expr_1::int) output: (gr_expr_1::int)
                 motion [policy: full, program: ReshardIfNeeded]
                   limit 5
-                    projection (gr_expr_1::int -> gr_expr_1)
+                    projection (gr_expr_1::int)
                       order by (gr_expr_1::int)
                         scan
                           projection (t.a::int -> gr_expr_1)
@@ -344,14 +344,14 @@ fn limit_pushdown_distinct_order_by_expr_over_duplicated_aliases() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 5
-      projection (c0::int -> c0, c1::int -> c1, c2::int -> c2)
+      projection (c0::int, c1::int, c2::int)
         order by (c0::int + c2::int)
           scan
             projection (gr_expr_1::int -> c0, gr_expr_2::int -> c1, gr_expr_1::int -> c2)
-              group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2)
+              group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int, gr_expr_2::int)
                 motion [policy: full, program: ReshardIfNeeded]
                   limit 5
-                    projection (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2)
+                    projection (gr_expr_1::int, gr_expr_2::int)
                       order by (gr_expr_1::int + gr_expr_1::int)
                         scan
                           projection (t.a::int -> gr_expr_1, t.b::int -> gr_expr_2)
@@ -374,14 +374,14 @@ fn limit_pushdown_distinct_order_by_ordinal_position() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 5
-      projection (c0::int -> c0, c1::int -> c1, c2::int -> c2)
+      projection (c0::int, c1::int, c2::int)
         order by (3 desc)
           scan
             projection (gr_expr_1::int -> c0, gr_expr_2::int -> c1, gr_expr_1::int -> c2)
-              group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2)
+              group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int, gr_expr_2::int)
                 motion [policy: full, program: ReshardIfNeeded]
                   limit 5
-                    projection (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2)
+                    projection (gr_expr_1::int, gr_expr_2::int)
                       order by (1 desc)
                         scan
                           projection (t.a::int -> gr_expr_1, t.b::int -> gr_expr_2)
@@ -402,7 +402,7 @@ fn limit_pushdown_order_by_subquery_no_pushdown() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 5
-      projection (a::int -> a)
+      projection (a::int)
         order by (ROW($0), a::int)
           motion [policy: full, program: ReshardIfNeeded]
             scan
@@ -426,11 +426,11 @@ fn limit_pushdown_except() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 1
-      projection (a::int -> a)
+      projection (a::int)
         order by (a::int)
           motion [policy: full, program: ReshardIfNeeded]
             limit 1
-              projection (a::int -> a)
+              projection (a::int)
                 order by (a::int)
                   scan
                     except
@@ -455,11 +455,11 @@ fn limit_pushdown_aggregate_in_order_by() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 5
-      projection (b::int -> b)
+      projection (b::int)
         order by (sum(b::int::int)::decimal)
           scan
             projection (gr_expr_1::int -> b)
-              group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1)
+              group by (gr_expr_1::int) output: (gr_expr_1::int)
                 motion [policy: full, program: ReshardIfNeeded]
                   projection (t.b::int -> gr_expr_1)
                     group by (t.b::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -480,7 +480,7 @@ fn limit_pushdown_distinct() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 5
       projection (gr_expr_1::int -> a, gr_expr_2::int -> b)
-        group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int -> gr_expr_1, gr_expr_2::int -> gr_expr_2)
+        group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int, gr_expr_2::int)
           motion [policy: full, program: ReshardIfNeeded]
             limit 5
               projection (t.a::int -> gr_expr_1, t.b::int -> gr_expr_2)
@@ -503,7 +503,7 @@ fn limit_pushdown_having_filter_aggregate() {
     limit 5
       projection (gr_expr_1::int -> b)
         having sum(count_1::int)::int > 1::int
-          group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1, count_1::int -> count_1)
+          group by (gr_expr_1::int) output: (gr_expr_1::int, count_1::int)
             motion [policy: full, program: ReshardIfNeeded]
               projection (t.b::int -> gr_expr_1, count(*)::int -> count_1)
                 group by (t.b::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -523,12 +523,12 @@ fn limit_pushdown_orderby_and_having() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 5
-      projection (b::int -> b)
+      projection (b::int)
         order by (b::int)
           scan
             projection (gr_expr_1::int -> b)
               having gr_expr_1::int > 1::int
-                group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1)
+                group by (gr_expr_1::int) output: (gr_expr_1::int)
                   motion [policy: full, program: ReshardIfNeeded]
                     projection (t.b::int -> gr_expr_1)
                       group by (t.b::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)

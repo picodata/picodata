@@ -83,7 +83,7 @@ fn front_select_chaining_3() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
-    projection (product_code::string -> product_code)
+    projection (product_code::string)
       order by (1)
         motion [policy: full, program: ReshardIfNeeded]
           scan
@@ -163,12 +163,12 @@ fn limit_pushdown_with_union() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 1
-      projection (a::int -> a, b::int -> b, c::int -> c, d::int -> d)
+      projection (a::int, b::int, c::int, d::int)
         order by (a::int)
           scan
             motion [policy: full, program: RemoveDuplicates]
               limit 1
-                projection (a::int -> a, b::int -> b, c::int -> c, d::int -> d)
+                projection (a::int, b::int, c::int, d::int)
                   order by (a::int)
                     scan
                       union
@@ -188,11 +188,11 @@ fn limit_pushdown_with_union() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 1
-      projection (a::int -> a, b::int -> b, c::int -> c, d::int -> d)
+      projection (a::int, b::int, c::int, d::int)
         order by (a::int)
           motion [policy: full, program: ReshardIfNeeded]
             limit 1
-              projection (a::int -> a, b::int -> b, c::int -> c, d::int -> d)
+              projection (a::int, b::int, c::int, d::int)
                 order by (a::int)
                   scan
                     union all
@@ -215,11 +215,11 @@ fn limit_pushdown_with_union_and_group_by() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 1
-      projection (a1::int -> a1, a2::int -> a2)
+      projection (a1::int, a2::int)
         order by (a1::int)
           motion [policy: full, program: ReshardIfNeeded]
             limit 1
-              projection (a1::int -> a1, a2::int -> a2)
+              projection (a1::int, a2::int)
                 order by (a1::int)
                   scan
                     union all
@@ -227,7 +227,7 @@ fn limit_pushdown_with_union_and_group_by() {
                         scan t
                       motion [policy: segment([ref(a1)]), program: ReshardIfNeeded]
                         projection (gr_expr_1::int -> a1, gr_expr_1::int -> a2)
-                          group by (gr_expr_1::int) output: (gr_expr_1::int -> gr_expr_1)
+                          group by (gr_expr_1::int) output: (gr_expr_1::int)
                             motion [policy: full, program: ReshardIfNeeded]
                               projection (t.a::int -> gr_expr_1)
                                 group by (t.a::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)

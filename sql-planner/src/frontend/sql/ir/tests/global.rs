@@ -850,7 +850,7 @@ fn front_order_by_from_global_node_must_not_add_motion() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
-    projection (b::int -> b, my_col::int -> my_col)
+    projection (b::int, my_col::int)
       order by (my_col::int)
         scan
           projection (global_t.b::int -> b, global_t.a::int -> my_col)
