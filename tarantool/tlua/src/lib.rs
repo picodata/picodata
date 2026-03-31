@@ -525,6 +525,18 @@ pub trait AsLua {
     {
         protected_call(self, f)
     }
+
+    /// Reads the value of a global variable.
+    ///
+    /// Returns `Err(e)` if the variable of the expected type couldn't be read.
+    #[inline]
+    fn get_global<T>(self, name: &str) -> ReadResult<T, PushGuard<Self>>
+    where
+        Self: Sized,
+        T: LuaRead<PushGuard<Self>>,
+    {
+        get_global(self, name)
+    }
 }
 
 impl<T> AsLua for &'_ T
@@ -957,6 +969,18 @@ pub fn typenames(lua: impl AsLua, start: AbsoluteIndex, count: u32) -> String {
     unsafe { String::from_utf8_unchecked(res) }
 }
 
+pub fn get_global<L, T>(lua: L, name: &str) -> ReadResult<T, PushGuard<L>>
+where
+    L: AsLua,
+    T: LuaRead<PushGuard<L>>,
+{
+    let name = CString::new(name).unwrap();
+    unsafe {
+        ffi::lua_getglobal(lua.as_lua(), name.as_ptr());
+        T::lua_read(PushGuard::new(lua, 1))
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // impl TempLua
 ////////////////////////////////////////////////////////////////////////////////
@@ -1349,11 +1373,7 @@ where
         I: Borrow<str>,
         V: LuaRead<PushGuard<&'lua Self>>,
     {
-        let index = CString::new(index.borrow()).unwrap();
-        unsafe {
-            ffi::lua_getglobal(self.lua, index.as_ptr());
-            V::lua_read(PushGuard::new(self, 1)).ok()
-        }
+        get_global(self, index.borrow()).ok()
     }
 
     /// Reads the value of a global, capturing the context by value.
@@ -1364,11 +1384,7 @@ where
         I: Borrow<str>,
         V: LuaRead<PushGuard<Self>>,
     {
-        let index = CString::new(index.borrow()).unwrap();
-        unsafe {
-            ffi::lua_getglobal(self.lua, index.as_ptr());
-            V::lua_read(PushGuard::new(self, 1)).map_err(|(l, _)| l)
-        }
+        get_global(self, index.borrow()).map_err(|(guard, _)| guard)
     }
 
     /// Modifies the value of a global variable.
@@ -1611,5 +1627,21 @@ impl AbsoluteIndex {
 impl From<AbsoluteIndex> for i32 {
     fn from(index: AbsoluteIndex) -> i32 {
         index.0.get()
+    }
+}
+
+#[cfg(feature = "internal_test")]
+mod tests {
+    use super::*;
+
+    #[crate::test]
+    fn get_global() {
+        let lua = Lua::new();
+        lua.set("number", 123);
+        lua.set("table", vec![("leet", 1337)]);
+
+        let table: LuaTable<_> = lua.get("table").unwrap();
+        let number: i32 = table.get_global("number").unwrap();
+        assert_eq!(number, 123);
     }
 }

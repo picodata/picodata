@@ -43,6 +43,8 @@
 ### Added
 
 - `tlua::Ignore` helper struct for handling multiple return values when some of them are not important
+- `tlua::AsLua::get_global` helper methods for accessing global lua variables
+  when there's no convenient access to the `tlua::Lua` context object
 - `index::SortOrder` and optional sort order metadata in `index::Part`.
 - `index::Index::{select_after, tuple_position, tuple_position_unchecked}`
   methods and `index::TuplePosition` struct for pagination support.
