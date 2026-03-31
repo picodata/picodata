@@ -1,12 +1,11 @@
 use std::collections::HashMap;
-use std::fmt::{self, Display, Write as _};
+use std::fmt::{self, Display};
 
 use itertools::Itertools;
 use serde::Serialize;
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use smol_str::{format_smolstr, SmolStr, SmolStrBuilder, ToSmolStr};
 
 use crate::errors::{Entity, SbroadError};
-use crate::executor::engine::helpers::to_user;
 use crate::executor::engine::Router;
 use crate::executor::ExecutingQuery;
 use crate::ir::bucket::{BucketSet, Buckets};
@@ -38,6 +37,29 @@ use super::value::Value;
 
 const INDENT: &str = "  ";
 
+/// Check if a string slice is lowercase alphanumeric.
+fn name_requires_quotes(s: &str) -> bool {
+    !s.chars()
+        .all(|c| c == '_' || c.is_ascii_digit() || c.is_ascii_lowercase())
+}
+
+fn smolstr_builder_write_name(builder: &mut SmolStrBuilder, name: &str) {
+    let need_quotes = name_requires_quotes(name);
+    if need_quotes {
+        builder.push('"');
+    }
+    builder.push_str(name);
+    if need_quotes {
+        builder.push('"');
+    }
+}
+
+fn name_to_smolstr(name: &str) -> SmolStr {
+    let mut builder = SmolStrBuilder::new();
+    smolstr_builder_write_name(&mut builder, name);
+    builder.finish()
+}
+
 #[derive(Default, Debug, PartialEq, Serialize, Clone)]
 enum ColExpr {
     Parentheses(Box<ColExpr>),
@@ -45,7 +67,8 @@ enum ColExpr {
     Arithmetic(Box<ColExpr>, Arithmetic, Box<ColExpr>),
     Bool(Box<ColExpr>, Bool, Box<ColExpr>),
     Unary(Unary, Box<ColExpr>),
-    Column(String, DerivedType),
+    Column(SmolStr, DerivedType),
+    Asterisk,
     Index(Box<ColExpr>, Box<ColExpr>),
     Cast(Box<ColExpr>, CastType),
     Case(
@@ -94,7 +117,9 @@ impl Display for ColExpr {
                 }
             }
             ColExpr::Parentheses(child_expr) => write!(f, "({child_expr})")?,
-            ColExpr::Alias(expr, name) => write!(f, "{expr} -> \"{name}\"")?,
+            ColExpr::Alias(expr, name) => {
+                write!(f, "{expr} -> {}", name_to_smolstr(name))?;
+            }
             ColExpr::Arithmetic(left, op, right) => write!(f, "{left} {op} {right}")?,
             ColExpr::Bool(left, op, right) => write!(f, "{left} {op} {right}")?,
             ColExpr::Unary(op, expr) => match op {
@@ -109,6 +134,7 @@ impl Display for ColExpr {
                 }
             },
             ColExpr::Column(c, col_type) => write!(f, "{c}::{col_type}")?,
+            ColExpr::Asterisk => write!(f, "*")?,
             ColExpr::Index(v, i) => write!(f, "{v}[{i}]")?,
             ColExpr::Cast(v, t) => write!(f, "{v}::{t}")?,
             ColExpr::Case(search_expr, when_blocks, else_expr) => {
@@ -125,17 +151,14 @@ impl Display for ColExpr {
                 write!(f, "end")?;
             }
             ColExpr::Concat(l, r) => write!(f, "{l} || {r}")?,
-            ColExpr::ScalarFunction(name, args, feature, func_type, is_aggr) => {
-                let mut name = name.clone();
-                if !is_aggr {
-                    name = to_user(name);
-                }
+            ColExpr::ScalarFunction(name, args, feature, func_type, ..) => {
+                let name = name_to_smolstr(name);
                 let distinct = match feature {
                     Some(FunctionFeature::Distinct) => "distinct ",
                     _other => "",
                 };
                 let args = args.iter().format(", ");
-                write!(f, "{name}({distinct}{args})::{func_type}",)?;
+                write!(f, "{name}({distinct}{args})::{func_type}")?;
             }
             ColExpr::Trim(kind, pattern, target) => match (kind, pattern) {
                 (Some(k), Some(p)) => write!(f, "TRIM({} {p} from {target})", k.as_str())?,
@@ -155,29 +178,25 @@ impl Display for ColExpr {
     }
 }
 
-impl From<&ColExpr> for String {
-    fn from(s: &ColExpr) -> Self {
-        s.to_string()
-    }
-}
-
 /// Helper struct for constructing ColExpr out of
 /// given plan expression node.
 #[derive(Debug)]
-struct ColExprStack<'st> {
+struct ColExprStack<'a> {
     /// Vec of (col_expr, corresponding_plan_id).
     inner: Vec<(ColExpr, NodeId)>,
-    plan: &'st Plan,
+    plan: &'a Plan,
 }
 
-impl<'st> ColExprStack<'st> {
-    fn new<'plan: 'st>(plan: &'plan Plan) -> Self {
+impl<'a> ColExprStack<'a> {
+    fn new(plan: &'a Plan) -> Self {
         Self {
             inner: Vec::new(),
             plan,
         }
     }
+}
 
+impl ColExprStack<'_> {
     fn push(&mut self, pair: (ColExpr, NodeId)) {
         self.inner.push(pair)
     }
@@ -214,7 +233,26 @@ impl ColExpr {
         }
     }
 
-    #[allow(dead_code, clippy::too_many_lines)]
+    fn scan_column_name(
+        plan: &Plan,
+        scan: NodeId,
+        position: usize,
+        reference: &Expression,
+    ) -> Result<SmolStr, SbroadError> {
+        let mut builder = SmolStrBuilder::new();
+
+        if let Some(name) = plan.scan_name(scan, position)? {
+            smolstr_builder_write_name(&mut builder, name);
+            builder.push('.');
+        }
+
+        let alias = plan.get_alias_from_reference_node(reference)?;
+        smolstr_builder_write_name(&mut builder, alias);
+
+        Ok(builder.finish())
+    }
+
+    #[allow(clippy::too_many_lines)]
     fn new(
         plan: &Plan,
         subtree_top: NodeId,
@@ -330,47 +368,21 @@ impl ColExpr {
                     stack.push((cast_expr, id));
                 }
                 Expression::CountAsterisk(_) => {
-                    let count_asterisk_expr =
-                        ColExpr::Column("*".to_string(), current_node.calculate_type(plan)?);
+                    let count_asterisk_expr = ColExpr::Asterisk;
                     stack.push((count_asterisk_expr, id));
                 }
                 Expression::Reference(Reference { position, .. }) => {
-                    let mut col_name = String::new();
-
-                    let rel_id: NodeId = plan.get_relational_from_reference_node(id)?;
-
-                    if let Some(name) = plan.scan_name(rel_id, *position)? {
-                        col_name.push('"');
-                        col_name.push_str(name);
-                        col_name.push('"');
-                        col_name.push('.');
-                    }
-
-                    let alias = plan.get_alias_from_reference_node(&current_node)?;
-                    col_name.push('"');
-                    col_name.push_str(alias);
-                    col_name.push('"');
-
+                    let rel_id = plan.get_relational_from_reference_node(id)?;
+                    let col_name =
+                        ColExpr::scan_column_name(plan, rel_id, *position, &current_node)?;
                     let ref_expr = ColExpr::Column(col_name, current_node.calculate_type(plan)?);
                     stack.push((ref_expr, id));
                 }
                 Expression::SubQueryReference(SubQueryReference {
                     position, rel_id, ..
                 }) => {
-                    let mut col_name = String::new();
-
-                    if let Some(name) = plan.scan_name(*rel_id, *position)? {
-                        col_name.push('"');
-                        col_name.push_str(name);
-                        col_name.push('"');
-                        col_name.push('.');
-                    }
-
-                    let alias = plan.get_alias_from_reference_node(&current_node)?;
-                    col_name.push('"');
-                    col_name.push_str(alias);
-                    col_name.push('"');
-
+                    let col_name =
+                        ColExpr::scan_column_name(plan, *rel_id, *position, &current_node)?;
                     let ref_expr = ColExpr::Column(col_name, current_node.calculate_type(plan)?);
                     stack.push((ref_expr, id));
                 }
@@ -390,7 +402,7 @@ impl ColExpr {
                 }
                 Expression::Constant(Constant { value }) => {
                     let expr =
-                        ColExpr::Column(value.to_string(), current_node.calculate_type(plan)?);
+                        ColExpr::Column(value.to_smolstr(), current_node.calculate_type(plan)?);
                     stack.push((expr, id));
                 }
                 Expression::Trim(Trim { kind, pattern, .. }) => {
@@ -470,7 +482,7 @@ impl ColExpr {
                         Timestamp::DateTime(_) => "DateTime",
                     };
                     let expr =
-                        ColExpr::Column(name.to_string(), current_node.calculate_type(plan)?);
+                        ColExpr::Column(name.to_smolstr(), current_node.calculate_type(plan)?);
                     stack.push((expr, id));
                 }
                 Expression::Parameter(_) => (),
@@ -616,7 +628,6 @@ impl Display for WindowExplain {
 }
 
 impl Projection {
-    #[allow(dead_code)]
     fn new(
         plan: &Plan,
         output_id: NodeId,
@@ -651,7 +662,6 @@ struct GroupBy {
 }
 
 impl GroupBy {
-    #[allow(dead_code)]
     fn new(
         plan: &Plan,
         gr_exprs: &Vec<NodeId>,
@@ -727,7 +737,6 @@ struct OrderBy {
 }
 
 impl OrderBy {
-    #[allow(dead_code)]
     fn new(
         plan: &Plan,
         order_by_elements: &Vec<OrderByElement>,
@@ -768,7 +777,6 @@ struct Update {
 }
 
 impl Update {
-    #[allow(dead_code)]
     fn new(plan: &Plan, update_id: NodeId) -> Result<Self, SbroadError> {
         if let Relational::Update(UpdateRel {
             relation: ref rel,
@@ -790,7 +798,7 @@ impl Update {
                 let col_name = table
                     .columns
                     .get(*col_idx)
-                    .map(|c| to_user(&c.name))
+                    .map(|c| name_to_smolstr(&c.name))
                     .ok_or_else(|| {
                         SbroadError::Invalid(
                             Entity::Node,
@@ -810,7 +818,7 @@ impl Update {
                     })?;
                     let node = plan.get_expression_node(alias_id)?;
                     if let Expression::Alias(Alias { name, .. }) = node {
-                        to_user(name)
+                        name_to_smolstr(name)
                     } else {
                         return Err(SbroadError::Invalid(
                             Entity::Node,
@@ -839,7 +847,7 @@ impl Update {
 
 impl Display for Update {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "update \"{}\"", &self.table)?;
+        writeln!(f, "update {}", name_to_smolstr(&self.table))?;
 
         let items = self
             .update_statements
@@ -866,7 +874,6 @@ struct Scan {
 }
 
 impl Scan {
-    #[allow(dead_code)]
     fn new(table: SmolStr, alias: Option<SmolStr>, indexed_by: Option<SmolStr>) -> Self {
         Scan {
             table,
@@ -878,19 +885,17 @@ impl Scan {
 
 impl Display for Scan {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut s = String::from("scan ");
+        write!(f, "scan {}", name_to_smolstr(&self.table))?;
 
-        write!(s, "\"{}\"", &self.table)?;
-
-        if let Some(a) = &self.alias {
-            write!(s, " -> \"{a}\"")?;
+        if let Some(alias) = &self.alias {
+            write!(f, " -> {}", name_to_smolstr(alias))?;
         }
 
-        if let Some(index_name) = &self.indexed_by {
-            write!(s, " (indexed by \"{index_name}\")")?;
+        if let Some(index) = &self.indexed_by {
+            write!(f, " (indexed by {})", name_to_smolstr(index))?;
         }
 
-        write!(f, "{s}")
+        Ok(())
     }
 }
 
@@ -936,7 +941,6 @@ struct Row {
 }
 
 impl Row {
-    #[allow(dead_code)]
     fn new() -> Self {
         Row { cols: vec![] }
     }
@@ -1010,8 +1014,8 @@ impl SubQuery {
 impl Display for SubQuery {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "scan")?;
-        if let Some(a) = &self.alias {
-            write!(f, " \"{a}\"")?;
+        if let Some(alias) = &self.alias {
+            write!(f, " {}", name_to_smolstr(alias))?;
         }
 
         Ok(())
@@ -1075,21 +1079,20 @@ impl Display for MotionKey {
 
 #[derive(Debug, PartialEq, Serialize, Clone)]
 enum Target {
-    Reference(String),
+    Reference(SmolStr),
     Value(Value),
 }
 
 impl Display for Target {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self {
-            Target::Reference(s) => write!(f, "ref(\"{s}\")"),
+        match self {
+            Target::Reference(s) => write!(f, "ref({})", name_to_smolstr(s)),
             Target::Value(v) => write!(f, "value({v})"),
         }
     }
 }
 
 #[derive(Debug, PartialEq, Serialize, Clone)]
-#[allow(dead_code)]
 enum ExplainNode {
     Delete(SmolStr),
     Except,
@@ -1116,8 +1119,13 @@ enum ExplainNode {
 impl Display for ExplainNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
-            ExplainNode::Cte(name, r) => write!(f, "scan cte {name}({r})")?,
-            ExplainNode::Delete(name) => write!(f, "delete \"{name}\"")?,
+            ExplainNode::Cte(name, r) => {
+                write!(f, "scan cte {name}({r})", name = name_to_smolstr(name))?;
+            }
+
+            ExplainNode::Delete(name) => {
+                write!(f, "delete {name}", name = name_to_smolstr(name))?;
+            }
             ExplainNode::Except => write!(f, "except")?,
             ExplainNode::Join(col_expr, kind) => {
                 match kind {
@@ -1131,7 +1139,11 @@ impl Display for ExplainNode {
             }
             ExplainNode::Value => write!(f, "values")?,
             ExplainNode::Insert(name, conflict) => {
-                write!(f, "insert \"{name}\" on conflict: {conflict}")?;
+                write!(
+                    f,
+                    "insert {name} on conflict: {conflict}",
+                    name = name_to_smolstr(name)
+                )?;
             }
             ExplainNode::Projection(projection) => write!(f, "{projection}")?,
             ExplainNode::GroupBy(group_by) => write!(f, "{group_by}")?,
@@ -1313,7 +1325,6 @@ impl FullExplain {
         sq_ref_map
     }
 
-    #[allow(dead_code)]
     #[allow(clippy::too_many_lines)]
     pub fn new(ir: &Plan, top_id: NodeId) -> Result<Self, SbroadError> {
         let exec_options = vec![
@@ -1529,7 +1540,7 @@ impl FullExplain {
                                     let col_name = ir
                                         .get_expression_node(col_id)?
                                         .get_alias_name()?
-                                        .to_string();
+                                        .to_smolstr();
 
                                     Ok::<Target, SbroadError>(Target::Reference(col_name))
                                 }

@@ -99,27 +99,27 @@ fn except_transform_with_dag_plan() {
     let input = r#"select 1 from (values (1)) except select e from t2 where e = 1"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     except
-      projection (1::int -> "col_1")
-        scan "unnamed_subquery"
+      projection (1::int -> col_1)
+        scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values
               value row (data=ROW(1::int))
       motion [policy: full, program: ReshardIfNeeded]
         intersect
-          projection ("t2"."e"::int -> "e")
-            selection "t2"."e"::int = 1::int
-              scan "t2"
-          projection (1::int -> "col_1")
-            scan "unnamed_subquery"
+          projection (t2.e::int -> e)
+            selection t2.e::int = 1::int
+              scan t2
+          projection (1::int -> col_1)
+            scan unnamed_subquery
               motion [policy: full, program: ReshardIfNeeded]
                 values
                   value row (data=ROW(1::int))
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
-    "#);
+    ");
 }
 
 #[test]

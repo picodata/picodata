@@ -126,19 +126,19 @@ WINDOW
     win AS (ORDER BY y + 2 * (SELECT 111) + (SELECT 2)),
     win1 AS (PARTITION BY x + (SELECT 3));
 -- EXPECTED:
-projection (avg("x"::int::int) over (partition by ("x"::int + ROW($0)) ) -> "col_1", sum("x"::int::int) over (order by (("y"::int + (2::int * ROW($2))) + ROW($1)) ) -> "col_2")
+projection (avg(x::int::int) over (partition by (x::int + ROW($0)) ) -> col_1, sum(x::int::int) over (order by ((y::int + (2::int * ROW($2))) + ROW($1)) ) -> col_2)
   motion [policy: full, program: ReshardIfNeeded]
-    projection ("t6"."x"::int -> "x", "t6"."y"::int -> "y")
-      scan "t6"
+    projection (t6.x::int -> x, t6.y::int -> y)
+      scan t6
 subquery $0:
   scan
-    projection (3::int -> "col_1")
+    projection (3::int -> col_1)
 subquery $1:
   scan
-    projection (2::int -> "col_1")
+    projection (2::int -> col_1)
 subquery $2:
   scan
-    projection (111::int -> "col_1")
+    projection (111::int -> col_1)
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -163,23 +163,23 @@ WINDOW
         )
     )::int);
 -- EXPECTED:
-projection (row_number() over (partition by ("x"::int + ROW($1)) ) -> "col_1", sum("y"::int::int) over (partition by ("x"::int + ROW($1)) ) -> "col_2", max("x"::int::int) over (order by ("x"::int + ROW($0)::int) ) -> "col_3")
+projection (row_number() over (partition by (x::int + ROW($1)) ) -> col_1, sum(y::int::int) over (partition by (x::int + ROW($1)) ) -> col_2, max(x::int::int) over (order by (x::int + ROW($0)::int) ) -> col_3)
   motion [policy: full, program: ReshardIfNeeded]
-    projection ("t6"."x"::int -> "x", "t6"."y"::int -> "y")
-      scan "t6"
+    projection (t6.x::int -> x, t6.y::int -> y)
+      scan t6
 subquery $0:
   motion [policy: full, program: ReshardIfNeeded]
     scan
-      projection (count(*::int) over (rows between current row and unbounded following) -> "col_1")
-        scan "unnamed_subquery"
+      projection (count(*) over (rows between current row and unbounded following) -> col_1)
+        scan unnamed_subquery
           limit 1
             motion [policy: full, program: ReshardIfNeeded]
               limit 1
-                projection ("t6"."x"::int -> "x", "t6"."y"::int -> "y")
-                  scan "t6"
+                projection (t6.x::int -> x, t6.y::int -> y)
+                  scan t6
 subquery $1:
   scan
-    projection (2::int -> "col_1")
+    projection (2::int -> col_1)
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -189,8 +189,8 @@ buckets = [1-3000]
 -- SQL:
 explain select 1 from t6 window w as (partition by (select 1 from t6 window w as ()));
 -- EXPECTED:
-projection (1::int -> "col_1")
-  scan "t6"
+projection (1::int -> col_1)
+  scan t6
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000

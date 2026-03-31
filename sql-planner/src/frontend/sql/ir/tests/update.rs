@@ -7,11 +7,11 @@ fn update1() {
     let plan = sql_to_optimized_ir(pattern, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    update "test_space"
-    "FIRST_NAME" = "col_0"
+    update test_space
+    "FIRST_NAME" = col_0
       motion [policy: local, program: ReshardIfNeeded]
-        projection ('test'::string -> "col_0", "test_space"."id"::int -> "col_1")
-          scan "test_space"
+        projection ('test'::string -> col_0, test_space.id::int -> col_1)
+          scan test_space
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -24,11 +24,11 @@ fn update2() {
     let plan = sql_to_optimized_ir(pattern, vec![Value::from("test")]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    update "test_space"
-    "FIRST_NAME" = "col_0"
+    update test_space
+    "FIRST_NAME" = col_0
       motion [policy: local, program: ReshardIfNeeded]
-        projection ('test'::string -> "col_0", "test_space"."id"::int -> "col_1")
-          scan "test_space"
+        projection ('test'::string -> col_0, test_space.id::int -> col_1)
+          scan test_space
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000

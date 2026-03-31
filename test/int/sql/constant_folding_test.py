@@ -38,9 +38,9 @@ def test_gl_1991(postgres: Postgres):
     # false and buckets set is empty.
     plan = cur.fetchall()
     assert "\n".join(row[0] for row in plan) == snapshot("""\
-projection ("t"."id"::int -> "id")
+projection (t.id::int -> id)
   selection false::bool
-    scan "t"
+    scan t
 execution options:
   sql_vdbe_opcode_max = 1
   sql_motion_row_max = 5000

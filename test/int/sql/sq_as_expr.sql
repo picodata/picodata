@@ -324,8 +324,8 @@ SELECT t1.a FROM t1 d JOIN t1 ON t1.b = d.a WHERE t1.b = d.c AND (SELECT e.a FRO
 -- SQL:
 EXPLAIN SELECT (values (1)) from testing_space;
 -- EXPECTED:
-projection (ROW($0) -> "col_1")
-  scan "testing_space"
+projection (ROW($0) -> col_1)
+  scan testing_space
 subquery $0:
   scan
     motion [policy: full, program: ReshardIfNeeded]
@@ -340,12 +340,12 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN SELECT "id" FROM "testing_space" ORDER BY "id" + (VALUES (1));
 -- EXPECTED:
-projection ("id"::int -> "id")
-  order by ("id"::int + ROW($0))
+projection (id::int -> id)
+  order by (id::int + ROW($0))
     motion [policy: full, program: ReshardIfNeeded]
       scan
-        projection ("testing_space"."id"::int -> "id")
-          scan "testing_space"
+        projection (testing_space.id::int -> id)
+          scan testing_space
 subquery $0:
   scan
     motion [policy: full, program: ReshardIfNeeded]
@@ -360,8 +360,8 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN SELECT (values ((values (1)))) from testing_space;
 -- EXPECTED:
-projection (ROW($1) -> "col_1")
-  scan "testing_space"
+projection (ROW($1) -> col_1)
+  scan testing_space
 subquery $0:
   scan
     motion [policy: full, program: ReshardIfNeeded]
@@ -381,8 +381,8 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN SELECT (values ((values (1)))) from testing_space;
 -- EXPECTED:
-projection (ROW($1) -> "col_1")
-  scan "testing_space"
+projection (ROW($1) -> col_1)
+  scan testing_space
 subquery $0:
   scan
     motion [policy: full, program: ReshardIfNeeded]
@@ -402,9 +402,9 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN SELECT "id" FROM "testing_space" WHERE (VALUES (true));
 -- EXPECTED:
-projection ("testing_space"."id"::int -> "id")
+projection (testing_space.id::int -> id)
   selection ROW($0)
-    scan "testing_space"
+    scan testing_space
 subquery $0:
   scan
     motion [policy: full, program: ReshardIfNeeded]
@@ -419,8 +419,8 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN SELECT (values (1)), (values (2)) from testing_space;
 -- EXPECTED:
-projection (ROW($1) -> "col_1", ROW($0) -> "col_2")
-  scan "testing_space"
+projection (ROW($1) -> col_1, ROW($0) -> col_2)
+  scan testing_space
 subquery $0:
   scan
     motion [policy: full, program: ReshardIfNeeded]

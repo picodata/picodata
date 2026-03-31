@@ -418,7 +418,7 @@ def test_sql_explain_ok(cluster: Cluster):
     assert output == snapshot(
         (
             """\
-insert "assets" on conflict: fail
+insert assets on conflict: fail
   motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
       value row (data=ROW(1::int, 'Woody'::string, 2561::int))
@@ -440,11 +440,11 @@ buckets = [1934]
     assert output == snapshot(
         (
             """\
-update "characters"
-"year" = "col_0"
+update characters
+year = col_0
   motion [policy: local, program: ReshardIfNeeded]
-    projection (2010::int -> "col_0", "characters"."id"::int -> "col_1")
-      scan "characters"
+    projection (2010::int -> col_0, characters.id::int -> col_1)
+      scan characters
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -463,13 +463,13 @@ buckets = [1-3000]
     assert output == snapshot(
         (
             """\
-update "characters"
-"name" = "col_0"
-"year" = "col_1"
+update characters
+name = col_0
+year = col_1
   motion [policy: local, program: ReshardIfNeeded]
-    projection ('Etch'::string -> "col_0", 2010::int -> "col_1", "characters"."id"::int -> "col_2")
-      selection "characters"."id"::int = 2::int
-        scan "characters"
+    projection ('Etch'::string -> col_0, 2010::int -> col_1, characters.id::int -> col_2)
+      selection characters.id::int = 2::int
+        scan characters
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000

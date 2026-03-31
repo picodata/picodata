@@ -87,17 +87,17 @@ fn bucket_id_from_join() {
     let input = r#"select t1.bucket_id from t t1 join t on true"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("t1"."bucket_id"::int -> "bucket_id")
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    projection (t1.bucket_id::int -> bucket_id)
       join on true::bool
-        scan "t" -> "t1"
+        scan t -> t1
         motion [policy: full, program: ReshardIfNeeded]
-          projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
-            scan "t"
+          projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+            scan t
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
-    "#);
+    ");
 }
 
 #[test]
@@ -120,18 +120,18 @@ fn explicit_select_bucket_id_from_subquery_under_limit() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 1
       motion [policy: full, program: ReshardIfNeeded]
         limit 1
-          projection ("x"."bucket_id"::int -> "bucket_id", "x"."id"::int -> "id")
-            scan "x"
-              projection ("test_space"."bucket_id"::int -> "bucket_id", "test_space"."id"::int -> "id")
-                scan "test_space"
+          projection (x.bucket_id::int -> bucket_id, x.id::int -> id)
+            scan x
+              projection (test_space.bucket_id::int -> bucket_id, test_space.id::int -> id)
+                scan test_space
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
-    "#);
+    ");
 }
 
 #[test]
@@ -145,18 +145,18 @@ fn explicit_select_bucket_id_from_cte_under_limit() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 1
-      projection ("x"."bucket_id"::int -> "bucket_id", "x"."id"::int -> "id")
+      projection (x.bucket_id::int -> bucket_id, x.id::int -> id)
         scan cte x($0)
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
-        projection ("test_space"."bucket_id"::int -> "bucket_id", "test_space"."id"::int -> "id")
-          scan "test_space"
+        projection (test_space.bucket_id::int -> bucket_id, test_space.id::int -> id)
+          scan test_space
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
-    "#);
+    ");
 }
 
 #[test]
@@ -164,12 +164,12 @@ fn groupby_bucket_id() {
     let input = r#"SELECT * FROM t GROUP BY a, b, c, d, bucket_id"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-      group by ("t"."a"::int, "t"."b"::int, "t"."c"::int, "t"."d"::int, "t"."bucket_id"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
-        scan "t"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
+      group by (t.a::int, t.b::int, t.c::int, t.d::int, t.bucket_id::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+        scan t
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
-    "#);
+    ");
 }

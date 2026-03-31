@@ -41,7 +41,7 @@ SELECT * FROM "g";
 -- SQL:
 explain DELETE FROM "g"
 -- EXPECTED:
-delete "g"
+delete g
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000

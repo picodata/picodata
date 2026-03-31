@@ -6542,8 +6542,8 @@ def test_explain(cluster: Cluster):
     # Reading from all buckets
     lines = i1.sql("explain select a from t")
     assert "\n".join(lines) == snapshot("""\
-projection ("t"."a"::int -> "a")
-  scan "t"
+projection (t.a::int -> a)
+  scan t
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -6553,9 +6553,9 @@ buckets = [1-3000]\
     # Reading from a single bucket => single node
     lines = i1.sql("explain select a from t where a = 1")
     assert "\n".join(lines) == snapshot("""\
-projection ("t"."a"::int -> "a")
-  selection "t"."a"::int = 1::int
-    scan "t"
+projection (t.a::int -> a)
+  selection t.a::int = 1::int
+    scan t
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -6564,9 +6564,9 @@ buckets = [1934]\
 
     lines = i1.sql("explain select a from t where a = 1 and a = 2")
     assert "\n".join(lines) == snapshot("""\
-projection ("t"."a"::int -> "a")
-  selection ("t"."a"::int = 1::int) and ("t"."a"::int = 2::int)
-    scan "t"
+projection (t.a::int -> a)
+  selection (t.a::int = 1::int) and (t.a::int = 2::int)
+    scan t
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -6577,12 +6577,12 @@ buckets = []\
     # plan by buckets of leaf subtrees
     lines = i1.sql("explain select t.a from t join t as t2 on t.a = t2.b")
     assert "\n".join(lines) == snapshot("""\
-projection ("t"."a"::int -> "a")
-  join on "t"."a"::int = "t2"."b"::int
-    scan "t"
-    motion [policy: segment([ref("b")]), program: ReshardIfNeeded]
-      projection ("t2"."a"::int -> "a", "t2"."bucket_id"::int -> "bucket_id", "t2"."b"::int -> "b")
-        scan "t" -> "t2"
+projection (t.a::int -> a)
+  join on t.a::int = t2.b::int
+    scan t
+    motion [policy: segment([ref(b)]), program: ReshardIfNeeded]
+      projection (t2.a::int -> a, t2.bucket_id::int -> bucket_id, t2.b::int -> b)
+        scan t -> t2
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -6592,8 +6592,8 @@ buckets = unknown\
     # Reading from global table
     lines = i1.sql("explain select id from _pico_table")
     assert "\n".join(lines) == snapshot("""\
-projection ("_pico_table"."id"::int -> "id")
-  scan "_pico_table"
+projection (_pico_table.id::int -> id)
+  scan _pico_table
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -6606,10 +6606,10 @@ buckets = any\
 motion [policy: full, program: RemoveDuplicates]
   union
     motion [policy: local, program: SerializeAsEmptyTable(true)]
-      projection ("_pico_table"."id"::int -> "id")
-        scan "_pico_table"
-    projection ("t"."a"::int -> "a")
-      scan "t"
+      projection (_pico_table.id::int -> id)
+        scan _pico_table
+    projection (t.a::int -> a)
+      scan t
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -6620,7 +6620,7 @@ buckets = [1-3000]\
     # Segment motion
     lines = i1.sql("explain insert into t values (1, 2)")
     assert "\n".join(lines) == snapshot("""\
-insert "t" on conflict: fail
+insert t on conflict: fail
   motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
       value row (data=ROW(1::int, 2::int))
@@ -6633,10 +6633,10 @@ buckets = [1934]\
     # Local motion
     lines = i1.sql("explain insert into t select a, b from t")
     assert "\n".join(lines) == snapshot("""\
-insert "t" on conflict: fail
-  motion [policy: local segment([ref("a")]), program: ReshardIfNeeded]
-    projection ("t"."a"::int -> "a", "t"."b"::int -> "b")
-      scan "t"
+insert t on conflict: fail
+  motion [policy: local segment([ref(a)]), program: ReshardIfNeeded]
+    projection (t.a::int -> a, t.b::int -> b)
+      scan t
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -6646,12 +6646,12 @@ buckets = [1-3000]\
     # Update: update non-sharding column
     lines = i1.sql("explain update t set b = 1 where b = 3")
     assert "\n".join(lines) == snapshot("""\
-update "t"
-"b" = "col_0"
+update t
+b = col_0
   motion [policy: local, program: ReshardIfNeeded]
-    projection (1::int -> "col_0", "t"."a"::int -> "col_1")
-      selection "t"."b"::int = 3::int
-        scan "t"
+    projection (1::int -> col_0, t.a::int -> col_1)
+      selection t.b::int = 3::int
+        scan t
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -6663,14 +6663,14 @@ buckets = [1-3000]\
     assert ddl["row_count"] == 1
     lines = i1.sql("explain update t2 set d = 1 where d = 2 or d = 2002")
     assert "\n".join(lines) == snapshot("""\
-update "t2"
-"c" = "col_0"
-"bucket_id" = "col_1"
-"d" = "col_2"
+update t2
+c = col_0
+bucket_id = col_1
+d = col_2
   motion [policy: segment([]), program: [PrimaryKey(0), RearrangeForShardedUpdate(2)]]
-    projection ("t2"."c"::int -> "col_0", "t2"."bucket_id"::int -> "col_1", 1::int -> "col_2", "t2"."d"::int -> "col_3")
-      selection ("t2"."d"::int = 2::int) or ("t2"."d"::int = 2002::int)
-        scan "t2"
+    projection (t2.c::int -> col_0, t2.bucket_id::int -> col_1, 1::int -> col_2, t2.d::int -> col_3)
+      selection (t2.d::int = 2::int) or (t2.d::int = 2002::int)
+        scan t2
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -6680,7 +6680,7 @@ buckets = unknown\
     # Delete
     lines = i1.sql("explain delete from t")
     assert "\n".join(lines) == snapshot("""\
-delete "t"
+delete t
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -6692,10 +6692,10 @@ buckets = [1-3000]\
     assert ddl["row_count"] == 1
     lines = i1.sql("explain insert into g select a, b from t")
     assert "\n".join(lines) == snapshot("""\
-insert "g" on conflict: fail
+insert g on conflict: fail
   motion [policy: full, program: ReshardIfNeeded]
-    projection ("t"."a"::int -> "a", "t"."b"::int -> "b")
-      scan "t"
+    projection (t.a::int -> a, t.b::int -> b)
+      scan t
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -6704,10 +6704,10 @@ buckets = [1-3000]\
 
     lines = i1.sql("explain insert into g select u, v from g")
     assert "\n".join(lines) == snapshot("""\
-insert "g" on conflict: fail
+insert g on conflict: fail
   motion [policy: full, program: ReshardIfNeeded]
-    projection ("g"."u"::int -> "u", "g"."v"::int -> "v")
-      scan "g"
+    projection (g.u::int -> u, g.v::int -> v)
+      scan g
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -6794,8 +6794,8 @@ def test_vdbe_steps_and_vtable_rows(cluster: Cluster):
     # Default values
     lines = i1.sql("EXPLAIN SELECT a FROM t")
     assert "\n".join(lines) == snapshot("""\
-projection ("t"."a"::int -> "a")
-  scan "t"
+projection (t.a::int -> a)
+  scan t
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -6809,8 +6809,8 @@ buckets = [1-3000]\
     # Default value for sql_vdbe_opcode_max changed
     lines = i1.sql("EXPLAIN SELECT a FROM t")
     assert "\n".join(lines) == snapshot("""\
-projection ("t"."a"::int -> "a")
-  scan "t"
+projection (t.a::int -> a)
+  scan t
 execution options:
   sql_vdbe_opcode_max = 50000
   sql_motion_row_max = 5000
@@ -6825,8 +6825,8 @@ buckets = [1-3000]\
     # value for new_sql_vdbe_opcode_max hasn't changed
     lines = i1.sql("EXPLAIN SELECT a FROM t")
     assert "\n".join(lines) == snapshot("""\
-projection ("t"."a"::int -> "a")
-  scan "t"
+projection (t.a::int -> a)
+  scan t
 execution options:
   sql_vdbe_opcode_max = 50000
   sql_motion_row_max = 6000

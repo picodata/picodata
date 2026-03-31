@@ -282,8 +282,8 @@ true
 -- SQL:
 EXPLAIN SELECT current_state[1] FROM _pico_instance;
 -- EXPECTED:
-projection ("_pico_instance"."current_state"::array[1::int] -> "col_1")
-  scan "_pico_instance"
+projection (_pico_instance.current_state::array[1::int] -> col_1)
+  scan _pico_instance
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
