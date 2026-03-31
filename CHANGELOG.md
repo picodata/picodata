@@ -34,6 +34,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed a regression in config parsing. `--iproto-listen`, `--iproto-advertise` and
   `--http-listen` were triggering an error instead of overriding corresponding value
   in yaml config when deprecated listen options were used in the config.
+- Fixed the errors `box.cfg.read_only is true` and `Failed to add a storage reference`,
+  which occurred when restarting a storage instance and previously required a retry.
 
 ## [26.1.1] - 2026-03-24
 

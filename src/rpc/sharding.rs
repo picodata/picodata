@@ -10,6 +10,7 @@ use crate::traft::{node, RaftIndex, RaftTerm};
 use crate::vshard::VshardErrorCode;
 use crate::vshard::{ReplicasetSpec, VshardConfig};
 use smol_str::SmolStr;
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::time::Duration;
 use tarantool::error::BoxError;
@@ -17,6 +18,38 @@ use tarantool::fiber;
 use tarantool::index::IteratorType;
 use tarantool::space::Space;
 use tarantool::tlua;
+
+thread_local! {
+    static VSHARD_CONFIGURED: Cell<bool> = Cell::default();
+    static VSHARD_CONFIGURED_COND: fiber::Cond = fiber::Cond::new();
+}
+
+/// Wait until `proc_sharding` has configured vshard storage.
+/// Returns `true` if configured, `false` on timeout.
+/// After the first `proc_sharding` call, this is a single `Cell` read.
+pub fn wait_vshard_configured(timeout: Duration) -> bool {
+    if VSHARD_CONFIGURED.get() {
+        return true;
+    }
+    VSHARD_CONFIGURED_COND.with(|cond| {
+        let deadline = fiber::clock().saturating_add(timeout);
+        loop {
+            if VSHARD_CONFIGURED.get() {
+                return true;
+            }
+            if !cond.wait_deadline(deadline) {
+                return VSHARD_CONFIGURED.get();
+            }
+        }
+    })
+}
+
+fn notify_vshard_configured() {
+    VSHARD_CONFIGURED.set(true);
+    VSHARD_CONFIGURED_COND.with(|cond| {
+        cond.broadcast();
+    });
+}
 
 crate::define_rpc_request! {
     /// (Re)configures sharding. Sets up the vshard storage and vshard router
@@ -61,6 +94,8 @@ crate::define_rpc_request! {
             .map(|rs| (&rs.name, rs))
             .collect();
 
+        crate::error_injection!(block "BLOCK_BEFORE_VSHARD_RECONFIGURATION");
+
         for tier in node.storage.tiers.iter().expect("tiers shouldn't fail, at least one tier always exists") {
             // Skip vshard configuration for tiers with no buckets (arbiter tiers)
             if !tier.has_buckets() {
@@ -102,6 +137,8 @@ crate::define_rpc_request! {
             // new configurations before calling router:cfg() or storage:cfg().
 
             if current_instance_tier == tier.name {
+                VSHARD_CONFIGURED.set(false);
+
                 let current_sharding_param: Option<HashMap<SmolStr, ReplicasetSpec>> = lua.eval(
                     "vshard = require('vshard')
                     if vshard.storage.internal.current_cfg ~= nil then
@@ -152,6 +189,10 @@ crate::define_rpc_request! {
                 }
             }
         }
+
+        crate::error_injection!(block "BLOCK_BEFORE_NOTIFY_VSHARD_CONFIGURED");
+
+        notify_vshard_configured();
 
         // After reconfiguring vshard leaves behind net.box.connection objects,
         // which try reconnecting every 0.5 seconds. Garbage collecting them helps

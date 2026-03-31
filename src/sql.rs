@@ -2732,6 +2732,19 @@ unsafe fn proc_sql_execute_impl(args: ExecArgs, port: &mut PicoPortC) -> ::std::
         .map(|node| node.is_readonly())
         .unwrap_or(false);
     if !is_replica {
+        let timeout = match Duration::try_from_secs_f64(args.timeout) {
+            Ok(v) => v,
+            Err(e) => return report("Invalid timeout value: ", Error::Other(e.into())),
+        };
+        // Wait for vshard to be configured by `proc_sharding`.
+        // During node restart, `proc_sql_execute` can be called before the governor runs `proc_sharding`.
+        if !crate::rpc::sharding::wait_vshard_configured(timeout) {
+            return report(
+                "vshard storage is not configured (timed out waiting for proc_sharding): ",
+                Error::timeout(),
+            );
+        }
+
         if args.need_ref {
             if let Err(e) = reference_add(args.rid, sid, args.timeout) {
                 return report("Failed to add a storage reference: ", e.into());
@@ -2753,6 +2766,26 @@ unsafe fn proc_sql_execute_impl(args: ExecArgs, port: &mut PicoPortC) -> ::std::
         Ok(()) => 0,
         Err(e) => return report("Failed to execute '.proc_sql_execute': ", e),
     }
+}
+
+/// Returns `true` if the node is not initialized yet.
+/// Otherwise checks whether it makes sense to wait for `box_wait_rw`.
+///
+/// # Panics
+/// - Never.
+fn should_wait_box_rw() -> bool {
+    let Ok(node) = node::global() else {
+        return true;
+    };
+    let Some(name) = node.topology_cache.my_instance_name.get() else {
+        return true;
+    };
+    let topology = node.topology_cache.get();
+    let Some(rs) = topology.try_this_replicaset() else {
+        return true;
+    };
+
+    rs.target_master_name == name
 }
 
 /// # Safety
@@ -2781,11 +2814,25 @@ pub unsafe extern "C" fn proc_sql_execute(
     match with_sql_runtime_limit(request_id, || {
         let mut port = PicoPortC::from(ctx.mut_port_c());
 
-        let query_type = match msg.msg_type {
-            ProtocolMessageType::Dql => "dql",
-            ProtocolMessageType::Dml(_) | ProtocolMessageType::LocalDml(_) => "dml",
-            ProtocolMessageType::Block => "block",
+        let (query_type, need_rw) = match msg.msg_type {
+            ProtocolMessageType::Dql => ("dql", false),
+            ProtocolMessageType::Dml(_) | ProtocolMessageType::LocalDml(_) => ("dml", true),
+            ProtocolMessageType::Block => ("block", true),
         };
+        // This may happen when the node restarts.
+        if need_rw && crate::tarantool::box_is_ro() {
+            // The node won't be promoted to master.
+            if !should_wait_box_rw() {
+                return report(
+                    "retry is required: ",
+                    Error::Other("DML was sent to the replica during master switchover".into()),
+                );
+            }
+
+            if let Err(e) = crate::tarantool::box_wait_rw(args.timeout) {
+                return report("instance is read-only: ", e.into());
+            }
+        }
         let rc = proc_sql_execute_impl(args, &mut port);
 
         let result = if rc == 0 { "ok" } else { "err" };
