@@ -177,6 +177,16 @@ def test_webui_basic(instance: Instance, auth_token: Optional[str]):
             "plugins": [],
         }
 
+    # Test behavior when HTTP address is missing from _pico_peer_address.
+    # This documents expected behavior for clusters upgrading from pre-26.1.
+    raft_id = instance.sql(f"SELECT raft_id FROM _pico_instance WHERE name = '{instance.name}'")[0][0]
+    instance.sql(f"DELETE FROM _pico_peer_address WHERE raft_id = {raft_id} AND connection_type = 'http'")
+
+    with get_url(f"http://{http_listen}/api/v1/tiers", auth_token) as response:
+        tiers = json.load(response)
+        http_address = tiers[0]["replicasets"][0]["instances"][0]["httpAddress"]
+        assert http_address == "", "httpAddress should be empty when not in _pico_peer_address"
+
 
 @pytest.mark.webui
 def test_webui_with_plugin(cluster: Cluster):
@@ -418,8 +428,8 @@ def test_webui_replicaset_state(cluster: Cluster):
         "targetState": "Offline",
         "binaryAddress": i3.iproto_listen,
         "pgAddress": i3.pg_listen,
-        # i3 is down, so can't get the http address
-        "httpAddress": "",
+        # HTTP address is read from storage, so available even when instance is offline
+        "httpAddress": i3.http_listen,
     }
     instance_4 = {
         **instance_template,

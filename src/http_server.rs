@@ -14,7 +14,7 @@ use raft::Storage as _;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use smol_str::{format_smolstr, ToSmolStr};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tarantool::fiber;
 use tarantool::fiber::r#async::timeout::IntoTimeout;
@@ -246,9 +246,15 @@ pub(crate) type ApiResult<T> = std::result::Result<T, ApiError>;
 /// - `mem_used`: quota_used from box.slab.info
 #[derive(Deserialize)]
 struct InstanceDataResponse {
-    httpd_address: SmolStr,
     mem_usable: u64,
     mem_used: u64,
+}
+
+#[derive(Clone, Default)]
+struct InstanceAddresses {
+    iproto: SmolStr,
+    pgproto: SmolStr,
+    http: SmolStr,
 }
 
 /// Memory info struct for server responces
@@ -405,13 +411,17 @@ fn get_replicasets(storage: &Catalog) -> traft::Result<HashMap<ReplicasetName, R
     Ok(i.map(|item| (item.name.clone(), item)).collect())
 }
 
+/// Reads instance addresses from `_pico_peer_address`.
+///
+/// When `only_leaders` is true, addresses are only returned for replicaset leaders.
+/// When false, addresses are returned for all instances.
 fn get_peer_addresses(
     storage: &Catalog,
     replicasets: &HashMap<ReplicasetName, Replicaset>,
     instances: &[Instance],
-    only_leaders: bool, // get data from leaders only or from all instances
-) -> traft::Result<HashMap<u64, (SmolStr, SmolStr)>> {
-    let leaders: HashMap<_, _> = instances
+    only_leaders: bool,
+) -> traft::Result<HashMap<u64, InstanceAddresses>> {
+    let targets: HashMap<_, _> = instances
         .iter()
         .filter(|item| {
             !only_leaders
@@ -427,36 +437,42 @@ fn get_peer_addresses(
             peer.connection_type,
             ConnectionType::System(SystemConnectionType::Iproto)
                 | ConnectionType::System(SystemConnectionType::Pgproto)
+                | ConnectionType::System(SystemConnectionType::Http)
         )
     });
-    Ok(i.filter(|pa| leaders.get(&pa.raft_id) == Some(&true)).fold(
-        HashMap::new(),
-        |mut acc, pa| {
-            let (iproto, pgproto) = acc.entry(pa.raft_id).or_default();
+    Ok(i.filter(|pa| targets.contains_key(&pa.raft_id))
+        .fold(HashMap::new(), |mut acc, pa| {
+            let addrs = acc.entry(pa.raft_id).or_default();
             match pa.connection_type {
                 ConnectionType::System(SystemConnectionType::Iproto) => {
-                    *iproto = pa.address.clone()
+                    addrs.iproto = pa.address.clone()
                 }
                 ConnectionType::System(SystemConnectionType::Pgproto) => {
-                    *pgproto = pa.address.clone()
+                    addrs.pgproto = pa.address.clone()
                 }
-                ConnectionType::System(SystemConnectionType::Http)
-                | ConnectionType::Plugin { .. } => {}
+                ConnectionType::System(SystemConnectionType::Http) => {
+                    addrs.http = pa.address.clone()
+                }
+                ConnectionType::Plugin { .. } => {}
             };
             acc
-        },
-    ))
+        }))
 }
 
-// Get data from instances: memory, PICO_VERSION, httpd address if exists
-//
+/// Get memory info from replicaset leaders via RPC.
+///
+/// Only queries the specified leader instances to minimize RPC calls.
 async fn get_instances_data(
     pool: &ConnectionPool,
     instances: &[Instance],
+    leaders: &HashSet<InstanceName>,
 ) -> HashMap<u64, InstanceDataResponse> {
     let mut fs = vec![];
     for instance in instances {
         if has_states!(instance, Expelled -> *) {
+            continue;
+        }
+        if !leaders.contains(&instance.name) {
             continue;
         }
 
@@ -479,16 +495,12 @@ async fn get_instances_data(
         fs.push({
             async move {
                 let mut data = InstanceDataResponse {
-                    httpd_address: Default::default(),
                     mem_usable: 0u64,
                     mem_used: 0u64,
                 };
                 match future.await {
                     Ok(info) => {
                         let info: RuntimeInfo = info;
-                        if let Some(http) = info.http {
-                            data.httpd_address = format_smolstr!("{}:{}", &http.host, &http.port);
-                        }
                         data.mem_usable = info.slab_info.quota_size;
                         data.mem_used = info.slab_info.quota_used;
                     }
@@ -518,15 +530,24 @@ fn get_replicasets_info(
 ) -> traft::Result<Vec<ReplicasetInfo>> {
     let node = crate::traft::node::global()?;
     let instances = storage.instances.all_instances()?;
-    let instances_props = fiber::block_on(get_instances_data(&node.pool, &instances));
     let replicasets = get_replicasets(storage)?;
+
+    // Compute leaders set for RPC filtering
+    let leaders: HashSet<InstanceName> = replicasets
+        .values()
+        .map(|r| r.current_master_name.clone())
+        .collect();
+
+    // RPC only to leaders for memory info
+    let instances_props = fiber::block_on(get_instances_data(&node.pool, &instances, &leaders));
+    // Addresses from storage (http, iproto, pgproto)
     let addresses = get_peer_addresses(storage, &replicasets, &instances, only_leaders)?;
 
     let mut res: HashMap<ReplicasetName, ReplicasetInfo> =
         HashMap::with_capacity(replicasets.len());
 
     for instance in instances {
-        let address = addresses
+        let addrs = addresses
             .get(&instance.raft_id)
             .cloned()
             .unwrap_or_default();
@@ -542,25 +563,24 @@ fn get_replicasets_info(
             tier.clone_from(&replicaset.tier);
         }
 
-        let mut http_address = SmolStr::default();
+        // Memory info from RPC (only available for leaders)
         let mut mem_usable: u64 = 0u64;
         let mut mem_used: u64 = 0u64;
         if let Some(rpc_data) = instances_props.get(&instance.raft_id) {
-            http_address = rpc_data.httpd_address.clone();
             mem_usable = rpc_data.mem_usable;
             mem_used = rpc_data.mem_used;
         }
 
         let instance_info = InstanceInfo {
-            http_address,
+            http_address: addrs.http,
             version: instance.picodata_version.clone(),
             failure_domain: instance.failure_domain.data,
             is_leader,
             current_state: instance.current_state.variant,
             target_state: instance.target_state.variant,
             name: instance.name.clone(),
-            binary_address: address.0,
-            pg_address: address.1,
+            binary_address: addrs.iproto,
+            pg_address: addrs.pgproto,
         };
 
         let replicaset_info = res
