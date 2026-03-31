@@ -107,7 +107,7 @@ test-rs:
 	  $(filter-out --workspace, $(CARGO_FLAGS)) \
 	  $(filter-out --workspace, $(CARGO_FLAGS_EXTRA)) \
 	  $(ERROR_INJECTION) \
-	  --workspace
+	  --workspace \
 	  --exclude sql-planner \
 	  --exclude tarantool \
 	  --exclude tlua \
