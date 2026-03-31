@@ -31,6 +31,8 @@ with the `YY.MINOR.MICRO` scheme.
   replication configs, preventing synchronization. The governor now includes
   only the master in the fallback replication config, preserving conflict
   isolation while allowing the cluster to recover.
+- Fixed the errors `box.cfg.read_only is true` and `Failed to add a storage reference`,
+  which occurred when restarting a storage instance and previously required a retry.
 
 ## [26.1.1] - 2026-03-24
 

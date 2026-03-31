@@ -951,6 +951,25 @@ pub fn box_is_ro() -> bool {
     unsafe { ffi::box_is_ro() }
 }
 
+/// Wait until the instance becomes read-write or timeout expires.
+/// Returns `Ok(())` on success, `Err` on timeout or fiber cancellation.
+pub fn box_wait_rw(timeout: f64) -> Result<(), ::tarantool::error::Error> {
+    mod ffi {
+        extern "C" {
+            pub fn box_wait_ro(ro: bool, timeout: f64) -> i32;
+        }
+    }
+
+    // SAFETY: always safe, may yield
+    let rc = unsafe { ffi::box_wait_ro(false, timeout) };
+    if rc != 0 {
+        return Err(::tarantool::error::Error::Tarantool(
+            ::tarantool::error::BoxError::last(),
+        ));
+    }
+    Ok(())
+}
+
 #[inline(always)]
 pub fn box_ro_reason() -> Option<&'static str> {
     mod ffi {
