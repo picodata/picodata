@@ -1,7 +1,7 @@
 import { Autocomplete, Box, styled, TextField } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
 import RttIcon from "@mui/icons-material/Rtt";
-
+import { v4 as uuidv4 } from 'uuid';
 import {
   FilterProps,
   Tag,
@@ -23,7 +23,7 @@ const useSearchTextTag = () => {
   const { translation } = useTranslation();
   return useMemo(
     () => ({
-      id: crypto.randomUUID(),
+      id: uuidv4(),
       key: SEARCH_TEXT_KEY,
       label: translation.components.filterTags.searchForThisText,
       icon: RttIcon,
@@ -59,7 +59,7 @@ export const Filter = (props: FilterProps) => {
         getFilterValueByEditableFilterValue([
           ...valueState,
           {
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             tagKey: tag?.key,
             status: EditableValueStatusEnum.Done,
             expression: {
@@ -76,7 +76,7 @@ export const Filter = (props: FilterProps) => {
       setValueState((_valueState) => [
         ..._valueState,
         {
-          id: crypto.randomUUID(),
+          id: uuidv4(),
           tagKey: tag?.key,
           status: EditableValueStatusEnum.Expression,
           expression: undefined,

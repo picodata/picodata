@@ -5277,6 +5277,7 @@ __metadata:
     react-virtuoso: "npm:^4.18.1"
     sass: "npm:^1.69.5"
     typescript: "npm:^4.9.3"
+    uuid: "npm:^13.0.0"
     vite: "npm:6.4.1"
     vite-plugin-svgr: "npm:^4.3.0"
     zod: "npm:^3.22.4"
@@ -6608,6 +6609,15 @@ __metadata:
     "@types/react":
       optional: true
   checksum: 10c0/4d3c1124d630fbe09c1d2a16af0cd78ac2fe1d22eb24a178363e3d84a897659cc04e8e8cd71f66ff78ff75ef8287fa72e746cb213b96c1097e70e4b4ed69f63f
+  languageName: node
+  linkType: hard
+
+"uuid@npm:^13.0.0":
+  version: 13.0.0
+  resolution: "uuid@npm:13.0.0"
+  bin:
+    uuid: dist-node/bin/uuid
+  checksum: 10c0/950e4c18d57fef6c69675344f5700a08af21e26b9eff2bf2180427564297368c538ea11ac9fb2e6528b17fc3966a9fd2c5049361b0b63c7d654f3c550c9b3d67
   languageName: node
   linkType: hard
 
