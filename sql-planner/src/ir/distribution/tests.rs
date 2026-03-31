@@ -67,13 +67,13 @@ fn projection_any_dist_for_expr() {
 
     // check explain first
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (sum(("count_1"::int))::int -> "col_1")
-        motion [policy: full, program: ReshardIfNeeded]
-            projection (count(("test_space"."id"::int::int))::int -> "count_1")
-                scan "test_space"
+    projection (sum("count_1"::int)::int -> "col_1")
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (count("test_space"."id"::int::int)::int -> "count_1")
+          scan "test_space"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 
     // check that local Projection has Distribution::Any

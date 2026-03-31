@@ -12,14 +12,14 @@ fn cte() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("cte"."a"::string -> "a")
-        scan cte cte($0)
+      scan cte cte($0)
     subquery $0:
-    motion [policy: full, program: ReshardIfNeeded]
-                projection ("test_space"."FIRST_NAME"::string -> "a")
-                    scan "test_space"
+      motion [policy: full, program: ReshardIfNeeded]
+        projection ("test_space"."FIRST_NAME"::string -> "a")
+          scan "test_space"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -30,13 +30,13 @@ fn global_cte() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("cte"."a"::int -> "a")
-        scan cte cte($0)
+      scan cte cte($0)
     subquery $0:
-    projection ("global_t"."a"::int -> "a")
-                scan "global_t"
+      projection ("global_t"."a"::int -> "a")
+        scan "global_t"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -51,17 +51,17 @@ fn nested_cte() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("cte2"."a"::string -> "a")
-        scan cte cte2($1)
+      scan cte cte2($1)
     subquery $0:
-    motion [policy: full, program: ReshardIfNeeded]
-                        projection ("test_space"."FIRST_NAME"::string -> "a")
-                            scan "test_space"
+      motion [policy: full, program: ReshardIfNeeded]
+        projection ("test_space"."FIRST_NAME"::string -> "a")
+          scan "test_space"
     subquery $1:
-    projection ("cte1"."a"::string -> "a")
-                scan cte cte1($0)
+      projection ("cte1"."a"::string -> "a")
+        scan cte cte1($0)
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -77,17 +77,17 @@ fn reuse_cte_union_all() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     union all
-        projection ("cte"."a"::string -> "a")
-            scan cte cte($0)
-        projection ("cte"."a"::string -> "a")
-            scan cte cte($0)
+      projection ("cte"."a"::string -> "a")
+        scan cte cte($0)
+      projection ("cte"."a"::string -> "a")
+        scan cte cte($0)
     subquery $0:
-    motion [policy: full, program: ReshardIfNeeded]
-                    projection ("test_space"."FIRST_NAME"::string -> "a")
-                        scan "test_space"
+      motion [policy: full, program: ReshardIfNeeded]
+        projection ("test_space"."FIRST_NAME"::string -> "a")
+          scan "test_space"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -107,23 +107,23 @@ fn reuse_union_in_cte() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     motion [policy: full, program: RemoveDuplicates]
-        union
-            projection ("cte"."a"::string -> "a")
-                scan cte cte($0)
-            projection ("cte"."a"::string -> "a")
-                scan cte cte($0)
+      union
+        projection ("cte"."a"::string -> "a")
+          scan cte cte($0)
+        projection ("cte"."a"::string -> "a")
+          scan cte cte($0)
     subquery $0:
-    projection ("cte"."FIRST_NAME"::string -> "a")
-                        scan "cte"
-                            motion [policy: full, program: RemoveDuplicates]
-                                union
-                                    projection ("test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                                        scan "test_space"
-                                    projection ("test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                                        scan "test_space"
+      projection ("cte"."FIRST_NAME"::string -> "a")
+        scan "cte"
+          motion [policy: full, program: RemoveDuplicates]
+            union
+              projection ("test_space"."FIRST_NAME"::string -> "FIRST_NAME")
+                scan "test_space"
+              projection ("test_space"."FIRST_NAME"::string -> "FIRST_NAME")
+                scan "test_space"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -138,23 +138,23 @@ fn reuse_cte_values() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t"."c"::int -> "c")
-        join on true::bool
-            scan "t"
-                projection (count((*::int))::int -> "c")
-                    join on true::bool
-                        scan cte c1($0)
-                        scan cte c2($0)
-            scan cte cte($0)
+      join on true::bool
+        scan "t"
+          projection (count(*::int)::int -> "c")
+            join on true::bool
+              scan cte c1($0)
+              scan cte c2($0)
+        scan cte cte($0)
     subquery $0:
-    motion [policy: full, program: ReshardIfNeeded]
-                                projection ("cte"."COLUMN_1"::int -> "b")
-                                    scan "cte"
-                                        motion [policy: full, program: ReshardIfNeeded]
-                                            values
-                                                value row (data=ROW(1::int))
+      motion [policy: full, program: ReshardIfNeeded]
+        projection ("cte"."COLUMN_1"::int -> "b")
+          scan "cte"
+            motion [policy: full, program: ReshardIfNeeded]
+              values
+                value row (data=ROW(1::int))
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -196,16 +196,16 @@ fn join_cte() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t"."FIRST_NAME"::string -> "FIRST_NAME")
-        join on "t"."FIRST_NAME"::string = "cte"."a"::string
-            scan "test_space" -> "t"
-            scan cte cte($0)
+      join on "t"."FIRST_NAME"::string = "cte"."a"::string
+        scan "test_space" -> "t"
+        scan cte cte($0)
     subquery $0:
-    motion [policy: full, program: ReshardIfNeeded]
-                    projection ("test_space"."FIRST_NAME"::string -> "a")
-                        scan "test_space"
+      motion [policy: full, program: ReshardIfNeeded]
+        projection ("test_space"."FIRST_NAME"::string -> "a")
+          scan "test_space"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -218,15 +218,15 @@ fn agg_cte() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (count(("cte"."a"::string::string))::int -> "col_1")
-        scan cte cte($0)
+    projection (count("cte"."a"::string::string)::int -> "col_1")
+      scan cte cte($0)
     subquery $0:
-    motion [policy: full, program: ReshardIfNeeded]
-                projection ("test_space"."FIRST_NAME"::string -> "a")
-                    scan "test_space"
+      motion [policy: full, program: ReshardIfNeeded]
+        projection ("test_space"."FIRST_NAME"::string -> "a")
+          scan "test_space"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -241,25 +241,25 @@ fn limit_pushdown_does_not_mutate_cte() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (ROW($2) -> "col_1", ROW($1) -> "col_2")
     subquery $0:
-    motion [policy: full, program: ReshardIfNeeded]
-                        projection ("t"."a"::int -> "a")
-                            scan "t"
+      motion [policy: full, program: ReshardIfNeeded]
+        projection ("t"."a"::int -> "a")
+          scan "t"
     subquery $1:
-    motion [policy: full, program: ReshardIfNeeded]
-            scan
-                limit 1
-                    projection ("a"::int -> "a")
-                        order by ("a"::int)
-                            scan
-                                projection ("cte"."a"::int -> "a")
-                                    scan cte cte($0)
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          limit 1
+            projection ("a"::int -> "a")
+              order by ("a"::int)
+                scan
+                  projection ("cte"."a"::int -> "a")
+                    scan cte cte($0)
     subquery $2:
-    scan
-            projection ("cte"."a"::int -> "a")
-                scan cte cte($0)
+      scan
+        projection ("cte"."a"::int -> "a")
+          scan cte cte($0)
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -273,18 +273,18 @@ fn limit_pushdown_does_not_mutate_used_once_cte() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     limit 1
-        projection ("a"::int -> "a")
-            order by ("a"::int)
-                scan
-                    projection ("cte"."a"::int -> "a")
-                        scan cte cte($0)
+      projection ("a"::int -> "a")
+        order by ("a"::int)
+          scan
+            projection ("cte"."a"::int -> "a")
+              scan cte cte($0)
     subquery $0:
-    motion [policy: full, program: ReshardIfNeeded]
-                                projection ("t"."a"::int -> "a")
-                                    scan "t"
+      motion [policy: full, program: ReshardIfNeeded]
+        projection ("t"."a"::int -> "a")
+          scan "t"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -298,15 +298,15 @@ fn limit_pushdown_does_not_mutate_used_once_cte_with_aggr_over_it() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     limit 1
-        projection (count((*::int))::int -> "col_1")
-            scan cte cte($0)
+      projection (count(*::int)::int -> "col_1")
+        scan cte cte($0)
     subquery $0:
-    motion [policy: full, program: ReshardIfNeeded]
-                    projection ("t"."a"::int -> "a")
-                        scan "t"
+      motion [policy: full, program: ReshardIfNeeded]
+        projection ("t"."a"::int -> "a")
+          scan "t"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -324,17 +324,17 @@ fn used_once_single_node_cte_does_not_materialize() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("cte"."a"::int -> "a")
-        scan cte cte($0)
+      scan cte cte($0)
     subquery $0:
-    projection ("cte"."a"::int -> "a")
-                scan "cte"
-                    limit 1
-                        projection ("t"."a"::int -> "a")
-                            selection ROW("t"."a"::int, "t"."b"::int) = ROW(1::int, 2::int)
-                                scan "t"
+      projection ("cte"."a"::int -> "a")
+        scan "cte"
+          limit 1
+            projection ("t"."a"::int -> "a")
+              selection ROW("t"."a"::int, "t"."b"::int) = ROW(1::int, 2::int)
+                scan "t"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -348,20 +348,20 @@ fn sq_cte() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-        selection "test_space"."FIRST_NAME"::string in ROW($1)
-            scan "test_space"
+      selection "test_space"."FIRST_NAME"::string in ROW($1)
+        scan "test_space"
     subquery $0:
-    motion [policy: full, program: ReshardIfNeeded]
-                            projection ("test_space"."FIRST_NAME"::string -> "a")
-                                selection "test_space"."FIRST_NAME"::string = 'hi'::string
-                                    scan "test_space"
+      motion [policy: full, program: ReshardIfNeeded]
+        projection ("test_space"."FIRST_NAME"::string -> "a")
+          selection "test_space"."FIRST_NAME"::string = 'hi'::string
+            scan "test_space"
     subquery $1:
-    scan
-                projection ("cte"."a"::string -> "a")
-                    scan cte cte($0)
+      scan
+        projection ("cte"."a"::string -> "a")
+          scan cte cte($0)
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -375,17 +375,17 @@ fn values_in_cte() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("cte"."a"::string -> "a")
-        scan cte cte($0)
+      scan cte cte($0)
     subquery $0:
-    motion [policy: full, program: ReshardIfNeeded]
-                projection ("cte"."COLUMN_1"::string -> "a")
-                    scan "cte"
-                        motion [policy: full, program: ReshardIfNeeded]
-                            values
-                                value row (data=ROW('a'::string))
+      motion [policy: full, program: ReshardIfNeeded]
+        projection ("cte"."COLUMN_1"::string -> "a")
+          scan "cte"
+            motion [policy: full, program: ReshardIfNeeded]
+              values
+                value row (data=ROW('a'::string))
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -400,24 +400,24 @@ fn union_all_in_cte() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("cte2"."a"::string -> "a")
-        scan cte cte2($1)
+      scan cte cte2($1)
     subquery $0:
-    motion [policy: full, program: ReshardIfNeeded]
-                                projection ("cte1"."COLUMN_1"::string -> "a")
-                                    scan "cte1"
-                                        motion [policy: full, program: ReshardIfNeeded]
-                                            values
-                                                value row (data=ROW('a'::string))
+      motion [policy: full, program: ReshardIfNeeded]
+        projection ("cte1"."COLUMN_1"::string -> "a")
+          scan "cte1"
+            motion [policy: full, program: ReshardIfNeeded]
+              values
+                value row (data=ROW('a'::string))
     subquery $1:
-    motion [policy: full, program: ReshardIfNeeded]
-                union all
-                    projection ("cte1"."a"::string -> "a")
-                        scan cte cte1($0)
-                    projection ("cte1"."a"::string -> "a")
-                        scan cte cte1($0)
+      motion [policy: full, program: ReshardIfNeeded]
+        union all
+          projection ("cte1"."a"::string -> "a")
+            scan cte cte1($0)
+          projection ("cte1"."a"::string -> "a")
+            scan cte cte1($0)
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -434,18 +434,18 @@ fn join_in_cte() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("cte"."FIRST_NAME"::string -> "FIRST_NAME")
-        scan cte cte($0)
+      scan cte cte($0)
     subquery $0:
-    motion [policy: full, program: ReshardIfNeeded]
-                projection ("t1"."FIRST_NAME"::string -> "FIRST_NAME")
-                    join on "t1"."FIRST_NAME"::string = "t2"."id"::int::string
-                        scan "test_space" -> "t1"
-                        motion [policy: full, program: ReshardIfNeeded]
-                            projection ("t2"."id"::int -> "id", "t2"."sysFrom"::int -> "sysFrom", "t2"."FIRST_NAME"::string -> "FIRST_NAME", "t2"."sys_op"::int -> "sys_op", "t2"."bucket_id"::int -> "bucket_id")
-                                scan "test_space" -> "t2"
+      motion [policy: full, program: ReshardIfNeeded]
+        projection ("t1"."FIRST_NAME"::string -> "FIRST_NAME")
+          join on "t1"."FIRST_NAME"::string = "t2"."id"::int::string
+            scan "test_space" -> "t1"
+            motion [policy: full, program: ReshardIfNeeded]
+              projection ("t2"."id"::int -> "id", "t2"."sysFrom"::int -> "sysFrom", "t2"."FIRST_NAME"::string -> "FIRST_NAME", "t2"."sys_op"::int -> "sys_op", "t2"."bucket_id"::int -> "bucket_id")
+                scan "test_space" -> "t2"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -462,17 +462,17 @@ fn order_by_in_cte() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("cte"."FIRST_NAME"::string -> "FIRST_NAME")
-        scan cte cte($0)
+      scan cte cte($0)
     subquery $0:
-    projection ("FIRST_NAME"::string -> "FIRST_NAME")
-                order by (1)
-                    motion [policy: full, program: ReshardIfNeeded]
-                        scan
-                            projection ("test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                                scan "test_space"
+      projection ("FIRST_NAME"::string -> "FIRST_NAME")
+        order by (1)
+          motion [policy: full, program: ReshardIfNeeded]
+            scan
+              projection ("test_space"."FIRST_NAME"::string -> "FIRST_NAME")
+                scan "test_space"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -485,14 +485,14 @@ fn table_name_conflict() {
     let plan = sql_to_optimized_ir(sql, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-        scan cte test_space($0)
+      scan cte test_space($0)
     subquery $0:
-    motion [policy: full, program: ReshardIfNeeded]
-                projection ("test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                    scan "test_space"
+      motion [policy: full, program: ReshardIfNeeded]
+        projection ("test_space"."FIRST_NAME"::string -> "FIRST_NAME")
+          scan "test_space"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -542,17 +542,17 @@ fn cte_with_left_join() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("unnamed_join"."E"::int -> "E")
-        motion [policy: full, program: AddMissingRowsForLeftJoin]
-            projection ("cte"."E"::int -> "E", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
-                join on true::bool
-                    scan cte cte($0)
-                    scan "t2"
+      motion [policy: full, program: AddMissingRowsForLeftJoin]
+        projection ("cte"."E"::int -> "E", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
+          join on true::bool
+            scan cte cte($0)
+            scan "t2"
     subquery $0:
-    motion [policy: full, program: ReshardIfNeeded]
-                            projection ("t2"."e"::int -> "E")
-                                scan "t2"
+      motion [policy: full, program: ReshardIfNeeded]
+        projection ("t2"."e"::int -> "E")
+          scan "t2"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }

@@ -96,11 +96,11 @@ SELECT * FROM ( SELECT "t"."a", "t"."b", "t"."c" FROM "t" INDEXED BY "aaa" WHERE
 explain SELECT a FROM t INDEXED BY aaa WHERE true;
 -- EXPECTED:
 projection ("t"."a"::int -> "a")
-    selection true::bool
-        scan "t" (indexed by "aaa")
+  selection true::bool
+    scan "t" (indexed by "aaa")
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]
 
 -- TEST: indexed-by-8
@@ -108,11 +108,11 @@ buckets = [1-3000]
 explain SELECT a FROM t AS ttt INDEXED BY aaa WHERE true;
 -- EXPECTED:
 projection ("ttt"."a"::int -> "a")
-    selection true::bool
-        scan "t" -> "ttt" (indexed by "aaa")
+  selection true::bool
+    scan "t" -> "ttt" (indexed by "aaa")
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]
 
 -- TEST: indexed-by-9
@@ -132,13 +132,13 @@ invalid index: INDEXED BY clause is only supported for tables
 explain DELETE FROM t INDEXED by aaa WHERE true
 -- EXPECTED:
 delete "t"
-    motion [policy: local, program: [PrimaryKey(0), ReshardIfNeeded]]
-        projection ("t"."a"::int -> "pk_col_0")
-            selection true::bool
-                scan "t" (indexed by "aaa")
+  motion [policy: local, program: [PrimaryKey(0), ReshardIfNeeded]]
+    projection ("t"."a"::int -> "pk_col_0")
+      selection true::bool
+        scan "t" (indexed by "aaa")
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]
 
 -- TEST: indexed-by-11
@@ -147,16 +147,16 @@ explain UPDATE t INDEXED BY aaa SET b = d FROM s INDEXED BY bbb WHERE TRUE
 -- EXPECTED:
 update "t"
 "b" = "col_0"
-    motion [policy: local, program: ReshardIfNeeded]
-        projection ("s"."d"::int -> "col_0", "t"."a"::int -> "col_1")
-            join on true::bool
-                scan "t" (indexed by "aaa")
-                motion [policy: full, program: ReshardIfNeeded]
-                    projection ("s"."d"::int -> "d", "s"."bucket_id"::int -> "bucket_id", "s"."e"::int -> "e", "s"."f"::int -> "f")
-                        scan "s" (indexed by "bbb")
+  motion [policy: local, program: ReshardIfNeeded]
+    projection ("s"."d"::int -> "col_0", "t"."a"::int -> "col_1")
+      join on true::bool
+        scan "t" (indexed by "aaa")
+        motion [policy: full, program: ReshardIfNeeded]
+          projection ("s"."d"::int -> "d", "s"."bucket_id"::int -> "bucket_id", "s"."e"::int -> "e", "s"."f"::int -> "f")
+            scan "s" (indexed by "bbb")
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]
 
 -- TEST: indexed-by-12

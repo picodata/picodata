@@ -418,10 +418,10 @@ def test_interactive_portals(pg_client: PgClient):
 
     data = pg_client.execute("", -1)
     assert "\n".join(row[0] for row in data["rows"]) == snapshot("""\
-    scan "t"
+  scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]\
 """)
     assert data["is_finished"] is True

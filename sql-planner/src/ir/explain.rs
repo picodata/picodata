@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter, Write as _};
+use std::fmt::{self, Display, Write as _};
 
 use itertools::Itertools;
 use serde::Serialize;
@@ -36,6 +36,8 @@ use super::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
 use super::types::{CastType, DerivedType};
 use super::value::Value;
 
+const INDENT: &str = "  ";
+
 #[derive(Default, Debug, PartialEq, Serialize, Clone)]
 enum ColExpr {
     Parentheses(Box<ColExpr>),
@@ -69,89 +71,87 @@ enum ColExpr {
 }
 
 impl Display for ColExpr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let s = match &self {
-            ColExpr::Window(window) => window.to_string(),
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            ColExpr::Window(window) => write!(f, "{window}")?,
             ColExpr::Over(stable_func, filter, window) => {
                 let ColExpr::ScalarFunction(func_name, args, ..) = stable_func.as_ref() else {
                     panic!("Expected ScalarFunction expression before OVER clause")
                 };
-                let formatted_args = format!("({})", args.iter().format(", "));
 
-                let prefix = if let Some(filter) = filter {
-                    format!("{func_name}{formatted_args} filter (where {filter}) over")
+                let args = args.iter().format(", ");
+                if let Some(filter) = filter {
+                    write!(f, "{func_name}({args}) filter (where {filter}) over ")?;
                 } else {
-                    format!("{func_name}{formatted_args} over")
+                    write!(f, "{func_name}({args}) over ")?;
                 };
+
                 if let ColExpr::Window(window_explain) = window.as_ref() {
                     let WindowExplain { .. } = window_explain.as_ref();
-                    format!("{prefix} {window}")
+                    write!(f, "{window}")?;
                 } else {
-                    panic!("Expected Window expression in OVER clause")
+                    panic!("Expected Window expression in OVER clause");
                 }
             }
-            ColExpr::Parentheses(child_expr) => format!("({child_expr})"),
-            ColExpr::Alias(expr, name) => format!("{expr} -> \"{name}\""),
-            ColExpr::Arithmetic(left, op, right) => format!("{left} {op} {right}"),
-            ColExpr::Bool(left, op, right) => format!("{left} {op} {right}"),
+            ColExpr::Parentheses(child_expr) => write!(f, "({child_expr})")?,
+            ColExpr::Alias(expr, name) => write!(f, "{expr} -> \"{name}\"")?,
+            ColExpr::Arithmetic(left, op, right) => write!(f, "{left} {op} {right}")?,
+            ColExpr::Bool(left, op, right) => write!(f, "{left} {op} {right}")?,
             ColExpr::Unary(op, expr) => match op {
-                Unary::IsNull => format!("{expr} {op}"),
-                Unary::Exists => format!("{op} {expr}"),
+                Unary::IsNull => write!(f, "{expr} {op}")?,
+                Unary::Exists => write!(f, "{op} {expr}")?,
                 Unary::Not => {
                     if let ColExpr::Bool(_, Bool::And, _) = **expr {
-                        format!("{op} ({expr})")
+                        write!(f, "{op} ({expr})")?;
                     } else {
-                        format!("{op} {expr}")
+                        write!(f, "{op} {expr}")?;
                     }
                 }
             },
-            ColExpr::Column(c, col_type) => format!("{c}::{col_type}"),
-            ColExpr::Index(v, i) => format!("{v}[{i}]"),
-            ColExpr::Cast(v, t) => format!("{v}::{t}"),
+            ColExpr::Column(c, col_type) => write!(f, "{c}::{col_type}")?,
+            ColExpr::Index(v, i) => write!(f, "{v}[{i}]")?,
+            ColExpr::Cast(v, t) => write!(f, "{v}::{t}")?,
             ColExpr::Case(search_expr, when_blocks, else_expr) => {
-                let mut res = String::from("case");
+                write!(f, "case ")?;
                 if let Some(search_expr) = search_expr {
-                    res = format!("{res} {search_expr}");
+                    write!(f, "{search_expr} ")?;
                 }
-
                 for (cond_expr, res_expr) in when_blocks {
-                    res = format!("{res} when {cond_expr} then {res_expr}");
+                    write!(f, "when {cond_expr} then {res_expr} ")?;
                 }
                 if let Some(else_expr) = else_expr {
-                    res = format!("{res} else {else_expr}");
+                    write!(f, "else {else_expr} ")?;
                 }
-                res = format!("{res} end");
-                res
+                write!(f, "end")?;
             }
-            ColExpr::Concat(l, r) => format!("{l} || {r}"),
+            ColExpr::Concat(l, r) => write!(f, "{l} || {r}")?,
             ColExpr::ScalarFunction(name, args, feature, func_type, is_aggr) => {
                 let mut name = name.clone();
                 if !is_aggr {
                     name = to_user(name);
                 }
-                let is_distinct = matches!(feature, Some(FunctionFeature::Distinct));
-                let formatted_args = format!("({})", args.iter().format(", "));
-                let func_type_name = func_type.to_string();
-                format!(
-                    "{name}({}{formatted_args})::{func_type_name}",
-                    if is_distinct { "distinct " } else { "" }
-                )
+                let distinct = match feature {
+                    Some(FunctionFeature::Distinct) => "distinct ",
+                    _other => "",
+                };
+                let args = args.iter().format(", ");
+                write!(f, "{name}({distinct}{args})::{func_type}",)?;
             }
             ColExpr::Trim(kind, pattern, target) => match (kind, pattern) {
-                (Some(k), Some(p)) => format!("TRIM({} {p} from {target})", k.as_str()),
-                (Some(k), None) => format!("TRIM({} from {target})", k.as_str()),
-                (None, Some(p)) => format!("TRIM({p} from {target})"),
-                (None, None) => format!("TRIM({target})"),
+                (Some(k), Some(p)) => write!(f, "TRIM({} {p} from {target})", k.as_str())?,
+                (Some(k), None) => write!(f, "TRIM({} from {target})", k.as_str())?,
+                (None, Some(p)) => write!(f, "TRIM({p} from {target})")?,
+                (None, None) => write!(f, "TRIM({target})")?,
             },
-            ColExpr::Row(row) => row.to_string(),
-            ColExpr::None => String::new(),
+            ColExpr::Row(row) => write!(f, "{row}")?,
+            ColExpr::None => {}
             ColExpr::Like(l, r, escape) => match escape {
-                Some(e) => format!("{l} LIKE {r} ESCAPE {e}"),
-                None => format!("{l} LIKE {r}"),
+                Some(e) => write!(f, "{l} LIKE {r} ESCAPE {e}")?,
+                None => write!(f, "{l} LIKE {r}")?,
             },
         };
 
-        write!(f, "{s}")
+        Ok(())
     }
 }
 
@@ -521,7 +521,7 @@ impl BoundTypeExplain {
 }
 
 impl Display for BoundTypeExplain {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             BoundTypeExplain::PrecedingUnbounded => write!(f, "unbounded preceding"),
             BoundTypeExplain::PrecedingOffset(expr) => write!(f, "{expr} preceding"),
@@ -552,7 +552,7 @@ impl BoundExplain {
 }
 
 impl Display for BoundExplain {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             BoundExplain::Single(bound) => write!(f, "{bound}"),
             BoundExplain::Between(lower, upper) => write!(f, "between {lower} and {upper}"),
@@ -577,7 +577,7 @@ impl FrameExplain {
 }
 
 impl Display for FrameExplain {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {}", self.ty, self.bound)
     }
 }
@@ -590,29 +590,28 @@ struct WindowExplain {
 }
 
 impl Display for WindowExplain {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let mut s = String::from("");
-
-        write!(s, "(")?;
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "(")?;
 
         if !self.partition.is_empty() {
-            write!(s, "partition by ")?;
-            let exprs = format!("({})", self.partition.iter().format(", "));
-            write!(s, "{exprs} ")?;
+            write!(f, "partition by ")?;
+            let exprs = self.partition.iter().format(", ");
+            write!(f, "({exprs}) ")?;
         }
 
         if !self.ordering.is_empty() {
-            write!(s, "order by ")?;
-            let exprs = format!("({})", self.ordering.iter().format(", "));
-            write!(s, "{exprs} ")?;
+            write!(f, "order by ")?;
+            let exprs = self.ordering.iter().format(", ");
+            write!(f, "({exprs}) ")?;
         }
 
         if let Some(frame) = &self.frame {
-            write!(s, "{frame}")?;
+            write!(f, "{frame}")?;
         }
 
-        write!(s, ")")?;
-        write!(f, "{s}")
+        write!(f, ")")?;
+
+        Ok(())
     }
 }
 
@@ -638,14 +637,8 @@ impl Projection {
 }
 
 impl Display for Projection {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let cols = &self
-            .cols
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<String>>()
-            .join(", ");
-
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let cols = self.cols.iter().format(", ");
         write!(f, "projection ({cols})")
     }
 }
@@ -684,26 +677,16 @@ impl GroupBy {
 }
 
 impl Display for GroupBy {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let mut s = "group by ".to_string();
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "group by ")?;
 
-        let gr_exprs = &self
-            .gr_exprs
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<String>>()
-            .join(", ");
+        let gr_exprs = &self.gr_exprs.iter().format(", ");
+        write!(f, "({gr_exprs}) ")?;
 
-        let output_cols = &self
-            .output_cols
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<String>>()
-            .join(", ");
+        let output_cols = &self.output_cols.iter().format(", ");
+        write!(f, "output: ({output_cols})")?;
 
-        write!(s, "({gr_exprs})")?;
-        write!(s, " output: ({output_cols})")?;
-        write!(f, "{s}")
+        Ok(())
     }
 }
 
@@ -714,7 +697,7 @@ enum OrderByExpr {
 }
 
 impl Display for OrderByExpr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             OrderByExpr::Expr { expr } => write!(f, "{expr}"),
             OrderByExpr::Index { value } => write!(f, "{value}"),
@@ -729,7 +712,7 @@ struct OrderByPair {
 }
 
 impl Display for OrderByPair {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(order_type) = &self.order_type {
             write!(f, "{} {order_type}", self.expr)
         } else {
@@ -771,15 +754,9 @@ impl OrderBy {
 }
 
 impl Display for OrderBy {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let order_by_elements = &self
-            .order_by_elements
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<String>>()
-            .join(", ");
-
-        write!(f, "order by ({order_by_elements})")
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let elems = self.order_by_elements.iter().format(", ");
+        write!(f, "order by ({elems})")
     }
 }
 
@@ -861,17 +838,18 @@ impl Update {
 }
 
 impl Display for Update {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let mut s = "update ".to_string();
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "update \"{}\"", &self.table)?;
 
-        write!(s, "\"{}\"", &self.table)?;
-        let update_statements = self
+        let items = self
             .update_statements
             .iter()
-            .map(|(col, alias)| format!("{col} = {alias}"))
-            .join("\n");
-        write!(s, "\n{update_statements}")?;
-        write!(f, "{s}")
+            .map(|(col, alias)| format_smolstr!("{col} = {alias}"))
+            .format("\n");
+
+        write!(f, "{items}")?;
+
+        Ok(())
     }
 }
 
@@ -899,7 +877,7 @@ impl Scan {
 }
 
 impl Display for Scan {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut s = String::from("scan ");
 
         write!(s, "\"{}\"", &self.table)?;
@@ -919,19 +897,18 @@ impl Display for Scan {
 #[derive(Debug, PartialEq, Serialize, Clone)]
 struct Ref {
     /// Reference to subquery/window index in `FullExplain` parts
-    number: usize,
+    position: usize,
 }
 
 impl Ref {
-    #[allow(dead_code)]
-    fn new(number: usize) -> Self {
-        Ref { number }
+    fn new(position: usize) -> Self {
+        Ref { position }
     }
 }
 
 impl Display for Ref {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "${}", self.number)
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "${}", self.position)
     }
 }
 
@@ -942,13 +919,13 @@ enum RowVal {
 }
 
 impl Display for RowVal {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let s = match &self {
-            RowVal::ColumnExpr(c) => c.to_string(),
-            RowVal::SqRef(r) => r.to_string(),
-        };
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RowVal::ColumnExpr(c) => write!(f, "{c}")?,
+            RowVal::SqRef(r) => write!(f, "{r}")?,
+        }
 
-        write!(f, "{s}")
+        Ok(())
     }
 }
 
@@ -1012,14 +989,8 @@ impl Row {
 }
 
 impl Display for Row {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let cols = &self
-            .cols
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<String>>()
-            .join(", ");
-
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let cols = self.cols.iter().format(", ");
         write!(f, "ROW({cols})")
     }
 }
@@ -1027,24 +998,23 @@ impl Display for Row {
 #[derive(Debug, PartialEq, Serialize, Clone)]
 struct SubQuery {
     /// Subquery alias. For subquery in `WHERE` cause alias is `None`.
-    alias: Option<String>,
+    alias: Option<SmolStr>,
 }
 
 impl SubQuery {
-    #[allow(dead_code)]
-    fn new(alias: Option<String>) -> Self {
+    fn new(alias: Option<SmolStr>) -> Self {
         SubQuery { alias }
     }
 }
 
 impl Display for SubQuery {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let mut s = String::from("scan");
-
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "scan")?;
         if let Some(a) = &self.alias {
-            write!(s, " \"{a}\"")?;
+            write!(f, " \"{a}\"")?;
         }
-        write!(f, "{s}")
+
+        Ok(())
     }
 }
 
@@ -1061,7 +1031,7 @@ impl Motion {
 }
 
 impl Display for Motion {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "motion [policy: {}, program: {}]",
@@ -1080,7 +1050,7 @@ enum MotionPolicy {
 }
 
 impl Display for MotionPolicy {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
             MotionPolicy::None => write!(f, "none"),
             MotionPolicy::Full => write!(f, "full"),
@@ -1097,14 +1067,8 @@ struct MotionKey {
 }
 
 impl Display for MotionKey {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let targets = &self
-            .targets
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<String>>()
-            .join(", ");
-
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let targets = self.targets.iter().format(", ");
         write!(f, "[{targets}]")
     }
 }
@@ -1116,31 +1080,11 @@ enum Target {
 }
 
 impl Display for Target {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
             Target::Reference(s) => write!(f, "ref(\"{s}\")"),
             Target::Value(v) => write!(f, "value({v})"),
         }
-    }
-}
-
-#[derive(Debug, PartialEq, Serialize, Clone)]
-struct InnerJoin {
-    condition: ColExpr,
-    kind: JoinKind,
-}
-
-impl Display for InnerJoin {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let kind = match self.kind {
-            JoinKind::LeftOuter => {
-                let mut s = self.kind.to_string();
-                s.push(' ');
-                s
-            }
-            JoinKind::Inner => String::new(),
-        };
-        write!(f, "{kind}join on {0}", self.condition)
     }
 }
 
@@ -1152,7 +1096,7 @@ enum ExplainNode {
     Intersect,
     GroupBy(GroupBy),
     OrderBy(OrderBy),
-    InnerJoin(InnerJoin),
+    Join(ColExpr, JoinKind),
     ValueRow(ColExpr),
     Value,
     Insert(SmolStr, ConflictStrategy),
@@ -1170,44 +1114,49 @@ enum ExplainNode {
 }
 
 impl Display for ExplainNode {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let s = match &self {
-            ExplainNode::Cte(s, r) => format_smolstr!("scan cte {s}({r})"),
-            ExplainNode::Delete(s) => format_smolstr!("delete \"{s}\""),
-            ExplainNode::Except => "except".to_smolstr(),
-            ExplainNode::InnerJoin(i) => i.to_smolstr(),
-            ExplainNode::ValueRow(r) => format_smolstr!("value row (data={r})"),
-            ExplainNode::Value => "values".to_smolstr(),
-            ExplainNode::Insert(s, conflict) => {
-                format_smolstr!("insert \"{s}\" on conflict: {conflict}")
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            ExplainNode::Cte(name, r) => write!(f, "scan cte {name}({r})")?,
+            ExplainNode::Delete(name) => write!(f, "delete \"{name}\"")?,
+            ExplainNode::Except => write!(f, "except")?,
+            ExplainNode::Join(col_expr, kind) => {
+                match kind {
+                    JoinKind::LeftOuter => write!(f, "{kind} ")?,
+                    JoinKind::Inner => {}
+                }
+                write!(f, "join on {col_expr}")?;
             }
-            ExplainNode::Projection(e) => e.to_smolstr(),
-            ExplainNode::GroupBy(p) => p.to_smolstr(),
-            ExplainNode::OrderBy(o_b) => o_b.to_smolstr(),
-            ExplainNode::Scan(s) => s.to_smolstr(),
-            ExplainNode::Selection(s) => format_smolstr!("selection {s}"),
-            ExplainNode::Having(s) => format_smolstr!("having {s}"),
-            ExplainNode::Union => "union".to_smolstr(),
-            ExplainNode::UnionAll => "union all".to_smolstr(),
-            ExplainNode::Intersect => "intersect".to_smolstr(),
-            ExplainNode::Update(u) => u.to_smolstr(),
-            ExplainNode::SubQuery(s) => s.to_smolstr(),
-            ExplainNode::Motion(m) => m.to_smolstr(),
-            ExplainNode::Limit(l) => format_smolstr!("limit {l}"),
+            ExplainNode::ValueRow(col_expr) => {
+                write!(f, "value row (data={col_expr})")?;
+            }
+            ExplainNode::Value => write!(f, "values")?,
+            ExplainNode::Insert(name, conflict) => {
+                write!(f, "insert \"{name}\" on conflict: {conflict}")?;
+            }
+            ExplainNode::Projection(projection) => write!(f, "{projection}")?,
+            ExplainNode::GroupBy(group_by) => write!(f, "{group_by}")?,
+            ExplainNode::OrderBy(order_by) => write!(f, "{order_by}")?,
+            ExplainNode::Scan(scan) => write!(f, "{scan}")?,
+            ExplainNode::Selection(col_expr) => write!(f, "selection {col_expr}")?,
+            ExplainNode::Having(col_expr) => write!(f, "having {col_expr}")?,
+            ExplainNode::Union => write!(f, "union")?,
+            ExplainNode::UnionAll => write!(f, "union all")?,
+            ExplainNode::Intersect => write!(f, "intersect")?,
+            ExplainNode::Update(update) => write!(f, "{update}")?,
+            ExplainNode::SubQuery(sub_query) => write!(f, "{sub_query}")?,
+            ExplainNode::Motion(motion) => write!(f, "{motion}")?,
+            ExplainNode::Limit(limit) => write!(f, "limit {limit}")?,
         };
 
-        write!(f, "{s}")
+        Ok(())
     }
 }
 
 /// Describe sql query (or subquery) as recursive type
 #[derive(Debug, Serialize, Clone)]
 struct ExplainTreePart {
-    /// Level helps to detect count of idents
-    #[serde(skip_serializing)]
-    level: usize,
     /// Current node of sql query
-    current: Option<ExplainNode>,
+    current: ExplainNode,
     /// Children nodes of current sql node
     children: Vec<ExplainTreePart>,
 }
@@ -1218,41 +1167,24 @@ impl PartialEq for ExplainTreePart {
     }
 }
 
-impl Display for ExplainTreePart {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let mut s = String::new();
-        if let Some(c) = &self.current {
-            writeln!(s, "{}", &c.to_string())?;
+impl ExplainTreePart {
+    fn do_fmt(&self, f: &mut fmt::Formatter<'_>, level: usize) -> fmt::Result {
+        for _ in 0..level {
+            write!(f, "{}", INDENT)?;
         }
-
-        let ident = (0..=self.level).map(|_| "    ").collect::<String>();
+        writeln!(f, "{}", self.current)?;
 
         for child in &self.children {
-            s.push_str(&ident);
-            s.push_str(&child.to_string());
+            child.do_fmt(f, level + 1)?;
         }
 
-        write!(f, "{s}")
+        Ok(())
     }
 }
 
-impl Default for ExplainTreePart {
-    fn default() -> Self {
-        Self {
-            level: 0,
-            current: None,
-            children: Vec::with_capacity(200),
-        }
-    }
-}
-
-impl ExplainTreePart {
-    fn with_level(level: usize) -> Self {
-        ExplainTreePart {
-            level,
-            current: None,
-            children: Vec::with_capacity(100),
-        }
+impl Display for ExplainTreePart {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.do_fmt(f, 0)
     }
 }
 
@@ -1315,58 +1247,47 @@ fn buckets_repr(buckets: &Buckets, bucket_count: u64) -> String {
 }
 
 impl Display for FullExplain {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let mut s = self.main_query.to_string();
-
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.main_query)?;
         for (pos, (_, sq)) in self.subqueries.iter().enumerate() {
-            writeln!(s, "subquery ${pos}:")?;
-            s.push_str(&sq.to_string());
+            writeln!(f, "subquery ${pos}:")?;
+            sq.do_fmt(f, 1)?;
         }
         for (pos, window) in self.windows.iter().enumerate() {
-            writeln!(s, "window ${pos}:")?;
-            s.push_str(&window.to_string());
+            writeln!(f, "window ${pos}:")?;
+            write!(f, "{window}")?;
         }
         if !self.exec_options.is_empty() {
-            writeln!(s, "execution options:")?;
+            writeln!(f, "execution options:")?;
             for opt in &self.exec_options {
-                writeln!(s, "{:4}{} = {}", "", opt.0, opt.1)?;
+                writeln!(f, "{}{} = {}", INDENT, opt.0, opt.1)?;
             }
         }
         if let Some(info) = &self.buckets_info {
             match info {
-                BucketsInfo::Unknown => writeln!(s, "buckets = unknown")?,
+                BucketsInfo::Unknown => writeln!(f, "buckets = unknown")?,
                 BucketsInfo::Calculated(calculated) => {
                     let repr = buckets_repr(&calculated.buckets, calculated.bucket_count);
                     // For buckets ANY and ALL there is no sense to handle in the
                     // output the case when bucket count is not exact.
                     match calculated.buckets {
-                        Buckets::Any | Buckets::All => writeln!(s, "buckets = {repr}",)?,
-                        _ if calculated.is_exact => writeln!(s, "buckets = {repr}",)?,
-                        _ => writeln!(s, "buckets <= {repr}",)?,
+                        Buckets::Any | Buckets::All => writeln!(f, "buckets = {repr}",)?,
+                        _ if calculated.is_exact => writeln!(f, "buckets = {repr}",)?,
+                        _ => writeln!(f, "buckets <= {repr}",)?,
                     }
                 }
             }
         }
 
-        write!(f, "{s}")
+        Ok(())
     }
 }
 
 impl FullExplain {
-    fn empty() -> Self {
-        Self {
-            main_query: ExplainTreePart::default(),
-            subqueries: OrderedMap::with_hasher(RepeatableState),
-            windows: Vec::new(),
-            exec_options: Vec::new(),
-            buckets_info: None,
-        }
-    }
-
     /// Retrieve SubQueryRefMap from relational node children
     fn get_sq_ref_map(
-        &mut self,
         stack: &mut Vec<ExplainTreePart>,
+        known_subqueries: &mut OrderedMap<NodeId, ExplainTreePart, RepeatableState>,
         subqueries: &[NodeId],
     ) -> SubQueryRefMap {
         let mut sq_ref_map: SubQueryRefMap = HashMap::with_capacity(subqueries.len());
@@ -1377,11 +1298,10 @@ impl FullExplain {
             let sq_node = stack
                 .pop()
                 .unwrap_or_else(|| panic!("Rel node failed to pop a sub-query."));
-            if !self.subqueries.contains_key(sq_id) {
-                self.subqueries.insert(*sq_id, sq_node);
+            if !known_subqueries.contains_key(sq_id) {
+                known_subqueries.insert(*sq_id, sq_node);
             }
-            let offset = self
-                .subqueries
+            let offset = known_subqueries
                 .iter()
                 .enumerate()
                 .find(|(_, (sq_id_inner, _))| sq_id_inner == sq_id)
@@ -1396,23 +1316,24 @@ impl FullExplain {
     #[allow(dead_code)]
     #[allow(clippy::too_many_lines)]
     pub fn new(ir: &Plan, top_id: NodeId) -> Result<Self, SbroadError> {
+        let exec_options = vec![
+            (
+                OptionKind::VdbeOpcodeMax,
+                Value::Integer(ir.effective_options.sql_vdbe_opcode_max),
+            ),
+            (
+                OptionKind::MotionRowMax,
+                Value::Integer(ir.effective_options.sql_motion_row_max),
+            ),
+        ];
+
+        let mut known_subqueries = OrderedMap::with_hasher(RepeatableState);
         let mut stack: Vec<ExplainTreePart> = Vec::new();
-        let mut result = FullExplain::empty();
-        result.exec_options.push((
-            OptionKind::VdbeOpcodeMax,
-            Value::Integer(ir.effective_options.sql_vdbe_opcode_max),
-        ));
-        result.exec_options.push((
-            OptionKind::MotionRowMax,
-            Value::Integer(ir.effective_options.sql_motion_row_max),
-        ));
 
         let dft_post = PostOrder::new(|node| ir.nodes.rel_iter(node), REL_CAPACITY);
-        for LevelNode(level, id) in dft_post.traverse_into_iter(top_id) {
-            let mut current_node = ExplainTreePart::with_level(level);
+        for LevelNode(_, id) in dft_post.traverse_into_iter(top_id) {
             let node = ir.get_relation_node(id)?;
-
-            current_node.current = match &node {
+            let (current, children) = match &node {
                 Relational::Intersect { .. } => {
                     let right = stack.pop().ok_or_else(|| {
                         SbroadError::UnexpectedNumberOfValues(
@@ -1424,9 +1345,8 @@ impl FullExplain {
                             "Intersect node must have exactly two children".into(),
                         )
                     })?;
-                    current_node.children.push(left);
-                    current_node.children.push(right);
-                    Some(ExplainNode::Intersect)
+
+                    (ExplainNode::Intersect, vec![left, right])
                 }
                 Relational::Except { .. } => {
                     let right = stack.pop().ok_or_else(|| {
@@ -1439,9 +1359,8 @@ impl FullExplain {
                             "Exception node must have exactly two children".into(),
                         )
                     })?;
-                    current_node.children.push(left);
-                    current_node.children.push(right);
-                    Some(ExplainNode::Except)
+
+                    (ExplainNode::Except, vec![left, right])
                 }
                 Relational::GroupBy(node::GroupBy {
                     gr_exprs,
@@ -1449,53 +1368,57 @@ impl FullExplain {
                     subqueries,
                     ..
                 }) => {
-                    let sq_ref_map = result.get_sq_ref_map(&mut stack, subqueries);
+                    let sq_ref_map =
+                        FullExplain::get_sq_ref_map(&mut stack, &mut known_subqueries, subqueries);
                     let child = stack.pop().ok_or_else(|| {
                         SbroadError::UnexpectedNumberOfValues(
                             "GroupBy must have exactly one child".into(),
                         )
                     })?;
-                    current_node.children.push(child);
-                    let p = GroupBy::new(ir, gr_exprs, *output, &sq_ref_map)?;
-                    Some(ExplainNode::GroupBy(p))
+                    let group_by = GroupBy::new(ir, gr_exprs, *output, &sq_ref_map)?;
+
+                    (ExplainNode::GroupBy(group_by), vec![child])
                 }
                 Relational::OrderBy(node::OrderBy {
                     order_by_elements,
                     subqueries,
                     ..
                 }) => {
-                    let sq_ref_map = result.get_sq_ref_map(&mut stack, subqueries);
+                    let sq_ref_map =
+                        FullExplain::get_sq_ref_map(&mut stack, &mut known_subqueries, subqueries);
                     let child = stack.pop().ok_or_else(|| {
                         SbroadError::UnexpectedNumberOfValues(
                             "OrderBy must have exactly one child".into(),
                         )
                     })?;
-                    current_node.children.push(child);
-                    let o_b = OrderBy::new(ir, order_by_elements, &sq_ref_map)?;
-                    Some(ExplainNode::OrderBy(o_b))
+                    let order_by = OrderBy::new(ir, order_by_elements, &sq_ref_map)?;
+
+                    (ExplainNode::OrderBy(order_by), vec![child])
                 }
                 Relational::Projection(node::Projection {
                     output, subqueries, ..
                 }) => {
-                    let sq_ref_map: HashMap<NodeId, usize> =
-                        result.get_sq_ref_map(&mut stack, subqueries);
+                    let sq_ref_map =
+                        FullExplain::get_sq_ref_map(&mut stack, &mut known_subqueries, subqueries);
                     let child = stack.pop().ok_or_else(|| {
                         SbroadError::UnexpectedNumberOfValues(
                             "Projection must have exactly one child".into(),
                         )
                     })?;
-                    current_node.children.push(child);
-                    let p = Projection::new(ir, *output, &sq_ref_map)?;
-                    Some(ExplainNode::Projection(p))
+                    let projection = Projection::new(ir, *output, &sq_ref_map)?;
+
+                    (ExplainNode::Projection(projection), vec![child])
                 }
                 Relational::SelectWithoutScan(node::SelectWithoutScan {
                     output,
                     subqueries,
                     ..
                 }) => {
-                    let sq_ref_map = result.get_sq_ref_map(&mut stack, subqueries);
+                    let sq_ref_map =
+                        FullExplain::get_sq_ref_map(&mut stack, &mut known_subqueries, subqueries);
                     let p = Projection::new(ir, *output, &sq_ref_map)?;
-                    Some(ExplainNode::Projection(p))
+
+                    (ExplainNode::Projection(p), vec![])
                 }
                 Relational::ScanRelation(ScanRelation {
                     relation,
@@ -1503,24 +1426,21 @@ impl FullExplain {
                     indexed_by,
                     ..
                 }) => {
-                    let s = Scan::new(
-                        relation.to_smolstr(),
-                        alias.as_ref().map(ToSmolStr::to_smolstr),
-                        indexed_by.as_ref().map(ToSmolStr::to_smolstr),
-                    );
-                    Some(ExplainNode::Scan(s))
+                    let s = Scan::new(relation.clone(), alias.clone(), indexed_by.clone());
+
+                    (ExplainNode::Scan(s), vec![])
                 }
                 Relational::ScanCte(ScanCte { alias, child, .. }) => {
                     let child_tree = stack.pop().expect("CTE node must have exactly one child");
-                    let existing_pos = result
-                        .subqueries
+                    let existing_pos = known_subqueries
                         .iter()
                         .position(|(_, sq)| *sq == child_tree);
                     let pos = existing_pos.unwrap_or_else(|| {
-                        result.subqueries.insert(*child, child_tree);
-                        result.subqueries.len() - 1
+                        known_subqueries.insert(*child, child_tree);
+                        known_subqueries.len() - 1
                     });
-                    Some(ExplainNode::Cte(alias.clone(), Ref::new(pos)))
+
+                    (ExplainNode::Cte(alias.clone(), Ref::new(pos)), vec![])
                 }
                 Relational::Selection(Selection {
                     subqueries, filter, ..
@@ -1528,13 +1448,13 @@ impl FullExplain {
                 | Relational::Having(Having {
                     subqueries, filter, ..
                 }) => {
-                    let sq_ref_map = result.get_sq_ref_map(&mut stack, subqueries);
+                    let sq_ref_map =
+                        FullExplain::get_sq_ref_map(&mut stack, &mut known_subqueries, subqueries);
                     let child = stack.pop().ok_or_else(|| {
                         SbroadError::UnexpectedNumberOfValues(
                             "Selection or Having must have exactly one child".into(),
                         )
                     })?;
-                    current_node.children.push(child);
                     let filter_id = *ir.undo.get_oldest(filter);
                     let selection = ColExpr::new(ir, filter_id, &sq_ref_map)?;
                     let explain_node = match &node {
@@ -1542,7 +1462,8 @@ impl FullExplain {
                         Relational::Having { .. } => ExplainNode::Having(selection),
                         _ => panic!("Expected Selection or Having node."),
                     };
-                    Some(explain_node)
+
+                    (explain_node, vec![child])
                 }
                 u @ (Relational::UnionAll { .. } | Relational::Union { .. }) => {
                     let right = stack.pop().ok_or_else(|| {
@@ -1555,13 +1476,13 @@ impl FullExplain {
                             "Union node must have exactly two children".into(),
                         )
                     })?;
-                    current_node.children.push(left);
-                    current_node.children.push(right);
-                    if matches!(u, Relational::Union { .. }) {
-                        Some(ExplainNode::Union)
-                    } else {
-                        Some(ExplainNode::UnionAll)
-                    }
+
+                    let kind = match u {
+                        Relational::Union(..) => ExplainNode::Union,
+                        _other => ExplainNode::UnionAll,
+                    };
+
+                    (kind, vec![left, right])
                 }
                 Relational::ScanSubQuery(ScanSubQuery { alias, .. }) => {
                     let child = stack.pop().ok_or_else(|| {
@@ -1569,9 +1490,9 @@ impl FullExplain {
                             "ScanSubQuery node must have exactly one child".into(),
                         )
                     })?;
-                    current_node.children.push(child);
-                    let s = SubQuery::new(alias.as_ref().map(ToString::to_string));
-                    Some(ExplainNode::SubQuery(s))
+                    let subquery = SubQuery::new(alias.clone());
+
+                    (ExplainNode::SubQuery(subquery), vec![child])
                 }
                 Relational::Motion(MotionRel {
                     child: child_id,
@@ -1584,7 +1505,6 @@ impl FullExplain {
                             "Motion node must have exactly one child".into(),
                         )
                     })?;
-                    current_node.children.push(child);
 
                     let collect_targets = |s: &IrMotionKey| -> Result<Vec<Target>, SbroadError> {
                         let child_id = child_id.ok_or_else(|| {
@@ -1616,6 +1536,7 @@ impl FullExplain {
                                 IrTarget::Value(v) => Ok(Target::Value(v.clone())),
                             })
                             .collect::<Result<Vec<Target>, _>>()?;
+
                         Ok(targets)
                     };
 
@@ -1633,8 +1554,9 @@ impl FullExplain {
                         }
                     };
 
-                    let m = Motion::new(p, program.clone());
-                    Some(ExplainNode::Motion(m))
+                    let motion = Motion::new(p, program.clone());
+
+                    (ExplainNode::Motion(motion), vec![child])
                 }
                 Relational::Join(Join {
                     subqueries,
@@ -1642,7 +1564,8 @@ impl FullExplain {
                     kind,
                     ..
                 }) => {
-                    let sq_ref_map = result.get_sq_ref_map(&mut stack, subqueries);
+                    let sq_ref_map =
+                        FullExplain::get_sq_ref_map(&mut stack, &mut known_subqueries, subqueries);
                     let right = stack.pop().ok_or_else(|| {
                         SbroadError::UnexpectedNumberOfValues(
                             "Join node must have exactly two children".into(),
@@ -1653,36 +1576,31 @@ impl FullExplain {
                             "Join node must have exactly two children".into(),
                         )
                     })?;
-                    current_node.children.push(left);
-                    current_node.children.push(right);
+
                     let condition = ColExpr::new(ir, *condition, &sq_ref_map)?;
-                    Some(ExplainNode::InnerJoin(InnerJoin {
-                        condition,
-                        kind: kind.clone(),
-                    }))
+                    let join = ExplainNode::Join(condition, *kind);
+
+                    (join, vec![left, right])
                 }
                 Relational::ValuesRow(ValuesRow {
                     data, subqueries, ..
                 }) => {
-                    let sq_ref_map = result.get_sq_ref_map(&mut stack, subqueries);
+                    let sq_ref_map =
+                        FullExplain::get_sq_ref_map(&mut stack, &mut known_subqueries, subqueries);
                     let row = ColExpr::new(ir, *data, &sq_ref_map)?;
 
-                    Some(ExplainNode::ValueRow(row))
+                    (ExplainNode::ValueRow(row), vec![])
                 }
                 Relational::Values(Values { children, .. }) => {
-                    let mut amount_values = children.len();
+                    let Some(start_pos) = stack.len().checked_sub(children.len()) else {
+                        return Err(SbroadError::UnexpectedNumberOfValues(
+                            "Insert node has insufficient row values.".into(),
+                        ));
+                    };
+                    let children = stack[start_pos..].to_vec();
+                    stack.truncate(start_pos);
 
-                    while amount_values > 0 {
-                        let value_row = stack.pop().ok_or_else(|| {
-                            SbroadError::UnexpectedNumberOfValues(
-                                "Insert node failed to pop a value row.".into(),
-                            )
-                        })?;
-
-                        current_node.children.insert(0, value_row);
-                        amount_values -= 1;
-                    }
-                    Some(ExplainNode::Value)
+                    (ExplainNode::Value, children)
                 }
                 Relational::Insert(Insert {
                     relation,
@@ -1694,13 +1612,9 @@ impl FullExplain {
                             "Insert node failed to pop a value row.".into(),
                         )
                     })?;
+                    let insert = ExplainNode::Insert(relation.clone(), *conflict_strategy);
 
-                    current_node.children.push(values);
-
-                    Some(ExplainNode::Insert(
-                        relation.to_smolstr(),
-                        *conflict_strategy,
-                    ))
+                    (insert, vec![values])
                 }
                 Relational::Update { .. } => {
                     let values = stack.pop().ok_or_else(|| {
@@ -1708,14 +1622,14 @@ impl FullExplain {
                             "Insert node failed to pop a value row.".into(),
                         )
                     })?;
+                    let update = ExplainNode::Update(Update::new(ir, id)?);
 
-                    current_node.children.push(values);
-
-                    Some(ExplainNode::Update(Update::new(ir, id)?))
+                    (update, vec![values])
                 }
                 Relational::Delete(Delete {
                     relation, output, ..
                 }) => {
+                    let mut children = vec![];
                     if output.is_some() {
                         let values = stack.pop().ok_or_else(|| {
                             SbroadError::UnexpectedNumberOfValues(
@@ -1723,10 +1637,11 @@ impl FullExplain {
                             )
                         })?;
 
-                        current_node.children.push(values);
+                        children.push(values);
                     }
+                    let delete = ExplainNode::Delete(relation.clone());
 
-                    Some(ExplainNode::Delete(relation.to_smolstr()))
+                    (delete, children)
                 }
                 Relational::Limit(Limit { limit, .. }) => {
                     let child = stack.pop().ok_or_else(|| {
@@ -1735,17 +1650,25 @@ impl FullExplain {
                         )
                     })?;
 
-                    current_node.children.push(child);
-
-                    Some(ExplainNode::Limit(*limit))
+                    (ExplainNode::Limit(*limit), vec![child])
                 }
             };
 
-            stack.push(current_node);
+            stack.push(ExplainTreePart { current, children });
         }
-        result.main_query = stack
+
+        let main_query = stack
             .pop()
             .ok_or_else(|| SbroadError::NotFound(Entity::Node, "that is explain top".into()))?;
+
+        let result = Self {
+            main_query,
+            subqueries: known_subqueries,
+            windows: Vec::new(),
+            exec_options,
+            buckets_info: None,
+        };
+
         Ok(result)
     }
 

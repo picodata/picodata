@@ -6,10 +6,10 @@ fn concat1_test() {
     let plan = sql_to_optimized_ir(sql, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ('1'::string || 'hello'::string -> "col_1")
-        scan "t1"
+      scan "t1"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -19,10 +19,10 @@ fn concat2_test() {
     let plan = sql_to_optimized_ir(sql, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t1"."a"::string -> "a")
-        selection (('1'::string || "t1"."a"::string) || '2'::string) = '42'::string
-            scan "t1"
+      selection (('1'::string || "t1"."a"::string) || '2'::string) = '42'::string
+        scan "t1"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }

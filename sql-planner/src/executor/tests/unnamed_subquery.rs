@@ -15,12 +15,12 @@ fn unnamed_subquery1_test() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("unnamed_subquery"."a"::int -> "a", "unnamed_subquery"."b"::int -> "b", "unnamed_subquery"."c"::int -> "c", "unnamed_subquery"."d"::int -> "d")
-        scan "unnamed_subquery"
-            projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-                scan "t"
+      scan "unnamed_subquery"
+        projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+          scan "t"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -31,17 +31,17 @@ fn unnamed_subquery2_test() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("unnamed_subquery"."a"::int -> "a", "unnamed_subquery"."b"::int -> "b", "unnamed_subquery"."c"::int -> "c", "unnamed_subquery"."d"::int -> "d", "unnamed_subquery_1"."a"::int -> "a", "unnamed_subquery_1"."b"::int -> "b", "unnamed_subquery_1"."c"::int -> "c", "unnamed_subquery_1"."d"::int -> "d")
-        join on true::bool
-            scan "unnamed_subquery"
-                projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-                    scan "t"
-            motion [policy: full, program: ReshardIfNeeded]
-                scan "unnamed_subquery_1"
-                    projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-                        scan "t"
+      join on true::bool
+        scan "unnamed_subquery"
+          projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+            scan "t"
+        motion [policy: full, program: ReshardIfNeeded]
+          scan "unnamed_subquery_1"
+            projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+              scan "t"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -53,17 +53,17 @@ fn unnamed_subquery_name_conflict1_test() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("unnamed_subquery_1"."a"::int -> "a", "unnamed_subquery_1"."b"::int -> "b", "unnamed_subquery_1"."c"::int -> "c", "unnamed_subquery_1"."d"::int -> "d", "unnamed_subquery"."a"::int -> "a", "unnamed_subquery"."b"::int -> "b", "unnamed_subquery"."c"::int -> "c", "unnamed_subquery"."d"::int -> "d")
-        join on true::bool
-            scan "unnamed_subquery_1"
-                projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-                    scan "t"
-            motion [policy: full, program: ReshardIfNeeded]
-                scan "unnamed_subquery"
-                    projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-                        scan "t"
+      join on true::bool
+        scan "unnamed_subquery_1"
+          projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+            scan "t"
+        motion [policy: full, program: ReshardIfNeeded]
+          scan "unnamed_subquery"
+            projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+              scan "t"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 
@@ -74,18 +74,18 @@ fn unnamed_subquery_name_conflict2_test() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("unnamed_subquery_1"."a"::int -> "a", "unnamed_subquery_1"."b"::int -> "b", "unnamed_subquery_1"."c"::int -> "c", "unnamed_subquery_1"."d"::int -> "d", "unnamed_subquery"."a"::int -> "a", "unnamed_subquery"."b"::int -> "b", "unnamed_subquery"."c"::int -> "c", "unnamed_subquery"."d"::int -> "d")
-        join on true::bool
-            scan "unnamed_subquery_1"
-                projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-                    scan "t"
-            scan cte unnamed_subquery($0)
+      join on true::bool
+        scan "unnamed_subquery_1"
+          projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+            scan "t"
+        scan cte unnamed_subquery($0)
     subquery $0:
-    motion [policy: full, program: ReshardIfNeeded]
-                    projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-                        scan "t"
+      motion [policy: full, program: ReshardIfNeeded]
+        projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+          scan "t"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 

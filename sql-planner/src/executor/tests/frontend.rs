@@ -73,13 +73,13 @@ fn front_explain_select_sql1() {
 
     let actual_explain = query.as_explain().unwrap();
     insta::assert_snapshot!(*actual_explain, @r#"
-        projection ("t"."identification_number"::int -> "c1", "t"."product_code"::string -> "product_code")
-            scan "hash_testing" -> "t"
-        execution options:
-            sql_vdbe_opcode_max = 45000
-            sql_motion_row_max = 5000
-        buckets = [1-10000]
-        "#);
+    projection ("t"."identification_number"::int -> "c1", "t"."product_code"::string -> "product_code")
+      scan "hash_testing" -> "t"
+    execution options:
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
+    buckets = [1-10000]
+    "#);
 }
 
 #[test]
@@ -93,16 +93,16 @@ fn front_explain_select_sql2() {
 
     let actual_explain = query.as_explain().unwrap();
     insta::assert_snapshot!(*actual_explain, @r#"
-        union all
-            projection ("t"."identification_number"::int -> "c1", "t"."product_code"::string -> "product_code")
-                scan "hash_testing" -> "t"
-            projection ("t2"."identification_number"::int -> "identification_number", "t2"."product_code"::string -> "product_code")
-                scan "hash_testing_hist" -> "t2"
-        execution options:
-            sql_vdbe_opcode_max = 45000
-            sql_motion_row_max = 5000
-        buckets = [1-10000]
-        "#);
+    union all
+      projection ("t"."identification_number"::int -> "c1", "t"."product_code"::string -> "product_code")
+        scan "hash_testing" -> "t"
+      projection ("t2"."identification_number"::int -> "identification_number", "t2"."product_code"::string -> "product_code")
+        scan "hash_testing_hist" -> "t2"
+    execution options:
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
+    buckets = [1-10000]
+    "#);
 }
 
 #[test]
@@ -116,17 +116,17 @@ fn front_explain_select_sql3() {
 
     let actual_explain = query.as_explain().unwrap();
     insta::assert_snapshot!(*actual_explain, @r#"
-        projection ("q1"."a"::string -> "a")
-            join on "q1"."a"::string = "q2"."a2"::string
-                scan "t3" -> "q1"
-                scan "q2"
-                    projection ("t3"."a"::string -> "a2", "t3"."b"::int -> "b2")
-                        scan "t3"
-        execution options:
-            sql_vdbe_opcode_max = 45000
-            sql_motion_row_max = 5000
-        buckets = [1-10000]
-        "#);
+    projection ("q1"."a"::string -> "a")
+      join on "q1"."a"::string = "q2"."a2"::string
+        scan "t3" -> "q1"
+        scan "q2"
+          projection ("t3"."a"::string -> "a2", "t3"."b"::int -> "b2")
+            scan "t3"
+    execution options:
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
+    buckets = [1-10000]
+    "#);
 }
 
 #[test]
@@ -140,13 +140,13 @@ fn front_explain_select_sql4() {
 
     let actual_explain = query.as_explain().unwrap();
     insta::assert_snapshot!(actual_explain, @r#"
-        projection ("q2"."a"::string -> "a")
-            join on "q1"."a"::string = "q2"."a"::string
-                scan "t3" -> "q1"
-                scan "t3" -> "q2"
-        execution options:
-            sql_vdbe_opcode_max = 45000
-            sql_motion_row_max = 5000
-        buckets = [1-10000]
-        "#);
+    projection ("q2"."a"::string -> "a")
+      join on "q1"."a"::string = "q2"."a"::string
+        scan "t3" -> "q1"
+        scan "t3" -> "q2"
+    execution options:
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
+    buckets = [1-10000]
+    "#);
 }

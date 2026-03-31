@@ -325,15 +325,15 @@ SELECT t1.a FROM t1 d JOIN t1 ON t1.b = d.a WHERE t1.b = d.c AND (SELECT e.a FRO
 EXPLAIN SELECT (values (1)) from testing_space;
 -- EXPECTED:
 projection (ROW($0) -> "col_1")
-    scan "testing_space"
+  scan "testing_space"
 subquery $0:
-scan
-        motion [policy: full, program: ReshardIfNeeded]
-            values
-                value row (data=ROW(1::int))
+  scan
+    motion [policy: full, program: ReshardIfNeeded]
+      values
+        value row (data=ROW(1::int))
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]
 
 -- TEST: test-explain-plan-subquery-as-expression-under-order-by
@@ -341,19 +341,19 @@ buckets = [1-3000]
 EXPLAIN SELECT "id" FROM "testing_space" ORDER BY "id" + (VALUES (1));
 -- EXPECTED:
 projection ("id"::int -> "id")
-    order by ("id"::int + ROW($0))
-        motion [policy: full, program: ReshardIfNeeded]
-            scan
-                projection ("testing_space"."id"::int -> "id")
-                    scan "testing_space"
+  order by ("id"::int + ROW($0))
+    motion [policy: full, program: ReshardIfNeeded]
+      scan
+        projection ("testing_space"."id"::int -> "id")
+          scan "testing_space"
 subquery $0:
-scan
-            motion [policy: full, program: ReshardIfNeeded]
-                values
-                    value row (data=ROW(1::int))
+  scan
+    motion [policy: full, program: ReshardIfNeeded]
+      values
+        value row (data=ROW(1::int))
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]
 
 -- TEST: test-explain-plan-subquery-as-expression-under-projection-nested
@@ -361,20 +361,20 @@ buckets = [1-3000]
 EXPLAIN SELECT (values ((values (1)))) from testing_space;
 -- EXPECTED:
 projection (ROW($1) -> "col_1")
-    scan "testing_space"
+  scan "testing_space"
 subquery $0:
-scan
-                        motion [policy: full, program: ReshardIfNeeded]
-                            values
-                                value row (data=ROW(1::int))
+  scan
+    motion [policy: full, program: ReshardIfNeeded]
+      values
+        value row (data=ROW(1::int))
 subquery $1:
-scan
-        motion [policy: full, program: ReshardIfNeeded]
-            values
-                value row (data=ROW(ROW($0)))
+  scan
+    motion [policy: full, program: ReshardIfNeeded]
+      values
+        value row (data=ROW(ROW($0)))
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]
 
 -- TEST: test-explain-plan-subquery-as-expression-under-group-by
@@ -382,20 +382,20 @@ buckets = [1-3000]
 EXPLAIN SELECT (values ((values (1)))) from testing_space;
 -- EXPECTED:
 projection (ROW($1) -> "col_1")
-    scan "testing_space"
+  scan "testing_space"
 subquery $0:
-scan
-                        motion [policy: full, program: ReshardIfNeeded]
-                            values
-                                value row (data=ROW(1::int))
+  scan
+    motion [policy: full, program: ReshardIfNeeded]
+      values
+        value row (data=ROW(1::int))
 subquery $1:
-scan
-        motion [policy: full, program: ReshardIfNeeded]
-            values
-                value row (data=ROW(ROW($0)))
+  scan
+    motion [policy: full, program: ReshardIfNeeded]
+      values
+        value row (data=ROW(ROW($0)))
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]
 
 -- TEST: test-explain-plan-subquery-as-expression-under-selection
@@ -403,16 +403,16 @@ buckets = [1-3000]
 EXPLAIN SELECT "id" FROM "testing_space" WHERE (VALUES (true));
 -- EXPECTED:
 projection ("testing_space"."id"::int -> "id")
-    selection ROW($0)
-        scan "testing_space"
+  selection ROW($0)
+    scan "testing_space"
 subquery $0:
-scan
-            motion [policy: full, program: ReshardIfNeeded]
-                values
-                    value row (data=ROW(true::bool))
+  scan
+    motion [policy: full, program: ReshardIfNeeded]
+      values
+        value row (data=ROW(true::bool))
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]
 
 -- TEST: test-explain-plan-subquery-as-expression-under-projection-several
@@ -420,18 +420,18 @@ buckets = [1-3000]
 EXPLAIN SELECT (values (1)), (values (2)) from testing_space;
 -- EXPECTED:
 projection (ROW($1) -> "col_1", ROW($0) -> "col_2")
-    scan "testing_space"
+  scan "testing_space"
 subquery $0:
-scan
-        motion [policy: full, program: ReshardIfNeeded]
-            values
-                value row (data=ROW(2::int))
+  scan
+    motion [policy: full, program: ReshardIfNeeded]
+      values
+        value row (data=ROW(2::int))
 subquery $1:
-scan
-        motion [policy: full, program: ReshardIfNeeded]
-            values
-                value row (data=ROW(1::int))
+  scan
+    motion [policy: full, program: ReshardIfNeeded]
+      values
+        value row (data=ROW(1::int))
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]

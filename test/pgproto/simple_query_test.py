@@ -115,12 +115,12 @@ def test_explain(postgres: Postgres):
     plan = cur.fetchall()
     assert "\n".join(row[0] for row in plan) == snapshot("""\
 insert "explain" on conflict: fail
-    motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
-        values
-            value row (data=ROW(0::int))
+  motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
+    values
+      value row (data=ROW(0::int))
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [84]\
 """)
 
@@ -129,12 +129,12 @@ buckets = [84]\
     plan = cur.fetchall()
     assert "\n".join(row[0] for row in plan) == snapshot("""\
 insert "explain" on conflict: fail
-    motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
-        values
-            value row (data=ROW(0::int))
+  motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
+    values
+      value row (data=ROW(0::int))
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [84]\
 """)
 
@@ -145,10 +145,10 @@ buckets = [84]\
     plan = cur.fetchall()
     assert "\n".join(row[0] for row in plan) == snapshot("""\
 projection ("explain"."id"::int -> "id")
-    scan "explain"
+  scan "explain"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]\
 """)
 
@@ -157,10 +157,10 @@ buckets = [1-3000]\
     plan = cur.fetchall()
     assert "\n".join(row[0] for row in plan) == snapshot("""\
 projection ("explain"."id"::int -> "id")
-    scan "explain"
+  scan "explain"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]\
 """)
 

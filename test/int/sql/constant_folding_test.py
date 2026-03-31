@@ -39,11 +39,11 @@ def test_gl_1991(postgres: Postgres):
     plan = cur.fetchall()
     assert "\n".join(row[0] for row in plan) == snapshot("""\
 projection ("t"."id"::int -> "id")
-    selection false::bool
-        scan "t"
+  selection false::bool
+    scan "t"
 execution options:
-    sql_vdbe_opcode_max = 1
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 1
+  sql_motion_row_max = 5000
 buckets = []\
 """)
 

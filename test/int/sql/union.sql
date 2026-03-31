@@ -157,15 +157,15 @@ select count(*) over win from t WINDOW win as () union select 1;
 explain select row_number() over () from t union select 1;
 -- EXPECTED:
 motion [policy: full, program: RemoveDuplicates]
-    union
-        projection (row_number() over () -> "col_1")
-            motion [policy: full, program: ReshardIfNeeded]
-                projection ("t"."a"::int -> "a")
-                    scan "t"
-        projection (1::int -> "col_1")
+  union
+    projection (row_number() over () -> "col_1")
+      motion [policy: full, program: ReshardIfNeeded]
+        projection ("t"."a"::int -> "a")
+          scan "t"
+    projection (1::int -> "col_1")
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]
 
 -- TEST: test_explain_union_with_named_window
@@ -173,15 +173,15 @@ buckets = [1-3000]
 explain select count(*) over win from t WINDOW win as () union select 1;
 -- EXPECTED:
 motion [policy: full, program: RemoveDuplicates]
-    union
-        projection (count(*::int) over () -> "col_1")
-            motion [policy: full, program: ReshardIfNeeded]
-                projection ("t"."a"::int -> "a")
-                    scan "t"
-        projection (1::int -> "col_1")
+  union
+    projection (count(*::int) over () -> "col_1")
+      motion [policy: full, program: ReshardIfNeeded]
+        projection ("t"."a"::int -> "a")
+          scan "t"
+    projection (1::int -> "col_1")
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]
 
 -- TEST: test_union_all_with_window_func
@@ -195,12 +195,12 @@ select row_number() over () from t union all select 1;
 explain select row_number() over () from t union all select 1;
 -- EXPECTED:
 union all
-    projection (row_number() over () -> "col_1")
-        motion [policy: full, program: ReshardIfNeeded]
-            projection ("t"."a"::int -> "a")
-                scan "t"
-    projection (1::int -> "col_1")
+  projection (row_number() over () -> "col_1")
+    motion [policy: full, program: ReshardIfNeeded]
+      projection ("t"."a"::int -> "a")
+        scan "t"
+  projection (1::int -> "col_1")
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]

@@ -101,24 +101,24 @@ fn except_transform_with_dag_plan() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     except
-        projection (1::int -> "col_1")
+      projection (1::int -> "col_1")
+        scan "unnamed_subquery"
+          motion [policy: full, program: ReshardIfNeeded]
+            values
+              value row (data=ROW(1::int))
+      motion [policy: full, program: ReshardIfNeeded]
+        intersect
+          projection ("t2"."e"::int -> "e")
+            selection "t2"."e"::int = 1::int
+              scan "t2"
+          projection (1::int -> "col_1")
             scan "unnamed_subquery"
-                motion [policy: full, program: ReshardIfNeeded]
-                    values
-                        value row (data=ROW(1::int))
-        motion [policy: full, program: ReshardIfNeeded]
-            intersect
-                projection ("t2"."e"::int -> "e")
-                    selection "t2"."e"::int = 1::int
-                        scan "t2"
-                projection (1::int -> "col_1")
-                    scan "unnamed_subquery"
-                        motion [policy: full, program: ReshardIfNeeded]
-                            values
-                                value row (data=ROW(1::int))
+              motion [policy: full, program: ReshardIfNeeded]
+                values
+                  value row (data=ROW(1::int))
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 }
 

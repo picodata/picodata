@@ -25,11 +25,11 @@ fn test_bucket_id_addition1() {
 
     insta::assert_snapshot!(query_explain, @r#"
     projection ("t5"."a"::int -> "a")
-        selection ("t5"."bucket_id"::int in ROW(5815::int)) and ("t5"."a"::int = 42::int)
-            scan "t5"
+      selection ("t5"."bucket_id"::int in ROW(5815::int)) and ("t5"."a"::int = 42::int)
+        scan "t5"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 
     assert_eq!(
@@ -59,11 +59,11 @@ fn test_bucket_id_addition2() {
 
     insta::assert_snapshot!(query_explain, @r#"
     projection ("t5"."a"::int -> "a")
-        selection ("t5"."bucket_id"::int in ROW(5815::int, 7100::int)) and (("t5"."a"::int = 42::int) or ("t5"."a"::int = 43::int))
-            scan "t5"
+      selection ("t5"."bucket_id"::int in ROW(5815::int, 7100::int)) and (("t5"."a"::int = 42::int) or ("t5"."a"::int = 43::int))
+        scan "t5"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 
     assert_eq!(
@@ -95,11 +95,11 @@ fn test_bucket_id_addition3() {
 
     insta::assert_snapshot!(query_explain, @r#"
     projection ("history"."id"::int -> "id")
-        selection "history"."id"::int = 42::int
-            scan "history"
+      selection "history"."id"::int = 42::int
+        scan "history"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 
     assert_eq!(
@@ -129,11 +129,11 @@ fn test_bucket_id_addition4() {
 
     insta::assert_snapshot!(query_explain, @r#"
     projection ("t6"."a"::string -> "a")
-        selection ("t6"."bucket_id"::int in ROW(307::int, 518::int)) and ((ROW("t6"."b"::int, "t6"."a"::string) = ROW(24::int, '42'::string)) or (ROW("t6"."b"::int, "t6"."a"::string) = ROW(25::int, '42'::string)))
-            scan "t6"
+      selection ("t6"."bucket_id"::int in ROW(307::int, 518::int)) and ((ROW("t6"."b"::int, "t6"."a"::string) = ROW(24::int, '42'::string)) or (ROW("t6"."b"::int, "t6"."a"::string) = ROW(25::int, '42'::string)))
+        scan "t6"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 
     assert_eq!(
@@ -163,11 +163,11 @@ fn test_bucket_id_addition5() {
 
     insta::assert_snapshot!(query_explain, @r#"
     projection ("t7"."a"::string -> "a")
-        selection ("t7"."bucket_id"::int in ROW(5815::int)) and ("t7"."a"::string = '42'::string)
-            scan "t7"
+      selection ("t7"."bucket_id"::int in ROW(5815::int)) and ("t7"."a"::string = '42'::string)
+        scan "t7"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 
     assert_eq!(
@@ -197,11 +197,11 @@ fn test_bucket_id_addition6() {
 
     insta::assert_snapshot!(query_explain, @r#"
     projection ("t4"."c"::string -> "c", "t4"."d"::int -> "d")
-        selection ("t4"."bucket_id"::int in ROW(5815::int)) and ("t4"."c"::string = '42'::string)
-            scan "t4"
+      selection ("t4"."bucket_id"::int in ROW(5815::int)) and ("t4"."c"::string = '42'::string)
+        scan "t4"
     execution options:
-        sql_vdbe_opcode_max = 45000
-        sql_motion_row_max = 5000
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
     "#);
 
     assert_eq!(

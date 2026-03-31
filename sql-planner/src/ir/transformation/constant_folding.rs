@@ -297,11 +297,11 @@ mod tests {
 
         insta::assert_snapshot!(query_explain, @r#"
         projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-            selection true::bool
-                scan "t"
+          selection true::bool
+            scan "t"
         execution options:
-            sql_vdbe_opcode_max = 45000
-            sql_motion_row_max = 5000
+          sql_vdbe_opcode_max = 45000
+          sql_motion_row_max = 5000
         "#);
 
         assert_eq!(Buckets::All, buckets);
@@ -320,11 +320,11 @@ mod tests {
 
         insta::assert_snapshot!(query_explain, @r#"
         projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-            selection false::bool
-                scan "t"
+          selection false::bool
+            scan "t"
         execution options:
-            sql_vdbe_opcode_max = 45000
-            sql_motion_row_max = 5000
+          sql_vdbe_opcode_max = 45000
+          sql_motion_row_max = 5000
         "#);
 
         assert_eq!(Buckets::new_empty(), buckets);
@@ -343,11 +343,11 @@ mod tests {
 
         insta::assert_snapshot!(query_explain, @r#"
         projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-            selection true::bool
-                scan "t"
+          selection true::bool
+            scan "t"
         execution options:
-            sql_vdbe_opcode_max = 45000
-            sql_motion_row_max = 5000
+          sql_vdbe_opcode_max = 45000
+          sql_motion_row_max = 5000
         "#);
 
         assert_eq!(Buckets::All, buckets);
@@ -366,11 +366,11 @@ mod tests {
 
         insta::assert_snapshot!(query_explain, @r#"
         projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-            selection false::bool
-                scan "t"
+          selection false::bool
+            scan "t"
         execution options:
-            sql_vdbe_opcode_max = 45000
-            sql_motion_row_max = 5000
+          sql_vdbe_opcode_max = 45000
+          sql_motion_row_max = 5000
         "#);
 
         assert_eq!(Buckets::new_empty(), buckets);
@@ -389,15 +389,15 @@ mod tests {
 
         insta::assert_snapshot!(query_explain, @r#"
         union all
-            projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-                selection false::bool
-                    scan "t"
-            projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-                selection false::bool
-                    scan "t"
+          projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+            selection false::bool
+              scan "t"
+          projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+            selection false::bool
+              scan "t"
         execution options:
-            sql_vdbe_opcode_max = 45000
-            sql_motion_row_max = 5000
+          sql_vdbe_opcode_max = 45000
+          sql_motion_row_max = 5000
         "#);
 
         assert_eq!(Buckets::new_empty(), buckets);
@@ -416,15 +416,15 @@ mod tests {
 
         insta::assert_snapshot!(query_explain, @r#"
         projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-            selection true::bool
-                join on true::bool
-                    scan "t"
-                    motion [policy: full, program: ReshardIfNeeded]
-                        projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
-                            scan "t"
+          selection true::bool
+            join on true::bool
+              scan "t"
+              motion [policy: full, program: ReshardIfNeeded]
+                projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
+                  scan "t"
         execution options:
-            sql_vdbe_opcode_max = 45000
-            sql_motion_row_max = 5000
+          sql_vdbe_opcode_max = 45000
+          sql_motion_row_max = 5000
         "#);
 
         assert_eq!(Buckets::All, buckets);
@@ -443,11 +443,11 @@ mod tests {
 
         insta::assert_snapshot!(query_explain, @r#"
         projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-            selection false::bool
-                scan "t"
+          selection false::bool
+            scan "t"
         execution options:
-            sql_vdbe_opcode_max = 45000
-            sql_motion_row_max = 5000
+          sql_vdbe_opcode_max = 45000
+          sql_motion_row_max = 5000
         "#);
 
         assert_eq!(Buckets::new_empty(), buckets);
@@ -466,11 +466,11 @@ mod tests {
 
         insta::assert_snapshot!(query_explain, @r#"
         projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-            selection NULL::unknown
-                scan "t"
+          selection NULL::unknown
+            scan "t"
         execution options:
-            sql_vdbe_opcode_max = 45000
-            sql_motion_row_max = 5000
+          sql_vdbe_opcode_max = 45000
+          sql_motion_row_max = 5000
         "#);
 
         assert_eq!(Buckets::new_empty(), buckets);
@@ -489,11 +489,11 @@ mod tests {
 
         insta::assert_snapshot!(query_explain, @r#"
         projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-            selection true::bool
-                scan "t"
+          selection true::bool
+            scan "t"
         execution options:
-            sql_vdbe_opcode_max = 45000
-            sql_motion_row_max = 5000
+          sql_vdbe_opcode_max = 45000
+          sql_motion_row_max = 5000
         "#);
 
         assert_eq!(Buckets::All, buckets);
@@ -512,11 +512,11 @@ mod tests {
 
         insta::assert_snapshot!(query_explain, @r#"
         projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-            selection true::bool
-                scan "t"
+          selection true::bool
+            scan "t"
         execution options:
-            sql_vdbe_opcode_max = 45000
-            sql_motion_row_max = 5000
+          sql_vdbe_opcode_max = 45000
+          sql_motion_row_max = 5000
         "#);
 
         assert_eq!(Buckets::All, buckets);
@@ -535,11 +535,11 @@ mod tests {
 
         insta::assert_snapshot!(query_explain, @r#"
         projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-            selection false::bool
-                scan "t"
+          selection false::bool
+            scan "t"
         execution options:
-            sql_vdbe_opcode_max = 45000
-            sql_motion_row_max = 5000
+          sql_vdbe_opcode_max = 45000
+          sql_motion_row_max = 5000
         "#);
 
         assert_eq!(Buckets::new_empty(), buckets);

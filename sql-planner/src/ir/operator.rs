@@ -203,7 +203,7 @@ impl Display for Unary {
 }
 
 /// Specifies what kind of join user specified in query
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum JoinKind {
     LeftOuter,
     Inner,

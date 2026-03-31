@@ -43,6 +43,6 @@ explain DELETE FROM "g"
 -- EXPECTED:
 delete "g"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]

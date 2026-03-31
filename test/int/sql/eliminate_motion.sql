@@ -13,13 +13,13 @@ SELECT count(*) FROM t1 WHERE a = 1 GROUP BY a;
 -- SQL:
 EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 GROUP BY a;
 -- EXPECTED:
-projection (count((*::int))::int -> "col_1")
-    group by ("t1"."a"::int) output: ("t1"."a"::int -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
-        selection "t1"."a"::int = 1::int
-            scan "t1"
+projection (count(*::int)::int -> "col_1")
+  group by ("t1"."a"::int) output: ("t1"."a"::int -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
+    selection "t1"."a"::int = 1::int
+      scan "t1"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1934]
 
 -- TEST: group-by-2
@@ -33,13 +33,13 @@ SELECT count(*) FROM t1 WHERE a = 1 GROUP BY a LIMIT 1;
 EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 GROUP BY a LIMIT 1;
 -- EXPECTED:
 limit 1
-    projection (count((*::int))::int -> "col_1")
-        group by ("t1"."a"::int) output: ("t1"."a"::int -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
-            selection "t1"."a"::int = 1::int
-                scan "t1"
+  projection (count(*::int)::int -> "col_1")
+    group by ("t1"."a"::int) output: ("t1"."a"::int -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
+      selection "t1"."a"::int = 1::int
+        scan "t1"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1934]
 
 -- TEST: group-by-dnf-1
@@ -52,13 +52,13 @@ SELECT count(*) FROM t1 WHERE a = 1 AND (a < 2 OR a > 3) GROUP BY a;
 -- SQL:
 EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 AND (a < 2 OR a > 3) GROUP BY a;
 -- EXPECTED:
-projection (count((*::int))::int -> "col_1")
-    group by ("t1"."a"::int) output: ("t1"."a"::int -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
-        selection ("t1"."a"::int = 1::int) and (("t1"."a"::int < 2::int) or ("t1"."a"::int > 3::int))
-            scan "t1"
+projection (count(*::int)::int -> "col_1")
+  group by ("t1"."a"::int) output: ("t1"."a"::int -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
+    selection ("t1"."a"::int = 1::int) and (("t1"."a"::int < 2::int) or ("t1"."a"::int > 3::int))
+      scan "t1"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1934]
 
 -- TEST: group-by-dnf-2
@@ -71,13 +71,13 @@ SELECT count(*) FROM t1 WHERE a = 1 AND (a < 2 OR a > 3) AND b = 2 GROUP BY a;
 -- SQL:
 EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 AND (a < 2 OR a > 3) AND b = 2 GROUP BY a;
 -- EXPECTED:
-projection (count((*::int))::int -> "col_1")
-    group by ("t1"."a"::int) output: ("t1"."a"::int -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
-        selection (("t1"."a"::int = 1::int) and (("t1"."a"::int < 2::int) or ("t1"."a"::int > 3::int))) and ("t1"."b"::int = 2::int)
-            scan "t1"
+projection (count(*::int)::int -> "col_1")
+  group by ("t1"."a"::int) output: ("t1"."a"::int -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
+    selection (("t1"."a"::int = 1::int) and (("t1"."a"::int < 2::int) or ("t1"."a"::int > 3::int))) and ("t1"."b"::int = 2::int)
+      scan "t1"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1934]
 
 -- TEST: group-by-3
@@ -90,13 +90,13 @@ SELECT count(*) FROM t1 WHERE a = 1 AND a < 10 AND b = 2 GROUP BY a;
 -- SQL:
 EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 AND a < 10 AND b = 2 GROUP BY a;
 -- EXPECTED:
-projection (count((*::int))::int -> "col_1")
-    group by ("t1"."a"::int) output: ("t1"."a"::int -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
-        selection (("t1"."a"::int = 1::int) and ("t1"."a"::int < 10::int)) and ("t1"."b"::int = 2::int)
-            scan "t1"
+projection (count(*::int)::int -> "col_1")
+  group by ("t1"."a"::int) output: ("t1"."a"::int -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
+    selection (("t1"."a"::int = 1::int) and ("t1"."a"::int < 10::int)) and ("t1"."b"::int = 2::int)
+      scan "t1"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1934]
 
 -- TEST: group-by-4
@@ -109,16 +109,16 @@ SELECT count(*) FROM t1 WHERE a = 1 OR a = 2 GROUP BY a;
 -- SQL:
 EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 OR a = 2 GROUP BY a;
 -- EXPECTED:
-projection (sum(("count_1"::int))::int -> "col_1")
-    group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "count_1"::int -> "count_1")
-        motion [policy: full, program: ReshardIfNeeded]
-            projection ("t1"."a"::int -> "gr_expr_1", count((*::int))::int -> "count_1")
-                group by ("t1"."a"::int) output: ("t1"."a"::int -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
-                    selection ("t1"."a"::int = 1::int) or ("t1"."a"::int = 2::int)
-                        scan "t1"
+projection (sum("count_1"::int)::int -> "col_1")
+  group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "count_1"::int -> "count_1")
+    motion [policy: full, program: ReshardIfNeeded]
+      projection ("t1"."a"::int -> "gr_expr_1", count(*::int)::int -> "count_1")
+        group by ("t1"."a"::int) output: ("t1"."a"::int -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
+          selection ("t1"."a"::int = 1::int) or ("t1"."a"::int = 2::int)
+            scan "t1"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets <= [1410,1934]
 
 -- TEST: group-by-5
@@ -130,16 +130,16 @@ SELECT count(*) FROM t1 WHERE a = 1 AND a < 10 AND a = 2 GROUP BY a;
 -- SQL:
 EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 AND a < 10 AND a = 2 GROUP BY a;
 -- EXPECTED:
-projection (sum(("count_1"::int))::int -> "col_1")
-    group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "count_1"::int -> "count_1")
-        motion [policy: full, program: ReshardIfNeeded]
-            projection ("t1"."a"::int -> "gr_expr_1", count((*::int))::int -> "count_1")
-                group by ("t1"."a"::int) output: ("t1"."a"::int -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
-                    selection (("t1"."a"::int = 1::int) and ("t1"."a"::int < 10::int)) and ("t1"."a"::int = 2::int)
-                        scan "t1"
+projection (sum("count_1"::int)::int -> "col_1")
+  group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "count_1"::int -> "count_1")
+    motion [policy: full, program: ReshardIfNeeded]
+      projection ("t1"."a"::int -> "gr_expr_1", count(*::int)::int -> "count_1")
+        group by ("t1"."a"::int) output: ("t1"."a"::int -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
+          selection (("t1"."a"::int = 1::int) and ("t1"."a"::int < 10::int)) and ("t1"."a"::int = 2::int)
+            scan "t1"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets <= []
 
 -- TEST: distinct-1
@@ -153,11 +153,11 @@ SELECT DISTINCT b FROM t1 WHERE a = 5 AND (a > 4 OR a < 4);
 EXPLAIN SELECT DISTINCT b FROM t1 WHERE a = 5 AND (a > 4 OR a < 4);
 -- EXPECTED:
 projection ("t1"."b"::int -> "b")
-    selection ("t1"."a"::int = 5::int) and (("t1"."a"::int > 4::int) or ("t1"."a"::int < 4::int))
-        scan "t1"
+  selection ("t1"."a"::int = 5::int) and (("t1"."a"::int > 4::int) or ("t1"."a"::int < 4::int))
+    scan "t1"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [219]
 
 -- TEST: init-2
@@ -178,15 +178,15 @@ SELECT * FROM t WHERE a = 1 AND b = 1 ORDER BY id LIMIT 1;
 EXPLAIN SELECT * FROM t WHERE a = 1 AND b = 1 ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-    projection ("id"::int -> "id", "a"::int -> "a", "b"::int -> "b")
-        order by ("id"::int)
-            scan
-                projection ("t"."id"::int -> "id", "t"."a"::int -> "a", "t"."b"::int -> "b")
-                    selection ("t"."a"::int = 1::int) and ("t"."b"::int = 1::int)
-                        scan "t"
+  projection ("id"::int -> "id", "a"::int -> "a", "b"::int -> "b")
+    order by ("id"::int)
+      scan
+        projection ("t"."id"::int -> "id", "t"."a"::int -> "a", "t"."b"::int -> "b")
+          selection ("t"."a"::int = 1::int) and ("t"."b"::int = 1::int)
+            scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1934]
 
 -- TEST: order-by-2
@@ -200,14 +200,14 @@ SELECT id FROM t WHERE a = 1 ORDER BY id;
 EXPLAIN SELECT id FROM t WHERE a = 1 ORDER BY id;
 -- EXPECTED:
 projection ("id"::int -> "id")
-    order by ("id"::int)
-        scan
-            projection ("t"."id"::int -> "id")
-                selection "t"."a"::int = 1::int
-                    scan "t"
+  order by ("id"::int)
+    scan
+      projection ("t"."id"::int -> "id")
+        selection "t"."a"::int = 1::int
+          scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1934]
 
 -- TEST: limit-1
@@ -221,12 +221,12 @@ SELECT * FROM t WHERE a = 4 LIMIT 1;
 EXPLAIN SELECT * FROM t WHERE a = 4 LIMIT 1;
 -- EXPECTED:
 limit 1
-    projection ("t"."id"::int -> "id", "t"."a"::int -> "a", "t"."b"::int -> "b")
-        selection "t"."a"::int = 4::int
-            scan "t"
+  projection ("t"."id"::int -> "id", "t"."a"::int -> "a", "t"."b"::int -> "b")
+    selection "t"."a"::int = 4::int
+      scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [2752]
 
 -- TEST: agg-1
@@ -239,12 +239,12 @@ SELECT sum(b), count(*), min(id) FROM t WHERE a = 1;
 -- SQL:
 EXPLAIN SELECT sum(b), count(*), min(id) FROM t WHERE a = 1;
 -- EXPECTED:
-projection (sum(("t"."b"::int::int))::decimal -> "col_1", count((*::int))::int -> "col_2", min(("t"."id"::int::int))::int -> "col_3")
-    selection "t"."a"::int = 1::int
-        scan "t"
+projection (sum("t"."b"::int::int)::decimal -> "col_1", count(*::int)::int -> "col_2", min("t"."id"::int::int)::int -> "col_3")
+  selection "t"."a"::int = 1::int
+    scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1934]
 
 -- TEST: having-1
@@ -257,14 +257,14 @@ SELECT b, count(*) FROM t WHERE a = 1 GROUP BY b HAVING count(*) > 1;
 -- SQL:
 EXPLAIN SELECT b, count(*) FROM t WHERE a = 1 GROUP BY b HAVING count(*) > 1;
 -- EXPECTED:
-projection ("t"."b"::int -> "b", count((*::int))::int -> "col_1")
-    having count((*::int))::int > 1::int
-        group by ("t"."b"::int) output: ("t"."id"::int -> "id", "t"."bucket_id"::int -> "bucket_id", "t"."a"::int -> "a", "t"."b"::int -> "b")
-            selection "t"."a"::int = 1::int
-                scan "t"
+projection ("t"."b"::int -> "b", count(*::int)::int -> "col_1")
+  having count(*::int)::int > 1::int
+    group by ("t"."b"::int) output: ("t"."id"::int -> "id", "t"."bucket_id"::int -> "bucket_id", "t"."a"::int -> "a", "t"."b"::int -> "b")
+      selection "t"."a"::int = 1::int
+        scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1934]
 
 -- TEST: subquery-1
@@ -278,17 +278,17 @@ SELECT id FROM (SELECT * FROM t WHERE a = 4) sub ORDER BY id LIMIT 1;
 EXPLAIN SELECT id FROM (SELECT * FROM t WHERE a = 4) sub ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-    projection ("id"::int -> "id")
-        order by ("id"::int)
-            scan
-                projection ("sub"."id"::int -> "id")
-                    scan "sub"
-                        projection ("t"."id"::int -> "id", "t"."a"::int -> "a", "t"."b"::int -> "b")
-                            selection "t"."a"::int = 4::int
-                                scan "t"
+  projection ("id"::int -> "id")
+    order by ("id"::int)
+      scan
+        projection ("sub"."id"::int -> "id")
+          scan "sub"
+            projection ("t"."id"::int -> "id", "t"."a"::int -> "a", "t"."b"::int -> "b")
+              selection "t"."a"::int = 4::int
+                scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [2752]
 
 -- TEST: no-optimize-1
@@ -302,19 +302,19 @@ SELECT id FROM t WHERE b = 1 ORDER BY id LIMIT 1;
 EXPLAIN SELECT id FROM t WHERE b = 1 ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-    projection ("id"::int -> "id")
-        order by ("id"::int)
-            motion [policy: full, program: ReshardIfNeeded]
-                limit 1
-                    projection ("id"::int -> "id")
-                        order by ("id"::int)
-                            scan
-                                projection ("t"."id"::int -> "id")
-                                    selection "t"."b"::int = 1::int
-                                        scan "t"
+  projection ("id"::int -> "id")
+    order by ("id"::int)
+      motion [policy: full, program: ReshardIfNeeded]
+        limit 1
+          projection ("id"::int -> "id")
+            order by ("id"::int)
+              scan
+                projection ("t"."id"::int -> "id")
+                  selection "t"."b"::int = 1::int
+                    scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]
 
 -- TEST: no-optimize-2
@@ -328,18 +328,18 @@ SELECT id FROM t ORDER BY id LIMIT 1;
 EXPLAIN SELECT id FROM t ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-    projection ("id"::int -> "id")
-        order by ("id"::int)
-            motion [policy: full, program: ReshardIfNeeded]
-                limit 1
-                    projection ("id"::int -> "id")
-                        order by ("id"::int)
-                            scan
-                                projection ("t"."id"::int -> "id")
-                                    scan "t"
+  projection ("id"::int -> "id")
+    order by ("id"::int)
+      motion [policy: full, program: ReshardIfNeeded]
+        limit 1
+          projection ("id"::int -> "id")
+            order by ("id"::int)
+              scan
+                projection ("t"."id"::int -> "id")
+                  scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]
 
 -- TEST: no-optimize-3
@@ -353,19 +353,19 @@ SELECT id FROM t WHERE a = 1 OR a = 4 ORDER BY id LIMIT 1;
 EXPLAIN SELECT id FROM t WHERE a = 1 OR a = 4 ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-    projection ("id"::int -> "id")
-        order by ("id"::int)
-            motion [policy: full, program: ReshardIfNeeded]
-                limit 1
-                    projection ("id"::int -> "id")
-                        order by ("id"::int)
-                            scan
-                                projection ("t"."id"::int -> "id")
-                                    selection ("t"."a"::int = 1::int) or ("t"."a"::int = 4::int)
-                                        scan "t"
+  projection ("id"::int -> "id")
+    order by ("id"::int)
+      motion [policy: full, program: ReshardIfNeeded]
+        limit 1
+          projection ("id"::int -> "id")
+            order by ("id"::int)
+              scan
+                projection ("t"."id"::int -> "id")
+                  selection ("t"."a"::int = 1::int) or ("t"."a"::int = 4::int)
+                    scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets <= [1934,2752]
 
 -- TEST: sub-1
@@ -379,18 +379,18 @@ SELECT * FROM (SELECT * FROM t WHERE a = 4) s WHERE b = 5 ORDER BY a LIMIT 1;
 EXPLAIN SELECT * FROM (SELECT * FROM t WHERE a = 4) s WHERE b = 5 ORDER BY a LIMIT 1;
 -- EXPECTED:
 limit 1
-    projection ("id"::int -> "id", "a"::int -> "a", "b"::int -> "b")
-        order by ("a"::int)
-            scan
-                projection ("s"."id"::int -> "id", "s"."a"::int -> "a", "s"."b"::int -> "b")
-                    selection "s"."b"::int = 5::int
-                        scan "s"
-                            projection ("t"."id"::int -> "id", "t"."a"::int -> "a", "t"."b"::int -> "b")
-                                selection "t"."a"::int = 4::int
-                                    scan "t"
+  projection ("id"::int -> "id", "a"::int -> "a", "b"::int -> "b")
+    order by ("a"::int)
+      scan
+        projection ("s"."id"::int -> "id", "s"."a"::int -> "a", "s"."b"::int -> "b")
+          selection "s"."b"::int = 5::int
+            scan "s"
+              projection ("t"."id"::int -> "id", "t"."a"::int -> "a", "t"."b"::int -> "b")
+                selection "t"."a"::int = 4::int
+                  scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [2752]
 
 -- TEST: cte-1
@@ -404,18 +404,18 @@ WITH cte AS (SELECT * FROM t WHERE a = 1) SELECT id FROM cte ORDER BY id LIMIT 1
 EXPLAIN WITH cte AS (SELECT * FROM t WHERE a = 1) SELECT id FROM cte ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-    projection ("id"::int -> "id")
-        order by ("id"::int)
-            scan
-                projection ("cte"."id"::int -> "id")
-                    scan cte cte($0)
+  projection ("id"::int -> "id")
+    order by ("id"::int)
+      scan
+        projection ("cte"."id"::int -> "id")
+          scan cte cte($0)
 subquery $0:
-projection ("t"."id"::int -> "id", "t"."a"::int -> "a", "t"."b"::int -> "b")
-                            selection "t"."a"::int = 1::int
-                                scan "t"
+  projection ("t"."id"::int -> "id", "t"."a"::int -> "a", "t"."b"::int -> "b")
+    selection "t"."a"::int = 1::int
+      scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1934]
 
 -- TEST: cte-2
@@ -429,19 +429,19 @@ WITH cte AS (SELECT * FROM t) SELECT id FROM cte WHERE a = 2 ORDER BY id LIMIT 1
 EXPLAIN WITH cte AS (SELECT * FROM t) SELECT id FROM cte WHERE a = 2 ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-    projection ("id"::int -> "id")
-        order by ("id"::int)
-            scan
-                projection ("cte"."id"::int -> "id")
-                    selection "cte"."a"::int = 2::int
-                        scan cte cte($0)
+  projection ("id"::int -> "id")
+    order by ("id"::int)
+      scan
+        projection ("cte"."id"::int -> "id")
+          selection "cte"."a"::int = 2::int
+            scan cte cte($0)
 subquery $0:
-motion [policy: full, program: ReshardIfNeeded]
-                                projection ("t"."id"::int -> "id", "t"."a"::int -> "a", "t"."b"::int -> "b")
-                                    scan "t"
+  motion [policy: full, program: ReshardIfNeeded]
+    projection ("t"."id"::int -> "id", "t"."a"::int -> "a", "t"."b"::int -> "b")
+      scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]
 
 -- TEST: cte-3
@@ -455,14 +455,14 @@ WITH cte AS (SELECT count(*) as cnt FROM t WHERE a = 1) SELECT cnt FROM cte;
 EXPLAIN WITH cte AS (SELECT count(*) as cnt FROM t WHERE a = 1) SELECT cnt FROM cte;
 -- EXPECTED:
 projection ("cte"."cnt"::int -> "cnt")
-    scan cte cte($0)
+  scan cte cte($0)
 subquery $0:
-projection (count((*::int))::int -> "cnt")
-            selection "t"."a"::int = 1::int
-                scan "t"
+  projection (count(*::int)::int -> "cnt")
+    selection "t"."a"::int = 1::int
+      scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1934]
 
 -- TEST: cte-4
@@ -480,25 +480,25 @@ SELECT * FROM cte c1 JOIN cte c2 ON c1.b = c2.b
 ORDER BY c1.id LIMIT 1;
 -- EXPECTED:
 limit 1
-    projection ("id"::int -> "id", "a"::int -> "a", "b"::int -> "b", "id"::int -> "id", "a"::int -> "a", "b"::int -> "b")
-        order by ("id"::int)
-            motion [policy: full, program: ReshardIfNeeded]
-                limit 1
-                    projection ("id"::int -> "id", "a"::int -> "a", "b"::int -> "b", "id"::int -> "id", "a"::int -> "a", "b"::int -> "b")
-                        order by ("id"::int)
-                            scan
-                                projection ("c1"."id"::int -> "id", "c1"."a"::int -> "a", "c1"."b"::int -> "b", "c2"."id"::int -> "id", "c2"."a"::int -> "a", "c2"."b"::int -> "b")
-                                    join on "c1"."b"::int = "c2"."b"::int
-                                        scan cte c1($0)
-                                        motion [policy: full, program: ReshardIfNeeded]
-                                            scan cte c2($0)
+  projection ("id"::int -> "id", "a"::int -> "a", "b"::int -> "b", "id"::int -> "id", "a"::int -> "a", "b"::int -> "b")
+    order by ("id"::int)
+      motion [policy: full, program: ReshardIfNeeded]
+        limit 1
+          projection ("id"::int -> "id", "a"::int -> "a", "b"::int -> "b", "id"::int -> "id", "a"::int -> "a", "b"::int -> "b")
+            order by ("id"::int)
+              scan
+                projection ("c1"."id"::int -> "id", "c1"."a"::int -> "a", "c1"."b"::int -> "b", "c2"."id"::int -> "id", "c2"."a"::int -> "a", "c2"."b"::int -> "b")
+                  join on "c1"."b"::int = "c2"."b"::int
+                    scan cte c1($0)
+                    motion [policy: full, program: ReshardIfNeeded]
+                      scan cte c2($0)
 subquery $0:
-projection ("t"."id"::int -> "id", "t"."a"::int -> "a", "t"."b"::int -> "b")
-                                                selection "t"."a"::int = 1::int
-                                                    scan "t"
+  projection ("t"."id"::int -> "id", "t"."a"::int -> "a", "t"."b"::int -> "b")
+    selection "t"."a"::int = 1::int
+      scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets <= [1934]
 
 -- TEST: cte-5
@@ -512,21 +512,21 @@ WITH cte AS (SELECT * FROM t WHERE a = 4) SELECT id FROM (SELECT * FROM cte) s W
 EXPLAIN WITH cte AS (SELECT * FROM t WHERE a = 4) SELECT id FROM (SELECT * FROM cte) s WHERE b = 5 ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-    projection ("id"::int -> "id")
-        order by ("id"::int)
-            scan
-                projection ("s"."id"::int -> "id")
-                    selection "s"."b"::int = 5::int
-                        scan "s"
-                            projection ("cte"."id"::int -> "id", "cte"."a"::int -> "a", "cte"."b"::int -> "b")
-                                scan cte cte($0)
+  projection ("id"::int -> "id")
+    order by ("id"::int)
+      scan
+        projection ("s"."id"::int -> "id")
+          selection "s"."b"::int = 5::int
+            scan "s"
+              projection ("cte"."id"::int -> "id", "cte"."a"::int -> "a", "cte"."b"::int -> "b")
+                scan cte cte($0)
 subquery $0:
-projection ("t"."id"::int -> "id", "t"."a"::int -> "a", "t"."b"::int -> "b")
-                                        selection "t"."a"::int = 4::int
-                                            scan "t"
+  projection ("t"."id"::int -> "id", "t"."a"::int -> "a", "t"."b"::int -> "b")
+    selection "t"."a"::int = 4::int
+      scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [2752]
 
 -- TEST: no-optimize-union-all
@@ -540,23 +540,23 @@ SELECT id FROM t WHERE a = 1 UNION ALL SELECT id FROM t WHERE a = 4 ORDER BY id 
 EXPLAIN SELECT id FROM t WHERE a = 1 UNION ALL SELECT id FROM t WHERE a = 4 ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-    projection ("id"::int -> "id")
-        order by ("id"::int)
-            motion [policy: full, program: ReshardIfNeeded]
-                limit 1
-                    projection ("id"::int -> "id")
-                        order by ("id"::int)
-                            scan
-                                union all
-                                    projection ("t"."id"::int -> "id")
-                                        selection "t"."a"::int = 1::int
-                                            scan "t"
-                                    projection ("t"."id"::int -> "id")
-                                        selection "t"."a"::int = 4::int
-                                            scan "t"
+  projection ("id"::int -> "id")
+    order by ("id"::int)
+      motion [policy: full, program: ReshardIfNeeded]
+        limit 1
+          projection ("id"::int -> "id")
+            order by ("id"::int)
+              scan
+                union all
+                  projection ("t"."id"::int -> "id")
+                    selection "t"."a"::int = 1::int
+                      scan "t"
+                  projection ("t"."id"::int -> "id")
+                    selection "t"."a"::int = 4::int
+                      scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets <= [1934,2752]
 
 -- TEST: no-optimize-union
@@ -570,24 +570,24 @@ SELECT id FROM t WHERE a = 1 UNION SELECT id FROM t WHERE a = 4 ORDER BY id LIMI
 EXPLAIN SELECT id FROM t WHERE a = 1 UNION SELECT id FROM t WHERE a = 4 ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-    projection ("id"::int -> "id")
-        order by ("id"::int)
-            scan
-                motion [policy: full, program: RemoveDuplicates]
-                    limit 1
-                        projection ("id"::int -> "id")
-                            order by ("id"::int)
-                                scan
-                                    union
-                                        projection ("t"."id"::int -> "id")
-                                            selection "t"."a"::int = 1::int
-                                                scan "t"
-                                        projection ("t"."id"::int -> "id")
-                                            selection "t"."a"::int = 4::int
-                                                scan "t"
+  projection ("id"::int -> "id")
+    order by ("id"::int)
+      scan
+        motion [policy: full, program: RemoveDuplicates]
+          limit 1
+            projection ("id"::int -> "id")
+              order by ("id"::int)
+                scan
+                  union
+                    projection ("t"."id"::int -> "id")
+                      selection "t"."a"::int = 1::int
+                        scan "t"
+                    projection ("t"."id"::int -> "id")
+                      selection "t"."a"::int = 4::int
+                        scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets <= [1934,2752]
 
 -- TEST: no-optimize-join
@@ -600,19 +600,19 @@ SELECT t1.id FROM t t1 JOIN t t2 ON t1.b = t2.b WHERE t1.a = 1 AND t2.a = 4 ORDE
 EXPLAIN SELECT t1.id FROM t t1 JOIN t t2 ON t1.b = t2.b WHERE t1.a = 1 AND t2.a = 4 ORDER BY t1.id LIMIT 1;
 -- EXPECTED:
 limit 1
-    projection ("id"::int -> "id")
-        order by ("id"::int)
-            scan
-                projection ("t1"."id"::int -> "id")
-                    selection ("t1"."a"::int = 1::int) and ("t2"."a"::int = 4::int)
-                        join on "t1"."b"::int = "t2"."b"::int
-                            scan "t" -> "t1"
-                            motion [policy: full, program: ReshardIfNeeded]
-                                projection ("t2"."id"::int -> "id", "t2"."bucket_id"::int -> "bucket_id", "t2"."a"::int -> "a", "t2"."b"::int -> "b")
-                                    scan "t" -> "t2"
+  projection ("id"::int -> "id")
+    order by ("id"::int)
+      scan
+        projection ("t1"."id"::int -> "id")
+          selection ("t1"."a"::int = 1::int) and ("t2"."a"::int = 4::int)
+            join on "t1"."b"::int = "t2"."b"::int
+              scan "t" -> "t1"
+              motion [policy: full, program: ReshardIfNeeded]
+                projection ("t2"."id"::int -> "id", "t2"."bucket_id"::int -> "bucket_id", "t2"."a"::int -> "a", "t2"."b"::int -> "b")
+                  scan "t" -> "t2"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [1-3000]
 
 -- TEST: no-optimize-except
@@ -626,24 +626,24 @@ SELECT id FROM t WHERE a = 1 EXCEPT SELECT id FROM t WHERE a = 4 ORDER BY id LIM
 EXPLAIN SELECT id FROM t WHERE a = 1 EXCEPT SELECT id FROM t WHERE a = 4 ORDER BY id LIMIT 1;
 -- EXPECTED:
 limit 1
-    projection ("id"::int -> "id")
-        order by ("id"::int)
-            motion [policy: full, program: ReshardIfNeeded]
-                limit 1
-                    projection ("id"::int -> "id")
-                        order by ("id"::int)
-                            scan
-                                except
-                                    projection ("t"."id"::int -> "id")
-                                        selection "t"."a"::int = 1::int
-                                            scan "t"
-                                    motion [policy: full, program: ReshardIfNeeded]
-                                        projection ("t"."id"::int -> "id")
-                                            selection "t"."a"::int = 4::int
-                                                scan "t"
+  projection ("id"::int -> "id")
+    order by ("id"::int)
+      motion [policy: full, program: ReshardIfNeeded]
+        limit 1
+          projection ("id"::int -> "id")
+            order by ("id"::int)
+              scan
+                except
+                  projection ("t"."id"::int -> "id")
+                    selection "t"."a"::int = 1::int
+                      scan "t"
+                  motion [policy: full, program: ReshardIfNeeded]
+                    projection ("t"."id"::int -> "id")
+                      selection "t"."a"::int = 4::int
+                        scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets <= [1934,2752]
 
 -- TEST: distinct-2
@@ -657,11 +657,11 @@ SELECT DISTINCT b FROM t WHERE a = 4;
 EXPLAIN SELECT DISTINCT b FROM t WHERE a = 4;
 -- EXPECTED:
 projection ("t"."b"::int -> "b")
-    selection "t"."a"::int = 4::int
-        scan "t"
+  selection "t"."a"::int = 4::int
+    scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets = [2752]
 
 -- TEST: scalar-agg-1
@@ -674,14 +674,14 @@ null
 -- SQL:
 EXPLAIN SELECT count(*) FROM t WHERE a = 1 AND a = 2;
 -- EXPECTED:
-projection (sum(("count_1"::int))::int -> "col_1")
-    motion [policy: full, program: ReshardIfNeeded]
-        projection (count((*::int))::int -> "count_1")
-            selection ("t"."a"::int = 1::int) and ("t"."a"::int = 2::int)
-                scan "t"
+projection (sum("count_1"::int)::int -> "col_1")
+  motion [policy: full, program: ReshardIfNeeded]
+    projection (count(*::int)::int -> "count_1")
+      selection ("t"."a"::int = 1::int) and ("t"."a"::int = 2::int)
+        scan "t"
 execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
 buckets <= []
 
 -- TEST: init-3
