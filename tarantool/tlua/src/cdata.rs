@@ -1,23 +1,15 @@
-use crate::ffi;
-use crate::lua_functions::LuaFunction;
 use crate::object::{FromObject, Object};
+use crate::{ffi, Call, Index};
 use crate::{AsLua, LuaRead, LuaState, Push, PushInto, PushOneInto, ReadResult, WrongType};
-use std::cell::UnsafeCell;
+use std::cell::OnceCell;
 use std::convert::TryFrom;
+use std::marker::PhantomData;
 use std::num::NonZeroI32;
 use std::os::raw::{c_char, c_void};
 
 ////////////////////////////////////////////////////////////////////////////////
 // CDataOnStack
 ////////////////////////////////////////////////////////////////////////////////
-
-/// Represents a reference to the underlying cdata value corresponding to a
-/// given cdata object.
-#[derive(Debug, Clone, Copy)]
-enum CDataRef<'l> {
-    Ptr(*mut c_void),
-    Slice(&'l [u8]),
-}
 
 /// A cdata value stored on lua stack. Can be used to check type of cdata,
 /// access the raw bytes of the data, downcast it to a rust type or passed as
@@ -44,61 +36,52 @@ enum CDataRef<'l> {
 #[derive(Debug)]
 pub struct CDataOnStack<'l, L> {
     inner: Object<L>,
-    data: UnsafeCell<CDataRef<'l>>,
+    data: *mut c_void,
+    data_size: OnceCell<usize>,
     ctypeid: ffi::CTypeID,
+    _marker: PhantomData<&'l ()>,
 }
 
-impl<L> CDataOnStack<'_, L>
+impl<'l, L> CDataOnStack<'l, L>
 where
     L: AsLua,
 {
     /// Return pointer to data. Maybe use [`CDataOnStack::data`] instead.
     #[inline(always)]
     pub fn as_ptr(&self) -> *const c_void {
-        match unsafe { *self.data.get() } {
-            CDataRef::Ptr(ptr) => ptr,
-            CDataRef::Slice(slice) => slice.as_ptr().cast(),
-        }
+        self.data
     }
 
-    /// Updates the CDataRef inplace replacing the pointer with a slice of known
-    /// size. This function is only executed once because it performs an
-    /// expensnive call to luajit runtime to figure out the size of the data.
-    fn update_data(&self, ptr: *const c_void) -> &[u8] {
-        let f = LuaFunction::load(self, "return require('ffi').sizeof(...)").unwrap();
-        let size: usize = f.into_call_with_args(self).unwrap();
-        unsafe {
-            let slice = std::slice::from_raw_parts(ptr.cast(), size);
-            std::ptr::write(self.data.get(), CDataRef::Slice(slice));
-            slice
+    /// Returns the size of the cdata value.
+    fn get_data_size(&self) -> Option<usize> {
+        if let Some(data_size) = self.data_size.get() {
+            return Some(*data_size);
         }
+
+        let ffi = crate::require::require(self, "ffi").ok()?;
+        let sizeof: crate::Callable<_> = ffi.into_get("sizeof").ok()?;
+        let data_size = sizeof.into_call_with(self).ok()?;
+        _ = self.data_size.set(data_size);
+
+        Some(data_size)
     }
 
     /// Return a slice of bytes covering the data if the data's size was already
     /// retrieved before. Otherwise return `None`.
     ///
     /// See also [`CDataOnStack::data`].
-    pub fn try_as_bytes(&self) -> Option<&[u8]> {
-        match unsafe { *self.data.get() } {
-            CDataRef::Slice(slice) => Some(slice),
-            CDataRef::Ptr(_) => None,
-        }
+    pub fn try_as_bytes(&self) -> Option<&'l [u8]> {
+        let data_size = *self.data_size.get()?;
+        Some(unsafe { std::slice::from_raw_parts(self.data as _, data_size) })
     }
 
     /// Return a mutable slice of bytes covering the data if the data's size was
     /// already retrieved before. Otherwise return `None`.
     ///
     /// See also [`CDataOnStack::data_mut`].
-    pub fn try_as_bytes_mut(&mut self) -> Option<&mut [u8]> {
-        match unsafe { *self.data.get() } {
-            CDataRef::Slice(slice) => unsafe {
-                Some(std::slice::from_raw_parts_mut(
-                    slice.as_ptr() as *mut _,
-                    slice.len(),
-                ))
-            },
-            CDataRef::Ptr(_) => None,
-        }
+    pub fn try_as_bytes_mut(&mut self) -> Option<&'l mut [u8]> {
+        let data_size = *self.data_size.get()?;
+        Some(unsafe { std::slice::from_raw_parts_mut(self.data as _, data_size) })
     }
 
     /// Return a slice of bytes covering the data. Calling this function the
@@ -107,20 +90,18 @@ where
     /// data, use the [`CDataOnStack::as_ptr`]. But if you actually need the
     /// bytes, use this function.
     #[inline(always)]
-    pub fn data(&self) -> &[u8] {
-        match unsafe { *self.data.get() } {
-            CDataRef::Ptr(ptr) => self.update_data(ptr),
-            CDataRef::Slice(slice) => slice,
-        }
+    pub fn data(&self) -> &'l [u8] {
+        let data_size = self.get_data_size().expect("failed to get size of data");
+        unsafe { std::slice::from_raw_parts(self.data as _, data_size) }
     }
 
     /// Return a mutable slice of bytes covering the data. Calling this function the
     /// first time around will perform an expensive operation of retrieving the
     /// data's size.
     #[inline(always)]
-    pub fn data_mut(&mut self) -> &mut [u8] {
-        let data = self.data();
-        unsafe { std::slice::from_raw_parts_mut(data.as_ptr() as *mut _, data.len()) }
+    pub fn data_mut(&mut self) -> &'l mut [u8] {
+        let data_size = self.get_data_size().expect("failed to get size of data");
+        unsafe { std::slice::from_raw_parts_mut(self.data as _, data_size) }
     }
 
     /// Return the ctypeid of the cdata.
@@ -140,7 +121,7 @@ where
     /// [`data`]: CDataOnStack::data
     /// [`ctypeid`]: CDataOnStack::ctypeid
     #[inline(always)]
-    pub fn try_downcast<T>(&self) -> Option<&T>
+    pub fn try_downcast<T>(&self) -> Option<&'l T>
     where
         T: AsCData,
     {
@@ -158,13 +139,14 @@ where
     ///
     /// [`data`]: CDataOnStack::data
     /// [`ctypeid`]: CDataOnStack::ctypeid
-    #[deprecated(since = "10.1.0", note = "Use `try_downcast_into` instead.")]
     #[inline(always)]
-    pub fn try_downcast_mut<T>(&self) -> Option<&mut T>
+    pub fn try_downcast_mut<T>(&self) -> Option<&'l mut T>
     where
         T: AsCData,
     {
-        unimplemented!("`try_downcast_mut` could produce undefined behavior and has been removed.")
+        self.check_ctypeid::<T>()
+            .then(|| unsafe { self.data.cast::<T>().as_mut() })
+            .flatten()
     }
 
     /// Return the underlying value consuming `self` if
@@ -209,11 +191,13 @@ where
 
     unsafe fn from_obj(inner: Object<L>) -> Self {
         let mut ctypeid = 0;
-        let cdata = ffi::luaL_checkcdata(inner.as_lua(), inner.index().into(), &mut ctypeid);
+        let data = ffi::luaL_checkcdata(inner.as_lua(), inner.index().into(), &mut ctypeid);
         Self {
             inner,
-            data: UnsafeCell::new(CDataRef::Ptr(cdata)),
+            data,
+            data_size: OnceCell::new(),
             ctypeid,
+            _marker: PhantomData,
         }
     }
 }

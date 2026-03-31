@@ -67,6 +67,11 @@
 - `space::UpdateOps` `into_assign`, `into_add`, etc. methods for user convenience
 - `Index::meta` return value now states `'static` instead of `'_`
   which now allows more correct usage code to compile.
+- `CDataOnStack::try_downcast_mut` is undeprecated. Implementation is fixed and
+  no longer contains immediate undefined behavior upon use, however it should
+  still be used with caution as incorrect usage may lead to undefined behavior.
+- `CDataOnStack::{data, data_mut, try_as_bytes, try_as_bytes_mut, try_downcast, try_downcast_mut}`
+  methods' return values now have a less strict lifetime requirement.
 
 ### Breaking
 
