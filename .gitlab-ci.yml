@@ -201,7 +201,6 @@ certlinters:
   stage: test
   needs: []
   rules:
-    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH && $CI_PIPELINE_SOURCE != "schedule"
     - when: manual
       allow_failure: true
   variables:
