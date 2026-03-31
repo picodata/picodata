@@ -5,7 +5,7 @@ import DynamicFeedIcon from "@mui/icons-material/DynamicFeed";
 import AltRouteIcon from "@mui/icons-material/AltRoute";
 import AlbumIcon from "@mui/icons-material/Album";
 import CircleIcon from "@mui/icons-material/Circle";
-
+import { v4 as uuidv4 } from 'uuid';
 import { InstanceNodeType, InstanceType } from "shared/entity/instance";
 import { sortByString } from "shared/utils/string/sort";
 import {
@@ -74,7 +74,7 @@ const getFailureDomainTags = (
       label: value,
     }));
     const currentTag = {
-      id: crypto.randomUUID(),
+      id: uuidv4(),
       key: key,
       label: `${translation.components.filterTags.failureDomain} - ${key}`,
       icon: AirlineStopsIcon,
@@ -114,42 +114,42 @@ export const getFilterTags = (
   ] = getTagOptions(instances, ["name", "version", "currentState"]);
   return [
     {
-      id: crypto.randomUUID(),
+      id: uuidv4(),
       key: "tier",
       label: translation.components.filterTags.tier,
       icon: StorageIcon,
       options: tierNameOptions,
     },
     {
-      id: crypto.randomUUID(),
+      id: uuidv4(),
       key: "replicaset",
       label: translation.components.filterTags.replicaset,
       icon: LayersIcon,
       options: replicasetNameOptions,
     },
     {
-      id: crypto.randomUUID(),
+      id: uuidv4(),
       key: "instance",
       label: translation.components.filterTags.instance,
       icon: DynamicFeedIcon,
       options: instanceNameOptions,
     },
     {
-      id: crypto.randomUUID(),
+      id: uuidv4(),
       key: "version",
       label: translation.components.filterTags.version,
       icon: AltRouteIcon,
       options: instanceVersionOptions,
     },
     {
-      id: crypto.randomUUID(),
+      id: uuidv4(),
       key: "leaderState",
       label: translation.components.filterTags.leaderState,
       icon: CircleIcon,
       options: replicasetStateOptions,
     },
     {
-      id: crypto.randomUUID(),
+      id: uuidv4(),
       key: "currentState",
       label: translation.components.filterTags.currentState,
       icon: AlbumIcon,
