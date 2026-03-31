@@ -311,9 +311,9 @@ pub(super) fn action_plan<'i>(
         last_step_info,
         term,
         applied,
-        tiers,
         instances,
         replicasets,
+        topology_ref,
         sync_timeout,
         batch_size,
     )? {

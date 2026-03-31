@@ -12,18 +12,25 @@ use crate::rpc;
 use crate::schema::ADMIN_ID;
 use crate::storage::{SystemTable, Tiers};
 use crate::tier::Tier;
+use crate::topology_cache::TopologyCacheRef;
 use crate::traft::op::Dml;
 use crate::traft::{RaftIndex, RaftTerm, Result};
 use std::collections::HashMap;
 use tarantool::space::UpdateOps;
 
+////////////////////////////////////////////////////////////////////////////////
+// handle_sharding
+////////////////////////////////////////////////////////////////////////////////
+
+/// Prepares [`UpdateCurrentVshardConfig`] action which involves calling
+/// proc_sharding RPC on all instances of the cluster (batching applies).
 pub(super) fn handle_sharding<'i>(
     last_step_info: &mut LastStepInfo,
     term: RaftTerm,
     applied: RaftIndex,
-    tiers: &HashMap<&str, &'i Tier>,
     instances: &'i [Instance],
     replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
+    topology_ref: &TopologyCacheRef,
     timeout: std::time::Duration,
     batch_size: usize,
 ) -> Result<Option<Plan<'i>>> {
@@ -31,7 +38,7 @@ pub(super) fn handle_sharding<'i>(
     // configure vshard in all tiers at once, so it doesn't make sense to update
     // their target/current versions separately. We should either refactor the
     // outer loop or look into configuring separate tiers separately
-    for (&tier_name, &tier) in tiers.iter() {
+    for tier in topology_ref.all_tiers() {
         // Skip vshard configuration for tiers with no buckets (arbiter tiers)
         if !tier.has_buckets() {
             continue;
@@ -39,7 +46,7 @@ pub(super) fn handle_sharding<'i>(
         let mut first_ready_replicaset = None;
         if !tier.vshard_bootstrapped {
             first_ready_replicaset =
-                get_first_ready_replicaset_in_tier(instances, replicasets, tier_name);
+                get_first_ready_replicaset_in_tier(instances, replicasets, &tier.name);
         }
 
         // Note: the following is a hack stemming from the fact that we have to work around vshard's weird quirks.
@@ -66,7 +73,7 @@ pub(super) fn handle_sharding<'i>(
 
         // Clear previous results if vshard config version changed, because now
         // everybody needs to apply the new configuration
-        last_step_info.update_vshard_config_versions(tiers);
+        last_step_info.update_vshard_config_versions(topology_ref);
 
         let targets_total: Vec<_> = maybe_responding(instances)
             .map(|instance| &instance.name)
@@ -100,7 +107,7 @@ pub(super) fn handle_sharding<'i>(
             tier.target_vshard_config_version,
         )?;
 
-        let bump = Dml::update(Tiers::TABLE_ID, &[tier_name], uops, ADMIN_ID)?;
+        let bump = Dml::update(Tiers::TABLE_ID, &[&tier.name], uops, ADMIN_ID)?;
         let predicate = cas::Predicate::new(applied, []);
         let cas = cas::Request::new(bump, predicate, ADMIN_ID)?;
 
@@ -110,7 +117,7 @@ pub(super) fn handle_sharding<'i>(
                 targets_batch,
                 rpc,
                 cas,
-                tier_name: tier_name.into(),
+                tier_name: tier.name.clone(),
             }
             .into(),
         ));
@@ -119,6 +126,12 @@ pub(super) fn handle_sharding<'i>(
     Ok(None)
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// handle_sharding_bootstrap
+////////////////////////////////////////////////////////////////////////////////
+
+/// Prepares [`ShardingBoot`] action which involves calling proc_sharding_bootstrap
+/// RPC on one of the replicasets' master.
 pub(super) fn handle_sharding_bootstrap<'i>(
     term: RaftTerm,
     applied: RaftIndex,

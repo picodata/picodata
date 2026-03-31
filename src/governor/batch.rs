@@ -4,6 +4,8 @@ use crate::instance::InstanceName;
 use crate::plugin::PluginOp;
 use crate::tier::Tier;
 use crate::tlog;
+use crate::topology_cache::TopologyCacheRef;
+use smol_str::format_smolstr;
 use smol_str::SmolStr;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -125,61 +127,84 @@ impl LastStepInfo {
     }
 
     /// Check if target_vshard_config_version version has changed for any of the
-    /// `tiers`, if so we must throw away any successful RPC from previous
-    /// attempts, because everybody needs to apply the newer configuration.
+    /// tiers in `topology_ref`, if so we must throw away any successful RPC
+    /// from previous attempts, because everybody needs to apply the newer
+    /// configuration.
     ///
     /// `step_kind` is provided as a sort of hack, because if we don't set it
     /// here, then the call to `on_next_step` in governor loop will reset the
     /// vshard config versions and the first batch of RPCs will always need to
     /// be resent. I couldn't come up with a better solution unfortunately
-    pub fn update_vshard_config_versions(&mut self, tiers: &HashMap<&str, &Tier>) {
-        let mut something_changed = false;
-        let mut reason = "<uknown reason>";
-        let was_empty = self.target_vshard_config_versions.is_empty();
+    pub fn update_vshard_config_versions(&mut self, topology_ref: &TopologyCacheRef) {
+        self.update_tier_versions::<{ Self::VERSION_KIND_VSHARD_CONFIG }>(topology_ref)
+    }
 
-        for tier in tiers.values() {
-            match self.target_vshard_config_versions.entry(tier.name.clone()) {
+    const VERSION_KIND_VSHARD_CONFIG: u8 = 0;
+
+    fn update_tier_versions<const KIND: u8>(&mut self, topology_ref: &TopologyCacheRef) {
+        let mut something_changed = false;
+        let mut reason = SmolStr::new_static("<unknown reason>");
+
+        #[inline(always)]
+        fn get_version<const KIND: u8>(tier: &Tier) -> u64 {
+            match KIND {
+                LastStepInfo::VERSION_KIND_VSHARD_CONFIG => tier.target_vshard_config_version,
+                _ => unreachable!(),
+            }
+        }
+        let get_version = get_version::<KIND>;
+
+        let saved_map;
+        let name;
+        match KIND {
+            Self::VERSION_KIND_VSHARD_CONFIG => {
+                saved_map = &mut self.target_vshard_config_versions;
+                name = "target_vshard_config_versions";
+            }
+            _ => unreachable!(),
+        }
+
+        let was_empty = saved_map.is_empty();
+
+        for tier in topology_ref.all_tiers() {
+            match saved_map.entry(tier.name.clone()) {
                 Entry::Occupied(mut entry) => {
-                    if entry.get() != &tier.target_vshard_config_version {
-                        entry.insert(tier.target_vshard_config_version);
+                    if *entry.get() != get_version(tier) {
+                        entry.insert(get_version(tier));
                         something_changed = true;
-                        reason = "target_vshard_config_version changed";
+                        reason = format_smolstr!("{name} changed");
                     } else {
                         // Config version of this tier didn't change since last time
                     }
                 }
                 Entry::Vacant(entry) => {
-                    entry.insert(tier.target_vshard_config_version);
+                    entry.insert(get_version(tier));
                     something_changed = true;
                     if was_empty {
-                        reason = "target_vshard_config_version was unknown";
+                        reason = format_smolstr!("{name} was unknown");
                     } else {
-                        reason = "new tier added";
+                        reason = "new tier added".into();
                     }
                 }
             }
         }
 
         // Cleanup info about tiers which have been removed
-        self.target_vshard_config_versions.retain(|tier_name, _| {
-            let retained = tiers.contains_key(&**tier_name);
+        saved_map.retain(|tier_name, _| {
+            let retained = topology_ref.tier_by_name(tier_name).is_ok();
             if !retained {
                 something_changed = true;
-                reason = "tier was removed";
+                reason = "tier was removed".into();
             }
             retained
         });
 
-        tlog!(
-            Debug,
-            "saved vshard config versions: {:?}",
-            self.target_vshard_config_versions
-        );
+        tlog!(Debug, "saved {name}: {saved_map:?}");
 
         if something_changed {
             // One of the tier's configurations changed, must notify every
             // instance about it
-            self.reset_rpc_results(reason);
+            self.reset_rpc_results(&reason);
         }
     }
 
