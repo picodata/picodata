@@ -145,6 +145,7 @@ pub use lua_tables::{LuaTable, LuaTableIterator};
 pub use object::{
     Call, CallError, Callable, Index, Indexable, IndexableRW, MethodCallError, NewIndex, Object,
 };
+pub use require::{require, Module};
 pub use rust_tables::{PushIterError, PushIterErrorOf, TableFromIter};
 pub use tuples::{AsTable, TuplePushError};
 pub use userdata::UserdataOnStack;
@@ -166,6 +167,7 @@ mod lua_functions;
 mod lua_tables;
 mod macros;
 mod object;
+mod require;
 mod rust_tables;
 #[cfg(feature = "extra_impls")]
 mod smol_str;
