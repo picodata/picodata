@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::{self, Display};
+use std::fmt::{self, Display, Write as _};
 
 use itertools::Itertools;
 use smol_str::{format_smolstr, SmolStr, SmolStrBuilder, ToSmolStr};
@@ -34,7 +34,10 @@ use super::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
 use super::types::{CastType, DerivedType};
 use super::value::Value;
 
-const INDENT: &str = "  ";
+fn indent<'a, 'b: 'a>(f: &'a mut fmt::Formatter<'b>) -> indenter::Indented<'a, fmt::Formatter<'b>> {
+    const INDENT: &str = "  ";
+    indenter::indented(f).with_str(INDENT)
+}
 
 /// Check if a string slice is lowercase alphanumeric.
 fn name_requires_quotes(s: &str) -> bool {
@@ -93,7 +96,7 @@ enum ColExpr {
 
 impl Display for ColExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self {
+        match self {
             ColExpr::Window(window) => write!(f, "{window}")?,
             ColExpr::Over(stable_func, filter, window) => {
                 let ColExpr::ScalarFunction(func_name, args, ..) = stable_func.as_ref() else {
@@ -107,8 +110,7 @@ impl Display for ColExpr {
                     write!(f, "{func_name}({args}) over ")?;
                 };
 
-                if let ColExpr::Window(window_explain) = window.as_ref() {
-                    let WindowExplain { .. } = window_explain.as_ref();
+                if let ColExpr::Window(_) = window.as_ref() {
                     write!(f, "{window}")?;
                 } else {
                     panic!("Expected Window expression in OVER clause");
@@ -1068,7 +1070,7 @@ enum MotionPolicy {
 
 impl Display for MotionPolicy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self {
+        match self {
             MotionPolicy::None => write!(f, "none"),
             MotionPolicy::Full => write!(f, "full"),
             MotionPolicy::Segment(mk) => write!(f, "segment({mk})"),
@@ -1131,7 +1133,7 @@ enum ExplainNode {
 
 impl Display for ExplainNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self {
+        match self {
             ExplainNode::Cte(name, r) => {
                 write!(f, "scan cte {name}({r})", name = name_to_smolstr(name))?;
             }
@@ -1192,24 +1194,16 @@ impl PartialEq for ExplainTreePart {
     }
 }
 
-impl ExplainTreePart {
-    fn do_fmt(&self, f: &mut fmt::Formatter<'_>, level: usize) -> fmt::Result {
-        for _ in 0..level {
-            write!(f, "{}", INDENT)?;
-        }
+impl Display for ExplainTreePart {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.current)?;
 
+        let mut f = indent(f);
         for child in &self.children {
-            child.do_fmt(f, level + 1)?;
+            write!(f, "{child}")?;
         }
 
         Ok(())
-    }
-}
-
-impl Display for ExplainTreePart {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.do_fmt(f, 0)
     }
 }
 
@@ -1276,7 +1270,7 @@ impl Display for FullExplain {
         write!(f, "{}", self.main_query)?;
         for (pos, (_, sq)) in self.subqueries.iter().enumerate() {
             writeln!(f, "subquery ${pos}:")?;
-            sq.do_fmt(f, 1)?;
+            write!(indent(f), "{sq}")?;
         }
         for (pos, window) in self.windows.iter().enumerate() {
             writeln!(f, "window ${pos}:")?;
@@ -1284,8 +1278,8 @@ impl Display for FullExplain {
         }
         if !self.exec_options.is_empty() {
             writeln!(f, "execution options:")?;
-            for opt in &self.exec_options {
-                writeln!(f, "{}{} = {}", INDENT, opt.0, opt.1)?;
+            for (key, value) in &self.exec_options {
+                writeln!(indent(f), "{key} = {value}")?;
             }
         }
         if let Some(info) = &self.buckets_info {

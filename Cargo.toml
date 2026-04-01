@@ -131,6 +131,7 @@ chrono = "0.4"
 clap = "4.5"
 comfy-table = "7.2"
 git-version = "0.3"
+indenter = "0.3"
 openssl = "0.10"
 picodata-plugin = { path = "picodata-plugin" }
 postgres-types = { version = "0.2", features = [
