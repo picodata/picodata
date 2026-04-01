@@ -38,15 +38,15 @@ export const FilterValueForm = ({
     () => tags.find(({ key }) => key === tagKey)?.options || [],
     [tags, tagKey]
   );
-  const resultValue = useMemo(
-    () =>
-      Array.isArray(value)
-        ? tagOptions.filter(({ value: _value }) => value.includes(_value))
-        : expression?.type === ExpressionEnum.IsOneOf
-        ? []
-        : tagOptions.find(({ value: _value }) => _value === value) || null,
-    [tagOptions, value, expression]
-  );
+  const resultValue = useMemo(() => {
+    if (Array.isArray(value)) {
+      return tagOptions.filter(({ value: _value }) => value.includes(_value));
+    }
+    if (expression?.type === ExpressionEnum.IsOneOf) {
+      return [];
+    }
+    return tagOptions.find(({ value: _value }) => _value === value) || null;
+  }, [tagOptions, value, expression]);
 
   const tagChangeHandler = (_tag: Tag | null) => {
     if (_tag) {

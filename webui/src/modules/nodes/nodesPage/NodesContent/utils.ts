@@ -346,6 +346,62 @@ const getIncludesSearchText = (
     });
 };
 
+const filterInstances = (
+  instances: InstanceNodeType[],
+  instanceFilterValues: FilterValue[],
+  failureDomainsFilterValues: FilterValue[],
+  searchTextFilterValues: FilterValue[]
+): InstanceNodeType[] => {
+  return instances.filter((_instance) => {
+    const instanceIsInclude = getIncludesFilterValue(instanceFilterValues, _instance);
+    const instanceFailureDomainsIsInclude = failureDomainsFilterValues.every(
+      (fdFilterValue) => filterFailureDomainByExpressionType(fdFilterValue, _instance)
+    );
+    const instanceSearchTextIncludes = getIncludesSearchText(_instance, searchTextFilterValues);
+    return instanceIsInclude && instanceFailureDomainsIsInclude && instanceSearchTextIncludes;
+  });
+};
+
+const filterReplicasets = (
+  replicasets: ReplicasetNodeType[],
+  replicasetFilterValues: FilterValue[],
+  instanceFilterValues: FilterValue[],
+  failureDomainsFilterValues: FilterValue[],
+  searchTextFilterValues: FilterValue[]
+): ReplicasetNodeType[] => {
+  const hasInstanceFilters =
+    instanceFilterValues.length || failureDomainsFilterValues.length || searchTextFilterValues.length;
+
+  return replicasets.reduce((_replicasets, _replicaset) => {
+    const replicasetIsInclude = getIncludesFilterValue(replicasetFilterValues, _replicaset);
+
+    if (replicasetIsInclude && !hasInstanceFilters) {
+      _replicasets.push(_replicaset);
+      return _replicasets;
+    }
+
+    const resultInstances = filterInstances(
+      _replicaset.instances as InstanceNodeType[],
+      instanceFilterValues,
+      failureDomainsFilterValues,
+      searchTextFilterValues
+    );
+
+    if (replicasetIsInclude && hasInstanceFilters && resultInstances.length) {
+      _replicasets.push({ ..._replicaset, instances: resultInstances });
+      return _replicasets;
+    }
+
+    if (replicasetIsInclude && searchTextFilterValues.length && !resultInstances.length) {
+      if (getIncludesSearchText(_replicaset, searchTextFilterValues)) {
+        _replicasets.push(_replicaset);
+      }
+    }
+
+    return _replicasets;
+  }, [] as ReplicasetNodeType[]);
+};
+
 const getFilteredTiers = (
   tiers: TierNodeType[],
   filterValue: FilterProps["value"]
@@ -365,131 +421,66 @@ const getFilteredTiers = (
   const searchTextFilterValues = filterValue.filter(
     ({ tagKey }) => tagKey === SEARCH_TEXT_KEY
   );
+  const hasAnyFilters =
+    replicasetFilterValues.length ||
+    instanceFilterValues.length ||
+    failureDomainsFilterValues.length ||
+    searchTextFilterValues.length;
 
-  const resultTiers = tiers.reduce((_tiers, _tier) => {
+  return tiers.reduce((_tiers, _tier) => {
     const tierIsInclude = getIncludesFilterValue(tierFilterValues, _tier);
 
-    const resultReplicasets = (
-      _tier.replicasets as ReplicasetNodeType[]
-    ).reduce((_replicasets, _replicaset) => {
-      const replicasetIsInclude = getIncludesFilterValue(
-        replicasetFilterValues,
-        _replicaset
-      );
-
-      if (
-        replicasetIsInclude &&
-        !instanceFilterValues.length &&
-        !failureDomainsFilterValues.length &&
-        !searchTextFilterValues.length
-      ) {
-        _replicasets.push(_replicaset);
-        return _replicasets;
-      }
-
-      const resultInstances = (
-        _replicaset.instances as InstanceNodeType[]
-      ).reduce((_instances, _instance) => {
-        const instanceIsInclude = getIncludesFilterValue(
-          instanceFilterValues,
-          _instance
-        );
-
-        const instanceFailureDomainsIsInclude =
-          failureDomainsFilterValues.every((fdFilterValue) =>
-            filterFailureDomainByExpressionType(fdFilterValue, _instance)
-          );
-
-        const instanceSearchTextIncludes = getIncludesSearchText(
-          _instance,
-          searchTextFilterValues
-        );
-
-        if (
-          instanceIsInclude &&
-          instanceFailureDomainsIsInclude &&
-          instanceSearchTextIncludes
-        ) {
-          _instances.push(_instance);
-        }
-
-        return _instances;
-      }, [] as InstanceNodeType[]);
-
-      if (
-        replicasetIsInclude &&
-        (instanceFilterValues.length ||
-          failureDomainsFilterValues.length ||
-          searchTextFilterValues.length) &&
-        resultInstances.length
-      ) {
-        _replicasets.push({
-          ..._replicaset,
-          instances: resultInstances,
-        });
-        return _replicasets;
-      }
-
-      if (
-        replicasetIsInclude &&
-        searchTextFilterValues.length &&
-        !resultInstances.length
-      ) {
-        const replicasetSearchTextIncludes = getIncludesSearchText(
-          _replicaset,
-          searchTextFilterValues
-        );
-        if (replicasetSearchTextIncludes) {
-          _replicasets.push(_replicaset);
-        }
-      }
-
-      return _replicasets;
-    }, [] as ReplicasetNodeType[]);
-
-    if (
-      tierIsInclude &&
-      !replicasetFilterValues.length &&
-      !instanceFilterValues.length &&
-      !failureDomainsFilterValues.length &&
-      !searchTextFilterValues.length
-    ) {
+    if (tierIsInclude && !hasAnyFilters) {
       _tiers.push(_tier);
       return _tiers;
     }
 
-    if (
-      tierIsInclude &&
-      (replicasetFilterValues.length ||
-        instanceFilterValues.length ||
-        failureDomainsFilterValues.length ||
-        searchTextFilterValues.length) &&
-      resultReplicasets.length
-    ) {
-      _tiers.push({
-        ..._tier,
-        replicasets: resultReplicasets,
-      });
+    const resultReplicasets = filterReplicasets(
+      _tier.replicasets as ReplicasetNodeType[],
+      replicasetFilterValues,
+      instanceFilterValues,
+      failureDomainsFilterValues,
+      searchTextFilterValues
+    );
+
+    if (tierIsInclude && hasAnyFilters && resultReplicasets.length) {
+      _tiers.push({ ..._tier, replicasets: resultReplicasets });
       return _tiers;
     }
-    if (
-      tierIsInclude &&
-      searchTextFilterValues.length &&
-      !resultReplicasets.length
-    ) {
-      const tierSearchTextIncludes = getIncludesSearchText(
-        _tier,
-        searchTextFilterValues
-      );
-      if (tierSearchTextIncludes) {
+
+    if (tierIsInclude && searchTextFilterValues.length && !resultReplicasets.length) {
+      if (getIncludesSearchText(_tier, searchTextFilterValues)) {
         _tiers.push(_tier);
         return _tiers;
       }
     }
+
     return _tiers;
   }, [] as TierNodeType[]);
+};
 
-  return resultTiers;
+const collectAllInstances = (tiers: TierNodeType[]): InstanceNodeType[] =>
+  tiers.flatMap((tier) =>
+    (tier.replicasets as ReplicasetNodeType[]).flatMap(
+      (replicaset) => replicaset.instances as InstanceNodeType[]
+    )
+  );
+
+const appendOpenedReplicasets = (
+  replicasets: ReplicasetNodeType[],
+  openedNodes: string[]
+): (ReplicasetNodeType | InstanceNodeType)[] => {
+  const result: (ReplicasetNodeType | InstanceNodeType)[] = [];
+  for (const replicaset of replicasets) {
+    const replicasetIsOpened = Boolean(
+      openedNodes.includes(replicaset.syntheticId) && replicaset.instances.length
+    );
+    result.push({ ...replicaset, open: replicasetIsOpened });
+    if (replicasetIsOpened) {
+      result.push(...(replicaset.instances as InstanceNodeType[]));
+    }
+  }
+  return result;
 };
 
 export const getNodesListByOpenedNodes = (
@@ -500,45 +491,25 @@ export const getNodesListByOpenedNodes = (
   sort?: TSortValue
 ): (TierNodeType | ReplicasetNodeType | InstanceNodeType)[] => {
   const filteredTiers = getFilteredTiers(tiers, filterValue);
-  let list: (TierNodeType | ReplicasetNodeType | InstanceNodeType)[] = [];
 
   if (grouping === "INSTANCES") {
-    filteredTiers.forEach((tier) => {
-      (tier.replicasets as ReplicasetNodeType[]).forEach((replicaset) => {
-        (replicaset.instances as InstanceNodeType[]).forEach((instance) => {
-          list.push(instance);
-        });
-      });
-    });
-
-    const sortedInstances = sortInstances(list as InstanceNodeType[], sort);
-    return sortedInstances as InstanceNodeType[];
+    const instances = collectAllInstances(filteredTiers);
+    return sortInstances(instances, sort) as InstanceNodeType[];
   }
 
+  const list: (TierNodeType | ReplicasetNodeType | InstanceNodeType)[] = [];
   const sortedTiers = sortTiers(filteredTiers);
-  sortedTiers.forEach((tier) => {
+  for (const tier of sortedTiers) {
     const tierIsOpened = Boolean(
       openedNodes.includes(tier.syntheticId) && tier.replicasets.length
     );
-    list.push({
-      ...tier,
-      open: tierIsOpened,
-    });
+    list.push({ ...tier, open: tierIsOpened });
     if (tierIsOpened) {
-      (tier.replicasets as ReplicasetNodeType[]).forEach((replicaset) => {
-        const replicasetIsOpened = Boolean(
-          openedNodes.includes(replicaset.syntheticId) &&
-            replicaset.instances.length
-        );
-        list.push({
-          ...replicaset,
-          open: replicasetIsOpened,
-        });
-        if (replicasetIsOpened) {
-          list = [...list, ...(replicaset.instances as InstanceNodeType[])];
-        }
-      });
+      list.push(...appendOpenedReplicasets(
+        tier.replicasets as ReplicasetNodeType[],
+        openedNodes
+      ));
     }
-  });
+  }
   return list;
 };

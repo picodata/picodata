@@ -27,7 +27,7 @@ export type TagOption = {
 export type Tag = {
   key: string;
   label: string;
-  icon?: OverridableComponent<SvgIconTypeMap> & { muiName: string };
+  icon?: OverridableComponent<SvgIconTypeMap>;
   options: TagOption[];
 };
 
