@@ -6,7 +6,7 @@
 По умолчанию [доступ к системным таблицам][a] запрещен всем [пользователям
 СУБД][u], кроме `admin` и `pico_service`.
 
-Описание соответствует версии Picodata `25.5.8`.
+Описание соответствует версии Picodata `26.1.1`.
 
 [t]: ../overview/glossary.md#table
 [a]: ../admin/access_control.md#tables_access
@@ -60,12 +60,34 @@
 * `engine`: (_string_, `"memtx" | "vinyl"`) [движок хранения](../overview/glossary.md#db_engine)
 * `owner`: (_unsigned_) создатель таблицы
 * `description`: (_string_) описание таблицы
+* `opts`: (_array_) дополнительные параметры, с которыми была создана
+  таблица. К таким параметрам, например, относятся:
+    - нежурналируемый тип таблицы (`UNLOGGED`)
+    - включение в состав первичного ключа колонки `bucket_id`
+
+??? note "Пример отображения параметров `opts`"
+      ```sql
+      CREATE UNLOGGED TABLE t3 (a int, primary key(bucket_id, a)) USING memtx;
+      ```
+      ```sql
+      SELECT name, opts FROM _pico_table WHERE name = 't3';
+      ```
+      ```json
+      +------+-----------------------------------------------------------+
+      | name | opts                                                      |
+      +==================================================================+
+      | t3   | [{"unlogged": [true]}, {"pk_contains_bucket_id": [true]}] |
+      +------+-----------------------------------------------------------+
+      (1 rows)
+      ```
 
 Индексы:
 
 * `_pico_table_id` (unique), parts: `[id]`
 * `_pico_table_name` (unique), parts: `[name]`
 * `_pico_table_owner_id` (non-unique), parts: `[owner]`
+
+
 
 ### _pico_index
 
@@ -79,7 +101,7 @@
 * `name`: (_string_) название индекса
 * `type`: (_string_) тип индекса, определяющий способ хранения и поиска
   данных в индексе — см. [CREATE INDEX ~ Типы индексов]
-* `opts`: (_array_) массив параметров ключ-значение, определяющих поведение
+* `opts`: (_array_) массив параметров "ключ-значение", определяющих поведение
   индекса:
     - `{"unique": true}` — индекс должен быть уникальным
     - `{"unique": false}` — допускается наличие дублирующихся значений в

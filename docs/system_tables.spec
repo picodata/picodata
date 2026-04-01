@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `25.5.8`.
+Описание соответствует версии Picodata `26.1.1`.
 
 ### _pico_table
 
@@ -13,6 +13,7 @@
 * `engine`: (_string_)
 * `owner`: (_unsigned_)
 * `description`: (_string_)
+* `opts`: (_array_)
 
 Индексы:
 
