@@ -151,13 +151,13 @@ The following refers to Ubuntu 20.04 LTS. The mileage with other distributions m
 #### Installation
 
 
-1. Install Python 3.10
+1. Install Python 3.11
 
      ```bash
    sudo add-apt-repository ppa:deadsnakes/ppa
-   sudo apt install python3.10 python3.10-distutils
+   sudo apt install python3.11 python3.11-distutils
    curl -sSL https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-   python3.10 get-pip.py
+   python3.11 get-pip.py
    ```
 
 3. Install poetry:
@@ -179,13 +179,13 @@ poetry install <dependency-package-name>
 #### Running
 
 ```bash
-python3.10 -m poetry run pytest
+python3.11 -m poetry run pytest
 ```
 
 or
 
 ```bash
-python3.10 -m poetry shell
+python3.11 -m poetry shell
 # A new shell will be opened inside the poetry environment
 pytest
 ```
@@ -254,7 +254,7 @@ Note: some details regarding python version tweaking might be outdated, feel fre
 
 #### Installation
 
-The installation sequence requires Python 3.10 or newer, preferably installed via Homebrew.
+The installation sequence requires Python 3.11 or newer, preferably installed via Homebrew.
 
 First check if the required version is available:
 ```shell
@@ -284,7 +284,7 @@ The `HOMEBREW_PREFIX` variable should point to the directory where `brew`
 installs packages. Let's create a symlink:
 
 ```shell
-ln -s "$(brew config | sed -n "s/^HOMEBREW_PREFIX: //p" | tr -d "\n")/bin/python@3.10" /usr/local/bin/python3
+ln -s "$(brew config | sed -n "s/^HOMEBREW_PREFIX: //p" | tr -d "\n")/bin/python@3.11" /usr/local/bin/python3
 ```
 _Note_: Make sure that `/usr/local/bin` is in your `PATH`.
 
@@ -302,7 +302,7 @@ which pip3
 If it doesn't, then similarly create a simlink for `pip3`:
 
 ```shell
-ln -s "$(brew config | sed -n "s/^HOMEBREW_PREFIX: //p" | tr -d "\n")/bin/pip@3.10" /usr/local/bin/pip3
+ln -s "$(brew config | sed -n "s/^HOMEBREW_PREFIX: //p" | tr -d "\n")/bin/pip@3.11" /usr/local/bin/pip3
 ```
 After that you can install poetry, see [instructions](https://python-poetry.org/docs/#installation):
 
