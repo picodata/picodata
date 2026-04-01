@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::fmt::{self, Display};
 
 use itertools::Itertools;
-use serde::Serialize;
 use smol_str::{format_smolstr, SmolStr, SmolStrBuilder, ToSmolStr};
 
 use crate::errors::{Entity, SbroadError};
@@ -60,7 +59,7 @@ fn name_to_smolstr(name: &str) -> SmolStr {
     builder.finish()
 }
 
-#[derive(Default, Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 enum ColExpr {
     Parentheses(Box<ColExpr>),
     Alias(Box<ColExpr>, SmolStr),
@@ -90,8 +89,6 @@ enum ColExpr {
     ),
     Trim(Option<TrimKind>, Option<Box<ColExpr>>, Box<ColExpr>),
     Row(Row),
-    #[default]
-    None,
 }
 
 impl Display for ColExpr {
@@ -187,7 +184,6 @@ impl Display for ColExpr {
                 (None, None) => write!(f, "TRIM({target})")?,
             },
             ColExpr::Row(row) => write!(f, "{row}")?,
-            ColExpr::None => {}
             ColExpr::Like(l, r, escape) => match escape {
                 Some(e) => write!(f, "{l} LIKE {r} ESCAPE {e}")?,
                 None => write!(f, "{l} LIKE {r}")?,
@@ -514,13 +510,13 @@ impl ColExpr {
 /// index will indicate to which of them Reference is pointing).
 type SubQueryRefMap = HashMap<NodeId, usize>;
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 struct Projection {
     /// List of colums in sql query
     cols: Vec<ColExpr>,
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 enum BoundTypeExplain {
     PrecedingUnbounded,
     PrecedingOffset(ColExpr),
@@ -559,7 +555,7 @@ impl Display for BoundTypeExplain {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 enum BoundExplain {
     Single(BoundTypeExplain),
     Between(BoundTypeExplain, BoundTypeExplain),
@@ -587,7 +583,7 @@ impl Display for BoundExplain {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 struct FrameExplain {
     ty: FrameType,
     bound: BoundExplain,
@@ -609,7 +605,7 @@ impl Display for FrameExplain {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 struct WindowExplain {
     partition: Vec<ColExpr>,
     ordering: Vec<OrderByPair>,
@@ -669,7 +665,7 @@ impl Display for Projection {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 struct GroupBy {
     /// List of colums in sql query
     gr_exprs: Vec<ColExpr>,
@@ -715,7 +711,7 @@ impl Display for GroupBy {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 enum OrderByExpr {
     Expr { expr: ColExpr },
     Index { value: usize },
@@ -730,7 +726,7 @@ impl Display for OrderByExpr {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 struct OrderByPair {
     expr: OrderByExpr,
     order_type: Option<OrderByType>,
@@ -746,7 +742,7 @@ impl Display for OrderByPair {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 struct OrderBy {
     order_by_elements: Vec<OrderByPair>,
 }
@@ -784,7 +780,7 @@ impl Display for OrderBy {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 struct Update {
     /// List of columns in sql query
     table: SmolStr,
@@ -876,7 +872,7 @@ impl Display for Update {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 struct Scan {
     /// Table name
     table: SmolStr,
@@ -916,7 +912,7 @@ impl Display for Scan {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 struct Ref {
     /// Reference to subquery/window index in `FullExplain` parts
     position: usize,
@@ -934,7 +930,7 @@ impl Display for Ref {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 enum RowVal {
     ColumnExpr(ColExpr),
     SqRef(Ref),
@@ -951,7 +947,7 @@ impl Display for RowVal {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 struct Row {
     /// List of sql values in `WHERE` cause
     cols: Vec<RowVal>,
@@ -1016,7 +1012,7 @@ impl Display for Row {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 struct SubQuery {
     /// Subquery alias. For subquery in `WHERE` cause alias is `None`.
     alias: Option<SmolStr>,
@@ -1039,7 +1035,7 @@ impl Display for SubQuery {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 struct Motion {
     policy: MotionPolicy,
     program: Program,
@@ -1061,7 +1057,7 @@ impl Display for Motion {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 enum MotionPolicy {
     None,
     Full,
@@ -1082,7 +1078,7 @@ impl Display for MotionPolicy {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 struct MotionKey {
     pub targets: Vec<Target>,
 }
@@ -1094,7 +1090,7 @@ impl Display for MotionKey {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 enum Target {
     Reference(SmolStr),
     Value(Value),
@@ -1109,7 +1105,7 @@ impl Display for Target {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 enum ExplainNode {
     Delete(SmolStr),
     Except,
@@ -1182,7 +1178,7 @@ impl Display for ExplainNode {
 }
 
 /// Describe sql query (or subquery) as recursive type
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Clone)]
 struct ExplainTreePart {
     /// Current node of sql query
     current: ExplainNode,
