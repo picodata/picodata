@@ -18,10 +18,10 @@ use crate::schema::ADMIN_ID;
 use crate::schema::ADMIN_NAME;
 use crate::sql::storage::STATEMENT_CACHE;
 use crate::sql::value_type_str;
-use crate::static_ref;
 use crate::storage::{self, DbConfig, SystemTable};
 use crate::system_parameter_name;
 use crate::tarantool::{set_cfg_field_from_rmpv, set_vdbe_opcode_yield_count};
+use crate::tier::default_can_vote;
 use crate::tier::Tier;
 use crate::tier::TierConfig;
 use crate::tier::DEFAULT_TIER;
@@ -34,6 +34,7 @@ use crate::traft::Result;
 use crate::util::file_exists;
 use crate::util::NoYieldsRefCell;
 use crate::util::{cast_and_encode, edit_distance};
+use crate::{column_name, static_ref};
 use crate::{config_parameter_path, sql};
 use ::sql::ir::options;
 use ::sql::ir::value::{EncodedValue, Value};
@@ -42,6 +43,7 @@ use rand::TryRng;
 use serde_yaml::Value as YamlValue;
 use smol_str::SmolStr;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::convert::{From, Into};
 use std::fmt::{Display, Formatter};
 use std::io::Write;
@@ -1093,6 +1095,9 @@ Using configuration file '{args_path}'.");
             _ => {}
         }
 
+        // Tiers
+        self.validate_tiers_against_storage(storage)?;
+
         // Advertise addresses
         if let Some(raft_id) = raft_storage.raft_id()? {
             let iproto_advertise = self.instance.iproto.advertise().to_host_port();
@@ -1160,6 +1165,129 @@ Using configuration file '{args_path}'.");
                     }
                 }
             }
+        }
+
+        Ok(())
+    }
+
+    /// Validates the tiers' configuration from the file matches that persisted in the system tables.
+    fn validate_tiers_against_storage(&self, storage: &storage::Catalog) -> Result<()> {
+        let from_storage = storage.tiers.all_tiers()?;
+
+        let Some(from_config) = &self.cluster.tier else {
+            // Empty tier configuration implies the default tier,
+            // this is a special legacy case, in all production setups the
+            // config file will specify the tiers explicitly, so it's ok to
+            // ignore the validation for this case
+            return Ok(());
+        };
+
+        let mut extra_in_storage = vec![];
+        let mut seen = HashSet::new();
+
+        //
+        // Validate each tier from _pico_tier against ones in configuration file
+        //
+        for tier_storage in &from_storage {
+            let tier_config = from_config
+                .iter()
+                .find(|(tier_name, _)| tier_name == tier_storage.name);
+            let Some((tier_name, tier_config)) = tier_config else {
+                extra_in_storage.push(&*tier_storage.name);
+                continue;
+            };
+            let tier_name = tier_name.as_ref();
+
+            debug_assert_eq!(&*tier_storage.name, tier_name);
+            self.validate_tier(tier_name, tier_config, tier_storage, storage)?;
+            seen.insert(tier_name);
+        }
+
+        if !extra_in_storage.is_empty() {
+            // Some tiers from _pico_tier were not found in the configuration file
+            return Err(invalid_tier_set_not_found(
+                &extra_in_storage,
+                "tiers not found in configuration",
+            ));
+        }
+
+        let extra_in_config: Vec<_> = from_config
+            .iter()
+            .map(|(tier_name, _)| tier_name.as_ref())
+            .filter(|tier_name| !seen.contains(tier_name))
+            .collect();
+        if !extra_in_config.is_empty() {
+            // Some tiers from the configuration file were not found in _pico_tier
+            return Err(invalid_tier_set_not_found(
+                &extra_in_config,
+                "tiers previously not seen",
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Validates that given tier's configuration from the file matches one
+    /// persisted in the system tables.
+    fn validate_tier(
+        &self,
+        tier_name: &str,
+        tier_config: &TierConfig,
+        tier_storage: &Tier,
+        storage: &storage::Catalog,
+    ) -> Result<()> {
+        debug_assert_eq!(tier_name, &*tier_storage.name);
+
+        let replication_factor = tier_config
+            .replication_factor
+            .unwrap_or_else(|| self.cluster.default_replication_factor());
+        if replication_factor != tier_storage.replication_factor {
+            return Err(invalid_tier_parameter(
+                tier_name,
+                column_name!(Tier, replication_factor),
+                replication_factor,
+                tier_storage.replication_factor,
+            ));
+        }
+
+        let bucket_count = tier_config
+            .bucket_count
+            .unwrap_or_else(|| self.cluster.default_bucket_count());
+        if bucket_count != tier_storage.bucket_count {
+            return Err(invalid_tier_parameter(
+                tier_name,
+                column_name!(Tier, bucket_count),
+                bucket_count,
+                tier_storage.bucket_count,
+            ));
+        }
+
+        if tier_config.can_vote != tier_storage.can_vote {
+            return Err(invalid_tier_parameter(
+                tier_name,
+                column_name!(Tier, can_vote),
+                tier_config.can_vote,
+                tier_storage.can_vote,
+            ));
+        }
+
+        let flag_from_storage = storage
+            .db_config
+            .get(
+                system_parameter_name!(experimental_sharding_implementation),
+                tier_name,
+            )?
+            .unwrap_or(false);
+        let flag_from_config = tier_config
+            .experimental_sharding_implementation
+            .unwrap_or(DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION);
+        if flag_from_config != flag_from_storage {
+            return Err(invalid_tier_parameter(
+                tier_name,
+                system_parameter_name!(experimental_sharding_implementation),
+                flag_from_config,
+                flag_from_storage,
+            ));
         }
 
         Ok(())
@@ -1283,6 +1411,30 @@ Using configuration file '{args_path}'.");
             GLOBAL_CONFIG = Some(config);
         };
     }
+}
+
+fn invalid_tier_set_not_found(unexpected_tiers: &[&str], context: &str) -> Error {
+    let extra = unexpected_tiers
+        .iter()
+        .copied()
+        .map(|tier_name| format!("'{tier_name}'"))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    Error::InvalidConfiguration(format!(
+        "instance restarted with a different set of tiers in configuration file, which is not allowed: {context}: {extra}"
+    ))
+}
+
+fn invalid_tier_parameter(
+    tier_name: &str,
+    parameter: &str,
+    from_config: impl Display,
+    from_storage: impl Display,
+) -> Error {
+    Error::InvalidConfiguration(format!(
+        "instance restarted with a different tier configuration, which is not allowed: tier '{tier_name}' `{parameter}` was persisted as `{from_storage}`, but became `{from_config}`"
+    ))
 }
 
 /// Gets the logging configuration from all possible sources and initializes the core logger.
@@ -1537,7 +1689,7 @@ impl ClusterConfig {
                     name: DEFAULT_TIER.into(),
                     replication_factor: self.default_replication_factor(),
                     bucket_count: self.default_bucket_count(),
-                    can_vote: true,
+                    can_vote: default_can_vote(),
                     is_default: Some(true),
                     ..Default::default()
                 },

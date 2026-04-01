@@ -1397,6 +1397,11 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
             let instance_name = raft_storage
                 .instance_name()?
                 .expect("instance_name should be already set");
+
+            // Validate that configuration file did not change in a way incompatible
+            // with persisted system tables
+            config.validate_storage(&storage, &raft_storage)?;
+
             postjoin(
                 config,
                 storage,
@@ -2109,8 +2114,6 @@ fn postjoin(
     reason: &str,
 ) -> Result<(), Error> {
     tlog!(Info, "entering post-join phase");
-
-    config.validate_storage(&storage, &raft_storage)?;
 
     if let Some(config) = &config.instance.audit {
         let raft_id = raft_storage

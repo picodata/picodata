@@ -67,6 +67,8 @@ with the `YY.MINOR.MICRO` scheme.
   enables the new behavior on the given tier. The parameter must be specified at
   cluster bootstrap via the configuration file and cannot be changed after that
   (in the future this restriction may be lifted).
+- [picodata#760] Added validation of cluster.tier config file section against
+  the persisted system table state upon instance restart.
 
 ### Fixes
 

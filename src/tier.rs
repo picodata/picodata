@@ -215,7 +215,7 @@ impl TierConfig {
 }
 
 #[inline(always)]
-fn default_can_vote() -> bool {
+pub fn default_can_vote() -> bool {
     true
 }
 
