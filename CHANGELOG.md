@@ -24,6 +24,8 @@ with the `YY.MINOR.MICRO` scheme.
   replication configs, preventing synchronization. The governor now includes
   only the master in the fallback replication config, preserving conflict
   isolation while allowing the cluster to recover.
+- Fixed a SQL planner panic caused by stale type metadata after clone-based
+  rewrites such as `BETWEEN` normalization and `GROUP BY` alias expansion.
 
 ## [26.1.1] - 2026-03-24
 

@@ -1073,3 +1073,17 @@ window function "max" is not allowed in GROUP BY
 with t(a) as (select 1) select max(a) from t group by (select max(1));
 -- EXPECTED:
 1
+
+-- TEST: test_alias_inside_groupby-1.11
+-- SQL:
+with cte as (select 1)
+select upper('a')::text as dd from cte group by dd;
+-- EXPECTED:
+'A'
+
+-- TEST: test_alias_inside_groupby-1.12
+-- SQL:
+with t_alias_arg(a) as (values (1), (2), (3))
+select a as dd from t_alias_arg group by dd, abs(dd) order by dd;
+-- EXPECTED:
+1, 2, 3

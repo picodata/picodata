@@ -1270,6 +1270,10 @@ impl Plan {
                     if let Some(alias_child) = col_aliases.get(&name) {
                         let new_top_id = SubtreeCloner::clone_subtree(self, *alias_child)?;
 
+                        // Retarget cloned references from Projection/Having to
+                        // the GroupBy input. Safe because the column positions
+                        // and types are identical (see `fix_groupby_aliases` comment
+                        // in `resolve_metadata`).
                         self.replace_target_in_subtree(
                             new_top_id,
                             proj_target_id,
@@ -1353,6 +1357,8 @@ impl Plan {
 
                     if let Some(target_id) = col_aliases.get(&name) {
                         let new_top_id = SubtreeCloner::clone_subtree(self, *target_id)?;
+                        // Same retargeting as the top-level alias branch above:
+                        // redirect cloned references to the GroupBy input.
                         self.replace_target_in_subtree(
                             new_top_id,
                             proj_target_id,

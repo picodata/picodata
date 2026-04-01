@@ -129,6 +129,12 @@ select total(coalesce(b,b)) from t;
 -- EXPECTED:
 3.0
 
+-- TEST: test-sqlfunc-casts-2.2
+-- SQL:
+select coalesce(b, a) from t where coalesce(b, a) between 1 and 3 order by 1;
+-- EXPECTED:
+1, 2, 3
+
 -- TEST: test-sqlfunc-casts-3.0
 -- SQL:
 drop table if exists t1;

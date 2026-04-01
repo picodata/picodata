@@ -2967,6 +2967,8 @@ where
             let ((_lhs_id, lhs), (rhs_id, _rhs)) =
                 try_deconstruct_between_expr(plan, &between).expect("malformed BETWEEN");
 
+            // This pass only clones the BETWEEN lhs subtree. The expression types do not
+            // change here; we only create fresh `NodeId`s for the copied nodes.
             let cloned_lower_bound = match self.subquery_replaces.get(&lhs.left) {
                 Some(id) => SubtreeCloner::clone_subtree(plan, *id)?,
                 None => SubtreeCloner::clone_subtree(plan, lhs.left)?,
@@ -3301,6 +3303,9 @@ impl Plan {
             }) = expr_node
             {
                 let node_id = self.get_first_rel_child(groupby_id)?;
+                // Reuse the type from the existing projection-output reference. This
+                // rewrite creates a new reference node, but its `col_type` is already
+                // known here.
                 let ref_id = self.nodes.add_ref(
                     ReferenceTarget::Single(node_id),
                     *position,
@@ -7475,8 +7480,6 @@ impl AbstractSyntaxTree {
             })?)?;
         plan.set_top(plan_top_id)?;
 
-        plan.fix_groupby_aliases()?;
-
         let mut tiers = plan
             .relations
             .tables
@@ -7497,16 +7500,39 @@ impl AbstractSyntaxTree {
         let param_types = get_parameter_derived_types(&type_analyzer);
         plan.set_types_in_parameter_nodes(&param_types)?;
 
-        // The problem is that we crete Between structures before replacing subqueries.
-        worker.fix_betweens(&mut plan)?;
-        plan.replace_group_by_ordinals_with_references()?;
-
         // Some recalculations that need to be performed after all parameter types are known.
         // TODO: They are likely to be redundant and should be removed because now parameters get
         // their types as soon as they are parsed but it needs to be investigated.
         plan.update_value_rows()?;
         plan.recalculate_ref_types()?;
+
+        // This was the last pass in this pipeline that is allowed to consult
+        // type analyzer.
         plan.explicit_cast_func_args(&type_analyzer)?;
+
+        // Prevent accidental use of stale type metadata after this point:
+        // the rewrites below create fresh NodeIds absent from the report.
+        drop(type_analyzer);
+
+        // The rewrites below must not read type report: they are only safe here
+        // because they preserve expression types semantically or copy already known
+        // reference types into newly created nodes.
+
+        // This pass only clones the lhs subtree of `BETWEEN` and gives the copy fresh
+        // `NodeId`s. It does not retarget references or change expression types, so it
+        // is safe to keep it after `recalculate_ref_types()`.
+        worker.fix_betweens(&mut plan)?;
+        // This rewrite retargets references inside copied subtrees, but the current
+        // `Projection -> GroupBy/Having -> child` contract preserves column positions
+        // and types, so the expression type should stay the same. Be careful if we
+        // ever change this invariant: this pass would likely need extra type refresh.
+        plan.fix_groupby_aliases()?;
+        // This rewrite creates new references with `col_type` copied from the
+        // existing projection-output references, so it does not need to consult
+        // type analyzer or refresh ref types after `recalculate_ref_types()`.
+        // NB: depends on `recalculate_ref_types` having run before cloning,
+        // so that cloned references already carry correct `col_type` values.
+        plan.replace_group_by_ordinals_with_references()?;
 
         Ok(plan)
     }
