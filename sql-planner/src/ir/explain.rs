@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt::{self, Display, Write as _};
 
 use itertools::Itertools;
+use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr, SmolStrBuilder, ToSmolStr};
 
 use crate::errors::{Entity, SbroadError};
@@ -21,7 +22,7 @@ use crate::ir::options::OptionKind;
 use crate::ir::transformation::redistribution::{
     MotionKey as IrMotionKey, MotionPolicy as IrMotionPolicy, Program, Target as IrTarget,
 };
-use crate::ir::{node, Plan};
+use crate::ir::{node, ExplainOptions, Plan};
 use crate::utils::OrderedMap;
 
 use super::expression::FunctionFeature;
@@ -34,32 +35,100 @@ use super::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
 use super::types::{CastType, DerivedType};
 use super::value::Value;
 
-fn indent<'a, 'b: 'a>(f: &'a mut fmt::Formatter<'b>) -> indenter::Indented<'a, fmt::Formatter<'b>> {
+fn indent<'a, D>(f: &'a mut D) -> indenter::Indented<'a, D> {
     const INDENT: &str = "  ";
     indenter::indented(f).with_str(INDENT)
 }
 
-/// Check if a string slice is lowercase alphanumeric.
 fn name_requires_quotes(s: &str) -> bool {
     !s.chars()
         .all(|c| c == '_' || c.is_ascii_digit() || c.is_ascii_lowercase())
 }
 
-fn smolstr_builder_write_name(builder: &mut SmolStrBuilder, name: &str) {
-    let need_quotes = name_requires_quotes(name);
-    if need_quotes {
-        builder.push('"');
-    }
-    builder.push_str(name);
-    if need_quotes {
-        builder.push('"');
-    }
+/// Print the object name in double quotes **if necessary**.
+/// We optimize for readability, so the function won't
+/// add the double qoutes unless they're required.
+fn properly_quoted_name(name: &str) -> SmolStr {
+    let mut builder = SmolStrBuilder::new();
+    write_name(&mut builder, name).expect("infallible");
+    builder.finish()
 }
 
-fn name_to_smolstr(name: &str) -> SmolStr {
-    let mut builder = SmolStrBuilder::new();
-    smolstr_builder_write_name(&mut builder, name);
-    builder.finish()
+/// Write the object name in double quotes **if necessary**.
+fn write_name(writer: &mut impl fmt::Write, name: &str) -> fmt::Result {
+    let need_quotes = name_requires_quotes(name);
+    if need_quotes {
+        writer.write_char('"')?;
+    }
+    // TODO: we should to escape double quotes as well.
+    writer.write_str(name)?;
+    if need_quotes {
+        writer.write_char('"')?;
+    }
+
+    Ok(())
+}
+
+fn write_long_list(
+    writer: &mut impl fmt::Write,
+    items: impl IntoIterator<Item: Display>,
+) -> fmt::Result {
+    let mut items = items.into_iter().peekable();
+    let mut writer = indent(writer);
+
+    // All non-empty long lists should start a new line.
+    // This helps with e.g. `projection (...)`.
+    if items.peek().is_some() {
+        writer.write_char('\n')?;
+    }
+
+    while let Some(item) = items.next() {
+        let sep = if items.peek().is_some() { "," } else { "" };
+        writeln!(writer, "{item}{sep}")?;
+    }
+
+    Ok(())
+}
+
+fn write_short_list(
+    writer: &mut impl fmt::Write,
+    items: impl IntoIterator<Item: Display>,
+) -> fmt::Result {
+    let formatted = items.into_iter().format(", ");
+    write!(writer, "{formatted}")
+}
+
+fn write_list(
+    writer: &mut impl fmt::Write,
+    items: impl IntoIterator<Item: Display>,
+    should_fmt: bool,
+) -> fmt::Result {
+    if !should_fmt {
+        return write_short_list(writer, items);
+    }
+
+    let mut items = items.into_iter().peekable();
+
+    // Lists containing up to FEW_ITEMS are considered
+    // short enough to be printed on a single line.
+    const FEW_ITEMS: usize = 3;
+    let mut stage = SmallVec::<[_; FEW_ITEMS]>::new();
+    while stage.len() < stage.capacity() {
+        match items.next() {
+            Some(item) => stage.push(item),
+            None => break,
+        }
+    }
+
+    match items.peek() {
+        // If there's nothing left, print as a short list.
+        None => write_short_list(writer, stage),
+        // Otherwise, print as a long list.
+        Some(_) => {
+            let combined = stage.into_iter().chain(items);
+            write_long_list(writer, combined)
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -123,7 +192,11 @@ impl Display for ColExpr {
                     write!(f, "{expr}")?;
                 }
                 _otherwise => {
-                    write!(f, "{expr} -> {alias}", alias = name_to_smolstr(alias_name))?;
+                    write!(
+                        f,
+                        "{expr} -> {alias}",
+                        alias = properly_quoted_name(alias_name)
+                    )?;
                 }
             },
             ColExpr::Arithmetic(left, op, right) => write!(f, "{left} {op} {right}")?,
@@ -143,13 +216,13 @@ impl Display for ColExpr {
                 Some(tbl_name) => write!(
                     f,
                     "{tbl_name}.{col_name}::{col_typ}",
-                    tbl_name = name_to_smolstr(tbl_name),
-                    col_name = name_to_smolstr(col_name),
+                    tbl_name = properly_quoted_name(tbl_name),
+                    col_name = properly_quoted_name(col_name),
                 )?,
                 None => write!(
                     f,
                     "{col_name}::{col_typ}",
-                    col_name = name_to_smolstr(col_name),
+                    col_name = properly_quoted_name(col_name),
                 )?,
             },
             ColExpr::Asterisk => write!(f, "*")?,
@@ -171,7 +244,7 @@ impl Display for ColExpr {
             }
             ColExpr::Concat(l, r) => write!(f, "{l} || {r}")?,
             ColExpr::ScalarFunction(name, args, feature, func_type, ..) => {
-                let name = name_to_smolstr(name);
+                let name = properly_quoted_name(name);
                 let distinct = match feature {
                     Some(FunctionFeature::Distinct) => "distinct ",
                     _other => "",
@@ -295,7 +368,7 @@ impl ColExpr {
                             };
                             o_elems.push(OrderByPair {
                                 expr,
-                                order_type: o_elem.order_type.clone(),
+                                order_type: o_elem.order_type,
                             });
                         }
                         o_elems.reverse();
@@ -514,8 +587,8 @@ type SubQueryRefMap = HashMap<NodeId, usize>;
 
 #[derive(Debug, PartialEq, Clone)]
 struct Projection {
-    /// List of colums in sql query
     cols: Vec<ColExpr>,
+    should_fmt: bool,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -645,25 +718,31 @@ impl Projection {
         plan: &Plan,
         output_id: NodeId,
         sq_ref_map: &SubQueryRefMap,
+        should_fmt: bool,
     ) -> Result<Self, SbroadError> {
         let output = plan.get_expression_node(output_id)?;
         let col_list = output.get_row_list()?;
         let mut result = Projection {
             cols: Vec::with_capacity(col_list.len()),
+            should_fmt,
         };
 
         for col_id in col_list {
             let col = ColExpr::new(plan, *col_id, sq_ref_map)?;
             result.cols.push(col);
         }
+
         Ok(result)
     }
 }
 
 impl Display for Projection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let cols = self.cols.iter().format(", ");
-        write!(f, "projection ({cols})")
+        write!(f, "projection (")?;
+        write_list(f, &self.cols, self.should_fmt)?;
+        write!(f, ")")?;
+
+        Ok(())
     }
 }
 
@@ -672,6 +751,7 @@ struct GroupBy {
     /// List of colums in sql query
     gr_exprs: Vec<ColExpr>,
     output_cols: Vec<ColExpr>,
+    should_fmt: bool,
 }
 
 impl GroupBy {
@@ -680,10 +760,12 @@ impl GroupBy {
         gr_exprs: &Vec<NodeId>,
         output_id: NodeId,
         sq_ref_map: &SubQueryRefMap,
+        should_fmt: bool,
     ) -> Result<Self, SbroadError> {
         let mut result = GroupBy {
             gr_exprs: vec![],
             output_cols: vec![],
+            should_fmt,
         };
 
         for col_node_id in gr_exprs {
@@ -701,13 +783,13 @@ impl GroupBy {
 
 impl Display for GroupBy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "group by ")?;
+        write!(f, "group by (")?;
+        write_list(f, &self.gr_exprs, self.should_fmt)?;
+        write!(f, ") ")?;
 
-        let gr_exprs = &self.gr_exprs.iter().format(", ");
-        write!(f, "({gr_exprs}) ")?;
-
-        let output_cols = &self.output_cols.iter().format(", ");
-        write!(f, "output: ({output_cols})")?;
+        write!(f, "output (")?;
+        write_list(f, &self.output_cols, self.should_fmt)?;
+        write!(f, ")")?;
 
         Ok(())
     }
@@ -746,51 +828,58 @@ impl Display for OrderByPair {
 
 #[derive(Debug, PartialEq, Clone)]
 struct OrderBy {
-    order_by_elements: Vec<OrderByPair>,
+    cols: Vec<OrderByPair>,
+    should_fmt: bool,
 }
 
 impl OrderBy {
     fn new(
         plan: &Plan,
-        order_by_elements: &Vec<OrderByElement>,
+        cols: &Vec<OrderByElement>,
         sq_ref_map: &SubQueryRefMap,
+        should_fmt: bool,
     ) -> Result<Self, SbroadError> {
         let mut result = OrderBy {
-            order_by_elements: vec![],
+            cols: vec![],
+            should_fmt,
         };
 
-        for order_by_element in order_by_elements {
-            let expr = match order_by_element.entity {
+        for item in cols {
+            let expr = match item.entity {
                 OrderByEntity::Expression { expr_id } => OrderByExpr::Expr {
                     expr: ColExpr::new(plan, expr_id, sq_ref_map)?,
                 },
                 OrderByEntity::Index { value } => OrderByExpr::Index { value },
             };
-            result.order_by_elements.push(OrderByPair {
+            result.cols.push(OrderByPair {
                 expr,
-                order_type: order_by_element.order_type.clone(),
+                order_type: item.order_type,
             });
         }
+
         Ok(result)
     }
 }
 
 impl Display for OrderBy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let elems = self.order_by_elements.iter().format(", ");
-        write!(f, "order by ({elems})")
+        write!(f, "order by (")?;
+        write_list(f, &self.cols, self.should_fmt)?;
+        write!(f, ")")?;
+
+        Ok(())
     }
 }
 
 #[derive(Debug, PartialEq, Clone)]
 struct Update {
-    /// List of columns in sql query
     table: SmolStr,
     update_statements: Vec<(SmolStr, SmolStr)>,
+    should_fmt: bool,
 }
 
 impl Update {
-    fn new(plan: &Plan, update_id: NodeId) -> Result<Self, SbroadError> {
+    fn new(plan: &Plan, update_id: NodeId, should_fmt: bool) -> Result<Self, SbroadError> {
         if let Relational::Update(UpdateRel {
             relation: ref rel,
             update_columns_map,
@@ -811,7 +900,7 @@ impl Update {
                 let col_name = table
                     .columns
                     .get(*col_idx)
-                    .map(|c| name_to_smolstr(&c.name))
+                    .map(|c| properly_quoted_name(&c.name))
                     .ok_or_else(|| {
                         SbroadError::Invalid(
                             Entity::Node,
@@ -831,7 +920,7 @@ impl Update {
                     })?;
                     let node = plan.get_expression_node(alias_id)?;
                     if let Expression::Alias(Alias { name, .. }) = node {
-                        name_to_smolstr(name)
+                        properly_quoted_name(name)
                     } else {
                         return Err(SbroadError::Invalid(
                             Entity::Node,
@@ -846,6 +935,7 @@ impl Update {
             let result = Update {
                 table: rel.clone(),
                 update_statements,
+                should_fmt,
             };
             return Ok(result);
         }
@@ -860,15 +950,15 @@ impl Update {
 
 impl Display for Update {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "update {}", name_to_smolstr(&self.table))?;
-
+        let name = properly_quoted_name(&self.table);
         let items = self
             .update_statements
             .iter()
-            .map(|(col, alias)| format_smolstr!("{col} = {alias}"))
-            .format("\n");
+            .map(|(col, alias)| format_smolstr!("{col} = {alias}"));
 
-        write!(f, "{items}")?;
+        write!(f, "update {name} (")?;
+        write_list(f, items, self.should_fmt)?;
+        write!(f, ")")?;
 
         Ok(())
     }
@@ -898,16 +988,16 @@ impl Scan {
 
 impl Display for Scan {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "scan {}", name_to_smolstr(&self.table))?;
+        write!(f, "scan {}", properly_quoted_name(&self.table))?;
 
         if let Some(alias) = &self.alias {
             if *alias != self.table {
-                write!(f, " -> {}", name_to_smolstr(alias))?;
+                write!(f, " -> {}", properly_quoted_name(alias))?;
             }
         }
 
         if let Some(index) = &self.indexed_by {
-            write!(f, " (indexed by {})", name_to_smolstr(index))?;
+            write!(f, " (indexed by {})", properly_quoted_name(index))?;
         }
 
         Ok(())
@@ -1030,7 +1120,7 @@ impl Display for SubQuery {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "scan")?;
         if let Some(alias) = &self.alias {
-            write!(f, " {}", name_to_smolstr(alias))?;
+            write!(f, " {}", properly_quoted_name(alias))?;
         }
 
         Ok(())
@@ -1101,7 +1191,7 @@ enum Target {
 impl Display for Target {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Target::Reference(s) => write!(f, "ref({})", name_to_smolstr(s)),
+            Target::Reference(s) => write!(f, "ref({})", properly_quoted_name(s)),
             Target::Value(v) => write!(f, "value({v})"),
         }
     }
@@ -1135,11 +1225,11 @@ impl Display for ExplainNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ExplainNode::Cte(name, r) => {
-                write!(f, "scan cte {name}({r})", name = name_to_smolstr(name))?;
+                write!(f, "scan cte {name}({r})", name = properly_quoted_name(name))?;
             }
 
             ExplainNode::Delete(name) => {
-                write!(f, "delete {name}", name = name_to_smolstr(name))?;
+                write!(f, "delete {name}", name = properly_quoted_name(name))?;
             }
             ExplainNode::Except => write!(f, "except")?,
             ExplainNode::Join(col_expr, kind) => {
@@ -1157,7 +1247,7 @@ impl Display for ExplainNode {
                 write!(
                     f,
                     "insert {name} on conflict: {conflict}",
-                    name = name_to_smolstr(name)
+                    name = properly_quoted_name(name)
                 )?;
             }
             ExplainNode::Projection(projection) => write!(f, "{projection}")?,
@@ -1207,19 +1297,6 @@ impl Display for ExplainTreePart {
     }
 }
 
-struct FullExplain {
-    /// Main sql subtree
-    main_query: ExplainTreePart,
-    /// Independent sub-trees of main sql query (e.g. sub-queries in `WHERE` cause, CTEs, etc.)
-    subqueries: OrderedMap<NodeId, ExplainTreePart, RepeatableState>,
-    /// Windows under Projection.
-    windows: Vec<ExplainTreePart>,
-    /// Options imposed during query execution
-    exec_options: Vec<(OptionKind, Value)>,
-    /// Info related to plan execution
-    buckets_info: Option<BucketsInfo>,
-}
-
 fn buckets_repr(buckets: &Buckets, bucket_count: u64) -> String {
     match buckets {
         Buckets::All => format!("[1-{bucket_count}]"),
@@ -1263,6 +1340,19 @@ fn buckets_repr(buckets: &Buckets, bucket_count: u64) -> String {
         }
         Buckets::Any => "any".into(),
     }
+}
+
+struct FullExplain {
+    /// Main sql subtree
+    main_query: ExplainTreePart,
+    /// Independent sub-trees of main sql query (e.g. sub-queries in `WHERE` cause, CTEs, etc.)
+    subqueries: OrderedMap<NodeId, ExplainTreePart, RepeatableState>,
+    /// Windows under Projection.
+    windows: Vec<ExplainTreePart>,
+    /// Options imposed during query execution
+    exec_options: Vec<(OptionKind, Value)>,
+    /// Info related to plan execution
+    buckets_info: Option<BucketsInfo>,
 }
 
 impl Display for FullExplain {
@@ -1334,6 +1424,8 @@ impl FullExplain {
 
     #[allow(clippy::too_many_lines)]
     pub fn new(ir: &Plan, top_id: NodeId) -> Result<Self, SbroadError> {
+        let should_fmt = ir.explain_options.contains(ExplainOptions::Fmt);
+
         let exec_options = vec![
             (
                 OptionKind::VdbeOpcodeMax,
@@ -1393,7 +1485,7 @@ impl FullExplain {
                             "GroupBy must have exactly one child".into(),
                         )
                     })?;
-                    let group_by = GroupBy::new(ir, gr_exprs, *output, &sq_ref_map)?;
+                    let group_by = GroupBy::new(ir, gr_exprs, *output, &sq_ref_map, should_fmt)?;
 
                     (ExplainNode::GroupBy(group_by), vec![child])
                 }
@@ -1409,7 +1501,7 @@ impl FullExplain {
                             "OrderBy must have exactly one child".into(),
                         )
                     })?;
-                    let order_by = OrderBy::new(ir, order_by_elements, &sq_ref_map)?;
+                    let order_by = OrderBy::new(ir, order_by_elements, &sq_ref_map, should_fmt)?;
 
                     (ExplainNode::OrderBy(order_by), vec![child])
                 }
@@ -1423,7 +1515,7 @@ impl FullExplain {
                             "Projection must have exactly one child".into(),
                         )
                     })?;
-                    let projection = Projection::new(ir, *output, &sq_ref_map)?;
+                    let projection = Projection::new(ir, *output, &sq_ref_map, should_fmt)?;
 
                     (ExplainNode::Projection(projection), vec![child])
                 }
@@ -1434,9 +1526,9 @@ impl FullExplain {
                 }) => {
                     let sq_ref_map =
                         FullExplain::get_sq_ref_map(&mut stack, &mut known_subqueries, subqueries);
-                    let p = Projection::new(ir, *output, &sq_ref_map)?;
+                    let projection = Projection::new(ir, *output, &sq_ref_map, should_fmt)?;
 
-                    (ExplainNode::Projection(p), vec![])
+                    (ExplainNode::Projection(projection), vec![])
                 }
                 Relational::ScanRelation(ScanRelation {
                     relation,
@@ -1444,9 +1536,9 @@ impl FullExplain {
                     indexed_by,
                     ..
                 }) => {
-                    let s = Scan::new(relation.clone(), alias.clone(), indexed_by.clone());
+                    let scan = Scan::new(relation.clone(), alias.clone(), indexed_by.clone());
 
-                    (ExplainNode::Scan(s), vec![])
+                    (ExplainNode::Scan(scan), vec![])
                 }
                 Relational::ScanCte(ScanCte { alias, child, .. }) => {
                     let child_tree = stack.pop().expect("CTE node must have exactly one child");
@@ -1640,7 +1732,8 @@ impl FullExplain {
                             "Insert node failed to pop a value row.".into(),
                         )
                     })?;
-                    let update = ExplainNode::Update(Update::new(ir, id)?);
+
+                    let update = ExplainNode::Update(Update::new(ir, id, should_fmt)?);
 
                     (update, vec![values])
                 }

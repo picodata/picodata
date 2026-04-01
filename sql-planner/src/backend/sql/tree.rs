@@ -304,9 +304,9 @@ impl SyntaxNode {
         }
     }
 
-    fn new_order_type(order_type: &OrderByType) -> Self {
+    fn new_order_type(order_type: OrderByType) -> Self {
         SyntaxNode {
-            data: SyntaxData::OrderByType(order_type.clone()),
+            data: SyntaxData::OrderByType(order_type),
             left: None,
             right: Vec::new(),
         }
@@ -1370,7 +1370,7 @@ impl<'p> SyntaxPlan<'p> {
                 nodes[2] = Some(self.nodes.push_sn_non_plan(sn));
             }
         }
-        if let Some(order_type) = &elem.order_type {
+        if let Some(order_type) = elem.order_type {
             let sn = SyntaxNode::new_order_type(order_type);
             nodes[1] = Some(self.nodes.push_sn_non_plan(sn));
         }

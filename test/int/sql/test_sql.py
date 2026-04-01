@@ -6646,8 +6646,7 @@ buckets = [1-3000]\
     # Update: update non-sharding column
     lines = i1.sql("explain update t set b = 1 where b = 3")
     assert "\n".join(lines) == snapshot("""\
-update t
-b = col_0
+update t (b = col_0)
   motion [policy: local, program: ReshardIfNeeded]
     projection (1::int -> col_0, t.a::int -> col_1)
       selection t.b::int = 3::int
@@ -6663,10 +6662,7 @@ buckets = [1-3000]\
     assert ddl["row_count"] == 1
     lines = i1.sql("explain update t2 set d = 1 where d = 2 or d = 2002")
     assert "\n".join(lines) == snapshot("""\
-update t2
-c = col_0
-bucket_id = col_1
-d = col_2
+update t2 (c = col_0, bucket_id = col_1, d = col_2)
   motion [policy: segment([]), program: [PrimaryKey(0), RearrangeForShardedUpdate(2)]]
     projection (t2.c::int -> col_0, t2.bucket_id::int -> col_1, 1::int -> col_2, t2.d::int -> col_3)
       selection (t2.d::int = 2::int) or (t2.d::int = 2002::int)

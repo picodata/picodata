@@ -329,7 +329,7 @@ impl SubtreeCloner {
                     };
                     new_order_by_elements.push(OrderByElement {
                         entity: new_entity,
-                        order_type: element.order_type.clone(),
+                        order_type: element.order_type,
                     });
                 }
                 *order_by_elements = new_order_by_elements;

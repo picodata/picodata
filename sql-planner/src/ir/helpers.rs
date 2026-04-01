@@ -468,7 +468,7 @@ impl Plan {
                                 }
                                 OrderByEntity::Index { value } => format!("{value}"),
                             };
-                            let order_by_type = element.order_type.clone();
+                            let order_by_type = element.order_type;
                             writeln_with_tabulation(buf, tabulation_number + 2, format!("Order_by_element: {order_by_entity_str} [order_type = {order_by_type:?}]").as_str())?;
                         }
                     }

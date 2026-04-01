@@ -56,7 +56,7 @@ fn aggregate() {
       projection (min(min_1::int)::int -> col_1, min(distinct gr_expr_1::int)::int -> col_2)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.b::int::int -> gr_expr_1, min(t.b::int::int)::int -> min_1)
-            group by (t.b::int::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+            group by (t.b::int::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
               scan t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -73,10 +73,10 @@ fn group_by() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 555
       projection (sum(count_1::int)::int -> col_1, gr_expr_1::int -> b)
-        group by (gr_expr_1::int) output: (gr_expr_1::int, count_1::int)
+        group by (gr_expr_1::int) output (gr_expr_1::int, count_1::int)
           motion [policy: full, program: ReshardIfNeeded]
             projection (t.b::int -> gr_expr_1, count(*)::int -> count_1)
-              group by (t.b::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              group by (t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                 scan t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -318,14 +318,14 @@ fn limit_pushdown_distinct_order_by_alias() {
         order by (x::int)
           scan
             projection (gr_expr_1::int -> x)
-              group by (gr_expr_1::int) output: (gr_expr_1::int)
+              group by (gr_expr_1::int) output (gr_expr_1::int)
                 motion [policy: full, program: ReshardIfNeeded]
                   limit 5
                     projection (gr_expr_1::int)
                       order by (gr_expr_1::int)
                         scan
                           projection (t.a::int -> gr_expr_1)
-                            group by (t.a::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+                            group by (t.a::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                               scan t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -348,14 +348,14 @@ fn limit_pushdown_distinct_order_by_expr_over_duplicated_aliases() {
         order by (c0::int + c2::int)
           scan
             projection (gr_expr_1::int -> c0, gr_expr_2::int -> c1, gr_expr_1::int -> c2)
-              group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int, gr_expr_2::int)
+              group by (gr_expr_1::int, gr_expr_2::int) output (gr_expr_1::int, gr_expr_2::int)
                 motion [policy: full, program: ReshardIfNeeded]
                   limit 5
                     projection (gr_expr_1::int, gr_expr_2::int)
                       order by (gr_expr_1::int + gr_expr_1::int)
                         scan
                           projection (t.a::int -> gr_expr_1, t.b::int -> gr_expr_2)
-                            group by (t.a::int, t.b::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+                            group by (t.a::int, t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                               scan t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -378,14 +378,14 @@ fn limit_pushdown_distinct_order_by_ordinal_position() {
         order by (3 desc)
           scan
             projection (gr_expr_1::int -> c0, gr_expr_2::int -> c1, gr_expr_1::int -> c2)
-              group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int, gr_expr_2::int)
+              group by (gr_expr_1::int, gr_expr_2::int) output (gr_expr_1::int, gr_expr_2::int)
                 motion [policy: full, program: ReshardIfNeeded]
                   limit 5
                     projection (gr_expr_1::int, gr_expr_2::int)
                       order by (1 desc)
                         scan
                           projection (t.a::int -> gr_expr_1, t.b::int -> gr_expr_2)
-                            group by (t.a::int, t.b::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+                            group by (t.a::int, t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                               scan t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -459,10 +459,10 @@ fn limit_pushdown_aggregate_in_order_by() {
         order by (sum(b::int::int)::decimal)
           scan
             projection (gr_expr_1::int -> b)
-              group by (gr_expr_1::int) output: (gr_expr_1::int)
+              group by (gr_expr_1::int) output (gr_expr_1::int)
                 motion [policy: full, program: ReshardIfNeeded]
                   projection (t.b::int -> gr_expr_1)
-                    group by (t.b::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+                    group by (t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                       scan t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -480,11 +480,11 @@ fn limit_pushdown_distinct() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 5
       projection (gr_expr_1::int -> a, gr_expr_2::int -> b)
-        group by (gr_expr_1::int, gr_expr_2::int) output: (gr_expr_1::int, gr_expr_2::int)
+        group by (gr_expr_1::int, gr_expr_2::int) output (gr_expr_1::int, gr_expr_2::int)
           motion [policy: full, program: ReshardIfNeeded]
             limit 5
               projection (t.a::int -> gr_expr_1, t.b::int -> gr_expr_2)
-                group by (t.a::int, t.b::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+                group by (t.a::int, t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                   scan t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -503,10 +503,10 @@ fn limit_pushdown_having_filter_aggregate() {
     limit 5
       projection (gr_expr_1::int -> b)
         having sum(count_1::int)::int > 1::int
-          group by (gr_expr_1::int) output: (gr_expr_1::int, count_1::int)
+          group by (gr_expr_1::int) output (gr_expr_1::int, count_1::int)
             motion [policy: full, program: ReshardIfNeeded]
               projection (t.b::int -> gr_expr_1, count(*)::int -> count_1)
-                group by (t.b::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+                group by (t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                   scan t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -528,10 +528,10 @@ fn limit_pushdown_orderby_and_having() {
           scan
             projection (gr_expr_1::int -> b)
               having gr_expr_1::int > 1::int
-                group by (gr_expr_1::int) output: (gr_expr_1::int)
+                group by (gr_expr_1::int) output (gr_expr_1::int)
                   motion [policy: full, program: ReshardIfNeeded]
                     projection (t.b::int -> gr_expr_1)
-                      group by (t.b::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+                      group by (t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                         scan t
     execution options:
       sql_vdbe_opcode_max = 45000

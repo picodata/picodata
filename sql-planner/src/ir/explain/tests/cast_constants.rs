@@ -58,8 +58,7 @@ fn update_selection() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @"
-    update t
-    c = col_0
+    update t (c = col_0)
       motion [policy: local, program: ReshardIfNeeded]
         projection (2::int -> col_0, t.b::int -> col_1)
           selection (t.a::int = 1::int) and (t.b::int = 2::decimal)

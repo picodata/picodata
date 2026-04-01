@@ -6949,11 +6949,11 @@ impl AbstractSyntaxTree {
                 }
                 Rule::Explain => {
                     let mut child_iter = node.children.iter();
-                    let mut explain_child_id = child_iter.next().expect("Explain has no children.");
+                    let mut explain_child_id = child_iter.next().expect("explain has no children");
                     let explain_child = self.nodes.get_node(*explain_child_id)?;
-                    if let Rule::ExplainQueryPlan = explain_child.rule {
-                        let mut explain_options = ExplainOptions::empty();
 
+                    let mut explain_options = ExplainOptions::empty();
+                    if let Rule::ExplainQueryPlan = explain_child.rule {
                         for child in &explain_child.children {
                             let explain_option_node = self.nodes.get_node(*child)?;
                             match explain_option_node.rule {
@@ -6966,20 +6966,14 @@ impl AbstractSyntaxTree {
                             };
                         }
 
-                        if explain_options.contains(ExplainOptions::Fmt)
-                            && explain_options - ExplainOptions::Fmt == ExplainOptions::empty()
-                        {
-                            // `EXPLAIN (FMT)` => `EXPLAIN` currently. However, we are going to add
-                            // formatting to it in the future as well.
-                            plan.explain_options |= ExplainOptions::Logical;
-                        } else {
-                            plan.explain_options = explain_options;
-                        }
-
                         explain_child_id = child_iter.next().expect("explain has no children");
-                    } else {
-                        plan.explain_options |= ExplainOptions::Logical;
                     }
+
+                    // Select a default facette if there's none.
+                    if !explain_options.has_facette() {
+                        explain_options |= ExplainOptions::Logical;
+                    }
+                    plan.explain_options = explain_options;
 
                     map.add(0, map.get(*explain_child_id)?);
                 }

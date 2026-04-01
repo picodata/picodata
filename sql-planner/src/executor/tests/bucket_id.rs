@@ -166,7 +166,7 @@ fn groupby_bucket_id() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
-      group by (t.a::int, t.b::int, t.c::int, t.d::int, t.bucket_id::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+      group by (t.a::int, t.b::int, t.c::int, t.d::int, t.bucket_id::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
         scan t
     execution options:
       sql_vdbe_opcode_max = 45000

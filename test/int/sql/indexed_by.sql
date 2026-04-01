@@ -145,8 +145,7 @@ buckets = [1-3000]
 -- SQL:
 explain UPDATE t INDEXED BY aaa SET b = d FROM s INDEXED BY bbb WHERE TRUE
 -- EXPECTED:
-update t
-b = col_0
+update t (b = col_0)
   motion [policy: local, program: ReshardIfNeeded]
     projection (s.d::int -> col_0, t.a::int -> col_1)
       join on true::bool

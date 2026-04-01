@@ -680,7 +680,7 @@ fn front_sql_global_aggregate3() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (global_t.b::int + global_t.a::int -> col_1, sum(global_t.a::int::int)::decimal -> col_2)
-      group by (global_t.b::int + global_t.a::int) output: (global_t.a::int -> a, global_t.b::int -> b)
+      group by (global_t.b::int + global_t.a::int) output (global_t.a::int -> a, global_t.b::int -> b)
         scan global_t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -701,7 +701,7 @@ fn front_sql_global_aggregate4() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (global_t.b::int + global_t.a::int -> col_1, sum(global_t.a::int::int)::decimal -> col_2)
       having avg(global_t.b::int::int)::decimal > 3::int
-        group by (global_t.b::int + global_t.a::int) output: (global_t.a::int -> a, global_t.b::int -> b)
+        group by (global_t.b::int + global_t.a::int) output (global_t.a::int -> a, global_t.b::int -> b)
           scan global_t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -723,7 +723,7 @@ fn front_sql_global_aggregate5() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (global_t.b::int + global_t.a::int -> col_1, sum(global_t.a::int::int)::decimal -> col_2)
       having avg(global_t.b::int::int)::decimal > 3::int
-        group by (global_t.b::int + global_t.a::int) output: (global_t.a::int -> a, global_t.b::int -> b)
+        group by (global_t.b::int + global_t.a::int) output (global_t.a::int -> a, global_t.b::int -> b)
           selection ROW(global_t.a::int, global_t.b::int) in ROW($0, $0)
             scan global_t
     subquery $0:
@@ -773,7 +773,7 @@ fn front_sql_global_left_join2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (unnamed_join.e::int -> e, sum(unnamed_join.b::int::int)::decimal -> col_1)
-      group by (unnamed_join.e::int) output: (unnamed_join.a::int -> a, unnamed_join.b::int -> b, unnamed_join.e::int -> e, unnamed_join.f::int -> f, unnamed_join.g::int -> g, unnamed_join.h::int -> h, unnamed_join.bucket_id::int -> bucket_id)
+      group by (unnamed_join.e::int) output (unnamed_join.a::int -> a, unnamed_join.b::int -> b, unnamed_join.e::int -> e, unnamed_join.f::int -> f, unnamed_join.g::int -> g, unnamed_join.h::int -> h, unnamed_join.bucket_id::int -> bucket_id)
         motion [policy: full, program: AddMissingRowsForLeftJoin]
           projection (global_t.a::int -> a, global_t.b::int -> b, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
             join on true::bool

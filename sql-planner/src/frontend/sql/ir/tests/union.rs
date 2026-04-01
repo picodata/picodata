@@ -227,10 +227,10 @@ fn limit_pushdown_with_union_and_group_by() {
                         scan t
                       motion [policy: segment([ref(a1)]), program: ReshardIfNeeded]
                         projection (gr_expr_1::int -> a1, gr_expr_1::int -> a2)
-                          group by (gr_expr_1::int) output: (gr_expr_1::int)
+                          group by (gr_expr_1::int) output (gr_expr_1::int)
                             motion [policy: full, program: ReshardIfNeeded]
                               projection (t.a::int -> gr_expr_1)
-                                group by (t.a::int) output: (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+                                group by (t.a::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                                   scan t
     execution options:
       sql_vdbe_opcode_max = 45000

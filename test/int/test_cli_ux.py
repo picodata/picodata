@@ -440,8 +440,7 @@ buckets = [1934]
     assert output == snapshot(
         (
             """\
-update characters
-year = col_0
+update characters (year = col_0)
   motion [policy: local, program: ReshardIfNeeded]
     projection (2010::int -> col_0, characters.id::int -> col_1)
       scan characters
@@ -463,9 +462,7 @@ buckets = [1-3000]
     assert output == snapshot(
         (
             """\
-update characters
-name = col_0
-year = col_1
+update characters (name = col_0, year = col_1)
   motion [policy: local, program: ReshardIfNeeded]
     projection ('Etch'::string -> col_0, 2010::int -> col_1, characters.id::int -> col_2)
       selection characters.id::int = 2::int

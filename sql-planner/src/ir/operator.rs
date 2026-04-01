@@ -328,13 +328,13 @@ impl From<&UpdateStrategy> for UpdateType {
     }
 }
 
-#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash, Serialize)]
+#[derive(Copy, Clone, Deserialize, Debug, PartialEq, Eq, Hash, Serialize)]
 pub enum OrderByEntity {
     Expression { expr_id: NodeId },
     Index { value: usize },
 }
 
-#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash, Serialize)]
+#[derive(Copy, Clone, Deserialize, Debug, PartialEq, Eq, Hash, Serialize)]
 pub enum OrderByType {
     Asc,
     Desc,

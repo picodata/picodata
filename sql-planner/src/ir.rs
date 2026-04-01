@@ -644,6 +644,17 @@ bitflags! {
     }
 }
 
+impl ExplainOptions {
+    #[inline(always)]
+    pub fn facettes() -> Self {
+        Self::Logical | Self::Raw
+    }
+
+    pub fn has_facette(&self) -> bool {
+        self.intersects(Self::facettes())
+    }
+}
+
 /// Logical plan tree structure.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Plan {

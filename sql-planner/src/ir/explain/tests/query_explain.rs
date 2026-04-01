@@ -254,12 +254,7 @@ fn test_query_explain_10() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @"
-    update t2
-    f = col_1
-    h = col_3
-    bucket_id = col_4
-    e = col_0
-    g = col_2
+    update t2 (f = col_1, h = col_3, bucket_id = col_4, e = col_0, g = col_2)
       motion [policy: segment([]), program: [PrimaryKey(2, 3), RearrangeForShardedUpdate(0, 1)]]
         projection (20::int -> col_0, t2.f::int -> col_1, t2.g::int -> col_2, t2.h::int -> col_3, t2.bucket_id::int -> col_4, t2.e::int -> col_5, t2.f::int -> col_6)
           selection ROW(t2.e::int, t2.f::int) = ROW(10::int, 10::int)
@@ -288,10 +283,10 @@ fn test_query_explain_11() {
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @"
     projection (gr_expr_1::string -> a, sum(count_1::int)::int -> col_1)
-      group by (gr_expr_1::string) output: (gr_expr_1::string, count_1::int)
+      group by (gr_expr_1::string) output (gr_expr_1::string, count_1::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (unnamed_subquery_1.a::string -> gr_expr_1, count(unnamed_subquery_1.b::int::int)::int -> count_1)
-            group by (unnamed_subquery_1.a::string) output: (unnamed_subquery.e::int -> e, unnamed_subquery.f::int -> f, unnamed_subquery_1.a::string -> a, unnamed_subquery_1.b::int -> b)
+            group by (unnamed_subquery_1.a::string) output (unnamed_subquery.e::int -> e, unnamed_subquery.f::int -> f, unnamed_subquery_1.a::string -> a, unnamed_subquery_1.b::int -> b)
               join on unnamed_subquery.e::int = unnamed_subquery_1.b::int
                 scan unnamed_subquery
                   projection (t2.e::int -> e, t2.f::int -> f)
@@ -420,8 +415,7 @@ fn test_query_explain_17() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @"
-    update t
-    c = col_0
+    update t (c = col_0)
       motion [policy: local, program: ReshardIfNeeded]
         projection (1::int -> col_0, t.b::int -> col_1)
           scan t
