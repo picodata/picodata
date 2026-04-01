@@ -1037,3 +1037,10 @@ ORDER BY a_2;
 select (select 1) as a from t group by a;
 -- EXPECTED:
 1, 1, 1
+
+-- TEST: test_alias_inside_groupby-1.11
+-- SQL:
+with cte as (select 1)
+select upper('a')::text as dd from cte group by dd;
+-- EXPECTED:
+'A'

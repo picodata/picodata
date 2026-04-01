@@ -272,11 +272,14 @@ impl Plan {
             for (idx, arg_node_id) in args.iter().enumerate() {
                 let arg_node_id = *arg_node_id;
                 let arg_expr = self.get_expression_node(arg_node_id)?;
+                // `GROUP BY` aliases can still appear here as placeholders. Type analysis
+                // records the type for the aliased child expression, not for the alias node.
+                let report_arg_node_id = self.get_child_under_alias(arg_node_id)?;
 
                 let cast_type = match arg_expr {
                     Expression::CountAsterisk(_) => continue,
                     Expression::Cast(Cast { to, .. }) => {
-                        let arg_type = DerivedType::from(type_report.get_type(&arg_node_id));
+                        let arg_type = DerivedType::from(type_report.get_type(&report_arg_node_id));
                         let arg_type = arg_type
                             .get()
                             .expect("expected defined type from type analyzer");
@@ -291,7 +294,7 @@ impl Plan {
                         cast_type
                     }
                     _ => {
-                        let arg_type = DerivedType::from(type_report.get_type(&arg_node_id));
+                        let arg_type = DerivedType::from(type_report.get_type(&report_arg_node_id));
                         let arg_type = arg_type
                             .get()
                             .expect("expected defined type from type analyzer");

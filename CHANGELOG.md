@@ -18,6 +18,11 @@ with the `YY.MINOR.MICRO` scheme.
   number of RPC calls from O(N×RF) to O(N) where N is the number of replicasets.
   Offline instances now show their HTTP address (from storage) instead of empty string.
 
+### Fixes
+
+- Fixed a SQL planner panic caused by stale type metadata after clone-based
+  rewrites such as `BETWEEN` normalization and `GROUP BY` alias expansion.
+
 ## [26.1.1] - 2026-03-24
 
 ### Features
