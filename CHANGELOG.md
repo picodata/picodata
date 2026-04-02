@@ -28,6 +28,7 @@ with the `YY.MINOR.MICRO` scheme.
   rewrites such as `BETWEEN` normalization and `GROUP BY` alias expansion.
 - Revoking privileges from `admin` user caused a panic. Now, revoking priviliges
   from `admin` user is forbidden, for same reasons as for the `pico_service` user.
+- Fixed a bug preventing scalar functions from being used in GROUP BY.
 
 ## [26.1.1] - 2026-03-24
 
