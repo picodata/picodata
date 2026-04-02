@@ -160,6 +160,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Deprecated `advertise_address` setting is removed following a major release. Use `iproto` section instead.
 - `--cluster-name` argument for `picodata expel` is removed following a major release as it is no longer needed.
 - Deprecated `ServiceWorkerManager` is removed from `picodata_plugin` following a major release.
+- `authenticate` function from `picodata_plugin` is now accessible only through `authentication` module. 
+  Reexport in `internal` module is removed following a major release.
 
 ## [26.1.1] - 2026-03-24
 

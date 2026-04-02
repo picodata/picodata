@@ -534,7 +534,7 @@ impl Service for Service3 {
             }
             "authentication_unknown_user" => {
                 // should fail
-                picodata_plugin::internal::authenticate(
+                picodata_plugin::authentication::authenticate(
                     "He-Who-Must-Not-Be-Named",
                     "wrong password here",
                 )
@@ -545,17 +545,17 @@ impl Service for Service3 {
                 let password = "GreppablePassword1";
 
                 // ok
-                picodata_plugin::internal::authenticate(user, password).unwrap();
+                picodata_plugin::authentication::authenticate(user, password).unwrap();
 
                 // should fail
-                picodata_plugin::internal::authenticate(user, "wrong password here")
+                picodata_plugin::authentication::authenticate(user, "wrong password here")
                     .expect_err("auth should fail (incorrect password)");
             }
             "authentication_ldap" => {
-                picodata_plugin::internal::authenticate("ldapuser", "ldappass").unwrap();
+                picodata_plugin::authentication::authenticate("ldapuser", "ldappass").unwrap();
             }
             "authentication_as_role" => {
-                let error = picodata_plugin::internal::authenticate("toy", "").unwrap_err();
+                let error = picodata_plugin::authentication::authenticate("toy", "").unwrap_err();
                 assert_eq!(error.error_code(), 47);
                 assert_eq!(
                     error.message(),

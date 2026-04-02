@@ -88,7 +88,7 @@ extern "C" {
         timeout: f64,
     ) -> i32;
 
-    /// See [`crate::internal::authenticate`] wrapper for more information.
+    /// See [`crate::authentication::authenticate`] wrapper for more information.
     pub fn pico_ffi_authenticate(name: FfiSafeStr, password: FfiSafeBytes) -> i32;
 }
 

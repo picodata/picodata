@@ -12,9 +12,6 @@ use abi_stable::derive_macro_reexports::RResult;
 use std::{env, fs, io, process};
 use tarantool::error::BoxError;
 
-#[deprecated(note = "use [`crate::authentication::authenticate`] instead")]
-pub use crate::authentication::authenticate;
-
 /// Return picodata version.
 pub fn picodata_version() -> &'static str {
     let ptr_and_len = unsafe { pico_ffi_version() };
