@@ -1,5 +1,4 @@
 use crate::background;
-use crate::background::ServiceWorkerManager;
 use crate::error_code::ErrorCode;
 use crate::util::FfiSafeStr;
 pub use abi_stable;
@@ -54,12 +53,6 @@ impl PicoContext {
     #[inline]
     pub fn is_master(&self) -> bool {
         self.is_master
-    }
-
-    /// Return [`ServiceWorkerManager`] for current service.
-    #[deprecated = "use `register_job`, `register_tagged_job` or `cancel_background_jobs_by_tag` directly instead"]
-    pub fn worker_manager(&self) -> ServiceWorkerManager {
-        ServiceWorkerManager::new(self.make_service_id())
     }
 
     #[inline(always)]

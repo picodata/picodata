@@ -6,7 +6,6 @@ use crate::internal::ffi;
 use crate::plugin::interface::PicoContext;
 use crate::plugin::interface::ServiceId;
 use crate::util::tarantool_error_to_box_error;
-use crate::util::DisplayErrorLocation;
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -223,125 +222,6 @@ impl CancellationTokenHandle {
         } = self;
         _ = cancel_channel.send(());
         finish_event
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Java-style API
-////////////////////////////////////////////////////////////////////////////////
-
-/// [`ServiceWorkerManager`] allows plugin services
-/// to create long-live jobs and manage their life cycle.
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub struct ServiceWorkerManager {
-    service_id: ServiceId,
-}
-
-impl ServiceWorkerManager {
-    #[inline(always)]
-    pub(crate) fn new(service_id: ServiceId) -> Self {
-        Self { service_id }
-    }
-
-    /// Add a new job to the execution.
-    /// Job work life cycle will be tied to the service life cycle;
-    /// this means that job will be canceled just before service is stopped.
-    ///
-    /// # Arguments
-    ///
-    /// * `job`: callback that will be executed in separated fiber.
-    ///   Note that it is your responsibility to organize job graceful shutdown, see a
-    ///   [`CancellationToken`] for details.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use std::time::Duration;
-    /// use picodata_plugin::background::CancellationToken;
-    ///
-    /// # use picodata_plugin::background::ServiceWorkerManager;
-    /// # fn test(worker_manager: ServiceWorkerManager) {
-    ///
-    /// // this job will print "hello" every second,
-    /// // and print "bye" after being canceled
-    /// fn hello_printer(cancel: CancellationToken) {
-    ///     while cancel.wait_timeout(Duration::from_secs(1)).is_err() {
-    ///         println!("hello!");
-    ///     }
-    ///     println!("job cancelled, bye!")
-    /// }
-    /// worker_manager.register_job(hello_printer).unwrap();
-    ///
-    /// # }
-    /// ```
-    #[track_caller]
-    #[inline(always)]
-    pub fn register_job<F>(&self, job: F) -> tarantool::Result<()>
-    where
-        F: FnOnce(CancellationToken) + 'static,
-    {
-        register_job(&self.service_id, job)?;
-
-        Ok(())
-    }
-
-    /// Same as [`ServiceWorkerManager::register_job`] but caller may provide a special tag.
-    /// This tag may be used for manual job cancellation using [`ServiceWorkerManager::cancel_tagged`].
-    ///
-    /// # Arguments
-    ///
-    /// * `job`: callback that will be executed in separated fiber
-    /// * `tag`: tag, that will be related to a job, single tag may be related to the multiple jobs
-    #[inline(always)]
-    pub fn register_tagged_job<F>(&self, job: F, tag: &str) -> tarantool::Result<()>
-    where
-        F: FnOnce(CancellationToken) + 'static,
-    {
-        register_tagged_job(&self.service_id, job, tag)?;
-
-        Ok(())
-    }
-
-    /// Cancel all jobs related to the given tag.
-    /// This function return after all related jobs will be gracefully shutdown or
-    /// after `timeout` duration.
-    /// May return [`Error::PartialCompleted`] if timeout is reached.
-    ///
-    /// # Arguments
-    ///
-    /// * `tag`: determine what jobs should be cancelled
-    /// * `timeout`: shutdown timeout
-    pub fn cancel_tagged(&self, tag: &str, timeout: Duration) -> Result<(), Error> {
-        let res = cancel_jobs_by_tag(&self.service_id, tag, timeout);
-        let res = match res {
-            Ok(res) => res,
-            Err(e) => {
-                let loc = DisplayErrorLocation(&e);
-                tarantool::say_error!("unexpected error: {loc}{e}");
-                return Ok(());
-            }
-        };
-
-        if res.n_timeouts != 0 {
-            let n_completed = res.n_total - res.n_timeouts;
-            return Err(Error::PartialCompleted(res.n_total as _, n_completed as _));
-        }
-
-        Ok(())
-    }
-
-    /// In case when jobs were canceled by `picodata` use this function for determine
-    /// a shutdown timeout - time duration that `picodata` uses to ensure that all
-    /// jobs gracefully end.
-    ///
-    /// By default, 5-second timeout are used.
-    #[deprecated = "use `PicoContext::set_jobs_shutdown_timeout` instead"]
-    pub fn set_shutdown_timeout(&self, timeout: Duration) {
-        let plugin = &self.service_id.plugin;
-        let service = &self.service_id.service;
-        let version = &self.service_id.version;
-        set_jobs_shutdown_timeout(plugin, service, version, timeout)
     }
 }
 
