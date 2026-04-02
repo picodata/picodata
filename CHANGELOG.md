@@ -162,6 +162,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Deprecated `ServiceWorkerManager` is removed from `picodata_plugin` following a major release.
 - `authenticate` function from `picodata_plugin` is now accessible only through `authentication` module. 
   Reexport in `internal` module is removed following a major release.
+- Deprecated `RegionBuffer::get` is removed following a major release.
 
 ## [26.1.1] - 2026-03-24
 

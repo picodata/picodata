@@ -329,12 +329,6 @@ impl RegionBuffer {
         Ok(())
     }
 
-    #[deprecated = "no longer supported, consider using RegionBuffer::into_raw_parts instead"]
-    #[inline(always)]
-    pub fn get(&self) -> &[u8] {
-        unimplemented!("RegionBuffer::get is no longer supported")
-    }
-
     /// Consumes the slice of the region memory containing the written data
     /// contiguously. The second return values is the save point for the region
     /// allocator.
