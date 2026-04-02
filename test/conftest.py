@@ -3108,7 +3108,6 @@ def picodata_expel(
     command: list[str] = [
         peer.executable.command, "expel",
         "--peer", f"pico_service@{peer.iproto_listen}",
-        "--cluster-name", target.cluster_name or "",
         "--password-file", password_file,
         "--auth-type", "chap-sha1",
         *(["--force"] if force else []),

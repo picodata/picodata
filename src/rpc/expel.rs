@@ -79,8 +79,6 @@ crate::define_rpc_request! {
     ///
     /// Use [`redirect::Request`] for automatic redirection from any instance to leader.
     pub struct Request {
-        /// The cluster_name parameter is no longer used and will be removed in next major release (version 26).
-        pub cluster_name: SmolStr,
         pub instance_uuid: SmolStr,
         pub force: bool,
         pub timeout: Duration,

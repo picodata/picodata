@@ -13,24 +13,6 @@ use tarantool::fiber;
 use tarantool::network::client::AsClient;
 
 pub async fn tt_expel(args: args::Expel) -> Result<(), Error> {
-    if let Some(cluster_name) = &args.cluster_name {
-        tlog!(
-            Warning,
-            "The --cluster-name '{}' parameter is deprecated for use in picodata expel command and no longer used. It will be removed in the future major release (version 26).",
-            cluster_name
-        );
-    }
-
-    if let Ok(env_cluster_name) = std::env::var("PICODATA_CLUSTER_NAME") {
-        if !env_cluster_name.is_empty() {
-            tlog!(
-                Warning,
-                "The PICODATA_CLUSTER_NAME environment variable '{}' is deprecated for use in picodata expel command and no longer used. It will be removed in the future major release (version 26).",
-                env_cluster_name
-            );
-        }
-    }
-
     let timeout = Duration::from_secs(args.timeout);
     let deadline = fiber::clock().saturating_add(timeout);
 
@@ -44,7 +26,6 @@ pub async fn tt_expel(args: args::Expel) -> Result<(), Error> {
     let timeout = deadline.duration_since(fiber::clock());
     let force = args.force;
     let req = ExpelRequest {
-        cluster_name: args.cluster_name.unwrap_or_default().into(),
         instance_uuid: args.instance_uuid.clone().into(),
         force,
         timeout,

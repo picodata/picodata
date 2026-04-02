@@ -792,13 +792,6 @@ picodata expel [OPTIONS] <INSTANCE_UUID>
 Возможные значения: `md5`, `ldap`, `chap-sha1`, `scram-sha256`<br>
 Значение по умолчанию: `md5`<br>
 
-### --cluster-name {: #expel_cluster_name }
-
-`--cluster-name <NAME>`
-
-Параметр `--cluster-name` устарел и больше не используется.
-Он будет удален в будущем мажорном релизе (в версии 26).
-
 ### --force {: #expel_force }
 
 `--force`
@@ -1086,6 +1079,3 @@ picodata status -t 10
     - iproto: `3001`
     - pgproto: `postgres://admin:T0psecret@127.0.0.1:5433`
     ```
-
-
-

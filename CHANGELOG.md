@@ -158,6 +158,7 @@ with the `YY.MINOR.MICRO` scheme.
   `sum without (tier, replicaset)`.
 - Deprecated `plugin_dir` setting is removed following a major release. Use `share_dir` instead.
 - Deprecated `advertise_address` setting is removed following a major release. Use `iproto` section instead.
+- `--cluster-name` argument for `picodata expel` is removed following a major release as it is no longer needed.
 
 ## [26.1.1] - 2026-03-24
 
