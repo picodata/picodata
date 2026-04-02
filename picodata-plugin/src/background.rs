@@ -30,7 +30,6 @@ where
 }
 
 /// Same as [`PicoContext::register_tagged_job`].
-#[allow(deprecated)]
 pub fn register_tagged_job<F>(service_id: &ServiceId, job: F, tag: &str) -> Result<(), BoxError>
 where
     F: FnOnce(CancellationToken) + 'static,
@@ -177,7 +176,6 @@ impl CancellationToken {
     /// Create a cancellation token and cancellation token handle pair.
     /// User should use cancellation token for graceful shutdown their job.
     /// Cancellation token handle used by `picodata` for sending cancel signal to a user job.
-    #[allow(deprecated)]
     pub fn new() -> (CancellationToken, CancellationTokenHandle) {
         let (cancel_tx, cancel_rx) = Channel::new(1).into_clones();
         (
@@ -209,13 +207,11 @@ impl CancellationToken {
 }
 
 #[derive(Debug)]
-#[deprecated = "don't use this"]
 pub struct CancellationTokenHandle {
     cancel_channel: Channel<()>,
     finish_event: Rc<OnceEvent>,
 }
 
-#[allow(deprecated)]
 impl CancellationTokenHandle {
     /// Cancel related job and return a finish event.
     /// Caller should wait on the finish event to make sure the job
