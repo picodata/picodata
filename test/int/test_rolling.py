@@ -45,7 +45,6 @@ def test_upgrade_from_previous_minor_to_current(cluster: Cluster, registry: Regi
         instance_count=4,
         init_replication_factor=2,
     )
-    cluster.fill_with_data()
 
     assert cluster.is_healthy()
 
@@ -73,7 +72,6 @@ def test_upgrade_from_previous_major_to_current(cluster: Cluster, registry: Regi
         instance_count=4,
         init_replication_factor=2,
     )
-    cluster.fill_with_data()
 
     assert cluster.is_healthy()
 
@@ -113,7 +111,6 @@ def test_node_by_node_sequential_upgrade_success(cluster: Cluster, registry: Reg
         instance_count=4,
         init_replication_factor=2,
     )
-    cluster.fill_with_data()
 
     # step 2
 
@@ -160,7 +157,6 @@ def test_node_by_node_leaping_upgrade_failure(cluster: Cluster, registry: Regist
         instance_count=4,
         init_replication_factor=2,
     )
-    cluster.fill_with_data()
 
     # step 2
 
@@ -201,7 +197,6 @@ def test_successful_rollback_on_partial_upgrade_failure(cluster: Cluster, regist
         instance_count=4,
         init_replication_factor=2,
     )
-    cluster.fill_with_data()
 
     # step 2
 
@@ -265,7 +260,6 @@ def test_reject_older_node_joining_newer_cluster(cluster: Cluster, registry: Reg
         instance_count=4,
         init_replication_factor=2,
     )
-    cluster.fill_with_data()
 
     # step 2
 
@@ -305,7 +299,6 @@ def test_successful_upgrade_then_failed_downgrade(cluster: Cluster, registry: Re
         instance_count=4,
         init_replication_factor=2,
     )
-    cluster.fill_with_data()
 
     # step 2
 
