@@ -421,7 +421,7 @@ def test_sql_explain_ok(cluster: Cluster):
 insert assets on conflict: fail
   motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
-      value row (data=ROW(1::int, 'Woody'::string, 2561::int))
+      value ROW(1::int, 'Woody'::string, 2561::int)
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000

@@ -10,7 +10,7 @@ fn select_values_rows() {
       scan unnamed_subquery
         motion [policy: full, program: ReshardIfNeeded]
           values
-            value row (data=ROW(1::int, 2::int, 'txt'::string))
+            value ROW(1::int, 2::int, 'txt'::string)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -28,7 +28,7 @@ fn insert_values_rows() {
     insert t1 on conflict: fail
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
-          value row (data=ROW('txt'::string, 2::int))
+          value ROW('txt'::string, 2::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000

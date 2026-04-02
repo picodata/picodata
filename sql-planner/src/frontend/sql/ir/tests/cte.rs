@@ -151,7 +151,7 @@ fn reuse_cte_values() {
           scan cte
             motion [policy: full, program: ReshardIfNeeded]
               values
-                value row (data=ROW(1::int))
+                value ROW(1::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -382,7 +382,7 @@ fn values_in_cte() {
           scan cte
             motion [policy: full, program: ReshardIfNeeded]
               values
-                value row (data=ROW('a'::string))
+                value ROW('a'::string)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -407,7 +407,7 @@ fn union_all_in_cte() {
           scan cte1
             motion [policy: full, program: ReshardIfNeeded]
               values
-                value row (data=ROW('a'::string))
+                value ROW('a'::string)
     subquery $1:
       motion [policy: full, program: ReshardIfNeeded]
         union all

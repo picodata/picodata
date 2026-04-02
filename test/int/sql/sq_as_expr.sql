@@ -330,7 +330,7 @@ subquery $0:
   scan
     motion [policy: full, program: ReshardIfNeeded]
       values
-        value row (data=ROW(1::int))
+        value ROW(1::int)
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -350,7 +350,7 @@ subquery $0:
   scan
     motion [policy: full, program: ReshardIfNeeded]
       values
-        value row (data=ROW(1::int))
+        value ROW(1::int)
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -366,12 +366,12 @@ subquery $0:
   scan
     motion [policy: full, program: ReshardIfNeeded]
       values
-        value row (data=ROW(1::int))
+        value ROW(1::int)
 subquery $1:
   scan
     motion [policy: full, program: ReshardIfNeeded]
       values
-        value row (data=ROW(ROW($0)))
+        value ROW(ROW($0))
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -387,12 +387,12 @@ subquery $0:
   scan
     motion [policy: full, program: ReshardIfNeeded]
       values
-        value row (data=ROW(1::int))
+        value ROW(1::int)
 subquery $1:
   scan
     motion [policy: full, program: ReshardIfNeeded]
       values
-        value row (data=ROW(ROW($0)))
+        value ROW(ROW($0))
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -409,7 +409,7 @@ subquery $0:
   scan
     motion [policy: full, program: ReshardIfNeeded]
       values
-        value row (data=ROW(true::bool))
+        value ROW(true::bool)
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -425,12 +425,12 @@ subquery $0:
   scan
     motion [policy: full, program: ReshardIfNeeded]
       values
-        value row (data=ROW(2::int))
+        value ROW(2::int)
 subquery $1:
   scan
     motion [policy: full, program: ReshardIfNeeded]
       values
-        value row (data=ROW(1::int))
+        value ROW(1::int)
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000

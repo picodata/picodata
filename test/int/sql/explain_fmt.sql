@@ -173,10 +173,10 @@ projection (count(*)::int -> col_1)
 subquery $0:
   motion [policy: full, program: ReshardIfNeeded]
     values
-      value row (data=ROW(1::int, 'foobar'::string, NULL::unknown, NULL::unknown, 3.1415::decimal))
-      value row (data=ROW(2::int, 'foobar'::string, NULL::unknown, NULL::unknown, 3.1415::decimal))
-      value row (data=ROW(3::int, 'foobar'::string, NULL::unknown, NULL::unknown, 3.1415::decimal))
-      value row (data=ROW(4::int, ''::string, 0::int, 0::int, 0::int))
+      value ROW(1::int, 'foobar'::string, NULL::unknown, NULL::unknown, 3.1415::decimal)
+      value ROW(2::int, 'foobar'::string, NULL::unknown, NULL::unknown, 3.1415::decimal)
+      value ROW(3::int, 'foobar'::string, NULL::unknown, NULL::unknown, 3.1415::decimal)
+      value ROW(4::int, ''::string, 0::int, 0::int, 0::int)
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000

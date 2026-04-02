@@ -409,13 +409,13 @@ impl ColExpr {
                     let which_expr = stack.pop_expr(Some(id)).into();
                     let child_expr = stack.pop_expr(Some(id)).into();
 
-                    let index_expr: ColExpr = ColExpr::Index(child_expr, which_expr);
+                    let index_expr = ColExpr::Index(child_expr, which_expr);
                     stack.push((index_expr, id));
                 }
                 Expression::Cast(Cast { to, .. }) => {
                     let child_expr = stack.pop_expr(Some(id)).into();
 
-                    let cast_expr: ColExpr = ColExpr::Cast(child_expr, *to);
+                    let cast_expr = ColExpr::Cast(child_expr, *to);
                     stack.push((cast_expr, id));
                 }
                 Expression::Case(Case {
@@ -785,9 +785,7 @@ impl Display for GroupBy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "group by (")?;
         write_list(f, &self.gr_exprs, self.should_fmt)?;
-        write!(f, ") ")?;
-
-        write!(f, "output (")?;
+        write!(f, ") output (")?;
         write_list(f, &self.output_cols, self.should_fmt)?;
         write!(f, ")")?;
 
@@ -966,13 +964,8 @@ impl Display for Update {
 
 #[derive(Debug, PartialEq, Clone)]
 struct Scan {
-    /// Table name
     table: SmolStr,
-
-    /// Table alias
     alias: Option<SmolStr>,
-
-    /// Index used
     indexed_by: Option<SmolStr>,
 }
 
@@ -1106,7 +1099,6 @@ impl Display for Row {
 
 #[derive(Debug, PartialEq, Clone)]
 struct SubQuery {
-    /// Subquery alias. For subquery in `WHERE` cause alias is `None`.
     alias: Option<SmolStr>,
 }
 
@@ -1240,7 +1232,7 @@ impl Display for ExplainNode {
                 write!(f, "join on {col_expr}")?;
             }
             ExplainNode::ValueRow(col_expr) => {
-                write!(f, "value row (data={col_expr})")?;
+                write!(f, "value {col_expr}")?;
             }
             ExplainNode::Value => write!(f, "values")?,
             ExplainNode::Insert(name, conflict) => {
@@ -1260,7 +1252,7 @@ impl Display for ExplainNode {
             ExplainNode::UnionAll => write!(f, "union all")?,
             ExplainNode::Intersect => write!(f, "intersect")?,
             ExplainNode::Update(update) => write!(f, "{update}")?,
-            ExplainNode::SubQuery(sub_query) => write!(f, "{sub_query}")?,
+            ExplainNode::SubQuery(subquery) => write!(f, "{subquery}")?,
             ExplainNode::Motion(motion) => write!(f, "{motion}")?,
             ExplainNode::Limit(limit) => write!(f, "limit {limit}")?,
         };
@@ -1425,17 +1417,6 @@ impl FullExplain {
     #[allow(clippy::too_many_lines)]
     pub fn new(ir: &Plan, top_id: NodeId) -> Result<Self, SbroadError> {
         let should_fmt = ir.explain_options.contains(ExplainOptions::Fmt);
-
-        let exec_options = vec![
-            (
-                OptionKind::VdbeOpcodeMax,
-                Value::Integer(ir.effective_options.sql_vdbe_opcode_max),
-            ),
-            (
-                OptionKind::MotionRowMax,
-                Value::Integer(ir.effective_options.sql_motion_row_max),
-            ),
-        ];
 
         let mut known_subqueries = OrderedMap::with_hasher(RepeatableState);
         let mut stack: Vec<ExplainTreePart> = Vec::new();
@@ -1771,6 +1752,17 @@ impl FullExplain {
         let main_query = stack
             .pop()
             .ok_or_else(|| SbroadError::NotFound(Entity::Node, "that is explain top".into()))?;
+
+        let exec_options = vec![
+            (
+                OptionKind::VdbeOpcodeMax,
+                Value::Integer(ir.effective_options.sql_vdbe_opcode_max),
+            ),
+            (
+                OptionKind::MotionRowMax,
+                Value::Integer(ir.effective_options.sql_motion_row_max),
+            ),
+        ];
 
         let result = Self {
             main_query,

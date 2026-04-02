@@ -188,7 +188,7 @@ fn test_query_explain_6() {
     insert t1 on conflict: fail
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
-          value row (data=ROW('1'::string, 1::int))
+          value ROW('1'::string, 1::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -224,7 +224,7 @@ fn test_query_explain_8() {
     insert global_t on conflict: fail
       motion [policy: full, program: ReshardIfNeeded]
         values
-          value row (data=ROW(1::int, 1::int))
+          value ROW(1::int, 1::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -438,13 +438,13 @@ fn test_query_explain_18() {
         scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values
-              value row (data=ROW(1::int, 2::int))
-              value row (data=ROW(3::int, 4::int))
+              value ROW(1::int, 2::int)
+              value ROW(3::int, 4::int)
         scan unnamed_subquery_1
           motion [policy: full, program: ReshardIfNeeded]
             values
-              value row (data=ROW(5::int, 6::int))
-              value row (data=ROW(7::int, 8::int))
+              value ROW(5::int, 6::int)
+              value ROW(7::int, 8::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000

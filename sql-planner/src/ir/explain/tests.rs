@@ -324,7 +324,7 @@ fn insert_plan() {
     insert test_space on conflict: fail
       motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
         values
-          value row (data=ROW(1::int, '123'::string))
+          value ROW(1::int, '123'::string)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -344,9 +344,9 @@ fn multiply_insert_plan() {
     insert test_space on conflict: fail
       motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
         values
-          value row (data=ROW(1::int, '123'::string))
-          value row (data=ROW(2::int, '456'::string))
-          value row (data=ROW(3::int, '789'::string))
+          value ROW(1::int, '123'::string)
+          value ROW(2::int, '456'::string)
+          value ROW(3::int, '789'::string)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -388,7 +388,7 @@ fn select_value_plan() {
       scan unnamed_subquery
         motion [policy: full, program: ReshardIfNeeded]
           values
-            value row (data=ROW(1::int))
+            value ROW(1::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000

@@ -46,7 +46,7 @@ EXPLAIN INSERT INTO t VALUES (1, 1);
 insert t on conflict: fail
   motion [policy: segment([ref("COLUMN_2")]), program: ReshardIfNeeded]
     values
-      value row (data=ROW(1::int, 1::int))
+      value ROW(1::int, 1::int)
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -59,7 +59,7 @@ EXPLAIN INSERT INTO t VALUES (1, 1.0);
 insert t on conflict: fail
   motion [policy: segment([ref("COLUMN_2")]), program: ReshardIfNeeded]
     values
-      value row (data=ROW(1::int, 1.0::decimal))
+      value ROW(1::int, 1.0::decimal)
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000

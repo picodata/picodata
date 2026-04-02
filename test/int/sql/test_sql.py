@@ -6623,7 +6623,7 @@ buckets = [1-3000]\
 insert t on conflict: fail
   motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
-      value row (data=ROW(1::int, 2::int))
+      value ROW(1::int, 2::int)
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000

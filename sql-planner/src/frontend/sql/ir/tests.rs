@@ -264,7 +264,7 @@ fn front_sql10() {
     insert t on conflict: fail
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
-          value row (data=ROW(1::int, 2::int, 3::int, 4::int))
+          value ROW(1::int, 2::int, 3::int, 4::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -281,7 +281,7 @@ fn front_sql11() {
     insert t on conflict: fail
       motion [policy: segment([value(NULL), ref("COLUMN_1")]), program: ReshardIfNeeded]
         values
-          value row (data=ROW(1::int, 2::int))
+          value ROW(1::int, 2::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -2996,7 +2996,7 @@ fn front_sql_insert_on_conflict() {
     insert t on conflict: nothing
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
-          value row (data=ROW(1::int, 1::int, 1::int, 1::int))
+          value ROW(1::int, 1::int, 1::int, 1::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3008,7 +3008,7 @@ fn front_sql_insert_on_conflict() {
     insert t on conflict: replace
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
-          value row (data=ROW(1::int, 1::int, 1::int, 1::int))
+          value ROW(1::int, 1::int, 1::int, 1::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3117,9 +3117,9 @@ fn front_sql_insert_6() {
     insert t on conflict: fail
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
-          value row (data=ROW(1::int, 2::int))
-          value row (data=ROW(1::int, 2::int))
-          value row (data=ROW(3::int, 4::int))
+          value ROW(1::int, 2::int)
+          value ROW(1::int, 2::int)
+          value ROW(3::int, 4::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3167,7 +3167,7 @@ fn front_sql_insert_9() {
     insert t on conflict: fail
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
-          value row (data=ROW(1::int, 2::int))
+          value ROW(1::int, 2::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3376,7 +3376,7 @@ fn front_sql_not_equal() {
         scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values
-              value row (data=ROW(1::int))
+              value ROW(1::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3393,7 +3393,7 @@ fn front_sql_not_cast() {
         scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values
-              value row (data=ROW(1::int))
+              value ROW(1::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3410,7 +3410,7 @@ fn from_sql_not_column() {
         scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values
-              value row (data=ROW(true::bool))
+              value ROW(true::bool)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3427,7 +3427,7 @@ fn front_sql_not_or() {
         scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values
-              value row (data=ROW(1::int))
+              value ROW(1::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3443,7 +3443,7 @@ fn front_sql_not_and_with_parentheses() {
       scan unnamed_subquery
         motion [policy: full, program: ReshardIfNeeded]
           values
-            value row (data=ROW(1::int))
+            value ROW(1::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3460,7 +3460,7 @@ fn front_sql_not_or_with_parentheses() {
         scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values
-              value row (data=ROW(1::int))
+              value ROW(1::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3477,14 +3477,14 @@ fn front_sql_not_exists() {
         scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values
-              value row (data=ROW(1::int))
+              value ROW(1::int)
     subquery $0:
       scan
         projection (unnamed_subquery_1."COLUMN_1"::int -> "COLUMN_1")
           scan unnamed_subquery_1
             motion [policy: full, program: ReshardIfNeeded]
               values
-                value row (data=ROW(1::int))
+                value ROW(1::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3501,7 +3501,7 @@ fn front_sql_not_in() {
         scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values
-              value row (data=ROW(1::int))
+              value ROW(1::int)
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
         scan
@@ -3509,7 +3509,7 @@ fn front_sql_not_in() {
             scan unnamed_subquery_1
               motion [policy: full, program: ReshardIfNeeded]
                 values
-                  value row (data=ROW(1::int))
+                  value ROW(1::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3546,7 +3546,7 @@ fn front_sql_not_complex_query() {
             scan unnamed_subquery
               motion [policy: full, program: ReshardIfNeeded]
                 values
-                  value row (data=ROW(1::int))
+                  value ROW(1::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3562,7 +3562,7 @@ fn front_sql_arithmetic_with_parentheses() {
       scan unnamed_subquery
         motion [policy: full, program: ReshardIfNeeded]
           values
-            value row (data=ROW(1::int))
+            value ROW(1::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3578,7 +3578,7 @@ fn front_sql_to_date() {
       scan unnamed_subquery
         motion [policy: full, program: ReshardIfNeeded]
           values
-            value row (data=ROW('2010/10/10'::string))
+            value ROW('2010/10/10'::string)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3602,7 +3602,7 @@ fn front_sql_current_date() {
     scan unnamed_subquery
       motion [policy: full, program: ReshardIfNeeded]
         values
-          value row (data=ROW('2010/10/10'::string))
+          value ROW('2010/10/10'::string)
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -3802,7 +3802,7 @@ fn front_subqueries_interpreted_as_expression() {
       scan
         motion [policy: full, program: ReshardIfNeeded]
           values
-            value row (data=ROW(2::int))
+            value ROW(2::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3823,7 +3823,7 @@ fn front_subqueries_interpreted_as_expression_as_required_child() {
       scan
         motion [policy: full, program: ReshardIfNeeded]
           values
-            value row (data=ROW(1::int))
+            value ROW(1::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3842,12 +3842,12 @@ fn front_subqueries_interpreted_as_expression_nested() {
       scan
         motion [policy: full, program: ReshardIfNeeded]
           values
-            value row (data=ROW(2::int))
+            value ROW(2::int)
     subquery $1:
       scan
         motion [policy: full, program: ReshardIfNeeded]
           values
-            value row (data=ROW(ROW($0)))
+            value ROW(ROW($0))
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3870,7 +3870,7 @@ fn front_subqueries_interpreted_as_expression_under_group_by() {
       scan
         motion [policy: full, program: ReshardIfNeeded]
           values
-            value row (data=ROW(1::int))
+            value ROW(1::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3908,7 +3908,7 @@ fn front_select_without_scan_2() {
       scan
         motion [policy: full, program: ReshardIfNeeded]
           values
-            value row (data=ROW(1::int))
+            value ROW(1::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -3988,7 +3988,7 @@ fn front_sql_check_concat_with_parameters() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     values
-      value row (data=ROW('a'::string || 'b'::string))
+      value ROW('a'::string || 'b'::string)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000

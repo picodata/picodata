@@ -1198,9 +1198,9 @@ EXPLAIN INSERT INTO t VALUES (1, 1.0, '1'), (2, 2.0, '2'), (3, 3.0, '3');
 insert t on conflict: fail
   motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
-      value row (data=ROW(1::int, 1.0::decimal, '1'::string))
-      value row (data=ROW(2::int, 2.0::decimal, '2'::string))
-      value row (data=ROW(3::int, 3.0::decimal, '3'::string))
+      value ROW(1::int, 1.0::decimal, '1'::string)
+      value ROW(2::int, 2.0::decimal, '2'::string)
+      value ROW(3::int, 3.0::decimal, '3'::string)
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -1225,9 +1225,9 @@ EXPLAIN INSERT INTO t VALUES (1 + 1, 1.0, '1'), (2, 2.0, '2'), (3, 3.0, '3');
 insert t on conflict: fail
   motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
-      value row (data=ROW(1::int + 1::int, 1.0::decimal, '1'::string))
-      value row (data=ROW(2::int, 2.0::decimal, '2'::string))
-      value row (data=ROW(3::int, 3.0::decimal, '3'::string))
+      value ROW(1::int + 1::int, 1.0::decimal, '1'::string)
+      value ROW(2::int, 2.0::decimal, '2'::string)
+      value ROW(3::int, 3.0::decimal, '3'::string)
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -1240,7 +1240,7 @@ EXPLAIN INSERT INTO t VALUES (1, (SELECT d FROM tt LIMIT 1), '2')
 insert t on conflict: fail
   motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
-      value row (data=ROW(1::int, ROW($0), '2'::string))
+      value ROW(1::int, ROW($0), '2'::string)
 subquery $0:
   motion [policy: full, program: ReshardIfNeeded]
     scan
@@ -1261,7 +1261,7 @@ EXPLAIN INSERT INTO t VALUES (1, (SELECT d FROM g LIMIT 1), '2')
 insert t on conflict: fail
   motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
-      value row (data=ROW(1::int, ROW($0), '2'::string))
+      value ROW(1::int, ROW($0), '2'::string)
 subquery $0:
   scan
     limit 1

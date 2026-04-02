@@ -105,7 +105,7 @@ fn except_transform_with_dag_plan() {
         scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values
-              value row (data=ROW(1::int))
+              value ROW(1::int)
       motion [policy: full, program: ReshardIfNeeded]
         intersect
           projection (t2.e::int -> e)
@@ -115,7 +115,7 @@ fn except_transform_with_dag_plan() {
             scan unnamed_subquery
               motion [policy: full, program: ReshardIfNeeded]
                 values
-                  value row (data=ROW(1::int))
+                  value ROW(1::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000

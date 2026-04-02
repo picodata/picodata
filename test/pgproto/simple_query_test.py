@@ -117,7 +117,7 @@ def test_explain(postgres: Postgres):
 insert explain on conflict: fail
   motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
-      value row (data=ROW(0::int))
+      value ROW(0::int)
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -131,7 +131,7 @@ buckets = [84]\
 insert explain on conflict: fail
   motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
-      value row (data=ROW(0::int))
+      value ROW(0::int)
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000

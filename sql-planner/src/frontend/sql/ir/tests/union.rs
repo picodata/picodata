@@ -142,12 +142,12 @@ fn union_under_insert1() {
             scan unnamed_subquery
               motion [policy: full, program: ReshardIfNeeded]
                 values
-                  value row (data=ROW(1::int, 1::int))
+                  value ROW(1::int, 1::int)
           projection (unnamed_subquery_1."COLUMN_1"::int -> "COLUMN_1", unnamed_subquery_1."COLUMN_2"::int -> "COLUMN_2")
             scan unnamed_subquery_1
               motion [policy: full, program: ReshardIfNeeded]
                 values
-                  value row (data=ROW(2::int, 2::int))
+                  value ROW(2::int, 2::int)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
