@@ -86,6 +86,16 @@ macro_rules! eprintln_buffered {
 }
 
 #[macro_export]
+macro_rules! error_or_panic {
+    ($($arg:tt)*) => {{
+        $crate::tlog!(Error, $($arg)*);
+        if cfg!(debug_assertions) {
+            panic!($($arg)*);
+        }
+    }};
+}
+
+#[macro_export]
 macro_rules! stringify_debug {
     ($t:ty) => {{
         fn _check_debug<T: std::fmt::Debug>() {}

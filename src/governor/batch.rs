@@ -30,6 +30,7 @@ pub struct LastStepInfo {
     err_instances: HashMap<InstanceName, ErrorTracker>,
     all_instances: HashSet<InstanceName>,
     target_vshard_config_versions: HashMap<SmolStr, u64>,
+    target_bucket_state_versions: HashMap<SmolStr, u64>,
 
     // Fields related to DDL:
     pending_schema_version: Option<u64>,
@@ -139,7 +140,12 @@ impl LastStepInfo {
         self.update_tier_versions::<{ Self::VERSION_KIND_VSHARD_CONFIG }>(topology_ref)
     }
 
+    pub fn update_bucket_state_versions(&mut self, topology_ref: &TopologyCacheRef) {
+        self.update_tier_versions::<{ Self::VERSION_KIND_BUCKET_STATE }>(topology_ref)
+    }
+
     const VERSION_KIND_VSHARD_CONFIG: u8 = 0;
+    const VERSION_KIND_BUCKET_STATE: u8 = 1;
 
     fn update_tier_versions<const KIND: u8>(&mut self, topology_ref: &TopologyCacheRef) {
         let mut something_changed = false;
@@ -149,6 +155,7 @@ impl LastStepInfo {
         fn get_version<const KIND: u8>(tier: &Tier) -> u64 {
             match KIND {
                 LastStepInfo::VERSION_KIND_VSHARD_CONFIG => tier.target_vshard_config_version,
+                LastStepInfo::VERSION_KIND_BUCKET_STATE => tier.target_bucket_state_version,
                 _ => unreachable!(),
             }
         }
@@ -160,6 +167,10 @@ impl LastStepInfo {
             Self::VERSION_KIND_VSHARD_CONFIG => {
                 saved_map = &mut self.target_vshard_config_versions;
                 name = "target_vshard_config_versions";
+            }
+            Self::VERSION_KIND_BUCKET_STATE => {
+                saved_map = &mut self.target_bucket_state_versions;
+                name = "target_bucket_state_versions";
             }
             _ => unreachable!(),
         }

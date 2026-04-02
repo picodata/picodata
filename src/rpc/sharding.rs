@@ -1,5 +1,6 @@
 use crate::config::PicodataConfig;
 use crate::governor::plan::get_first_ready_replicaset_in_tier;
+use crate::resharding_loop::ReshardingStatus;
 use crate::storage::space_by_name;
 use crate::storage::ToEntryIter;
 use crate::storage::TABLE_ID_BUCKET;
@@ -349,4 +350,66 @@ crate::define_rpc_request! {
 
     /// Response to [`WaitBucketCountRequest`].
     pub struct WaitBucketCountResponse {}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// proc_resharding
+////////////////////////////////////////////////////////////////////////////////
+
+crate::define_rpc_request! {
+    fn proc_resharding(req: ReshardingRequest) -> Result<ReshardingResponse> {
+        let deadline = fiber::clock().saturating_add(req.timeout);
+        let node = node::global()?;
+        node.wait_index(req.applied, req.timeout)?;
+        node.status().check_term(req.term)?;
+
+        let status = match req.kind {
+            ReshardingRequestKind::Initialize => {
+                ReshardingStatus::Initialize
+            }
+            ReshardingRequestKind::Unknown(unknown) => {
+                return Err(Error::other(format!("unknown request type: {unknown}")));
+            }
+        };
+
+        fiber::block_on(node.resharding_loop.do_resharding(deadline, status))?;
+
+        Ok(ReshardingResponse {})
+    }
+
+    pub struct ReshardingRequest {
+        /// Current term of the sender.
+        pub term: RaftTerm,
+        /// Current applied index of the sender.
+        pub applied: RaftIndex,
+        /// Request handling should not take longer than this duration.
+        pub timeout: Duration,
+        pub kind: ReshardingRequestKind,
+    }
+
+    /// Response to [`ReshardingRequest`].
+    pub struct ReshardingResponse {
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ReshardingRequestKind
+////////////////////////////////////////////////////////////////////////////////
+
+crate::define_str_enum_or_smol_str! {
+    pub enum ReshardingRequestKind {
+        /// Receiving instance should initialize their local state according to
+        /// the initial _pico_bucket distribution.
+        Initialize = "initialize",
+
+        @unknown
+        /// For future compatibility
+        Unknown(SmolStr),
+    }
+}
+
+impl Default for ReshardingRequestKind {
+    fn default() -> ReshardingRequestKind {
+        Self::Unknown(SmolStr::default())
+    }
 }

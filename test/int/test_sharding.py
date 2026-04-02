@@ -545,3 +545,87 @@ cluster:
         instance.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
 
     cluster.wait_online(timeout=60)
+
+
+def test_sharding_initial_distribution(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        default:
+        storage_1:
+            can_vote: false
+            replication_factor: 1
+            experimental_sharding_implementation: true
+        storage_2:
+            can_vote: false
+            replication_factor: 2
+            experimental_sharding_implementation: true
+        storage_3:
+            can_vote: false
+            replication_factor: 1
+            experimental_sharding_implementation: true
+"""
+    )
+
+    leader = cluster.add_instance(tier="default", wait_online=True)
+
+    # No tiers with `experimental_sharding_implementation` flag yet
+    rows = leader.sql("SELECT * FROM _pico_bucket")
+    assert rows == []
+
+    # Add a replicaset into the `experimental_sharding_implementation` tier
+    cluster.add_instance(tier="storage_1", wait_online=True)
+
+    # Now the distribution is initialized for it
+    rows = leader.sql("SELECT * FROM _pico_bucket")
+    assert rows == [["storage_1", 1, 3000, "active", "storage_1_1", None]]
+
+    # Start adding instanes to another `experimental_sharding_implementation` tier
+    cluster.add_instance(tier="storage_2", wait_online=True)
+
+    # Distribution doesn't update yet, because replicaset isn't filled to replication factor
+    rows = leader.sql("SELECT * FROM _pico_bucket")
+    assert rows == [["storage_1", 1, 3000, "active", "storage_1_1", None]]
+
+    # Start adding instanes to another `experimental_sharding_implementation` tier
+    cluster.add_instance(tier="storage_2", wait_online=True)
+
+    # Now the replicaset is filled and the distribution is initialized for that tier as well
+    rows = leader.sql("SELECT * FROM _pico_bucket")
+    assert rows == [
+        ["storage_1", 1, 3000, "active", "storage_1_1", None],
+        ["storage_2", 1, 3000, "active", "storage_2_1", None],
+    ]
+
+    leader = cluster.leader()
+    error_injection = "BLOCK_INITIAL_BUCKET_DISTRIBUTION"
+    # Block initial bucket distribution step so that test is not flaky: wait
+    # until governor notices both replicasets are ready
+    leader.call("pico._inject_error", error_injection, True)
+
+    tier_3 = "storage_3"
+    # Add 2 whole replicasets to yet another `experimental_sharding_implementation` tier
+    cluster.add_instance(tier=tier_3, wait_online=False).start()
+    cluster.add_instance(tier=tier_3, wait_online=False).start()
+
+    def check():
+        rows = leader.sql("SELECT state FROM _pico_replicaset WHERE tier = ?", tier_3)
+        assert rows == [["ready"], ["ready"]]
+
+    # NOTE: cannot use wait_online, because state Online is blocked by bucket rebalancing
+    # Wait until both replicasets are ready
+    Retriable().call(check)
+    cluster.leader().call("pico._inject_error", error_injection, False)
+
+    cluster.wait_online()
+
+    # Governor bootstraps the new tier with 2 replicasets at once
+    rows = leader.sql("SELECT * FROM _pico_bucket")
+    assert rows == [
+        ["storage_1", 1, 3000, "active", "storage_1_1", None],
+        ["storage_2", 1, 3000, "active", "storage_2_1", None],
+        ["storage_3", 1, 1500, "active", "storage_3_1", None],
+        ["storage_3", 1501, 3000, "active", "storage_3_2", None],
+    ]

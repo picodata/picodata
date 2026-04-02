@@ -1,4 +1,6 @@
 local pico = _G.pico
+local fiber = require('fiber')
+local log = require('log')
 
 function pico.get_router_for_tier(tier_name)
     local router = pico.router[tier_name]
@@ -55,4 +57,53 @@ function pico._replicaset_uuid_by_bucket_id(tier, bucket_id)
         error(err)
     end
     return replicaset.uuid
+end
+
+-- Wait for vshard router discovery to complete.
+-- This ensures route_map is up-to-date on the current instance and the
+-- router's part of rebalancing is done.
+function pico.wait_router_discovery_complete(tier_name, timeout)
+    local router = get_router_for_tier(tier_name)
+
+    local total = router.total_bucket_count
+    if total == 0 then
+        -- No buckets configured, nothing to wait for
+        return true
+    end
+
+    local last_logged_bucket_count = 0
+    local deadline = fiber.clock() + timeout
+
+    -- Wait for discovery to complete
+    while true do
+        if router.known_bucket_count == total then
+            break
+        end
+
+        if fiber.clock() >= deadline then
+            return false
+        end
+
+        if router.known_bucket_count ~= last_logged_bucket_count then
+            log.verbose("pico.router.%s.known_bucket_count = %d", tier_name, router.known_bucket_count)
+            last_logged_bucket_count = router.known_bucket_count
+        end
+
+        -- Make sure the discovery fiber is not asleep so the progress is made
+        router:discovery_wakeup()
+
+        -- TODO(sharding): we would want to block on some kind of fiber_cond but
+        -- there's no appropriate cond in vshard at the moment. This code is
+        -- temporary anyway until we move the route_map into rust code
+        fiber.sleep(0.5)
+    end
+
+    log.verbose("pico.wait_router_discovery_complete: discovered %d/%d buckets for tier %s",
+        router.known_bucket_count, total, tier_name)
+
+    return true
+end
+
+function pico.vshard_bucket_generation_increment()
+    pico._vshard_storage_internal.bucket_generation_increment()
 end

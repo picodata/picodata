@@ -121,6 +121,7 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("exec_script", InternalScript::InsertExperimentalShardingImplementationIntoPicoDbConfig.as_str()),
             ("exec_script", InternalScript::InsertReplicationModeIntoPicoDbConfig.as_str()),
             ("proc_name", "proc_instance_details"),
+            ("proc_name", "proc_resharding"),
         ]
     ),
 ];

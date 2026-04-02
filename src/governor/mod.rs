@@ -26,6 +26,7 @@ use crate::rpc::replication::proc_replication_demote;
 use crate::rpc::replication::proc_replication_sync;
 use crate::rpc::replication::set_read_only;
 use crate::rpc::sharding::bootstrap::proc_sharding_bootstrap;
+use crate::rpc::sharding::proc_resharding;
 use crate::rpc::sharding::proc_sharding;
 use crate::rpc::sharding::proc_wait_bucket_count;
 use crate::schema::ADMIN_ID;
@@ -77,6 +78,7 @@ pub(crate) mod plan;
 mod plugin;
 mod queue;
 mod replication;
+mod resharding;
 mod sharding;
 mod test;
 pub mod upgrade_operations;
@@ -743,6 +745,90 @@ impl Loop {
                 set_status!("update replicaset state");
                 governor_substep! {
                     "proposing replicaset state change"
+                    async {
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                    }
+                }
+            }
+
+            Plan::InitializeBucketDistribution(InitializeBucketDistribution { tier, cas }) => {
+                set_status!("update _pico_bucket with initial distribution");
+                governor_substep! {
+                    "proposing _pico_bucket changes" [ "tier" => %tier ]
+                    async {
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                    }
+                }
+            }
+
+            Plan::AwaitResharding(AwaitResharding {
+                targets_total,
+                targets_batch,
+                rpc,
+            }) => {
+                set_status!("awaiting resharding to finish among masters");
+
+                last_step_info.set_pending(&targets_total);
+
+                governor_substep! {
+                    "awaiting resharding to finish"
+                    async {
+                        // Add an extra second so that the receivers have time
+                        // to detect timeout and sends their resharding_loop's
+                        // last error info. This is mainly needed for debugging
+                        // so that in logs and last_error of this instance we
+                        // can see the actual error from the peer possibly with
+                        // source location, instead of a generic timeout.
+                        // Correctness is not affected
+                        let rpc_timeout = rpc_timeout.saturating_add(Duration::from_secs(1));
+
+                        let mut fs = FuturesUnordered::new();
+                        for master_name in targets_batch {
+                            tlog!(Info, "calling proc_resharding"; "instance_name" => %master_name);
+                            let resp = pool.call(&master_name, proc_name!(proc_resharding), &rpc, rpc_timeout)?;
+                            fs.push(async move { (master_name, resp.await) });
+                        }
+
+                        let mut first_error = None;
+                        while let Some((master_name, res)) = fs.next().await {
+                            match res {
+                                Ok(_) => {
+                                    last_step_info.on_ok_instance(master_name);
+                                }
+                                Err(e) => {
+                                    let info = last_step_info.on_err_instance(&master_name);
+                                    let streak = info.streak;
+                                    tlog!(Warning, "failed calling proc_resharding (fail streak: {streak}): {e}"; "instance_name" => %master_name);
+                                    if first_error.is_none() {
+                                        first_error = Some(e);
+                                    }
+                                }
+                            }
+                        }
+
+                        last_step_info.report_stats();
+
+                        if let Some(e) = first_error {
+                            return Err(e);
+                        }
+                    }
+                }
+
+                if !last_step_info.all_instances_ok(&targets_total) {
+                    // This batch was successful, but there're still more RPCs to send out
+                    return IterationEnd::Continue;
+                }
+
+                tlog!(Info, "resharding finished");
+                // Governor will update _pico_tier.current_bucket_state_version on a following step
+            }
+
+            Plan::ActualizeBucketStateVersion(ActualizeBucketStateVersion { tier, cas }) => {
+                set_status!("actualize _pico_tier.current_bucket_state_version");
+                governor_substep! {
+                    "proposing update to _pico_tier.current_bucket_state_version" [ "tier" => %tier ]
                     async {
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
                         cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
@@ -1526,7 +1612,7 @@ impl Loop {
                 cas,
                 tier_name,
             }) => {
-                set_status(governor_status, "update current sharding configuration");
+                set_status!("update current sharding configuration");
 
                 last_step_info.set_pending(&targets_total);
 

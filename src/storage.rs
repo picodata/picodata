@@ -19,6 +19,7 @@ use crate::schema::SchemaObjectType;
 use crate::schema::ServiceDef;
 use crate::schema::ServiceRouteItem;
 use crate::schema::ServiceRouteKey;
+use crate::schema::ADMIN_ID;
 use crate::schema::{IndexDef, IndexOption};
 use crate::schema::{MigrationContextRecord, PluginConfigRecord};
 use crate::schema::{PluginDef, INITIAL_SCHEMA_VERSION};
@@ -62,7 +63,9 @@ use tarantool::session::UserId;
 use tarantool::space::UpdateOps;
 use tarantool::space::{FieldType, Space, SpaceId, SpaceType, SystemSpace};
 use tarantool::tlua;
+use tarantool::tuple::ToTupleBuffer;
 use tarantool::tuple::Tuple;
+use tarantool::tuple::TupleBuffer;
 use tarantool::tuple::{DecodeOwned, KeyDef};
 
 pub mod schema;
@@ -582,6 +585,30 @@ pub trait SystemTable {
     fn format() -> Vec<tarantool::space::Field>;
 
     fn index_definitions() -> Vec<crate::schema::IndexDef>;
+
+    /// Serializes `tuple` and returns an [`Dml::Insert`] into this table as admin.
+    #[inline(always)]
+    fn dml_insert(tuple: &impl ToTupleBuffer) -> Dml {
+        Dml::insert(Self::TABLE_ID, tuple, ADMIN_ID).expect("out of memory")
+    }
+
+    /// Serializes `tuple` and returns an [`Dml::Replace`] into this table as admin.
+    #[inline(always)]
+    fn dml_replace(tuple: &impl ToTupleBuffer) -> Dml {
+        Dml::replace(Self::TABLE_ID, tuple, ADMIN_ID).expect("out of memory")
+    }
+
+    /// Serializes `key` and returns an [`Dml::Update`] into this table as admin.
+    #[inline(always)]
+    fn dml_update(key: &impl ToTupleBuffer, ops: impl Into<Vec<TupleBuffer>>) -> Dml {
+        Dml::update(Self::TABLE_ID, key, ops, ADMIN_ID).expect("out of memory")
+    }
+
+    /// Serializes `key` and returns an [`Dml::Delete`] into this table as admin.
+    #[inline(always)]
+    fn dml_delete(key: &impl ToTupleBuffer) -> Dml {
+        Dml::delete(Self::TABLE_ID, key, ADMIN_ID, None).expect("out of memory")
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

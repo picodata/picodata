@@ -12,6 +12,7 @@ use crate::governor::replication::handle_replicaset_master_switchover;
 use crate::governor::replication::handle_replicaset_sync;
 use crate::governor::replication::handle_replication_config;
 use crate::governor::replication::handle_self_read_only;
+use crate::governor::resharding::handle_resharding;
 use crate::governor::sharding::{handle_sharding, handle_sharding_bootstrap};
 use crate::has_states;
 use crate::instance::state::{State, StateVariant};
@@ -46,6 +47,7 @@ use tarantool::space::{SpaceId, UpdateOps};
 use tarantool::time::Instant;
 use tarantool::vclock::Vclock;
 
+#[macro_export]
 macro_rules! debug_assert_plan_kind {
     ($plan:expr, $pattern:pat) => {
         debug_assert!(
@@ -324,6 +326,30 @@ pub(super) fn action_plan<'i>(
                     step_kind: ActionKind::UpdateCurrentVshardConfig,
                     ..
                 })
+        );
+
+        return Ok(plan);
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // handle resharding via the new experimental implementation
+    if let Some(plan) = handle_resharding(
+        last_step_info,
+        term,
+        applied,
+        topology_ref,
+        db_config,
+        sync_timeout,
+    )? {
+        debug_assert_plan_kind!(
+            plan,
+            Plan::InitializeBucketDistribution { .. }
+                | Plan::AwaitResharding { .. }
+                | Plan::SleepDueToBackoff(SleepDueToBackoff {
+                    step_kind: ActionKind::AwaitResharding | ActionKind::SleepDueToBackoff,
+                    ..
+                })
+                | Plan::ActualizeBucketStateVersion { .. }
         );
 
         return Ok(plan);
@@ -724,6 +750,7 @@ macro_rules! define_plan {
     ) => {
         $(
             $(#[$struct_meta])*
+            #[derive(Debug)]
             pub struct $stage $(<$lt>)? {
                 $(
                     $(#[$field_meta])*
@@ -746,6 +773,7 @@ macro_rules! define_plan {
         // We don't care about `large_enum_variant` in this case, because this
         // enum is only stored on the stack and never even gets copied.
         #[allow(clippy::large_enum_variant)]
+        #[derive(Debug)]
         pub enum Plan<'i> {
             GoIdle,
             $(
@@ -988,6 +1016,34 @@ pub mod stage {
             pub cas: cas::Request,
         }
 
+        pub struct InitializeBucketDistribution {
+            /// The affected tier.
+            pub tier: SmolStr,
+            /// Global DML operations to
+            /// - update `target_bucket_state_version` in `_pico_tier` for affected tier
+            /// - update `target_bucket_state_version` in `_pico_replicaset` for affected replicasets
+            /// - initialize bucket distribution in `_pico_bucket`
+            pub cas: cas::Request,
+        }
+
+        pub struct AwaitResharding {
+            /// All masters which need to handle `rpc` request before `cas` can be applied.
+            pub targets_total: Vec<InstanceName>,
+            /// A batch of masters to send the `rpc` request to on this iteration.
+            pub targets_batch: Vec<InstanceName>,
+            /// Request to call `proc_resharding` on replicaset master which
+            /// will awaken the `resharding_loop` and wait until the resharding
+            /// actions are performed on that replicaset master.
+            pub rpc: rpc::sharding::ReshardingRequest,
+        }
+
+        pub struct ActualizeBucketStateVersion {
+            /// The tier in question.
+            pub tier: SmolStr,
+            /// Global DML operation to update `current_bucket_state_version` in `_pico_tier` table.
+            pub cas: cas::Request,
+        }
+
         pub struct PrepareReplicasetForExpel {
             /// This replicaset is being prepared for expel. Id is only used for logging.
             pub replicaset_name: ReplicasetName,
@@ -1225,6 +1281,15 @@ pub mod stage {
             Self {
                 next_try,
                 step_kind,
+            }
+        }
+
+        #[cfg(feature = "error_injection")]
+        /// Construct a sleep action for use in error injections
+        pub fn error_injection() -> Self {
+            Self {
+                next_try: tarantool::fiber::clock().saturating_add(Duration::from_millis(250)),
+                step_kind: ActionKind::SleepDueToBackoff,
             }
         }
     }

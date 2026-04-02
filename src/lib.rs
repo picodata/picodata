@@ -107,6 +107,7 @@ mod sasl;
 pub mod schema;
 mod scram;
 pub mod sentinel;
+pub mod sharding;
 pub mod sql;
 pub mod storage;
 pub mod sync;

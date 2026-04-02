@@ -74,6 +74,24 @@ pub struct BucketRecord {
 }
 
 impl BucketRecord {
+    #[inline]
+    pub fn new_active(
+        tier_name: SmolStr,
+        bucket_id_start: u64,
+        bucket_id_end: u64,
+        current_replicaset_name: SmolStr,
+    ) -> Self {
+        Self {
+            tier_name,
+            bucket_id_start,
+            bucket_id_end,
+            state: BucketState::Active,
+            current_replicaset_name,
+            // `None` means it's the same as current one.
+            target_replicaset_name: None,
+        }
+    }
+
     /// All ranges are non-overlapping, therefore each tuple is uniquely
     /// identifed by a tier name and the start of the range.
     #[inline(always)]

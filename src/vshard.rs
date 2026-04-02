@@ -24,8 +24,11 @@ use sql::executor::engine::Vshard;
 use std::collections::HashMap;
 use std::time::Duration;
 use tarantool::define_str_enum;
+use tarantool::space::Space;
 use tarantool::space::SpaceId;
 use tarantool::tlua;
+use tarantool::tlua::Call;
+use tarantool::tuple::Encode;
 use tarantool::tuple::ToTupleBuffer;
 use tarantool::tuple::Tuple;
 
@@ -431,6 +434,50 @@ impl VshardConfig {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// space _bucket handling
+////////////////////////////////////////////////////////////////////////////////
+
+pub const SPACE_BUCKET: Space = unsafe { Space::from_id_unchecked(TABLE_ID_BUCKET) };
+
+////////////////////////////////////////////////////////////////////////////////
+// VshardBucketRecord
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct VshardBucketRecord {
+    pub bucket_id: u64,
+    pub state: VshardBucketState,
+    pub peer: Option<SmolStr>,
+}
+
+impl Encode for VshardBucketRecord {}
+
+impl VshardBucketRecord {
+    pub fn new(bucket_id: u64, state: VshardBucketState, peer: Option<SmolStr>) -> Self {
+        Self {
+            bucket_id,
+            state,
+            peer,
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// VshardBucketState
+////////////////////////////////////////////////////////////////////////////////
+
+tarantool::define_str_enum! {
+    pub enum VshardBucketState {
+        Active = "active",
+        Pinned = "pinned",
+        Sending = "sending",
+        Sent = "sent",
+        Receiving = "receiving",
+        Garbage = "garbage",
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // VshardErrorCode
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -536,4 +583,24 @@ pub fn init_lua_helpers() {
     .expect("loading a file known at compile time")
     .into_call()
     .expect("loading a file known at compile time");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// vshard discovery handling
+////////////////////////////////////////////////////////////////////////////////
+
+/// Wait for vshard router discovery to complete on the local instance.
+/// This ensures route_map is up-to-date before bumping the bucket state version.
+pub fn wait_router_discovery_complete(tier_name: &str, timeout: Duration) -> Result<()> {
+    // `pico.wait_router_discovery_complete` is defined in `src/vshard_helpers.lua`
+    let f: tlua::LuaFunction<_> = lua_function("wait_router_discovery_complete")?;
+    let finished: bool = f
+        .into_call_with((tier_name, timeout.as_secs_f64()))
+        .map_err(|e| Error::Other(format!("discovery wait failed: {e}").into()))?;
+
+    if !finished {
+        return Err(Error::timeout());
+    }
+
+    Ok(())
 }

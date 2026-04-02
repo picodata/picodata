@@ -5,6 +5,8 @@ use crate::instance::Instance;
 use crate::instance::State;
 use crate::replicaset::Replicaset;
 use crate::schema::ServiceRouteItem;
+use crate::sharding::BucketsInfo;
+use crate::sharding::TierBucketsInfo;
 use crate::storage::Catalog;
 use crate::storage::ToEntryIter;
 use crate::tier::Tier;
@@ -124,6 +126,23 @@ impl TopologyCache {
         // Drop the old data and replace it with new loaded from the storage
         *inner = TopologyCacheMutable::load(storage, self.my_raft_id)?;
         Ok(())
+    }
+
+    /// Returns an instance of the struct for use in tests.
+    pub fn for_tests() -> Self {
+        let instance = Instance::for_tests();
+        let inner = TopologyCacheMutable::for_tests(instance.raft_id);
+        Self {
+            cluster_name: "test",
+            cluster_uuid: "d345edf8-4bbf-45eb-b067-f52f8659f074",
+            my_raft_id: instance.raft_id,
+            my_instance_name: once_cell(instance.name.0),
+            my_instance_uuid: once_cell(instance.uuid),
+            my_replicaset_name: once_cell(instance.replicaset_name.0),
+            my_replicaset_uuid: once_cell(instance.replicaset_uuid),
+            my_tier_name: once_cell(instance.tier),
+            inner: NoYieldsRefCell::new(inner),
+        }
     }
 
     /// Get access to the volatile topology info, i.e. info which may change
@@ -300,9 +319,10 @@ impl TopologyCache {
         old: Option<BucketRecord>,
         new: Option<BucketRecord>,
     ) {
-        // TODO:
-        _ = old;
-        _ = new;
+        self.inner
+            .borrow_mut()
+            .buckets
+            .handle_distribution_change(old, new);
     }
 
     /// Updates the `_pico_bucket` record
@@ -317,6 +337,32 @@ impl TopologyCache {
         // TODO:
         _ = old;
         _ = new;
+    }
+}
+
+impl std::fmt::Debug for TopologyCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let mut t = f.debug_struct("TopologyCache");
+        t.field("cluster_name", &self.cluster_name)
+            .field("cluster_uuid", &self.cluster_uuid)
+            .field("my_raft_id", &self.my_raft_id);
+        if let Some(v) = self.my_instance_name.get() {
+            t.field("my_instance_name", v);
+        }
+        if let Some(v) = self.my_instance_uuid.get() {
+            t.field("my_instance_uuid", v);
+        }
+        if let Some(v) = self.my_replicaset_name.get() {
+            t.field("my_replicaset_name", v);
+        }
+        if let Some(v) = self.my_replicaset_uuid.get() {
+            t.field("my_replicaset_uuid", v);
+        }
+        if let Some(v) = self.my_tier_name.get() {
+            t.field("my_tier_name", v);
+        }
+
+        t.finish_non_exhaustive()
     }
 }
 
@@ -393,6 +439,9 @@ pub struct TopologyCacheMutable {
     /// do this...
     #[allow(clippy::type_complexity)]
     service_routes: HashMap<SmolStr, HashMap<SmolStr, HashMap<SmolStr, HashMap<SmolStr, bool>>>>,
+
+    /// Sharding buckets distribution info.
+    buckets: BucketsInfo,
 }
 
 impl TopologyCacheMutable {
@@ -408,6 +457,7 @@ impl TopologyCacheMutable {
         let mut replicaset_uuid_by_name = HashMap::default();
         let mut tiers_by_name = HashMap::default();
         let mut service_routes = HashMap::default();
+        let mut buckets = BucketsInfo::default();
 
         //
         // _pico_instance
@@ -438,6 +488,8 @@ impl TopologyCacheMutable {
                 }
             }
 
+            buckets.handle_new_replicaset(&replicaset);
+
             let replicaset_name = replicaset.name.0.clone();
             replicaset_uuid_by_name.insert(replicaset_name, replicaset_uuid.clone());
             replicasets_by_uuid.insert(replicaset_uuid, replicaset);
@@ -458,6 +510,7 @@ impl TopologyCacheMutable {
                 default_tier = Some(tier.clone());
             }
 
+            buckets.set_total_bucket_count(&tier.name, tier.bucket_count);
             tiers_by_name.insert(tier.name.clone(), tier);
         }
 
@@ -481,7 +534,10 @@ impl TopologyCacheMutable {
         // _pico_bucket
         //
 
-        // TODO
+        let items = storage.pico_bucket.iter()?;
+        for item in items {
+            buckets.handle_distribution_change(None, Some(item));
+        }
 
         //
         // _pico_resharding_state
@@ -505,7 +561,15 @@ impl TopologyCacheMutable {
             tiers_by_name,
             default_tier,
             service_routes,
+            buckets,
         })
+    }
+
+    /// Returns an instance of the struct for use in tests.
+    pub fn for_tests(my_raft_id: RaftId) -> Self {
+        let mut res = Self::default();
+        res.my_raft_id = my_raft_id;
+        res
     }
 
     /// Return info about the currently running instance.
@@ -584,6 +648,15 @@ impl TopologyCacheMutable {
         self.replicasets_by_uuid.values()
     }
 
+    #[inline]
+    pub fn tier_replicasets<'a>(
+        &'a self,
+        tier_name: &'a str,
+    ) -> impl Iterator<Item = &'a Replicaset> + use<'a> {
+        self.all_replicasets()
+            .filter(move |replicaset| replicaset.tier == tier_name)
+    }
+
     pub fn replicaset_by_name(&self, name: &str) -> Result<&Replicaset> {
         if let Some(this_replicaset) = self.this_replicaset.get() {
             if this_replicaset.name == name {
@@ -654,6 +727,20 @@ impl TopologyCacheMutable {
         };
 
         Ok(tier)
+    }
+
+    #[inline]
+    pub fn all_buckets_infos(&self) -> impl Iterator<Item = &TierBucketsInfo> {
+        self.buckets.iter()
+    }
+
+    #[inline]
+    pub fn buckets_info(&self, tier_name: &str) -> Result<&TierBucketsInfo> {
+        let Some(info) = self.buckets.get(tier_name) else {
+            return Err(Error::NoSuchTier(tier_name.into()));
+        };
+
+        Ok(info)
     }
 
     pub fn check_service_route(
@@ -774,6 +861,8 @@ impl TopologyCacheMutable {
                 let new_uuid = new.uuid.clone();
                 let new_name = new.name.0.clone();
 
+                self.buckets.handle_new_replicaset(&new);
+
                 let old_cached_uuid = self
                     .replicaset_uuid_by_name
                     .insert(new_name, new_uuid.clone());
@@ -829,6 +918,9 @@ impl TopologyCacheMutable {
     fn update_tier(&mut self, old: Option<Tier>, new: Option<Tier>) {
         if let Some(new) = new {
             let new_name = new.name.clone();
+
+            self.buckets
+                .set_total_bucket_count(&new_name, new.bucket_count);
 
             if let Some(this_instance) = self.this_instance.get() {
                 if new_name == this_instance.tier {
@@ -909,6 +1001,13 @@ where
         res.set(v).expect("was empty");
     }
     res
+}
+
+fn once_cell<T>(v: T) -> OnceCell<T>
+where
+    T: std::fmt::Debug,
+{
+    once_cell_from_option(Some(v))
 }
 
 #[inline(always)]
