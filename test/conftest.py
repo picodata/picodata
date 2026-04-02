@@ -2167,75 +2167,6 @@ Last governor error is:
         # updating it's state ot Offline
         self.wait_online(expected_incarnation=incarnation + 1)
 
-    def fill_with_data(self):
-        ddl = self.sql(
-            """
-            CREATE TABLE deliveries (
-                nmbr INTEGER NOT NULL,
-                product TEXT NOT NULL,
-                quantity INTEGER,
-                PRIMARY KEY (nmbr))
-            USING vinyl DISTRIBUTED BY (product)
-            IN TIER "default";
-        """
-        )
-        assert ddl["row_count"] == 1
-
-        dml = self.sql(
-            """
-            INSERT INTO deliveries VALUES
-                (1, 'metalware', 2000),
-                (2, 'adhesives', 300),
-                (3, 'moldings', 100),
-                (4, 'bars', 5),
-                (5, 'blocks', 15000);
-        """
-        )
-        assert dml["row_count"] == 5
-
-        dcl = self.sql("CREATE ROLE toy OPTION (TIMEOUT = 3.0)")
-        assert dcl["row_count"] == 1
-
-        dcl = self.sql("GRANT ALTER ON TABLE deliveries TO toy")
-        assert dcl["row_count"] == 1
-
-        dcl = self.sql(
-            """
-            CREATE USER "andy"
-            WITH PASSWORD 'P@ssw0rd'
-            USING chap-sha1;
-        """
-        )
-        assert dcl["row_count"] == 1
-
-        ddl = self.sql(
-            """
-            CREATE INDEX product_quantity
-            ON deliveries
-            USING TREE (product, quantity)
-            WITH (
-                HINT = true,
-                BLOOM_FPR = 0.05,
-                RUN_SIZE_RATIO = 3.5,
-                PAGE_SIZE = 8192,
-                RANGE_SIZE = 1073741824,
-                RUN_COUNT_PER_LEVEL = 2
-            );
-        """
-        )
-        assert ddl["row_count"] == 1
-
-        ddl = self.sql(
-            """
-            CREATE PROCEDURE proc (int, text, int)
-            AS $$INSERT INTO deliveries VALUES($1, $2, $3)$$;
-        """
-        )
-        assert ddl["row_count"] == 1
-
-        lua = self.eval("return box.snapshot()")
-        assert lua == "ok"
-
     def prepare_instance_for_iproto_tls(self):
         self.iproto_tls_enabled = True
         self.iproto_tls_cert = str(SSL_DIR / "server-with-ext.crt")
@@ -2344,9 +2275,6 @@ class Cluster:
                 yaml_lib.safe_dump(config_yaml_obj_i, f, default_flow_style=False)
 
             i.set_config_file(config_path)
-
-    def fill_with_data(self):
-        self.leader().fill_with_data()
 
     def version(self) -> Version:
         query = """
