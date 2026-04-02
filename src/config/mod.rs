@@ -399,7 +399,6 @@ Using configuration file '{args_path}'.");
         {
             have_old_iproto_options = [
                 config_parameter_path!(instance.listen),
-                config_parameter_path!(instance.advertise_address),
                 config_parameter_path!(instance.iproto_listen),
                 config_parameter_path!(instance.iproto_advertise),
                 config_parameter_path!(instance.iproto_tls.enabled),
@@ -420,13 +419,8 @@ Using configuration file '{args_path}'.");
             }
         }
 
-        #[allow(deprecated)]
-        if let Some(address) = args.advertise_address {
-            config_from_args.instance.advertise_address = Some(address);
-        }
-
-        #[expect(deprecated)]
         if let Some(iproto_listen) = args.iproto_listen {
+            #[expect(deprecated)]
             if have_old_iproto_options {
                 config_from_args.instance.iproto_listen = Some(iproto_listen);
             } else {
@@ -693,10 +687,6 @@ Using configuration file '{args_path}'.");
                 config_parameter_path!(instance.listen),
                 config_parameter_path!(instance.iproto_listen),
             ),
-            (
-                config_parameter_path!(instance.advertise_address),
-                config_parameter_path!(instance.iproto_advertise),
-            ),
             // "new" iproto section
             (
                 config_parameter_path!(instance.iproto_listen),
@@ -834,7 +824,6 @@ Using configuration file '{args_path}'.");
         let instance = &self.instance;
 
         let has_old_iproto = instance.listen.is_some()
-            || instance.advertise_address.is_some()
             || instance.iproto_listen.is_some()
             || instance.iproto_advertise.is_some()
             || instance.iproto_tls.enabled.is_some()
@@ -1824,10 +1813,6 @@ pub struct InstanceConfig {
     #[deprecated = "use iproto.listen instead"]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub iproto_listen: Option<IprotoAddress>,
-
-    #[deprecated = "use iproto.advertise instead"]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub advertise_address: Option<IprotoAddress>,
 
     #[deprecated = "use iproto.advertise instead"]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2989,7 +2974,7 @@ pub fn get_type_of_alter_system_parameter(name: &str) -> Option<SbroadType> {
 pub fn get_default_value_of_alter_system_parameter(name: &str) -> Option<rmpv::Value> {
     // NOTE: we need an instance of this struct because of how `Introspection::get_field_default_value_as_rmpv`
     // works. We allow default values to refer to other fields of the struct
-    // which were actuall provided (see `InstanceConfig::advertise_address` for example).
+    // which were actually provided (see `IprotoConfig::advertise` for example).
     // But for alter system parameters it doesn't make sense because these are not
     // stored in the struct itself but in a system table.
     // Alter system parameters currently don't delegate their defaults to other
@@ -3029,7 +3014,7 @@ pub fn get_defaults_for_all_system_parameters(
 ) -> Result<Vec<Dml>, Error> {
     // NOTE: we need an instance of this struct because of how `Introspection::get_field_default_value_as_rmpv`
     // works. We allow default values to refer to other fields of the struct
-    // which were actuall provided (see `InstanceConfig::advertise_address` for example).
+    // which were actually provided (see `IprotoConfig::advertise` for example).
     // But for alter system parameters it doesn't make sense because these are not
     // stored in the struct itself but in a system table.
     // Alter system parameters currently don't delegate their defaults to other
@@ -4316,39 +4301,6 @@ instance:
             config.instance.iproto.advertise().to_host_port(),
             "localhost:3302"
         );
-    }
-
-    #[test]
-    fn test_iproto_advertise_advertise_interaction() {
-        let g = protect_env();
-
-        // iproto_advertise should be equal to listen
-        let yaml = r###"
-instance:
-        advertise_address: localhost:3301
-"###;
-        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
-        assert_eq!(
-            config.instance.iproto.advertise().to_host_port(),
-            "localhost:3301"
-        );
-
-        // can't use both options
-        let yaml = r###"
-instance:
-        advertise_address: localhost:3302
-        iproto_advertise: localhost:3301
-"###;
-        let config = setup_for_tests(Some(yaml), &["run"], &g);
-        assert_eq!(config.unwrap_err().to_string(), "invalid configuration: instance.advertise_address is deprecated, use instance.iproto_advertise instead (cannot use both at the same time)");
-
-        // can't use both options
-        let yaml = r###"
-instance:
-        iproto_advertise: localhost:3302
-"###;
-        let config = setup_for_tests(Some(yaml), &["run", "--advertise", "localhost:3303"], &g);
-        assert_eq!(config.unwrap_err().to_string(), "invalid configuration: instance.advertise_address is deprecated, use instance.iproto_advertise instead (cannot use both at the same time)");
     }
 
     #[test]

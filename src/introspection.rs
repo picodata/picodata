@@ -149,7 +149,7 @@ pub trait Introspection {
     /// The `expr` in `#[introspection(config_default = expr)]` may contain
     /// references to `self`, which allows for default values of some parameters
     /// to be dependent on values of other parameters
-    /// (see [`InstanceConfig::advertise_address`] for example).
+    /// (see [`IprotoConfig::advertise`] for example).
     ///
     /// Also note that this function doesn't do any special checks to see if the
     /// values are set or not in the actual struct. See what happens in
@@ -188,7 +188,7 @@ pub trait Introspection {
     /// assert_eq!(s.get_field_default_value_as_rmpv("doesnt_have_default").unwrap(), None);
     /// ```
     ///
-    /// [`InstanceConfig::advertise_address`]: crate::config::InstanceConfig::advertise_address
+    /// [`IprotoConfig::advertise`]: crate::config::IprotoConfig::advertise
     /// [`PicodataConfig::set_defaults_explicitly`]: crate::config::PicodataConfig::set_defaults_explicitly
     fn get_field_default_value_as_rmpv(
         &self,

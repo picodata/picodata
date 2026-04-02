@@ -156,7 +156,8 @@ with the `YY.MINOR.MICRO` scheme.
   gain `tier` and `replicaset` in addition to their existing labels.
   Aggregations across replicasets may need an explicit
   `sum without (tier, replicaset)`.
-- Deprecated `plugin_dir` setting is removed following a major release. Use `share_dir` instead. 
+- Deprecated `plugin_dir` setting is removed following a major release. Use `share_dir` instead.
+- Deprecated `advertise_address` setting is removed following a major release. Use `iproto` section instead.
 
 ## [26.1.1] - 2026-03-24
 

@@ -131,26 +131,6 @@ pub struct Run {
     pub instance_name: Option<String>,
 
     #[clap(
-        long = "advertise",
-        value_name = "HOST:PORT",
-        env = "PICODATA_ADVERTISE",
-        hide = true,
-        group = "advertise_arguments"
-    )]
-    /// DEPRECATED option
-    ///
-    /// Public network address of the instance. It is announced to the
-    /// cluster during the instance start. Later it's used by other
-    /// instances for connecting to this one.
-    ///
-    /// Defaults to `--iproto-listen` value which is enough in most cases. But,
-    /// for example, in case of `--iproto-listen 0.0.0.0` it should be
-    /// specified explicitly:
-    ///
-    /// picodata run --iproto-listen 0.0.0.0:3301 --iproto-advertise 192.168.0.1:3301
-    pub advertise_address: Option<IprotoAddress>,
-
-    #[clap(
         long = "iproto-advertise",
         value_name = "HOST:PORT",
         env = "PICODATA_IPROTO_ADVERTISE",
@@ -220,7 +200,7 @@ pub struct Run {
     ///
     /// For example: `--peer server-1.picodata.int:13301,server-2.picodata.int:13301`
     ///
-    /// Defaults to `--advertise` value which results in creating a new
+    /// Defaults to `--iproto-advertise` value which results in creating a new
     /// cluster
     pub peers: Vec<IprotoAddress>,
 
