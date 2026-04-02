@@ -126,6 +126,23 @@ export const FilterValueForm = ({
       />
     );
   }
+
+  let expressionPart = null;
+  if (status === EditableValueStatusEnum.Expression) {
+    expressionPart = (
+      <FilterValuePart>
+        <ExpressionAutoComplete
+          onChange={(_, _value) => expressionChangeHandler(_value)}
+          onBlur={expressionBlurHandler}
+        />
+      </FilterValuePart>
+    );
+  } else if (status === EditableValueStatusEnum.Value) {
+    expressionPart = (
+      <RestFilterValuePart>{expression?.description}</RestFilterValuePart>
+    );
+  }
+
   return (
     <FilterValueContainer>
       {status === EditableValueStatusEnum.Tag ? (
@@ -137,16 +154,7 @@ export const FilterValueForm = ({
       ) : (
         <RestFilterValuePart>{tagKey}</RestFilterValuePart>
       )}
-      {status === EditableValueStatusEnum.Expression ? (
-        <FilterValuePart>
-          <ExpressionAutoComplete
-            onChange={(_, _value) => expressionChangeHandler(_value)}
-            onBlur={expressionBlurHandler}
-          />
-        </FilterValuePart>
-      ) : status === EditableValueStatusEnum.Value ? (
-        <RestFilterValuePart>{expression?.description}</RestFilterValuePart>
-      ) : null}
+      {expressionPart}
       {status === EditableValueStatusEnum.Value ? (
         <FilterValuePart>
           {Array.isArray(value) && value.length ? (
