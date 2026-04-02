@@ -1437,7 +1437,7 @@ pub(crate) fn setup() {
 
         Params:
 
-            1. name - plugin name, manifest with same name must exists in plugin_dir
+            1. name - plugin name, manifest with same name must exist in share_dir
             2. version - plugin version
             3. opts (optional table)
                 - timeout (optional number), in seconds, default: 10
@@ -1680,7 +1680,7 @@ pub(crate) fn setup() {
 
         Params:
 
-            1. name - plugin name, manifest with same name must exists in plugin_dir
+            1. name - plugin name, manifest with same name must exist in share_dir
             2. version - plugin version
             3. opts (optional table)
                 - timeout (optional number), in seconds, default: 10
@@ -1721,7 +1721,7 @@ pub(crate) fn setup() {
 
         Params:
 
-            1. name - plugin name, manifest with same name must exists in plugin_dir
+            1. name - plugin name, manifest with same name must exist in share_dir
             2. version - plugin version
             3. opts (optional table)
                 - timeout (optional number), in seconds, default: 10

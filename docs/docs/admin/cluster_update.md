@@ -101,7 +101,7 @@ ALTER PLUGIN plugin_name 0.2.0 ENABLE;
 1. Если у плагина есть настраиваемые параметры, которые необходимо
 задать, используйте команду `picodata plugin configure`. Пример:
 ```shell
-picodata plugin configure --peer andy@127.0.0.1:3001 --service-password-file pass.txt plugin_name 0.2 plugin_dir/plugin_config.yaml
+picodata plugin configure --peer andy@127.0.0.1:3001 --service-password-file pass.txt plugin_name 0.2 share_dir/plugin_config.yaml
 ```
 
 См. также:

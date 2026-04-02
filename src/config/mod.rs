@@ -490,11 +490,6 @@ Using configuration file '{args_path}'.");
 
         config_from_args.instance.share_dir = args.share_dir;
 
-        #[allow(deprecated)]
-        {
-            config_from_args.instance.plugin_dir = args.plugin_dir;
-        }
-
         if let Some(admin_socket) = args.admin_sock {
             config_from_args.instance.admin_socket = Some(admin_socket);
         }
@@ -694,10 +689,6 @@ Using configuration file '{args_path}'.");
         // add a pair of names into this array.
         let renamed_parameters = &[
             // (deprecated, use_instead)
-            (
-                config_parameter_path!(instance.plugin_dir),
-                config_parameter_path!(instance.share_dir),
-            ),
             (
                 config_parameter_path!(instance.listen),
                 config_parameter_path!(instance.iproto_listen),
@@ -1853,10 +1844,6 @@ pub struct InstanceConfig {
 
     #[introspection(config_default = self.instance_dir.as_ref().map(|dir| dir.join("admin.sock")))]
     pub admin_socket: Option<PathBuf>,
-
-    #[deprecated = "use share_dir instead"]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub plugin_dir: Option<PathBuf>,
 
     #[introspection(config_default = "/usr/share/picodata/")]
     pub share_dir: Option<PathBuf>,

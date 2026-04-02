@@ -293,10 +293,6 @@ pub struct Run {
     /// Path to directory with plugin installations.
     pub share_dir: Option<PathBuf>,
 
-    #[clap(long, value_name = "PATH", env = "PICODATA_PLUGIN_DIR", hide = true)]
-    /// Deprecated. Use --share-dir instead.
-    pub plugin_dir: Option<PathBuf>,
-
     #[clap(long = "tier", value_name = "TIER", env = "PICODATA_INSTANCE_TIER")]
     /// Name of the tier to which the instance will belong.
     /// Used during cluster initialization
