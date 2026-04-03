@@ -354,6 +354,10 @@ mod entry_type_as_i32 {
     }
 }
 
+// This warning doesn't make any sense, because the enum is functionally
+// equivalent to `Option<T>`, and clippy doesn't warn about `Option<T>` when `T`
+// is large.
+#[allow(clippy::large_enum_variant)]
 /// Raft entry payload specific to the Picodata.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
