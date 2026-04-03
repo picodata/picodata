@@ -30,7 +30,7 @@ use super::helpers::RepeatableState;
 use super::node::expression::Expression;
 use super::node::relational::Relational;
 use super::node::{Bound, BoundType, Frame, FrameType, Limit, Over, Window};
-use super::operator::{Arithmetic, Bool, Unary};
+use super::operator::Unary;
 use super::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
 use super::types::{CastType, DerivedType};
 use super::value::Value;
@@ -133,25 +133,35 @@ fn write_list(
 
 #[derive(Debug, PartialEq, Clone)]
 enum ColExpr {
+    // Print expressions wrt precedence.
     Parentheses(Box<ColExpr>),
+
+    // This one is hard to explain...
+    Row(Row),
+
+    // Column-ish things.
     Alias(Box<ColExpr>, SmolStr),
-    Arithmetic(Box<ColExpr>, Arithmetic, Box<ColExpr>),
-    Bool(Box<ColExpr>, Bool, Box<ColExpr>),
-    Unary(Unary, Box<ColExpr>),
     Column(Option<SmolStr>, SmolStr, DerivedType),
-    Asterisk,
     Const(SmolStr, DerivedType),
-    Index(Box<ColExpr>, Box<ColExpr>),
+    Asterisk,
+
+    // Regular operators.
+    PrefixOp(SmolStr, Box<ColExpr>),
+    InfixOp(Box<ColExpr>, SmolStr, Box<ColExpr>),
+    SuffixOp(Box<ColExpr>, SmolStr),
+
+    // Unusual or complex operators & functions.
     Cast(Box<ColExpr>, CastType),
+    Index(Box<ColExpr>, Box<ColExpr>),
+    Trim(Option<TrimKind>, Option<Box<ColExpr>>, Box<ColExpr>),
+    Like(Box<ColExpr>, Box<ColExpr>, Option<Box<ColExpr>>),
     Case(
         Option<Box<ColExpr>>,
-        Vec<(Box<ColExpr>, Box<ColExpr>)>,
+        Vec<(ColExpr, ColExpr)>,
         Option<Box<ColExpr>>,
     ),
-    Window(Box<WindowExplain>),
-    Over(Box<ColExpr>, Option<Box<ColExpr>>, Box<ColExpr>),
-    Concat(Box<ColExpr>, Box<ColExpr>),
-    Like(Box<ColExpr>, Box<ColExpr>, Option<Box<ColExpr>>),
+
+    // Regular function calls.
     ScalarFunction(
         SmolStr,
         Vec<ColExpr>,
@@ -159,13 +169,92 @@ enum ColExpr {
         DerivedType,
         bool,
     ),
-    Trim(Option<TrimKind>, Option<Box<ColExpr>>, Box<ColExpr>),
-    Row(Row),
+
+    // Window functions.
+    Window(Box<WindowExplain>),
+    Over(Box<ColExpr>, Option<Box<ColExpr>>, Box<ColExpr>),
 }
 
 impl Display for ColExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            ColExpr::Parentheses(child_expr) => write!(f, "({child_expr})")?,
+            ColExpr::Row(row) => write!(f, "{row}")?,
+
+            // Column-ish things.
+            ColExpr::Alias(expr, alias_name) => match expr.as_ref() {
+                // If the unqualified column name matches the alias, drop the alias.
+                ColExpr::Column(None, col_name, _) if col_name == alias_name => {
+                    write!(f, "{expr}")?;
+                }
+                _otherwise => {
+                    write!(
+                        f,
+                        "{expr} -> {alias}",
+                        alias = properly_quoted_name(alias_name)
+                    )?;
+                }
+            },
+            ColExpr::Column(tbl_name, col_name, col_typ) => match tbl_name {
+                Some(tbl_name) => write!(
+                    f,
+                    "{tbl_name}.{col_name}::{col_typ}",
+                    tbl_name = properly_quoted_name(tbl_name),
+                    col_name = properly_quoted_name(col_name),
+                )?,
+                None => write!(
+                    f,
+                    "{col_name}::{col_typ}",
+                    col_name = properly_quoted_name(col_name),
+                )?,
+            },
+            ColExpr::Const(value, typ) => write!(f, "{value}::{typ}")?,
+            ColExpr::Asterisk => write!(f, "*")?,
+
+            // Regular operators.
+            ColExpr::PrefixOp(op, val) => write!(f, "{op} {val}")?,
+            ColExpr::InfixOp(lhs, op, rhs) => write!(f, "{lhs} {op} {rhs}")?,
+            ColExpr::SuffixOp(val, op) => write!(f, "{val} {op}")?,
+
+            // Unusal or complex operators.
+            ColExpr::Index(v, i) => write!(f, "{v}[{i}]")?,
+            ColExpr::Cast(v, t) => write!(f, "{v}::{t}")?,
+            ColExpr::Trim(kind, pattern, target) => match (kind, pattern) {
+                (Some(k), Some(p)) => write!(f, "TRIM({} {p} from {target})", k.as_str())?,
+                (Some(k), None) => write!(f, "TRIM({} from {target})", k.as_str())?,
+                (None, Some(p)) => write!(f, "TRIM({p} from {target})")?,
+                (None, None) => write!(f, "TRIM({target})")?,
+            },
+            ColExpr::Like(l, r, escape) => match escape {
+                Some(e) => write!(f, "{l} LIKE {r} ESCAPE {e}")?,
+                None => write!(f, "{l} LIKE {r}")?,
+            },
+            ColExpr::Case(search_expr, when_blocks, else_expr) => {
+                write!(f, "case ")?;
+                if let Some(search_expr) = search_expr {
+                    write!(f, "{search_expr} ")?;
+                }
+                for (cond_expr, res_expr) in when_blocks {
+                    write!(f, "when {cond_expr} then {res_expr} ")?;
+                }
+                if let Some(else_expr) = else_expr {
+                    write!(f, "else {else_expr} ")?;
+                }
+                write!(f, "end")?;
+            }
+
+            // Regular function calls.
+            ColExpr::ScalarFunction(name, args, feature, func_type, ..) => {
+                let name = properly_quoted_name(name);
+                let distinct = match feature {
+                    Some(FunctionFeature::Distinct) => "distinct ",
+                    _other => "",
+                };
+                let args = args.iter().format(", ");
+                write!(f, "{name}({distinct}{args})::{func_type}")?;
+            }
+
+            // Window functions.
             ColExpr::Window(window) => write!(f, "{window}")?,
             ColExpr::Over(stable_func, filter, window) => {
                 let ColExpr::ScalarFunction(func_name, args, ..) = stable_func.as_ref() else {
@@ -185,78 +274,6 @@ impl Display for ColExpr {
                     panic!("Expected Window expression in OVER clause");
                 }
             }
-            ColExpr::Parentheses(child_expr) => write!(f, "({child_expr})")?,
-            ColExpr::Alias(expr, alias_name) => match expr.as_ref() {
-                // If the unqualified column name matches the alias, drop the alias.
-                ColExpr::Column(None, col_name, _) if col_name == alias_name => {
-                    write!(f, "{expr}")?;
-                }
-                _otherwise => {
-                    write!(
-                        f,
-                        "{expr} -> {alias}",
-                        alias = properly_quoted_name(alias_name)
-                    )?;
-                }
-            },
-            ColExpr::Arithmetic(left, op, right) => write!(f, "{left} {op} {right}")?,
-            ColExpr::Bool(left, op, right) => write!(f, "{left} {op} {right}")?,
-            ColExpr::Unary(op, expr) => match op {
-                Unary::IsNull => write!(f, "{expr} {op}")?,
-                Unary::Exists => write!(f, "{op} {expr}")?,
-                Unary::Not => write!(f, "{op} {expr}")?,
-            },
-            ColExpr::Column(tbl_name, col_name, col_typ) => match tbl_name {
-                Some(tbl_name) => write!(
-                    f,
-                    "{tbl_name}.{col_name}::{col_typ}",
-                    tbl_name = properly_quoted_name(tbl_name),
-                    col_name = properly_quoted_name(col_name),
-                )?,
-                None => write!(
-                    f,
-                    "{col_name}::{col_typ}",
-                    col_name = properly_quoted_name(col_name),
-                )?,
-            },
-            ColExpr::Asterisk => write!(f, "*")?,
-            ColExpr::Const(value, typ) => write!(f, "{value}::{typ}")?,
-            ColExpr::Index(v, i) => write!(f, "{v}[{i}]")?,
-            ColExpr::Cast(v, t) => write!(f, "{v}::{t}")?,
-            ColExpr::Case(search_expr, when_blocks, else_expr) => {
-                write!(f, "case ")?;
-                if let Some(search_expr) = search_expr {
-                    write!(f, "{search_expr} ")?;
-                }
-                for (cond_expr, res_expr) in when_blocks {
-                    write!(f, "when {cond_expr} then {res_expr} ")?;
-                }
-                if let Some(else_expr) = else_expr {
-                    write!(f, "else {else_expr} ")?;
-                }
-                write!(f, "end")?;
-            }
-            ColExpr::Concat(l, r) => write!(f, "{l} || {r}")?,
-            ColExpr::ScalarFunction(name, args, feature, func_type, ..) => {
-                let name = properly_quoted_name(name);
-                let distinct = match feature {
-                    Some(FunctionFeature::Distinct) => "distinct ",
-                    _other => "",
-                };
-                let args = args.iter().format(", ");
-                write!(f, "{name}({distinct}{args})::{func_type}")?;
-            }
-            ColExpr::Trim(kind, pattern, target) => match (kind, pattern) {
-                (Some(k), Some(p)) => write!(f, "TRIM({} {p} from {target})", k.as_str())?,
-                (Some(k), None) => write!(f, "TRIM({} from {target})", k.as_str())?,
-                (None, Some(p)) => write!(f, "TRIM({p} from {target})")?,
-                (None, None) => write!(f, "TRIM({target})")?,
-            },
-            ColExpr::Row(row) => write!(f, "{row}")?,
-            ColExpr::Like(l, r, escape) => match escape {
-                Some(e) => write!(f, "{l} LIKE {r} ESCAPE {e}")?,
-                None => write!(f, "{l} LIKE {r}")?,
-            },
         };
 
         Ok(())
@@ -336,7 +353,7 @@ impl ColExpr {
         subtree_top: NodeId,
         sq_ref_map: &SubQueryRefMap,
     ) -> Result<Self, SbroadError> {
-        let mut stack: ColExprStack = ColExprStack::new(plan);
+        let mut stack = ColExprStack::new(plan);
         let dft_post = PostOrder::new(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
 
         for LevelNode(_, id) in dft_post.traverse_into_iter(subtree_top) {
@@ -383,102 +400,75 @@ impl ColExpr {
                         ordering: o_elems,
                         frame,
                     };
-                    let window_expr = ColExpr::Window(Box::new(window));
-                    stack.push((window_expr, id));
+
+                    let expr = ColExpr::Window(window.into());
+                    stack.push((expr, id));
                 }
                 Expression::Over(Over { filter, .. }) => {
-                    let window = stack.pop_expr(Some(id));
-
-                    let filter = filter.map(|_| {
-                        let expr = stack.pop_expr(Some(id));
-                        Box::new(expr)
-                    });
-
-                    let stable_func = stack.pop_expr(Some(id));
-
-                    let over_expr = ColExpr::Over(Box::new(stable_func), filter, Box::new(window));
-                    stack.push((over_expr, id));
+                    let window = stack.pop_expr(Some(id)).into();
+                    let filter = filter.map(|_| stack.pop_expr(Some(id)).into());
+                    let stable_func = stack.pop_expr(Some(id)).into();
+                    let expr = ColExpr::Over(stable_func, filter, window);
+                    stack.push((expr, id));
                 }
                 Expression::Index(IndexExpr { .. }) => {
                     let which_expr = stack.pop_expr(Some(id)).into();
                     let child_expr = stack.pop_expr(Some(id)).into();
-
-                    let index_expr = ColExpr::Index(child_expr, which_expr);
-                    stack.push((index_expr, id));
+                    let expr = ColExpr::Index(child_expr, which_expr);
+                    stack.push((expr, id));
                 }
                 Expression::Cast(Cast { to, .. }) => {
                     let child_expr = stack.pop_expr(Some(id)).into();
-
-                    let cast_expr = ColExpr::Cast(child_expr, *to);
-                    stack.push((cast_expr, id));
+                    let expr = ColExpr::Cast(child_expr, *to);
+                    stack.push((expr, id));
                 }
                 Expression::Case(Case {
                     search_expr,
                     when_blocks,
                     else_expr,
                 }) => {
-                    let else_expr_col = if else_expr.is_some() {
-                        let expr = stack.pop_expr(Some(id));
-                        Some(Box::new(expr))
-                    } else {
-                        None
-                    };
+                    let else_expr = else_expr.map(|_| stack.pop_expr(Some(id)).into());
 
-                    let mut match_expr_cols: Vec<(Box<ColExpr>, Box<ColExpr>)> = when_blocks
-                        .iter()
-                        .map(|_| {
-                            let res_expr = stack.pop_expr(Some(id));
+                    let mut match_exprs = Vec::with_capacity(when_blocks.len());
+                    for _ in when_blocks {
+                        let res_expr = stack.pop_expr(Some(id));
+                        let cond_expr = stack.pop_expr(Some(id));
+                        match_exprs.push((cond_expr, res_expr));
+                    }
+                    match_exprs.reverse();
 
-                            let cond_expr = stack.pop_expr(Some(id));
-                            (Box::new(cond_expr), Box::new(res_expr))
-                        })
-                        .collect();
-                    match_expr_cols.reverse();
+                    let search_expr = search_expr.map(|_| stack.pop_expr(Some(id)).into());
 
-                    let search_expr_col = if search_expr.is_some() {
-                        let expr = stack.pop_expr(Some(id));
-                        Some(Box::new(expr))
-                    } else {
-                        None
-                    };
-
-                    let cast_expr = ColExpr::Case(search_expr_col, match_expr_cols, else_expr_col);
-                    stack.push((cast_expr, id));
+                    let expr = ColExpr::Case(search_expr, match_exprs, else_expr);
+                    stack.push((expr, id));
                 }
                 Expression::CountAsterisk(_) => {
-                    let count_asterisk_expr = ColExpr::Asterisk;
-                    stack.push((count_asterisk_expr, id));
+                    let expr = ColExpr::Asterisk;
+                    stack.push((expr, id));
                 }
                 Expression::Reference(Reference { position, .. }) => {
                     let rel_id = plan.get_relational_from_reference_node(id)?;
                     let (tbl_name, col_name) =
                         ColExpr::scan_column_name(plan, rel_id, *position, &current_node)?;
-                    let ref_expr =
+                    let expr =
                         ColExpr::Column(tbl_name, col_name, current_node.calculate_type(plan)?);
-                    stack.push((ref_expr, id));
+                    stack.push((expr, id));
                 }
                 Expression::SubQueryReference(SubQueryReference {
                     position, rel_id, ..
                 }) => {
                     let (tbl_name, col_name) =
                         ColExpr::scan_column_name(plan, *rel_id, *position, &current_node)?;
-                    let ref_expr =
+                    let expr =
                         ColExpr::Column(tbl_name, col_name, current_node.calculate_type(plan)?);
-                    stack.push((ref_expr, id));
-                }
-                Expression::Concat(_) => {
-                    let right = stack.pop_expr(Some(id));
-                    let left = stack.pop_expr(Some(id));
-                    let concat_expr = ColExpr::Concat(Box::new(left), Box::new(right));
-                    stack.push((concat_expr, id));
+                    stack.push((expr, id));
                 }
                 Expression::Like { .. } => {
-                    let escape = Some(stack.pop_expr(Some(id)));
-                    let right = stack.pop_expr(Some(id));
-                    let left = stack.pop_expr(Some(id));
-                    let concat_expr =
-                        ColExpr::Like(Box::new(left), Box::new(right), escape.map(Box::new));
-                    stack.push((concat_expr, id));
+                    let escape = Some(stack.pop_expr(Some(id)).into());
+                    let right = stack.pop_expr(Some(id)).into();
+                    let left = stack.pop_expr(Some(id)).into();
+                    let expr = ColExpr::Like(left, right, escape);
+                    stack.push((expr, id));
                 }
                 Expression::Constant(Constant { value }) => {
                     let expr =
@@ -486,10 +476,10 @@ impl ColExpr {
                     stack.push((expr, id));
                 }
                 Expression::Trim(Trim { kind, pattern, .. }) => {
-                    let target = stack.pop_expr(Some(id));
-                    let pattern = pattern.map(|_| Box::new(stack.pop_expr(Some(id))));
-                    let trim_expr = ColExpr::Trim(kind.clone(), pattern, Box::new(target));
-                    stack.push((trim_expr, id));
+                    let target = stack.pop_expr(Some(id)).into();
+                    let pattern = pattern.map(|_| stack.pop_expr(Some(id)).into());
+                    let expr = ColExpr::Trim(kind.clone(), pattern, target);
+                    stack.push((expr, id));
                 }
                 Expression::ScalarFunction(ScalarFunction {
                     name,
@@ -499,12 +489,9 @@ impl ColExpr {
                     is_system: is_aggr,
                     ..
                 }) => {
-                    let mut len = children.len();
-                    let mut args: Vec<ColExpr> = Vec::with_capacity(len);
-                    while len > 0 {
-                        let arg = stack.pop_expr(Some(id));
-                        args.push(arg);
-                        len -= 1;
+                    let mut args = Vec::with_capacity(children.len());
+                    for _ in children {
+                        args.push(stack.pop_expr(Some(id)));
                     }
                     args.reverse();
                     let func_expr = ColExpr::ScalarFunction(
@@ -517,52 +504,55 @@ impl ColExpr {
                     stack.push((func_expr, id));
                 }
                 Expression::Row(RowExpr { list, .. }) => {
-                    let mut len = list.len();
-                    let mut row: ColExprStack = ColExprStack::new(plan);
-                    while len > 0 {
-                        let expr = stack.pop();
-                        row.push(expr);
-                        len -= 1;
+                    let mut row = ColExprStack::new(plan);
+                    for _ in list {
+                        row.push(stack.pop());
                     }
                     row.inner.reverse();
                     let row = Row::from_col_expr_stack(plan, row, sq_ref_map)?;
                     let row_expr = ColExpr::Row(row);
                     stack.push((row_expr, id));
                 }
-                Expression::Arithmetic(ArithmeticExpr { op, .. }) => {
-                    let right_expr = stack.pop_expr(Some(id));
-                    let left_expr = stack.pop_expr(Some(id));
-
-                    let ar_expr =
-                        ColExpr::Arithmetic(Box::new(left_expr), op.clone(), Box::new(right_expr));
-
-                    stack.push((ar_expr, id));
-                }
                 Expression::Alias(Alias { name, .. }) => {
-                    let expr = stack.pop_expr(Some(id));
-                    let alias_expr = ColExpr::Alias(Box::new(expr), name.clone());
+                    let expr = stack.pop_expr(Some(id)).into();
+                    let alias_expr = ColExpr::Alias(expr, name.clone());
                     stack.push((alias_expr, id));
+                }
+                Expression::Concat(_) => {
+                    let rhs = stack.pop_expr(Some(id)).into();
+                    let lhs = stack.pop_expr(Some(id)).into();
+                    let expr = ColExpr::InfixOp(lhs, "||".to_smolstr(), rhs);
+                    stack.push((expr, id));
+                }
+                Expression::Arithmetic(ArithmeticExpr { op, .. }) => {
+                    let rhs = stack.pop_expr(Some(id)).into();
+                    let lhs = stack.pop_expr(Some(id)).into();
+                    let expr = ColExpr::InfixOp(lhs, op.to_smolstr(), rhs);
+                    stack.push((expr, id));
                 }
                 Expression::Bool(BoolExpr { op, .. }) => {
-                    let right_expr = stack.pop_expr(Some(id));
-                    let left_expr = stack.pop_expr(Some(id));
-
-                    let bool_expr = ColExpr::Bool(Box::new(left_expr), *op, Box::new(right_expr));
-
-                    stack.push((bool_expr, id));
+                    let rhs = stack.pop_expr(Some(id)).into();
+                    let lhs = stack.pop_expr(Some(id)).into();
+                    let expr = ColExpr::InfixOp(lhs, op.to_smolstr(), rhs);
+                    stack.push((expr, id));
                 }
                 Expression::Unary(UnaryExpr { op, .. }) => {
-                    let child_expr = stack.pop_expr(Some(id));
-                    let alias_expr = ColExpr::Unary(*op, Box::new(child_expr));
-                    stack.push((alias_expr, id));
+                    let child = stack.pop_expr(Some(id)).into();
+                    let op_name = op.to_smolstr();
+                    let expr = match op {
+                        Unary::Not | Unary::Exists => ColExpr::PrefixOp(op_name, child),
+                        Unary::IsNull => ColExpr::SuffixOp(child, op_name),
+                    };
+                    stack.push((expr, id));
                 }
                 Expression::Timestamp(timestamp) => {
                     let name = match timestamp {
                         Timestamp::Date => "Date",
                         Timestamp::DateTime(_) => "DateTime",
-                    };
-                    let expr =
-                        ColExpr::Const(name.to_smolstr(), current_node.calculate_type(plan)?);
+                    }
+                    .to_smolstr();
+
+                    let expr = ColExpr::Const(name, current_node.calculate_type(plan)?);
                     stack.push((expr, id));
                 }
                 Expression::Parameter(_) => (),
