@@ -25,7 +25,7 @@ fn insert_values_rows() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
-    insert t1 on conflict: fail
+    insert into t1 on conflict: fail
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
           value ROW('txt'::string, 2::int)
@@ -76,7 +76,7 @@ fn delete_selection() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @"
-    delete t2
+    delete from t2
       motion [policy: local, program: [PrimaryKey(0, 1), ReshardIfNeeded]]
         projection (t2.g::int -> pk_col_0, t2.h::int -> pk_col_1)
           selection t2.e::int = 3::int and t2.f::int = 2::decimal

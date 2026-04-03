@@ -321,7 +321,7 @@ fn insert_plan() {
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
-    insert test_space on conflict: fail
+    insert into test_space on conflict: fail
       motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
         values
           value ROW(1::int, '123'::string)
@@ -341,7 +341,7 @@ fn multiply_insert_plan() {
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
-    insert test_space on conflict: fail
+    insert into test_space on conflict: fail
       motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
         values
           value ROW(1::int, '123'::string)
@@ -364,7 +364,7 @@ SELECT "identification_number", "product_code" FROM "hash_testing""#;
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @"
-    insert test_space on conflict: fail
+    insert into test_space on conflict: fail
       motion [policy: segment([ref(identification_number)]), program: ReshardIfNeeded]
         projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
           scan hash_testing

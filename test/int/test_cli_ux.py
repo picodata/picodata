@@ -418,7 +418,7 @@ def test_sql_explain_ok(cluster: Cluster):
     assert output == snapshot(
         (
             """\
-insert assets on conflict: fail
+insert into assets on conflict: fail
   motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
       value ROW(1::int, 'Woody'::string, 2561::int)

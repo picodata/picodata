@@ -131,7 +131,7 @@ invalid index: INDEXED BY clause is only supported for tables
 -- SQL:
 explain DELETE FROM t INDEXED by aaa WHERE true
 -- EXPECTED:
-delete t
+delete from t
   motion [policy: local, program: [PrimaryKey(0), ReshardIfNeeded]]
     projection (t.a::int -> pk_col_0)
       selection true::bool

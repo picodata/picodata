@@ -261,7 +261,7 @@ fn front_sql10() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    insert t on conflict: fail
+    insert into t on conflict: fail
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
           value ROW(1::int, 2::int, 3::int, 4::int)
@@ -278,7 +278,7 @@ fn front_sql11() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    insert t on conflict: fail
+    insert into t on conflict: fail
       motion [policy: segment([value(NULL), ref("COLUMN_1")]), program: ReshardIfNeeded]
         values
           value ROW(1::int, 2::int)
@@ -295,7 +295,7 @@ fn front_sql14() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
-    insert t on conflict: fail
+    insert into t on conflict: fail
       motion [policy: segment([value(NULL), ref(b)]), program: ReshardIfNeeded]
         projection (t.b::int -> b, t.d::int -> d)
           scan t
@@ -1498,7 +1498,7 @@ fn front_sql_groupby_insert() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
-    insert t on conflict: fail
+    insert into t on conflict: fail
       motion [policy: segment([value(NULL), ref(d)]), program: ReshardIfNeeded]
         projection (gr_expr_1::int -> b, gr_expr_2::int -> d)
           group by (gr_expr_1::int, gr_expr_2::int) output (gr_expr_1::int, gr_expr_2::int)
@@ -2274,7 +2274,7 @@ fn front_sql_insert_single() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
-    insert t on conflict: fail
+    insert into t on conflict: fail
       motion [policy: segment([value(NULL), ref(col_2)]), program: ReshardIfNeeded]
         projection (sum(sum_1::decimal)::decimal -> col_1, sum(count_2::int)::int -> col_2)
           motion [policy: full, program: ReshardIfNeeded]
@@ -2993,7 +2993,7 @@ fn front_sql_insert_on_conflict() {
 
     let mut plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    insert t on conflict: nothing
+    insert into t on conflict: nothing
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
           value ROW(1::int, 1::int, 1::int, 1::int)
@@ -3005,7 +3005,7 @@ fn front_sql_insert_on_conflict() {
     input = r#"insert into "t" values (1, 1, 1, 1) on conflict do replace"#;
     plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    insert t on conflict: replace
+    insert into t on conflict: replace
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
           value ROW(1::int, 1::int, 1::int, 1::int)
@@ -3022,7 +3022,7 @@ fn front_sql_insert_1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
-    insert t on conflict: fail
+    insert into t on conflict: fail
       motion [policy: segment([value(NULL), ref(a)]), program: ReshardIfNeeded]
         projection (t.a::int -> a)
           selection t.a::int = 1::int and t.b::int = 2::int or t.a::int = 2::int and t.b::int = 3::int
@@ -3040,7 +3040,7 @@ fn front_sql_insert_2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
-    insert t on conflict: fail
+    insert into t on conflict: fail
       motion [policy: local segment([ref(a), ref(b)]), program: ReshardIfNeeded]
         projection (t.a::int -> a, t.b::int -> b)
           selection t.a::int = 1::int and t.b::int = 2::int
@@ -3059,7 +3059,7 @@ fn front_sql_insert_3() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
-    insert t on conflict: fail
+    insert into t on conflict: fail
       motion [policy: segment([ref(b), ref(a)]), program: ReshardIfNeeded]
         projection (t.a::int -> a, t.b::int -> b)
           selection t.a::int = 1::int and t.b::int = 2::int or t.a::int = 3::int and t.b::int = 4::int
@@ -3077,7 +3077,7 @@ fn front_sql_insert_4() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
-    insert t on conflict: fail
+    insert into t on conflict: fail
       motion [policy: local segment([ref(a), ref(b)]), program: ReshardIfNeeded]
         projection (t.b::int -> b, t.a::int -> a)
           selection t.a::int = 1::int and t.b::int = 2::int
@@ -3095,7 +3095,7 @@ fn front_sql_insert_5() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
-    insert t on conflict: fail
+    insert into t on conflict: fail
       motion [policy: segment([ref(col_2), ref(col_1)]), program: ReshardIfNeeded]
         projection (5::int -> col_1, 6::int -> col_2)
           selection t.a::int = 1::int and t.b::int = 2::int
@@ -3114,7 +3114,7 @@ fn front_sql_insert_6() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    insert t on conflict: fail
+    insert into t on conflict: fail
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
           value ROW(1::int, 2::int)
@@ -3148,7 +3148,7 @@ fn front_sql_insert_8() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
-    insert hash_testing on conflict: fail
+    insert into hash_testing on conflict: fail
       motion [policy: segment([ref(identification_number), ref(product_code)]), program: ReshardIfNeeded]
         projection (hash_single_testing.identification_number::int -> identification_number, hash_single_testing.product_code::string -> product_code, hash_single_testing.product_units::bool -> product_units, hash_single_testing.sys_op::int -> sys_op)
           scan hash_single_testing
@@ -3164,7 +3164,7 @@ fn front_sql_insert_9() {
 
     let plan = sql_to_optimized_ir(input, vec![Value::from(1), Value::from(2)]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    insert t on conflict: fail
+    insert into t on conflict: fail
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
           value ROW(1::int, 2::int)

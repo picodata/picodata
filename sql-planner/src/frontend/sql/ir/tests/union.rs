@@ -110,7 +110,7 @@ fn union_under_insert() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
-    insert t2 on conflict: fail
+    insert into t2 on conflict: fail
       motion [policy: segment([ref(e), ref(f)]), program: [RemoveDuplicates, ReshardIfNeeded]]
         union
           projection (t2.e::int -> e, t2.f::int -> f, 1::int -> col_1, 1::int -> col_2)
@@ -135,7 +135,7 @@ fn union_under_insert1() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    insert "TBL" on conflict: fail
+    insert into "TBL" on conflict: fail
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: [RemoveDuplicates, ReshardIfNeeded]]
         union
           projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1", unnamed_subquery."COLUMN_2"::int -> "COLUMN_2")

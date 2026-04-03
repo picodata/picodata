@@ -1193,7 +1193,7 @@ CREATE TABLE g (a INT PRIMARY KEY, d DOUBLE) DISTRIBUTED GLOBALLY;
 -- SQL:
 EXPLAIN INSERT INTO t VALUES (1, 1.0, '1'), (2, 2.0, '2'), (3, 3.0, '3');
 -- EXPECTED:
-insert t on conflict: fail
+insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
       value ROW(1::int, 1.0::decimal, '1'::string)
@@ -1220,7 +1220,7 @@ buckets = [898,1787,2356]
 -- SQL:
 EXPLAIN INSERT INTO t VALUES (1 + 1, 1.0, '1'), (2, 2.0, '2'), (3, 3.0, '3');
 -- EXPECTED:
-insert t on conflict: fail
+insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
       value ROW(1::int + 1::int, 1.0::decimal, '1'::string)
@@ -1235,7 +1235,7 @@ buckets = unknown
 -- SQL:
 EXPLAIN INSERT INTO t VALUES (1, (SELECT d FROM tt LIMIT 1), '2')
 -- EXPECTED:
-insert t on conflict: fail
+insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
       value ROW(1::int, ROW($0), '2'::string)
@@ -1256,7 +1256,7 @@ buckets = unknown
 -- SQL:
 EXPLAIN INSERT INTO t VALUES (1, (SELECT d FROM g LIMIT 1), '2')
 -- EXPECTED:
-insert t on conflict: fail
+insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
       value ROW(1::int, ROW($0), '2'::string)

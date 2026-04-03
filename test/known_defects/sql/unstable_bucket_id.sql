@@ -43,7 +43,7 @@ buckets = [712]
 -- SQL:
 EXPLAIN INSERT INTO t VALUES (1, 1);
 -- EXPECTED:
-insert t on conflict: fail
+insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_2")]), program: ReshardIfNeeded]
     values
       value ROW(1::int, 1::int)
@@ -56,7 +56,7 @@ buckets = [1934]
 -- SQL:
 EXPLAIN INSERT INTO t VALUES (1, 1.0);
 -- EXPECTED:
-insert t on conflict: fail
+insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_2")]), program: ReshardIfNeeded]
     values
       value ROW(1::int, 1.0::decimal)

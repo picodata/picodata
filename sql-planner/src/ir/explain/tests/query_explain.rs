@@ -185,7 +185,7 @@ fn test_query_explain_6() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
-    insert t1 on conflict: fail
+    insert into t1 on conflict: fail
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
           value ROW('1'::string, 1::int)
@@ -203,7 +203,7 @@ fn test_query_explain_7() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @"
-    insert t1 on conflict: fail
+    insert into t1 on conflict: fail
       motion [policy: local segment([ref(a), ref(b)]), program: ReshardIfNeeded]
         projection (t1.a::string -> a, t1.b::int -> b)
           scan t1
@@ -221,7 +221,7 @@ fn test_query_explain_8() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @"
-    insert global_t on conflict: fail
+    insert into global_t on conflict: fail
       motion [policy: full, program: ReshardIfNeeded]
         values
           value ROW(1::int, 1::int)
@@ -239,7 +239,7 @@ fn test_query_explain_9() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @"
-    delete t2
+    delete from t2
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -344,7 +344,7 @@ fn test_query_explain_13() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @"
-    insert global_t on conflict: fail
+    insert into global_t on conflict: fail
       motion [policy: full, program: ReshardIfNeeded]
         projection (t1.a::string -> a, t1.b::int -> b)
           selection ROW(t1.a::string, t1.b::int) = ROW('1'::string, 1::int)

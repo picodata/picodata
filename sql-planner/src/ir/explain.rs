@@ -1205,7 +1205,7 @@ impl Display for ExplainNode {
             }
 
             ExplainNode::Delete(name) => {
-                write!(f, "delete {name}", name = properly_quoted_name(name))?;
+                write!(f, "delete from {name}", name = properly_quoted_name(name))?;
             }
             ExplainNode::Except => write!(f, "except")?,
             ExplainNode::Join(col_expr, kind) => {
@@ -1222,7 +1222,7 @@ impl Display for ExplainNode {
             ExplainNode::Insert(name, conflict) => {
                 write!(
                     f,
-                    "insert {name} on conflict: {conflict}",
+                    "insert into {name} on conflict: {conflict}",
                     name = properly_quoted_name(name)
                 )?;
             }

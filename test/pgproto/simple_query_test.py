@@ -114,7 +114,7 @@ def test_explain(postgres: Postgres):
     cur.execute("explain " + query)
     plan = cur.fetchall()
     assert "\n".join(row[0] for row in plan) == snapshot("""\
-insert explain on conflict: fail
+insert into explain on conflict: fail
   motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
       value ROW(0::int)
@@ -128,7 +128,7 @@ buckets = [84]\
     cur.execute("explain " + query)
     plan = cur.fetchall()
     assert "\n".join(row[0] for row in plan) == snapshot("""\
-insert explain on conflict: fail
+insert into explain on conflict: fail
   motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
       value ROW(0::int)

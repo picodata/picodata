@@ -7,7 +7,7 @@ fn insert1() {
     let plan = sql_to_optimized_ir(pattern, vec![Value::from(1_i64), Value::from("test")]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    insert test_space on conflict: fail
+    insert into test_space on conflict: fail
       motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
         values
           value ROW(1::int, 'test'::string)
@@ -23,7 +23,7 @@ fn insert2() {
     let plan = sql_to_optimized_ir(pattern, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    insert test_space on conflict: fail
+    insert into test_space on conflict: fail
       motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
         values
           value ROW(1::int, 'test'::string)
@@ -40,7 +40,7 @@ fn insert3() {
     let plan = sql_to_optimized_ir(pattern, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
-    insert test_space on conflict: fail
+    insert into test_space on conflict: fail
       motion [policy: local segment([ref(id)]), program: ReshardIfNeeded]
         projection (test_space.id::int -> id, test_space.id::int -> id)
           scan test_space

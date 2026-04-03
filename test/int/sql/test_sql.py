@@ -6620,7 +6620,7 @@ buckets = [1-3000]\
     # Segment motion
     lines = i1.sql("explain insert into t values (1, 2)")
     assert "\n".join(lines) == snapshot("""\
-insert t on conflict: fail
+insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
       value ROW(1::int, 2::int)
@@ -6633,7 +6633,7 @@ buckets = [1934]\
     # Local motion
     lines = i1.sql("explain insert into t select a, b from t")
     assert "\n".join(lines) == snapshot("""\
-insert t on conflict: fail
+insert into t on conflict: fail
   motion [policy: local segment([ref(a)]), program: ReshardIfNeeded]
     projection (t.a::int -> a, t.b::int -> b)
       scan t
@@ -6676,7 +6676,7 @@ buckets = unknown\
     # Delete
     lines = i1.sql("explain delete from t")
     assert "\n".join(lines) == snapshot("""\
-delete t
+delete from t
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
@@ -6688,7 +6688,7 @@ buckets = [1-3000]\
     assert ddl["row_count"] == 1
     lines = i1.sql("explain insert into g select a, b from t")
     assert "\n".join(lines) == snapshot("""\
-insert g on conflict: fail
+insert into g on conflict: fail
   motion [policy: full, program: ReshardIfNeeded]
     projection (t.a::int -> a, t.b::int -> b)
       scan t
@@ -6700,7 +6700,7 @@ buckets = [1-3000]\
 
     lines = i1.sql("explain insert into g select u, v from g")
     assert "\n".join(lines) == snapshot("""\
-insert g on conflict: fail
+insert into g on conflict: fail
   motion [policy: full, program: ReshardIfNeeded]
     projection (g.u::int -> u, g.v::int -> v)
       scan g
