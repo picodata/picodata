@@ -414,8 +414,32 @@ Using configuration file '{args_path}'.");
             config_from_args.instance.failure_domain = Some(FailureDomain::from(map));
         }
 
+        // We change the lowering of the CLI argument depending on whether the deprecated non-unified options are used.
+        // This is necessary to prevent a conflict check between ununified and unified config options from firing.
+        let have_old_iproto_options;
+        #[expect(deprecated)]
+        {
+            have_old_iproto_options = [
+                config_parameter_path!(instance.listen),
+                config_parameter_path!(instance.advertise_address),
+                config_parameter_path!(instance.iproto_listen),
+                config_parameter_path!(instance.iproto_advertise),
+                config_parameter_path!(instance.iproto_tls.enabled),
+                config_parameter_path!(instance.iproto_tls.cert_file),
+                config_parameter_path!(instance.iproto_tls.key_file),
+                config_parameter_path!(instance.iproto_tls.ca_file),
+            ]
+            .into_iter()
+            .any(|key| parameter_sources.contains_key(key));
+        }
+
+        #[expect(deprecated)]
         if let Some(address) = args.iproto_advertise {
-            config_from_args.instance.iproto.advertise = Some(address);
+            if have_old_iproto_options {
+                config_from_args.instance.iproto_advertise = Some(address)
+            } else {
+                config_from_args.instance.iproto.advertise = Some(address);
+            }
         }
 
         #[allow(deprecated)]
@@ -423,8 +447,13 @@ Using configuration file '{args_path}'.");
             config_from_args.instance.advertise_address = Some(address);
         }
 
+        #[expect(deprecated)]
         if let Some(iproto_listen) = args.iproto_listen {
-            config_from_args.instance.iproto.listen = Some(iproto_listen);
+            if have_old_iproto_options {
+                config_from_args.instance.iproto_listen = Some(iproto_listen);
+            } else {
+                config_from_args.instance.iproto.listen = Some(iproto_listen);
+            }
         }
 
         #[allow(deprecated)]
@@ -432,8 +461,29 @@ Using configuration file '{args_path}'.");
             config_from_args.instance.listen = Some(listen);
         }
 
+        // same as for iproto, lower it to "old" or "new" config keys depending on already set keys.
+        let have_old_http_options;
+        #[expect(deprecated)]
+        {
+            have_old_http_options = [
+                config_parameter_path!(instance.http_listen),
+                config_parameter_path!(instance.https.enabled),
+                config_parameter_path!(instance.https.cert_file),
+                config_parameter_path!(instance.https.key_file),
+                config_parameter_path!(instance.https.ca_file),
+                config_parameter_path!(instance.https.password_file),
+            ]
+            .into_iter()
+            .any(|key| parameter_sources.contains_key(key));
+        }
+
+        #[expect(deprecated)]
         if let Some(http_listen) = args.http_listen {
-            config_from_args.instance.http.listen = Some(http_listen);
+            if have_old_http_options {
+                config_from_args.instance.http_listen = Some(http_listen);
+            } else {
+                config_from_args.instance.http.listen = Some(http_listen);
+            }
         }
 
         if let Some(pg_advertise) = args.pg_advertise {
@@ -822,15 +872,6 @@ Using configuration file '{args_path}'.");
             || instance.iproto_tls.cert_file.is_some()
             || instance.iproto_tls.key_file.is_some()
             || instance.iproto_tls.ca_file.is_some();
-
-        if has_old_iproto {
-            if instance.iproto.has_any_setting() {
-                return Err(Error::invalid_configuration(
-                    "cannot use both old iproto settings (iproto_listen, iproto_advertise, iproto_tls) \
-                     and new `iproto` section simultaneously; please use only one configuration style",
-                ));
-            }
-        }
 
         if instance.iproto.has_any_setting() {
             if has_old_iproto {
@@ -3747,7 +3788,7 @@ instance:
         //
         // Advertise = listen unless specified explicitly
         //
-            {
+        {
             std::env::set_var("PICODATA_LISTEN", "L-ENVIRON:3301");
             let config = setup_for_tests(Some(""), &["run"], &g).unwrap();
 
@@ -4026,34 +4067,115 @@ instance:
     fn test_iproto_listen_listen_interaction() {
         let g = protect_env();
 
-        // iproto_listen should be equal to listen
+        // listen
         let yaml = r###"
 instance:
-        listen: localhost:3301
+        listen: localhost:3304
 "###;
         let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         assert_eq!(
             config.instance.iproto.listen().to_host_port(),
-            "localhost:3301"
+            "localhost:3304"
+        );
+
+        // iproto_listen should be equal to listen
+        let yaml = r###"
+instance:
+        listen: localhost:3304
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
+        assert_eq!(
+            config.instance.iproto.listen().to_host_port(),
+            "localhost:3304"
         );
 
         // can't specify both
         let yaml = r###"
 instance:
-        listen: localhost:3302
-        iproto_listen: localhost:3301
+    listen: localhost:3302
+    iproto_listen: localhost:3301
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"], &g);
+        assert_eq!(config.unwrap_err().to_string(), "invalid configuration: instance.listen is deprecated, use instance.iproto_listen instead (cannot use both at the same time)");
+
+        // can't specify both in different flavour
+        let yaml = r###"
+instance:
+    iproto_listen: localhost:3302
+    iproto:
+        listen: localhost:3301
 "###;
         let config = setup_for_tests(Some(yaml), &["run"], &g);
 
-        assert_eq!(config.unwrap_err().to_string(), "invalid configuration: instance.listen is deprecated, use instance.iproto_listen instead (cannot use both at the same time)");
+        assert_eq!(config.unwrap_err().to_string(), "invalid configuration: cannot use both old iproto settings (iproto_listen, iproto_advertise, iproto_tls) and new `iproto` section simultaneously; please use only one configuration style");
 
+        // can't specify both
+        let yaml = r###"
+instance:
+    iproto_listen: localhost:3302
+    iproto:
+        listen: localhost:3301
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"], &g);
+
+        assert_eq!(config.unwrap_err().to_string(), "invalid configuration: cannot use both old iproto settings (iproto_listen, iproto_advertise, iproto_tls) and new `iproto` section simultaneously; please use only one configuration style");
+
+        // command line takes precedence for iproto_listen
         let yaml = r###"
 instance:
         iproto_listen: localhost:3302
 "###;
-        let config = setup_for_tests(Some(yaml), &["run", "--listen", "localhost:3303"], &g);
+        let config = setup_for_tests(
+            Some(yaml),
+            &["run", "--iproto-listen", "localhost:3303"],
+            &g,
+        )
+        .unwrap();
 
-        assert_eq!(config.unwrap_err().to_string(), "invalid configuration: instance.listen is deprecated, use instance.iproto_listen instead (cannot use both at the same time)");
+        assert_eq!(
+            config.instance.iproto.listen().to_host_port(),
+            "localhost:3303"
+        );
+
+        // command line takes precedence for iproto.listen
+        let yaml = r###"
+instance:
+        iproto:
+            listen: localhost:3301
+"###;
+        let config = setup_for_tests(
+            Some(yaml),
+            &["run", "--iproto-listen", "localhost:3303"],
+            &g,
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.instance.iproto.listen().to_host_port(),
+            "localhost:3303"
+        );
+
+        // --iproto-listen works when iproto_advertise is set in config
+        let yaml = r###"
+instance:
+        iproto_advertise: localhost:3302
+"###;
+        let config = setup_for_tests(
+            Some(yaml),
+            &["run", "--iproto-listen", "localhost:3303"],
+            &g,
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.instance.iproto.listen().to_host_port(),
+            "localhost:3303"
+        );
+
+        assert_eq!(
+            config.instance.iproto.advertise().to_host_port(),
+            "localhost:3302"
+        );
     }
 
     #[test]
@@ -4420,6 +4542,12 @@ instance:
         assert!(err
             .to_string()
             .contains("cannot use both old http settings"));
+
+        let err = setup_for_tests(Some(yaml), &["run", "--http-listen", "127.0.0.1:8088"], &g)
+            .unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("cannot use both old http settings"));
     }
 
     #[test]
@@ -4695,6 +4823,17 @@ instance:
             config.instance.iproto.advertise().to_string(),
             "127.0.0.1:3301"
         );
+
+        std::env::set_var("PICODATA_IPROTO_ADVERTISE", "L-ENVIRON:3301");
+        let yaml = r###"
+instance:
+    iproto_advertise: A-CONFIG:3301
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
+        assert_eq!(
+            config.instance.iproto.advertise().to_string(),
+            "L-ENVIRON:3301"
+        );
     }
 
     #[test]
@@ -4729,6 +4868,22 @@ instance:
             config.instance.http.listen().to_host_port(),
             "127.0.0.1:8080"
         );
+
+        std::env::set_var("PICODATA_HTTP_LISTEN", "L-ENVIRON:8080");
+        let yaml = r###"
+instance:
+    http_listen: A-CONFIG:8080
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
+        assert_eq!(config.instance.http.listen().to_string(), "L-ENVIRON:8080");
+
+        let yaml = r###"
+instance:
+    http_listen: A-CONFIG:8080
+"###;
+        let config =
+            setup_for_tests(Some(yaml), &["run", "--http-listen", "ARG:8080"], &g).unwrap();
+        assert_eq!(config.instance.http.listen().to_string(), "ARG:8080");
     }
 
     #[test]
@@ -4851,6 +5006,7 @@ instance:
         listen: 127.0.0.1:3302
 "###;
         let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+
         let err = config
             .check_deprecated_socket_parameters_conflicts()
             .unwrap_err();
@@ -4869,6 +5025,7 @@ instance:
         listen: 127.0.0.1:3301
 "###;
         let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+
         config
             .check_deprecated_socket_parameters_conflicts()
             .unwrap();

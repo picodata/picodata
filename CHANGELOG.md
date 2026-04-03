@@ -23,6 +23,9 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed a SQL planner panic caused by stale type metadata after clone-based
   rewrites such as `BETWEEN` normalization and `GROUP BY` alias expansion.
 - Fixed a bug with the storage cache that caused an error "Temporary table TMP_ not found".
+- Fixed a regression in config parsing. `--iproto-listen`, `--iproto-advertise` and
+  `--http-listen` were triggering an error instead of overriding corresponding value
+  in yaml config when deprecated listen options were used in the config.
 
 ## [26.1.1] - 2026-03-24
 
