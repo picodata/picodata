@@ -33,6 +33,7 @@ nav:
   - Знакомство с Picodata:
       - overview/description.md
       - overview/benefits.md
+      - overview/use_cases.md
       - overview/feedback.md
       - overview/licensing.md
       - overview/versioning.md
