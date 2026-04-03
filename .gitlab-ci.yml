@@ -300,6 +300,15 @@ clone:
   POETRY_VIRTUALENVS_IN_PROJECT=1 PIP_NO_CACHE_DIR=true poetry install --no-interaction --ansi
   ci-log-section end "poetry-install"
 
+
+.upload-report-to-flake-tracker: &upload-report-to-flake-tracker |
+  if [ -z "$FLAKE_TRACKER_TOKEN" ]; then
+    curl "https://flake-tracker.picodata.io/submit-report?job=$CI_JOB_NAME" -H "Authorization: Bearer $FLAKE_TRACKER_TOKEN" --data-binary '@junit_pytest.xml'
+    echo "Finished uploading test report to flake-tracker"
+  else
+    echo "FLAKE_TRACKER_TOKEN is not set, cannot upload test report to flake-tracker"
+  fi
+
 make-py-cache:
   stage: clone
   cache:
@@ -495,6 +504,7 @@ test-py-sql-linux:
       make test-py \
         PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k '(sql or pgproto)'"
       ci-log-section end "test"
+    - *upload-report-to-flake-tracker
 
 
 install-rolling-binaries:
@@ -550,6 +560,7 @@ test-py-not-sql-linux:
       make test-py \
         PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k 'not (sql or pgproto)'"
       ci-log-section end "test"
+    - *upload-report-to-flake-tracker
 
 
 lint:
@@ -768,6 +779,7 @@ test-patch-picodata:
       make test \
         PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui" \
         CARGO_FLAGS_EXTRA="--profile=$BUILD_PROFILE --features dynamic_build"
+    - *upload-report-to-flake-tracker
 
 test-patch-tarantool:
   stage: test
