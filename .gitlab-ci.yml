@@ -495,6 +495,8 @@ test-py-sql-linux:
       make test-py \
         PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k '(sql or pgproto)'"
       ci-log-section end "test"
+  after_script:
+    - ./tools/upload-flake-tracker-report.sh
 
 
 install-rolling-binaries:
@@ -550,6 +552,8 @@ test-py-not-sql-linux:
       make test-py \
         PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k 'not (sql or pgproto)'"
       ci-log-section end "test"
+  after_script:
+    - ./tools/upload-flake-tracker-report.sh
 
 
 lint:
@@ -768,6 +772,8 @@ test-patch-picodata:
       make test \
         PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui" \
         CARGO_FLAGS_EXTRA="--profile=$BUILD_PROFILE --features dynamic_build"
+  after_script:
+    - ./tools/upload-flake-tracker-report.sh
 
 test-patch-tarantool:
   stage: test
