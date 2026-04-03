@@ -1001,7 +1001,9 @@ class Instance:
         maybe_process = f", process.pid={self.process.pid}" if self.process else ""
         maybe_version = f", version={self.version}" if self.version else ""
         maybe_log_file = f", log_file={self.log_file()}" if self.log_file() else ""
-        return f"Instance({self.name}, iproto_listen={self.iproto_listen}, cluster={self.cluster_name}, executable={self.executable}{maybe_version}{maybe_process}{maybe_log_file})"  # noqa: E501
+        executable_path = f"executable.path={self.executable.path}"
+        executable_version = f"executable.version={self.executable.version}"
+        return f"Instance({self.name}, iproto_listen={self.iproto_listen}, cluster={self.cluster_name}, {executable_path}, {executable_version}{maybe_version}{maybe_process}{maybe_log_file})"  # noqa: E501
 
     def __hash__(self):
         return hash((self.cluster_name, self.name))
