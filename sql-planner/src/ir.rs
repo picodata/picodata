@@ -8,7 +8,7 @@ use node::ddl::{Ddl, MutDdl};
 use node::expression::{Expression, MutExpression};
 use node::relational::{MutRelational, Relational};
 use node::{Invalid, NodeAligned, Parameter};
-use operator::{Arithmetic, Unary};
+use operator::Arithmetic;
 use options::{OptionParamValue, OptionSpec, Options};
 use relation::Table;
 use serde::{Deserialize, Serialize};
@@ -1901,42 +1901,26 @@ impl Plan {
         let top = self.get_expression_node(top_expr_id)?;
         let child = self.get_expression_node(child_expr_id)?;
 
-        let should_not_cover = matches!(
-            (top, child),
-            (
-                Expression::ScalarFunction(_)
-                    | Expression::Timestamp(_)
-                    | Expression::Row(_)
-                    | Expression::Alias(_)
-                    | Expression::Trim(_)
-                    | Expression::Case(_)
-                    | Expression::Over(_)
-                    | Expression::Window(_),
-                _
-            ) | (
-                _,
-                Expression::ScalarFunction(_)
-                    | Expression::Trim(_)
-                    | Expression::Timestamp(_)
-                    | Expression::Index(_)
-                    | Expression::CountAsterisk(_)
-                    | Expression::Row(_)
-                    | Expression::Reference(_)
-                    | Expression::SubQueryReference(_)
-                    | Expression::Constant(_)
-                    | Expression::Cast(_)
-                    | Expression::Parameter(_)
-                    | Expression::Case(_)
-                    | Expression::Over(_)
-                    | Expression::Window(_)
-                    | Expression::Unary(UnaryExpr {
-                        op: Unary::Exists,
-                        ..
-                    })
-            )
-        );
+        if !child.may_need_parentheses() {
+            return Ok(false);
+        }
 
-        Ok(!should_not_cover)
+        let p_child = child.precedence();
+        let p_top = top.precedence();
+
+        // We cover a child in parentheses when its parent would
+        // tear it apart with its higher precedence.
+        //
+        // Strictly speaking, this implementation is suboptimal, because
+        // for a left-associative operator we don't need to put its left
+        // child in parentheses, e.g.
+        //          `a / b / c   =  (a / b) / c`,
+        //      but `a / b / c  !=   a / (b / c)`.
+        //
+        // but that'd require many more edits at the call sites.
+        let need_parens = p_child < p_top || (p_child == p_top && !top.is_associative());
+
+        Ok(need_parens)
     }
 
     /// Replace the plan slices with `slices`.

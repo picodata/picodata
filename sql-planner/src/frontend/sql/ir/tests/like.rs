@@ -60,7 +60,7 @@ fn like_explain1() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     projection (t1.a::string LIKE t1.a::string ESCAPE '\'::string -> col_1)
-      selection (t1.a::string || 'a'::string) LIKE ('a'::string || 'a'::string) ESCAPE '\'::string
+      selection t1.a::string || 'a'::string LIKE 'a'::string || 'a'::string ESCAPE '\'::string
         scan t1
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -76,7 +76,7 @@ fn like_explain2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     projection (t1.a::string LIKE t1.a::string ESCAPE '\'::string -> col_1)
-      selection (t1.a::string || 'a'::string) LIKE ('a'::string || 'a'::string) ESCAPE 'x'::string
+      selection t1.a::string || 'a'::string LIKE 'a'::string || 'a'::string ESCAPE 'x'::string
         scan t1
     execution options:
       sql_vdbe_opcode_max = 45000

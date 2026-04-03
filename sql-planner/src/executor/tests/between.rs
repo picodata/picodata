@@ -1,11 +1,11 @@
 use super::*;
-use crate::executor::engine::mock::{DispatchInfo, PortMocked, RouterRuntimeMock};
+use crate::executor::engine::mock::{PortMocked, RouterRuntimeMock};
 use crate::executor::vtable::VirtualTable;
 use crate::ir::tests::vcolumn_integer_user_non_null;
 use crate::ir::transformation::redistribution::tests::get_motion_id;
 use crate::ir::transformation::redistribution::MotionPolicy;
 use crate::ir::value::Value;
-use pretty_assertions::assert_eq;
+use insta::assert_yaml_snapshot;
 
 #[test]
 fn between1_test() {
@@ -41,19 +41,11 @@ fn between1_test() {
     // Validate the result.
     let info = port.decode();
     assert_eq!(1, info.len());
-    let DispatchInfo::All(sql, params) = info.get(0).unwrap() else {
-        panic!("Expected a single dispatch on all replicasets");
-    };
-    assert_eq!(
-        sql,
-        &format!(
-            "{} {} {}",
-            r#"SELECT "t"."identification_number" FROM "hash_testing" as "t""#,
-            r#"WHERE ("t"."identification_number" >= CAST($1 AS int))"#,
-            r#"and ("t"."identification_number" <= (SELECT "COL_1" FROM "TMP_0_0136"))"#,
-        ),
-    );
-    assert_eq!(params, &vec![Value::from(1)]);
+    assert_yaml_snapshot!(info, @r#"
+    - All:
+        - "SELECT \"t\".\"identification_number\" FROM \"hash_testing\" as \"t\" WHERE \"t\".\"identification_number\" >= CAST($1 AS int) and \"t\".\"identification_number\" <= (SELECT \"COL_1\" FROM \"TMP_0_0136\")"
+        - - Integer: 1
+    "#);
 }
 
 #[test]
@@ -93,17 +85,10 @@ fn between2_test() {
     // Validate the result.
     let info = port.decode();
     assert_eq!(1, info.len());
-    let DispatchInfo::All(sql, params) = info.get(0).unwrap() else {
-        panic!("Expected a single dispatch on all replicasets");
-    };
-    assert_eq!(
-        sql,
-        &format!(
-            "{} {} {}",
-            r#"SELECT "t"."identification_number" FROM "hash_testing" as "t""#,
-            r#"WHERE ((SELECT "COL_1" FROM "TMP_0_0136") >= CAST($1 AS int))"#,
-            r#"and ((SELECT "COL_1" FROM "TMP_0_0136") <= CAST($2 AS int))"#,
-        ),
-    );
-    assert_eq!(params, &vec![Value::from(1), Value::from(3)]);
+    assert_yaml_snapshot!(info, @r#"
+    - All:
+        - "SELECT \"t\".\"identification_number\" FROM \"hash_testing\" as \"t\" WHERE (SELECT \"COL_1\" FROM \"TMP_0_0136\") >= CAST($1 AS int) and (SELECT \"COL_1\" FROM \"TMP_0_0136\") <= CAST($2 AS int)"
+        - - Integer: 1
+          - Integer: 3
+    "#);
 }

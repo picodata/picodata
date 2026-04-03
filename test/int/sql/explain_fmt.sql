@@ -35,7 +35,7 @@ buckets = any
 -- SQL:
 explain (fmt) select id * 2 + id * 3 + id * 4 from _pico_table;
 -- EXPECTED:
-projection (((_pico_table.id::int * 2::int) + (_pico_table.id::int * 3::int)) + (_pico_table.id::int * 4::int) -> col_1)
+projection (_pico_table.id::int * 2::int + _pico_table.id::int * 3::int + _pico_table.id::int * 4::int -> col_1)
   scan _pico_table
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -55,9 +55,9 @@ from _pico_table;
 -- EXPECTED:
 projection (
   10::int -> col_1,
-  ((_pico_table.id::int * 2::int) + (_pico_table.id::int * 3::int)) + (_pico_table.id::int * 4::int) -> col_2,
-  ((_pico_table.id::int * 2::int) + (_pico_table.id::int * 3::int)) + (_pico_table.id::int * 4::int) -> col_3,
-  not ((_pico_table.id::int > 10::int) and (_pico_table.id::int < 10000000::int)) -> col_4,
+  _pico_table.id::int * 2::int + _pico_table.id::int * 3::int + _pico_table.id::int * 4::int -> col_2,
+  _pico_table.id::int * 2::int + _pico_table.id::int * 3::int + _pico_table.id::int * 4::int -> col_3,
+  not (_pico_table.id::int > 10::int and _pico_table.id::int < 10000000::int) -> col_4,
   'hello'::string -> col_5
 )
   scan _pico_table
@@ -91,7 +91,7 @@ select not ((id > 1000 and id < 2000 and id % 10 = 5) or
             (id > 3000 and id < 4000 and id % 4 = 2))
 from _pico_table;
 -- EXPECTED:
-projection (not ((((_pico_table.id::int > 1000::int) and (_pico_table.id::int < 2000::int)) and ((_pico_table.id::int % 10::int) = 5::int)) or (((_pico_table.id::int > 3000::int) and (_pico_table.id::int < 4000::int)) and ((_pico_table.id::int % 4::int) = 2::int))) -> col_1)
+projection (not (_pico_table.id::int > 1000::int and _pico_table.id::int < 2000::int and _pico_table.id::int % 10::int = 5::int or _pico_table.id::int > 3000::int and _pico_table.id::int < 4000::int and _pico_table.id::int % 4::int = 2::int) -> col_1)
   scan _pico_table
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -118,7 +118,7 @@ select count(*) from _pico_table
 where id = 1 or id = 2 or id = 2 or id = 4 or id = 5;
 -- EXPECTED:
 projection (count(*)::int -> col_1)
-  selection ((((_pico_table.id::int = 1::int) or (_pico_table.id::int = 2::int)) or (_pico_table.id::int = 2::int)) or (_pico_table.id::int = 4::int)) or (_pico_table.id::int = 5::int)
+  selection _pico_table.id::int = 1::int or _pico_table.id::int = 2::int or _pico_table.id::int = 2::int or _pico_table.id::int = 4::int or _pico_table.id::int = 5::int
     scan _pico_table
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -136,7 +136,7 @@ where id = 23456
       and name != (select min(name) from _pico_table);
 -- EXPECTED:
 projection (count(*)::int -> col_1)
-  selection ((((_pico_table.id::int = 23456::int) and (_pico_table.name::string = 'foobar'::string)) and (_pico_table.operable::bool = true::bool)) and (not (_pico_table.description::string is null))) and (_pico_table.name::string <> ROW($0))
+  selection _pico_table.id::int = 23456::int and _pico_table.name::string = 'foobar'::string and _pico_table.operable::bool = true::bool and not _pico_table.description::string is null and _pico_table.name::string <> ROW($0)
     scan _pico_table
 subquery $0:
   scan
@@ -152,7 +152,7 @@ buckets = any
 explain (fmt)
 select 'hello', case 1 when 1 then 1 when 2 then 2 when 3 then 3 end * 2 + 2000;
 -- EXPECTED:
-projection ('hello'::string -> col_1, (case 1::int when 1::int then 1::int when 2::int then 2::int when 3::int then 3::int end * 2::int) + 2000::int -> col_2)
+projection ('hello'::string -> col_1, case 1::int when 1::int then 1::int when 2::int then 2::int when 3::int then 3::int end * 2::int + 2000::int -> col_2)
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000

@@ -105,7 +105,7 @@ buckets = [1934]
 EXPLAIN select "id" from "arithmetic_space" where "a" + "b" = "b" + "a";
 -- EXPECTED:
 projection (arithmetic_space.id::int -> id)
-  selection (arithmetic_space.a::int + arithmetic_space.b::int) = (arithmetic_space.b::int + arithmetic_space.a::int)
+  selection arithmetic_space.a::int + arithmetic_space.b::int = arithmetic_space.b::int + arithmetic_space.a::int
     scan arithmetic_space
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -117,7 +117,7 @@ buckets = [1-3000]
 EXPLAIN select "id" from "arithmetic_space" where "a" + "b" > 0 and "b" * "a" = 5;
 -- EXPECTED:
 projection (arithmetic_space.id::int -> id)
-  selection ((arithmetic_space.a::int + arithmetic_space.b::int) > 0::int) and ((arithmetic_space.b::int * arithmetic_space.a::int) = 5::int)
+  selection arithmetic_space.a::int + arithmetic_space.b::int > 0::int and arithmetic_space.b::int * arithmetic_space.a::int = 5::int
     scan arithmetic_space
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -138,7 +138,7 @@ WHERE "t3"."id" = 2;
 -- EXPECTED:
 projection (t3.id::int -> id, t3.a::int -> a, t8.id1::int -> id1)
   selection t3.id::int = 2::int
-    join on (t3.id::int + (t3.a::int * 2::int)) = (t8.id1::int + 4::int)
+    join on t3.id::int + t3.a::int * 2::int = t8.id1::int + 4::int
       scan t3
         union all
           projection (arithmetic_space.id::int -> id, arithmetic_space.a::int -> a)
@@ -171,11 +171,11 @@ WHERE "t3"."id" = 2;
 -- EXPECTED:
 projection (t3.id::int -> id, t3.a::int -> a, t8.id1::int -> id1)
   selection t3.id::int = 2::int
-    join on (t3.id::int + (t3.a::int * 2::int)) = (t8.id1::int + 4::int)
+    join on t3.id::int + t3.a::int * 2::int = t8.id1::int + 4::int
       scan t3
         union all
           projection (arithmetic_space.id::int -> id, arithmetic_space.a::int -> a)
-            selection (arithmetic_space.c::int + arithmetic_space.a::int) < 0::int
+            selection arithmetic_space.c::int + arithmetic_space.a::int < 0::int
               scan arithmetic_space
           projection (arithmetic_space.id::int -> id, arithmetic_space.a::int -> a)
             selection arithmetic_space.c::int > 0::int
@@ -205,7 +205,7 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN select "a" + "b" * "c" from "arithmetic_space";
 -- EXPECTED:
-projection (arithmetic_space.a::int + (arithmetic_space.b::int * arithmetic_space.c::int) -> col_1)
+projection (arithmetic_space.a::int + arithmetic_space.b::int * arithmetic_space.c::int -> col_1)
   scan arithmetic_space
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -476,7 +476,7 @@ VALUES ( CAST(1 AS int), CAST('1' AS string), CAST(1 AS int) )
 EXPLAIN (RAW) DELETE FROM testing_space WHERE "product_units" < 10 AND "name" = 'beluga';
 -- EXPECTED:
 1. Query (STORAGE):
-SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE ( "testing_space"."product_units" < CAST(10 AS int) ) and ("testing_space"."name" = CAST('beluga' AS string))
+SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."product_units" < CAST(10 AS int) and "testing_space"."name" = CAST('beluga' AS string)
 +----------+-------+------+-----------------------------------------+
 | selectid | order | from | detail                                  |
 +===================================================================+
@@ -740,7 +740,7 @@ SELECT CAST(1 AS int) as "col_1", CAST('1' AS string) as "col_2", CAST(1 AS int)
 EXPLAIN (RAW) SELECT * FROM testing_space_global WHERE (product_units > 10 AND name LIKE 'sosisky_') ORDER BY product_units DESC LIMIT 10;
 -- EXPECTED:
 1. Query (ROUTER):
-SELECT "id", "name", "product_units" FROM ( SELECT * FROM "testing_space_global" WHERE ( "testing_space_global"."product_units" > CAST(10 AS int) ) and ( "testing_space_global"."name" LIKE CAST('sosisky_' AS string) ESCAPE CAST('\' AS string) ) ) ORDER BY "product_units" DESC LIMIT 10
+SELECT "id", "name", "product_units" FROM ( SELECT * FROM "testing_space_global" WHERE "testing_space_global"."product_units" > CAST(10 AS int) and "testing_space_global"."name" LIKE CAST('sosisky_' AS string) ESCAPE CAST('\' AS string) ) ORDER BY "product_units" DESC LIMIT 10
 +----------+-------+------+------------------------------------------------+
 | selectid | order | from | detail                                         |
 +==========================================================================+
@@ -789,10 +789,8 @@ SELECT
 FROM
   "testing_space_global"
 WHERE
-  ("testing_space_global"."id" = CAST(15 AS int))
-  or (
-    "testing_space_global"."product_units" < CAST(10 AS int)
-  )
+  "testing_space_global"."id" = CAST(15 AS int)
+  or "testing_space_global"."product_units" < CAST(10 AS int)
 +----------+-------+------+------------------------------------------------+
 | selectid | order | from | detail                                         |
 +==========================================================================+
@@ -1211,7 +1209,7 @@ buckets = [898,1787,2356]
 EXPLAIN SELECT * FROM t WHERE a = 1 and c = '1' or a = 2 and c = '2' or a = 3 and c = '3';
 -- EXPECTED:
 projection (t.a::int -> a, t.b::double -> b, t.c::string -> c)
-  selection (((t.a::int = 1::int) and (t.c::string = '1'::string)) or ((t.a::int = 2::int) and (t.c::string = '2'::string))) or ((t.a::int = 3::int) and (t.c::string = '3'::string))
+  selection t.a::int = 1::int and t.c::string = '1'::string or t.a::int = 2::int and t.c::string = '2'::string or t.a::int = 3::int and t.c::string = '3'::string
     scan t
 execution options:
   sql_vdbe_opcode_max = 45000

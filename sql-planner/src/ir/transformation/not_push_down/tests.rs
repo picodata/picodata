@@ -94,7 +94,7 @@ fn not_dnf() {
     // so parameters are parameterized twice.
     insta::assert_snapshot!(
         actual_after_dnf.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a" = CAST (CAST($1 AS int) as int)) and ("t"."a" = CAST (CAST($2 AS int) as int))) or (("t"."b" = CAST (CAST($3 AS int) as int)) and ("t"."a" = CAST (CAST($2 AS int) as int)))) or ("t"."c" = CAST (CAST($4 AS int) as int))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST (CAST($1 AS int) as int) and "t"."a" = CAST (CAST($2 AS int) as int) or "t"."b" = CAST (CAST($3 AS int) as int) and "t"."a" = CAST (CAST($2 AS int) as int) or "t"."c" = CAST (CAST($4 AS int) as int)"#
     );
 }
 
@@ -115,6 +115,6 @@ fn not_nothing_to_push_down() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a" <> CAST($1 AS int)) and ("t"."b" <> CAST($2 AS int))) or ("t"."a" <> CAST($3 AS int))) and ("t"."c" <> CAST($4 AS int))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a" <> CAST($1 AS int) and "t"."b" <> CAST($2 AS int) or "t"."a" <> CAST($3 AS int)) and "t"."c" <> CAST($4 AS int)"#
     );
 }

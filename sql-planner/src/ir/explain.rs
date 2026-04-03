@@ -204,13 +204,7 @@ impl Display for ColExpr {
             ColExpr::Unary(op, expr) => match op {
                 Unary::IsNull => write!(f, "{expr} {op}")?,
                 Unary::Exists => write!(f, "{op} {expr}")?,
-                Unary::Not => {
-                    if let ColExpr::Bool(_, Bool::And, _) = **expr {
-                        write!(f, "{op} ({expr})")?;
-                    } else {
-                        write!(f, "{op} {expr}")?;
-                    }
-                }
+                Unary::Not => write!(f, "{op} {expr}")?,
             },
             ColExpr::Column(tbl_name, col_name, col_typ) => match tbl_name {
                 Some(tbl_name) => write!(

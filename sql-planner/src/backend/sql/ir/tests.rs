@@ -1,5 +1,3 @@
-use pretty_assertions::assert_eq;
-
 use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 
 use crate::executor::engine::helpers::table_name;
@@ -15,9 +13,8 @@ use super::*;
 fn check_sql_with_snapshot(
     query: &str,
     params: Vec<Value>,
-    expected: PatternWithParams,
     snapshot: Snapshot,
-) {
+) -> PatternWithParams {
     let plan = sql_to_ir(query, params)
         .replace_in_operator()
         .unwrap()
@@ -40,9 +37,8 @@ fn check_sql_with_snapshot(
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
     let sql = ex_plan.generate_sql(&nodes, 0, table_name, None).unwrap();
-    let sql = PatternWithParams::new(sql, ex_plan.get_ir_plan().constants.clone());
 
-    assert_eq!(expected, sql,);
+    PatternWithParams::new(sql, ex_plan.get_ir_plan().constants.clone())
 }
 
 mod except;

@@ -1,7 +1,6 @@
 use super::*;
-use crate::executor::tests::f_sql;
 use crate::ir::tree::Snapshot;
-use crate::ir::value::Value;
+use insta::assert_yaml_snapshot;
 
 #[test]
 fn selection_column_from_values() {
@@ -9,89 +8,64 @@ fn selection_column_from_values() {
         SELECT "COLUMN_1" FROM (VALUES (1))
     "#;
 
-    let expected = PatternWithParams::new(
-        r#"SELECT "unnamed_subquery"."COLUMN_1" FROM (VALUES (CAST($1 AS int))) as "unnamed_subquery""#.to_string(),
-        vec![Value::Integer(1)],
-    );
-    check_sql_with_snapshot(query, vec![], expected.clone(), Snapshot::Oldest);
-    check_sql_with_snapshot(query, vec![], expected, Snapshot::Latest);
+    let output = check_sql_with_snapshot(query, vec![], Snapshot::Latest);
+    assert_yaml_snapshot!(output, @r#"
+    pattern: "SELECT \"unnamed_subquery\".\"COLUMN_1\" FROM (VALUES (CAST($1 AS int))) as \"unnamed_subquery\""
+    params:
+      - Integer: 1
+    "#);
+
+    let output = check_sql_with_snapshot(query, vec![], Snapshot::Oldest);
+    assert_yaml_snapshot!(output, @r#"
+    pattern: "SELECT \"unnamed_subquery\".\"COLUMN_1\" FROM (VALUES (CAST($1 AS int))) as \"unnamed_subquery\""
+    params:
+      - Integer: 1
+    "#);
 }
 
 #[test]
-fn selection1_latest() {
+fn selection1() {
     let query = r#"SELECT "product_code" FROM "hash_testing"
         WHERE "identification_number" in
         (SELECT "identification_number" FROM "hash_testing_hist" WHERE "product_code" = 'b') and "product_code" < 'a'"#;
 
-    let expected = PatternWithParams::new(
-        format!(
-            "{} {} {} {} {}",
-            r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."product_code" < CAST($1 AS string))"#,
-            r#"and ("hash_testing"."identification_number" in"#,
-            r#"(SELECT "hash_testing_hist"."identification_number" FROM "hash_testing_hist""#,
-            r#"WHERE "hash_testing_hist"."product_code" = CAST($2 AS string)))"#,
-        ),
-        vec![Value::from("a"), Value::from("b")],
-    );
-    check_sql_with_snapshot(query, vec![], expected, Snapshot::Latest);
+    let output = check_sql_with_snapshot(query, vec![], Snapshot::Latest);
+    assert_yaml_snapshot!(output, @r#"
+    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"product_code\" < CAST($1 AS string) and \"hash_testing\".\"identification_number\" in (SELECT \"hash_testing_hist\".\"identification_number\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = CAST($2 AS string))"
+    params:
+      - String: a
+      - String: b
+    "#);
+
+    let output = check_sql_with_snapshot(query, vec![], Snapshot::Oldest);
+    assert_yaml_snapshot!(output, @r#"
+    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" in (SELECT \"hash_testing_hist\".\"identification_number\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = CAST($1 AS string)) and \"hash_testing\".\"product_code\" < CAST($2 AS string)"
+    params:
+      - String: b
+      - String: a
+    "#);
 }
 
 #[test]
-fn selection1_oldest() {
-    let query = r#"SELECT "product_code" FROM "hash_testing"
-        WHERE "identification_number" in
-        (SELECT "identification_number" FROM "hash_testing_hist" WHERE "product_code" = 'b') and "product_code" < 'a'"#;
-
-    let expected = PatternWithParams::new(
-        format!(
-            "{} {} {} {} {}",
-            r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number" in"#,
-            r#"(SELECT "hash_testing_hist"."identification_number" FROM "hash_testing_hist""#,
-            r#"WHERE "hash_testing_hist"."product_code" = CAST($1 AS string)))"#,
-            r#"and ("hash_testing"."product_code" < CAST($2 AS string))"#,
-        ),
-        vec![Value::from("b"), Value::from("a")],
-    );
-    check_sql_with_snapshot(query, vec![], expected, Snapshot::Oldest);
-}
-
-#[test]
-#[allow(clippy::too_many_lines)]
-fn selection2_latest() {
+fn selection2() {
     let query = r#"SELECT "product_code" FROM "hash_testing"
         WHERE "identification_number" IN (1)
         AND "product_units" = true
         AND ("product_units" OR "product_units" IS NULL)"#;
 
-    let expected = PatternWithParams::new(
-        f_sql(
-            r#"SELECT "hash_testing"."product_code" FROM "hash_testing"
-WHERE ((("hash_testing"."product_units", "hash_testing"."identification_number") = (CAST($1 AS bool), CAST($2 AS int)))
-and "hash_testing"."product_units")
-or ((("hash_testing"."product_units", "hash_testing"."identification_number") = (CAST($1 AS bool), CAST($2 AS int)))
-and ("hash_testing"."product_units" is null))"#,
-        ),
-        vec![Value::Boolean(true), Value::Integer(1)],
-    );
-    check_sql_with_snapshot(query, vec![], expected, Snapshot::Latest);
-}
+    let output = check_sql_with_snapshot(query, vec![], Snapshot::Latest);
+    assert_yaml_snapshot!(output, @r#"
+    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE (\"hash_testing\".\"product_units\", \"hash_testing\".\"identification_number\") = (CAST($1 AS bool), CAST($2 AS int)) and \"hash_testing\".\"product_units\" or (\"hash_testing\".\"product_units\", \"hash_testing\".\"identification_number\") = (CAST($1 AS bool), CAST($2 AS int)) and \"hash_testing\".\"product_units\" is null"
+    params:
+      - Boolean: true
+      - Integer: 1
+    "#);
 
-#[test]
-fn selection2_oldest() {
-    let query = r#"SELECT "product_code" FROM "hash_testing"
-        WHERE "identification_number" IN (1)
-        AND "product_units" = true
-        AND ("product_units" OR "product_units" IS NULL)"#;
-
-    let expected = PatternWithParams::new(
-        [
-            r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE (("hash_testing"."identification_number" in (CAST($1 AS int))) and ("hash_testing"."product_units" = CAST($2 AS bool)))"#,
-            r#"and ("hash_testing"."product_units" or ("hash_testing"."product_units" is null))"#,
-        ].join(" "),
-        vec![Value::Integer(1), Value::Boolean(true)],
-    );
-    check_sql_with_snapshot(query, vec![], expected, Snapshot::Oldest);
+    let output = check_sql_with_snapshot(query, vec![], Snapshot::Oldest);
+    assert_yaml_snapshot!(output, @r#"
+    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" in (CAST($1 AS int)) and \"hash_testing\".\"product_units\" = CAST($2 AS bool) and (\"hash_testing\".\"product_units\" or \"hash_testing\".\"product_units\" is null)"
+    params:
+      - Integer: 1
+      - Boolean: true
+    "#);
 }

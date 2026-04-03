@@ -2,6 +2,7 @@ use super::*;
 use crate::executor::engine::mock::{DispatchInfo, PortMocked, RouterRuntimeMock};
 use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use crate::ir::value::Value;
+use insta::{assert_snapshot, assert_yaml_snapshot};
 use pretty_assertions::assert_eq;
 
 #[test]
@@ -15,14 +16,11 @@ fn bucket1_test() {
 
     let info = port.decode();
     assert_eq!(1, info.len());
-    let DispatchInfo::All(sql, params) = info.get(0).unwrap() else {
-        panic!("Expected dispatch on all buckets");
-    };
-    assert_eq!(
-        sql,
-        r#"SELECT "t1"."a", "t1"."b", "t1"."bucket_id" FROM "t1""#,
-    );
-    assert!(params.is_empty());
+    assert_yaml_snapshot!(info, @r#"
+    - All:
+        - "SELECT \"t1\".\"a\", \"t1\".\"b\", \"t1\".\"bucket_id\" FROM \"t1\""
+        - []
+    "#);
 }
 
 #[test]
@@ -50,16 +48,9 @@ fn bucket2_test() {
         .determine_bucket_id(&[&param1, &param2])
         .unwrap();
 
-    assert_eq!(
-        sql,
-        &format!(
-            "{} {}",
-            r#"SELECT "t1"."a", "t1"."bucket_id", "t1"."b" FROM "t1""#,
-            r#"WHERE ("t1"."a" = CAST($1 AS string)) and ("t1"."b" = CAST($2 AS int))"#,
-        ),
-    );
-    assert_eq!(params, &vec![param1, param2]);
-    assert_eq!(buckets, &vec![bucket]);
+    assert_snapshot!(sql, @r#"SELECT "t1"."a", "t1"."bucket_id", "t1"."b" FROM "t1" WHERE "t1"."a" = CAST($1 AS string) and "t1"."b" = CAST($2 AS int)"#);
+    assert_eq!(params, &[param1, param2]);
+    assert_eq!(buckets, &[bucket]);
 }
 
 #[test]
@@ -72,14 +63,11 @@ fn bucket3_test() {
     query.dispatch(&mut port).unwrap();
     let info = port.decode();
     assert_eq!(1, info.len());
-    let DispatchInfo::All(sql, params) = info.get(0).unwrap() else {
-        panic!("Expected dispatch on all buckets");
-    };
-    assert_eq!(
-        sql,
-        r#"SELECT "t1"."a", "t1"."b", TRIM (CAST($1 AS string)) as "col_1" FROM "t1""#
-    );
-    assert_eq!(params, &vec![Value::from("111")]);
+    assert_yaml_snapshot!(info, @r#"
+    - All:
+        - "SELECT \"t1\".\"a\", \"t1\".\"b\", TRIM (CAST($1 AS string)) as \"col_1\" FROM \"t1\""
+        - - String: "111"
+    "#);
 }
 
 #[test]
@@ -87,7 +75,7 @@ fn bucket_id_from_join() {
     let input = r#"select t1.bucket_id from t t1 join t on true"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t1.bucket_id::int -> bucket_id)
       join on true::bool
         scan t -> t1
@@ -120,7 +108,7 @@ fn explicit_select_bucket_id_from_subquery_under_limit() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 1
       motion [policy: full, program: ReshardIfNeeded]
         limit 1
@@ -145,7 +133,7 @@ fn explicit_select_bucket_id_from_cte_under_limit() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 1
       projection (x.bucket_id::int -> bucket_id, x.id::int -> id)
         scan cte x($0)
@@ -164,7 +152,7 @@ fn groupby_bucket_id() {
     let input = r#"SELECT * FROM t GROUP BY a, b, c, d, bucket_id"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
       group by (t.a::int, t.b::int, t.c::int, t.d::int, t.bucket_id::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
         scan t

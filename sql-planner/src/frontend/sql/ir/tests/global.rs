@@ -80,7 +80,7 @@ fn front_sql_global_tbl_sq1() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (global_t.a::int -> a, global_t.b::int -> b)
-      selection (global_t.a::int in ROW($1)) or (global_t.a::int in ROW($0))
+      selection global_t.a::int in ROW($1) or global_t.a::int in ROW($0)
         scan global_t
     subquery $0:
       scan
@@ -114,7 +114,7 @@ fn front_sql_global_tbl_multiple_sqs1() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (global_t.a::int -> a, global_t.b::int -> b)
-      selection (ROW(global_t.a::int, global_t.b::int) in ROW($1, $1)) and (global_t.a::int in ROW($0))
+      selection ROW(global_t.a::int, global_t.b::int) in ROW($1, $1) and global_t.a::int in ROW($0)
         scan global_t
     subquery $0:
       scan
@@ -150,7 +150,7 @@ fn front_sql_global_tbl_multiple_sqs2() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (global_t.a::int -> a, global_t.b::int -> b)
-      selection (ROW(global_t.a::int, global_t.b::int) in ROW($1, $1)) or (global_t.a::int in ROW($0))
+      selection ROW(global_t.a::int, global_t.b::int) in ROW($1, $1) or global_t.a::int in ROW($0)
         scan global_t
     subquery $0:
       scan
@@ -207,7 +207,7 @@ fn front_sql_global_tbl_sq3() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (global_t.a::int -> a, global_t.b::int -> b)
-      selection (not (ROW(global_t.a::int, global_t.b::int) in ROW($1, $1))) or (ROW(global_t.a::int, global_t.b::int) < ROW($0, $0))
+      selection not ROW(global_t.a::int, global_t.b::int) in ROW($1, $1) or ROW(global_t.a::int, global_t.b::int) < ROW($0, $0)
         scan global_t
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
@@ -238,7 +238,7 @@ fn front_sql_global_tbl_sq4() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (hash_testing.product_code::string -> product_code)
-      join on (t.a::int = hash_testing.identification_number::int) and (hash_testing.product_code::string in ROW($0))
+      join on t.a::int = hash_testing.identification_number::int and hash_testing.product_code::string in ROW($0)
         scan t
         motion [policy: full, program: ReshardIfNeeded]
           projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op, hash_testing.bucket_id::int -> bucket_id)
@@ -265,7 +265,7 @@ fn front_sql_global_tbl_sq5() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t.a::int -> a, t2.f::int -> f)
-      join on (ROW(t.a::int, t.b::int) = ROW(t2.e::int, t2.f::int)) and (t.c::int in ROW($0))
+      join on ROW(t.a::int, t.b::int) = ROW(t2.e::int, t2.f::int) and t.c::int in ROW($0)
         scan t
         scan t2
     subquery $0:
@@ -295,7 +295,7 @@ fn front_sql_global_tbl_sq6() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t.a::int -> a, t2.f::int -> f)
       selection t2.e::int in ROW($3)
-        join on ((ROW(t.a::int, t.b::int) = ROW(t2.e::int, t2.f::int)) or (t.c::int in ROW($2))) or (exists ROW($0) and (not (t.d::int in ROW($1))))
+        join on ROW(t.a::int, t.b::int) = ROW(t2.e::int, t2.f::int) or t.c::int in ROW($2) or exists ROW($0) and not t.d::int in ROW($1)
           scan t
           motion [policy: full, program: ReshardIfNeeded]
             projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
@@ -336,7 +336,7 @@ fn front_sql_global_tbl_sq7() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t.a::int -> a, t2.f::int -> f)
-      join on ((ROW(t.a::int, t.b::int) = ROW(t2.e::int, t2.f::int)) or (t.c::int in ROW($1))) or (not (t.d::int in ROW($0)))
+      join on ROW(t.a::int, t.b::int) = ROW(t2.e::int, t2.f::int) or t.c::int in ROW($1) or not t.d::int in ROW($0)
         scan t
         motion [policy: full, program: ReshardIfNeeded]
           projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
@@ -398,7 +398,7 @@ fn front_sql_global_join2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t2.e::int -> e, global_t.a::int -> a)
-      join on (t2.e::int = global_t.a::int) or (global_t.b::int = t2.f::int)
+      join on t2.e::int = global_t.a::int or global_t.b::int = t2.f::int
         scan t2
         scan global_t
     execution options:
@@ -420,7 +420,7 @@ fn front_sql_global_join3() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t2.e::int -> e, global_t.a::int -> a)
-      left join on (t2.e::int = global_t.a::int) or (global_t.b::int = t2.f::int)
+      left join on t2.e::int = global_t.a::int or global_t.b::int = t2.f::int
         scan t2
         scan global_t
     execution options:

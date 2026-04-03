@@ -52,7 +52,7 @@ fn front_params1() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-      selection (test_space.sys_op::int = 0::int) and (test_space."sysFrom"::int > 1::int)
+      selection test_space.sys_op::int = 0::int and test_space."sysFrom"::int > 1::int
         scan test_space
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -69,7 +69,7 @@ fn front_params2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (test_space.id::int -> id)
-      selection (test_space.sys_op::int = NULL::unknown) and (test_space."FIRST_NAME"::string = 'hello'::string)
+      selection test_space.sys_op::int = NULL::unknown and test_space."FIRST_NAME"::string = 'hello'::string
         scan test_space
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -87,7 +87,7 @@ fn front_params3() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (test_space.id::int -> id)
-      selection (test_space.sys_op::int = NULL::unknown) and (test_space."FIRST_NAME"::string = 'кириллица'::string)
+      selection test_space.sys_op::int = NULL::unknown and test_space."FIRST_NAME"::string = 'кириллица'::string
         scan test_space
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -131,7 +131,7 @@ fn front_params5() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (test_space.id::int -> id)
-      selection (test_space.sys_op::int = 0::int) or (test_space.id::int in ROW($0))
+      selection test_space.sys_op::int = 0::int or test_space.id::int in ROW($0)
         scan test_space
     subquery $0:
       motion [policy: segment([ref("sysFrom")]), program: ReshardIfNeeded]
@@ -165,7 +165,7 @@ fn front_params6() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (test_space.id::int -> id)
-      selection (test_space.sys_op::int = 0::int) or (not (test_space.id::int in ROW($0)))
+      selection test_space.sys_op::int = 0::int or not test_space.id::int in ROW($0)
         scan test_space
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]

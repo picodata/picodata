@@ -54,7 +54,7 @@ EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 AND (a < 2 OR a > 3) GROUP BY a;
 -- EXPECTED:
 projection (count(*)::int -> col_1)
   group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
-    selection (t1.a::int = 1::int) and ((t1.a::int < 2::int) or (t1.a::int > 3::int))
+    selection t1.a::int = 1::int and (t1.a::int < 2::int or t1.a::int > 3::int)
       scan t1
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -73,7 +73,7 @@ EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 AND (a < 2 OR a > 3) AND b = 2 GROUP
 -- EXPECTED:
 projection (count(*)::int -> col_1)
   group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
-    selection ((t1.a::int = 1::int) and ((t1.a::int < 2::int) or (t1.a::int > 3::int))) and (t1.b::int = 2::int)
+    selection t1.a::int = 1::int and (t1.a::int < 2::int or t1.a::int > 3::int) and t1.b::int = 2::int
       scan t1
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -92,7 +92,7 @@ EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 AND a < 10 AND b = 2 GROUP BY a;
 -- EXPECTED:
 projection (count(*)::int -> col_1)
   group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
-    selection ((t1.a::int = 1::int) and (t1.a::int < 10::int)) and (t1.b::int = 2::int)
+    selection t1.a::int = 1::int and t1.a::int < 10::int and t1.b::int = 2::int
       scan t1
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -114,7 +114,7 @@ projection (sum(count_1::int)::int -> col_1)
     motion [policy: full, program: ReshardIfNeeded]
       projection (t1.a::int -> gr_expr_1, count(*)::int -> count_1)
         group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
-          selection (t1.a::int = 1::int) or (t1.a::int = 2::int)
+          selection t1.a::int = 1::int or t1.a::int = 2::int
             scan t1
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -135,7 +135,7 @@ projection (sum(count_1::int)::int -> col_1)
     motion [policy: full, program: ReshardIfNeeded]
       projection (t1.a::int -> gr_expr_1, count(*)::int -> count_1)
         group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
-          selection ((t1.a::int = 1::int) and (t1.a::int < 10::int)) and (t1.a::int = 2::int)
+          selection t1.a::int = 1::int and t1.a::int < 10::int and t1.a::int = 2::int
             scan t1
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -153,7 +153,7 @@ SELECT DISTINCT b FROM t1 WHERE a = 5 AND (a > 4 OR a < 4);
 EXPLAIN SELECT DISTINCT b FROM t1 WHERE a = 5 AND (a > 4 OR a < 4);
 -- EXPECTED:
 projection (t1.b::int -> b)
-  selection (t1.a::int = 5::int) and ((t1.a::int > 4::int) or (t1.a::int < 4::int))
+  selection t1.a::int = 5::int and (t1.a::int > 4::int or t1.a::int < 4::int)
     scan t1
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -182,7 +182,7 @@ limit 1
     order by (id::int)
       scan
         projection (t.id::int -> id, t.a::int -> a, t.b::int -> b)
-          selection (t.a::int = 1::int) and (t.b::int = 1::int)
+          selection t.a::int = 1::int and t.b::int = 1::int
             scan t
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -361,7 +361,7 @@ limit 1
             order by (id::int)
               scan
                 projection (t.id::int -> id)
-                  selection (t.a::int = 1::int) or (t.a::int = 4::int)
+                  selection t.a::int = 1::int or t.a::int = 4::int
                     scan t
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -604,7 +604,7 @@ limit 1
     order by (id::int)
       scan
         projection (t1.id::int -> id)
-          selection (t1.a::int = 1::int) and (t2.a::int = 4::int)
+          selection t1.a::int = 1::int and t2.a::int = 4::int
             join on t1.b::int = t2.b::int
               scan t -> t1
               motion [policy: full, program: ReshardIfNeeded]
@@ -677,7 +677,7 @@ EXPLAIN SELECT count(*) FROM t WHERE a = 1 AND a = 2;
 projection (sum(count_1::int)::int -> col_1)
   motion [policy: full, program: ReshardIfNeeded]
     projection (count(*)::int -> count_1)
-      selection (t.a::int = 1::int) and (t.a::int = 2::int)
+      selection t.a::int = 1::int and t.a::int = 2::int
         scan t
 execution options:
   sql_vdbe_opcode_max = 45000

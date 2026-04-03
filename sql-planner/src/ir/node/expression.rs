@@ -6,7 +6,7 @@ use crate::{
     ir::{
         aggregates::AggregateKind,
         node::{Bound, BoundType, IndexExpr},
-        operator::OrderByEntity,
+        operator::{Arithmetic, Bool, OrderByEntity, Unary},
     },
 };
 
@@ -459,13 +459,11 @@ impl Expression<'_> {
         }
     }
 
-    #[must_use]
     pub fn is_aggregate_name(name: &str) -> bool {
         // currently we support only simple aggregates
         AggregateKind::from_name(name).is_some()
     }
 
-    #[must_use]
     pub fn is_aggregate_fun(&self) -> bool {
         match self {
             Expression::ScalarFunction(ScalarFunction { name, .. }) => {
@@ -476,13 +474,152 @@ impl Expression<'_> {
     }
 
     /// The node is a row expression.
-    #[must_use]
     pub fn is_row(&self) -> bool {
         matches!(self, Expression::Row(_))
     }
-    #[must_use]
+
     pub fn is_arithmetic(&self) -> bool {
         matches!(self, Expression::Arithmetic(_))
+    }
+
+    /// If applicable, check if the operator in the node is associative.
+    /// The main use of this method is to put less paretheses in expressions.
+    /// Associativity is `(a * b) * c = a * (b * c)`.
+    pub fn is_associative(&self) -> bool {
+        match self {
+            Expression::Arithmetic(ArithmeticExpr {
+                op: Arithmetic::Add | Arithmetic::Multiply,
+                ..
+            }) => true,
+
+            Expression::Bool(BoolExpr {
+                op: Bool::And | Bool::Or,
+                ..
+            }) => true,
+
+            _otherwise => false,
+        }
+    }
+
+    pub fn may_need_parentheses(&self) -> bool {
+        // Atomic expressions don't need parentheses.
+        //
+        // Note the difference between putting the whole expr
+        // in parentheses vs protecting its parts. E.g.
+        // A: `(xs[1])` vs B: `(xs)[1]`.
+        //
+        // This method only cares for A (the whole expr),
+        // since every expression should take care of its
+        // subexpressions on its own.
+        match self {
+            // `expr AS name`
+            Expression::Alias(_)
+            // `CASE ... WHEN ... THEN ... ELSE`
+            | Expression::Case(_)
+            // `10 :: int`
+            | Expression::Cast(_)
+            // `42` or any other literal
+            | Expression::Constant(_)
+            // `count(*)`
+            | Expression::CountAsterisk(_)
+            // `expr[index]`
+            | Expression::Index(_)
+            // `OVER (...)`
+            | Expression::Over(_)
+            // `$1`
+            | Expression::Parameter(_)
+            // -- doesn't have its own repesentation
+            | Expression::Reference(_)
+            // `ROW(...)`
+            | Expression::Row(_)
+            // `function_name(arg1, arg2, ...)`
+            | Expression::ScalarFunction(_)
+            // -- doesn't have its own repesentation
+            | Expression::SubQueryReference(_)
+            // `'2026-04-12'::timestamp`
+            | Expression::Timestamp(_)
+            // `TRIM('hello')`
+            | Expression::Trim(_)
+            // `PARTITION BY (...) ...`
+            | Expression::Window(_)
+            // `EXISTS (...)`
+            | Expression::Unary(UnaryExpr {
+                op: Unary::Exists, ..
+            }) => false,
+
+            _otherwise => true,
+        }
+    }
+
+    /// If applicable, get the precedence of an expression node operator.
+    /// <https://www.postgresql.org/docs/18/sql-syntax-lexical.html#SQL-PRECEDENCE>
+    pub fn precedence(&self) -> usize {
+        match self {
+            // These expressions cannot be torn apart by the operators
+            // with higher precendence, so we can safely give them
+            // **the lowest precedence**.
+            //
+            // This is beneficial in e.g.
+            // ```
+            // function(FOO, x AND y, BAR)
+            // ```
+            //
+            // Since AND has higher precedence than a function call,
+            // we don't need to enclose it in parentheses.
+            Expression::Alias(_)
+            | Expression::Case(_)
+            | Expression::Constant(_)
+            | Expression::CountAsterisk(_)
+            | Expression::Over(_)
+            | Expression::Parameter(_)
+            | Expression::Reference(_)
+            | Expression::Row(_)
+            | Expression::ScalarFunction(_)
+            | Expression::SubQueryReference(_)
+            | Expression::Timestamp(_)
+            | Expression::Trim(_)
+            | Expression::Window(_)
+            | Expression::Unary(UnaryExpr {
+                op: Unary::Exists, ..
+            }) => 0,
+
+            Expression::Bool(BoolExpr { op: Bool::Or, .. }) => 1,
+            Expression::Bool(BoolExpr { op: Bool::And, .. }) => 2,
+            Expression::Unary(UnaryExpr { op: Unary::Not, .. }) => 3,
+
+            Expression::Unary(UnaryExpr {
+                op: Unary::IsNull, ..
+            }) => 4,
+
+            Expression::Bool(BoolExpr {
+                op: Bool::Eq | Bool::NotEq | Bool::Lt | Bool::LtEq | Bool::Gt | Bool::GtEq,
+                ..
+            }) => 5,
+
+            Expression::Like(_)
+            | Expression::Bool(BoolExpr {
+                op: Bool::In | Bool::Between,
+                ..
+            }) => 6,
+
+            // "Any other operator" per the link above, meaning that
+            // anything not explicitly listed in PG's operator
+            // precedence table should go here.
+            Expression::Concat(_) => 7,
+
+            Expression::Arithmetic(ArithmeticExpr {
+                op: Arithmetic::Add | Arithmetic::Subtract,
+                ..
+            }) => 8,
+
+            Expression::Arithmetic(ArithmeticExpr {
+                op: Arithmetic::Multiply | Arithmetic::Divide | Arithmetic::Modulo,
+                ..
+            }) => 9,
+
+            Expression::Index(_) => 10,
+            Expression::Cast(_) => 11,
+        }
     }
 
     /// Returns all child `NodeId`s of this expression.

@@ -42,7 +42,7 @@ fn test_query_explain_3() {
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @"
     projection (t2.e::int -> e)
-      selection (t2.e::int = 1::int) and (t2.f::int = 13::int)
+      selection t2.e::int = 1::int and t2.f::int = 13::int
         scan t2
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -102,7 +102,7 @@ fn test_query_explain_prepared_single_key_with_constant_keeps_reduce_stage() {
     projection (sum(count_1::int)::int -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (count(*)::int -> count_1)
-          selection (t5.a::int = 1::int) and (t5.a::int = 1::int)
+          selection t5.a::int = 1::int and t5.a::int = 1::int
             scan t5
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -128,7 +128,7 @@ fn test_query_explain_prepared_reused_parameters_keep_reduce_stage() {
     projection (sum(count_1::int)::int -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (count(*)::int -> count_1)
-          selection ((t5.a::int = 1::int) and (t5.a::int = 1::int)) and (t5.a::int = 1::int)
+          selection t5.a::int = 1::int and t5.a::int = 1::int and t5.a::int = 1::int
             scan t5
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -364,7 +364,7 @@ fn test_query_explain_14() {
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @"
     projection (t1.a::string -> a, t1.b::int -> b)
-      selection (ROW(t1.a::string, t1.b::int) = ROW('1'::string, 1::int)) and (ROW(t1.a::string, t1.b::int) = ROW('2'::string, 2::int))
+      selection ROW(t1.a::string, t1.b::int) = ROW('1'::string, 1::int) and ROW(t1.a::string, t1.b::int) = ROW('2'::string, 2::int)
         scan t1
     execution options:
       sql_vdbe_opcode_max = 45000

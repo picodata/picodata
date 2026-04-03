@@ -1,10 +1,10 @@
 use pretty_assertions::assert_eq;
 
-use crate::executor::engine::mock::{DispatchInfo, PortMocked, RouterRuntimeMock};
+use crate::executor::engine::mock::{PortMocked, RouterRuntimeMock};
 use crate::executor::vtable::VirtualTable;
 use crate::ir::tests::vcolumn_integer_user_non_null;
 use crate::ir::transformation::redistribution::MotionPolicy;
-use crate::ir::value::Value;
+use insta::assert_yaml_snapshot;
 
 use super::*;
 
@@ -40,30 +40,13 @@ fn empty_motion1_test() {
     query.dispatch(&mut port).unwrap();
     let info = port.decode();
     assert_eq!(1, info.len());
-    let DispatchInfo::All(sql, params) = info.get(0).unwrap() else {
-        panic!("Expected a single dispatch on all replicasets");
-    };
-    assert_eq!(
-        sql,
-        &format!(
-            "{} {} {} {} {} {} {} {} {} {} {} {} {} {}",
-            r#"SELECT * FROM"#,
-            r#"(SELECT "t"."a", "t"."b" FROM"#,
-            r#""t""#,
-            r#"INNER JOIN"#,
-            r#"(SELECT "COL_1","COL_2","COL_3","COL_4" FROM "TMP_0_0136") as "t2""#,
-            r#"ON ("t"."a" = "t2"."COL_3") and ("t"."b" = "t2"."COL_4")"#,
-            r#"WHERE "t"."a" = CAST($1 AS int)"#,
-            r#"EXCEPT"#,
-            r#"SELECT "t"."a", "t"."b" FROM"#,
-            r#""t""#,
-            r#"INNER JOIN"#,
-            r#"(SELECT "COL_1","COL_2","COL_3","COL_4" FROM "TMP_0_1136") as "t2""#,
-            r#"ON ("t"."a" = "t2"."COL_3") and ("t"."b" = "t2"."COL_4")"#,
-            r#"WHERE "t"."a" = CAST($2 AS int)) as "Q""#,
-        ),
-    );
-    assert_eq!(params, &vec![Value::from(0), Value::from(1)]);
+    let info = info.get(0).unwrap();
+    assert_yaml_snapshot!(info, @r#"
+    All:
+      - "SELECT * FROM (SELECT \"t\".\"a\", \"t\".\"b\" FROM \"t\" INNER JOIN (SELECT \"COL_1\",\"COL_2\",\"COL_3\",\"COL_4\" FROM \"TMP_0_0136\") as \"t2\" ON \"t\".\"a\" = \"t2\".\"COL_3\" and \"t\".\"b\" = \"t2\".\"COL_4\" WHERE \"t\".\"a\" = CAST($1 AS int) EXCEPT SELECT \"t\".\"a\", \"t\".\"b\" FROM \"t\" INNER JOIN (SELECT \"COL_1\",\"COL_2\",\"COL_3\",\"COL_4\" FROM \"TMP_0_1136\") as \"t2\" ON \"t\".\"a\" = \"t2\".\"COL_3\" and \"t\".\"b\" = \"t2\".\"COL_4\" WHERE \"t\".\"a\" = CAST($2 AS int)) as \"Q\""
+      - - Integer: 0
+        - Integer: 1
+    "#);
 }
 
 fn t2_empty() -> VirtualTable {

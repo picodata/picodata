@@ -44,7 +44,7 @@ smallvec = { workspace = true }
 [dev-dependencies]
 pretty_assertions = { workspace = true }
 serde_yaml = "0.9.34"
-insta = "1.42"
+insta = { version = "1.42", features = ["yaml"] }
 tarantool = { workspace = true, features = ["standalone_decimal","extra_impls"] }
 
 [lib]

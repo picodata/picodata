@@ -10,6 +10,7 @@ use crate::ir::tree::Snapshot;
 use crate::ir::types::{CastType, DerivedType, UnrestrictedType as Type};
 use crate::ir::Slice;
 use engine::mock::TEMPLATE;
+use insta::{assert_snapshot, assert_yaml_snapshot};
 use pretty_assertions::assert_eq;
 use std::rc::Rc;
 
@@ -68,7 +69,7 @@ fn exec_plan_subtree_test() {
     let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
 
     assert_eq!(sql.params, vec![Value::from(1)]);
-    insta::assert_snapshot!(
+    assert_snapshot!(
         sql.pattern,
         @r#"SELECT "hash_testing"."identification_number" FROM "hash_testing" WHERE "hash_testing"."identification_number" > CAST($1 AS int)"#,
     );
@@ -77,7 +78,7 @@ fn exec_plan_subtree_test() {
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
 
     assert_eq!(sql.params, vec![]);
-    insta::assert_snapshot!(
+    assert_snapshot!(
         sql.pattern,
         @r#"SELECT "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."id" in (SELECT "COL_1" FROM "TMP_0_0136")"#,
     )
@@ -113,23 +114,17 @@ fn exec_plan_subtree_two_stage_groupby_test() {
 
     // Check groupby local stage
     let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            r#"SELECT "T1"."FIRST_NAME" as "gr_expr_1" FROM "test_space" as "T1" GROUP BY "T1"."FIRST_NAME""#
-                .to_string(),
-            vec![]
-        )
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"T1\".\"FIRST_NAME\" as \"gr_expr_1\" FROM \"test_space\" as \"T1\" GROUP BY \"T1\".\"FIRST_NAME\""
+    params: []
+    "#);
 
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            r#"SELECT "COL_1" as "FIRST_NAME" FROM (SELECT "COL_1" FROM "TMP_0_0136") GROUP BY "COL_1""#.to_string(),
-            vec![]
-        ));
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"COL_1\" as \"FIRST_NAME\" FROM (SELECT \"COL_1\" FROM \"TMP_0_0136\") GROUP BY \"COL_1\""
+    params: []
+    "#);
 }
 
 #[test]
@@ -162,34 +157,17 @@ fn exec_plan_subtree_two_stage_groupby_test_2() {
     } else {
         panic!("Expected MotionPolicy::Full for local aggregation stage");
     };
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            f_sql(
-                r#"SELECT "T1"."FIRST_NAME" as "gr_expr_1",
-"T1"."sys_op" as "gr_expr_2",
-"T1"."sysFrom" as "gr_expr_3"
-FROM "test_space" as "T1"
-GROUP BY "T1"."FIRST_NAME", "T1"."sys_op", "T1"."sysFrom""#
-            ),
-            vec![]
-        )
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"T1\".\"FIRST_NAME\" as \"gr_expr_1\", \"T1\".\"sys_op\" as \"gr_expr_2\", \"T1\".\"sysFrom\" as \"gr_expr_3\" FROM \"test_space\" as \"T1\" GROUP BY \"T1\".\"FIRST_NAME\", \"T1\".\"sys_op\", \"T1\".\"sysFrom\""
+    params: []
+    "#);
 
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            f_sql(
-                r#"SELECT "COL_1" as "FIRST_NAME",
-"COL_2" as "sys_op", "COL_3" as "sysFrom"
-FROM (SELECT "COL_1","COL_2","COL_3" FROM "TMP_0_0136")
-GROUP BY "COL_1", "COL_2", "COL_3""#
-            ),
-            vec![]
-        )
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"COL_1\" as \"FIRST_NAME\", \"COL_2\" as \"sys_op\", \"COL_3\" as \"sysFrom\" FROM (SELECT \"COL_1\",\"COL_2\",\"COL_3\" FROM \"TMP_0_0136\") GROUP BY \"COL_1\", \"COL_2\", \"COL_3\""
+    params: []
+    "#);
 }
 
 #[test]
@@ -233,12 +211,12 @@ fn exec_plan_subtree_aggregates() {
         panic!("Expected MotionPolicy::Full for local aggregation stage");
     };
     assert_eq!(sql.params, vec![Value::from("o")]);
-    insta::assert_snapshot!(sql.pattern, @r#"SELECT "T1"."sys_op" as "gr_expr_1", CAST (("T1"."id" * "T1"."sys_op") as int) as "gr_expr_2", CAST ("T1"."id" as int) as "gr_expr_3", sum (CAST ("T1"."id" as int)) as "sum_2", count (CAST ("T1"."sysFrom" as int)) as "count_1", count (CAST ("T1"."id" as int)) as "avg_4", group_concat (CAST ("T1"."FIRST_NAME" as string), CAST($1 AS string)) as "group_concat_3", max (CAST ("T1"."id" as int)) as "max_7", min (CAST ("T1"."id" as int)) as "min_6", total (CAST ("T1"."id" as int)) as "total_5" FROM "test_space" as "T1" GROUP BY "T1"."sys_op", CAST (("T1"."id" * "T1"."sys_op") as int), CAST ("T1"."id" as int)"#);
+    assert_snapshot!(sql.pattern, @r#"SELECT "T1"."sys_op" as "gr_expr_1", CAST (("T1"."id" * "T1"."sys_op") as int) as "gr_expr_2", CAST ("T1"."id" as int) as "gr_expr_3", sum (CAST ("T1"."id" as int)) as "sum_2", count (CAST ("T1"."sysFrom" as int)) as "count_1", count (CAST ("T1"."id" as int)) as "avg_4", group_concat (CAST ("T1"."FIRST_NAME" as string), CAST($1 AS string)) as "group_concat_3", max (CAST ("T1"."id" as int)) as "max_7", min (CAST ("T1"."id" as int)) as "min_6", total (CAST ("T1"."id" as int)) as "total_5" FROM "test_space" as "T1" GROUP BY "T1"."sys_op", CAST (("T1"."id" * "T1"."sys_op") as int), CAST ("T1"."id" as int)"#);
 
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_eq!(sql.params, vec![Value::Integer(2), Value::from("o")]);
-    insta::assert_snapshot!(sql.pattern, @r#"SELECT "COL_1" + "COL_1" as "col_1", ("COL_1" * CAST($1 AS int)) + sum ("COL_5") as "col_2", sum ("COL_4") as "col_3", sum (DISTINCT "COL_2") / count (DISTINCT "COL_3") as "col_4", group_concat ("COL_7", CAST($2 AS string)) as "col_5", sum (CAST ("COL_4" as double)) / sum (CAST ("COL_6" as double)) as "col_6", total ("COL_10") as "col_7", min ("COL_9") as "col_8", max ("COL_8") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "TMP_0_0136") GROUP BY "COL_1""#);
+    assert_snapshot!(sql.pattern, @r#"SELECT "COL_1" + "COL_1" as "col_1", "COL_1" * CAST($1 AS int) + sum ("COL_5") as "col_2", sum ("COL_4") as "col_3", sum (DISTINCT "COL_2") / count (DISTINCT "COL_3") as "col_4", group_concat ("COL_7", CAST($2 AS string)) as "col_5", sum (CAST ("COL_4" as double)) / sum (CAST ("COL_6" as double)) as "col_6", total ("COL_10") as "col_7", min ("COL_9") as "col_8", max ("COL_8") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "TMP_0_0136") GROUP BY "COL_1""#);
 }
 
 #[test]
@@ -270,21 +248,17 @@ fn exec_plan_subtree_aggregates_no_groupby() {
     } else {
         panic!("Expected MotionPolicy::Full for local aggregation stage");
     };
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            r#"SELECT CAST (("T1"."id" + "T1"."sysFrom") as int) as "gr_expr_1", count (CAST ("T1"."sysFrom" as int)) as "count_1" FROM "test_space" as "T1" GROUP BY CAST (("T1"."id" + "T1"."sysFrom") as int)"#.to_string(),
-            vec![]
-        ));
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT CAST ((\"T1\".\"id\" + \"T1\".\"sysFrom\") as int) as \"gr_expr_1\", count (CAST (\"T1\".\"sysFrom\" as int)) as \"count_1\" FROM \"test_space\" as \"T1\" GROUP BY CAST ((\"T1\".\"id\" + \"T1\".\"sysFrom\") as int)"
+    params: []
+    "#);
 
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            r#"SELECT sum ("COL_2") as "col_1", sum (DISTINCT "COL_1") as "col_2" FROM (SELECT "COL_1","COL_2" FROM "TMP_0_0136")"#.to_string(),
-            vec![]
-        ));
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT sum (\"COL_2\") as \"col_1\", sum (DISTINCT \"COL_1\") as \"col_2\" FROM (SELECT \"COL_1\",\"COL_2\" FROM \"TMP_0_0136\")"
+    params: []
+    "#);
 }
 
 #[test]
@@ -311,12 +285,11 @@ fn exec_plan_subquery_under_motion_without_alias() {
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
 
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            r#"SELECT * FROM (SELECT "test_space"."id" as "tid" FROM "test_space") as "unnamed_subquery" INNER JOIN (SELECT "COL_1" FROM "TMP_0_0136") as "unnamed_subquery_1" ON CAST($1 AS bool)"#.to_string(),
-            vec![Value::Boolean(true)]
-        ));
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT * FROM (SELECT \"test_space\".\"id\" as \"tid\" FROM \"test_space\") as \"unnamed_subquery\" INNER JOIN (SELECT \"COL_1\" FROM \"TMP_0_0136\") as \"unnamed_subquery_1\" ON CAST($1 AS bool)"
+    params:
+      - Boolean: true
+    "#);
 }
 
 #[test]
@@ -342,12 +315,11 @@ fn exec_plan_subquery_under_motion_with_alias() {
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
 
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            r#"SELECT * FROM (SELECT "test_space"."id" as "tid" FROM "test_space") as "unnamed_subquery" INNER JOIN (SELECT "COL_1" FROM "TMP_0_0136") as "hti" ON CAST($1 AS bool)"#.to_string(),
-            vec![Value::Boolean(true)]
-        ));
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT * FROM (SELECT \"test_space\".\"id\" as \"tid\" FROM \"test_space\") as \"unnamed_subquery\" INNER JOIN (SELECT \"COL_1\" FROM \"TMP_0_0136\") as \"hti\" ON CAST($1 AS bool)"
+    params:
+      - Boolean: true
+    "#);
 }
 
 #[test]
@@ -367,12 +339,10 @@ fn exec_plan_motion_under_in_operator() {
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
 
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            r#"SELECT "test_space"."id" FROM "test_space" WHERE "test_space"."id" in (SELECT "COL_1" FROM "TMP_0_0136")"#.to_string(),
-            vec![]
-        ));
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"test_space\".\"id\" FROM \"test_space\" WHERE \"test_space\".\"id\" in (SELECT \"COL_1\" FROM \"TMP_0_0136\")"
+    params: []
+    "#);
 }
 
 #[test]
@@ -396,14 +366,10 @@ fn exec_plan_motion_under_except() {
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
 
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            r#"SELECT "test_space"."id" FROM "test_space" EXCEPT SELECT "COL_1" FROM "TMP_0_0136""#
-                .to_string(),
-            vec![]
-        )
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"test_space\".\"id\" FROM \"test_space\" EXCEPT SELECT \"COL_1\" FROM \"TMP_0_0136\""
+    params: []
+    "#);
 }
 
 #[test]
@@ -434,25 +400,17 @@ fn exec_plan_subtree_count_asterisk() {
     } else {
         panic!("Expected MotionPolicy::Full for local aggregation stage");
     };
-
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            r#"SELECT count (*) as "count_1" FROM "test_space""#.to_string(),
-            vec![]
-        )
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT count (*) as \"count_1\" FROM \"test_space\""
+    params: []
+    "#);
 
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            r#"SELECT sum ("COL_1") as "col_1" FROM (SELECT "COL_1" FROM "TMP_0_0136")"#
-                .to_string(),
-            vec![]
-        )
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT sum (\"COL_1\") as \"col_1\" FROM (SELECT \"COL_1\" FROM \"TMP_0_0136\")"
+    params: []
+    "#);
 }
 
 #[test]
@@ -491,34 +449,21 @@ fn exec_plan_subtree_having() {
     } else {
         panic!("Expected MotionPolicy::Full for local aggregation stage");
     };
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            format!(
-                "{} {} {}",
-                r#"SELECT "T1"."sys_op" as "gr_expr_1", CAST (("T1"."sys_op" * CAST($1 AS int)) as int) as "gr_expr_2","#,
-                r#"count (CAST (("T1"."sys_op" * CAST($2 AS int)) as int)) as "count_1" FROM "test_space" as "T1""#,
-                r#"GROUP BY "T1"."sys_op", CAST (("T1"."sys_op" * CAST($3 AS int)) as int)"#,
-            ),
-            vec![Value::Integer(2), Value::Integer(2), Value::Integer(2)]
-        )
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"T1\".\"sys_op\" as \"gr_expr_1\", CAST ((\"T1\".\"sys_op\" * CAST($1 AS int)) as int) as \"gr_expr_2\", count (CAST ((\"T1\".\"sys_op\" * CAST($2 AS int)) as int)) as \"count_1\" FROM \"test_space\" as \"T1\" GROUP BY \"T1\".\"sys_op\", CAST ((\"T1\".\"sys_op\" * CAST($3 AS int)) as int)"
+    params:
+      - Integer: 2
+      - Integer: 2
+      - Integer: 2
+    "#);
 
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            format!(
-                "{} {} {} {}",
-                r#"SELECT "COL_1" + "COL_1" as "col_1","#,
-                r#"sum ("COL_3") + count (DISTINCT "COL_2") as "col_2" FROM"#,
-                r#"(SELECT "COL_1","COL_2","COL_3" FROM "TMP_0_0136")"#,
-                r#"GROUP BY "COL_1" HAVING sum (DISTINCT "COL_2") > CAST($1 AS int)"#
-            ),
-            vec![Value::Integer(1)]
-        )
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"COL_1\" + \"COL_1\" as \"col_1\", sum (\"COL_3\") + count (DISTINCT \"COL_2\") as \"col_2\" FROM (SELECT \"COL_1\",\"COL_2\",\"COL_3\" FROM \"TMP_0_0136\") GROUP BY \"COL_1\" HAVING sum (DISTINCT \"COL_2\") > CAST($1 AS int)"
+    params:
+      - Integer: 1
+    "#);
 }
 
 #[test]
@@ -557,34 +502,21 @@ fn exec_plan_subtree_having_without_groupby() {
     } else {
         panic!("Expected MotionPolicy::Full after local stage");
     };
-
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            format!(
-                "{} {} {}",
-                r#"SELECT CAST (("T1"."sys_op" * CAST($1 AS int)) as int) as "gr_expr_1","#,
-                r#"count (CAST (("T1"."sys_op" * CAST($2 AS int)) as int)) as "count_1" FROM "test_space" as "T1""#,
-                r#"GROUP BY CAST (("T1"."sys_op" * CAST($3 AS int)) as int)"#,
-            ),
-            vec![Value::Integer(2), Value::Integer(2), Value::Integer(2)]
-        )
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT CAST ((\"T1\".\"sys_op\" * CAST($1 AS int)) as int) as \"gr_expr_1\", count (CAST ((\"T1\".\"sys_op\" * CAST($2 AS int)) as int)) as \"count_1\" FROM \"test_space\" as \"T1\" GROUP BY CAST ((\"T1\".\"sys_op\" * CAST($3 AS int)) as int)"
+    params:
+      - Integer: 2
+      - Integer: 2
+      - Integer: 2
+    "#);
 
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            format!(
-                "{} {} {}",
-                r#"SELECT sum ("COL_2") + count (DISTINCT "COL_1") as "col_1""#,
-                r#"FROM (SELECT "COL_1","COL_2","COL_3" FROM "TMP_0_0136")"#,
-                r#"HAVING sum (DISTINCT "COL_1") > CAST($1 AS int)"#,
-            ),
-            vec![Value::Integer(1)]
-        )
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT sum (\"COL_2\") + count (DISTINCT \"COL_1\") as \"col_1\" FROM (SELECT \"COL_1\",\"COL_2\",\"COL_3\" FROM \"TMP_0_0136\") HAVING sum (DISTINCT \"COL_1\") > CAST($1 AS int)"
+    params:
+      - Integer: 1
+    "#);
 }
 
 #[test]
@@ -601,10 +533,10 @@ fn global_table_scan() {
     assert_eq!(Buckets::Any, buckets);
     let exec_plan = query.get_mut_exec_plan();
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(r#"SELECT * FROM "global_t""#.to_string(), vec![])
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT * FROM \"global_t\""
+    params: []
+    "#);
 }
 
 #[test]
@@ -823,14 +755,10 @@ fn global_except() {
             Snapshot::Oldest,
             TEMPLATE,
         );
-        assert_eq!(
-            sql,
-            PatternWithParams::new(
-                r#"SELECT "t2"."e" FROM "t2" INTERSECT SELECT "global_t"."a" FROM "global_t""#
-                    .to_string(),
-                vec![]
-            )
-        );
+        assert_yaml_snapshot!(sql, @r#"
+        pattern: "SELECT \"t2\".\"e\" FROM \"t2\" INTERSECT SELECT \"global_t\".\"a\" FROM \"global_t\""
+        params: []
+        "#);
 
         let mut virtual_table = VirtualTable::new();
         virtual_table.add_column(vcolumn_integer_user_non_null());
@@ -866,10 +794,10 @@ fn local_translation_asterisk_single() {
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
 
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(r#"SELECT "t3"."a", "t3"."b" FROM "t3""#.to_string(), vec![])
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"t3\".\"a\", \"t3\".\"b\" FROM \"t3\""
+    params: []
+    "#);
 }
 
 #[test]
@@ -882,13 +810,10 @@ fn local_translation_asterisk_several() {
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
 
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            r#"SELECT "t3"."a", "t3"."b", "t3"."a", "t3"."b" FROM "t3""#.to_string(),
-            vec![]
-        )
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"t3\".\"a\", \"t3\".\"b\", \"t3\".\"a\", \"t3\".\"b\" FROM \"t3\""
+    params: []
+    "#);
 }
 
 #[test]
@@ -901,14 +826,10 @@ fn local_translation_asterisk_named() {
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
 
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            r#"SELECT "t3"."a", "t3"."b", "t3"."a", "t3"."b", "t3"."a", "t3"."b" FROM "t3""#
-                .to_string(),
-            vec![]
-        )
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"t3\".\"a\", \"t3\".\"b\", \"t3\".\"a\", \"t3\".\"b\", \"t3\".\"a\", \"t3\".\"b\" FROM \"t3\""
+    params: []
+    "#);
 }
 
 #[test]
@@ -921,13 +842,10 @@ fn local_translation_asterisk_with_additional_columns() {
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
 
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            r#"SELECT "t3"."a", "t3"."a", "t3"."b", "t3"."b", "t3"."a", "t3"."b", "t3"."a", "t3"."b" FROM "t3""#.to_string(),
-            vec![]
-        )
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"t3\".\"a\", \"t3\".\"a\", \"t3\".\"b\", \"t3\".\"b\", \"t3\".\"a\", \"t3\".\"b\", \"t3\".\"a\", \"t3\".\"b\" FROM \"t3\""
+    params: []
+    "#);
 }
 
 #[test]
@@ -963,22 +881,17 @@ fn exec_plan_order_by() {
 
     // Check sub-query
     let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            r#"SELECT "hash_testing"."identification_number" FROM "hash_testing""#.to_string(),
-            vec![]
-        )
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"hash_testing\".\"identification_number\" FROM \"hash_testing\""
+    params: []
+    "#);
 
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            r#"SELECT "COL_1" as "identification_number" FROM (SELECT "COL_1" FROM "TMP_0_0136") as "hash_testing" ORDER BY "hash_testing"."COL_1""#.to_string(),
-            vec![]
-        ));
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"COL_1\" as \"identification_number\" FROM (SELECT \"COL_1\" FROM \"TMP_0_0136\") as \"hash_testing\" ORDER BY \"hash_testing\".\"COL_1\""
+    params: []
+    "#);
 }
 
 #[test]
@@ -1021,7 +934,7 @@ fn exec_plan_distinct_order_by_limit_pushdown_alias() {
         sql.pattern
     );
     assert!(sql.pattern.contains("LIMIT 5"), "{}", sql.pattern);
-    insta::assert_snapshot!(sql.pattern, @r#" SELECT "gr_expr_1" FROM (SELECT "t"."a" as "gr_expr_1" FROM "t" GROUP BY "t"."a") ORDER BY "gr_expr_1" LIMIT 5"#);
+    assert_snapshot!(sql.pattern, @r#" SELECT "gr_expr_1" FROM (SELECT "t"."a" as "gr_expr_1" FROM "t" GROUP BY "t"."a") ORDER BY "gr_expr_1" LIMIT 5"#);
 }
 
 #[test]
@@ -1050,7 +963,7 @@ fn exec_plan_distinct_order_by_limit_pushdown_expr_over_duplicated_aliases() {
         sql.pattern
     );
     assert!(sql.pattern.contains("LIMIT 5"), "{}", sql.pattern);
-    insta::assert_snapshot!(sql.pattern, @r#" SELECT "gr_expr_1", "gr_expr_2" FROM (SELECT "t"."a" as "gr_expr_1", "t"."b" as "gr_expr_2" FROM "t" GROUP BY "t"."a", "t"."b") ORDER BY "gr_expr_1" + "gr_expr_1" LIMIT 5"#);
+    assert_snapshot!(sql.pattern, @r#" SELECT "gr_expr_1", "gr_expr_2" FROM (SELECT "t"."a" as "gr_expr_1", "t"."b" as "gr_expr_2" FROM "t" GROUP BY "t"."a", "t"."b") ORDER BY "gr_expr_1" + "gr_expr_1" LIMIT 5"#);
 }
 
 #[test]
@@ -1074,7 +987,7 @@ fn exec_plan_distinct_order_by_limit_pushdown_ordinal_position() {
     assert!(sql.params.is_empty());
     assert!(sql.pattern.contains("ORDER BY 1 DESC"), "{}", sql.pattern);
     assert!(sql.pattern.contains("LIMIT 5"), "{}", sql.pattern);
-    insta::assert_snapshot!(sql.pattern, @r#" SELECT "gr_expr_1", "gr_expr_2" FROM (SELECT "t"."a" as "gr_expr_1", "t"."b" as "gr_expr_2" FROM "t" GROUP BY "t"."a", "t"."b") ORDER BY 1 DESC LIMIT 5"#);
+    assert_snapshot!(sql.pattern, @r#" SELECT "gr_expr_1", "gr_expr_2" FROM (SELECT "t"."a" as "gr_expr_1", "t"."b" as "gr_expr_2" FROM "t" GROUP BY "t"."a", "t"."b") ORDER BY 1 DESC LIMIT 5"#);
 }
 
 #[test]
@@ -1094,7 +1007,7 @@ fn exec_plan_order_by_subquery_limit_no_pushdown() {
     assert!(sql.params.is_empty());
     assert!(!sql.pattern.contains("ORDER BY"), "{}", sql.pattern);
     assert!(!sql.pattern.contains("LIMIT "), "{}", sql.pattern);
-    insta::assert_snapshot!(sql.pattern, @r#"SELECT "t"."a" FROM "t""#);
+    assert_snapshot!(sql.pattern, @r#"SELECT "t"."a" FROM "t""#);
 }
 
 #[test]
@@ -1129,10 +1042,10 @@ fn exec_plan_window_limit_no_pushdown() {
         .unwrap();
 
     let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(r#"SELECT "t"."a" FROM "t""#.to_string(), vec![])
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"t\".\"a\" FROM \"t\""
+    params: []
+    "#);
 }
 
 #[test]
@@ -1188,22 +1101,17 @@ fn exec_plan_order_by_with_subquery() {
 
     // Check sub-query
     let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            r#"SELECT "unnamed_subquery"."identification_number" FROM (SELECT "hash_testing"."identification_number" FROM "hash_testing") as "unnamed_subquery""#.to_string(),
-            vec![]
-        )
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"unnamed_subquery\".\"identification_number\" FROM (SELECT \"hash_testing\".\"identification_number\" FROM \"hash_testing\") as \"unnamed_subquery\""
+    params: []
+    "#);
 
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            r#"SELECT "COL_1" as "identification_number" FROM (SELECT "COL_1" FROM "TMP_0_0136") as "hash_testing" ORDER BY "hash_testing"."COL_1""#.to_string(),
-            vec![]
-        ));
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"COL_1\" as \"identification_number\" FROM (SELECT \"COL_1\" FROM \"TMP_0_0136\") as \"hash_testing\" ORDER BY \"hash_testing\".\"COL_1\""
+    params: []
+    "#);
 }
 
 #[test]
@@ -1255,10 +1163,10 @@ fn exec_plan_order_by_with_join() {
         .unwrap();
     let sql =
         get_sql_from_execution_plan(exec_plan, sq_motion_child_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(r#"SELECT "t"."a" FROM "t""#.to_string(), vec![])
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"t\".\"a\" FROM \"t\""
+    params: []
+    "#);
 
     // Check order by subtree.
     let order_by_motion_child_id = exec_plan
@@ -1271,22 +1179,18 @@ fn exec_plan_order_by_with_join() {
         Snapshot::Oldest,
         TEMPLATE,
     );
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            r#"SELECT * FROM (SELECT "t"."a" FROM "t") as "f" INNER JOIN (SELECT "COL_1" FROM "TMP_0_0136") as "s" ON CAST($1 AS bool)"#.to_string(),
-            vec![Value::Boolean(true)]
-        )
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT * FROM (SELECT \"t\".\"a\" FROM \"t\") as \"f\" INNER JOIN (SELECT \"COL_1\" FROM \"TMP_0_0136\") as \"s\" ON CAST($1 AS bool)"
+    params:
+      - Boolean: true
+    "#);
 
     // Check main query.
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            r#"SELECT "COL_1" as "a", "COL_2" as "a" FROM (SELECT "COL_1","COL_2" FROM "TMP_0_0136") ORDER BY 1"#.to_string(),
-            vec![]
-        ));
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"COL_1\" as \"a\", \"COL_2\" as \"a\" FROM (SELECT \"COL_1\",\"COL_2\" FROM \"TMP_0_0136\") ORDER BY 1"
+    params: []
+    "#);
 }
 
 /// # Panics
@@ -1480,20 +1384,19 @@ fn check_parentheses() {
     let plan = query.get_exec_plan().get_ir_plan();
     let top_id = plan.get_top().unwrap();
 
-    let expected = PatternWithParams::new(
-        r#"SELECT "test_space"."id" FROM "test_space" WHERE "test_space"."sysFrom" = ((CAST($1 AS int) + CAST($2 AS int)) + CAST($3 AS int))"#.to_string(),
-        vec![Value::from(1), Value::from(3), Value::from(2)],
+    let sql = get_sql_from_execution_plan(
+        query.get_mut_exec_plan(),
+        top_id,
+        Snapshot::Oldest,
+        TEMPLATE,
     );
-
-    assert_eq!(
-        expected,
-        get_sql_from_execution_plan(
-            query.get_mut_exec_plan(),
-            top_id,
-            Snapshot::Oldest,
-            TEMPLATE
-        )
-    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"test_space\".\"id\" FROM \"test_space\" WHERE \"test_space\".\"sysFrom\" = CAST($1 AS int) + CAST($2 AS int) + CAST($3 AS int)"
+    params:
+      - Integer: 1
+      - Integer: 3
+      - Integer: 2
+    "#);
 }
 
 #[test]

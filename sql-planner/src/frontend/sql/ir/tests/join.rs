@@ -14,7 +14,7 @@ fn milti_join1() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t1.identification_number::int -> identification_number, t1.product_code::string -> product_code, t2.id::int -> id, t3.id::int -> id)
-      selection (t1.identification_number::int = 5::int) and (t1.product_code::string = '123'::string)
+      selection t1.identification_number::int = 5::int and t1.product_code::string = '123'::string
         left join on t1.identification_number::int = t3.id::int
           join on t1.identification_number::int = t2.id::int
             scan t1

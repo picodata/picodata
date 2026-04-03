@@ -19,7 +19,7 @@ fn concat2_test() {
     let plan = sql_to_optimized_ir(sql, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t1.a::string -> a)
-      selection (('1'::string || t1.a::string) || '2'::string) = '42'::string
+      selection ('1'::string || t1.a::string) || '2'::string = '42'::string
         scan t1
     execution options:
       sql_vdbe_opcode_max = 45000

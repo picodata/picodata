@@ -23,7 +23,7 @@ fn merge_tuples1() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a", "t"."b") = (CAST($1 AS int), CAST($2 AS int))) and (("t"."c" < CAST($3 AS int)) and (CAST($4 AS int) < "t"."a"))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a", "t"."b") = (CAST($1 AS int), CAST($2 AS int)) and "t"."c" < CAST($3 AS int) and CAST($4 AS int) < "t"."a""#
     );
 }
 
@@ -47,7 +47,7 @@ fn merge_tuples2() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."b", "t"."a") = (CAST($1 AS int), CAST($2 AS int))) and $3) or (("t"."c" >= CAST($4 AS int)) and (CAST($5 AS bool) and (CAST($6 AS int) <= "t"."a")))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."b", "t"."a") = (CAST($1 AS int), CAST($2 AS int)) and $3 or "t"."c" >= CAST($4 AS int) and CAST($5 AS bool) and CAST($6 AS int) <= "t"."a""#
     );
 }
 
@@ -89,7 +89,7 @@ fn merge_tuples5() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a", "t"."b") > (CAST($1 AS int), CAST($2 AS int))) and (CAST($3 AS int) < "t"."c")"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a", "t"."b") > (CAST($1 AS int), CAST($2 AS int)) and CAST($3 AS int) < "t"."c""#
     );
 }
 
@@ -104,7 +104,7 @@ fn merge_tuples6() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."b" <> CAST($1 AS int)) and ("t"."a" <> CAST($2 AS int))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE "t"."b" <> CAST($1 AS int) and "t"."a" <> CAST($2 AS int)"#
     );
 }
 
@@ -138,5 +138,5 @@ fn merge_tuples8() {
     let actual_pattern_params = check_transformation(input, vec![], &merge_tuples);
 
     assert_eq!(actual_pattern_params.params, vec![]);
-    insta::assert_snapshot!(actual_pattern_params.pattern, @r#"SELECT "t"."a", "t2"."f" FROM "t" INNER JOIN "t2" ON (("t"."b", "t"."a") = ("t2"."f", "t2"."e")) and (("t2"."f", "t"."a") = ("t2"."e", "t"."b"))"#);
+    insta::assert_snapshot!(actual_pattern_params.pattern, @r#"SELECT "t"."a", "t2"."f" FROM "t" INNER JOIN "t2" ON ("t"."b", "t"."a") = ("t2"."f", "t2"."e") and ("t2"."f", "t"."a") = ("t2"."e", "t"."b")"#);
 }

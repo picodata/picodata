@@ -21,7 +21,7 @@ fn split_columns1() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a" = CAST($1 AS int)) and (CAST($2 AS int) = "t"."b")"#
+        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST($1 AS int) and CAST($2 AS int) = "t"."b""#
     );
 }
 
@@ -75,7 +75,7 @@ fn split_columns5() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a" < CAST($1 AS int)) and (CAST($2 AS int) < "t"."b")) and ("t"."a" > CAST($3 AS int))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" < CAST($1 AS int) and CAST($2 AS int) < "t"."b" and "t"."a" > CAST($3 AS int)"#
     );
 }
 
