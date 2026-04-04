@@ -45,7 +45,7 @@ fn front_sql1() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
-      selection hash_testing.identification_number::int = 1::int
+      selection (hash_testing.identification_number::int = 1::int)
         scan hash_testing
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -63,7 +63,7 @@ fn front_sql2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
-      selection hash_testing.identification_number::int = 1::int and hash_testing.product_code::string = '1'::string or hash_testing.identification_number::int = 2::int and hash_testing.product_code::string = '2'::string
+      selection ((hash_testing.identification_number::int = 1::int and hash_testing.product_code::string = '1'::string) or (hash_testing.identification_number::int = 2::int and hash_testing.product_code::string = '2'::string))
         scan hash_testing
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -87,14 +87,14 @@ fn front_sql3() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t3.identification_number::int -> identification_number, t3.product_code::string -> product_code)
-      selection t3.identification_number::int = 1::int
+      selection (t3.identification_number::int = 1::int)
         scan t3
           union all
             projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
-              selection hash_testing.sys_op::int = 1::int
+              selection (hash_testing.sys_op::int = 1::int)
                 scan hash_testing
             projection (hash_testing_hist.identification_number::int -> identification_number, hash_testing_hist.product_code::string -> product_code)
-              selection hash_testing_hist.sys_op::int > 1::int
+              selection (hash_testing_hist.sys_op::int > 1::int)
                 scan hash_testing_hist
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -122,14 +122,14 @@ fn front_sql4() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t3.identification_number::int -> identification_number, t3.product_code::string -> product_code)
-      selection (t3.identification_number::int = 1::int or t3.identification_number::int = 2::int or t3.identification_number::int = 3::int) and (t3.product_code::string = '1'::string or t3.product_code::string = '2'::string)
+      selection (((t3.identification_number::int = 1::int or t3.identification_number::int = 2::int or t3.identification_number::int = 3::int) and (t3.product_code::string = '1'::string or t3.product_code::string = '2'::string)))
         scan t3
           union all
             projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
-              selection hash_testing.sys_op::int = 1::int
+              selection (hash_testing.sys_op::int = 1::int)
                 scan hash_testing
             projection (hash_testing_hist.identification_number::int -> identification_number, hash_testing_hist.product_code::string -> product_code)
-              selection hash_testing_hist.sys_op::int > 1::int
+              selection (hash_testing_hist.sys_op::int > 1::int)
                 scan hash_testing_hist
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -147,13 +147,13 @@ fn front_sql5() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
-      selection hash_testing.identification_number::int in ROW($0)
+      selection (hash_testing.identification_number::int in ROW($0))
         scan hash_testing
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
         scan
           projection (hash_testing_hist.identification_number::int -> identification_number)
-            selection hash_testing_hist.product_code::string = 'a'::string
+            selection (hash_testing_hist.product_code::string = 'a'::string)
               scan hash_testing_hist
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -172,8 +172,8 @@ fn front_sql6() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t.id::int -> id, hash_testing.product_units::bool -> product_units)
-      selection hash_testing.identification_number::int = 5::int and hash_testing.product_code::string = '123'::string
-        join on hash_testing.identification_number::int = t.id::int
+      selection ((hash_testing.identification_number::int = 5::int and hash_testing.product_code::string = '123'::string))
+        join on (hash_testing.identification_number::int = t.id::int)
           scan hash_testing
           motion [policy: full, program: ReshardIfNeeded]
             scan t
@@ -194,7 +194,7 @@ fn front_sql8() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t.identification_number::int -> identification_number, t.product_code::string -> product_code)
-      selection t.identification_number::int = 1::int
+      selection (t.identification_number::int = 1::int)
         scan hash_testing -> t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -229,24 +229,24 @@ fn front_sql9() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (t3.id::int -> id, t3."FIRST_NAME"::string -> "FIRST_NAME", t8.identification_number::int -> identification_number, t8.product_code::string -> product_code)
-      selection t3.id::int = 1::int and t8.identification_number::int = 1::int and t8.product_code::string = '123'::string
-        join on t3.id::int = t8.identification_number::int
+      selection ((t3.id::int = 1::int and t8.identification_number::int = 1::int and t8.product_code::string = '123'::string))
+        join on (t3.id::int = t8.identification_number::int)
           scan t3
             union all
               projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-                selection test_space.sys_op::int < 0::int and test_space."sysFrom"::int >= 0::int
+                selection ((test_space.sys_op::int < 0::int and test_space."sysFrom"::int >= 0::int))
                   scan test_space
               projection (test_space_hist.id::int -> id, test_space_hist."FIRST_NAME"::string -> "FIRST_NAME")
-                selection test_space_hist."sysFrom"::int <= 0::int
+                selection (test_space_hist."sysFrom"::int <= 0::int)
                   scan test_space_hist
           motion [policy: segment([ref(identification_number)]), program: ReshardIfNeeded]
             scan t8
               union all
                 projection (hash_testing_hist.identification_number::int -> identification_number, hash_testing_hist.product_code::string -> product_code)
-                  selection hash_testing_hist.sys_op::int > 0::int
+                  selection (hash_testing_hist.sys_op::int > 0::int)
                     scan hash_testing_hist
                 projection (hash_single_testing_hist.identification_number::int -> identification_number, hash_single_testing_hist.product_code::string -> product_code)
-                  selection hash_single_testing_hist.sys_op::int <= 0::int
+                  selection (hash_single_testing_hist.sys_op::int <= 0::int)
                     scan hash_single_testing_hist
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -315,7 +315,7 @@ fn front_sql16() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
-      selection hash_testing.product_code::string = 'кириллица'::string
+      selection (hash_testing.product_code::string = 'кириллица'::string)
         scan hash_testing
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -332,7 +332,7 @@ fn front_sql17() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (hash_testing.identification_number::int -> identification_number)
-      selection hash_testing.product_code::string is null
+      selection (hash_testing.product_code::string is null)
         scan hash_testing
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -349,7 +349,7 @@ fn front_sql18() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (hash_testing.product_code::string -> product_code)
-      selection hash_testing.product_code::string >= '1'::string and hash_testing.product_code::string <= '2'::string
+      selection ((hash_testing.product_code::string >= '1'::string and hash_testing.product_code::string <= '2'::string))
         scan hash_testing
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -366,7 +366,7 @@ fn front_sql19() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (hash_testing.identification_number::int -> identification_number)
-      selection not hash_testing.product_code::string is null
+      selection (not hash_testing.product_code::string is null)
         scan hash_testing
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -465,7 +465,7 @@ fn front_sql_between_with_additional_and_from_left() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t.id::int -> id)
-      selection t.id::int > 1::int and t.id::int >= t.id::int and t.id::int <= t.id::int + 10::int
+      selection ((t.id::int > 1::int and t.id::int >= t.id::int and t.id::int <= t.id::int + 10::int))
         scan test_space -> t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -483,7 +483,7 @@ fn front_sql_between_with_additional_not_from_left() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t.id::int -> id)
-      selection not (t.id::int >= t.id::int and t.id::int <= t.id::int + 10::int) and true::bool
+      selection ((not (t.id::int >= t.id::int and t.id::int <= t.id::int + 10::int) and true::bool))
         scan test_space -> t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -501,7 +501,7 @@ fn front_sql_between_with_additional_and_from_left_and_right() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t.id::int -> id)
-      selection t.id::int > 1::int and t.id::int >= t.id::int and t.id::int <= t.id::int + 10::int and true::bool
+      selection ((t.id::int > 1::int and t.id::int >= t.id::int and t.id::int <= t.id::int + 10::int and true::bool))
         scan test_space -> t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -520,7 +520,7 @@ fn front_sql_between_with_nested_not_from_the_left() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t.id::int -> id)
-      selection true::bool
+      selection (true::bool)
         scan test_space -> t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -538,7 +538,7 @@ fn front_sql_between_with_nested_and_from_the_left() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t.id::int -> id)
-      selection false::bool
+      selection (false::bool)
         scan test_space -> t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -586,7 +586,7 @@ fn front_sql_check_arbitrary_utf_in_single_quote_strings() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     projection (hash_testing.identification_number::int -> identification_number)
-      selection hash_testing.product_code::string = '«123»§#*&%@/// / // \\ ƵǖḘỺʥ ͑ ͑  ͕ΆΨѮښ ۞ܤ'::string
+      selection (hash_testing.product_code::string = '«123»§#*&%@/// / // \\ ƵǖḘỺʥ ͑ ͑  ͕ΆΨѮښ ۞ܤ'::string)
         scan hash_testing
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -665,7 +665,7 @@ fn front_projection_with_scan_specification_under_join() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op)
-      join on true::bool
+      join on (true::bool)
         scan hash_testing
         motion [policy: full, program: ReshardIfNeeded]
           projection (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op, test_space.bucket_id::int -> bucket_id)
@@ -685,7 +685,7 @@ fn front_projection_with_scan_specification_under_join_of_subqueries() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (ts_sq.id::int -> id, ts_sq."sysFrom"::int -> "sysFrom", ts_sq."FIRST_NAME"::string -> "FIRST_NAME", ts_sq.sys_op::int -> sys_op, hs.identification_number::int -> identification_number, hs.product_code::string -> product_code, hs.product_units::bool -> product_units, hs.sys_op::int -> sys_op)
-      join on true::bool
+      join on (true::bool)
         scan hash_testing -> hs
         motion [policy: full, program: ReshardIfNeeded]
           scan ts_sq
@@ -853,7 +853,7 @@ fn front_join_with_identical_columns() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (unnamed_subquery."sysFrom"::int -> "sysFrom", unnamed_subquery_1."sysFrom"::int -> "sysFrom")
-      join on true::bool
+      join on (true::bool)
         scan unnamed_subquery
           projection (test_space."sysFrom"::int -> "sysFrom")
             scan test_space
@@ -881,12 +881,12 @@ fn front_join_with_vtable_ambiguous_column_name() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op, unnamed_subquery.id::int -> id, unnamed_subquery.id::int -> id)
-      join on true::bool
+      join on (true::bool)
         scan test_space
         motion [policy: full, program: ReshardIfNeeded]
           scan unnamed_subquery
             projection (t1.id::int -> id, t2.id::int -> id)
-              join on true::bool
+              join on (true::bool)
                 scan t1
                   projection (test_space.id::int -> id)
                     scan test_space
@@ -932,7 +932,7 @@ fn front_case_simple() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
-    projection (case when true::bool = true::bool then 'Moscow'::string when 1::int <> 2::int and 4::int < 5::int then '42'::string else 'false'::string end -> case_result)
+    projection (case when true::bool = true::bool then 'Moscow'::string when (1::int <> 2::int and 4::int < 5::int) then '42'::string else 'false'::string end -> case_result)
       scan test_space
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -975,7 +975,7 @@ fn front_sql_subquery_column_duplicates() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (test_space.id::int -> id)
-      selection ROW(test_space.id::int, test_space.id::int) in ROW($0, $0)
+      selection (ROW(test_space.id::int, test_space.id::int) in ROW($0, $0))
         scan test_space
     subquery $0:
       scan
@@ -1106,11 +1106,11 @@ fn front_sql_join_on_bucket_id1() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t_mv.bucket_id::int -> bucket_id)
-      join on t_mv.bucket_id::int = t2.bucket_id::int
+      join on (t_mv.bucket_id::int = t2.bucket_id::int)
         scan t2
         scan t_mv
           projection (test_space.bucket_id::int -> bucket_id)
-            selection test_space.id::int = 1::int
+            selection (test_space.id::int = 1::int)
               scan test_space
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -1130,12 +1130,12 @@ fn front_sql_join_on_bucket_id2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t_mv.bucket_id::int -> bucket_id)
-      join on t_mv.bucket_id::int = t2.bucket_id::int or t2.e::int = t2.f::int
+      join on (t_mv.bucket_id::int = t2.bucket_id::int or t2.e::int = t2.f::int)
         scan t2
         motion [policy: full, program: ReshardIfNeeded]
           scan t_mv
             projection (test_space.bucket_id::int -> bucket_id)
-              selection test_space.id::int = 1::int
+              selection (test_space.id::int = 1::int)
                 scan test_space
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -1175,7 +1175,7 @@ fn front_sql_sq_on_bucket_id() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t.b::int -> b, t.e::int -> e)
-      selection ROW(t.b::int, t.e::int) in ROW($0, $0)
+      selection (ROW(t.b::int, t.e::int) in ROW($0, $0))
         scan t
           projection (t2.bucket_id::int -> b, t2.e::int -> e)
             scan t2
@@ -1219,7 +1219,7 @@ fn front_sql_exists_subquery_select_from_table() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (test_space.id::int -> id)
-      selection exists ROW($0)
+      selection (exists ROW($0))
         scan test_space
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
@@ -1240,7 +1240,7 @@ fn front_sql_not_exists_subquery_select_from_table() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (test_space.id::int -> id)
-      selection not exists ROW($0)
+      selection (not exists ROW($0))
         scan test_space
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
@@ -1261,13 +1261,13 @@ fn front_sql_exists_subquery_select_from_table_with_condition() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (test_space.id::int -> id)
-      selection exists ROW($0)
+      selection (exists ROW($0))
         scan test_space
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
         scan
           projection (0::int -> col_1)
-            selection hash_testing.identification_number::int <> 42::int
+            selection (hash_testing.identification_number::int <> 42::int)
               scan hash_testing
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -1389,7 +1389,7 @@ fn front_sql_groupby_join_1() {
         motion [policy: full, program: ReshardIfNeeded]
           projection (t2.product_code::string -> gr_expr_1, t2.product_units::bool -> gr_expr_2)
             group by (t2.product_code::string, t2.product_units::bool) output (t2.product_units::bool -> product_units, t2.product_code::string -> product_code, t2.identification_number::int -> identification_number, t.id::int -> id)
-              join on t2.identification_number::int = t.id::int
+              join on (t2.identification_number::int = t.id::int)
                 scan t2
                   projection (hash_testing.product_units::bool -> product_units, hash_testing.product_code::string -> product_code, hash_testing.identification_number::int -> identification_number)
                     scan hash_testing
@@ -1430,7 +1430,7 @@ fn front_sql_join() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t2.product_code::string -> product_code, t2.product_units::bool -> product_units)
-      join on t2.identification_number::int = t.id::int and not t.id::int is null
+      join on ((t2.identification_number::int = t.id::int and not t.id::int is null))
         scan t2
           projection (hash_testing.product_units::bool -> product_units, hash_testing.product_code::string -> product_code, hash_testing.identification_number::int -> identification_number)
             scan hash_testing
@@ -1453,7 +1453,7 @@ fn front_sql_join() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t1.product_code::string -> product_code, t1.product_units::bool -> product_units)
-      join on t1.identification_number::int = t2.id::int and not t2.id::int is null
+      join on ((t1.identification_number::int = t2.id::int and not t2.id::int is null))
         scan t1
           projection (hash_single_testing.product_units::bool -> product_units, hash_single_testing.product_code::string -> product_code, hash_single_testing.identification_number::int -> identification_number)
             scan hash_single_testing
@@ -1475,7 +1475,7 @@ fn front_sql_join() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t1.product_code::string -> product_code, t1.product_units::bool -> product_units)
-      join on t1.identification_number::int = t2.id::decimal and not t2.id::decimal is null
+      join on ((t1.identification_number::int = t2.id::decimal and not t2.id::decimal is null))
         scan t1
           projection (hash_single_testing.product_units::bool -> product_units, hash_single_testing.product_code::string -> product_code, hash_single_testing.identification_number::int -> identification_number)
             scan hash_single_testing
@@ -1569,7 +1569,7 @@ fn front_sql_distinct_asterisk() {
         motion [policy: full, program: ReshardIfNeeded]
           projection (unnamed_subquery.id::int -> gr_expr_1, unnamed_subquery_1.id::int -> gr_expr_2)
             group by (unnamed_subquery.id::int, unnamed_subquery_1.id::int) output (unnamed_subquery.id::int -> id, unnamed_subquery_1.id::int -> id)
-              join on true::bool
+              join on (true::bool)
                 scan unnamed_subquery
                   projection (test_space_hist.id::int -> id)
                     scan test_space_hist
@@ -1958,12 +1958,12 @@ fn front_sql_pg_style_params3() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (gr_expr_1::int -> col_1)
-      having sum(count_1::int)::int > 42::int
+      having (sum(count_1::int)::int > 42::int)
         group by (gr_expr_1::int) output (gr_expr_1::int, count_1::int)
           motion [policy: full, program: ReshardIfNeeded]
             projection (t.a::int + 42::int -> gr_expr_1, count(t.b::int::int)::int -> count_1)
               group by (t.a::int + 42::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
-                selection t.a::int = 42::int
+                selection (t.a::int = 42::int)
                   scan t
     execution options:
       sql_vdbe_opcode_max = 42
@@ -2050,7 +2050,7 @@ fn front_sql_pg_style_params9() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (1::int -> col_1, 2::int -> col_2, 3::int -> col_3)
-      selection 5::int = ROW($1) or exists ROW($0)
+      selection (5::int = ROW($1) or exists ROW($0))
         scan unnamed_subquery
           projection (4::int -> col_1)
     subquery $0:
@@ -2075,7 +2075,7 @@ fn front_sql_tnt_style_params1() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (1::int -> col_1, 2::int -> col_2, 3::int -> col_3)
-      selection 5::int = ROW($1) or exists ROW($0)
+      selection (5::int = ROW($1) or exists ROW($0))
         scan unnamed_subquery
           projection (4::int -> col_1)
     subquery $0:
@@ -2098,7 +2098,7 @@ fn front_sql_tnt_style_params2() {
     let plan = sql_to_optimized_ir(input, vec![Value::Integer(1)]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
-    projection (1::int >= 1::int and 1::int <= 2::int -> col_1)
+    projection ((1::int >= 1::int and 1::int <= 2::int) -> col_1)
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -2112,7 +2112,7 @@ fn front_sql_option_defaults() {
     let plan = sql_to_optimized_ir(input, vec![Value::Integer(1000), Value::Integer(10)]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
-      selection t.a::int = 1000::int and t.b::int = 10::int
+      selection ((t.a::int = 1000::int and t.b::int = 10::int))
         scan t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -2469,7 +2469,7 @@ fn front_sql_groupby_with_aggregates() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t1.a::int -> a, t1.b::int -> b, t1.c::decimal -> c, t2.g::int -> g, t2.e::int -> e, t2.f::decimal -> f)
-      join on ROW(t1.a::int, t1.b::int) = ROW(t2.e::int, t2.g::int)
+      join on (ROW(t1.a::int, t1.b::int) = ROW(t2.e::int, t2.g::int))
         scan t1
           projection (gr_expr_1::int -> a, gr_expr_2::int -> b, sum(sum_1::decimal)::decimal -> c)
             group by (gr_expr_1::int, gr_expr_2::int) output (gr_expr_1::int, gr_expr_2::int, sum_1::decimal)
@@ -2501,7 +2501,7 @@ fn front_sql_left_join() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (o.a::int -> a, i.c::int -> c, i.d::int -> d)
-      left join on o.a::int = i.c::int
+      left join on (o.a::int = i.c::int)
         scan o
           projection (t.a::int -> a)
             scan t
@@ -2527,7 +2527,7 @@ fn front_sql_left_join_single_left() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t1.a::decimal -> a, t2.b::int -> b)
-      left join on t1.a::decimal = t2.b::int
+      left join on (t1.a::decimal = t2.b::int)
         motion [policy: segment([ref(a)]), program: ReshardIfNeeded]
           scan t1
             projection (sum(sum_1::decimal)::decimal / 3::int -> a)
@@ -2557,7 +2557,7 @@ fn front_sql_left_join_single_left2() {
     // full motion should be under outer child
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t1.a::decimal -> a, t2.b::int -> b)
-      left join on t1.a::decimal + 3::int <> t2.b::int
+      left join on (t1.a::decimal + 3::int <> t2.b::int)
         motion [policy: segment([ref(a)]), program: ReshardIfNeeded]
           scan t1
             projection (sum(sum_1::decimal)::decimal / 3::int -> a)
@@ -2587,7 +2587,7 @@ fn front_sql_left_join_single_both() {
     // full motion should be under outer child
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t1.a::decimal -> a, t2.b::int -> b)
-      left join on t1.a::decimal <> t2.b::int
+      left join on (t1.a::decimal <> t2.b::int)
         scan t1
           projection (sum(sum_1::decimal)::decimal / 3::int -> a)
             motion [policy: full, program: ReshardIfNeeded]
@@ -2613,7 +2613,7 @@ fn front_sql_nested_subqueries() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t.a::int -> a)
-      selection t.a::int in ROW($1)
+      selection (t.a::int in ROW($1))
         scan t
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
@@ -2624,7 +2624,7 @@ fn front_sql_nested_subqueries() {
       motion [policy: full, program: ReshardIfNeeded]
         scan
           projection (t1.a::string::int -> col_1)
-            selection t1.a::string in ROW($0)
+            selection (t1.a::string in ROW($0))
               scan t1
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -2645,7 +2645,7 @@ fn front_sql_having1() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (gr_expr_1::int -> a, sum(sum_1::decimal)::decimal -> col_1)
-      having gr_expr_1::int > 1::int and sum(distinct gr_expr_2::decimal)::decimal > 1::int
+      having ((gr_expr_1::int > 1::int and sum(distinct gr_expr_2::decimal)::decimal > 1::int))
         group by (gr_expr_1::int) output (gr_expr_1::int, gr_expr_2::int, sum_1::decimal)
           motion [policy: full, program: ReshardIfNeeded]
             projection (t.a::int -> gr_expr_1, t.b::int::int -> gr_expr_2, sum(t.b::int::int)::decimal -> sum_1)
@@ -2667,7 +2667,7 @@ fn front_sql_having2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (sum(sum_1::decimal)::decimal * count(distinct gr_expr_1::int)::int -> col_1, sum(sum_1::decimal)::decimal -> col_2)
-      having sum(distinct gr_expr_1::decimal)::decimal > 1::int and sum(sum_1::decimal)::decimal > 1::int
+      having ((sum(distinct gr_expr_1::decimal)::decimal > 1::int and sum(sum_1::decimal)::decimal > 1::int))
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.b::int::int -> gr_expr_1, sum(t.a::int::int)::decimal -> sum_1)
             group by (t.b::int::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -2688,7 +2688,7 @@ fn front_sql_having3() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (sum(sum_1::decimal)::decimal -> col_1)
-      having sum(sum_1::decimal)::decimal > 1::int
+      having (sum(sum_1::decimal)::decimal > 1::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (sum(t.a::int::int)::decimal -> sum_1)
             scan t
@@ -2725,7 +2725,7 @@ fn front_sql_having_with_sq() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (gr_expr_1::int -> "sysFrom", sum(distinct gr_expr_2::decimal)::decimal -> sum, count(distinct gr_expr_2::int)::int -> count)
-      having ROW($0) > count(distinct gr_expr_2::int)::int
+      having (ROW($0) > count(distinct gr_expr_2::int)::int)
         group by (gr_expr_1::int) output (gr_expr_1::int, gr_expr_2::int)
           motion [policy: full, program: ReshardIfNeeded]
             projection (test_space."sysFrom"::int -> gr_expr_1, test_space.id::int::int -> gr_expr_2)
@@ -2735,7 +2735,7 @@ fn front_sql_having_with_sq() {
       motion [policy: full, program: ReshardIfNeeded]
         scan
           projection (test_space."sysFrom"::int -> "sysFrom")
-            selection test_space."sysFrom"::int = 2::int
+            selection (test_space."sysFrom"::int = 2::int)
               scan test_space
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -2772,7 +2772,7 @@ fn front_sql_having_with_sq_segment_motion() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (gr_expr_1::int -> "sysFrom", gr_expr_2::int -> sys_op, sum(distinct gr_expr_3::decimal)::decimal -> sum, count(distinct gr_expr_3::int)::int -> count)
-      having ROW(gr_expr_1::int, gr_expr_2::int) in ROW($0, $0)
+      having (ROW(gr_expr_1::int, gr_expr_2::int) in ROW($0, $0))
         group by (gr_expr_1::int, gr_expr_2::int) output (gr_expr_1::int, gr_expr_2::int, gr_expr_3::int)
           motion [policy: full, program: ReshardIfNeeded]
             projection (test_space."sysFrom"::int -> gr_expr_1, test_space.sys_op::int -> gr_expr_2, test_space.id::int::int -> gr_expr_3)
@@ -2802,7 +2802,7 @@ fn front_sql_having_with_sq_segment_local_motion() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (gr_expr_1::int -> "sysFrom", gr_expr_2::int -> sys_op, sum(distinct gr_expr_3::decimal)::decimal -> sum, count(distinct gr_expr_3::int)::int -> count)
-      having ROW(gr_expr_1::int, gr_expr_2::int) in ROW($0, $0)
+      having (ROW(gr_expr_1::int, gr_expr_2::int) in ROW($0, $0))
         group by (gr_expr_1::int, gr_expr_2::int) output (gr_expr_1::int, gr_expr_2::int, gr_expr_3::int)
           motion [policy: full, program: ReshardIfNeeded]
             projection (test_space."sysFrom"::int -> gr_expr_1, test_space.sys_op::int -> gr_expr_2, test_space.id::int::int -> gr_expr_3)
@@ -2879,11 +2879,11 @@ ON "t3"."a" = "ij"."id"
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t3.a::int -> a, t3.b::int -> b, ij.identification_number::int -> identification_number, ij.product_code::string -> product_code, ij.product_units::bool -> product_units, ij.sys_op::int -> sys_op, ij.id::int -> id)
-      join on t3.a::int = ij.id::int
+      join on (t3.a::int = ij.id::int)
         scan t5 -> t3
         scan ij
           projection (hash_single_testing.identification_number::int -> identification_number, hash_single_testing.product_code::string -> product_code, hash_single_testing.product_units::bool -> product_units, hash_single_testing.sys_op::int -> sys_op, ts.id::int -> id)
-            join on hash_single_testing.identification_number::int = ts.id::int
+            join on (hash_single_testing.identification_number::int = ts.id::int)
               scan hash_single_testing
               scan ts
                 projection (test_space.id::int -> id)
@@ -3025,7 +3025,7 @@ fn front_sql_insert_1() {
     insert into t on conflict: fail
       motion [policy: segment([value(NULL), ref(a)]), program: ReshardIfNeeded]
         projection (t.a::int -> a)
-          selection t.a::int = 1::int and t.b::int = 2::int or t.a::int = 2::int and t.b::int = 3::int
+          selection ((t.a::int = 1::int and t.b::int = 2::int) or (t.a::int = 2::int and t.b::int = 3::int))
             scan t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -3043,7 +3043,7 @@ fn front_sql_insert_2() {
     insert into t on conflict: fail
       motion [policy: local segment([ref(a), ref(b)]), program: ReshardIfNeeded]
         projection (t.a::int -> a, t.b::int -> b)
-          selection t.a::int = 1::int and t.b::int = 2::int
+          selection ((t.a::int = 1::int and t.b::int = 2::int))
             scan t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -3062,7 +3062,7 @@ fn front_sql_insert_3() {
     insert into t on conflict: fail
       motion [policy: segment([ref(b), ref(a)]), program: ReshardIfNeeded]
         projection (t.a::int -> a, t.b::int -> b)
-          selection t.a::int = 1::int and t.b::int = 2::int or t.a::int = 3::int and t.b::int = 4::int
+          selection ((t.a::int = 1::int and t.b::int = 2::int) or (t.a::int = 3::int and t.b::int = 4::int))
             scan t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -3080,7 +3080,7 @@ fn front_sql_insert_4() {
     insert into t on conflict: fail
       motion [policy: local segment([ref(a), ref(b)]), program: ReshardIfNeeded]
         projection (t.b::int -> b, t.a::int -> a)
-          selection t.a::int = 1::int and t.b::int = 2::int
+          selection ((t.a::int = 1::int and t.b::int = 2::int))
             scan t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -3098,7 +3098,7 @@ fn front_sql_insert_5() {
     insert into t on conflict: fail
       motion [policy: segment([ref(col_2), ref(col_1)]), program: ReshardIfNeeded]
         projection (5::int -> col_1, 6::int -> col_2)
-          selection t.a::int = 1::int and t.b::int = 2::int
+          selection ((t.a::int = 1::int and t.b::int = 2::int))
             scan t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -3229,7 +3229,7 @@ fn front_sql_update3() {
     update t (c = col_0)
       motion [policy: local, program: ReshardIfNeeded]
         projection (t.a::int + t.b::int -> col_0, t.b::int -> col_1)
-          selection t.c::int = 1::int
+          selection (t.c::int = 1::int)
             scan t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -3250,7 +3250,7 @@ fn front_sql_update4() {
     update t (d = col_0, c = col_0)
       motion [policy: local, program: ReshardIfNeeded]
         projection (unnamed_subquery.b1::int * 2::int -> col_0, t.b::int -> col_1)
-          join on t.c::int = unnamed_subquery.b1::int
+          join on (t.c::int = unnamed_subquery.b1::int)
             scan t
             motion [policy: full, program: ReshardIfNeeded]
               scan unnamed_subquery
@@ -3274,7 +3274,7 @@ fn front_sql_update5() {
     update t3_2 (b = col_0)
       motion [policy: local, program: ReshardIfNeeded]
         projection (test_space.id::int -> col_0, t3_2.a::int -> col_1)
-          join on t3_2.a::int = test_space.id::int
+          join on (t3_2.a::int = test_space.id::int)
             scan t3_2
             scan test_space
     execution options:
@@ -3295,7 +3295,7 @@ fn front_sql_update6() {
     update t3 (b = col_0)
       motion [policy: local, program: ReshardIfNeeded]
         projection (2::int -> col_0, t3.a::string -> col_1)
-          selection t3.b::int in ROW($0)
+          selection (t3.b::int in ROW($0))
             scan t3
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
@@ -3358,7 +3358,7 @@ fn front_sql_not_true() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t.a::int -> a)
-      selection not true::bool
+      selection (not true::bool)
         scan t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -3372,7 +3372,7 @@ fn front_sql_not_equal() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1")
-      selection false::bool
+      selection (false::bool)
         scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values
@@ -3389,7 +3389,7 @@ fn front_sql_not_cast() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1")
-      selection false::bool
+      selection (false::bool)
         scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values
@@ -3406,7 +3406,7 @@ fn from_sql_not_column() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (unnamed_subquery."COLUMN_1"::bool -> "COLUMN_1")
-      selection not unnamed_subquery."COLUMN_1"::bool
+      selection (not unnamed_subquery."COLUMN_1"::bool)
         scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values
@@ -3423,7 +3423,7 @@ fn front_sql_not_or() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1")
-      selection true::bool
+      selection (true::bool)
         scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values
@@ -3456,7 +3456,7 @@ fn front_sql_not_or_with_parentheses() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1")
-      selection false::bool
+      selection (false::bool)
         scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values
@@ -3473,7 +3473,7 @@ fn front_sql_not_exists() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1")
-      selection not exists ROW($0)
+      selection (not exists ROW($0))
         scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values
@@ -3497,7 +3497,7 @@ fn front_sql_not_in() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1")
-      selection not 1::int in ROW($0)
+      selection (not 1::int in ROW($0))
         scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values
@@ -3530,8 +3530,8 @@ fn front_sql_not_complex_query() {
     let plan = sql_to_optimized_ir(input, vec![Value::from(1), Value::from(true)]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (not (not true::bool and 1::int + 1::int <> 1::int) -> col_1)
-      selection not exists ROW($0)
-        join on not ts.nid::bool or false::bool <> (not false::bool)::bool
+      selection (not exists ROW($0))
+        join on (not ts.nid::bool or false::bool <> (not false::bool)::bool)
           scan ts
             projection (not test_space.id::int <> 2::int -> nid)
               scan test_space
@@ -3542,7 +3542,7 @@ fn front_sql_not_complex_query() {
     subquery $0:
       scan
         projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1")
-          selection false::bool
+          selection (false::bool)
             scan unnamed_subquery
               motion [policy: full, program: ReshardIfNeeded]
                 values
@@ -3598,7 +3598,7 @@ fn front_sql_current_date() {
     let plan = sql_to_optimized_ir(input, vec![]);
     let expected_explain = format!(
         r#"projection ('{today}'::datetime -> col_1)
-  selection to_date('2010/10/10'::string, '%Y/%d/%m'::string)::datetime < '{today}'::datetime
+  selection (to_date('2010/10/10'::string, '%Y/%d/%m'::string)::datetime < '{today}'::datetime)
     scan unnamed_subquery
       motion [policy: full, program: ReshardIfNeeded]
         values
@@ -3966,7 +3966,7 @@ fn front_select_without_scan_6() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (ROW($1) -> col_1)
-      selection t2.f::int in ROW($0)
+      selection (t2.f::int in ROW($0))
         scan t2
     subquery $0:
       scan

@@ -80,7 +80,7 @@ fn front_sql_global_tbl_sq1() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (global_t.a::int -> a, global_t.b::int -> b)
-      selection global_t.a::int in ROW($1) or global_t.a::int in ROW($0)
+      selection (global_t.a::int in ROW($1) or global_t.a::int in ROW($0))
         scan global_t
     subquery $0:
       scan
@@ -114,7 +114,7 @@ fn front_sql_global_tbl_multiple_sqs1() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (global_t.a::int -> a, global_t.b::int -> b)
-      selection ROW(global_t.a::int, global_t.b::int) in ROW($1, $1) and global_t.a::int in ROW($0)
+      selection ((ROW(global_t.a::int, global_t.b::int) in ROW($1, $1) and global_t.a::int in ROW($0)))
         scan global_t
     subquery $0:
       scan
@@ -150,7 +150,7 @@ fn front_sql_global_tbl_multiple_sqs2() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (global_t.a::int -> a, global_t.b::int -> b)
-      selection ROW(global_t.a::int, global_t.b::int) in ROW($1, $1) or global_t.a::int in ROW($0)
+      selection (ROW(global_t.a::int, global_t.b::int) in ROW($1, $1) or global_t.a::int in ROW($0))
         scan global_t
     subquery $0:
       scan
@@ -181,7 +181,7 @@ fn front_sql_global_tbl_sq2() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (global_t.a::int -> a, global_t.b::int -> b)
-      selection ROW(global_t.a::int, global_t.b::int) in ROW($0, $0)
+      selection (ROW(global_t.a::int, global_t.b::int) in ROW($0, $0))
         scan global_t
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
@@ -207,7 +207,7 @@ fn front_sql_global_tbl_sq3() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (global_t.a::int -> a, global_t.b::int -> b)
-      selection not ROW(global_t.a::int, global_t.b::int) in ROW($1, $1) or ROW(global_t.a::int, global_t.b::int) < ROW($0, $0)
+      selection (not ROW(global_t.a::int, global_t.b::int) in ROW($1, $1) or ROW(global_t.a::int, global_t.b::int) < ROW($0, $0))
         scan global_t
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
@@ -238,7 +238,7 @@ fn front_sql_global_tbl_sq4() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (hash_testing.product_code::string -> product_code)
-      join on t.a::int = hash_testing.identification_number::int and hash_testing.product_code::string in ROW($0)
+      join on ((t.a::int = hash_testing.identification_number::int and hash_testing.product_code::string in ROW($0)))
         scan t
         motion [policy: full, program: ReshardIfNeeded]
           projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op, hash_testing.bucket_id::int -> bucket_id)
@@ -265,7 +265,7 @@ fn front_sql_global_tbl_sq5() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t.a::int -> a, t2.f::int -> f)
-      join on ROW(t.a::int, t.b::int) = ROW(t2.e::int, t2.f::int) and t.c::int in ROW($0)
+      join on ((ROW(t.a::int, t.b::int) = ROW(t2.e::int, t2.f::int) and t.c::int in ROW($0)))
         scan t
         scan t2
     subquery $0:
@@ -294,8 +294,8 @@ fn front_sql_global_tbl_sq6() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t.a::int -> a, t2.f::int -> f)
-      selection t2.e::int in ROW($3)
-        join on ROW(t.a::int, t.b::int) = ROW(t2.e::int, t2.f::int) or t.c::int in ROW($2) or exists ROW($0) and not t.d::int in ROW($1)
+      selection (t2.e::int in ROW($3))
+        join on (ROW(t.a::int, t.b::int) = ROW(t2.e::int, t2.f::int) or t.c::int in ROW($2) or (exists ROW($0) and not t.d::int in ROW($1)))
           scan t
           motion [policy: full, program: ReshardIfNeeded]
             projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
@@ -303,7 +303,7 @@ fn front_sql_global_tbl_sq6() {
     subquery $0:
       scan
         projection (global_t.a::int * 20::int -> a1)
-          selection global_t.a::int = 1::int
+          selection (global_t.a::int = 1::int)
             scan global_t
     subquery $1:
       scan
@@ -336,7 +336,7 @@ fn front_sql_global_tbl_sq7() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t.a::int -> a, t2.f::int -> f)
-      join on ROW(t.a::int, t.b::int) = ROW(t2.e::int, t2.f::int) or t.c::int in ROW($1) or not t.d::int in ROW($0)
+      join on (ROW(t.a::int, t.b::int) = ROW(t2.e::int, t2.f::int) or t.c::int in ROW($1) or not t.d::int in ROW($0))
         scan t
         motion [policy: full, program: ReshardIfNeeded]
           projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
@@ -375,7 +375,7 @@ fn front_sql_global_join1() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t2.e::int -> e, global_t.a::int -> a)
-      join on true::bool
+      join on (true::bool)
         scan global_t
         scan t2
     execution options:
@@ -398,7 +398,7 @@ fn front_sql_global_join2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t2.e::int -> e, global_t.a::int -> a)
-      join on t2.e::int = global_t.a::int or global_t.b::int = t2.f::int
+      join on (t2.e::int = global_t.a::int or global_t.b::int = t2.f::int)
         scan t2
         scan global_t
     execution options:
@@ -420,7 +420,7 @@ fn front_sql_global_join3() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t2.e::int -> e, global_t.a::int -> a)
-      left join on t2.e::int = global_t.a::int or global_t.b::int = t2.f::int
+      left join on (t2.e::int = global_t.a::int or global_t.b::int = t2.f::int)
         scan t2
         scan global_t
     execution options:
@@ -442,7 +442,7 @@ fn front_sql_global_join4() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (s.e::decimal -> e)
-      left join on true::bool
+      left join on (true::bool)
         scan s
           projection (sum(sum_1::decimal)::decimal -> e)
             motion [policy: full, program: ReshardIfNeeded]
@@ -468,7 +468,7 @@ fn front_sql_global_join5() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (s.e::decimal -> e)
-      left join on true::bool
+      left join on (true::bool)
         scan global_t
         scan s
           projection (sum(sum_1::decimal)::decimal -> e)
@@ -494,7 +494,7 @@ fn front_sql_global_join6() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (s.e::int -> e)
-      join on true::bool
+      join on (true::bool)
         scan global_t
         scan s
           projection (t2.e::int * t2.e::int -> e)
@@ -518,7 +518,7 @@ fn front_sql_global_join7() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (s.e::int -> e)
-      join on true::bool
+      join on (true::bool)
         scan s
           projection (t2.e::int * t2.e::int -> e)
             scan t2
@@ -542,7 +542,7 @@ fn front_sql_global_join8() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (unnamed_subquery.e::int -> e)
-      join on true::bool
+      join on (true::bool)
         scan unnamed_subquery
           projection (global_t.a::int * global_t.a::int -> e)
             scan global_t
@@ -566,7 +566,7 @@ fn front_sql_global_join9() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (unnamed_subquery.e::int -> e)
-      left join on true::bool
+      left join on (true::bool)
         scan unnamed_subquery
           projection (t2.e::int * t2.e::int -> e)
             scan t2
@@ -590,7 +590,7 @@ fn front_sql_global_join10() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (unnamed_subquery.e::int -> e)
-      join on unnamed_subquery.e::int in ROW($0)
+      join on (unnamed_subquery.e::int in ROW($0))
         scan unnamed_subquery
           projection (global_t.a::int * global_t.a::int -> e)
             scan global_t
@@ -619,7 +619,7 @@ fn front_sql_global_join11() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (unnamed_subquery.e::int -> e)
-      join on ROW(unnamed_subquery.e::int, unnamed_subquery.e::int) in ROW($0, $0)
+      join on (ROW(unnamed_subquery.e::int, unnamed_subquery.e::int) in ROW($0, $0))
         scan unnamed_subquery
           projection (global_t.a::int * global_t.a::int -> e)
             scan global_t
@@ -700,7 +700,7 @@ fn front_sql_global_aggregate4() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (global_t.b::int + global_t.a::int -> col_1, sum(global_t.a::int::int)::decimal -> col_2)
-      having avg(global_t.b::int::int)::decimal > 3::int
+      having (avg(global_t.b::int::int)::decimal > 3::int)
         group by (global_t.b::int + global_t.a::int) output (global_t.a::int -> a, global_t.b::int -> b)
           scan global_t
     execution options:
@@ -722,9 +722,9 @@ fn front_sql_global_aggregate5() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (global_t.b::int + global_t.a::int -> col_1, sum(global_t.a::int::int)::decimal -> col_2)
-      having avg(global_t.b::int::int)::decimal > 3::int
+      having (avg(global_t.b::int::int)::decimal > 3::int)
         group by (global_t.b::int + global_t.a::int) output (global_t.a::int -> a, global_t.b::int -> b)
-          selection ROW(global_t.a::int, global_t.b::int) in ROW($0, $0)
+          selection (ROW(global_t.a::int, global_t.b::int) in ROW($0, $0))
             scan global_t
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
@@ -750,7 +750,7 @@ fn front_sql_global_left_join1() {
     projection (unnamed_join.e::int -> e, unnamed_join.b::int -> b)
       motion [policy: full, program: AddMissingRowsForLeftJoin]
         projection (global_t.a::int -> a, global_t.b::int -> b, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
-          join on true::bool
+          join on (true::bool)
             motion [policy: full, program: ReshardIfNeeded]
               projection (global_t.a::int -> a, global_t.b::int -> b)
                 scan global_t
@@ -776,7 +776,7 @@ fn front_sql_global_left_join2() {
       group by (unnamed_join.e::int) output (unnamed_join.a::int -> a, unnamed_join.b::int -> b, unnamed_join.e::int -> e, unnamed_join.f::int -> f, unnamed_join.g::int -> g, unnamed_join.h::int -> h, unnamed_join.bucket_id::int -> bucket_id)
         motion [policy: full, program: AddMissingRowsForLeftJoin]
           projection (global_t.a::int -> a, global_t.b::int -> b, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
-            join on true::bool
+            join on (true::bool)
               motion [policy: full, program: ReshardIfNeeded]
                 projection (global_t.a::int -> a, global_t.b::int -> b)
                   scan global_t
@@ -801,7 +801,7 @@ fn front_sql_global_left_join3() {
     projection (unnamed_join.e::int -> e, unnamed_join.b::int -> b)
       motion [policy: full, program: AddMissingRowsForLeftJoin]
         projection (unnamed_subquery.b::int -> b, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
-          join on true::bool
+          join on (true::bool)
             motion [policy: full, program: ReshardIfNeeded]
               scan unnamed_subquery
                 projection (global_t.b::int * global_t.b::int -> b)
@@ -829,7 +829,7 @@ fn front_sql_global_left_join4() {
     projection (unnamed_join.e::int -> e, unnamed_join.b::int -> b)
       motion [policy: full, program: AddMissingRowsForLeftJoin]
         projection (unnamed_subquery.b::int -> b, unnamed_subquery_1.e::int -> e)
-          join on true::bool
+          join on (true::bool)
             motion [policy: full, program: ReshardIfNeeded]
               scan unnamed_subquery
                 projection (global_t.b::int * global_t.b::int -> b)
@@ -1100,14 +1100,14 @@ fn check_plan_except_global_vs_segment() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     except
       projection (global_t.a::int -> a, global_t.b::int -> b)
-        selection global_t.a::int = 1::int
+        selection (global_t.a::int = 1::int)
           scan global_t
       motion [policy: full, program: ReshardIfNeeded]
         intersect
           projection (t2.e::int -> e, t2.f::int -> f)
             scan t2
           projection (global_t.a::int -> a, global_t.b::int -> b)
-            selection global_t.a::int = 1::int
+            selection (global_t.a::int = 1::int)
               scan global_t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -1276,8 +1276,8 @@ fn check_plan_except_non_trivial_global_subtree_vs_any() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     except
       projection (global_t.b::int -> b)
-        selection global_t.a::int = 1::int
-          left join on global_t.a::int = unnamed_subquery."B"::int
+        selection (global_t.a::int = 1::int)
+          left join on (global_t.a::int = unnamed_subquery."B"::int)
             scan global_t
             scan unnamed_subquery
               projection (global_t.b::int -> "B")
@@ -1287,8 +1287,8 @@ fn check_plan_except_non_trivial_global_subtree_vs_any() {
           projection (t2.e::int -> e)
             scan t2
           projection (global_t.b::int -> b)
-            selection global_t.a::int = 1::int
-              left join on global_t.a::int = unnamed_subquery."B"::int
+            selection (global_t.a::int = 1::int)
+              left join on (global_t.a::int = unnamed_subquery."B"::int)
                 scan global_t
                 scan unnamed_subquery
                   projection (global_t.b::int -> "B")

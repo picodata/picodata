@@ -77,7 +77,7 @@ fn bucket_id_from_join() {
     let plan = sql_to_optimized_ir(input, vec![]);
     assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (t1.bucket_id::int -> bucket_id)
-      join on true::bool
+      join on (true::bool)
         scan t -> t1
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)

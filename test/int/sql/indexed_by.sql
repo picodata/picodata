@@ -96,7 +96,7 @@ SELECT * FROM ( SELECT "t"."a", "t"."b", "t"."c" FROM "t" INDEXED BY "aaa" WHERE
 explain SELECT a FROM t INDEXED BY aaa WHERE true;
 -- EXPECTED:
 projection (t.a::int -> a)
-  selection true::bool
+  selection (true::bool)
     scan t (indexed by aaa)
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -108,7 +108,7 @@ buckets = [1-3000]
 explain SELECT a FROM t AS ttt INDEXED BY aaa WHERE true;
 -- EXPECTED:
 projection (ttt.a::int -> a)
-  selection true::bool
+  selection (true::bool)
     scan t -> ttt (indexed by aaa)
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -134,7 +134,7 @@ explain DELETE FROM t INDEXED by aaa WHERE true
 delete from t
   motion [policy: local, program: [PrimaryKey(0), ReshardIfNeeded]]
     projection (t.a::int -> pk_col_0)
-      selection true::bool
+      selection (true::bool)
         scan t (indexed by aaa)
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -148,7 +148,7 @@ explain UPDATE t INDEXED BY aaa SET b = d FROM s INDEXED BY bbb WHERE TRUE
 update t (b = col_0)
   motion [policy: local, program: ReshardIfNeeded]
     projection (s.d::int -> col_0, t.a::int -> col_1)
-      join on true::bool
+      join on (true::bool)
         scan t (indexed by aaa)
         motion [policy: full, program: ReshardIfNeeded]
           projection (s.d::int -> d, s.bucket_id::int -> bucket_id, s.e::int -> e, s.f::int -> f)

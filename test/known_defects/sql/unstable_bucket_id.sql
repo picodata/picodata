@@ -8,7 +8,7 @@ CREATE TABLE t (a INT, b DECIMAL, PRIMARY KEY (b));
 EXPLAIN SELECT * FROM t WHERE b = 1;
 -- EXPECTED:
 projection (t.a::int -> a, t.b::decimal -> b)
-  selection t.b::decimal = 1::int
+  selection (t.b::decimal = 1::int)
     scan t
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -20,7 +20,7 @@ buckets = [1934]
 EXPLAIN SELECT * FROM t WHERE b = 1::decimal;
 -- EXPECTED:
 projection (t.a::int -> a, t.b::decimal -> b)
-  selection t.b::decimal = 1::decimal
+  selection (t.b::decimal = 1::decimal)
     scan t
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -32,7 +32,7 @@ buckets = [2135]
 EXPLAIN SELECT * FROM t WHERE b = 1.0;
 -- EXPECTED:
 projection (t.a::int -> a, t.b::decimal -> b)
-  selection t.b::decimal = 1.0::decimal
+  selection (t.b::decimal = 1.0::decimal)
     scan t
 execution options:
   sql_vdbe_opcode_max = 45000

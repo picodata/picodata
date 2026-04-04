@@ -43,7 +43,7 @@ fn select_selection() {
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @"
     projection (t3.a::string -> a, t3.b::int -> b)
-      selection t3.a::string = 'kek'::string
+      selection (t3.a::string = 'kek'::string)
         scan t3
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -61,7 +61,7 @@ fn update_selection() {
     update t (c = col_0)
       motion [policy: local, program: ReshardIfNeeded]
         projection (2::int -> col_0, t.b::int -> col_1)
-          selection t.a::int = 1::int and t.b::int = 2::decimal
+          selection ((t.a::int = 1::int and t.b::int = 2::decimal))
             scan t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -79,7 +79,7 @@ fn delete_selection() {
     delete from t2
       motion [policy: local, program: [PrimaryKey(0, 1), ReshardIfNeeded]]
         projection (t2.g::int -> pk_col_0, t2.h::int -> pk_col_1)
-          selection t2.e::int = 3::int and t2.f::int = 2::decimal
+          selection ((t2.e::int = 3::int and t2.f::int = 2::decimal))
             scan t2
     execution options:
       sql_vdbe_opcode_max = 45000

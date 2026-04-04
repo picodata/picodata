@@ -138,10 +138,10 @@ fn reuse_cte_values() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (t.c::int -> c)
-      join on true::bool
+      join on (true::bool)
         scan t
           projection (count(*)::int -> c)
-            join on true::bool
+            join on (true::bool)
               scan cte c1($0)
               scan cte c2($0)
         scan cte cte($0)
@@ -196,7 +196,7 @@ fn join_cte() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (t."FIRST_NAME"::string -> "FIRST_NAME")
-      join on t."FIRST_NAME"::string = cte.a::string
+      join on (t."FIRST_NAME"::string = cte.a::string)
         scan test_space -> t
         scan cte cte($0)
     subquery $0:
@@ -330,7 +330,7 @@ fn used_once_single_node_cte_does_not_materialize() {
         scan cte
           limit 1
             projection (t.a::int -> a)
-              selection ROW(t.a::int, t.b::int) = ROW(1::int, 2::int)
+              selection (ROW(t.a::int, t.b::int) = ROW(1::int, 2::int))
                 scan t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -348,12 +348,12 @@ fn sq_cte() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
-      selection test_space."FIRST_NAME"::string in ROW($1)
+      selection (test_space."FIRST_NAME"::string in ROW($1))
         scan test_space
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
         projection (test_space."FIRST_NAME"::string -> a)
-          selection test_space."FIRST_NAME"::string = 'hi'::string
+          selection (test_space."FIRST_NAME"::string = 'hi'::string)
             scan test_space
     subquery $1:
       scan
@@ -438,7 +438,7 @@ fn join_in_cte() {
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
         projection (t1."FIRST_NAME"::string -> "FIRST_NAME")
-          join on t1."FIRST_NAME"::string = t2.id::int::string
+          join on (t1."FIRST_NAME"::string = t2.id::int::string)
             scan test_space -> t1
             motion [policy: full, program: ReshardIfNeeded]
               projection (t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op, t2.bucket_id::int -> bucket_id)
@@ -544,7 +544,7 @@ fn cte_with_left_join() {
     projection (unnamed_join."E"::int -> "E")
       motion [policy: full, program: AddMissingRowsForLeftJoin]
         projection (cte."E"::int -> "E", t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
-          join on true::bool
+          join on (true::bool)
             scan cte cte($0)
             scan t2
     subquery $0:

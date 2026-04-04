@@ -403,7 +403,7 @@ buckets = [1-3000]
 EXPLAIN SELECT "id" FROM "testing_space" WHERE (VALUES (true));
 -- EXPECTED:
 projection (testing_space.id::int -> id)
-  selection ROW($0)
+  selection (ROW($0))
     scan testing_space
 subquery $0:
   scan

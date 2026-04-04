@@ -465,7 +465,7 @@ buckets = [1-3000]
 update characters (name = col_0, year = col_1)
   motion [policy: local, program: ReshardIfNeeded]
     projection ('Etch'::string -> col_0, 2010::int -> col_1, characters.id::int -> col_2)
-      selection characters.id::int = 2::int
+      selection (characters.id::int = 2::int)
         scan characters
 execution options:
   sql_vdbe_opcode_max = 45000

@@ -42,7 +42,7 @@ fn test_query_explain_3() {
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @"
     projection (t2.e::int -> e)
-      selection t2.e::int = 1::int and t2.f::int = 13::int
+      selection ((t2.e::int = 1::int and t2.f::int = 13::int))
         scan t2
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -80,7 +80,7 @@ fn test_query_explain_prepared_single_key_aggregate_stays_single_node() {
         ExecutingQuery::from_text_and_params(metadata, sql, vec![Value::Integer(1)]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @"
     projection (count(*)::int -> col_1)
-      selection t5.a::int = 1::int
+      selection (t5.a::int = 1::int)
         scan t5
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -102,7 +102,7 @@ fn test_query_explain_prepared_single_key_with_constant_keeps_reduce_stage() {
     projection (sum(count_1::int)::int -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (count(*)::int -> count_1)
-          selection t5.a::int = 1::int and t5.a::int = 1::int
+          selection ((t5.a::int = 1::int and t5.a::int = 1::int))
             scan t5
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -128,7 +128,7 @@ fn test_query_explain_prepared_reused_parameters_keep_reduce_stage() {
     projection (sum(count_1::int)::int -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (count(*)::int -> count_1)
-          selection t5.a::int = 1::int and t5.a::int = 1::int and t5.a::int = 1::int
+          selection ((t5.a::int = 1::int and t5.a::int = 1::int and t5.a::int = 1::int))
             scan t5
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -257,7 +257,7 @@ fn test_query_explain_10() {
     update t2 (f = col_1, h = col_3, bucket_id = col_4, e = col_0, g = col_2)
       motion [policy: segment([]), program: [PrimaryKey(2, 3), RearrangeForShardedUpdate(0, 1)]]
         projection (20::int -> col_0, t2.f::int -> col_1, t2.g::int -> col_2, t2.h::int -> col_3, t2.bucket_id::int -> col_4, t2.e::int -> col_5, t2.f::int -> col_6)
-          selection ROW(t2.e::int, t2.f::int) = ROW(10::int, 10::int)
+          selection (ROW(t2.e::int, t2.f::int) = ROW(10::int, 10::int))
             scan t2
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -287,15 +287,15 @@ fn test_query_explain_11() {
         motion [policy: full, program: ReshardIfNeeded]
           projection (unnamed_subquery_1.a::string -> gr_expr_1, count(unnamed_subquery_1.b::int::int)::int -> count_1)
             group by (unnamed_subquery_1.a::string) output (unnamed_subquery.e::int -> e, unnamed_subquery.f::int -> f, unnamed_subquery_1.a::string -> a, unnamed_subquery_1.b::int -> b)
-              join on unnamed_subquery.e::int = unnamed_subquery_1.b::int
+              join on (unnamed_subquery.e::int = unnamed_subquery_1.b::int)
                 scan unnamed_subquery
                   projection (t2.e::int -> e, t2.f::int -> f)
-                    selection ROW(t2.e::int, t2.f::int) = ROW(10::int, 10::int)
+                    selection (ROW(t2.e::int, t2.f::int) = ROW(10::int, 10::int))
                       scan t2
                 motion [policy: full, program: ReshardIfNeeded]
                   scan unnamed_subquery_1
                     projection (t1.a::string -> a, t1.b::int -> b)
-                      selection ROW(t1.a::string, t1.b::int) = ROW('20'::string, 20::int)
+                      selection (ROW(t1.a::string, t1.b::int) = ROW('20'::string, 20::int))
                         scan t1
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -320,15 +320,15 @@ fn test_query_explain_12() {
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @"
     projection (unnamed_subquery_1.a::string -> a)
-      join on unnamed_subquery.e::int = unnamed_subquery_1.b::int
+      join on (unnamed_subquery.e::int = unnamed_subquery_1.b::int)
         scan unnamed_subquery
           projection (t2.e::int -> e, t2.f::int -> f)
-            selection ROW(t2.e::int, t2.f::int) = ROW(10::int, 10::int)
+            selection (ROW(t2.e::int, t2.f::int) = ROW(10::int, 10::int))
               scan t2
         motion [policy: full, program: ReshardIfNeeded]
           scan unnamed_subquery_1
             projection (t1.a::string -> a, t1.b::int -> b)
-              selection ROW(t1.a::string, t1.b::int) = ROW('20'::string, 20::int)
+              selection (ROW(t1.a::string, t1.b::int) = ROW('20'::string, 20::int))
                 scan t1
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -347,7 +347,7 @@ fn test_query_explain_13() {
     insert into global_t on conflict: fail
       motion [policy: full, program: ReshardIfNeeded]
         projection (t1.a::string -> a, t1.b::int -> b)
-          selection ROW(t1.a::string, t1.b::int) = ROW('1'::string, 1::int)
+          selection (ROW(t1.a::string, t1.b::int) = ROW('1'::string, 1::int))
             scan t1
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -364,7 +364,7 @@ fn test_query_explain_14() {
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @"
     projection (t1.a::string -> a, t1.b::int -> b)
-      selection ROW(t1.a::string, t1.b::int) = ROW('1'::string, 1::int) and ROW(t1.a::string, t1.b::int) = ROW('2'::string, 2::int)
+      selection ((ROW(t1.a::string, t1.b::int) = ROW('1'::string, 1::int) and ROW(t1.a::string, t1.b::int) = ROW('2'::string, 2::int)))
         scan t1
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -434,7 +434,7 @@ fn test_query_explain_18() {
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1", unnamed_subquery."COLUMN_2"::int -> "COLUMN_2", unnamed_subquery_1."COLUMN_1"::int -> "COLUMN_1", unnamed_subquery_1."COLUMN_2"::int -> "COLUMN_2")
-      join on true::bool
+      join on (true::bool)
         scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values

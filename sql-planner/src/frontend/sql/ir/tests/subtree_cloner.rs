@@ -109,7 +109,7 @@ fn except_transform_with_dag_plan() {
       motion [policy: full, program: ReshardIfNeeded]
         intersect
           projection (t2.e::int -> e)
-            selection t2.e::int = 1::int
+            selection (t2.e::int = 1::int)
               scan t2
           projection (1::int -> col_1)
             scan unnamed_subquery

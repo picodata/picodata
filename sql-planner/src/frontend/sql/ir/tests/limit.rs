@@ -117,9 +117,9 @@ fn join() {
       motion [policy: full, program: ReshardIfNeeded]
         limit 128
           projection (t1.a::string -> a, t1.b::int -> b, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t3.a::string -> a, t3.b::int -> b, t4.c::string -> c, t4.d::int -> d)
-            join on t2.f::int = t4.d::int
-              join on t1.a::string = t3.a::string
-                left join on t1.b::int = t2.e::int
+            join on (t2.f::int = t4.d::int)
+              join on (t1.a::string = t3.a::string)
+                left join on (t1.b::int = t2.e::int)
                   scan t1
                   motion [policy: full, program: ReshardIfNeeded]
                     projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
@@ -438,7 +438,7 @@ fn limit_pushdown_except() {
                         scan t
                       motion [policy: full, program: ReshardIfNeeded]
                         projection (t.a::int -> a)
-                          selection t.a::int = 1::int
+                          selection (t.a::int = 1::int)
                             scan t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -502,7 +502,7 @@ fn limit_pushdown_having_filter_aggregate() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     limit 5
       projection (gr_expr_1::int -> b)
-        having sum(count_1::int)::int > 1::int
+        having (sum(count_1::int)::int > 1::int)
           group by (gr_expr_1::int) output (gr_expr_1::int, count_1::int)
             motion [policy: full, program: ReshardIfNeeded]
               projection (t.b::int -> gr_expr_1, count(*)::int -> count_1)
@@ -527,7 +527,7 @@ fn limit_pushdown_orderby_and_having() {
         order by (b::int)
           scan
             projection (gr_expr_1::int -> b)
-              having gr_expr_1::int > 1::int
+              having (gr_expr_1::int > 1::int)
                 group by (gr_expr_1::int) output (gr_expr_1::int)
                   motion [policy: full, program: ReshardIfNeeded]
                     projection (t.b::int -> gr_expr_1)

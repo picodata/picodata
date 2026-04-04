@@ -6554,7 +6554,7 @@ buckets = [1-3000]\
     lines = i1.sql("explain select a from t where a = 1")
     assert "\n".join(lines) == snapshot("""\
 projection (t.a::int -> a)
-  selection t.a::int = 1::int
+  selection (t.a::int = 1::int)
     scan t
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -6565,7 +6565,7 @@ buckets = [1934]\
     lines = i1.sql("explain select a from t where a = 1 and a = 2")
     assert "\n".join(lines) == snapshot("""\
 projection (t.a::int -> a)
-  selection t.a::int = 1::int and t.a::int = 2::int
+  selection ((t.a::int = 1::int and t.a::int = 2::int))
     scan t
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -6578,7 +6578,7 @@ buckets = []\
     lines = i1.sql("explain select t.a from t join t as t2 on t.a = t2.b")
     assert "\n".join(lines) == snapshot("""\
 projection (t.a::int -> a)
-  join on t.a::int = t2.b::int
+  join on (t.a::int = t2.b::int)
     scan t
     motion [policy: segment([ref(b)]), program: ReshardIfNeeded]
       projection (t2.a::int -> a, t2.bucket_id::int -> bucket_id, t2.b::int -> b)
@@ -6649,7 +6649,7 @@ buckets = [1-3000]\
 update t (b = col_0)
   motion [policy: local, program: ReshardIfNeeded]
     projection (1::int -> col_0, t.a::int -> col_1)
-      selection t.b::int = 3::int
+      selection (t.b::int = 3::int)
         scan t
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -6665,7 +6665,7 @@ buckets = [1-3000]\
 update t2 (c = col_0, bucket_id = col_1, d = col_2)
   motion [policy: segment([]), program: [PrimaryKey(0), RearrangeForShardedUpdate(2)]]
     projection (t2.c::int -> col_0, t2.bucket_id::int -> col_1, 1::int -> col_2, t2.d::int -> col_3)
-      selection t2.d::int = 2::int or t2.d::int = 2002::int
+      selection (t2.d::int = 2::int or t2.d::int = 2002::int)
         scan t2
 execution options:
   sql_vdbe_opcode_max = 45000

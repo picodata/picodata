@@ -31,7 +31,7 @@ fn unnamed_subquery2_test() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (unnamed_subquery.a::int -> a, unnamed_subquery.b::int -> b, unnamed_subquery.c::int -> c, unnamed_subquery.d::int -> d, unnamed_subquery_1.a::int -> a, unnamed_subquery_1.b::int -> b, unnamed_subquery_1.c::int -> c, unnamed_subquery_1.d::int -> d)
-      join on true::bool
+      join on (true::bool)
         scan unnamed_subquery
           projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
             scan t
@@ -53,7 +53,7 @@ fn unnamed_subquery_name_conflict1_test() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (unnamed_subquery_1.a::int -> a, unnamed_subquery_1.b::int -> b, unnamed_subquery_1.c::int -> c, unnamed_subquery_1.d::int -> d, unnamed_subquery.a::int -> a, unnamed_subquery.b::int -> b, unnamed_subquery.c::int -> c, unnamed_subquery.d::int -> d)
-      join on true::bool
+      join on (true::bool)
         scan unnamed_subquery_1
           projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
             scan t
@@ -74,7 +74,7 @@ fn unnamed_subquery_name_conflict2_test() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @"
     projection (unnamed_subquery_1.a::int -> a, unnamed_subquery_1.b::int -> b, unnamed_subquery_1.c::int -> c, unnamed_subquery_1.d::int -> d, unnamed_subquery.a::int -> a, unnamed_subquery.b::int -> b, unnamed_subquery.c::int -> c, unnamed_subquery.d::int -> d)
-      join on true::bool
+      join on (true::bool)
         scan unnamed_subquery_1
           projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
             scan t

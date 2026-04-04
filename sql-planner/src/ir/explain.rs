@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::{self, Display, Write as _};
 
 use itertools::Itertools;
@@ -17,7 +17,9 @@ use crate::ir::node::{
     ScanSubQuery, Selection, SubQueryReference, Timestamp, Trim, UnaryExpr, Update as UpdateRel,
     Values, ValuesRow,
 };
-use crate::ir::operator::{ConflictStrategy, JoinKind, OrderByElement, OrderByEntity, OrderByType};
+use crate::ir::operator::{
+    Bool, ConflictStrategy, JoinKind, OrderByElement, OrderByEntity, OrderByType,
+};
 use crate::ir::options::OptionKind;
 use crate::ir::transformation::redistribution::{
     MotionKey as IrMotionKey, MotionPolicy as IrMotionPolicy, Program, Target as IrTarget,
@@ -35,6 +37,32 @@ use super::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
 use super::types::{CastType, DerivedType};
 use super::value::Value;
 
+/// We use this buffer to check if the textual representation
+/// is short enough to be printed as a single line.
+#[derive(Default)]
+struct TinyFmtBuffer(SmallVec<[u8; 46]>);
+
+impl TinyFmtBuffer {
+    /// Does the buffer contain `'\n'`?
+    fn has_newline(&self) -> bool {
+        self.0.contains(&b'\n')
+    }
+}
+
+impl fmt::Write for TinyFmtBuffer {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        let this = &mut self.0;
+        let new_len = this.len().checked_add(s.len()).ok_or(fmt::Error)?;
+        if new_len > this.capacity() {
+            return Err(fmt::Error);
+        }
+        this.extend_from_slice(s.as_bytes());
+
+        Ok(())
+    }
+}
+
+/// Transform a writer into an indented writer. This effect is additive.
 fn indent<'a, D>(f: &'a mut D) -> indenter::Indented<'a, D> {
     const INDENT: &str = "  ";
     indenter::indented(f).with_str(INDENT)
@@ -69,49 +97,75 @@ fn write_name(writer: &mut impl fmt::Write, name: &str) -> fmt::Result {
     Ok(())
 }
 
-fn write_long_list(
+/// The concept of list separator in short and long forms.
+trait ListSep {
+    const SHORT: &str;
+    const LONG: &str;
+}
+
+/// A separator for regular lists.
+struct CommaSep;
+impl ListSep for CommaSep {
+    const SHORT: &str = ", ";
+    const LONG: &str = ",\n";
+}
+
+/// A separator for AND chains.
+struct AndSep;
+impl ListSep for AndSep {
+    const SHORT: &str = " and ";
+    const LONG: &str = "\nand ";
+}
+
+fn write_long_list<Sep: ListSep>(
     writer: &mut impl fmt::Write,
     items: impl IntoIterator<Item: Display>,
 ) -> fmt::Result {
     let mut items = items.into_iter().peekable();
+    if items.peek().is_none() {
+        return Ok(());
+    }
+
     let mut writer = indent(writer);
 
     // All non-empty long lists should start a new line.
     // This helps with e.g. `projection (...)`.
-    if items.peek().is_some() {
-        writer.write_char('\n')?;
-    }
+    writeln!(writer)?;
 
     while let Some(item) = items.next() {
-        let sep = if items.peek().is_some() { "," } else { "" };
-        writeln!(writer, "{item}{sep}")?;
+        let has_next = items.peek().is_some();
+        let sep = if has_next { Sep::LONG } else { "" };
+        write!(writer, "{item}{sep}")?;
     }
+
+    // Don't forget to write a final newline.
+    writeln!(writer)?;
 
     Ok(())
 }
 
-fn write_short_list(
+fn write_short_list<Sep: ListSep>(
     writer: &mut impl fmt::Write,
     items: impl IntoIterator<Item: Display>,
 ) -> fmt::Result {
-    let formatted = items.into_iter().format(", ");
+    let formatted = items.into_iter().format(Sep::SHORT);
     write!(writer, "{formatted}")
 }
 
-fn write_list(
+fn write_list<Sep: ListSep>(
     writer: &mut impl fmt::Write,
     items: impl IntoIterator<Item: Display>,
     should_fmt: bool,
 ) -> fmt::Result {
     if !should_fmt {
-        return write_short_list(writer, items);
+        return write_short_list::<Sep>(writer, items);
     }
 
     let mut items = items.into_iter().peekable();
 
     // Lists containing up to FEW_ITEMS are considered
     // short enough to be printed on a single line.
-    const FEW_ITEMS: usize = 3;
+    const FEW_ITEMS: usize = 6;
     let mut stage = SmallVec::<[_; FEW_ITEMS]>::new();
     while stage.len() < stage.capacity() {
         match items.next() {
@@ -121,20 +175,55 @@ fn write_list(
     }
 
     match items.peek() {
-        // If there's nothing left, print as a short list.
-        None => write_short_list(writer, stage),
+        // If there's nothing left, try printing as a short list.
+        None => {
+            let mut buffer = TinyFmtBuffer::default();
+            let ok = write_short_list::<Sep>(&mut buffer, &stage).is_ok();
+
+            // If the "short" list contains a newline, it's long!
+            if ok && !buffer.has_newline() {
+                write_short_list::<Sep>(writer, stage)
+            } else {
+                write_long_list::<Sep>(writer, stage)
+            }
+        }
         // Otherwise, print as a long list.
         Some(_) => {
             let combined = stage.into_iter().chain(items);
-            write_long_list(writer, combined)
+            write_long_list::<Sep>(writer, combined)
         }
+    }
+}
+
+struct FmtSmartParens<T>(T, bool);
+
+impl<T: Display> fmt::Display for FmtSmartParens<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let should_fmt = self.1;
+        if !should_fmt {
+            return write!(f, "({})", self.0);
+        }
+
+        let mut buffer = TinyFmtBuffer::default();
+        let ok = write!(buffer, "{}", self.0).is_ok();
+
+        // If a "small" item contains a newline, it's large!
+        if ok && !buffer.has_newline() {
+            write!(f, "({})", self.0)?;
+        } else {
+            writeln!(f, "(")?;
+            writeln!(indent(f), "{}", self.0)?;
+            write!(f, ")")?;
+        }
+
+        Ok(())
     }
 }
 
 #[derive(Debug, PartialEq, Clone)]
 enum ColExpr {
     // Print expressions wrt precedence.
-    Parentheses(Box<ColExpr>),
+    Parentheses(Box<ColExpr>, bool),
 
     // This one is hard to explain...
     Row(Row),
@@ -149,6 +238,9 @@ enum ColExpr {
     PrefixOp(SmolStr, Box<ColExpr>),
     InfixOp(Box<ColExpr>, SmolStr, Box<ColExpr>),
     SuffixOp(Box<ColExpr>, SmolStr),
+
+    // Improved readability for long AND chains.
+    ListOfAnds(VecDeque<ColExpr>, bool),
 
     // Unusual or complex operators & functions.
     Cast(Box<ColExpr>, CastType),
@@ -172,13 +264,15 @@ enum ColExpr {
 
     // Window functions.
     Window(Box<WindowExplain>),
-    Over(Box<ColExpr>, Option<Box<ColExpr>>, Box<ColExpr>),
+    Over(Box<ColExpr>, Option<Box<ColExpr>>, Box<ColExpr>, bool),
 }
 
 impl Display for ColExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ColExpr::Parentheses(child_expr) => write!(f, "({child_expr})")?,
+            ColExpr::Parentheses(expr, should_fmt) => {
+                write!(f, "{}", FmtSmartParens(expr, *should_fmt))?
+            }
             ColExpr::Row(row) => write!(f, "{row}")?,
 
             // Column-ish things.
@@ -216,6 +310,13 @@ impl Display for ColExpr {
             ColExpr::InfixOp(lhs, op, rhs) => write!(f, "{lhs} {op} {rhs}")?,
             ColExpr::SuffixOp(val, op) => write!(f, "{val} {op}")?,
 
+            // Improved readability for long AND chains.
+            ColExpr::ListOfAnds(items, should_fmt) => {
+                write!(f, "(")?;
+                write_list::<AndSep>(f, items, *should_fmt)?;
+                write!(f, ")")?;
+            }
+
             // Unusal or complex operators.
             ColExpr::Index(v, i) => write!(f, "{v}[{i}]")?,
             ColExpr::Cast(v, t) => write!(f, "{v}::{t}")?,
@@ -244,35 +345,33 @@ impl Display for ColExpr {
             }
 
             // Regular function calls.
-            ColExpr::ScalarFunction(name, args, feature, func_type, ..) => {
+            ColExpr::ScalarFunction(name, args, feature, ret_type, should_fmt) => {
                 let name = properly_quoted_name(name);
                 let distinct = match feature {
                     Some(FunctionFeature::Distinct) => "distinct ",
                     _other => "",
                 };
-                let args = args.iter().format(", ");
-                write!(f, "{name}({distinct}{args})::{func_type}")?;
+                write!(f, "{name}({distinct}")?;
+                write_list::<CommaSep>(f, args, *should_fmt)?;
+                write!(f, ")::{ret_type}")?;
             }
 
             // Window functions.
             ColExpr::Window(window) => write!(f, "{window}")?,
-            ColExpr::Over(stable_func, filter, window) => {
+            ColExpr::Over(stable_func, filter, window, should_fmt) => {
                 let ColExpr::ScalarFunction(func_name, args, ..) = stable_func.as_ref() else {
-                    panic!("Expected ScalarFunction expression before OVER clause")
+                    panic!("Expected ScalarFunction expression before OVER clause");
                 };
-
-                let args = args.iter().format(", ");
-                if let Some(filter) = filter {
-                    write!(f, "{func_name}({args}) filter (where {filter}) over ")?;
-                } else {
-                    write!(f, "{func_name}({args}) over ")?;
-                };
-
-                if let ColExpr::Window(_) = window.as_ref() {
-                    write!(f, "{window}")?;
-                } else {
+                let ColExpr::Window(_) = window.as_ref() else {
                     panic!("Expected Window expression in OVER clause");
+                };
+                write!(f, "{func_name}(")?;
+                write_list::<CommaSep>(f, args, *should_fmt)?;
+                write!(f, ") ")?;
+                if let Some(filter) = filter {
+                    write!(f, "filter (where {filter}) ")?;
                 }
+                write!(f, "over {window}")?;
             }
         };
 
@@ -284,16 +383,17 @@ impl Display for ColExpr {
 /// given plan expression node.
 #[derive(Debug)]
 struct ColExprStack<'a> {
-    /// Vec of (col_expr, corresponding_plan_id).
-    inner: Vec<(ColExpr, NodeId)>,
     plan: &'a Plan,
+    inner: Vec<(ColExpr, NodeId)>,
+    should_fmt: bool,
 }
 
 impl<'a> ColExprStack<'a> {
-    fn new(plan: &'a Plan) -> Self {
+    fn new(plan: &'a Plan, should_fmt: bool) -> Self {
         Self {
-            inner: Vec::new(),
             plan,
+            inner: Vec::new(),
+            should_fmt,
         }
     }
 }
@@ -313,7 +413,9 @@ impl ColExprStack<'_> {
         let (expr, plan_id) = self.pop();
         match top_plan_id {
             None => expr,
-            Some(top_plan_id) => expr.covered_with_parentheses(self.plan, top_plan_id, plan_id),
+            Some(top_plan_id) => {
+                expr.covered_with_parentheses(self.plan, top_plan_id, plan_id, self.should_fmt)
+            }
         }
     }
 }
@@ -324,14 +426,42 @@ impl ColExpr {
         plan: &Plan,
         top_plan_id: NodeId,
         self_plan_id: NodeId,
+        should_fmt: bool,
     ) -> Self {
-        let should_cover = plan
+        let should_cover =
+            // XXX: List of ANDs prints its own parentheses.
+            // Keep in sync with `impl Display for ColExpr`.
+            !matches!(self, ColExpr::ListOfAnds(..))
+            // Other nodes follow the common logic.
+            && plan
             .should_cover_with_parentheses(top_plan_id, self_plan_id)
             .expect("top and child nodes should exist");
+
         if should_cover {
-            ColExpr::Parentheses(Box::new(self))
+            ColExpr::Parentheses(self.into(), should_fmt)
         } else {
             self
+        }
+    }
+
+    fn join_ands(lhs: Self, rhs: Self, should_fmt: bool) -> Self {
+        match (lhs, rhs) {
+            (ColExpr::ListOfAnds(mut lhs, _), ColExpr::ListOfAnds(rhs, _)) => {
+                lhs.extend(rhs);
+                ColExpr::ListOfAnds(lhs, should_fmt)
+            }
+            (ColExpr::ListOfAnds(mut lhs, _), rhs) => {
+                lhs.push_back(rhs);
+                ColExpr::ListOfAnds(lhs, should_fmt)
+            }
+            (lhs, ColExpr::ListOfAnds(mut rhs, _)) => {
+                rhs.push_front(lhs);
+                ColExpr::ListOfAnds(rhs, should_fmt)
+            }
+            (lhs, rhs) => {
+                let items = [lhs, rhs].into();
+                ColExpr::ListOfAnds(items, should_fmt)
+            }
         }
     }
 
@@ -352,8 +482,9 @@ impl ColExpr {
         plan: &Plan,
         subtree_top: NodeId,
         sq_ref_map: &SubQueryRefMap,
+        should_fmt: bool,
     ) -> Result<Self, SbroadError> {
-        let mut stack = ColExprStack::new(plan);
+        let mut stack = ColExprStack::new(plan, should_fmt);
         let dft_post = PostOrder::new(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
 
         for LevelNode(_, id) in dft_post.traverse_into_iter(subtree_top) {
@@ -399,6 +530,7 @@ impl ColExpr {
                         partition: p_elems,
                         ordering: o_elems,
                         frame,
+                        should_fmt,
                     };
 
                     let expr = ColExpr::Window(window.into());
@@ -408,7 +540,7 @@ impl ColExpr {
                     let window = stack.pop_expr(Some(id)).into();
                     let filter = filter.map(|_| stack.pop_expr(Some(id)).into());
                     let stable_func = stack.pop_expr(Some(id)).into();
-                    let expr = ColExpr::Over(stable_func, filter, window);
+                    let expr = ColExpr::Over(stable_func, filter, window, should_fmt);
                     stack.push((expr, id));
                 }
                 Expression::Index(IndexExpr { .. }) => {
@@ -486,7 +618,6 @@ impl ColExpr {
                     children,
                     feature,
                     func_type,
-                    is_system: is_aggr,
                     ..
                 }) => {
                     let mut args = Vec::with_capacity(children.len());
@@ -499,17 +630,17 @@ impl ColExpr {
                         args,
                         feature.clone(),
                         *func_type,
-                        *is_aggr,
+                        should_fmt,
                     );
                     stack.push((func_expr, id));
                 }
                 Expression::Row(RowExpr { list, .. }) => {
-                    let mut row = ColExprStack::new(plan);
+                    let mut row = ColExprStack::new(plan, should_fmt);
                     for _ in list {
                         row.push(stack.pop());
                     }
                     row.inner.reverse();
-                    let row = Row::from_col_expr_stack(plan, row, sq_ref_map)?;
+                    let row = Row::from_col_expr_stack(plan, row, sq_ref_map, should_fmt)?;
                     let row_expr = ColExpr::Row(row);
                     stack.push((row_expr, id));
                 }
@@ -531,9 +662,13 @@ impl ColExpr {
                     stack.push((expr, id));
                 }
                 Expression::Bool(BoolExpr { op, .. }) => {
-                    let rhs = stack.pop_expr(Some(id)).into();
-                    let lhs = stack.pop_expr(Some(id)).into();
-                    let expr = ColExpr::InfixOp(lhs, op.to_smolstr(), rhs);
+                    let rhs = stack.pop_expr(Some(id));
+                    let lhs = stack.pop_expr(Some(id));
+                    let expr = if *op == Bool::And {
+                        ColExpr::join_ands(lhs, rhs, should_fmt)
+                    } else {
+                        ColExpr::InfixOp(lhs.into(), op.to_smolstr(), rhs.into())
+                    };
                     stack.push((expr, id));
                 }
                 Expression::Unary(UnaryExpr { op, .. }) => {
@@ -669,6 +804,7 @@ struct WindowExplain {
     partition: Vec<ColExpr>,
     ordering: Vec<OrderByPair>,
     frame: Option<FrameExplain>,
+    should_fmt: bool,
 }
 
 impl Display for WindowExplain {
@@ -676,15 +812,15 @@ impl Display for WindowExplain {
         write!(f, "(")?;
 
         if !self.partition.is_empty() {
-            write!(f, "partition by ")?;
-            let exprs = self.partition.iter().format(", ");
-            write!(f, "({exprs}) ")?;
+            write!(f, "partition by (")?;
+            write_list::<CommaSep>(f, &self.partition, self.should_fmt)?;
+            write!(f, ") ")?;
         }
 
         if !self.ordering.is_empty() {
-            write!(f, "order by ")?;
-            let exprs = self.ordering.iter().format(", ");
-            write!(f, "({exprs}) ")?;
+            write!(f, "order by (")?;
+            write_list::<CommaSep>(f, &self.ordering, self.should_fmt)?;
+            write!(f, ") ")?;
         }
 
         if let Some(frame) = &self.frame {
@@ -712,7 +848,7 @@ impl Projection {
         };
 
         for col_id in col_list {
-            let col = ColExpr::new(plan, *col_id, sq_ref_map)?;
+            let col = ColExpr::new(plan, *col_id, sq_ref_map, should_fmt)?;
             result.cols.push(col);
         }
 
@@ -723,7 +859,7 @@ impl Projection {
 impl Display for Projection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "projection (")?;
-        write_list(f, &self.cols, self.should_fmt)?;
+        write_list::<CommaSep>(f, &self.cols, self.should_fmt)?;
         write!(f, ")")?;
 
         Ok(())
@@ -753,12 +889,12 @@ impl GroupBy {
         };
 
         for col_node_id in gr_exprs {
-            let col = ColExpr::new(plan, *col_node_id, sq_ref_map)?;
+            let col = ColExpr::new(plan, *col_node_id, sq_ref_map, should_fmt)?;
             result.gr_exprs.push(col);
         }
         let alias_list = plan.get_expression_node(output_id)?;
         for col_node_id in alias_list.get_row_list()? {
-            let col = ColExpr::new(plan, *col_node_id, sq_ref_map)?;
+            let col = ColExpr::new(plan, *col_node_id, sq_ref_map, should_fmt)?;
             result.output_cols.push(col);
         }
         Ok(result)
@@ -768,9 +904,9 @@ impl GroupBy {
 impl Display for GroupBy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "group by (")?;
-        write_list(f, &self.gr_exprs, self.should_fmt)?;
+        write_list::<CommaSep>(f, &self.gr_exprs, self.should_fmt)?;
         write!(f, ") output (")?;
-        write_list(f, &self.output_cols, self.should_fmt)?;
+        write_list::<CommaSep>(f, &self.output_cols, self.should_fmt)?;
         write!(f, ")")?;
 
         Ok(())
@@ -829,7 +965,7 @@ impl OrderBy {
         for item in cols {
             let expr = match item.entity {
                 OrderByEntity::Expression { expr_id } => OrderByExpr::Expr {
-                    expr: ColExpr::new(plan, expr_id, sq_ref_map)?,
+                    expr: ColExpr::new(plan, expr_id, sq_ref_map, should_fmt)?,
                 },
                 OrderByEntity::Index { value } => OrderByExpr::Index { value },
             };
@@ -846,7 +982,7 @@ impl OrderBy {
 impl Display for OrderBy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "order by (")?;
-        write_list(f, &self.cols, self.should_fmt)?;
+        write_list::<CommaSep>(f, &self.cols, self.should_fmt)?;
         write!(f, ")")?;
 
         Ok(())
@@ -939,7 +1075,7 @@ impl Display for Update {
             .map(|(col, alias)| format_smolstr!("{col} = {alias}"));
 
         write!(f, "update {name} (")?;
-        write_list(f, items, self.should_fmt)?;
+        write_list::<CommaSep>(f, items, self.should_fmt)?;
         write!(f, ")")?;
 
         Ok(())
@@ -1018,15 +1154,11 @@ impl Display for RowVal {
 
 #[derive(Debug, PartialEq, Clone)]
 struct Row {
-    /// List of sql values in `WHERE` cause
     cols: Vec<RowVal>,
+    should_fmt: bool,
 }
 
 impl Row {
-    fn new() -> Self {
-        Row { cols: vec![] }
-    }
-
     fn add_col(&mut self, row: RowVal) {
         self.cols.push(row);
     }
@@ -1035,15 +1167,19 @@ impl Row {
         plan: &Plan,
         col_expr_stack: ColExprStack,
         sq_ref_map: &SubQueryRefMap,
+        should_fmt: bool,
     ) -> Result<Self, SbroadError> {
-        let mut row = Row::new();
+        let mut row = Row {
+            cols: vec![],
+            should_fmt,
+        };
 
         for (col_expr, expr_id) in col_expr_stack.inner {
             let current_node = plan.get_expression_node(expr_id)?;
 
             match &current_node {
                 Expression::Reference { .. } => {
-                    let col = ColExpr::new(plan, expr_id, sq_ref_map)?;
+                    let col = ColExpr::new(plan, expr_id, sq_ref_map, should_fmt)?;
                     row.add_col(RowVal::ColumnExpr(col));
                 }
                 Expression::SubQueryReference(SubQueryReference { rel_id, .. }) => {
@@ -1076,8 +1212,11 @@ impl Row {
 
 impl Display for Row {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let cols = self.cols.iter().format(", ");
-        write!(f, "ROW({cols})")
+        write!(f, "ROW(")?;
+        write_list::<CommaSep>(f, &self.cols, self.should_fmt)?;
+        write!(f, ")")?;
+
+        Ok(())
     }
 }
 
@@ -1175,70 +1314,92 @@ impl Display for Target {
 
 #[derive(Debug, PartialEq, Clone)]
 enum ExplainNode {
+    // Short items.
     Delete(SmolStr),
-    Except,
-    Intersect,
-    GroupBy(GroupBy),
-    OrderBy(OrderBy),
-    Join(ColExpr, JoinKind),
-    ValueRow(ColExpr),
-    Value,
     Insert(SmolStr, ConflictStrategy),
-    Projection(Projection),
+    Cte(SmolStr, Ref),
     Scan(Scan),
-    Selection(ColExpr),
-    Having(ColExpr),
-    Union,
-    UnionAll,
-    Update(Update),
     SubQuery(SubQuery),
     Motion(Motion),
-    Cte(SmolStr, Ref),
     Limit(u64),
+
+    // Potentially long expression lists.
+    Projection(Projection),
+    GroupBy(GroupBy),
+    OrderBy(OrderBy),
+    Update(Update),
+
+    // A single but potentially large expression.
+    Join(ColExpr, JoinKind, bool),
+    Selection(ColExpr, bool),
+    Having(ColExpr, bool),
+    ValueRow(ColExpr),
+
+    // Boring.
+    Value,
+    Union,
+    UnionAll,
+    Intersect,
+    Except,
 }
 
 impl Display for ExplainNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ExplainNode::Cte(name, r) => {
-                write!(f, "scan cte {name}({r})", name = properly_quoted_name(name))?;
-            }
-
+            // Short items.
             ExplainNode::Delete(name) => {
-                write!(f, "delete from {name}", name = properly_quoted_name(name))?;
+                writeln!(f, "delete from {name}", name = properly_quoted_name(name))?;
             }
-            ExplainNode::Except => write!(f, "except")?,
-            ExplainNode::Join(col_expr, kind) => {
-                match kind {
-                    JoinKind::LeftOuter => write!(f, "{kind} ")?,
-                    JoinKind::Inner => {}
-                }
-                write!(f, "join on {col_expr}")?;
-            }
-            ExplainNode::ValueRow(col_expr) => {
-                write!(f, "value {col_expr}")?;
-            }
-            ExplainNode::Value => write!(f, "values")?,
             ExplainNode::Insert(name, conflict) => {
-                write!(
+                writeln!(
                     f,
                     "insert into {name} on conflict: {conflict}",
                     name = properly_quoted_name(name)
                 )?;
             }
-            ExplainNode::Projection(projection) => write!(f, "{projection}")?,
-            ExplainNode::GroupBy(group_by) => write!(f, "{group_by}")?,
-            ExplainNode::OrderBy(order_by) => write!(f, "{order_by}")?,
-            ExplainNode::Scan(scan) => write!(f, "{scan}")?,
-            ExplainNode::Selection(col_expr) => write!(f, "selection {col_expr}")?,
-            ExplainNode::Having(col_expr) => write!(f, "having {col_expr}")?,
-            ExplainNode::Union => write!(f, "union")?,
-            ExplainNode::UnionAll => write!(f, "union all")?,
-            ExplainNode::Intersect => write!(f, "intersect")?,
-            ExplainNode::Update(update) => write!(f, "{update}")?,
-            ExplainNode::SubQuery(subquery) => write!(f, "{subquery}")?,
-            ExplainNode::Motion(motion) => write!(f, "{motion}")?,
-            ExplainNode::Limit(limit) => write!(f, "limit {limit}")?,
+            ExplainNode::Cte(name, reference) => {
+                writeln!(
+                    f,
+                    "scan cte {name}({reference})",
+                    name = properly_quoted_name(name)
+                )?;
+            }
+            ExplainNode::Scan(scan) => writeln!(f, "{scan}")?,
+            ExplainNode::SubQuery(subquery) => writeln!(f, "{subquery}")?,
+            ExplainNode::Motion(motion) => writeln!(f, "{motion}")?,
+            ExplainNode::Limit(limit) => writeln!(f, "limit {limit}")?,
+
+            // Potentially long expression lists.
+            ExplainNode::Projection(projection) => writeln!(f, "{projection}")?,
+            ExplainNode::GroupBy(group_by) => writeln!(f, "{group_by}")?,
+            ExplainNode::OrderBy(order_by) => writeln!(f, "{order_by}")?,
+            ExplainNode::Update(update) => writeln!(f, "{update}")?,
+
+            // A single but potentially large expression.
+            ExplainNode::Join(col_expr, kind, should_fmt) => {
+                match kind {
+                    JoinKind::LeftOuter => write!(f, "{kind} ")?,
+                    JoinKind::Inner => {}
+                }
+                writeln!(f, "join on {}", FmtSmartParens(col_expr, *should_fmt))?;
+            }
+            ExplainNode::Selection(col_expr, should_fmt) => {
+                writeln!(f, "selection {}", FmtSmartParens(col_expr, *should_fmt))?;
+            }
+            ExplainNode::Having(col_expr, should_fmt) => {
+                writeln!(f, "having {}", FmtSmartParens(col_expr, *should_fmt))?;
+            }
+            ExplainNode::ValueRow(col_expr) => {
+                // `col_expr` is a `ROW(...)` which has its own multiline fmt logic.
+                writeln!(f, "value {col_expr}")?;
+            }
+
+            // Boring.
+            ExplainNode::Value => writeln!(f, "values")?,
+            ExplainNode::Union => writeln!(f, "union")?,
+            ExplainNode::UnionAll => writeln!(f, "union all")?,
+            ExplainNode::Intersect => writeln!(f, "intersect")?,
+            ExplainNode::Except => writeln!(f, "except")?,
         };
 
         Ok(())
@@ -1246,23 +1407,15 @@ impl Display for ExplainNode {
 }
 
 /// Describe sql query (or subquery) as recursive type
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct ExplainTreePart {
-    /// Current node of sql query
     current: ExplainNode,
-    /// Children nodes of current sql node
     children: Vec<ExplainTreePart>,
-}
-
-impl PartialEq for ExplainTreePart {
-    fn eq(&self, other: &Self) -> bool {
-        self.current == other.current && self.children == other.children
-    }
 }
 
 impl Display for ExplainTreePart {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}", self.current)?;
+        write!(f, "{}", self.current)?;
 
         let mut f = indent(f);
         for child in &self.children {
@@ -1356,9 +1509,9 @@ impl Display for FullExplain {
                     // For buckets ANY and ALL there is no sense to handle in the
                     // output the case when bucket count is not exact.
                     match calculated.buckets {
-                        Buckets::Any | Buckets::All => writeln!(f, "buckets = {repr}",)?,
-                        _ if calculated.is_exact => writeln!(f, "buckets = {repr}",)?,
-                        _ => writeln!(f, "buckets <= {repr}",)?,
+                        Buckets::Any | Buckets::All => writeln!(f, "buckets = {repr}")?,
+                        _ if calculated.is_exact => writeln!(f, "buckets = {repr}")?,
+                        _ => writeln!(f, "buckets <= {repr}")?,
                     }
                 }
             }
@@ -1531,10 +1684,12 @@ impl FullExplain {
                         )
                     })?;
                     let filter_id = *ir.undo.get_oldest(filter);
-                    let selection = ColExpr::new(ir, filter_id, &sq_ref_map)?;
+                    let selection = ColExpr::new(ir, filter_id, &sq_ref_map, should_fmt)?;
                     let explain_node = match &node {
-                        Relational::Selection { .. } => ExplainNode::Selection(selection),
-                        Relational::Having { .. } => ExplainNode::Having(selection),
+                        Relational::Selection { .. } => {
+                            ExplainNode::Selection(selection, should_fmt)
+                        }
+                        Relational::Having { .. } => ExplainNode::Having(selection, should_fmt),
                         _ => panic!("Expected Selection or Having node."),
                     };
 
@@ -1652,8 +1807,8 @@ impl FullExplain {
                         )
                     })?;
 
-                    let condition = ColExpr::new(ir, *condition, &sq_ref_map)?;
-                    let join = ExplainNode::Join(condition, *kind);
+                    let condition = ColExpr::new(ir, *condition, &sq_ref_map, should_fmt)?;
+                    let join = ExplainNode::Join(condition, *kind, should_fmt);
 
                     (join, vec![left, right])
                 }
@@ -1662,7 +1817,7 @@ impl FullExplain {
                 }) => {
                     let sq_ref_map =
                         FullExplain::get_sq_ref_map(&mut stack, &mut known_subqueries, subqueries);
-                    let row = ColExpr::new(ir, *data, &sq_ref_map)?;
+                    let row = ColExpr::new(ir, *data, &sq_ref_map, should_fmt)?;
 
                     (ExplainNode::ValueRow(row), vec![])
                 }

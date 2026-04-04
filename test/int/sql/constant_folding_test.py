@@ -39,7 +39,7 @@ def test_gl_1991(postgres: Postgres):
     plan = cur.fetchall()
     assert "\n".join(row[0] for row in plan) == snapshot("""\
 projection (t.id::int -> id)
-  selection false::bool
+  selection (false::bool)
     scan t
 execution options:
   sql_vdbe_opcode_max = 1

@@ -109,7 +109,7 @@ left outer join (select "id" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" = "T2"."B";
 -- EXPECTED:
 projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
-  left join on "T1"."A"::int = "T2"."B"::int
+  left join on ("T1"."A"::int = "T2"."B"::int)
     scan "T1"
       projection (arithmetic_space.id::int -> "A")
         scan arithmetic_space
@@ -141,7 +141,7 @@ left join (select "a" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" = "T2"."B";
 -- EXPECTED:
 projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
-  left join on "T1"."A"::int = "T2"."B"::int
+  left join on ("T1"."A"::int = "T2"."B"::int)
     scan "T1"
       projection (arithmetic_space.id::int -> "A")
         scan arithmetic_space
@@ -173,7 +173,7 @@ left join (select "a" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" < "T2"."B";
 -- EXPECTED:
 projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
-  left join on "T1"."A"::int < "T2"."B"::int
+  left join on ("T1"."A"::int < "T2"."B"::int)
     scan "T1"
       projection (arithmetic_space.id::int -> "A")
         scan arithmetic_space
@@ -234,7 +234,7 @@ left join (select "id" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" in (select "a" + 1 from "arithmetic_space");
 -- EXPECTED:
 projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
-  left join on "T1"."A"::int in ROW($0)
+  left join on ("T1"."A"::int in ROW($0))
     scan "T1"
       projection (arithmetic_space.a::int -> "A")
         scan arithmetic_space
@@ -273,7 +273,7 @@ left join (select "id" as "B" from "arithmetic_space2") as t2
 on t1."A" in (select "c" from "arithmetic_space");
 -- EXPECTED:
 projection (t1."A"::int -> "A", t2."B"::int -> "B")
-  left join on t1."A"::int in ROW($0)
+  left join on (t1."A"::int in ROW($0))
     scan t1
       projection (arithmetic_space.id::int -> "A")
         scan arithmetic_space

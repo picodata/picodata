@@ -117,7 +117,7 @@ fn front_explain_select_sql3() {
     let actual_explain = query.as_explain().unwrap();
     insta::assert_snapshot!(*actual_explain, @"
     projection (q1.a::string -> a)
-      join on q1.a::string = q2.a2::string
+      join on (q1.a::string = q2.a2::string)
         scan t3 -> q1
         scan q2
           projection (t3.a::string -> a2, t3.b::int -> b2)
@@ -141,7 +141,7 @@ fn front_explain_select_sql4() {
     let actual_explain = query.as_explain().unwrap();
     insta::assert_snapshot!(actual_explain, @"
     projection (q2.a::string -> a)
-      join on q1.a::string = q2.a::string
+      join on (q1.a::string = q2.a::string)
         scan t3 -> q1
         scan t3 -> q2
     execution options:

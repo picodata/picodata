@@ -33,7 +33,7 @@ fn simple_query_with_cond_plan() {
 
     insta::assert_snapshot!(explain_tree.to_string(), @"
     projection (t.identification_number::int -> c1, t.product_code::string -> product_code)
-      selection t.identification_number::int = 1::int and t.product_code::string = '222'::string
+      selection ((t.identification_number::int = 1::int and t.product_code::string = '222'::string))
         scan hash_testing -> t
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -80,14 +80,14 @@ WHERE "id" = 1"#;
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection (t.id::int -> id, t."FIRST_NAME"::string -> "FIRST_NAME")
-      selection t.id::int = 1::int
+      selection (t.id::int = 1::int)
         scan t
           union all
             projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-              selection test_space.sys_op::int > 0::int and test_space."sysFrom"::int < 0::int
+              selection ((test_space.sys_op::int > 0::int and test_space."sysFrom"::int < 0::int))
                 scan test_space
             projection (test_space_hist.id::int -> id, test_space_hist."FIRST_NAME"::string -> "FIRST_NAME")
-              selection test_space_hist.sys_op::int < 0::int
+              selection (test_space_hist.sys_op::int < 0::int)
                 scan test_space_hist
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -118,26 +118,26 @@ WHERE "id" IN (SELECT "id"
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection (t.id::int -> id, t."FIRST_NAME"::string -> "FIRST_NAME")
-      selection t.id::int in ROW($0)
+      selection (t.id::int in ROW($0))
         scan t
           union all
             projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-              selection test_space.sys_op::int > 0::int and test_space."sysFrom"::int < 0::int
+              selection ((test_space.sys_op::int > 0::int and test_space."sysFrom"::int < 0::int))
                 scan test_space
             projection (test_space_hist.id::int -> id, test_space_hist."FIRST_NAME"::string -> "FIRST_NAME")
-              selection test_space_hist.sys_op::int < 0::int
+              selection (test_space_hist.sys_op::int < 0::int)
                 scan test_space_hist
     subquery $0:
       scan
         projection (t2.id::int -> id)
-          selection t2.id::int = 4::int
+          selection (t2.id::int = 4::int)
             scan t2
               union all
                 projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-                  selection test_space.sys_op::int > 0::int
+                  selection (test_space.sys_op::int > 0::int)
                     scan test_space
                 projection (test_space_hist.id::int -> id, test_space_hist."FIRST_NAME"::string -> "FIRST_NAME")
-                  selection test_space_hist.sys_op::int < 0::int
+                  selection (test_space_hist.sys_op::int < 0::int)
                     scan test_space_hist
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -197,32 +197,32 @@ fn motion_subquery_plan() {
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection (t.id::int -> id, t."FIRST_NAME"::string -> "FIRST_NAME")
-      selection t.id::int in ROW($1) or t.id::int in ROW($0)
+      selection (t.id::int in ROW($1) or t.id::int in ROW($0))
         scan t
           union all
             projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-              selection test_space.sys_op::int > 0::int and test_space."sysFrom"::int < 0::int
+              selection ((test_space.sys_op::int > 0::int and test_space."sysFrom"::int < 0::int))
                 scan test_space
             projection (test_space_hist.id::int -> id, test_space_hist."FIRST_NAME"::string -> "FIRST_NAME")
-              selection test_space_hist.sys_op::int < 0::int
+              selection (test_space_hist.sys_op::int < 0::int)
                 scan test_space_hist
     subquery $0:
       motion [policy: segment([ref(identification_number)]), program: ReshardIfNeeded]
         scan
           projection (hash_testing.identification_number::int -> identification_number)
-            selection hash_testing.identification_number::int = 5::int and hash_testing.product_code::string = '123'::string
+            selection ((hash_testing.identification_number::int = 5::int and hash_testing.product_code::string = '123'::string))
               scan hash_testing
     subquery $1:
       scan
         projection (t2.id::int -> id)
-          selection t2.id::int = 4::int
+          selection (t2.id::int = 4::int)
             scan t2
               union all
                 projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-                  selection test_space.sys_op::int > 0::int
+                  selection (test_space.sys_op::int > 0::int)
                     scan test_space
                 projection (test_space_hist.id::int -> id, test_space_hist."FIRST_NAME"::string -> "FIRST_NAME")
-                  selection test_space_hist.sys_op::int < 0::int
+                  selection (test_space_hist.sys_op::int < 0::int)
                     scan test_space_hist
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -244,11 +244,11 @@ WHERE "t2"."product_code" = '123'"#;
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection (t1."FIRST_NAME"::string -> "FIRST_NAME")
-      selection t2.product_code::string = '123'::string
-        join on t1.id::int = t2.identification_number::int
+      selection (t2.product_code::string = '123'::string)
+        join on (t1.id::int = t2.identification_number::int)
           scan t1
             projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-              selection test_space.id::int = 3::int
+              selection (test_space.id::int = 3::int)
                 scan test_space
           motion [policy: segment([ref(identification_number)]), program: ReshardIfNeeded]
             scan t2
@@ -273,10 +273,10 @@ FROM (SELECT "id", "FIRST_NAME" FROM "test_space" WHERE "id" = 3) as "t1"
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection (t1."FIRST_NAME"::string -> "FIRST_NAME")
-      join on t1.id::int = ROW($0)
+      join on (t1.id::int = ROW($0))
         scan t1
           projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-            selection test_space.id::int = 3::int
+            selection (test_space.id::int = 3::int)
               scan test_space
         motion [policy: full, program: ReshardIfNeeded]
           projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op, hash_testing.bucket_id::int -> bucket_id)
@@ -303,7 +303,7 @@ fn unary_condition_plan() {
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-      selection test_space.id::int is null and not test_space."FIRST_NAME"::string is null
+      selection ((test_space.id::int is null and not test_space."FIRST_NAME"::string is null))
         scan test_space
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -424,7 +424,7 @@ fn select_cast_plan2() {
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-      selection test_space.id::int::int = 1::int
+      selection (test_space.id::int::int = 1::int)
         scan test_space
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -461,7 +461,7 @@ fn select_cast_plan_nested_where() {
 
     insta::assert_snapshot!(explain_tree.to_string(), @"
     projection (test_space.id::int -> id)
-      selection TRIM(test_space.id::int::string)::string = '1'::string
+      selection (TRIM(test_space.id::int::string)::string = '1'::string)
         scan test_space
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -480,7 +480,7 @@ fn select_cast_plan_nested_where2() {
 
     insta::assert_snapshot!(explain_tree.to_string(), @"
     projection (test_space.id::int -> id)
-      selection TRIM(42::int::string) = '1'::string
+      selection (TRIM(42::int::string) = '1'::string)
         scan test_space
     execution options:
       sql_vdbe_opcode_max = 45000
