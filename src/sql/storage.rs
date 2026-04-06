@@ -313,6 +313,16 @@ impl StorageCache for PicoStorageCache {
         let table_lock = self.get_or_create_table_lock(plan_id);
         let mem_added = stmt.estimated_size();
         let stmt = Rc::new(Mutex::new(stmt));
+
+        // When the schema version changes, we can replace the value based on
+        // an existing `plan_id`. In this case, we do not want to call
+        // `evict_fn`, otherwise `finalize_retired_plan` will clean up
+        // the virtual tables of the new plan due to name collisions.
+        //
+        // Skipping eviction is safe because `table_create_impl` already drops
+        // and recreates each temp space before we reach this point.
+        let same_key_removed = self.cache.remove_no_evict(&plan_id);
+
         let removed = self.cache.put(
             plan_id,
             StorageCacheEntry {
@@ -325,7 +335,10 @@ impl StorageCache for PicoStorageCache {
                 motion_ids: table_names,
             },
         )?;
-        let mem_removed = removed.map(|x| x.stmt_size).unwrap_or(0);
+
+        let mem_removed_same_key = same_key_removed.map(|x| x.stmt_size).unwrap_or(0);
+        let mem_removed_evicted = removed.map(|x| x.stmt_size).unwrap_or(0);
+        let mem_removed = mem_removed_same_key + mem_removed_evicted;
 
         self.mem_used += mem_added;
         self.mem_used -= mem_removed;

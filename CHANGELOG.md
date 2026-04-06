@@ -22,6 +22,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixed a SQL planner panic caused by stale type metadata after clone-based
   rewrites such as `BETWEEN` normalization and `GROUP BY` alias expansion.
+- Fixed a bug with the storage cache that caused an error "Temporary table TMP_ not found".
 
 ## [26.1.1] - 2026-03-24
 
