@@ -1,4 +1,6 @@
+from abc import ABC, abstractmethod
 import inspect
+import logging
 from collections import Counter
 from pathlib import Path
 from typing import Type
@@ -114,29 +116,14 @@ def parse_queries(raw_queries: str):
     return queries
 
 
-class IprotoRunner:
-    def __init__(self, cluster: Cluster):
-        self.cluster = cluster
+class AbstractRunner(ABC):
+    run_query_error: type
 
-    def do_execsql(self, query: str, expected: list):
-        result = self.cluster.leader().sql(query)
-        result_len = len(result[0]) if len(result) > 0 else 0
-        new_expected = list(map(list, zip(*(iter(expected),) * result_len)))
-        compare_results(new_expected, result)
-
-    def do_execsql_exact(self, query: str, expected: list):
-        result = self.cluster.leader().sql(query)
-        data = [col for row in result for col in row]
-        assert data == expected
-
-    def do_explain_sql(self, query: str, expected: list):
-        instance = self.cluster.leader()
-        result = instance.sql(query)
-        assert result == expected
+    @abstractmethod
+    def run_query(self, query: str) -> list:
+        pass
 
     def do_catchsql(self, sql: str, expected: str | list):
-        cluster = self.cluster
-        instance = cluster.leader()
         queries = parse_queries(sql)
 
         if isinstance(expected, str):
@@ -148,16 +135,76 @@ class IprotoRunner:
             f"Mismatch: {len(queries)} SQL queries but {len(expected)} expected errors."
         )
 
-        for query, exp_err in zip(queries, expected):
-            if exp_err and exp_err != NOT_AN_ERROR:
-                with pytest.raises(TarantoolError, match=exp_err):
-                    instance.sql(query)
-            else:
-                instance.sql(query)
+        def do_check():
+            for query, exp_err in zip(queries, expected):
+                if exp_err and exp_err != NOT_AN_ERROR:
+                    with pytest.raises(self.run_query_error, match=exp_err):
+                        self.run_query(query)
+                else:
+                    self.run_query(query)
+
+        # TODO: replace None with smth to support `--update-sql-snapshots`
+        return None, do_check
+
+    def do_execsql(self, query: str, expected: list):
+        result = self.run_query(query)
+        result_len = len(result[0]) if len(result) > 0 else 0
+        new_expected = list(map(list, zip(*(iter(expected),) * result_len)))
+
+        def do_check():
+            compare_results(new_expected, result)
+
+        # TODO: replace None with smth to support `--update-sql-snapshots`
+        return None, do_check
+
+    def do_execsql_exact(self, query: str, expected: list):
+        result = self.run_query(query)
+        output = [col for row in result for col in row]
+
+        def do_check():
+            assert output == expected
+
+        # TODO: replace None with smth to support `--update-sql-snapshots`
+        return None, do_check
+
+    def do_explain_sql(self, query: str, expected: list):
+        result = self.run_query(query)
+        output = [row[0] for row in result]
+
+        def do_check():
+            assert output == expected
+
+        return output, do_check
 
 
-class PgprotoRunner:
+class IprotoRunner(AbstractRunner):
+    run_query_error = TarantoolError
+
     def __init__(self, cluster: Cluster):
+        super().__init__()
+        self.cluster = cluster
+
+    def run_query(self, query: str) -> list:
+        result = self.cluster.leader().sql(query)
+        rows: list[Any] = []
+        for row in result:
+            match row:
+                case list():
+                    rows.append(row)
+                case tuple():
+                    rows.append(row)
+                case _:
+                    # This chicanery is needed for EXPLAIN.
+                    rows.append((row,))
+        return rows
+
+
+class PgprotoRunner(AbstractRunner):
+    run_query_error = psycopg.Error
+
+    def __init__(self, cluster: Cluster):
+        super().__init__()
+
         # Setup pgproto user
         leader = cluster.leader()
         leader.sql("CREATE USER postgres WITH PASSWORD 'Passw0rd'")
@@ -175,40 +222,13 @@ class PgprotoRunner:
         self.cluster = cluster
         self.conn = conn
 
-    def do_execsql(self, query: str, expected: list):
-        result = self.conn.execute(query).fetchall()
-        result_len = len(result[0]) if len(result) > 0 else 0
-        new_expected = list(map(list, zip(*(iter(expected),) * result_len)))
-        compare_results(new_expected, result)
-
-    def do_execsql_exact(self, query: str, expected: list):
-        result = self.conn.execute(query).fetchall()
-        data = [col for row in result for col in row]
-        assert data == expected
-
-    def do_explain_sql(self, query: str, expected: list):
-        result = self.conn.execute(query)
-        explain = [row[0] for row in result]
-        assert explain == expected
-
-    def do_catchsql(self, sql: str, expected: str | list):
-        queries = parse_queries(sql)
-
-        if isinstance(expected, str):
-            expected = [expected]
-        elif expected is None:
-            expected = [None] * len(queries)
-
-        assert len(queries) == len(expected), (
-            f"Mismatch: {len(queries)} SQL queries but {len(expected)} expected errors."
-        )
-
-        for query, exp_err in zip(queries, expected):
-            if exp_err and exp_err != NOT_AN_ERROR:
-                with pytest.raises(psycopg.Error, match=exp_err):
-                    self.conn.execute(query)
-            else:
-                self.conn.execute(query)
+    def run_query(self, query: str) -> list:
+        with self.conn.cursor() as cur:
+            cur.execute(query)
+            # https://www.psycopg.org/psycopg3/docs/api/cursors.html#psycopg.Cursor.rownumber
+            if cur.rownumber is None:
+                return []
+            return cur.fetchall()
 
 
 def _parse_line(input_string, lead_sym: Any, split_by: str):
@@ -258,9 +278,9 @@ def parse_file(cls: Type, file_name: str) -> list:
     content = test_file.read_text()
     test_pattern = (
         # Test name
-        r"-- TEST: ([^\n]*)\n"
+        r"-- TEST: (?P<name>[^\n]*)\n"
         # SQL query
-        r"-- SQL:\n(.*?)\n"
+        r"-- SQL:\n(?P<query>.*?)\n"
         # EXPECTED (optional): tuples returned by the picodata must
         # appear in exactly the same order as specified in the test
         # result.
@@ -269,32 +289,41 @@ def parse_file(cls: Type, file_name: str) -> list:
         # sorted before comparison.
         # ERROR (optional): error message that must be raised by the
         # picodata.
-        r"(?:-- (EXPECTED|UNORDERED|ERROR):\n(.*?))?"
+        r"(?:-- (?P<kind>EXPECTED|UNORDERED|ERROR):\n(?P<body>.*?))?"
         # Next test or end of file
         r"(?=-- TEST:|\Z)"
     )
-    matches = re.findall(test_pattern, content, re.DOTALL)
     params = []
+    matches = re.finditer(test_pattern, content, re.DOTALL)
     for match in matches:
-        name = match[0].strip()
+        name = match.group("name").strip()
         assert name, "Test name must be provided"
-        query = match[1]
+
+        query = match.group("query")
         if query.startswith("--"):
             continue
         query = query.strip()
         assert query, "SQL query must be provided"
+
+        kind = match.group("kind")
+
+        span = None
         error = None
         expected = None
         is_exact: bool = False
-        if match[2] == "ERROR":
-            error = match[3].strip().split("\n")
-        elif match[2] == "EXPECTED" or match[2] == "UNORDERED":
-            is_exact = True if match[2] == "EXPECTED" else False
+        if kind == "ERROR":
+            span = match.span("body")
+            error = match.group("body").strip().split("\n")
+        elif kind == "EXPECTED" or kind == "UNORDERED":
+            span = match.span("body")
+            is_exact = kind == "EXPECTED"
             if query.lower().startswith("explain"):
-                expected = _parse_line(match[3], "\n", "\n")
+                expected = _parse_line(match.group("body"), "\n", "\n")
             else:
-                expected = _parse_line(match[3], None, ",")
-        params.append(pytest.param(query, expected, is_exact, error, id=name))
+                expected = _parse_line(match.group("body"), None, ",")
+
+        params.append(pytest.param(query, expected, is_exact, error, test_file, span, id=name))
+
     return params
 
 
@@ -307,64 +336,125 @@ def sql_test_file(file_name: str):
     return inner
 
 
+TEST_SQL_ARGS = ["query", "expected", "is_exact", "error", "file_name", "span"]
+
+
 # Pytest hook to generate tests from parameters. For details see test/framework/sqltester.py
 def pytest_generate_tests(metafunc):
     if metafunc.function.__name__ == "test_sql":
         assert "query" in metafunc.fixturenames
         assert "expected" in metafunc.fixturenames
         assert "error" in metafunc.fixturenames
-        metafunc.parametrize(["query", "expected", "is_exact", "error"], metafunc.cls.params)
+        metafunc.parametrize(TEST_SQL_ARGS, metafunc.cls.params)
 
 
-@pytest.mark.parametrize("runner_cls", [PgprotoRunner, IprotoRunner], scope="class")
-class ClusterSingleInstance:
-    params: list = []
+TEST_PATCHES: dict[str, dict[tuple[int, int], str]] = dict()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def patch_sql_snapshots(pytestconfig):
+    yield  # wait until all tests have finished
+
+    if not pytestconfig.getoption("update_sql_snapshots"):
+        return
+
+    for file, patches in TEST_PATCHES.items():
+        logging.warning(f"patching file {file}")
+        with open(file) as f:
+            content = f.read()
+
+        spans = list(patches.keys())
+        spans.sort(reverse=True)
+
+        for start, end in spans:
+            old_snapshot = content[start:end]
+            old_trailing_newlines = len(old_snapshot) - len(old_snapshot.rstrip("\n"))
+
+            new_snapshot = patches[(start, end)]
+            new_trailing_newlines = len(new_snapshot) - len(new_snapshot.rstrip("\n"))
+
+            # The current test ends where the next one starts, so we have
+            # to adjust its tail to account for newlines we'd otherwise lose.
+            trailing_newlines = max(2, old_trailing_newlines, new_trailing_newlines)
+            new_snapshot = new_snapshot.rstrip("\n") + "\n" * trailing_newlines
+            content = content[:start] + new_snapshot + content[end:]
+
+        content = content.rstrip("\n") + "\n"
+        with open(file, "w") as f:
+            f.write(content)
+
+
+class AbstractCluster(ABC):
+    instance_count: int
 
     @pytest.fixture(scope="class")
     def runner(self, runner_cls, cluster_factory):
         cluster = cluster_factory()
-        init_cluster(cluster, 1)
-        assert len(cluster.instances) == 1
+        init_cluster(cluster, self.instance_count)
+        assert len(cluster.instances) == self.instance_count
         cluster.wait_until_buckets_balanced()
 
         yield runner_cls(cluster)
 
         cluster.kill()
 
-    def test_sql(self, runner, query: str, is_exact: bool, expected: list, error: str):
-        if query.lower().startswith("explain") and not error:
-            runner.do_explain_sql(query, expected)
-        elif expected and not is_exact:
-            runner.do_execsql(query, expected)
-        elif expected and is_exact:
-            runner.do_execsql_exact(query, expected)
-        else:
-            runner.do_catchsql(query, error)
+    def test_sql(
+        self,
+        runner,
+        query: str,
+        is_exact: bool,
+        expected: list,
+        error: str,
+        file_name: str,
+        span: tuple[int, int],
+    ):
+        """
+        See `TEST_SQL_ARGS` above!
+        """
+
+        output = None
+        try:
+            if query.lower().startswith("explain") and not error:
+                output, do_check = runner.do_explain_sql(query, expected)
+            elif expected and not is_exact:
+                output, do_check = runner.do_execsql(query, expected)
+            elif expected and is_exact:
+                output, do_check = runner.do_execsql_exact(query, expected)
+            else:
+                output, do_check = runner.do_catchsql(query, error)
+
+            do_check()
+
+        except AssertionError:
+            if output is not None:
+
+                def fix_line(s):
+                    if s == "":
+                        return "''"
+                    return str(s)
+
+                output = "\n".join(fix_line(x) for x in output)
+
+                # Now, register the test to be updated.
+                file_name = str(file_name)
+                global TEST_PATCHES
+                if file_name not in TEST_PATCHES:
+                    TEST_PATCHES[file_name] = {}
+                TEST_PATCHES[file_name][span] = output
+
+            # XXX: don't forget to re-raise!
+            raise
+
+
+@pytest.mark.parametrize("runner_cls", [PgprotoRunner, IprotoRunner], scope="class")
+class ClusterSingleInstance(AbstractCluster):
+    params: list = []
+    instance_count: int = 1
 
 
 # TODO: Add instance_count parameter to the class above and remove this class.
 # Note that doing this before fixing vshard rebalancing will introduce more flaky tests.
 @pytest.mark.parametrize("runner_cls", [PgprotoRunner, IprotoRunner], scope="class")
-class ClusterTwoInstances:
+class ClusterTwoInstances(AbstractCluster):
     params: list = []
-
-    @pytest.fixture(scope="class")
-    def runner(self, runner_cls, cluster_factory):
-        cluster = cluster_factory()
-        init_cluster(cluster, 2)
-        assert len(cluster.instances) == 2
-        cluster.wait_until_buckets_balanced()
-
-        yield runner_cls(cluster)
-
-        cluster.kill()
-
-    def test_sql(self, runner, query: str, expected: list, is_exact: bool, error: str):
-        if query.lower().startswith("explain") and not error:
-            runner.do_explain_sql(query, expected)
-        elif expected and not is_exact:
-            runner.do_execsql(query, expected)
-        elif expected and is_exact:
-            runner.do_execsql_exact(query, expected)
-        else:
-            runner.do_catchsql(query, error)
+    instance_count: int = 2

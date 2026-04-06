@@ -234,6 +234,50 @@ run pytest with `-s` argument to avoid stdout interception. This will open a REP
 way to look around, run arbitrary code, etc. It is more productive compared to endlessly rerunning the test with various
 print statements.
 
+#### Dealing with outdated SQL snapshot tests
+
+When working with code, sometimes we need to change the output of certain tests.
+This may look something like this:
+
+```
+FAILED test/int/sql/test_eliminate_motion.py::TestEliminateMotion::test_sql[group-by-1-explain-PgprotoRunner] - assert == failed. [pytest-clarity diff shown]
+  
+  LHS vs RHS shown below
+  
+    [
+        'projection (count((*::int))::int -> "col_1")',
+        '    group by ("t1"."a"::int) output: ("t1"."a"::int -> "a", 
+  "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")',
+        '        selection "t1"."a"::int = 1::int',
+  +     '            scan "t1"',
+  ?                         ^
+  -     '            scan "t2"',
+  ?                         ^
+  +     'execution options:',
+  +     '    sql_vdbe_opcode_max = 45000',
+  +     '    sql_motion_row_max = 5000',
+  +     'buckets = [1934]',
+  ?                    ^
+  -     'buckets = [1935]',
+  ?                    ^
+    ]
+```
+
+Often it's possible to automatically update "snapshots" of such tests
+by running the test suite with a custom command line flag:
+
+```shell
+poetry run pytest -v -n $(nproc) --update-sql-snapshots
+```
+
+Once the test run has completed, you will see the updated tests both in
+test logs and `git status`. Please note that this first run will show the
+actual errors regardless of whether it was possible to fix the tests or not.
+We could hide the errors of the updated tests, but it's better to keep the
+output for the sake of clarity. The subsequent test run should pass, though.
+
+> NOTE: Currently, we only support snapshot updates for `EXPLAIN`.
+
 #### Running manual/test_scaling.py::test_cas_conflicts
 
 This test is not ran by default, but can be used for benchmarking instance join time and cas conflicts.
