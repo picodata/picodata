@@ -247,6 +247,12 @@ def pytest_addoption(parser: pytest.Parser):
         default=False,
         help="Write the list of collected software versions required for rolling upgrade to `required_rolling_versions.txt` file",  # noqa: E501
     )
+    parser.addoption(
+        "--update-sql-snapshots",
+        action="store_true",
+        default=False,
+        help="Update EXPECTED in sql tests (test/int/sql et al)",
+    )
 
 
 def pytest_configure(config: pytest.Config):
