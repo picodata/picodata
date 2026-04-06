@@ -76,6 +76,11 @@ where
         self.lru.get_mut(key)
     }
 
+    /// Remove an entry without calling the eviction function.
+    pub fn remove_no_evict(&mut self, key: &Key) -> Option<Value> {
+        self.lru.pop(key)
+    }
+
     pub fn pop(&mut self) -> Result<Option<Value>, SbroadError> {
         if let Some((k, mut v)) = self.lru.pop_lru() {
             if let Some(ref f) = self.evict_fn {

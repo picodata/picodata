@@ -29,6 +29,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Revoking privileges from `admin` user caused a panic. Now, revoking priviliges
   from `admin` user is forbidden, for same reasons as for the `pico_service` user.
 - Fixed a bug preventing scalar functions from being used in GROUP BY.
+- Fixed a bug with the storage cache that caused an error "Temporary table TMP_ not found".
 
 ## [26.1.1] - 2026-03-24
 
