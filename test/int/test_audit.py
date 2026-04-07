@@ -12,7 +12,6 @@ from conftest import (
     Cluster,
     Retriable,
 )
-from framework.log import log
 
 
 # Auth methods that don't require requests to remote servers (e.g. LDAP).
@@ -33,38 +32,34 @@ class AuditFile:
     def __init__(self, path):
         self.path = path
         self._f = open(path)
-        self.seen_error_at_line = None
+        self.parsed_bytes = 0
 
     def events(self) -> Generator[dict, None, None]:
-        skip_until_line_no = 0
-        if self.seen_error_at_line:
-            skip_until_line_no = self.seen_error_at_line
+        if self.parsed_bytes > 0:
             self._f.close()
             self._f = open(self.path)
+            self._f.seek(self.parsed_bytes)
 
-        seen_error = None
-        for line_no, line in enumerate(self._f, start=1):
-            if line_no < skip_until_line_no:
-                continue
+        while True:
+            # NOTE: cannot use `for line in self._f:` because that breaks the
+            # calls to `self._f.tell()` which we use below
+            line = self._f.readline()
 
-            if seen_error:
-                # We only expect the last line in the file to be faulty. If
-                # instead it's not the last line and we get here, then the error
-                # is more serious
-                raise seen_error from seen_error
+            if not line:
+                # EOF
+                break
 
-            data = None
+            if not line.endswith("\n"):
+                # Partial read. Possible in case of concurrent writes from picodata.
+                raise Exception(f"Partial read: `{line}`")
+
             try:
                 data = json.loads(line)
             except json.decoder.JSONDecodeError as e:
-                e.args = (self.path, line_no, *e.args)
-                # It's possible that the last line in the file is not a finished
-                # json expression, if picodata is writing to the file concurrently
-                log.error(f"{self.path}:{line_no}: error {e}")
-                seen_error = e
-                self.seen_error_at_line = line_no
-                continue
+                e.args = (f"{e.args[0]} when parsing line: `{line}`", *e.args[1:])
+                raise e from e
 
+            self.parsed_bytes = self._f.tell()
             yield data
 
 
@@ -73,6 +68,51 @@ def take_until_title(events, title: str) -> dict | None:
         if event["title"] == title:
             return event
     return None
+
+
+def test_pytest_audit_file_events_api(unstarted_instance: Instance):
+    """This test checks the `AuditFile` object itself.
+    Checks that `AuditFile.events()` is reenterable, and handles partial reads.
+    """
+
+    filepath = os.path.join(unstarted_instance.instance_dir, "audit.log")
+    writer = open(filepath, "w")
+
+    audit_file = AuditFile(filepath)
+    assert list(audit_file.events()) == []
+    assert list(audit_file.events()) == []
+
+    writer.write('{"key1":"value1"}\n')
+    writer.flush()
+    assert list(audit_file.events()) == [dict(key1="value1")]
+    assert list(audit_file.events()) == []
+
+    writer.write('{"key2":"value2"}\n{"key3":"value3"}\n')
+    writer.flush()
+    assert list(audit_file.events()) == [dict(key2="value2"), dict(key3="value3")]
+    assert list(audit_file.events()) == []
+
+    writer.write('{"partial":')
+    writer.flush()
+    with pytest.raises(Exception) as e:
+        list(audit_file.events())
+    assert e.value.args == ('Partial read: `{"partial":`',)
+
+    writer.write('"read"}')
+    writer.flush()
+    with pytest.raises(Exception) as e:
+        list(audit_file.events())
+    assert e.value.args == ('Partial read: `{"partial":"read"}`',)
+
+    writer.write("\n")
+    writer.flush()
+    assert list(audit_file.events()) == [dict(partial="read")]
+
+    writer.write("GARBAGE\n")
+    writer.flush()
+    with pytest.raises(json.decoder.JSONDecodeError) as e:
+        list(audit_file.events())
+    assert e.value.args[0].endswith("when parsing line: `GARBAGE\n`")
 
 
 def test_startup(instance_with_audit_file: Instance):
@@ -773,6 +813,9 @@ def test_rotation(cluster: Cluster):
     assert instance.process is not None
     instance.process.send_signal(sig=signal.SIGHUP)
 
+    # `Retriable` is needed, because we don't have another way to synchronize
+    # with the audit log file, and we're potentially going to be reading from
+    # the file concurrently with picodata writing into it
     Retriable(fatal=json.decoder.JSONDecodeError).call(check_audit_log_rotate, audit)
 
 
