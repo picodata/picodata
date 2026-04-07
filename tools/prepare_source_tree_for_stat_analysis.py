@@ -278,14 +278,14 @@ def get_submodules():
     result = subprocess.run(
         ['git', 'submodule', 'status'],
         capture_output=True, text=True, check=True
-    )
+    ) # nosec
     return [Path(line.split()[1]) for line in result.stdout.strip().split('\n') if line ]
 
 def get_deleted_files():
     result = subprocess.run(
         ['git', 'ls-files', '--deleted'],
         capture_output=True, text=True, check=True
-    )
+    ) # nosec
     return [Path(f) for f in result.stdout.strip().split('\n') if f]
 
 
@@ -361,11 +361,11 @@ def restore_files(module):
         for pattern in DEAD_LIST:
             if root_deleted_file_path.is_relative_to(pattern):
                 print(f"restoring file matched by prefix {pattern}: {root_deleted_file_path}")
-                subprocess.run(['git', 'checkout', '--', deleted_file_path], check=True)
+                subprocess.run(['git', 'checkout', '--', deleted_file_path], check=True) # nosec
                 break
             elif fnmatch.fnmatch(root_deleted_file_path, pattern):
                 print(f"restoring file matched by pattern {pattern}: {root_deleted_file_path}")
-                subprocess.run(['git', 'checkout', '--', deleted_file_path], check=True)
+                subprocess.run(['git', 'checkout', '--', deleted_file_path], check=True) # nosec
                 break
 
     for submodule in get_submodules():
@@ -374,8 +374,7 @@ def restore_files(module):
                 restore_files(module/submodule)
         else:
             print(f"restoring module {submodule}")
-            #subprocess.run(['git', 'checkout', '--', submodule], check=True)
-            subprocess.run(['git', 'submodule', 'update', '--init', '--recursive', '--', submodule], check=True)
+            subprocess.run(['git', 'submodule', 'update', '--init', '--recursive', '--', submodule], check=True) # nosec
 
         
 
@@ -389,9 +388,6 @@ def apply_patches_and_delete():
 
 
 def restore():
-   # subprocess.check_call(
-   #     shlex.split("git submodule foreach --recursive git restore .")
-   #)  # nosec
     restore_files(Path('.'))
     print("Reversing patches for svace:")
     apply_from_dir(SVACE_PATCHES, True)
