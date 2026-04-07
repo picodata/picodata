@@ -393,3 +393,15 @@ def test_unlogged_table_read_preference(cluster: Cluster, should_succeed: bool, 
             i1.sql(dql_query)
         with pytest.raises(TarantoolError, match=error_message):
             i2.sql(dql_query)
+
+
+def test_user_can_specify_read_preference(cluster: Cluster):
+    cluster.deploy(instance_count=2, init_replication_factor=2)
+
+    master = cluster.masters()[0]
+    master.sql("""CREATE USER postgres WITH PASSWORD 'Passw0rd'""", sudo=True)
+    master.sql("""GRANT CREATE TABLE TO postgres""", sudo=True)
+
+    master_conn = master.connect_via_pgproto(user="postgres", password="Passw0rd")
+    master_conn.execute("CREATE TABLE t (a INT PRIMARY KEY)")
+    master_conn.execute("SELECT * FROM t WHERE a = 1 OPTION(READ_PREFERENCE = REPLICA)")

@@ -30,6 +30,7 @@ with the `YY.MINOR.MICRO` scheme.
   from `admin` user is forbidden, for same reasons as for the `pico_service` user.
 - Fixed a bug preventing scalar functions from being used in GROUP BY.
 - Fixed a bug with the storage cache that caused an error "Temporary table TMP_ not found".
+- Fixed a permission error occured during query planning for non-admin users.
 
 ## [26.1.1] - 2026-03-24
 

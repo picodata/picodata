@@ -724,7 +724,9 @@ pub(crate) fn port_write_metadata<'p>(
 
 /// Get all unlogged tables and check if any of them are present in the plan tables.
 fn plan_has_unlogged_tables(plan: &Plan) -> SqlResult<bool> {
-    let unlogged_tables = PicoTable::new().get_unlogged_tables()?;
+    let unlogged_tables = with_admin_su("getting unlogged tables", || {
+        PicoTable::new().get_unlogged_tables()
+    })?;
 
     for table in unlogged_tables {
         if plan.relations.tables.contains_key(&table.name) {
