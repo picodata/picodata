@@ -375,7 +375,7 @@ cluster:
         replicaset_masters = get_vshards_opinion_about_replicaset_masters(router_instance, "storage")
         assert replicaset_masters[r2_uuid] == storage_follower.name
 
-    Retriable(timeout=10).call(wait_until_governor_deliver_vshard_configuration)
+    Retriable().call(wait_until_governor_deliver_vshard_configuration)
 
     # ensure that after `storage_istance_1` killed, `storage` tier tables still operable
 
@@ -534,8 +534,8 @@ cluster:
         replicaset_masters = get_vshards_opinion_about_replicaset_masters(router_instance, "storage")
         assert replicaset_masters[r_uuid] == instance.name
 
-    Retriable(timeout=10).call(wait_until_governor_deliver_vshard_configuration, replicaset_1_i2, r2_uuid)
-    Retriable(timeout=10).call(wait_until_governor_deliver_vshard_configuration, replicaset_2_i2, r3_uuid)
+    Retriable().call(wait_until_governor_deliver_vshard_configuration, replicaset_1_i2, r2_uuid)
+    Retriable().call(wait_until_governor_deliver_vshard_configuration, replicaset_2_i2, r3_uuid)
 
     # to second replicaset
     data = router_instance.sql("""INSERT INTO "sharded_table" VALUES(2) """)

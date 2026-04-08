@@ -19,8 +19,6 @@ as_bob: AsUser = {
     "password": "T0tallysecret",
 }
 
-_3_SEC = 3
-
 
 def test_access_global_table(cluster: Cluster):
     (i1,) = cluster.deploy(instance_count=1)
@@ -49,7 +47,7 @@ def test_access_global_table(cluster: Cluster):
     _ = cluster.cas("insert", "friends_of_peppa", ["Rebecca", "Rabbit"], user="alice")
     _ = cluster.cas("insert", "friends_of_peppa", ["Zoe", "Zebra"], user="alice")
     ret, _ = cluster.cas("insert", "friends_of_peppa", ["Suzy", "Sheep"], user="alice")
-    i1.raft_wait_index(ret, _3_SEC)
+    i1.raft_wait_index(ret)
 
     # Alice can read it
     assert i1.sql("""select * from "friends_of_peppa" """, **as_alice) == [

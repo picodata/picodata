@@ -33,14 +33,14 @@ def test_global_space_dml_catchup_by_log(cluster: Cluster):
     # Some dml
     index, res_row_count = i1.cas("insert", "candy", [1, "marshmallow", 2.7])
     assert res_row_count == 1
-    i1.raft_wait_index(index, 3)
+    i1.raft_wait_index(index)
     index, res_row_count = i1.cas("insert", "candy", [2, "milk chocolate", 6.9])
     assert res_row_count == 1
-    i1.raft_wait_index(index, 3)
-    i2.raft_wait_index(index, 3)
-    i3.raft_wait_index(index, 3)
-    i4.raft_wait_index(index, 3)
-    i5.raft_wait_index(index, 3)
+    i1.raft_wait_index(index)
+    i2.raft_wait_index(index)
+    i3.raft_wait_index(index)
+    i4.raft_wait_index(index)
+    i5.raft_wait_index(index)
 
     # Dml applied ok
     expected_tuples = [
@@ -60,14 +60,14 @@ def test_global_space_dml_catchup_by_log(cluster: Cluster):
     # More DML
     index, res_row_count = i1.cas("replace", "candy", [2, "dark chocolate", 13.37])
     assert res_row_count == 1
-    i1.raft_wait_index(index, 3)
+    i1.raft_wait_index(index)
     index, _ = i1.cas("delete", "candy", key=[1])
-    i1.raft_wait_index(index, 3)
+    i1.raft_wait_index(index)
     index, res_row_count = i1.cas("insert", "candy", [3, "ice cream", 0.3])
     assert res_row_count == 1
-    i1.raft_wait_index(index, 3)
-    i2.raft_wait_index(index, 3)
-    i3.raft_wait_index(index, 3)
+    i1.raft_wait_index(index)
+    i2.raft_wait_index(index)
+    i3.raft_wait_index(index)
 
     # Dml applied ok again
     expected_tuples = [
@@ -126,14 +126,14 @@ def test_global_space_dml_catchup_by_snapshot(cluster: Cluster):
     # Some dml
     index, res_row_count = i1.cas("insert", "candy", [1, "marshmallow", 2.7])
     assert res_row_count == 1
-    i1.raft_wait_index(index, 3)
+    i1.raft_wait_index(index)
     index, res_row_count = i1.cas("insert", "candy", [2, "milk chocolate", 6.9])
     assert res_row_count == 1
-    i1.raft_wait_index(index, 3)
-    i2.raft_wait_index(index, 3)
-    i3.raft_wait_index(index, 3)
-    i4.raft_wait_index(index, 3)
-    i5.raft_wait_index(index, 3)
+    i1.raft_wait_index(index)
+    i2.raft_wait_index(index)
+    i3.raft_wait_index(index)
+    i4.raft_wait_index(index)
+    i5.raft_wait_index(index)
 
     # Dml applied ok
     expected_tuples = [
@@ -153,14 +153,14 @@ def test_global_space_dml_catchup_by_snapshot(cluster: Cluster):
     # More DML
     index, res_row_count = i1.cas("replace", "candy", [2, "dark chocolate", 13.37])
     assert res_row_count == 1
-    i1.raft_wait_index(index, 3)
+    i1.raft_wait_index(index)
     index, res_row_count = i1.cas("delete", "candy", key=[1])
-    i1.raft_wait_index(index, 3)
+    i1.raft_wait_index(index)
     index, res_row_count = i1.cas("insert", "candy", [3, "ice cream", 0.3])
     assert res_row_count == 1
-    i1.raft_wait_index(index, 3)
-    i2.raft_wait_index(index, 3)
-    i3.raft_wait_index(index, 3)
+    i1.raft_wait_index(index)
+    i2.raft_wait_index(index)
+    i3.raft_wait_index(index)
 
     # Dml applied ok again
     expected_tuples = [

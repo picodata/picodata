@@ -140,7 +140,7 @@ def test_large_snapshot(cluster: Cluster):
     i3.raft_compact_log()
 
     # First i1 is leader and i4 starts reading snapshot from it.
-    i1.promote_or_fail()
+    cluster.wait_leader_elected()
 
     t_i4 = time.time()
     # Restart the instance triggering the chunky snapshot application.
@@ -163,7 +163,7 @@ def test_large_snapshot(cluster: Cluster):
     i3.raft_compact_log()
 
     # At some point i2 becomes leader but i4 keeps reading snapshot from i1.
-    i2.promote_or_fail()
+    i1.raft_transfer_leadership(i2.raft_id)
 
     i4.wait_online(timeout=30 - (time.time() - t_i4))
     print(f"i4 catching up by snapshot took: {time.time() - t_i4}s")

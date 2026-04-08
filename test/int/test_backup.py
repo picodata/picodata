@@ -307,7 +307,7 @@ def test_backup_abort_is_called(cluster: Cluster):
     with pytest.raises(TimeoutError):
         # Send BACKUP request.
         i1.sql("BACKUP")
-    lc.wait_matched(timeout=30)
+    lc.wait_matched()
 
     # Manually call box.backup.start() to cause abort of backup.
     i1.call("box.backup.start")
@@ -315,7 +315,7 @@ def test_backup_abort_is_called(cluster: Cluster):
     # Resume BACKUP execution.
     lc = log_crawler(i1, "Backup is already in progress")
     i1.call("pico._inject_error", error_injection, False)
-    lc.wait_matched(timeout=30)
+    lc.wait_matched()
 
 
 def test_backup_enables_read_only_on_prepare_sharded(cluster: Cluster):
@@ -339,14 +339,14 @@ def test_backup_enables_read_only_on_prepare_sharded(cluster: Cluster):
     with pytest.raises(TimeoutError):
         # Send BACKUP request.
         i1.sql("BACKUP")
-    lc.wait_matched(timeout=30)
+    lc.wait_matched()
 
     with pytest.raises(TarantoolError, match="cannot be modified now as DDL operation is in progress"):
         i1.sql(f"insert into {sharded_table_name} values (1)")
 
     # Disable injection that leads to BACKUP completion.
     i1.call("pico._inject_error", error_injection, False)
-    Retriable(timeout=25).call(check_no_pending_schema_change, i1)
+    Retriable().call(check_no_pending_schema_change, i1)
 
     # Check that write read-only mode is disabled
     dml = i1.sql(f"insert into {sharded_table_name} values (1)")
@@ -376,7 +376,7 @@ def test_backup_enables_read_only_on_prepare_global(cluster: Cluster):
     with pytest.raises(TimeoutError):
         # Send BACKUP request.
         i1.sql("BACKUP")
-    lc.wait_matched(timeout=30)
+    lc.wait_matched()
 
     # Write to global table is disabled because its `operable`
     # flag is set to `false`.
@@ -385,7 +385,7 @@ def test_backup_enables_read_only_on_prepare_global(cluster: Cluster):
 
     # Disable injection that leads to BACKUP completion.
     i1.call("pico._inject_error", error_injection, False)
-    Retriable(timeout=35).call(check_no_pending_schema_change, i1)
+    Retriable().call(check_no_pending_schema_change, i1)
 
     # Check that write to global table is enabled.
     dml = i1.sql(f"insert into {global_table_name} values (1)")
@@ -413,7 +413,7 @@ def test_backup_disables_read_only_mode_on_abort(cluster: Cluster):
     with pytest.raises(TimeoutError):
         # Send BACKUP request.
         i1.sql("BACKUP")
-    lc.wait_matched(timeout=30)
+    lc.wait_matched()
 
     with pytest.raises(TarantoolError, match="cannot be modified now as DDL operation is in progress"):
         i1.sql(f"insert into {sharded_table_name} values (1)")
@@ -424,7 +424,7 @@ def test_backup_disables_read_only_mode_on_abort(cluster: Cluster):
 
     # Resume BACKUP execution.
     i1.call("pico._inject_error", error_injection, False)
-    Retriable(timeout=25).call(check_no_pending_schema_change, i1)
+    Retriable().call(check_no_pending_schema_change, i1)
 
     # Check that write read-only mode is disabled.
     dml = i1.sql(f"insert into {sharded_table_name} values (1)")
@@ -523,7 +523,7 @@ def _test_backup_executes_correctly_on_instance_termination(cluster: Cluster):
     i1.wait_online()
 
     # Wait until the schema change is finalized (BACKUP execution is finalized).
-    Retriable(timeout=20).call(check_last_backup_timestamp, i1)
+    Retriable().call(check_last_backup_timestamp, i1)
     new_backup_timestamp = get_backup_timestamp_finished(i1)
     new_backup_folder_name = backup_folder_name_from_timestamp(new_backup_timestamp)
 
@@ -607,7 +607,7 @@ def _test_backup_makes_replica_read_only_on_master_down(cluster: Cluster):
     lc = log_crawler(i1, injection_log)
     with pytest.raises(TimeoutError):
         i1.sql("BACKUP")
-    lc.wait_matched(timeout=30)
+    lc.wait_matched()
 
     # i1 is in read-only mode.
     with pytest.raises(TarantoolError, match="cannot be modified now as DDL operation is in progress"):
@@ -620,7 +620,7 @@ def _test_backup_makes_replica_read_only_on_master_down(cluster: Cluster):
     def check_read_only(i: Instance):
         assert i.eval("return box.cfg.read_only")
 
-    Retriable(timeout=20).call(check_read_only, i2)
+    Retriable().call(check_read_only, i2)
 
     # i2 is in read-only mode too.
     with pytest.raises(TarantoolError, match="a read-only instance"):
@@ -702,7 +702,7 @@ def test_backup_removes_partially_created_dir_on_abort(cluster: Cluster):
         # Send BACKUP request.
         # Backup directory would be created on i1, but not on i2.
         i1.sql("BACKUP")
-    lc.wait_matched(timeout=30)
+    lc.wait_matched()
 
     new_backup_timestamp = get_backup_timestamp_unfinished(i1)
     new_backup_folder_name = backup_folder_name_from_timestamp(new_backup_timestamp)
@@ -723,10 +723,10 @@ def test_backup_removes_partially_created_dir_on_abort(cluster: Cluster):
     # Resume BACKUP execution.
     lc = log_crawler(i2, "Config file which instance is referencing, does not exist")
     i2.call("pico._inject_error", error_injection, False)
-    lc.wait_matched(timeout=30)
+    lc.wait_matched()
 
     # Wait until backup execution is finished.
-    Retriable(timeout=20).call(check_no_pending_schema_change, i1)
+    Retriable().call(check_no_pending_schema_change, i1)
 
     # Check that backup dir was removed on i1.
     assert not os.path.isdir(backup_dir), "Backup directory should be removed on i1"
@@ -755,7 +755,7 @@ def test_backup_does_not_fail_when_backup_retries(cluster: Cluster):
         # Send BACKUP request.
         # Backup directory would be created on i1, but not on i2.
         i1.sql("BACKUP")
-    lc.wait_matched(timeout=30)
+    lc.wait_matched()
 
     new_backup_timestamp = get_backup_timestamp_unfinished(i1)
     new_backup_folder_name = backup_folder_name_from_timestamp(new_backup_timestamp)
@@ -776,7 +776,7 @@ def test_backup_does_not_fail_when_backup_retries(cluster: Cluster):
     i1.call("pico._inject_error", error_injection, False)
 
     # Wait until backup execution is finished.
-    Retriable(timeout=30).call(check_no_pending_schema_change, i2)
+    Retriable().call(check_no_pending_schema_change, i2)
 
     # Check that backup dir was created on i2.
     assert os.path.isdir(backup_dir_i2), "Backup directory should be created on i2"
@@ -918,8 +918,8 @@ def test_backup_does_not_break_new_replicaset_ddl_catching_up_with_restore(clust
     i4.wait_online()
 
     # Wait until new instances catch up with DDL operations.
-    Retriable(timeout=20).call(check_no_pending_schema_change, i3)
-    Retriable(timeout=20).call(check_no_pending_schema_change, i4)
+    Retriable().call(check_no_pending_schema_change, i3)
+    Retriable().call(check_no_pending_schema_change, i4)
 
     for i in [i1, i3]:
         cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
@@ -974,8 +974,8 @@ def test_backup_does_not_break_new_replicaset_ddl_catching_up_no_restore(cluster
     i4.wait_online()
 
     # Wait until new instances catch up with DDL operations.
-    Retriable(timeout=30).call(check_no_pending_schema_change, i3)
-    Retriable(timeout=30).call(check_no_pending_schema_change, i4)
+    Retriable().call(check_no_pending_schema_change, i3)
+    Retriable().call(check_no_pending_schema_change, i4)
 
     # Check t1 is created on new replicaset instances.
     assert i3.call("box.space._space.index.name:get", "t1") is not None

@@ -186,7 +186,7 @@ def test_cas_predicate(instance: Instance):
     ret, res_row_cnt = instance.cas("insert", "_pico_property", ["fruit", "apple"], index=read_index)
     assert ret == read_index + 1
     assert res_row_cnt == 1
-    instance.raft_wait_index(ret, _3_SEC)
+    instance.raft_wait_index(ret)
     assert instance.raft_read_index(_3_SEC) == ret
     assert instance.pico_property("fruit") == "apple"
 
@@ -265,7 +265,7 @@ def test_cas_predicate(instance: Instance):
     )
     assert ret == read_index + 2
     assert res_row_cnt == 1
-    instance.raft_wait_index(ret, _3_SEC)
+    instance.raft_wait_index(ret)
     assert instance.raft_read_index(_3_SEC) == ret
     assert instance.pico_property("flower") == "tulip"
 
@@ -323,7 +323,7 @@ def test_cas_batch(cluster: Cluster):
     )
     assert index1 == read_index + 1
     assert res_row_count1 == 4
-    cluster.raft_wait_index(index1, _3_SEC)
+    cluster.raft_wait_index(index1)
     assert cluster.instances[0].raft_read_index(_3_SEC) == index1
     assert value("some_space", "car") == "bike"
     assert value("some_space", "tree") == "pine"
@@ -357,7 +357,7 @@ def test_cas_batch(cluster: Cluster):
     )
     assert index > read_index + 1
     assert res_row_count == 1
-    cluster.raft_wait_index(index, _3_SEC)
+    cluster.raft_wait_index(index)
     assert cluster.instances[0].raft_read_index(_3_SEC) == index
     assert cluster.instances[0].eval('return box.execute([[select * from "some_space"]]).rows') == []
     assert value("_pico_property", "raft_entry_max_size") == 150
@@ -421,7 +421,7 @@ def test_cas_lua_api(cluster: Cluster):
     ret, res_row_cnt = cluster.cas("insert", "some_space", ["fruit", "apple"], index=read_index)
     assert ret == read_index + 1
     assert res_row_cnt == 1
-    cluster.raft_wait_index(ret, _3_SEC)
+    cluster.raft_wait_index(ret)
     assert cluster.instances[0].raft_read_index(_3_SEC) == ret
     assert value("fruit") == "apple"
 

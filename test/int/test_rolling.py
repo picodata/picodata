@@ -1,19 +1,14 @@
-from conftest import Cluster
-from conftest import Retriable
-from conftest import log_crawler
-from framework.registry import get_or_make_registry
-from framework.registry import Registry
-from framework.util.version import base_version
-from framework.util.version import ExecutableVersion
-from framework.util.version import parse_version_exc
-from framework.util.version import VersionAlias
-from framework.util import ExpectedError
-from packaging.version import Version
-from urllib.request import urlopen
 import json
-import pytest
 import os
 import signal
+from urllib.request import urlopen
+
+import pytest
+from conftest import Cluster, Retriable, log_crawler
+from framework.registry import Registry, get_or_make_registry
+from framework.util import ExpectedError
+from framework.util.version import ExecutableVersion, VersionAlias, base_version, parse_version_exc
+from packaging.version import Version
 
 
 def assert_version(
@@ -862,4 +857,4 @@ cluster:
         assert len(get_http_addresses()) > 0
 
     # now we should be able to see http addresses in `_pico_peer_address`
-    Retriable(timeout=10).call(check_http_addresses_present)
+    Retriable().call(check_http_addresses_present)

@@ -36,12 +36,12 @@ def test_compaction(instance: Instance):
     assert raft_state("compacted_index") == applied_index
 
 
-def raft_wait_commit_index(i: Instance, expected, timeout=1):
+def raft_wait_commit_index(i: Instance, expected):
     def make_attempt():
         commit = i.eval("return box.space._raft_state:get('commit').value")
         assert commit == expected
 
-    Retriable(timeout=timeout).call(make_attempt)
+    Retriable().call(make_attempt)
 
 
 def test_unapplied_entries_arent_compacted(instance: Instance):

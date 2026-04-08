@@ -24,7 +24,7 @@ def uninitialized_instance(cluster: Cluster) -> Generator[Instance, None, None]:
         assert instance.eval("return box.info.status") == "running"
         eprint(f"{instance} is running (but stuck in discovery phase)")
 
-    Retriable(timeout=6).call(check_running, instance)
+    Retriable().call(check_running, instance)
     yield instance
 
 
@@ -34,7 +34,7 @@ def test_raft_api(uninitialized_instance: Instance):
         lambda i: i.call(".proc_raft_info"),
         lambda i: i.raft_get_index(),
         lambda i: i.raft_read_index(),
-        lambda i: i.raft_wait_index(0),
+        lambda i: i.call(".proc_wait_index", 0, 10),
         lambda i: i.call("pico.raft_propose_nop"),
         lambda i: i.call("pico.whoami"),
         lambda i: i.call("pico.instance_info", "i1"),

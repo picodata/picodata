@@ -795,7 +795,7 @@ def test_sql_same_plan_waiter_resumes_after_owner_release(cluster: Cluster):
             waits = int(total_samples(i1.get_metrics(), "pico_sql_temp_table_lock_waits"))
             assert waits > lock_waits_before
 
-        Retriable(timeout=5).call(check_waiter_blocked_on_temp_lock)
+        Retriable().call(check_waiter_blocked_on_temp_lock)
 
         assert cancel_sql_cancel_query(i1)
         i1.call("pico._inject_error", "BLOCK_POPULATE_TABLE_BEFORE_YIELD", False)

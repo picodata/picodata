@@ -53,17 +53,31 @@ def test_sql_log(instance: Instance, protocol_type: str):
         execute_func(sql)
         lc.wait_matched()
 
+    # Verify that with sql_log=false, statements are NOT logged.
+    # To avoid waiting for a negative (which requires an arbitrary timeout),
+    # execute the statement, then re-enable sql_log and wait for a known
+    # log entry. If the earlier statement didn't produce a log line by the
+    # time the later one does, it never will.
     set_sql_log(False, execute_func)
     sql = "INSERT INTO test VALUES (43, 'my_value')"
-    lc = log_crawler(instance, f"sql-log: {sql}")
+    lc_must_not_appear = log_crawler(instance, f"sql-log: {sql}")
     execute_func(sql)
-    with pytest.raises(AssertionError):
-        lc.wait_matched(timeout=2)
 
     set_sql_log(True, execute_func)
-    # do not log ACL
+    # Execute a statement that WILL be logged, as a barrier.
+    barrier_sql = "SELECT 'sql_log_disabled_barrier'"
+    lc_barrier = log_crawler(instance, f"sql-log: {barrier_sql}")
+    execute_func(barrier_sql)
+    lc_barrier.wait_matched()
+    assert not lc_must_not_appear.matched, f"sql-log should not have been emitted for: {sql}"
+
+    # Verify that ACL statements are not logged even with sql_log=true.
     sql = "ALTER USER admin WITH PASSWORD 'P@ssw0rd'"
-    lc = log_crawler(instance, f"sql-log: {sql}")
+    lc_must_not_appear = log_crawler(instance, f"sql-log: {sql}")
     execute_func(sql)
-    with pytest.raises(AssertionError):
-        lc.wait_matched(timeout=2)
+    # Use another logged statement as a barrier.
+    barrier_sql = "SELECT 'acl_not_logged_barrier'"
+    lc_barrier = log_crawler(instance, f"sql-log: {barrier_sql}")
+    execute_func(barrier_sql)
+    lc_barrier.wait_matched()
+    assert not lc_must_not_appear.matched, f"sql-log should not have been emitted for ACL: {sql}"
