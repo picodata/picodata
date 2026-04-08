@@ -43,6 +43,7 @@ use openssl::pkey::{PKey, Private};
 use openssl::ssl::{HandshakeError, SslAcceptor, SslMethod, SslStream};
 use openssl::x509::store::X509StoreBuilder;
 use openssl::x509::X509;
+use picodata_plugin_proc_macro::internal;
 use std::io::{self, Read, Write};
 use std::net::SocketAddr;
 use std::os::fd::{AsRawFd, BorrowedFd};
@@ -85,6 +86,7 @@ pub enum PicoListenerError {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// TLS acceptor for accepting encrypted connections.
+#[internal]
 #[derive(Clone)]
 pub struct TlsAcceptor(Rc<SslAcceptor>);
 
@@ -150,6 +152,7 @@ impl TlsAcceptor {
 /// Contains configuration needed to setup a [`PicoListener`].
 ///
 /// [`PicoListener`]: PicoListener
+#[internal]
 #[derive(Clone, Debug)]
 pub struct ListenerConfig {
     /// The address to listen on.
@@ -163,6 +166,7 @@ pub struct ListenerConfig {
 /// Contains PEM-encoded TLS configuration needed to set up TLS for [`PicoListener`].
 ///
 /// [`PicoListener`]: PicoListener
+#[internal]
 #[derive(Clone, Debug)]
 pub struct ListenerTlsConfig {
     /// PEM-encoded certificate chain.
@@ -306,8 +310,8 @@ impl PicoListener {
     ///
     /// Returns an error if:
     /// - The socket cannot be bound
-    /// - TLS is enabled but certificate files cannot be read
-    pub fn bind_with_config(config: &ListenerConfig) -> Result<Self, PicoListenerError> {
+    /// - TLS is enabled but certificates could not be parsed
+    fn bind_with_config(config: &ListenerConfig) -> Result<Self, PicoListenerError> {
         let socket_addr = parse_listen_addr(&config.listen)?;
 
         let listener = create_coio_listener(socket_addr)?;
@@ -343,7 +347,7 @@ impl PicoListener {
     /// Returns an error if:
     /// - The listener configuration is missing or invalid
     /// - The socket cannot be bound
-    /// - TLS is enabled but certificate files cannot be read
+    /// - TLS is enabled but certificates could not be parsed
     pub fn bind(context: &PicoContext) -> Result<Option<Self>, PicoListenerError> {
         let plugin = context.plugin_name();
         let service = context.service_name();
@@ -407,6 +411,7 @@ impl PicoListener {
 /// Contains TLS configuration needed to set up TLS for [`PicoListener`] as loaded openssl objects.
 ///
 /// [`PicoListener`]: PicoListener
+#[internal]
 pub struct LoadedListenerTlsConfig {
     /// Server certificate chain.
     pub cert_chain: Vec<X509>,

@@ -1,5 +1,6 @@
 use abi_stable::std_types::{ROption, RString, RVec};
 use abi_stable::StableAbi;
+use picodata_plugin_proc_macro::internal;
 use tarantool::session::UserId;
 use tarantool::space::{SpaceId, UpdateOps};
 use tarantool::tuple::{ToTupleBuffer, Tuple};
@@ -389,6 +390,7 @@ impl RaftInfo {
 /// FFI-safe version of [`ListenerConfig`].
 ///
 /// [`ListenerConfig`]: crate::transport::listener::ListenerConfig
+#[internal]
 #[derive(StableAbi, Clone, Debug)]
 #[repr(C)]
 pub struct FfiListenerConfig {
@@ -403,6 +405,7 @@ pub struct FfiListenerConfig {
 /// FFI-safe version of [`ListenerTlsConfig`].
 ///
 /// [`ListenerTlsConfig`]: crate::transport::listener::ListenerTlsConfig
+#[internal]
 #[derive(StableAbi, Clone, Debug)]
 #[repr(C)]
 pub struct FfiListenerTlsConfig {
@@ -414,6 +417,7 @@ pub struct FfiListenerTlsConfig {
     pub mtls_ca_chain_pem: ROption<RVec<u8>>,
 }
 
+#[internal]
 #[derive(StableAbi, Clone, Debug)]
 #[repr(u8)]
 pub enum FfiListenerConfigError {
