@@ -26,6 +26,10 @@ with the `YY.MINOR.MICRO` scheme.
   error, which could occur when you execute multiple DQL queries due to
   yield during cache eviction.
 - Fixed sentinel panic on long activation wait.
+- [picodata#2812] Use direct RPC for query metadata on DQL cache miss
+  - Replace vshard-based Lua dispatch with ConnectionPool::call_raw for
+    the proc_query_metadata callback. This fixes SQL query execution from
+    arbiter tier instances (bucket_count=0) where no vshard router exists.
 
 ## [26.1.2] - 2026-04-14 
 

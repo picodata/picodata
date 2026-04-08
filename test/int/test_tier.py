@@ -726,3 +726,5 @@ cluster:
         IN TIER "storage"
         """
     )
+
+    assert i1.sql("SELECT * FROM sharded_in_storage") == []
