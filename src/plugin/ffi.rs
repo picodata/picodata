@@ -511,9 +511,11 @@ fn load_plugin_listener_config(
             service: service_name,
         },
         &config.tls,
-        false,
-        // we didn't log this during validation, so make sure to log it now
-        true,
+        crate::tls::ConfigLoadOptions {
+            allow_missing_ca: false,
+            // we didn't log this during validation, so make sure to log it now
+            should_log: true,
+        },
     )
     .map_err(traft::error::Error::invalid_configuration)?
     .map(|tls| tls.serialize())

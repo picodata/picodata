@@ -178,6 +178,21 @@ fn validate_config(config: &LoadedListenerTlsConfig) -> Result<(), TlsConfigLoad
     Ok(())
 }
 
+pub struct ConfigLoadOptions {
+    /// If `true`, CA file is allowed to not exist even if its path was specified. mTLS will be disabled in this case.
+    ///
+    /// If `false`, a configured but nonexistent CA file will lead to an error.
+    ///
+    /// This is needed for compatibility with implicit pgproto TLS configuration,
+    /// in which presence or absence of `ca.crt` file determines whether mTLS is enabled.
+    pub allow_missing_ca: bool,
+    /// Specifies whether the function should log the paths it tries to access
+    /// and the loaded certificate chain. It exists because we load the certificates twice:
+    /// once during config validation and once during actual listener creation.
+    /// Having it logged twice is confusing, so we only do so when actually creating the listener for those code paths.
+    pub should_log: bool,
+}
+
 /// Reads certificate files specified by the [`crate::config::TlsSettings`] into memory.
 ///
 /// This function will also attempt to validate the provided files:
@@ -198,14 +213,13 @@ fn validate_config(config: &LoadedListenerTlsConfig) -> Result<(), TlsConfigLoad
 pub fn load_listener_tls_config_from_files(
     source: &TlsConfigurationSource,
     config: &crate::config::TlsSettings,
-    allow_missing_ca: bool,
-    should_log: bool,
+    options: ConfigLoadOptions,
 ) -> Result<Option<LoadedListenerTlsConfig>, TlsConfigLoadError> {
     use TlsConfigLoadError::InvalidConfiguration;
 
     macro_rules! log {
         ($($args:tt)*) => {
-            if should_log {
+            if options.should_log {
                 tlog!(Info, $($args)*);
             }
         };
@@ -254,7 +268,7 @@ pub fn load_listener_tls_config_from_files(
 
         match std::fs::read(ca_file) {
             Ok(ca_pem) => Some(ca_pem),
-            Err(e) if allow_missing_ca && e.kind() == std::io::ErrorKind::NotFound => {
+            Err(e) if options.allow_missing_ca && e.kind() == std::io::ErrorKind::NotFound => {
                 log!(
                     "TLS({source}): CA file {} is missing, mTLS will be disabled",
                     ca_file.display()
@@ -280,7 +294,7 @@ pub fn load_listener_tls_config_from_files(
     };
 
     // Log certificate information and validate
-    if should_log {
+    if options.should_log {
         log_cert_info(source, &config).map_err(TlsConfigLoadError::LoggingCerts)?;
     }
     validate_config(&config)?;

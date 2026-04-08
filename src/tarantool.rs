@@ -488,8 +488,10 @@ impl Cfg {
         let _ = tls::load_listener_tls_config_from_files(
             &tls::TlsConfigurationSource::Iproto,
             tls_config,
-            false,
-            true,
+            tls::ConfigLoadOptions {
+                allow_missing_ca: false,
+                should_log: true,
+            },
         )
         .map_err(Error::invalid_configuration)?;
 

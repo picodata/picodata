@@ -996,10 +996,12 @@ Using configuration file '{args_path}'.");
                     if let Err(err) = crate::tls::load_listener_tls_config_from_files(
                         &crate::tls::TlsConfigurationSource::Plugin { plugin, service },
                         &listener.tls,
-                        false,
-                        // plugin will call `load_listener_tls_config_from_files` once more when creating the listener,
-                        // so don't want to log anything here
-                        false,
+                        crate::tls::ConfigLoadOptions {
+                            allow_missing_ca: false,
+                            // plugin will call `load_listener_tls_config_from_files` once more when creating the listener,
+                            // so don't want to log anything here
+                            should_log: false,
+                        },
                     ) {
                         return Err(Error::InvalidConfiguration(format!(
                             "{config_path}.tls: loading TLS config failed: {err}"

@@ -345,8 +345,10 @@ fn start_http_server(
     let _ = tls::load_listener_tls_config_from_files(
         &tls::TlsConfigurationSource::Http,
         &tls,
-        false,
-        true,
+        tls::ConfigLoadOptions {
+            allow_missing_ca: false,
+            should_log: true,
+        },
     )
     .map_err(Error::invalid_configuration)?;
 
@@ -1467,8 +1469,10 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
     let _ = tls::load_listener_tls_config_from_files(
         &tls::TlsConfigurationSource::Iproto,
         tls_config,
-        false,
-        true,
+        tls::ConfigLoadOptions {
+            allow_missing_ca: false,
+            should_log: true,
+        },
     )
     .map_err(Error::invalid_configuration)?;
 
@@ -2173,8 +2177,10 @@ fn postjoin(
     let _ = tls::load_listener_tls_config_from_files(
         &tls::TlsConfigurationSource::Iproto,
         tls_config,
-        false,
-        true,
+        tls::ConfigLoadOptions {
+            allow_missing_ca: false,
+            should_log: true,
+        },
     )
     .map_err(Error::invalid_configuration)?;
 

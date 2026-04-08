@@ -5,7 +5,10 @@ use openssl::ssl::SslStream;
 use std::path::Path;
 
 /// If some TLS paths are not configured explicitly, fall back to fixed filenames in the instance directory. NB: this is only done by pgproto.
-fn apply_pgproto_tls_default_paths(instance_dir: &Path, tls_settings: TlsSettings) -> TlsSettings {
+fn apply_pgproto_tls_default_paths(
+    instance_dir: &Path,
+    tls_settings: TlsSettings,
+) -> (TlsSettings, bool) {
     let TlsSettings {
         enabled,
         cert_file,
@@ -13,6 +16,8 @@ fn apply_pgproto_tls_default_paths(instance_dir: &Path, tls_settings: TlsSetting
         ca_file,
         password_file,
     } = tls_settings;
+
+    let mut ca_path_configured = false;
 
     // We should use the absolute paths here, because SslContextBuilder::set_certificate_chain_file
     // fails for relative paths with an unclear error, represented as an empty error stack.
@@ -27,17 +32,23 @@ fn apply_pgproto_tls_default_paths(instance_dir: &Path, tls_settings: TlsSetting
     };
 
     let ca_file = match ca_file {
-        Some(ca_file) => ca_file,
+        Some(ca_file) => {
+            ca_path_configured = true;
+            ca_file
+        }
         None => instance_dir.join("ca.crt"),
     };
 
-    TlsSettings {
-        enabled,
-        cert_file: Some(cert_file),
-        key_file: Some(key_file),
-        ca_file: Some(ca_file),
-        password_file,
-    }
+    (
+        TlsSettings {
+            enabled,
+            cert_file: Some(cert_file),
+            key_file: Some(key_file),
+            ca_file: Some(ca_file),
+            password_file,
+        },
+        ca_path_configured,
+    )
 }
 
 /// Create TLS acceptor for pgproto from the provided configuration.
@@ -47,13 +58,17 @@ pub fn configure_tls_acceptor(
     instance_dir: &Path,
     config: &TlsSettings,
 ) -> Result<Option<TlsAcceptor>, Error> {
-    let tls_config = apply_pgproto_tls_default_paths(instance_dir, config.clone());
+    let (tls_config, ca_path_configured) =
+        apply_pgproto_tls_default_paths(instance_dir, config.clone());
 
     let loaded_tls_config = crate::tls::load_listener_tls_config_from_files(
         &crate::tls::TlsConfigurationSource::Pgproto,
         &tls_config,
-        true,
-        true,
+        crate::tls::ConfigLoadOptions {
+            // only allow a missing CA if we have fell back to the `instance_dir/ca.crt` default.
+            allow_missing_ca: !ca_path_configured,
+            should_log: true,
+        },
     )
     .map_err(Error::invalid_configuration)?;
 
