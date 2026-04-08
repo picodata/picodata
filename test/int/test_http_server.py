@@ -789,7 +789,7 @@ cluster:
         ],
         "k8s_probes_test",
     )
-    cluster.wait_has_states(i1, "Offline", "Offline", timeout=10)
+    cluster.wait_has_states(i1, "Offline", "Offline")
 
     with get_unauthorized(f"{base_url}/startup") as response:
         assert response.status == 200, "Startup should remain 200 after going offline (latched)"
@@ -827,7 +827,7 @@ def test_healthcheck_status_api(cluster: Cluster):
     auth_token = get_auth_token(i1)
 
     # Wait for startup and bucket distribution
-    Retriable(timeout=30).call(lambda: get_authorized(f"http://{http_listen}/api/v1/health/startup", auth_token))
+    Retriable().call(lambda: get_authorized(f"http://{http_listen}/api/v1/health/startup", auth_token))
     cluster.wait_until_instance_has_this_many_active_buckets(i1, 1000)
 
     # Validate healthy status with data accuracy
@@ -915,7 +915,7 @@ def test_healthcheck_status_api(cluster: Cluster):
         ],
         "status_api_test",
     )
-    cluster.wait_has_states(i1, "Offline", "Offline", timeout=10)
+    cluster.wait_has_states(i1, "Offline", "Offline")
 
     with get_authorized(status_url, auth_token) as response:
         assert response.status == 200

@@ -112,7 +112,7 @@ def test_log_rollback(cluster3: Cluster):
 
     # Help i2 to become a new leader
     i2.promote_or_fail()
-    Retriable(timeout=10).call(lambda: i3.assert_raft_status("Follower", i2.raft_id))
+    Retriable().call(lambda: i3.assert_raft_status("Follower", i2.raft_id))
 
     print(i2.call("pico.raft_log", dict(return_string=True)))
     print(i2.call("box.space._raft_state:select"))
@@ -120,7 +120,7 @@ def test_log_rollback(cluster3: Cluster):
 
     # Now i1 has an uncommitted, but persisted entry that should be rolled back.
     fix_picodata_procs(i1)
-    Retriable(timeout=10).call(lambda: i1.assert_raft_status("Follower", i2.raft_id))
+    Retriable().call(lambda: i1.assert_raft_status("Follower", i2.raft_id))
 
     propose_state_change(i1, "i1 is alive again")
 
@@ -165,7 +165,7 @@ def test_leader_disruption(cluster3: Cluster):
     )
 
     # i3 should become the follower again without disrupting i1
-    Retriable(timeout=10).call(lambda: i3.assert_raft_status("Follower", i1.raft_id))
+    Retriable().call(lambda: i3.assert_raft_status("Follower", i1.raft_id))
 
 
 def target_state_reason(peer: Instance, target: Instance) -> str:
@@ -548,7 +548,7 @@ cluster:
     #
     # Note: `Retriable` is needed because wait_online doesn't work and there's
     # no other good way to syncrhonize
-    Retriable(timeout=10).call(
+    Retriable().call(
         storage_1_1.eval,
         """
         box.cfg{read_only = false}
@@ -652,9 +652,9 @@ cluster:
     voter = next(instance for instance in cluster.instances if instance is not leader)
 
     # Make attempt to promote which will make it so instance will more quickly
-    # recongnize that there's no raft leader
-    with pytest.raises(AssertionError):
-        voter.promote_or_fail(timeout=1)
+    # recongnize that there's no raft leader. We don't care if it succeeds —
+    # the point is to trigger a campaign so the node notices the leader is gone.
+    voter.call(".proc_raft_promote")
 
     with pytest.raises(TarantoolError) as e:
         voter.sql("CREATE TABLE yoooooooooooooooooo (id INT PRIMARY KEY, name TEXT) OPTION (timeout = 1)")

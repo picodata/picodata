@@ -900,11 +900,7 @@ buckets = [1-3000]"""
     assert data["row_count"] == 5
     cluster.wait_balanced()
     i1.raft_read_index()
-    data = i1.retriable_sql(
-        "select * from t",
-        retry_timeout=60,
-        timeout=8,
-    )
+    data = i1.retriable_sql("select * from t")
     assert sorted(data) == [[6, 6]]
 
     # test user with write permession can do global dml
@@ -1136,7 +1132,6 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
         select b from g
         where b in (select c from s) or a in (select count(*) from s)
         """,
-        timeout=2,
     )
     assert data == [[1], [2], [3], [4]]
 
@@ -1145,7 +1140,6 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
         select b from g
         where b in (select c from s) and a in (select count(*) from s)
         """,
-        timeout=2,
     )
     assert len(data) == 0
 
@@ -1155,7 +1149,6 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
         (select c as c1 from s)
         on c = c1 + 3 and c in (select a from g)
         """,
-        timeout=2,
     )
     assert data == []
 
@@ -1166,7 +1159,6 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
         (select c as c1 from s)
         on c = c1 + 3 or c in (select a from g)
         """,
-        timeout=2,
     )
     assert data == [[1]]
 
@@ -1176,7 +1168,6 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
         where b in (select c from s where c = 1) or
         b in (select c from s where c = 3)
         """,
-        timeout=2,
     )
     assert data == [[1], [3]]
 
@@ -1187,7 +1178,6 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
         b in (select c from s where c = 3) and
         a < (select sum(c) from s)
         """,
-        timeout=2,
     )
     assert data == [[1], [3]]
 
@@ -1276,7 +1266,6 @@ def test_join_with_global_tbls(cluster: Cluster):
         select b from g
         join s on g.a = s.c
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda e: e[0]) == expected_rows
 
@@ -1285,7 +1274,6 @@ def test_join_with_global_tbls(cluster: Cluster):
         select b from s
         join g on g.a = s.c
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda e: e[0]) == expected_rows
 
@@ -1296,7 +1284,6 @@ def test_join_with_global_tbls(cluster: Cluster):
         c in (select a*a from g)
         group by c
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda e: e[0]) == [[1], [4]]
 
@@ -1308,7 +1295,6 @@ def test_join_with_global_tbls(cluster: Cluster):
         where c < 4
         group by c
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda e: e[0]) == [
         [1, 6],
@@ -1323,7 +1309,6 @@ def test_join_with_global_tbls(cluster: Cluster):
         left join g on c = b
         where c < 5
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda e: e[0]) == [[1, 1], [1, 1], [4, None]]
 
@@ -1334,7 +1319,6 @@ def test_join_with_global_tbls(cluster: Cluster):
         inner join g on c = b
         where c < 5
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda e: e[0]) == [[1, 1], [1, 1]]
 
@@ -1344,7 +1328,6 @@ def test_join_with_global_tbls(cluster: Cluster):
         (select count(*) as c from s)
         left join g on c = a + 2
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda e: e[0]) == [[5, 3]]
 
@@ -1353,7 +1336,6 @@ def test_join_with_global_tbls(cluster: Cluster):
         select b, c from (select b + 3 as b from g)
         left join s on b = c
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda e: e[0]) == [[4, 4], [4, 4], [6, None]]
 
@@ -1364,7 +1346,6 @@ def test_join_with_global_tbls(cluster: Cluster):
         (select c*c as c from s where c > 3)
         on b = c
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda e: e[0]) == [
         [1, None],
@@ -1379,7 +1360,6 @@ def test_join_with_global_tbls(cluster: Cluster):
         (select c*c as c from s where c < 3)
         on b = c
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda e: e[0]) == [[1, 1], [1, 1], [3, None]]
 
@@ -1394,7 +1374,6 @@ def test_join_with_global_tbls(cluster: Cluster):
         (select c + 1 as c from s where c = 2)
         on b = c
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda e: e[0]) == [[3, 3, 3]]
 
@@ -1438,7 +1417,6 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         union all
         select d from s
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == expected
 
@@ -1448,7 +1426,6 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         union all
         select b from g
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == expected
 
@@ -1458,7 +1435,6 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         union all
         select a from g
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == [
         [1],
@@ -1477,7 +1453,6 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         union all
         select c from s
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == expected
 
@@ -1487,7 +1462,6 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         union all
         select a from g
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == expected
 
@@ -1499,7 +1473,6 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         union all
         select a from g
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == expected
 
@@ -1509,7 +1482,6 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         union all
         select sum(c) from s
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == expected
 
@@ -1526,7 +1498,6 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         select a from g
         where b = 1
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == [[1], [2], [2]]
 
@@ -1538,7 +1509,6 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         select c from s
         where c = 3
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == [[2], [3]]
 
@@ -1552,7 +1522,6 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         on d = u or u = 1
         group by d
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == [[2, 2], [2, 9]]
 
@@ -1596,7 +1565,6 @@ def test_union_on_global_tbls(cluster: Cluster):
         union
         select d from s
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == expected
 
@@ -1606,7 +1574,6 @@ def test_union_on_global_tbls(cluster: Cluster):
         union
         select b from g
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == expected
 
@@ -1616,7 +1583,6 @@ def test_union_on_global_tbls(cluster: Cluster):
         union
         select a from g
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == [
         [1],
@@ -1632,7 +1598,6 @@ def test_union_on_global_tbls(cluster: Cluster):
         union
         select c from s
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == expected
 
@@ -1642,7 +1607,6 @@ def test_union_on_global_tbls(cluster: Cluster):
         union
         select a from g
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == expected
 
@@ -1654,7 +1618,6 @@ def test_union_on_global_tbls(cluster: Cluster):
         union
         select a from g
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == expected
 
@@ -1664,7 +1627,6 @@ def test_union_on_global_tbls(cluster: Cluster):
         union
         select sum(c) - 3 from s
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == expected
 
@@ -1682,7 +1644,6 @@ def test_union_on_global_tbls(cluster: Cluster):
         select null from g
         where false
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == [[1], [2]]
 
@@ -2110,7 +2071,6 @@ def test_except_on_global_tbls(cluster: Cluster):
         except
         select a - 1 from g
         """,
-        timeout=2,
     )
     assert data == [[5]]
 
@@ -2120,7 +2080,6 @@ def test_except_on_global_tbls(cluster: Cluster):
         except
         select c from s
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x) == [[1], [2]]
 
@@ -2130,7 +2089,6 @@ def test_except_on_global_tbls(cluster: Cluster):
         except
         select d from s
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == [[1]]
 
@@ -2142,7 +2100,6 @@ def test_except_on_global_tbls(cluster: Cluster):
         select sum(d) from s
         where d = 3
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == [[1], [2]]
 
@@ -2154,7 +2111,6 @@ def test_except_on_global_tbls(cluster: Cluster):
         select b from g
         where b = 1 or b = 2
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == [[5]]
 
@@ -2164,7 +2120,6 @@ def test_except_on_global_tbls(cluster: Cluster):
         except
         select a from g
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == [[6], [7]]
 
@@ -2174,7 +2129,6 @@ def test_except_on_global_tbls(cluster: Cluster):
         except
         select b from g
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == [[6]]
 
@@ -2188,7 +2142,6 @@ def test_except_on_global_tbls(cluster: Cluster):
         select b from g
         )
         """,
-        timeout=2,
     )
     assert sorted(data, key=lambda x: x[0]) == [[7]]
 
@@ -5920,7 +5873,7 @@ def test_limit(cluster: Cluster):
 
     # Read without LIMIT should fail.
     with pytest.raises(TarantoolError, match="Exceeded maximum number of rows"):
-        i1.retriable_sql(""" SELECT * FROM "huge" """)
+        i1.sql(""" SELECT * FROM "huge" """)
 
     # Test read with LIMIT.
     data = i1.retriable_sql(""" SELECT * FROM "huge" LIMIT 1000 """)

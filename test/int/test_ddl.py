@@ -82,17 +82,17 @@ def test_ddl_abort(cluster: Cluster):
 
     i3.call("pico._inject_error", error_injection, False)
 
-    i1.raft_wait_index(index_abort, timeout=10)
-    i2.raft_wait_index(index_abort, timeout=10)
-    i3.raft_wait_index(index_abort, timeout=10)
+    i1.raft_wait_index(index_abort)
+    i2.raft_wait_index(index_abort)
+    i3.raft_wait_index(index_abort)
 
     def check_space_removed(instance):
         assert instance.call("box.space._space:get", space_id) is None
         assert get_index_names(instance, space_id) == []
 
-    Retriable(timeout=10).call(check_space_removed, i1)
-    Retriable(timeout=10).call(check_space_removed, i2)
-    Retriable(timeout=10).call(check_space_removed, i3)
+    Retriable().call(check_space_removed, i1)
+    Retriable().call(check_space_removed, i2)
+    Retriable().call(check_space_removed, i3)
 
 
 ################################################################################
@@ -132,10 +132,10 @@ def test_ddl_create_table_bulky(cluster: Cluster):
         ),
     )
 
-    i1.raft_wait_index(abort_index, 3)
-    i2.raft_wait_index(abort_index, 3)
-    i3.raft_wait_index(abort_index, 3)
-    i4.raft_wait_index(abort_index, 3)
+    i1.raft_wait_index(abort_index)
+    i2.raft_wait_index(abort_index)
+    i3.raft_wait_index(abort_index)
+    i4.raft_wait_index(abort_index)
 
     # No space was created
     assert i1.call("box.space._pico_table:get", space_id) is None
@@ -412,7 +412,7 @@ def test_ddl_create_table_unfinished_from_snapshot(cluster: Cluster):
 
     # Schema change is blocked.
     with pytest.raises(TarantoolError, match="timeout"):
-        i1.raft_wait_index(index, timeout=3)
+        i1.call(".proc_wait_index", index, 10)
 
     # Space is created but is not operable.
     assert i1.call("box.space._space:get", space_id) is not None
@@ -442,7 +442,7 @@ def test_ddl_create_table_unfinished_from_snapshot(cluster: Cluster):
 
     # The schema change finalized.
     for i in cluster.instances:
-        Retriable(timeout=10).call(check, i)
+        Retriable().call(check, i)
 
 
 ################################################################################
@@ -509,9 +509,9 @@ def test_ddl_create_table_abort(cluster: Cluster):
         assert peer.call("box.space._space:get", space_id) is None
 
     # Everything was cleaned up.
-    Retriable(timeout=10).call(check_table_is_gone, i1)
-    Retriable(timeout=10).call(check_table_is_gone, i2)
-    Retriable(timeout=10).call(check_table_is_gone, i3)
+    Retriable().call(check_table_is_gone, i1)
+    Retriable().call(check_table_is_gone, i2)
+    Retriable().call(check_table_is_gone, i3)
 
     assert get_index_names(i1, space_id) == []
     assert get_index_names(i2, space_id) == []
@@ -560,32 +560,41 @@ def test_ddl_create_table_partial_failure(cluster: Cluster):
     # Fix the conflict on the other instance.
     i4.eval("box.space[...]:drop()", space_name)
 
-    # Propose again, now the proposal hangs indefinitely, because all replicaset
-    # masters are required to be present during schema change, but i5 is asleep.
-    index = i1.propose_create_space(space_def, wait_index=False)
-    with pytest.raises(TarantoolError, match="timeout"):
-        i1.raft_wait_index(index, timeout=3)
+    # Propose again. The DDL cannot complete because i5 (a required replicaset
+    # master) is down — the governor needs all masters present to finalize
+    # schema changes.
+    #
+    # propose_create_space returns index of the finalizing entry (commit/abort),
+    # which is prepare_index + 1.
+    finalize_index = i1.propose_create_space(space_def, wait_index=False)
+    prepare_index = finalize_index - 1
 
+    # Wait for the DDL prepare to be applied.
+    i1.raft_wait_index(prepare_index)
+
+    # Block the governor from finalizing the DDL so we can verify the pending
+    # state without racing against governor's abort/commit.
+    i1.call("pico._inject_error", "BLOCK_GOVERNOR_BEFORE_DDL_COMMIT", True)
+    i1.call("pico._inject_error", "BLOCK_GOVERNOR_BEFORE_DDL_ABORT", True)
+
+    # The DDL is still pending — the last raft log entry is ddl_prepare.
     entry, *_ = i1.call("box.space._raft_log:select", None, dict(iterator="lt", limit=1))
-    # Has not yet been finalized
     assert entry[4][0] == "ddl_prepare"
 
-    # Expel the last conflicting instance to fix the conflict.
+    # Unblock the governor and expel the conflicting instance to fix the conflict.
+    i1.call("pico._inject_error", "BLOCK_GOVERNOR_BEFORE_DDL_COMMIT", False)
+    i1.call("pico._inject_error", "BLOCK_GOVERNOR_BEFORE_DDL_ABORT", False)
     # TODO(https://git.picodata.io/core/picodata/-/issues/1100) picodata nuke
     i1.call("pico.expel", i5.name, dict(force=True))
-    applied_index = i1.call("box.space._raft_state:get", "applied")[1]
 
-    # After that expel we expect a ddl commit
-    i1.raft_wait_index(applied_index + 1)
-    i2.raft_wait_index(applied_index + 1)
-    i3.raft_wait_index(applied_index + 1)
-    i4.raft_wait_index(applied_index + 1)
+    # Wait for the DDL to complete on all live instances.
+    def check_space_exists():
+        assert i1.call("box.space._space:get", space_id) is not None
+        assert i2.call("box.space._space:get", space_id) is not None
+        assert i3.call("box.space._space:get", space_id) is not None
+        assert i4.call("box.space._space:get", space_id) is not None
 
-    # Now ddl has been applied
-    assert i1.call("box.space._space:get", space_id) is not None
-    assert i2.call("box.space._space:get", space_id) is not None
-    assert i3.call("box.space._space:get", space_id) is not None
-    assert i4.call("box.space._space:get", space_id) is not None
+    Retriable().call(check_space_exists)
 
 
 ################################################################################
@@ -611,7 +620,7 @@ def test_successful_wakeup_after_ddl(cluster: Cluster):
         OPTION (TIMEOUT = 10)
         """
     )
-    i2.raft_wait_index(i1.raft_get_index(), 3)
+    i2.raft_wait_index(i1.raft_get_index())
     space_id = i1.eval("return box.space.ids.id")
 
     # Space created
@@ -913,7 +922,7 @@ cluster:
     )
 
     # Wait until it catches up the raft state
-    voter_2.wait_governor_status("idle", old_step_counter=counter, timeout=30)
+    voter_2.wait_governor_status("idle", old_step_counter=counter)
 
     # Make sure the DDL was applied
     assert storage_2.call("box.space._space.index.name:get", "top_g") is not None
@@ -1042,7 +1051,7 @@ def test_ddl_drop_table_partial_failure(cluster: Cluster):
     i4.wait_online()
 
     # Wait until the schema change is finalized
-    Retriable(timeout=5).call(check_no_pending_schema_change, i1)
+    Retriable().call(check_no_pending_schema_change, i1)
 
     # Now space is dropped.
     assert i1.call("box.space._space.index.name:get", table_name) is None
@@ -1501,7 +1510,7 @@ def test_ddl_alter_space_by_snapshot(cluster: Cluster):
 
     for row in ([1, 10], [2, 20], [3, 30]):
         index, _ = cluster.cas("insert", space_name, row)
-        cluster.raft_wait_index(index, 3)
+        cluster.raft_wait_index(index)
 
     #
     # This one will be catching up by snapshot.
@@ -1529,7 +1538,7 @@ def test_ddl_alter_space_by_snapshot(cluster: Cluster):
     cluster.raft_wait_index(i1.raft_get_index())
     for row in ([1, "one"], [2, "two"], [3, "three"]):  # type: ignore
         index, _ = cluster.cas("insert", space_name, row)
-        cluster.raft_wait_index(index, 3)
+        cluster.raft_wait_index(index)
 
     # Compact raft log to trigger snapshot generation.
     i1.raft_compact_log()
@@ -1948,7 +1957,7 @@ def test_truncate_stops_rebalancing_before(cluster: Cluster):
         # Send TRUNCATE request before rebalancing starts.
         # It should be blocked.
         r1.sql("TRUNCATE test")
-    lc.wait_matched(timeout=30)
+    lc.wait_matched()
 
     # Check that all buckets are stored on the r1.
     # Disable rebalancing on the first replicaset.
@@ -1968,7 +1977,7 @@ def test_truncate_stops_rebalancing_before(cluster: Cluster):
     r1.call("vshard.storage.rebalancer_enable")
     r1.call("vshard.storage.rebalancer_wakeup")
     # Buckets receiving is paused on r2, check it.
-    lc.wait_matched(timeout=30)
+    lc.wait_matched()
 
     # On r1 single bucket should be in a SENDING state.
     # `rebalancer_max_sending` parameter defines the number of rebalancer workers that
@@ -1986,7 +1995,7 @@ def test_truncate_stops_rebalancing_before(cluster: Cluster):
     # Resume DDL (TRUNCATE) execution.
     lc = log_crawler(r1, "UNBLOCKING")
     r1.call("pico._inject_error", error_injection, False)
-    lc.wait_matched(timeout=30)
+    lc.wait_matched()
 
     # Resume buckets receiving on r2.
     lc = log_crawler(rebalancer_r, "The cluster is balanced ok")
@@ -2026,7 +2035,7 @@ def test_truncate_stops_rebalancing_after(cluster: Cluster):
     lc = log_crawler(rebalancer_r, "Some buckets are not active, retry rebalancing later")
     r1.call("vshard.storage.rebalancer_enable")
     r1.call("vshard.storage.rebalancer_wakeup")
-    lc.wait_matched(timeout=30)
+    lc.wait_matched()
 
     r1_active_buckets_count = r1.call("box.execute", """select count(*) from "_bucket" where "status" = 'active'""")[
         "rows"
@@ -2159,7 +2168,7 @@ def test_truncate_is_applied_during_node_wakeup_for_sharded_table(cluster: Clust
     i2.wait_online()
 
     # Wait until the schema change is finalized.
-    Retriable(timeout=5).call(check_no_pending_schema_change, i1)
+    Retriable().call(check_no_pending_schema_change, i1)
 
     # Check that data was erased by TRUNCATE.
     data = i1.sql("SELECT * FROM t")
@@ -2192,7 +2201,7 @@ def test_truncate_is_applied_during_node_wakeup_for_global_table(cluster: Cluste
     i2.wait_online()
 
     # Wait until the schema change is finalized.
-    Retriable(timeout=5).call(check_no_pending_schema_change, i1)
+    Retriable().call(check_no_pending_schema_change, i1)
 
     # Check that data was erased by TRUNCATE.
     data = i1.sql("SELECT * FROM gt")
@@ -2234,7 +2243,7 @@ def test_truncate_is_applied_from_snapshot_for_sharded_table(cluster: Cluster):
     i2.wait_online()
 
     # # Wait until the schema change is finalized.
-    Retriable(timeout=5).call(check_no_pending_schema_change, i1)
+    Retriable().call(check_no_pending_schema_change, i1)
     t_is_opearable = i1.sql("select operable from _pico_table where name = 't'")
     assert t_is_opearable[0][0]
 
@@ -2308,7 +2317,7 @@ def test_truncate_is_applied_from_snapshot_for_global_table(cluster: Cluster):
     i2.wait_online()
 
     # Wait until the schema change is finalized.
-    Retriable(timeout=5).call(check_no_pending_schema_change, i2)
+    Retriable().call(check_no_pending_schema_change, i2)
     [[t_is_opearable]] = i1.sql("SELECT operable FROM _pico_table WHERE name = 'gt'")
     assert t_is_opearable
 
@@ -2372,19 +2381,19 @@ def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
         OPTION (TIMEOUT = 10)
         """
     )
-    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
+    Retriable().call(check_no_pending_schema_change, leader)
 
     i2.sql(""" TRUNCATE TABLE t1 OPTION (TIMEOUT = 10) """)
-    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
+    Retriable().call(check_no_pending_schema_change, leader)
 
     i2.sql(""" ALTER TABLE t1 RENAME TO t2 OPTION (TIMEOUT = 10) """)
-    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
+    Retriable().call(check_no_pending_schema_change, leader)
 
     i2.sql(""" CREATE INDEX t2_index ON t2 (id) OPTION (TIMEOUT = 10) """)
-    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
+    Retriable().call(check_no_pending_schema_change, leader)
 
     i2.sql(""" DROP INDEX t2_index OPTION (TIMEOUT = 10) """)
-    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
+    Retriable().call(check_no_pending_schema_change, leader)
 
     i2.sql(
         """
@@ -2392,13 +2401,13 @@ def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
         OPTION (TIMEOUT = 10)
         """
     )
-    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
+    Retriable().call(check_no_pending_schema_change, leader)
 
     i2.sql(""" DROP PROCEDURE proc OPTION (TIMEOUT = 10) """)
-    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
+    Retriable().call(check_no_pending_schema_change, leader)
 
     i2.sql(""" DROP TABLE t2 OPTION (TIMEOUT = 10) """)
-    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
+    Retriable().call(check_no_pending_schema_change, leader)
 
     # Test CREATE TABLE (commit and abort cases)
     # actually it's `not yet applied` case
@@ -2410,7 +2419,7 @@ def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
     )
 
     # Wait until the schema change is finalized
-    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
+    Retriable().call(check_no_pending_schema_change, leader)
 
     # proof that it was `not yet applied` case - table should be operable
     rows = leader.sql("SELECT operable from _pico_table where name = 't1'")
@@ -2441,7 +2450,7 @@ def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
         )
 
     # Wait until the schema change is finalized
-    Retriable(timeout=10).call(check_no_pending_schema_change, leader)
+    Retriable().call(check_no_pending_schema_change, leader)
 
     # proof that it is `aborted`
     result = leader.sql(f"SELECT * FROM _pico_table WHERE name = '{conflict_table_name}'")
@@ -2482,8 +2491,8 @@ def test_alter_table_rename_ddl_execution(cluster: Cluster):
     table_id = int(table_id[0][0])
 
     # Wait until the schema change is finalized
-    Retriable(timeout=10).call(check_no_pending_schema_change, r1_leader)
-    Retriable(timeout=10).call(check_no_pending_schema_change, r2_leader)
+    Retriable().call(check_no_pending_schema_change, r1_leader)
+    Retriable().call(check_no_pending_schema_change, r2_leader)
 
     initial_schema_version = r1_leader.sql(f"SELECT schema_version FROM _pico_table WHERE name = '{table_name}'")
     initial_schema_version = int(initial_schema_version[0][0])
@@ -2506,8 +2515,8 @@ def test_alter_table_rename_ddl_execution(cluster: Cluster):
         )
 
     # Wait until the schema change is finalized
-    Retriable(timeout=10).call(check_no_pending_schema_change, r1_leader)
-    Retriable(timeout=10).call(check_no_pending_schema_change, r2_leader)
+    Retriable().call(check_no_pending_schema_change, r1_leader)
+    Retriable().call(check_no_pending_schema_change, r2_leader)
 
     # proof that it is `aborted`
     result = r1_leader.sql(f"SELECT * FROM _pico_table WHERE name = '{conflict_table_name}'")
@@ -2528,8 +2537,8 @@ def test_alter_table_rename_ddl_execution(cluster: Cluster):
     )
 
     # Wait until the schema change is finalized
-    Retriable(timeout=10).call(check_no_pending_schema_change, r1_leader)
-    Retriable(timeout=10).call(check_no_pending_schema_change, r2_leader)
+    Retriable().call(check_no_pending_schema_change, r1_leader)
+    Retriable().call(check_no_pending_schema_change, r2_leader)
 
     renamed_schema_version = r1_leader.sql(f"SELECT schema_version FROM _pico_table WHERE name = '{new_table_name}'")
     renamed_schema_version = int(renamed_schema_version[0][0])
@@ -2575,7 +2584,7 @@ def test_drop_table_pause_rebalancing(cluster: Cluster):
         # Shouldn't wait too long, because governor blocked
         r1_leader.sql("DROP TABLE sharded_table", timeout=3)
 
-    lc.wait_matched(timeout=15)
+    lc.wait_matched()
 
     # Check that rebalancing is blocked
     for instance in cluster.instances:
@@ -2599,10 +2608,10 @@ def test_drop_table_pause_rebalancing(cluster: Cluster):
 
     lc = log_crawler(r1_leader, "UNBLOCKING")
     r1_leader.call("pico._inject_error", error_injection, False)
-    lc.wait_matched(timeout=15)
+    lc.wait_matched()
 
     # Wait until the schema change is finalized
-    Retriable(timeout=10).call(check_no_pending_schema_change, r1_leader)
+    Retriable().call(check_no_pending_schema_change, r1_leader)
 
     # Ensure that table deleted
     result = r1_leader.sql("SELECT * FROM _pico_table WHERE name = 'sharded_table'")
@@ -2748,8 +2757,8 @@ cluster:
     # (retriable, because there's no way to sync, because wait_online won't work)
     # Use a longer timeout (30s) because instances with error injection may take
     # longer to start accepting connections, especially under CI load.
-    Retriable(timeout=30).call(storage_2_1.instance_info)
-    Retriable(timeout=30).call(storage_2_2.instance_info)
+    Retriable().call(storage_2_1.instance_info)
+    Retriable().call(storage_2_2.instance_info)
     assert storage_2_1.replicaset_name == storage_2_2.replicaset_name
     replicaset_storage_2 = storage_2_1.replicaset_name
 
@@ -2778,14 +2787,14 @@ cluster:
     # XXX: at this point we would timeout if the bug we're testing would reappear.
     # After that governor blocks trying to configure sharding, because the new
     # replicaset cannot advance in raft log application
-    leader.wait_governor_status("update current sharding configuration", old_step_counter=counter, timeout=30)
+    leader.wait_governor_status("update current sharding configuration", old_step_counter=counter)
 
     # Unblock them
     storage_2_1.call("pico._inject_error", error_injection, False)
     storage_2_2.call("pico._inject_error", error_injection, False)
 
     # Now the new replicaset successfully finishes catching up
-    leader.wait_governor_status("idle", timeout=30)
+    leader.wait_governor_status("idle")
 
     replication_errors = []
     try:
@@ -2904,7 +2913,7 @@ cluster:
     #
     # Thus governor will technically finish with it's responsibilities and go
     # into `idle` state.
-    leader.wait_governor_status("idle", old_step_counter=counter, timeout=30)
+    leader.wait_governor_status("idle", old_step_counter=counter)
 
     # And the instance with broken replication will be Offline
     cluster.wait_has_states(storage_1_1, "Offline", "Offline")

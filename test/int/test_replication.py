@@ -18,7 +18,7 @@ def wait_vclock(i: Instance, vclock_expected: dict[int, int]):
         for k, v_exp in vclock_expected.items():
             assert (k, vclock_actual[k]) >= (k, v_exp)
 
-    Retriable(timeout=30).call(check_vclock)
+    Retriable().call(check_vclock)
 
 
 # fmt: off
@@ -65,7 +65,7 @@ def test_2_of_3_writable(cluster: Cluster):
         master_name = i2.replicaset_master_name()
         assert master_name != old_master_name
 
-    Retriable(timeout=6).call(check_master_changed)
+    Retriable().call(check_master_changed)
     assert i3.replicaset_master_name() == master_name
 
     old_leader = master
@@ -339,7 +339,7 @@ def test_expel_blocked_by_replicaset_master_switchover_to_offline_replica(
     i5.start()
 
     # Wait until governor finishes with all the needed changes.
-    i1.wait_governor_status("idle", timeout=30)
+    i1.wait_governor_status("idle")
 
     # Only now the instance gets expelled and shuts down
     i4.assert_process_dead()
@@ -479,10 +479,10 @@ def test_replication_rpc_protection_from_old_governor(cluster: Cluster):
     i1.call("pico._inject_error", "BLOCK_REPLICATION_RPC_ON_CLIENT", False)
 
     # check i1 has expected error in the log
-    different_term_error.wait_matched(timeout=2)
+    different_term_error.wait_matched()
 
     # check i3 has replication configured by i2
-    i3_replication_configured.wait_matched(timeout=2)
+    i3_replication_configured.wait_matched()
 
 
 def test_replication_demote_protection_from_old_governor(cluster: Cluster):
@@ -518,7 +518,7 @@ def test_replication_demote_protection_from_old_governor(cluster: Cluster):
     # remove the injected error that blocks the demotion
     i1.call("pico._inject_error", "BLOCK_REPLICATION_DEMOTE", False)
 
-    term_error.wait_matched(timeout=2)
+    term_error.wait_matched()
 
     # wait until governor performs all the necessary actions
     i2.wait_governor_status("idle", old_step_counter=old_step_counter)
@@ -532,7 +532,7 @@ def test_replication_demote_protection_from_old_governor(cluster: Cluster):
         assert i1.eval("return box.info.ro"), "i1 should become read-only"
         assert not i2.eval("return box.info.ro"), "i2 should become master"
 
-    Retriable(timeout=2).call(check_replication)
+    Retriable().call(check_replication)
 
 
 def test_stale_governor_replication_requests(cluster: Cluster):
@@ -556,7 +556,7 @@ def test_stale_governor_replication_requests(cluster: Cluster):
     assert new_term > initial_term, "Term should increase after new leader election"
 
     # verify that i1 logs the replication configuration attempt
-    lc.wait_matched(timeout=10)
+    lc.wait_matched()
 
     # remove the injected error that caused the synchronization timeout
     i1.call("pico._inject_error", "BLOCK_GOVERNOR_BEFORE_REPLICATION_CALL", False)
@@ -565,7 +565,7 @@ def test_stale_governor_replication_requests(cluster: Cluster):
         i1.assert_raft_status("Follower")
         i2.assert_raft_status("Leader")
 
-    Retriable(timeout=10).call(check_replication)
+    Retriable().call(check_replication)
 
 
 def test_fixing_broken_replication(cluster: Cluster):

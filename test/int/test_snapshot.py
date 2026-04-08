@@ -10,7 +10,7 @@ def test_bootstrap_from_snapshot(cluster: Cluster):
     [i1] = cluster.deploy(instance_count=1)
 
     ret, _ = i1.cas("insert", "_pico_property", ["animal", "horse"])
-    i1.raft_wait_index(ret, _3_SEC)
+    i1.raft_wait_index(ret)
     assert i1.raft_read_index(_3_SEC) == ret
 
     # Compact the log up to insert
@@ -68,7 +68,7 @@ def test_catchup_by_snapshot(cluster: Cluster):
     i1.assert_raft_status("Leader")
     ret, _ = i1.cas("insert", "_pico_property", ["animal", "tiger"])
 
-    i3.raft_wait_index(ret, _3_SEC)
+    i3.raft_wait_index(ret)
     assert i3.call("box.space._pico_property:get", "animal") == ["animal", "tiger"]
     assert i3.raft_first_index() == 1
     i3.terminate()
@@ -77,7 +77,7 @@ def test_catchup_by_snapshot(cluster: Cluster):
     ret, _ = i1.cas("insert", "_pico_property", ["tree", "birch"])
 
     for i in [i1, i2]:
-        i.raft_wait_index(ret, _3_SEC)
+        i.raft_wait_index(ret)
         assert i.raft_compact_log() == ret + 1
 
     # Ensure i3 is able to sync raft using a snapshot
@@ -204,11 +204,11 @@ def test_large_snapshot(cluster: Cluster):
         """  # noqa: E501
         )
 
-    def wait_data_prepared(i, timeout=20):
+    def wait_data_prepared(i):
         def inner():
             assert i.call("box.space.BIG:count") == param["N"]
 
-        Retriable(timeout).call(inner)
+        Retriable().call(inner)
 
     cluster.cas("replace", "_pico_property", ["snapshot_chunk_max_size", 1024 * 1024])
     cluster.create_table(
@@ -526,7 +526,7 @@ cluster:
     # the increased timeout is needed because it takes a while
     #  for the leader to notice that the node comes online after disabling IGNORE_ALL_RAFT_MESSAGES
     #  due to our learner heartbeat throttling
-    lc.wait_matched(timeout=20)
+    lc.wait_matched()
 
     # Make a schema change. WAIT APPLIED LOCALLY is needed because `storage_1_2`
     # is blocked by the injection

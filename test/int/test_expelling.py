@@ -34,10 +34,10 @@ def test_expel_follower(cluster: Cluster):
     picodata_expel(peer=i1, target=i3, force=True, password_file=cluster.service_password_file)
 
     cluster.wait_has_states(i3, "Expelled", "Expelled")
-    Retriable(timeout=10).call(lambda: assert_voters([i1, i2], i1))
+    Retriable().call(lambda: assert_voters([i1, i2], i1))
 
     # assert i3.process
-    Retriable(timeout=10).call(i3.assert_process_dead)
+    Retriable().call(i3.assert_process_dead)
 
     lc = log_crawler(i3, "current instance is expelled from the cluster")
     i3.fail_to_start()
@@ -60,10 +60,10 @@ def test_expel_leader(cluster: Cluster):
     picodata_expel(peer=i1, target=i1, force=True, timeout=5, password_file=cluster.service_password_file)
 
     cluster.wait_has_states(i1, "Expelled", "Expelled")
-    Retriable(timeout=10).call(lambda: assert_voters([i2, i3], i2))
+    Retriable().call(lambda: assert_voters([i2, i3], i2))
 
     # assert i1.process
-    Retriable(timeout=10).call(i1.assert_process_dead)
+    Retriable().call(i1.assert_process_dead)
 
     lc = log_crawler(i1, "current instance is expelled from the cluster")
     i1.fail_to_start()
@@ -86,10 +86,10 @@ def test_expel_by_follower(cluster: Cluster):
     picodata_expel(peer=i2, target=i3, force=True, password_file=cluster.service_password_file)
 
     cluster.wait_has_states(i3, "Expelled", "Expelled")
-    Retriable(timeout=10).call(lambda: assert_voters([i1, i2], i1))
+    Retriable().call(lambda: assert_voters([i1, i2], i1))
 
     # assert i3.process
-    Retriable(timeout=10).call(i3.assert_process_dead)
+    Retriable().call(i3.assert_process_dead)
 
 
 def test_raft_id_after_expel(cluster: Cluster):
@@ -437,7 +437,7 @@ cluster:
 
     arbiter_2.terminate()
     cluster.wait_has_states(arbiter_2, "Offline", "Offline")
-    Retriable(timeout=10).call(arbiter_2.assert_process_dead)
+    Retriable().call(arbiter_2.assert_process_dead)
 
     # Expel offline arbiter_2 — since replication_factor=1, it is the sole instance
     # in its replicaset, so this triggers the full replicaset expel flow.

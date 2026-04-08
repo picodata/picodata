@@ -27,14 +27,14 @@ def test_failover(cluster2: Cluster):
     i1, i2 = cluster2.instances
     i1.promote_or_fail()
 
-    Retriable(timeout=5).call(i2.assert_raft_status, "Follower", leader_id=i1.raft_id)
+    Retriable().call(i2.assert_raft_status, "Follower", leader_id=i1.raft_id)
 
     def do_test():
         i2.call("pico.raft_tick", 200)
         i1.assert_raft_status("Follower", leader_id=i2.raft_id)
         i2.assert_raft_status("Leader")
 
-    Retriable(timeout=5).call(do_test)
+    Retriable().call(do_test)
 
 
 def test_restart_follower(cluster2: Cluster):
@@ -98,7 +98,7 @@ def test_restart_both(cluster2: Cluster):
     # i1 has already initialized raft node but can't win election yet
     # i2 starts discovery and should be able to advance further
     log.info("waiting for i1")
-    Retriable(timeout=10).call(check_alive, i1)
+    Retriable().call(check_alive, i1)
 
     log.info("waiting for i2")
     i2.start()

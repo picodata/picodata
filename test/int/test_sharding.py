@@ -189,13 +189,13 @@ def get_vshards_opinion_about_replicaset_masters(i: Instance):
     )
 
 
-def wait_current_vshard_config_changed(peer: Instance, old_version, timeout=5):
+def wait_current_vshard_config_changed(peer: Instance, old_version):
     def impl():
         rows = peer.sql(""" SELECT current_vshard_config_version FROM _pico_tier WHERE name = 'default' """)
         new_version = rows[0][0]
         assert new_version != old_version
 
-    Retriable(timeout=timeout).call(impl)
+    Retriable().call(impl)
 
 
 def test_vshard_updates_on_master_change(cluster: Cluster):
@@ -304,7 +304,7 @@ def test_gitlab_763_no_missing_buckets_after_proc_sharding_failure(cluster: Clus
 
     # All buckets are eventually available to the whole cluster
     for i in cluster.instances:
-        Retriable(timeout=10).call(check_available_buckets, i, 3000)
+        Retriable().call(check_available_buckets, i, 3000)
 
 
 def get_table_size(instance: Instance, table_name: str):
@@ -391,7 +391,7 @@ def test_expel_blocked_by_bucket_rebalancing(cluster: Cluster):
 
     # Expel one of the instances
     cluster.expel(i3, force=True)
-    Retriable(timeout=30).call(i3.assert_process_dead)
+    Retriable().call(i3.assert_process_dead)
 
     # We now have 2 replicasets 1 replica each
     rows = i1.sql(""" SELECT name, weight FROM _pico_replicaset ORDER BY name """)

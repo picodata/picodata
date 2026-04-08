@@ -63,6 +63,46 @@ from framework.util import BASE_HOST
 
 pytest_plugins = "framework.sqltester"
 
+# ---------------------------------------------------------------------------
+# Test deadline tracking for Retriable / log_crawler
+# ---------------------------------------------------------------------------
+# pytest-timeout kills tests via SIGALRM after `timeout` seconds (see
+# pytest.ini). Retriable loops and log_crawler.wait_matched() use this
+# deadline instead of hard-coded timeouts so that:
+#   1. Developers don't have to guess CI timings when writing tests.
+#   2. Every retry loop is bounded by the test's own lifetime.
+#
+# The autouse fixture below stores the deadline; get_test_deadline()
+# returns it.  Outside a test (e.g. during module-level collection)
+# the fallback is 120 s from "now".
+
+_test_deadline: float | None = None
+_DEFAULT_TIMEOUT = 120  # seconds — fallback when not inside a test
+
+
+def get_test_deadline() -> float:
+    """Return the monotonic-clock deadline for the current test."""
+    if _test_deadline is not None:
+        return _test_deadline
+    return time.monotonic() + _DEFAULT_TIMEOUT
+
+
+@pytest.fixture(autouse=True)
+def _set_test_deadline(request):
+    global _test_deadline
+    timeout = request.config.getini("timeout")
+    if timeout:
+        timeout = float(timeout)
+    else:
+        timeout = _DEFAULT_TIMEOUT
+    # Per-test marker overrides the global setting.
+    marker = request.node.get_closest_marker("timeout")
+    if marker and marker.args:
+        timeout = float(marker.args[0])
+    _test_deadline = time.monotonic() + timeout
+    yield
+    _test_deadline = None
+
 
 # From raft.rs:
 # A constant represents invalid id of raft.
@@ -601,11 +641,11 @@ class Retriable:
             assert x % 5 == 0
             return x
 
-        fizzuzz = Retriable(timeout=3).call(guess_fizzbuzz)
+        fizzuzz = Retriable().call(guess_fizzbuzz)
 
-    It calls `guess_fizzbuzz` function repeatedly during 3 seconds until
-    it succeeds to find a random number that satisfies criteria. The
-    calling rate is limited by 5 times a second.
+    It calls `guess_fizzbuzz` function repeatedly until it succeeds or
+    the current test's pytest-timeout deadline is reached. The calling
+    rate is limited by 5 times a second.
 
     By default it suppresses and retries all exceptions subclassed
     from `Exception` type, except those specified in `fatal` parameter.
@@ -613,7 +653,6 @@ class Retriable:
 
     def __init__(
         self,
-        timeout: int | float = 10,
         fatal: Type[Exception] | Tuple[Exception, ...] = ProcessDead,
         fatal_predicate: Callable[[Exception], bool] = lambda x: False,
     ) -> None:
@@ -621,14 +660,13 @@ class Retriable:
         Build the retriable call context
 
         Args:
-            timeout (int | float): total time limit.
             fatal (Exception | Tuple[Exception, ...], default=()):
                 unsuppressed exception class or a tuple of classes
                 that should never be retried.
         """
 
         now = time.monotonic()
-        self.deadline = now + timeout
+        self.deadline = get_test_deadline()
         self.retry_period = 0.05
         self.max_retry_period = 2.0
         self.next_retry = now
@@ -1031,7 +1069,7 @@ class Instance:
         """.format(t=tup_str, kd=str(key_def))
         return self.eval(lua)
 
-    def replicaset_master_name(self, timeout: int | float = 10) -> str:
+    def replicaset_master_name(self) -> str:
         """
         Returns `current_master_name` of this instance's replicaset.
         Waits until `current_master_name` == `target_master_name` if there's a
@@ -1053,7 +1091,7 @@ class Instance:
             assert current_master_name
             return current_master_name
 
-        return Retriable(timeout=timeout).call(make_attempt)  # type: ignore
+        return Retriable().call(make_attempt)  # type: ignore
 
     def sql(
         self,
@@ -1099,11 +1137,9 @@ class Instance:
         self,
         sql: str,
         *params,
-        retry_timeout: int | float = 25,
         sudo: bool = False,
         user: str | None = None,
         password: str | None = None,
-        timeout: int | float = 10,
         fatal: Type[Exception] | Tuple[Exception, ...] = ProcessDead,
         fatal_predicate: Callable[[Exception], bool] | str = lambda x: False,
     ) -> dict:
@@ -1125,10 +1161,9 @@ class Instance:
             if attempt > 1:
                 log.warning(f"retrying SQL query `{sql}` ({attempt=})")
 
-            return self.sql(sql, *params, sudo=sudo, user=user, password=password, timeout=timeout)
+            return self.sql(sql, *params, sudo=sudo, user=user, password=password)
 
         return Retriable(
-            timeout=retry_timeout,
             fatal=fatal,
             fatal_predicate=predicate,
         ).call(do_sql)
@@ -1574,7 +1609,7 @@ class Instance:
         # Index of the corresponding ddl abort / ddl commit entry
         index_fin = index + 1
         if wait_index:
-            self.raft_wait_index(index_fin, timeout)
+            self.raft_wait_index(index_fin)
 
         return index_fin
 
@@ -1839,7 +1874,6 @@ Last governor error is:
         current_state: str,
         target_state: str,
         target: "Instance | None" = None,
-        timeout: int | float = WAIT_ONLINE_TIMEOUT,
     ):
         """Block until instance has the given states.
         Note that this seems similar to Instance.wait_online, but is a little bit
@@ -1853,7 +1887,7 @@ Last governor error is:
             (actual_current, _), (actual_target, _) = self.states(target, error_log_level=logging.WARNING)
             assert (actual_current, actual_target) == (current_state, target_state)
 
-        Retriable(timeout, fatal=ProcessDead).call(check)
+        Retriable(fatal=ProcessDead).call(check)
 
     def raft_term(self) -> int:
         """Get current raft `term`"""
@@ -1891,21 +1925,22 @@ Last governor error is:
             timeout=timeout + 1,  # this timeout is for network call
         )[0]
 
-    def raft_wait_index(self, target: int, timeout: int | float = 10) -> int:
+    def raft_wait_index(self, target: int) -> int:
         """
         Wait until instance applies the `target` raft index.
         See `crate::traft::node::Node::wait_index`.
         """
 
         def make_attempt():
+            remaining = max(get_test_deadline() - time.monotonic(), 1)
             return self.call(
                 ".proc_wait_index",
                 target,
-                timeout,  # this timeout is passed as an argument
-                timeout=timeout + 1,  # this timeout is for network call
+                remaining,  # this timeout is passed as an argument
+                timeout=remaining + 1,  # this timeout is for network call
             )
 
-        index = Retriable(timeout=timeout + 1).call(make_attempt)
+        index = Retriable().call(make_attempt)
 
         assert index is not None
         return index
@@ -1945,7 +1980,6 @@ Last governor error is:
         self,
         expected_status: str,
         old_step_counter: int | None = None,
-        timeout: int | float = 10,
     ) -> int:
         log.info(f"Instance.wait_governor_status({self}, '{expected_status}', old_step_counter={old_step_counter})")
 
@@ -1965,14 +1999,14 @@ Last governor error is:
 
             return step_counter
 
-        return Retriable(timeout=timeout, fatal=NotALeader).call(impl)
+        return Retriable(fatal=NotALeader).call(impl)
 
-    def promote_or_fail(self, timeout: int | float = 10):
+    def promote_or_fail(self):
         log.info(f"Instance.promote_or_fail({self})")
 
         attempt = 0
 
-        def make_attempt(timeout):
+        def make_attempt():
             nonlocal attempt
             attempt = attempt + 1
             log.info(f"{self} is trying to become a leader, {attempt=}")
@@ -1980,10 +2014,20 @@ Last governor error is:
             # 1. Force the node to campaign.
             self.call(".proc_raft_promote")
 
-            # 2. Wait until the miracle occurs.
-            Retriable(timeout).call(self.assert_raft_status, "Leader")
+            # 2. Wait for the election to conclude. After campaign_and_yield,
+            #    the node is PreCandidate or Candidate. Raft guarantees the
+            #    election concludes within the election timeout (~10s), after
+            #    which the node becomes either Leader or Follower.
+            def election_concluded():
+                status = self.call(".proc_raft_info")
+                assert status["state"] not in ("Candidate", "PreCandidate")
 
-        Retriable(timeout=timeout).call(make_attempt, timeout=1)
+            Retriable().call(election_concluded)
+
+            # 3. Check that we actually won.
+            self.assert_raft_status("Leader")
+
+        Retriable().call(make_attempt)
         log.info(f"{self} is a leader now")
 
     def grant_privilege(self, user, privilege: str, object_type: str, object_name: Optional[str] = None):
@@ -2365,7 +2409,7 @@ class Cluster:
             i.wait_online()
 
         for lc in log_crawlers:
-            lc.wait_matched(timeout=30)
+            lc.wait_matched()
 
         # Wait for rebalance to complete
         if masters_number:
@@ -2647,18 +2691,14 @@ class Cluster:
 
         picodata_expel(peer=peer, target=target, password_file=self.service_password_file, force=force, timeout=timeout)
 
-    def raft_wait_index(self, index: int, timeout: float = 10):
+    def raft_wait_index(self, index: int):
         """
         Waits for all peers to commit an entry with index `index`.
         """
         assert type(index) is int
-        deadline = time.time() + timeout
         for instance in self.instances:
             if instance.process is not None:
-                timeout = deadline - time.time()
-                if timeout < 0:
-                    timeout = 0
-                instance.raft_wait_index(index, timeout)
+                instance.raft_wait_index(index)
 
     def create_table(self, params: dict, timeout: float = 10.0):
         """
@@ -2667,7 +2707,7 @@ class Cluster:
         Creates a table. Waits for all online peers to be aware of it.
         """
         index = self.leader().create_table(params, timeout)
-        self.raft_wait_index(index, timeout)
+        self.raft_wait_index(index)
 
     def drop_table(self, space: int | str, timeout: float = 10.0):
         """
@@ -2676,14 +2716,14 @@ class Cluster:
         Drops the space. Waits for all online peers to be aware of it.
         """
         index = self.leader().drop_table(space, timeout)
-        self.raft_wait_index(index, timeout)
+        self.raft_wait_index(index)
 
     def abort_ddl(self, timeout: float = 10.0):
         """
         Aborts a pending ddl. Waits for all peers to be aware of it.
         """
         index = self.leader().abort_ddl(timeout)
-        self.raft_wait_index(index, timeout)
+        self.raft_wait_index(index)
 
     def batch_cas(
         self,
@@ -2870,7 +2910,7 @@ class Cluster:
             if len(instances_with_rebalancer) > 1:
                 log.error(f"multiple instances are running vshard rebalancer: {instances_with_rebalancer}")
 
-            actual_active = Retriable(timeout=10).call(lambda: i.call("vshard.storage.info")["bucket"]["active"])
+            actual_active = Retriable().call(lambda: i.call("vshard.storage.info")["bucket"]["active"])
             if actual_active == expected:
                 return
 
@@ -2903,14 +2943,13 @@ class Cluster:
         target: "Instance | None",
         current_state: str,
         target_state: str,
-        timeout: int | float = 30,
     ):
         def do_attempt():
             leader = self.leader()
-            leader.wait_has_states(current_state, target_state, target=target, timeout=timeout)
+            leader.wait_has_states(current_state, target_state, target=target)
 
         # This retriable call is needed so that we can handled leader changes
-        Retriable(fatal=AssertionError, timeout=timeout).call(do_attempt)
+        Retriable(fatal=AssertionError).call(do_attempt)
 
     def masters(self) -> List[Instance]:
         leader = self.leader()
@@ -3326,12 +3365,12 @@ class log_crawler:
 
         self.matched = True
 
-    def wait_matched(self, timeout=10):
+    def wait_matched(self):
         def must_match():
             assert self.matched
 
         try:
-            Retriable(timeout=timeout).call(func=must_match)
+            Retriable().call(func=must_match)
         except Exception as e:
             # Check if a panic happened while we were waiting for a message in logs
             self.instance.check_process_alive()

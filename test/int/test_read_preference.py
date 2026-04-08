@@ -194,7 +194,7 @@ cluster:
         assert i2.name in dql_names
 
     collect_one_query_target()
-    Retriable(timeout=5).call(assert_replica_used)
+    Retriable().call(assert_replica_used)
 
 
 def test_any_one(cluster: Cluster):
