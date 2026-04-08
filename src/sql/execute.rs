@@ -3,17 +3,15 @@ use crate::metrics::{
 };
 use crate::preemption::scheduler_options;
 use crate::sql::lock::{lock_temp_table, TempTableLease, TempTableLockRef};
-use crate::sql::lua::{lua_decode_ibufs, lua_query_metadata};
 use crate::sql::port::PicoPortOwned;
 use crate::sql::router::{get_index_version_by_pk, get_table_version_by_id, VersionMap};
 use crate::sql::storage::{
     ExpandedLocalExecutionInfo, ExpandedPlanInfo, FullDeleteInfo, LocalExecutionInfo, PlanInfo,
 };
-use crate::sql::PicoPortC;
+use crate::sql::{proc_query_metadata, PicoPortC};
 use crate::tlog;
 use crate::traft::node;
 use ahash::HashMapExt;
-use rmp::decode::read_array_len;
 use rmp::encode::{write_array_len, write_uint};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql::backend::sql::ADMIN_ID;
@@ -61,12 +59,13 @@ use std::sync::OnceLock;
 use std::time::Duration;
 use tarantool::error::{Error, TarantoolErrorCode};
 use tarantool::ffi::sql::Port as TarantoolPort;
+use tarantool::fiber;
 use tarantool::index::{FieldType, IndexOptions, IndexType, Part};
 use tarantool::msgpack::{self, encode, Encode};
 use tarantool::session::with_su;
 use tarantool::space::{Field, Space, SpaceCreateOptions, SpaceType};
 use tarantool::transaction::transaction;
-use tarantool::tuple::RawBytes;
+use tarantool::tuple::{RawByteBuf, RawBytes};
 
 #[macro_export]
 macro_rules! protocol_get {
@@ -391,37 +390,25 @@ where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
     let node = node::global().expect("should be init");
-    let instance = with_su(ADMIN_ID, || node.storage.instances.get(&raft_id))?
-        .map_err(|e| SbroadError::DispatchError(format_smolstr!("Failed to get instance: {e}")))?;
 
-    let lua = tarantool::lua_state();
-    let table = lua_query_metadata(
-        &lua,
-        instance.tier.as_str(),
-        instance.replicaset_uuid.as_str(),
-        instance.uuid.as_str(),
-        request_id,
-        plan_id,
-        timeout,
-    )?;
+    let args = (timeout.as_secs_f64(), request_id, plan_id);
+    let future = node
+        .pool
+        .call_raw::<_, RawByteBuf>(
+            &raft_id,
+            crate::proc_name!(proc_query_metadata),
+            &args,
+            timeout,
+        )
+        .map_err(|e| {
+            SbroadError::DispatchError(format_smolstr!("Failed to call proc_query_metadata: {e}"))
+        })?;
 
-    let rs_ibufs = lua_decode_ibufs(&table, 1).map_err(|e| {
-        SbroadError::DispatchError(format_smolstr!(
-            "Failed to decode ibufs from DQL cache miss {e}"
-        ))
+    let raw: RawByteBuf = fiber::block_on(future).map_err(|e| {
+        SbroadError::DispatchError(format_smolstr!("proc_query_metadata call failed: {e}"))
     })?;
 
-    debug_assert_eq!(rs_ibufs.len(), 1);
-    let rs_ibuf = &rs_ibufs[0];
-    let mut buf = rs_ibuf
-        .data()
-        .map_err(|e| SbroadError::DispatchError(format_smolstr!("Failed to decode ibuf {e}")))?;
-    let len = read_array_len(&mut buf).map_err(|e| SbroadError::Other(e.to_smolstr()))?;
-    if len != 1 {
-        return Err(SbroadError::Other(format_smolstr!(
-            "Expected array of length 1 from pcall result, got {len}",
-        )));
-    }
+    let buf = raw.0.as_slice();
     let mut cache_miss_info = sql_protocol::dql::DQLCacheMissPayloadIterator::new(buf)?;
 
     let table_schema_info = protocol_get!(cache_miss_info, DQLCacheMissResult::TableSchemaInfo);

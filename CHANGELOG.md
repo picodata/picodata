@@ -82,6 +82,10 @@ with the `YY.MINOR.MICRO` scheme.
   by the router.
 - Fixed an out-of-bounds panic in plugin RPC client when selecting a random
   candidate instance for `RequestTarget::Any`.
+- [picodata#2812] Use direct RPC for query metadata on DQL cache miss
+  - Replace vshard-based Lua dispatch with ConnectionPool::call_raw for
+    the proc_query_metadata callback. This fixes SQL query execution from
+    arbiter tier instances (bucket_count=0) where no vshard router exists.
 - [picodata#2838] Fixed panic on single-node cluster forced expel
   ("removed all voters"), which now returns an explicit error.
 - [picodata#2842] Fixed the `schema version has changed: need to re-compile SQL statement`

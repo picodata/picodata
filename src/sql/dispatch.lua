@@ -417,59 +417,6 @@ dispatch.single_plan_dispatch = function(args, uuids, timeout, tier, read_prefer
     end
 end
 
-dispatch.query_metadata = function(tier, replicaset, instance, req_id, plan_id, opt_timeout)
-    local replicasets = get_replicasets_from_tier(tier)
-    local err, res, code
-    local ok, future
-    local inst, conn, r
-    local opts_map
-    local timeout = opt_timeout or SQL_MIN_TIMEOUT
-    local deadline = fiber.clock() + timeout
-    local rs = replicasets[replicaset]
-    if rs == nil then
-        err = lerror.make("Replicaset not found: " .. replicaset)
-        goto fail
-    end
-    inst = rs.replicas[instance]
-    if inst == nil then
-        err = lerror.make("Instance not found: " .. instance)
-        goto fail
-    end
-    if not inst.conn or not inst.conn:is_connected() then
-        conn = inst:connect()
-        timeout, err = netbox_wait_connected(conn, timeout)
-        if timeout == nil then
-            goto fail
-        end
-        timeout = deadline - fiber.clock()
-    end
-    res = buffer.ibuf();
-    opts_map = { is_async = true, skip_header = true, buffer = res, timeout = inst.net_timeout }
-    ok, future, err = inst:call('.proc_query_metadata', { timeout, req_id, plan_id }, opts_map)
-    if not ok and err ~= nil then
-        goto fail
-    end
-    code, err = future_wait(future, timeout)
-    if code == nil then
-        goto fail
-    end
-    if err ~= nil then
-        goto fail
-    end
-    r = {}
-    table.insert(r, res)
-    do return r end
-
-    ::fail::
-    if future ~= nil then
-        future:discard()
-    end
-    local msg = "Unknown error"
-    if err ~= nil and err.message ~= nil then
-        msg = err.message
-    end
-    error(lerror.make("Error on replicaset " .. replicaset .. " (instance: " .. instance .. "): " .. msg))
-end
 
 local function init()
     if rawget(_G, 'pico') == nil then
