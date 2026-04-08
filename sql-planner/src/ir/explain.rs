@@ -47,6 +47,16 @@ impl TinyFmtBuffer {
     fn has_newline(&self) -> bool {
         self.0.contains(&b'\n')
     }
+
+    fn as_str(&self) -> &str {
+        std::str::from_utf8(&self.0).unwrap()
+    }
+}
+
+impl Display for TinyFmtBuffer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 impl fmt::Write for TinyFmtBuffer {
@@ -117,6 +127,11 @@ impl ListSep for AndSep {
     const LONG: &str = "\nand ";
 }
 
+/// Write all items separated by [`ListSep::LONG`].
+///
+/// If the list is not empty, it will start and end with newlines;
+/// meaning that we should always print some kind of open & close
+/// symbols (e.g. parentheses) before calling this function.
 fn write_long_list<Sep: ListSep>(
     writer: &mut impl fmt::Write,
     items: impl IntoIterator<Item: Display>,
@@ -144,6 +159,7 @@ fn write_long_list<Sep: ListSep>(
     Ok(())
 }
 
+/// Write all items separated by [`ListSep::SHORT`].
 fn write_short_list<Sep: ListSep>(
     writer: &mut impl fmt::Write,
     items: impl IntoIterator<Item: Display>,
@@ -152,6 +168,12 @@ fn write_short_list<Sep: ListSep>(
     write!(writer, "{formatted}")
 }
 
+/// Write all items separated by [`ListSep::LONG`] or [`ListSep::SHORT`]
+/// depending on the **unspecified heuristics**.
+///
+/// If the list is not empty, it **may** start and end with newlines;
+/// meaning that we should always print some kind of open & close
+/// symbols (e.g. parentheses) before calling this function.
 fn write_list<Sep: ListSep>(
     writer: &mut impl fmt::Write,
     items: impl IntoIterator<Item: Display>,
@@ -182,7 +204,7 @@ fn write_list<Sep: ListSep>(
 
             // If the "short" list contains a newline, it's long!
             if ok && !buffer.has_newline() {
-                write_short_list::<Sep>(writer, stage)
+                write!(writer, "{buffer}")
             } else {
                 write_long_list::<Sep>(writer, stage)
             }
@@ -199,22 +221,26 @@ struct FmtSmartParens<T>(T, bool);
 
 impl<T: Display> fmt::Display for FmtSmartParens<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let should_fmt = self.1;
+        let Self(item, should_fmt) = self;
+
         if !should_fmt {
-            return write!(f, "({})", self.0);
+            return write!(f, "({item})");
         }
 
         let mut buffer = TinyFmtBuffer::default();
-        let ok = write!(buffer, "{}", self.0).is_ok();
+        let ok = write!(buffer, "{item}").is_ok();
+
+        write!(f, "(")?;
 
         // If a "small" item contains a newline, it's large!
         if ok && !buffer.has_newline() {
-            write!(f, "({})", self.0)?;
+            write!(f, "{buffer}")?;
         } else {
-            writeln!(f, "(")?;
-            writeln!(indent(f), "{}", self.0)?;
-            write!(f, ")")?;
+            writeln!(f)?;
+            writeln!(indent(f), "{item}")?;
         }
+
+        write!(f, ")")?;
 
         Ok(())
     }
