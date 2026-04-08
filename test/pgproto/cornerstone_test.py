@@ -1,5 +1,6 @@
-from conftest import PgStorage, PgClient, ReturnError
 import pytest
+from conftest import PgClient, PgStorage, ReturnError
+from inline_snapshot import snapshot
 
 
 def test_extended_ddl(pg_client: PgClient):
@@ -408,15 +409,19 @@ def test_interactive_portals(pg_client: PgClient):
     sql = """ explain select * from "t" """
     pg_client.parse("", sql)
     pg_client.bind("", "", [], [])
+
     data = pg_client.execute("", 1)
-    assert len(data["rows"]) == 1
-    assert ["""projection ("t"."key"::int -> "key", "t"."value"::string -> "value")"""] == data["rows"][0]
+    assert "\n".join(row[0] for row in data["rows"]) == snapshot(
+        'projection ("t"."key"::int -> "key", "t"."value"::string -> "value")'
+    )
     assert data["is_finished"] is False
+
     data = pg_client.execute("", -1)
-    assert len(data["rows"]) == 5
-    assert ["""    scan "t\""""] == data["rows"][0]
-    assert ["""execution options:"""] == data["rows"][1]
-    assert ["""    sql_vdbe_opcode_max = 45000"""] == data["rows"][2]
-    assert ["""    sql_motion_row_max = 5000"""] == data["rows"][3]
-    assert ["""buckets = [1-3000]"""] == data["rows"][4]
+    assert "\n".join(row[0] for row in data["rows"]) == snapshot("""\
+    scan "t"
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [1-3000]\
+""")
     assert data["is_finished"] is True

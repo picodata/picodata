@@ -1,13 +1,14 @@
-import pytest
-import pg8000.dbapi as pg  # type: ignore
 import os
-from conftest import log_crawler
-from conftest import Postgres
 from decimal import Decimal
-import psycopg
-from psycopg.pq import ExecStatus
+
+import pg8000.dbapi as pg  # type: ignore
 import pg8000.native as pg2  # type: ignore
+import psycopg
+import pytest
+from conftest import Postgres, log_crawler
+from inline_snapshot import snapshot
 from pg8000.exceptions import DatabaseError  # type: ignore
+from psycopg.pq import ExecStatus
 
 
 def test_simple_query_flow_errors(postgres: Postgres):
@@ -112,36 +113,56 @@ def test_explain(postgres: Postgres):
     """
     cur.execute("explain " + query)
     plan = cur.fetchall()
-    assert 'insert "explain" on conflict: fail' in plan[0]
-    assert '    motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]' in plan[1]
-    assert "        values" in plan[2]
-    assert "            value row (data=ROW(0::int))" in plan[3]
-    assert "execution options:" in plan[4]
+    assert "\n".join(row[0] for row in plan) == snapshot("""\
+insert "explain" on conflict: fail
+    motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
+        values
+            value row (data=ROW(0::int))
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [84]\
+""")
 
     cur.execute(query)
     cur.execute("explain " + query)
     plan = cur.fetchall()
-    assert 'insert "explain" on conflict: fail' in plan[0]
-    assert '    motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]' in plan[1]
-    assert "        values" in plan[2]
-    assert "            value row (data=ROW(0::int))" in plan[3]
-    assert "execution options:" in plan[4]
+    assert "\n".join(row[0] for row in plan) == snapshot("""\
+insert "explain" on conflict: fail
+    motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
+        values
+            value row (data=ROW(0::int))
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [84]\
+""")
 
     query = """
         select * from "explain";
     """
     cur.execute("explain " + query)
     plan = cur.fetchall()
-    assert 'projection ("explain"."id"::int -> "id")' in plan[0]
-    assert '    scan "explain"' in plan[1]
-    assert "execution options:" in plan[2]
+    assert "\n".join(row[0] for row in plan) == snapshot("""\
+projection ("explain"."id"::int -> "id")
+    scan "explain"
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [1-3000]\
+""")
 
     cur.execute(query)
     cur.execute("explain " + query)
     plan = cur.fetchall()
-    assert 'projection ("explain"."id"::int -> "id")' in plan[0]
-    assert '    scan "explain"' in plan[1]
-    assert "execution options:" in plan[2]
+    assert "\n".join(row[0] for row in plan) == snapshot("""\
+projection ("explain"."id"::int -> "id")
+    scan "explain"
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [1-3000]\
+""")
 
     cur.execute('drop table "explain";')
 

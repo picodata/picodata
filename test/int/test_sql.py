@@ -1,10 +1,7 @@
-import pytest
 import re
 import uuid
 
-# mypy: disable-error-code="attr-defined"
-from tarantool import Datetime as tt_datetime
-
+import pytest
 from conftest import (
     Cluster,
     Instance,
@@ -13,6 +10,10 @@ from conftest import (
     ReturnError,
     TarantoolError,
 )
+from inline_snapshot import snapshot
+
+# mypy: disable-error-code="attr-defined"
+from tarantool import Datetime as tt_datetime
 
 
 def test_pico_sql(cluster: Cluster):
@@ -842,15 +843,16 @@ def test_dml_on_global_tbls(cluster: Cluster):
 
     # test explain
     lines = i1.sql("explain insert into global_t select * from t")
-    expected_explain = """insert "global_t" on conflict: fail
-    motion [policy: full]
+    assert "\n".join(lines) == snapshot("""\
+insert "global_t" on conflict: fail
+    motion [policy: full, program: ReshardIfNeeded]
         projection ("t"."x"::int -> "x", "t"."y"::int -> "y")
             scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
-buckets = [1-3000]"""
-    assert "\n".join(lines) == expected_explain
+buckets = [1-3000]\
+""")
 
     # empty delete
     data = i2.sql("delete from global_t")
@@ -6525,39 +6527,43 @@ def test_explain(cluster: Cluster):
     # ---------------------- DQL ----------------------
     # Reading from all buckets
     lines = i1.sql("explain select a from t")
-    expected_explain = """projection ("t"."a"::int -> "a")
+    assert "\n".join(lines) == snapshot("""\
+projection ("t"."a"::int -> "a")
     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
-buckets = [1-3000]"""
-    assert "\n".join(lines) == expected_explain
+buckets = [1-3000]\
+""")
 
     # Reading from a single bucket => single node
     lines = i1.sql("explain select a from t where a = 1")
-    expected_explain = """projection ("t"."a"::int -> "a")
+    assert "\n".join(lines) == snapshot("""\
+projection ("t"."a"::int -> "a")
     selection "t"."a"::int = 1::int
         scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
-buckets = [1934]"""
-    assert "\n".join(lines) == expected_explain
+buckets = [1934]\
+""")
 
     lines = i1.sql("explain select a from t where a = 1 and a = 2")
-    expected_explain = """projection ("t"."a"::int -> "a")
+    assert "\n".join(lines) == snapshot("""\
+projection ("t"."a"::int -> "a")
     selection ("t"."a"::int = 1::int) and ("t"."a"::int = 2::int)
         scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
-buckets = []"""
-    assert "\n".join(lines) == expected_explain
+buckets = []\
+""")
 
     # When query has motions, we estimate buckets for whole
     # plan by buckets of leaf subtrees
     lines = i1.sql("explain select t.a from t join t as t2 on t.a = t2.b")
-    expected_explain = """projection ("t"."a"::int -> "a")
+    assert "\n".join(lines) == snapshot("""\
+projection ("t"."a"::int -> "a")
     join on "t"."a"::int = "t2"."b"::int
         scan "t"
         motion [policy: segment([ref("b")]), program: ReshardIfNeeded]
@@ -6566,22 +6572,24 @@ buckets = []"""
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
-buckets = unknown"""
-    assert "\n".join(lines) == expected_explain
+buckets = unknown\
+""")
 
     # Reading from global table
     lines = i1.sql("explain select id from _pico_table")
-    expected_explain = """projection ("_pico_table"."id"::int -> "id")
+    assert "\n".join(lines) == snapshot("""\
+projection ("_pico_table"."id"::int -> "id")
     scan "_pico_table"
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
-buckets = any"""
-    assert "\n".join(lines) == expected_explain
+buckets = any\
+""")
 
     # Special case: motion node at the top
     lines = i1.sql("explain select id from _pico_table union select a from t")
-    expected_explain = """motion [policy: full, program: RemoveDuplicates]
+    assert "\n".join(lines) == snapshot("""\
+motion [policy: full, program: RemoveDuplicates]
     union
         motion [policy: local, program: SerializeAsEmptyTable(true)]
             projection ("_pico_table"."id"::int -> "id")
@@ -6591,37 +6599,40 @@ buckets = any"""
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
-buckets = [1-3000]"""
-    assert "\n".join(lines) == expected_explain
+buckets = [1-3000]\
+""")
 
     # ---------------------- DML ----------------------
     # Segment motion
     lines = i1.sql("explain insert into t values (1, 2)")
-    expected_explain = """insert "t" on conflict: fail
+    assert "\n".join(lines) == snapshot("""\
+insert "t" on conflict: fail
     motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
         values
             value row (data=ROW(1::int, 2::int))
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
-buckets = [1934]"""
-    assert "\n".join(lines) == expected_explain
+buckets = [1934]\
+""")
 
     # Local motion
     lines = i1.sql("explain insert into t select a, b from t")
-    expected_explain = """insert "t" on conflict: fail
+    assert "\n".join(lines) == snapshot("""\
+insert "t" on conflict: fail
     motion [policy: local segment([ref("a")]), program: ReshardIfNeeded]
         projection ("t"."a"::int -> "a", "t"."b"::int -> "b")
             scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
-buckets = [1-3000]"""
-    assert "\n".join(lines) == expected_explain
+buckets = [1-3000]\
+""")
 
     # Update: update non-sharding column
     lines = i1.sql("explain update t set b = 1 where b = 3")
-    expected_explain = """update "t"
+    assert "\n".join(lines) == snapshot("""\
+update "t"
 "b" = "col_0"
     motion [policy: local, program: ReshardIfNeeded]
         projection (1::int -> "col_0", "t"."a"::int -> "col_1")
@@ -6630,14 +6641,15 @@ buckets = [1-3000]"""
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
-buckets = [1-3000]"""
-    assert "\n".join(lines) == expected_explain
+buckets = [1-3000]\
+""")
 
     # Update sharding column
     ddl = i1.sql("create table t2 (c int primary key, d int) distributed by (d)")
     assert ddl["row_count"] == 1
     lines = i1.sql("explain update t2 set d = 1 where d = 2 or d = 2002")
-    expected_explain = """update "t2"
+    assert "\n".join(lines) == snapshot("""\
+update "t2"
 "c" = "col_0"
 "bucket_id" = "col_1"
 "d" = "col_2"
@@ -6648,42 +6660,45 @@ buckets = [1-3000]"""
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
-buckets = unknown"""  # noqa: E501
-    assert "\n".join(lines) == expected_explain
+buckets = unknown\
+""")
 
     # Delete
     lines = i1.sql("explain delete from t")
-    expected_explain = """delete "t"
+    assert "\n".join(lines) == snapshot("""\
+delete "t"
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
-buckets = [1-3000]"""
-    assert "\n".join(lines) == expected_explain
+buckets = [1-3000]\
+""")
 
     # Dml on global table
     ddl = i1.sql("create table g (u int primary key, v int) distributed globally")
     assert ddl["row_count"] == 1
     lines = i1.sql("explain insert into g select a, b from t")
-    expected_explain = """insert "g" on conflict: fail
+    assert "\n".join(lines) == snapshot("""\
+insert "g" on conflict: fail
     motion [policy: full, program: ReshardIfNeeded]
         projection ("t"."a"::int -> "a", "t"."b"::int -> "b")
             scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
-buckets = [1-3000]"""
-    assert "\n".join(lines) == expected_explain
+buckets = [1-3000]\
+""")
 
     lines = i1.sql("explain insert into g select u, v from g")
-    expected_explain = """insert "g" on conflict: fail
+    assert "\n".join(lines) == snapshot("""\
+insert "g" on conflict: fail
     motion [policy: full, program: ReshardIfNeeded]
         projection ("g"."u"::int -> "u", "g"."v"::int -> "v")
             scan "g"
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
-buckets = any"""
-    assert "\n".join(lines) == expected_explain
+buckets = any\
+""")
 
 
 def test_extreme_integer_values(cluster: Cluster):
@@ -6764,13 +6779,14 @@ def test_vdbe_steps_and_vtable_rows(cluster: Cluster):
 
     # Default values
     lines = i1.sql("EXPLAIN SELECT a FROM t")
-    expected_explain = """projection ("t"."a"::int -> "a")
+    assert "\n".join(lines) == snapshot("""\
+projection ("t"."a"::int -> "a")
     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
-buckets = [1-3000]"""
-    assert "\n".join(lines) == expected_explain
+buckets = [1-3000]\
+""")
 
     new_sql_vdbe_opcode_max = 50000
     ddl = i1.sql(f"ALTER SYSTEM SET sql_vdbe_opcode_max = {new_sql_vdbe_opcode_max}")
@@ -6778,13 +6794,14 @@ buckets = [1-3000]"""
 
     # Default value for sql_vdbe_opcode_max changed
     lines = i1.sql("EXPLAIN SELECT a FROM t")
-    expected_explain = f"""projection ("t"."a"::int -> "a")
+    assert "\n".join(lines) == snapshot("""\
+projection ("t"."a"::int -> "a")
     scan "t"
 execution options:
-    sql_vdbe_opcode_max = {new_sql_vdbe_opcode_max}
+    sql_vdbe_opcode_max = 50000
     sql_motion_row_max = 5000
-buckets = [1-3000]"""
-    assert "\n".join(lines) == expected_explain
+buckets = [1-3000]\
+""")
 
     new_sql_motion_row_max = 6000
     ddl = i1.sql(f"ALTER SYSTEM SET sql_motion_row_max = {new_sql_motion_row_max}")
@@ -6793,13 +6810,14 @@ buckets = [1-3000]"""
     # Default value for new_sql_motion_row_max changed and
     # value for new_sql_vdbe_opcode_max hasn't changed
     lines = i1.sql("EXPLAIN SELECT a FROM t")
-    expected_explain = f"""projection ("t"."a"::int -> "a")
+    assert "\n".join(lines) == snapshot("""\
+projection ("t"."a"::int -> "a")
     scan "t"
 execution options:
-    sql_vdbe_opcode_max = {new_sql_vdbe_opcode_max}
-    sql_motion_row_max = {new_sql_motion_row_max}
-buckets = [1-3000]"""
-    assert "\n".join(lines) == expected_explain
+    sql_vdbe_opcode_max = 50000
+    sql_motion_row_max = 6000
+buckets = [1-3000]\
+""")
 
     # `option` clause has highest priority
     # also old value set with `ALTER SYSTEM`

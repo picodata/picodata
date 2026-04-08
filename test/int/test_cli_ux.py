@@ -13,12 +13,13 @@ from conftest import (
     assert_starts_with,
     log_crawler,
 )
+from framework.util.build import Executable
+from inline_snapshot import snapshot
 from test_plugin import _PLUGIN, _PLUGIN_VERSION_1, PluginReflection
 
 from tarantool.error import (  # type: ignore
     NetworkError,
 )
-from framework.util.build import Executable
 
 
 def test_admin_ux(cluster: Cluster):
@@ -397,44 +398,87 @@ def test_sql_explain_ok(cluster: Cluster):
         sudo=True,
     )
 
-    cli.sendline("""EXPLAIN INSERT INTO "assets" VALUES (1, 'Woody', 2561);""")
+    cli.terminate()
 
-    cli.expect_exact('insert "assets" on conflict: fail')
-    cli.expect_exact('motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]')
-    cli.expect_exact("values")
-    cli.expect_exact("value row (data=ROW(1::int, 'Woody'::string, 2561::int))")
-    cli.expect_exact("execution options:")
-    cli.expect_exact("sql_vdbe_opcode_max = 45000")
-    cli.expect_exact("sql_motion_row_max = 5000")
-    cli.expect_exact("buckets = [1934]")
+    def spawn_cli():
+        return subprocess.Popen(
+            cwd=i1.instance_dir,
+            args=[i1.executable.command, "admin", "./admin.sock"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+        )
 
-    cli.sendline("""EXPLAIN UPDATE "characters" SET "year" = 2010;""")
-
-    cli.expect_exact('update "characters')
-    cli.expect_exact('"year" = "col_0"')
-    cli.expect_exact("motion [policy: local, program: ReshardIfNeeded]")
-    cli.expect_exact('projection (2010::int -> "col_0", "characters"."id"::int -> "col_1")')
-    cli.expect_exact('scan "characters"')
-    cli.expect_exact("execution options:")
-    cli.expect_exact("sql_vdbe_opcode_max = 45000")
-    cli.expect_exact("sql_motion_row_max = 5000")
-    cli.expect_exact("buckets = [1-3000]")
-
-    cli.sendline("""EXPLAIN UPDATE "characters" SET "name" = 'Etch', "year" = 2010 WHERE "id" = 2;""")
-
-    cli.expect_exact('update "characters"')
-    cli.expect_exact('"name" = "col_0"')
-    cli.expect_exact('"year" = "col_1"')
-    cli.expect_exact("motion [policy: local, program: ReshardIfNeeded]")
-    cli.expect_exact(
-        'projection (\'Etch\'::string -> "col_0", 2010::int -> "col_1", "characters"."id"::int -> "col_2")'
+    cli = spawn_cli()
+    output = cli.communicate(
+        """EXPLAIN INSERT INTO "assets" VALUES (1, 'Woody', 2561);""",
+        timeout=CLI_TIMEOUT,
     )
-    cli.expect_exact('selection "characters"."id"::int = 2::int')
-    cli.expect_exact('scan "characters"')
-    cli.expect_exact("execution options:")
-    cli.expect_exact("sql_vdbe_opcode_max = 45000")
-    cli.expect_exact("sql_motion_row_max = 5000")
-    cli.expect_exact("buckets = [1410]")
+    assert output == snapshot(
+        (
+            """\
+insert "assets" on conflict: fail
+    motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
+        values
+            value row (data=ROW(1::int, 'Woody'::string, 2561::int))
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [1934]
+
+""",
+            "",
+        )
+    )
+
+    cli = spawn_cli()
+    output = cli.communicate(
+        """EXPLAIN UPDATE "characters" SET "year" = 2010;""",
+        timeout=CLI_TIMEOUT,
+    )
+    assert output == snapshot(
+        (
+            """\
+update "characters"
+"year" = "col_0"
+    motion [policy: local, program: ReshardIfNeeded]
+        projection (2010::int -> "col_0", "characters"."id"::int -> "col_1")
+            scan "characters"
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [1-3000]
+
+""",
+            "",
+        )
+    )
+
+    cli = spawn_cli()
+    output = cli.communicate(
+        """EXPLAIN UPDATE "characters" SET "name" = 'Etch', "year" = 2010 WHERE "id" = 2;""",
+        timeout=CLI_TIMEOUT,
+    )
+    assert output == snapshot(
+        (
+            """\
+update "characters"
+"name" = "col_0"
+"year" = "col_1"
+    motion [policy: local, program: ReshardIfNeeded]
+        projection ('Etch'::string -> "col_0", 2010::int -> "col_1", "characters"."id"::int -> "col_2")
+            selection "characters"."id"::int = 2::int
+                scan "characters"
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [1410]
+
+""",
+            "",
+        )
+    )
 
 
 def test_lua_console_sql_error_messages(cluster: Cluster):

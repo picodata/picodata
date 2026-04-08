@@ -1,10 +1,11 @@
+import psycopg
 import pytest
 from conftest import Postgres
-import psycopg
+from inline_snapshot import snapshot
 
 
+# https://git.picodata.io/core/picodata/-/issues/1991
 def test_gl_1991(postgres: Postgres):
-    # https://git.picodata.io/core/picodata/-/issues/1991
     user = "postgres"
     password = "Passw0rd"
     host = postgres.host
@@ -36,13 +37,15 @@ def test_gl_1991(postgres: Postgres):
     # Expect that selection filter evaluates to
     # false and buckets set is empty.
     plan = cur.fetchall()
-    assert 'projection ("t"."id"::int -> "id")' in plan[0]
-    assert "    selection false::bool" in plan[1]
-    assert '        scan "t"' in plan[2]
-    assert "execution options:" in plan[3]
-    assert "    sql_vdbe_opcode_max = 1" in plan[4]
-    assert "    sql_motion_row_max = 5000" in plan[5]
-    assert "buckets = []" in plan[6]
+    assert "\n".join(row[0] for row in plan) == snapshot("""\
+projection ("t"."id"::int -> "id")
+    selection false::bool
+        scan "t"
+execution options:
+    sql_vdbe_opcode_max = 1
+    sql_motion_row_max = 5000
+buckets = []\
+""")
 
     # Check that query returns empty result
     cur = conn.execute("SELECT * FROM t WHERE 1 = 0")
