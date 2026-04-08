@@ -1156,6 +1156,10 @@ pub fn update_service_tiers(
             return Err(PluginError::ServiceNotFound(service.into(), plugin.clone()).into());
         }
 
+        if node.storage.tiers.by_name(tier)?.is_none() {
+            return Err(Error::NoSuchTier(tier.into()));
+        }
+
         let op = PluginOp::AlterServiceTiers {
             plugin: plugin.clone(),
             service: service.into(),

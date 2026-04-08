@@ -44,6 +44,8 @@ with the `YY.MINOR.MICRO` scheme.
   instances in the initial `--peer` set.
 - Revoking privileges from `admin` user caused a panic. Now, revoking priviliges
   from `admin` user is forbidden, for same reasons as for the `pico_service` user.
+- Fixed `ALTER PLUGIN ADD SERVICE TO TIER` accepting nonexistent tier names.
+  Now validates that the specified tier exists and returns an error otherwise.
 
 ## [26.1.2] - 2026-04-14 
 
