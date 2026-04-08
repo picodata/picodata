@@ -13,7 +13,7 @@ import signal
 
 
 class Factory(Protocol):
-    def __call__(self, of: Version, fill: bool = True) -> Cluster: ...
+    def __call__(self, of: Version) -> Cluster: ...
 
 
 MINIMAL_CLUSTER_SIZE = 3
@@ -38,12 +38,10 @@ def factory(
 ) -> Generator[Factory, None, None]:
     created_cluster = None
 
-    def _cluster(of: Version, fill: bool = True) -> Cluster:
+    def _cluster(of: Version) -> Cluster:
         runtime = registry.get(of)
 
-        print(
-            f"upgrade_rolling: deploying cluster [version={runtime.absolute_version} ({runtime.relative_version})], data fill? {fill}"
-        )
+        print(f"upgrade_rolling: deploying cluster [version={runtime.absolute_version} ({runtime.relative_version})]")
 
         cluster: Cluster = cluster_factory()
 
@@ -51,9 +49,6 @@ def factory(
         cluster.runtime = runtime
 
         cluster.deploy(instance_count=MINIMAL_CLUSTER_SIZE)
-
-        if fill:
-            cluster.pick_random_instance().fill_with_data()
 
         nonlocal created_cluster
         created_cluster = cluster
