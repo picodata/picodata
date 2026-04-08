@@ -36,6 +36,8 @@ with the `YY.MINOR.MICRO` scheme.
   in yaml config when deprecated listen options were used in the config.
 - Fixed the errors `box.cfg.read_only is true` and `Failed to add a storage reference`,
   which occurred when restarting a storage instance and previously required a retry.
+- Fixed `ALTER PLUGIN ADD SERVICE TO TIER` accepting nonexistent tier names.
+  Now validates that the specified tier exists and returns an error otherwise.
 
 ## [26.1.1] - 2026-03-24
 

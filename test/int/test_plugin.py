@@ -1743,17 +1743,15 @@ def test_plugin_install_and_enable_on_catchup_by_snapshot(cluster: Cluster):
 
 
 def test_set_topology(cluster: Cluster):
-    i1, i2 = cluster.deploy(instance_count=2)
-    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_VERSION_1, _PLUGIN_SERVICES, [i1, i2])
-
-    i1.call("pico.install_plugin", _PLUGIN, "0.1.0")
+    instance = cluster.add_instance()
+    instance.call("pico.install_plugin", _PLUGIN, "0.1.0")
 
     # set topology to non-existent plugin is forbidden
     with pytest.raises(
         ReturnError,
         match="Plugin `non-existent:0.1.0` not found at instance",
     ):
-        i1.call(
+        instance.call(
             "pico.service_append_tier",
             "non-existent",
             _PLUGIN_VERSION_1,
@@ -1766,7 +1764,7 @@ def test_set_topology(cluster: Cluster):
         ReturnError,
         match="Service `non-existent` for plugin `testplug:0.1.0` not found at instance",
     ):
-        i1.call(
+        instance.call(
             "pico.service_append_tier",
             _PLUGIN,
             _PLUGIN_VERSION_1,
@@ -1774,23 +1772,18 @@ def test_set_topology(cluster: Cluster):
             _DEFAULT_TIER,
         )
 
-    # set non-existent tier to first plugin service,
-    # and don't set any tier for second plugin service;
-    # both services must never be started
-    i1.call(
-        "pico.service_append_tier",
-        _PLUGIN,
-        _PLUGIN_VERSION_1,
-        _PLUGIN_SERVICES[0],
-        "non-existent",
-    )
-    i1.call("pico.enable_plugin", _PLUGIN, _PLUGIN_VERSION_1)
-
-    plugin_ref = plugin_ref.install(True).enable(True).set_topology({i1: [], i2: []})
-    plugin_ref.assert_synced()
-
-    plugin_ref.assert_cb_called("testservice_1", "on_start", 0, i1, i2)
-    plugin_ref.assert_cb_called("testservice_2", "on_start", 0, i1, i2)
+    # set non-existent tier to plugin service is forbidden
+    with pytest.raises(
+        ReturnError,
+        match='tier with name "non-existent" not found',
+    ):
+        instance.call(
+            "pico.service_append_tier",
+            _PLUGIN,
+            _PLUGIN_VERSION_1,
+            _PLUGIN_SERVICES[0],
+            "non-existent",
+        )
 
 
 cluster_cfg = """
@@ -3546,8 +3539,8 @@ DROP TABLE author;
     res = i1.sql(
         f"""
         ALTER PLUGIN "{plugin}" 0.1.0 SET
-            migration_context.always_ok_parameter = \'"{always_ok_parameter_value}"\', 
-            migration_context.short_parameter = \'"{short_parameter_value_ok}"\'; 
+            migration_context.always_ok_parameter = \'"{always_ok_parameter_value}"\',
+            migration_context.short_parameter = \'"{short_parameter_value_ok}"\';
         """
     )
     assert res, 2
@@ -3556,14 +3549,14 @@ DROP TABLE author;
     res = i1.sql(
         f"""
         ALTER PLUGIN "{plugin}" 0.1.0 SET
-            migration_context.always_ok_parameter = \'"{always_ok_parameter_value}"\'; 
+            migration_context.always_ok_parameter = \'"{always_ok_parameter_value}"\';
         """
     )
     assert res, 1
     res = i1.sql(
         f"""
         ALTER PLUGIN "{plugin}" 0.1.0 SET
-            migration_context.short_parameter = \'"{short_parameter_value_ok}"\'; 
+            migration_context.short_parameter = \'"{short_parameter_value_ok}"\';
         """
     )
     assert res, 1
@@ -3620,7 +3613,7 @@ DROP TABLE author;
         f"""
         ALTER PLUGIN "{plugin}" 0.1.0 SET
             migration_context.always_ok_parameter = \'"{always_ok_parameter_value}"\',
-            migration_context.short_parameter = \'"{short_parameter_value_ok}"\', 
+            migration_context.short_parameter = \'"{short_parameter_value_ok}"\',
             migration_context.not_checked_parameter = \'"{not_checked_parameter_value}"\';
         """
     )
