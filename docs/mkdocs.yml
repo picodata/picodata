@@ -118,6 +118,7 @@ nav:
           - reference/sql/with.md
           - reference/sql/window.md
           - reference/sql/join.md
+          - reference/sql/groupby.md
       - Функции и выражения:
           - reference/sql/abs.md
           - reference/sql/case.md
