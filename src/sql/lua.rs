@@ -1,5 +1,6 @@
+use crate::vshard::VshardErrorCode;
 use ::tarantool::datetime::Datetime;
-use ::tarantool::error::{Error as TntError, TarantoolError, TarantoolErrorCode};
+use ::tarantool::error::{BoxError, Error as TntError, TarantoolError, TarantoolErrorCode};
 use ::tarantool::ffi::sql::{ibuf_reinit, Ibuf, Port, PortC};
 use ::tarantool::msgpack::ExtStruct;
 use ::tarantool::tlua;
@@ -17,6 +18,10 @@ use std::io::Cursor;
 use std::os::raw::c_char;
 use std::ptr::NonNull;
 use std::rc::Rc;
+use std::time::Duration;
+use tarantool::error::IntoBoxError;
+use tarantool::fiber;
+use tarantool::time::Instant;
 
 pub(crate) unsafe extern "C" fn dispatch_explain_dump_lua(
     port: *mut Port,
@@ -650,12 +655,45 @@ pub(crate) fn bucket_into_rs(
     lua: &LuaThread,
     bucket_id: u64,
     tier: Option<&str>,
+    deadline: ::tarantool::time::Instant,
 ) -> Result<String> {
+    let timeout = deadline.duration_since(Instant::now_fiber()).as_secs_f64();
+    let mut percent = [0.001, 0.01, 0.03, 0.06, 0.1, 0.2, 0.3].into_iter();
+    loop {
+        match bucket_into_rs_impl(lua, bucket_id, tier) {
+            Err(err) if is_bucket_route_retriable(&err) => {
+                // Storage may be restarting now.
+                let Some(percent) = percent.next() else {
+                    return Err(err);
+                };
+                if fiber::clock() > deadline {
+                    return Err(err);
+                }
+                ::tarantool::fiber::sleep(Duration::from_secs_f64(timeout * percent));
+            }
+            other => return other,
+        }
+    }
+}
+
+fn is_bucket_route_retriable(error: &impl IntoBoxError) -> bool {
+    let code = error.error_code();
+    code == VshardErrorCode::UnreachableReplicaset as u32
+        || code == VshardErrorCode::NoRouteToBucket as u32
+}
+
+fn bucket_into_rs_impl(lua: &LuaThread, bucket_id: u64, tier: Option<&str>) -> Result<String> {
     let name = "bucket_into_rs";
     let func = dispatch_get_func(lua, name)?;
 
-    match func.call_with_args((bucket_id, tier)) {
-        Ok(rs) => Ok(rs),
+    match func.call_with_args::<(Option<String>, Option<BoxError>), _>((bucket_id, tier)) {
+        Ok((Some(rs), _)) => Ok(rs),
+        Ok((None, Some(err))) => Err(err.into()),
+        Ok((None, None)) => Err(TarantoolError::new(
+            TarantoolErrorCode::ProcLua,
+            "Getting a bucket replicaset: unexpected empty result from vshard".to_string(),
+        )
+        .into()),
         Err(e) => Err(TarantoolError::new(
             TarantoolErrorCode::ProcLua,
             format!("{}", LuaError::from(e)),

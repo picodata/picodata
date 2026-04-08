@@ -149,3 +149,29 @@ def test_no_wait_on_master_switchover(cluster: Cluster):
         i1.sql("INSERT INTO t0 VALUES(2, 2)", timeout=60)
 
     i1.call("pico._inject_error", vshard_block, False)
+
+
+def test_wait_vshard_router(cluster: Cluster):
+    i1 = cluster.add_instance(replicaset_name="default_1")
+    i2 = cluster.add_instance(replicaset_name="default_2")
+
+    cluster.wait_until_buckets_balanced()
+
+    i2.sql("CREATE TABLE t0 (a INT PRIMARY KEY, b INT, c INT) DISTRIBUTED BY (b)")
+
+    dml = i2.sql("INSERT INTO t0 VALUES(2, 1, 2) ON CONFLICT DO REPLACE")
+    assert dml["row_count"] == 1
+
+    # i2 is the router, i1 is the storage
+    assert i2.eval("return #box.space.t0:select()") == 0
+
+    i1.restart()
+
+    dml = i2.sql(
+        """
+        DO $$ BEGIN
+            UPDATE t0 SET c = 3 WHERE b = 1;
+        END $$;
+        """
+    )
+    assert dml["row_count"] == 1

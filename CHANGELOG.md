@@ -52,6 +52,9 @@ with the `YY.MINOR.MICRO` scheme.
 - Logical `EXPLAIN` (the default mode) now preserves subquery indentation.
 - Backup operation will now be automatically aborted if there are offline instances.
   This prevents cluster being locked in a readonly state.
+- Fixed the `NO_ROUTE_TO_BUCKET` error that occurred when sending a request to
+  the single node of a replicaset during its restart. This error is now retried
+  by the router.
 
 ### Breaking changes
 
