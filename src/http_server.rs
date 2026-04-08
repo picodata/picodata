@@ -287,6 +287,8 @@ struct InstanceInfo {
     version: SmolStr,
     failure_domain: HashMap<Uppercase, Uppercase>,
     is_leader: bool,
+    is_voter: bool,
+    is_raft_leader: bool,
     current_state: StateVariant,
     target_state: StateVariant,
     name: InstanceName,
@@ -532,6 +534,14 @@ fn get_replicasets_info(
     let instances = storage.instances.all_instances()?;
     let replicasets = get_replicasets(storage)?;
 
+    let voters: HashSet<u64> = node
+        .raft_storage
+        .voters()
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+    let raft_leader_id = node.status().leader_id;
+
     // Compute leaders set for RPC filtering
     let leaders: HashSet<InstanceName> = replicasets
         .values()
@@ -571,11 +581,16 @@ fn get_replicasets_info(
             mem_used = rpc_data.mem_used;
         }
 
+        let is_voter = voters.contains(&instance.raft_id);
+        let is_raft_leader = raft_leader_id == Some(instance.raft_id);
+
         let instance_info = InstanceInfo {
             http_address: addrs.http,
             version: instance.picodata_version.clone(),
             failure_domain: instance.failure_domain.data,
             is_leader,
+            is_voter,
+            is_raft_leader,
             current_state: instance.current_state.variant,
             target_state: instance.target_state.variant,
             name: instance.name.clone(),

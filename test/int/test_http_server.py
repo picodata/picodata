@@ -85,6 +85,12 @@ def get_url(url: str, auth_token: Optional[str]) -> Any:
     return get_authorized(url, auth_token)
 
 
+def get_voter_raft_ids(instance: Instance) -> set:
+    """Return set of raft_ids that are currently raft voters."""
+    result = instance.eval("local t = box.space._raft_state:get('voters'); return t and t[2] or {}")
+    return set(result if result else [])
+
+
 @pytest.mark.webui
 def test_http_routes(instance: Instance):
     instance.eval(
@@ -126,6 +132,8 @@ def test_webui_basic(instance: Instance, auth_token: Optional[str]):
                             {
                                 "failureDomain": {},
                                 "isLeader": True,
+                                "isVoter": True,
+                                "isRaftLeader": True,
                                 "currentState": "Online",
                                 "targetState": "Online",
                                 "name": "default_1_1",
@@ -246,6 +254,12 @@ def test_webui_with_plugin(cluster: Cluster):
     create_user(i1)
     auth_token = get_auth_token(i1)
 
+    voter_ids = get_voter_raft_ids(i1)
+    leader_raft_id = i1.raft_leader_id()
+    i1_raft_id = i1.call(".proc_raft_info")["id"]
+    i2_raft_id = i2.call(".proc_raft_info")["id"]
+    i3_raft_id = i3.call(".proc_raft_info")["id"]
+
     instance_template = {
         "failureDomain": {},
         "isLeader": True,
@@ -256,6 +270,8 @@ def test_webui_with_plugin(cluster: Cluster):
     instance_1 = {
         **instance_template,
         "name": "red_1_1",
+        "isVoter": i1_raft_id in voter_ids,
+        "isRaftLeader": i1_raft_id == leader_raft_id,
         "binaryAddress": i1.iproto_listen,
         "pgAddress": i1.pg_listen,
         "httpAddress": i1.http_listen,
@@ -263,6 +279,8 @@ def test_webui_with_plugin(cluster: Cluster):
     instance_2 = {
         **instance_template,
         "name": "blue_1_1",
+        "isVoter": i2_raft_id in voter_ids,
+        "isRaftLeader": i2_raft_id == leader_raft_id,
         "binaryAddress": i2.iproto_listen,
         "pgAddress": i2.pg_listen,
         "httpAddress": i2.http_listen,
@@ -270,6 +288,8 @@ def test_webui_with_plugin(cluster: Cluster):
     instance_3 = {
         **instance_template,
         "name": "green_1_1",
+        "isVoter": i3_raft_id in voter_ids,
+        "isRaftLeader": i3_raft_id == leader_raft_id,
         "binaryAddress": i3.iproto_listen,
         "pgAddress": i3.pg_listen,
         "httpAddress": i3.http_listen,
@@ -398,6 +418,13 @@ def test_webui_replicaset_state(cluster: Cluster):
     create_user(i4)
     auth_token = get_auth_token(i4)
 
+    voter_ids = get_voter_raft_ids(i4)
+    leader_raft_id = i4.raft_leader_id()
+    i1_raft_id = i1.call(".proc_raft_info")["id"]
+    i2_raft_id = i2.call(".proc_raft_info")["id"]
+    i3_raft_id = i4.sql("SELECT raft_id FROM _pico_instance WHERE name = 'red_2_1'")[0][0]
+    i4_raft_id = i4.call(".proc_raft_info")["id"]
+
     instance_template = {
         "failureDomain": {},
         "currentState": "Online",
@@ -408,6 +435,8 @@ def test_webui_replicaset_state(cluster: Cluster):
         **instance_template,
         "name": "red_1_1",
         "isLeader": True,
+        "isVoter": i1_raft_id in voter_ids,
+        "isRaftLeader": i1_raft_id == leader_raft_id,
         "binaryAddress": i1.iproto_listen,
         "pgAddress": i1.pg_listen,
         "httpAddress": i1.http_listen,
@@ -416,6 +445,8 @@ def test_webui_replicaset_state(cluster: Cluster):
         **instance_template,
         "name": "red_1_2",
         "isLeader": False,
+        "isVoter": i2_raft_id in voter_ids,
+        "isRaftLeader": i2_raft_id == leader_raft_id,
         "binaryAddress": i2.iproto_listen,
         "pgAddress": i2.pg_listen,
         "httpAddress": i2.http_listen,
@@ -424,6 +455,8 @@ def test_webui_replicaset_state(cluster: Cluster):
         **instance_template,
         "name": "red_2_1",
         "isLeader": False,
+        "isVoter": i3_raft_id in voter_ids,
+        "isRaftLeader": i3_raft_id == leader_raft_id,
         "currentState": "Offline",
         "targetState": "Offline",
         "binaryAddress": i3.iproto_listen,
@@ -435,6 +468,8 @@ def test_webui_replicaset_state(cluster: Cluster):
         **instance_template,
         "name": "red_2_2",
         "isLeader": True,
+        "isVoter": i4_raft_id in voter_ids,
+        "isRaftLeader": i4_raft_id == leader_raft_id,
         "binaryAddress": i4.iproto_listen,
         "pgAddress": i4.pg_listen,
         "httpAddress": i4.http_listen,
@@ -544,6 +579,9 @@ def test_webui_can_vote_flag(cluster: Cluster):
     instance_1 = {
         **instance_template,
         "name": "red_1_1",
+        # i1 is the only voter (red tier has can_vote=True, blue tier has can_vote=False)
+        "isVoter": True,
+        "isRaftLeader": True,
         "binaryAddress": i1.iproto_listen,
         "pgAddress": i1.pg_listen,
         "httpAddress": i1.http_listen,
@@ -551,6 +589,9 @@ def test_webui_can_vote_flag(cluster: Cluster):
     instance_2 = {
         **instance_template,
         "name": "blue_1_1",
+        # i2 is a learner (blue tier has can_vote=False)
+        "isVoter": False,
+        "isRaftLeader": False,
         "binaryAddress": i2.iproto_listen,
         "pgAddress": i2.pg_listen,
         "httpAddress": i2.http_listen,
