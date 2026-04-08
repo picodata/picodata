@@ -61,6 +61,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::io::{Cursor, Error as IoError, Result as IoResult};
 use std::rc::{Rc, Weak};
+use std::time::Duration;
 use tarantool::fiber::Mutex;
 use tarantool::session::with_su;
 use tarantool::time::Instant;
@@ -448,7 +449,9 @@ pub(crate) fn single_plan_dispatch<'p>(
     tier: Option<&str>,
 ) -> SqlResult<()> {
     let lua = tarantool::lua_state();
-    let replicasets = replicasets_from_buckets(&lua, buckets, tier)?;
+    let deadline = Instant::now_fiber().saturating_add(Duration::from_secs(timeout));
+    let replicasets = replicasets_from_buckets(&lua, buckets, tier, deadline)?;
+    let timeout = deadline.duration_since(Instant::now_fiber()).as_secs();
     let query_type = ex_plan.query_type()?;
     match &query_type {
         QueryType::DQL => {
@@ -498,7 +501,7 @@ pub(crate) fn custom_plan_dispatch<'p>(
     tier: Option<&str>,
 ) -> SqlResult<()> {
     let lua = tarantool::lua_state();
-    let rs_buckets = buckets_by_replicasets(&lua, buckets, runtime.bucket_count(), tier)?;
+    let rs_buckets = buckets_by_replicasets(&lua, buckets, runtime.bucket_count(), tier, timeout)?;
     if rs_buckets.is_empty() {
         return Err(SbroadError::DispatchError(
             "No replicasets found for the given buckets".into(),
@@ -573,6 +576,7 @@ pub(crate) fn block_dispatch<'p>(
         return explain_execute_block(block, buckets.determine_exec_location(), port);
     }
 
+    let deadline = Instant::now_fiber().saturating_add(Duration::from_secs(timeout));
     match buckets {
         Buckets::All => Err(SbroadError::other(
             "cannot execute transaction on all buckets",
@@ -580,7 +584,8 @@ pub(crate) fn block_dispatch<'p>(
         Buckets::Any => execute_block_locally_for_dispatch(port, &metadata, block),
         Buckets::Filtered(_) => {
             let lua = tarantool::lua_state();
-            let replicasets = replicasets_from_buckets(&lua, buckets, tier)?;
+            let replicasets = replicasets_from_buckets(&lua, buckets, tier, deadline)?;
+            let timeout = deadline.duration_since(Instant::now_fiber()).as_secs();
 
             if should_single_rs_dispatch_locally(buckets, tier, &replicasets, "leader")? {
                 return with_local_bucket_ref(timeout, "leader", || {
@@ -1347,11 +1352,12 @@ fn replicasets_from_buckets(
     lua: &LuaThread,
     buckets: &Buckets,
     tier: Option<&str>,
+    deadline: Instant,
 ) -> SqlResult<Vec<String>> {
     let iter = match buckets {
         Buckets::Any => {
             return Err(SbroadError::DispatchError(
-                "there is no sense to trnaslate 'any' buckets into replicasets".into(),
+                "there is no sense to translate 'any' buckets into replicasets".into(),
             ));
         }
         Buckets::All => return Ok(Vec::new()),
@@ -1369,7 +1375,7 @@ fn replicasets_from_buckets(
         let mut seen: AHashSet<Rc<String>> = AHashSet::new();
 
         for id in iter {
-            let rs: String = bucket_into_rs(lua, *id, tier).map_err(|e| {
+            let rs: String = bucket_into_rs(lua, *id, tier, deadline).map_err(|e| {
                 SbroadError::DispatchError(format_smolstr!(
                     "Failed to get replicaset from bucket {id}: {e}"
                 ))
@@ -1397,6 +1403,7 @@ fn buckets_by_replicasets(
     buckets: &Buckets,
     max_buckets: u64,
     tier: Option<&str>,
+    timeout: u64,
 ) -> SqlResult<Vec<(String, Vec<u64>)>> {
     enum BucketIter<'a> {
         All(std::ops::RangeInclusive<u64>),
@@ -1429,8 +1436,9 @@ fn buckets_by_replicasets(
         }
     };
     let mut map: AHashMap<String, Vec<u64>> = AHashMap::new();
+    let deadline = Instant::now_fiber().saturating_add(Duration::from_secs(timeout));
     for id in iter {
-        let rs: String = bucket_into_rs(lua, id, tier).map_err(|e| {
+        let rs: String = bucket_into_rs(lua, id, tier, deadline).map_err(|e| {
             SbroadError::DispatchError(format_smolstr!(
                 "Failed to get replicaset from bucket {id}: {e}"
             ))

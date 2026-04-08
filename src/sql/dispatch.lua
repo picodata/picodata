@@ -368,9 +368,9 @@ dispatch.bucket_into_rs = function(bucket_id, tier)
     local router = get_router_for_tier(tier)
     local rs, err = router:route(bucket_id)
     if err ~= nil then
-        error(err)
+        return nil, err
     end
-    return rs.uuid
+    return rs.uuid, nil
 end
 
 dispatch.custom_plan_dispatch = function(uuid_to_args, timeout, tier, read_preference, do_two_step)

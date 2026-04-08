@@ -15,6 +15,12 @@ with the `YY.MINOR.MICRO` scheme.
 - Rename fields in `/api/v1/health/status` response: `reasons` to `issues`,
   status level `unhealthy` to `broken`.
 
+### Fixes
+
+- Fixed the `NO_ROUTE_TO_BUCKET` error that occurred when sending a request to
+  the single node of a replicaset during its restart. This error is now retried
+  by the router.
+
 ## [26.1.2] - 2026-04-14 
 
 ### Changed
