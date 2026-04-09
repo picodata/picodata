@@ -626,7 +626,7 @@ fn global_union_all() {
     let (sql, _, rs, _) = filtered.get(0).unwrap();
     assert_eq!(
         sql,
-        r#" select cast(null as int),cast(null as int) where false UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#
+        r#" select cast(null as int) as "a",cast(null as int) as "b" where false UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#
     );
     assert_eq!(rs, "replicaset_0");
 
@@ -672,14 +672,14 @@ fn global_union_all2() {
     let (sql, _, rs, _) = filtered.get(0).unwrap();
     assert_eq!(
         sql,
-        r#" select cast(null as int),cast(null as int) where false UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#,
+        r#" select cast(null as int) as "a",cast(null as int) as "b" where false UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#,
     );
     assert_eq!(rs, "replicaset_0");
 
     let (sql, _, rs, _) = filtered.get(1).unwrap();
     assert_eq!(
         sql,
-        r#" select cast(null as int),cast(null as int) where false UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#,
+        r#" select cast(null as int) as "a",cast(null as int) as "b" where false UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#,
     );
     assert_eq!(rs, "replicaset_1");
 
@@ -787,7 +787,7 @@ fn global_union_all4() {
     let (sql, _, rs, _) = filtered.first().unwrap();
     assert_eq!(
         sql,
-        r#" select cast(null as int) where false UNION ALL SELECT * FROM (select cast(null as int) where false UNION ALL SELECT "t2"."f" FROM "t2") as "unnamed_subquery""#,
+        r#" select cast(null as int) as "b" where false UNION ALL SELECT * FROM (select cast(null as int) as "a" where false UNION ALL SELECT "t2"."f" FROM "t2") as "unnamed_subquery""#,
     );
     assert_eq!(rs, "replicaset_0");
 

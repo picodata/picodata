@@ -159,7 +159,9 @@ pub fn prepare_rs_to_ir_map(
 
         if let Some(info) = sae_info.as_mut() {
             apply_serialize_as_empty_opcode(&mut other_plan, info)?;
-            extra_plan_id = Some(other_plan.salt_plan_id()?);
+            other_plan.salt_plan_id()?;
+            // It's important to use `get_plan_id` because of the plan's metadata.
+            extra_plan_id = Some(other_plan.get_plan_id()?);
         }
         if let Some((other_last, other_other)) = other.split_last() {
             for (rs, bucket_ids) in other_other {
