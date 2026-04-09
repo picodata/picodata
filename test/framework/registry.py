@@ -52,7 +52,7 @@ class Registry:
         # version patch component is 0, then it will be ignored by version
         # filter due to our rules with the newly released tags in the project.
         # This will not allow us to test it, so let's add it manually here.
-        if self.get(self.current_version) is None:
+        if self.get(self.current_version, resolve=False) is None:
             current_executable = Executable.current()
             self.executables.insert(0, current_executable)
 
