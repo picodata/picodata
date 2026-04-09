@@ -41,6 +41,8 @@ def generate_instance(index: int, replicaset_num: int, instances_in_rs: int, pos
             "rack": f"rack-{(index % 50) + 1}"   # Distribute across 50 racks
         },
         "isLeader": is_leader,
+        "isVoter": False,      # Will be set in post-processing (max 5 total)
+        "isRaftLeader": False,  # Will be set in post-processing (exactly 1 total)
         "currentState": "Offline" if is_offline else "Online",
         "targetState": "Online",
         "name": f"i{instance_num}",
@@ -97,6 +99,18 @@ def generate_tiers_response(instances_per_rs: int = 3) -> list:
             break
         replicasets.append(generate_replicaset(rs_num, instance_idx, instances_per_rs))
         instance_idx += instances_per_rs
+
+    # Post-process: assign voters (max 5 total) and raft leader (exactly 1 total)
+    voters_assigned = 0
+    raft_leader_assigned = False
+    for rs in replicasets:
+        for inst in rs["instances"]:
+            if inst["currentState"] == "Online" and voters_assigned < 5:
+                inst["isVoter"] = True
+                voters_assigned += 1
+                if not raft_leader_assigned:
+                    inst["isRaftLeader"] = True
+                    raft_leader_assigned = True
 
     # Calculate tier-level aggregates
     total_usable = sum(rs["memory"]["usable"] for rs in replicasets)
