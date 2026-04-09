@@ -1,6 +1,6 @@
 use crate::info::{RuntimeInfo, VersionInfo};
 use crate::instance::{Instance, InstanceName, StateVariant};
-use crate::replicaset::{Replicaset, ReplicasetName};
+use crate::replicaset::{Replicaset, ReplicasetName, ReplicasetState};
 use crate::storage::Catalog;
 use crate::storage::ToEntryIter as _;
 use crate::tier::Tier;
@@ -313,7 +313,14 @@ struct InstanceInfo {
 #[serde(rename_all = "camelCase")]
 struct ReplicasetInfo {
     version: SmolStr,
+    // TECHDEBT: This field is misnamed — it actually represents the current state of the
+    // replicaset's leader instance (i.e. `StateVariant`), not the replicaset itself.
+    // It is kept as `state` in the response for backward API compatibility.
+    // The actual replicaset state from `_pico_replicaset` is exposed as `replicasetState`.
     state: StateVariant,
+    // The actual replicaset state from the `_pico_replicaset` system table.
+    // This cannot be named `state` due to the existing field above (see comment there).
+    replicaset_state: ReplicasetState,
     instance_count: usize,
     uuid: SmolStr,
     instances: Vec<InstanceInfo>,
@@ -566,11 +573,13 @@ fn get_replicasets_info(
         let mut is_leader = false;
         let mut replicaset_uuid = SmolStr::default();
         let mut tier = instance.tier.clone();
+        let mut replicaset_state = ReplicasetState::default();
         if let Some(replicaset) = replicasets.get(&replicaset_name) {
             is_leader = replicaset.current_master_name == instance.name;
             replicaset_uuid = replicaset.uuid.clone();
             debug_assert_eq!(replicaset.tier, instance.tier);
             tier.clone_from(&replicaset.tier);
+            replicaset_state = replicaset.state;
         }
 
         // Memory info from RPC (only available for leaders)
@@ -603,6 +612,7 @@ fn get_replicasets_info(
             .or_insert_with_key(|replicaset_name| ReplicasetInfo {
                 version: instance_info.version.clone(),
                 state: instance_info.current_state,
+                replicaset_state,
                 instance_count: 0,
                 uuid: replicaset_uuid,
                 capacity_usage: 0_f64,

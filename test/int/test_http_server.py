@@ -127,6 +127,7 @@ def test_webui_basic(instance: Instance, auth_token: Optional[str]):
                 "replicasets": [
                     {
                         "state": "Online",
+                        "replicasetState": "ready",
                         "version": instance_version,
                         "instances": [
                             {
@@ -297,6 +298,7 @@ def test_webui_with_plugin(cluster: Cluster):
 
     replicaset_template = {
         "state": "Online",
+        "replicasetState": "ready",
         "version": instance_version,
         "instanceCount": 1,
         "capacityUsage": 0.0,
@@ -477,6 +479,7 @@ def test_webui_replicaset_state(cluster: Cluster):
 
     replicaset_template = {
         "state": "Online",
+        "replicasetState": "ready",
         "version": instance_version,
         "instanceCount": 2,
         "capacityUsage": 0.0,
@@ -484,6 +487,7 @@ def test_webui_replicaset_state(cluster: Cluster):
     r1 = {
         **replicaset_template,
         "state": "Online",
+        "replicasetState": "ready",
         "uuid": i1.replicaset_uuid(),
         "name": "red_1",
         "instances": [instance_1, instance_2],
@@ -495,6 +499,7 @@ def test_webui_replicaset_state(cluster: Cluster):
     r2 = {
         **replicaset_template,
         "state": "Online",
+        "replicasetState": "ready",
         # use i4, as i3 is already dead
         "uuid": i4.replicaset_uuid(),
         "name": "red_2",
@@ -599,6 +604,7 @@ def test_webui_can_vote_flag(cluster: Cluster):
 
     replicaset_template = {
         "state": "Online",
+        "replicasetState": "ready",
         "version": instance_version,
         "instanceCount": 1,
         "capacityUsage": 0.0,
@@ -655,6 +661,48 @@ def test_webui_can_vote_flag(cluster: Cluster):
             tier_blue,
             tier_red,
         ]
+
+
+@pytest.mark.webui
+def test_webui_replicaset_state_field(cluster: Cluster):
+    """Test that replicasetState in /api/v1/tiers reflects the actual replicaset state
+    from _pico_replicaset, not to be confused with the existing `state` field which
+    represents the leader instance's state (kept for backward compatibility).
+    """
+    cluster_cfg = """
+    cluster:
+        name: test
+        tier:
+            red:
+                replication_factor: 2
+    """
+    cluster.set_config_file(yaml=cluster_cfg)
+
+    i1 = cluster.add_instance(wait_online=True, tier="red")
+
+    http_listen = i1.http_listen
+    create_user(i1)
+    auth_token = get_auth_token(i1)
+
+    # Only 1 of 2 required instances joined: replicaset should be "not-ready".
+    with get_url(f"http://{http_listen}/api/v1/tiers", auth_token) as response:
+        tiers = json.load(response)
+        replicaset = tiers[0]["replicasets"][0]
+        assert replicaset["replicasetState"] == "not-ready", (
+            "replicasetState should be 'not-ready' when replicaset is not yet filled up to the replication factor"
+        )
+
+    cluster.add_instance(wait_online=True, tier="red")
+    # Wait until governor sets the replicaset to ready state.
+    i1.wait_governor_status("idle")
+
+    # Now replicaset has rf=2 instances, it should become "ready".
+    with get_url(f"http://{http_listen}/api/v1/tiers", auth_token) as response:
+        tiers = json.load(response)
+        replicaset = tiers[0]["replicasets"][0]
+        assert replicaset["replicasetState"] == "ready", (
+            "replicasetState should be 'ready' once the replicaset is filled up to the replication factor"
+        )
 
 
 @pytest.mark.webui
