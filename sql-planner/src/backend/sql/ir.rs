@@ -209,7 +209,7 @@ impl ExecutionPlan {
     ///
     /// # Errors
     /// - If `plan_id` is not set.
-    pub fn salt_plan_id(&mut self) -> Result<u64, SbroadError> {
+    pub fn salt_plan_id(&mut self) -> Result<(), SbroadError> {
         let plan_id = !self.plan_id.ok_or_else(|| {
             SbroadError::FailedTo(
                 Action::Get,
@@ -218,7 +218,7 @@ impl ExecutionPlan {
             )
         })?;
         self.plan_id = Some(plan_id);
-        Ok(plan_id)
+        Ok(())
     }
 
     pub fn get_plan_id(&self) -> Result<u64, SbroadError> {

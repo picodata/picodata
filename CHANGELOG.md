@@ -33,6 +33,8 @@ with the `YY.MINOR.MICRO` scheme.
   isolation while allowing the cluster to recover.
 - Fixed the errors `box.cfg.read_only is true` and `Failed to add a storage reference`,
   which occurred when restarting a storage instance and previously required a retry.
+- Fixed the `query for request_id with plan_id not found` error that occurred
+  on queries with `UNION` of `CTE` on a cluster consisting of multiple instances.
 
 ## [26.1.1] - 2026-03-24
 

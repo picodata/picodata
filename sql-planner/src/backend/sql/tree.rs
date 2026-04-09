@@ -1292,8 +1292,16 @@ impl<'p> SyntaxPlan<'p> {
                 let output_cols = plan.get_row_list(*output).expect("row aliases");
                 // We need to preserve types when doing `select null`,
                 // otherwise tarantool will cast it to `scalar`.
+                // We also need to preserve column names via aliases.
                 let mut select_columns = Vec::with_capacity(output_cols.len());
                 for col in output_cols {
+                    let alias_name = if let Expression::Alias(Alias { name, .. }) =
+                        plan.get_expression_node(*col).expect("alias node")
+                    {
+                        Some(name)
+                    } else {
+                        None
+                    };
                     let ref_id = plan
                         .get_child_under_alias(*col)
                         .expect("motion output must be a row of aliases!");
@@ -1301,11 +1309,15 @@ impl<'p> SyntaxPlan<'p> {
                     let Expression::Reference(Reference { col_type, .. }) = ref_expr else {
                         panic!("expected Reference under Alias in Motion output");
                     };
-                    let casted_null_str = if let Some(col_type) = col_type.get() {
+                    let null_expr = if let Some(col_type) = col_type.get() {
                         format_smolstr!("cast(null as {col_type})")
                     } else {
-                        // No need to cast as there are no type.
                         SmolStr::from("null")
+                    };
+                    let casted_null_str = if let Some(name) = alias_name {
+                        format_smolstr!("{null_expr} as \"{name}\"")
+                    } else {
+                        null_expr
                     };
                     select_columns.push(casted_null_str);
                 }
