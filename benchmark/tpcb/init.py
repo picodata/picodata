@@ -10,16 +10,14 @@ import argparse
 import psycopg
 from tqdm import tqdm
 
+
 # Set up command-line arguments
 def parse_args():
     parser = argparse.ArgumentParser(description="Initialize tables for pgbench benchmarking with Picodata.")
-    parser.add_argument(
-        "connection", type=str, help="Connection string for the pgproto server"
-    )
-    parser.add_argument(
-        "-s", "--scale", type=int, default=1, help="Scaling factor for the benchmark (default: 1)"
-    )
+    parser.add_argument("connection", type=str, help="Connection string for the pgproto server")
+    parser.add_argument("-s", "--scale", type=int, default=1, help="Scaling factor for the benchmark (default: 1)")
     return parser.parse_args()
+
 
 def main():
     # Parse command-line arguments
@@ -42,7 +40,9 @@ def main():
     conn.execute("CREATE TABLE pgbench_branches (bid int PRIMARY KEY, bbalance int, filler varchar(88));")
     conn.execute("CREATE TABLE pgbench_tellers (tid int PRIMARY KEY, bid int, tbalance int, filler varchar(84));")
     conn.execute("CREATE TABLE pgbench_accounts (aid int PRIMARY KEY, bid int, abalance int, filler varchar(84));")
-    conn.execute("CREATE TABLE pgbench_history (tid int, bid int, aid int, delta int, mtime datetime, filler varchar(22), PRIMARY KEY(tid, bid, aid, delta));")
+    conn.execute(
+        "CREATE TABLE pgbench_history (tid int, bid int, aid int, delta int, mtime datetime, filler varchar(22), PRIMARY KEY(tid, bid, aid, delta));"
+    )
 
     # Set scale and table sizes
     scale = args.scale
@@ -61,8 +61,10 @@ def main():
     # Populate pgbench_tellers table
     print("Populating pgbench_tellers...")
     for tid in tqdm(range(ntellers * scale)):
-        conn.execute("INSERT INTO pgbench_tellers(tid, bid, tbalance) VALUES (%(tid)s::int, (%(tid)s::int - 1) / %(ntellers)s::int + 1, 0)",
-                     {"tid": tid, "ntellers": ntellers})
+        conn.execute(
+            "INSERT INTO pgbench_tellers(tid, bid, tbalance) VALUES (%(tid)s::int, (%(tid)s::int - 1) / %(ntellers)s::int + 1, 0)",
+            {"tid": tid, "ntellers": ntellers},
+        )
 
     # Populate pgbench_accounts table
     print("Populating pgbench_accounts...")
@@ -101,6 +103,6 @@ def main():
 
     print("Initialization complete!")
 
+
 if __name__ == "__main__":
     main()
-
