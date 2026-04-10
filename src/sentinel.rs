@@ -74,8 +74,7 @@ impl Loop {
             .storage
             .properties
             .system_catalog_version()
-            .expect("reading from _pico_property should always work")
-            .expect("system_catalog_version always available since 25.1.0");
+            .expect("reading from _pico_property should always work");
 
         ////////////////////////////////////////////////////////////////////////
         // Awoken during graceful shutdown.
@@ -117,7 +116,7 @@ impl Loop {
                         leader_id,
                         &req,
                         timeout,
-                        &system_catalog_version,
+                        system_catalog_version.as_deref(),
                     )
                     .await?;
                     Ok(())
@@ -280,7 +279,7 @@ impl Loop {
                         leader_id,
                         &req,
                         Self::UPDATE_INSTANCE_TIMEOUT,
-                        &system_catalog_version,
+                        system_catalog_version.as_deref(),
                     )
                     .await?;
                     Ok(())
@@ -389,12 +388,17 @@ pub async fn call_proc_update_instance(
     leader_id: RaftId,
     request: &rpc::update_instance::Request,
     timeout: Duration,
-    system_catalog_version: &str,
+    system_catalog_version: Option<&str>,
 ) -> Result<()> {
-    if version_is_new_enough(
-        system_catalog_version,
-        &Instance::TARGET_STATE_CHANGE_TIME_AVAILABLE_SINCE,
-    )? {
+    let need_call_new_proc = if let Some(system_catalog_version) = system_catalog_version {
+        version_is_new_enough(
+            system_catalog_version,
+            &Instance::TARGET_STATE_CHANGE_TIME_AVAILABLE_SINCE,
+        )?
+    } else {
+        true
+    };
+    if need_call_new_proc {
         pool.call(
             &leader_id,
             proc_name!(proc_update_instance_v2),

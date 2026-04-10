@@ -71,6 +71,7 @@ with the `YY.MINOR.MICRO` scheme.
   which occurred when restarting a storage instance and previously required a retry.
 - Fixed `ALTER PLUGIN ADD SERVICE TO TIER` accepting nonexistent tier names.
   Now validates that the specified tier exists and returns an error otherwise.
+- Fixed sentinel panic on long activation wait.
 - Fixed the `query for request_id with plan_id not found` error that occurred
   on queries with `UNION` of `CTE` on a cluster consisting of multiple instances.
 - Logical `EXPLAIN` (the default mode) now preserves subquery indentation.
