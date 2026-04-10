@@ -1,5 +1,6 @@
 from conftest import Cluster
 from conftest import Retriable
+from conftest import log_crawler
 from framework.registry import get_or_make_registry
 from framework.registry import Registry
 from framework.util.version import base_version
@@ -774,3 +775,91 @@ cluster:
     # The migration should have fixed the missing default tier bug.
     [[tier_is_default]] = instance.sql("SELECT is_default FROM _pico_tier")
     assert tier_is_default is True
+
+
+@pytest.mark.required_rolling_versions(
+    versions=[
+        Version("25.5.9"),
+        get_or_make_registry().next_version(Version("26.1.1")),
+    ]
+)
+def test_26_1_early_http_peer_address_causing_panic(registry: Registry, cluster: Cluster):
+    # This test validates the fix for https://git.picodata.io/core/picodata/-/issues/2846
+
+    cluster.registry = registry
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        default:
+            can_vote: true
+        storage:
+            can_vote: false
+        """
+    )
+
+    version_old = Version("25.5.9")
+    version_new = registry.next_version(Version("26.1.1"))
+
+    executable_old = registry.get(version_old)
+    executable_new = registry.get(version_new)
+    assert executable_old is not None
+    assert executable_new is not None
+
+    i1 = cluster.add_instance(name="default_1", tier="default", executable=executable_old)
+    i2 = cluster.add_instance(name="storage_1", tier="storage", executable=executable_old)
+
+    cluster.wait_online()
+    assert_version(cluster, version_old, registry)
+
+    # update i1 to 26.1.x, but keep i2 at 25.5.x
+    # this will prevent the cluster upgrade from proceeding
+    i1.change_executable(executable_new)
+    assert_version(cluster, version_old, registry)
+
+    counter = i1.wait_governor_status("idle")
+
+    lc1 = log_crawler(i1, "aborting due to panic")
+    lc2 = log_crawler(i2, "aborting due to panic")
+
+    # bootstrap a new instance on 25.5.x
+    # this would trigger a bug in the governor: it would write the http address of a node to `_pico_peer_address` while some nodes would not understand this record.
+    i3 = cluster.add_instance(name="storage_2", tier="storage", executable=executable_old)
+
+    counter = i1.wait_governor_status("idle", counter)
+
+    # no crash
+    assert not (lc1.matched or lc2.matched)
+
+    # still on the old version
+    assert_version(cluster, version_old, registry)
+
+    def get_http_addresses():
+        return i1.sql("SELECT raft_id, address FROM _pico_peer_address WHERE connection_type = 'http'")
+
+    # no http addresses in `_pico_peer_address`
+    assert len(get_http_addresses()) == 0
+
+    # now finish the cluster upgrade
+    i2.change_executable(executable_new)
+    i3.change_executable(executable_new)
+
+    i1.wait_governor_status("idle", counter)
+
+    # the version should be updated
+    assert_version(cluster, version_new, registry)
+
+    # restart i2 & i3 to let them write their http addresses to `_pico_peer_address`
+    i2.terminate()
+    i2.start()
+    i3.terminate()
+    i3.start()
+
+    cluster.wait_online()
+
+    def check_http_addresses_present():
+        assert len(get_http_addresses()) > 0
+
+    # now we should be able to see http addresses in `_pico_peer_address`
+    Retriable(timeout=10).call(check_http_addresses_present)

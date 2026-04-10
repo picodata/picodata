@@ -118,6 +118,22 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
         req.picodata_version.as_ref(),
     )?;
 
+    let cluster_supports_http_and_plugin_addresses = crate::version::version_is_new_enough(
+        &global_cluster_version,
+        &traft::PeerAddress::HTTP_AND_PLUGIN_CONNECTIONS_AVAILABLE_SINCE,
+    )?;
+
+    // Reject instances that try to join with plugin addresses defined:
+    // - We can't put those addresses into `_pico_peer_address` because older instances will panic due to unknown connection type.
+    // - We can't skip adding them because there is no other mechanism by which they will be added to `_pico_peer_address`.
+    // Rejecting them is the safest option.
+    if !cluster_supports_http_and_plugin_addresses && !req.plugin_listener_addresses.is_empty() {
+        return Err(Error::ClusterVersionTooOld {
+            cluster_version: global_cluster_version,
+            missing_feature: "advertised plugin addresses".into(),
+        });
+    }
+
     let deadline = fiber::clock().saturating_add(timeout);
     loop {
         let (instance, instance_exists) = build_instance(
@@ -200,31 +216,35 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             )
             .expect("encoding should not fail"),
         );
-        ops.push(
-            Dml::replace(
-                storage::PeerAddresses::TABLE_ID,
-                &http_peer_address,
-                ADMIN_ID,
-            )
-            .expect("encoding should not fail"),
-        );
 
-        for (plugin_name, service_name, advertise) in &req.plugin_listener_addresses {
+        // do not add HTTP and plugin address records unless all nodes in cluster can parse them
+        if cluster_supports_http_and_plugin_addresses {
             ops.push(
                 Dml::replace(
                     storage::PeerAddresses::TABLE_ID,
-                    &traft::PeerAddress {
-                        raft_id: instance.raft_id,
-                        address: advertise.clone(),
-                        connection_type: traft::ConnectionType::plugin(
-                            plugin_name.clone(),
-                            service_name.clone(),
-                        ),
-                    },
+                    &http_peer_address,
                     ADMIN_ID,
                 )
                 .expect("encoding should not fail"),
             );
+
+            for (plugin_name, service_name, advertise) in &req.plugin_listener_addresses {
+                ops.push(
+                    Dml::replace(
+                        storage::PeerAddresses::TABLE_ID,
+                        &traft::PeerAddress {
+                            raft_id: instance.raft_id,
+                            address: advertise.clone(),
+                            connection_type: traft::ConnectionType::plugin(
+                                plugin_name.clone(),
+                                service_name.clone(),
+                            ),
+                        },
+                        ADMIN_ID,
+                    )
+                    .expect("encoding should not fail"),
+                );
+            }
         }
 
         ops.push(

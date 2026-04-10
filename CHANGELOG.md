@@ -35,6 +35,10 @@ with the `YY.MINOR.MICRO` scheme.
   which occurred when restarting a storage instance and previously required a retry.
 - Fixed the `query for request_id with plan_id not found` error that occurred
   on queries with `UNION` of `CTE` on a cluster consisting of multiple instances.
+- Fixes an issue when http and plugin addresses were inserted into `_pico_peer_address`
+  when an instance joined a mixed-version cluster, causing a panic on older instances.
+  It is also now not possible to bootstrap an 26.1.x instance defining a plugin listener
+  address into a mixed 25.5.x and 26.1.x cluster - cluster has to be fully updated to do that.
 
 ## [26.1.1] - 2026-03-24
 

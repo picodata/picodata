@@ -101,6 +101,11 @@ pub enum Error {
         old_version: SmolStr,
         new_version: SmolStr,
     },
+    #[error("cluster version {cluster_version} is too old to support joining this instance, it does not yet support {missing_feature}")]
+    ClusterVersionTooOld {
+        cluster_version: SmolStr,
+        missing_feature: SmolStr,
+    },
     #[error("operation request from different term {requested}, current term is {current}")]
     TermMismatch {
         requested: RaftTerm,

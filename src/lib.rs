@@ -30,8 +30,8 @@ use crate::storage::PropertyName;
 use crate::storage::SystemTable;
 use crate::tarantool::{rm_tarantool_files, ListenConfig};
 use crate::traft::error::Error;
-use crate::traft::op;
 use crate::traft::Result;
+use crate::traft::{op, PeerAddress};
 use crate::util::effective_user_id;
 use ::raft::prelude as raft;
 use ::raft::Storage;
@@ -1973,14 +1973,10 @@ fn migrate_http_peer_address_if_missing(
         );
         return Ok(());
     };
-    let Ok(cv) = crate::version::Version::try_from(cluster_version.as_str()) else {
-        tlog!(
-            Info,
-            "skipping HTTP peer address migration: cluster_version {cluster_version} is not parseable"
-        );
-        return Ok(());
-    };
-    if cv.major < 25 || (cv.major == 25 && cv.minor < 6) {
+    if !version::version_is_new_enough(
+        &cluster_version,
+        &PeerAddress::HTTP_AND_PLUGIN_CONNECTIONS_AVAILABLE_SINCE,
+    )? {
         tlog!(
             Info,
             "skipping HTTP peer address migration: cluster_version {cluster_version} \

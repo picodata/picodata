@@ -7,6 +7,7 @@ pub mod op;
 pub(crate) mod raft_storage;
 
 use crate::instance::Instance;
+use crate::version::Version;
 use ::raft::prelude as raft;
 use ::tarantool::tuple::Encode;
 use error::to_error_other;
@@ -221,6 +222,11 @@ pub struct PeerAddress {
     pub connection_type: ConnectionType,
 }
 impl Encode for PeerAddress {}
+
+impl PeerAddress {
+    /// First Picodata version which supports HTTP and Plugin advertise addresses in `_pico_peer_address`
+    pub const HTTP_AND_PLUGIN_CONNECTIONS_AVAILABLE_SINCE: Version = Version::new_clean(26, 1, 1);
+}
 
 // connection_type is stored as a plain string in the database, so we need
 // custom serde impls that go through ConnectionType::as_storage_string /
