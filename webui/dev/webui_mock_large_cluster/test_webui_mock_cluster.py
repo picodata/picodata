@@ -73,9 +73,16 @@ def generate_replicaset(replicaset_num: int, start_instance_idx: int, instances_
 
     capacity_usage = (total_used / total_usable) if total_usable > 0 else 0.0
 
+    # A replicaset is "not-ready" when it is not yet filled up to the replication
+    # factor (e.g. the last replicaset in a cluster with a non-divisible instance
+    # count), or every 10th replicaset to simulate newly-created ones for dev/demo.
+    is_not_ready = (instances_in_this_rs < instances_per_rs) or (replicaset_num % 10 == 9)
+    replicaset_state = "not-ready" if is_not_ready else "ready"
+
     return {
         "version": "25.6.0-125-gc8649d493",
         "state": "Online",
+        "replicasetState": replicaset_state,
         "instanceCount": instances_in_this_rs,
         "uuid": f"c43dc4f6-d261-4f3e-9cea-e23f4f89{replicaset_num:04d}",
         "instances": instances,
