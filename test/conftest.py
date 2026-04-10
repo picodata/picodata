@@ -1819,21 +1819,19 @@ class Instance:
         """
         if not self.cluster:
             return None
-        try:
-            leader = self.cluster.leader()
-            return leader.eval(
-                """
-                local name = ...
-                local tuple = box.space._pico_instance.index.name:get(name)
-                if tuple then
-                    return tuple.target_state_reason
-                end
-                return nil
-                """,
-                self.name,
-            )
-        except Exception:
-            return None
+
+        leader = self.cluster.leader()
+        return leader.eval(
+            """
+            local name = ...
+            local tuple = box.space._pico_instance.index._pico_instance_name:get(name)
+            if tuple then
+                return tuple.target_state_reason
+            end
+            return nil
+            """,
+            self.name,
+        )
 
     def _wait_online_failure_message(self, current_state: str, target_state: str) -> str:
         last_error = None
@@ -1854,7 +1852,10 @@ class Instance:
             log.warning(f"Failed getting governor info: {e}")
 
         state_repr = current_state if current_state == target_state else f"{current_state} -> {target_state}"
-        target_state_reason = self._get_target_state_reason()
+        try:
+            target_state_reason = self._get_target_state_reason()
+        except Exception as e:
+            target_state_reason = f"ERROR: failed getting target_state_reason: {e}"
 
         message = f"""
 Timed out waiting for instance '{self.name_or_port()}' state 'Online'.
