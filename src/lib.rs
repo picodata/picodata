@@ -2176,7 +2176,12 @@ fn postjoin(
     // a redundant update instance request.
     // Otherwise incarnations grow by 2 every time.
     let timeout = Duration::from_secs(10);
-    let deadline = fiber::clock().saturating_add(timeout);
+    #[allow(unused_mut)]
+    let mut deadline = fiber::clock().saturating_add(timeout);
+    crate::error_injection!("SELF_ACTIVATION_WAITING_TIMEOUT" => {
+        deadline = fiber::clock().saturating_sub(Duration::from_secs(1));
+    });
+
     loop {
         let instance = node.topology_cache.get().try_this_instance().cloned();
         if let Some(instance) = instance {
