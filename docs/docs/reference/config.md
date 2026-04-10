@@ -54,13 +54,15 @@ picodata run --config ./picodata_config.yaml -c instance.log.level=verbose
 
 [`--config-parameter`]: cli.md#run_config_parameter
 
-## Описание файла конфигурации {: #config_file_description }
-
-<!-- Описание соответствует версии Picodata `25.2.0-1504-ga77a09131`. -->
+## Создание шаблона конфигурации {: #config_file_template }
 
 Для начала работы с файлом конфигурации создайте его шаблон, выполнив
-команду `picodata config default -o picodata.yaml`. Файл конфигурации
-содержит параметры в формате YAML на следующих уровнях вложения:
+команду `picodata config default -o picodata.yaml`.
+
+## Структура конфигурации {: #config_file_structure }
+
+Файл конфигурации содержит параметры в формате YAML на следующих уровнях
+вложения:
 
 - `cluster` — расположенные на этом уровне параметры относятся ко всему кластеру
 - `tier` — параметры отдельных тиров
@@ -128,7 +130,7 @@ instance:
     listen: 127.0.0.1:3301 # (20)!
     advertise: 127.0.0.1:3301 # (18)!
     tls:
-      enabled: false false # (21)!
+      enabled: false # (21)!
   pgproto:
     enabled: true # (31)!
     listen: 127.0.0.1:4327 # (32)!
@@ -137,6 +139,20 @@ instance:
       enabled: false # (33)!
   peer: # (29)!
   - 127.0.0.1:3301
+  plugin: # (49)!
+    plugin-name:
+      service:
+        service-name:
+          listener:
+            enabled: <bool>
+            advertise: <URI>
+            listen: <URI>
+            tls:
+              enabled: <bool>
+              cert_file: tls_2/server.crt
+              key_file: tls_2/server.key
+              ca_file: tls_2/ca.crt
+              password_file: tls_2/pass.txt
 ```
 
 1. [cluster.default_replication_factor](#cluster_default_replication_factor)
@@ -187,12 +203,13 @@ instance:
 46. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
 47. [instance.vinyl.timeout](#instance_vinyl_timeout)
 48. [instance.backup_dir](#instance_backup_dir)
+49. [instance.plugin](#instance_plugin)
 
 См. также:
 
 * [`picodata config default`](cli.md#config_default)
 
-## Параметры файла конфигурации {: #config_file_parameters }
+## Описание параметров файла конфигурации {: #config_file_description }
 
 <style>
 
@@ -410,7 +427,7 @@ picodata run -c instance.boot_timeout=3600
 
 <span class="supported">поддерживается с версии 24.4.1</span>
 
-Список пар ключ-значение, разделенных запятыми, определяющий [домен
+JSON-объект с набором строковых значений, определяющих [домен
 отказа] инстанса. Набор параметров домена отказа позволяет указать
 расположение сервера, на котором запущен инстанс, в стойке, датацентре,
 регионе и т.д. Набор ключей может быть произвольным. Picodata не будет
@@ -431,9 +448,9 @@ picodata run -c instance.boot_timeout=3600
 Аналогичная переменная окружения: `PICODATA_FAILURE_DOMAIN`<br>
 Задание параметра в командной строке: [`picodata run --failure-domain`]
 
-Синтаксис значений домена отказа различается при работе c файлом
-конфигурации (массив данных) и при использовании в командной строке
-(список пар `ключ=значение`). Примеры показаны ниже.
+Синтаксис значений домена отказа различается при работе с файлом
+конфигурации (JSON-объект со строковыми значениями) и при использовании
+в командной строке (список пар `ключ=значение`). Примеры показаны ниже.
 
 Использование в файле конфигурации:
 
@@ -557,13 +574,13 @@ HTTPS. Используется для получения метрик и дос
 - `cert_file` (*str*) — путь к файлу сертификата
 - `key_file` (*str*) — путь к файлу с закрытым ключом
 
-а также, опционально, укажите путь к файлу с паролем, если он был задан
+а также, здесь можно указать путь к файлу с паролем, если он был задан
 в настройках сертификата (пароль требуется для расшифровки закрытого
 ключа):
 
 - `password_file` (*str*)
 
-При включенном HTTPS и использовании пароля, блок
+При включенном HTTPS и использовании пароля блок
 настроек файла конфигурации будет иметь следующий вид:
 
 ```yaml
@@ -969,6 +986,8 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 Основной параметр `instance.pgproto.tls.enabled` отвечает за
 включение/отключение режима шифрования.
 
+Данные:
+
 * Тип: *bool*
 * Значение по умолчанию: `false`
 
@@ -981,11 +1000,6 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 файл корневого сертификата:
 
 * `ca.crt`
-
-Данные:
-
-* Тип: *bool*
-* Значение по умолчанию: `false`
 
 Размещение файлов сертификатов и закрытого ключа можно переопределить,
 используя следующие 3 дополнительных параметра:
@@ -1009,6 +1023,29 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 ```shell
 picodata run -c instance.pgproto.tls.enabled=true -c instance.pgproto.tls.cert_file=pgproto/server.crt -c instance.pgproto.tls.key_file=pgproto/server.key -c instance.pgproto.tls.ca_file=pgproto/ca.crt
 ```
+
+### instance.plugin {: #instance_plugin }
+
+<span class="supported">поддерживается с версии 26.1.1</span>
+
+!!! note "Примечание"
+    Параметры плагинов и их сервисов не входят в [шаблон
+    файла конфигурации](#config_file_template) и настраиваются отдельно
+    в рамках подключения и развёртывания соответствующих
+    [плагинов](../plugins/plugin_list.md).
+
+Блок параметров, отвечающий за настройки плагина для Picodata. Подобных
+блоков в файле конфигурации может быть несколько — по числу
+задействованных плагинов. Параметры применяются к заданному в разделе
+`service` [сервису плагина](../dev/plugin_mgmt.md#services). Внутри
+этого блока пользователь может настроить слушающий сокет со
+следующими свойствами:
+
+- `advertise` — публичный сетевой адрес инстанса для подключения к сервису
+- `listen` — адрес, на котором сервис плагина будет слушать
+- `tls` — конфигурация защищенного режима для работы с плагином
+(настройка аналогична блокам `tls:` для других параметров файла
+конфигурации, [пример](#instance_http_tls)).
 
 ### instance.replicaset_name {: #instance_replicaset_name }
 
