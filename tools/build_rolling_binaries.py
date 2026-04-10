@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+
 def path_hack():
     """
     This allows importing project modules located in the 'test/' directory without requiring
@@ -14,6 +15,7 @@ def path_hack():
     root_directory = tools_directory.parent
     final_path = root_directory / "test"
     sys.path.insert(0, str(final_path))
+
 
 # HACK: when running scripts from the 'tools/' directory, the 'test/' directory is not
 # automatically in Python's module search path. This dynamically adds it so test modules
@@ -95,20 +97,17 @@ def main():
 
     arguments_parser = ArgumentParser(formatter_class=RawTextHelpFormatter)
     arguments_parser.description = (
-        "Script to build Picodata executables of previous versions.\n"
-        f"Note that {parser_hint}"
+        f"Script to build Picodata executables of previous versions.\nNote that {parser_hint}"
     )
     arguments_parser.add_argument(
         "output",
         type=Path,
         action="store",
-        help=(
-            "path to directory where built executables will be placed\n"
-            f"note that {parser_hint}"
-        ),
+        help=(f"path to directory where built executables will be placed\nnote that {parser_hint}"),
     )
     arguments_parser.add_argument(
-        "-y", "--yes",
+        "-y",
+        "--yes",
         action="store_true",
         help="confirm deletion of broken submodule without prompting",
     )

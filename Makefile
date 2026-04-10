@@ -168,7 +168,7 @@ lint-rs:
 .PHONY: lint-py
 lint-py:
 	poetry run ruff check ./test
-	poetry run ruff format ./test --check --diff
+	poetry run ruff format ./test tools benchmark --check --diff
 	poetry run mypy ./test
 
 .PHONY: lint
@@ -177,7 +177,7 @@ lint: lint-rs lint-py
 .PHONY: fmt
 fmt:
 	cargo fmt
-	poetry run ruff format ./test
+	poetry run ruff format ./test tools benchmark
 
 .PHONY: audit
 audit:

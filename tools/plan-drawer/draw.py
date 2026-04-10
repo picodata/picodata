@@ -5,8 +5,10 @@ from enum import Enum
 import argparse
 import sys
 
+
 class ArenaType(Enum):
     """Enum for different arena types."""
+
     ARENA32 = "Arena32"
     ARENA64 = "Arena64"
     ARENA96 = "Arena96"
@@ -17,23 +19,18 @@ class ArenaType(Enum):
 @dataclass
 class NodeId:
     """Represents a node identifier with arena type and offset."""
+
     offset: int
     arena_type: ArenaType
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'NodeId':
+    def from_dict(cls, data: Dict[str, Any]) -> "NodeId":
         """Create NodeId from dictionary representation."""
-        return cls(
-            offset=data["offset"],
-            arena_type=ArenaType(data["arena_type"])
-        )
+        return cls(offset=data["offset"], arena_type=ArenaType(data["arena_type"]))
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert NodeId to dictionary representation."""
-        return {
-            "offset": self.offset,
-            "arena_type": self.arena_type.value
-        }
+        return {"offset": self.offset, "arena_type": self.arena_type.value}
 
 
 class RustParser:
@@ -92,7 +89,7 @@ class RustParser:
             if result is not None:
                 return result
 
-        raise ValueError(f"Unable to parse value at position {pos}: {s[pos:pos + 30]}")
+        raise ValueError(f"Unable to parse value at position {pos}: {s[pos : pos + 30]}")
 
     def _skip_whitespace(self, s: str, pos: int) -> int:
         """Skip whitespace characters starting from position."""
@@ -102,52 +99,52 @@ class RustParser:
 
     def _try_parse_boolean(self, s: str, pos: int) -> Optional[Tuple[bool, int]]:
         """Try to parse a boolean value."""
-        if s[pos:pos + 4] == 'true':
+        if s[pos : pos + 4] == "true":
             return True, pos + 4
-        elif s[pos:pos + 5] == 'false':
+        elif s[pos : pos + 5] == "false":
             return False, pos + 5
         return None
 
     def _try_parse_none(self, s: str, pos: int) -> Optional[Tuple[None, int]]:
         """Try to parse None value."""
-        if s[pos:pos + 4] == 'None':
+        if s[pos : pos + 4] == "None":
             return None, pos + 4
         return None
 
     def _try_parse_some(self, s: str, pos: int) -> Optional[Tuple[Any, int]]:
         """Try to parse Some(value) wrapper."""
-        if s[pos:pos + 4] != 'Some':
+        if s[pos : pos + 4] != "Some":
             return None
 
         pos += 4
         pos = self._skip_whitespace(s, pos)
-        if pos >= len(s) or s[pos] != '(':
+        if pos >= len(s) or s[pos] != "(":
             return None
 
         pos += 1  # skip '('
         value, pos = self._parse_value(s, pos)
         pos = self._skip_whitespace(s, pos)
-        if pos >= len(s) or s[pos] != ')':
+        if pos >= len(s) or s[pos] != ")":
             raise ValueError("Expected ')' after Some value")
         pos += 1  # skip ')'
         return value, pos
 
     def _try_parse_number(self, s: str, pos: int) -> Optional[Tuple[Union[int, float], int]]:
         """Try to parse a number (int or float)."""
-        if pos >= len(s) or not (s[pos].isdigit() or s[pos] == '-'):
+        if pos >= len(s) or not (s[pos].isdigit() or s[pos] == "-"):
             return None
 
         start = pos
-        if s[pos] == '-':
+        if s[pos] == "-":
             pos += 1
 
         has_dot = False
-        while pos < len(s) and (s[pos].isdigit() or (s[pos] == '.' and not has_dot)):
-            if s[pos] == '.':
+        while pos < len(s) and (s[pos].isdigit() or (s[pos] == "." and not has_dot)):
+            if s[pos] == ".":
                 has_dot = True
             pos += 1
 
-        if pos == start or (pos == start + 1 and s[start] == '-'):
+        if pos == start or (pos == start + 1 and s[start] == "-"):
             return None
 
         value_str = s[start:pos]
@@ -166,17 +163,17 @@ class RustParser:
         value_chars = []
 
         while pos < len(s) and s[pos] != '"':
-            if s[pos] == '\\' and pos + 1 < len(s):
+            if s[pos] == "\\" and pos + 1 < len(s):
                 # Handle escaped characters
                 pos += 1
-                if s[pos] == 'n':
-                    value_chars.append('\n')
-                elif s[pos] == 't':
-                    value_chars.append('\t')
-                elif s[pos] == 'r':
-                    value_chars.append('\r')
-                elif s[pos] == '\\':
-                    value_chars.append('\\')
+                if s[pos] == "n":
+                    value_chars.append("\n")
+                elif s[pos] == "t":
+                    value_chars.append("\t")
+                elif s[pos] == "r":
+                    value_chars.append("\r")
+                elif s[pos] == "\\":
+                    value_chars.append("\\")
                 elif s[pos] == '"':
                     value_chars.append('"')
                 else:
@@ -189,28 +186,28 @@ class RustParser:
             raise ValueError("Unterminated string")
 
         pos += 1  # skip closing quote
-        return ''.join(value_chars), pos
+        return "".join(value_chars), pos
 
     def _try_parse_array(self, s: str, pos: int) -> Optional[Tuple[List[Any], int]]:
         """Try to parse an array [...]."""
-        if pos >= len(s) or s[pos] != '[':
+        if pos >= len(s) or s[pos] != "[":
             return None
 
         pos += 1  # skip '['
         items = []
         pos = self._skip_whitespace(s, pos)
 
-        while pos < len(s) and s[pos] != ']':
+        while pos < len(s) and s[pos] != "]":
             # Parse item
             item, pos = self._parse_value(s, pos)
             items.append(item)
 
             pos = self._skip_whitespace(s, pos)
 
-            if pos < len(s) and s[pos] == ',':
+            if pos < len(s) and s[pos] == ",":
                 pos += 1  # skip comma
                 pos = self._skip_whitespace(s, pos)
-            elif pos < len(s) and s[pos] != ']':
+            elif pos < len(s) and s[pos] != "]":
                 raise ValueError(f"Expected ',' or ']' in array at position {pos}")
 
         if pos >= len(s):
@@ -221,22 +218,22 @@ class RustParser:
 
     def _try_parse_identifier(self, s: str, pos: int) -> Optional[Tuple[Any, int]]:
         """Try to parse an identifier or struct."""
-        if pos >= len(s) or not (s[pos].isalpha() or s[pos] == '_'):
+        if pos >= len(s) or not (s[pos].isalpha() or s[pos] == "_"):
             return None
 
         start = pos
-        while pos < len(s) and (s[pos].isalnum() or s[pos] == '_'):
+        while pos < len(s) and (s[pos].isalnum() or s[pos] == "_"):
             pos += 1
 
         identifier = s[start:pos]
         original_pos = pos
         pos = self._skip_whitespace(s, pos)
 
-        if pos < len(s) and s[pos] == '(':
+        if pos < len(s) and s[pos] == "(":
             # Function-like syntax: Identifier(...)
             return self._parse_function_call(s, pos, identifier)
 
-        elif pos < len(s) and s[pos] == '{':
+        elif pos < len(s) and s[pos] == "{":
             # Struct syntax: Identifier { ... }
             return self._parse_struct(s, pos, identifier)
         else:
@@ -249,24 +246,24 @@ class RustParser:
 
         # Handle empty parentheses
         pos = self._skip_whitespace(s, pos)
-        if pos < len(s) and s[pos] == ')':
+        if pos < len(s) and s[pos] == ")":
             pos += 1
             return {"_node_name": identifier}, pos
 
         # Parse arguments
         args = []
-        while pos < len(s) and s[pos] != ')':
+        while pos < len(s) and s[pos] != ")":
             arg, pos = self._parse_value(s, pos)
             args.append(arg)
 
             pos = self._skip_whitespace(s, pos)
-            if pos < len(s) and s[pos] == ',':
+            if pos < len(s) and s[pos] == ",":
                 pos += 1
                 pos = self._skip_whitespace(s, pos)
-            elif pos < len(s) and s[pos] != ')':
+            elif pos < len(s) and s[pos] != ")":
                 break
 
-        if pos >= len(s) or s[pos] != ')':
+        if pos >= len(s) or s[pos] != ")":
             raise ValueError(f"Expected ')' after {identifier} arguments")
         pos += 1  # skip ')'
 
@@ -290,10 +287,10 @@ class RustParser:
         fields = {"_node_name": identifier}
         pos = self._skip_whitespace(s, pos)
 
-        while pos < len(s) and s[pos] != '}':
+        while pos < len(s) and s[pos] != "}":
             # Parse field name
             field_start = pos
-            while pos < len(s) and (s[pos].isalnum() or s[pos] == '_'):
+            while pos < len(s) and (s[pos].isalnum() or s[pos] == "_"):
                 pos += 1
 
             if pos == field_start:
@@ -302,7 +299,7 @@ class RustParser:
             field_name = s[field_start:pos]
             pos = self._skip_whitespace(s, pos)
 
-            if pos >= len(s) or s[pos] != ':':
+            if pos >= len(s) or s[pos] != ":":
                 raise ValueError(f"Expected ':' after field name '{field_name}' at position {pos}")
             pos += 1  # skip ':'
             pos = self._skip_whitespace(s, pos)
@@ -313,10 +310,10 @@ class RustParser:
 
             pos = self._skip_whitespace(s, pos)
 
-            if pos < len(s) and s[pos] == ',':
+            if pos < len(s) and s[pos] == ",":
                 pos += 1  # skip comma
                 pos = self._skip_whitespace(s, pos)
-            elif pos < len(s) and s[pos] != '}':
+            elif pos < len(s) and s[pos] != "}":
                 raise ValueError(f"Expected ',' or '}}' in struct at position {pos}")
 
         if pos >= len(s):
@@ -327,7 +324,7 @@ class RustParser:
 
     def _try_parse_collection(self, s: str, pos: int) -> Optional[Tuple[Any, int]]:
         """Try to parse collections like sets {...} that aren't structs."""
-        if pos >= len(s) or s[pos] != '{':
+        if pos >= len(s) or s[pos] != "{":
             return None
 
         # Look back to see if there's an identifier - if so, this should be handled by struct parsing
@@ -335,7 +332,7 @@ class RustParser:
         while temp_pos >= 0 and s[temp_pos].isspace():
             temp_pos -= 1
 
-        if temp_pos >= 0 and (s[temp_pos].isalnum() or s[temp_pos] == '_'):
+        if temp_pos >= 0 and (s[temp_pos].isalnum() or s[temp_pos] == "_"):
             return None  # This is a struct, let identifier parsing handle it
 
         # Look ahead to determine if this is a set {item, item} or map {key: value}
@@ -351,10 +348,10 @@ class RustParser:
             next_pos = self._skip_whitespace(s, next_pos)
 
             if next_pos < len(s):
-                if s[next_pos] == ':':
+                if s[next_pos] == ":":
                     # This looks like {key: value, ...} - parse as map
                     return self._parse_map(s, pos)
-                elif s[next_pos] in ',}':
+                elif s[next_pos] in ",}":
                     # This looks like {item, item, ...} - parse as set
                     return self._parse_set(s, pos)
         except:
@@ -375,12 +372,12 @@ class RustParser:
         obj = {}
         pos = self._skip_whitespace(s, pos)
 
-        while pos < len(s) and s[pos] != '}':
+        while pos < len(s) and s[pos] != "}":
             # Parse key
             key, pos = self._parse_value(s, pos)
             pos = self._skip_whitespace(s, pos)
 
-            if pos >= len(s) or s[pos] != ':':
+            if pos >= len(s) or s[pos] != ":":
                 raise ValueError(f"Expected ':' after key in map")
             pos += 1  # skip ':'
             pos = self._skip_whitespace(s, pos)
@@ -391,10 +388,10 @@ class RustParser:
 
             pos = self._skip_whitespace(s, pos)
 
-            if pos < len(s) and s[pos] == ',':
+            if pos < len(s) and s[pos] == ",":
                 pos += 1  # skip comma
                 pos = self._skip_whitespace(s, pos)
-            elif pos < len(s) and s[pos] != '}':
+            elif pos < len(s) and s[pos] != "}":
                 raise ValueError(f"Expected ',' or '}}' in map")
 
         if pos >= len(s):
@@ -409,17 +406,17 @@ class RustParser:
         items = []
         pos = self._skip_whitespace(s, pos)
 
-        while pos < len(s) and s[pos] != '}':
+        while pos < len(s) and s[pos] != "}":
             # Parse item
             item, pos = self._parse_value(s, pos)
             items.append(item)
 
             pos = self._skip_whitespace(s, pos)
 
-            if pos < len(s) and s[pos] == ',':
+            if pos < len(s) and s[pos] == ",":
                 pos += 1  # skip comma
                 pos = self._skip_whitespace(s, pos)
-            elif pos < len(s) and s[pos] != '}':
+            elif pos < len(s) and s[pos] != "}":
                 break
 
         if pos >= len(s):
@@ -475,14 +472,11 @@ class PlanAnalyzer:
 
     def is_node_reference(self, node: Any) -> bool:
         """Check if a value is a node reference."""
-        return (isinstance(node, dict) and
-                "_node_name" in node and
-                node["_node_name"] == "NodeId")
+        return isinstance(node, dict) and "_node_name" in node and node["_node_name"] == "NodeId"
 
     def is_node_array(self, node: Any) -> bool:
         """Check if a value is an array of node references."""
-        return (isinstance(node, list) and
-                (len(node) == 0 or self.is_node_reference(node[0])))
+        return isinstance(node, list) and (len(node) == 0 or self.is_node_reference(node[0]))
 
     def get_node_info(self, node_id: Union[Dict[str, Any], NodeId]) -> str:
         """Get formatted information about a node."""
@@ -566,9 +560,9 @@ class MermaidGenerator:
     def __init__(self, analyzer: PlanAnalyzer):
         self.analyzer = analyzer
 
-    def generate_diagram(self, filename: str = 'f.mmd') -> None:
+    def generate_diagram(self, filename: str = "f.mmd") -> None:
         """Generate a complete Mermaid diagram file."""
-        with open(filename, 'w') as f:
+        with open(filename, "w") as f:
             f.write("graph TD\n")
 
             # Write top node
@@ -614,14 +608,10 @@ class MermaidGenerator:
         f.write(f"\t%% {arena_name.capitalize()} nodes\n")
 
         for i, _ in enumerate(arena_nodes):
-            node_id = {
-                "arena_type": arena_name.capitalize(),
-                "offset": i
-            }
+            node_id = {"arena_type": arena_name.capitalize(), "offset": i}
 
             # Skip top node (will be styled separately)
-            if (node_id["offset"] == top_id["offset"] and
-                    node_id["arena_type"] == top_id["arena_type"]):
+            if node_id["offset"] == top_id["offset"] and node_id["arena_type"] == top_id["arena_type"]:
                 continue
 
             self._write_node(f, node_id)
@@ -636,7 +626,7 @@ class MermaidGenerator:
             "\tclassDef arena96 fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px",
             "\tclassDef arena136 fill:#fff3e0,stroke:#e65100,stroke-width:2px",
             "\tclassDef arena232 fill:#fce4ec,stroke:#880e4f,stroke-width:2px",
-            "\tclassDef topNode fill:#ffeb3b,stroke:#f57f17,stroke-width:3px"
+            "\tclassDef topNode fill:#ffeb3b,stroke:#f57f17,stroke-width:3px",
         ]
 
         for style in style_definitions:
@@ -670,14 +660,10 @@ class MermaidGenerator:
 
             node_ids = []
             for i in range(len(arena_nodes)):
-                node_id = {
-                    "arena_type": arena_name.capitalize(),
-                    "offset": i
-                }
+                node_id = {"arena_type": arena_name.capitalize(), "offset": i}
 
                 # Skip top node
-                if (node_id["offset"] == top_id["offset"] and
-                        node_id["arena_type"] == top_id["arena_type"]):
+                if node_id["offset"] == top_id["offset"] and node_id["arena_type"] == top_id["arena_type"]:
                     continue
 
                 short_type = self.analyzer.get_arena_type_short(node_id)
@@ -697,10 +683,7 @@ class MermaidGenerator:
             f.write(f"\t%% {arena_name.capitalize()} references\n")
 
             for i in range(len(arena_nodes)):
-                node_id = {
-                    "arena_type": arena_name.capitalize(),
-                    "offset": i
-                }
+                node_id = {"arena_type": arena_name.capitalize(), "offset": i}
 
                 references = self.analyzer.get_node_references(node_id)
                 source_short_type = self.analyzer.get_arena_type_short(node_id)
@@ -709,22 +692,20 @@ class MermaidGenerator:
                     target_short_type = self.analyzer.get_arena_type_short(target_node)
                     target_offset = target_node["offset"]
 
-                    f.write(f"\t{source_short_type}_{i} -->|\"{ref_path}\"| "
-                            f"{target_short_type}_{target_offset}\n")
+                    f.write(f'\t{source_short_type}_{i} -->|"{ref_path}"| {target_short_type}_{target_offset}\n')
 
             f.write("\n")
 
 
 def main():
     """Main function demonstrating usage."""
-    parser = argparse.ArgumentParser(description='Read from file or input')
-    parser.add_argument('file', nargs='?', help='Input file (optional)')
-    parser.add_argument('-o', '--output', default='output.mmd',
-                           help='Output file name (default: output.mmd)')
+    parser = argparse.ArgumentParser(description="Read from file or input")
+    parser.add_argument("file", nargs="?", help="Input file (optional)")
+    parser.add_argument("-o", "--output", default="output.mmd", help="Output file name (default: output.mmd)")
     args = parser.parse_args()
 
     if args.file:
-        with open(args.file, 'r') as f:
+        with open(args.file, "r") as f:
             content = f.read()
     else:
         print("Enter text (Ctrl+D/Ctrl+Z to finish):")
