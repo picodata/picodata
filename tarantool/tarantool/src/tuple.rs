@@ -1807,12 +1807,19 @@ impl TupleBuilder {
             return Err(BoxError::new(TarantoolErrorCode::IllegalParams, "buffer is corrupted").into());
         }
 
-        let mut tuple_chunk = self.buffer;
+        let tuple_chunk = self.buffer;
         let data_offset = Self::TUPLE_HEADER_PADDING.len();
         let data_len = tuple_chunk.len() - data_offset;
         validate_msgpack(&tuple_chunk[data_offset..])?;
 
         let format = TupleFormat::with_rust_allocator();
+
+        // Convert to Box<[u8]> BEFORE capturing the raw pointer.
+        // Vec::into_boxed_slice() calls shrink_to_fit() internally, which may
+        // reallocate the buffer. Capturing the pointer first and shrinking after
+        // would leave a dangling pointer (heap-use-after-free).
+        // See: https://git.picodata.io/core/picodata/-/issues/2845
+        let mut tuple_chunk = tuple_chunk.into_boxed_slice();
 
         let tuple = tuple_chunk.as_mut_ptr().cast::<ffi::BoxTuple>();
         unsafe {
@@ -1833,10 +1840,10 @@ impl TupleBuilder {
             ffi::box_tuple_format_ref(format.inner);
         }
 
-        // Forget the Vec, it will be deallocated in `tuple_delete_rust_allocator`
-        _ = Box::into_raw(tuple_chunk.into_boxed_slice());
+        // Forget the Box, it will be deallocated in `tuple_delete_rust_allocator`
+        _ = Box::into_raw(tuple_chunk);
 
-        // Safety: tuple points into `self.buffer` which we already checked is not empty
+        // Safety: tuple points into tuple_chunk which we forgot (memory is still alive)
         let tuple = unsafe { NonNull::new_unchecked(tuple) };
         let tuple = Tuple::from_ptr(tuple);
         return Ok(tuple);
