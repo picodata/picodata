@@ -917,3 +917,12 @@ def test_concurrent_join_does_not_fail_with_bootstrap_connection_error(cluster: 
 
     # cannot reach this if we get error ER_BOOTSTRAP_CONNECTION_NOT_TO_ALL
     lagger.wait_online()
+
+
+def test_sentinel_does_not_panic_on_long_activation_wait(cluster: Cluster):
+    cluster.add_instance(name="leader")
+
+    instance = cluster.add_instance(name="instance", wait_online=False)
+    instance.env["PICODATA_ERROR_INJECTION_SELF_ACTIVATION_WAITING_TIMEOUT"] = "1"
+    instance.env["PICODATA_ERROR_INJECTION_DELAY_BEFORE_APPLYING_RAFT_ENTRY"] = "0.1"
+    instance.start_and_wait()
