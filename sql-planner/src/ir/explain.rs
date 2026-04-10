@@ -109,8 +109,14 @@ fn write_name(writer: &mut impl fmt::Write, name: &str) -> fmt::Result {
 
 /// The concept of list separator in short and long forms.
 trait ListSep {
+    /// Written between elements of a short list.
     const SHORT: &str;
+    /// Written after the last element of a short list.
+    const SHORT_FINAL: &str = "";
+    /// Written between elements of a long list.
     const LONG: &str;
+    /// Written after the last element of a long list.
+    const LONG_FINAL: &str = "\n";
 }
 
 /// A separator for regular lists.
@@ -125,6 +131,15 @@ struct AndSep;
 impl ListSep for AndSep {
     const SHORT: &str = " and ";
     const LONG: &str = "\nand ";
+}
+
+/// A separator for complex operators, e.g. `CASE`.
+struct BlankSep;
+impl ListSep for BlankSep {
+    const SHORT: &str = " ";
+    const SHORT_FINAL: &str = " ";
+    const LONG: &str = "\n";
+    const LONG_FINAL: &str = "\n";
 }
 
 /// Write all items separated by [`ListSep::LONG`].
@@ -149,12 +164,9 @@ fn write_long_list<Sep: ListSep>(
 
     while let Some(item) = items.next() {
         let has_next = items.peek().is_some();
-        let sep = if has_next { Sep::LONG } else { "" };
+        let sep = if has_next { Sep::LONG } else { Sep::LONG_FINAL };
         write!(writer, "{item}{sep}")?;
     }
-
-    // Don't forget to write a final newline.
-    writeln!(writer)?;
 
     Ok(())
 }
@@ -165,7 +177,10 @@ fn write_short_list<Sep: ListSep>(
     items: impl IntoIterator<Item: Display>,
 ) -> fmt::Result {
     let formatted = items.into_iter().format(Sep::SHORT);
-    write!(writer, "{formatted}")
+    write!(writer, "{formatted}")?;
+    write!(writer, "{}", Sep::SHORT_FINAL)?;
+
+    Ok(())
 }
 
 /// Write all items separated by [`ListSep::LONG`] or [`ListSep::SHORT`]
@@ -277,6 +292,7 @@ enum ColExpr {
         Option<Box<ColExpr>>,
         Vec<(ColExpr, ColExpr)>,
         Option<Box<ColExpr>>,
+        bool,
     ),
 
     // Regular function calls.
@@ -356,17 +372,17 @@ impl Display for ColExpr {
                 Some(e) => write!(f, "{l} LIKE {r} ESCAPE {e}")?,
                 None => write!(f, "{l} LIKE {r}")?,
             },
-            ColExpr::Case(search_expr, when_blocks, else_expr) => {
+            ColExpr::Case(search_expr, when_exprs, else_expr, should_fmt) => {
                 write!(f, "case ")?;
                 if let Some(search_expr) = search_expr {
                     write!(f, "{search_expr} ")?;
                 }
-                for (cond_expr, res_expr) in when_blocks {
-                    write!(f, "when {cond_expr} then {res_expr} ")?;
-                }
-                if let Some(else_expr) = else_expr {
-                    write!(f, "else {else_expr} ")?;
-                }
+                let when_items = when_exprs
+                    .iter()
+                    .map(|(cond, res)| format!("when {cond} then {res}"));
+                let else_item = else_expr.iter().map(|res| format!("else {res}"));
+                let items = when_items.chain(else_item);
+                write_list::<BlankSep>(f, items, *should_fmt)?;
                 write!(f, "end")?;
             }
 
@@ -597,7 +613,7 @@ impl ColExpr {
 
                     let search_expr = search_expr.map(|_| stack.pop_expr(Some(id)).into());
 
-                    let expr = ColExpr::Case(search_expr, match_exprs, else_expr);
+                    let expr = ColExpr::Case(search_expr, match_exprs, else_expr, should_fmt);
                     stack.push((expr, id));
                 }
                 Expression::CountAsterisk(_) => {

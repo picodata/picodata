@@ -192,6 +192,28 @@ execution options:
   sql_motion_row_max = 5000
 buckets = any
 
+-- TEST: case-when
+-- SQL:
+explain
+select case 1 when 1 then 1 end;
+-- EXPECTED:
+projection (case 1::int when 1::int then 1::int end -> col_1)
+execution options:
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
+buckets = any
+
+-- TEST: case-when-else
+-- SQL:
+explain
+select case 1 when 1 then 1 else 2 end;
+-- EXPECTED:
+projection (case 1::int when 1::int then 1::int else 2::int end -> col_1)
+execution options:
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
+buckets = any
+
 -- TEST: fmt-long-case-when
 -- SQL:
 explain (fmt)
@@ -199,7 +221,30 @@ select 'hello', case 1 when 1 then 1 when 2 then 2 when 3 then 3 end * 2 + 2000;
 -- EXPECTED:
 projection (
   'hello'::string -> col_1,
-  case 1::int when 1::int then 1::int when 2::int then 2::int when 3::int then 3::int end * 2::int + 2000::int -> col_2
+  case 1::int 
+    when 1::int then 1::int
+    when 2::int then 2::int
+    when 3::int then 3::int
+  end * 2::int + 2000::int -> col_2
+)
+execution options:
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
+buckets = any
+
+-- TEST: fmt-long-case-when-else
+-- SQL:
+explain (fmt)
+select 'hello', case 1 when 1 then 1 when 2 then 2 when 3 then 3 else 4 end * 2 + 2000;
+-- EXPECTED:
+projection (
+  'hello'::string -> col_1,
+  case 1::int 
+    when 1::int then 1::int
+    when 2::int then 2::int
+    when 3::int then 3::int
+    else 4::int
+  end * 2::int + 2000::int -> col_2
 )
 execution options:
   sql_vdbe_opcode_max = 45000
@@ -243,6 +288,40 @@ subquery $0:
         3.1415::decimal
       )
       value ROW(4::int, ''::string, 0::int, 0::int, 0::int)
+execution options:
+  sql_vdbe_opcode_max = 45000
+  sql_motion_row_max = 5000
+buckets = any
+
+-- TEST: fmt-nested-case-when-else
+-- SQL:
+explain (fmt)
+select
+    'hello',
+    case 1
+        when 1 then 1
+        when 2 then case 1
+            when 1 then 1
+            when 2 then 2
+            when 3 then 3
+        end
+        when 3 then 3
+        else 4
+    end * 2 + 2000;
+-- EXPECTED:
+projection (
+  'hello'::string -> col_1,
+  case 1::int 
+    when 1::int then 1::int
+    when 2::int then case 1::int 
+      when 1::int then 1::int
+      when 2::int then 2::int
+      when 3::int then 3::int
+    end
+    when 3::int then 3::int
+    else 4::int
+  end * 2::int + 2000::int -> col_2
+)
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
