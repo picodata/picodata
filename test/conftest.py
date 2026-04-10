@@ -2921,6 +2921,7 @@ class Cluster:
     ):
         for instance in self.instances:
             instance.change_executable(to, error)
+        self.leader().wait_governor_status("idle")
 
     def pick_random_instance(
         self,
