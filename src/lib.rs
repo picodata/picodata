@@ -472,6 +472,23 @@ fn start_http_server(
     lua.exec_with(
         r#"
               local handler = ...
+              pico.httpd:route({method = 'GET', path = 'api/v1/memory' }, function(req)
+              local auth_header = req.headers['authorization'] or ''
+              return handler(auth_header)
+        end)"#,
+        tlua::Function::new(|auth_header: String| -> _ {
+            http_server::wrap_api_result(http_server::http_api_memory_with_auth(auth_header))
+        }),
+    )
+    .map_err(|err| {
+        Error::other(format!(
+            "failed to add route `/api/v1/memory` to http server: {err}",
+        ))
+    })?;
+
+    lua.exec_with(
+        r#"
+              local handler = ...
               pico.httpd:route({method = 'GET', path = 'api/v1/config' }, function(req)
               return handler()
         end)"#,

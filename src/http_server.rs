@@ -14,7 +14,7 @@ use raft::Storage as _;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use smol_str::{format_smolstr, ToSmolStr};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tarantool::fiber;
 use tarantool::fiber::r#async::timeout::IntoTimeout;
@@ -698,6 +698,65 @@ fn http_api_cluster() -> traft::Result<ClusterInfo> {
     Ok(res)
 }
 
+#[derive(Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "camelCase")]
+struct ReplicasetMemoryInfo {
+    name: ReplicasetName,
+    usable: u64,
+    used: u64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TierMemoryInfo {
+    name: SmolStr,
+    usable: u64,
+    used: u64,
+    replicasets: BTreeSet<ReplicasetMemoryInfo>,
+}
+
+fn http_api_memory() -> traft::Result<Vec<TierMemoryInfo>> {
+    let storage = Catalog::get();
+    let replicasets = get_replicasets_info(storage, true)?;
+    let tiers = storage.tiers.iter()?;
+
+    let mut resp: HashMap<SmolStr, TierMemoryInfo> = tiers
+        .map(|tier: Tier| {
+            (
+                tier.name.clone(),
+                TierMemoryInfo {
+                    name: tier.name,
+                    usable: 0,
+                    used: 0,
+                    replicasets: BTreeSet::new(),
+                },
+            )
+        })
+        .collect();
+
+    for replicaset in replicasets {
+        let Some(tier) = resp.get_mut(&replicaset.tier) else {
+            tlog!(
+                Warning,
+                "replicaset `{}` is assigned tier `{}`, which is not found in _pico_tier",
+                replicaset.name,
+                replicaset.tier,
+            );
+            continue;
+        };
+
+        tier.usable += replicaset.memory.usable;
+        tier.used += replicaset.memory.used;
+        tier.replicasets.insert(ReplicasetMemoryInfo {
+            name: replicaset.name,
+            usable: replicaset.memory.usable,
+            used: replicaset.memory.used,
+        });
+    }
+
+    Ok(resp.into_values().collect())
+}
+
 fn http_api_tiers() -> traft::Result<Vec<TierInfo>> {
     let storage = Catalog::get();
     let replicasets = get_replicasets_info(storage, false)?;
@@ -975,6 +1034,10 @@ pub(crate) fn http_api_tiers_with_auth(auth_header: String) -> ApiResult<Vec<Tie
 
 pub(crate) fn http_api_cluster_with_auth(auth_header: String) -> ApiResult<ClusterInfo> {
     as_admin(|| auth_middleware(auth_header, http_api_cluster))
+}
+
+pub(crate) fn http_api_memory_with_auth(auth_header: String) -> ApiResult<Vec<TierMemoryInfo>> {
+    as_admin(|| auth_middleware(auth_header, http_api_memory))
 }
 
 pub(crate) fn http_api_config() -> AuthResult<UiConfig> {

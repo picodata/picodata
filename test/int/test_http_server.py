@@ -198,6 +198,75 @@ def test_webui_basic(instance: Instance, auth_token: Optional[str]):
 
 
 @pytest.mark.webui
+def test_webui_memory_multiple_tiers_multiple_replicasets(cluster: Cluster):
+    """Each tier aggregates only its own replicasets independently of other tiers."""
+    cluster_cfg = """
+    cluster:
+        name: test
+        tier:
+            red:
+                replication_factor: 1
+            blue:
+                replication_factor: 1
+    """
+    cluster.set_config_file(yaml=cluster_cfg)
+
+    # red: two replicasets (i1 → red_1, i2 → red_2)
+    # blue: two replicasets (i3 → blue_1, i4 → blue_2)
+    i1 = cluster.add_instance(wait_online=True, tier="red")
+    i2 = cluster.add_instance(wait_online=True, tier="red")
+    i3 = cluster.add_instance(wait_online=True, tier="blue")
+    i4 = cluster.add_instance(wait_online=True, tier="blue")
+
+    create_user(i1)
+    auth_token = get_auth_token(i1)
+
+    i1_slab = i1.call("box.slab.info")
+    i2_slab = i2.call("box.slab.info")
+    i3_slab = i3.call("box.slab.info")
+    i4_slab = i4.call("box.slab.info")
+
+    with get_url(f"http://{i1.http_listen}/api/v1/memory", auth_token) as response:
+        assert response.headers.get("content-type") == "application/json"
+        assert sorted(json.load(response), key=lambda t: t["name"]) == [
+            {
+                "name": "blue",
+                "usable": i3_slab["quota_size"] + i4_slab["quota_size"],
+                "used": i3_slab["quota_used"] + i4_slab["quota_used"],
+                "replicasets": [
+                    {
+                        "name": "blue_1",
+                        "usable": i3_slab["quota_size"],
+                        "used": i3_slab["quota_used"],
+                    },
+                    {
+                        "name": "blue_2",
+                        "usable": i4_slab["quota_size"],
+                        "used": i4_slab["quota_used"],
+                    },
+                ],
+            },
+            {
+                "name": "red",
+                "usable": i1_slab["quota_size"] + i2_slab["quota_size"],
+                "used": i1_slab["quota_used"] + i2_slab["quota_used"],
+                "replicasets": [
+                    {
+                        "name": "red_1",
+                        "usable": i1_slab["quota_size"],
+                        "used": i1_slab["quota_used"],
+                    },
+                    {
+                        "name": "red_2",
+                        "usable": i2_slab["quota_size"],
+                        "used": i2_slab["quota_used"],
+                    },
+                ],
+            },
+        ]
+
+
+@pytest.mark.webui
 def test_webui_with_plugin(cluster: Cluster):
     cluster_cfg = """
     cluster:
