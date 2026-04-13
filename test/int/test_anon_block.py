@@ -24,7 +24,7 @@ def setup_user_and_table(instance):
 
 def test_remote_block_dispatch(cluster: Cluster):
     leader, *_ = cluster.deploy(instance_count=2)
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     conn_info = setup_user_and_table(leader)
     remote_pk = find_routed_pk(leader, is_local=False, start=2)
@@ -45,7 +45,7 @@ def test_remote_block_dispatch(cluster: Cluster):
 
 def test_local_filtered_dml_block_dispatch(cluster: Cluster):
     leader, *_ = cluster.deploy(instance_count=2)
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     local_pk = find_routed_pk(leader, is_local=True)
 

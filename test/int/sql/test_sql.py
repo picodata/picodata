@@ -161,7 +161,7 @@ def test_uuid(
 def test_select_with_scan(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql(
         """
@@ -174,7 +174,7 @@ def test_select_with_scan(cluster: Cluster):
 
     data = i1.sql("""insert into tmp (value) values (123);""")
     assert data["row_count"] == 1
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     data = i1.sql("""
                   WITH v(other) AS (VALUES (123))
@@ -577,7 +577,7 @@ def test_read_from_global_tables(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
 
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql(
         """
@@ -614,7 +614,7 @@ def test_read_from_system_tables(cluster: Cluster):
     instance_count = 2
     cluster.deploy(instance_count=instance_count)
     i1, _ = cluster.instances
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     # Check we can read everything from the table
     data = i1.sql(
@@ -725,7 +725,7 @@ def test_dml_on_global_tbls(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
 
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql(
         """
@@ -747,7 +747,7 @@ def test_dml_on_global_tbls(cluster: Cluster):
 
     data = i2.sql("insert into t values (1, 1), (2, 2), (3, 3), (4, 4), (5, 5)")
     assert data["row_count"] == 5
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     data = i2.sql("insert into global_t values (1, 1), (2, 2)")
     assert data["row_count"] == 2
@@ -885,7 +885,7 @@ buckets = [1-3000]\
     # insert into sharded table from global table
     data = i2.sql("insert into t select id + 5, a + 5 from global_t where id = 1")
     assert data["row_count"] == 1
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
     i1.raft_read_index()
     data = i1.retriable_sql("select * from t")
     assert sorted(data) == [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]]
@@ -900,7 +900,7 @@ buckets = [1-3000]\
     # delete sharded table using global table in predicate
     data = i2.sql("delete from t where x in (select id from global_t)")
     assert data["row_count"] == 5
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
     i1.raft_read_index()
     data = i1.retriable_sql("select * from t")
     assert sorted(data) == [[6, 6]]
@@ -2274,7 +2274,7 @@ def test_select_string_field(cluster: Cluster):
 def test_create_drop_table(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql(
         """
@@ -2454,7 +2454,7 @@ def test_check_format(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
 
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     # Primary key missing.
     with pytest.raises(TarantoolError, match="Primary key column b not found"):
@@ -2516,7 +2516,7 @@ def test_check_format(cluster: Cluster):
     """
     )
     assert dml["row_count"] == 3
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     # Inserting with nulls/nonnulls works using params.
     dml = i1.sql(
@@ -2541,14 +2541,14 @@ def test_values(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
 
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql(""" create table t (a int primary key, b text) """)
     assert ddl["row_count"] == 1
 
     dml = i1.sql(""" insert into t values (1, ?), (2, 'hi') """, None)
     assert dml["row_count"] == 2
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     data = i1.sql("""select * from t """)
     assert sorted(data) == [[1, None], [2, "hi"]]
@@ -2566,7 +2566,7 @@ def test_values(cluster: Cluster):
 def test_insert(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, _ = cluster.instances
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql(
         """
@@ -5651,7 +5651,7 @@ def test_plan_id_determinism(cluster: Cluster):
     cluster.deploy(instance_count=3)
     [i1, *_] = cluster.instances
 
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     i1.sql(
         """
@@ -5734,7 +5734,7 @@ def test_limit(cluster: Cluster):
     cluster.deploy(instance_count=3)
     [i1, i2, i3] = cluster.instances
 
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     ###########################
     # Tests with sharded tables
@@ -5753,7 +5753,7 @@ def test_limit(cluster: Cluster):
             VALUES (1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6), (7, 7)
         """
     )
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
     data = i1.retriable_sql(""" SELECT * FROM "t" """)
     assert len(data) == 7
 
@@ -5839,7 +5839,7 @@ def test_limit(cluster: Cluster):
         """
     )
     i1.sql(""" INSERT INTO "w" VALUES (-1, 1), (-2, 2), (-3, 3), (-4, 4) """)
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     # LIMIT + JOIN.
     data = i2.retriable_sql(
@@ -5885,7 +5885,7 @@ def test_limit(cluster: Cluster):
             """,
             n,
         )
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     # Read without LIMIT should fail.
     with pytest.raises(TarantoolError, match="Exceeded maximum number of rows"):
@@ -6006,7 +6006,7 @@ def test_limit(cluster: Cluster):
         """
     )
     assert data["row_count"] == 5
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     # LIMIT + basic CTE
     data = i1.retriable_sql(
@@ -6456,7 +6456,7 @@ def test_select_without_scan(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
 
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql("create table t (a int primary key)")
     assert ddl["row_count"] == 1
@@ -6533,7 +6533,7 @@ def test_explain(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
 
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql("create table t (a int primary key, b int)")
     assert ddl["row_count"] == 1
@@ -6719,7 +6719,7 @@ def test_extreme_integer_values(cluster: Cluster):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]
 
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     U64_MIN = 0
     U64_MAX = 9223372036854775807
@@ -6786,7 +6786,7 @@ def test_vdbe_steps_and_vtable_rows(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
 
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql("CREATE TABLE t (a INT PRIMARY KEY, b INT)")
     assert ddl["row_count"] == 1
@@ -6959,7 +6959,7 @@ def test_groupby_with_column_positions(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1 = cluster.instances[0]
 
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql("CREATE TABLE t (a INT PRIMARY KEY, b INT)")
     assert ddl["row_count"] == 1
@@ -7049,7 +7049,7 @@ def test_alter_table_rename(cluster: Cluster):
     i1 = cluster.add_instance()
     i2 = cluster.add_instance()
 
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     user = "dmitry"
     password = "Password1"
@@ -7223,7 +7223,7 @@ def test_gl2405(cluster: Cluster):
 
 def test_gl2626(cluster: Cluster):
     cluster.deploy(instance_count=5)
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     i1 = cluster.instances[0]
     i1.sql(
@@ -7236,7 +7236,7 @@ def test_gl2626(cluster: Cluster):
         INSERT INTO t VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9), (10)
         """
     )
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     i1.sql(
         """

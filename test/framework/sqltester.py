@@ -325,7 +325,7 @@ class ClusterSingleInstance:
         cluster = cluster_factory()
         init_cluster(cluster, 1)
         assert len(cluster.instances) == 1
-        cluster.wait_balanced()
+        cluster.wait_until_buckets_balanced()
 
         yield runner_cls(cluster)
 
@@ -353,7 +353,7 @@ class ClusterTwoInstances:
         cluster = cluster_factory()
         init_cluster(cluster, 2)
         assert len(cluster.instances) == 2
-        cluster.wait_balanced()
+        cluster.wait_until_buckets_balanced()
 
         yield runner_cls(cluster)
 

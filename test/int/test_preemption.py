@@ -457,7 +457,7 @@ def test_sql_fiber_cancel_during_preemption(cluster: Cluster):
     functional.
     """
     (i1,) = cluster.deploy(instance_count=1, init_replication_factor=1, enable_http=True)
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     enable_preemption(i1, True, 0, 1)
 
@@ -528,7 +528,7 @@ def test_sql_fiber_cancel_during_preemption_cleans_temp_tables(cluster: Cluster)
     not hit stale temp-table rows.
     """
     (i1,) = cluster.deploy(instance_count=1, init_replication_factor=1, enable_http=True)
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     # Use opcode_max = 1 so every maybe_yield() is a real preemption yield.
     # The dedicated populate_table injection only arms after the first inserted
@@ -662,7 +662,7 @@ def test_sql_cancelled_owner_cleans_retired_plan(cluster: Cluster):
     temp tables before releasing the plan lock.
     """
     (i1,) = cluster.deploy(instance_count=1, init_replication_factor=1, enable_http=True)
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     enable_preemption(i1, True, 0, 1)
 
@@ -731,7 +731,7 @@ def test_sql_same_plan_waiter_resumes_after_owner_release(cluster: Cluster):
     old temp tables.
     """
     (i1,) = cluster.deploy(instance_count=1, init_replication_factor=1, enable_http=True)
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     enable_preemption(i1, True, 0, 1)
 
