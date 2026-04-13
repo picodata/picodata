@@ -70,7 +70,25 @@ alias tr := test-rust
 [group("test")]
 [doc("`tr`: rust tests")]
 test-rust *ARGS:
-	cargo test {{ LOCKED }} {{ ARGS }} {{ CARGO_PROFILE }}
+	# Non-doc tests and doc tests are run separately to prevent excessive
+	# memory usage: doc tests are compiled during the test run itself, so
+	# each parallel thread spawns a full compiler, which leads to OOM.
+	cargo test {{ LOCKED }} {{ ARGS }} {{ CARGO_PROFILE }} \
+		{{ CARGO_FLAGS }} --features error_injection \
+		{{ CARGO_FLAGS_EXTRA }} \
+		--workspace \
+		--exclude sql-planner \
+		--exclude tarantool \
+		--exclude tlua \
+		--tests
+	cargo test {{ LOCKED }} {{ ARGS }} {{ CARGO_PROFILE }} \
+		{{ CARGO_FLAGS }} --features error_injection \
+		{{ CARGO_FLAGS_EXTRA }} \
+		--workspace \
+		--exclude sql-planner \
+		--exclude tarantool \
+		--exclude tlua \
+		--doc -- --test-threads 2
 
 alias tp := test-python
 [group("test")]
@@ -100,10 +118,13 @@ alias lr := lint-rust
 [doc("`lr`: rust lints")]
 lint-rust *ARGS:
 	cargo fmt --check
-	cargo check {{ LOCKED }} {{ ARGS }}
+	RUSTFLAGS="-Dwarnings -Adeprecated" \
+		cargo check {{ LOCKED }} {{ ARGS }} {{ CARGO_FLAGS }} \
+		--workspace --benches --tests
 	cargo clippy --version
 	cargo clippy {{ LOCKED }} {{ ARGS }} {{ CARGO_FLAGS }} \
-	--features=load_test,error_injection -- --deny clippy::all --no-deps
+		--workspace --features=load_test,error_injection \
+		-- --deny clippy::all --no-deps
 	RUSTDOCFLAGS="-Dwarnings -Arustdoc::private_intra_doc_links" \
 		cargo doc {{ LOCKED }} {{ ARGS }} \
 		--workspace --no-deps --document-private-items \
