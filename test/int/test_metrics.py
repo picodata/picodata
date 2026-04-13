@@ -811,7 +811,7 @@ def test_filtered_local_dml_bypasses_iproto(instance: Instance):
 @pytest.mark.webui
 def test_filtered_local_block_bypasses_iproto(cluster: Cluster):
     leader, *_ = cluster.deploy(instance_count=2, enable_http=True)
-    cluster.wait_balanced()
+    cluster.wait_until_buckets_balanced()
 
     leader.sql("CREATE USER postgres WITH PASSWORD 'Passw0rd'")
     leader.sql("GRANT CREATE TABLE TO postgres", sudo=True)
