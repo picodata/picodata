@@ -124,10 +124,13 @@ def main():
 
     registry = Registry()
     executable_paths = {}
+    unbuilt_versions = []
     versions_to_build = [VersionAlias.PREVIOUS_MINOR, VersionAlias.BEFORELAST_MINOR]
     for version_alias in versions_to_build:
         version_executable = registry.get(version_alias, resolve=False)
-        assert version_executable is not None
+        if version_executable is None:
+            unbuilt_versions.append(version_alias)
+            continue
         version_component = version_executable.version
 
         executable_path = build_binary(version_component, output_path, auto_confirm)
@@ -138,6 +141,9 @@ def main():
         version_string = f"{version_component} ({version_alias})"
         print(f"executable for picodata {version_string} installed to {executable_path}")
     print("note: rolling upgrade tests require Picodata executables to be available from $PATH")
+    print(
+        f"note: skipped versions that do not exist (this is expected — not all versions are released): {','.join(unbuilt_versions)}"
+    )
 
 
 if __name__ == "__main__":
