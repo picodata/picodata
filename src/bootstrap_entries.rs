@@ -66,7 +66,7 @@ pub(super) fn prepare(
             storage::PeerAddresses::TABLE_ID,
             &traft::PeerAddress {
                 raft_id: instance.raft_id,
-                address: config.instance.http.advertise().to_host_port().into(),
+                address: config.instance.http.advertise().to_host_port(),
                 connection_type: traft::ConnectionType::System(traft::SystemConnectionType::Http),
             },
             ADMIN_ID,

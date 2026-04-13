@@ -180,8 +180,8 @@ impl HttpAddress {
     }
 
     #[inline(always)]
-    pub fn to_host_port(&self) -> String {
-        format!("{}:{}", self.host, self.port)
+    pub fn to_host_port(&self) -> SmolStr {
+        format_smolstr!("{}:{}", self.host, self.port)
     }
 }
 

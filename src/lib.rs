@@ -1817,7 +1817,7 @@ fn start_pre_join(
         tier: config.effective_instance_tier().to_smolstr(),
         picodata_version: version,
         uuid: instance_uuid,
-        http_advertise_address: config.instance.http.advertise().to_host_port().into(),
+        http_advertise_address: config.instance.http.advertise().to_host_port(),
         plugin_listener_addresses,
     };
 
@@ -2006,7 +2006,7 @@ fn migrate_http_peer_address_if_missing(
     let http_advertise = config.instance.http.advertise().to_host_port();
     let peer_address = traft::PeerAddress {
         raft_id,
-        address: http_advertise.into(),
+        address: http_advertise,
         connection_type: http_conn_type,
     };
 
