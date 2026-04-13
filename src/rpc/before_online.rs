@@ -1,7 +1,9 @@
+use crate::config::PicodataConfig;
 use crate::pgproto;
 use crate::tlog;
 use crate::traft::node;
 use crate::traft::{RaftIndex, RaftTerm};
+use smol_str::SmolStr;
 
 use std::time::Duration;
 
@@ -21,7 +23,50 @@ pub(super) fn before_online_inner(req: Request) -> crate::traft::Result<Response
     let name = node.topology_cache.my_instance_name();
     tlog!(Info, "instance is Online name={name}");
 
+    print_ready_banner(name);
+
     Ok(Response {})
+}
+
+fn print_ready_banner(name: &str) {
+    // SAFETY: only called from the tx thread.
+    static mut PRINTED: bool = false;
+    if unsafe { PRINTED } {
+        return;
+    }
+    unsafe { PRINTED = true };
+
+    let config = PicodataConfig::get();
+    let iproto = config.instance.iproto.advertise().to_host_port();
+    let pg = if config.instance.pgproto.enabled() {
+        config.instance.pgproto.advertise().to_host_port()
+    } else {
+        SmolStr::default()
+    };
+    let http = if config.instance.http.enabled() {
+        let prefix = if config.instance.http.tls.enabled() {
+            "https://"
+        } else {
+            "http://"
+        };
+        SmolStr::from(format!(
+            "{prefix}{}",
+            config.instance.http.advertise().to_host_port()
+        ))
+    } else {
+        SmolStr::default()
+    };
+    let admin = config.instance.admin_socket().display();
+    tlog!(Info, r"    ___  _____________  ___  ___ _________ ");
+    tlog!(Info, r"   / _ \/  _/ ___/ __ \/ _ \/ _ /_  __/ _ |");
+    tlog!(Info, r"  / ___// // /__/ /_/ / // / __ |/ / / __ |");
+    tlog!(Info, r" /_/  /___/\___/\____/____/_/ |_/_/ /_/ |_|");
+    tlog!(Info, "");
+    tlog!(Info, "  instance:  {name}");
+    tlog!(Info, "  psql:      {pg}");
+    tlog!(Info, "  iproto:    {iproto}");
+    tlog!(Info, "  http:      {http}");
+    tlog!(Info, "  admin:     {admin}");
 }
 
 crate::define_rpc_request! {
