@@ -2807,7 +2807,11 @@ class Cluster:
 
         raise RuntimeError(f"no instance listenning on {host}:{port}")
 
-    def wait_until_buckets_balanced(self, max_retries: int = 10):
+    def wait_until_buckets_balanced(
+        self,
+        max_retries: int = 10,
+        exclude: list[Instance] | None = None,
+    ):
         """
         Waits until all instances get the same amount of buckets.
 
@@ -2824,7 +2828,8 @@ class Cluster:
 
         uniform_buckets = total_buckets // total_replicasets
         for instance in self.instances:
-            self.wait_until_instance_has_this_many_active_buckets(instance, uniform_buckets)
+            if exclude is not None and instance not in exclude:
+                self.wait_until_instance_has_this_many_active_buckets(instance, uniform_buckets)
 
     def wait_until_instance_has_this_many_active_buckets(
         self,
