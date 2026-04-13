@@ -2782,7 +2782,7 @@ class Cluster:
 
         uniform_buckets = total_buckets // total_replicasets
         for instance in self.instances:
-            if exclude is not None and instance not in exclude:
+            if exclude is None or instance not in exclude:
                 self.wait_until_instance_has_this_many_active_buckets(instance, uniform_buckets)
 
     def wait_until_instance_has_this_many_active_buckets(
