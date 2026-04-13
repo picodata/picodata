@@ -2810,14 +2810,19 @@ class Cluster:
     def wait_until_buckets_balanced(self, max_retries: int = 10):
         """
         Waits until all instances get the same amount of buckets.
+
+        Total amount of buckets is taken from `_pico_tier`.
+        Total amount of replicasets is taken from `_pico_replicaset`.
+
         Raises if no instances are running in the current cluster.
-        Total amount of buckets is taken from tiers configuration.
         """
+        assert len(self.instances) != 0, "not enough instances: expected at least one"
+        leader = Retriable().call(Cluster.leader, self)  # A leader should have most actual info.
 
-        total_instances = len(self.instances)
-        total_buckets = self.instances[0].sql("SELECT bucket_count FROM _pico_tier")
-        uniform_buckets = total_buckets[0][0] / total_instances
+        [[total_buckets]] = leader.sql("SELECT bucket_count FROM _pico_tier")
+        [[total_replicasets]] = leader.sql("SELECT COUNT(*) FROM _pico_replicaset")
 
+        uniform_buckets = total_buckets // total_replicasets
         for instance in self.instances:
             self.wait_until_instance_has_this_many_active_buckets(instance, uniform_buckets)
 
