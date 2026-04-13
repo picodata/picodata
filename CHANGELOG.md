@@ -8,7 +8,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-## [26.1.2] - Unreleased
+## [26.1.2] - 2026-04-14 
 
 ### Changed
 
