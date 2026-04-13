@@ -196,8 +196,8 @@ class Executable:
             # fmt: off
             name = (
                 "picodata-"
-                f"{self.version.major}"
-                f"{self.version.minor}"
+                f"{self.version.major}."
+                f"{self.version.minor}."
                 f"{self.version.micro - 1}"
             )
             # fmt: on
