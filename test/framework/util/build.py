@@ -194,16 +194,17 @@ class Executable:
         # patch-specific behavior - those have dedicated tests with pinned versions.
         if self.version.micro > 1:
             # fmt: off
-            name = (
-                "picodata-"
+            version = (
                 f"{self.version.major}."
                 f"{self.version.minor}."
                 f"{self.version.micro - 1}"
             )
             # fmt: on
+            name = f"picodata-{version}"
             path = shutil.which(name)
             if path is not None:
                 self.path = Path(path)
+                self.version = Version(version)
                 return
 
         message = f"'{name}' binary is required to test against {self.version}"
