@@ -26,8 +26,8 @@ from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 from framework.registry import Registry
 from framework.util.path import project_root_path
+from framework.util.version import VersionAlias
 from framework.util import ask_yes_no
-from framework.util import VersionAlias
 from packaging.version import Version
 from pathlib import Path
 
