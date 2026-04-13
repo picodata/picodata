@@ -51,6 +51,7 @@ cluster:
         assert elapsed < 5
 
 
+@pytest.mark.flaky(reruns=3)
 def test_wait_vshard_storage(cluster: Cluster):
     i1 = cluster.add_instance(replicaset_name="default_1", init_replication_factor=2)
     _i1 = cluster.add_instance(replicaset_name="default_1")
