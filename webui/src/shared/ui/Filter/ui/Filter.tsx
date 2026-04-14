@@ -1,5 +1,5 @@
 import { Autocomplete, Box, styled, TextField } from "@mui/material";
-import { useEffect, useMemo, useState } from "react";
+import { ReactElement, useEffect, useMemo, useState } from "react";
 import RttIcon from "@mui/icons-material/Rtt";
 import { v4 as uuidv4 } from "uuid";
 
@@ -19,6 +19,7 @@ import { useTranslation } from "../../../intl";
 
 import { TagOption } from "./TagOption";
 import { FilterValues } from "./FilterValues";
+import { setInputEndAdornment } from "./common/setInputEndAdornment";
 
 const useSearchTextTag = () => {
   const { translation } = useTranslation();
@@ -152,7 +153,19 @@ export const Filter = (props: FilterProps) => {
           onChange={(_, _value) => {
             changeHandler(_value);
           }}
-          renderInput={(params) => <TextField {...params} />}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              slotProps={{
+                input: {
+                  ...params.InputProps,
+                  endAdornment: setInputEndAdornment(
+                    params.InputProps.endAdornment as ReactElement
+                  ),
+                },
+              }}
+            />
+          )}
           autoHighlight={true}
         />
       </Box>
