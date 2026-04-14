@@ -21,7 +21,7 @@ export type ServerReplicasetType = {
 
 export type ReplicasetType = Override<
   ServerReplicasetType,
-  { instances: InstanceType[] }
+  { instances: InstanceType[]; currentInstanceCount: number }
 >;
 export type ReplicasetNodeType = ReplicasetType & {
   instances: InstanceNodeType[];

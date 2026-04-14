@@ -18,6 +18,7 @@ import { ReplicasetNodeType } from "../../../../../shared/entity/replicaset";
 import {
   chevronIconIsOpenStyle,
   chevronIconStyle,
+  InstanceCountContainer,
   ReplicasetBackground,
   ReplicasetIconCell,
   ReplicasetInnerBackground,
@@ -77,7 +78,15 @@ export const ReplicasetCardAlt = memo(
 
             <ContentFlexCenteredCell>
               <CellLabel>{replicasetTranslations.instances.label}</CellLabel>
-              <CellValue>{replicaset.instanceCount}</CellValue>
+              <InstanceCountContainer
+                $highlight={
+                  replicaset.currentInstanceCount !== replicaset.instanceCount
+                }
+              >
+                {replicaset.currentInstanceCount}{" "}
+                {replicasetTranslations.instances.outOf}{" "}
+                {replicaset.instanceCount}
+              </InstanceCountContainer>
             </ContentFlexCenteredCell>
 
             <ContentFlexCenteredCell>

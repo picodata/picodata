@@ -89,6 +89,7 @@ export const instances = {
       },
       instances: {
         label: "Instances",
+        outOf: "out of",
       },
       state: {
         label: "State",

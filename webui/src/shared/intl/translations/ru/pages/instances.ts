@@ -91,6 +91,7 @@ export const instances: TPages["instances"] = {
       },
       instances: {
         label: "Инстансы",
+        outOf: "из",
       },
       state: {
         label: "Состояние лидера",

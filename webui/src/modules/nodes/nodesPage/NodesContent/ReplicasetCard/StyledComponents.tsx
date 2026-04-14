@@ -1,7 +1,7 @@
 import { styled } from "@mui/material";
 import { CSSProperties } from "react";
 
-import { Background, CommonCell, ItemRoot } from "../common";
+import { Background, CellValue, CommonCell, ItemRoot } from "../common";
 
 export const Content = styled("div")<{
   $theme: "primary" | "secondary";
@@ -15,15 +15,6 @@ export const Content = styled("div")<{
         boxShadow: "0px -1px 0px 0px #e4e4ef inset",
       }
     : {}),
-}));
-
-export const Label = styled("div")(({ theme }) => ({
-  fontSize: "12px",
-  fontStyle: "normal",
-  fontWeight: 400,
-  lineHeight: "16px",
-  color: theme.common.colors.typography.colorTextBlack,
-  padding: "4px 8px",
 }));
 
 export const chevronIconStyle: CSSProperties = {
@@ -62,3 +53,13 @@ export const ReplicasetInnerBackground = styled(Background)<{
 }>(({ $withBottomPadding }) => ({
   padding: ` 6px 10px ${$withBottomPadding ? "10px" : 0} 10px`,
 }));
+
+export const InstanceCountContainer = styled(CellValue)<{
+  $highlight: boolean;
+}>(({ $highlight, theme }) =>
+  $highlight
+    ? {
+        color: theme.palette.error.main,
+      }
+    : {}
+);

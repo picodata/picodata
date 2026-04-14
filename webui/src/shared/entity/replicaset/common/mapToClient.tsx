@@ -9,6 +9,10 @@ export const mapReplicasetToClient = <
 ) => {
   return {
     ...replicaset,
+    currentInstanceCount:
+      replicaset.instances.filter(
+        ({ currentState }) => currentState === "Online"
+      )?.length || 0,
     instances: replicaset.instances.map(mapInstanceToClient),
   };
 };

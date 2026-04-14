@@ -1,7 +1,8 @@
 import { Autocomplete, Box, styled, TextField } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
 import RttIcon from "@mui/icons-material/Rtt";
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from "uuid";
+
 import {
   FilterProps,
   Tag,
