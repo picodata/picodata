@@ -1334,10 +1334,11 @@ impl NodeImpl {
         // apply the operation
         match op {
             Op::Nop => {}
-            Op::BatchDml { ops } => {
+            dml @ (Op::Dml { .. } | Op::BatchDml { .. }) => {
+                let ops = dml.dmls().expect("always Some for Dml & BatchDml");
                 let mut applied_dmls = Vec::with_capacity(ops.len());
-                for op in ops.into_iter() {
-                    match self.handle_dml_entry(&op) {
+                for op in ops {
+                    match self.handle_dml_entry(op) {
                         Ok(Some(applied_dml)) => applied_dmls.push(applied_dml),
                         Err(e) => return SleepAndRetry(e),
                         _ => (),
@@ -1346,10 +1347,6 @@ impl NodeImpl {
 
                 res = EntryApplied(applied_dmls);
             }
-            Op::Dml(op) => match self.handle_dml_entry(&op) {
-                Ok(applied_dml) => res = EntryApplied(Vec::from_iter(applied_dml)),
-                Err(e) => return SleepAndRetry(e),
-            },
             Op::DdlPrepare {
                 ddl,
                 schema_version,
