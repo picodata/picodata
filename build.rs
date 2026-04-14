@@ -16,6 +16,25 @@ fn main() {
     let jobserver = cargo::setup_make_jobserver();
     let jobserver = jobserver.as_ref();
 
+    // The file structure roughly looks as follows:
+    // .
+    // ├── build.rs  // you are here
+    // ├── src/
+    // ├── tarantool-sys
+    //    ├── CMakeLists.txt  // used for dynamic build
+    //    └── static-build
+    //        └── CMakeLists.txt  // configures above CMakeLists.txt for static build
+    // ├── webui
+    // └── <target-dir>/<cargo-profile>/build  // <- build_root
+    //     ├── picodata-<smth>/out             // <- std::env::var("OUT_DIR")
+    //     ├── webui
+    //     ├── tarantool-http
+    //     └── tarantool-sys/{static,dynamic}.{debug,release}
+    //
+    // Note that this uses a non-standard location for placing the build artifacts.
+    // Normally they would go to `$OUT_DIR`, but we place them into `build_root`.
+    // This is because `cargo build` and `cargo clippy` produces 2 different
+    // `out_dir` paths. We place them outside `$OUR_DIR` to avoid unnecessary rebuilds.
     let build_root = cargo::get_build_root();
     let use_static_build = !cargo::get_feature("dynamic_build");
     let use_debug_build = cargo::get_feature("debug_tarantool");

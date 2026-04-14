@@ -41,6 +41,8 @@ pub fn get_out_dir() -> PathBuf {
 
 /// Path to a directory containing all build artifacts
 /// for the current build profile.
+///
+/// Its usual path is `<target directory>/<cargo profile>/build`
 pub fn build_root_from_out_dir(out_dir: impl Into<PathBuf>) -> PathBuf {
     let out_dir = out_dir.into();
     out_dir.ancestors().nth(2).unwrap().to_path_buf()
@@ -48,12 +50,14 @@ pub fn build_root_from_out_dir(out_dir: impl Into<PathBuf>) -> PathBuf {
 
 /// Path to a directory containing all build artifacts
 /// for the current build profile.
+///
+/// Its usual path is `<target directory>/<cargo profile>/build`
 pub fn get_build_root() -> PathBuf {
     let out_dir = get_out_dir();
     build_root_from_out_dir(out_dir)
 }
 
-/// Get target build profile (e.g. `debug`, `release`, `asan`).
+/// Infer target build profile name from `$OUT_DIR` (e.g. `debug`, `release`, `asan`).
 pub fn get_build_profile() -> String {
     // The profile name is always the 3rd last part of the path (with 1 based indexing).
     let out_dir = get_out_dir();
