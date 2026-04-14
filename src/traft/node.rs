@@ -1671,6 +1671,12 @@ impl NodeImpl {
                             .indexes
                             .update_operable(space_id, index_id, true)
                             .expect("storage shouldn't fail");
+                        update_table_schema_version_after_index_ddl(
+                            &self.storage,
+                            space_id,
+                            v_pending,
+                        )
+                        .expect("storage shouldn't fail");
 
                         let initiator_def = user_by_id(initiator).expect("user must exist");
 
@@ -1695,6 +1701,12 @@ impl NodeImpl {
                             .indexes
                             .delete(space_id, index_id)
                             .expect("storage shouldn't fail");
+                        update_table_schema_version_after_index_ddl(
+                            &self.storage,
+                            space_id,
+                            v_pending,
+                        )
+                        .expect("storage shouldn't fail");
                         let initiator_def = user_by_id(initiator).expect("user must exist");
 
                         crate::audit!(
@@ -1723,6 +1735,12 @@ impl NodeImpl {
                             .indexes
                             .update_schema_version(space_id, index_id, schema_version)
                             .expect("storage shouldn't fail");
+                        update_table_schema_version_after_index_ddl(
+                            &self.storage,
+                            space_id,
+                            v_pending,
+                        )
+                        .expect("storage shouldn't fail");
 
                         let initiator_def = user_by_id(initiator_id).expect("user must exist");
 
@@ -3461,6 +3479,17 @@ enum ApplyEntryResult {
 }
 
 #[inline]
+fn update_table_schema_version_after_index_ddl(
+    storage: &Catalog,
+    table_id: SpaceId,
+    schema_version: u64,
+) -> tarantool::Result<()> {
+    storage
+        .pico_table
+        .update_schema_version(table_id, schema_version)
+}
+
+#[inline]
 #[track_caller]
 fn storage_corrupted(e: impl Into<String>) -> BoxError {
     BoxError::new(ErrorCode::StorageCorrupted, e)
@@ -3884,6 +3913,22 @@ mod tests {
         let mut rs = Replicaset::with_one_instance(instance);
         rs.state = state;
         rs
+    }
+
+    #[::tarantool::test]
+    fn update_table_schema_version_after_index_ddl_bumps_table_version() {
+        let storage = Catalog::for_tests();
+        let table = TableDef {
+            id: 901_001,
+            schema_version: 7,
+            ..TableDef::for_tests()
+        };
+        storage.pico_table.put(&table).unwrap();
+
+        update_table_schema_version_after_index_ddl(&storage, table.id, 42).unwrap();
+
+        let updated = storage.pico_table.by_id(table.id).unwrap().unwrap();
+        assert_eq!(updated.schema_version, 42);
     }
 
     #[::tarantool::test]

@@ -477,13 +477,16 @@ cluster:
         check_metric(metrics, "pico_storage_cache_hits", 1, query_type="dql", rpc_type="1st")
         check_metric(metrics, "pico_storage_cache_misses", 1, query_type="dql", rpc_type="1st", miss_type="stale")
 
-    # Recompilation due to schema changes is reported.
+    # Index DDL invalidates the cache entry before execution, so the next
+    # execution is reported as a true miss rather than a stale miss.
     pgproto.execute("CREATE INDEX ib ON t(b)")
     pgproto.execute("SELECT a FROM t")
     for instance in (storage_1, storage_2):
         metrics = instance.get_metrics()
         check_metric(metrics, "pico_storage_cache_hits", 1, query_type="dql", rpc_type="1st")
-        check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="1st", miss_type="stale")
+        check_metric(metrics, "pico_storage_cache_misses", 1, query_type="dql", rpc_type="1st", miss_type="stale")
+        check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="1st", miss_type="true")
+        check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="2nd", miss_type="true")
 
     # ALTER TABLE changes picodata's schema version leading to
     # complete recompilation of the plan and the statement from scratch.
@@ -492,8 +495,8 @@ cluster:
     for instance in (storage_1, storage_2):
         metrics = instance.get_metrics()
         check_metric(metrics, "pico_storage_cache_hits", 1, query_type="dql", rpc_type="1st")
-        check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="1st", miss_type="true")
-        check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="2nd", miss_type="true")
+        check_metric(metrics, "pico_storage_cache_misses", 3, query_type="dql", rpc_type="1st", miss_type="true")
+        check_metric(metrics, "pico_storage_cache_misses", 3, query_type="dql", rpc_type="2nd", miss_type="true")
         check_metric(metrics, "pico_storage_cache_hits", None, query_type="dql", rpc_type="local")
         check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="local", miss_type="true")
         check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="local", miss_type="stale")
