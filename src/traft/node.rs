@@ -3331,10 +3331,9 @@ impl NodeImpl {
     /// done asynchronously with raft log replication. Basically instance needs
     /// to know it's a replicaset master before it can access the replicaset
     /// info.
+    #[inline]
     fn is_readonly(&self) -> bool {
-        let is_ro: bool = crate::tarantool::eval("return box.info.ro")
-            .expect("checking read-onlyness should never fail");
-        is_ro
+        crate::tarantool::box_is_ro()
     }
 
     /// Generates a pair of logical clock and a notification channel.
