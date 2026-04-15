@@ -74,13 +74,14 @@ pub(super) fn prepare(
         .expect("serialization cannot fail"),
     );
 
-    for (plugin_name, service_name, advertise) in config.plugin_listener_addresses() {
+    for (plugin_name, service_name, advertise) in config.instance.iter_plugin_advertise_addresses()
+    {
         ops.push(
             op::Dml::replace(
                 storage::PeerAddresses::TABLE_ID,
                 &traft::PeerAddress {
                     raft_id: instance.raft_id,
-                    address: advertise.into(),
+                    address: advertise.to_host_port(),
                     connection_type: traft::ConnectionType::plugin(plugin_name, service_name),
                 },
                 ADMIN_ID,

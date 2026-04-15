@@ -3,7 +3,9 @@ pub mod observer;
 pub mod socket;
 
 use crate::access_control::validate_password;
-use crate::address::{AddressConflict, AddressConflictChecker, HttpAddress, IprotoAddress};
+use crate::address::{
+    AddressConflict, AddressConflictChecker, HttpAddress, IprotoAddress, PluginAddress,
+};
 use crate::cli::args;
 use crate::cli::args::CONFIG_PARAMETERS_ENV;
 use crate::failure_domain::FailureDomain;
@@ -314,36 +316,6 @@ Using configuration file '{args_path}'.");
     pub fn read_yaml_contents(contents: &str) -> Result<Box<Self>, Error> {
         let config = serde_yaml::from_str(contents).map_err(Error::invalid_configuration)?;
         Ok(config)
-    }
-
-    /// Returns all enabled plugin listener advertise addresses from the configuration.
-    ///
-    /// Returns a vector of (plugin_name, service_name, advertise_address) tuples.
-    /// Only includes listeners that are enabled and have an advertise address.
-    pub fn plugin_listener_addresses(&self) -> Vec<(&str, &str, String)> {
-        let mut result = Vec::new();
-
-        if let Some(plugins) = &self.instance.plugin {
-            for (plugin_name, plugin_cfg) in plugins {
-                for (service_name, service_cfg) in &plugin_cfg.service {
-                    let listener = &service_cfg.listener;
-
-                    if !listener.enabled() {
-                        continue;
-                    }
-
-                    if let Some(advertise) = listener.advertise() {
-                        result.push((
-                            plugin_name.as_str(),
-                            service_name.as_str(),
-                            advertise.to_string(),
-                        ));
-                    }
-                }
-            }
-        }
-
-        result
     }
 
     /// Sets parameters of `self` to values from `args` as well as current
@@ -979,36 +951,31 @@ Using configuration file '{args_path}'.");
     /// 1. If the listener is enabled, the listen address should be present.
     /// 2. If TLS is enabled, the certificate and key files should be valid.
     fn validate_plugin_listeners_configuration(&self) -> Result<(), Error> {
-        if let Some(plugins) = &self.instance.plugin {
-            for (plugin, plugin_cfg) in plugins {
-                for (service, service_cfg) in &plugin_cfg.service {
-                    let listener = &service_cfg.listener;
+        for (plugin, service, cfg) in self.instance.iter_plugin_services() {
+            let listener = &cfg.listener;
 
-                    let config_path =
-                        format!("instance.plugin.{plugin}.service.{service}.listener");
+            let config_path = format!("instance.plugin.{plugin}.service.{service}.listener");
 
-                    if listener.enabled() && listener.listen.is_none() {
-                        return Err(Error::InvalidConfiguration(format!(
-                            "{config_path}: `listen` must be specified when listener is enabled"
-                        )));
-                    }
-
-                    if let Err(err) = crate::tls::load_listener_tls_config_from_files(
-                        &crate::tls::TlsConfigurationSource::Plugin { plugin, service },
-                        &listener.tls,
-                        crate::tls::ConfigLoadOptions {
-                            allow_missing_ca: false,
-                            // plugin will call `load_listener_tls_config_from_files` once more when creating the listener,
-                            // so don't want to log anything here
-                            should_log: false,
-                        },
-                    ) {
-                        return Err(Error::InvalidConfiguration(format!(
-                            "{config_path}.tls: loading TLS config failed: {err}"
-                        )));
-                    };
-                }
+            if listener.enabled() && listener.listen.is_none() {
+                return Err(Error::InvalidConfiguration(format!(
+                    "{config_path}: `listen` must be specified when listener is enabled"
+                )));
             }
+
+            if let Err(err) = crate::tls::load_listener_tls_config_from_files(
+                &crate::tls::TlsConfigurationSource::Plugin { plugin, service },
+                &listener.tls,
+                crate::tls::ConfigLoadOptions {
+                    allow_missing_ca: false,
+                    // plugin will call `load_listener_tls_config_from_files` once more when creating the listener,
+                    // so don't want to log anything here
+                    should_log: false,
+                },
+            ) {
+                return Err(Error::InvalidConfiguration(format!(
+                    "{config_path}.tls: loading TLS config failed: {err}"
+                )));
+            };
         }
 
         Ok(())
@@ -1031,21 +998,11 @@ Using configuration file '{args_path}'.");
             checker.push("pgproto.listen", listen);
         }
         // Plugin listener addresses.
-        if let Some(ref plugins) = self.instance.plugin {
-            for (plugin_name, plugin_cfg) in plugins {
-                for (service_name, service_cfg) in &plugin_cfg.service {
-                    let listener = &service_cfg.listener;
-                    if !listener.enabled() {
-                        continue;
-                    }
-                    if let Some(ref listen) = listener.listen {
-                        checker.push(
-                            format!("plugin.{plugin_name}.service.{service_name}.listener.listen"),
-                            listen,
-                        );
-                    }
-                }
-            }
+        for (plugin, service, address) in self.instance.iter_plugin_listen_addresses() {
+            checker.push(
+                format!("plugin.{plugin}.service.{service}.listener.listen"),
+                address,
+            );
         }
 
         if let Some(AddressConflict {
@@ -1185,31 +1142,17 @@ Using configuration file '{args_path}'.");
                 _ => {}
             }
 
-            if let Some(plugins) = &self.instance.plugin {
-                for (plugin_name, plugin_cfg) in plugins {
-                    for (service_name, service_cfg) in &plugin_cfg.service {
-                        let listener = &service_cfg.listener;
+            for (plugin, service, advertise) in self.instance.iter_plugin_advertise_addresses() {
+                let conn_type = traft::ConnectionType::plugin(plugin, service);
+                let from_storage = storage.peer_addresses.get(raft_id, &conn_type)?;
 
-                        if !listener.enabled() {
-                            continue;
-                        }
-
-                        let Some(advertise) = listener.advertise() else {
-                            continue;
-                        };
-
-                        let conn_type = traft::ConnectionType::plugin(plugin_name, service_name);
-                        let from_storage = storage.peer_addresses.get(raft_id, &conn_type)?;
-
-                        if let Some(from_storage) = from_storage {
-                            let advertise_str = advertise.to_host_port();
-                            if from_storage != advertise_str {
-                                return Err(Error::InvalidConfiguration(format!(
-                                    "instance restarted with a different `plugin.{plugin_name}.service.{service_name}.listener.advertise`, \
+                if let Some(from_storage) = from_storage {
+                    let advertise_str = advertise.to_host_port();
+                    if from_storage != advertise_str {
+                        return Err(Error::InvalidConfiguration(format!(
+                            "instance restarted with a different `plugin.{plugin}.service.{service}.listener.advertise`, \
                                      which is not allowed, was: '{from_storage}' became: '{advertise_str}'"
-                                )));
-                            }
-                        }
+                        )));
                     }
                 }
             }
@@ -1868,6 +1811,67 @@ impl InstanceConfig {
     pub fn boot_timeout(&self) -> u64 {
         self.boot_timeout
             .expect("is set in PicodataConfig::set_defaults_explicitly")
+    }
+
+    /// Get all all configured plugin service sections.
+    ///
+    /// Iterates over `(plugin_name, service_name, service)` tuples.
+    #[inline]
+    pub fn iter_plugin_services(&self) -> impl Iterator<Item = (&str, &str, &PluginServiceConfig)> {
+        self.plugin.iter().flatten().flat_map(|(plugin, cfg)| {
+            cfg.service
+                .iter()
+                .map(move |(service, cfg)| (plugin.as_str(), service.as_str(), cfg))
+        })
+    }
+
+    /// Get all enabled plugin listeners from the configuration.
+    ///
+    /// Iterates over `(plugin_name, service_name, listener)` tuples.
+    /// Only includes listeners that are enabled.
+    #[inline]
+    fn iter_enabled_plugin_listeners(
+        &self,
+    ) -> impl Iterator<Item = (&str, &str, &PluginListenerConfig)> {
+        self.iter_plugin_services()
+            .filter_map(|(plugin, service, cfg)| {
+                cfg.listener
+                    .enabled()
+                    .then_some((plugin, service, &cfg.listener))
+            })
+    }
+
+    /// Get all enabled plugin listener listen addresses from the configuration.
+    ///
+    /// Iterates over `(plugin_name, service_name, listen_address)` tuples.
+    /// Only includes listeners that are enabled and have a listen address.
+    #[inline]
+    pub fn iter_plugin_listen_addresses(
+        &self,
+    ) -> impl Iterator<Item = (&str, &str, &PluginAddress)> {
+        self.iter_enabled_plugin_listeners()
+            .filter_map(|(plugin, service, listener)| {
+                listener
+                    .listen
+                    .as_ref()
+                    .map(|advertise| (plugin, service, advertise))
+            })
+    }
+
+    /// Get all enabled plugin listener advertise addresses from the configuration.
+    ///
+    /// Iterates over `(plugin_name, service_name, advertise_address)` tuples.
+    /// Only includes listeners that are enabled and have an advertise address.
+    #[inline]
+    pub fn iter_plugin_advertise_addresses(
+        &self,
+    ) -> impl Iterator<Item = (&str, &str, &PluginAddress)> {
+        self.iter_enabled_plugin_listeners()
+            .filter_map(|(plugin, service, listener)| {
+                listener
+                    .advertise()
+                    .map(|advertise| (plugin, service, advertise))
+            })
     }
 }
 
@@ -4576,8 +4580,11 @@ instance:
     #[test]
     fn test_plugin_listener_addresses_empty() {
         let config = PicodataConfig::default();
-        let addresses = config.plugin_listener_addresses();
-        assert!(addresses.is_empty());
+        let addresses = config
+            .instance
+            .iter_plugin_advertise_addresses()
+            .collect::<Vec<_>>();
+        assert_eq!(addresses, vec![]);
     }
 
     #[test]
@@ -4593,8 +4600,11 @@ instance:
                         listen: "127.0.0.1:7777"
 "###;
         let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
-        let addresses = config.plugin_listener_addresses();
-        assert!(addresses.is_empty());
+        let addresses = config
+            .instance
+            .iter_plugin_advertise_addresses()
+            .collect::<Vec<_>>();
+        assert_eq!(addresses, vec![]);
     }
 
     #[test]
@@ -4611,12 +4621,19 @@ instance:
                         advertise: "public.example.com:7777"
 "###;
         let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
-        let addresses = config.plugin_listener_addresses();
+        let addresses = config
+            .instance
+            .iter_plugin_advertise_addresses()
+            .collect::<Vec<_>>();
 
-        assert_eq!(addresses.len(), 1);
-        assert_eq!(addresses[0].0, "testplug");
-        assert_eq!(addresses[0].1, "testsvc");
-        assert_eq!(addresses[0].2, "public.example.com:7777");
+        assert_eq!(
+            addresses,
+            vec![(
+                "testplug",
+                "testsvc",
+                &"public.example.com:7777".parse().unwrap()
+            )]
+        );
     }
 
     #[test]
@@ -4632,10 +4649,15 @@ instance:
                         listen: "127.0.0.1:7777"
 "###;
         let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
-        let addresses = config.plugin_listener_addresses();
+        let addresses = config
+            .instance
+            .iter_plugin_advertise_addresses()
+            .collect::<Vec<_>>();
 
-        assert_eq!(addresses.len(), 1);
-        assert_eq!(addresses[0].2, "127.0.0.1:7777");
+        assert_eq!(
+            addresses,
+            vec![("testplug", "testsvc", &"127.0.0.1:7777".parse().unwrap())]
+        );
     }
 
     #[test]
@@ -4661,7 +4683,10 @@ instance:
                         listen: "127.0.0.1:7003"
 "###;
         let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
-        let addresses = config.plugin_listener_addresses();
+        let addresses = config
+            .instance
+            .iter_plugin_advertise_addresses()
+            .collect::<Vec<_>>();
 
         assert_eq!(addresses.len(), 3);
     }
@@ -4683,10 +4708,19 @@ instance:
                         listen: "127.0.0.1:7002"
 "###;
         let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
-        let addresses = config.plugin_listener_addresses();
+        let addresses = config
+            .instance
+            .iter_plugin_advertise_addresses()
+            .collect::<Vec<_>>();
 
-        assert_eq!(addresses.len(), 1);
-        assert_eq!(addresses[0].1, "enabled_svc");
+        assert_eq!(
+            addresses,
+            vec![(
+                "testplug",
+                "enabled_svc",
+                &"127.0.0.1:7001".parse().unwrap()
+            )]
+        );
     }
 
     #[test]
@@ -4791,10 +4825,13 @@ instance:
             config.instance.iproto.listen().to_host_port(),
             "127.0.0.1:3301"
         );
-        let addresses = config.plugin_listener_addresses();
+        let addresses = config
+            .instance
+            .iter_plugin_advertise_addresses()
+            .collect::<Vec<_>>();
         assert_eq!(
             addresses,
-            vec![("testplug", "testsvc", "127.0.0.1:7777".to_string())]
+            vec![("testplug", "testsvc", &"127.0.0.1:7777".parse().unwrap())]
         );
     }
 
@@ -4996,8 +5033,11 @@ instance:
     cluster_name: test
 "###;
         let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
-        let addresses = config.plugin_listener_addresses();
-        assert!(addresses.is_empty());
+        let addresses = config
+            .instance
+            .iter_plugin_advertise_addresses()
+            .collect::<Vec<_>>();
+        assert_eq!(addresses, vec![]);
     }
 
     #[test]

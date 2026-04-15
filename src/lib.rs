@@ -1839,14 +1839,10 @@ fn start_pre_join(
     });
 
     let plugin_listener_addresses: Vec<_> = config
-        .plugin_listener_addresses()
-        .into_iter()
+        .instance
+        .iter_plugin_advertise_addresses()
         .map(|(plugin, service, addr)| {
-            (
-                SmolStr::from(plugin),
-                SmolStr::from(service),
-                SmolStr::from(addr),
-            )
+            (plugin.to_smolstr(), service.to_smolstr(), addr.to_smolstr())
         })
         .collect();
 
