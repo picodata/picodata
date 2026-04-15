@@ -511,9 +511,11 @@ impl Expression<'_> {
         // This method only cares for A (the whole expr),
         // since every expression should take care of its
         // subexpressions on its own.
+        //
+        // XXX: please, do not use globs (_) here; write exhaustive matches instead.
         match self {
             // `expr AS name`
-            Expression::Alias(_)
+            | Expression::Alias(_)
             // `CASE ... WHEN ... THEN ... ELSE`
             | Expression::Case(_)
             // `10 :: int`
@@ -547,13 +549,29 @@ impl Expression<'_> {
                 op: Unary::Exists, ..
             }) => false,
 
-            _otherwise => true,
+            // `a IS NULL`
+            | Expression::Unary(UnaryExpr {
+                op: Unary::IsNull, ..
+            })
+            // `NOT a`
+            | Expression::Unary(UnaryExpr {
+                op: Unary::Not, ..
+            })
+            // `a OR b`
+            | Expression::Bool(_)
+            // `a + b`
+            | Expression::Arithmetic(_)
+            // `a || b`
+            | Expression::Concat(_)
+            // `a LIKE '...'`
+            | Expression::Like(_) => true,
         }
     }
 
     /// If applicable, get the precedence of an expression node operator.
     /// <https://www.postgresql.org/docs/18/sql-syntax-lexical.html#SQL-PRECEDENCE>
     pub fn precedence(&self) -> usize {
+        // XXX: please, do not use globs (_) here; write exhaustive matches instead.
         match self {
             // These expressions cannot be torn apart by the operators
             // with higher precendence, so we can safely give them
