@@ -17,6 +17,10 @@ with the `YY.MINOR.MICRO` scheme.
   and memory info is only fetched from replicaset leaders. This reduces the
   number of RPC calls from O(N×RF) to O(N) where N is the number of replicasets.
   Offline instances now show their HTTP address (from storage) instead of empty string.
+- `EXPLAIN (FMT)` option is now properly supported for all modes (facettes).
+  It is now possible to write `explain (fmt)` to get a formatted logical plan
+  or `explain (fmt, raw)` to get a formatted raw query plan.
+
 
 ### Fixes
 
@@ -42,6 +46,7 @@ with the `YY.MINOR.MICRO` scheme.
   Now validates that the specified tier exists and returns an error otherwise.
 - Fixed the `query for request_id with plan_id not found` error that occurred
   on queries with `UNION` of `CTE` on a cluster consisting of multiple instances.
+- Logical `EXPLAIN` (the default mode) now preserves subquery indentation.
 
 
 ## [26.1.1] - 2026-03-24
