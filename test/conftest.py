@@ -513,7 +513,8 @@ class KeyPart:
     is_nullable: bool = False
 
     def __str__(self):
-        return """{{ fieldno = {}, type = "{}", is_nullable = {} }}""".format(self.fieldno, self.type, self.is_nullable)
+        is_nullable = "true" if self.is_nullable else "false"
+        return """{{ fieldno = {}, type = "{}", is_nullable = {} }}""".format(self.fieldno, self.type, is_nullable)
 
 
 @dataclass
