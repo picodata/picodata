@@ -9,12 +9,13 @@ This document describes contributing to Picodata, primarily the ways you can bui
 - gcc, g++
 - libstdc++-static
 - (*optional* to build with Web UI) node v15+, yarn
+- libclang >= 9
 
 ### Prerequisites for CentOS 8
 Use the following commands to install the required build prerequisites. Note that you'll need recent Rust and Cargo versions installed using the recommended way from [rustup.rs](rustup.rs):
 ```bash
 sudo dnf config-manager --set-enabled powertools
-sudo dnf in -y gcc gcc-c++ make cmake git patch libstdc++-static
+sudo dnf in -y gcc gcc-c++ make cmake git patch libstdc++-static clang-devel
 
 # Optional - to build with Web UI
 sudo dnf module install nodejs:19
@@ -23,7 +24,7 @@ sudo corepack enable
 ### Prerequisites for Ubuntu 22.04 and 24.04
 Use the following command to install the required build prerequisites. Note that Ubuntu 22.04 provides recent Rust and Cargo versions, so it's preferable to install it via `apt-get`:
 ```bash
-sudo apt-get install build-essential git cmake autoconf libtool curl pkg-config -y
+sudo apt-get install build-essential git cmake autoconf libtool curl pkg-config libclang-dev -y
 
 # Optional - to build with Web UI
 curl -sL https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -
@@ -36,7 +37,7 @@ sudo curl --compressed -o- -L https://yarnpkg.com/install.sh | bash
 Use the following commands to install the required build prerequisites. Note that you'll need recent Rust and Cargo versions installed using the recommended way from [rustup.rs](rustup.rs):
 ```bash
 su -
-apt-get install gcc gcc-c++ cmake git patch libstdc++10-devel-static libgomp10-devel-static -y && exit
+apt-get install gcc gcc-c++ cmake git patch libstdc++10-devel-static libgomp10-devel-static llvm-common-clang-devel -y && exit
 ```
 
 ### Prerequisites for MacOs
@@ -55,7 +56,7 @@ brew install node yarn
 #### Static build
 
 ```shell
-dnf install cmake gcc gcc-c++ git libstdc++-static perl
+dnf install cmake gcc gcc-c++ git libstdc++-static perl clang-devel
 ```
 
 #### Dynamic build

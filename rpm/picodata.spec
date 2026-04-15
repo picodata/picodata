@@ -35,6 +35,21 @@ Source0: %name-%version.tar.gz
 BuildRequires: cmake3
 %endif
 
+# add libclang to build dependencies installed
+
+# Fedora Linux & REDOS & CentOS
+%if 0%{?fedora} >= 33 || 0%{?redos} > 0 || 0%{?rhel} > 0
+BuildRequires: clang-devel
+%endif
+# Alt Linux
+%if "%{?_build_vendor}" == "alt"
+BuildRequires: llvm-common-clang-devel
+%endif
+# Rosa Linux
+%if "%{?_build_vendor}" == "rosa"
+BuildRequires: lib64clang-devel
+%endif
+
 %if %use_dynamic_build
 BuildRequires: zlib-devel
 %if "%{?_build_vendor}" == "alt"
