@@ -119,6 +119,7 @@ pub mod to_rmpv_named;
 pub mod topology_cache;
 pub mod traft;
 pub mod util;
+pub mod vdbe;
 pub mod version;
 pub mod vshard;
 

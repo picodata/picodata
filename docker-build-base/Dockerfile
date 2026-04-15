@@ -23,6 +23,7 @@ RUN rm -f /etc/yum.repos.d/pgdg-redhat-all.repo \
            git \
            gcc \
            gcc-c++ \
+           clang-devel \
            golang \
            libcurl-devel \
            libffi-devel \

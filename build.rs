@@ -56,6 +56,8 @@ fn main() {
     export_public_symbols();
     check_plugins_ffi();
 
+    generate_vdbe_bindings(tarantool_build_root.get_box_flags());
+
     if cfg!(feature = "webui") {
         build_webui(&build_root);
     }
@@ -284,6 +286,46 @@ fn check_plugins_ffi() {
             std::process::exit(1);
         }
     }
+}
+
+fn generate_vdbe_bindings(box_flags: Vec<String>) {
+    // Let's try our best converting tarantool's doxygen documentation to rustdoc-flavored Markdown.
+    // Leaving it at bindgen's default converts all docs verbatim, causing a lot of rustdoc errors.
+    // The alternative to converting these docs is disabling docs generation altogether, because
+    // it causes not only lint issues, but also doc-test failures which can't be bypassed:
+    // they can only be disabled on per-crate basis, and we can't disable picodata tests or move
+    // bindings out of the picodata crate.
+    #[derive(Debug)]
+    struct DoxygenCallback;
+
+    impl bindgen::callbacks::ParseCallbacks for DoxygenCallback {
+        fn process_comment(&self, comment: &str) -> Option<String> {
+            match doxygen_bindgen::transform(comment) {
+                Ok(res) => Some(res),
+                Err(err) => {
+                    cargo::warning(&format!(
+                        "Problem processing doxygen comment: {comment}\n{err}"
+                    ));
+                    None
+                }
+            }
+        }
+    }
+
+    let bindings = bindgen::builder()
+        .clang_args(&box_flags)
+        .prepend_enum_name(false)
+        .default_macro_constant_type(bindgen::MacroTypeVariation::Signed)
+        .default_enum_style(bindgen::EnumVariation::Consts)
+        .header("src/vdbe/wrapper.h")
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+        .parse_callbacks(Box::new(DoxygenCallback))
+        .generate()
+        .expect("Unable to generate bindings");
+
+    bindings
+        .write_to_file(cargo::get_out_dir().join("vdbe-bindings.rs"))
+        .expect("Couldn't write bindings!");
 }
 
 pub fn build_webui(build_root: &Path) {
