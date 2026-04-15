@@ -38,7 +38,7 @@ fn print_ready_banner(name: &str) {
 
     let config = PicodataConfig::get();
     let iproto = config.instance.iproto.advertise().to_host_port();
-    let pg = if config.instance.pgproto.enabled() {
+    let pgproto = if config.instance.pgproto.enabled() {
         config.instance.pgproto.advertise().to_host_port()
     } else {
         SmolStr::default()
@@ -56,17 +56,26 @@ fn print_ready_banner(name: &str) {
     } else {
         SmolStr::default()
     };
-    let admin = config.instance.admin_socket().display();
-    tlog!(Info, r"    ___  _____________  ___  ___ _________ ");
-    tlog!(Info, r"   / _ \/  _/ ___/ __ \/ _ \/ _ /_  __/ _ |");
-    tlog!(Info, r"  / ___// // /__/ /_/ / // / __ |/ / / __ |");
-    tlog!(Info, r" /_/  /___/\___/\____/____/_/ |_/_/ /_/ |_|");
-    tlog!(Info, "");
-    tlog!(Info, "  instance:  {name}");
-    tlog!(Info, "  psql:      {pg}");
-    tlog!(Info, "  iproto:    {iproto}");
-    tlog!(Info, "  http:      {http}");
-    tlog!(Info, "  admin:     {admin}");
+
+    let socket = config.instance.admin_socket();
+    let admin = std::fs::canonicalize(socket).unwrap_or_else(|_| socket.into());
+    let admin = admin.display();
+
+    tlog!(
+        Info,
+        r#"
+           ___  _____________  ___  ___ _________
+          / _ \/  _/ ___/ __ \/ _ \/ _ /_  __/ _ |
+         / ___// // /__/ /_/ / // / __ |/ / / __ |
+        /_/  /___/\___/\____/____/_/ |_/_/ /_/ |_|
+
+         instance:  {name}
+         pgproto:   {pgproto}
+         iproto:    {iproto}
+         http:      {http}
+         admin:     {admin}
+        "#
+    );
 }
 
 crate::define_rpc_request! {
