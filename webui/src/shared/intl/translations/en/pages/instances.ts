@@ -4,7 +4,7 @@ export const instances = {
       label: "Plugins",
     },
     capacityProgress: {
-      label: "Capacity Usage",
+      label: "Used space in the cluster",
       valueLabel: "Useful capacity",
     },
     systemCapacityProgress: {

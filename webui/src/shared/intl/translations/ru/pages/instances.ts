@@ -6,7 +6,7 @@ export const instances: TPages["instances"] = {
       label: "Плагины",
     },
     capacityProgress: {
-      label: "Потребление памяти",
+      label: "Использовано места в кластере",
       valueLabel: "Использовано",
     },
     systemCapacityProgress: {
