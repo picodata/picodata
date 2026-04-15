@@ -43,7 +43,7 @@ pub mod plugin;
 pub mod relational;
 pub mod tcl;
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, Hash, Copy)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, Hash, Copy, Ord, PartialOrd)]
 pub enum ArenaType {
     Arena32,
     Arena64,
