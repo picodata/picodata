@@ -1,10 +1,9 @@
-import time
 import threading
+import time
 
 import pytest
-
-from framework.log import log
 from conftest import Cluster, TarantoolError, log_crawler
+from framework.log import log
 
 
 def test_restart_timing(cluster: Cluster):
@@ -51,12 +50,13 @@ cluster:
         assert elapsed < 5
 
 
-@pytest.mark.flaky(reruns=3)
 def test_wait_vshard_storage(cluster: Cluster):
     i1 = cluster.add_instance(replicaset_name="default_1", init_replication_factor=2)
     _i1 = cluster.add_instance(replicaset_name="default_1")
     i2 = cluster.add_instance(replicaset_name="default_2")
     _i2 = cluster.add_instance(replicaset_name="default_2")
+
+    cluster.wait_until_buckets_balanced()
 
     i2.sql("""CREATE TABLE IF NOT EXISTS test_table (
         ID BIGINT NOT NULL,
@@ -66,7 +66,7 @@ def test_wait_vshard_storage(cluster: Cluster):
         IN TIER "default"
         """)
 
-    dml = i2.sql("INSERT INTO test_table VALUES(1, 2) ON CONFLICT DO REPLACE")
+    dml = i2.sql("INSERT INTO test_table VALUES(1, 3) ON CONFLICT DO REPLACE")
     assert dml["row_count"] == 1
 
     # i2 is the router, i1 is the storage
@@ -98,7 +98,7 @@ def test_wait_vshard_storage(cluster: Cluster):
     def run_dml():
         nonlocal dml
         try:
-            dml = i2.sql("INSERT INTO test_table VALUES(1, 2) ON CONFLICT DO REPLACE", timeout=90)
+            dml = i2.sql("INSERT INTO test_table VALUES(1, 3) ON CONFLICT DO REPLACE", timeout=90)
         except Exception as err:
             dml = err
 
