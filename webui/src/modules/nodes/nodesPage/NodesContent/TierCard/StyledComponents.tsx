@@ -16,15 +16,6 @@ export const Content = styled("div")({
   padding: "8px 16px",
 });
 
-export const Label = styled("div")(({ theme }) => ({
-  fontSize: "12px",
-  fontStyle: "normal",
-  fontWeight: 400,
-  lineHeight: "16px",
-  color: theme.common.colors.typography.colorTextBlack,
-  padding: "4px 8px",
-}));
-
 export const chevronIconStyle: CSSProperties = {
   color: "#050505",
 };

@@ -1,7 +1,11 @@
 import { Box, styled } from "@mui/material";
+import { green } from "@mui/material/colors";
+import LibraryAddCheckIcon from "@mui/icons-material/LibraryAddCheck";
+
+import { Leader } from "../../../../../shared/icons";
 
 export const ITEM_GRID_COLUMNS_SCHEMA =
-  "180px 1fr 120px 120px 160px 120px 1fr 1fr 60px";
+  "180px 2fr 120px 120px 160px 200px 1fr 2fr 60px";
 
 const BORDER_RADIUS = "6px";
 
@@ -21,6 +25,7 @@ export const CellLabel = styled(Box)(({ theme }) => ({
   lineHeight: "16px",
   color: theme.common.colors.typography.colorTextBlack,
 }));
+
 export const CellValue = styled(Box)({
   fontSize: "14px",
   lineHeight: "16px",
@@ -56,6 +61,12 @@ export const ContentFlexCell = styled(ContentCell)({
 export const ContentFlexCenteredCell = styled(ContentFlexCell)({
   alignItems: "center",
 });
+export const CellCenter = styled(ContentCell)({
+  height: "100%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+});
 
 export const CapacityProgressCell = styled(ContentFlexCenteredCell)({
   paddingTop: 17,
@@ -81,3 +92,37 @@ export const Background = styled(Box)<{
       }
     : {}),
 }));
+
+export const StyledLeaderIcon = styled(Leader)({
+  width: 16,
+  height: 16,
+});
+export const StyledVoterIcon = styled(LibraryAddCheckIcon)({
+  fill: green[600],
+  width: 16,
+  height: 16,
+});
+
+export const RaftLeaderNameCell = styled(CellValue)({
+  display: "grid",
+  gridTemplateColumns: "min-content min-content 1fr",
+  gap: 3,
+  "& > *": {
+    display: "flex",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+});
+
+export const StatusBlock = styled(Box)({
+  display: "flex",
+  borderRadius: 6,
+  gap: 4,
+  padding: "4px 8px",
+  whiteSpace: "nowrap",
+  "& > *": {
+    display: "flex",
+    alignItems: "center",
+  },
+  color: "white",
+});

@@ -3,12 +3,19 @@ import { memo } from "react";
 
 import { ChevronDown } from "shared/icons/ChevronDown";
 import { TierNodeType } from "shared/entity/tier";
-import { SwitchInfo } from "shared/ui/SwitchInfo/SwitchInfo";
 import { InfoNoData } from "shared/ui/InfoNoData/InfoNoData";
 import { useTranslation } from "shared/intl";
 
 import { CapacityProgress } from "../../ClusterInfo/CapacityProgress/CapacityProgress";
-import { CellLabel, CellValue, ContentFlexCell } from "../common";
+import {
+  CellLabel,
+  CellValue,
+  ContentFlexCell,
+  RaftLeaderNameCell,
+  StyledLeaderIcon,
+  VotersStatusBlock,
+  CellCenter,
+} from "../common";
 
 import {
   chevronIconIsOpenStyle,
@@ -31,6 +38,7 @@ export const TierCardAlt = memo(
   ({ isLast, isFirst, tier, theme, onClick }: TierCardAltProps) => {
     const { translation } = useTranslation();
     const tierTranslations = translation.pages.instances.list.tierCard;
+    const commonTranslations = translation.pages.instances.list.common;
 
     const tierClickHandler = () => {
       onClick(tier.syntheticId);
@@ -47,9 +55,14 @@ export const TierCardAlt = memo(
           <Box></Box>
           <ContentFlexCell>
             <CellLabel>{tierTranslations.name.label}</CellLabel>
-            <Tooltip title={tier.name}>
-              <CellValue>{tier.name}</CellValue>
-            </Tooltip>
+            <RaftLeaderNameCell>
+              <Tooltip title={commonTranslations.hasRaftLeader}>
+                <Box>{tier.hasRaftLeader ? <StyledLeaderIcon /> : null}</Box>
+              </Tooltip>
+              <Tooltip title={tier.name}>
+                <Box>{tier.name}</Box>
+              </Tooltip>
+            </RaftLeaderNameCell>
           </ContentFlexCell>
 
           <TierContentFlexCenteredCell>
@@ -86,11 +99,9 @@ export const TierCardAlt = memo(
             <CellLabel>{tierTranslations.bucket_count.label}</CellLabel>
             <CellValue>{tier.bucketCount}</CellValue>
           </TierContentFlexCenteredCell>
-
-          <TierContentFlexCenteredCell>
-            <CellLabel>{tierTranslations.canVote.label}</CellLabel>
-            <SwitchInfo checked={tier.can_vote} />
-          </TierContentFlexCenteredCell>
+          <CellCenter>
+            {tier.can_vote ? <VotersStatusBlock /> : null}
+          </CellCenter>
 
           <TierCapacityProgressCell>
             <CapacityProgress

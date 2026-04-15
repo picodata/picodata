@@ -62,6 +62,10 @@ export const instances: TPages["instances"] = {
     clearAll: "Сбросить все",
   },
   list: {
+    common: {
+      hasRaftLeader: "Включает в себя Raft Leader инстанс",
+      hasVoter: "Включает в себя голосующий инстанс",
+    },
     tierCard: {
       name: {
         label: "Название тира",
@@ -83,6 +87,11 @@ export const instances: TPages["instances"] = {
       },
       canVote: {
         label: "Голосует?",
+      },
+      statuses: {
+        voter: {
+          label: "Голосует",
+        },
       },
     },
     replicasetCard: {

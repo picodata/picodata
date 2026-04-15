@@ -60,6 +60,10 @@ export const instances = {
     clearAll: "Clear All",
   },
   list: {
+    common: {
+      hasRaftLeader: "has raft leader",
+      hasVoter: "has voter",
+    },
     tierCard: {
       name: {
         label: "Tier Name",
@@ -81,6 +85,11 @@ export const instances = {
       },
       canVote: {
         label: "Can vote",
+      },
+      statuses: {
+        voter: {
+          label: "can vote",
+        },
       },
     },
     replicasetCard: {

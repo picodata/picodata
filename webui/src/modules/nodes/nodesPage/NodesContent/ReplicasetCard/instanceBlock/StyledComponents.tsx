@@ -1,9 +1,12 @@
 import { Box, styled } from "@mui/material";
 
+import { Leader } from "shared/icons";
+
 import {
   Background,
   Cell,
   CommonCell,
+  ContentFlexCell,
   ContentFlexCenteredCell,
   ItemRoot,
 } from "../../common";
@@ -17,21 +20,6 @@ export const Content = styled("div")({
   minHeight: "60px",
   padding: "0 16px",
 });
-
-export const Label = styled("div")<{ $alignLeft?: boolean }>(
-  ({ $alignLeft, theme }) => ({
-    fontSize: "12px",
-    fontStyle: "normal",
-    fontWeight: 400,
-    lineHeight: "16px",
-    textAlign: $alignLeft ? "left" : "center",
-    textOverflow: "ellipsis",
-    overflow: "hidden",
-    maxHeight: "24px",
-    color: theme.common.colors.typography.colorTextBlack,
-    padding: "4px 0",
-  })
-);
 
 export const Value = styled(Box)(({ theme }) => ({
   fontSize: "14px",
@@ -61,7 +49,7 @@ export const DomainValue = styled(Value)({
 export const FollowerBlock = styled(Value)(({ theme }) => ({
   width: "16px",
   backgroundColor: "transparent",
-  fontSize: "10px",
+  fontSize: 9,
   lineHeight: "16px",
   fontWeight: 400,
   color: theme.common.colors.typography.colorTextGrey,
@@ -71,12 +59,20 @@ export const FollowerBlock = styled(Value)(({ theme }) => ({
   justifyContent: "center",
   writingMode: "vertical-lr",
   textOrientation: "mixed",
-  marginRight: 10,
+}));
+export const InstanceTypeBlock = styled(Box)({
+  display: "flex",
+  width: 58,
+});
+
+export const RaftLeaderBlock = styled(FollowerBlock)(({ theme }) => ({
+  backgroundColor: theme.common.colors.bg.colorBgNormal,
+  color: "white",
+  fontSize: 8,
 }));
 
 export const LeaderBlock = styled(FollowerBlock)(({ theme }) => ({
   backgroundColor: theme.common.colors.notifications.colorNotificationSuccess,
-  marginRight: 10,
 }));
 
 export const InstanceItemRoot = styled(ItemRoot)<{ $fromReplicaset: boolean }>(
@@ -144,4 +140,15 @@ export const InstanceBackgroundInner = styled(Background)<{
 export const VersionRoot = styled(Box)({
   display: "grid",
   gridTemplateColumns: "1fr max-content",
+});
+
+export const StyledLeaderIcon = styled(Leader)(({ theme }) => ({
+  width: 16,
+  height: 16,
+  transform: "rotate(90deg)",
+  fill: theme.palette.primary.main,
+}));
+
+export const AddressCell = styled(ContentFlexCell)({
+  alignItems: "center",
 });

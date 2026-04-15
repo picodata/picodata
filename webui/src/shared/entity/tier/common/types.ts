@@ -29,7 +29,7 @@ export enum NodeType {
 
 export type TierType = Override<
   ServerTierType,
-  { replicasets: ReplicasetType[] }
+  { replicasets: ReplicasetType[]; hasRaftLeader: boolean }
 >;
 export type TierNodeType = TierType & {
   open: boolean;

@@ -1,4 +1,4 @@
-import { Tooltip } from "@mui/material";
+import { Box, Tooltip } from "@mui/material";
 import { memo } from "react";
 
 import { ChevronDown } from "shared/icons/ChevronDown";
@@ -9,9 +9,11 @@ import { CapacityProgress } from "../../ClusterInfo/CapacityProgress/CapacityPro
 import {
   CapacityProgressCell,
   CellLabel,
-  CellValue,
+  StyledLeaderIcon,
   ContentFlexCell,
   ContentFlexCenteredCell,
+  RaftLeaderNameCell,
+  StyledVoterIcon,
 } from "../common";
 import { ReplicasetNodeType } from "../../../../../shared/entity/replicaset";
 
@@ -41,6 +43,7 @@ export const ReplicasetCardAlt = memo(
     const { translation } = useTranslation();
     const replicasetTranslations =
       translation.pages.instances.list.replicasetCard;
+    const commonTranslations = translation.pages.instances.list.common;
 
     const clickHandler = (
       event: React.MouseEvent<HTMLDivElement, MouseEvent>
@@ -67,9 +70,20 @@ export const ReplicasetCardAlt = memo(
           >
             <ContentFlexCell>
               <CellLabel>{replicasetTranslations.name.label}</CellLabel>
-              <Tooltip title={replicaset.name}>
-                <CellValue>{replicaset.name}</CellValue>
-              </Tooltip>
+
+              <RaftLeaderNameCell>
+                <Tooltip title={commonTranslations.hasRaftLeader}>
+                  <Box>
+                    {replicaset.hasRaftLeader ? <StyledLeaderIcon /> : null}
+                  </Box>
+                </Tooltip>
+                <Tooltip title={commonTranslations.hasVoter}>
+                  <Box>{replicaset.hasVoter ? <StyledVoterIcon /> : null}</Box>
+                </Tooltip>
+                <Tooltip title={replicaset.name}>
+                  <Box>{replicaset.name}</Box>
+                </Tooltip>
+              </RaftLeaderNameCell>
             </ContentFlexCell>
 
             <ContentFlexCenteredCell></ContentFlexCenteredCell>

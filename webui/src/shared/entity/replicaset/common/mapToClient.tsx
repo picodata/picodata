@@ -7,6 +7,16 @@ export const mapReplicasetToClient = <
 >(
   replicaset: T
 ) => {
+  let hasRaftLeader = false;
+  let hasVoter = false;
+  replicaset.instances.forEach(({ isRaftLeader, isVoter }) => {
+    if (isRaftLeader) {
+      hasRaftLeader = true;
+    }
+    if (isVoter) {
+      hasVoter = true;
+    }
+  });
   return {
     ...replicaset,
     currentInstanceCount:
@@ -14,5 +24,7 @@ export const mapReplicasetToClient = <
         ({ currentState }) => currentState === "Online"
       )?.length || 0,
     instances: replicaset.instances.map(mapInstanceToClient),
+    hasRaftLeader,
+    hasVoter,
   };
 };

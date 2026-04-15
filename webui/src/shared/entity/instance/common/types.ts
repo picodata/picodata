@@ -11,6 +11,8 @@ export type ServerInstanceType = {
   pgAddress: string;
   binaryAddress: string;
   httpAddress?: string;
+  isRaftLeader?: boolean;
+  isVoter?: boolean;
 };
 
 export type InstanceType = Override<

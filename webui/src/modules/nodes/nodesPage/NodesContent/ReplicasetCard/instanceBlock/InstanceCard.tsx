@@ -9,25 +9,30 @@ import { InfoNoData } from "shared/ui/InfoNoData/InfoNoData";
 
 import {
   Cell,
+  CellCenter,
   CellLabel,
   CellValue,
   ContentFlexCell,
   ContentFlexCenteredCell,
   Ellipsis,
+  VotersStatusBlock,
 } from "../../common";
 
 import { FailureDomainLabel } from "./FailureDomainLabel/FailureDomainLabel";
 import { AddressBlock } from "./AddressBlock/AddressBlock";
 import {
+  AddressCell,
   ContentFlexCenteredNameCell,
   DomainValue,
-  FollowerBlock,
   InstanceBackground,
   InstanceBackgroundInner,
   InstanceCell,
   InstanceItemRoot,
   InstanceNameCell,
+  InstanceTypeBlock,
   LeaderBlock,
+  RaftLeaderBlock,
+  StyledLeaderIcon,
   ValueHidden,
   VersionRoot,
 } from "./StyledComponents";
@@ -77,11 +82,19 @@ export const InstanceCardAlt = memo(
                 $position={"left"}
                 $fromReplicaset={fromReplicaset}
               >
-                {instance.isLeader ? (
-                  <LeaderBlock>{instanceTranslations.leader.label}</LeaderBlock>
-                ) : (
-                  <FollowerBlock />
-                )}
+                <InstanceTypeBlock>
+                  {instance.isRaftLeader ? (
+                    <RaftLeaderBlock>
+                      <StyledLeaderIcon />
+                      <span>raft leader</span>
+                    </RaftLeaderBlock>
+                  ) : null}
+                  {instance.isLeader ? (
+                    <LeaderBlock>
+                      {instanceTranslations.leader.label}
+                    </LeaderBlock>
+                  ) : null}
+                </InstanceTypeBlock>
                 <ContentFlexCenteredNameCell $fromReplicaset={fromReplicaset}>
                   {!fromReplicaset ? (
                     <CellLabel>{instanceTranslations.name.label}</CellLabel>
@@ -108,8 +121,7 @@ export const InstanceCardAlt = memo(
                 <NetworkState state={instance.currentState} />
               </Box>
             </ContentFlexCenteredCell>
-            <ContentFlexCell></ContentFlexCell>
-            <ContentFlexCell>
+            <AddressCell>
               <AddressBlock
                 addresses={[
                   {
@@ -126,7 +138,10 @@ export const InstanceCardAlt = memo(
                   },
                 ]}
               />
-            </ContentFlexCell>
+            </AddressCell>
+            <CellCenter>
+              {instance.isVoter ? <VotersStatusBlock /> : null}
+            </CellCenter>
             <VersionBlock
               label={instanceTranslations.version.label}
               version={instance.version}
