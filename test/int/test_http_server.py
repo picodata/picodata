@@ -876,7 +876,7 @@ def test_healthcheck_status_api(cluster: Cluster):
 
     # Healthy status
     assert body["status"] == "healthy", f"Expected healthy, got: {body['status']}"
-    assert len(body.get("reasons", [])) == 0, "Expected no reasons for healthy status"
+    assert len(body.get("issues", [])) == 0, "Expected no issues for healthy status"
 
     # Validate degraded status (limbo_owner != 0)
     i1.eval("box.ctl.promote()")
@@ -891,8 +891,8 @@ def test_healthcheck_status_api(cluster: Cluster):
 
     assert body["status"] == "degraded", f"Expected degraded, got: {body['status']}"
     assert body["limboOwner"] == limbo_owner, f"Expected limboOwner={limbo_owner}, got: {body['limboOwner']}"
-    reasons = body.get("reasons", [])
-    assert any("limbo" in r.lower() for r in reasons), f"Expected limbo reason: {reasons}"
+    issues = body.get("issues", [])
+    assert any("limbo" in r.lower() for r in issues), f"Expected limbo issue: {issues}"
 
     # Validate unhealthy status
     # inject SENTINEL_CONNECTION_POOL_CALL_FAILURE to disable instance auto-online
@@ -921,13 +921,13 @@ def test_healthcheck_status_api(cluster: Cluster):
         assert response.status == 200
         body = json.load(response)
 
-    # Unhealthy overrides degraded
-    assert body["status"] == "unhealthy", f"Expected unhealthy, got: {body['status']}"
+    # Broken overrides degraded
+    assert body["status"] == "broken", f"Expected broken, got: {body['status']}"
     assert body["targetStateReason"] == "status_api_test"
-    reasons = body.get("reasons", [])
-    # Should include both unhealthy and degraded reasons
-    assert any("offline" in r.lower() for r in reasons), f"Expected offline reason: {reasons}"
-    assert any("limbo" in r.lower() for r in reasons), f"Expected limbo reason: {reasons}"
+    issues = body.get("issues", [])
+    # Should include both broken and degraded issues
+    assert any("offline" in r.lower() for r in issues), f"Expected offline issue: {issues}"
+    assert any("limbo" in r.lower() for r in issues), f"Expected limbo issue: {issues}"
 
     # Cleanup
     i1.call("pico._inject_error", "SENTINEL_CONNECTION_POOL_CALL_FAILURE", False)
