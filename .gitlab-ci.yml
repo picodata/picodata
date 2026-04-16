@@ -39,7 +39,14 @@ variables:
   BASE_IMAGE_DOCS: ${CI_REGISTRY_IMAGE}/docs
   BASE_IMAGE_LATEST: latest
   BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
+
   MAIN_BRANCH: &main-branch master
+  # to use in cache:key, do not forget to update it with MAIN_BRANCH
+  # MAIN_BRANCH in lowercase, shortened to 63 bytes, and 
+  # with everything except 0-9 and a-z replaced with -.
+  # for example 26.1 -> 26-1
+  MAIN_BRANCH_SLUG: master
+
   CARGO_HOME: $CI_PROJECT_DIR/.cargo
   KANIKO_REGISTRY_MIRROR: docker-proxy.binary.picodata.io
   FF_USE_FASTZIP: "true"
@@ -122,9 +129,9 @@ variables:
 .cache_git: &cache_git
   paths:
     - $CI_PROJECT_DIR
-  key: cache_git-$CI_COMMIT_BRANCH
+  key: cache_git-$CI_COMMIT_REF_SLUG
   fallback_keys:
-    - cache_git-$MAIN_BRANCH
+    - cache_git-$MAIN_BRANCH_SLUG
 
 .base_cache: &base_cache
   paths:
@@ -133,28 +140,28 @@ variables:
     - tarantool-sys/.cmake-downloads/
   key: "base_cache-${TARGET}-$CI_COMMIT_REF_SLUG"
   fallback_keys:
-    - base_cache-${TARGET}-$MAIN_BRANCH
+    - base_cache-${TARGET}-$MAIN_BRANCH_SLUG
 
 .base_node: &base_node
   paths:
     - webui/node_modules/
   key: "base_node-$CI_COMMIT_REF_SLUG"
   fallback_keys:
-    - base_node-$MAIN_BRANCH
+    - base_node-$MAIN_BRANCH_SLUG
 
 .py_cache: &py_cache
   paths:
     - .venv
   key: "py_cache-$CI_COMMIT_REF_SLUG"
   fallback_keys:
-    - py_cache-$MAIN_BRANCH
+    - py_cache-$MAIN_BRANCH_SLUG
 
 .rolling_binaries_cache: &rolling_binaries_cache
   paths:
     - .rolling_binaries/
   key: "rolling_binaries_cache-$CI_COMMIT_REF_SLUG"
   fallback_keys:
-    - rolling_binaries_cache-$MAIN_BRANCH
+    - rolling_binaries_cache-$MAIN_BRANCH_SLUG
 
 .kaniko_image: &kaniko_image
   image:
