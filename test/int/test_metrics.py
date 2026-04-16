@@ -548,31 +548,30 @@ def test_local_sql_collisions_gl_2367(cluster: Cluster):
     # Cache another statements with the same local SQL.
     assert pgproto.execute("SELECT * FROM t GROUP BY a, b ORDER BY 1").fetchall() == [(1, 2)]
     metrics = i1.get_metrics()
-    check_metric(metrics, "pico_storage_cache_misses", 1, query_type="dql", rpc_type="1st", miss_type="stale")
+    check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="1st", miss_type="stale")
     check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="local", miss_type="true")
     metrics = i2.get_metrics()
     check_metric(metrics, "pico_storage_cache_hits", 1, query_type="dql", rpc_type="1st")
     check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="1st", miss_type="stale")
 
-    # Run cached statements.
-    # Due to temporary spaces creation stale misses will be reported on local and 1st requests.
+    # Run cached statements, temporary spaces creation does not matter.
     assert pgproto.execute("SELECT DISTINCT * FROM t ORDER BY 1").fetchall() == [(1, 2)]
     assert pgproto.execute("SELECT * FROM t GROUP BY a, b ORDER BY 1").fetchall() == [(1, 2)]
     metrics = i1.get_metrics()
-    check_metric(metrics, "pico_storage_cache_hits", 1, query_type="dql", rpc_type="1st")
-    check_metric(metrics, "pico_storage_cache_hits", 1, query_type="dql", rpc_type="local")
-    check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="1st", miss_type="stale")
-    check_metric(metrics, "pico_storage_cache_misses", 1, query_type="dql", rpc_type="local", miss_type="stale")
+    check_metric(metrics, "pico_storage_cache_hits", 3, query_type="dql", rpc_type="1st")
+    check_metric(metrics, "pico_storage_cache_hits", 2, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="1st", miss_type="stale")
+    check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="local", miss_type="stale")
     metrics = i2.get_metrics()
     check_metric(metrics, "pico_storage_cache_hits", 3, query_type="dql", rpc_type="1st")
     check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="1st", miss_type="stale")
 
-    # Run cached statements again after recompilation with the current schema versions.
+    # Run cached statements again.
     assert pgproto.execute("SELECT DISTINCT * FROM t ORDER BY 1").fetchall() == [(1, 2)]
     assert pgproto.execute("SELECT * FROM t GROUP BY a, b ORDER BY 1").fetchall() == [(1, 2)]
     metrics = i1.get_metrics()
-    check_metric(metrics, "pico_storage_cache_hits", 3, query_type="dql", rpc_type="1st")
-    check_metric(metrics, "pico_storage_cache_hits", 3, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_hits", 5, query_type="dql", rpc_type="1st")
+    check_metric(metrics, "pico_storage_cache_hits", 4, query_type="dql", rpc_type="local")
     metrics = i2.get_metrics()
     check_metric(metrics, "pico_storage_cache_hits", 5, query_type="dql", rpc_type="1st")
 
@@ -580,10 +579,10 @@ def test_local_sql_collisions_gl_2367(cluster: Cluster):
     assert pgproto.execute("SELECT DISTINCT * FROM t ORDER BY 1").fetchall() == [(1, 2)]
     assert pgproto.execute("SELECT * FROM t GROUP BY a, b ORDER BY 1").fetchall() == [(1, 2)]
     metrics = i1.get_metrics()
-    check_metric(metrics, "pico_storage_cache_hits", 5, query_type="dql", rpc_type="1st")
-    check_metric(metrics, "pico_storage_cache_hits", 5, query_type="dql", rpc_type="local")
-    check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="1st", miss_type="stale")
-    check_metric(metrics, "pico_storage_cache_misses", 1, query_type="dql", rpc_type="local", miss_type="stale")
+    check_metric(metrics, "pico_storage_cache_hits", 7, query_type="dql", rpc_type="1st")
+    check_metric(metrics, "pico_storage_cache_hits", 6, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="1st", miss_type="stale")
+    check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="local", miss_type="stale")
     metrics = i2.get_metrics()
     check_metric(metrics, "pico_storage_cache_hits", 7, query_type="dql", rpc_type="1st")
 
@@ -593,7 +592,7 @@ def test_local_sql_collisions_gl_2367(cluster: Cluster):
     metrics = i1.get_metrics()
     check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="1st", miss_type="true")
     check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="local", miss_type="true")
-    check_metric(metrics, "pico_storage_cache_misses", 1, query_type="dql", rpc_type="local", miss_type="stale")
+    check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="local", miss_type="stale")
     metrics = i2.get_metrics()
     check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="2nd", miss_type="true")
 
@@ -603,7 +602,7 @@ def test_local_sql_collisions_gl_2367(cluster: Cluster):
     metrics = i1.get_metrics()
     check_metric(metrics, "pico_storage_cache_misses", 3, query_type="dql", rpc_type="1st", miss_type="true")
     check_metric(metrics, "pico_storage_cache_misses", 2, query_type="dql", rpc_type="local", miss_type="true")
-    check_metric(metrics, "pico_storage_cache_misses", 1, query_type="dql", rpc_type="local", miss_type="stale")
+    check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="local", miss_type="stale")
     metrics = i2.get_metrics()
     check_metric(metrics, "pico_storage_cache_hits", None, query_type="dql", rpc_type="local")
     check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="1st", miss_type="stale")
@@ -638,24 +637,24 @@ def test_plan_id_sql_collisions(instance: Instance):
     metrics = instance.get_metrics()
     check_metric(metrics, "pico_router_cache_hits", 1)
     check_metric(metrics, "pico_router_cache_misses", 5)
-    check_metric(metrics, "pico_storage_cache_hits", 1, query_type="dql", rpc_type="local")
-    check_metric(metrics, "pico_storage_cache_misses", 4, aggregate=sum_samples, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_hits", 2, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_misses", 3, aggregate=sum_samples, query_type="dql", rpc_type="local")
 
     dql = instance.sql("SELECT * FROM g GROUP BY a, b ORDER BY 1")  # top = 1
     assert dql == [[1, 4], [2, 2], [3, 1]]
     metrics = instance.get_metrics()
     check_metric(metrics, "pico_router_cache_hits", 1)
     check_metric(metrics, "pico_router_cache_misses", 6)
-    check_metric(metrics, "pico_storage_cache_hits", 1, query_type="dql", rpc_type="local")
-    check_metric(metrics, "pico_storage_cache_misses", 5, aggregate=sum_samples, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_hits", 2, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_misses", 4, aggregate=sum_samples, query_type="dql", rpc_type="local")
 
     dql = instance.sql("SELECT * FROM g GROUP BY a, b ORDER BY 1")
     assert dql == [[1, 4], [2, 2], [3, 1]]
     metrics = instance.get_metrics()
     check_metric(metrics, "pico_router_cache_hits", 2)
     check_metric(metrics, "pico_router_cache_misses", 6)
-    check_metric(metrics, "pico_storage_cache_hits", 2, query_type="dql", rpc_type="local")
-    check_metric(metrics, "pico_storage_cache_misses", 5, aggregate=sum_samples, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_hits", 3, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_misses", 4, aggregate=sum_samples, query_type="dql", rpc_type="local")
 
     dml = instance.sql("INSERT INTO t VALUES($1, 2+$1)", 5)  # motion + values = 2
     assert dml["row_count"] == 1
@@ -665,40 +664,40 @@ def test_plan_id_sql_collisions(instance: Instance):
     metrics = instance.get_metrics()
     check_metric(metrics, "pico_router_cache_hits", 2)
     check_metric(metrics, "pico_router_cache_misses", 8)
-    check_metric(metrics, "pico_storage_cache_hits", 2, query_type="dql", rpc_type="local")
-    check_metric(metrics, "pico_storage_cache_misses", 8, aggregate=sum_samples, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_hits", 3, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_misses", 7, aggregate=sum_samples, query_type="dql", rpc_type="local")
 
     dml = instance.sql("UPDATE t SET b = b + 2 WHERE a >= 3+2")  # top = 1
     assert dml["row_count"] == 1
     metrics = instance.get_metrics()
     check_metric(metrics, "pico_router_cache_hits", 2)
     check_metric(metrics, "pico_router_cache_misses", 9)
-    check_metric(metrics, "pico_storage_cache_hits", 2, query_type="dql", rpc_type="local")
-    check_metric(metrics, "pico_storage_cache_misses", 9, aggregate=sum_samples, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_hits", 3, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_misses", 8, aggregate=sum_samples, query_type="dql", rpc_type="local")
 
     dml = instance.sql("UPDATE t SET b = b + 2 WHERE a >= 3+2")  # top = 1
     assert dml["row_count"] == 1
     metrics = instance.get_metrics()
     check_metric(metrics, "pico_router_cache_hits", 3)
     check_metric(metrics, "pico_router_cache_misses", 9)
-    check_metric(metrics, "pico_storage_cache_hits", 3, query_type="dql", rpc_type="local")
-    check_metric(metrics, "pico_storage_cache_misses", 9, aggregate=sum_samples, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_hits", 4, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_misses", 8, aggregate=sum_samples, query_type="dql", rpc_type="local")
 
     dml = instance.sql("DELETE FROM g WHERE b = ?", 1)  # motion = 1
     assert dml["row_count"] == 1
     metrics = instance.get_metrics()
     check_metric(metrics, "pico_router_cache_hits", 3)
     check_metric(metrics, "pico_router_cache_misses", 10)
-    check_metric(metrics, "pico_storage_cache_hits", 3, query_type="dql", rpc_type="local")
-    check_metric(metrics, "pico_storage_cache_misses", 10, aggregate=sum_samples, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_hits", 4, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_misses", 9, aggregate=sum_samples, query_type="dql", rpc_type="local")
 
     dql = instance.sql("SELECT * FROM t JOIN g ON t.a = g.b OR t.a = 5")  # top = 1
     assert dql == [[5, 11, 1, 4], [2, 3, 2, 2], [5, 11, 2, 2]]
     metrics = instance.get_metrics()
     check_metric(metrics, "pico_router_cache_hits", 3)
     check_metric(metrics, "pico_router_cache_misses", 11)
-    check_metric(metrics, "pico_storage_cache_hits", 3, query_type="dql", rpc_type="local")
-    check_metric(metrics, "pico_storage_cache_misses", 11, aggregate=sum_samples, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_hits", 4, query_type="dql", rpc_type="local")
+    check_metric(metrics, "pico_storage_cache_misses", 10, aggregate=sum_samples, query_type="dql", rpc_type="local")
 
 
 @pytest.mark.webui

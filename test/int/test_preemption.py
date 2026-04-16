@@ -820,3 +820,64 @@ def test_sql_same_plan_waiter_resumes_after_owner_release(cluster: Cluster):
     i1.check_process_alive()
     assert i1.sql(q1) == [[100]]
     assert i1.sql("select count(*) from t2") == [[0]]
+
+
+def test_dql_schema_version_bump(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2, init_replication_factor=1)
+    cluster.wait_until_buckets_balanced()
+
+    for inst in (i1, i2):
+        inst.sql("alter system set sql_storage_cache_count_max = 2")
+        enable_preemption(inst, True, 0, 1)
+        inst.raft_read_index()
+
+    ddl = i1.sql(
+        """
+        create table ta (a int primary key, b int)
+        using memtx
+        """
+    )
+    assert ddl["row_count"] == 1
+    ddl = i1.sql(
+        """
+        create table tb (a int primary key, b int)
+        using memtx
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    values = ",".join(f"({i}, {i})" for i in range(100))
+    i1.sql(f"insert into ta values {values}")
+    i1.sql(f"insert into tb values {values}")
+
+    q1 = "select count(*) from ta x join ta y on x.a = y.b"
+    q2 = "select count(*) from ta x join tb y on x.a = y.b"
+
+    errors: list[str] = []
+    errors_lock = threading.Lock()
+
+    def worker(query: str) -> None:
+        for _ in range(30):
+            try:
+                i1.sql(query, timeout=30)
+            except Exception as err:
+                with errors_lock:
+                    errors.append(str(err))
+
+    t1 = threading.Thread(target=worker, args=(q1,), daemon=True)
+    t2 = threading.Thread(target=worker, args=(q2,), daemon=True)
+    t1.start()
+    t2.start()
+    t1.join(timeout=300)
+    t2.join(timeout=300)
+    assert not t1.is_alive(), "worker thread did not finish in time"
+    assert not t2.is_alive(), "worker thread did not finish in time"
+
+    schema_version_errors = [e for e in errors if "schema version has changed" in e]
+    assert schema_version_errors == [], (
+        f"observed {len(schema_version_errors)} 'schema version has changed' errors "
+        f"out of 60 iterations; first: {schema_version_errors[0]}"
+    )
+    assert errors == [], f"unexpected errors: {errors[:3]}"
+
+    i1.check_process_alive()

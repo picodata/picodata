@@ -60,6 +60,9 @@ with the `YY.MINOR.MICRO` scheme.
   candidate instance for `RequestTarget::Any`.
 - [picodata#2838] Fixed panic on single-node cluster forced expel
   ("removed all voters"), which now returns an explicit error.
+- [picodata#2842] Fixed the `schema version has changed: need to re-compile SQL statement`
+  error, which could occur when you execute multiple DQL queries due to
+  yield during cache eviction.
 
 ### Breaking changes
 

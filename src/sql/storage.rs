@@ -43,7 +43,7 @@ use std::rc::Rc;
 use tarantool::space::SpaceId;
 
 use super::execute::port_write_execute_dml;
-use crate::schema::ADMIN_ID;
+use crate::schema::{ADMIN_ID, SPACE_ID_TEMPORARY_MIN};
 use crate::sql::execute::{
     acquire_cached_stmt_or_retry, dml_execute, dql_execute, drop_temp_tables, explain_execute,
     explain_execute_guarded, sql_execute, stmt_execute, LazyVirtualTableEncoder,
@@ -124,6 +124,18 @@ pub(crate) fn finalize_retired_plan(plan_id: u64) {
     drop_temp_tables(&retired.motion_ids);
 }
 
+extern "C" {
+    /// Optional callback used in `schema_version_bump`.
+    static mut stmt_cache_bump_temp_cb: Option<extern "C" fn(u32) -> bool>;
+}
+
+/// Tarantool statement cache version is compiled into vdbe.
+/// We don't want to bump it during DDL with temporary tables,
+/// since we manage their lifetimes ourselves.
+extern "C" fn stmt_cache_bump_temp(space_id: u32) -> bool {
+    space_id < SPACE_ID_TEMPORARY_MIN
+}
+
 pub fn init_statement_cache(count_max: usize, size_max: usize) {
     STATEMENT_CACHE.with(|cache| {
         assert!(cache.get().is_none(), "must be initialized only once");
@@ -133,6 +145,8 @@ pub fn init_statement_cache(count_max: usize, size_max: usize) {
             ))
         });
     });
+
+    unsafe { stmt_cache_bump_temp_cb = Some(stmt_cache_bump_temp) };
 }
 
 /// Try to finalize plans retired under the cache mutex.
