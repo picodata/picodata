@@ -2820,23 +2820,54 @@ class Cluster:
         exclude: list[Instance] | None = None,
     ):
         """
-        Waits until all instances get the same amount of buckets.
+        Wait until every instance in each tier holds an equal share of buckets.
 
-        Total amount of buckets is taken from `_pico_tier`.
-        Total amount of replicasets is taken from `_pico_replicaset`.
+        The uniform per-instance bucket count for a tier is
+        computed as `tier.bucket_count // tier.replicaset_count`.
 
-        Raises if no instances are running in the current cluster.
+        Assumes all replicasets within a tier have equal vshard weight.
+        With weighted replicasets introduced, vshard will distribute
+        buckets non-uniformly and this function will timeout.
+
+        Raises if the cluster has no instances, or any tier's bucket
+        count is not evenly divisible by its replicaset count.
+
+        For more information, see `vshard/replicaset.lua:cluster_calculate_etalon_balance`.
         """
-        assert len(self.instances) != 0, "not enough instances: expected at least one"
-        leader = Retriable().call(Cluster.leader, self)  # A leader should have most actual info.
+        if len(self.instances) == 0:
+            raise ValueError("cluster has no instances")
 
-        [[total_buckets]] = leader.sql("SELECT bucket_count FROM _pico_tier")
-        [[total_replicasets]] = leader.sql("SELECT COUNT(*) FROM _pico_replicaset")
+        # A leader should have the most actual info. Thus, let's use it.
+        leader = Retriable().call(Cluster.leader, self)
 
-        uniform_buckets = total_buckets // total_replicasets
+        # Make a "tier -> name" mapping to avoid spamming with SELECTs.
+        instance_mapping = dict(leader.sql("SELECT name, tier FROM _pico_instance"))
+
+        # Collect per-tier aggregates in one shot. Note that the inner join
+        # drops tiers with zero replicasets, which guards the division below.
+        tier_info = leader.sql("""
+            SELECT t.name, t.bucket_count, COUNT(r.name)
+            FROM _pico_tier t
+            JOIN _pico_replicaset r ON r.tier = t.name
+            GROUP BY t.name, t.bucket_count;
+        """)
+
+        # Resolve each tier's expected per-instance bucket count.
+        bucket_info = {}
+        for name, bucket_count, replicaset_count in tier_info:
+            if bucket_count % replicaset_count != 0:
+                error = f"tier {name} cannot spread buckets that are not evenly divisible"
+                hint = f"{bucket_count} buckets across {replicaset_count} replicasets"
+                raise ValueError(f"{error}: {hint}")
+            else:
+                bucket_info[name] = bucket_count // replicaset_count
+
+        # Poll each non-excluded instance against its tier's expected share.
         for instance in self.instances:
             if exclude is None or instance not in exclude:
-                self.wait_until_instance_has_this_many_active_buckets(instance, uniform_buckets)
+                tier = instance_mapping[instance.name]
+                buckets = bucket_info[tier]
+                self.wait_until_instance_has_this_many_active_buckets(instance, buckets)
 
     def wait_until_instance_has_this_many_active_buckets(
         self,
