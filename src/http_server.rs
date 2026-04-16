@@ -1125,7 +1125,7 @@ fn check_instance_ready() -> Result<(), HealthCheckError> {
 enum HealthStatusLevel {
     Healthy,
     Degraded,
-    Unhealthy,
+    Broken,
 }
 
 #[derive(Debug, Serialize)]
@@ -1164,7 +1164,7 @@ struct ClusterStatus {
 pub(crate) struct HealthStatus {
     status: HealthStatusLevel,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    reasons: Vec<SmolStr>,
+    issues: Vec<SmolStr>,
     timestamp: u64,
     uptime_seconds: u64,
     name: SmolStr,
@@ -1223,25 +1223,25 @@ fn determine_health_status(
     buckets_sending: usize,
     limbo_owner: u64,
 ) -> (HealthStatusLevel, Vec<SmolStr>) {
-    let mut reasons = Vec::new();
+    let mut issues = Vec::new();
     let mut level = HealthStatusLevel::Healthy;
 
     // Check degraded conditions first
     if buckets_sending > 0 {
         level = HealthStatusLevel::Degraded;
-        reasons.push(SmolStr::new_static("resharding in progress"));
+        issues.push(SmolStr::new_static("resharding in progress"));
     }
 
     if current_state == StateVariant::Online && target_state == StateVariant::Offline {
         level = HealthStatusLevel::Degraded;
-        reasons.push(format_smolstr!(
+        issues.push(format_smolstr!(
             "instance is transitioning Online -> Offline"
         ));
     }
 
     if limbo_owner != 0 {
         level = HealthStatusLevel::Degraded;
-        reasons.push(format_smolstr!(
+        issues.push(format_smolstr!(
             "limbo is owned by instance {}",
             limbo_owner
         ));
@@ -1249,16 +1249,16 @@ fn determine_health_status(
 
     // Check unhealthy conditions (always overrides degraded)
     if current_state != StateVariant::Online {
-        level = HealthStatusLevel::Unhealthy;
-        reasons.push(format_smolstr!("instance state is {}", current_state));
+        level = HealthStatusLevel::Broken;
+        issues.push(format_smolstr!("instance state is {}", current_state));
     }
 
     if leader_id.is_none() {
-        level = HealthStatusLevel::Unhealthy;
-        reasons.push(SmolStr::new_static("no Raft leader known"));
+        level = HealthStatusLevel::Broken;
+        issues.push(SmolStr::new_static("no Raft leader known"));
     }
 
-    (level, reasons)
+    (level, issues)
 }
 
 /// Health status endpoint - returns comprehensive health information.
@@ -1338,7 +1338,7 @@ fn http_api_health_status() -> traft::Result<HealthStatus> {
         0
     });
 
-    let (mut status_level, mut reasons) = determine_health_status(
+    let (mut status_level, mut issues) = determine_health_status(
         instance.current_state.variant,
         instance.target_state.variant,
         raft_status.leader_id,
@@ -1347,15 +1347,15 @@ fn http_api_health_status() -> traft::Result<HealthStatus> {
     );
 
     if !retrieval_errors.is_empty() {
-        status_level = HealthStatusLevel::Unhealthy;
-        reasons.extend(retrieval_errors);
+        status_level = HealthStatusLevel::Broken;
+        issues.extend(retrieval_errors);
     }
 
     let timestamp = get_unix_timestamp();
 
     Ok(HealthStatus {
         status: status_level,
-        reasons,
+        issues,
         timestamp,
         uptime_seconds,
         name: instance.name.0.clone(),
