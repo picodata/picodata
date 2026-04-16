@@ -70,7 +70,20 @@ pub fn get_build_profile() -> String {
         .to_owned()
 }
 
-/// Print warning
-pub fn warning(msg: impl AsRef<str>) {
-    println!("cargo:warning={}", msg.as_ref());
+// We want the macro to be usable as `build_rs_helpers::cargo::warning!`.
+// This can be done, but the macro also has to be exported at the crate root via `#[macro_export]`.
+// We hide the export at the crate root with `#[doc(hidden)]` and document the re-export.
+// See also https://internals.rust-lang.org/t/pub-on-macro-rules/19358/16
+/// Instruct cargo to display a warning after the build script has finished running.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cargo_warning {
+    ($fmt:literal) => {
+        let message = format!($fmt);
+        println!("cargo:warning={}", message);
+    };
 }
+
+/// Instruct cargo to display a warning after the build script has finished running.
+#[doc(inline)]
+pub use __cargo_warning as warning;

@@ -127,7 +127,7 @@ impl TarantoolBuildRoot {
                 format!("-DCMAKE_C_COMPILER_LAUNCHER={}", name),
                 format!("-DCMAKE_CXX_COMPILER_LAUNCHER={}", name),
             ]);
-            cargo::warning(format!("set '{name}' compiler launcher for 'build_http'"));
+            cargo::warning!("set '{name}' compiler launcher for 'build_http'");
         }
 
         configure_cmd.run();
@@ -171,7 +171,7 @@ impl TarantoolBuildRoot {
             // Tarantool won't let us use gcc for an asan build.
             let profile = cargo::get_build_profile();
             if profile.starts_with("asan") {
-                cargo::warning("ASan has been enabled, this may affect the performance");
+                cargo::warning!("ASan has been enabled, this may affect the performance");
                 configure_cmd.envs([("CC", "clang"), ("CXX", "clang++")]);
                 common_args.push("-DENABLE_ASAN=ON".to_string());
             }
@@ -181,9 +181,7 @@ impl TarantoolBuildRoot {
                     format!("-DCMAKE_C_COMPILER_LAUNCHER={}", name),
                     format!("-DCMAKE_CXX_COMPILER_LAUNCHER={}", name),
                 ]);
-                cargo::warning(format!(
-                    "set '{name}' compiler launcher for 'build_tarantool'"
-                ));
+                cargo::warning!("set '{name}' compiler launcher for 'build_tarantool'");
             }
 
             if use_static_build {

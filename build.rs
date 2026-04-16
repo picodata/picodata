@@ -255,7 +255,7 @@ fn check_plugins_ffi() {
     for (name, decl) in &declarations {
         let Some(def) = definitions.get(name) else {
             let line = decl.sig.ident.span().start().line;
-            cargo::warning(format!("{declarations_filename}:{line}: found a declaration for `fn {name}` which is not defined in file {definitions_filename}"));
+            cargo::warning!("{declarations_filename}:{line}: found a declaration for `fn {name}` which is not defined in file {definitions_filename}");
             std::process::exit(1);
         };
 
@@ -271,7 +271,7 @@ fn check_plugins_ffi() {
             let decl_sig = &decl.sig;
             let decl_line = decl.sig.ident.span().start().line;
             let decl_sig = quote::quote! { #decl_sig }.to_string();
-            cargo::warning(format!("Signature mismatch for `fn {name}`"));
+            cargo::warning!("Signature mismatch for `fn {name}`");
             println!(
                 "
 --> {definitions_filename}:{def_line}
@@ -303,9 +303,7 @@ fn generate_vdbe_bindings(box_flags: Vec<String>) {
             match doxygen_bindgen::transform(comment) {
                 Ok(res) => Some(res),
                 Err(err) => {
-                    cargo::warning(&format!(
-                        "Problem processing doxygen comment: {comment}\n{err}"
-                    ));
+                    cargo::warning!("Problem processing doxygen comment: {comment}\n{err}");
                     None
                 }
             }
