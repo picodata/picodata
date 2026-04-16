@@ -164,6 +164,12 @@ SELECT * FROM t INDEXED BY aaa;
 -- EXPECTED:
 1, 1, 'aaa', 2, 2, 'bbb'
 
+-- TEST: indexed-by-12
+-- SQL:
+SELECT * FROM t INDEXED BY bbb;
+-- ERROR:
+sbroad: index 'bbb' for table 't' not found
+
 -- TEST: indexed-by-13
 -- SQL:
 DELETE FROM t INDEXED BY aaa WHERE FALSE;

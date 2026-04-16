@@ -20,6 +20,9 @@ with the `YY.MINOR.MICRO` scheme.
 - `EXPLAIN (FMT)` option is now properly supported for all modes (facettes).
   It is now possible to write `explain (fmt)` to get a formatted logical plan
   or `explain (fmt, raw)` to get a formatted raw query plan.
+- [picodata#2728] Now includes the target table name when reporting a missing
+  index, making it explicit that the index-table relationship lookup failed
+  rather than a general index lookup.
 
 
 ### Fixes

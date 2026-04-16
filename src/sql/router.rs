@@ -206,7 +206,7 @@ pub fn get_index_id(index_name: &str, table_name: &str) -> Result<u32, SbroadErr
     if table.name != table_name {
         return Err(SbroadError::NotFound(
             Entity::Index,
-            index_name.to_smolstr(),
+            format_smolstr!("'{index_name}' for table '{table_name}'"),
         ));
     }
 
