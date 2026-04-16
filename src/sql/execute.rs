@@ -60,6 +60,7 @@ use sql_protocol::iterators::{MsgpackMapIterator, TupleIterator};
 use std::collections::HashMap;
 use std::io::{Cursor, Write};
 use std::sync::OnceLock;
+use std::time::Duration;
 use tarantool::error::{Error, TarantoolErrorCode};
 use tarantool::ffi::sql::Port as TarantoolPort;
 use tarantool::index::{FieldType, IndexOptions, IndexType, Part};
@@ -184,7 +185,7 @@ pub(crate) fn dml_execute<'p, R: Vshard + QueryCache>(
     runtime: &R,
     msg: &ProtocolMessage,
     port: &mut impl Port<'p>,
-    timeout: f64,
+    timeout: Duration,
 ) -> Result<(), SbroadError>
 where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,
@@ -332,7 +333,7 @@ fn dql_cache_miss_execute<'p, 'b, R: Vshard + QueryCache>(
     raft_id: u64,
     info: &impl PlanInfo,
     port: &mut impl Port<'p>,
-    timeout: f64,
+    timeout: Duration,
 ) -> Result<(), SbroadError>
 where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,
@@ -528,7 +529,7 @@ pub(crate) fn dql_execute<'p, 'b, R: Vshard + QueryCache>(
     request_id: &str,
     mut info: DQLPacketPayloadIterator<'b>,
     port: &mut impl Port<'p>,
-    timeout: f64,
+    timeout: Duration,
 ) -> Result<(), SbroadError>
 where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,
@@ -1613,7 +1614,7 @@ fn materialized_insert_from_proto<'p, 'ip, R: Vshard + QueryCache>(
     request_id: &str,
     mut iter: InsertMaterializedIterator<'ip>,
     port: &mut impl Port<'p>,
-    timeout: f64,
+    timeout: Duration,
 ) -> Result<(), SbroadError>
 where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,
@@ -1644,7 +1645,7 @@ fn materialized_update_from_proto<'p, 'ip, R: Vshard + QueryCache>(
     request_id: &str,
     mut iter: UpdateIterator<'ip>,
     port: &mut impl Port<'p>,
-    timeout: f64,
+    timeout: Duration,
 ) -> Result<(), SbroadError>
 where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,
@@ -1674,7 +1675,7 @@ fn filtered_delete_from_proto<'p, 'ip, R: Vshard + QueryCache>(
     request_id: &str,
     mut iter: DeleteFilteredIterator<'ip>,
     port: &mut impl Port<'p>,
-    timeout: f64,
+    timeout: Duration,
 ) -> Result<(), SbroadError>
 where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,

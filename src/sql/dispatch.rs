@@ -445,13 +445,13 @@ pub(crate) fn single_plan_dispatch<'p>(
     port: &mut impl Port<'p>,
     ex_plan: ExecutionPlan,
     buckets: &Buckets,
-    timeout: u64,
+    timeout: Duration,
     tier: Option<&str>,
 ) -> SqlResult<()> {
     let lua = tarantool::lua_state();
-    let deadline = Instant::now_fiber().saturating_add(Duration::from_secs(timeout));
+    let deadline = Instant::now_fiber().saturating_add(timeout);
     let replicasets = replicasets_from_buckets(&lua, buckets, tier, deadline)?;
-    let timeout = deadline.duration_since(Instant::now_fiber()).as_secs();
+    let timeout = deadline.duration_since(Instant::now_fiber());
     let query_type = ex_plan.query_type()?;
     match &query_type {
         QueryType::DQL => {
@@ -497,11 +497,13 @@ pub(crate) fn custom_plan_dispatch<'p>(
     runtime: &impl Vshard,
     ex_plan: ExecutionPlan,
     buckets: &Buckets,
-    timeout: u64,
+    timeout: Duration,
     tier: Option<&str>,
 ) -> SqlResult<()> {
     let lua = tarantool::lua_state();
+    let deadline = Instant::now_fiber().saturating_add(timeout);
     let rs_buckets = buckets_by_replicasets(&lua, buckets, runtime.bucket_count(), tier, timeout)?;
+    let timeout = deadline.duration_since(Instant::now_fiber());
     if rs_buckets.is_empty() {
         return Err(SbroadError::DispatchError(
             "No replicasets found for the given buckets".into(),
@@ -562,7 +564,7 @@ pub(crate) fn block_dispatch<'p>(
     block: BlockExecData,
     buckets: &Buckets,
     request_id: &str,
-    timeout: u64,
+    timeout: Duration,
     tier: Option<&str>,
 ) -> Result<(), SbroadError> {
     if !block.explain_options.is_empty() {
@@ -576,7 +578,7 @@ pub(crate) fn block_dispatch<'p>(
         return explain_execute_block(block, buckets.determine_exec_location(), port);
     }
 
-    let deadline = Instant::now_fiber().saturating_add(Duration::from_secs(timeout));
+    let deadline = Instant::now_fiber().saturating_add(timeout);
     match buckets {
         Buckets::All => Err(SbroadError::other(
             "cannot execute transaction on all buckets",
@@ -585,7 +587,7 @@ pub(crate) fn block_dispatch<'p>(
         Buckets::Filtered(_) => {
             let lua = tarantool::lua_state();
             let replicasets = replicasets_from_buckets(&lua, buckets, tier, deadline)?;
-            let timeout = deadline.duration_since(Instant::now_fiber()).as_secs();
+            let timeout = deadline.duration_since(Instant::now_fiber());
 
             if should_single_rs_dispatch_locally(buckets, tier, &replicasets, "leader")? {
                 return with_local_bucket_ref(timeout, "leader", || {
@@ -937,7 +939,7 @@ fn with_admin_su<T>(op: &str, f: impl FnOnce() -> tarantool::Result<T>) -> SqlRe
 }
 
 fn with_local_bucket_ref<T>(
-    timeout: u64,
+    timeout: Duration,
     read_preference: &str,
     f: impl FnOnce() -> SqlResult<T>,
 ) -> SqlResult<T> {
@@ -956,7 +958,7 @@ fn with_local_bucket_ref<T>(
         v
     });
     with_admin_su("add local bucket reference", || {
-        reference_add(rid, sid, timeout as f64)
+        reference_add(rid, sid, timeout)
     })?;
 
     if let Err(e) = with_admin_su("use local bucket reference", || reference_use(rid, sid)) {
@@ -975,7 +977,7 @@ fn execute_dql_locally<'p>(
     port: &mut impl Port<'p>,
     ex_plan: ExecutionPlan,
     buckets: &Buckets,
-    timeout: u64,
+    timeout: Duration,
     read_preference: &str,
 ) -> SqlResult<()> {
     let start = Instant::now_fiber();
@@ -1005,7 +1007,7 @@ fn port_write_local_dml_response<'p>(port: &mut impl Port<'p>, changed: u64) -> 
 fn execute_dml_locally<'p>(
     port: &mut impl Port<'p>,
     ex_plan: ExecutionPlan,
-    timeout: u64,
+    timeout: Duration,
 ) -> SqlResult<()> {
     let start = Instant::now_fiber();
     let request = build_dml_request(ex_plan)?;
@@ -1111,7 +1113,7 @@ fn single_plan_dispatch_dql<'lua, 'p>(
     ex_plan: ExecutionPlan,
     replicasets: &[String],
     max_rows: u64,
-    timeout: u64,
+    timeout: Duration,
     tier: Option<&str>,
     read_preference: String,
     do_two_step: bool,
@@ -1164,7 +1166,7 @@ fn custom_plan_dispatch_dql<'lua, 'p>(
     ex_plan: ExecutionPlan,
     rs_buckets: Vec<(String, Vec<u64>)>,
     max_rows: u64,
-    timeout: u64,
+    timeout: Duration,
     tier: Option<&str>,
     read_preference: String,
     do_two_step: bool,
@@ -1403,7 +1405,7 @@ fn buckets_by_replicasets(
     buckets: &Buckets,
     max_buckets: u64,
     tier: Option<&str>,
-    timeout: u64,
+    timeout: Duration,
 ) -> SqlResult<Vec<(String, Vec<u64>)>> {
     enum BucketIter<'a> {
         All(std::ops::RangeInclusive<u64>),
@@ -1436,7 +1438,7 @@ fn buckets_by_replicasets(
         }
     };
     let mut map: AHashMap<String, Vec<u64>> = AHashMap::new();
-    let deadline = Instant::now_fiber().saturating_add(Duration::from_secs(timeout));
+    let deadline = Instant::now_fiber().saturating_add(timeout);
     for id in iter {
         let rs: String = bucket_into_rs(lua, id, tier, deadline).map_err(|e| {
             SbroadError::DispatchError(format_smolstr!(
@@ -1620,7 +1622,7 @@ fn single_plan_dispatch_dml<'lua, 'p>(
     lua: &'lua LuaThread,
     ex_plan: ExecutionPlan,
     replicasets: &[String],
-    timeout: u64,
+    timeout: Duration,
     tier: Option<&str>,
 ) -> SqlResult<()> {
     // This option is available only for DQL.
@@ -1648,7 +1650,7 @@ fn custom_plan_dispatch_dml<'lua, 'p>(
     lua: &'lua LuaThread,
     ex_plan: ExecutionPlan,
     rs_buckets: Vec<(String, Vec<u64>)>,
-    timeout: u64,
+    timeout: Duration,
     tier: Option<&str>,
 ) -> SqlResult<()> {
     let read_preference = ReadPreference::default().to_string();

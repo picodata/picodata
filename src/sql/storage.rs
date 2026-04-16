@@ -24,6 +24,7 @@ use sql::ir::bucket::Buckets;
 use sql::ir::helpers::RepeatableState;
 use sql::ir::options::Options;
 use std::cell::{Cell, OnceCell, RefCell};
+use std::time::Duration;
 
 use crate::metrics::{
     report_storage_cache_hit, report_storage_cache_miss, STORAGE_CACHE_STATEMENTS_ADDED_TOTAL,
@@ -791,7 +792,7 @@ impl StorageRuntime {
         &self,
         package: ProtocolMessage,
         port: &mut impl Port<'p>,
-        timeout: f64,
+        timeout: Duration,
     ) -> Result<(), SbroadError> {
         match package.msg_type {
             ProtocolMessageType::Dql => {

@@ -2669,7 +2669,7 @@ fn report(msg: &str, e: Error) -> i32 {
 }
 
 struct ExecArgs {
-    timeout: f64,
+    timeout: Duration,
     need_ref: bool,
     sid: SmallVec<[u8; 36]>,
     rid: i64,
@@ -2700,7 +2700,12 @@ impl<'de> Decode<'de> for ExecArgs {
         // We expect session id to be a text representation of UUID.
         let mut sid = smallvec::SmallVec::<[u8; 36]>::new();
         sid.extend_from_slice(args.sid.as_bytes());
-        let timeout = args.timeout;
+        let timeout = Duration::try_from_secs_f64(args.timeout).map_err(|e| {
+            TarantoolError::other(format!(
+                "Failed to decode timeout argument, msgpack {}: {e}",
+                escape_bytes(data),
+            ))
+        })?;
         let rid = args.rid;
         let need_ref = args.need_ref;
 
@@ -2732,10 +2737,7 @@ unsafe fn proc_sql_execute_impl(args: ExecArgs, port: &mut PicoPortC) -> ::std::
         .map(|node| node.is_readonly())
         .unwrap_or(false);
     if !is_replica {
-        let timeout = match Duration::try_from_secs_f64(args.timeout) {
-            Ok(v) => v,
-            Err(e) => return report("Invalid timeout value: ", Error::Other(e.into())),
-        };
+        let timeout = args.timeout;
         // Wait for vshard to be configured by `proc_sharding`.
         // During node restart, `proc_sql_execute` can be called before the governor runs `proc_sharding`.
         if !crate::rpc::sharding::wait_vshard_configured(timeout) {
@@ -2829,7 +2831,7 @@ pub unsafe extern "C" fn proc_sql_execute(
                 );
             }
 
-            if let Err(e) = crate::tarantool::box_wait_rw(args.timeout) {
+            if let Err(e) = crate::tarantool::box_wait_rw(args.timeout.as_secs_f64()) {
                 return report("instance is read-only: ", e.into());
             }
         }
@@ -3079,7 +3081,7 @@ fn do_dml_on_global_tbl_no_retry(
     // CAS must be done under admin, as we access system spaces
     // there.
     with_su(ADMIN_ID, || -> traft::Result<ConsumerResult> {
-        let timeout = Duration::from_secs(DEFAULT_QUERY_TIMEOUT);
+        let timeout = DEFAULT_QUERY_TIMEOUT;
         let mut deadline = Instant::now_fiber().saturating_add(timeout);
         if let Some(override_deadline) = override_deadline {
             deadline = override_deadline.min(deadline);
