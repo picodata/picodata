@@ -2884,10 +2884,18 @@ class Cluster:
                     continue
                 has_rebalancer = j.eval(
                     """
+                    local unknown_buckets = 0
                     for _, router in pairs(pico.router) do
                         -- The discovery fiber is responsible for updating the
                         -- router's bucket to replicaset mapping cache.
                         router:discovery_wakeup()
+                        unknown_buckets = unknown_buckets + router:info().bucket.unknown
+                    end
+
+                    --- Nudge router discovery forward; don't consider rebalance complete
+                    --- until all routers have discovered their bucket assignments.
+                    if unknown_buckets ~= 0 then
+                        return false
                     end
 
                     -- The recovery and gc fibers handle any buckets left in a transitionary state

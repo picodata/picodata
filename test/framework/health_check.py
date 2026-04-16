@@ -65,7 +65,6 @@ class HealthCheck:
         try:
             self._wait_governor_finish_activities()
             self._ensure_available_nodes_are_online()
-            self._wait_vshard_discovery_complete()
             self._wait_cluster_buckets_are_balanced()
             self._verify_common_distributed_operations()
         except ProcessDead as exc:
@@ -102,29 +101,6 @@ class HealthCheck:
                     error = "invalid instance state"
                     hint = f"expected 'Online', got '{current_state}'"
                     raise AssertionError(f"{error}: {hint}")
-
-    def _wait_vshard_discovery_complete(self) -> None:
-        """Wait until vshard router discovery is complete on all non-excluded
-        instances. Without this, distributed SQL may route queries to wrong
-        replicasets if bucket discovery is still in progress."""
-        for instance in self.cluster.instances:
-            if instance in self.exclude:
-                continue
-
-            def check_discovery(i: Instance = instance) -> None:
-                unknown = i.eval(
-                    """
-                    local total_unknown = 0
-                    for _, router in pairs(pico.router) do
-                        router:discovery_wakeup()
-                        total_unknown = total_unknown + router:info().bucket.unknown
-                    end
-                    return total_unknown
-                    """
-                )
-                assert unknown == 0, f"vshard discovery not complete on {i.name}: {unknown} unknown buckets"
-
-            Retriable().call(check_discovery)
 
     def _wait_cluster_buckets_are_balanced(self) -> None:
         self.cluster.wait_until_buckets_balanced(exclude=self.exclude)
