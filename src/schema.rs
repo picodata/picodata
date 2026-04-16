@@ -2626,7 +2626,7 @@ pub fn choose_table_tier(
 /// Temporary spaces need a special range of ids to avoid conflicts with
 /// spaces defined on replicas. This value is defined in tarantool, see
 /// <https://git.picodata.io/picodata/tarantool/-/blob/5c3c8ed32c7a9c84a0e86c8453269f0925ce63ed/src/box/schema_def.h#L67>
-const SPACE_ID_TEMPORARY_MIN: SpaceId = 1 << 30;
+pub(crate) const SPACE_ID_TEMPORARY_MIN: SpaceId = 1 << 30;
 
 /// Waits for a pending ddl to be either `Committed` or `Aborted` by the governor.
 ///

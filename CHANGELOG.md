@@ -22,6 +22,9 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed the `NO_ROUTE_TO_BUCKET` error that occurred when sending a request to
   the single node of a replicaset during its restart. This error is now retried
   by the router.
+- [picodata#2842] Fixed the `schema version has changed: need to re-compile SQL statement`
+  error, which could occur when you execute multiple DQL queries due to
+  yield during cache eviction.
 
 ## [26.1.2] - 2026-04-14 
 
