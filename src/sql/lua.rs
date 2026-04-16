@@ -578,7 +578,7 @@ pub(crate) fn lua_single_plan_dispatch<'lua, T>(
     lua: &'lua LuaThread,
     args: T,
     replicasets: &[String],
-    timeout: u64,
+    timeout: Duration,
     tier: Option<&str>,
     read_preference: String,
     do_two_step: bool,
@@ -595,7 +595,7 @@ where
     let call_res = func.into_call_with_args::<LuaTable<_>, _>((
         args,
         replicasets,
-        timeout,
+        timeout.as_secs_f64(),
         tier,
         read_preference,
         do_two_step,
@@ -613,7 +613,7 @@ where
 pub(crate) fn lua_custom_plan_dispatch<'lua, T>(
     lua: &'lua LuaThread,
     args: T,
-    timeout: u64,
+    timeout: Duration,
     tier: Option<&str>,
     read_preference: String,
     do_two_step: bool,
@@ -629,7 +629,7 @@ where
 
     let call_res = func.into_call_with_args::<IbufTable, _>((
         args,
-        timeout,
+        timeout.as_secs_f64(),
         tier,
         read_preference,
         do_two_step,
@@ -702,11 +702,15 @@ fn bucket_into_rs_impl(lua: &LuaThread, bucket_id: u64, tier: Option<&str>) -> R
     }
 }
 
-pub(crate) fn reference_add(rid: i64, sid: &str, timeout: f64) -> Result<()> {
+pub(crate) fn reference_add(rid: i64, sid: &str, timeout: Duration) -> Result<()> {
     let lua = tarantool::lua_state();
     let func = storage_get_func(&lua, "add")?;
 
-    match func.call_with_args::<(Option<bool>, Option<VshardError>), _>((rid, sid, timeout)) {
+    match func.call_with_args::<(Option<bool>, Option<VshardError>), _>((
+        rid,
+        sid,
+        timeout.as_secs_f64(),
+    )) {
         Ok((Some(_), _)) => Ok(()),
         Ok((None, Some(err))) => Err(err.to_tarantool_error().into()),
         Ok((None, None)) => Err(TarantoolError::new(
@@ -763,12 +767,17 @@ pub(crate) fn lua_query_metadata<'lua>(
     instance: &str,
     request_id: &str,
     plan_id: u64,
-    timeout: f64,
+    timeout: Duration,
 ) -> Result<Rc<IbufTable<'lua>>> {
     let func = dispatch_get_func(lua, "query_metadata")?;
 
     let call_res = func.into_call_with_args::<IbufTable, _>((
-        tier, replicaset, instance, request_id, plan_id, timeout,
+        tier,
+        replicaset,
+        instance,
+        request_id,
+        plan_id,
+        timeout.as_secs_f64(),
     ));
     match call_res {
         Ok(table) => Ok(Rc::new(table)),

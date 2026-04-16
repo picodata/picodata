@@ -16,6 +16,7 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::OnceLock;
+use std::time::Duration;
 
 use crate::errors::SbroadError;
 use crate::executor::ir::ExecutionPlan;
@@ -69,7 +70,7 @@ pub trait Metadata: Sized {
     fn function(&self, fn_name: &str) -> Result<&Function, SbroadError>;
 
     /// Get the wait timeout for the query execution.
-    fn waiting_timeout(&self) -> u64;
+    fn waiting_timeout(&self) -> Duration;
 
     /// Get the name of the sharding column (usually it is `bucket_id`).
     fn sharding_column(&self) -> &str;

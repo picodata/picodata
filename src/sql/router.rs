@@ -26,6 +26,7 @@ use tarantool::session::with_su;
 
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::time::Duration;
 
 use crate::audit;
 use crate::catalog::pico_bucket::DEFAULT_BUCKET_ID_COLUMN_NAME;
@@ -668,8 +669,8 @@ impl Vshard for &Tier {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(clippy::module_name_repetitions)]
 pub struct RouterMetadata {
-    /// Execute response waiting timeout in seconds.
-    pub waiting_timeout: u64,
+    /// Execute response waiting timeout.
+    pub waiting_timeout: Duration,
 
     /// Query cache capacity.
     pub cache_capacity: usize,
@@ -687,7 +688,7 @@ impl Default for RouterMetadata {
     }
 }
 
-pub const DEFAULT_QUERY_TIMEOUT: u64 = 360;
+pub const DEFAULT_QUERY_TIMEOUT: Duration = Duration::from_secs(360);
 
 impl RouterMetadata {
     #[must_use]
@@ -806,8 +807,8 @@ impl Metadata for RouterMetadata {
         }
     }
 
-    /// Get response waiting timeout for executor
-    fn waiting_timeout(&self) -> u64 {
+    /// Get response waiting timeout for executor.
+    fn waiting_timeout(&self) -> Duration {
         self.waiting_timeout
     }
 

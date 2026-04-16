@@ -6,6 +6,7 @@ use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::time::Duration;
 
 use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use crate::errors::{Entity, SbroadError};
@@ -154,8 +155,8 @@ impl Metadata for RouterConfigurationMock {
         }
     }
 
-    fn waiting_timeout(&self) -> u64 {
-        0
+    fn waiting_timeout(&self) -> Duration {
+        Duration::default()
     }
 
     fn sharding_column(&self) -> &str {
