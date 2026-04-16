@@ -8,6 +8,13 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [26.1.3] - Unreleased
+
+### Breaking changes
+
+- Rename fields in `/api/v1/health/status` response: `reasons` to `issues`,
+  status level `unhealthy` to `broken`.
+
 ## [26.1.2] - 2026-04-14 
 
 ### Changed
