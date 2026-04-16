@@ -50,6 +50,10 @@ with the `YY.MINOR.MICRO` scheme.
 - Backup operation will now be automatically aborted if there are offline instances.
   This prevents cluster being locked in a readonly state.
 
+### Breaking changes
+
+- Rename fields in `/api/v1/health/status` response: `reasons` to `issues`,
+  status level `unhealthy` to `broken`.
 
 ## [26.1.1] - 2026-03-24
 
