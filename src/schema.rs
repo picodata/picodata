@@ -2592,8 +2592,8 @@ pub fn choose_table_tier(
         Some(tier) => Ok(tier.to_smolstr()),
         None => {
             // unspecified, should use the default tier
-            if let Some(default_tier) = topology_cache.default_tier() {
-                Ok(default_tier.name.clone())
+            if let Some(name) = topology_cache.default_tier_name() {
+                Ok(name.clone())
             } else {
                 // this should not happen unless user executes DML on _pico_tier
                 Err(CreateTableError::UnknownDefaultTier.into())

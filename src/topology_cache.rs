@@ -425,6 +425,9 @@ pub struct TopologyCacheMutable {
     /// It may not be known for a short moment but once it's known it's always known.
     this_tier: OnceCell<Tier>,
 
+    /// Name of the cluster's default tier.
+    default_tier_name: Option<SmolStr>,
+
     /// FIXME: there's space for optimization here. We use `String` as key which
     /// requires additional memory allocation + cache misses. This would be
     /// improved if we used a `Uuid` type, but there's a problem with that,
@@ -448,8 +451,6 @@ pub struct TopologyCacheMutable {
     replicaset_uuid_by_name: HashMap<SmolStr, SmolStr>,
 
     tiers_by_name: HashMap<SmolStr, Tier>,
-    /// Info about the cluster's default tier.
-    default_tier: Option<Tier>,
 
     /// The meaning of the data is such:
     /// ```ignore
@@ -475,7 +476,7 @@ impl TopologyCacheMutable {
         let mut this_instance = None;
         let mut this_replicaset = None;
         let mut this_tier = None;
-        let mut default_tier = None;
+        let mut default_tier_name = None;
 
         let mut instances_by_name = HashMap::default();
         let mut instance_name_by_uuid = HashMap::default();
@@ -532,8 +533,8 @@ impl TopologyCacheMutable {
                     this_tier = Some(tier.clone());
                 }
             }
-            if tier.is_default.is_some_and(|v| v) {
-                default_tier = Some(tier.clone());
+            if tier.is_default == Some(true) {
+                default_tier_name = Some(tier.name.clone());
             }
 
             buckets.set_total_bucket_count(&tier.name, tier.bucket_count);
@@ -585,7 +586,7 @@ impl TopologyCacheMutable {
             replicasets_by_uuid,
             replicaset_uuid_by_name,
             tiers_by_name,
-            default_tier,
+            default_tier_name,
             service_routes,
             buckets,
         })
@@ -737,8 +738,8 @@ impl TopologyCacheMutable {
     /// Picodata tries to ensure that the default tier is always known, but DML to `_pico_tier` can break this invariant.
     /// This function returns an `Option` to account for that situation
     #[inline(always)]
-    pub fn default_tier(&self) -> Option<&Tier> {
-        self.default_tier.as_ref()
+    pub fn default_tier_name(&self) -> Option<&SmolStr> {
+        self.default_tier_name.as_ref()
     }
 
     pub fn tier_by_name(&self, name: &str) -> Result<&Tier> {
@@ -954,14 +955,8 @@ impl TopologyCacheMutable {
                 }
             }
 
-            if new.is_default.is_some_and(|v| v) {
-                let old_cached = self.default_tier.replace(new.clone());
-                // Do not assert if there was no default tier before.
-                // This prevents the migration fixing the "there ends up being no default tier" from triggering the assert
-                // The migration was implemented in https://git.picodata.io/core/picodata/-/merge_requests/2783
-                if old_cached.is_some() {
-                    debug_assert_eq!(old_cached, old);
-                }
+            if new.is_default == Some(true) {
+                self.default_tier_name = Some(new.name.clone());
             }
 
             // Create new tier or update old tier
@@ -969,9 +964,9 @@ impl TopologyCacheMutable {
             debug_assert_eq!(old_cached, old);
         } else if let Some(old) = old {
             // Delete tier
-            if old.is_default.is_some_and(|v| v) {
-                let old_cached = self.default_tier.take();
-                debug_assert_eq!(old_cached.as_ref(), Some(&old));
+            if old.is_default == Some(true) {
+                self.default_tier_name = None;
+                crate::warn_or_panic!("default tier '{}' was removed", old.name);
             }
 
             let old_cached = self.tiers_by_name.remove(&old.name);
