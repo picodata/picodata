@@ -19,7 +19,7 @@ use crate::topology_cache::TopologyCacheRef;
 use crate::traft::node;
 use ahash::{AHashMap, AHashSet};
 use rmp::decode::{read_array_len, read_bool, read_int};
-use rmp::encode::{write_array_len, write_uint};
+use rmp::encode::write_uint;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::engine::helpers::vshard::prepare_rs_to_ir_map;
@@ -1329,22 +1329,10 @@ fn port_write_tuples<'tuples, 'p>(
 fn port_append_mp<'p>(port: &mut impl Port<'p>, mp: &[u8], row_len: u32) -> IoResult<()> {
     let mut cur = Cursor::new(mp);
     let len = read_array_len(&mut cur).map_err(IoError::other)?;
-    if len > row_len {
+    if len != row_len {
         return Err(IoError::other(format!(
-            "Expected array of length at most {row_len}, got {len}",
+            "Expected array of length {row_len}, got {len}",
         )));
-    }
-    if len < row_len {
-        // When msgpack has been formed from Lua dump callback in the
-        // executor's port, its last NULLs are omitted. We will need
-        // to append nils to the end of the array.
-        let extra_nils = row_len - len;
-        let mut buf = Vec::with_capacity(5 + mp.len() + extra_nils as usize);
-        write_array_len(&mut buf, len + extra_nils).map_err(IoError::other)?;
-        buf.extend_from_slice(&mp[cur.position() as usize..]);
-        buf.resize(buf.len() + extra_nils as usize, 0xc0); // nils
-        port.add_mp(buf.as_slice());
-        return Ok(());
     }
     port.add_mp(mp);
     Ok(())

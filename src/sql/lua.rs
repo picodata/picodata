@@ -233,6 +233,12 @@ pub(crate) unsafe extern "C" fn execute_miss_dump_lua(
     lua::lua_settable(l, -3);
 }
 
+extern "C-unwind" {
+    /// Push `NULL` onto the stack
+    /// *[-0, +1, -]*
+    fn luaL_pushnull(l: *mut lua_State);
+}
+
 type Result<T> = std::result::Result<T, ::tarantool::error::Error>;
 
 /// Recursively read a MessagePack value from the given cursor and push it to the provided Lua
@@ -241,7 +247,10 @@ type Result<T> = std::result::Result<T, ::tarantool::error::Error>;
 unsafe fn push_mp_value_to_lua(l: *mut lua_State, cur: &mut Cursor<&[u8]>) -> Result<()> {
     let marker = read_marker(cur)?;
     match marker {
-        Marker::Null => lua::lua_pushnil(l),
+        // Use NULL (Tarantool's null) instead of Lua nil, because assigning
+        // nil to a table index removes the key. This would silently drop trailing
+        // nulls in result rows when the caller does lua_rawseti(table, i, value).
+        Marker::Null => luaL_pushnull(l),
         Marker::True => lua::lua_pushboolean(l, 1),
         Marker::False => lua::lua_pushboolean(l, 0),
 

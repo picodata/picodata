@@ -611,6 +611,25 @@ def test_input_with_delimiter(cluster: Cluster):
     cli.expect_exact("Delimiter changed to ';'")
 
 
+def test_cli_does_not_drop_trailing_nulls(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=True)
+
+    cli = pexpect.spawn(
+        cwd=i1.instance_dir,
+        command=i1.executable.command,
+        args=["admin", "./admin.sock"],
+        encoding="utf-8",
+        timeout=CLI_TIMEOUT,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact("(admin) sql> ")
+    cli.sendline("SELECT NULL, 1, NULL, NULL;")
+    cli.expect_exact("| nil   | 1     | nil   | nil   |")
+
+    cli.expect_exact("(admin) sql> ")
+
+
 def test_cat_file_to_picodata_admin_stdin(cluster: Cluster):
     picodata_executable = Executable.current()
 
