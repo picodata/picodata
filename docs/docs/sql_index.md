@@ -82,6 +82,7 @@ article.md-typeset.md-typeset ul {
 * [DISTINCT](reference/sql/select.md#params)
 * [DML](reference/sql/dml.md)
 * [DOUBLE](reference/sql_types.md#double)
+* [DO](reference/sql/transactions.md)
 * [DQL](reference/sql/dql.md)
 * [DROP INDEX](reference/sql/drop_index.md)
 * [DROP PLUGIN](reference/sql/drop_plugin.md)
