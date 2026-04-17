@@ -12,17 +12,27 @@ ifeq ($(PYTEST_NUMPROCESSES),)
 PYTEST_NUMPROCESSES = --numprocesses=auto
 endif
 
-# It should be possible to keep the flags to the bare minimum.
-# Hence, we don't use `override` here but add it to all build prerequisites.
-CARGO_FLAGS := --features webui --workspace
-
 PYTEST_FLAGS :=
 
-# For clarity and an ability to turn it off without overriding whole CARGO_FLAGS
-ERROR_INJECTION := --features error_injection
-
-# Devs may want to drop this flag using make LOCKED=
+# Devs may want to drop this flag using `make LOCKED=`.
 LOCKED := --locked
+# Sometimes we may not want to build the whole workspace.
+# For instance, we've seen some problems with `cargo build --workspace --tests`.
+WORKSPACE := --workspace
+
+# Give a chance to tune features without overriding the whole CARGO_FLAGS.
+WEBUI := --features=webui
+ERROR_INJECTION := --features=error_injection
+CARGO_FEATURES := $(ERROR_INJECTION) $(WEBUI)
+
+# XXX: It should be possible to keep the flags to the bare minimum.
+# Hence, we don't use `override` here but add it to all build prerequisites.
+CARGO_FLAGS := $(LOCKED) $(WORKSPACE) $(CARGO_FEATURES)
+
+# XXX: Specialized CARGO_TARGET_DIR values for ASan & code coverage.
+# We don't want to overwrite a regular build with these.
+TARGET_DIR_ASAN := target/asan-dev
+TARGET_DIR_COV := target/cov
 
 .PHONY: default
 default: ;
@@ -49,7 +59,7 @@ build-plug-wrong-version:
 build: tarantool-patch
 	if test -f ~/.cargo/env; then . ~/.cargo/env; fi && \
 		$(CARGO_ENV) \
-		cargo build $(LOCKED) $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) $(CARGO_FLAGS_EXTRA)
+		cargo build $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) $(CARGO_FLAGS_EXTRA)
 
 # There are 4 build options. 3 for each build profile (dev, fast-release, release).
 # They are intended to be consumed by tests/local development.
@@ -58,20 +68,20 @@ build: tarantool-patch
 .PHONY: build-dev
 build-dev: override CARGO_FLAGS += $(ERROR_INJECTION)
 build-dev: override CARGO_FLAGS += --profile=dev
-build-dev: build-plug-wrong-version
 build-dev: build
+build-dev: build-plug-wrong-version
 
 .PHONY: build-fast-release
 build-fast-release: override CARGO_FLAGS += $(ERROR_INJECTION)
 build-fast-release: override CARGO_FLAGS += --profile=fast-release
-build-fast-release: build-plug-wrong-version
 build-fast-release: build
+build-fast-release: build-plug-wrong-version
 
 .PHONY: build-release
 build-release: override CARGO_FLAGS += $(ERROR_INJECTION)
 build-release: override CARGO_FLAGS += --profile=release
-build-release: build-plug-wrong-version
 build-release: build
+build-release: build-plug-wrong-version
 
 # Ignore CARGO_FLAGS defaults from the above by using `=` instead of `+=`.
 # We only use `override` for the mandatory flags, because:
@@ -82,6 +92,7 @@ build-release-pkg: CARGO_FLAGS = # reset the defaults
 build-release-pkg: CARGO_FLAGS += $(if $(USE_DYNAMIC_BUILD),--features dynamic_build)
 build-release-pkg: override CARGO_FLAGS += -p picodata --features webui
 build-release-pkg: override CARGO_FLAGS += --profile=release
+build-release-pkg: override CARGO_FLAGS += $(LOCKED)
 build-release-pkg: build
 
 # We have to specify target to disable ASan for proc macros, build.rs, etc.
@@ -93,7 +104,7 @@ DEFAULT_TARGET := $(shell cargo -vV | sed -n 's|host: ||p')
 # TODO: drop nightly features once sanitizers are stable.
 .PHONY: build-asan-dev
 build-asan-dev: override CARGO_ENV = RUSTC_BOOTSTRAP=1
-build-asan-dev: override CARGO_ENV += CARGO_TARGET_DIR=target/asan-dev
+build-asan-dev: override CARGO_ENV += CARGO_TARGET_DIR=$(TARGET_DIR_ASAN)
 build-asan-dev: override CARGO_ENV += RUSTFLAGS='-Zsanitizer=address --cfg asan'
 build-asan-dev: override CARGO_ENV += RUSTDOCFLAGS='-Zsanitizer=address --cfg asan'
 build-asan-dev: override CARGO_FLAGS += --target=$(DEFAULT_TARGET)
@@ -109,10 +120,9 @@ build-asan-dev: build
 .PHONY: test-rs
 test-rs:
 	cargo test \
-	  $(LOCKED) $(MAKE_JOBSERVER_ARGS) \
+	  $(MAKE_JOBSERVER_ARGS) \
 	  $(filter-out --workspace, $(CARGO_FLAGS)) \
 	  $(filter-out --workspace, $(CARGO_FLAGS_EXTRA)) \
-	  $(ERROR_INJECTION) \
 	  --workspace \
 	  --exclude sql-planner \
 	  --exclude tarantool \
@@ -120,10 +130,9 @@ test-rs:
 	  --tests
 
 	cargo test \
-	  $(LOCKED) $(MAKE_JOBSERVER_ARGS) \
+	  $(MAKE_JOBSERVER_ARGS) \
 	  $(filter-out --workspace, $(CARGO_FLAGS)) \
 	  $(filter-out --workspace, $(CARGO_FLAGS_EXTRA)) \
-	  $(ERROR_INJECTION) \
 	  --workspace \
 	  --exclude sql-planner \
 	  --exclude tarantool \
@@ -149,24 +158,27 @@ lint-rs:
 
 	RUSTFLAGS="-Dwarnings -Adeprecated" \
 	  cargo check \
-	    $(LOCKED) $(MAKE_JOBSERVER_ARGS) \
+	    $(MAKE_JOBSERVER_ARGS) \
 	    $(filter-out --workspace, $(CARGO_FLAGS)) \
+	    $(filter-out --workspace, $(CARGO_FLAGS_EXTRA)) \
 	    --workspace \
 	    --benches \
 	    --tests
 
 	cargo clippy --version
 	cargo clippy \
-	  $(LOCKED) $(MAKE_JOBSERVER_ARGS) \
+	  $(MAKE_JOBSERVER_ARGS) \
 	  $(filter-out --workspace, $(CARGO_FLAGS)) \
+	  $(filter-out --workspace, $(CARGO_FLAGS_EXTRA)) \
 	  --workspace \
 	  --features=load_test,error_injection,demo \
 	  -- --deny clippy::all --no-deps
 
 	RUSTDOCFLAGS="-Dwarnings -Arustdoc::private_intra_doc_links" \
 	  cargo doc \
-	    $(LOCKED) $(MAKE_JOBSERVER_ARGS) \
+	    $(MAKE_JOBSERVER_ARGS) \
 	    $(filter-out --workspace, $(CARGO_FLAGS)) \
+	    $(filter-out --workspace, $(CARGO_FLAGS_EXTRA)) \
 	    --workspace \
 	    --document-private-items \
 	    --no-deps
@@ -202,6 +214,58 @@ benchmark:
 .PHONY: flamegraph
 flamegraph:
 	PICODATA_LOG_LEVEL=warn poetry run pytest test/manual/test_benchmark.py --with-flamegraph
+
+
+.PHONY: coverage-test-rs
+coverage-test-rs: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-test-rs:
+	tools/coverage.py run $(MAKE) test-rs
+
+.PHONY: coverage-test-py
+coverage-test-py: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-test-py:
+	tools/coverage.py run $(MAKE) test-py
+
+.PHONY: coverage-build
+coverage-build: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-build:
+	# Build everything in advance.
+	tools/coverage.py run $(MAKE) build CARGO_FLAGS_EXTRA="--lib --bins --tests"
+	tools/coverage.py run $(MAKE) build-plug-wrong-version
+
+.PHONY: coverage-report
+coverage-report: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-report:
+	tools/find-executables.sh $(CARGO_TARGET_DIR) > $(CARGO_TARGET_DIR)/binaries
+	tools/coverage.py report --input-objects=$(CARGO_TARGET_DIR)/binaries --open
+
+.PHONY: coverage-clean
+coverage-clean: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-clean:
+	tools/coverage.py clean
+
+.PHONY: coverage-purge
+coverage-purge: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-purge:
+	rm -rf $(CARGO_TARGET_DIR)
+
+# XXX: this target is for debug purposes (do not use in CI).
+.PHONY: coverage-demo
+coverage-demo: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-demo:
+	$(MAKE) coverage-build
+
+	# Drop any possible coverage data for `build.rs`.
+	$(MAKE) coverage-clean
+
+	# Note that it's better to first run rust-based tests,
+	# then the python-based ones to prevent coverage loss
+	# due to accidental rebuilds changing signatures of bins.
+	$(MAKE) coverage-test-rs
+	$(MAKE) coverage-test-py
+
+	$(MAKE) coverage-report
+
 
 .PHONY: k6
 k6:

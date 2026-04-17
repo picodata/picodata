@@ -15,7 +15,6 @@ from framework.log import log
 from framework.util import (
     copy_plugin_library,
     eprint,
-    is_in_ci,
     should_err_on_missing_binaries,
     should_perform_cargo_build,
 )
