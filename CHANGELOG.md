@@ -23,6 +23,8 @@ with the `YY.MINOR.MICRO` scheme.
 - [picodata#2728] Now includes the target table name when reporting a missing
   index, making it explicit that the index-table relationship lookup failed
   rather than a general index lookup.
+- Avoid an extra subplan clone in SQL planner single-replicaset dispatch,
+  reducing unnecessary work when preparing vshard routing.
 
 
 ### Fixes

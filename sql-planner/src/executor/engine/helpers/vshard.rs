@@ -155,15 +155,19 @@ pub fn prepare_rs_to_ir_map(
     let mut extra_plan_id = None;
     if let Some((last, other)) = rs_bucket_vec.split_last() {
         let mut sae_info = sub_plan.get_ir_plan().serialize_as_empty_info()?;
-        let mut other_plan = sub_plan.clone();
 
-        if let Some(info) = sae_info.as_mut() {
-            apply_serialize_as_empty_opcode(&mut other_plan, info)?;
-            other_plan.salt_plan_id()?;
-            // It's important to use `get_plan_id` because of the plan's metadata.
-            extra_plan_id = Some(other_plan.get_plan_id()?);
-        }
-        if let Some((other_last, other_other)) = other.split_last() {
+        if !other.is_empty() {
+            let mut other_plan = sub_plan.clone();
+            if let Some(info) = sae_info.as_mut() {
+                apply_serialize_as_empty_opcode(&mut other_plan, info)?;
+                other_plan.salt_plan_id()?;
+                // It's important to use `get_plan_id` because of the plan's metadata.
+                extra_plan_id = Some(other_plan.get_plan_id()?);
+            }
+
+            let (other_last, other_other) = other
+                .split_last()
+                .expect("other replicasets must be non-empty");
             for (rs, bucket_ids) in other_other {
                 let mut rs_plan = other_plan.clone();
                 filter_vtable(&mut rs_plan, bucket_ids)?;
