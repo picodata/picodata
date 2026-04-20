@@ -325,7 +325,7 @@ pub fn main(args: args::Admin) -> ! {
     // (read timeouts don't work, SIGINT and SIGTERM are not handled correctly)
     // See https://git.picodata.io/core/picodata/-/merge_requests/1939 and https://git.picodata.io/core/picodata/-/issues/1206 for more context
     if let Err(err) = admin_repl(args) {
-        eprintln!("{err}");
+        crate::eprintln_buffered!("{err}");
         std::process::exit(1);
     }
     std::process::exit(0)

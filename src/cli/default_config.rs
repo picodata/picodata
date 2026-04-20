@@ -4,7 +4,7 @@ use crate::config::PicodataConfig;
 
 pub fn main(args: args::ConfigDefault) -> ! {
     if let Err(e) = main_impl(args) {
-        eprintln!("{e}");
+        crate::eprintln_buffered!("{e}");
         std::process::exit(1);
     }
 

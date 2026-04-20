@@ -77,7 +77,7 @@ fn shutdown_instances(cluster_meta: &[Meta]) -> Result<()> {
                 println!("Killed Instance '{node_name}' successfully after shutdown request.");
             }
             Err(e) => {
-                eprintln!("Instance '{node_name}': waitpid syscall failed ({e}).");
+                crate::eprintln_buffered!("Instance '{node_name}': waitpid syscall failed ({e}).");
             }
         }
     }
@@ -138,12 +138,16 @@ fn reap_children(cluster_meta: &[Meta]) -> Result<()> {
                     WaitStatus::Exited(_, status) => {
                         let node_name = instance_name
                             .expect("waitpid with wait status should always have a pid");
-                        eprintln!("Instance {node_name} exited with status {status}.");
+                        crate::eprintln_buffered!(
+                            "Instance {node_name} exited with status {status}."
+                        );
                     }
                     WaitStatus::Signaled(_, signal, _) => {
                         let node_name = instance_name
                             .expect("waitpid with wait status should always have a pid");
-                        eprintln!("Instance {node_name} killed by {signal} signal.");
+                        crate::eprintln_buffered!(
+                            "Instance {node_name} killed by {signal} signal."
+                        );
                     }
                     WaitStatus::StillAlive => break,
                     _ => continue,
@@ -153,7 +157,7 @@ fn reap_children(cluster_meta: &[Meta]) -> Result<()> {
                 Errno::ECHILD => break,
                 Errno::EINTR => continue, // retry on double SIGCHLD.
                 error => {
-                    eprintln!("`waitpid` syscall failed ({error})");
+                    crate::eprintln_buffered!("`waitpid` syscall failed ({error})");
                     Err(error)?
                 }
             },
@@ -189,7 +193,7 @@ fn handle_signals(cluster_meta: &[Meta]) -> Result<()> {
 
 pub fn main(args: Demo) -> ! {
     if let Err(error) = main_impl(args) {
-        eprintln!("{error}");
+        crate::eprintln_buffered!("{error}");
         std::process::exit(1)
     }
     std::process::exit(0)

@@ -23,7 +23,7 @@ pub fn main(args: args::Status) -> ! {
             // NOTE: treat broken pipe errors like any other - return the same code.
             Err(error) if is_broken_pipe(&error) => std::process::exit(1),
             Err(error) => {
-                eprintln!("{error}");
+                crate::eprintln_buffered!("{error}");
                 std::process::exit(1);
             }
         }

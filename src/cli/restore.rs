@@ -64,7 +64,7 @@ pub fn main(args: args::Restore) -> ! {
         config.log_config_params();
 
         if let Err(error) = crate::restore_from_backup(config, &backup_path) {
-            eprintln!("{}", error);
+            crate::eprintln_buffered!("{}", error);
             std::process::exit(1);
         };
 

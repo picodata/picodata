@@ -114,7 +114,7 @@ pub fn main(mut args: args::Run) -> ! {
         // so we must unlock explicitly.
         if let Err(e) = unlock_wal_directory() {
             // At this point tarantool has been destroyed, so we can't use tlog! anymore
-            eprintln!("teardown before rebootstrap failed: {e}");
+            crate::eprintln_buffered!("teardown before rebootstrap failed: {e}");
             std::process::abort();
         }
 
@@ -187,7 +187,7 @@ fn write_entrypoint_to_pipe(entrypoint: &Entrypoint) -> Result<ipc::Fd, TntError
 fn restart_current_process(args: &[OsString]) -> ! {
     let exe = std::env::current_exe().expect("must have current_exe");
     let e = std::process::Command::new(exe).args(args).exec();
-    eprintln!("execvp failed: {e}");
+    crate::eprintln_buffered!("execvp failed: {e}");
     std::process::abort();
 }
 

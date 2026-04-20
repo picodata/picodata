@@ -69,6 +69,22 @@ macro_rules! warn_or_panic {
     }};
 }
 
+/// Like [`eprintln!`], but uses a [`std::io::LineWriter`] to buffer each line and
+/// guarantee one `write(2)` syscall per line. This prevents interleaving with
+/// concurrent writers on the same stderr fd (e.g. the `tee` child spawned by the
+/// Tarantool log destination `"|tee -a FILE >&2"` which writes to the same fd
+/// concurrently). Plain `eprintln!` with a multi-segment format string makes one
+/// `write(2)` call per segment, so the tee child can split the output across
+/// separate lines.
+#[macro_export]
+macro_rules! eprintln_buffered {
+    ($($arg:tt)*) => {{
+        use ::std::io::Write as _;
+        let mut writer = ::std::io::LineWriter::new(::std::io::stderr().lock());
+        let _ = ::std::writeln!(writer, $($arg)*);
+    }};
+}
+
 #[macro_export]
 macro_rules! stringify_debug {
     ($t:ty) => {{

@@ -255,7 +255,7 @@ pub fn main(args: Plugin) -> ! {
     let tt_args = args.tt_args().unwrap();
     super::tarantool::main_cb(&tt_args, || -> cli::Result<()> {
         if let Err(error) = main_impl(args) {
-            eprintln!("{error}");
+            crate::eprintln_buffered!("{error}");
             std::process::exit(1);
         }
         std::process::exit(0)

@@ -140,7 +140,7 @@ pub fn main(args: args::Test) -> ! {
 
                 let res = std::io::stdout().write_all(log);
                 if let Err(e) = res {
-                    eprintln!("failed writing stdout: {e}")
+                    crate::eprintln_buffered!("failed writing stdout: {e}")
                 }
                 println!();
             } else {
