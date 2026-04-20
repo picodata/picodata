@@ -7,3 +7,5 @@
 
 # Disable EOL normalization for vendored libs
 /vendor/** -text
+
+*/.yarn/releases/** binary
