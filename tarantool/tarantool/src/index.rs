@@ -15,7 +15,7 @@ use std::ptr::null_mut;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Error, TarantoolError, TarantoolErrorCode};
+use crate::error::{BoxError, Error, TarantoolErrorCode};
 use crate::ffi::tarantool as ffi;
 use crate::msgpack;
 use crate::space::{Space, SpaceId, SystemSpace, UpdateOps};
@@ -660,7 +660,7 @@ impl Index {
         let sys_space: Space = SystemSpace::Index.into();
         let tuple = sys_space.get(&[self.space_id, self.index_id])?;
         let Some(tuple) = tuple else {
-            return Err(crate::error::BoxError::new(
+            return Err(BoxError::new(
                 TarantoolErrorCode::NoSuchIndexID,
                 format!(
                     "index #{} for space #{} not found",
@@ -683,7 +683,7 @@ impl Index {
         ops.assign(BOX_INDEX_FIELD_NAME, new_name)?;
         let tuple = sys_index.update(&[self.space_id(), self.id()], ops)?;
         let Some(tuple) = tuple else {
-            return Err(crate::error::BoxError::new(
+            return Err(BoxError::new(
                 TarantoolErrorCode::ModifyIndex,
                 format!(
                     "Failed to rename index #{} for space #{} into {new_name}.",
@@ -759,7 +759,7 @@ impl Index {
         };
 
         if ptr.is_null() {
-            return Err(TarantoolError::last().into());
+            return Err(BoxError::last().into());
         }
 
         Ok(IndexIterator {
@@ -938,7 +938,7 @@ impl Index {
         let result = unsafe { ffi::box_index_len(self.space_id, self.index_id) };
 
         if result < 0 {
-            Err(TarantoolError::last().into())
+            Err(BoxError::last().into())
         } else {
             Ok(result as usize)
         }
@@ -955,7 +955,7 @@ impl Index {
         let result = unsafe { ffi::box_index_bsize(self.space_id, self.index_id) };
 
         if result < 0 {
-            Err(TarantoolError::last().into())
+            Err(BoxError::last().into())
         } else {
             Ok(result as usize)
         }
@@ -1059,7 +1059,7 @@ impl Index {
         };
 
         if result < 0 {
-            Err(TarantoolError::last().into())
+            Err(BoxError::last().into())
         } else {
             Ok(result as usize)
         }
