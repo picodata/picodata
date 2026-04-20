@@ -1,4 +1,3 @@
-// eslint-disable-next-line no-restricted-imports
 import { useUSP } from "shared/router/hooks/useUSP";
 
 import { sortValue } from "./config";

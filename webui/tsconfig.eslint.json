@@ -6,6 +6,6 @@
     "tests",
     "tsconfig.json",
     "vite.config.ts",
-    ".eslintrc.js"
+    "eslint.config.cjs"
   ]
 }
