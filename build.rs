@@ -309,18 +309,9 @@ pub fn build_webui(build_root: &Path) {
     let webui_bundle = out_dir.join("bundle.json");
     rustc::env("WEBUI_BUNDLE", webui_bundle);
 
-    Command::new("yarn")
-        .arg("install")
-        .arg("--immutable")
-        .current_dir(&src_dir)
-        .run();
-
-    Command::new("yarn")
-        .arg("vite")
+    Command::new("make")
         .arg("build")
-        .arg("--outDir")
-        .arg(&out_dir)
-        .arg("--emptyOutDir")
+        .arg(format!("OUT_DIR={}", out_dir.display()))
         .current_dir(&src_dir)
         .run();
 }

@@ -23,3 +23,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# > Do I need to commit .yarn/releases folder to my repo?
+# https://github.com/yarnpkg/yarn/issues/7741
+.yarn/*
+!.yarn/releases

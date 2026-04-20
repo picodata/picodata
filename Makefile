@@ -206,16 +206,10 @@ install:
 	mkdir -p $(DESTDIR)/usr/bin
 	install -m 0755 target/*/picodata $(DESTDIR)/usr/bin/picodata
 
-# IMPORTANT. This rule is primarily used in CI pack stage. It repeats
-# the behavior of build.rs `build_webui()`, but uses a different out_dir
-# `picodata-webui/dist` instead of `target/debug/build/picodata-webui`
+# XXX: This rule is primarily used in CI pack stage.
 .PHONY: build-webui-bundle
 build-webui-bundle:
-	yarn --cwd webui install \
-		--immutable
-	yarn --cwd webui vite build \
-		--outDir dist \
-		--emptyOutDir
+	$(MAKE) -C webui build
 
 .PHONY: reset-submodules
 reset-submodules:
