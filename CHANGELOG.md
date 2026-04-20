@@ -49,6 +49,10 @@ with the `YY.MINOR.MICRO` scheme.
   Now validates that the specified tier exists and returns an error otherwise.
 - Backup operation will now be automatically aborted if there are offline instances.
   This prevents cluster being locked in a readonly state.
+- [picodata#2732] Fixed a panic when attempting to inherit privileges via SQL
+  (e.g., `GRANT admin TO somebody`). We do not support privilege inheritance
+  via `GRANT user1 TO user2`. The system now validates the grantee type and
+  returns a proper `NoSuchRole` error instead of panicking.
 
 ## [26.1.2] - 2026-04-14 
 

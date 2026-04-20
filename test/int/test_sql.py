@@ -3294,6 +3294,9 @@ def test_sql_acl_privileges(cluster: Cluster):
     # Attempt to revoke unexisted role.
     with pytest.raises(TarantoolError, match="There is no role with name SUPER"):
         i1.sql(f""" revoke "SUPER" from {username} """)
+    # Attempt to inherit user priviliges from another user.
+    with pytest.raises(TarantoolError, match="role 'admin' does not exist"):
+        i1.sql(f"GRANT admin TO {username}")
     # Attempt to revoke privilege that hasn't been granted yet do noting.
     acl = i1.sql(f""" revoke read on table {table_name} from {username} """)
     assert acl["row_count"] == 0
