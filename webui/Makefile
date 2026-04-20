@@ -25,6 +25,10 @@ build: yarn-install
 		--emptyOutDir \
 		--outDir $(OUT_DIR)
 
+.PHONY: lint
+lint: yarn-install
+	yarn lint
+
 .PHONY: clean
 clean:
 	rm -rf node_modules dist dist-ssr
