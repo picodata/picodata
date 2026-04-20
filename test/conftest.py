@@ -1331,6 +1331,7 @@ class Instance:
         passthrough_env = [
             "ASAN_OPTIONS",
             "ASAN_SYMBOLIZER_PATH",
+            "LLVM_PROFILE_FILE",
             "LSAN_OPTIONS",
             "PATH",
             "PICODATA_LOG_LEVEL",
