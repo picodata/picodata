@@ -293,7 +293,6 @@ clone:
     # the build scripts. Without them the job fails.
     - ./tools/get_tags.py
 
-
 .poetry-install: &poetry-install |
   # Poetry install
   ci-log-section start "poetry-install" Installing python dependencies ...
@@ -319,7 +318,6 @@ make-py-cache:
     - <<: *if-no-docs
   script:
     - *poetry-install
-
 
 .test_rules:
   variables:
@@ -406,7 +404,6 @@ build-linux:
       - target/$TARGET/libtestplug.so
       - test/plug_wrong_version/target/debug/libplug_wrong_version.so
 
-
 test-rs-linux:
   stage: test
   extends:
@@ -456,7 +453,6 @@ test-rs-linux:
     reports:
       junit: junit_pytest.xml
 
-
 .test-py-linux_base:
   extends:
     - .test_rules
@@ -483,7 +479,6 @@ test-rs-linux:
     reports:
       junit: junit_pytest.xml
 
-
 test-py-sql-linux:
   stage: test
   extends:
@@ -495,7 +490,6 @@ test-py-sql-linux:
       make test-py \
         PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k '(sql or pgproto)'"
       ci-log-section end "test"
-
 
 install-rolling-binaries:
   stage: test
@@ -551,7 +545,6 @@ test-py-not-sql-linux:
         PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k 'not (sql or pgproto)'"
       ci-log-section end "test"
 
-
 lint:
   stage: test
   rules:
@@ -585,7 +578,7 @@ lint:
 
     - *poetry-install
     - make lint
-    - pushd webui && corepack set version from source && yarn lint; popd
+    - make -C webui lint
 
     # Show sccache statistics
     - |
@@ -807,13 +800,14 @@ test-mac-m1:
     - mac-dev-m1
   timeout: 60m
   script:
+    - corepack enable
+
     # Gitlab doesnt know about $HOME. If specified in variables it becomes empty
     - export CARGO_HOME=$HOME/.cargo
     - ./tools/get_tags.py
     - cargo +$RUST_VERSION -V
     - cargo +$RUST_VERSION build --locked --timings
     - cp target/cargo-timings/cargo-timing.html cargo-timing-without-webui.html
-    - corepack enable && cd webui && yarn set version stable && cd ..
     - cargo +$RUST_VERSION build --features webui --locked --timings
     - cp target/cargo-timings/cargo-timing.html cargo-timing-with-webui.html
     # There are no Rust tests for `webui` feature.
