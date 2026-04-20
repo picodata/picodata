@@ -564,6 +564,14 @@ fn access_check_grant_revoke(
 
             assert_eq!(object_id, granted_role.id, "user metadata id mismatch");
 
+            if granted_role.ty == UserMetadataKind::User {
+                return Err(BoxError::new(
+                    TarantoolErrorCode::NoSuchRole,
+                    format!("role '{}' does not exist", granted_role.name),
+                )
+                .into());
+            }
+
             // Forbid revoking role "public" since it takes away permission to execute SQL queries
             if access == PrivType::Revoke && granted_role.name == "public" {
                 return Err(BoxError::new(

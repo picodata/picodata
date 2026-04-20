@@ -86,6 +86,10 @@ with the `YY.MINOR.MICRO` scheme.
 - [picodata#2842] Fixed the `schema version has changed: need to re-compile SQL statement`
   error, which could occur when you execute multiple DQL queries due to
   yield during cache eviction.
+- [picodata#2732] Fixed a panic when attempting to inherit privileges via SQL
+  (e.g., `GRANT admin TO somebody`). We do not support privilege inheritance
+  via `GRANT user1 TO user2`. The system now validates the grantee type and
+  returns a proper `NoSuchRole` error instead of panicking.
 
 ### Breaking changes
 
