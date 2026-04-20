@@ -396,7 +396,7 @@ class AbstractCluster(ABC):
 
         yield runner_cls(cluster)
 
-        cluster.kill()
+        cluster.terminate()
 
     def test_sql(
         self,
