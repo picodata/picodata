@@ -3263,7 +3263,7 @@ def cluster(cluster_factory) -> Generator[Cluster, None, None]:
     """Return a `Cluster` object capable of deploying test clusters."""
     cluster = cluster_factory()
     yield cluster
-    cluster.kill()
+    cluster.terminate()
     log.info(f"Cluster data directory was: {cluster.data_dir}")
 
 
@@ -3283,7 +3283,7 @@ def second_cluster(tmpdir, cluster_names, port_distributor, cargo_build_fixt, re
     cluster.set_service_password("password")
 
     yield cluster
-    cluster.kill()
+    cluster.terminate()
 
 
 @pytest.fixture
@@ -3562,7 +3562,7 @@ def ldap_server(cluster: Cluster, port_distributor: PortDistributor) -> Generato
 
     yield server
 
-    server.process.kill()
+    server.process.terminate()
 
 
 @pytest.fixture
@@ -3577,7 +3577,7 @@ def ldap_server_with_tls(cluster: Cluster, port_distributor: PortDistributor) ->
 
     yield server
 
-    server.process.kill()
+    server.process.terminate()
 
 
 GITLAB_URL = "https://git.picodata.io/"
