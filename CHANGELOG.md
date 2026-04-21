@@ -58,6 +58,8 @@ with the `YY.MINOR.MICRO` scheme.
   by the router.
 - Fixed an out-of-bounds panic in plugin RPC client when selecting a random
   candidate instance for `RequestTarget::Any`.
+- [picodata#2838] Fixed panic on single-node cluster forced expel
+  ("removed all voters"), which now returns an explicit error.
 
 ### Breaking changes
 

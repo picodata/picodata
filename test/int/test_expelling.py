@@ -461,3 +461,17 @@ cluster:
     )
     [[state, _incarnation]] = rows[0]
     assert state == "Expelled"
+
+
+def test_forced_expel_without_substitution(cluster: Cluster):
+    cluster.set_service_password("T0psecret")
+    password = cluster.service_password_file
+
+    i1, i2, i3 = cluster.deploy(instance_count=3)
+
+    picodata_expel(peer=i1, target=i2, password_file=password, force=True)
+    picodata_expel(peer=i1, target=i3, password_file=password, force=True)
+    try:
+        picodata_expel(peer=i1, target=i1, password_file=password, force=True)
+    except CommandFailed as error:
+        assert f"attempt to expel instance '{i1.name}' which is the only member in the cluster" in error.stderr

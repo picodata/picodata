@@ -45,6 +45,11 @@ crate::define_rpc_request! {
             return Err(BoxError::new(ErrorCode::ExpelNotAllowed, format!("attempt to expel instance '{instance_name}' which is not Offline, but {state_repr}")).into());
         }
 
+        let instances: Vec<_> = topology_ref.all_instances().filter(|i| !has_states!(i, Expelled -> *)).take(2).collect();
+        if instances == [instance] {
+            return Err(BoxError::new(ErrorCode::ExpelNotAllowed, format!("attempt to expel instance '{instance_name}' which is the only member in the cluster")).into());
+        }
+
         if !req.force {
             let replicaset = topology_ref.replicaset_by_uuid(&instance.replicaset_uuid)?;
             if instance.name == replicaset.current_master_name
