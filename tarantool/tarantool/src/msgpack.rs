@@ -35,9 +35,27 @@ macro_rules! slice_read_be_to {
     }};
 }
 
+pub fn validate_msgpack(data: &[u8]) -> Result<()> {
+    let mut cursor = Cursor::new(data);
+    skip_value(&mut cursor)
+}
+
+pub fn validate_msgpack_array(data: &[u8]) -> Result<()> {
+    validate_msgpack_array_header(data)?;
+    validate_msgpack(data)?;
+    Ok(())
+}
+
+pub fn validate_msgpack_array_header(mut data: &[u8]) -> Result<()> {
+    let m = rmp::decode::read_marker(&mut data)?;
+    if !matches!(m, Marker::FixArray(_) | Marker::Array16 | Marker::Array32) {
+        return Err(rmp::decode::ValueReadError::TypeMismatch(m).into());
+    }
+    Ok(())
+}
+
 // Even though function only seeks forward, we still use it
 // at non-sliceable context, so this trait bound has to stay.
-#[inline]
 pub fn skip_value(cur: &mut (impl Read + Seek)) -> Result<()> {
     skip_value_inner(cur)?;
     let position = cur.stream_position()?;

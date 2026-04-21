@@ -950,6 +950,33 @@ extern "C" {
     ) -> *mut BoxIterator;
     pub fn box_iterator_next(iterator: *mut BoxIterator, result: *mut *mut BoxTuple) -> c_int;
     pub fn box_iterator_free(iterator: *mut BoxIterator);
+    /// Allocate and initialize iterator for `space_id`, `index_id`. If `packed_pos` is
+    /// not `NULL`, iterator will start right after tuple with position, described by
+    /// this argument. A returned iterator must be destroyed by [`box_iterator_free`].
+    pub fn box_index_iterator_after(
+        space_id: u32,
+        index_id: u32,
+        type_: c_int,
+        key: *const c_char,
+        key_end: *const c_char,
+        packed_pos: *const c_char,
+        packed_pos_end: *const c_char,
+    ) -> *mut BoxIterator;
+    /// Allocates the packed iterator position on the fiber's region allocator.
+    /// The caller is responsible for freeing the region allocation via
+    /// `box_region_truncate`.
+    ///
+    /// # SAFETY:
+    /// `tuple` must point to a valid msgpack encoded array value, `tuple_end`
+    /// must point to the first byte after the encoded tuple.
+    pub fn box_index_tuple_position(
+        space_id: u32,
+        index_id: u32,
+        tuple: *const c_char,
+        tuple_end: *const c_char,
+        packed_pos: *mut *const c_char,
+        packed_pos_end: *mut *const c_char,
+    ) -> c_int;
 }
 
 /// Analogue of tarantool's `box_tuple_t`

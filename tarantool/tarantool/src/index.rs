@@ -64,10 +64,10 @@ pub enum IteratorType {
     /// all tuples
     All = 2,
 
-    /// key <  x
+    /// key <  x DESC order
     LT = 3,
 
-    /// key <= x
+    /// key <= x DESC order
     LE = 4,
 
     /// key >= x
@@ -717,7 +717,6 @@ impl Index {
     {
         let buf;
         let data = unwrap_or!(key.tuple_data(), {
-            // TODO: use region allocation for this
             buf = key.to_tuple_buffer()?;
             buf.as_ref()
         });
@@ -755,6 +754,51 @@ impl Index {
                 iterator_type as _,
                 start as _,
                 end as _,
+            )
+        };
+
+        if ptr.is_null() {
+            return Err(BoxError::last().into());
+        }
+
+        Ok(IndexIterator {
+            ptr,
+            _key_data: key_buf,
+        })
+    }
+
+    /// Allocate and initialize iterator for index.
+    ///
+    /// Same as [`Self::select`] but if `tuple_position` is not empty the
+    /// iterator will start right after tuple with position described by that
+    /// argument.
+    ///
+    /// If `tuple_position` is empty the function is equivalent to [`Self::select`].
+    ///
+    /// `tuple_position` must come from a call to [`Self::tuple_position`] of
+    /// the same space index, otherwise an error will be returned.
+    pub fn select_after<K>(
+        &self,
+        iterator_type: IteratorType,
+        key: &K,
+        tuple_position: &TuplePosition,
+    ) -> Result<IndexIterator, Error>
+    where
+        K: ToTupleBuffer + ?Sized,
+    {
+        let key_buf = key.to_tuple_buffer().unwrap();
+        let Range { start, end } = key_buf.as_ref().as_ptr_range();
+        let tuple_position = tuple_position.as_ptr_range();
+
+        let ptr = unsafe {
+            ffi::box_index_iterator_after(
+                self.space_id,
+                self.index_id,
+                iterator_type as _,
+                start as _,
+                end as _,
+                tuple_position.start as _,
+                tuple_position.end as _,
             )
         };
 
@@ -1087,6 +1131,104 @@ impl Index {
             Tuple::from_raw_data(result_ptr, result_size.assume_init())
         }
     }
+
+    /// Returns a packed iterator position representation which can be used in
+    /// [`Self::select_after`] to implement pagination.
+    ///
+    /// `tuple_data` must be the data of one of the tuples in the index,
+    /// otherwise the returned position value will not be useful.
+    ///
+    /// Note that `tuple_data` will be validated to be a msgpack array,
+    /// which involves a **O(n)** complexity operation. If you don't need the
+    /// extra check, you may want to use [`Self::tuple_position_unchecked`].
+    pub fn tuple_position(&self, tuple_data: &[u8]) -> crate::Result<TuplePosition> {
+        msgpack::validate_msgpack_array(tuple_data)?;
+
+        // SAFETY: just checked `tuple_data` is valid
+        unsafe { self.tuple_position_unchecked(tuple_data) }
+    }
+
+    /// Returns a packed iterator position representation which can be used in
+    /// [`Self::select_after`] to implement pagination.
+    ///
+    /// `tuple_data` must be the data of one of the tuples in the index,
+    /// otherwise the returned position value will not be useful.
+    ///
+    /// # Safety
+    ///
+    /// `tuple_data` must be a valid msgpack array encoding.
+    pub unsafe fn tuple_position_unchecked(
+        &self,
+        tuple_data: &[u8],
+    ) -> crate::Result<TuplePosition> {
+        let Range { start, end } = tuple_data.as_ptr_range();
+        let mut packed_pos_start = std::ptr::null();
+        let mut packed_pos_end = std::ptr::null();
+
+        // SAFETY: always safe in tx thread
+        let used = unsafe { ffi::box_region_used() };
+
+        let rc = unsafe {
+            ffi::box_index_tuple_position(
+                self.space_id,
+                self.index_id,
+                start as _,
+                end as _,
+                &mut packed_pos_start,
+                &mut packed_pos_end,
+            )
+        };
+        if rc != 0 {
+            return Err(BoxError::last().into());
+        }
+
+        // SAFETY: tarantool guarnatees pointers a bounds of a single allocation, and start <= end
+        let packed_pos_len = unsafe { packed_pos_end.offset_from_unsigned(packed_pos_start) };
+        // SAFETY: tarantool guarantees that the returned slice is a propper allocation aligned to 1
+        let packed_pos =
+            unsafe { std::slice::from_raw_parts(packed_pos_start.cast::<u8>(), packed_pos_len) };
+
+        let res = TuplePosition::from_raw(packed_pos);
+
+        // SAFETY: safe because `used` came from `box_region_used`
+        unsafe { ffi::box_region_truncate(used) };
+
+        Ok(res)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// TuplePosition
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+pub struct TuplePosition(Box<[u8]>);
+
+impl TuplePosition {
+    #[inline]
+    pub fn from_raw(inner: &[u8]) -> Self {
+        Self(inner.into())
+    }
+
+    #[inline]
+    pub fn from_inner(inner: Box<[u8]>) -> Self {
+        Self(inner)
+    }
+
+    #[inline]
+    pub fn into_inner(self) -> Box<[u8]> {
+        self.0
+    }
+
+    #[inline]
+    pub fn as_slice(&self) -> &[u8] {
+        &self.0
+    }
+
+    #[inline]
+    pub fn as_ptr_range(&self) -> Range<*const u8> {
+        self.0.as_ptr_range()
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1364,5 +1506,277 @@ mod tests {
         assert_eq!(new_meta, index.meta().unwrap());
 
         space.drop().unwrap();
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn select_after() {
+        let space = Space::builder(&crate::temp_space_name!())
+            .space_type(space::SpaceType::DataTemporary)
+            .field(("id", space::FieldType::Unsigned))
+            .field(("text", space::FieldType::String))
+            .create()
+            .unwrap();
+
+        let index = space
+            .index_builder("pk")
+            .unique(true)
+            .part(("id", FieldType::Unsigned))
+            .create()
+            .unwrap();
+
+        space.insert(&(1, "foo")).unwrap();
+        space.insert(&(2, "bar")).unwrap();
+        space.insert(&(3, "baz")).unwrap();
+        space.insert(&(4, "one")).unwrap();
+        space.insert(&(5, "two")).unwrap();
+
+        let mut iter = index.select(IteratorType::All, &()).unwrap();
+        // Skip a couple of tuples and then get the position
+        let first_tuple = iter.next().unwrap();
+        let second_tuple = iter.next().unwrap();
+
+        let third_tuple = iter.next().unwrap();
+        // In picodata we would call `tuple.data()` instead of `tuple.to_vec()` to avoid that extra allocation
+        let after_third = index.tuple_position(&third_tuple.to_vec()).unwrap();
+
+        // We can now create an iterator starting from that position (right
+        // after the specified tuple)
+        {
+            let mut iter_after = index
+                .select_after(IteratorType::All, &(), &after_third)
+                .unwrap();
+
+            let tuple = iter_after.next().unwrap();
+            let v = tuple.decode::<(i32, String)>().unwrap();
+            assert_eq!(v, (4, "one".to_string()));
+
+            let tuple = iter_after.next().unwrap();
+            let v = tuple.decode::<(i32, String)>().unwrap();
+            assert_eq!(v, (5, "two".to_string()));
+
+            assert!(iter_after.next().is_none());
+        }
+
+        // Sanity check that the original iterator still works
+        let _fourth_tuple = iter.next().unwrap();
+        let last_tuple = iter.next().unwrap();
+        assert!(iter.next().is_none());
+
+        // Check starting after the last tuple
+        let after_last = index.tuple_position(&last_tuple.to_vec()).unwrap();
+        {
+            let mut iter_after = index
+                .select_after(IteratorType::All, &(), &after_last)
+                .unwrap();
+            assert!(iter_after.next().is_none());
+        }
+
+        //
+        // Let's check select_after with different iterator types
+        //
+
+        let after_first = index.tuple_position(&first_tuple.to_vec()).unwrap();
+        {
+            // Look for id = 1, starting after first tuple
+            let mut iter = index
+                .select_after(IteratorType::Eq, &[1], &after_first)
+                .unwrap();
+            // Not found
+            assert!(iter.next().is_none());
+
+            // Look for id = 1, starting at the beginning (empty position is effectively start)
+            let mut iter = index
+                .select_after(IteratorType::Eq, &[1], &TuplePosition::default())
+                .unwrap();
+            // Found
+            let tuple = iter.next().unwrap();
+            let v = tuple.decode::<(i32, String)>().unwrap();
+            assert_eq!(v, (1, "foo".to_string()));
+        }
+
+        let after_second = index.tuple_position(&second_tuple.to_vec()).unwrap();
+        {
+            let mut iter = index
+                .select_after(IteratorType::All, &(), &after_second)
+                .unwrap();
+
+            let tuple = iter.next().unwrap();
+            let v = tuple.decode::<(i32, String)>().unwrap();
+            assert_eq!(v, (3, "baz".to_string()));
+
+            let tuple = iter.next().unwrap();
+            let v = tuple.decode::<(i32, String)>().unwrap();
+            assert_eq!(v, (4, "one".to_string()));
+
+            let tuple = iter.next().unwrap();
+            let v = tuple.decode::<(i32, String)>().unwrap();
+            assert_eq!(v, (5, "two".to_string()));
+        }
+        {
+            let mut iter = index
+                .select_after(IteratorType::LE, &[4], &TuplePosition::default())
+                .unwrap();
+
+            let tuple = iter.next().unwrap();
+            let v = tuple.decode::<(i32, String)>().unwrap();
+            assert_eq!(v, (4, "one".to_string()));
+
+            let tuple = iter.next().unwrap();
+            let v = tuple.decode::<(i32, String)>().unwrap();
+            assert_eq!(v, (3, "baz".to_string()));
+
+            let tuple = iter.next().unwrap();
+            let v = tuple.decode::<(i32, String)>().unwrap();
+            assert_eq!(v, (2, "bar".to_string()));
+
+            let tuple = iter.next().unwrap();
+            let v = tuple.decode::<(i32, String)>().unwrap();
+            assert_eq!(v, (1, "foo".to_string()));
+        }
+
+        {
+            // All tuples starting after second with id <= 4
+            // NOTE: that iterator type LE implies the reverse order of
+            // iteration, so in this case "after second" tuple actually means
+            // "before second"
+            let mut iter = index
+                .select_after(IteratorType::LE, &[4], &after_second)
+                .unwrap();
+
+            let tuple = iter.next().unwrap();
+            let v = tuple.decode::<(i32, String)>().unwrap();
+            assert_eq!(v, (1, "foo".to_string()));
+        }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn tuple_position() {
+        let space = Space::builder(&crate::temp_space_name!())
+            .space_type(space::SpaceType::DataTemporary)
+            .field(("id", space::FieldType::Unsigned))
+            .field(("text", space::FieldType::String))
+            .create()
+            .unwrap();
+
+        let index = space
+            .index_builder("pk")
+            .unique(true)
+            .part(("id", FieldType::Unsigned))
+            .create()
+            .unwrap();
+
+        space.insert(&(1, "one")).unwrap();
+        space.insert(&(100, "two")).unwrap();
+        space.insert(&(200, "three")).unwrap();
+
+        //
+        // Check error cases
+        //
+
+        // Empty input
+        let e = index.tuple_position(b"").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "msgpack read error: failed to read MessagePack marker"
+        );
+
+        // Not valid msgpack
+        let e = index.tuple_position(b"GARBAGE").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "msgpack read error: the type decoded isn't match with the expected one"
+        );
+
+        // Msgpack doesn't match key definition
+        let tuple = Tuple::new(&["foo", "bar"]).unwrap();
+        let e = index.tuple_position(&tuple.to_vec()).unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "box error: InvalidIteratorPosition: Iterator position is invalid"
+        );
+
+        // Valid positions, only the key part matters, doesn't have to conform
+        // to the space format, but you probably want to use the fully valid
+        // tuples from the actual space
+
+        {
+            let tuple = Tuple::new(&[0]).unwrap();
+            let position = index.tuple_position(&tuple.to_vec()).unwrap();
+            let iter = index
+                .select_after(IteratorType::All, &(), &position)
+                .unwrap();
+            let vs = iter
+                .map(|tuple| tuple.decode::<(i32, String)>().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(
+                vs,
+                [
+                    (1, "one".to_string()),
+                    (100, "two".to_string()),
+                    (200, "three".to_string())
+                ]
+            );
+        }
+
+        {
+            let tuple = Tuple::new(&[1]).unwrap();
+            let position = index.tuple_position(&tuple.to_vec()).unwrap();
+            let iter = index
+                .select_after(IteratorType::All, &(), &position)
+                .unwrap();
+            let vs = iter
+                .map(|tuple| tuple.decode::<(i32, String)>().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(vs, [(100, "two".to_string()), (200, "three".to_string())]);
+        }
+
+        {
+            let tuple = Tuple::new(&[50]).unwrap();
+            let position = index.tuple_position(&tuple.to_vec()).unwrap();
+            let iter = index
+                .select_after(IteratorType::All, &(), &position)
+                .unwrap();
+            let vs = iter
+                .map(|tuple| tuple.decode::<(i32, String)>().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(vs, [(100, "two".to_string()), (200, "three".to_string())]);
+        }
+
+        {
+            let tuple = Tuple::new(&[150]).unwrap();
+            let position = index.tuple_position(&tuple.to_vec()).unwrap();
+            let iter = index
+                .select_after(IteratorType::All, &(), &position)
+                .unwrap();
+            let vs = iter
+                .map(|tuple| tuple.decode::<(i32, String)>().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(vs, [(200, "three".to_string())]);
+        }
+
+        {
+            let tuple = Tuple::new(&[250]).unwrap();
+            let position = index.tuple_position(&tuple.to_vec()).unwrap();
+            let iter = index
+                .select_after(IteratorType::All, &(), &position)
+                .unwrap();
+            let vs = iter
+                .map(|tuple| tuple.decode::<(i32, String)>().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(vs, []);
+        }
+
+        // Works in reverse too
+        {
+            let tuple = Tuple::new(&[150]).unwrap();
+            let position = index.tuple_position(&tuple.to_vec()).unwrap();
+            let iter = index
+                .select_after(IteratorType::Req, &(), &position)
+                .unwrap();
+            let vs = iter
+                .map(|tuple| tuple.decode::<(i32, String)>().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(vs, [(100, "two".to_string()), (1, "one".to_string())]);
+        }
     }
 }
