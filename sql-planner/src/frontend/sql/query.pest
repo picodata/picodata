@@ -292,7 +292,8 @@ CallProc = ${ CallProcImpl ~ (W ~ DqlOption)? }
         ProcValues = !{ (ProcValue ~ ("," ~ ProcValue)*)? }
             ProcValue = _{ Literal | Parameter }
 
-ExplainFacet = _{ (ExplainRaw | ExplainFmt ) }
+ExplainFacet = _{ (ExplainRaw | ExplainFmt | ExplainBuckets ) }
+    ExplainBuckets = { ^"buckets" }
     ExplainRaw = { ^"raw" }
     ExplainFmt = { ^"fmt" }
 ExplainQueryPlan    = { ( "(" ~ WO ~ ExplainFacet ~ (WO ~ "," ~ WO ~ ExplainFacet)* ~ WO ~ ")" ) }

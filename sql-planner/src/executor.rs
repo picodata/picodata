@@ -489,16 +489,21 @@ where
     }
 
     pub fn validate_explain_options(&self) -> Result<(), SbroadError> {
-        if self.is_block()?
-            && self
-                .get_exec_plan()
-                .get_ir_plan()
-                .explain_options
-                .contains(ExplainOptions::Logical)
-        {
-            return Err(SbroadError::Other(
-                "logical explain is not implemented for transactions".to_smolstr(),
-            ));
+        let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
+
+        let err = || -> Result<(), SbroadError> {
+            Err(SbroadError::Other(
+                "LOGICAL and BUCKETS modes for explain are not implemented for transactions"
+                    .to_smolstr(),
+            ))
+        };
+
+        if self.is_block()? && explain_options.contains(ExplainOptions::Logical) {
+            return err();
+        }
+
+        if self.is_block()? && explain_options.contains(ExplainOptions::Buckets) {
+            return err();
         }
 
         Ok(())
@@ -520,34 +525,22 @@ where
         self.exec_plan.get_ir_plan().is_raw_explain()
     }
 
-    /// Checks that query is a statement block.
-    ///
-    /// # Errors
-    /// - plan is invalid
+    pub fn is_buckets_explain(&self) -> bool {
+        self.exec_plan.get_ir_plan().is_buckets_explain()
+    }
+
     pub fn is_block(&self) -> Result<bool, SbroadError> {
         self.exec_plan.get_ir_plan().is_block()
     }
 
-    /// Checks that query is DDL.
-    ///
-    /// # Errors
-    /// - Plan is invalid.
     pub fn is_ddl(&self) -> Result<bool, SbroadError> {
         self.exec_plan.get_ir_plan().is_ddl()
     }
 
-    /// Checks that query is ACL.
-    ///
-    /// # Errors
-    /// - Plan is invalid
     pub fn is_acl(&self) -> Result<bool, SbroadError> {
         self.exec_plan.get_ir_plan().is_acl()
     }
 
-    /// Checks that query is TCL.
-    ///
-    /// # Errors
-    /// - Plan is invalid
     pub fn is_tcl(&self) -> Result<bool, SbroadError> {
         self.exec_plan.get_ir_plan().is_tcl()
     }
@@ -602,7 +595,26 @@ where
             .contains(ExplainOptions::Fmt);
         let raw_explain = RawExplain::from_port(port, is_fmt)?;
         let mut buf = String::new();
+        let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
+        if !explain_options.has_single_facet() {
+            writeln!(&mut buf, "# Raw plan").unwrap();
+            writeln!(&mut buf).unwrap();
+        }
         write!(&mut buf, "{raw_explain}").unwrap();
+
+        Ok(buf)
+    }
+
+    pub fn explain_buckets(&mut self) -> Result<String, SbroadError> {
+        let info = BucketsInfo::new_from_query(self)?;
+        let mut buf = String::new();
+        let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
+        if !explain_options.has_single_facet() {
+            writeln!(&mut buf, "# Buckets").unwrap();
+            writeln!(&mut buf).unwrap();
+        }
+        write!(&mut buf, "{info}").unwrap();
+
         Ok(buf)
     }
 }
@@ -710,7 +722,12 @@ impl std::fmt::Display for RawExplain {
         }
 
         for (idx, entry) in self.entries.iter().skip(1).enumerate() {
-            write!(f, "\n\n")?;
+            // Since raw explain entries don't include a trailing newline,
+            // the first writeln! terminates the previous entry's last line,
+            // and the second writeln! adds a blank separator line between entries.
+            writeln!(f)?;
+            writeln!(f)?;
+
             write_raw_explain_entry(f, entry, idx + 2, self.is_format)?;
         }
 

@@ -517,12 +517,19 @@ fn dispatch_bound_statement_impl<'p>(
         check_table_privileges(plan)?;
 
         if query.is_logical_explain() {
-            let explain = query.explain()?;
-            let explain_serialized = rmp_serde::to_vec(&[explain]).map_err(Error::other)?;
-            port.add_mp(&explain_serialized);
-
+            let logical = query.explain()?;
+            let logical_serialized = rmp_serde::to_vec(&[logical]).map_err(Error::other)?;
+            port.add_mp(&logical_serialized);
             return Ok(());
         }
+
+        let mut explain = Vec::new();
+
+        let buckets_explain = if query.is_buckets_explain() {
+            Some(query.explain_buckets()?)
+        } else {
+            None
+        };
 
         if query.is_raw_explain() {
             let mut tmp_port = runtime.new_port();
@@ -534,11 +541,24 @@ fn dispatch_bound_statement_impl<'p>(
             })??;
             let raw_explain = query.explain_raw(&mut tmp_port)?;
             if !raw_explain.is_empty() {
-                let raw_serialized = rmp_serde::to_vec(&[raw_explain]).map_err(Error::other)?;
-                port.add_mp(&raw_serialized);
+                explain.push(raw_explain);
             }
         }
 
+        if let Some(buckets) = buckets_explain {
+            explain.push(buckets);
+        }
+
+        // Each entry in `explain` is a plain line without a trailing '\n'.
+        // This is intentional: a trailing newline would produce extra blank lines
+        // at the end of psql output. Since the entries themselves have no newline,
+        // we join them with "\n\n" to separate each entry with a blank line.
+        let final_explain = explain.join("\n\n");
+
+        if !explain.is_empty() {
+            let explain_serialized = rmp_serde::to_vec(&[final_explain]).map_err(Error::other)?;
+            port.add_mp(&explain_serialized);
+        }
         Ok(())
     } else if query.is_block()? {
         let code_block = {

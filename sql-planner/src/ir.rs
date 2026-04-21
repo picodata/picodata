@@ -639,15 +639,21 @@ bitflags! {
     #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct ExplainOptions: u8 {
         const Logical = 1;
-        const Raw = 1 << 1;
-        const Fmt = 1 << 2;
+        const Raw     = 1 << 1;
+        const Fmt     = 1 << 2;
+        const Buckets = 1 << 3;
     }
 }
 
 impl ExplainOptions {
     #[inline(always)]
     pub fn facets() -> Self {
-        Self::Logical | Self::Raw
+        Self::Logical | Self::Raw | Self::Buckets
+    }
+
+    pub fn has_single_facet(&self) -> bool {
+        let facet_bits = self.intersection(Self::facets()).bits();
+        facet_bits.count_ones() == 1
     }
 
     pub fn has_facet(&self) -> bool {
@@ -1293,19 +1299,20 @@ impl Plan {
         self.nodes.add_bool(left, op, right)
     }
 
-    #[must_use]
-    pub fn is_logical_explain(&self) -> bool {
-        self.explain_options.contains(ExplainOptions::Logical)
-    }
-
-    #[must_use]
     pub fn is_explain(&self) -> bool {
         !self.explain_options.is_empty()
     }
 
-    #[must_use]
+    pub fn is_logical_explain(&self) -> bool {
+        self.explain_options.contains(ExplainOptions::Logical)
+    }
+
     pub fn is_raw_explain(&self) -> bool {
         self.explain_options.contains(ExplainOptions::Raw)
+    }
+
+    pub fn is_buckets_explain(&self) -> bool {
+        self.explain_options.contains(ExplainOptions::Buckets)
     }
 
     /// Checks that plan is a block of queries.

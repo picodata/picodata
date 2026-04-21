@@ -6959,6 +6959,7 @@ impl AbstractSyntaxTree {
                             match explain_option_node.rule {
                                 Rule::ExplainRaw => explain_options |= ExplainOptions::Raw,
                                 Rule::ExplainFmt => explain_options |= ExplainOptions::Fmt,
+                                Rule::ExplainBuckets => explain_options |= ExplainOptions::Buckets,
                                 _ => panic!(
                                     "unknown explain option rule: {:?}",
                                     explain_option_node.rule

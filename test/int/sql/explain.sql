@@ -1137,7 +1137,7 @@ BEGIN
   UPDATE t SET a = a * 2 WHERE pk = 3;
 END $$;
 -- ERROR:
-sbroad: logical explain is not implemented for transactions
+sbroad: LOGICAL and BUCKETS modes for explain are not implemented for transactions
 
 -- TEST: explain-query-different-buckets
 -- SQL:
