@@ -324,6 +324,8 @@ SELECT t1.a FROM t1 d JOIN t1 ON t1.b = d.a WHERE t1.b = d.c AND (SELECT e.a FRO
 -- SQL:
 EXPLAIN SELECT (values (1)) from testing_space;
 -- EXPECTED:
+# Logical plan
+''
 projection (ROW($0) -> col_1)
   scan testing_space
 subquery $0:
@@ -331,15 +333,21 @@ subquery $0:
     motion [policy: full, program: ReshardIfNeeded]
       values
         value ROW(1::int)
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]
 
 -- TEST: test-explain-plan-subquery-as-expression-under-order-by
 -- SQL:
 EXPLAIN SELECT "id" FROM "testing_space" ORDER BY "id" + (VALUES (1));
 -- EXPECTED:
+# Logical plan
+''
 projection (id::int)
   order by (id::int + ROW($0))
     motion [policy: full, program: ReshardIfNeeded]
@@ -351,15 +359,21 @@ subquery $0:
     motion [policy: full, program: ReshardIfNeeded]
       values
         value ROW(1::int)
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]
 
 -- TEST: test-explain-plan-subquery-as-expression-under-projection-nested
 -- SQL:
 EXPLAIN SELECT (values ((values (1)))) from testing_space;
 -- EXPECTED:
+# Logical plan
+''
 projection (ROW($1) -> col_1)
   scan testing_space
 subquery $0:
@@ -372,15 +386,21 @@ subquery $1:
     motion [policy: full, program: ReshardIfNeeded]
       values
         value ROW(ROW($0))
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]
 
 -- TEST: test-explain-plan-subquery-as-expression-under-group-by
 -- SQL:
 EXPLAIN SELECT (values ((values (1)))) from testing_space;
 -- EXPECTED:
+# Logical plan
+''
 projection (ROW($1) -> col_1)
   scan testing_space
 subquery $0:
@@ -393,15 +413,21 @@ subquery $1:
     motion [policy: full, program: ReshardIfNeeded]
       values
         value ROW(ROW($0))
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]
 
 -- TEST: test-explain-plan-subquery-as-expression-under-selection
 -- SQL:
 EXPLAIN SELECT "id" FROM "testing_space" WHERE (VALUES (true));
 -- EXPECTED:
+# Logical plan
+''
 projection (testing_space.id::int -> id)
   selection (ROW($0))
     scan testing_space
@@ -410,15 +436,21 @@ subquery $0:
     motion [policy: full, program: ReshardIfNeeded]
       values
         value ROW(true::bool)
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]
 
 -- TEST: test-explain-plan-subquery-as-expression-under-projection-several
 -- SQL:
 EXPLAIN SELECT (values (1)), (values (2)) from testing_space;
 -- EXPECTED:
+# Logical plan
+''
 projection (ROW($1) -> col_1, ROW($0) -> col_2)
   scan testing_space
 subquery $0:
@@ -431,7 +463,11 @@ subquery $1:
     motion [policy: full, program: ReshardIfNeeded]
       values
         value ROW(1::int)
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]

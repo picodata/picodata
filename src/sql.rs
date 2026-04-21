@@ -516,14 +516,12 @@ fn dispatch_bound_statement_impl<'p>(
         let plan = query.get_exec_plan().get_ir_plan();
         check_table_privileges(plan)?;
 
-        if query.is_logical_explain() {
-            let logical = query.explain()?;
-            let logical_serialized = rmp_serde::to_vec(&[logical]).map_err(Error::other)?;
-            port.add_mp(&logical_serialized);
-            return Ok(());
-        }
-
         let mut explain = Vec::new();
+
+        if query.is_logical_explain() {
+            let logical = query.explain_logical()?;
+            explain.push(logical);
+        }
 
         let buckets_explain = if query.is_buckets_explain() {
             Some(query.explain_buckets()?)

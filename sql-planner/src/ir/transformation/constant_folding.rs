@@ -295,10 +295,11 @@ mod tests {
         let query_explain = plan.as_explain().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
-        insta::assert_snapshot!(query_explain, @"
+        insta::assert_snapshot!(query_explain, @r"
         projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
           selection (true::bool)
             scan t
+
         execution options:
           sql_vdbe_opcode_max = 45000
           sql_motion_row_max = 5000
@@ -318,10 +319,11 @@ mod tests {
         let query_explain = plan.as_explain().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
-        insta::assert_snapshot!(query_explain, @"
+        insta::assert_snapshot!(query_explain, @r"
         projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
           selection (false::bool)
             scan t
+
         execution options:
           sql_vdbe_opcode_max = 45000
           sql_motion_row_max = 5000
@@ -341,10 +343,11 @@ mod tests {
         let query_explain = plan.as_explain().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
-        insta::assert_snapshot!(query_explain, @"
+        insta::assert_snapshot!(query_explain, @r"
         projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
           selection (true::bool)
             scan t
+
         execution options:
           sql_vdbe_opcode_max = 45000
           sql_motion_row_max = 5000
@@ -364,10 +367,11 @@ mod tests {
         let query_explain = plan.as_explain().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
-        insta::assert_snapshot!(query_explain, @"
+        insta::assert_snapshot!(query_explain, @r"
         projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
           selection (false::bool)
             scan t
+
         execution options:
           sql_vdbe_opcode_max = 45000
           sql_motion_row_max = 5000
@@ -387,7 +391,7 @@ mod tests {
         let query_explain = plan.as_explain().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
-        insta::assert_snapshot!(query_explain, @"
+        insta::assert_snapshot!(query_explain, @r"
         union all
           projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
             selection (false::bool)
@@ -395,6 +399,7 @@ mod tests {
           projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
             selection (false::bool)
               scan t
+
         execution options:
           sql_vdbe_opcode_max = 45000
           sql_motion_row_max = 5000
@@ -414,7 +419,7 @@ mod tests {
         let query_explain = plan.as_explain().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
-        insta::assert_snapshot!(query_explain, @"
+        insta::assert_snapshot!(query_explain, @r"
         projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
           selection (true::bool)
             join on (true::bool)
@@ -422,6 +427,7 @@ mod tests {
               motion [policy: full, program: ReshardIfNeeded]
                 projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                   scan t
+
         execution options:
           sql_vdbe_opcode_max = 45000
           sql_motion_row_max = 5000
@@ -441,10 +447,11 @@ mod tests {
         let query_explain = plan.as_explain().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
-        insta::assert_snapshot!(query_explain, @"
+        insta::assert_snapshot!(query_explain, @r"
         projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
           selection (false::bool)
             scan t
+
         execution options:
           sql_vdbe_opcode_max = 45000
           sql_motion_row_max = 5000
@@ -464,10 +471,11 @@ mod tests {
         let query_explain = plan.as_explain().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
-        insta::assert_snapshot!(query_explain, @"
+        insta::assert_snapshot!(query_explain, @r"
         projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
           selection (NULL::unknown)
             scan t
+
         execution options:
           sql_vdbe_opcode_max = 45000
           sql_motion_row_max = 5000
@@ -487,10 +495,11 @@ mod tests {
         let query_explain = plan.as_explain().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
-        insta::assert_snapshot!(query_explain, @"
+        insta::assert_snapshot!(query_explain, @r"
         projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
           selection (true::bool)
             scan t
+
         execution options:
           sql_vdbe_opcode_max = 45000
           sql_motion_row_max = 5000
@@ -510,10 +519,11 @@ mod tests {
         let query_explain = plan.as_explain().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
-        insta::assert_snapshot!(query_explain, @"
+        insta::assert_snapshot!(query_explain, @r"
         projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
           selection (true::bool)
             scan t
+
         execution options:
           sql_vdbe_opcode_max = 45000
           sql_motion_row_max = 5000
@@ -533,10 +543,11 @@ mod tests {
         let query_explain = plan.as_explain().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
-        insta::assert_snapshot!(query_explain, @"
+        insta::assert_snapshot!(query_explain, @r"
         projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
           selection (false::bool)
             scan t
+
         execution options:
           sql_vdbe_opcode_max = 45000
           sql_motion_row_max = 5000

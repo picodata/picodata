@@ -100,6 +100,8 @@ with r9 as (select 'clientMdmId' as mdm_id_first, client_id
 select *
 from r9_mdm;
 -- EXPECTED:
+# Logical plan
+''
 projection (r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id, r9_mdm.client_id::string -> client_id, r9_mdm.src_system::string -> src_system, r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id)
   scan cte r9_mdm($1)
 subquery $0:
@@ -115,9 +117,13 @@ subquery $1:
             scan cte r9($0)
             scan a_cd_corporate_client -> m
       scan cte m_f($0)
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]
 
 -- TEST: unnamed_join_cte_name_conflict
@@ -132,6 +138,8 @@ with unnamed_join as (select 'clientMdmId' as mdm_id_first, client_id
 select *
 from r9_mdm;
 -- EXPECTED:
+# Logical plan
+''
 projection (r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id, r9_mdm.client_id::string -> client_id, r9_mdm.src_system::string -> src_system, r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id)
   scan cte r9_mdm($1)
 subquery $0:
@@ -147,9 +155,13 @@ subquery $1:
             scan cte unnamed_join($0)
             scan a_cd_corporate_client -> m
       scan cte m_f($0)
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]
 
 -- TEST: unnamed_join_alias_name_conflict
@@ -164,6 +176,8 @@ with r9 as (select 'clientMdmId' as mdm_id_first, client_id
 select *
 from r9_mdm;
 -- EXPECTED:
+# Logical plan
+''
 projection (r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id, r9_mdm.client_id::string -> client_id, r9_mdm.src_system::string -> src_system, r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id)
   scan cte r9_mdm($1)
 subquery $0:
@@ -179,9 +193,13 @@ subquery $1:
             scan cte unnamed_join($0)
             scan a_cd_corporate_client -> unnamed_join_2
       scan cte unnamed_join_1($0)
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]
 
 -- TEST: unnamed_join_table_name_conflict_prepare
@@ -207,6 +225,8 @@ with r9 as (select 'clientMdmId' as mdm_id_first, client_id
 select *
 from r9_mdm;
 -- EXPECTED:
+# Logical plan
+''
 projection (r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id, r9_mdm.client_id::string -> client_id, r9_mdm.src_system::string -> src_system, r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id)
   scan cte r9_mdm($1)
 subquery $0:
@@ -222,7 +242,11 @@ subquery $1:
             scan cte r9($0)
             scan unnamed_join -> m
       scan cte m_f($0)
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]

@@ -4,6 +4,6 @@ from framework.sqltester import (
 )
 
 
-@sql_test_file("explain_options.sql")
-class TestExplainOptions(ClusterSingleInstance):
+@sql_test_file("explain_logical.sql")
+class TestExplainLogical(ClusterSingleInstance):
     pass

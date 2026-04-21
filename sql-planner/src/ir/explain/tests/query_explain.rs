@@ -5,115 +5,151 @@ use crate::{
 
 #[test]
 fn test_query_explain_1() {
-    let sql = r#"select 1"#;
+    let sql = r#"explain select 1"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     projection (1::int -> col_1)
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets = any
     ");
 }
 
 #[test]
 fn test_query_explain_2() {
-    let sql = r#"select e from t2"#;
+    let sql = r#"explain select e from t2"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     projection (t2.e::int -> e)
       scan t2
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets = [1-10000]
     ");
 }
 
 #[test]
 fn test_query_explain_3() {
-    let sql = r#"select e from t2 where e = 1 and f = 13"#;
+    let sql = r#"explain select e from t2 where e = 1 and f = 13"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     projection (t2.e::int -> e)
       selection ((t2.e::int = 1::int and t2.f::int = 13::int))
         scan t2
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets = [111]
     ");
 }
 
 #[test]
 fn test_query_explain_4() {
-    let sql = r#"select count(*) from t2"#;
+    let sql = r#"explain select count(*) from t2"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     projection (sum(count_1::int)::int -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (count(*)::int -> count_1)
           scan t2
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets = [1-10000]
     ");
 }
 
 #[test]
 fn test_query_explain_prepared_single_key_aggregate_stays_single_node() {
-    let sql = r#"select count(*)
+    let sql = r#"explain select count(*)
         from t5
         where a = $1"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query =
         ExecutingQuery::from_text_and_params(metadata, sql, vec![Value::Integer(1)]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     projection (count(*)::int -> col_1)
       selection (t5.a::int = 1::int)
         scan t5
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets = [3940]
     ");
 }
 
 #[test]
 fn test_query_explain_prepared_single_key_with_constant_keeps_reduce_stage() {
-    let sql = r#"select count(*)
+    let sql = r#"explain select count(*)
         from t5
         where a = $1 and a = 1"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query =
         ExecutingQuery::from_text_and_params(metadata, sql, vec![Value::Integer(1)]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     projection (sum(count_1::int)::int -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (count(*)::int -> count_1)
           selection ((t5.a::int = 1::int and t5.a::int = 1::int))
             scan t5
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets <= [3940]
     ");
 }
 
 #[test]
 fn test_query_explain_prepared_reused_parameters_keep_reduce_stage() {
-    let sql = r#"select count(*)
+    let sql = r#"explain select count(*)
         from t5
         where a = $1 and a = $1 and a = $2"#;
 
@@ -124,29 +160,35 @@ fn test_query_explain_prepared_reused_parameters_keep_reduce_stage() {
         vec![Value::Integer(1), Value::Integer(1)],
     )
     .unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     projection (sum(count_1::int)::int -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (count(*)::int -> count_1)
           selection ((t5.a::int = 1::int and t5.a::int = 1::int and t5.a::int = 1::int))
             scan t5
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets <= [3940]
     ");
 }
 
 #[test]
 fn test_query_explain_prepared_partial_composite_key_keeps_reduce_stage() {
-    let sql = r#"select count(*)
+    let sql = r#"explain select count(*)
         from "hash_testing"
         where ("identification_number", "product_code") = ($1, trim("product_code"))"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query =
         ExecutingQuery::from_text_and_params(metadata, sql, vec![Value::Integer(1)]).unwrap();
-    let explain = query.to_explain().unwrap();
+    let explain = query.explain().unwrap();
 
     assert!(
         explain.contains(r#"projection (sum(count_1::int)::int -> col_1)"#),
@@ -164,104 +206,140 @@ fn test_query_explain_prepared_partial_composite_key_keeps_reduce_stage() {
 
 #[test]
 fn test_query_explain_5() {
-    let sql = r#"select a from global_t"#;
+    let sql = r#"explain select a from global_t"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     projection (global_t.a::int -> a)
       scan global_t
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets = any
     ");
 }
 
 #[test]
 fn test_query_explain_6() {
-    let sql = r#"insert into t1 values ('1', 1)"#;
+    let sql = r#"explain insert into t1 values ('1', 1)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
+    insta::assert_snapshot!(query.explain().unwrap(), @r#"
+    # Logical plan
+
     insert into t1 on conflict: fail
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
           value ROW('1'::string, 1::int)
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets = [6691]
     "#);
 }
 
 #[test]
 fn test_query_explain_7() {
-    let sql = r#"insert into t1 select a, b from t1"#;
+    let sql = r#"explain insert into t1 select a, b from t1"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     insert into t1 on conflict: fail
       motion [policy: local segment([ref(a), ref(b)]), program: ReshardIfNeeded]
         projection (t1.a::string -> a, t1.b::int -> b)
           scan t1
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets = [1-10000]
     ");
 }
 
 #[test]
 fn test_query_explain_8() {
-    let sql = r#"insert into global_t values (1, 1)"#;
+    let sql = r#"explain insert into global_t values (1, 1)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     insert into global_t on conflict: fail
       motion [policy: full, program: ReshardIfNeeded]
         values
           value ROW(1::int, 1::int)
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets = any
     ");
 }
 
 #[test]
 fn test_query_explain_9() {
-    let sql = r#"delete from t2"#;
+    let sql = r#"explain delete from t2"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     delete from t2
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets = [1-10000]
     ");
 }
 
 #[test]
 fn test_query_explain_10() {
-    let sql = r#"update t2 set e = 20 where (e, f) = (10, 10)"#;
+    let sql = r#"explain update t2 set e = 20 where (e, f) = (10, 10)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     update t2 (f = col_1, h = col_3, bucket_id = col_4, e = col_0, g = col_2)
       motion [policy: segment([]), program: [PrimaryKey(2, 3), RearrangeForShardedUpdate(0, 1)]]
         projection (20::int -> col_0, t2.f::int -> col_1, t2.g::int -> col_2, t2.h::int -> col_3, t2.bucket_id::int -> col_4, t2.e::int -> col_5, t2.f::int -> col_6)
           selection (ROW(t2.e::int, t2.f::int) = ROW(10::int, 10::int))
             scan t2
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets = unknown
     ");
 }
@@ -271,7 +349,7 @@ fn test_query_explain_11() {
     // This query contains Segment motion
     // we can't estimate buckets in this case
 
-    let sql = r#"select a, count(b) from
+    let sql = r#"explain select a, count(b) from
     (select e, f from t2 where (e, f) = (10, 10))
     join
     (select a, b from t1 where (a, b) = ('20', 20))
@@ -281,7 +359,9 @@ fn test_query_explain_11() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     projection (gr_expr_1::string -> a, sum(count_1::int)::int -> col_1)
       group by (gr_expr_1::string) output (gr_expr_1::string, count_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -297,9 +377,13 @@ fn test_query_explain_11() {
                     projection (t1.a::string -> a, t1.b::int -> b)
                       selection (ROW(t1.a::string, t1.b::int) = ROW('20'::string, 20::int))
                         scan t1
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets <= [62,2132]
     ");
 }
@@ -309,7 +393,7 @@ fn test_query_explain_12() {
     // This query does not contain
     // segment motions and we can estimate it!
 
-    let sql = r#"select a from
+    let sql = r#"explain select a from
     (select e, f from t2 where (e, f) = (10, 10))
     join
     (select a, b from t1 where (a, b) = ('20', 20))
@@ -318,7 +402,9 @@ fn test_query_explain_12() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     projection (unnamed_subquery_1.a::string -> a)
       join on (unnamed_subquery.e::int = unnamed_subquery_1.b::int)
         scan unnamed_subquery
@@ -330,45 +416,61 @@ fn test_query_explain_12() {
             projection (t1.a::string -> a, t1.b::int -> b)
               selection (ROW(t1.a::string, t1.b::int) = ROW('20'::string, 20::int))
                 scan t1
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets <= [62,2132]
     ");
 }
 
 #[test]
 fn test_query_explain_13() {
-    let sql = r#"insert into global_t select a, b from t1 where (a, b) = ('1', 1)"#;
+    let sql = r#"explain insert into global_t select a, b from t1 where (a, b) = ('1', 1)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     insert into global_t on conflict: fail
       motion [policy: full, program: ReshardIfNeeded]
         projection (t1.a::string -> a, t1.b::int -> b)
           selection (ROW(t1.a::string, t1.b::int) = ROW('1'::string, 1::int))
             scan t1
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets <= [6691]
     ");
 }
 
 #[test]
 fn test_query_explain_14() {
-    let sql = r#"select a, b from t1 where (a, b) = ('1', 1) and (a, b) = ('2', 2)"#;
+    let sql = r#"explain select a, b from t1 where (a, b) = ('1', 1) and (a, b) = ('2', 2)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     projection (t1.a::string -> a, t1.b::int -> b)
       selection ((ROW(t1.a::string, t1.b::int) = ROW('1'::string, 1::int) and ROW(t1.a::string, t1.b::int) = ROW('2'::string, 2::int)))
         scan t1
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets = []
     ");
 }
@@ -379,11 +481,17 @@ fn test_query_explain_15() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     projection (1::int -> col_1)
+
     execution options:
       sql_vdbe_opcode_max = 1
       sql_motion_row_max = 2
+
+    # Buckets
+
     buckets = any
     ");
 }
@@ -399,11 +507,17 @@ fn test_query_explain_16() {
         vec![Value::Integer(14), Value::Integer(88)],
     )
     .unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     projection (1::int -> col_1)
+
     execution options:
       sql_vdbe_opcode_max = 14
       sql_motion_row_max = 88
+
+    # Buckets
+
     buckets = any
     ");
 }
@@ -414,14 +528,20 @@ fn test_query_explain_17() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     update t (c = col_0)
       motion [policy: local, program: ReshardIfNeeded]
         projection (1::int -> col_0, t.b::int -> col_1)
           scan t
+
     execution options:
       sql_vdbe_opcode_max = 1
       sql_motion_row_max = 2
+
+    # Buckets
+
     buckets = [1-10000]
     ");
 }
@@ -432,7 +552,9 @@ fn test_query_explain_18() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
+    insta::assert_snapshot!(query.explain().unwrap(), @r#"
+    # Logical plan
+
     projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1", unnamed_subquery."COLUMN_2"::int -> "COLUMN_2", unnamed_subquery_1."COLUMN_1"::int -> "COLUMN_1", unnamed_subquery_1."COLUMN_2"::int -> "COLUMN_2")
       join on (true::bool)
         scan unnamed_subquery
@@ -445,99 +567,139 @@ fn test_query_explain_18() {
             values
               value ROW(5::int, 6::int)
               value ROW(7::int, 8::int)
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets = any
     "#);
 }
 
 #[test]
 fn test_query_explain_19() {
-    let sql = r#"select sum(1.0)"#;
+    let sql = r#"explain select sum(1.0)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     projection (sum(1.0::decimal)::decimal -> col_1)
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets = any
     ");
 }
 
 #[test]
 fn test_query_explain_20() {
-    let sql = r#"select sum(1)"#;
+    let sql = r#"explain select sum(1)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     projection (sum(1::int)::decimal -> col_1)
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets = any
     ");
 }
 
 #[test]
 fn test_query_explain_21() {
-    let sql = r#"select sum(1::double)"#;
+    let sql = r#"explain select sum(1::double)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     projection (sum(1::double)::double -> col_1)
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets = any
     ");
 }
 
 #[test]
 fn test_query_explain_22() {
-    let sql = r#"select avg(1.0)"#;
+    let sql = r#"explain select avg(1.0)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     projection (avg(1.0::decimal)::decimal -> col_1)
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets = any
     ");
 }
 
 #[test]
 fn test_query_explain_23() {
-    let sql = r#"select avg(1)"#;
+    let sql = r#"explain select avg(1)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     projection (avg(1::int)::decimal -> col_1)
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets = any
     ");
 }
 
 #[test]
 fn test_query_explain_24() {
-    let sql = r#"select avg(1::double)"#;
+    let sql = r#"explain select avg(1::double)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.to_explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    # Logical plan
+
     projection (avg(1::double)::double -> col_1)
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
+
+    # Buckets
+
     buckets = any
     ");
 }

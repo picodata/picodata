@@ -91,24 +91,36 @@ SELECT * FROM ( SELECT "t"."a", "t"."b", "t"."c" FROM "t" INDEXED BY "aaa" WHERE
 -- SQL:
 explain SELECT a FROM t INDEXED BY aaa WHERE true;
 -- EXPECTED:
+# Logical plan
+''
 projection (t.a::int -> a)
   selection (true::bool)
     scan t (indexed by aaa)
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]
 
 -- TEST: indexed-by-8
 -- SQL:
 explain SELECT a FROM t AS ttt INDEXED BY aaa WHERE true;
 -- EXPECTED:
+# Logical plan
+''
 projection (ttt.a::int -> a)
   selection (true::bool)
     scan t -> ttt (indexed by aaa)
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]
 
 -- TEST: indexed-by-9
@@ -127,20 +139,28 @@ invalid index: INDEXED BY clause is only supported for tables
 -- SQL:
 explain DELETE FROM t INDEXED by aaa WHERE true
 -- EXPECTED:
+# Logical plan
+''
 delete from t
   motion [policy: local, program: [PrimaryKey(0), ReshardIfNeeded]]
     projection (t.a::int -> pk_col_0)
       selection (true::bool)
         scan t (indexed by aaa)
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]
 
 -- TEST: indexed-by-11
 -- SQL:
 explain UPDATE t INDEXED BY aaa SET b = d FROM s INDEXED BY bbb WHERE TRUE
 -- EXPECTED:
+# Logical plan
+''
 update t (b = col_0)
   motion [policy: local, program: ReshardIfNeeded]
     projection (s.d::int -> col_0, t.a::int -> col_1)
@@ -149,9 +169,13 @@ update t (b = col_0)
         motion [policy: full, program: ReshardIfNeeded]
           projection (s.d::int -> d, s.bucket_id::int -> bucket_id, s.e::int -> e, s.f::int -> f)
             scan s (indexed by bbb)
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]
 
 -- TEST: indexed-by-12

@@ -2,20 +2,28 @@
 -- SQL:
 explain (fmt) select id, name from _pico_table;
 -- EXPECTED:
+# Logical plan
+''
 projection (
   _pico_table.id::int -> id,
   _pico_table.name::string -> name
 )
   scan _pico_table
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = any
 
 -- TEST: fmt-many-columns
 -- SQL:
 explain (fmt) select * from _pico_table;
 -- EXPECTED:
+# Logical plan
+''
 projection (
   _pico_table.id::int -> id,
   _pico_table.name::string -> name,
@@ -29,22 +37,32 @@ projection (
   _pico_table.opts::array -> opts
 )
   scan _pico_table
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = any
 
 -- TEST: fmt-one-long-column
 -- SQL:
 explain (fmt) select id * 2 + id * 3 + id * 4 from _pico_table;
 -- EXPECTED:
+# Logical plan
+''
 projection (
   _pico_table.id::int * 2::int + _pico_table.id::int * 3::int + _pico_table.id::int * 4::int -> col_1
 )
   scan _pico_table
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = any
 
 -- TEST: fmt-various-columns
@@ -58,6 +76,8 @@ select
   'hello'
 from _pico_table;
 -- EXPECTED:
+# Logical plan
+''
 projection (
   10::int -> col_1,
   _pico_table.id::int * 2::int + _pico_table.id::int * 3::int + _pico_table.id::int * 4::int -> col_2,
@@ -69,15 +89,21 @@ projection (
   'hello'::string -> col_5
 )
   scan _pico_table
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = any
 
 -- TEST: fmt-many-simple-columns
 -- SQL:
 explain (fmt) select 1, 2, 3, 4, 5, 6, 7;
 -- EXPECTED:
+# Logical plan
+''
 projection (
   1::int -> col_1,
   2::int -> col_2,
@@ -87,9 +113,13 @@ projection (
   6::int -> col_6,
   7::int -> col_7
 )
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = any
 
 -- TEST: fmt-complex-column-expr
@@ -99,6 +129,8 @@ select not ((id > 1000 and id < 2000 and id % 10 = 5) or
             (id > 3000 and id < 4000 and id % 4 = 2))
 from _pico_table;
 -- EXPECTED:
+# Logical plan
+''
 projection (
   not (
     (
@@ -113,9 +145,13 @@ projection (
   ) -> col_1
 )
   scan _pico_table
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = any
 
 -- TEST: fmt-where-long-in
@@ -123,6 +159,8 @@ buckets = any
 explain (fmt)
 select count(*) from _pico_table where id in (1,2,3,4,5,6,7,8,9,10);
 -- EXPECTED:
+# Logical plan
+''
 projection (count(*)::int -> col_1)
   selection (
     _pico_table.id::int in ROW(
@@ -139,9 +177,13 @@ projection (count(*)::int -> col_1)
     )
   )
     scan _pico_table
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = any
 
 -- TEST: fmt-where-many-ored-conditions
@@ -150,14 +192,20 @@ explain (fmt)
 select count(*) from _pico_table
 where id = 1 or id = 2 or id = 2 or id = 4 or id = 5;
 -- EXPECTED:
+# Logical plan
+''
 projection (count(*)::int -> col_1)
   selection (
     _pico_table.id::int = 1::int or _pico_table.id::int = 2::int or _pico_table.id::int = 2::int or _pico_table.id::int = 4::int or _pico_table.id::int = 5::int
   )
     scan _pico_table
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = any
 
 -- TEST: fmt-where-many-anded-conditions
@@ -170,6 +218,8 @@ where id = 23456
       and description is not null
       and name != (select min(name) from _pico_table);
 -- EXPECTED:
+# Logical plan
+''
 projection (count(*)::int -> col_1)
   selection (
     (
@@ -187,9 +237,13 @@ subquery $0:
       min(_pico_table.name::string::string)::string -> col_1
     )
       scan _pico_table
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = any
 
 -- TEST: case-when
@@ -197,10 +251,16 @@ buckets = any
 explain
 select case 1 when 1 then 1 end;
 -- EXPECTED:
+# Logical plan
+''
 projection (case 1::int when 1::int then 1::int end -> col_1)
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = any
 
 -- TEST: case-when-else
@@ -208,10 +268,16 @@ buckets = any
 explain
 select case 1 when 1 then 1 else 2 end;
 -- EXPECTED:
+# Logical plan
+''
 projection (case 1::int when 1::int then 1::int else 2::int end -> col_1)
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = any
 
 -- TEST: fmt-long-case-when
@@ -219,6 +285,8 @@ buckets = any
 explain (fmt)
 select 'hello', case 1 when 1 then 1 when 2 then 2 when 3 then 3 end * 2 + 2000;
 -- EXPECTED:
+# Logical plan
+''
 projection (
   'hello'::string -> col_1,
   case 1::int 
@@ -227,9 +295,13 @@ projection (
     when 3::int then 3::int
   end * 2::int + 2000::int -> col_2
 )
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = any
 
 -- TEST: fmt-long-case-when-else
@@ -237,6 +309,8 @@ buckets = any
 explain (fmt)
 select 'hello', case 1 when 1 then 1 when 2 then 2 when 3 then 3 else 4 end * 2 + 2000;
 -- EXPECTED:
+# Logical plan
+''
 projection (
   'hello'::string -> col_1,
   case 1::int 
@@ -246,9 +320,13 @@ projection (
     else 4::int
   end * 2::int + 2000::int -> col_2
 )
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = any
 
 -- TEST: fmt-long-cte
@@ -261,6 +339,8 @@ with q as (
          (4, '', 0, 0, 0)
 ) select count(*) from q;
 -- EXPECTED:
+# Logical plan
+''
 projection (count(*)::int -> col_1)
   scan cte q($0)
 subquery $0:
@@ -288,9 +368,13 @@ subquery $0:
         3.1415::decimal
       )
       value ROW(4::int, ''::string, 0::int, 0::int, 0::int)
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = any
 
 -- TEST: fmt-nested-case-when-else
@@ -309,6 +393,8 @@ select
         else 4
     end * 2 + 2000;
 -- EXPECTED:
+# Logical plan
+''
 projection (
   'hello'::string -> col_1,
   case 1::int 
@@ -322,7 +408,11 @@ projection (
     else 4::int
   end * 2::int + 2000::int -> col_2
 )
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = any

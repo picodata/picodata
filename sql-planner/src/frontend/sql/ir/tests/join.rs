@@ -12,7 +12,7 @@ fn milti_join1() {
         WHERE t1."identification_number" = 5 and t1."product_code" = '123'"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     projection (t1.identification_number::int -> identification_number, t1.product_code::string -> product_code, t2.id::int -> id, t3.id::int -> id)
       selection ((t1.identification_number::int = 5::int and t1.product_code::string = '123'::string))
         left join on (t1.identification_number::int = t3.id::int)
@@ -28,6 +28,7 @@ fn milti_join1() {
             scan t3
               projection (test_space.id::int -> id)
                 scan test_space
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -41,7 +42,7 @@ fn milti_join2() {
 "#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     projection (t1.a::int -> a, t1.b::int -> b, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t4.c::string -> c, t4.d::int -> d)
       left join on (true::bool)
         left join on (t1.a::int = t2.e::int)
@@ -52,6 +53,7 @@ fn milti_join2() {
         motion [policy: full, program: ReshardIfNeeded]
           projection (t4.bucket_id::int -> bucket_id, t4.c::string -> c, t4.d::int -> d)
             scan t4
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -65,7 +67,7 @@ fn milti_join3() {
 "#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     projection (t1.a::int -> a, t1.b::int -> b, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t3.a::int -> a, t3.b::int -> b, t4.c::string -> c, t4.d::int -> d)
       join on (t2.f::int = t4.c::string::int)
         join on (t1.a::int = t3.a::int)
@@ -80,6 +82,7 @@ fn milti_join3() {
         motion [policy: full, program: ReshardIfNeeded]
           projection (t4.bucket_id::int -> bucket_id, t4.c::string -> c, t4.d::int -> d)
             scan t4
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -93,7 +96,7 @@ fn milti_join4() {
 "#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     projection (t1.a::string -> a)
       join on (t1.a::string = t3.a::string)
         join on (t1.a::string = t2.a::string)
@@ -104,6 +107,7 @@ fn milti_join4() {
         motion [policy: full, program: ReshardIfNeeded]
           projection (t3.bucket_id::int -> bucket_id, t3.a::string -> a, t3.b::int -> b)
             scan t3
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000

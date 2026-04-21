@@ -13,9 +13,10 @@ fn simple_query_without_cond_plan() {
     let top = &plan.get_top().unwrap();
     let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
-    insta::assert_snapshot!(explain_tree.to_string(), @"
+    insta::assert_snapshot!(explain_tree.to_string(), @r"
     projection (t.identification_number::int -> c1, t.product_code::string -> product_code)
       scan hash_testing -> t
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -31,10 +32,11 @@ fn simple_query_with_cond_plan() {
     let top = &plan.get_top().unwrap();
     let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
-    insta::assert_snapshot!(explain_tree.to_string(), @"
+    insta::assert_snapshot!(explain_tree.to_string(), @r"
     projection (t.identification_number::int -> c1, t.product_code::string -> product_code)
       selection ((t.identification_number::int = 1::int and t.product_code::string = '222'::string))
         scan hash_testing -> t
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -52,12 +54,13 @@ fn union_query_plan() {
     let top = &plan.get_top().unwrap();
     let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
-    insta::assert_snapshot!(explain_tree.to_string(), @"
+    insta::assert_snapshot!(explain_tree.to_string(), @r"
     union all
       projection (t.identification_number::int -> c1, t.product_code::string -> product_code)
         scan hash_testing -> t
       projection (t2.identification_number::int -> identification_number, t2.product_code::string -> product_code)
         scan hash_testing_hist -> t2
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -89,6 +92,7 @@ WHERE "id" = 1"#;
             projection (test_space_hist.id::int -> id, test_space_hist."FIRST_NAME"::string -> "FIRST_NAME")
               selection (test_space_hist.sys_op::int < 0::int)
                 scan test_space_hist
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -139,6 +143,7 @@ WHERE "id" IN (SELECT "id"
                 projection (test_space_hist.id::int -> id, test_space_hist."FIRST_NAME"::string -> "FIRST_NAME")
                   selection (test_space_hist.sys_op::int < 0::int)
                     scan test_space_hist
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -155,13 +160,14 @@ fn explain_except1() {
     let top = &plan.get_top().unwrap();
     let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
-    insta::assert_snapshot!(explain_tree.to_string(), @"
+    insta::assert_snapshot!(explain_tree.to_string(), @r"
     except
       projection (t.product_code::string -> pc)
         scan hash_testing -> t
       motion [policy: full, program: ReshardIfNeeded]
         projection (hash_testing_hist.identification_number::int::string -> col_1)
           scan hash_testing_hist
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -224,6 +230,7 @@ fn motion_subquery_plan() {
                 projection (test_space_hist.id::int -> id, test_space_hist."FIRST_NAME"::string -> "FIRST_NAME")
                   selection (test_space_hist.sys_op::int < 0::int)
                     scan test_space_hist
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -254,6 +261,7 @@ WHERE "t2"."product_code" = '123'"#;
             scan t2
               projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
                 scan hash_testing
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -286,6 +294,7 @@ FROM (SELECT "id", "FIRST_NAME" FROM "test_space" WHERE "id" = 3) as "t1"
         scan
           projection (hash_testing.identification_number::int -> identification_number)
             scan hash_testing
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -305,6 +314,7 @@ fn unary_condition_plan() {
     projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
       selection ((test_space.id::int is null and not test_space."FIRST_NAME"::string is null))
         scan test_space
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -325,6 +335,7 @@ fn insert_plan() {
       motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
         values
           value ROW(1::int, '123'::string)
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -347,6 +358,7 @@ fn multiply_insert_plan() {
           value ROW(1::int, '123'::string)
           value ROW(2::int, '456'::string)
           value ROW(3::int, '789'::string)
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -363,11 +375,12 @@ SELECT "identification_number", "product_code" FROM "hash_testing""#;
     let top = &plan.get_top().unwrap();
     let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
-    insta::assert_snapshot!(explain_tree.to_string(), @"
+    insta::assert_snapshot!(explain_tree.to_string(), @r"
     insert into test_space on conflict: fail
       motion [policy: segment([ref(identification_number)]), program: ReshardIfNeeded]
         projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
           scan hash_testing
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -389,6 +402,7 @@ fn select_value_plan() {
         motion [policy: full, program: ReshardIfNeeded]
           values
             value ROW(1::int)
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -404,9 +418,10 @@ fn select_cast_plan1() {
     let top = &plan.get_top().unwrap();
     let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
-    insta::assert_snapshot!(explain_tree.to_string(), @"
+    insta::assert_snapshot!(explain_tree.to_string(), @r"
     projection (test_space.id::int::int -> b)
       scan test_space
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -426,6 +441,7 @@ fn select_cast_plan2() {
     projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
       selection (test_space.id::int::int = 1::int)
         scan test_space
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -441,9 +457,10 @@ fn select_cast_plan_nested() {
     let top = &plan.get_top().unwrap();
     let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
-    insta::assert_snapshot!(explain_tree.to_string(), @"
+    insta::assert_snapshot!(explain_tree.to_string(), @r"
     projection (TRIM(test_space.id::int::string)::string -> col_1)
       scan test_space
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -459,10 +476,11 @@ fn select_cast_plan_nested_where() {
     let top = &plan.get_top().unwrap();
     let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
-    insta::assert_snapshot!(explain_tree.to_string(), @"
+    insta::assert_snapshot!(explain_tree.to_string(), @r"
     projection (test_space.id::int -> id)
       selection (TRIM(test_space.id::int::string)::string = '1'::string)
         scan test_space
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -478,10 +496,11 @@ fn select_cast_plan_nested_where2() {
     let top = &plan.get_top().unwrap();
     let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
 
-    insta::assert_snapshot!(explain_tree.to_string(), @"
+    insta::assert_snapshot!(explain_tree.to_string(), @r"
     projection (test_space.id::int -> id)
       selection (TRIM(42::int::string) = '1'::string)
         scan test_space
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000

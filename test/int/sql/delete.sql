@@ -41,8 +41,14 @@ SELECT * FROM "g";
 -- SQL:
 explain DELETE FROM "g"
 -- EXPECTED:
+# Logical plan
+''
 delete from g
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]

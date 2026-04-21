@@ -12,7 +12,7 @@ fn front_select_chaning_1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     union all
       union all
         projection (hash_testing.product_code::string -> product_code)
@@ -21,6 +21,7 @@ fn front_select_chaning_1() {
           scan t2
       projection (t3.a::string -> a)
         scan t3
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -41,7 +42,7 @@ fn front_select_chaining_2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     except
       motion [policy: full, program: RemoveDuplicates]
         union
@@ -65,6 +66,7 @@ fn front_select_chaining_2() {
                   scan t2
               projection (t3.a::string -> a)
                 scan t3
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -82,7 +84,7 @@ fn front_select_chaining_3() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     projection (product_code::string)
       order by (1)
         motion [policy: full, program: ReshardIfNeeded]
@@ -92,6 +94,7 @@ fn front_select_chaining_3() {
                 scan hash_testing
               projection (t2.e::int::string -> col_1)
                 scan t2
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -109,7 +112,7 @@ fn union_under_insert() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     insert into t2 on conflict: fail
       motion [policy: segment([ref(e), ref(f)]), program: [RemoveDuplicates, ReshardIfNeeded]]
         union
@@ -117,6 +120,7 @@ fn union_under_insert() {
             scan t2
           projection (t2.f::int -> f, t2.e::int -> e, 2::int -> col_1, 2::int -> col_2)
             scan t2
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -148,6 +152,7 @@ fn union_under_insert1() {
               motion [policy: full, program: ReshardIfNeeded]
                 values
                   value ROW(2::int, 2::int)
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -161,7 +166,7 @@ fn limit_pushdown_with_union() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 1
       projection (a::int, b::int, c::int, d::int)
         order by (a::int)
@@ -176,6 +181,7 @@ fn limit_pushdown_with_union() {
                           scan t
                         projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
                           scan t
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -186,7 +192,7 @@ fn limit_pushdown_with_union() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 1
       projection (a::int, b::int, c::int, d::int)
         order by (a::int)
@@ -200,6 +206,7 @@ fn limit_pushdown_with_union() {
                         scan t
                       projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
                         scan t
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -213,7 +220,7 @@ fn limit_pushdown_with_union_and_group_by() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 1
       projection (a1::int, a2::int)
         order by (a1::int)
@@ -232,6 +239,7 @@ fn limit_pushdown_with_union_and_group_by() {
                               projection (t.a::int -> gr_expr_1)
                                 group by (t.a::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                                   scan t
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000

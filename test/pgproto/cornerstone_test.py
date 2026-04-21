@@ -411,17 +411,21 @@ def test_interactive_portals(pg_client: PgClient):
     pg_client.bind("", "", [], [])
 
     data = pg_client.execute("", 1)
-    assert "\n".join(row[0] for row in data["rows"]) == snapshot(
-        "projection (t.key::int -> key, t.value::string -> value)"
-    )
+    assert "\n".join(row[0] for row in data["rows"]) == snapshot("# Logical plan")
     assert data["is_finished"] is False
 
     data = pg_client.execute("", -1)
     assert "\n".join(row[0] for row in data["rows"]) == snapshot("""\
+
+projection (t.key::int -> key, t.value::string -> value)
   scan t
+
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+
+# Buckets
+
 buckets = [1-3000]\
 """)
     assert data["is_finished"] is True

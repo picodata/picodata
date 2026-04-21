@@ -1,5 +1,4 @@
 use smol_str::{SmolStr, ToSmolStr};
-use std::any::Any;
 
 use std::cell::RefCell;
 use std::cmp::Ordering;
@@ -19,6 +18,7 @@ use crate::executor::ir::ExecutionPlan;
 use crate::executor::lru::{Cache as _, LRUCache, DEFAULT_CAPACITY};
 use crate::executor::preemption::{SchedulerMetrics, SchedulerOptions};
 use crate::executor::vtable::VirtualTable;
+use crate::executor::ExecutingQuery;
 use crate::executor::{Port, PortType};
 use crate::frontend::sql::ast::AbstractSyntaxTree;
 use crate::ir::bucket::{BucketSet, Buckets};
@@ -1988,5 +1988,32 @@ impl Router for RouterRuntimeMock {
             yield_impl: || {},
             metrics: SchedulerMetrics::noop(),
         }
+    }
+}
+
+impl<C: Router> ExecutingQuery<'_, C> {
+    pub fn explain(&mut self) -> Result<SmolStr, SbroadError> {
+        let mut explain = Vec::new();
+        if self.is_logical_explain() {
+            let logical_explain = self.explain_logical()?;
+            explain.push(logical_explain);
+        }
+
+        if self.is_raw_explain() {
+            return Err(SbroadError::Other(
+                "raw explain is not supported for mocks".to_smolstr(),
+            ));
+        }
+
+        if self.is_buckets_explain() {
+            let buckets_explain = self.explain_buckets()?;
+            explain.push(buckets_explain);
+        }
+
+        // Each entry in `explain` is a plain line without a trailing '\n',
+        // so we join them with "\n\n" to separate each entry with a blank line.
+        let explain = explain.join("\n\n");
+
+        Ok(explain.into())
     }
 }

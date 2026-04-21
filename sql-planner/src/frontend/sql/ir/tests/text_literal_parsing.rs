@@ -8,8 +8,9 @@ fn text_literal_is_parsed_to_bool() {
     let pattern = "explain select coalesce('f', false);";
     let plan = sql_to_ir(pattern, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     projection (coalesce(false::bool::bool, false::bool::bool)::any -> col_1)
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -25,8 +26,9 @@ fn text_literal_is_left_as_text_due_to_exlicit_cast() {
     let pattern = "explain select coalesce('f'::bool, false);";
     let plan = sql_to_ir(pattern, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     projection (coalesce('f'::string::bool, false::bool::bool)::any -> col_1)
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000

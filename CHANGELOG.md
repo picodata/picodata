@@ -29,6 +29,10 @@ with the `YY.MINOR.MICRO` scheme.
   buckets without producing a full execution plan. This facet can be combined
   with `RAW` and `FMT` options. When multiple facets are specified, output
   sections are separated by headers.
+- Introduce `LOGICAL` facet in `EXPLAIN` statement. Users can now explicitly
+  request the logical query plan. This facet can be combined with `RAW`,
+  `BUCKETS`, and `FMT` options. The default `EXPLAIN` with no facets specified
+  now emits both `LOGICAL` and `BUCKETS`.
 
 ### Fixes
 

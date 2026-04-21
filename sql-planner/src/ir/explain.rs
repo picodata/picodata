@@ -1529,11 +1529,13 @@ impl Display for LogicalExplain {
             write!(f, "{window}")?;
         }
         if !self.exec_options.is_empty() {
+            writeln!(f)?;
             writeln!(f, "execution options:")?;
             let (key, value) = self.exec_options.first().expect("must be specified");
             write!(indent(f), "{key} = {value}")?;
             for (key, value) in self.exec_options.iter().skip(1) {
-                write!(indent(f), "\n{key} = {value}")?;
+                writeln!(f)?;
+                write!(indent(f), "{key} = {value}")?;
             }
         }
 

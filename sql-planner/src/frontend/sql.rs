@@ -6960,6 +6960,7 @@ impl AbstractSyntaxTree {
                                 Rule::ExplainRaw => explain_options |= ExplainOptions::Raw,
                                 Rule::ExplainFmt => explain_options |= ExplainOptions::Fmt,
                                 Rule::ExplainBuckets => explain_options |= ExplainOptions::Buckets,
+                                Rule::ExplainLogical => explain_options |= ExplainOptions::Logical,
                                 _ => panic!(
                                     "unknown explain option rule: {:?}",
                                     explain_option_node.rule
@@ -6970,9 +6971,9 @@ impl AbstractSyntaxTree {
                         explain_child_id = child_iter.next().expect("explain has no children");
                     }
 
-                    // Select a default facet if there's none.
+                    // Select default facets if there's none.
                     if !explain_options.has_facet() {
-                        explain_options |= ExplainOptions::Logical;
+                        explain_options |= ExplainOptions::Logical | ExplainOptions::Buckets;
                     }
                     plan.explain_options = explain_options;
 

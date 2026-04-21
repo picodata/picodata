@@ -126,6 +126,8 @@ WINDOW
     win AS (ORDER BY y + 2 * (SELECT 111) + (SELECT 2)),
     win1 AS (PARTITION BY x + (SELECT 3));
 -- EXPECTED:
+# Logical plan
+''
 projection (avg(x::int::int) over (partition by (x::int + ROW($0)) ) -> col_1, sum(x::int::int) over (order by (y::int + 2::int * ROW($2) + ROW($1)) ) -> col_2)
   motion [policy: full, program: ReshardIfNeeded]
     projection (t6.x::int -> x, t6.y::int -> y)
@@ -139,9 +141,13 @@ subquery $1:
 subquery $2:
   scan
     projection (111::int -> col_1)
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]
 
 -- TEST: window12-3.6
@@ -163,6 +169,8 @@ WINDOW
         )
     )::int);
 -- EXPECTED:
+# Logical plan
+''
 projection (row_number() over (partition by (x::int + ROW($1)) ) -> col_1, sum(y::int::int) over (partition by (x::int + ROW($1)) ) -> col_2, max(x::int::int) over (order by (x::int + ROW($0)::int) ) -> col_3)
   motion [policy: full, program: ReshardIfNeeded]
     projection (t6.x::int -> x, t6.y::int -> y)
@@ -180,20 +188,30 @@ subquery $0:
 subquery $1:
   scan
     projection (2::int -> col_1)
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]
 
 -- TEST: window12-3.7
 -- SQL:
 explain select 1 from t6 window w as (partition by (select 1 from t6 window w as ()));
 -- EXPECTED:
+# Logical plan
+''
 projection (1::int -> col_1)
   scan t6
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]
 
 -- TEST: window12-4-init

@@ -108,6 +108,8 @@ explain select * from (select "id" as "A" from "arithmetic_space") as "T1"
 left outer join (select "id" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" = "T2"."B";
 -- EXPECTED:
+# Logical plan
+''
 projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
   left join on ("T1"."A"::int = "T2"."B"::int)
     scan "T1"
@@ -116,9 +118,13 @@ projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
     scan "T2"
       projection (arithmetic_space2.id::int -> "B")
         scan arithmetic_space2
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]
 
 -- TEST: test_inner_segment_motion-1
@@ -140,6 +146,8 @@ explain select * from (select "id" as "A" from "arithmetic_space") as "T1"
 left join (select "a" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" = "T2"."B";
 -- EXPECTED:
+# Logical plan
+''
 projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
   left join on ("T1"."A"::int = "T2"."B"::int)
     scan "T1"
@@ -149,9 +157,13 @@ projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
       scan "T2"
         projection (arithmetic_space2.a::int -> "B")
           scan arithmetic_space2
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = unknown
 
 -- TEST: test_inner_full_motion-1
@@ -172,6 +184,8 @@ explain select * from (select "id" as "A" from "arithmetic_space") as "T1"
 left join (select "a" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" < "T2"."B";
 -- EXPECTED:
+# Logical plan
+''
 projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
   left join on ("T1"."A"::int < "T2"."B"::int)
     scan "T1"
@@ -181,9 +195,13 @@ projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
       scan "T2"
         projection (arithmetic_space2.a::int -> "B")
           scan arithmetic_space2
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]
 
 -- TEST: test_outer_segment_motion
@@ -233,6 +251,8 @@ explain select * from (select "a" as "A" from "arithmetic_space") as "T1"
 left join (select "id" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" in (select "a" + 1 from "arithmetic_space");
 -- EXPECTED:
+# Logical plan
+''
 projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
   left join on ("T1"."A"::int in ROW($0))
     scan "T1"
@@ -247,9 +267,13 @@ subquery $0:
     scan
       projection (arithmetic_space.a::int + 1::int -> col_1)
         scan arithmetic_space
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = [1-3000]
 
 -- TEST: test_sq_with_segment_motion-1
@@ -272,6 +296,8 @@ explain select * from (select "id" as "A" from "arithmetic_space") as t1
 left join (select "id" as "B" from "arithmetic_space2") as t2
 on t1."A" in (select "c" from "arithmetic_space");
 -- EXPECTED:
+# Logical plan
+''
 projection (t1."A"::int -> "A", t2."B"::int -> "B")
   left join on (t1."A"::int in ROW($0))
     scan t1
@@ -286,9 +312,13 @@ subquery $0:
     scan
       projection (arithmetic_space.c::int -> c)
         scan arithmetic_space
+''
 execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
+''
+# Buckets
+''
 buckets = unknown
 
 -- TEST: test_table_with_nulls1

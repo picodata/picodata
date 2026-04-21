@@ -509,10 +509,6 @@ where
         Ok(())
     }
 
-    pub fn to_explain(&mut self) -> Result<String, SbroadError> {
-        self.explain()
-    }
-
     pub fn is_explain(&self) -> bool {
         self.exec_plan.get_ir_plan().is_explain()
     }
@@ -573,18 +569,19 @@ where
         self.exec_plan.get_ir_plan().is_empty()
     }
 
-    pub fn explain(&mut self) -> Result<String, SbroadError> {
+    pub fn explain_logical(&mut self) -> Result<String, SbroadError> {
         let plan = self.get_exec_plan().get_ir_plan();
         let top_id = plan.get_top()?;
+        let explain = LogicalExplain::new(plan, top_id)?;
+        let mut buf = String::new();
+        let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
+        if !explain_options.has_single_facet() {
+            writeln!(&mut buf, "# Logical plan").unwrap();
+            writeln!(&mut buf).unwrap();
+        }
+        write!(&mut buf, "{explain}").unwrap();
 
-        let logical = LogicalExplain::new(plan, top_id)?;
-        let info = BucketsInfo::new_from_query(self)?;
-
-        let mut explain = String::new();
-        writeln!(&mut explain, "{logical}").expect("cannnot fail");
-        write!(&mut explain, "{info}").expect("cannnot fail");
-
-        Ok(explain)
+        Ok(buf)
     }
 
     pub fn explain_raw<'p>(&mut self, port: &mut impl Port<'p>) -> Result<String, SbroadError> {

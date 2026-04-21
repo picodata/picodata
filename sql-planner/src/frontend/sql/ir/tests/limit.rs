@@ -8,12 +8,13 @@ fn select() {
     let sql = r#"SELECT "id" FROM "test_space" LIMIT 100"#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 100
       motion [policy: full, program: ReshardIfNeeded]
         limit 100
           projection (test_space.id::int -> id)
             scan test_space
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -30,7 +31,7 @@ fn union_all() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 100
       motion [policy: full, program: ReshardIfNeeded]
         limit 100
@@ -39,6 +40,7 @@ fn union_all() {
               scan hash_testing
             projection (t2.e::int::string -> col_1)
               scan t2
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -51,13 +53,14 @@ fn aggregate() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 1
       projection (min(min_1::int)::int -> col_1, min(distinct gr_expr_1::int)::int -> col_2)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.b::int::int -> gr_expr_1, min(t.b::int::int)::int -> min_1)
             group by (t.b::int::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
               scan t
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -70,7 +73,7 @@ fn group_by() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 555
       projection (sum(count_1::int)::int -> col_1, gr_expr_1::int -> b)
         group by (gr_expr_1::int) output (gr_expr_1::int, count_1::int)
@@ -78,6 +81,7 @@ fn group_by() {
             projection (t.b::int -> gr_expr_1, count(*)::int -> count_1)
               group by (t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                 scan t
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -89,7 +93,7 @@ fn single_limit() {
     let sql = r#"SELECT * FROM (SELECT "id" FROM "test_space" LIMIT 1) LIMIT 1"#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 1
       projection (unnamed_subquery.id::int -> id)
         scan unnamed_subquery
@@ -98,6 +102,7 @@ fn single_limit() {
               limit 1
                 projection (test_space.id::int -> id)
                   scan test_space
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -112,7 +117,7 @@ fn join() {
 "#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 128
       motion [policy: full, program: ReshardIfNeeded]
         limit 128
@@ -130,6 +135,7 @@ fn join() {
               motion [policy: full, program: ReshardIfNeeded]
                 projection (t4.bucket_id::int -> bucket_id, t4.c::string -> c, t4.d::int -> d)
                   scan t4
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -141,9 +147,10 @@ fn limit_all() {
     let sql = r#"SELECT "id" FROM "test_space" LIMIT ALL"#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     projection (test_space.id::int -> id)
       scan test_space
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -155,9 +162,10 @@ fn limit_null() {
     let sql = r#"SELECT "id" FROM "test_space" LIMIT NULL"#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     projection (test_space.id::int -> id)
       scan test_space
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -174,7 +182,7 @@ fn explicit_select_bucket_id_from_subquery_under_limit() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 1
       motion [policy: full, program: ReshardIfNeeded]
         limit 1
@@ -182,6 +190,7 @@ fn explicit_select_bucket_id_from_subquery_under_limit() {
             scan x
               projection (test_space.bucket_id::int -> bucket_id, test_space.id::int -> id)
                 scan test_space
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -199,7 +208,7 @@ fn explicit_select_bucket_id_from_cte_under_limit() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 1
       projection (x.bucket_id::int -> bucket_id, x.id::int -> id)
         scan cte x($0)
@@ -207,6 +216,7 @@ fn explicit_select_bucket_id_from_cte_under_limit() {
       motion [policy: full, program: ReshardIfNeeded]
         projection (test_space.bucket_id::int -> bucket_id, test_space.id::int -> id)
           scan test_space
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -241,12 +251,13 @@ fn limit_pushdown_window() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 1
       projection (count(*) over () -> c)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.a::int -> a)
             scan t
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -312,7 +323,7 @@ fn limit_pushdown_distinct_order_by_alias() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 5
       projection (x::int)
         order by (x::int)
@@ -327,6 +338,7 @@ fn limit_pushdown_distinct_order_by_alias() {
                           projection (t.a::int -> gr_expr_1)
                             group by (t.a::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                               scan t
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -342,7 +354,7 @@ fn limit_pushdown_distinct_order_by_expr_over_duplicated_aliases() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 5
       projection (c0::int, c1::int, c2::int)
         order by (c0::int + c2::int)
@@ -357,6 +369,7 @@ fn limit_pushdown_distinct_order_by_expr_over_duplicated_aliases() {
                           projection (t.a::int -> gr_expr_1, t.b::int -> gr_expr_2)
                             group by (t.a::int, t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                               scan t
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -372,7 +385,7 @@ fn limit_pushdown_distinct_order_by_ordinal_position() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 5
       projection (c0::int, c1::int, c2::int)
         order by (3 desc)
@@ -387,6 +400,7 @@ fn limit_pushdown_distinct_order_by_ordinal_position() {
                           projection (t.a::int -> gr_expr_1, t.b::int -> gr_expr_2)
                             group by (t.a::int, t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                               scan t
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -400,7 +414,7 @@ fn limit_pushdown_order_by_subquery_no_pushdown() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 5
       projection (a::int)
         order by (ROW($0), a::int)
@@ -411,6 +425,7 @@ fn limit_pushdown_order_by_subquery_no_pushdown() {
     subquery $0:
       scan
         projection (1::int -> col_1)
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -424,7 +439,7 @@ fn limit_pushdown_except() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 1
       projection (a::int)
         order by (a::int)
@@ -440,6 +455,7 @@ fn limit_pushdown_except() {
                         projection (t.a::int -> a)
                           selection (t.a::int = 1::int)
                             scan t
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -453,7 +469,7 @@ fn limit_pushdown_aggregate_in_order_by() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 5
       projection (b::int)
         order by (sum(b::int::int)::decimal)
@@ -464,6 +480,7 @@ fn limit_pushdown_aggregate_in_order_by() {
                   projection (t.b::int -> gr_expr_1)
                     group by (t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                       scan t
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -477,7 +494,7 @@ fn limit_pushdown_distinct() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 5
       projection (gr_expr_1::int -> a, gr_expr_2::int -> b)
         group by (gr_expr_1::int, gr_expr_2::int) output (gr_expr_1::int, gr_expr_2::int)
@@ -486,6 +503,7 @@ fn limit_pushdown_distinct() {
               projection (t.a::int -> gr_expr_1, t.b::int -> gr_expr_2)
                 group by (t.a::int, t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                   scan t
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -499,7 +517,7 @@ fn limit_pushdown_having_filter_aggregate() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 5
       projection (gr_expr_1::int -> b)
         having (sum(count_1::int)::int > 1::int)
@@ -508,6 +526,7 @@ fn limit_pushdown_having_filter_aggregate() {
               projection (t.b::int -> gr_expr_1, count(*)::int -> count_1)
                 group by (t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                   scan t
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -521,7 +540,7 @@ fn limit_pushdown_orderby_and_having() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @"
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
     limit 5
       projection (b::int)
         order by (b::int)
@@ -533,6 +552,7 @@ fn limit_pushdown_orderby_and_having() {
                     projection (t.b::int -> gr_expr_1)
                       group by (t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                         scan t
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000

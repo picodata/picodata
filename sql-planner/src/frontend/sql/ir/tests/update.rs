@@ -11,6 +11,7 @@ fn update1() {
       motion [policy: local, program: ReshardIfNeeded]
         projection ('test'::string -> col_0, test_space.id::int -> col_1)
           scan test_space
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
@@ -27,6 +28,7 @@ fn update2() {
       motion [policy: local, program: ReshardIfNeeded]
         projection ('test'::string -> col_0, test_space.id::int -> col_1)
           scan test_space
+
     execution options:
       sql_vdbe_opcode_max = 45000
       sql_motion_row_max = 5000
