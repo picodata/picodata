@@ -20,11 +20,14 @@ rmpv = { version = "1.0", features = ["with-serde"] }
 serde = "1.0"
 smol_str = { workspace = true }
 socket2 = { workspace = true }
-tarantool = { path = "../tarantool/tarantool", version = "11.0", features = ["picodata", "test", "tokio_components"] }
+tarantool = { path = "../tarantool/tarantool", version = "11.0", features = [
+  "picodata",
+  "test",
+  "tokio_components",
+] }
 thiserror = "2"
 
 [dev-dependencies]
-reqwest = "0.13"
 serde_json = "1.0"
 threadpool = "1.8"
 
