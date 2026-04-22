@@ -25,7 +25,7 @@
 //!
 //! Here is how to do async http request with `tros`:
 //!
-//! ```no_run
+//! ```no_compile
 //! use picodata_plugin::interplay::tros;
 //! use picodata_plugin::system::tarantool::fiber;
 //!
