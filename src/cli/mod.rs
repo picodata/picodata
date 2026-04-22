@@ -2,6 +2,7 @@ pub mod admin;
 pub mod args;
 pub mod console;
 pub mod default_config;
+#[cfg(feature = "demo")]
 pub mod demo;
 pub mod expel;
 pub mod plugin;

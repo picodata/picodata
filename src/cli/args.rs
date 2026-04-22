@@ -44,6 +44,7 @@ pub enum Command {
     Config(Config),
     #[clap(subcommand)]
     Plugin(Plugin),
+    #[cfg(feature = "demo")]
     Demo(Demo),
 }
 
@@ -859,6 +860,7 @@ impl IprotoTlsArgs {
 
 /// See implementation in [`crate::cli::demo::main`].
 /// Used for quick technical validations and live feature demonstrations.
+#[cfg(feature = "demo")]
 #[derive(Debug, clap::Parser)]
 #[clap(about = "Run interactive Picodata demonstration scenario")]
 pub struct Demo {
