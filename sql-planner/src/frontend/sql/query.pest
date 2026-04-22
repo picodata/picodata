@@ -1,4 +1,31 @@
-Command = _{ SOI ~ (AnonymousBlock | Query | ExplainQuery | CallProc | DDL | ACL | TCL | Plugin | Deallocate | EmptyQuery) ~ EOF }
+Command = _{ SOI ~ (AnonymousBlock | Copy | Query | ExplainQuery | CallProc | DDL | ACL | TCL | Plugin | Deallocate | EmptyQuery) ~ EOF }
+
+Copy = ${
+    ^"copy" ~ W ~ CopyTableName ~ (WO ~ CopyColumns)? ~ W ~ CopyFromDirection
+}
+    CopyTableName = @{ (PublicSchema)? ~ Identifier }
+    CopyColumns = _{ "(" ~ WO ~ CopyColumnIdentifiers ~ WO ~ ")" }
+        CopyColumnIdentifiers = _{ Identifier ~ (WO ~ "," ~ WO ~ Identifier)* }
+    CopyFromDirection = {
+        ^"from" ~ W ~ CopyTarget
+        ~ (W ~ CopyWithOptions)?
+        ~ (W ~ OnConflict)?
+    }
+    CopyTarget = { ^"stdin" }
+    CopyWithOptions = ${ ^"with" ~ WO ~ "(" ~ WO ~ CopyOptionList? ~ WO ~ ")" }
+        CopyOptionList = _{ CopyOption ~ (WO ~ "," ~ WO ~ CopyOption)* }
+        CopyOption = _{ CopyFormatOption | CopyDelimiterOption | CopyNullOption | CopyHeaderOption | CopySessionFlushRowsOption | CopyDestinationFlushRowsOption | CopySessionFlushBytesOption | CopyDestinationFlushBytesOption | CopyRowBytesOption }
+            CopyFormatOption = ${ ^"format" ~ W ~ CopyOptionValue }
+            CopyDelimiterOption = ${ ^"delimiter" ~ W ~ SingleQuotedString }
+            CopyNullOption = ${ ^"null" ~ W ~ SingleQuotedString }
+            CopyHeaderOption = ${ ^"header" ~ (W ~ CopyBoolean)? }
+            CopySessionFlushRowsOption = ${ ^"session_flush_rows" ~ WO ~ "=" ~ WO ~ Unsigned }
+            CopyDestinationFlushRowsOption = ${ ^"destination_flush_rows" ~ WO ~ "=" ~ WO ~ Unsigned }
+            CopySessionFlushBytesOption = ${ ^"session_flush_bytes" ~ WO ~ "=" ~ WO ~ Unsigned }
+            CopyDestinationFlushBytesOption = ${ ^"destination_flush_bytes" ~ WO ~ "=" ~ WO ~ Unsigned }
+            CopyRowBytesOption = ${ ^"row_bytes" ~ WO ~ "=" ~ WO ~ Unsigned }
+            CopyOptionValue = _{ SingleQuotedString | Identifier }
+            CopyBoolean = { True | False }
 
 AnonymousBlock = ${
     ^"do" ~ W ~ ExplicitBlockLanguage? ~

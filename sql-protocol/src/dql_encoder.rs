@@ -3,6 +3,24 @@ pub trait MsgpackEncode {
     fn encode_into(&self, w: &mut impl std::io::Write) -> std::io::Result<()>;
 }
 
+pub struct RawMsgpack<'a> {
+    bytes: &'a [u8],
+}
+
+impl<'a> RawMsgpack<'a> {
+    pub fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes }
+    }
+}
+
+impl MsgpackEncode for RawMsgpack<'_> {
+    fn encode_into(&self, w: &mut impl std::io::Write) -> std::io::Result<()> {
+        // COPY remote dispatch already stores Tarantool insert tuples as msgpack.
+        // Write those bytes verbatim so the packet writer wraps one tuple, not bin-of-bin data.
+        w.write_all(self.bytes)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ColumnType {

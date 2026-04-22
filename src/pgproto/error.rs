@@ -8,9 +8,13 @@ use crate::sasl;
 /// See <https://www.postgresql.org/docs/current/errcodes-appendix.html>.
 #[derive(Debug, Clone, Copy)]
 pub enum PgErrorCode {
+    BadCopyFileFormat,
+    DuplicateColumn,
     DuplicateCursor,
     DuplicatePreparedStatement,
     InvalidatedPreparedStatement,
+    InvalidColumnReference,
+    InsufficientPrivilege,
     FeatureNotSupported,
     InternalError,
     InvalidAuthorizationSpecification,
@@ -18,19 +22,27 @@ pub enum PgErrorCode {
     InvalidPassword,
     InvalidTextRepresentation,
     IoError,
+    NotNullViolation,
+    ObjectNotInPrerequisiteState,
     ProtocolViolation,
+    UndefinedColumn,
+    UndefinedTable,
 }
 
 impl PgErrorCode {
     #[inline(always)]
     pub fn as_str(&self) -> &'static str {
         match self {
+            PgErrorCode::BadCopyFileFormat => "22P04",
+            PgErrorCode::DuplicateColumn => "42701",
             PgErrorCode::DuplicateCursor => "42P03",
             PgErrorCode::DuplicatePreparedStatement => "42P05",
             // "42999" is not a standard postgres error code and isn't present
             // at https://www.postgresql.org/docs/current/errcodes-appendix.html
             // This would be sent only if `pico_stmt_invalidation` option was provided.
             PgErrorCode::InvalidatedPreparedStatement => "42999",
+            PgErrorCode::InvalidColumnReference => "42P10",
+            PgErrorCode::InsufficientPrivilege => "42501",
             PgErrorCode::FeatureNotSupported => "0A000",
             PgErrorCode::InternalError => "XX000",
             PgErrorCode::InvalidAuthorizationSpecification => "28000",
@@ -38,7 +50,11 @@ impl PgErrorCode {
             PgErrorCode::InvalidPassword => "28P01",
             PgErrorCode::InvalidTextRepresentation => "22P02",
             PgErrorCode::IoError => "58030",
+            PgErrorCode::NotNullViolation => "23502",
+            PgErrorCode::ObjectNotInPrerequisiteState => "55000",
             PgErrorCode::ProtocolViolation => "08P01",
+            PgErrorCode::UndefinedColumn => "42703",
+            PgErrorCode::UndefinedTable => "42P01",
         }
     }
 }

@@ -6,8 +6,10 @@ extern crate core;
 use crate::errors::SbroadError;
 use crate::executor::engine::{query_id, Metadata, Router, VersionMap};
 use crate::executor::lru::Cache;
+use crate::frontend::sql::command;
 use crate::frontend::Ast;
 use crate::ir::helpers::RepeatableState;
+use crate::ir::operator::ConflictStrategy;
 use crate::ir::options::Options;
 use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::Value;
@@ -27,6 +29,87 @@ pub mod ir;
 pub mod log;
 pub mod utils;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CopyStatement {
+    From(CopyFrom),
+}
+
+#[derive(Debug)]
+pub enum Command {
+    Sql(PreparedStatement),
+    Copy(CopyStatement),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CopyFrom {
+    pub table: CopyTableTarget,
+    pub options: CopyOptions,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CopyTableTarget {
+    pub schema_name: Option<SmolStr>,
+    pub table_name: SmolStr,
+    pub columns: Vec<SmolStr>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CopyOptions {
+    pub format: CopyFormat,
+    pub delimiter: Option<String>,
+    pub null_string: Option<String>,
+    pub header: bool,
+    pub conflict_strategy: ConflictStrategy,
+    pub session_flush_rows: Option<usize>,
+    pub destination_flush_rows: Option<usize>,
+    pub session_flush_bytes: Option<usize>,
+    pub destination_flush_bytes: Option<usize>,
+    pub row_bytes: Option<usize>,
+}
+
+impl Default for CopyOptions {
+    fn default() -> Self {
+        Self {
+            format: CopyFormat::Text,
+            delimiter: None,
+            null_string: None,
+            header: false,
+            conflict_strategy: ConflictStrategy::DoFail,
+            session_flush_rows: None,
+            destination_flush_rows: None,
+            session_flush_bytes: None,
+            destination_flush_bytes: None,
+            row_bytes: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CopyFormat {
+    Text,
+    Csv,
+    Binary,
+}
+
+pub fn parse_command<R>(
+    router: &R,
+    query_text: &str,
+    param_types: &[DerivedType],
+) -> Result<Command, SbroadError>
+where
+    R: Router,
+    R::MetadataProvider: Metadata,
+    R::Cache: Cache<SmolStr, Rc<Plan>>,
+    R::ParseTree: Ast,
+{
+    match command::parse_command(query_text)? {
+        command::ParsedCommand::Sql => {
+            PreparedStatement::parse_sql(router, query_text, param_types).map(Command::Sql)
+        }
+        command::ParsedCommand::Copy(statement) => Ok(Command::Copy(statement)),
+    }
+}
+
 /// A parsed parameterized query. It still has parameter placeholders instead of actual parameter values.
 #[derive(Debug)]
 pub struct PreparedStatement {
@@ -43,6 +126,20 @@ impl PreparedStatement {
     ///
     /// This function will attempt to cache the optimized plan into the router's query plan cache.
     pub fn parse<R>(
+        router: &R,
+        query_text: &str,
+        param_types: &[DerivedType],
+    ) -> Result<PreparedStatement, SbroadError>
+    where
+        R: Router,
+        R::MetadataProvider: Metadata,
+        R::Cache: Cache<SmolStr, Rc<Plan>>,
+        R::ParseTree: Ast,
+    {
+        Self::parse_sql(router, query_text, param_types)
+    }
+
+    fn parse_sql<R>(
         router: &R,
         query_text: &str,
         param_types: &[DerivedType],

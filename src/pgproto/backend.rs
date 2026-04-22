@@ -1,7 +1,7 @@
 use self::{
     describe::{PortalDescribe, StatementDescribe},
     result::ExecuteResult,
-    storage::{Portal, Statement, PG_PORTALS, PG_STATEMENTS},
+    storage::{Portal, PortalSource, Statement, StatementKind, PG_PORTALS, PG_STATEMENTS},
 };
 use super::{
     client::{ClientId, ClientParams},
@@ -19,7 +19,7 @@ use bytes::Bytes;
 use postgres_types::Oid;
 use smol_str::format_smolstr;
 use sql::ir::value::Value as SbroadValue;
-use sql::PreparedStatement;
+use sql::Command as PlannerCommand;
 use std::sync::atomic::{AtomicU64, Ordering};
 use storage::param_oid_to_derived_type;
 use tarantool::session::with_su;
@@ -27,8 +27,9 @@ use tarantool::session::with_su;
 mod pgproc;
 mod well_known_queries;
 
+pub(crate) mod copy;
 pub mod describe;
-pub mod result;
+pub(crate) mod result;
 pub mod storage;
 
 fn decode_parameter(bytes: Option<&[u8]>, oid: Oid, format: FieldFormat) -> PgResult<SbroadValue> {
@@ -112,23 +113,30 @@ pub fn bind(
     };
     let effective_options = client_params.execution_options().unwrap_or(sql_options);
 
-    let bound_statement = statement
-        .prepared_statement()
-        .bind(params, effective_options)?;
+    let source = match statement.statement_kind() {
+        StatementKind::Sql(prepared_statement) => {
+            PortalSource::Sql(prepared_statement.bind(params, effective_options)?)
+        }
+        StatementKind::Copy(prepared_copy) => {
+            if !params.is_empty() {
+                return Err(PgError::ProtocolViolation(format_smolstr!(
+                    "bind message supplies {} parameters, but prepared statement \"{}\" requires 0",
+                    params.len(),
+                    statement_key.1,
+                )));
+            }
+            PortalSource::Copy(prepared_copy.clone())
+        }
+    };
 
     let portal_key = storage::Key(id, portal_name.into());
-    let portal = Portal::new(
-        portal_key.clone(),
-        statement.clone(),
-        result_format,
-        bound_statement,
-    )?;
+    let portal = Portal::new(portal_key.clone(), statement.clone(), result_format, source)?;
     PG_PORTALS.with(|storage| storage.borrow_mut().put(portal_key, portal))?;
 
     Ok(())
 }
 
-pub fn execute(id: ClientId, name: String, max_rows: i64) -> PgResult<ExecuteResult> {
+pub(crate) fn execute(id: ClientId, name: String, max_rows: i64) -> PgResult<ExecuteResult> {
     let key = storage::Key(id, name.into());
 
     let router = RouterRuntime::new();
@@ -151,9 +159,15 @@ pub fn parse(id: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> P
         .map(|oid| param_oid_to_derived_type(*oid))
         .collect::<Result<_, _>>()?;
 
-    let prepared_statement = PreparedStatement::parse(&router, query, &param_types)?;
-
-    let statement = Statement::new(key.clone(), prepared_statement, param_oids)?;
+    let statement = match sql::parse_command(&router, query, &param_types)? {
+        PlannerCommand::Copy(copy_statement) => Statement::new_copy(
+            key.clone(),
+            copy::PreparedCopy::try_from_statement(copy_statement, query)?,
+        ),
+        PlannerCommand::Sql(prepared_statement) => {
+            Statement::new_sql(key.clone(), prepared_statement, param_oids)?
+        }
+    };
     PG_STATEMENTS.with(|storage| storage.borrow_mut().put(key, statement.into()))?;
 
     Ok(())
@@ -241,7 +255,7 @@ impl Backend {
     /// parse + bind + describe + execute and result is returned.
     ///
     /// Note that it closes the unnamed portal and statement even in case of a failure.
-    pub fn simple_query(&self, sql: &str) -> PgResult<ExecuteResult> {
+    pub(crate) fn simple_query(&self, sql: &str) -> PgResult<ExecuteResult> {
         let do_simple_query = || {
             let close_unnamed = || {
                 self.close_statement(None);
@@ -373,7 +387,7 @@ impl Backend {
     ///
     /// Take a portal from the storage and retrieve at most max_rows rows from it. In case of
     /// non-dql queries max_rows is ignored and result with no rows is returned.
-    pub fn execute(&self, portal: Option<String>, max_rows: i64) -> PgResult<ExecuteResult> {
+    pub(crate) fn execute(&self, portal: Option<String>, max_rows: i64) -> PgResult<ExecuteResult> {
         let name = portal.unwrap_or_default();
         execute(self.client_id, name, max_rows)
     }

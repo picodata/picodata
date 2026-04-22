@@ -96,6 +96,15 @@ const DEFAULT_WAIT_APPLIED_GLOBALLY: bool = true;
 // The same limit as in PostgreSQL (http://postgresql.org/docs/16/limits.html)
 const MAX_PARAMETER_INDEX: usize = 65535;
 
+pub(crate) fn conflict_strategy_from_rule(rule: Rule) -> Option<ConflictStrategy> {
+    match rule {
+        Rule::DoNothing => Some(ConflictStrategy::DoNothing),
+        Rule::DoReplace => Some(ConflictStrategy::DoReplace),
+        Rule::DoFail => Some(ConflictStrategy::DoFail),
+        _ => None,
+    }
+}
+
 /// The default column name where sharded tables store the `bucket_id`.
 /// The sharding key is mapped (via hashing) to a `bucket_id` value stored in this column.
 pub const DEFAULT_BUCKET_ID_COLUMN_NAME: &str = "bucket_id";
@@ -1827,21 +1836,15 @@ fn parse_insert<M: Metadata>(
             return Ok(ConflictStrategy::DoFail);
         };
         let rule = &ast.nodes.get_node(child_id)?.rule;
-        let res = match rule {
-            Rule::DoNothing => ConflictStrategy::DoNothing,
-            Rule::DoReplace => ConflictStrategy::DoReplace,
-            Rule::DoFail => ConflictStrategy::DoFail,
-            _ => {
-                return Err(SbroadError::Invalid(
-                    Entity::AST,
-                    Some(format_smolstr!(
-                        "expected conflict strategy on \
-                                AST id ({child_id}). Got: {rule:?}"
-                    )),
-                ))
-            }
-        };
-        Ok(res)
+        conflict_strategy_from_rule(*rule).ok_or_else(|| {
+            SbroadError::Invalid(
+                Entity::AST,
+                Some(format_smolstr!(
+                    "expected conflict strategy on \
+                            AST id ({child_id}). Got: {rule:?}"
+                )),
+            )
+        })
     };
     let ast_child = ast.nodes.get_node(*ast_child_id)?;
 
@@ -7704,6 +7707,7 @@ pub fn try_parse_datetime(s: &str) -> Option<Datetime> {
 }
 
 pub mod ast;
+pub(crate) mod command;
 pub mod ir;
 pub mod tree;
 mod type_system;

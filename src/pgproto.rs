@@ -4,7 +4,9 @@ use self::{client::PgClient, error::PgResult, tls::TlsAcceptor};
 use crate::config::PgprotoConfig;
 use crate::{static_ref, storage::Catalog, tlog, traft::error::Error};
 use prometheus::IntCounter;
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+#[cfg(target_os = "linux")]
+use smol_str::ToSmolStr;
+use smol_str::{format_smolstr, SmolStr};
 #[cfg(target_os = "linux")]
 use std::os::linux::net::SocketAddrExt;
 use std::{
@@ -47,6 +49,24 @@ static PGPROTO_CONNECTIONS_CLOSED_TOTAL: LazyLock<IntCounter> = LazyLock::new(||
 pub fn register_metrics(registry: &prometheus::Registry) -> prometheus::Result<()> {
     registry.register(Box::new(PGPROTO_CONNECTIONS_CLOSED_TOTAL.clone()))?;
     registry.register(Box::new(PGPROTO_CONNECTIONS_OPENED_TOTAL.clone()))?;
+    registry.register(Box::new(
+        backend::copy::PGPROTO_COPY_BATCHES_FLUSHED_TOTAL.clone(),
+    ))?;
+    registry.register(Box::new(
+        backend::copy::PGPROTO_COPY_BATCH_FLUSH_DURATION.clone(),
+    ))?;
+    registry.register(Box::new(
+        backend::copy::PGPROTO_COPY_BYTES_RECEIVED_TOTAL.clone(),
+    ))?;
+    registry.register(Box::new(
+        backend::copy::PGPROTO_COPY_RECORD_LIMIT_ERRORS_TOTAL.clone(),
+    ))?;
+    registry.register(Box::new(
+        backend::copy::PGPROTO_COPY_ROWS_INSERTED_TOTAL.clone(),
+    ))?;
+    registry.register(Box::new(
+        backend::copy::PGPROTO_COPY_SESSIONS_STARTED_TOTAL.clone(),
+    ))?;
     registry.register(Box::new(
         backend::storage::PGPROTO_PORTALS_CLOSED_TOTAL.clone(),
     ))?;

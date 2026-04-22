@@ -11,6 +11,7 @@ use smol_str::format_smolstr;
 use std::io;
 
 mod auth;
+mod copy_in;
 mod extended_query;
 mod simple_query;
 mod startup;
@@ -19,6 +20,11 @@ pub use startup::ClientParams;
 
 /// We generate those sequentially for every client connection.
 pub type ClientId = u64;
+
+enum MessageExecutionOutcome {
+    Completed,
+    EnterCopyIn(copy_in::ActiveCopyIn),
+}
 
 /// Postgres client representation.
 pub struct PgClient<S> {
@@ -68,9 +74,10 @@ impl<S: io::Read + io::Write> PgClient<S> {
     }
 }
 
-#[derive(PartialEq)]
 enum MessageLoopState {
     ReadyForQuery,
+    CopyIn(copy_in::ActiveCopyIn),
+    DrainingCopyError,
     RunningExtendedQuery,
     Terminated,
 }
@@ -95,31 +102,58 @@ impl PgError {
 }
 
 impl<S: io::Read + io::Write> PgClient<S> {
-    /// Receive a single message, process it, then send a proper response.
-    fn process_message(&mut self) -> PgResult<()> {
-        let message = self.stream.read_message()?;
-        tlog!(Debug, "received {message:?}");
+    fn enter_copy_in(&mut self, active_copy: copy_in::ActiveCopyIn) {
+        self.loop_state = MessageLoopState::CopyIn(active_copy);
+    }
 
-        if self.is_running_extended_query() && !extended_query::is_extended_query_message(&message)
-        {
-            // According to the protocol, the extended query is expected to be finished by getting
-            // a Sync message, but the frontend can send a simple query message before Sync,
-            // which will finish the pipeline. In that case Postgres just changes the state without any
-            // errors or warnings. We can follow the Postgres way, but I think a warning might be helpful.
-            //
-            // See the discussion about getting a Query message while running extended query:
-            // https://postgrespro.com/list/thread-id/2416958.
-            tlog!(
-                Warning,
-                "got {message:?} message while running extended query"
-            );
+    fn finish_copy_in(&mut self, mode: copy_in::CopyInMode) {
+        self.loop_state = match mode {
+            copy_in::CopyInMode::ExtendedQuery => MessageLoopState::RunningExtendedQuery,
+            copy_in::CopyInMode::SimpleQuery => MessageLoopState::ReadyForQuery,
+        };
+    }
+
+    fn take_copy_in_mode(&mut self) -> Option<copy_in::CopyInMode> {
+        let state = std::mem::replace(&mut self.loop_state, MessageLoopState::ReadyForQuery);
+        match state {
+            MessageLoopState::CopyIn(active_copy) => Some(active_copy.mode()),
+            other => {
+                self.loop_state = other;
+                None
+            }
         }
+    }
 
+    fn sync_extended_query(&mut self) -> PgResult<()> {
+        loop {
+            match self.stream.read_message()? {
+                FeMessage::Sync(_) => {
+                    self.loop_state = MessageLoopState::ReadyForQuery;
+                    extended_query::process_sync_message(&self.backend);
+                    return Ok(());
+                }
+                FeMessage::Terminate(_) => {
+                    tlog!(Info, "terminating the session while waiting for Sync");
+                    self.loop_state = MessageLoopState::Terminated;
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn process_regular_message(&mut self, message: FeMessage) -> PgResult<()> {
         match message {
             FeMessage::Query(query) => {
                 tlog!(Debug, "executing simple query: {}", query.query);
-                simple_query::process_query_message(&mut self.stream, &self.backend, query)?;
-                self.loop_state = MessageLoopState::ReadyForQuery;
+                match simple_query::process_query_message(&mut self.stream, &self.backend, query)? {
+                    MessageExecutionOutcome::Completed => {
+                        self.loop_state = MessageLoopState::ReadyForQuery;
+                    }
+                    MessageExecutionOutcome::EnterCopyIn(active_copy) => {
+                        self.enter_copy_in(active_copy)
+                    }
+                }
             }
             FeMessage::Parse(parse) => {
                 tlog!(
@@ -148,7 +182,16 @@ impl<S: io::Read + io::Write> PgClient<S> {
                     execute.name.as_deref().unwrap_or_default()
                 );
                 self.loop_state = MessageLoopState::RunningExtendedQuery;
-                extended_query::process_execute_message(&mut self.stream, &self.backend, execute)?;
+                match extended_query::process_execute_message(
+                    &mut self.stream,
+                    &self.backend,
+                    execute,
+                )? {
+                    MessageExecutionOutcome::Completed => {}
+                    MessageExecutionOutcome::EnterCopyIn(active_copy) => {
+                        self.enter_copy_in(active_copy)
+                    }
+                }
             }
             FeMessage::Describe(describe) => {
                 tlog!(
@@ -188,9 +231,100 @@ impl<S: io::Read + io::Write> PgClient<S> {
                 tlog!(Info, "terminating the session");
                 self.loop_state = MessageLoopState::Terminated;
             }
+            FeMessage::CopyData(_) => {
+                return Err(PgError::ProtocolViolation(format_smolstr!(
+                    "unexpected frontend CopyData message outside COPY FROM STDIN"
+                )));
+            }
+            FeMessage::CopyDone(_) => {
+                return Err(PgError::ProtocolViolation(format_smolstr!(
+                    "unexpected frontend CopyDone message outside COPY FROM STDIN"
+                )));
+            }
+            FeMessage::CopyFail(_) => {
+                return Err(PgError::ProtocolViolation(format_smolstr!(
+                    "unexpected frontend CopyFail message outside COPY FROM STDIN"
+                )));
+            }
             message => return Err(PgError::FeatureNotSupported(format_smolstr!("{message:?}"))),
         };
         Ok(())
+    }
+
+    /// Receive a single message, process it, then send a proper response.
+    fn process_message(&mut self) -> PgResult<()> {
+        let message = self.stream.read_message()?;
+        tlog!(Debug, "received {message:?}");
+
+        if self.is_running_extended_query() && !extended_query::is_extended_query_message(&message)
+        {
+            // According to the protocol, the extended query is expected to be finished by getting
+            // a Sync message, but the frontend can send a simple query message before Sync,
+            // which will finish the pipeline. In that case Postgres just changes the state without any
+            // errors or warnings. We can follow the Postgres way, but I think a warning might be helpful.
+            //
+            // See the discussion about getting a Query message while running extended query:
+            // https://postgrespro.com/list/thread-id/2416958.
+            tlog!(
+                Warning,
+                "got {message:?} message while running extended query"
+            );
+        }
+
+        if self.is_running_copy_in()
+            && !copy_in::is_copy_in_message(&message)
+            && !matches!(message, FeMessage::Terminate(_))
+        {
+            tlog!(
+                Warning,
+                "got {message:?} message while running COPY FROM STDIN"
+            );
+        }
+
+        if matches!(&self.loop_state, MessageLoopState::DrainingCopyError) {
+            match message {
+                FeMessage::Terminate(_) => {
+                    self.loop_state = MessageLoopState::Terminated;
+                }
+                _ if copy_in::is_copy_in_message(&message) => {
+                    tlog!(Debug, "dropping stale {message:?} after COPY error");
+                }
+                other => {
+                    self.loop_state = MessageLoopState::ReadyForQuery;
+                    self.process_regular_message(other)?;
+                }
+            }
+            return Ok(());
+        }
+
+        if self.is_running_copy_in() {
+            let (mode, outcome) = {
+                let MessageLoopState::CopyIn(active_copy) = &mut self.loop_state else {
+                    unreachable!("checked COPY state above");
+                };
+                let mode = active_copy.mode();
+                let outcome = copy_in::process_copy_in_message(active_copy, message)?;
+                (mode, outcome)
+            };
+
+            match outcome {
+                copy_in::CopyInMessageOutcome::Continue => {}
+                copy_in::CopyInMessageOutcome::Done { inserted_rows } => {
+                    self.finish_copy_in(mode);
+                    self.stream
+                        .write_message(messages::copy_command_complete(inserted_rows))?;
+                }
+                copy_in::CopyInMessageOutcome::ClientFailed { reason } => {
+                    return Err(PgError::other(format!("COPY from stdin failed: {reason}")));
+                }
+                copy_in::CopyInMessageOutcome::Terminate => {
+                    self.loop_state = MessageLoopState::Terminated;
+                }
+            }
+            return Ok(());
+        }
+
+        self.process_regular_message(message)
     }
 
     fn process_error(&mut self, error: PgError) -> PgResult<()> {
@@ -206,12 +340,16 @@ impl<S: io::Read + io::Write> PgClient<S> {
         error.check_fatality()?;
 
         // Otherwise, perform a pipeline synchronization.
-        if let MessageLoopState::RunningExtendedQuery = self.loop_state {
-            loop {
-                if let FeMessage::Sync(_) = self.stream.read_message()? {
-                    self.loop_state = MessageLoopState::ReadyForQuery;
-                    extended_query::process_sync_message(&self.backend);
-                    break;
+        if matches!(&self.loop_state, MessageLoopState::RunningExtendedQuery) {
+            self.sync_extended_query()?;
+        } else if let Some(mode) = self.take_copy_in_mode() {
+            match mode {
+                copy_in::CopyInMode::SimpleQuery => {
+                    self.stream.write_message(messages::ready_for_query())?;
+                    self.loop_state = MessageLoopState::DrainingCopyError;
+                }
+                copy_in::CopyInMode::ExtendedQuery => {
+                    self.sync_extended_query()?;
                 }
             }
         };
@@ -220,18 +358,22 @@ impl<S: io::Read + io::Write> PgClient<S> {
     }
 
     fn is_terminated(&self) -> bool {
-        matches!(self.loop_state, MessageLoopState::Terminated)
+        matches!(&self.loop_state, MessageLoopState::Terminated)
     }
 
     fn is_running_extended_query(&self) -> bool {
-        matches!(self.loop_state, MessageLoopState::RunningExtendedQuery)
+        matches!(&self.loop_state, MessageLoopState::RunningExtendedQuery)
+    }
+
+    fn is_running_copy_in(&self) -> bool {
+        matches!(&self.loop_state, MessageLoopState::CopyIn(_))
     }
 
     /// Process incoming client messages until we see an irrecoverable error.
     pub fn process_messages_loop(&mut self) -> PgResult<()> {
         tlog!(Info, "entering the message handling loop");
         while !self.is_terminated() {
-            if let MessageLoopState::ReadyForQuery = self.loop_state {
+            if matches!(&self.loop_state, MessageLoopState::ReadyForQuery) {
                 self.stream.write_message(messages::ready_for_query())?;
             }
 

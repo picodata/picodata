@@ -39,6 +39,7 @@ pub enum QueryType {
     Empty = 5,
     Tcl = 6,
     Deallocate = 7,
+    Copy = 8,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize_repr, Serialize_repr)]
@@ -57,6 +58,7 @@ pub enum CommandTag {
     CreateIndex = 18,
     CreatePlugin = 31,
     CreateSchema = 50,
+    Copy = 59,
     ChangeConfig = 39,
     Commit = 53,
     DropProcedure = 15,
@@ -99,6 +101,7 @@ impl CommandTag {
             Self::AlterSystem => "ALTER SYSTEM",
             Self::CreateRole => "CREATE ROLE",
             Self::CreateSchema => "CREATE SCHEMA",
+            Self::Copy => "COPY",
             Self::CreateTable => "CREATE TABLE",
             Self::CreateIndex => "CREATE INDEX",
             Self::Deallocate => "DEALLOCATE",
@@ -195,6 +198,7 @@ impl From<CommandTag> for QueryType {
             CommandTag::Begin | CommandTag::Commit | CommandTag::Rollback => QueryType::Tcl,
             CommandTag::Do => QueryType::Tcl,
             CommandTag::EmptyQuery => QueryType::Empty,
+            CommandTag::Copy => QueryType::Copy,
         }
     }
 }
@@ -410,6 +414,14 @@ pub struct Describe {
 }
 
 impl Describe {
+    pub fn copy() -> Self {
+        Self {
+            command_tag: CommandTag::Copy,
+            query_type: QueryType::Copy,
+            metadata: vec![],
+        }
+    }
+
     pub fn new(plan: &Plan) -> PgResult<Self> {
         let command_tag = if plan.is_empty() {
             CommandTag::EmptyQuery
@@ -443,6 +455,7 @@ impl Describe {
             | QueryType::Dml
             | QueryType::Tcl
             | QueryType::Deallocate
+            | QueryType::Copy
             | QueryType::Empty => vec![],
             QueryType::Dql => dql_output_format(plan)?,
             QueryType::Explain => explain_output_format(),
@@ -472,6 +485,7 @@ impl Describe {
             | QueryType::Dml
             | QueryType::Deallocate
             | QueryType::Tcl
+            | QueryType::Copy
             | QueryType::Empty => None,
 
             QueryType::Dql | QueryType::Explain => {
@@ -562,6 +576,7 @@ impl PortalDescribe {
             | QueryType::Dml
             | QueryType::Deallocate
             | QueryType::Tcl
+            | QueryType::Copy
             | QueryType::Empty => None,
             QueryType::Dql | QueryType::Explain => {
                 let metadata = &self.describe.metadata;

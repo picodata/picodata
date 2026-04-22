@@ -3,16 +3,15 @@ use super::execute::{
     materialize_with_dql, materialized_update_from_plan, shared_update_from_plan,
     tuple_insert_from_plan,
 };
+use super::local_ref::{with_admin_su, with_local_bucket_ref};
 use super::port::PicoPortOwned;
 use super::storage::{execute_block_locally, FullDeleteInfo, StorageRuntime};
 use crate::catalog::pico_table::PicoTable;
 use crate::config::{DEFAULT_SQL_PREEMPTION, DYNAMIC_CONFIG};
 use crate::metrics::{observe_sql_local_query_duration, record_sql_local_query_total};
-use crate::schema::ADMIN_ID;
 use crate::sql::lua::{
-    bucket_into_rs, dispatch_session_id, escape_bytes, lua_custom_plan_dispatch,
-    lua_decode_rs_ibufs, lua_single_plan_dispatch, reference_add, reference_del, reference_use,
-    IbufTable,
+    bucket_into_rs, escape_bytes, lua_custom_plan_dispatch, lua_decode_rs_ibufs,
+    lua_single_plan_dispatch, IbufTable,
 };
 use crate::sql::storage::explain_execute_block;
 use crate::topology_cache::TopologyCacheRef;
@@ -51,19 +50,20 @@ use sql::utils::ByteCounter;
 use sql_protocol::block::write_block_packet;
 use sql_protocol::decode::{execute_read_response, SqlExecute, TupleIter};
 use sql_protocol::dml::delete::{write_delete_filtered_packet, write_delete_full_packet};
-use sql_protocol::dml::insert::{write_insert_materialized_packet, write_insert_packet};
+use sql_protocol::dml::insert::{
+    write_insert_materialized_packet, write_insert_packet, CoreInsertDataSource, InsertDataSource,
+};
 use sql_protocol::dml::update::{write_update_packet, write_update_shared_key_packet};
 use sql_protocol::dql::write_dql_packet;
-use sql_protocol::dql_encoder::{DQLDataSource, DQLOptions};
+use sql_protocol::dql_encoder::{DQLDataSource, DQLOptions, MsgpackEncode, RawMsgpack};
 use sql_protocol::encode::write_metadata;
-use std::cell::{Cell, LazyCell, OnceCell};
+use std::cell::LazyCell;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::io::{Cursor, Error as IoError, Result as IoResult};
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 use tarantool::fiber::Mutex;
-use tarantool::session::with_su;
 use tarantool::time::Instant;
 use tarantool::tlua::LuaThread;
 use tarantool::tuple::{Tuple, TupleBuilder};
@@ -174,6 +174,39 @@ fn encode_tuple_with_reservation(
 
     tb.into_tuple()
         .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))
+}
+
+struct EncodedTupleInsertData<'a> {
+    core: InsertCoreData,
+    tuples: &'a [Vec<u8>],
+}
+
+impl CoreInsertDataSource for EncodedTupleInsertData<'_> {
+    fn get_request_id(&self) -> &str {
+        &self.core.request_id
+    }
+
+    fn get_target_table_id(&self) -> u32 {
+        self.core.space_id
+    }
+
+    fn get_target_table_version(&self) -> u64 {
+        self.core.space_version
+    }
+
+    fn get_conflict_policy(&self) -> sql_protocol::dml::insert::ConflictPolicy {
+        self.core.conflict_policy
+    }
+}
+
+impl InsertDataSource for EncodedTupleInsertData<'_> {
+    fn get_tuples(&self) -> impl ExactSizeIterator<Item = impl MsgpackEncode> {
+        // COPY remote dispatch has already encoded rows for local insert.
+        // This adapter only exposes those bytes through the existing INSERT packet writer.
+        self.tuples
+            .iter()
+            .map(|tuple| RawMsgpack::new(tuple.as_slice()))
+    }
 }
 
 fn local_sender_id() -> SqlResult<u64> {
@@ -681,6 +714,39 @@ fn parse_execute_dml_row_count(port: &PicoPortOwned) -> SqlResult<u64> {
     })
 }
 
+fn dml_row_count_from_lua_table<'lua>(table: Rc<IbufTable<'lua>>, length: usize) -> SqlResult<u64> {
+    let rs_ibufs = lua_decode_rs_ibufs(&table, length).map_err(|e| {
+        SbroadError::DispatchError(format_smolstr!(
+            "Failed to decode DML response from Lua: {e}"
+        ))
+    })?;
+    let mut row_count: u64 = 0;
+    for (rs, ibuf) in rs_ibufs.into_iter() {
+        let mp = pcall_mp_process(ibuf.data()?)
+            .map_err(|_| remote_dispatch_error(&rs, ibuf.data().unwrap_or(&[])))?;
+        let res = execute_read_response(mp).map_err(|e| {
+            SbroadError::DispatchError(format_smolstr!(
+                "Failed to decode DML response from replicaset {rs}: {e}, msgpack: {}",
+                escape_bytes(mp),
+            ))
+        })?;
+        match res {
+            SqlExecute::Dql(_) => {
+                return Err(SbroadError::DispatchError(format_smolstr!(
+                    "Expected DML response from replicaset {rs}, got DQL"
+                )))
+            }
+            SqlExecute::Miss => {
+                return Err(SbroadError::DispatchError(format_smolstr!(
+                    "Expected DML response from replicaset {rs}, got MISS"
+                )))
+            }
+            SqlExecute::Dml(changed) => row_count += changed,
+        }
+    }
+    Ok(row_count)
+}
+
 fn port_write_block_metadata<'p>(
     port: &mut impl Port<'p>,
     metadata: &[MetadataColumn],
@@ -777,7 +843,7 @@ fn effective_read_preference(ex_plan: &ExecutionPlan) -> SqlResult<String> {
     Ok(read_preference.to_string())
 }
 
-fn should_dispatch_locally(
+pub(crate) fn should_dispatch_locally(
     tier: Option<&str>,
     replicaset_uuid: &str,
     read_preference: &str,
@@ -904,73 +970,6 @@ fn local_dispatch_matches_read_preference(
         "any" => true,
         _ => false,
     }
-}
-
-thread_local! {
-    /// Session UUID shared with the Lua dispatch path (pico.dispatch.session_id).
-    /// All local fast-path requests reuse this single vshard lref session so that
-    /// vshard does not accumulate a dead session per request in its session_map.
-    /// Initialized lazily on first use of the local fast-path.
-    static LOCAL_LREF_SESSION_ID: OnceCell<String> = const { OnceCell::new() };
-
-    /// Ref ID counter for vshard lref. Must be unique within LOCAL_LREF_SESSION_ID.
-    /// Stored per-fiber in Tarantool's TX thread — no atomics needed.
-    static LOCAL_LREF_RID: Cell<i64> = const { Cell::new(1) };
-}
-
-/// Returns the vshard lref session UUID, shared with the Lua dispatch path.
-/// Calls pico.dispatch.session_id() once and caches the result.
-fn local_lref_session_id() -> SqlResult<SmolStr> {
-    LOCAL_LREF_SESSION_ID.with(|cell| {
-        if let Some(s) = cell.get() {
-            return Ok(s.as_str().into());
-        }
-        let id = dispatch_session_id().map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
-        let _ = cell.set(id);
-        Ok(cell.get().unwrap().as_str().into())
-    })
-}
-
-fn with_admin_su<T>(op: &str, f: impl FnOnce() -> tarantool::Result<T>) -> SqlResult<T> {
-    let result = with_su(ADMIN_ID, f).map_err(|e| {
-        SbroadError::DispatchError(format_smolstr!("failed to switch user for {op}: {e}"))
-    })?;
-    result.map_err(|e| SbroadError::DispatchError(format_smolstr!("failed to {op}: {e}")))
-}
-
-fn with_local_bucket_ref<T>(
-    timeout: Duration,
-    read_preference: &str,
-    f: impl FnOnce() -> SqlResult<T>,
-) -> SqlResult<T> {
-    let node = node::global().map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
-    if node.is_readonly() {
-        return f();
-    }
-
-    debug_assert_ne!(read_preference, "replica");
-
-    let sid = local_lref_session_id()?;
-    let sid = sid.as_str();
-    let rid = LOCAL_LREF_RID.with(|c| {
-        let v = c.get();
-        c.set(v + 1);
-        v
-    });
-    with_admin_su("add local bucket reference", || {
-        reference_add(rid, sid, timeout)
-    })?;
-
-    if let Err(e) = with_admin_su("use local bucket reference", || reference_use(rid, sid)) {
-        return Err(SbroadError::DispatchError(format_smolstr!(
-            "failed to use local bucket reference: {e}"
-        )));
-    }
-
-    let result = f();
-    with_admin_su("remove local bucket reference", || reference_del(rid, sid))
-        .unwrap_or_else(|e| panic!("failed to delete local bucket reference: {e}"));
-    result
 }
 
 fn execute_dql_locally<'p>(
@@ -1675,42 +1674,45 @@ fn dml_process<'lua, 'p>(
     table: Rc<IbufTable<'lua>>,
     length: usize,
 ) -> SqlResult<()> {
-    let rs_ibufs = lua_decode_rs_ibufs(&table, length).map_err(|e| {
-        SbroadError::DispatchError(format_smolstr!(
-            "Failed to decode DML response from Lua: {e}"
-        ))
-    })?;
-    let mut row_count: u64 = 0;
-    for (rs, ibuf) in rs_ibufs.into_iter() {
-        let mp = pcall_mp_process(ibuf.data()?).map_err(|_| {
-            SbroadError::DispatchError(format_smolstr!(
-                "Remote call on replicaset {rs} returned an error: {}",
-                pcall_error(ibuf.data().unwrap_or(&[])),
-            ))
-        })?;
-        let res = execute_read_response(mp).map_err(|e| {
-            SbroadError::DispatchError(format_smolstr!(
-                "Failed to decode DML response from replicaset {rs}: {e}, msgpack: {}",
-                escape_bytes(mp),
-            ))
-        })?;
-        match res {
-            SqlExecute::Dql(_) => {
-                return Err(SbroadError::DispatchError(format_smolstr!(
-                    "Expected DML response from replicaset {rs}, got DQL"
-                )))
-            }
-            SqlExecute::Miss => {
-                return Err(SbroadError::DispatchError(format_smolstr!(
-                    "Expected DML response from replicaset {rs}, got MISS"
-                )))
-            }
-            SqlExecute::Dml(changed) => {
-                row_count += changed;
-            }
-        }
-    }
+    let row_count = dml_row_count_from_lua_table(table, length)?;
     port_write_local_dml_response(port, row_count)
+}
+
+pub(crate) fn dispatch_encoded_insert_batches(
+    core: InsertCoreData,
+    rs_tuples: HashMap<String, &[Vec<u8>]>,
+    tier: Option<&str>,
+    timeout: Duration,
+) -> SqlResult<u64> {
+    let lua = tarantool::lua_state();
+    let read_preference = ReadPreference::default().to_string();
+    let mut args = HashMap::with_capacity(rs_tuples.len());
+    for (replicaset_uuid, tuples) in rs_tuples {
+        let data = EncodedTupleInsertData {
+            core: InsertCoreData {
+                request_id: core.request_id.clone(),
+                space_id: core.space_id,
+                space_version: core.space_version,
+                conflict_policy: core.conflict_policy,
+            },
+            tuples,
+        };
+        let message = encode_tuple_with_reservation(
+            |bc| {
+                write_insert_packet(bc, &data)
+                    .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))
+            },
+            |tb| {
+                write_insert_packet(tb, &data)
+                    .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))
+            },
+        )?;
+        args.insert(replicaset_uuid, message);
+    }
+    let len = args.len();
+    let lua_table = lua_custom_plan_dispatch(&lua, args, timeout, tier, read_preference, false)
+        .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
+    dml_row_count_from_lua_table(lua_table, len)
 }
 
 fn pcall_mp_process(mp: &[u8]) -> IoResult<&[u8]> {
@@ -1733,6 +1735,13 @@ fn pcall_error(mp: &[u8]) -> String {
         Ok(s) => s,
         Err(_) => escape_bytes(mp).to_string(),
     }
+}
+
+fn remote_dispatch_error(rs: &str, mp: &[u8]) -> SbroadError {
+    let payload = pcall_error(mp);
+    SbroadError::DispatchError(format_smolstr!(
+        "Remote call on replicaset {rs} returned an error: {payload}",
+    ))
 }
 
 fn msgpack_decode(bytes: &[u8]) -> Result<String, String> {

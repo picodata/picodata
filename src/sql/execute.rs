@@ -2,6 +2,9 @@ use crate::metrics::{
     report_storage_cache_hit, report_storage_cache_miss, STORAGE_2ND_REQUESTS_TOTAL,
 };
 use crate::preemption::scheduler_options;
+use crate::sql::direct_insert::{
+    ensure_target_space, insert_encoded_tuple, insert_vtable, PreparedDirectInsert,
+};
 use crate::sql::lock::{lock_temp_table, TempTableLease, TempTableLockRef};
 use crate::sql::lua::{lua_decode_ibufs, lua_query_metadata};
 use crate::sql::port::PicoPortOwned;
@@ -12,7 +15,6 @@ use crate::sql::storage::{
 use crate::sql::PicoPortC;
 use crate::tlog;
 use crate::traft::node;
-use ahash::HashMapExt;
 use comfy_table::{Cell, ContentArrangement, Row, Table};
 use rmp::decode::read_array_len;
 use rmp::encode::{write_array_len, write_uint};
@@ -37,7 +39,6 @@ use sql::ir::helpers::RepeatableState;
 use sql::ir::options::Options;
 use sql::ir::relation::SpaceEngine;
 use sql::ir::relation::{Column, ColumnRole};
-use sql::ir::transformation::redistribution::{MotionKey, Target};
 use sql::ir::value::{EncodedValue, MsgPackValue, Value};
 use sql::ir::ExplainOptions;
 use sql::utils::MutexLike;
@@ -61,7 +62,7 @@ use std::collections::HashMap;
 use std::io::{Cursor, Write};
 use std::sync::OnceLock;
 use std::time::Duration;
-use tarantool::error::{Error, TarantoolErrorCode};
+use tarantool::error::Error;
 use tarantool::ffi::sql::Port as TarantoolPort;
 use tarantool::index::{FieldType, IndexOptions, IndexType, Part};
 use tarantool::msgpack::{self, Encode};
@@ -1146,19 +1147,6 @@ fn delete_args<'t>(
     Ok(delete_tuple)
 }
 
-fn ensure_target_space<R: QueryCache>(
-    runtime: &R,
-    table_id: u32,
-    version: u64,
-) -> Result<Space, SbroadError> {
-    if runtime.get_table_version_by_id(table_id)? != version {
-        return Err(SbroadError::OutdatedStorageSchema);
-    }
-
-    // SAFETY: `table_id` already exists. Checked by `get_table_version_by_id`.
-    Ok(unsafe { Space::from_id_unchecked(table_id) })
-}
-
 fn maybe_reshard_vtable<R: Vshard>(
     runtime: &R,
     vtable: &mut VirtualTable,
@@ -1184,180 +1172,6 @@ fn maybe_reshard_vtable<R: Vshard>(
     Ok(())
 }
 
-fn apply_insert_with_conflict(
-    insert_result: Result<(), Error>,
-    conflict_strategy: ConflictPolicy,
-    insert_tuple: &impl std::fmt::Debug,
-    replace_on_conflict: impl FnOnce() -> Result<(), SbroadError>,
-) -> Result<bool, SbroadError> {
-    match insert_result {
-        Ok(()) => Ok(true),
-        Err(Error::Tarantool(tnt_err))
-            if tnt_err.error_code() == TarantoolErrorCode::TupleFound as u32 =>
-        {
-            match conflict_strategy {
-                ConflictPolicy::DoNothing => {
-                    tlog!(
-                        Debug,
-                        "failed to insert tuple: {insert_tuple:?}. Skipping according to conflict strategy",
-                    );
-                    Ok(false)
-                }
-                ConflictPolicy::DoReplace => {
-                    tlog!(
-                        Debug,
-                        "failed to insert tuple: {insert_tuple:?}. Trying to replace according to conflict strategy"
-                    );
-                    replace_on_conflict()?;
-                    Ok(true)
-                }
-                ConflictPolicy::DoFail => Err(SbroadError::FailedTo(
-                    Action::Insert,
-                    Some(Entity::Space),
-                    format_smolstr!("{tnt_err}"),
-                )),
-            }
-        }
-        Err(e) => Err(SbroadError::FailedTo(
-            Action::Insert,
-            Some(Entity::Space),
-            format_smolstr!("{e}"),
-        )),
-    }
-}
-
-fn find_insert_motion_key(builder: &TupleBuilderPattern) -> Option<&MotionKey> {
-    builder.iter().find_map(|command| match command {
-        TupleBuilderCommand::CalculateBucketId(motion_key) if !motion_key.targets.is_empty() => {
-            Some(motion_key)
-        }
-        _ => None,
-    })
-}
-
-fn determine_insert_bucket_id<R: Vshard>(
-    runtime: &R,
-    vt_tuple: &VTableTuple,
-    motion_key: &MotionKey,
-) -> Result<u64, SbroadError> {
-    let mut shard_key_tuple = Vec::with_capacity(motion_key.targets.len());
-    for target in &motion_key.targets {
-        match target {
-            Target::Reference(col_idx) => {
-                let value = vt_tuple.get(*col_idx).ok_or_else(|| {
-                    SbroadError::NotFound(
-                        Entity::DistributionKey,
-                        format_smolstr!(
-                            "failed to find a distribution key column {col_idx} in the tuple {vt_tuple:?}."
-                        ),
-                    )
-                })?;
-                shard_key_tuple.push(value);
-            }
-            Target::Value(value) => shard_key_tuple.push(value),
-        }
-    }
-
-    runtime.determine_bucket_id(&shard_key_tuple)
-}
-
-fn build_insert_bucket_index<R: Vshard>(
-    runtime: &R,
-    builder: &TupleBuilderPattern,
-    vtable: &VirtualTable,
-) -> Result<Option<HashMap<u64, Vec<usize>, RepeatableState>>, SbroadError> {
-    if !vtable.get_bucket_index().is_empty() {
-        return Ok(None);
-    }
-
-    let Some(motion_key) = find_insert_motion_key(builder) else {
-        return Ok(None);
-    };
-
-    let mut bucket_index: HashMap<u64, Vec<usize>, RepeatableState> =
-        HashMap::with_hasher(RepeatableState);
-    for (pos, vt_tuple) in vtable.get_tuples().iter().enumerate() {
-        let bucket_id = determine_insert_bucket_id(runtime, vt_tuple, motion_key)?;
-        bucket_index.entry(bucket_id).or_default().push(pos);
-    }
-    Ok(Some(bucket_index))
-}
-
-fn tuple_insert_impl<R: Vshard>(
-    runtime: &R,
-    space: &Space,
-    conflict_strategy: ConflictPolicy,
-    builder: &TupleBuilderPattern,
-    vtable: &VirtualTable,
-) -> Result<u64, SbroadError> {
-    let mut result = ConsumerResult::default();
-    let computed_bucket_index = build_insert_bucket_index(runtime, builder, vtable)?;
-    let bucket_index = computed_bucket_index
-        .as_ref()
-        .unwrap_or_else(|| vtable.get_bucket_index());
-
-    transaction(|| -> Result<(), SbroadError> {
-        if bucket_index.is_empty() {
-            for vt_tuple in vtable.get_tuples() {
-                let insert_tuple = build_insert_args(vt_tuple, builder, None)?;
-                let insert_result = space.insert(&insert_tuple).map(|_| ());
-                if apply_insert_with_conflict(
-                    insert_result,
-                    conflict_strategy,
-                    &insert_tuple,
-                    || {
-                        space.replace(&insert_tuple).map(|_| ()).map_err(|e| {
-                            SbroadError::FailedTo(
-                                Action::ReplaceOnConflict,
-                                Some(Entity::Space),
-                                format_smolstr!("{e}"),
-                            )
-                        })
-                    },
-                )? {
-                    result.row_count += 1;
-                }
-            }
-            return Ok(());
-        }
-
-        for (bucket_id, positions) in bucket_index {
-            for pos in positions {
-                let vt_tuple = vtable.get_tuples().get(*pos).ok_or_else(|| {
-                    SbroadError::Invalid(
-                        Entity::VirtualTable,
-                        Some(format_smolstr!(
-                            "tuple at position {pos} not found in virtual table"
-                        )),
-                    )
-                })?;
-                let insert_tuple = build_insert_args(vt_tuple, builder, Some(bucket_id))?;
-                let insert_result = space.insert(&insert_tuple).map(|_| ());
-                if apply_insert_with_conflict(
-                    insert_result,
-                    conflict_strategy,
-                    &insert_tuple,
-                    || {
-                        space.replace(&insert_tuple).map(|_| ()).map_err(|e| {
-                            SbroadError::FailedTo(
-                                Action::ReplaceOnConflict,
-                                Some(Entity::Space),
-                                format_smolstr!("{e}"),
-                            )
-                        })
-                    },
-                )? {
-                    result.row_count += 1;
-                }
-            }
-        }
-
-        Ok(())
-    })?;
-
-    Ok(result.row_count)
-}
-
 pub(crate) fn tuple_insert_from_plan<R: Vshard + QueryCache>(
     runtime: &R,
     table_id: u32,
@@ -1369,8 +1183,14 @@ pub(crate) fn tuple_insert_from_plan<R: Vshard + QueryCache>(
 where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
-    let space = ensure_target_space(runtime, table_id, version)?;
-    tuple_insert_impl(runtime, &space, conflict_strategy, builder, vtable)
+    insert_vtable(
+        runtime,
+        table_id,
+        version,
+        conflict_strategy,
+        builder,
+        vtable,
+    )
 }
 
 fn local_update_impl(
@@ -1618,21 +1438,8 @@ where
     transaction(|| -> Result<(), SbroadError> {
         for tuple in tuples {
             let tuple_data = tuple?;
-            let insert_tuple = RawBytes::new(tuple_data);
             // TODO: should we care of default and so on
-            let insert_result = space.insert(insert_tuple).map(|_| ());
-            if apply_insert_with_conflict(insert_result, conflict_strategy, &insert_tuple, || {
-                space
-                    .replace(RawBytes::new(tuple_data))
-                    .map(|_| ())
-                    .map_err(|e| {
-                        SbroadError::FailedTo(
-                            Action::ReplaceOnConflict,
-                            Some(Entity::Space),
-                            format_smolstr!("{e}"),
-                        )
-                    })
-            })? {
+            if insert_encoded_tuple(&space, tuple_data, conflict_strategy)? {
                 result.row_count += 1;
             }
         }
@@ -1711,7 +1518,6 @@ where
 {
     let table_id = protocol_get!(iter, InsertMaterializedResult::TableId);
     let version = protocol_get!(iter, InsertMaterializedResult::TableVersion);
-    let space = ensure_target_space(runtime, table_id, version)?;
     let conflict_strategy = protocol_get!(iter, InsertMaterializedResult::ConflictPolicy);
     let columns = protocol_get!(iter, InsertMaterializedResult::Columns);
     let raw_builder = protocol_get!(iter, InsertMaterializedResult::Builder);
@@ -1724,7 +1530,8 @@ where
     let vtable = materialize_with_dql(runtime, &column_types, &builder, |pico_port| {
         dql_execute(runtime, request_id, dql, pico_port, timeout)
     })?;
-    let row_count = tuple_insert_impl(runtime, &space, conflict_strategy, &builder, &vtable)?;
+    let row_count = PreparedDirectInsert::new(table_id, version, builder, conflict_strategy)
+        .insert_vtable(runtime, &vtable)?;
     port_write_execute_dml(port, row_count);
 
     Ok(())
@@ -1811,7 +1618,7 @@ where
     let options = protocol_get!(iter, DeleteFullResult::Options);
 
     let versions = HashMap::from_iter([(table_id, version)]);
-    let schema_info = SchemaInfo::new(versions, HashMap::<_, _, RepeatableState>::new());
+    let schema_info = SchemaInfo::new(versions, HashMap::with_hasher(RepeatableState));
 
     // We have a deal with a DELETE without WHERE filter
     // and want to execute local SQL instead of space api.

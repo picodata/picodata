@@ -96,8 +96,11 @@ use std::str::from_utf8_unchecked;
 use std::time::Duration;
 
 pub mod concurrency;
+pub mod copy;
+pub mod direct_insert;
 pub mod dispatch;
 pub mod execute;
+pub mod local_ref;
 pub mod lock;
 pub mod lua;
 pub mod port;
@@ -2885,11 +2888,19 @@ pub fn proc_query_metadata(req: QueryMetaRequest) -> Result<Tuple, Error> {
 // This is done on purpose: we need to save raft index and term
 // before doing any reads. After materializing the subtree we
 // convert virtual table to a batch of DML ops and apply it via
-// CAS. No retries are made in case of CAS error.
+// CAS. Retriable CAS errors rerun this sequence with a fresh raft index.
 fn do_dml_on_global_tbl(
     mut query: ExecutingQuery<RouterRuntime>,
     override_deadline: Option<Instant>,
     governor_op_id: Option<u64>,
+) -> traft::Result<ConsumerResult> {
+    do_global_dml_with_retries(|| {
+        do_dml_on_global_tbl_no_retry(&mut query, override_deadline, governor_op_id)
+    })
+}
+
+fn do_global_dml_with_retries(
+    mut attempt: impl FnMut() -> traft::Result<ConsumerResult>,
 ) -> traft::Result<ConsumerResult> {
     let mut backoff = SimpleBackoffManager::new(
         "global DML retry",
@@ -2906,8 +2917,7 @@ fn do_dml_on_global_tbl(
     // Golden ratio, because multiplying by 2 makes it grow too fast for this case
     backoff.multiplier_coefficient = 1.6180339887;
     loop {
-        let res = do_dml_on_global_tbl_no_retry(&mut query, override_deadline, governor_op_id);
-        let res = match res {
+        let res = match attempt() {
             Ok(v) => v,
             Err(e) => {
                 if e.is_retriable() {
@@ -3048,9 +3058,7 @@ fn do_dml_on_global_tbl_no_retry(
     governor_op_id: Option<u64>,
 ) -> traft::Result<ConsumerResult> {
     let current_user = effective_user_id();
-
-    let raft_node = node::global()?;
-    let raft_index = raft_node.get_index();
+    let raft_index = node::global()?.get_index();
 
     let mut on_conflict = ConflictStrategy::DoFail;
     let (mut ops, mut row_count) = create_dml_ops(query, &mut on_conflict, current_user)?;
@@ -3078,6 +3086,44 @@ fn do_dml_on_global_tbl_no_retry(
         row_count = ops.len();
     }
 
+    execute_global_dml_batch_once(
+        raft_index,
+        current_user,
+        ops,
+        on_conflict,
+        row_count,
+        override_deadline,
+    )
+}
+
+pub(crate) fn execute_global_dml_batch_with_retries(
+    current_user: UserId,
+    ops: Vec<Dml>,
+    on_conflict: ConflictStrategy,
+    row_count: usize,
+    override_deadline: Option<Instant>,
+) -> traft::Result<ConsumerResult> {
+    do_global_dml_with_retries(|| {
+        let raft_index = node::global()?.get_index();
+        execute_global_dml_batch_once(
+            raft_index,
+            current_user,
+            ops.clone(),
+            on_conflict,
+            row_count,
+            override_deadline,
+        )
+    })
+}
+
+fn execute_global_dml_batch_once(
+    raft_index: traft::RaftIndex,
+    current_user: UserId,
+    ops: Vec<Dml>,
+    on_conflict: ConflictStrategy,
+    row_count: usize,
+    override_deadline: Option<Instant>,
+) -> traft::Result<ConsumerResult> {
     // CAS must be done under admin, as we access system spaces
     // there.
     with_su(ADMIN_ID, || -> traft::Result<ConsumerResult> {

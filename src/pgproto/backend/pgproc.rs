@@ -9,12 +9,12 @@ use crate::pgproto::{
     error::{EncodingError, PgResult},
     value::FieldFormat,
 };
-use ::tarantool::proc;
 use postgres_types::Oid;
 use serde::Serialize;
 use sql::ir::options::PartialOptions;
 use sql::ir::value::Value;
 use tarantool::msgpack;
+use tarantool::proc;
 use tarantool::tuple::{Decode, Encode, Tuple};
 
 struct BindArgs {
@@ -89,51 +89,56 @@ pub fn proc_pg_describe_portal(id: ClientId, name: String) -> PgResult<PortalDes
 
 #[proc]
 pub fn proc_pg_execute(id: ClientId, name: String, max_rows: i64) -> PgResult<Tuple> {
-    let result = backend::execute(id, name, max_rows)?;
-    let bytes = match &result {
-        ExecuteResult::AclOrDdl { .. }
-        | ExecuteResult::Dml { .. }
-        | ExecuteResult::Tcl { .. }
-        | ExecuteResult::Empty => {
-            let row_count = if let ExecuteResult::Dml { row_count, .. } = result {
-                Some(row_count)
-            } else {
-                None
-            };
-
+    let bytes = match backend::execute(id, name, max_rows)? {
+        ExecuteResult::AclOrDdl { .. } | ExecuteResult::Tcl { .. } | ExecuteResult::Empty => {
             #[derive(Serialize)]
             struct ProcResult {
                 row_count: Option<usize>,
             }
             impl Encode for ProcResult {}
 
-            let result = ProcResult { row_count };
-            rmp_serde::to_vec_named(&vec![result])
+            rmp_serde::to_vec_named(&vec![ProcResult { row_count: None }])
         }
-        ExecuteResult::FinishedDql { rows, .. } | ExecuteResult::SuspendedDql { rows } => {
-            #[derive(msgpack::Encode)]
-            #[encode(as_map)]
+        ExecuteResult::Dml { row_count, .. } => {
+            #[derive(Serialize)]
             struct ProcResult {
-                rows: Vec<Vec<Value>>,
-                is_finished: bool,
+                row_count: Option<usize>,
             }
+            impl Encode for ProcResult {}
 
-            let is_finished = matches!(result, ExecuteResult::FinishedDql { .. });
-            let rows = rows
-                .values()
-                .into_iter()
-                // Note: It's OK to unwrap here as this is testing code.
-                .map(|values| values.into_iter().map(|v| v.try_into().unwrap()).collect())
-                .collect();
-            let result = ProcResult { rows, is_finished };
-
-            Ok(msgpack::encode(&vec![result]))
+            rmp_serde::to_vec_named(&vec![ProcResult {
+                row_count: Some(row_count),
+            }])
+        }
+        ExecuteResult::FinishedDql { rows, .. } => Ok(encode_proc_rows(rows.values(), true)),
+        ExecuteResult::SuspendedDql { rows } => Ok(encode_proc_rows(rows.values(), false)),
+        ExecuteResult::CopyInStart { .. } => {
+            return Err(crate::pgproto::error::PgError::other(
+                "COPY FROM STDIN is not supported by proc_pg_execute",
+            ));
         }
     };
 
     let bytes = bytes.map_err(EncodingError::new)?;
     let tuple = Tuple::try_from_slice(&bytes)?;
     Ok(tuple)
+}
+
+fn encode_proc_rows(rows: Vec<Vec<crate::pgproto::value::PgValue>>, is_finished: bool) -> Vec<u8> {
+    #[derive(msgpack::Encode)]
+    #[encode(as_map)]
+    struct ProcResult {
+        rows: Vec<Vec<Value>>,
+        is_finished: bool,
+    }
+
+    let rows = rows
+        .into_iter()
+        // Note: It's OK to unwrap here as this is testing code.
+        .map(|values| values.into_iter().map(|v| v.try_into().unwrap()).collect())
+        .collect();
+
+    msgpack::encode(&vec![ProcResult { rows, is_finished }])
 }
 
 #[proc]

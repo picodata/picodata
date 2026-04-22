@@ -1,3 +1,4 @@
+use super::{copy_in, MessageExecutionOutcome};
 use crate::pgproto::backend::result::ExecuteResult;
 use crate::pgproto::backend::Backend;
 use crate::pgproto::{error::PgResult, messages, stream::PgStream};
@@ -8,7 +9,7 @@ pub fn process_query_message(
     stream: &mut PgStream<impl Read + Write>,
     backend: &Backend,
     query: Query,
-) -> PgResult<()> {
+) -> PgResult<MessageExecutionOutcome> {
     match backend.simple_query(&query.query)? {
         ExecuteResult::AclOrDdl { tag } => {
             stream.write_message(messages::command_complete(&tag))?;
@@ -33,10 +34,16 @@ pub fn process_query_message(
         ExecuteResult::Empty => {
             stream.write_message(messages::empty_query_response())?;
         }
+        ExecuteResult::CopyInStart { start, session } => {
+            copy_in::send_copy_in_response(stream, &start)?;
+            return Ok(MessageExecutionOutcome::EnterCopyIn(
+                copy_in::ActiveCopyIn::new(copy_in::CopyInMode::SimpleQuery, session),
+            ));
+        }
         ExecuteResult::SuspendedDql { .. } => {
             unreachable!("portal cannot be suspended in simple query")
         }
     }
 
-    Ok(())
+    Ok(MessageExecutionOutcome::Completed)
 }

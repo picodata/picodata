@@ -1,5 +1,6 @@
+use super::{copy_in, MessageExecutionOutcome};
 use crate::pgproto::backend::result::ExecuteResult;
-use crate::pgproto::backend::storage::{self, build_prepared_statement_metadata, PG_STATEMENTS};
+use crate::pgproto::backend::storage::{self, build_statement_metadata, PG_STATEMENTS};
 use crate::pgproto::backend::Backend;
 use crate::pgproto::error::EncodingError;
 use crate::pgproto::stream::{BeMessage, FeMessage};
@@ -22,7 +23,7 @@ pub fn query_metadata_message(
         .with(|storage| storage.borrow().get(&key).map(|holder| holder.statement()))
         .ok_or_else(|| PgError::other(format!("Couldn't find statement '{}'.", key.1)))?;
 
-    let metadata = build_prepared_statement_metadata(statement.prepared_statement(), query)?;
+    let metadata = build_statement_metadata(&statement, query)?;
     let message = serde_json::to_string(&metadata).map_err(EncodingError::new)?;
 
     Ok(messages::notice(message))
@@ -65,7 +66,7 @@ pub fn process_execute_message(
     stream: &mut PgStream<impl Read + Write>,
     backend: &Backend,
     execute: Execute,
-) -> PgResult<()> {
+) -> PgResult<MessageExecutionOutcome> {
     match backend.execute(execute.name, execute.max_rows as i64)? {
         ExecuteResult::AclOrDdl { tag } => {
             stream.write_message_noflush(messages::command_complete(&tag))?;
@@ -99,9 +100,15 @@ pub fn process_execute_message(
         ExecuteResult::Empty => {
             stream.write_message(messages::empty_query_response())?;
         }
+        ExecuteResult::CopyInStart { start, session } => {
+            copy_in::send_copy_in_response(stream, &start)?;
+            return Ok(MessageExecutionOutcome::EnterCopyIn(
+                copy_in::ActiveCopyIn::new(copy_in::CopyInMode::ExtendedQuery, session),
+            ));
+        }
     }
 
-    Ok(())
+    Ok(MessageExecutionOutcome::Completed)
 }
 
 fn describe_statement(
