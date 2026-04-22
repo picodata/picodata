@@ -14,6 +14,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Rename fields in `/api/v1/health/status` response: `reasons` to `issues`,
   status level `unhealthy` to `broken`.
+- `picodata demo` subcommand is now gated behind the `demo` Cargo feature,
+  disabled by default. To build with demo, use `CARGO_FLAGS_EXTRA="--features demo"`.
 
 ### Fixes
 
