@@ -651,6 +651,7 @@ impl ExplainOptions {
         Self::Logical | Self::Raw | Self::Buckets
     }
 
+    #[inline(always)]
     pub fn has_single_facet(&self) -> bool {
         let facet_bits = self.intersection(Self::facets()).bits();
         facet_bits.count_ones() == 1

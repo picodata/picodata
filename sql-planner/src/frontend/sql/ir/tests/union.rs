@@ -3,7 +3,7 @@ use crate::ir::transformation::helpers::sql_to_optimized_ir;
 #[test]
 fn front_select_chaning_1() {
     let input = r#"
-    select "product_code" from "hash_testing"
+    explain (logical) select "product_code" from "hash_testing"
     union all
     select "e"::text from "t2"
     union all
@@ -12,7 +12,7 @@ fn front_select_chaning_1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     union all
       union all
         projection (hash_testing.product_code::string -> product_code)
@@ -31,7 +31,7 @@ fn front_select_chaning_1() {
 #[test]
 fn front_select_chaining_2() {
     let input = r#"
-    select "product_code" from "hash_testing"
+    explain (logical) select "product_code" from "hash_testing"
     union all
     select "e"::text from "t2"
     union
@@ -42,7 +42,7 @@ fn front_select_chaining_2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     except
       motion [policy: full, program: RemoveDuplicates]
         union
@@ -76,7 +76,7 @@ fn front_select_chaining_2() {
 #[test]
 fn front_select_chaining_3() {
     let input = r#"
-    select "product_code" from "hash_testing"
+    explain (logical) select "product_code" from "hash_testing"
     union all
     select "e"::text from "t2"
     order by 1
@@ -84,7 +84,7 @@ fn front_select_chaining_3() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (product_code::string)
       order by (1)
         motion [policy: full, program: ReshardIfNeeded]
@@ -104,7 +104,7 @@ fn front_select_chaining_3() {
 #[test]
 fn union_under_insert() {
     let input = r#"
-    insert into t2
+    explain (logical) insert into t2
     select e, f, 1, 1 from t2
     union
     select f, e, 2, 2 from t2
@@ -112,7 +112,7 @@ fn union_under_insert() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     insert into t2 on conflict: fail
       motion [policy: segment([ref(e), ref(f)]), program: [RemoveDuplicates, ReshardIfNeeded]]
         union
@@ -130,7 +130,7 @@ fn union_under_insert() {
 #[test]
 fn union_under_insert1() {
     let input = r#"
-    insert into "TBL"
+    explain (logical) insert into "TBL"
     select * from (values (1, 1))
     union
     select * from (values (2, 2))
@@ -138,7 +138,7 @@ fn union_under_insert1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     insert into "TBL" on conflict: fail
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: [RemoveDuplicates, ReshardIfNeeded]]
         union
@@ -162,11 +162,11 @@ fn union_under_insert1() {
 #[test]
 fn limit_pushdown_with_union() {
     let sql = r#"
-        select * from t union select * from t order by a limit 1;
+        explain (logical) select * from t union select * from t order by a limit 1;
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     limit 1
       projection (a::int, b::int, c::int, d::int)
         order by (a::int)
@@ -188,11 +188,11 @@ fn limit_pushdown_with_union() {
     ");
 
     let sql = r#"
-        select * from t union all select * from t order by a limit 1;
+        explain (logical) select * from t union all select * from t order by a limit 1;
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     limit 1
       projection (a::int, b::int, c::int, d::int)
         order by (a::int)
@@ -216,11 +216,11 @@ fn limit_pushdown_with_union() {
 #[test]
 fn limit_pushdown_with_union_and_group_by() {
     let sql = r#"
-        select a as a1, a as a2 from t union all select a as a1, a as a2 from t group by a1, a2 order by a1 limit 1;
+        explain (logical) select a as a1, a as a2 from t union all select a as a1, a as a2 from t group by a1, a2 order by a1 limit 1;
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     limit 1
       projection (a1::int, a2::int)
         order by (a1::int)

@@ -61,12 +61,12 @@ fn proj_preserve_dist_key() {
 
 #[test]
 fn projection_any_dist_for_expr() {
-    let input = r#"select count("id") FROM "test_space""#;
+    let input = r#"explain (logical) select count("id") FROM "test_space""#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
     // check explain first
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (sum(count_1::int)::int -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (count(test_space.id::int::int)::int -> count_1)

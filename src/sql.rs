@@ -513,6 +513,7 @@ fn dispatch_bound_statement_impl<'p>(
         Ok(())
     } else if query.is_explain() {
         query.validate_explain_options()?;
+
         let plan = query.get_exec_plan().get_ir_plan();
         check_table_privileges(plan)?;
 

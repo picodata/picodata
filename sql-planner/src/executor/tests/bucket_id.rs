@@ -72,10 +72,10 @@ fn bucket3_test() {
 
 #[test]
 fn bucket_id_from_join() {
-    let input = r#"select t1.bucket_id from t t1 join t on true"#;
+    let input = r#"explain (logical) select t1.bucket_id from t t1 join t on true"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    assert_snapshot!(plan.as_explain().unwrap(), @r"
+    assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (t1.bucket_id::int -> bucket_id)
       join on (true::bool)
         scan t -> t1
@@ -101,7 +101,7 @@ fn sharding_key_from_tuple1() {
 
 #[test]
 fn explicit_select_bucket_id_from_subquery_under_limit() {
-    let input = r#"select * from (
+    let input = r#"explain (logical) select * from (
                             select "test_space"."bucket_id" as "bucket_id",
                                    "test_space"."id" as "id"
                             from "test_space"
@@ -109,7 +109,7 @@ fn explicit_select_bucket_id_from_subquery_under_limit() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    assert_snapshot!(plan.as_explain().unwrap(), @r"
+    assert_snapshot!(plan.explain_logical().unwrap(), @r"
     limit 1
       motion [policy: full, program: ReshardIfNeeded]
         limit 1
@@ -126,7 +126,7 @@ fn explicit_select_bucket_id_from_subquery_under_limit() {
 
 #[test]
 fn explicit_select_bucket_id_from_cte_under_limit() {
-    let input = r#"with x as (
+    let input = r#"explain (logical) with x as (
                             select "test_space"."bucket_id" as "bucket_id",
                                    "test_space"."id" as "id"
                             from "test_space"
@@ -135,7 +135,7 @@ fn explicit_select_bucket_id_from_cte_under_limit() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    assert_snapshot!(plan.as_explain().unwrap(), @r"
+    assert_snapshot!(plan.explain_logical().unwrap(), @r"
     limit 1
       projection (x.bucket_id::int -> bucket_id, x.id::int -> id)
         scan cte x($0)
@@ -152,10 +152,10 @@ fn explicit_select_bucket_id_from_cte_under_limit() {
 
 #[test]
 fn groupby_bucket_id() {
-    let input = r#"SELECT * FROM t GROUP BY a, b, c, d, bucket_id"#;
+    let input = r#"explain (logical) SELECT * FROM t GROUP BY a, b, c, d, bucket_id"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    assert_snapshot!(plan.as_explain().unwrap(), @r"
+    assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
       group by (t.a::int, t.b::int, t.c::int, t.d::int, t.bucket_id::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
         scan t

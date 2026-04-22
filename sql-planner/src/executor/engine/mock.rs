@@ -22,12 +22,14 @@ use crate::executor::ExecutingQuery;
 use crate::executor::{Port, PortType};
 use crate::frontend::sql::ast::AbstractSyntaxTree;
 use crate::ir::bucket::{BucketSet, Buckets};
+use crate::ir::explain::LogicalExplain;
 use crate::ir::function::Function;
 use crate::ir::node::NodeId;
 use crate::ir::relation::{Column, ColumnRole, SpaceEngine, Table};
 use crate::ir::tree::Snapshot;
 use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::Value;
+use crate::ir::ExplainOptions;
 use crate::ir::Plan;
 use crate::utils::MutexLike;
 use rand::random;
@@ -1992,7 +1994,7 @@ impl Router for RouterRuntimeMock {
 }
 
 impl<C: Router> ExecutingQuery<'_, C> {
-    pub fn explain(&mut self) -> Result<SmolStr, SbroadError> {
+    pub fn explain(&mut self) -> Result<String, SbroadError> {
         let mut explain = Vec::new();
         if self.is_logical_explain() {
             let logical_explain = self.explain_logical()?;
@@ -2015,5 +2017,26 @@ impl<C: Router> ExecutingQuery<'_, C> {
         let explain = explain.join("\n\n");
 
         Ok(explain.into())
+    }
+}
+
+impl Plan {
+    /// Display logical explain
+    ///
+    /// # Errors
+    /// - Failed to get top node
+    /// - Failed to build explain
+    /// - `explain` is not specified in query
+    pub fn explain_logical(&self) -> Result<String, SbroadError> {
+        if self.explain_options != ExplainOptions::Logical {
+            return Err(SbroadError::Other(
+                "LOGICAL mode for EXPLAIN is not specified in query".to_smolstr(),
+            ));
+        }
+
+        let top_id = self.get_top()?;
+        let explain = LogicalExplain::new(self, top_id)?;
+
+        Ok(explain.to_string())
     }
 }

@@ -490,7 +490,6 @@ where
 
     pub fn validate_explain_options(&self) -> Result<(), SbroadError> {
         let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
-
         let err = || -> Result<(), SbroadError> {
             Err(SbroadError::Other(
                 "LOGICAL and BUCKETS modes for explain are not implemented for transactions"

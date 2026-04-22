@@ -54,11 +54,11 @@ fn like_invalid2() {
 
 #[test]
 fn like_explain1() {
-    let input = r#"select a like a from t1 where a || 'a' like 'a' || 'a'"#;
+    let input = r#"explain (logical) select a like a from t1 where a || 'a' like 'a' || 'a'"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (t1.a::string LIKE t1.a::string ESCAPE '\'::string -> col_1)
       selection (t1.a::string || 'a'::string LIKE 'a'::string || 'a'::string ESCAPE '\'::string)
         scan t1
@@ -71,11 +71,11 @@ fn like_explain1() {
 
 #[test]
 fn like_explain2() {
-    let input = r#"select a like a escape '\' from t1 where a || 'a' like 'a' || 'a' escape 'x'"#;
+    let input = r#"explain (logical) select a like a escape '\' from t1 where a || 'a' like 'a' || 'a' escape 'x'"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (t1.a::string LIKE t1.a::string ESCAPE '\'::string -> col_1)
       selection (t1.a::string || 'a'::string LIKE 'a'::string || 'a'::string ESCAPE 'x'::string)
         scan t1
@@ -88,11 +88,11 @@ fn like_explain2() {
 
 #[test]
 fn like_explain3() {
-    let input = r#"select a like a from t1 group by a like a"#;
+    let input = r#"explain (logical) select a like a from t1 group by a like a"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (gr_expr_1::bool -> col_1)
       group by (gr_expr_1::bool) output (gr_expr_1::bool)
         motion [policy: full, program: ReshardIfNeeded]
@@ -108,11 +108,11 @@ fn like_explain3() {
 
 #[test]
 fn like_explain4() {
-    let input = r#"select * from t1 where (select 'hi' from t1) like (select 'hi' from t1) escape (select '\' from t1)"#;
+    let input = r#"explain (logical) select * from t1 where (select 'hi' from t1) like (select 'hi' from t1) escape (select '\' from t1)"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (t1.a::string -> a, t1.b::int -> b)
       selection (ROW($2) LIKE ROW($1) ESCAPE ROW($0))
         scan t1
@@ -140,11 +140,12 @@ fn like_explain4() {
 
 #[test]
 fn ilike_explain() {
-    let input = r#"select a ilike a escape 'x' from t1 group by a ilike a escape 'x'"#;
+    let input =
+        r#"explain (logical) select a ilike a escape 'x' from t1 group by a ilike a escape 'x'"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (gr_expr_1::bool -> col_1)
       group by (gr_expr_1::bool) output (gr_expr_1::bool)
         motion [policy: full, program: ReshardIfNeeded]

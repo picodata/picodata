@@ -286,13 +286,13 @@ mod tests {
 
     #[test]
     fn test_bool_folding1() {
-        let query = r#"SELECT * from t WHERE 1 = 1 and 2 > -4"#;
+        let query = r#"explain (logical) SELECT * from t WHERE 1 = 1 and 2 > -4"#;
 
         let coordinator = RouterRuntimeMock::new();
         let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
-        let query_explain = plan.as_explain().unwrap();
+        let query_explain = plan.explain_logical().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r"
@@ -310,13 +310,13 @@ mod tests {
 
     #[test]
     fn test_bool_folding2() {
-        let query = r#"SELECT * from t WHERE 1 = 0"#;
+        let query = r#"explain (logical) SELECT * from t WHERE 1 = 0"#;
 
         let coordinator = RouterRuntimeMock::new();
         let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
-        let query_explain = plan.as_explain().unwrap();
+        let query_explain = plan.explain_logical().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r"
@@ -334,13 +334,13 @@ mod tests {
 
     #[test]
     fn test_bool_folding3() {
-        let query = r#"SELECT * from t WHERE 1 = 0 or 2 > -4"#;
+        let query = r#"explain (logical) SELECT * from t WHERE 1 = 0 or 2 > -4"#;
 
         let coordinator = RouterRuntimeMock::new();
         let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
-        let query_explain = plan.as_explain().unwrap();
+        let query_explain = plan.explain_logical().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r"
@@ -358,13 +358,13 @@ mod tests {
 
     #[test]
     fn test_bool_folding4() {
-        let query = r#"SELECT * from t WHERE 1 = 0 and 5 >= 4 and 6 < -8"#;
+        let query = r#"explain (logical) SELECT * from t WHERE 1 = 0 and 5 >= 4 and 6 < -8"#;
 
         let coordinator = RouterRuntimeMock::new();
         let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
-        let query_explain = plan.as_explain().unwrap();
+        let query_explain = plan.explain_logical().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r"
@@ -382,13 +382,13 @@ mod tests {
 
     #[test]
     fn test_bool_folding5() {
-        let query = r#"SELECT * from t WHERE 1 = 0 and 5 >= 4 and 6 < -8 UNION ALL SELECT * FROM t where 1 = 9"#;
+        let query = r#"explain (logical) SELECT * from t WHERE 1 = 0 and 5 >= 4 and 6 < -8 UNION ALL SELECT * FROM t where 1 = 9"#;
 
         let coordinator = RouterRuntimeMock::new();
         let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
-        let query_explain = plan.as_explain().unwrap();
+        let query_explain = plan.explain_logical().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r"
@@ -410,13 +410,13 @@ mod tests {
 
     #[test]
     fn test_bool_folding6() {
-        let query = r#"SELECT * from t JOIN t on true WHERE 1 = 1 AND 56 <= 500"#;
+        let query = r#"explain (logical) SELECT * from t JOIN t on true WHERE 1 = 1 AND 56 <= 500"#;
 
         let coordinator = RouterRuntimeMock::new();
         let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
-        let query_explain = plan.as_explain().unwrap();
+        let query_explain = plan.explain_logical().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r"
@@ -438,13 +438,13 @@ mod tests {
 
     #[test]
     fn test_bool_folding7() {
-        let query = r#"SELECT * FROM t WHERE true and not (null is null)"#;
+        let query = r#"explain (logical) SELECT * FROM t WHERE true and not (null is null)"#;
 
         let coordinator = RouterRuntimeMock::new();
         let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
-        let query_explain = plan.as_explain().unwrap();
+        let query_explain = plan.explain_logical().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r"
@@ -462,13 +462,13 @@ mod tests {
 
     #[test]
     fn test_bool_folding8() {
-        let query = r#"SELECT * FROM t WHERE null = null"#;
+        let query = r#"explain (logical) SELECT * FROM t WHERE null = null"#;
 
         let coordinator = RouterRuntimeMock::new();
         let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
-        let query_explain = plan.as_explain().unwrap();
+        let query_explain = plan.explain_logical().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r"
@@ -486,13 +486,13 @@ mod tests {
 
     #[test]
     fn test_bool_folding9() {
-        let query = r#"SELECT * FROM t WHERE 1.0 = 1"#;
+        let query = r#"explain (logical) SELECT * FROM t WHERE 1.0 = 1"#;
 
         let coordinator = RouterRuntimeMock::new();
         let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
-        let query_explain = plan.as_explain().unwrap();
+        let query_explain = plan.explain_logical().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r"
@@ -510,13 +510,13 @@ mod tests {
 
     #[test]
     fn test_bool_folding10() {
-        let query = r#"SELECT * FROM t WHERE 'inf' = 'inf'::double"#;
+        let query = r#"explain (logical) SELECT * FROM t WHERE 'inf' = 'inf'::double"#;
 
         let coordinator = RouterRuntimeMock::new();
         let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
-        let query_explain = plan.as_explain().unwrap();
+        let query_explain = plan.explain_logical().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r"
@@ -534,13 +534,13 @@ mod tests {
 
     #[test]
     fn test_bool_folding11() {
-        let query = r#"SELECT * FROM t WHERE 'nan' = 'nan'::double"#;
+        let query = r#"explain (logical) SELECT * FROM t WHERE 'nan' = 'nan'::double"#;
 
         let coordinator = RouterRuntimeMock::new();
         let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
-        let query_explain = plan.as_explain().unwrap();
+        let query_explain = plan.explain_logical().unwrap();
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r"

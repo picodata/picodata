@@ -1531,6 +1531,7 @@ impl Display for LogicalExplain {
         if !self.exec_options.is_empty() {
             writeln!(f)?;
             writeln!(f, "execution options:")?;
+
             let (key, value) = self.exec_options.first().expect("must be specified");
             write!(indent(f), "{key} = {value}")?;
             for (key, value) in self.exec_options.iter().skip(1) {
@@ -1954,19 +1955,6 @@ impl LogicalExplain {
         };
 
         Ok(result)
-    }
-}
-
-impl Plan {
-    /// Display ir explain
-    ///
-    /// # Errors
-    /// - Failed to get top node
-    /// - Failed to build explain
-    pub fn as_explain(&self) -> Result<SmolStr, SbroadError> {
-        let top_id = self.get_top()?;
-        let explain = LogicalExplain::new(self, top_id)?;
-        Ok(explain.to_smolstr())
     }
 }
 

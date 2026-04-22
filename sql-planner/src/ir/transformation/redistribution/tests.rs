@@ -305,11 +305,11 @@ pub fn get_motion_id(plan: &Plan, slice_id: usize, motion_idx: usize) -> Option<
 
 #[test]
 fn test_slices_1() {
-    let query = r#"select e from (select t2.f from t2 join t2 t3 on true) join t2 on true"#;
+    let query = r#"explain (logical) select e from (select t2.f from t2 join t2 t3 on true) join t2 on true"#;
 
     let plan = sql_to_optimized_ir(query, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (t2.e::int -> e)
       join on (true::bool)
         scan unnamed_subquery
@@ -339,11 +339,11 @@ fn test_slices_1() {
 
 #[test]
 fn test_slices_2() {
-    let query = r#"select count(e) from (select t2.f from t2 join t2 t3 on true) join t2 on true"#;
+    let query = r#"explain (logical) select count(e) from (select t2.f from t2 join t2 t3 on true) join t2 on true"#;
 
     let plan = sql_to_optimized_ir(query, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (sum(count_1::int)::int -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (count(t2.e::int::int)::int -> count_1)

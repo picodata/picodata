@@ -7,7 +7,7 @@ use pretty_assertions::assert_eq;
 #[test]
 fn test_bucket_id_addition1() {
     // Primary key is (a), sharding key is (a).
-    let query = r#"SELECT "a" FROM "t5" WHERE "a" = 42"#;
+    let query = r#"explain (logical) SELECT "a" FROM "t5" WHERE "a" = 42"#;
 
     let coordinator = RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
@@ -21,7 +21,11 @@ fn test_bucket_id_addition1() {
         .get_mut_ir_plan()
         .add_condition_on_bucket_id(&buckets)
         .unwrap();
-    let query_explain = query.get_exec_plan().get_ir_plan().as_explain().unwrap();
+    let query_explain = query
+        .get_exec_plan()
+        .get_ir_plan()
+        .explain_logical()
+        .unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
     projection (t5.a::int -> a)
@@ -42,7 +46,7 @@ fn test_bucket_id_addition1() {
 #[test]
 fn test_bucket_id_addition2() {
     // Primary key is (a), sharding key is (a).
-    let query = r#"SELECT "a" FROM "t5" WHERE "a" IN (42, 43)"#;
+    let query = r#"explain (logical) SELECT "a" FROM "t5" WHERE "a" IN (42, 43)"#;
 
     let coordinator = RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
@@ -56,7 +60,11 @@ fn test_bucket_id_addition2() {
         .get_mut_ir_plan()
         .add_condition_on_bucket_id(&buckets)
         .unwrap();
-    let query_explain = query.get_exec_plan().get_ir_plan().as_explain().unwrap();
+    let query_explain = query
+        .get_exec_plan()
+        .get_ir_plan()
+        .explain_logical()
+        .unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
     projection (t5.a::int -> a)
@@ -79,7 +87,7 @@ fn test_bucket_id_addition3() {
     // Do not apply the transformation because
     // "bucket_id" is not first field in the table.
     // Primary key is (id).
-    let query = r#"SELECT "id" FROM "history" WHERE "id" = 42"#;
+    let query = r#"explain (logical) SELECT "id" FROM "history" WHERE "id" = 42"#;
 
     let coordinator = RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
@@ -93,7 +101,11 @@ fn test_bucket_id_addition3() {
         .get_mut_ir_plan()
         .add_condition_on_bucket_id(&buckets)
         .unwrap();
-    let query_explain = query.get_exec_plan().get_ir_plan().as_explain().unwrap();
+    let query_explain = query
+        .get_exec_plan()
+        .get_ir_plan()
+        .explain_logical()
+        .unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
     projection (history.id::int -> id)
@@ -114,7 +126,7 @@ fn test_bucket_id_addition3() {
 #[test]
 fn test_bucket_id_addition4() {
     // Primary key is (a, b), sharding key is (a, b).
-    let query = r#"SELECT "a" FROM "t6" WHERE "a" = '42' AND "b" IN (24,25)"#;
+    let query = r#"explain (logical) SELECT "a" FROM "t6" WHERE "a" = '42' AND "b" IN (24,25)"#;
 
     let coordinator = RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
@@ -128,7 +140,11 @@ fn test_bucket_id_addition4() {
         .get_mut_ir_plan()
         .add_condition_on_bucket_id(&buckets)
         .unwrap();
-    let query_explain = query.get_exec_plan().get_ir_plan().as_explain().unwrap();
+    let query_explain = query
+        .get_exec_plan()
+        .get_ir_plan()
+        .explain_logical()
+        .unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
     projection (t6.a::string -> a)
@@ -149,7 +165,7 @@ fn test_bucket_id_addition4() {
 #[test]
 fn test_bucket_id_addition5() {
     // Primary key is (a, b), sharding key is (a).
-    let query = r#"SELECT "a" FROM "t7" WHERE "a" = '42'"#;
+    let query = r#"explain (logical) SELECT "a" FROM "t7" WHERE "a" = '42'"#;
 
     let coordinator = RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
@@ -163,7 +179,11 @@ fn test_bucket_id_addition5() {
         .get_mut_ir_plan()
         .add_condition_on_bucket_id(&buckets)
         .unwrap();
-    let query_explain = query.get_exec_plan().get_ir_plan().as_explain().unwrap();
+    let query_explain = query
+        .get_exec_plan()
+        .get_ir_plan()
+        .explain_logical()
+        .unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
     projection (t7.a::string -> a)
@@ -184,7 +204,7 @@ fn test_bucket_id_addition5() {
 #[test]
 fn test_bucket_id_addition6() {
     // Primary key is (d), sharding key is (c).
-    let query = r#"SELECT * FROM "t4" WHERE "c" = '42'"#;
+    let query = r#"explain (logical) SELECT * FROM "t4" WHERE "c" = '42'"#;
 
     let coordinator = RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
@@ -198,7 +218,11 @@ fn test_bucket_id_addition6() {
         .get_mut_ir_plan()
         .add_condition_on_bucket_id(&buckets)
         .unwrap();
-    let query_explain = query.get_exec_plan().get_ir_plan().as_explain().unwrap();
+    let query_explain = query
+        .get_exec_plan()
+        .get_ir_plan()
+        .explain_logical()
+        .unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
     projection (t4.c::string -> c, t4.d::int -> d)

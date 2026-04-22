@@ -7,10 +7,10 @@ use pretty_assertions::assert_eq;
 
 #[test]
 fn cte() {
-    let sql = r#"WITH cte (a) AS (SELECT "FIRST_NAME" FROM "test_space") SELECT * FROM cte"#;
+    let sql = r#"explain (logical) WITH cte (a) AS (SELECT "FIRST_NAME" FROM "test_space") SELECT * FROM cte"#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (cte.a::string -> a)
       scan cte cte($0)
     subquery $0:
@@ -26,10 +26,10 @@ fn cte() {
 
 #[test]
 fn global_cte() {
-    let sql = r#"WITH cte (a) AS (SELECT "a" FROM "global_t") SELECT * FROM cte"#;
+    let sql = r#"explain (logical) WITH cte (a) AS (SELECT "a" FROM "global_t") SELECT * FROM cte"#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (cte.a::int -> a)
       scan cte cte($0)
     subquery $0:
@@ -45,13 +45,13 @@ fn global_cte() {
 #[test]
 fn nested_cte() {
     let sql = r#"
-        WITH cte1 (a) AS (SELECT "FIRST_NAME" FROM "test_space"),
+        explain (logical) WITH cte1 (a) AS (SELECT "FIRST_NAME" FROM "test_space"),
         cte2 AS (SELECT * FROM cte1)
         SELECT * FROM cte2
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (cte2.a::string -> a)
       scan cte cte2($1)
     subquery $0:
@@ -71,14 +71,14 @@ fn nested_cte() {
 #[test]
 fn reuse_cte_union_all() {
     let sql = r#"
-        WITH cte (a) AS (SELECT "FIRST_NAME" FROM "test_space")
+        explain (logical) WITH cte (a) AS (SELECT "FIRST_NAME" FROM "test_space")
         SELECT * FROM cte
         UNION ALL
         SELECT * FROM cte
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     union all
       projection (cte.a::string -> a)
         scan cte cte($0)
@@ -98,7 +98,7 @@ fn reuse_cte_union_all() {
 #[test]
 fn reuse_union_in_cte() {
     let sql = r#"
-        WITH cte (a) AS (
+        explain (logical) WITH cte (a) AS (
             SELECT "FIRST_NAME" FROM "test_space"
             UNION
             SELECT "FIRST_NAME" FROM "test_space"
@@ -109,7 +109,7 @@ fn reuse_union_in_cte() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     motion [policy: full, program: RemoveDuplicates]
       union
         projection (cte.a::string -> a)
@@ -135,13 +135,13 @@ fn reuse_union_in_cte() {
 #[test]
 fn reuse_cte_values() {
     let sql = r#"
-        WITH cte (b) AS (VALUES(1))
+        explain (logical) WITH cte (b) AS (VALUES(1))
         SELECT t.c FROM (SELECT count(*) as c FROM cte c1 JOIN cte c2 ON true) t
         JOIN cte ON true
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (t.c::int -> c)
       join on (true::bool)
         scan t
@@ -167,7 +167,7 @@ fn reuse_cte_values() {
 #[test]
 fn reuse_single_node_cte_does_not_materialize() {
     let sql = r#"
-        WITH cte (a) AS (
+        explain (logical) WITH cte (a) AS (
             SELECT a FROM t
             WHERE (a, b) = (1, 2)
             LIMIT 1
@@ -175,7 +175,7 @@ fn reuse_single_node_cte_does_not_materialize() {
         SELECT * FROM cte c1 JOIN cte c2 ON true
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
-    let explain = plan.as_explain().unwrap();
+    let explain = plan.explain_logical().unwrap();
 
     assert!(
         explain.contains(r#"scan cte c1($0)"#),
@@ -194,13 +194,13 @@ fn reuse_single_node_cte_does_not_materialize() {
 #[test]
 fn join_cte() {
     let sql = r#"
-        WITH cte (a) AS (SELECT "FIRST_NAME" FROM "test_space")
+        explain (logical) WITH cte (a) AS (SELECT "FIRST_NAME" FROM "test_space")
         SELECT t."FIRST_NAME" FROM "test_space" t
         JOIN cte ON t."FIRST_NAME" = cte.a
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (t."FIRST_NAME"::string -> "FIRST_NAME")
       join on (t."FIRST_NAME"::string = cte.a::string)
         scan test_space -> t
@@ -219,12 +219,12 @@ fn join_cte() {
 #[test]
 fn agg_cte() {
     let sql = r#"
-        WITH cte (a) AS (SELECT "FIRST_NAME" FROM "test_space")
+        explain (logical) WITH cte (a) AS (SELECT "FIRST_NAME" FROM "test_space")
         SELECT count(a) FROM cte
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (count(cte.a::string::string)::int -> col_1)
       scan cte cte($0)
     subquery $0:
@@ -241,12 +241,12 @@ fn agg_cte() {
 #[test]
 fn limit_pushdown_does_not_mutate_cte() {
     let sql = r#"
-        WITH cte (a) AS (SELECT a FROM t)
+        explain (logical) WITH cte (a) AS (SELECT a FROM t)
         SELECT (SELECT * FROM cte), (SELECT a FROM cte ORDER BY a LIMIT 1)
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (ROW($2) -> col_1, ROW($1) -> col_2)
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
@@ -275,12 +275,12 @@ fn limit_pushdown_does_not_mutate_cte() {
 #[test]
 fn limit_pushdown_does_not_mutate_used_once_cte() {
     let sql = r#"
-        WITH cte (a) AS (SELECT a FROM t)
+        explain (logical) WITH cte (a) AS (SELECT a FROM t)
         SELECT a FROM cte ORDER BY a LIMIT 1
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     limit 1
       projection (a::int)
         order by (a::int)
@@ -301,12 +301,12 @@ fn limit_pushdown_does_not_mutate_used_once_cte() {
 #[test]
 fn limit_pushdown_does_not_mutate_used_once_cte_with_aggr_over_it() {
     let sql = r#"
-        WITH cte (a) AS (SELECT a FROM t)
+        explain (logical) WITH cte (a) AS (SELECT a FROM t)
         SELECT count(*) FROM cte LIMIT 1
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     limit 1
       projection (count(*)::int -> col_1)
         scan cte cte($0)
@@ -324,7 +324,7 @@ fn limit_pushdown_does_not_mutate_used_once_cte_with_aggr_over_it() {
 #[test]
 fn used_once_single_node_cte_does_not_materialize() {
     let sql = r#"
-        WITH cte (a) AS (
+        explain (logical) WITH cte (a) AS (
             SELECT a FROM t
             WHERE (a, b) = (1, 2)
             LIMIT 1
@@ -333,7 +333,7 @@ fn used_once_single_node_cte_does_not_materialize() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (cte.a::int -> a)
       scan cte cte($0)
     subquery $0:
@@ -353,12 +353,12 @@ fn used_once_single_node_cte_does_not_materialize() {
 #[test]
 fn sq_cte() {
     let sql = r#"
-        WITH cte (a) AS (SELECT "FIRST_NAME" FROM "test_space" WHERE "FIRST_NAME" = 'hi')
+        explain (logical) WITH cte (a) AS (SELECT "FIRST_NAME" FROM "test_space" WHERE "FIRST_NAME" = 'hi')
         SELECT "FIRST_NAME" FROM "test_space" WHERE "FIRST_NAME" IN (SELECT a FROM cte)
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
       selection (test_space."FIRST_NAME"::string in ROW($1))
         scan test_space
@@ -381,12 +381,12 @@ fn sq_cte() {
 #[test]
 fn values_in_cte() {
     let sql = r#"
-        WITH cte (a) AS (VALUES ('a'))
+        explain (logical) WITH cte (a) AS (VALUES ('a'))
         SELECT * FROM cte
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (cte.a::string -> a)
       scan cte cte($0)
     subquery $0:
@@ -406,13 +406,13 @@ fn values_in_cte() {
 #[test]
 fn union_all_in_cte() {
     let sql = r#"
-        WITH cte1 (a) AS (VALUES ('a')),
+        explain (logical) WITH cte1 (a) AS (VALUES ('a')),
         cte2 as (SELECT * FROM cte1 UNION ALL SELECT * FROM cte1)
         SELECT * FROM cte2
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (cte2.a::string -> a)
       scan cte cte2($1)
     subquery $0:
@@ -439,7 +439,7 @@ fn union_all_in_cte() {
 #[test]
 fn join_in_cte() {
     let sql = r#"
-        WITH cte AS (
+        explain (logical) WITH cte AS (
             SELECT t1."FIRST_NAME" FROM "test_space" t1
             JOIN "test_space" t2 ON t1."FIRST_NAME" = t2."id"::text
         )
@@ -447,7 +447,7 @@ fn join_in_cte() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (cte."FIRST_NAME"::string -> "FIRST_NAME")
       scan cte cte($0)
     subquery $0:
@@ -468,7 +468,7 @@ fn join_in_cte() {
 #[test]
 fn order_by_in_cte() {
     let sql = r#"
-        WITH cte AS (
+        explain (logical) WITH cte AS (
             SELECT "FIRST_NAME" FROM "test_space"
             ORDER BY 1
         )
@@ -476,7 +476,7 @@ fn order_by_in_cte() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (cte."FIRST_NAME"::string -> "FIRST_NAME")
       scan cte cte($0)
     subquery $0:
@@ -496,11 +496,11 @@ fn order_by_in_cte() {
 #[test]
 fn table_name_conflict() {
     let sql = r#"
-        WITH "test_space" AS (SELECT "FIRST_NAME" FROM "test_space")
+        explain (logical) WITH "test_space" AS (SELECT "FIRST_NAME" FROM "test_space")
         SELECT * FROM "test_space"
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
       scan cte test_space($0)
     subquery $0:
@@ -551,14 +551,14 @@ fn cte_column_mismatch() {
 #[test]
 fn cte_with_left_join() {
     let sql = r#"
-        with cte as (select "e" as "E" from "t2")
+        explain (logical) with cte as (select "e" as "E" from "t2")
         select "E" from cte left join "t2"
         on true
     "#;
 
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (unnamed_join."E"::int -> "E")
       motion [policy: full, program: AddMissingRowsForLeftJoin]
         projection (cte."E"::int -> "E", t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)

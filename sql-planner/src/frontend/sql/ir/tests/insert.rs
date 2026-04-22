@@ -3,10 +3,10 @@ use crate::ir::value::Value;
 
 #[test]
 fn insert1() {
-    let pattern = r#"INSERT INTO "test_space"("id", "FIRST_NAME") VALUES(?, ?)"#;
+    let pattern = r#"explain (logical) INSERT INTO "test_space"("id", "FIRST_NAME") VALUES(?, ?)"#;
     let plan = sql_to_optimized_ir(pattern, vec![Value::from(1_i64), Value::from("test")]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     insert into test_space on conflict: fail
       motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
         values
@@ -20,10 +20,11 @@ fn insert1() {
 
 #[test]
 fn insert2() {
-    let pattern = r#"INSERT INTO "test_space"("id", "FIRST_NAME") VALUES(1, 'test')"#;
+    let pattern =
+        r#"explain (logical) INSERT INTO "test_space"("id", "FIRST_NAME") VALUES(1, 'test')"#;
     let plan = sql_to_optimized_ir(pattern, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     insert into test_space on conflict: fail
       motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
         values
@@ -37,11 +38,11 @@ fn insert2() {
 
 #[test]
 fn insert3() {
-    let pattern = r#"INSERT INTO "test_space"("id", "sys_op")
+    let pattern = r#"explain (logical) INSERT INTO "test_space"("id", "sys_op")
         SELECT "id", "id" FROM "test_space""#;
     let plan = sql_to_optimized_ir(pattern, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     insert into test_space on conflict: fail
       motion [policy: local segment([ref(id)]), program: ReshardIfNeeded]
         projection (test_space.id::int -> id, test_space.id::int -> id)

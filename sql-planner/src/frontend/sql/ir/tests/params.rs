@@ -6,9 +6,12 @@ use smol_str::format_smolstr;
 #[test]
 fn front_numeric_param_in_cast() {
     let typ = "numeric";
-    let pattern = format!("SELECT CAST(? AS {}) FROM \"test_space\"", typ);
+    let pattern = format!(
+        "explain (logical) SELECT CAST(? AS {}) FROM \"test_space\"",
+        typ
+    );
     let plan = sql_to_optimized_ir(pattern.as_str(), vec![Value::from(1_i64)]);
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (1::decimal -> col_1)
       scan test_space
 
@@ -21,9 +24,12 @@ fn front_numeric_param_in_cast() {
 #[test]
 fn front_number_param_in_cast() {
     let typ = "number";
-    let pattern = format!("SELECT CAST(? AS {}) FROM \"test_space\"", typ);
+    let pattern = format!(
+        "explain (logical) SELECT CAST(? AS {}) FROM \"test_space\"",
+        typ
+    );
     let plan = sql_to_optimized_ir(pattern.as_str(), vec![Value::from(1_i64)]);
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (1::decimal -> col_1)
       scan test_space
 
@@ -35,9 +41,9 @@ fn front_number_param_in_cast() {
 
 #[test]
 fn front_param_in_cast() {
-    let pattern = r#"SELECT CAST(? AS int) FROM "test_space""#;
+    let pattern = r#"explain (logical) SELECT CAST(? AS int) FROM "test_space""#;
     let plan = sql_to_optimized_ir(pattern, vec![Value::from(1_i64)]);
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (1::int -> col_1)
       scan test_space
 
@@ -49,11 +55,11 @@ fn front_param_in_cast() {
 
 #[test]
 fn front_params1() {
-    let pattern = r#"SELECT "id", "FIRST_NAME" FROM "test_space"
+    let pattern = r#"explain (logical) SELECT "id", "FIRST_NAME" FROM "test_space"
         WHERE "sys_op" = ? AND "sysFrom" > ?"#;
     let plan = sql_to_optimized_ir(pattern, vec![Value::from(0_i64), Value::from(1_i64)]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
       selection ((test_space.sys_op::int = 0::int and test_space."sysFrom"::int > 1::int))
         scan test_space
@@ -66,12 +72,12 @@ fn front_params1() {
 
 #[test]
 fn front_params2() {
-    let pattern = r#"SELECT "id" FROM "test_space"
+    let pattern = r#"explain (logical) SELECT "id" FROM "test_space"
         WHERE "sys_op" = ? AND "FIRST_NAME" = ?"#;
 
     let plan = sql_to_optimized_ir(pattern, vec![Value::Null, Value::from("hello")]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (test_space.id::int -> id)
       selection ((test_space.sys_op::int = NULL::unknown and test_space."FIRST_NAME"::string = 'hello'::string))
         scan test_space
@@ -85,12 +91,12 @@ fn front_params2() {
 // check cyrillic params support
 #[test]
 fn front_params3() {
-    let pattern = r#"SELECT "id" FROM "test_space"
+    let pattern = r#"explain (logical) SELECT "id" FROM "test_space"
         WHERE "sys_op" = ? AND "FIRST_NAME" = ?"#;
 
     let plan = sql_to_optimized_ir(pattern, vec![Value::Null, Value::from("кириллица")]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (test_space.id::int -> id)
       selection ((test_space.sys_op::int = NULL::unknown and test_space."FIRST_NAME"::string = 'кириллица'::string))
         scan test_space
@@ -104,7 +110,7 @@ fn front_params3() {
 // check symbols in values (grammar)
 #[test]
 fn front_params4() {
-    let pattern = r#"SELECT "id" FROM "test_space"
+    let pattern = r#"explain (logical) SELECT "id" FROM "test_space"
         WHERE "FIRST_NAME" = ?"#;
 
     let plan = sql_to_optimized_ir(
@@ -112,7 +118,7 @@ fn front_params4() {
         vec![Value::from(r#"''± !@#$%^&*()_+=-\/><";:,.`~"#)],
     );
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (test_space.id::int -> id)
       selection (test_space."FIRST_NAME"::string = '''± !@#$%^&*()_+=-\/><";:,.`~'::string)
         scan test_space
@@ -127,7 +133,7 @@ fn front_params4() {
 #[test]
 fn front_params5() {
     let pattern = r#"
-        SELECT "id" FROM "test_space"
+        explain (logical) SELECT "id" FROM "test_space"
         WHERE "sys_op" = ? OR "id" IN (
             SELECT "sysFrom" FROM "test_space_hist"
             WHERE "sys_op" = ?
@@ -136,7 +142,7 @@ fn front_params5() {
 
     let plan = sql_to_optimized_ir(pattern, vec![Value::from(0_i64), Value::from(1_i64)]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (test_space.id::int -> id)
       selection (test_space.sys_op::int = 0::int or test_space.id::int in ROW($0))
         scan test_space
@@ -156,7 +162,7 @@ fn front_params5() {
 #[test]
 fn front_params6() {
     let pattern = r#"
-        SELECT "id" FROM "test_space"
+        explain (logical) SELECT "id" FROM "test_space"
         WHERE "sys_op" = ? OR "id" NOT IN (
             SELECT "id" FROM "test_space"
             WHERE "sys_op" = ?
@@ -171,7 +177,7 @@ fn front_params6() {
         vec![Value::from(0_i64), Value::from(1_i64), Value::from(2_i64)],
     );
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (test_space.id::int -> id)
       selection (test_space.sys_op::int = 0::int or not test_space.id::int in ROW($0))
         scan test_space

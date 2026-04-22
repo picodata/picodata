@@ -10,10 +10,10 @@ use super::*;
 
 #[test]
 fn unnamed_subquery1_test() {
-    let input = r#"SELECT * FROM (SELECT * FROM t)"#;
+    let input = r#"explain (logical) SELECT * FROM (SELECT * FROM t)"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (unnamed_subquery.a::int -> a, unnamed_subquery.b::int -> b, unnamed_subquery.c::int -> c, unnamed_subquery.d::int -> d)
       scan unnamed_subquery
         projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
@@ -27,10 +27,11 @@ fn unnamed_subquery1_test() {
 
 #[test]
 fn unnamed_subquery2_test() {
-    let input = r#"SELECT * FROM (SELECT * FROM t) join (SELECT * FROM t) on true"#;
+    let input =
+        r#"explain (logical) SELECT * FROM (SELECT * FROM t) join (SELECT * FROM t) on true"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (unnamed_subquery.a::int -> a, unnamed_subquery.b::int -> b, unnamed_subquery.c::int -> c, unnamed_subquery.d::int -> d, unnamed_subquery_1.a::int -> a, unnamed_subquery_1.b::int -> b, unnamed_subquery_1.c::int -> c, unnamed_subquery_1.d::int -> d)
       join on (true::bool)
         scan unnamed_subquery
@@ -49,11 +50,10 @@ fn unnamed_subquery2_test() {
 
 #[test]
 fn unnamed_subquery_name_conflict1_test() {
-    let input =
-        r#"SELECT * FROM (SELECT * FROM t) join (SELECT * FROM t) as "unnamed_subquery" on true"#;
+    let input = r#"explain (logical) SELECT * FROM (SELECT * FROM t) join (SELECT * FROM t) as "unnamed_subquery" on true"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (unnamed_subquery_1.a::int -> a, unnamed_subquery_1.b::int -> b, unnamed_subquery_1.c::int -> c, unnamed_subquery_1.d::int -> d, unnamed_subquery.a::int -> a, unnamed_subquery.b::int -> b, unnamed_subquery.c::int -> c, unnamed_subquery.d::int -> d)
       join on (true::bool)
         scan unnamed_subquery_1
@@ -72,10 +72,10 @@ fn unnamed_subquery_name_conflict1_test() {
 
 #[test]
 fn unnamed_subquery_name_conflict2_test() {
-    let input = r#"WITH unnamed_subquery as (SELECT * FROM t) SELECT * FROM (SELECT * FROM t) join unnamed_subquery on true"#;
+    let input = r#"explain (logical) WITH unnamed_subquery as (SELECT * FROM t) SELECT * FROM (SELECT * FROM t) join unnamed_subquery on true"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (unnamed_subquery_1.a::int -> a, unnamed_subquery_1.b::int -> b, unnamed_subquery_1.c::int -> c, unnamed_subquery_1.d::int -> d, unnamed_subquery.a::int -> a, unnamed_subquery.b::int -> b, unnamed_subquery.c::int -> c, unnamed_subquery.d::int -> d)
       join on (true::bool)
         scan unnamed_subquery_1

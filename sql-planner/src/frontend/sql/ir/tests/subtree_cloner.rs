@@ -96,10 +96,11 @@ fn except_transform_with_dag_plan() {
     // are refferring to it. Let's check except transformation
     // with global table works in this case.
 
-    let input = r#"select 1 from (values (1)) except select e from t2 where e = 1"#;
+    let input =
+        r#"explain (logical) select 1 from (values (1)) except select e from t2 where e = 1"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     except
       projection (1::int -> col_1)
         scan unnamed_subquery

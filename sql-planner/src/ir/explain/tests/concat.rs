@@ -2,9 +2,9 @@ use super::*;
 
 #[test]
 fn concat1_test() {
-    let sql = r#"SELECT CAST('1' as string) || 'hello' FROM "t1""#;
+    let sql = r#"explain (logical) SELECT CAST('1' as string) || 'hello' FROM "t1""#;
     let plan = sql_to_optimized_ir(sql, vec![]);
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection ('1'::string || 'hello'::string -> col_1)
       scan t1
 
@@ -16,9 +16,10 @@ fn concat1_test() {
 
 #[test]
 fn concat2_test() {
-    let sql = r#"SELECT "a" FROM "t1" WHERE CAST('1' as string) || "a" || '2' = '42'"#;
+    let sql =
+        r#"explain (logical) SELECT "a" FROM "t1" WHERE CAST('1' as string) || "a" || '2' = '42'"#;
     let plan = sql_to_optimized_ir(sql, vec![]);
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (t1.a::string -> a)
       selection (('1'::string || t1.a::string) || '2'::string = '42'::string)
         scan t1
