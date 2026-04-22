@@ -42,7 +42,9 @@ build-plug-wrong-version:
 		$(CARGO_ENV) \
 		cargo build $(LOCKED) $(MAKE_JOBSERVER_ARGS) --profile=dev
 
-# CARGO_FLAGS_EXTRA is meant to be set outside the makefile by user
+# Both CARGO_FLAGS and CARGO_FLAGS_EXTRA can be passed externally:
+#  - CARGO_FLAGS overrides whatever we set internally
+#  - CARGO_FLAGS_EXTRA only appends to it without overriding
 .PHONY: build
 build: tarantool-patch
 	if test -f ~/.cargo/env; then . ~/.cargo/env; fi && \
