@@ -154,7 +154,7 @@ lint-rs:
 	  $(LOCKED) $(MAKE_JOBSERVER_ARGS) \
 	  $(filter-out --workspace, $(CARGO_FLAGS)) \
 	  --workspace \
-	  --features=load_test,error_injection \
+	  --features=load_test,error_injection,demo \
 	  -- --deny clippy::all --no-deps
 
 	RUSTDOCFLAGS="-Dwarnings -Arustdoc::private_intra_doc_links" \

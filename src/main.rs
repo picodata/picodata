@@ -30,6 +30,7 @@ fn main() -> ! {
             Command::Admin(args) => cli::admin::main(args),
             Command::Config(cli::args::Config::Default(args)) => cli::default_config::main(args),
             Command::Plugin(args) => cli::plugin::main(args),
+            #[cfg(feature = "demo")]
             Command::Demo(args) => cli::demo::main(args),
         }
     } else {
