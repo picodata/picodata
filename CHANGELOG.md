@@ -26,7 +26,6 @@ with the `YY.MINOR.MICRO` scheme.
 - Avoid an extra subplan clone in SQL planner single-replicaset dispatch,
   reducing unnecessary work when preparing vshard routing.
 
-
 ### Fixes
 
 - Fix cold restart deadlock where all instances in a replicaset would get empty
@@ -64,6 +63,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Rename fields in `/api/v1/health/status` response: `reasons` to `issues`,
   status level `unhealthy` to `broken`.
+- `picodata demo` subcommand is now gated behind the `demo` Cargo feature,
+  disabled by default. To build with demo, use `CARGO_FLAGS_EXTRA="--features demo"`.
 
 ## [26.1.1] - 2026-03-24
 
