@@ -27,6 +27,7 @@ use std::sync::Arc;
 use crate::ffi::tarantool as ffi;
 use crate::tlua::LuaError;
 use crate::transaction::TransactionError;
+#[cfg(feature = "picodata")]
 use crate::tuple::Decode;
 use crate::util::to_cstring_lossy;
 use rmp::decode::{MarkerReadError, NumValueReadError, ValueReadError};

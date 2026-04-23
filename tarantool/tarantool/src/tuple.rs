@@ -26,6 +26,7 @@ use crate::error::{self, Error, Result, TarantoolError};
 use crate::ffi::sql::PortC;
 use crate::ffi::tarantool as ffi;
 use crate::index;
+#[cfg(feature = "picodata")]
 use crate::space::SpaceId;
 use crate::tlua;
 
