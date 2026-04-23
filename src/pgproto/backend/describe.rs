@@ -369,7 +369,7 @@ fn dql_output_format(ir: &Plan) -> PgResult<Vec<MetadataColumn>> {
 
 /// Get the output format of explain message.
 fn explain_output_format() -> Vec<MetadataColumn> {
-    vec![MetadataColumn::new("QUERY PLAN".into(), Type::TEXT)]
+    vec![MetadataColumn::new("EXPLAIN".into(), Type::TEXT)]
 }
 
 fn field_description(name: String, ty: Type, format: FieldFormat) -> FieldDescription {
