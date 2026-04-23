@@ -2,11 +2,10 @@ import functools
 import json
 import os
 import shlex
-import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import pytest
 from packaging.version import Version
@@ -15,12 +14,14 @@ from framework.log import log
 from framework.util import (
     copy_plugin_library,
     eprint,
-    should_err_on_missing_binaries,
     should_perform_cargo_build,
 )
 from framework.util.git import project_git_version
 from framework.util.path import project_tests_path
 from framework.util.version import VersionAlias
+
+
+BinaryLookup = Callable[[Version], Path | None]
 
 
 @functools.cache
@@ -170,22 +171,34 @@ class Executable:
     populated once the executable is successfully resolved (located in $PATH).
     """
 
+    binary_lookup: BinaryLookup = lambda _: None
+    """
+    Pure function mapping a version to its binary path (or `None`). Injected by
+    the `Registry` so `resolve` does not touch $PATH directly. May be `None`
+    when the executable was constructed with `path` already set (e.g. the
+    locally built current version), in which case `resolve` is a no-op.
+    """
+
+    err_on_missing_binaries: bool = field(default=False, repr=False, compare=False)
+    """
+    When True, `resolve` raises `ValueError` if the binary cannot be located;
+    when False, it triggers `pytest.skip` instead. Injected by the `Registry`
+    from the value of `should_err_on_missing_binaries()` at construction time.
+    """
+
     def resolve(self):
         """
-        Attempts to locate the binary on the system $PATH.
-        The method looks for a file named "picodata-<version>".
-        If the binary cannot be found:
-        1. In CI environments, it raises a `ValueError` to signal a configuration error.
-        2. In local environments, it triggers a `pytest.skip` to avoid failing tests due
-           to missing historical binaries on a developer's machine.
+        Locate the binary using `binary_lookup`. If the exact patch is missing,
+        try `patch - 1` as a fallback (latest tagged patch may not be published
+        as a binary yet). If still missing: raise `ValueError` when
+        `err_on_missing_binaries` is True, otherwise `pytest.skip`.
         """
         if self.resolved:
             return
 
-        name = f"picodata-{self.version}"
-        path = shutil.which(name)
+        path = self.binary_lookup(self.version)
         if path is not None:
-            self.path = Path(path)
+            self.path = path
             return
 
         # The latest tagged patch isn't available as a binary yet
@@ -195,22 +208,15 @@ class Executable:
         # This is fine because rolling tests cover minor or major upgrade paths, not
         # patch-specific behavior - those have dedicated tests with pinned versions.
         if self.version.micro > 1:
-            # fmt: off
-            version = (
-                f"{self.version.major}."
-                f"{self.version.minor}."
-                f"{self.version.micro - 1}"
-            )
-            # fmt: on
-            name = f"picodata-{version}"
-            path = shutil.which(name)
+            fallback = Version(f"{self.version.major}.{self.version.minor}.{self.version.micro - 1}")
+            path = self.binary_lookup(fallback)
             if path is not None:
-                self.path = Path(path)
-                self.version = Version(version)
+                self.path = path
+                self.version = fallback
                 return
 
-        message = f"'{name}' binary is required to test against {self.version}"
-        if should_err_on_missing_binaries():
+        message = f"'picodata-{self.version}' binary is required to test against {self.version}"
+        if self.err_on_missing_binaries:
             raise ValueError(message)
         pytest.skip(message)
 

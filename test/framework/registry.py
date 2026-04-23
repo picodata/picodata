@@ -1,60 +1,115 @@
 from framework.util.build import Executable
+from framework.util.build import picodata_executable_path
 from framework.util.version import ExecutableVersion
 from framework.util.version import parse_version_opt
 from framework.util.version import VersionAlias
 from framework.util.git import project_repo_instance
 from framework.util.git import project_git_version
+from framework.util import should_err_on_missing_binaries
 from packaging.version import Version
-from typing import List
+from pathlib import Path
+from typing import Callable, List
 
 import functools
 import pytest
+import shutil
 
 
 class Registry:
     """
-    This entity maintains a collection of project executables derived from git tags.
-    It is primarily used by the rolling upgrade test suite to dynamically locate and
-    retrieve binaries of previous versions. This allows the framework to orchestrate
-    clusters with mixed versions to verify backward compatibility and upgrade paths.
+    Maintains a collection of project executables derived from git tags, used
+    by the rolling upgrade test suite to locate binaries of previous versions
+    and orchestrate mixed-version clusters.
+
+    The class is sans-I/O: it operates purely on the snapshot of facts passed
+    to `__init__`. All environment-dependent gathering (git tags, current
+    version, $PATH lookup, CI detection, local build path) is performed by
+    the caller and injected here. The factory `get_or_make_registry` is the
+    single seam where real I/O is wired in.
     """
 
     executables: List[Executable]
     """
-    A sorted list of available project executables. This list is populated during
-    initialization by scanning git tags and includes the current local build.
-    Entries are stored as `Executable` objects which hold version metadata and resolution logic.
+    A sorted list of available project executables, populated during
+    construction from the injected tag list (plus the current local build if
+    its patch is zero). Stored as `Executable` objects which hold version
+    metadata and resolution logic.
     """
 
     current_version: Version
     """
-    Current version of the project, taken from `git describe`.
-    This is essentially `framework.utils.project_git_version`
-    stored as a field just to avoid calling it every time.
+    Current version of the project, as supplied by the caller (typically
+    `framework.util.git.project_git_version`).
     """
 
-    def __init__(self):
-        self.current_version = project_git_version()
+    def __init__(
+        self,
+        current_version: Version,
+        tags: List[Version],
+        local_build_path: Path,
+        binary_lookup: Callable[[Version], Path | None],
+        err_on_missing_binaries: bool,
+    ):
+        """
+        Build a registry from a static snapshot of facts.
+
+        Parameters:
+            current_version: version of the locally built binary
+                             (typically `git describe`).
+            tags: every release tag known to the project, parsed as `Version`.
+                  Filtering (drop `.0` patches, drop pre-releases) happens here.
+            local_build_path: filesystem path to the locally built `picodata`
+                              binary, used as the `path` of the CURRENT entry.
+            binary_lookup: a function which maps version to its binary path
+                           (or `None` if not present). Injected into every
+                           non-current `Executable` so `.resolve()`.
+            err_on_missing_binaries: when True, `Executable.resolve` raises on
+                                     a missing binary; when False, it skips.
+        """
+        self.current_version = current_version
+        self._tags = tags
+        self._local_build_path = local_build_path
+        self._binary_lookup = binary_lookup
+        self._err_on_missing_binaries = err_on_missing_binaries
+
         self._fetch()
         self._populate()
 
-    def _fetch(self):
-        def version_filter(version: Version | None) -> bool:
-            return version is not None and version.micro != 0 and version.pre is None
+    def _make_executable(
+        self,
+        version: Version,
+        alias: VersionAlias | None = None,
+        path: Path | None = None,
+    ) -> Executable:
+        return Executable(
+            version=version,
+            alias=alias,
+            path=path,
+            binary_lookup=self._binary_lookup,
+            err_on_missing_binaries=self._err_on_missing_binaries,
+        )
 
-        string_tags = map(str, project_repo_instance().tags)
-        converted_tags = list(map(parse_version_opt, string_tags))
-        valid_tags = filter(version_filter, converted_tags)
+    def _make_current(self) -> Executable:
+        return self._make_executable(
+            version=self.current_version,
+            alias=VersionAlias.CURRENT,
+            path=self._local_build_path,
+        )
+
+    def _fetch(self):
+        def version_filter(version: Version) -> bool:
+            return version.micro != 0 and version.pre is None
+
+        valid_tags = filter(version_filter, self._tags)
         sorted_tags = sorted(valid_tags, reverse=True)
-        self.executables = [Executable(tag) for tag in sorted_tags]
+        self.executables = [self._make_executable(tag) for tag in sorted_tags]
 
         # Make a lookup for an executable of current version: if our current
         # version patch component is 0, then it will be ignored by version
         # filter due to our rules with the newly released tags in the project.
         # This will not allow us to test it, so let's add it manually here.
-        if self.get(self.current_version) is None:
-            current_executable = Executable.current()
-            self.executables.insert(0, current_executable)
+        if self.get(self.current_version, resolve=False) is None:
+            self.executables.insert(0, self._make_current())
 
     def _populate(self) -> None:
         assignment_rules = [
@@ -113,7 +168,7 @@ class Registry:
                     # intact without manually mutating complex internal fields
                     # of the `Executable` object.
                     if condition_version == VersionAlias.CURRENT:
-                        self.executables[current_index] = Executable.current()
+                        self.executables[current_index] = self._make_current()
 
                     break  # Only one alias per entry.
 
@@ -193,6 +248,28 @@ class Registry:
         return self.current_version
 
 
+def _default_binary_lookup(version: Version) -> Path | None:
+    """
+    System (real) `binary_lookup`: resolves `picodata-<version>` via $PATH.
+    """
+    path = shutil.which(f"picodata-{version}")
+    return Path(path) if path is not None else None
+
+
 @functools.cache
 def get_or_make_registry() -> Registry:
-    return Registry()
+    """
+    Single point of impurity: collects facts from the environment and
+    constructs a `Registry`. All callers from integrational test suite should
+    go through this factory; harness tests should construct `Registry` directly.
+    """
+    raw_tags = map(str, project_repo_instance().tags)
+    parsed_tags = [v for v in map(parse_version_opt, raw_tags) if v is not None]
+
+    return Registry(
+        current_version=project_git_version(),
+        tags=parsed_tags,
+        local_build_path=picodata_executable_path(),
+        binary_lookup=_default_binary_lookup,
+        err_on_missing_binaries=should_err_on_missing_binaries(),
+    )
