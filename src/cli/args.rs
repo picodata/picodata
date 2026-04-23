@@ -529,6 +529,10 @@ pub struct Test {
     /// Only run tests matching the filter.
     pub filter: Option<String>,
 
+    #[clap(long, action = clap::ArgAction::Append)]
+    /// Skip tests matching this pattern (can be repeated).
+    pub skip: Vec<String>,
+
     #[clap(long = "nocapture", env = "PICODATA_TEST_NOCAPTURE")]
     /// Do not capture test output.
     pub nocapture: bool,
