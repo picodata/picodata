@@ -220,7 +220,7 @@ theme:
 extra:
   analytics:
     provider: google
-    property: G-6X8Z5N2CGR
+    property: G-K8YQK9PS0M
     feedback:
       title: Была ли эта информация полезной для вас?
       ratings:
