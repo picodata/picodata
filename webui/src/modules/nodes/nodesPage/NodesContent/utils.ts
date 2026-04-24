@@ -5,7 +5,8 @@ import DynamicFeedIcon from "@mui/icons-material/DynamicFeed";
 import AltRouteIcon from "@mui/icons-material/AltRoute";
 import AlbumIcon from "@mui/icons-material/Album";
 import CircleIcon from "@mui/icons-material/Circle";
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from "uuid";
+
 import { InstanceNodeType, InstanceType } from "shared/entity/instance";
 import { sortByString } from "shared/utils/string/sort";
 import {
@@ -353,12 +354,23 @@ const filterInstances = (
   searchTextFilterValues: FilterValue[]
 ): InstanceNodeType[] => {
   return instances.filter((_instance) => {
-    const instanceIsInclude = getIncludesFilterValue(instanceFilterValues, _instance);
-    const instanceFailureDomainsIsInclude = failureDomainsFilterValues.every(
-      (fdFilterValue) => filterFailureDomainByExpressionType(fdFilterValue, _instance)
+    const instanceIsInclude = getIncludesFilterValue(
+      instanceFilterValues,
+      _instance
     );
-    const instanceSearchTextIncludes = getIncludesSearchText(_instance, searchTextFilterValues);
-    return instanceIsInclude && instanceFailureDomainsIsInclude && instanceSearchTextIncludes;
+    const instanceFailureDomainsIsInclude = failureDomainsFilterValues.every(
+      (fdFilterValue) =>
+        filterFailureDomainByExpressionType(fdFilterValue, _instance)
+    );
+    const instanceSearchTextIncludes = getIncludesSearchText(
+      _instance,
+      searchTextFilterValues
+    );
+    return (
+      instanceIsInclude &&
+      instanceFailureDomainsIsInclude &&
+      instanceSearchTextIncludes
+    );
   });
 };
 
@@ -370,10 +382,15 @@ const filterReplicasets = (
   searchTextFilterValues: FilterValue[]
 ): ReplicasetNodeType[] => {
   const hasInstanceFilters =
-    instanceFilterValues.length || failureDomainsFilterValues.length || searchTextFilterValues.length;
+    instanceFilterValues.length ||
+    failureDomainsFilterValues.length ||
+    searchTextFilterValues.length;
 
   return replicasets.reduce((_replicasets, _replicaset) => {
-    const replicasetIsInclude = getIncludesFilterValue(replicasetFilterValues, _replicaset);
+    const replicasetIsInclude = getIncludesFilterValue(
+      replicasetFilterValues,
+      _replicaset
+    );
 
     if (replicasetIsInclude && !hasInstanceFilters) {
       _replicasets.push(_replicaset);
@@ -392,7 +409,11 @@ const filterReplicasets = (
       return _replicasets;
     }
 
-    if (replicasetIsInclude && searchTextFilterValues.length && !resultInstances.length) {
+    if (
+      replicasetIsInclude &&
+      searchTextFilterValues.length &&
+      !resultInstances.length
+    ) {
       if (getIncludesSearchText(_replicaset, searchTextFilterValues)) {
         _replicasets.push(_replicaset);
       }
@@ -448,7 +469,11 @@ const getFilteredTiers = (
       return _tiers;
     }
 
-    if (tierIsInclude && searchTextFilterValues.length && !resultReplicasets.length) {
+    if (
+      tierIsInclude &&
+      searchTextFilterValues.length &&
+      !resultReplicasets.length
+    ) {
       if (getIncludesSearchText(_tier, searchTextFilterValues)) {
         _tiers.push(_tier);
         return _tiers;
@@ -473,7 +498,8 @@ const appendOpenedReplicasets = (
   const result: (ReplicasetNodeType | InstanceNodeType)[] = [];
   for (const replicaset of replicasets) {
     const replicasetIsOpened = Boolean(
-      openedNodes.includes(replicaset.syntheticId) && replicaset.instances.length
+      openedNodes.includes(replicaset.syntheticId) &&
+        replicaset.instances.length
     );
     result.push({ ...replicaset, open: replicasetIsOpened });
     if (replicasetIsOpened) {
@@ -505,10 +531,12 @@ export const getNodesListByOpenedNodes = (
     );
     list.push({ ...tier, open: tierIsOpened });
     if (tierIsOpened) {
-      list.push(...appendOpenedReplicasets(
-        tier.replicasets as ReplicasetNodeType[],
-        openedNodes
-      ));
+      list.push(
+        ...appendOpenedReplicasets(
+          tier.replicasets as ReplicasetNodeType[],
+          openedNodes
+        )
+      );
     }
   }
   return list;
