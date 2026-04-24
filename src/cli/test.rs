@@ -40,6 +40,10 @@ pub fn main(args: args::Test) -> ! {
                 continue;
             }
         }
+        if args.skip.iter().any(|s| t.name().contains(s)) {
+            cnt_skipped += 1;
+            continue;
+        }
         print!("test {} ... ", t.name());
         std::io::Write::flush(&mut std::io::stdout()).unwrap();
 
