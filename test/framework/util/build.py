@@ -1,23 +1,27 @@
 import functools
 import json
 import os
-import pytest
 import shlex
 import shutil
 import subprocess
-
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import pytest
+from packaging.version import Version
+
 from framework.log import log
+from framework.util import (
+    copy_plugin_library,
+    eprint,
+    is_in_ci,
+    should_err_on_missing_binaries,
+    should_perform_cargo_build,
+)
 from framework.util.git import project_git_version
 from framework.util.path import project_tests_path
 from framework.util.version import VersionAlias
-from framework.util import copy_plugin_library
-from framework.util import eprint
-from framework.util import should_perform_cargo_build
-from framework.util import should_err_on_missing_binaries
-from packaging.version import Version
-from pathlib import Path
-from typing import Any
 
 
 @functools.cache
