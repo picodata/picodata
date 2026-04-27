@@ -16,10 +16,6 @@ default:
     - cd tarantool
 
 
-stages:
-  - build-base-image
-  - test
-
 # for downstream pipeline in same repository $CI_PIPELINE_SOURCE == "parent_pipeline"
 # if we want to check for external triggers we should check $PARENT_CI_PIPELINE_SOURCE
 # passed from parent pipeline
@@ -75,7 +71,6 @@ variables:
 
 # Билд контейнера через kaniko
 .build-base-image:
-  stage: build-base-image
   rules:
     - <<: *if-build-base-changes-on-master-branch
       variables:
@@ -124,7 +119,6 @@ build-base-image-fork-on-trigger:
     GIT_DEPTH: 0
 
 .test:
-  stage: test
   rules:
     - <<: *if-build-base-changes-on-dev-branch
       variables:
@@ -173,6 +167,8 @@ build-base-image-fork-on-trigger:
 
 test-vanilla-debug:
   extends: .test
+  needs:
+    - build-base-image-vanilla
   allow_failure: true  # TODO: fix it. problem with lua symbols on rust 1.89
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/vanilla-cache.tar
@@ -184,6 +180,8 @@ test-vanilla-debug:
 
 test-vanilla-release:
   extends: .test
+  needs:
+    - build-base-image-vanilla
   allow_failure: true  # TODO: fix it. problem with lua symbols on rust 1.89
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/vanilla-release-cache.tar
@@ -195,6 +193,8 @@ test-vanilla-release:
 
 bench-vanilla:
   extends: .test
+  needs:
+    - build-base-image-vanilla
   variables:
     BASE_IMAGE_NAME: ${BASE_IMAGE_VANILLA}
   script:
@@ -203,6 +203,8 @@ bench-vanilla:
 
 test-fork-debug:
   extends: .test
+  needs:
+    - build-base-image-fork
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/picodata-cache.tar
     BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
@@ -213,6 +215,8 @@ test-fork-debug:
 
 test-fork-debug-standalone-decimal:
   extends: .test
+  needs:
+    - build-base-image-fork
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/picodata-cache.tar
     BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
@@ -223,6 +227,8 @@ test-fork-debug-standalone-decimal:
 
 test-fork-release:
   extends: .test
+  needs:
+    - build-base-image-fork
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/picodata-release-cache.tar
     BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
@@ -233,6 +239,8 @@ test-fork-release:
 
 test-fork-debug-on-trigger:
   extends: .test
+  needs:
+    - build-base-image-fork-on-trigger
   rules: # overrides whole section from .test
     - <<: *if-triggered
   variables:
