@@ -6969,8 +6969,8 @@ impl AbstractSyntaxTree {
                         explain_child_id = child_iter.next().expect("explain has no children");
                     }
 
-                    // Select a default facette if there's none.
-                    if !explain_options.has_facette() {
+                    // Select a default facet if there's none.
+                    if !explain_options.has_facet() {
                         explain_options |= ExplainOptions::Logical;
                     }
                     plan.explain_options = explain_options;

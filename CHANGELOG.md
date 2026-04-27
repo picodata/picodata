@@ -17,7 +17,7 @@ with the `YY.MINOR.MICRO` scheme.
   and memory info is only fetched from replicaset leaders. This reduces the
   number of RPC calls from O(N×RF) to O(N) where N is the number of replicasets.
   Offline instances now show their HTTP address (from storage) instead of empty string.
-- `EXPLAIN (FMT)` option is now properly supported for all modes (facettes).
+- `EXPLAIN (FMT)` option is now properly supported for all modes (facets).
   It is now possible to write `explain (fmt)` to get a formatted logical plan
   or `explain (fmt, raw)` to get a formatted raw query plan.
 - [picodata#2728] Now includes the target table name when reporting a missing
