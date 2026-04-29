@@ -1,10 +1,12 @@
-use std::collections::{HashMap, VecDeque};
-use std::fmt::{self, Display, Write};
-
-use itertools::Itertools;
-use smallvec::SmallVec;
-use smol_str::{format_smolstr, SmolStr, SmolStrBuilder, ToSmolStr};
-
+use super::expression::FunctionFeature;
+use super::helpers::RepeatableState;
+use super::node::expression::Expression;
+use super::node::relational::Relational;
+use super::node::{Bound, BoundType, Frame, FrameType, Limit, Over, Window};
+use super::operator::Unary;
+use super::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
+use super::types::{CastType, DerivedType};
+use super::value::Value;
 use crate::errors::{Entity, SbroadError};
 use crate::ir::bucket::{BucketSet, Buckets};
 use crate::ir::expression::TrimKind;
@@ -22,17 +24,13 @@ use crate::ir::transformation::redistribution::{
     MotionKey as IrMotionKey, MotionPolicy as IrMotionPolicy, Program, Target as IrTarget,
 };
 use crate::ir::{node, ExplainOptions, Plan};
+use crate::utils::indent;
 use crate::utils::OrderedMap;
-
-use super::expression::FunctionFeature;
-use super::helpers::RepeatableState;
-use super::node::expression::Expression;
-use super::node::relational::Relational;
-use super::node::{Bound, BoundType, Frame, FrameType, Limit, Over, Window};
-use super::operator::Unary;
-use super::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
-use super::types::{CastType, DerivedType};
-use super::value::Value;
+use itertools::Itertools;
+use smallvec::SmallVec;
+use smol_str::{format_smolstr, SmolStr, SmolStrBuilder, ToSmolStr};
+use std::collections::{HashMap, VecDeque};
+use std::fmt::{self, Display, Write};
 
 /// We use this buffer to check if the textual representation
 /// is short enough to be printed as a single line.
@@ -67,12 +65,6 @@ impl fmt::Write for TinyFmtBuffer {
 
         Ok(())
     }
-}
-
-/// Transform a writer into an indented writer. This effect is additive.
-fn indent<'a, D>(f: &'a mut D) -> indenter::Indented<'a, D> {
-    const INDENT: &str = "  ";
-    indenter::indented(f).with_str(INDENT)
 }
 
 fn name_requires_quotes(s: &str) -> bool {

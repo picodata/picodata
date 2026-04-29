@@ -875,11 +875,9 @@ SELECT DISTINCT b FROM t0 WHERE a = 1;
 EXPLAIN (RAW) SELECT DISTINCT b FROM t0 WHERE a = 1;
 -- EXPECTED:
 1. Query (FILTERED STORAGE):
+''
 SELECT DISTINCT "t0"."b" FROM "t0" WHERE "t0"."a" = CAST(1 AS int)
-+----------+-------+------+------------------------------+
-| selectid | order | from | detail                       |
-+========================================================+
-| 0        | 0     | 0    | SCAN TABLE t0 (~262144 rows) |
-|----------+-------+------+------------------------------|
-| 0        | 0     | 0    | USE TEMP B-TREE FOR DISTINCT |
-+----------+-------+------+------------------------------+
+''
+plan:
+    [0] SCAN TABLE t0 (~262144 rows)
+    [0] USE TEMP B-TREE FOR DISTINCT

@@ -136,6 +136,7 @@ FROM
 	t1 JOIN t2 ON t1.b = t2.b;
 -- EXPECTED:
 1. Query (STORAGE):
+''
 SELECT
   "t1"."b",
   "t1"."c",
@@ -149,17 +150,12 @@ SELECT
 FROM
   "t1"
   INNER JOIN "t2" ON "t1"."b" = "t2"."b"
-+----------+-------+------+-------------------------------+
-| selectid | order | from | detail                        |
-+=========================================================+
-| 1        | 0     | 0    | SCAN TABLE t1 (~1048576 rows) |
-|----------+-------+------+-------------------------------|
-| 1        | 1     | 1    | SCAN TABLE t2 (~1048576 rows) |
-|----------+-------+------+-------------------------------|
-| 1        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY  |
-|----------+-------+------+-------------------------------|
-| 0        | 0     | 0    | SCAN SUBQUERY 1 (~1 row)      |
-+----------+-------+------+-------------------------------+
+''
+plan:
+    [1] SCAN TABLE t1 (~1048576 rows)
+        [1] SCAN TABLE t2 (~1048576 rows)
+    [1] USE TEMP B-TREE FOR ORDER BY
+    [0] SCAN SUBQUERY 1 (~1 row)
 
 -- TEST: window0-compound-query-with-outer-filter
 -- SQL:

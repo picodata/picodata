@@ -1,13 +1,50 @@
+use rmp::encode::RmpWrite;
+use rmp::Marker;
+use smol_str::SmolStr;
 use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
+use std::fmt;
 use std::hash::{BuildHasher, Hash, RandomState};
 use std::io::{Result, Write};
 use std::ops::DerefMut;
-
-use rmp::encode::RmpWrite;
-use rmp::Marker;
 use tarantool::fiber::mutex::MutexGuard as TMutexGuard;
 use tarantool::fiber::Mutex as TMutex;
+
+pub const INDENT: &str = "  ";
+
+/// Transform a writer into an indented writer. This effect is additive.
+pub fn indent<'a, D>(f: &'a mut D) -> indenter::Indented<'a, D> {
+    indenter::indented(f).with_str(INDENT)
+}
+
+pub fn indent_custom<'a, D>(
+    f: &'a mut D,
+    inserter: &'a mut indenter::Inserter,
+) -> indenter::Indented<'a, D> {
+    indenter::indented(f).with_format(indenter::Format::Custom { inserter })
+}
+
+pub fn indent_with_prefix(
+    level: usize,
+    prefix: impl Into<SmolStr>,
+) -> impl FnMut(usize, &mut dyn fmt::Write) -> fmt::Result {
+    let prefix = prefix.into();
+    move |line, f| {
+        for _ in 0..level {
+            write!(f, "{}", INDENT)?;
+        }
+        match line {
+            0 => write!(f, "{}", prefix)?,
+            _ => {
+                for _ in 0..prefix.len() {
+                    write!(f, " ")?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
 
 /// [`MutexLike`] is a mutex abstraction to work with different mutexes in general manner.
 ///

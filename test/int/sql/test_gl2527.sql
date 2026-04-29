@@ -76,21 +76,17 @@ LEFT JOIN t g
  AND g.sharding = p.sharding;
 -- EXPECTED:
 1. Query (STORAGE):
+''
 SELECT count (*) as "count_1" FROM ( SELECT "t"."id", "t"."parent", "t"."sharding" FROM "t" WHERE "t"."sharding" = CAST(1 AS int) ) as "fa" LEFT JOIN "t" as "p" ON "p"."id" = "fa"."parent" and "p"."sharding" = "fa"."sharding" LEFT JOIN "t" as "g" ON "g"."id" = "p"."parent" and "g"."sharding" = "p"."sharding"
-+----------+-------+------+----------------------------------------------------------------------+
-| selectid | order | from | detail                                                               |
-+================================================================================================+
-| 0        | 0     | 0    | SCAN TABLE t (~262144 rows)                                          |
-|----------+-------+------+----------------------------------------------------------------------|
-| 0        | 1     | 1    | SEARCH TABLE t AS p USING PRIMARY KEY (id=? AND sharding=?) (~1 row) |
-|----------+-------+------+----------------------------------------------------------------------|
-| 0        | 2     | 2    | SEARCH TABLE t AS g USING PRIMARY KEY (id=? AND sharding=?) (~1 row) |
-+----------+-------+------+----------------------------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE t (~262144 rows)
+        [0] SEARCH TABLE t AS p USING PRIMARY KEY (id=? AND sharding=?) (~1 row)
+            [0] SEARCH TABLE t AS g USING PRIMARY KEY (id=? AND sharding=?) (~1 row)
 ''
 2. Query (ROUTER):
+''
 SELECT sum ("COL_0") as "col_1" FROM ( SELECT "COL_0" FROM "TMP_11641976947517713853_0136" )
-+----------+-------+------+----------------------------------------------------------+
-| selectid | order | from | detail                                                   |
-+====================================================================================+
-| 0        | 0     | 0    | SCAN TABLE TMP_11641976947517713853_0136 (~1048576 rows) |
-+----------+-------+------+----------------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE TMP_11641976947517713853_0136 (~1048576 rows)

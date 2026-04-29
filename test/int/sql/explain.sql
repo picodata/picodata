@@ -360,6 +360,7 @@ buckets = any
 EXPLAIN (RAW, FMT) SELECT "id" from testing_space UNION SELECT "id" from testing_space;
 -- EXPECTED:
 1. Query (STORAGE):
+''
 SELECT
   "testing_space"."id"
 FROM
@@ -369,59 +370,52 @@ SELECT
   "testing_space"."id"
 FROM
   "testing_space"
-+----------+-------+------+-------------------------------------------------------+
-| selectid | order | from | detail                                                |
-+=================================================================================+
-| 1        | 0     | 0    | SCAN TABLE testing_space (~1048576 rows)              |
-|----------+-------+------+-------------------------------------------------------|
-| 2        | 0     | 0    | SCAN TABLE testing_space (~1048576 rows)              |
-|----------+-------+------+-------------------------------------------------------|
-| 0        | 0     | 0    | COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (UNION) |
-+----------+-------+------+-------------------------------------------------------+
+''
+plan:
+    [1] SCAN TABLE testing_space (~1048576 rows)
+    [2] SCAN TABLE testing_space (~1048576 rows)
+    [0] COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (UNION)
 
 -- TEST: test_raw_explain-2
 -- SQL:
 EXPLAIN (RAW) SELECT * from testing_space WHERE "id" = 1;
 -- EXPECTED:
 1. Query (FILTERED STORAGE):
+''
 SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = CAST(1 AS int)
-+----------+-------+------+--------------------------------------------------------------+
-| selectid | order | from | detail                                                       |
-+========================================================================================+
-| 0        | 0     | 0    | SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row) |
-+----------+-------+------+--------------------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row)
 
 -- TEST: test_raw_explain-3
 -- SQL:
 EXPLAIN (RAW) SELECT * from testing_space WHERE "id" = 1 ORDER BY 1 LIMIT 1;
 -- EXPECTED:
 1. Query (FILTERED STORAGE):
+''
 SELECT "id", "name", "product_units" FROM ( SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = CAST(1 AS int) ) ORDER BY 1 LIMIT 1
-+----------+-------+------+--------------------------------------------------------------+
-| selectid | order | from | detail                                                       |
-+========================================================================================+
-| 0        | 0     | 0    | SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row) |
-+----------+-------+------+--------------------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row)
 
 -- TEST: test_raw_explain-4
 -- SQL:
 EXPLAIN (RAW) SELECT * from testing_space WHERE "id" = 1 GROUP BY 1, 2, 3 ORDER BY 1 LIMIT 1;
 -- EXPECTED:
 1. Query (FILTERED STORAGE):
+''
 SELECT "id", "name", "product_units" FROM ( SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = CAST(1 AS int) GROUP BY "testing_space"."id", "testing_space"."name", "testing_space"."product_units" ) ORDER BY 1 LIMIT 1
-+----------+-------+------+--------------------------------------------------------------+
-| selectid | order | from | detail                                                       |
-+========================================================================================+
-| 0        | 0     | 0    | SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row) |
-|----------+-------+------+--------------------------------------------------------------|
-| 0        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY                                 |
-+----------+-------+------+--------------------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row)
+    [0] USE TEMP B-TREE FOR ORDER BY
 
 -- TEST: test_raw_explain-5
 -- SQL:
 EXPLAIN (RAW, FMT) SELECT * from testing_space JOIN testing_space ON true GROUP BY 1, 2, 3, 4, 5, 6 ORDER BY 1 LIMIT 1;
 -- EXPECTED:
 1. Query (STORAGE):
+''
 SELECT
   "testing_space"."id",
   "testing_space"."bucket_id",
@@ -429,13 +423,12 @@ SELECT
   "testing_space"."product_units"
 FROM
   "testing_space"
-+----------+-------+------+------------------------------------------+
-| selectid | order | from | detail                                   |
-+====================================================================+
-| 0        | 0     | 0    | SCAN TABLE testing_space (~1048576 rows) |
-+----------+-------+------+------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE testing_space (~1048576 rows)
 ''
 2. Query (STORAGE):
+''
 SELECT
   "gr_expr_1",
   "gr_expr_2",
@@ -475,19 +468,15 @@ ORDER BY
 '  1'
 LIMIT
 '  1'
-+----------+-------+------+--------------------------------------------------------+
-| selectid | order | from | detail                                                 |
-+==================================================================================+
-| 0        | 0     | 0    | SCAN TABLE testing_space (~1048576 rows)               |
-|----------+-------+------+--------------------------------------------------------|
-| 0        | 1     | 1    | SCAN TABLE TMP_795443537505424829_0136 (~1048576 rows) |
-|----------+-------+------+--------------------------------------------------------|
-| 0        | 0     | 0    | USE TEMP B-TREE FOR GROUP BY                           |
-|----------+-------+------+--------------------------------------------------------|
-| 0        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY                           |
-+----------+-------+------+--------------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE testing_space (~1048576 rows)
+        [0] SCAN TABLE TMP_795443537505424829_0136 (~1048576 rows)
+    [0] USE TEMP B-TREE FOR GROUP BY
+    [0] USE TEMP B-TREE FOR ORDER BY
 ''
 3. Query (ROUTER):
+''
 SELECT
   "id",
   "name",
@@ -528,62 +517,53 @@ ORDER BY
 '  1'
 LIMIT
 '  1'
-+----------+-------+------+---------------------------------------------------------+
-| selectid | order | from | detail                                                  |
-+===================================================================================+
-| 0        | 0     | 0    | SCAN TABLE TMP_7751910730270557539_0136 (~1048576 rows) |
-|----------+-------+------+---------------------------------------------------------|
-| 0        | 0     | 0    | USE TEMP B-TREE FOR GROUP BY                            |
-|----------+-------+------+---------------------------------------------------------|
-| 0        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY                            |
-+----------+-------+------+---------------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE TMP_7751910730270557539_0136 (~1048576 rows)
+    [0] USE TEMP B-TREE FOR GROUP BY
+    [0] USE TEMP B-TREE FOR ORDER BY
 
 -- TEST: test_raw_explain-6
 -- SQL:
 EXPLAIN (RAW) INSERT INTO testing_space VALUES (1, '1', 1);
 -- EXPECTED:
 1. Query (ROUTER):
+''
 VALUES ( CAST(1 AS int), CAST('1' AS string), CAST(1 AS int) )
-+----------+-------+------+--------+
-| selectid | order | from | detail |
-+==================================+
-+----------+-------+------+--------+
+''
+plan:
+    [0] TRIVIAL
 
 -- TEST: test_raw_explain-7
 -- SQL:
 EXPLAIN (RAW) DELETE FROM testing_space WHERE "product_units" < 10 AND "name" = 'beluga';
 -- EXPECTED:
 1. Query (STORAGE):
+''
 SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."product_units" < CAST(10 AS int) and "testing_space"."name" = CAST('beluga' AS string)
-+----------+-------+------+-----------------------------------------+
-| selectid | order | from | detail                                  |
-+===================================================================+
-| 0        | 0     | 0    | SCAN TABLE testing_space (~262144 rows) |
-+----------+-------+------+-----------------------------------------+
+''
+plan:
+    [0] SCAN TABLE testing_space (~262144 rows)
 
 -- TEST: test_raw_explain-8
 -- SQL:
 EXPLAIN (RAW) DELETE FROM testing_space WHERE "name" IN (SELECT "name" FROM testing_space_hist WHERE "product_units" > 10);
 -- EXPECTED:
 1. Query (STORAGE):
+''
 SELECT "testing_space_hist"."name" FROM "testing_space_hist" WHERE "testing_space_hist"."product_units" > CAST(10 AS int)
-+----------+-------+------+----------------------------------------------+
-| selectid | order | from | detail                                       |
-+========================================================================+
-| 0        | 0     | 0    | SCAN TABLE testing_space_hist (~983040 rows) |
-+----------+-------+------+----------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE testing_space_hist (~983040 rows)
 ''
 2. Query (STORAGE):
+''
 SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."name" in ( SELECT "COL_0" FROM "TMP_6029770779943228052_0136" )
-+----------+-------+------+---------------------------------------------------------+
-| selectid | order | from | detail                                                  |
-+===================================================================================+
-| 0        | 0     | 0    | SCAN TABLE testing_space (~983040 rows)                 |
-|----------+-------+------+---------------------------------------------------------|
-| 0        | 0     | 0    | EXECUTE LIST SUBQUERY 1                                 |
-|----------+-------+------+---------------------------------------------------------|
-| 1        | 0     | 0    | SCAN TABLE TMP_6029770779943228052_0136 (~1048576 rows) |
-+----------+-------+------+---------------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE testing_space (~983040 rows)
+    [0] EXECUTE LIST SUBQUERY 1
+    [1] SCAN TABLE TMP_6029770779943228052_0136 (~1048576 rows)
 
 -- TEST: test_raw_explain-9
 -- SQL:
@@ -596,130 +576,111 @@ EXPLAIN (RAW) DELETE FROM testing_space;
 EXPLAIN (RAW) DELETE FROM testing_space WHERE id IN ( SELECT id FROM testing_space_hist GROUP BY id HAVING SUM(product_units) = 0 );
 -- EXPECTED:
 1. Query (STORAGE):
+''
 SELECT "testing_space_hist"."id" as "gr_expr_1", sum ( CAST ("testing_space_hist"."product_units" as int) ) as "sum_1" FROM "testing_space_hist" GROUP BY "testing_space_hist"."id"
-+----------+-------+------+-----------------------------------------------+
-| selectid | order | from | detail                                        |
-+=========================================================================+
-| 0        | 0     | 0    | SCAN TABLE testing_space_hist (~1048576 rows) |
-+----------+-------+------+-----------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE testing_space_hist (~1048576 rows)
 ''
 2. Query (ROUTER):
+''
 SELECT "COL_0" as "id" FROM ( SELECT "COL_0", "COL_1" FROM "TMP_1599265012539281798_0136" ) GROUP BY "COL_0" HAVING sum ("COL_1") = CAST(0 AS int)
-+----------+-------+------+---------------------------------------------------------+
-| selectid | order | from | detail                                                  |
-+===================================================================================+
-| 0        | 0     | 0    | SCAN TABLE TMP_1599265012539281798_0136 (~1048576 rows) |
-|----------+-------+------+---------------------------------------------------------|
-| 0        | 0     | 0    | USE TEMP B-TREE FOR GROUP BY                            |
-+----------+-------+------+---------------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE TMP_1599265012539281798_0136 (~1048576 rows)
+    [0] USE TEMP B-TREE FOR GROUP BY
 ''
 3. Query (STORAGE):
+''
 SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "COL_0" FROM "TMP_12108310727876432219_0136" )
-+----------+-------+------+----------------------------------------------------------------+
-| selectid | order | from | detail                                                         |
-+==========================================================================================+
-| 0        | 0     | 0    | SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~24 rows) |
-|----------+-------+------+----------------------------------------------------------------|
-| 0        | 0     | 0    | EXECUTE LIST SUBQUERY 1                                        |
-|----------+-------+------+----------------------------------------------------------------|
-| 1        | 0     | 0    | SCAN TABLE TMP_12108310727876432219_0136 (~1048576 rows)       |
-+----------+-------+------+----------------------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~24 rows)
+    [0] EXECUTE LIST SUBQUERY 1
+    [1] SCAN TABLE TMP_12108310727876432219_0136 (~1048576 rows)
 
 -- TEST: test_raw_explain-11
 -- SQL:
 EXPLAIN (RAW) UPDATE testing_space SET product_units = 0 WHERE id IN ( SELECT id FROM testing_space_hist WHERE product_units < 0 );
 -- EXPECTED:
 1. Query (STORAGE):
+''
 SELECT CAST(0 AS int) as "col_0", "testing_space"."id" as "col_1" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "testing_space_hist"."id" FROM "testing_space_hist" WHERE "testing_space_hist"."product_units" < CAST(0 AS int) )
-+----------+-------+------+----------------------------------------------------------------+
-| selectid | order | from | detail                                                         |
-+==========================================================================================+
-| 0        | 0     | 0    | SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~24 rows) |
-|----------+-------+------+----------------------------------------------------------------|
-| 0        | 0     | 0    | EXECUTE LIST SUBQUERY 1                                        |
-|----------+-------+------+----------------------------------------------------------------|
-| 1        | 0     | 0    | SCAN TABLE testing_space_hist (~983040 rows)                   |
-+----------+-------+------+----------------------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~24 rows)
+    [0] EXECUTE LIST SUBQUERY 1
+    [1] SCAN TABLE testing_space_hist (~983040 rows)
 
 -- TEST: test_raw_explain-12
 -- SQL:
 EXPLAIN (RAW) UPDATE testing_space SET product_units = -1 WHERE id IN ( SELECT id FROM testing_space_hist GROUP BY id HAVING SUM(product_units) = 0 );
 -- EXPECTED:
 1. Query (STORAGE):
+''
 SELECT "testing_space_hist"."id" as "gr_expr_1", sum ( CAST ("testing_space_hist"."product_units" as int) ) as "sum_1" FROM "testing_space_hist" GROUP BY "testing_space_hist"."id"
-+----------+-------+------+-----------------------------------------------+
-| selectid | order | from | detail                                        |
-+=========================================================================+
-| 0        | 0     | 0    | SCAN TABLE testing_space_hist (~1048576 rows) |
-+----------+-------+------+-----------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE testing_space_hist (~1048576 rows)
 ''
 2. Query (ROUTER):
+''
 SELECT "COL_0" as "id" FROM ( SELECT "COL_0", "COL_1" FROM "TMP_17992124938322492506_0136" ) GROUP BY "COL_0" HAVING sum ("COL_1") = CAST(0 AS int)
-+----------+-------+------+----------------------------------------------------------+
-| selectid | order | from | detail                                                   |
-+====================================================================================+
-| 0        | 0     | 0    | SCAN TABLE TMP_17992124938322492506_0136 (~1048576 rows) |
-|----------+-------+------+----------------------------------------------------------|
-| 0        | 0     | 0    | USE TEMP B-TREE FOR GROUP BY                             |
-+----------+-------+------+----------------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE TMP_17992124938322492506_0136 (~1048576 rows)
+    [0] USE TEMP B-TREE FOR GROUP BY
 ''
 3. Query (STORAGE):
+''
 SELECT CAST(-1 AS int) as "col_0", "testing_space"."id" as "col_1" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "COL_0" FROM "TMP_17388536538104774043_0136" )
-+----------+-------+------+----------------------------------------------------------------+
-| selectid | order | from | detail                                                         |
-+==========================================================================================+
-| 0        | 0     | 0    | SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~24 rows) |
-|----------+-------+------+----------------------------------------------------------------|
-| 0        | 0     | 0    | EXECUTE LIST SUBQUERY 1                                        |
-|----------+-------+------+----------------------------------------------------------------|
-| 1        | 0     | 0    | SCAN TABLE TMP_17388536538104774043_0136 (~1048576 rows)       |
-+----------+-------+------+----------------------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~24 rows)
+    [0] EXECUTE LIST SUBQUERY 1
+    [1] SCAN TABLE TMP_17388536538104774043_0136 (~1048576 rows)
 
 -- TEST: test_raw_explain-13
 -- SQL:
 EXPLAIN (RAW) DELETE FROM testing_space WHERE id IN (10, 15, 42);
 -- EXPECTED:
 1. Query (FILTERED STORAGE):
+''
 SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."id" in ( CAST(10 AS int), CAST(15 AS int), CAST(42 AS int) )
-+----------+-------+------+---------------------------------------------------------------+
-| selectid | order | from | detail                                                        |
-+=========================================================================================+
-| 0        | 0     | 0    | SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~3 rows) |
-|----------+-------+------+---------------------------------------------------------------|
-| 0        | 0     | 0    | EXECUTE LIST SUBQUERY 1                                       |
-+----------+-------+------+---------------------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~3 rows)
+    [0] EXECUTE LIST SUBQUERY 1
 
 -- TEST: test_raw_explain-14
 -- SQL:
 EXPLAIN (RAW) UPDATE testing_space SET product_units = product_units + 10 WHERE id IN (10, 15, 42);
 -- EXPECTED:
 1. Query (FILTERED STORAGE):
+''
 SELECT "testing_space"."product_units" + CAST(10 AS int) as "col_0", "testing_space"."id" as "col_1" FROM "testing_space" WHERE "testing_space"."id" in ( CAST(10 AS int), CAST(15 AS int), CAST(42 AS int) )
-+----------+-------+------+---------------------------------------------------------------+
-| selectid | order | from | detail                                                        |
-+=========================================================================================+
-| 0        | 0     | 0    | SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~3 rows) |
-|----------+-------+------+---------------------------------------------------------------|
-| 0        | 0     | 0    | EXECUTE LIST SUBQUERY 1                                       |
-+----------+-------+------+---------------------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~3 rows)
+    [0] EXECUTE LIST SUBQUERY 1
 
 -- TEST: test_raw_explain-15
 -- SQL:
 EXPLAIN (RAW) INSERT INTO testing_space SELECT * FROM testing_space WHERE id = 42;
 -- EXPECTED:
 1. Query (FILTERED STORAGE):
+''
 SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = CAST(42 AS int)
-+----------+-------+------+--------------------------------------------------------------+
-| selectid | order | from | detail                                                       |
-+========================================================================================+
-| 0        | 0     | 0    | SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row) |
-+----------+-------+------+--------------------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row)
 
 -- TEST: test_raw_explain-16
 -- SQL:
 EXPLAIN (RAW, FMT) INSERT INTO testing_space SELECT * FROM testing_space WHERE id = 42;
 -- EXPECTED:
 1. Query (FILTERED STORAGE):
+''
 SELECT
   "testing_space"."id",
   "testing_space"."name",
@@ -728,126 +689,110 @@ FROM
   "testing_space"
 WHERE
   "testing_space"."id" = CAST(42 AS int)
-+----------+-------+------+--------------------------------------------------------------+
-| selectid | order | from | detail                                                       |
-+========================================================================================+
-| 0        | 0     | 0    | SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row) |
-+----------+-------+------+--------------------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row)
 
 -- TEST: test_raw_explain-17
 -- SQL:
 EXPLAIN (RAW) INSERT INTO testing_space VALUES (42, 'beluga', (SELECT 1000));
 -- EXPECTED:
 1. Query (ROUTER):
+''
 VALUES ( CAST(42 AS int), CAST('beluga' AS string), ( SELECT CAST(1000 AS int) as "col_1") )
-+----------+-------+------+---------------------------+
-| selectid | order | from | detail                    |
-+=====================================================+
-| 0        | 0     | 0    | EXECUTE SCALAR SUBQUERY 1 |
-+----------+-------+------+---------------------------+
+''
+plan:
+    [0] EXECUTE SCALAR SUBQUERY 1
 
 -- TEST: test_raw_explain-18
 -- SQL:
 EXPLAIN (RAW) DELETE FROM testing_space WHERE product_units IN ( SELECT id FROM testing_space );
 -- EXPECTED:
 1. Query (STORAGE):
+''
 SELECT "testing_space"."id" FROM "testing_space"
-+----------+-------+------+------------------------------------------+
-| selectid | order | from | detail                                   |
-+====================================================================+
-| 0        | 0     | 0    | SCAN TABLE testing_space (~1048576 rows) |
-+----------+-------+------+------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE testing_space (~1048576 rows)
 ''
 2. Query (STORAGE):
+''
 SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."product_units" in ( SELECT "COL_0" FROM "TMP_8034078592994454592_0136" )
-+----------+-------+------+---------------------------------------------------------+
-| selectid | order | from | detail                                                  |
-+===================================================================================+
-| 0        | 0     | 0    | SCAN TABLE testing_space (~983040 rows)                 |
-|----------+-------+------+---------------------------------------------------------|
-| 0        | 0     | 0    | EXECUTE LIST SUBQUERY 1                                 |
-|----------+-------+------+---------------------------------------------------------|
-| 1        | 0     | 0    | SCAN TABLE TMP_8034078592994454592_0136 (~1048576 rows) |
-+----------+-------+------+---------------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE testing_space (~983040 rows)
+    [0] EXECUTE LIST SUBQUERY 1
+    [1] SCAN TABLE TMP_8034078592994454592_0136 (~1048576 rows)
 
 -- TEST: test_raw_explain-19
 -- SQL:
 EXPLAIN (RAW) INSERT INTO testing_space WITH testing_space AS (SELECT * FROM testing_space) SELECT * FROM testing_space;
 -- EXPECTED:
 1. Query (STORAGE):
+''
 SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space"
-+----------+-------+------+------------------------------------------+
-| selectid | order | from | detail                                   |
-+====================================================================+
-| 0        | 0     | 0    | SCAN TABLE testing_space (~1048576 rows) |
-+----------+-------+------+------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE testing_space (~1048576 rows)
 ''
 2. Query (ROUTER):
+''
 SELECT * FROM ( SELECT "COL_0", "COL_1", "COL_2" FROM "TMP_13062017678802601205_0136" ) as "testing_space"
-+----------+-------+------+----------------------------------------------------------+
-| selectid | order | from | detail                                                   |
-+====================================================================================+
-| 0        | 0     | 0    | SCAN TABLE TMP_13062017678802601205_0136 (~1048576 rows) |
-+----------+-------+------+----------------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE TMP_13062017678802601205_0136 (~1048576 rows)
 
 -- TEST: test_raw_explain-20
 -- SQL:
 EXPLAIN (RAW) INSERT INTO testing_space SELECT 1, '1', 1;
 -- EXPECTED:
 1. Query (ROUTER):
+''
 SELECT CAST(1 AS int) as "col_1", CAST('1' AS string) as "col_2", CAST(1 AS int) as "col_3"
-+----------+-------+------+--------+
-| selectid | order | from | detail |
-+==================================+
-+----------+-------+------+--------+
+''
+plan:
+    [0] TRIVIAL
 
 -- TEST: test_raw_explain-21
 -- SQL:
 EXPLAIN (RAW) SELECT * FROM testing_space_global WHERE (product_units > 10 AND name LIKE 'sosisky_') ORDER BY product_units DESC LIMIT 10;
 -- EXPECTED:
 1. Query (ROUTER):
+''
 SELECT "id", "name", "product_units" FROM ( SELECT * FROM "testing_space_global" WHERE "testing_space_global"."product_units" > CAST(10 AS int) and "testing_space_global"."name" LIKE CAST('sosisky_' AS string) ESCAPE CAST('\' AS string) ) ORDER BY "product_units" DESC LIMIT 10
-+----------+-------+------+------------------------------------------------+
-| selectid | order | from | detail                                         |
-+==========================================================================+
-| 0        | 0     | 0    | SCAN TABLE testing_space_global (~917504 rows) |
-|----------+-------+------+------------------------------------------------|
-| 0        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY                   |
-+----------+-------+------+------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE testing_space_global (~917504 rows)
+    [0] USE TEMP B-TREE FOR ORDER BY
 
 -- TEST: test_raw_explain-22
 -- SQL:
 EXPLAIN (RAW) SELECT g.name, COUNT(*) AS global_rows, SUM(g.product_units) AS global_units, SUM(l.product_units) AS local_units FROM testing_space_global g JOIN testing_space l ON g.name = l.name WHERE g.product_units > 5 GROUP BY g.name HAVING SUM(l.product_units) > SUM(g.product_units) ORDER BY global_units DESC LIMIT 10;
 -- EXPECTED:
 1. Query (STORAGE):
+''
 SELECT "g"."name" as "gr_expr_1", count (*) as "count_1", sum (CAST ("l"."product_units" as int)) as "sum_3", sum (CAST ("g"."product_units" as int)) as "sum_2" FROM "testing_space_global" as "g" INNER JOIN "testing_space" as "l" ON "g"."name" = "l"."name" WHERE "g"."product_units" > CAST(5 AS int) GROUP BY "g"."name"
-+----------+-------+------+-----------------------------------------------------+
-| selectid | order | from | detail                                              |
-+===============================================================================+
-| 0        | 0     | 0    | SCAN TABLE testing_space_global AS g (~983040 rows) |
-|----------+-------+------+-----------------------------------------------------|
-| 0        | 1     | 1    | SCAN TABLE testing_space AS l (~1048576 rows)       |
-|----------+-------+------+-----------------------------------------------------|
-| 0        | 0     | 0    | USE TEMP B-TREE FOR GROUP BY                        |
-+----------+-------+------+-----------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE testing_space_global AS g (~983040 rows)
+        [0] SCAN TABLE testing_space AS l (~1048576 rows)
+    [0] USE TEMP B-TREE FOR GROUP BY
 ''
 2. Query (ROUTER):
+''
 SELECT "name", "global_rows", "global_units", "local_units" FROM ( SELECT "COL_0" as "name", sum ("COL_1") as "global_rows", sum ("COL_3") as "global_units", sum ("COL_2") as "local_units" FROM ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "TMP_9968167426011738410_0136" ) GROUP BY "COL_0" HAVING sum ("COL_2") > sum ("COL_3") ) ORDER BY "global_units" DESC LIMIT 10
-+----------+-------+------+---------------------------------------------------------+
-| selectid | order | from | detail                                                  |
-+===================================================================================+
-| 0        | 0     | 0    | SCAN TABLE TMP_9968167426011738410_0136 (~1048576 rows) |
-|----------+-------+------+---------------------------------------------------------|
-| 0        | 0     | 0    | USE TEMP B-TREE FOR GROUP BY                            |
-|----------+-------+------+---------------------------------------------------------|
-| 0        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY                            |
-+----------+-------+------+---------------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE TMP_9968167426011738410_0136 (~1048576 rows)
+    [0] USE TEMP B-TREE FOR GROUP BY
+    [0] USE TEMP B-TREE FOR ORDER BY
 
 -- TEST: test_raw_explain-23
 -- SQL:
 EXPLAIN (FMT, RAW) DELETE FROM testing_space_global WHERE id = 15 OR product_units < 10;
 -- EXPECTED:
 1. Query (ROUTER):
+''
 SELECT
   "testing_space_global"."id" as "pk_col_0"
 FROM
@@ -855,59 +800,49 @@ FROM
 WHERE
   "testing_space_global"."id" = CAST(15 AS int)
   or "testing_space_global"."product_units" < CAST(10 AS int)
-+----------+-------+------+------------------------------------------------+
-| selectid | order | from | detail                                         |
-+==========================================================================+
-| 0        | 0     | 0    | SCAN TABLE testing_space_global (~983040 rows) |
-+----------+-------+------+------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE testing_space_global (~983040 rows)
 
 -- TEST: test_raw_explain-24
 -- SQL:
 EXPLAIN (RAW) INSERT INTO testing_space_global VALUES ((SELECT 1), (SELECT name FROM testing_space ORDER BY name LIMIT 1), 42 + 67);
 -- EXPECTED:
 1. Query (STORAGE):
+''
 SELECT "name" FROM ( SELECT "testing_space"."name" FROM "testing_space" ) ORDER BY "name" LIMIT 1
-+----------+-------+------+------------------------------------------+
-| selectid | order | from | detail                                   |
-+====================================================================+
-| 0        | 0     | 0    | SCAN TABLE testing_space (~1048576 rows) |
-|----------+-------+------+------------------------------------------|
-| 0        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY             |
-+----------+-------+------+------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE testing_space (~1048576 rows)
+    [0] USE TEMP B-TREE FOR ORDER BY
 ''
 2. Query (ROUTER):
+''
 SELECT "COL_0" as "name" FROM ( SELECT "COL_0" FROM "TMP_12717773680345951425_0136" ) ORDER BY "COL_0" LIMIT 1
-+----------+-------+------+----------------------------------------------------------+
-| selectid | order | from | detail                                                   |
-+====================================================================================+
-| 0        | 0     | 0    | SCAN TABLE TMP_12717773680345951425_0136 (~1048576 rows) |
-|----------+-------+------+----------------------------------------------------------|
-| 0        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY                             |
-+----------+-------+------+----------------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE TMP_12717773680345951425_0136 (~1048576 rows)
+    [0] USE TEMP B-TREE FOR ORDER BY
 ''
 3. Query (ROUTER):
+''
 VALUES ( ( SELECT CAST(1 AS int) as "col_1"), ( SELECT "COL_0" FROM "TMP_11050758999591598030_0136" ), CAST(42 AS int) + CAST(67 AS int) )
-+----------+-------+------+----------------------------------------------------------+
-| selectid | order | from | detail                                                   |
-+====================================================================================+
-| 0        | 0     | 0    | EXECUTE SCALAR SUBQUERY 1                                |
-|----------+-------+------+----------------------------------------------------------|
-| 0        | 0     | 0    | EXECUTE SCALAR SUBQUERY 2                                |
-|----------+-------+------+----------------------------------------------------------|
-| 2        | 0     | 0    | SCAN TABLE TMP_11050758999591598030_0136 (~1048576 rows) |
-+----------+-------+------+----------------------------------------------------------+
+''
+plan:
+    [0] EXECUTE SCALAR SUBQUERY 1
+    [0] EXECUTE SCALAR SUBQUERY 2
+    [2] SCAN TABLE TMP_11050758999591598030_0136 (~1048576 rows)
 
 -- TEST: test_raw_explain-25
 -- SQL:
 EXPLAIN (RAW) UPDATE testing_space_global SET name = upper(name);
 -- EXPECTED:
 1. Query (ROUTER):
+''
 SELECT upper (CAST ("testing_space_global"."name" as string)) as "col_0", "testing_space_global"."id" as "col_1" FROM "testing_space_global"
-+----------+-------+------+-------------------------------------------------+
-| selectid | order | from | detail                                          |
-+===========================================================================+
-| 0        | 0     | 0    | SCAN TABLE testing_space_global (~1048576 rows) |
-+----------+-------+------+-------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE testing_space_global (~1048576 rows)
 
 -- TEST: test-explain-fmt-option
 -- SQL:
@@ -936,6 +871,7 @@ buckets = [1934]
 EXPLAIN (RAW, FMT, FMT, RAW, FMT) SELECT * FROM testing_space WHERE id = 1;
 -- EXPECTED:
 1. Query (FILTERED STORAGE):
+''
 SELECT
   "testing_space"."id",
   "testing_space"."name",
@@ -944,11 +880,9 @@ FROM
   "testing_space"
 WHERE
   "testing_space"."id" = CAST(1 AS int)
-+----------+-------+------+--------------------------------------------------------------+
-| selectid | order | from | detail                                                       |
-+========================================================================================+
-| 0        | 0     | 0    | SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row) |
-+----------+-------+------+--------------------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row)
 
 -- TEST: test_raw_explain_for_query_from-gl1394-1
 -- SQL:
@@ -959,20 +893,22 @@ CREATE TABLE g (id INT PRIMARY KEY) DISTRIBUTED GLOBALLY;
 EXPLAIN (RAW) SELECT max(id) FROM g HAVING true UNION SELECT 1;
 -- EXPECTED:
 1. Query (ROUTER):
+''
 SELECT max (CAST ("g"."id" as int)) as "col_1" FROM "g" HAVING CAST(true AS bool) UNION SELECT CAST(1 AS int) as "col_1"
-+----------------------------------------------------------------------------------+
-| Failed to compile SQL statement: LIMIT clause should come after UNION not before |
-+----------------------------------------------------------------------------------+
+''
+plan:
+Failed to compile SQL statement: LIMIT clause should come after UNION not before
 
 -- TEST: test_raw_explain-dbg
 -- SQL:
 EXPLAIN (RAW) SELECT * FROM g WHERE MAX(id) = 5;
 -- EXPECTED:
 1. Query (ROUTER):
+''
 SELECT * FROM "g" WHERE max (CAST ("g"."id" as int)) = CAST(5 AS int)
-+---------------------------------------------------------------------+
-| Failed to compile SQL statement: misuse of aggregate function MAX() |
-+---------------------------------------------------------------------+
+''
+plan:
+Failed to compile SQL statement: misuse of aggregate function MAX()
 
 -- TEST: test_raw_explain_for_query_from-gl2666-1
 -- SQL:
@@ -983,47 +919,42 @@ CREATE TABLE t (a INT PRIMARY KEY);
 EXPLAIN (RAW) WITH a AS (SELECT 1 FROM t limit 1) SELECT 1 FROM t JOIN a ON (values (true));
 -- EXPECTED:
 1. Query (STORAGE):
+''
 SELECT CAST(1 AS int) as "col_1" FROM "t" LIMIT 1
-+----------+-------+------+------------------------------+
-| selectid | order | from | detail                       |
-+========================================================+
-| 0        | 0     | 0    | SCAN TABLE t (~1048576 rows) |
-+----------+-------+------+------------------------------+
+''
+plan:
+    [0] SCAN TABLE t (~1048576 rows)
 ''
 2. Query (ROUTER):
+''
 VALUES (CAST(true AS bool))
-+----------+-------+------+--------+
-| selectid | order | from | detail |
-+==================================+
-+----------+-------+------+--------+
+''
+plan:
+    [0] TRIVIAL
 ''
 3. Query (ROUTER):
+''
 SELECT "COL_0" FROM "TMP_9663148926645388081_0136" LIMIT 1
-+----------+-------+------+---------------------------------------------------------+
-| selectid | order | from | detail                                                  |
-+===================================================================================+
-| 0        | 0     | 0    | SCAN TABLE TMP_9663148926645388081_0136 (~1048576 rows) |
-+----------+-------+------+---------------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE TMP_9663148926645388081_0136 (~1048576 rows)
 ''
 4. Query (ROUTER):
 ''
-+---------------------------------------------------------------------------+
-| Failed to compile SQL statement: Failed to execute an empty SQL statement |
-+---------------------------------------------------------------------------+
+''
+''
+plan:
+Failed to compile SQL statement: Failed to execute an empty SQL statement
 ''
 5. Query (STORAGE):
+''
 SELECT CAST(1 AS int) as "col_1" FROM "t" INNER JOIN ( SELECT "COL_0" FROM "TMP_9127633025172155963_0136" ) as "a" ON ( SELECT "COL_0" FROM "TMP_9127633025172155963_1136" )
-+----------+-------+------+---------------------------------------------------------+
-| selectid | order | from | detail                                                  |
-+===================================================================================+
-| 0        | 0     | 0    | SCAN TABLE t (~1048576 rows)                            |
-|----------+-------+------+---------------------------------------------------------|
-| 0        | 0     | 0    | EXECUTE SCALAR SUBQUERY 1                               |
-|----------+-------+------+---------------------------------------------------------|
-| 1        | 0     | 0    | SCAN TABLE TMP_9127633025172155963_1136 (~1048576 rows) |
-|----------+-------+------+---------------------------------------------------------|
-| 0        | 1     | 1    | SCAN TABLE TMP_9127633025172155963_0136 (~1048576 rows) |
-+----------+-------+------+---------------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE t (~1048576 rows)
+    [0] EXECUTE SCALAR SUBQUERY 1
+    [1] SCAN TABLE TMP_9127633025172155963_1136 (~1048576 rows)
+        [0] SCAN TABLE TMP_9127633025172155963_0136 (~1048576 rows)
 
 -- TEST: init-block
 -- SQL:
@@ -1041,20 +972,18 @@ BEGIN
 END $$;
 -- EXPECTED:
 1. Return query (FILTERED STORAGE):
+''
 SELECT "t"."a" + CAST(1 AS int) as "col_1" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
-+----------+-------+------+--------------------------------------------------+
-| selectid | order | from | detail                                           |
-+============================================================================+
-| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
-+----------+-------+------+--------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
 2. Return query (FILTERED STORAGE):
+''
 SELECT "t"."b" + CAST(2 AS int) as "col_1" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
-+----------+-------+------+--------------------------------------------------+
-| selectid | order | from | detail                                           |
-+============================================================================+
-| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
-+----------+-------+------+--------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 
 
 -- TEST: explain-raw-return query-2
@@ -1065,12 +994,11 @@ BEGIN
 END $$;
 -- EXPECTED:
 1. Return query (ROUTER):
+''
 SELECT CAST(1 AS int) as "col_1", CAST(2 AS int) as "col_2" UNION ALL SELECT CAST(1 AS int) as "col_1", CAST(2 AS int) as "col_2"
-+----------+-------+------+-----------------------------------------+
-| selectid | order | from | detail                                  |
-+===================================================================+
-| 0        | 0     | 0    | COMPOUND SUBQUERIES 1 AND 2 (UNION ALL) |
-+----------+-------+------+-----------------------------------------+
+''
+plan:
+    [0] COMPOUND SUBQUERIES 1 AND 2 (UNION ALL)
 
 
 -- TEST: explain-raw-return-query-3
@@ -1082,18 +1010,18 @@ BEGIN
 END $$;
 -- EXPECTED:
 1. Return query (ROUTER):
+''
 VALUES (CAST(1 AS int), CAST(2 AS int)), (CAST(2 AS int), CAST(3 AS int))
-+----------+-------+------+--------+
-| selectid | order | from | detail |
-+==================================+
-+----------+-------+------+--------+
+''
+plan:
+    [0] TRIVIAL
 ''
 2. Return query (ROUTER):
+''
 SELECT CAST(3 AS int) as "col_1", CAST(4 AS int) as "col_2"
-+----------+-------+------+--------+
-| selectid | order | from | detail |
-+==================================+
-+----------+-------+------+--------+
+''
+plan:
+    [0] TRIVIAL
 
 
 -- TEST: explain-raw-return-query-4
@@ -1106,26 +1034,25 @@ BEGIN
 END $$;
 -- EXPECTED:
 1. Return query (FILTERED STORAGE):
+''
 SELECT CAST(2 AS int) as "col_1"
-+----------+-------+------+--------+
-| selectid | order | from | detail |
-+==================================+
-+----------+-------+------+--------+
+''
+plan:
+    [0] TRIVIAL
 ''
 2. Return query (FILTERED STORAGE):
+''
 SELECT "t"."b" + CAST(2 AS int) as "col_1" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
-+----------+-------+------+--------------------------------------------------+
-| selectid | order | from | detail                                           |
-+============================================================================+
-| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
-+----------+-------+------+--------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
 3. Return query (FILTERED STORAGE):
+''
 SELECT CAST(4 AS int) as "col_1"
-+----------+-------+------+--------+
-| selectid | order | from | detail |
-+==================================+
-+----------+-------+------+--------+
+''
+plan:
+    [0] TRIVIAL
 
 
 -- TEST: explain-raw-updates-1
@@ -1138,28 +1065,25 @@ BEGIN
 END $$;
 -- EXPECTED:
 1. Return query (FILTERED STORAGE):
+''
 SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
-+----------+-------+------+--------------------------------------------------+
-| selectid | order | from | detail                                           |
-+============================================================================+
-| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
-+----------+-------+------+--------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
 2. Query (FILTERED STORAGE):
+''
 UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(1 AS int)
-+----------+-------+------+--------------------------------------------------+
-| selectid | order | from | detail                                           |
-+============================================================================+
-| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
-+----------+-------+------+--------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
 3. Query (FILTERED STORAGE):
+''
 UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(1 AS int)
-+----------+-------+------+--------------------------------------------------+
-| selectid | order | from | detail                                           |
-+============================================================================+
-| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
-+----------+-------+------+--------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 
 
 -- TEST: explain-raw-updates-2
@@ -1172,28 +1096,25 @@ BEGIN
 END $$;
 -- EXPECTED:
 1. Return query (FILTERED STORAGE):
+''
 SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(2 AS int)
-+----------+-------+------+--------------------------------------------------+
-| selectid | order | from | detail                                           |
-+============================================================================+
-| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
-+----------+-------+------+--------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
 2. Query (FILTERED STORAGE):
+''
 UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(2 AS int)
-+----------+-------+------+--------------------------------------------------+
-| selectid | order | from | detail                                           |
-+============================================================================+
-| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
-+----------+-------+------+--------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
 3. Query (FILTERED STORAGE):
+''
 UPDATE "t" SET "a" = "t"."a" * CAST(2 AS int) WHERE "t"."pk" = CAST(2 AS int)
-+----------+-------+------+--------------------------------------------------+
-| selectid | order | from | detail                                           |
-+============================================================================+
-| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
-+----------+-------+------+--------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 
 -- TEST: explain-raw-updates-no-return-query
 -- SQL:
@@ -1204,20 +1125,18 @@ BEGIN
 END $$;
 -- EXPECTED:
 1. Query (FILTERED STORAGE):
+''
 UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(3 AS int)
-+----------+-------+------+--------------------------------------------------+
-| selectid | order | from | detail                                           |
-+============================================================================+
-| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
-+----------+-------+------+--------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
 2. Query (FILTERED STORAGE):
+''
 UPDATE "t" SET "a" = "t"."a" * CAST(2 AS int) WHERE "t"."pk" = CAST(3 AS int)
-+----------+-------+------+--------------------------------------------------+
-| selectid | order | from | detail                                           |
-+============================================================================+
-| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
-+----------+-------+------+--------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 
 -- TEST: explain-not-supported
 -- SQL:

@@ -10,24 +10,20 @@ cte2 (b) AS (SELECT * FROM cte1 UNION ALL SELECT "a" FROM "t" WHERE "id" = 2)
 SELECT b FROM cte2;
 -- EXPECTED:
 1. Query (FILTERED STORAGE):
+''
 SELECT "cte2"."a" as "b" FROM ( SELECT * FROM ( SELECT "t"."a" FROM "t" WHERE "t"."id" = CAST(1 AS int) ) as "cte1" UNION ALL SELECT "t"."a" FROM "t" WHERE "t"."id" = CAST(2 AS int) ) as "cte2"
-+----------+-------+------+--------------------------------------------------+
-| selectid | order | from | detail                                           |
-+============================================================================+
-| 1        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (id=?) (~1 row) |
-|----------+-------+------+--------------------------------------------------|
-| 2        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (id=?) (~1 row) |
-|----------+-------+------+--------------------------------------------------|
-| 0        | 0     | 0    | COMPOUND SUBQUERIES 1 AND 2 (UNION ALL)          |
-+----------+-------+------+--------------------------------------------------+
+''
+plan:
+    [1] SEARCH TABLE t USING PRIMARY KEY (id=?) (~1 row)
+    [2] SEARCH TABLE t USING PRIMARY KEY (id=?) (~1 row)
+    [0] COMPOUND SUBQUERIES 1 AND 2 (UNION ALL)
 ''
 2. Query (ROUTER):
+''
 SELECT "cte2"."COL_0" as "b" FROM ( SELECT "COL_0" FROM "TMP_1285800704210173889_0136" ) as "cte2"
-+----------+-------+------+---------------------------------------------------------+
-| selectid | order | from | detail                                                  |
-+===================================================================================+
-| 0        | 0     | 0    | SCAN TABLE TMP_1285800704210173889_0136 (~1048576 rows) |
-+----------+-------+------+---------------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE TMP_1285800704210173889_0136 (~1048576 rows)
 
 -- TEST: cte-1
 -- SQL:

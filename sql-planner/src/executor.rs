@@ -35,8 +35,8 @@ use crate::ir::transformation::redistribution::MotionPolicy;
 use crate::ir::tree::traversal::{PostOrder, REL_CAPACITY};
 use crate::ir::value::Value;
 use crate::ir::{ExplainOptions, Plan, Slices};
+use crate::utils::{indent_custom, indent_with_prefix};
 use crate::BoundStatement;
-use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -586,12 +586,13 @@ where
     }
 
     pub fn explain_raw<'p>(&mut self, port: &mut impl Port<'p>) -> Result<String, SbroadError> {
-        let is_fmt = self
+        let should_fmt = self
             .get_exec_plan()
             .get_ir_plan()
             .explain_options
             .contains(ExplainOptions::Fmt);
-        let raw_explain = RawExplain::from_port(port, is_fmt)?;
+
+        let raw_explain = RawExplain::from_port(port, should_fmt)?;
         let mut buf = String::new();
         let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
         if !explain_options.has_single_facet() {
@@ -617,7 +618,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, msgpack::Encode, msgpack::Decode)]
+#[derive(Debug, Clone, msgpack::Encode, msgpack::Decode)]
 struct RawExplainTuple {
     selectid: i64,
     order: i64,
@@ -625,10 +626,17 @@ struct RawExplainTuple {
     detail: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, msgpack::Encode, msgpack::Decode)]
-enum RawExplainRow {
-    Tuple(RawExplainTuple),
-    Error(String),
+impl RawExplainTuple {
+    fn try_decode_from_mp(mp: &[u8]) -> Result<Self, String> {
+        if let Ok(tuple) = msgpack::decode::<RawExplainTuple>(mp) {
+            return Ok(tuple);
+        }
+
+        match msgpack::decode::<Vec<String>>(mp) {
+            Ok(mut err) => Err(err.pop().unwrap()),
+            Err(err) => Err(format!("BUG: failed to decode error: {err}")),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -637,96 +645,105 @@ struct RawExplainEntry {
     location: String,
     sql: String,
     params: Vec<Value>,
-    tuples: Vec<RawExplainRow>,
+    tuples: Result<Vec<RawExplainTuple>, String>,
 }
 
-fn format_rows(tuples: &[RawExplainRow]) -> comfy_table::Table {
-    let mut table = comfy_table::Table::default();
-    table.set_content_arrangement(comfy_table::ContentArrangement::Dynamic);
+const LINE_WIDTH: usize = 80;
 
-    if let Some(RawExplainRow::Error(err)) = tuples.first() {
-        table.add_row(comfy_table::Row::from([comfy_table::Cell::new(err)]));
-        return table;
+fn format_raw_plan_node(node: &str, should_fmt: bool) -> String {
+    let mut node = node.to_owned();
+    if should_fmt && node.len() > LINE_WIDTH {
+        node = node.replace("USING", "\n USING");
+        node = node.replace("(", "\n (");
     }
 
-    table.set_header(["selectid", "order", "from", "detail"]);
-    for tuple in tuples {
-        let RawExplainRow::Tuple(tuple) = tuple else {
-            panic!("error message must be handled earlier")
-        };
-        let cells = [
-            comfy_table::Cell::new(tuple.selectid),
-            comfy_table::Cell::new(tuple.order),
-            comfy_table::Cell::new(tuple.from),
-            comfy_table::Cell::new(tuple.detail.clone()),
-        ];
-
-        table.add_row(comfy_table::Row::from(cells));
-    }
-
-    table
+    node
 }
 
-fn default_raw_options() -> sqlformat::FormatOptions<'static> {
-    sqlformat::FormatOptions::<'_> {
+fn format_raw_plan(tuples: &[RawExplainTuple], should_fmt: bool) -> String {
+    let mut plan = String::new();
+
+    let mut tuples = tuples.iter().peekable();
+    while let Some(tuple) = tuples.next() {
+        let has_next = tuples.peek().is_some();
+        let sep = if has_next { "\n" } else { "" };
+
+        let idx = tuple.selectid;
+        let level = tuple.order.max(0) as usize + 1;
+        let node = format_raw_plan_node(&tuple.detail, should_fmt);
+        let prefix = format_smolstr!("[{idx}] ");
+
+        write!(
+            indent_custom(&mut plan, &mut indent_with_prefix(level * 2, prefix)),
+            "{node}{sep}"
+        )
+        .unwrap();
+    }
+
+    plan
+}
+
+fn format_sql(explain: &str, params: &[Value], should_fmt: bool) -> String {
+    let sql = explain
+        .strip_prefix("EXPLAIN QUERY PLAN ")
+        .unwrap_or(explain);
+
+    let mut fmt_options = sqlformat::FormatOptions::<'_> {
         joins_as_top_level: true,
         inline: true,
         ..Default::default()
-    }
-}
+    };
 
-fn format_sql(explain: &str, params: &[Value], is_fmt: bool) -> String {
-    let sql = explain.strip_prefix("EXPLAIN QUERY PLAN ").unwrap_or("");
-
-    const LINE_WIDTH: usize = 80;
-    let mut fmt_options = default_raw_options();
-    if is_fmt && sql.len() >= LINE_WIDTH {
+    if should_fmt && sql.len() >= LINE_WIDTH {
         fmt_options.joins_as_top_level = false;
         fmt_options.inline = false;
     }
 
-    let params = params
-        .iter()
-        .map(|p| p.to_string())
-        .collect::<Vec<String>>();
+    let params = params.iter().map(|p| p.to_string()).collect();
+    let indexed_params = sqlformat::QueryParams::Indexed(params);
 
-    sqlformat::format(sql, &sqlformat::QueryParams::Indexed(params), &fmt_options)
+    sqlformat::format(sql, &indexed_params, &fmt_options)
 }
 
 fn write_raw_explain_entry(
     f: &mut std::fmt::Formatter<'_>,
     entry: &RawExplainEntry,
     idx: usize,
-    is_fmt: bool,
+    should_fmt: bool,
 ) -> std::fmt::Result {
-    writeln!(f, "{idx}. {} ({}):", entry.query, entry.location)?;
-    let formatted_sql = format_sql(&entry.sql, &entry.params, is_fmt);
-    writeln!(f, "{formatted_sql}")?;
+    let sql = format_sql(&entry.sql, &entry.params, should_fmt);
+    let plan = match &entry.tuples {
+        Ok(tuples) => format_raw_plan(tuples, should_fmt),
+        Err(err) => err.clone(),
+    };
 
-    let table = format_rows(&entry.tuples);
-    write!(f, "{table}")
+    let (kind, source) = (&entry.query, &entry.location);
+    write!(f, "{idx}. {kind} ({source}):\n\n")?;
+    write!(f, "{sql}\n\n")?;
+    write!(f, "plan:\n{plan}")?;
+
+    Ok(())
 }
 
 #[derive(Debug)]
 struct RawExplain {
     entries: Vec<RawExplainEntry>,
-    is_format: bool,
+    should_fmt: bool,
 }
 
 impl std::fmt::Display for RawExplain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(entry) = self.entries.first() {
-            write_raw_explain_entry(f, entry, 1, self.is_format)?;
-        }
+        let mut entries = self.entries.iter().enumerate().peekable();
+        while let Some((idx, entry)) = entries.next() {
+            write_raw_explain_entry(f, entry, idx + 1, self.should_fmt)?;
 
-        for (idx, entry) in self.entries.iter().skip(1).enumerate() {
             // Since raw explain entries don't include a trailing newline,
             // the first writeln! terminates the previous entry's last line,
             // and the second writeln! adds a blank separator line between entries.
-            writeln!(f)?;
-            writeln!(f)?;
-
-            write_raw_explain_entry(f, entry, idx + 2, self.is_format)?;
+            let has_next = entries.peek().is_some();
+            if has_next {
+                write!(f, "\n\n")?;
+            }
         }
 
         Ok(())
@@ -736,7 +753,7 @@ impl std::fmt::Display for RawExplain {
 impl RawExplain {
     pub fn from_port<'p>(
         port: &mut impl Port<'p>,
-        is_format: bool,
+        should_fmt: bool,
     ) -> Result<RawExplain, SbroadError> {
         // vec![string] - query
         // vec![string] - location
@@ -777,33 +794,37 @@ impl RawExplain {
             })?;
             let num = num_wrapped[0];
 
-            let mut tuples = Vec::new();
-            for _ in 0..num {
-                let raw_mp = port_iter.next().expect("raw must be in port");
-                // At this point `raw_mp` contains either error message or vdbe
-                // tuple.
-                if let Ok(raw_row_wrapped) = msgpack::decode::<RawExplainTuple>(raw_mp) {
-                    tuples.push(RawExplainRow::Tuple(raw_row_wrapped));
-                } else {
-                    let err_wrapped: Vec<String> = msgpack::decode(raw_mp).map_err(|err| {
-                        SbroadError::Other(format_smolstr!("unable to decode error: {err}"))
-                    })?;
-                    tuples.push(RawExplainRow::Error(err_wrapped[0].clone()));
+            let items = &mut port_iter;
+            let mut tuples: Result<Vec<RawExplainTuple>, String> = items
+                .take(num)
+                .map(RawExplainTuple::try_decode_from_mp)
+                .collect();
+
+            // Provide a fallback for empty raw plans.
+            if let Ok(items) = &mut tuples {
+                if items.is_empty() {
+                    items.push(RawExplainTuple {
+                        selectid: 0,
+                        order: 0,
+                        from: 0,
+                        detail: "TRIVIAL".into(),
+                    });
                 }
             }
 
-            let entry = RawExplainEntry {
+            entries.push(RawExplainEntry {
                 query,
                 location,
                 sql,
                 params,
                 tuples,
-            };
-
-            entries.push(entry);
+            });
         }
 
-        Ok(Self { entries, is_format })
+        Ok(Self {
+            entries,
+            should_fmt,
+        })
     }
 }
 

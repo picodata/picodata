@@ -372,20 +372,18 @@ DO $$ BEGIN
 END $$;
 -- EXPECTED:
 1. Return query (FILTERED STORAGE):
+''
 SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(2 AS int)
-+----------+-------+------+--------------------------------------------------+
-| selectid | order | from | detail                                           |
-+============================================================================+
-| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
-+----------+-------+------+--------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
 2. Query (FILTERED STORAGE):
+''
 DELETE FROM "t" WHERE "t"."pk" = CAST(2 AS int)
-+----------+-------+------+--------------------------------------------------+
-| selectid | order | from | detail                                           |
-+============================================================================+
-| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
-+----------+-------+------+--------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 
 -- TEST: block-delete-with-return-query-check
 -- SQL:

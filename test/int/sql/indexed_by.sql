@@ -30,62 +30,54 @@ sbroad: index aa not found
 explain (raw) SELECT a FROM t INDEXED BY aaa WHERE true;
 -- EXPECTED:
 1. Query (STORAGE):
+''
 SELECT "t"."a" FROM "t" INDEXED BY "aaa" WHERE CAST(true AS bool)
-+----------+-------+------+-------------------------------------------------------+
-| selectid | order | from | detail                                                |
-+=================================================================================+
-| 0        | 0     | 0    | SCAN TABLE t USING COVERING INDEX aaa (~1048576 rows) |
-+----------+-------+------+-------------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE t USING COVERING INDEX aaa (~1048576 rows)
 
 -- TEST: indexed-by-4
 -- SQL:
 explain (raw) SELECT a FROM t WHERE true;
 -- EXPECTED:
 1. Query (STORAGE):
+''
 SELECT "t"."a" FROM "t" WHERE CAST(true AS bool)
-+----------+-------+------+------------------------------+
-| selectid | order | from | detail                       |
-+========================================================+
-| 0        | 0     | 0    | SCAN TABLE t (~1048576 rows) |
-+----------+-------+------+------------------------------+
+''
+plan:
+    [0] SCAN TABLE t (~1048576 rows)
 
 -- TEST: indexed-by-5
 -- SQL:
 explain (raw) SELECT a FROM t INDEXED BY aaa WHERE a > 10 UNION SELECT d from s INDEXED by bbb WHERE f < -5;
 -- EXPECTED:
 1. Query (STORAGE):
+''
 SELECT "t"."a" FROM "t" INDEXED BY "aaa" WHERE "t"."a" > CAST(10 AS int) UNION SELECT "s"."d" FROM "s" INDEXED BY "bbb" WHERE "s"."f" < CAST(-5 AS int)
-+----------+-------+------+--------------------------------------------------------------+
-| selectid | order | from | detail                                                       |
-+========================================================================================+
-| 1        | 0     | 0    | SEARCH TABLE t USING COVERING INDEX aaa (a>?) (~262144 rows) |
-|----------+-------+------+--------------------------------------------------------------|
-| 2        | 0     | 0    | SCAN TABLE s USING COVERING INDEX bbb (~983040 rows)         |
-|----------+-------+------+--------------------------------------------------------------|
-| 0        | 0     | 0    | COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (UNION)        |
-+----------+-------+------+--------------------------------------------------------------+
+''
+plan:
+    [1] SEARCH TABLE t USING COVERING INDEX aaa (a>?) (~262144 rows)
+    [2] SCAN TABLE s USING COVERING INDEX bbb (~983040 rows)
+    [0] COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (UNION)
 
 -- TEST: indexed-by-6
 -- SQL:
 explain (raw) SELECT * FROM (SELECT * FROM t INDEXED BY aaa WHERE a > 10) JOIN (SELECT d from s INDEXED by bbb WHERE f < -5) ON true;
 -- EXPECTED:
 1. Query (STORAGE):
+''
 SELECT "s"."d" FROM "s" INDEXED BY "bbb" WHERE "s"."f" < CAST(-5 AS int)
-+----------+-------+------+------------------------------------------------------+
-| selectid | order | from | detail                                               |
-+================================================================================+
-| 0        | 0     | 0    | SCAN TABLE s USING COVERING INDEX bbb (~983040 rows) |
-+----------+-------+------+------------------------------------------------------+
+''
+plan:
+    [0] SCAN TABLE s USING COVERING INDEX bbb (~983040 rows)
 ''
 2. Query (STORAGE):
+''
 SELECT * FROM ( SELECT "t"."a", "t"."b", "t"."c" FROM "t" INDEXED BY "aaa" WHERE "t"."a" > CAST(10 AS int) ) as "unnamed_subquery" INNER JOIN ( SELECT "COL_0" FROM "TMP_11262775988279806722_0136" ) as "unnamed_subquery_1" ON CAST(true AS bool)
-+----------+-------+------+--------------------------------------------------------------+
-| selectid | order | from | detail                                                       |
-+========================================================================================+
-| 0        | 0     | 0    | SEARCH TABLE t USING COVERING INDEX aaa (a>?) (~262144 rows) |
-|----------+-------+------+--------------------------------------------------------------|
-| 0        | 1     | 1    | SCAN TABLE TMP_11262775988279806722_0136 (~1048576 rows)     |
-+----------+-------+------+--------------------------------------------------------------+
+''
+plan:
+    [0] SEARCH TABLE t USING COVERING INDEX aaa (a>?) (~262144 rows)
+        [0] SCAN TABLE TMP_11262775988279806722_0136 (~1048576 rows)
 
 -- TEST: indexed-by-7
 -- SQL:
