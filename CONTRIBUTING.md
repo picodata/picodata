@@ -514,3 +514,10 @@ The merge request template contains required checklist items. These fields
 should be reviewed and filled only when applicable; if a checklist item does not
 apply, mark it as `~` instead of leaving it empty. This makes it clear that the
 item was reviewed and intentionally skipped.
+
+### Merging Merge Request
+
+Once your MR is complete and approved, you may face long wait times due to
+pipeline delays, rebases, and test flakes. You can [assign](https://docs.gitlab.com/user/project/merge_requests/#assign-a-user-to-a-merge-request) your MR to [@marge-bot](https://git.picodata.io/marge-bot)
+using `Assignee` field; this bot will do rebase-retry loop and finally merge your MR.
+The bot's source code is available in [this](https://git.picodata.io/core/marge-bot) repository.
