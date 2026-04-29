@@ -2,8 +2,7 @@ use crate::executor::{engine::mock::RouterRuntimeMock, ExecutingQuery};
 
 #[test]
 fn select_values_rows() {
-    let sql =
-        r#"explain SELECT * FROM (VALUES (1::int, 2::decimal::integer, 'txt'::text::text::text))"#;
+    let sql = r#"explain (logical, buckets) SELECT * FROM (VALUES (1::int, 2::decimal::integer, 'txt'::text::text::text))"#;
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.explain().unwrap(), @r#"
@@ -27,7 +26,7 @@ fn select_values_rows() {
 
 #[test]
 fn insert_values_rows() {
-    let sql = r#"explain INSERT INTO t1 VALUES ('txt'::text::text::text, 2::decimal::integer::double::integer)"#;
+    let sql = r#"explain (logical, buckets) INSERT INTO t1 VALUES ('txt'::text::text::text, 2::decimal::integer::double::integer)"#;
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.explain().unwrap(), @r#"
@@ -50,7 +49,7 @@ fn insert_values_rows() {
 
 #[test]
 fn select_selection() {
-    let sql = r#"explain SELECT * FROM t3 WHERE a = 'kek'::text::text::text"#;
+    let sql = r#"explain (logical, buckets) SELECT * FROM t3 WHERE a = 'kek'::text::text::text"#;
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.explain().unwrap(), @r"
@@ -72,7 +71,7 @@ fn select_selection() {
 
 #[test]
 fn update_selection() {
-    let sql = r#"explain UPDATE t SET c = 2 WHERE a = 1::int::int and b = 2::integer::decimal"#;
+    let sql = r#"explain (logical, buckets) UPDATE t SET c = 2 WHERE a = 1::int::int and b = 2::integer::decimal"#;
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.explain().unwrap(), @r"
@@ -96,7 +95,7 @@ fn update_selection() {
 
 #[test]
 fn delete_selection() {
-    let sql = r#"explain DELETE FROM "t2" where "e" = 3::integer and "f" = 2::decimal"#;
+    let sql = r#"explain (logical, buckets) DELETE FROM "t2" where "e" = 3::integer and "f" = 2::decimal"#;
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.explain().unwrap(), @r"

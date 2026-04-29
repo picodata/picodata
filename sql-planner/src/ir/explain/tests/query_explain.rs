@@ -5,7 +5,7 @@ use crate::{
 
 #[test]
 fn test_query_explain_1() {
-    let sql = r#"explain select 1"#;
+    let sql = r#"explain (logical, buckets) select 1"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -26,7 +26,7 @@ fn test_query_explain_1() {
 
 #[test]
 fn test_query_explain_2() {
-    let sql = r#"explain select e from t2"#;
+    let sql = r#"explain (logical, buckets) select e from t2"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -48,7 +48,7 @@ fn test_query_explain_2() {
 
 #[test]
 fn test_query_explain_3() {
-    let sql = r#"explain select e from t2 where e = 1 and f = 13"#;
+    let sql = r#"explain (logical, buckets) select e from t2 where e = 1 and f = 13"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -71,7 +71,7 @@ fn test_query_explain_3() {
 
 #[test]
 fn test_query_explain_4() {
-    let sql = r#"explain select count(*) from t2"#;
+    let sql = r#"explain (logical, buckets) select count(*) from t2"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -95,7 +95,7 @@ fn test_query_explain_4() {
 
 #[test]
 fn test_query_explain_prepared_single_key_aggregate_stays_single_node() {
-    let sql = r#"explain select count(*)
+    let sql = r#"explain (logical, buckets) select count(*)
         from t5
         where a = $1"#;
 
@@ -121,7 +121,7 @@ fn test_query_explain_prepared_single_key_aggregate_stays_single_node() {
 
 #[test]
 fn test_query_explain_prepared_single_key_with_constant_keeps_reduce_stage() {
-    let sql = r#"explain select count(*)
+    let sql = r#"explain (logical, buckets) select count(*)
         from t5
         where a = $1 and a = 1"#;
 
@@ -149,7 +149,7 @@ fn test_query_explain_prepared_single_key_with_constant_keeps_reduce_stage() {
 
 #[test]
 fn test_query_explain_prepared_reused_parameters_keep_reduce_stage() {
-    let sql = r#"explain select count(*)
+    let sql = r#"explain (logical, buckets) select count(*)
         from t5
         where a = $1 and a = $1 and a = $2"#;
 
@@ -181,7 +181,7 @@ fn test_query_explain_prepared_reused_parameters_keep_reduce_stage() {
 
 #[test]
 fn test_query_explain_prepared_partial_composite_key_keeps_reduce_stage() {
-    let sql = r#"explain select count(*)
+    let sql = r#"explain (logical, buckets) select count(*)
         from "hash_testing"
         where ("identification_number", "product_code") = ($1, trim("product_code"))"#;
 
@@ -206,7 +206,7 @@ fn test_query_explain_prepared_partial_composite_key_keeps_reduce_stage() {
 
 #[test]
 fn test_query_explain_5() {
-    let sql = r#"explain select a from global_t"#;
+    let sql = r#"explain (logical, buckets) select a from global_t"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -228,7 +228,7 @@ fn test_query_explain_5() {
 
 #[test]
 fn test_query_explain_6() {
-    let sql = r#"explain insert into t1 values ('1', 1)"#;
+    let sql = r#"explain (logical, buckets) insert into t1 values ('1', 1)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -252,7 +252,7 @@ fn test_query_explain_6() {
 
 #[test]
 fn test_query_explain_7() {
-    let sql = r#"explain insert into t1 select a, b from t1"#;
+    let sql = r#"explain (logical, buckets) insert into t1 select a, b from t1"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -276,7 +276,7 @@ fn test_query_explain_7() {
 
 #[test]
 fn test_query_explain_8() {
-    let sql = r#"explain insert into global_t values (1, 1)"#;
+    let sql = r#"explain (logical, buckets) insert into global_t values (1, 1)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -300,7 +300,7 @@ fn test_query_explain_8() {
 
 #[test]
 fn test_query_explain_9() {
-    let sql = r#"explain delete from t2"#;
+    let sql = r#"explain (logical, buckets) delete from t2"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -321,7 +321,7 @@ fn test_query_explain_9() {
 
 #[test]
 fn test_query_explain_10() {
-    let sql = r#"explain update t2 set e = 20 where (e, f) = (10, 10)"#;
+    let sql = r#"explain (logical, buckets) update t2 set e = 20 where (e, f) = (10, 10)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -349,7 +349,7 @@ fn test_query_explain_11() {
     // This query contains Segment motion
     // we can't estimate buckets in this case
 
-    let sql = r#"explain select a, count(b) from
+    let sql = r#"explain (logical, buckets) select a, count(b) from
     (select e, f from t2 where (e, f) = (10, 10))
     join
     (select a, b from t1 where (a, b) = ('20', 20))
@@ -393,7 +393,7 @@ fn test_query_explain_12() {
     // This query does not contain
     // segment motions and we can estimate it!
 
-    let sql = r#"explain select a from
+    let sql = r#"explain (logical, buckets) select a from
     (select e, f from t2 where (e, f) = (10, 10))
     join
     (select a, b from t1 where (a, b) = ('20', 20))
@@ -429,7 +429,7 @@ fn test_query_explain_12() {
 
 #[test]
 fn test_query_explain_13() {
-    let sql = r#"explain insert into global_t select a, b from t1 where (a, b) = ('1', 1)"#;
+    let sql = r#"explain (logical, buckets) insert into global_t select a, b from t1 where (a, b) = ('1', 1)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -454,7 +454,7 @@ fn test_query_explain_13() {
 
 #[test]
 fn test_query_explain_14() {
-    let sql = r#"explain select a, b from t1 where (a, b) = ('1', 1) and (a, b) = ('2', 2)"#;
+    let sql = r#"explain (logical, buckets) select a, b from t1 where (a, b) = ('1', 1) and (a, b) = ('2', 2)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -477,7 +477,7 @@ fn test_query_explain_14() {
 
 #[test]
 fn test_query_explain_15() {
-    let sql = "explain select 1 option (sql_vdbe_opcode_max = 1, sql_motion_row_max = 2)";
+    let sql = "explain (logical, buckets) select 1 option (sql_vdbe_opcode_max = 1, sql_motion_row_max = 2)";
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -498,7 +498,7 @@ fn test_query_explain_15() {
 
 #[test]
 fn test_query_explain_16() {
-    let sql = "explain select 1 option (sql_vdbe_opcode_max = $1, sql_motion_row_max = $2)";
+    let sql = "explain (logical, buckets) select 1 option (sql_vdbe_opcode_max = $1, sql_motion_row_max = $2)";
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(
@@ -524,7 +524,7 @@ fn test_query_explain_16() {
 
 #[test]
 fn test_query_explain_17() {
-    let sql = "explain update t set c = 1 option (sql_vdbe_opcode_max = 1, sql_motion_row_max = 2)";
+    let sql = "explain (logical, buckets) update t set c = 1 option (sql_vdbe_opcode_max = 1, sql_motion_row_max = 2)";
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -548,7 +548,7 @@ fn test_query_explain_17() {
 
 #[test]
 fn test_query_explain_18() {
-    let sql = "explain select * from (values (1, 2), (3, 4)) join (values (5, 6), (7, 8)) on true";
+    let sql = "explain (logical, buckets) select * from (values (1, 2), (3, 4)) join (values (5, 6), (7, 8)) on true";
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -580,7 +580,7 @@ fn test_query_explain_18() {
 
 #[test]
 fn test_query_explain_19() {
-    let sql = r#"explain select sum(1.0)"#;
+    let sql = r#"explain (logical, buckets) select sum(1.0)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -601,7 +601,7 @@ fn test_query_explain_19() {
 
 #[test]
 fn test_query_explain_20() {
-    let sql = r#"explain select sum(1)"#;
+    let sql = r#"explain (logical, buckets) select sum(1)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -622,7 +622,7 @@ fn test_query_explain_20() {
 
 #[test]
 fn test_query_explain_21() {
-    let sql = r#"explain select sum(1::double)"#;
+    let sql = r#"explain (logical, buckets) select sum(1::double)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -643,7 +643,7 @@ fn test_query_explain_21() {
 
 #[test]
 fn test_query_explain_22() {
-    let sql = r#"explain select avg(1.0)"#;
+    let sql = r#"explain (logical, buckets) select avg(1.0)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -664,7 +664,7 @@ fn test_query_explain_22() {
 
 #[test]
 fn test_query_explain_23() {
-    let sql = r#"explain select avg(1)"#;
+    let sql = r#"explain (logical, buckets) select avg(1)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -685,7 +685,7 @@ fn test_query_explain_23() {
 
 #[test]
 fn test_query_explain_24() {
-    let sql = r#"explain select avg(1::double)"#;
+    let sql = r#"explain (logical, buckets) select avg(1::double)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();

@@ -66,7 +66,7 @@ fn front_invalid_sql4() {
 
 #[test]
 fn front_explain_select_sql1() {
-    let sql = r#"EXPLAIN SELECT "t"."identification_number" as "c1", "product_code" FROM "hash_testing" as "t""#;
+    let sql = r#"EXPLAIN (LOGICAL, BUCKETS) SELECT "t"."identification_number" as "c1", "product_code" FROM "hash_testing" as "t""#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
@@ -90,7 +90,7 @@ fn front_explain_select_sql1() {
 
 #[test]
 fn front_explain_select_sql2() {
-    let sql = r#"EXPLAIN SELECT "t"."identification_number" as "c1", "product_code" FROM "hash_testing" as "t"
+    let sql = r#"EXPLAIN (LOGICAL, BUCKETS) SELECT "t"."identification_number" as "c1", "product_code" FROM "hash_testing" as "t"
         UNION ALL
         SELECT "t2"."identification_number", "product_code" FROM "hash_testing_hist" as "t2""#;
 
@@ -119,7 +119,7 @@ fn front_explain_select_sql2() {
 
 #[test]
 fn front_explain_select_sql3() {
-    let sql = r#"explain select "a" from "t3" as "q1"
+    let sql = r#"explain (logical, buckets) select "a" from "t3" as "q1"
         inner join (select "t3"."a" as "a2", "t3"."b" as "b2" from "t3") as "q2"
         on "q1"."a" = "q2"."a2""#;
 
@@ -149,7 +149,7 @@ fn front_explain_select_sql3() {
 
 #[test]
 fn front_explain_select_sql4() {
-    let sql = r#"explain select "q2"."a" from "t3" as "q1"
+    let sql = r#"explain (logical, buckets) select "q2"."a" from "t3" as "q1"
         inner join "t3" as "q2"
         on "q1"."a" = "q2"."a""#;
 
