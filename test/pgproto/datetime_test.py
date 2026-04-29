@@ -280,7 +280,9 @@ def test_localtimestamp(postgres: Postgres):
     assert tzinfo
     tzoffset = tzinfo.utcoffset(parsed_time)
     assert tzoffset
-    assert tzoffset.total_seconds() == -time.mktime(time.gmtime(0))
+    local_offset = datetime.datetime.now(datetime.timezone.utc).astimezone().utcoffset()
+    assert local_offset
+    assert tzoffset.total_seconds() == local_offset.total_seconds()
 
     # Test localtimestamp in a WHERE clause not NULL
     cur.execute("SELECT localtimestamp from (VALUES (1)) WHERE localtimestamp IS NOT NULL;")
@@ -354,7 +356,9 @@ def test_current_date(postgres: Postgres):
     assert tzinfo
     tzoffset = tzinfo.utcoffset(parsed_time)
     assert tzoffset
-    assert tzoffset.total_seconds() == -time.mktime(time.gmtime(0))
+    local_offset = datetime.datetime.now(datetime.timezone.utc).astimezone().utcoffset()
+    assert local_offset
+    assert tzoffset.total_seconds() == local_offset.total_seconds()
     # check that the time portion is zeroed
     assert parsed_time.hour == 0
     assert parsed_time.minute == 0
