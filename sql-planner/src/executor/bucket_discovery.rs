@@ -95,6 +95,35 @@ where
         Ok(Some(bucket_id))
     }
 
+    /// Hash sharding-key cells of every row in `Values` and return the bucket set.
+    /// Returns `None` if any row's sharding-key cell isn't a Constant after
+    /// parameter binding.
+    fn try_buckets_from_values_rows(
+        &self,
+        values_id: NodeId,
+        motion_key: &MotionKey,
+    ) -> Result<Option<Buckets>, SbroadError> {
+        let plan = self.exec_plan.get_ir_plan();
+        let Relational::Values(Values { children, .. }) = plan.get_relation_node(values_id)? else {
+            panic!("expected Values, got {values_id:?}");
+        };
+
+        let mut bucket_set = HashSet::with_hasher(RepeatableState);
+        for row_id in children {
+            let Relational::ValuesRow(ValuesRow { data, .. }) = plan.get_relation_node(*row_id)?
+            else {
+                panic!("expected ValuesRow, got {row_id:?}");
+            };
+            let row_list = plan.get_row_list(*data)?;
+            let Some(bucket_id) = self.try_calculate_values_row_bucket_id(row_list, motion_key)?
+            else {
+                return Ok(None);
+            };
+            bucket_set.insert(bucket_id);
+        }
+        Ok(Some(Buckets::new_filtered(bucket_set)))
+    }
+
     // Calculates buckets for sharded insert queries(e.g.
     // `INSERT INTO t VALUES (1, 2)`). In case when it's not
     // possible to calculate buckets it returns None.
@@ -129,28 +158,29 @@ where
             return Ok(None);
         }
 
-        let Relational::Values(Values { children, .. }) = plan.get_relation_node(child)? else {
+        if !matches!(plan.get_relation_node(child)?, Relational::Values(_)) {
             return Ok(None);
-        };
-
-        let mut bucket_set = HashSet::with_hasher(RepeatableState);
-        for values_row_id in children {
-            let row_node = plan.get_relation_node(*values_row_id)?;
-            let Relational::ValuesRow(ValuesRow { data, .. }) = row_node else {
-                panic!("Expected ValuesRow under Values. Got {row_node:?}.")
-            };
-            let row_list = plan.get_row_list(*data)?;
-
-            if let Some(bucket_id) =
-                self.try_calculate_values_row_bucket_id(row_list, motion_key)?
-            {
-                bucket_set.insert(bucket_id);
-            } else {
-                return Ok(None);
-            }
         }
 
-        Ok(Some(Buckets::new_filtered(bucket_set)))
+        self.try_buckets_from_values_rows(child, motion_key)
+    }
+
+    /// Compute buckets for a block-optimized INSERT whose Motion node has been
+    /// eliminated, leaving Values directly under Insert. Sharding-key cells in
+    /// each ValuesRow are guaranteed (by the block optimizer) to be Constants
+    /// after parameter binding.
+    fn insert_buckets_from_values(
+        &self,
+        insert_id: NodeId,
+        values_id: NodeId,
+    ) -> Result<Buckets, SbroadError> {
+        let motion_key = self.exec_plan.get_ir_plan().insert_motion_key(insert_id)?;
+        self.try_buckets_from_values_rows(values_id, &motion_key)?
+            .ok_or_else(|| {
+                SbroadError::other(
+                    "INSERT in transaction requires constant or parameter values for sharding-key columns",
+                )
+            })
     }
 
     /// Discover required buckets to execute the query subtree.
@@ -305,6 +335,16 @@ where
                 | Relational::Insert(Insert { output, .. })
                 | Relational::Update(Update { output, .. }) => {
                     let child_id = ir_plan.get_first_rel_child(node_id)?;
+                    // Block-optimized INSERTs sit directly on top of a Values node (the
+                    // motion got eliminated). Compute concrete buckets from the rows so
+                    // the block dispatcher can route the transaction to a single bucket.
+                    if matches!(rel, Relational::Insert(_))
+                        && matches!(ir_plan.get_relation_node(child_id)?, Relational::Values(_))
+                    {
+                        let buckets = self.insert_buckets_from_values(node_id, child_id)?;
+                        self.bucket_map.insert(*output, buckets);
+                        continue;
+                    }
                     let child_buckets = self
                         .bucket_map
                         .get(&ir_plan.get_relational_output(child_id)?)

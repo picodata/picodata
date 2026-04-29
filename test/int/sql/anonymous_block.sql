@@ -297,6 +297,210 @@ END $$;
 -- ERROR:
 QUERY statements must follow LET and RETURN QUERY statements
 
+-- TEST: insert-single-row
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO t VALUES (10, 100, 100);
+END $$;
+
+-- TEST: insert-single-row-check
+-- SQL:
+SELECT * FROM t WHERE pk = 10;
+-- EXPECTED:
+10, 100, 100
+
+-- TEST: insert-with-explicit-columns
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO t (pk, a, b) VALUES (11, 101, 111);
+END $$;
+
+-- TEST: insert-with-explicit-columns-check
+-- SQL:
+SELECT * FROM t WHERE pk = 11;
+-- EXPECTED:
+11, 101, 111
+
+-- TEST: insert-multi-row-same-bucket
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO t VALUES (12, 1, 1), (12, 2, 2) ON CONFLICT DO REPLACE;
+END $$;
+
+-- TEST: insert-multi-row-same-bucket-check
+-- SQL:
+SELECT * FROM t WHERE pk = 12;
+-- EXPECTED:
+12, 2, 2
+
+-- TEST: insert-with-arithmetic-non-key
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO t VALUES (13, 1 + 2, 4 * 5);
+END $$;
+
+-- TEST: insert-with-arithmetic-non-key-check
+-- SQL:
+SELECT * FROM t WHERE pk = 13;
+-- EXPECTED:
+13, 3, 20
+
+-- TEST: insert-with-update-same-bucket
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO t VALUES (14, 1, 1);
+  UPDATE t SET a = 99 WHERE pk = 14;
+END $$;
+
+-- TEST: insert-with-update-same-bucket-check
+-- SQL:
+SELECT * FROM t WHERE pk = 14;
+-- EXPECTED:
+14, 99, 1
+
+-- TEST: insert-on-conflict-do-replace
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO t VALUES (15, 1, 1);
+  INSERT INTO t VALUES (15, 2, 2) ON CONFLICT DO REPLACE;
+END $$;
+
+-- TEST: insert-on-conflict-do-replace-check
+-- SQL:
+SELECT * FROM t WHERE pk = 15;
+-- EXPECTED:
+15, 2, 2
+
+-- TEST: insert-on-conflict-do-nothing
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO t VALUES (16, 1, 1);
+  INSERT INTO t VALUES (16, 2, 2) ON CONFLICT DO NOTHING;
+END $$;
+
+-- TEST: insert-on-conflict-do-nothing-check
+-- SQL:
+SELECT * FROM t WHERE pk = 16;
+-- EXPECTED:
+16, 1, 1
+
+-- TEST: insert-different-buckets-error
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO t VALUES (1, 1, 1), (2, 2, 2) ON CONFLICT DO REPLACE;
+END $$;
+-- ERROR:
+transaction can only be executed on a single bucket
+
+-- TEST: insert-and-query-different-buckets-error
+-- SQL:
+DO $$
+BEGIN
+  RETURN QUERY SELECT * FROM t WHERE pk = 1;
+  INSERT INTO t VALUES (2, 1, 1) ON CONFLICT DO REPLACE;
+END $$;
+-- ERROR:
+transaction queries have different buckets
+
+-- TEST: insert-non-constant-sharding-key-error
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO t VALUES (1 + 1, 1, 1);
+END $$;
+-- ERROR:
+INSERT in transaction requires constant or parameter values for sharding-key columns
+
+-- TEST: insert-into-global-table-error
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO g VALUES (5, 5, 5);
+END $$;
+-- ERROR:
+cannot modify global table g within transaction
+
+-- TEST: insert-different-pks-same-bucket
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO t VALUES (433, 1, 1), (1618, 2, 2);
+END $$;
+
+-- TEST: insert-different-pks-same-bucket-check
+-- SQL:
+SELECT * FROM t WHERE pk = 433 OR pk = 1618;
+-- UNORDERED:
+433, 1, 1,
+1618, 2, 2
+
+-- TEST: insert-with-function-call-non-key
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO t VALUES (300, COALESCE(NULL, 99), ABS(-7));
+END $$;
+
+-- TEST: insert-with-function-call-non-key-check
+-- SQL:
+SELECT * FROM t WHERE pk = 300;
+-- EXPECTED:
+300, 99, 7
+
+-- TEST: insert-cast-constant-from-dk
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO t VALUES (400::int, 99, 7);
+END $$;
+
+-- TEST: insert-cast-constant-from-dk-check
+-- SQL:
+SELECT * FROM t WHERE pk = 400;
+-- EXPECTED:
+400, 99, 7
+
+-- TEST: explain-insert
+-- SQL:
+EXPLAIN (raw)
+DO $$
+BEGIN
+  INSERT INTO t VALUES (400, 99 + 1, 1 + 1);
+END $$;
+-- EXPECTED:
+1. Query (FILTERED STORAGE):
+''
+INSERT INTO "t" ("pk", "a", "b", "bucket_id") VALUES ( CAST(400 AS int), CAST(99 AS int) + CAST(1 AS int), CAST(1 AS int) + CAST(1 AS int), 590 )
+''
+plan:
+    [0] TRIVIAL
+
+-- TEST: insert-with-subquery-in-values-error
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO t VALUES (400, (SELECT 1), 1);
+END $$;
+-- ERROR:
+INSERT in transaction does not support subqueries in VALUES
+
+-- TEST: insert-from-select-error
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO t SELECT pk + 100, a, b FROM t WHERE pk = 1;
+END $$;
+-- ERROR:
+INSERT query has motions which are not allowed in transactions
+
 -- TEST: block-with-motions
 -- SQL:
 DO $$ BEGIN RETURN QUERY SELECT * FROM t WHERE pk = 1 LIMIT 1; END $$;
@@ -363,6 +567,10 @@ END $$;
 -- EXPECTED:
 2, 6, 2
 
+-- TEST: block-delete-with-return-query-check
+-- SQL:
+SELECT * FROM t WHERE pk = 2;
+
 -- TEST: explain-block-delete-with-return-query
 -- SQL:
 EXPLAIN (raw)
@@ -385,27 +593,11 @@ DELETE FROM "t" WHERE "t"."pk" = CAST(2 AS int)
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 
--- TEST: block-delete-with-return-query-check
--- SQL:
-SELECT * FROM t WHERE pk = 2;
-
 -- TEST: block-delete-with-subquery-1
 -- SQL:
 do $$ BEGIN DELETE FROM t WHERE pk = (SELECT 1); END $$;
 -- ERROR:
 DELETE in transaction cannot have subqueries
-
--- TEST: block-insert-1
--- SQL:
-do $$ BEGIN INSERT INTO t VALUES (1,2,3); END $$;
--- ERROR:
-INSERT query has motions which are not allowed in transactions
-
--- TEST: block-insert-2
--- SQL:
-do $$ BEGIN INSERT INTO t SELECT * FROM t WHERE pk = 1; END $$;
--- ERROR:
-INSERT query has motions which are not allowed in transactions
 
 -- TEST: update-with-subquery-1
 -- SQL:
