@@ -341,6 +341,12 @@
   color: inherit;
   box-shadow: none;
 }
+.md-header__inner {
+  position: relative;
+  z-index: 1;
+  background: var(--md-default-bg-color);
+  border-bottom: 1px solid rgba(31, 30, 30, 0.08);
+}
 .md-header[data-md-state="shadow"] {
   box-shadow: 0 0 0.2rem rgba(0, 0, 0, 0.1), 0 0.2rem 0.4rem rgba(0, 0, 0, 0.2);
 }
