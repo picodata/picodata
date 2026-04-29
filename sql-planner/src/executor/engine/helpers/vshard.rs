@@ -3,7 +3,7 @@ use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::Vshard;
 use crate::executor::ir::ExecutionPlan;
 use crate::ir::bucket::{BucketSet, Buckets};
-use crate::ir::node::relational::{MutRelational, Relational};
+use crate::ir::node::relational::Relational;
 use crate::ir::node::{Motion, Node, NodeId};
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy};
 use crate::ir::tree::relation::RelationalIterator;
@@ -26,9 +26,6 @@ tarantool::define_str_enum! {
 // needed to apply SerializeAsEmpty opcode
 // to subtree.
 struct SerializeAsEmptyInfo {
-    // ids of topmost motion nodes which have this opcode
-    // with `true` value
-    top_motion_ids: Vec<NodeId>,
     // ids of motions which have this opcode
     target_motion_ids: Vec<NodeId>,
     unused_motions: Vec<NodeId>,
@@ -57,7 +54,7 @@ impl Plan {
         false
     }
 
-    fn collect_top_ids(&self) -> Result<Vec<NodeId>, SbroadError> {
+    fn collect_top_ids(&self, top_id: NodeId) -> Result<Vec<NodeId>, SbroadError> {
         let mut stop_nodes: HashSet<NodeId> = HashSet::new();
         let iter_children = |node_id| -> RelationalIterator<'_> {
             if self.is_serialize_as_empty_motion(node_id, true) {
@@ -72,14 +69,14 @@ impl Plan {
         let filter_empty_motion = |node| self.is_serialize_as_empty_motion(node, true);
         let dfs = PostOrderWithFilter::new(iter_children, filter_empty_motion, 4);
 
-        Ok(dfs
-            .traverse_into_iter(self.get_top()?)
-            .map(|id| id.1)
-            .collect())
+        Ok(dfs.traverse_into_iter(top_id).map(|id| id.1).collect())
     }
 
-    fn serialize_as_empty_info(&self) -> Result<Option<SerializeAsEmptyInfo>, SbroadError> {
-        let top_ids = self.collect_top_ids()?;
+    fn serialize_as_empty_info(
+        &self,
+        top_id: NodeId,
+    ) -> Result<Option<SerializeAsEmptyInfo>, SbroadError> {
+        let top_ids = self.collect_top_ids(top_id)?;
 
         let mut motions_ref_count: AHashMap<NodeId, usize> = AHashMap::new();
         let dfs = PostOrderWithFilter::new(
@@ -92,7 +89,7 @@ impl Plan {
             },
             0,
         );
-        for LevelNode(_, motion_id) in dfs.traverse_into_iter(self.get_top()?) {
+        for LevelNode(_, motion_id) in dfs.traverse_into_iter(top_id) {
             motions_ref_count
                 .entry(motion_id)
                 .and_modify(|cnt| *cnt += 1)
@@ -133,7 +130,6 @@ impl Plan {
         }
 
         Ok(Some(SerializeAsEmptyInfo {
-            top_motion_ids: top_ids,
             target_motion_ids: target_motions,
             unused_motions,
             motions_ref_count,
@@ -149,17 +145,18 @@ impl Plan {
 pub fn prepare_rs_to_ir_map(
     rs_bucket_vec: &[(String, Vec<u64>)],
     mut sub_plan: ExecutionPlan,
+    top_id: NodeId,
 ) -> Result<(HashMap<String, ExecutionPlan>, Option<u64>), SbroadError> {
     let mut rs_ir = HashMap::new();
     rs_ir.reserve(rs_bucket_vec.len());
     let mut extra_plan_id = None;
     if let Some((last, other)) = rs_bucket_vec.split_last() {
-        let mut sae_info = sub_plan.get_ir_plan().serialize_as_empty_info()?;
+        let mut sae_info = sub_plan.get_ir_plan().serialize_as_empty_info(top_id)?;
 
         if !other.is_empty() {
             let mut other_plan = sub_plan.clone();
             if let Some(info) = sae_info.as_mut() {
-                apply_serialize_as_empty_opcode(&mut other_plan, info)?;
+                trim_serialize_as_empty_vtables(&mut other_plan, info)?;
                 other_plan.salt_plan_id()?;
                 // It's important to use `get_plan_id` because of the plan's metadata.
                 extra_plan_id = Some(other_plan.get_plan_id()?);
@@ -179,17 +176,22 @@ pub fn prepare_rs_to_ir_map(
         }
 
         if let Some(ref info) = sae_info {
-            disable_serialize_as_empty_opcode(&mut sub_plan, info)?;
+            let disabled_motions =
+                serialize_as_empty_motions_to_disable(sub_plan.get_ir_plan(), info)?;
+            sub_plan.disable_serialize_as_empty_for_motions(disabled_motions);
         }
         let (rs, bucket_ids) = last;
         filter_vtable(&mut sub_plan, bucket_ids)?;
+        if sae_info.is_some() {
+            sub_plan.set_plan_id(top_id)?;
+        }
         rs_ir.insert(rs.clone(), sub_plan);
     }
 
     Ok((rs_ir, extra_plan_id))
 }
 
-fn apply_serialize_as_empty_opcode(
+fn trim_serialize_as_empty_vtables(
     sub_plan: &mut ExecutionPlan,
     info: &mut SerializeAsEmptyInfo,
 ) -> Result<(), SbroadError> {
@@ -208,45 +210,248 @@ fn apply_serialize_as_empty_opcode(
         }
     }
 
-    for top_id in &info.top_motion_ids {
-        sub_plan.unlink_motion_subtree(*top_id)?;
-    }
     Ok(())
 }
 
-fn disable_serialize_as_empty_opcode(
-    sub_plan: &mut ExecutionPlan,
+fn serialize_as_empty_motions_to_disable(
+    plan: &Plan,
     info: &SerializeAsEmptyInfo,
-) -> Result<(), SbroadError> {
+) -> Result<Vec<NodeId>, SbroadError> {
+    let mut disabled_motions = Vec::with_capacity(info.target_motion_ids.len());
     for motion_id in &info.target_motion_ids {
-        let program = if let MutRelational::Motion(Motion {
-            policy, program, ..
-        }) = sub_plan
-            .get_mut_ir_plan()
-            .get_mut_relation_node(*motion_id)?
-        {
-            if !matches!(policy, MotionPolicy::Local) {
-                continue;
-            }
-            program
-        } else {
+        let Relational::Motion(Motion { policy, .. }) = plan.get_relation_node(*motion_id)? else {
             return Err(SbroadError::Invalid(
                 Entity::Node,
                 Some(format_smolstr!("expected motion node on id {motion_id:?}")),
             ));
         };
-        for op in &mut program.0 {
-            if let MotionOpcode::SerializeAsEmptyTable(enabled) = op {
-                *enabled = false;
-            }
+        if matches!(policy, MotionPolicy::Local) {
+            disabled_motions.push(*motion_id);
         }
     }
-
-    Ok(())
+    Ok(disabled_motions)
 }
 
 pub fn get_random_bucket(runtime: &impl Vshard) -> Buckets {
     let bucket_id: u64 = rand::random_range(1..=runtime.bucket_count());
     let bucket_set = [bucket_id].into_iter().collect();
     Buckets::Filtered(BucketSet::Exact(bucket_set))
+}
+
+#[cfg(all(test, feature = "mock"))]
+mod tests {
+    use super::*;
+    use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
+    use crate::executor::engine::helpers::table_name;
+    use crate::executor::ir::SerializeAsEmptyState;
+    use crate::executor::vtable::VirtualTable;
+    use crate::ir::node::{ArenaType, Node136};
+    use crate::ir::tests::vcolumn_integer_user_non_null;
+    use crate::ir::transformation::helpers::sql_to_optimized_ir;
+    use crate::ir::tree::Snapshot;
+    use std::rc::Rc;
+
+    fn motion_ids(plan: &Plan) -> Vec<NodeId> {
+        plan.nodes
+            .iter136()
+            .enumerate()
+            .filter_map(|(offset, node)| {
+                matches!(node, Node136::Motion(_)).then_some(NodeId {
+                    offset: offset.try_into().expect("node offset must fit into u32"),
+                    arena_type: ArenaType::Arena136,
+                })
+            })
+            .collect()
+    }
+
+    fn motion_state(plan: &Plan, motion_id: NodeId) -> (Option<NodeId>, Option<bool>) {
+        let Relational::Motion(Motion { child, program, .. }) =
+            plan.get_relation_node(motion_id).expect("motion node")
+        else {
+            panic!("expected motion node on id {motion_id:?}");
+        };
+        let opcode = program.0.iter().find_map(|op| {
+            if let MotionOpcode::SerializeAsEmptyTable(enabled) = op {
+                Some(*enabled)
+            } else {
+                None
+            }
+        });
+        (*child, opcode)
+    }
+
+    fn effective_serialize_as_empty(plan: &ExecutionPlan, motion_id: NodeId) -> Option<bool> {
+        let Relational::Motion(Motion { program, .. }) = plan
+            .get_ir_plan()
+            .get_relation_node(motion_id)
+            .expect("motion node")
+        else {
+            panic!("expected motion node on id {motion_id:?}");
+        };
+        match plan.effective_serialize_as_empty_state(motion_id, program) {
+            SerializeAsEmptyState::Absent => None,
+            SerializeAsEmptyState::Enabled => Some(true),
+            SerializeAsEmptyState::Disabled => Some(false),
+        }
+    }
+
+    fn sql(plan: &ExecutionPlan, top_id: NodeId) -> String {
+        let sp = SyntaxPlan::new(plan, top_id, Snapshot::Oldest, false).expect("syntax plan");
+        let ordered = OrderedSyntaxNodes::try_from(sp).expect("ordered syntax nodes");
+        let nodes = ordered.to_syntax_data().expect("syntax data");
+        let params = plan
+            .local_sql_params(top_id, Snapshot::Oldest)
+            .expect("local sql params");
+        plan.generate_sql(&nodes, 0, table_name, Some(params.constant_ids().to_vec()))
+            .expect("local sql")
+    }
+
+    #[test]
+    fn prepare_rs_to_ir_map_keeps_serialize_as_empty_ir_intact() {
+        let plan = sql_to_optimized_ir(
+            r#"
+            select * from (
+                select "a" from "global_t"
+                union
+                select "e" from "t2"
+            ) union
+            select "f" from "t2"
+            "#,
+            vec![],
+        );
+        let top_id = plan.get_top().expect("top node");
+        let mut exec_plan = ExecutionPlan::new(plan);
+        let motion_ids = motion_ids(exec_plan.get_ir_plan());
+        let sae_info = exec_plan
+            .get_ir_plan()
+            .serialize_as_empty_info(top_id)
+            .expect("serialize_as_empty info")
+            .expect("serialize_as_empty info must exist");
+        assert!(!sae_info.target_motion_ids.is_empty());
+        assert!(!sae_info.unused_motions.is_empty());
+
+        let states_before = motion_ids
+            .iter()
+            .map(|id| (*id, motion_state(exec_plan.get_ir_plan(), *id)))
+            .collect::<Vec<_>>();
+
+        for motion_id in &motion_ids {
+            let mut vtable = VirtualTable::new();
+            vtable.add_column(vcolumn_integer_user_non_null());
+            exec_plan
+                .get_mut_vtables()
+                .insert(*motion_id, Rc::new(vtable));
+        }
+        exec_plan.set_plan_id(top_id).expect("plan id");
+
+        let rs_bucket_vec = vec![
+            ("empty".to_string(), vec![1_u64]),
+            ("real".to_string(), vec![2_u64]),
+        ];
+        let (rs_plans, extra_plan_id) =
+            prepare_rs_to_ir_map(&rs_bucket_vec, exec_plan, top_id).expect("custom plans");
+        assert!(extra_plan_id.is_some());
+
+        for plan in rs_plans.values() {
+            for (motion_id, state) in &states_before {
+                assert_eq!(*state, motion_state(plan.get_ir_plan(), *motion_id));
+            }
+        }
+
+        let empty_plan = rs_plans
+            .values()
+            .find(|plan| {
+                sae_info
+                    .target_motion_ids
+                    .iter()
+                    .all(|motion_id| effective_serialize_as_empty(plan, *motion_id) == Some(true))
+            })
+            .expect("empty plan");
+        for motion_id in &sae_info.unused_motions {
+            assert!(!empty_plan.get_vtables().contains_key(motion_id));
+        }
+        let empty_motion_id = sae_info.target_motion_ids[0];
+        assert!(sql(empty_plan, empty_motion_id).contains("where false"));
+
+        let real_plan = rs_plans
+            .values()
+            .find(|plan| {
+                sae_info
+                    .target_motion_ids
+                    .iter()
+                    .all(|motion_id| effective_serialize_as_empty(plan, *motion_id) == Some(false))
+            })
+            .expect("real plan");
+        for motion_id in &sae_info.unused_motions {
+            assert!(real_plan.get_vtables().contains_key(motion_id));
+        }
+        assert!(!sql(real_plan, empty_motion_id).contains("where false"));
+    }
+
+    #[test]
+    fn prepare_rs_to_ir_map_ignores_serialize_as_empty_outside_top() {
+        let plan = sql_to_optimized_ir(
+            r#"
+            select * from (
+                select "a" from "global_t"
+                union
+                select "e" from "t2"
+            ) union
+            select "f" from "t2"
+            "#,
+            vec![],
+        );
+        let full_top_id = plan.get_top().expect("top node");
+        let mut exec_plan = ExecutionPlan::new(plan);
+        let sae_info = exec_plan
+            .get_ir_plan()
+            .serialize_as_empty_info(full_top_id)
+            .expect("serialize_as_empty info")
+            .expect("serialize_as_empty info must exist");
+
+        let scoped_top_id = sae_info
+            .target_motion_ids
+            .iter()
+            .find_map(|motion_id| {
+                let child_top_id = exec_plan
+                    .get_ir_plan()
+                    .get_motion_subtree_root(*motion_id)
+                    .ok()?;
+                matches!(
+                    exec_plan
+                        .get_ir_plan()
+                        .serialize_as_empty_info(child_top_id),
+                    Ok(None)
+                )
+                .then_some(child_top_id)
+            })
+            .expect("serialize-as-empty motion child without nested serialize-as-empty");
+
+        let motion_ids = motion_ids(exec_plan.get_ir_plan());
+        for motion_id in &motion_ids {
+            let mut vtable = VirtualTable::new();
+            vtable.add_column(vcolumn_integer_user_non_null());
+            exec_plan
+                .get_mut_vtables()
+                .insert(*motion_id, Rc::new(vtable));
+        }
+        exec_plan.set_plan_id(scoped_top_id).expect("plan id");
+
+        let rs_bucket_vec = vec![
+            ("empty".to_string(), vec![1_u64]),
+            ("real".to_string(), vec![2_u64]),
+        ];
+        let (rs_plans, extra_plan_id) =
+            prepare_rs_to_ir_map(&rs_bucket_vec, exec_plan, scoped_top_id).expect("custom plans");
+        assert!(extra_plan_id.is_none());
+
+        for plan in rs_plans.values() {
+            for motion_id in &sae_info.unused_motions {
+                assert!(plan.get_vtables().contains_key(motion_id));
+            }
+            for motion_id in &sae_info.target_motion_ids {
+                assert_eq!(Some(true), effective_serialize_as_empty(plan, *motion_id));
+            }
+        }
+    }
 }

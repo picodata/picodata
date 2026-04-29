@@ -3,6 +3,8 @@ use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use crate::executor::engine::helpers::table_name;
 use crate::executor::ir::ExecutionPlan;
 
+use crate::ir::node::expression::Expression;
+use crate::ir::node::Node;
 use crate::ir::transformation::helpers::sql_to_ir;
 use crate::ir::tree::Snapshot;
 
@@ -28,17 +30,49 @@ fn check_sql_with_snapshot(
         .unwrap()
         .merge_tuples()
         .unwrap();
-    let mut ex_plan = ExecutionPlan::new(plan);
+    let ex_plan = ExecutionPlan::new(plan);
     let top_id = ex_plan.get_ir_plan().get_top().unwrap();
 
-    ex_plan.get_mut_ir_plan().stash_constants(snapshot).unwrap();
+    let params = ex_plan.local_sql_params(top_id, snapshot).unwrap();
 
     let sp = SyntaxPlan::new(&ex_plan, top_id, snapshot, false).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
-    let sql = ex_plan.generate_sql(&nodes, 0, table_name, None).unwrap();
+    let sql = ex_plan
+        .generate_sql(&nodes, 0, table_name, Some(params.constant_ids().to_vec()))
+        .unwrap();
 
-    PatternWithParams::new(sql, ex_plan.get_ir_plan().constants.clone())
+    PatternWithParams::new(sql, params.params().to_vec())
+}
+
+#[test]
+fn local_sql_params_do_not_mutate_constants() {
+    let plan = sql_to_ir(
+        r#"SELECT "FIRST_NAME" FROM "test_space" WHERE "id" = 1"#,
+        vec![],
+    );
+    let ex_plan = ExecutionPlan::new(plan);
+    let top_id = ex_plan.get_ir_plan().get_top().unwrap();
+
+    let params = ex_plan
+        .local_sql_params(top_id, Snapshot::Latest)
+        .expect("local sql params");
+    assert_eq!(params.params(), &[Value::from(1)]);
+
+    let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Latest, false).unwrap();
+    let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
+    let nodes = ordered.to_syntax_data().unwrap();
+    let sql = ex_plan
+        .generate_sql(&nodes, 0, table_name, Some(params.constant_ids().to_vec()))
+        .unwrap();
+
+    assert!(sql.contains("CAST($1 AS int)"));
+    for id in params.constant_ids() {
+        assert!(matches!(
+            ex_plan.get_ir_plan().get_node(*id).unwrap(),
+            Node::Expression(Expression::Constant(_))
+        ));
+    }
 }
 
 mod except;

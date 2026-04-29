@@ -481,7 +481,8 @@ pub trait Vshard {
     /// - Execution errors
     fn exec_ir_on_buckets<'p>(
         &self,
-        sub_plan: ExecutionPlan,
+        sub_plan: Rc<ExecutionPlan>,
+        top_id: NodeId,
         buckets: &Buckets,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError>;
@@ -494,7 +495,8 @@ pub trait Vshard {
     /// - Execution errors
     fn exec_ir_on_any_node<'p>(
         &self,
-        sub_plan: ExecutionPlan,
+        sub_plan: Rc<ExecutionPlan>,
+        top_id: NodeId,
         buckets: &Buckets,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError>;

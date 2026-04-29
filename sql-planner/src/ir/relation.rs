@@ -517,6 +517,27 @@ impl Table {
     }
 
     #[must_use]
+    pub fn is_sharded(&self) -> bool {
+        matches!(self.kind, TableKind::ShardedSpace { .. })
+    }
+
+    /// Return whether the sharding `bucket_id` column is the first primary-key part.
+    #[must_use]
+    pub fn has_bucket_id_primary_key_prefix(&self) -> bool {
+        if !self.is_sharded() {
+            return false;
+        }
+
+        let Some(first_pk_pos) = self.primary_key.positions.first() else {
+            return false;
+        };
+
+        self.columns
+            .get(*first_pk_pos)
+            .is_some_and(|column| column.role == ColumnRole::Sharding)
+    }
+
+    #[must_use]
     pub fn engine(&self) -> SpaceEngine {
         match &self.kind {
             TableKind::SystemSpace | TableKind::GlobalSpace => SpaceEngine::Memtx,

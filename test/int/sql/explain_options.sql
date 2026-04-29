@@ -51,11 +51,11 @@ plan:
 │ 2. Query (STORAGE) │
 ╰────────────────────╯
 ''
-SELECT "gr_expr_1", "gr_expr_2", "gr_expr_3", "gr_expr_4", "gr_expr_5", "gr_expr_6" FROM ( SELECT "t"."a" as "gr_expr_1", "t"."b" as "gr_expr_2", "t"."c" as "gr_expr_3", "t"."COL_0" as "gr_expr_4", "t"."COL_1" as "gr_expr_5", "t"."COL_2" as "gr_expr_6" FROM "t" INNER JOIN ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "TMP_16168701359278756412_0136" ) as "t" ON CAST(true AS bool) GROUP BY "t"."a", "t"."b", "t"."c", "t"."COL_0", "t"."COL_1", "t"."COL_2" ) ORDER BY 4 LIMIT 5
+SELECT "gr_expr_1", "gr_expr_2", "gr_expr_3", "gr_expr_4", "gr_expr_5", "gr_expr_6" FROM ( SELECT "t"."a" as "gr_expr_1", "t"."b" as "gr_expr_2", "t"."c" as "gr_expr_3", "t"."COL_0" as "gr_expr_4", "t"."COL_1" as "gr_expr_5", "t"."COL_2" as "gr_expr_6" FROM "t" INNER JOIN ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "TMP_8554073533927061987_0136" ) as "t" ON CAST(true AS bool) GROUP BY "t"."a", "t"."b", "t"."c", "t"."COL_0", "t"."COL_1", "t"."COL_2" ) ORDER BY 4 LIMIT 5
 ''
 plan:
     [0] SCAN TABLE t (~1048576 rows)
-        [0] SCAN TABLE TMP_16168701359278756412_0136 (~1048576 rows)
+        [0] SCAN TABLE TMP_8554073533927061987_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
@@ -63,10 +63,10 @@ plan:
 │ 3. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "a", "b", "c", "a", "b", "c" FROM ( SELECT "COL_0" as "a", "COL_1" as "b", "COL_2" as "c", "COL_3" as "a", "COL_4" as "b", "COL_5" as "c" FROM ( SELECT "COL_0", "COL_1", "COL_2", "COL_3", "COL_4", "COL_5" FROM "TMP_16395273730977733505_0136" ) GROUP BY "COL_0", "COL_1", "COL_2", "COL_3", "COL_4", "COL_5" ) ORDER BY 4 LIMIT 5
+SELECT "a", "b", "c", "a", "b", "c" FROM ( SELECT "COL_0" as "a", "COL_1" as "b", "COL_2" as "c", "COL_3" as "a", "COL_4" as "b", "COL_5" as "c" FROM ( SELECT "COL_0", "COL_1", "COL_2", "COL_3", "COL_4", "COL_5" FROM "TMP_12303710340300335502_1136" ) GROUP BY "COL_0", "COL_1", "COL_2", "COL_3", "COL_4", "COL_5" ) ORDER BY 4 LIMIT 5
 ''
 plan:
-    [0] SCAN TABLE TMP_16395273730977733505_0136 (~1048576 rows)
+    [0] SCAN TABLE TMP_12303710340300335502_1136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
@@ -117,7 +117,7 @@ FROM
       "COL_1",
       "COL_2"
     FROM
-      "TMP_1873893905113759248_0136"
+      "TMP_10708443887562185739_0136"
   )
 GROUP BY
   "COL_0",
@@ -125,7 +125,7 @@ GROUP BY
   "COL_2"
 ''
 plan:
-    [0] SCAN TABLE TMP_1873893905113759248_0136 (~1048576 rows)
+    [0] SCAN TABLE TMP_10708443887562185739_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 ╭────────────────────╮
@@ -150,7 +150,7 @@ FROM
       "COL_1",
       "COL_2"
     FROM
-      "TMP_11382294507056677330_0136"
+      "TMP_1775831832684500176_1136"
   )
 ORDER BY
 '  3'
@@ -159,7 +159,7 @@ LIMIT
 ''
 plan:
     [2] SCAN TABLE t (~1048576 rows)
-    [3] SCAN TABLE TMP_11382294507056677330_0136 (~1048576 rows)
+    [3] SCAN TABLE TMP_1775831832684500176_1136 (~1048576 rows)
     [1] COMPOUND SUBQUERIES 2 AND 3 USING TEMP B-TREE (UNION)
     [0] SCAN SUBQUERY 1 (~1 row)
     [0] USE TEMP B-TREE FOR ORDER BY
@@ -180,7 +180,7 @@ FROM
         "COL_1",
         "COL_2"
       FROM
-        "TMP_3518291152574438074_0136"
+        "TMP_10014680312475178822_2136"
     )
   )
 ORDER BY
@@ -189,7 +189,7 @@ LIMIT
 '  5'
 ''
 plan:
-    [0] SCAN TABLE TMP_3518291152574438074_0136 (~1048576 rows)
+    [0] SCAN TABLE TMP_10014680312475178822_2136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
 ──────────────────────────────────────────────────────────────────────
@@ -427,10 +427,10 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "a" FROM ( SELECT "COL_0" as "a" FROM ( SELECT "COL_0" FROM "TMP_329108555022385471_0136" ) GROUP BY "COL_0" ) ORDER BY "a" LIMIT 1
+SELECT "a" FROM ( SELECT "COL_0" as "a" FROM ( SELECT "COL_0" FROM "TMP_6750925285242178588_0136" ) GROUP BY "COL_0" ) ORDER BY "a" LIMIT 1
 ''
 plan:
-    [0] SCAN TABLE TMP_329108555022385471_0136 (~1048576 rows)
+    [0] SCAN TABLE TMP_6750925285242178588_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 ──────────────────────────────────────────────────────────────────────
@@ -502,10 +502,10 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "d", "COL_1" as "d", "COL_2" as "d" FROM ( SELECT "COL_0", "COL_1", "COL_2" FROM "TMP_3840293930621530743_0136" ) ORDER BY 1
+SELECT "COL_0" as "d", "COL_1" as "d", "COL_2" as "d" FROM ( SELECT "COL_0", "COL_1", "COL_2" FROM "TMP_12357788242454060125_0136" ) ORDER BY 1
 ''
 plan:
-    [0] SCAN TABLE TMP_3840293930621530743_0136 (~1048576 rows)
+    [0] SCAN TABLE TMP_12357788242454060125_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR ORDER BY
 
 -- TEST: default-select
@@ -582,22 +582,22 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "b" FROM ( SELECT "COL_0" FROM "TMP_360955720146140810_0136" ) GROUP BY "COL_0"
+SELECT "COL_0" as "b" FROM ( SELECT "COL_0" FROM "TMP_6336902104418448325_0136" ) GROUP BY "COL_0"
 ''
 plan:
-    [0] SCAN TABLE TMP_360955720146140810_0136 (~1048576 rows)
+    [0] SCAN TABLE TMP_6336902104418448325_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 ╭────────────────────╮
 │ 3. Query (STORAGE) │
 ╰────────────────────╯
 ''
-SELECT "a" FROM ( SELECT "t"."a" FROM "t" UNION ALL SELECT "COL_0" FROM "TMP_14578838286934790748_0136" ) ORDER BY 1 LIMIT 1
+SELECT "a" FROM ( SELECT "t"."a" FROM "t" UNION ALL SELECT "COL_0" FROM "TMP_11718628551685952233_1136" ) ORDER BY 1 LIMIT 1
 ''
 plan:
     [1] SCAN TABLE t (~1048576 rows)
     [1] USE TEMP B-TREE FOR ORDER BY
-    [2] SCAN TABLE TMP_14578838286934790748_0136 (~1048576 rows)
+    [2] SCAN TABLE TMP_11718628551685952233_1136 (~1048576 rows)
     [2] USE TEMP B-TREE FOR ORDER BY
     [0] COMPOUND SUBQUERIES 1 AND 2 (UNION ALL)
 ''
@@ -605,10 +605,10 @@ plan:
 │ 4. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "a" FROM ( SELECT "COL_0" FROM "TMP_4568982083100930460_0136" ) ORDER BY 1 LIMIT 1
+SELECT "COL_0" as "a" FROM ( SELECT "COL_0" FROM "TMP_2686742979206912190_2136" ) ORDER BY 1 LIMIT 1
 ''
 plan:
-    [0] SCAN TABLE TMP_4568982083100930460_0136 (~1048576 rows)
+    [0] SCAN TABLE TMP_2686742979206912190_2136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
 ──────────────────────────────────────────────────────────────────────
@@ -687,7 +687,7 @@ FROM
         SELECT
           "COL_0"
         FROM
-          "TMP_1724946765736423630_0136"
+          "TMP_11220547791858563238_0136"
       ) as "tt" ON "tt"."COL_0" = "t"."a"
     GROUP BY
       "t"."a"
@@ -699,7 +699,7 @@ LIMIT
 ''
 plan:
     [0] SCAN TABLE t (~1048576 rows)
-        [0] SCAN TABLE TMP_1724946765736423630_0136 (~1048576 rows)
+        [0] SCAN TABLE TMP_11220547791858563238_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 ╭───────────────────╮
@@ -717,7 +717,7 @@ FROM
         SELECT
           "COL_0"
         FROM
-          "TMP_5710276931428869830_0136"
+          "TMP_5693774806165816034_1136"
       )
     GROUP BY
       "COL_0"
@@ -728,7 +728,7 @@ LIMIT
 '  1'
 ''
 plan:
-    [0] SCAN TABLE TMP_5710276931428869830_0136 (~1048576 rows)
+    [0] SCAN TABLE TMP_5693774806165816034_1136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 ──────────────────────────────────────────────────────────────────────

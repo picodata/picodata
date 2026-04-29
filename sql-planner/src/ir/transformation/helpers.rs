@@ -66,17 +66,18 @@ pub fn check_transformation(
 ) -> PatternWithParams {
     let mut plan = sql_to_ir(query, params);
     plan = f_transform(plan);
-    let mut ex_plan = ExecutionPlan::new(plan);
+    let ex_plan = ExecutionPlan::new(plan);
     let top_id = ex_plan.get_ir_plan().get_top().unwrap();
 
-    ex_plan
-        .get_mut_ir_plan()
-        .stash_constants(Snapshot::Latest)
-        .unwrap();
+    let params = ex_plan
+        .local_sql_params(top_id, Snapshot::Latest)
+        .expect("local sql params");
 
     let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Latest, false).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
-    let sql = ex_plan.generate_sql(&nodes, 0, table_name, None).unwrap();
-    PatternWithParams::new(sql, ex_plan.get_ir_plan().constants.clone())
+    let sql = ex_plan
+        .generate_sql(&nodes, 0, table_name, Some(params.constant_ids()))
+        .unwrap();
+    PatternWithParams::new(sql, params.params().to_vec())
 }

@@ -25,10 +25,10 @@ use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::engine::helpers::vshard::prepare_rs_to_ir_map;
 use sql::executor::engine::helpers::{
     init_delete_tuple_builder, init_insert_tuple_builder, init_local_update_tuple_builder,
-    init_sharded_update_tuple_builder, try_get_metadata_from_plan, vtable_columns,
+    init_sharded_update_tuple_builder, try_get_metadata_from_plan_for_top, vtable_columns,
 };
 use sql::executor::engine::protocol::{
-    build_dql_data_source, DeleteCoreData, ExecutionCacheMissData, ExecutionData,
+    build_dql_protocol_for_top, DeleteCoreData, DqlProtocol, ExecutionCacheMissData,
     FilteredDeleteData, FullDeleteData, InsertCoreData, LocalInsertData, LocalUpdateData,
     SharedUpdateData, TupleInsertData, UpdateCoreData,
 };
@@ -42,7 +42,7 @@ use sql::ir::api::children::Children;
 use sql::ir::bucket::{BucketSet, Buckets};
 use sql::ir::helpers::RepeatableState;
 use sql::ir::node::relational::Relational;
-use sql::ir::node::{Delete, Insert, Motion, Update};
+use sql::ir::node::{Delete, Insert, Motion, NodeId, Update};
 use sql::ir::operator::UpdateStrategy;
 use sql::ir::options::{Options, ReadPreference};
 use sql::ir::transformation::redistribution::MotionPolicy;
@@ -70,7 +70,7 @@ use tarantool::tuple::{Tuple, TupleBuilder};
 
 pub type SqlResult<T> = Result<T, SbroadError>;
 
-/// CacheMissResponse lazy initialize ExecutionCacheMissData by calling the closure with ExecutionData.
+/// CacheMissResponse lazy initialize ExecutionCacheMissData by calling the closure with DqlProtocol.
 type CacheMissResponse = LazyCell<
     Result<ExecutionCacheMissData, SbroadError>,
     Box<dyn FnOnce() -> Result<ExecutionCacheMissData, SbroadError>>,
@@ -131,12 +131,12 @@ impl QueryMetaStorage {
         return Ok(rc_value.clone());
     }
 
-    fn put(&self, plan_id: u64, plan: ExecutionData) -> Result<CacheGuard, SbroadError> {
+    fn put(&self, plan_id: u64, plan: DqlProtocol) -> Result<CacheGuard, SbroadError> {
         let mut metadata = self.query_meta.lock();
         let handle = match metadata.entry(plan_id) {
             Entry::Vacant(e) => {
                 let rc = Rc::new(CacheMissResponse::new(Box::new(move || {
-                    ExecutionCacheMissData::try_from(plan)
+                    ExecutionCacheMissData::try_from(&plan)
                 })));
                 e.insert(Rc::downgrade(&rc));
                 rc
@@ -145,7 +145,7 @@ impl QueryMetaStorage {
                 Some(rc) => rc,
                 None => {
                     let rc = Rc::new(CacheMissResponse::new(Box::new(move || {
-                        ExecutionCacheMissData::try_from(plan)
+                        ExecutionCacheMissData::try_from(&plan)
                     })));
                     e.insert(Rc::downgrade(&rc));
                     rc
@@ -182,7 +182,7 @@ fn local_sender_id() -> SqlResult<u64> {
         .map(|node| node.raft_id)
 }
 
-fn encode_dql_tuple(data_source: &ExecutionData) -> SqlResult<Tuple> {
+fn encode_dql_tuple(data_source: &impl DQLDataSource) -> SqlResult<Tuple> {
     encode_tuple_with_reservation(
         |bc| {
             write_dql_packet(bc, data_source)
@@ -195,7 +195,7 @@ fn encode_dql_tuple(data_source: &ExecutionData) -> SqlResult<Tuple> {
     )
 }
 
-fn put_query_meta(plan: Option<ExecutionData>) -> SqlResult<Option<CacheGuard>> {
+fn put_query_meta(plan: Option<DqlProtocol>) -> SqlResult<Option<CacheGuard>> {
     let Some(plan) = plan else {
         return Ok(None);
     };
@@ -209,7 +209,7 @@ enum DmlRequest {
         core: DeleteCoreData,
         types: Vec<sql::ir::relation::Column>,
         pattern: sql::executor::engine::helpers::TupleBuilderPattern,
-        plan: ExecutionData,
+        plan: DqlProtocol,
     },
     DeleteFull {
         core: DeleteCoreData,
@@ -225,7 +225,7 @@ enum DmlRequest {
         core: InsertCoreData,
         types: Vec<sql::ir::relation::Column>,
         pattern: sql::executor::engine::helpers::TupleBuilderPattern,
-        plan: ExecutionData,
+        plan: DqlProtocol,
     },
     UpdateShared {
         core: UpdateCoreData,
@@ -237,12 +237,12 @@ enum DmlRequest {
         core: UpdateCoreData,
         types: Vec<sql::ir::relation::Column>,
         pattern: sql::executor::engine::helpers::TupleBuilderPattern,
-        plan: ExecutionData,
+        plan: DqlProtocol,
     },
 }
 
 impl DmlRequest {
-    fn into_message(self) -> SqlResult<(Tuple, Option<ExecutionData>)> {
+    fn into_message(self) -> SqlResult<(Tuple, Option<DqlProtocol>)> {
         match self {
             Self::DeleteFiltered {
                 core,
@@ -443,7 +443,8 @@ impl DmlRequest {
 
 pub(crate) fn single_plan_dispatch<'p>(
     port: &mut impl Port<'p>,
-    ex_plan: ExecutionPlan,
+    ex_plan: Rc<ExecutionPlan>,
+    top_id: NodeId,
     buckets: &Buckets,
     timeout: Duration,
     tier: Option<&str>,
@@ -452,17 +453,17 @@ pub(crate) fn single_plan_dispatch<'p>(
     let deadline = Instant::now_fiber().saturating_add(timeout);
     let replicasets = replicasets_from_buckets(&lua, buckets, tier, deadline)?;
     let timeout = deadline.duration_since(Instant::now_fiber());
-    let query_type = ex_plan.query_type()?;
+    let query_type = query_type_for_top(&ex_plan, top_id)?;
     match &query_type {
         QueryType::DQL => {
             let max_rows = ex_plan.get_sql_motion_row_max();
             let read_preference = effective_read_preference(&ex_plan)?;
             if should_single_rs_dispatch_locally(buckets, tier, &replicasets, &read_preference)? {
-                execute_dql_locally(port, ex_plan, buckets, timeout, &read_preference)?;
+                execute_dql_locally(port, ex_plan, top_id, buckets, timeout, &read_preference)?;
                 return Ok(());
             }
 
-            port_write_metadata(port, &ex_plan)?;
+            port_write_metadata_for_top(port, &ex_plan, top_id)?;
             // For read_preference = 'replica' | 'any', we follow an optimistic scenario.
             // Plan will be routed to RO replica, so references from vshard will not help.
             let is_on_leader =
@@ -472,6 +473,7 @@ pub(crate) fn single_plan_dispatch<'p>(
                 port,
                 &lua,
                 ex_plan,
+                top_id,
                 &replicasets,
                 max_rows,
                 timeout,
@@ -482,11 +484,11 @@ pub(crate) fn single_plan_dispatch<'p>(
         }
         QueryType::DML => {
             if should_single_rs_dispatch_locally(buckets, tier, &replicasets, "leader")? {
-                execute_dml_locally(port, ex_plan, timeout)?;
+                execute_dml_locally(port, ex_plan, top_id, timeout)?;
                 return Ok(());
             }
 
-            single_plan_dispatch_dml(port, &lua, ex_plan, &replicasets, timeout, tier)?
+            single_plan_dispatch_dml(port, &lua, ex_plan, top_id, &replicasets, timeout, tier)?
         }
     };
     Ok(())
@@ -495,7 +497,8 @@ pub(crate) fn single_plan_dispatch<'p>(
 pub(crate) fn custom_plan_dispatch<'p>(
     port: &mut impl Port<'p>,
     runtime: &impl Vshard,
-    ex_plan: ExecutionPlan,
+    ex_plan: Rc<ExecutionPlan>,
+    top_id: NodeId,
     buckets: &Buckets,
     timeout: Duration,
     tier: Option<&str>,
@@ -509,7 +512,7 @@ pub(crate) fn custom_plan_dispatch<'p>(
             "No replicasets found for the given buckets".into(),
         ));
     }
-    let query_type = ex_plan.query_type()?;
+    let query_type = query_type_for_top(&ex_plan, top_id)?;
     match &query_type {
         QueryType::DQL => {
             let max_rows = ex_plan.get_sql_motion_row_max();
@@ -520,14 +523,21 @@ pub(crate) fn custom_plan_dispatch<'p>(
                 &rs_buckets,
                 &read_preference,
             )? {
-                let local_plan = extract_single_rs_plan(rs_buckets, ex_plan)?;
-                execute_dql_locally(port, local_plan, buckets, timeout, &read_preference)?;
+                let local_plan = extract_single_rs_plan(rs_buckets, &ex_plan, top_id)?;
+                execute_dql_locally(
+                    port,
+                    Rc::new(local_plan),
+                    top_id,
+                    buckets,
+                    timeout,
+                    &read_preference,
+                )?;
                 return Ok(());
             }
 
             // All custom plans must return the same metadata,
             // so we can use the original plan to write it to the port.
-            port_write_metadata(port, &ex_plan)?;
+            port_write_metadata_for_top(port, &ex_plan, top_id)?;
             // For read_preference = 'replica' | 'any', we follow an optimistic scenario.
             // Plan will be routed to RO replica, so references from vshard will not help.
             let is_on_leader =
@@ -537,6 +547,7 @@ pub(crate) fn custom_plan_dispatch<'p>(
                 port,
                 &lua,
                 ex_plan,
+                top_id,
                 rs_buckets,
                 max_rows,
                 timeout,
@@ -547,12 +558,12 @@ pub(crate) fn custom_plan_dispatch<'p>(
         }
         QueryType::DML => {
             if should_single_rs_buckets_dispatch_locally(buckets, tier, &rs_buckets, "leader")? {
-                let local_plan = extract_single_rs_plan(rs_buckets, ex_plan)?;
-                execute_dml_locally(port, local_plan, timeout)?;
+                let local_plan = extract_single_rs_plan(rs_buckets, &ex_plan, top_id)?;
+                execute_dml_locally(port, Rc::new(local_plan), top_id, timeout)?;
                 return Ok(());
             }
 
-            custom_plan_dispatch_dml(port, &lua, ex_plan, rs_buckets, timeout, tier)?;
+            custom_plan_dispatch_dml(port, &lua, ex_plan, top_id, rs_buckets, timeout, tier)?;
         }
     };
     Ok(())
@@ -699,17 +710,25 @@ fn port_write_block_metadata<'p>(
     Ok(())
 }
 
-pub(crate) fn port_write_metadata<'p>(
+pub(crate) fn port_write_metadata_for_top<'p>(
     port: &mut impl Port<'p>,
     ex_plan: &ExecutionPlan,
+    top_id: NodeId,
 ) -> SqlResult<()> {
-    let metadata = try_get_metadata_from_plan(ex_plan)?.ok_or_else(|| {
+    let metadata = try_get_metadata_from_plan_for_top(ex_plan, top_id)?.ok_or_else(|| {
         SbroadError::FailedTo(
             Action::Get,
             Some(Entity::Query),
             "Failed to get metadata from execution plan".into(),
         )
     })?;
+    port_write_metadata_impl(port, &metadata)
+}
+
+fn port_write_metadata_impl<'p>(
+    port: &mut impl Port<'p>,
+    metadata: &[MetadataColumn],
+) -> SqlResult<()> {
     let length = metadata.len() as u32;
     write_metadata(
         port,
@@ -968,7 +987,8 @@ fn with_local_bucket_ref<T>(
 
 fn execute_dql_locally<'p>(
     port: &mut impl Port<'p>,
-    ex_plan: ExecutionPlan,
+    ex_plan: Rc<ExecutionPlan>,
+    top_id: NodeId,
     buckets: &Buckets,
     timeout: Duration,
     read_preference: &str,
@@ -976,7 +996,7 @@ fn execute_dql_locally<'p>(
     let start = Instant::now_fiber();
     let res = with_local_bucket_ref(timeout, read_preference, || {
         let runtime = StorageRuntime::new();
-        runtime.exec_ir_on_any_node(ex_plan, buckets, port)
+        runtime.exec_ir_on_any_node(ex_plan, top_id, buckets, port)
     });
     let result = if res.is_ok() { "ok" } else { "err" };
     observe_sql_local_query_duration("dql", result, &Instant::now_fiber().duration_since(start));
@@ -999,11 +1019,12 @@ fn port_write_local_dml_response<'p>(port: &mut impl Port<'p>, changed: u64) -> 
 
 fn execute_dml_locally<'p>(
     port: &mut impl Port<'p>,
-    ex_plan: ExecutionPlan,
+    ex_plan: Rc<ExecutionPlan>,
+    top_id: NodeId,
     timeout: Duration,
 ) -> SqlResult<()> {
     let start = Instant::now_fiber();
-    let request = build_dml_request(ex_plan)?;
+    let request = build_dml_request(ex_plan, top_id)?;
 
     let res = with_local_bucket_ref(timeout, "leader", move || match request {
         DmlRequest::DeleteFull {
@@ -1089,9 +1110,10 @@ fn decode_local_dml_row_count(mp: &[u8]) -> SqlResult<u64> {
 
 fn extract_single_rs_plan(
     rs_buckets: Vec<(String, Vec<u64>)>,
-    ex_plan: ExecutionPlan,
+    ex_plan: &ExecutionPlan,
+    top_id: NodeId,
 ) -> SqlResult<ExecutionPlan> {
-    let (mut rs_plan, _) = prepare_rs_to_ir_map(&rs_buckets, ex_plan)?;
+    let (mut rs_plan, _) = prepare_rs_to_ir_map(&rs_buckets, ex_plan.clone(), top_id)?;
     let Some((_, ex_plan)) = rs_plan.drain().next() else {
         return Err(SbroadError::DispatchError(
             "expected a single replicaset execution plan".into(),
@@ -1100,10 +1122,20 @@ fn extract_single_rs_plan(
     Ok(ex_plan)
 }
 
+fn query_type_for_top(ex_plan: &ExecutionPlan, top_id: NodeId) -> SqlResult<QueryType> {
+    let top = ex_plan.get_ir_plan().get_relation_node(top_id)?;
+    if top.is_dml() {
+        Ok(QueryType::DML)
+    } else {
+        Ok(QueryType::DQL)
+    }
+}
+
 fn single_plan_dispatch_dql<'lua, 'p>(
     port: &mut impl Port<'p>,
     lua: &'lua LuaThread,
-    ex_plan: ExecutionPlan,
+    ex_plan: Rc<ExecutionPlan>,
+    top_id: NodeId,
     replicasets: &[String],
     max_rows: u64,
     timeout: Duration,
@@ -1111,8 +1143,8 @@ fn single_plan_dispatch_dql<'lua, 'p>(
     read_preference: String,
     do_two_step: bool,
 ) -> SqlResult<()> {
-    let row_len = row_len(&ex_plan)?;
-    let data_source = build_dql_data_source(ex_plan, local_sender_id()?)
+    let row_len = row_len(&ex_plan, top_id)?;
+    let data_source = build_dql_protocol_for_top(ex_plan, top_id, local_sender_id()?)
         .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
     let tuple = encode_dql_tuple(&data_source)?;
     let _guard = put_query_meta(Some(data_source))?;
@@ -1156,7 +1188,8 @@ pub(crate) fn build_cache_miss_dql_packet(request_id: &str, plan_id: u64) -> Sql
 fn custom_plan_dispatch_dql<'lua, 'p>(
     port: &mut impl Port<'p>,
     lua: &'lua LuaThread,
-    ex_plan: ExecutionPlan,
+    ex_plan: Rc<ExecutionPlan>,
+    top_id: NodeId,
     rs_buckets: Vec<(String, Vec<u64>)>,
     max_rows: u64,
     timeout: Duration,
@@ -1164,14 +1197,15 @@ fn custom_plan_dispatch_dql<'lua, 'p>(
     read_preference: String,
     do_two_step: bool,
 ) -> SqlResult<()> {
-    let row_len = row_len(&ex_plan)?;
-    let (rs_plan, extra_plan_id) = prepare_rs_to_ir_map(&rs_buckets, ex_plan)?;
+    let row_len = row_len(&ex_plan, top_id)?;
+    let (rs_plan, extra_plan_id) =
+        prepare_rs_to_ir_map(&rs_buckets, ex_plan.as_ref().clone(), top_id)?;
     let plans = rs_plan.len();
     let mut first_args = HashMap::with_capacity(rs_plan.len());
     let mut exec_plan = None;
     let mut extra_exec_plan = None;
     for (rs, ex_plan) in rs_plan {
-        let data_source = build_dql_data_source(ex_plan, local_sender_id()?)?;
+        let data_source = build_dql_protocol_for_top(Rc::new(ex_plan), top_id, local_sender_id()?)?;
         let tuple = encode_dql_tuple(&data_source)?;
         first_args.insert(rs, tuple);
         if Some(data_source.get_plan_id()) != extra_plan_id {
@@ -1204,10 +1238,10 @@ fn custom_plan_dispatch_dql<'lua, 'p>(
     Ok(())
 }
 
-fn row_len(ex_plan: &ExecutionPlan) -> SqlResult<u32> {
+fn row_len(ex_plan: &ExecutionPlan, top_id: NodeId) -> SqlResult<u32> {
     let ir_plan = ex_plan.get_ir_plan();
     let columns_len = ir_plan
-        .get_row_list(ir_plan.get_relation_node(ir_plan.get_top()?)?.output())?
+        .get_row_list(ir_plan.get_relation_node(top_id)?.output())?
         .len();
     let len = u32::try_from(columns_len).map_err(|e| {
         SbroadError::DispatchError(format_smolstr!(
@@ -1433,9 +1467,8 @@ fn buckets_by_replicasets(
 
 /// Creates a typed DML request that can later be either encoded for remote
 /// execution or executed locally without re-parsing the protocol payload.
-fn build_dml_request(ex_plan: ExecutionPlan) -> SqlResult<DmlRequest> {
+fn build_dml_request(ex_plan: Rc<ExecutionPlan>, top_id: NodeId) -> SqlResult<DmlRequest> {
     let plan = ex_plan.get_ir_plan();
-    let top_id = plan.get_top()?;
     let relation_node = plan.get_relation_node(top_id)?;
 
     // If DML child is a motion with local policy, data will be processed in storage.
@@ -1491,8 +1524,9 @@ fn build_dml_request(ex_plan: ExecutionPlan) -> SqlResult<DmlRequest> {
 
                     let types = vtable_columns(plan, *child)?;
                     let pattern = init_delete_tuple_builder(plan, top_id)?;
-                    let plan = build_dql_data_source(ex_plan, local_sender_id()?)
-                        .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
+                    let plan =
+                        build_dql_protocol_for_top(Rc::clone(&ex_plan), top_id, local_sender_id()?)
+                            .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
                     Ok(DmlRequest::DeleteFiltered {
                         core,
                         types,
@@ -1537,8 +1571,9 @@ fn build_dml_request(ex_plan: ExecutionPlan) -> SqlResult<DmlRequest> {
             } else {
                 let types = vtable_columns(plan, *child)?;
                 let pattern = init_insert_tuple_builder(plan, types.as_slice(), top_id)?;
-                let plan = build_dql_data_source(ex_plan, local_sender_id()?)
-                    .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
+                let plan =
+                    build_dql_protocol_for_top(Rc::clone(&ex_plan), top_id, local_sender_id()?)
+                        .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
                 Ok(DmlRequest::InsertLocal {
                     core,
                     types,
@@ -1563,10 +1598,9 @@ fn build_dml_request(ex_plan: ExecutionPlan) -> SqlResult<DmlRequest> {
             };
 
             match strategy {
-                UpdateStrategy::ShardedUpdate { delete_tuple_len } => {
+                UpdateStrategy::ShardedUpdate => {
                     debug_assert!(!with_dql, "ShardedUpdate cannot be used with DQL");
-                    let delete_tuple_len =
-                        delete_tuple_len.expect("ShardedUpdate must have delete_tuple_len");
+                    let delete_tuple_len = ex_plan.get_update_delete_tuple_len(top_id)?;
                     let table = ex_plan.get_motion_vtable(*child)?;
                     let pattern =
                         init_sharded_update_tuple_builder(plan, table.get_columns(), top_id)?;
@@ -1581,8 +1615,9 @@ fn build_dml_request(ex_plan: ExecutionPlan) -> SqlResult<DmlRequest> {
                     debug_assert!(with_dql, "LocalUpdate cannot be used without DQL");
                     let types = vtable_columns(plan, *child)?;
                     let pattern = init_local_update_tuple_builder(plan, types.as_slice(), top_id)?;
-                    let plan = build_dql_data_source(ex_plan, local_sender_id()?)
-                        .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
+                    let plan =
+                        build_dql_protocol_for_top(Rc::clone(&ex_plan), top_id, local_sender_id()?)
+                            .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
                     Ok(DmlRequest::UpdateLocal {
                         core,
                         types,
@@ -1601,14 +1636,15 @@ fn build_dml_request(ex_plan: ExecutionPlan) -> SqlResult<DmlRequest> {
 fn single_plan_dispatch_dml<'lua, 'p>(
     port: &mut impl Port<'p>,
     lua: &'lua LuaThread,
-    ex_plan: ExecutionPlan,
+    ex_plan: Rc<ExecutionPlan>,
+    top_id: NodeId,
     replicasets: &[String],
     timeout: Duration,
     tier: Option<&str>,
 ) -> SqlResult<()> {
     // This option is available only for DQL.
     let read_preference = ReadPreference::default().to_string();
-    let (message, new_plan) = build_dml_request(ex_plan)?.into_message()?;
+    let (message, new_plan) = build_dml_request(ex_plan, top_id)?.into_message()?;
     let _guard = put_query_meta(new_plan)?;
 
     let lua_table = lua_single_plan_dispatch(
@@ -1629,17 +1665,18 @@ fn single_plan_dispatch_dml<'lua, 'p>(
 fn custom_plan_dispatch_dml<'lua, 'p>(
     port: &mut impl Port<'p>,
     lua: &'lua LuaThread,
-    ex_plan: ExecutionPlan,
+    ex_plan: Rc<ExecutionPlan>,
+    top_id: NodeId,
     rs_buckets: Vec<(String, Vec<u64>)>,
     timeout: Duration,
     tier: Option<&str>,
 ) -> SqlResult<()> {
     let read_preference = ReadPreference::default().to_string();
-    let (rs_plan, _) = prepare_rs_to_ir_map(&rs_buckets, ex_plan)?;
+    let (rs_plan, _) = prepare_rs_to_ir_map(&rs_buckets, ex_plan.as_ref().clone(), top_id)?;
     let mut dql_encoder = None;
     let mut args = HashMap::with_capacity(rs_plan.len());
     for (rs, ex_plan) in rs_plan {
-        let (message, new_plan) = build_dml_request(ex_plan)?.into_message()?;
+        let (message, new_plan) = build_dml_request(Rc::new(ex_plan), top_id)?.into_message()?;
         dql_encoder = new_plan;
         args.insert(rs, message);
     }

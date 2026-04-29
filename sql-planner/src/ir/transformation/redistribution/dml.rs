@@ -1,5 +1,5 @@
 use crate::errors::{Entity, SbroadError};
-use crate::ir::node::relational::{MutRelational, Relational};
+use crate::ir::node::relational::Relational;
 use crate::ir::node::{Delete, Insert, Motion, NodeId, Update};
 use crate::ir::operator::{ConflictStrategy, UpdateStrategy};
 use crate::ir::relation::{Column, Table};
@@ -128,62 +128,6 @@ impl Plan {
         panic!("Expected DML node to get table from. Got {node:?}.")
     }
 
-    /// Set the length of tuple to delete for
-    /// sharded `Update`.
-    ///
-    /// # Errors
-    /// - Node is not an sharded `Update`
-    pub fn set_update_delete_tuple_len(
-        &mut self,
-        update_id: NodeId,
-        len: usize,
-    ) -> Result<(), SbroadError> {
-        let node = self.get_mut_relation_node(update_id)?;
-        if let MutRelational::Update(Update {
-            strategy:
-                UpdateStrategy::ShardedUpdate {
-                    delete_tuple_len, ..
-                },
-            ..
-        }) = node
-        {
-            *delete_tuple_len = Some(len);
-        } else {
-            return Err(SbroadError::Invalid(
-                Entity::Node,
-                Some(format_smolstr!("expected sharded Update, got: {node:?}")),
-            ));
-        }
-        Ok(())
-    }
-
-    /// Return the length of tuple to delete for
-    /// sharded `Update`.
-    ///
-    /// # Errors
-    /// - Node is not an sharded `Update`
-    /// - length not set on current `Update` node
-    pub fn get_update_delete_tuple_len(&self, update_id: NodeId) -> Result<usize, SbroadError> {
-        let node = self.get_relation_node(update_id)?;
-        if let Relational::Update(Update {
-            strategy:
-                UpdateStrategy::ShardedUpdate {
-                    delete_tuple_len: Some(len),
-                    ..
-                },
-            ..
-        }) = node
-        {
-            return Ok(*len);
-        }
-        Err(SbroadError::Invalid(
-            Entity::Node,
-            Some(format_smolstr!(
-                "expected sharded Update with delete len, got: {node:?}"
-            )),
-        ))
-    }
-
     /// Get `Motion`'s node opcode with given index
     ///
     /// # Errors
@@ -217,7 +161,7 @@ impl Plan {
     pub fn is_sharded_update(&self, update_id: NodeId) -> Result<bool, SbroadError> {
         let node = self.get_relation_node(update_id)?;
         if let Relational::Update(Update { strategy, .. }) = node {
-            return Ok(matches!(strategy, UpdateStrategy::ShardedUpdate { .. }));
+            return Ok(matches!(strategy, UpdateStrategy::ShardedUpdate));
         }
         Err(SbroadError::Invalid(
             Entity::Node,

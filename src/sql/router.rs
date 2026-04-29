@@ -6,7 +6,7 @@ use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::engine::helpers::vshard::get_random_bucket;
 use sql::executor::engine::helpers::{
-    dispatch_impl, empty_plan_write, materialize_motion, materialize_values,
+    dispatch_impl, empty_plan_write_for_top, materialize_motion, materialize_values,
 };
 use sql::executor::engine::helpers::{sharding_key_from_map, sharding_key_from_tuple};
 use sql::executor::engine::{get_builtin_functions, BlockExecData, QueryCache, Router, Vshard};
@@ -618,7 +618,8 @@ pub(crate) fn calculate_bucket_id(tuple: &[&Value], bucket_count: u64) -> Result
 impl Vshard for Tier {
     fn exec_ir_on_buckets<'p>(
         &self,
-        sub_plan: ExecutionPlan,
+        sub_plan: Rc<ExecutionPlan>,
+        top_id: NodeId,
         buckets: &Buckets,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
@@ -627,6 +628,7 @@ impl Vshard for Tier {
             port,
             self,
             sub_plan,
+            top_id,
             buckets,
             tier.as_ref().map(|s| s.as_str()),
         )?;
@@ -647,12 +649,13 @@ impl Vshard for Tier {
 
     fn exec_ir_on_any_node<'p>(
         &self,
-        sub_plan: ExecutionPlan,
+        sub_plan: Rc<ExecutionPlan>,
+        top_id: NodeId,
         buckets: &Buckets,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
         let runtime = StorageRuntime::new();
-        runtime.exec_ir_on_any_node(sub_plan, buckets, port)?;
+        runtime.exec_ir_on_any_node(sub_plan, top_id, buckets, port)?;
         Ok(())
     }
 
@@ -692,7 +695,8 @@ impl Vshard for &Tier {
 
     fn exec_ir_on_buckets<'p>(
         &self,
-        sub_plan: ExecutionPlan,
+        sub_plan: Rc<ExecutionPlan>,
+        top_id: NodeId,
         buckets: &Buckets,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
@@ -701,6 +705,7 @@ impl Vshard for &Tier {
             port,
             self,
             sub_plan,
+            top_id,
             buckets,
             tier.as_ref().map(|s| s.as_str()),
         )?;
@@ -709,12 +714,13 @@ impl Vshard for &Tier {
 
     fn exec_ir_on_any_node<'p>(
         &self,
-        sub_plan: ExecutionPlan,
+        sub_plan: Rc<ExecutionPlan>,
+        top_id: NodeId,
         buckets: &Buckets,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
         let runtime = StorageRuntime::new();
-        runtime.exec_ir_on_any_node(sub_plan, buckets, port)?;
+        runtime.exec_ir_on_any_node(sub_plan, top_id, buckets, port)?;
         Ok(())
     }
 
@@ -905,23 +911,25 @@ impl Metadata for RouterMetadata {
 fn bucket_dispatch<'p>(
     port: &mut impl Port<'p>,
     runtime: &impl Vshard,
-    ex_plan: ExecutionPlan,
+    ex_plan: Rc<ExecutionPlan>,
+    top_id: NodeId,
     buckets: &Buckets,
     tier: Option<&str>,
 ) -> Result<(), SbroadError> {
     if let Buckets::Filtered(BucketSet::Exact(bucket_set)) = buckets {
         if bucket_set.is_empty() {
-            empty_plan_write(port, &ex_plan)?;
+            empty_plan_write_for_top(port, &ex_plan, top_id)?;
             return Ok(());
         }
     }
 
     let timeout = DEFAULT_QUERY_TIMEOUT;
+    let flags = ex_plan.subtree_dispatch_flags_at(top_id)?;
 
-    if !ex_plan.has_segmented_tables() && !ex_plan.has_customization_opcodes() {
-        single_plan_dispatch(port, ex_plan, buckets, timeout, tier)?;
+    if !flags.has_segmented_tables && !flags.has_customization_opcodes {
+        single_plan_dispatch(port, ex_plan, top_id, buckets, timeout, tier)?;
     } else {
-        custom_plan_dispatch(port, runtime, ex_plan, buckets, timeout, tier)?;
+        custom_plan_dispatch(port, runtime, ex_plan, top_id, buckets, timeout, tier)?;
     }
     Ok(())
 }

@@ -285,11 +285,11 @@ pub enum UpdateStrategy {
     ///    => len of insertion tuple > len of deletion tuple.
     ///    This invariant will be used to distinguish between these tuples on the storage (tuples are
     ///    stored in the same table, because currently whole sbroad assumes that motion
-    ///    produces only one table). The len of deletion tuple is saved in this struct
-    ///    variant
+    ///    produces only one table). The len of deletion tuple is calculated during
+    ///    execution and stored in the execution plan overlay.
     /// 4. On storages the table is traversed and in transaction first tuples are deleted,
     ///    then insertion tuples are inserted.
-    ShardedUpdate { delete_tuple_len: Option<usize> },
+    ShardedUpdate,
     /// Strategy when no sharding column is updated.
     ///
     /// In this case because join/selection does not change
@@ -322,7 +322,7 @@ pub enum UpdateStrategy {
 impl From<&UpdateStrategy> for UpdateType {
     fn from(value: &UpdateStrategy) -> Self {
         match value {
-            UpdateStrategy::ShardedUpdate { .. } => UpdateType::Shared,
+            UpdateStrategy::ShardedUpdate => UpdateType::Shared,
             UpdateStrategy::LocalUpdate => UpdateType::Local,
         }
     }
@@ -584,9 +584,7 @@ impl Plan {
                     create_ref_from_column(self, rel_child_id, relation, &child_map, col_pos)?;
                 projection_cols.push(shard_col_expr_id);
             }
-            UpdateStrategy::ShardedUpdate {
-                delete_tuple_len: None,
-            }
+            UpdateStrategy::ShardedUpdate
         } else {
             // For local Update, projection has the following format:
             // update_expressions, pk_expressions (not present in update_expressions)

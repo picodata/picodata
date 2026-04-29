@@ -436,7 +436,7 @@ on q."f" = "t1"."b""#;
     let DispatchInfo::All(sql, params) = info.get(0).unwrap() else {
         panic!("Expected a single dispatch on all replicasets");
     };
-    assert_snapshot!(sql, @r#"SELECT "t1"."a", "t1"."b", "q".* FROM "t1" INNER JOIN (SELECT "COL_1","COL_2" FROM "TMP_0_0136") as "q" ON "q"."COL_1" = "t1"."b""#);
+    assert_snapshot!(sql, @r#"SELECT "t1"."a", "t1"."b", "q".* FROM "t1" INNER JOIN (SELECT "COL_1","COL_2" FROM "TMP_0_1136") as "q" ON "q"."COL_1" = "t1"."b""#);
     assert!(params.is_empty());
 }
 

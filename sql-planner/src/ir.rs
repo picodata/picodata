@@ -1,5 +1,4 @@
 //! Contains the logical plan tree and helpers.
-use ahash::AHashMap;
 use bitflags::bitflags;
 use expression::Position;
 use node::acl::{Acl, MutAcl};
@@ -19,6 +18,8 @@ use std::rc::Rc;
 use std::slice::{Iter, IterMut};
 use tree::traversal::LevelNode;
 use types::UnrestrictedType;
+
+use ahash::AHashMap;
 
 use self::relation::Relations;
 use self::transformation::redistribution::MotionPolicy;
@@ -690,8 +691,6 @@ pub struct Plan {
     /// The undo log keeps the history of the plan transformations. It can
     /// be used to revert the plan subtree to some previous snapshot if needed.
     pub(crate) undo: TransformationLog,
-    /// Constants that were stashed during execution preparation. They will be passed as parameters.
-    pub(crate) constants: Vec<Value>,
     /// Options that were passed by user in `Option` clause. Does not include
     /// options for DDL as those are handled separately. This field is used only
     /// for storing the order of options in `Option` clause. This is needed because
@@ -715,12 +714,50 @@ pub struct Plan {
     /// global tables use `None`.
     #[serde(skip)]
     pub tier: Option<SmolStr>,
-    /// Plan id stored for each motion subtree.
-    /// Valid only for the original plan.
-    /// Check out `materialize_motion` for more.
+    /// Derived cache for reusable structural subtree hashes.
     #[serde(skip)]
-    pub plan_id_cache: Rc<RefCell<AHashMap<NodeId, u64>>>,
+    pub(crate) subtree_hash_cache: SubtreeHashCache,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SubtreeHash {
+    pub(crate) hash: u64,
+    pub(crate) sql_parameter_count: usize,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub(crate) struct SubtreeViewKey {
+    pub(crate) top_id: NodeId,
+    pub(crate) node_ids: Vec<NodeId>,
+    pub(crate) node_levels: Vec<u32>,
+    pub(crate) leaf_motions: Vec<NodeId>,
+    pub(crate) serialize_as_empty: Vec<(NodeId, bool)>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct SubtreeHashCache {
+    inner: Rc<RefCell<AHashMap<SubtreeViewKey, SubtreeHash>>>,
+}
+
+impl SubtreeHashCache {
+    pub(crate) fn get(&self, key: &SubtreeViewKey) -> Option<SubtreeHash> {
+        self.inner.borrow().get(key).copied()
+    }
+
+    pub(crate) fn insert(&self, key: SubtreeViewKey, hash: SubtreeHash) {
+        self.inner.borrow_mut().insert(key, hash);
+    }
+}
+
+impl PartialEq for SubtreeHashCache {
+    fn eq(&self, _other: &Self) -> bool {
+        // The cache stores derived subtree hashes. Warm and cold caches must
+        // compare equally so `Plan` equality reflects only semantic IR state.
+        true
+    }
+}
+
+impl Eq for SubtreeHashCache {}
 
 /// Helper structures used to build the plan
 /// on the router.
@@ -798,10 +835,6 @@ impl Plan {
             .as_ref()
             .expect("context always exists during plan build")
             .borrow_mut()
-    }
-
-    pub fn get_params(&self) -> &Vec<Value> {
-        self.constants.as_ref()
     }
 
     pub fn get_nodes(&self) -> &Nodes {
@@ -894,14 +927,13 @@ impl Plan {
             top: None,
             explain_options: ExplainOptions::empty(),
             undo: TransformationLog::new(),
-            constants: Vec::new(),
             raw_options: vec![],
             effective_options: Options::default(),
             table_version_map: VersionMap::with_hasher(RepeatableState),
             index_version_map: HashMap::with_hasher(RepeatableState),
             context: Some(RefCell::new(BuildContext::default())),
             tier: None,
-            plan_id_cache: Rc::new(RefCell::new(AHashMap::new())),
+            subtree_hash_cache: SubtreeHashCache::default(),
         }
     }
 

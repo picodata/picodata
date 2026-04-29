@@ -19,7 +19,7 @@ use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::engine::helpers::{
     build_insert_args, write_shared_update_args, TupleBuilderCommand, TupleBuilderPattern,
 };
-use sql::executor::engine::protocol::{ExecutionCacheMissData, ExecutionData};
+use sql::executor::engine::protocol::{DqlProtocol, ExecutionCacheMissData};
 use sql::executor::engine::{CachedStmtRef, QueryCache, StorageCache, Vshard};
 use sql::executor::preemption::Scheduler;
 use sql::executor::protocol::SchemaInfo;
@@ -613,7 +613,7 @@ where
 
 pub(crate) fn dql_execute_locally_from_plan<'p, R: QueryCache>(
     runtime: &R,
-    dql: &ExecutionData,
+    dql: &DqlProtocol,
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
@@ -1327,7 +1327,7 @@ pub(crate) fn materialized_update_from_plan<R: Vshard + QueryCache>(
     version: u64,
     columns: &[Column],
     builder: &TupleBuilderPattern,
-    dql: &ExecutionData,
+    dql: &DqlProtocol,
 ) -> Result<u64, SbroadError>
 where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,
@@ -1502,7 +1502,7 @@ pub(crate) fn filtered_delete_from_plan<R: Vshard + QueryCache>(
     version: u64,
     columns: &[Column],
     builder: &TupleBuilderPattern,
-    dql: &ExecutionData,
+    dql: &DqlProtocol,
 ) -> Result<u64, SbroadError>
 where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,

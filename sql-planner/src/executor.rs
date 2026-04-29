@@ -439,7 +439,8 @@ where
                                     virtual_table,
                                     &vshard,
                                 )?;
-                                self.get_mut_exec_plan().unlink_motion_subtree(*motion_id)?;
+                                self.get_mut_exec_plan()
+                                    .mark_motion_subtree_unlinked(*motion_id)?;
                                 continue;
                             }
                         }

@@ -1,9 +1,8 @@
 use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::Expression;
-use crate::ir::node::{Constant, Node, Node32, NodeId, Parameter};
+use crate::ir::node::{Constant, Node, NodeId};
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
 use crate::ir::tree::Snapshot;
-use crate::ir::types::DerivedType;
 use crate::ir::value::Value;
 use crate::ir::{Nodes, Plan};
 use smol_str::format_smolstr;
@@ -89,49 +88,29 @@ impl Plan {
         vec
     }
 
-    /// Replace constant nodes with parameters (and hide them in the parameters map).
+    /// Collect constant nodes as SQL parameters without mutating the plan.
     ///
     /// # Errors
     /// - The plan is corrupted (collected constants point to invalid arena positions).
-    pub fn stash_constants(&mut self, snapshot: Snapshot) -> Result<(), SbroadError> {
-        let top_id = self.get_top().expect("Top node should be specified!");
-        self.stash_constants_in_subtree(top_id, snapshot)
-    }
-
-    pub fn stash_constants_in_subtree(
-        &mut self,
+    pub fn collect_const_params(
+        &self,
         top_id: NodeId,
         snapshot: Snapshot,
-    ) -> Result<(), SbroadError> {
+    ) -> Result<(Vec<NodeId>, Vec<Value>), SbroadError> {
         // TODO: ensure that constants.len() does not exceed the limit on the number of parameters
         // in tarantool
-        let index = |num: usize| -> Result<u16, _> {
-            (num + 1).try_into().map_err(|_| {
+        let check_index = |num: usize| -> Result<(), SbroadError> {
+            let _: u16 = (num + 1).try_into().map_err(|_| {
                 SbroadError::Other(format_smolstr!("too many parameters in local sql: {num}"))
-            })
+            })?;
+            Ok(())
         };
         let constant_ids = self.get_const_list(top_id, snapshot);
-        self.constants.reserve(constant_ids.len());
+        let mut params = Vec::with_capacity(constant_ids.len());
         for (num, const_id) in constant_ids.iter().enumerate() {
-            let param_type = self.calculate_expression_type(*const_id)?;
-            let param_type = param_type
-                .map(DerivedType::new)
-                // NULL literal has an unknown type
-                .unwrap_or(DerivedType::unknown());
-            let const_node = self.nodes.replace32(
-                *const_id,
-                Node32::Parameter(Parameter {
-                    param_type,
-                    index: index(num)?,
-                    unique: false,
-                }),
-            )?;
-            if let Node32::Constant(Constant { value }) = const_node {
-                self.constants.push(value);
-            } else {
-                panic!("{const_node:?} is not a constant");
-            }
+            check_index(num)?;
+            params.push(self.as_const_value_ref(*const_id)?.clone());
         }
-        Ok(())
+        Ok((constant_ids, params))
     }
 }

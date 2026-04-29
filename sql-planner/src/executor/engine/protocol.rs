@@ -1,14 +1,18 @@
 use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
-use crate::errors::SbroadError;
+use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::{table_name, write_insert_args, TupleBuilderPattern};
 use crate::executor::engine::VersionMap;
-use crate::executor::ir::ExecutionPlan;
-use crate::executor::vtable::{VTableTuple, VirtualTable, VirtualTableTupleEncoder};
+use crate::executor::ir::{DqlSubtree, ExecutionPlan, SubtreeViewBuilder};
+use crate::executor::vtable::{
+    VTableTuple, VirtualTable, VirtualTableMap, VirtualTableTupleEncoder,
+};
 use crate::ir::helpers::RepeatableState;
+use crate::ir::node::NodeId;
 use crate::ir::relation::Column;
 use crate::ir::tree::Snapshot;
+use crate::ir::value::Value;
 use rmp::encode::write_array_len;
-use smol_str::SmolStr;
+use smol_str::{format_smolstr, SmolStr};
 use sql_protocol::dml::delete::{
     CoreDeleteDataSource, DeleteFilteredDataSource, DeleteFullDataSource,
 };
@@ -54,23 +58,40 @@ impl<V: Encode> MsgpackEncode for ArrayMsgpackEncoder<'_, V> {
     }
 }
 
-/// Datasource for DQL queries
+/// Datasource for DQL queries backed by an owned execution plan.
 pub struct ExecutionData {
     plan_id: u64,
     sender_id: u64,
     vtables: HashMap<SmolStr, Rc<VirtualTable>>,
+    sql_top_id: NodeId,
+    constant_ids: Vec<NodeId>,
+    params: Vec<Value>,
     plan: ExecutionPlan, // TODO: maybe Rc<> + top_id is better
 }
 
+/// Datasource for DQL queries over an immutable execution plan.
+pub struct DqlProtocol {
+    plan_id: u64,
+    sender_id: u64,
+    vtables: HashMap<SmolStr, Rc<VirtualTable>>,
+    sql_top_id: NodeId,
+    constant_ids: Vec<NodeId>,
+    params: Vec<Value>,
+    plan: Rc<ExecutionPlan>,
+}
+
 impl ExecutionData {
+    /// Returns the plan id used by the remote SQL cache.
     pub fn plan_id(&self) -> u64 {
         self.plan_id
     }
 
+    /// Returns virtual tables that must be sent with this query.
     pub fn vtables(&self) -> &HashMap<SmolStr, Rc<VirtualTable>> {
         &self.vtables
     }
 
+    /// Returns effective DQL options encoded into the protocol message.
     pub fn options(&self) -> DQLOptions {
         self.plan
             .get_ir_plan()
@@ -78,8 +99,41 @@ impl ExecutionData {
             .to_protocol_options()
     }
 
+    /// Encodes local SQL parameter values as msgpack.
     pub fn encoded_params(&self) -> Vec<u8> {
-        tarantool::msgpack::encode(self.plan.get_ir_plan().get_params())
+        tarantool::msgpack::encode(&self.params)
+    }
+}
+
+impl DqlProtocol {
+    /// Returns the plan id used by the remote SQL cache.
+    pub fn plan_id(&self) -> u64 {
+        self.plan_id
+    }
+
+    /// Returns virtual tables visible inside this DQL subtree.
+    pub fn vtables(&self) -> &HashMap<SmolStr, Rc<VirtualTable>> {
+        &self.vtables
+    }
+
+    /// Returns effective DQL options encoded into the protocol message.
+    pub fn options(&self) -> DQLOptions {
+        self.plan
+            .get_ir_plan()
+            .effective_options
+            .to_protocol_options()
+    }
+
+    /// Encodes local SQL parameter values as msgpack.
+    pub fn encoded_params(&self) -> Vec<u8> {
+        tarantool::msgpack::encode(&self.params)
+    }
+
+    fn dql_subtree(&self) -> Result<DqlSubtree<'_>, SbroadError> {
+        self.plan
+            .freeze()
+            .execution_view()
+            .dql_subtree(self.sql_top_id)
     }
 }
 
@@ -136,7 +190,64 @@ impl DQLDataSource for ExecutionData {
     }
 
     fn get_params(&self) -> impl MsgpackEncode {
-        ArrayMsgpackEncoder::new(self.plan.get_ir_plan().get_params().as_slice())
+        ArrayMsgpackEncoder::new(self.params.as_slice())
+    }
+}
+
+impl DQLDataSource for DqlProtocol {
+    fn get_table_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
+        self.plan
+            .get_ir_plan()
+            .table_version_map
+            .iter()
+            .map(|(k, v)| (*k, *v))
+    }
+
+    fn get_index_schema_info(&self) -> impl ExactSizeIterator<Item = ([u32; 2], u64)> {
+        self.plan
+            .get_ir_plan()
+            .index_version_map
+            .iter()
+            .map(|(k, v)| (*k, *v))
+    }
+
+    fn get_plan_id(&self) -> u64 {
+        self.plan_id
+    }
+
+    fn get_sender_id(&self) -> u64 {
+        self.sender_id
+    }
+
+    fn get_request_id(&self) -> &str {
+        self.plan.get_request_id()
+    }
+
+    fn get_vtables(
+        &self,
+    ) -> impl ExactSizeIterator<Item = (&str, impl ExactSizeIterator<Item = impl MsgpackEncode>)>
+    {
+        self.vtables.iter().map(|(name, table)| {
+            (
+                name.as_str(),
+                table
+                    .get_tuples()
+                    .iter()
+                    .enumerate()
+                    .map(|(pk, tuple)| VirtualTableTupleEncoder::new(tuple, pk as u64)),
+            )
+        })
+    }
+
+    fn get_options(&self) -> DQLOptions {
+        self.plan
+            .get_ir_plan()
+            .effective_options
+            .to_protocol_options()
+    }
+
+    fn get_params(&self) -> impl MsgpackEncode {
+        ArrayMsgpackEncoder::new(self.params.as_slice())
     }
 }
 
@@ -184,19 +295,21 @@ impl DeleteFullDataSource for FullDeleteData {
     }
 }
 
-pub struct FilteredDeleteData<'a> {
+/// Protocol data for a delete whose target rows come from a DQL data source.
+pub struct FilteredDeleteData<'a, D: DQLDataSource> {
     core: DeleteCoreData,
     types: Vec<Column>,
     pattern: TupleBuilderPattern,
-    dql_data: &'a ExecutionData,
+    dql_data: &'a D,
 }
 
-impl<'a> FilteredDeleteData<'a> {
+impl<'a, D: DQLDataSource> FilteredDeleteData<'a, D> {
+    /// Creates filtered delete protocol data.
     pub fn new(
         core: DeleteCoreData,
         types: Vec<Column>,
         pattern: TupleBuilderPattern,
-        dql_data: &'a ExecutionData,
+        dql_data: &'a D,
     ) -> Self {
         Self {
             core,
@@ -207,7 +320,7 @@ impl<'a> FilteredDeleteData<'a> {
     }
 }
 
-impl CoreDeleteDataSource for FilteredDeleteData<'_> {
+impl<D: DQLDataSource> CoreDeleteDataSource for FilteredDeleteData<'_, D> {
     fn get_request_id(&self) -> &str {
         &self.core.request_id
     }
@@ -219,7 +332,7 @@ impl CoreDeleteDataSource for FilteredDeleteData<'_> {
     }
 }
 
-impl DeleteFilteredDataSource for FilteredDeleteData<'_> {
+impl<D: DQLDataSource> DeleteFilteredDataSource for FilteredDeleteData<'_, D> {
     fn get_column_types(&self) -> impl ExactSizeIterator<Item = ColumnType> {
         self.types.iter().map(|x| x.r#type.into())
     }
@@ -378,19 +491,21 @@ impl MsgpackEncode for InsertTupleEncoder<'_> {
     }
 }
 
-pub struct LocalInsertData<'a> {
+/// Protocol data for an insert that materializes tuples from a DQL source.
+pub struct LocalInsertData<'a, D: DQLDataSource> {
     core: InsertCoreData,
     types: Vec<Column>,
     pattern: TupleBuilderPattern,
-    dql_data: &'a ExecutionData,
+    dql_data: &'a D,
 }
 
-impl<'a> LocalInsertData<'a> {
+impl<'a, D: DQLDataSource> LocalInsertData<'a, D> {
+    /// Creates local insert protocol data.
     pub fn new(
         core: InsertCoreData,
         types: Vec<Column>,
         pattern: TupleBuilderPattern,
-        dql_data: &'a ExecutionData,
+        dql_data: &'a D,
     ) -> Self {
         Self {
             core,
@@ -401,7 +516,7 @@ impl<'a> LocalInsertData<'a> {
     }
 }
 
-impl CoreInsertDataSource for LocalInsertData<'_> {
+impl<D: DQLDataSource> CoreInsertDataSource for LocalInsertData<'_, D> {
     fn get_request_id(&self) -> &str {
         &self.core.request_id
     }
@@ -416,7 +531,7 @@ impl CoreInsertDataSource for LocalInsertData<'_> {
     }
 }
 
-impl InsertMaterializedDataSource for LocalInsertData<'_> {
+impl<D: DQLDataSource> InsertMaterializedDataSource for LocalInsertData<'_, D> {
     fn get_column_types(&self) -> impl ExactSizeIterator<Item = ColumnType> {
         self.types.iter().map(|x| x.r#type.into())
     }
@@ -572,19 +687,22 @@ impl MsgpackEncode for UpdateTupleEncoder<'_> {
         Ok(())
     }
 }
-pub struct LocalUpdateData<'a> {
+
+/// Protocol data for an update that materializes tuples from a DQL source.
+pub struct LocalUpdateData<'a, D: DQLDataSource> {
     core: UpdateCoreData,
     types: Vec<Column>,
     pattern: TupleBuilderPattern,
-    dql_data: &'a ExecutionData,
+    dql_data: &'a D,
 }
 
-impl<'a> LocalUpdateData<'a> {
+impl<'a, D: DQLDataSource> LocalUpdateData<'a, D> {
+    /// Creates local update protocol data.
     pub fn new(
         core: UpdateCoreData,
         types: Vec<Column>,
         pattern: TupleBuilderPattern,
-        dql_data: &'a ExecutionData,
+        dql_data: &'a D,
     ) -> Self {
         Self {
             core,
@@ -595,7 +713,7 @@ impl<'a> LocalUpdateData<'a> {
     }
 }
 
-impl CoreUpdateDataSource for LocalUpdateData<'_> {
+impl<D: DQLDataSource> CoreUpdateDataSource for LocalUpdateData<'_, D> {
     fn get_request_id(&self) -> &str {
         &self.core.request_id
     }
@@ -610,7 +728,7 @@ impl CoreUpdateDataSource for LocalUpdateData<'_> {
     }
 }
 
-impl UpdateDataSource for LocalUpdateData<'_> {
+impl<D: DQLDataSource> UpdateDataSource for LocalUpdateData<'_, D> {
     fn get_column_types(&self) -> impl ExactSizeIterator<Item = ColumnType> {
         self.types.iter().map(|x| x.r#type.into())
     }
@@ -622,18 +740,40 @@ impl UpdateDataSource for LocalUpdateData<'_> {
     }
 }
 
+/// Schema versions included in a DQL cache-miss response.
 #[derive(Default)]
 pub struct PlanVersion {
+    /// Table version map observed when the SQL was generated.
     pub table_version_map: VersionMap,
+    /// Index version map observed when the SQL was generated.
     pub index_version_map: HashMap<[u32; 2], u64, RepeatableState>,
 }
 
-/// Data for handle dql cache miss
+/// Data used to populate a DQL cache-miss response.
 #[derive(Default)]
 pub struct ExecutionCacheMissData {
+    /// Schema versions required to validate the cached SQL.
     pub schema_info: PlanVersion,
+    /// Metadata for virtual tables referenced by the generated SQL.
     pub vtables_meta: HashMap<SmolStr, Vec<(SmolStr, ColumnType)>>,
+    /// Local SQL rendered for the cache miss.
     pub sql: String,
+}
+
+fn vtables_metadata(
+    plan_id: u64,
+    vtables: &VirtualTableMap,
+) -> HashMap<SmolStr, Vec<(SmolStr, ColumnType)>> {
+    vtables
+        .iter()
+        .map(|(k, v)| {
+            let columns = v
+                .get_columns()
+                .iter()
+                .map(|column| (column.name.clone(), column.r#type.into()));
+            (table_name(plan_id, *k), columns.collect::<Vec<_>>())
+        })
+        .collect::<HashMap<_, _>>()
 }
 
 impl TryFrom<&ExecutionData> for ExecutionCacheMissData {
@@ -642,34 +782,12 @@ impl TryFrom<&ExecutionData> for ExecutionCacheMissData {
     fn try_from(value: &ExecutionData) -> Result<Self, Self::Error> {
         let sql = {
             let plan_id = value.get_plan_id();
-            let plan = value.plan.get_ir_plan();
-            let top_id = if plan.is_dml()? {
-                let child_id = plan.children(plan.get_top()?)[0];
-                plan.get_motion_child(child_id)?
-            } else {
-                plan.get_top()?
-            };
-
-            let sp = SyntaxPlan::new(&value.plan, top_id, Snapshot::Oldest, false)?;
+            let sp = SyntaxPlan::new(&value.plan, value.sql_top_id, Snapshot::Oldest, false)?;
             let on = OrderedSyntaxNodes::try_from(sp)?;
             let a = on.to_syntax_data()?;
-            value.plan.generate_sql(&a, plan_id, table_name, None)?
-        };
-
-        let vtables_meta = {
-            let plan_id = value.get_plan_id();
             value
                 .plan
-                .get_vtables()
-                .iter()
-                .map(|(k, v)| {
-                    let columns = v
-                        .get_columns()
-                        .iter()
-                        .map(|column| (column.name.clone(), column.r#type.into()));
-                    (table_name(plan_id, *k), columns.collect::<Vec<_>>())
-                })
-                .collect::<HashMap<_, _>>()
+                .generate_sql(&a, plan_id, table_name, Some(value.constant_ids.as_slice()))?
         };
 
         let schema_info = PlanVersion {
@@ -678,7 +796,33 @@ impl TryFrom<&ExecutionData> for ExecutionCacheMissData {
         };
         Ok(Self {
             schema_info,
-            vtables_meta,
+            vtables_meta: vtables_metadata(value.get_plan_id(), value.plan.get_vtables()),
+            sql,
+        })
+    }
+}
+
+impl TryFrom<&DqlProtocol> for ExecutionCacheMissData {
+    type Error = SbroadError;
+
+    fn try_from(value: &DqlProtocol) -> Result<Self, Self::Error> {
+        let sql = {
+            let plan_id = value.get_plan_id();
+            let subtree = value.dql_subtree()?;
+            let sp = SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest, false)?;
+            let on = OrderedSyntaxNodes::try_from(sp)?;
+            let a = on.to_syntax_data()?;
+            subtree.generate_sql(&a, plan_id, table_name, Some(value.constant_ids.as_slice()))?
+        };
+
+        let plan = value.plan.get_ir_plan();
+        let schema_info = PlanVersion {
+            table_version_map: plan.table_version_map.clone(),
+            index_version_map: plan.index_version_map.clone(),
+        };
+        Ok(Self {
+            schema_info,
+            vtables_meta: vtables_metadata(value.get_plan_id(), value.plan.get_vtables()),
             sql,
         })
     }
@@ -725,21 +869,152 @@ impl DQLCacheMissDataSource for ExecutionCacheMissData {
     }
 }
 
+fn dql_sql_top_id(exec_plan: &ExecutionPlan) -> Result<NodeId, SbroadError> {
+    let top_id = exec_plan.get_ir_plan().get_top()?;
+    dql_sql_top_id_for_top(exec_plan, top_id)
+}
+
+fn dql_sql_top_id_for_top(
+    exec_plan: &ExecutionPlan,
+    top_id: NodeId,
+) -> Result<NodeId, SbroadError> {
+    let plan = exec_plan.get_ir_plan();
+    if plan.get_relation_node(top_id)?.is_dml() {
+        let child_id = plan.children(top_id)[0];
+        exec_plan
+            .effective_motion_subtree_root(child_id)?
+            .ok_or_else(|| {
+                SbroadError::Invalid(
+                    Entity::Motion,
+                    Some(format_smolstr!(
+                        "motion {child_id:?} has no effective subtree"
+                    )),
+                )
+            })
+    } else {
+        Ok(top_id)
+    }
+}
+
+/// Builds DQL protocol data for the top query of an execution plan.
+///
+/// # Errors
+/// - If the plan id is not set.
+/// - If the top query cannot be converted into a DQL subtree protocol view.
+pub fn build_dql_protocol(
+    exec_plan: ExecutionPlan,
+    sender_id: u64,
+) -> Result<DqlProtocol, SbroadError> {
+    let top_id = exec_plan.get_ir_plan().get_top()?;
+    build_dql_protocol_for_top(Rc::new(exec_plan), top_id, sender_id)
+}
+
+/// Builds DQL protocol data for an effective subtree rooted at `top_id`.
+///
+/// Only virtual tables visible from the selected subtree are included.
+///
+/// # Errors
+/// - If the plan id is not set.
+/// - If the selected subtree cannot be inspected or parameterized.
+pub fn build_dql_protocol_for_top(
+    exec_plan: Rc<ExecutionPlan>,
+    top_id: NodeId,
+    sender_id: u64,
+) -> Result<DqlProtocol, SbroadError> {
+    let plan_id = exec_plan.get_plan_id()?;
+    let sql_top_id = dql_sql_top_id_for_top(&exec_plan, top_id)?;
+    let subtree = SubtreeViewBuilder::new(&exec_plan, sql_top_id)?;
+    let sql_params = exec_plan.local_sql_params(sql_top_id, Snapshot::Oldest)?;
+    let subtree = subtree.node_ids().iter().copied().collect::<HashSet<_>>();
+    let vtables = exec_plan
+        .get_vtables()
+        .iter()
+        .filter(|(node_id, _)| subtree.contains(node_id))
+        .map(|(k, t)| (table_name(plan_id, *k), t.clone()))
+        .collect();
+    let (constant_ids, params) = sql_params.into_parts();
+
+    Ok(DqlProtocol {
+        plan_id,
+        sender_id,
+        vtables,
+        sql_top_id,
+        constant_ids,
+        params,
+        plan: exec_plan,
+    })
+}
+
+/// Builds the legacy owned-plan DQL data source.
+///
+/// # Errors
+/// - If the plan id is not set.
+/// - If the top query cannot be inspected or parameterized.
 pub fn build_dql_data_source(
     exec_plan: ExecutionPlan,
     sender_id: u64,
 ) -> Result<ExecutionData, SbroadError> {
     let plan_id = exec_plan.get_plan_id()?;
+    let sql_top_id = dql_sql_top_id(&exec_plan)?;
+    let sql_params = exec_plan.local_sql_params(sql_top_id, Snapshot::Oldest)?;
     let vtables = exec_plan
         .get_vtables()
         .iter()
         .map(|(k, t)| (table_name(plan_id, *k), t.clone()))
         .collect();
+    let (constant_ids, params) = sql_params.into_parts();
 
     Ok(ExecutionData {
         plan_id,
         sender_id,
         vtables,
+        sql_top_id,
+        constant_ids,
+        params,
         plan: exec_plan,
     })
+}
+
+#[cfg(all(test, feature = "mock"))]
+mod tests {
+    use super::*;
+    use crate::ir::transformation::helpers::sql_to_optimized_ir;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn dql_protocol_cache_miss_matches_execution_data() {
+        let mut exec_plan = ExecutionPlan::new(sql_to_optimized_ir(
+            r#"select "id" from "test_space" where "id" = 1"#,
+            vec![],
+        ));
+        let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+        exec_plan.set_plan_id(top_id).unwrap();
+
+        let execution_data = build_dql_data_source(exec_plan.clone(), 42).unwrap();
+        let dql_protocol = build_dql_protocol(exec_plan.clone(), 42).unwrap();
+
+        let mut protocol_params = Vec::new();
+        dql_protocol
+            .get_params()
+            .encode_into(&mut protocol_params)
+            .unwrap();
+
+        assert_eq!(execution_data.get_plan_id(), dql_protocol.get_plan_id());
+        assert_eq!(execution_data.encoded_params(), protocol_params);
+        assert_eq!(execution_data.get_options(), dql_protocol.get_options());
+
+        let execution_miss = ExecutionCacheMissData::try_from(&execution_data).unwrap();
+        let protocol_miss = ExecutionCacheMissData::try_from(&dql_protocol).unwrap();
+
+        assert_eq!(execution_miss.sql, protocol_miss.sql);
+        assert_eq!(execution_miss.vtables_meta, protocol_miss.vtables_meta);
+        assert_eq!(
+            execution_miss.schema_info.table_version_map,
+            protocol_miss.schema_info.table_version_map
+        );
+        assert_eq!(
+            execution_miss.schema_info.index_version_map,
+            protocol_miss.schema_info.index_version_map
+        );
+    }
 }

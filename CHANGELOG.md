@@ -69,6 +69,9 @@ with the `YY.MINOR.MICRO` scheme.
   (in the future this restriction may be lifted).
 - [picodata#760] Added validation of cluster.tier config file section against
   the persisted system table state upon instance restart.
+- SQL dispatch now uses an explicitly frozen immutable execution plan passed
+  through read-only views, allowing `take_subtree` and its subtree copies to be
+  removed.
 
 ### Fixes
 

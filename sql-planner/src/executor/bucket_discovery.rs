@@ -214,7 +214,10 @@ where
         // We use a `exec_plan_subtree_iter()` because we need DNF version of the
         // filter/condition expressions to determine buckets.
         let tree = PostOrderWithFilter::new(
-            |node| ir_plan.exec_plan_subtree_iter(node, Snapshot::Latest),
+            |node| {
+                self.exec_plan
+                    .effective_exec_plan_subtree_iter(node, Snapshot::Latest)
+            },
             |node| matches!(ir_plan.get_node(node), Ok(Node::Relational(..))),
             REL_CAPACITY,
         );

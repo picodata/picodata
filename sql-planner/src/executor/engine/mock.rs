@@ -1681,11 +1681,12 @@ impl QueryCache for RouterRuntimeMock {
 impl Vshard for RouterRuntimeMock {
     fn exec_ir_on_any_node<'p>(
         &self,
-        sub_plan: ExecutionPlan,
+        sub_plan: Rc<ExecutionPlan>,
+        top_id: NodeId,
         buckets: &Buckets,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
-        mock_dispatch(self, sub_plan, buckets, port)?;
+        mock_dispatch(self, sub_plan, top_id, buckets, port)?;
         Ok(())
     }
 
@@ -1703,11 +1704,12 @@ impl Vshard for RouterRuntimeMock {
 
     fn exec_ir_on_buckets<'p>(
         &self,
-        sub_plan: ExecutionPlan,
+        sub_plan: Rc<ExecutionPlan>,
+        top_id: NodeId,
         buckets: &Buckets,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
-        mock_dispatch(self, sub_plan, buckets, port)?;
+        mock_dispatch(self, sub_plan, top_id, buckets, port)?;
         Ok(())
     }
 
@@ -1738,21 +1740,23 @@ impl Vshard for &RouterRuntimeMock {
 
     fn exec_ir_on_any_node<'p>(
         &self,
-        sub_plan: ExecutionPlan,
+        sub_plan: Rc<ExecutionPlan>,
+        top_id: NodeId,
         buckets: &Buckets,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
-        mock_dispatch(self, sub_plan, buckets, port)?;
+        mock_dispatch(self, sub_plan, top_id, buckets, port)?;
         Ok(())
     }
 
     fn exec_ir_on_buckets<'p>(
         &self,
-        sub_plan: ExecutionPlan,
+        sub_plan: Rc<ExecutionPlan>,
+        top_id: NodeId,
         buckets: &Buckets,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
-        mock_dispatch(self, sub_plan, buckets, port)?;
+        mock_dispatch(self, sub_plan, top_id, buckets, port)?;
         Ok(())
     }
 
@@ -1780,25 +1784,27 @@ pub enum DispatchInfo {
 
 fn mock_dispatch<'p>(
     runtime: &RouterRuntimeMock,
-    plan: ExecutionPlan,
+    plan: Rc<ExecutionPlan>,
+    top_id: NodeId,
     buckets: &Buckets,
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError> {
-    let is_single = !plan.has_segmented_tables() && !plan.has_customization_opcodes();
+    let flags = plan.subtree_dispatch_flags_at(top_id)?;
+    let is_single = !flags.has_segmented_tables && !flags.has_customization_opcodes;
 
     match buckets {
         Buckets::All if is_single => {
-            let (pattern, params) = to_sql(&plan);
+            let (pattern, params) = to_sql(&plan, top_id);
             let mp = rmp_serde::to_vec(&DispatchInfo::All(pattern, params)).unwrap();
             port.add_mp(mp.as_slice());
         }
         Buckets::Any if is_single => {
-            let (pattern, params) = to_sql(&plan);
+            let (pattern, params) = to_sql(&plan, top_id);
             let mp = rmp_serde::to_vec(&DispatchInfo::Any(pattern, params)).unwrap();
             port.add_mp(mp.as_slice());
         }
         _ => {
-            let info = custom_plan_dispatch(runtime, plan, buckets);
+            let info = custom_plan_dispatch(runtime, &plan, top_id, buckets);
             let mp = rmp_serde::to_vec(&DispatchInfo::Filtered(info)).unwrap();
             port.add_mp(mp.as_slice());
         }
@@ -1807,30 +1813,38 @@ fn mock_dispatch<'p>(
     Ok(())
 }
 
-fn to_sql(plan: &ExecutionPlan) -> (String, Vec<Value>) {
-    let top_id = plan.get_ir_plan().get_top().unwrap();
-    let sp = SyntaxPlan::new(plan, top_id, Snapshot::Oldest, false).unwrap();
+fn to_sql(plan: &ExecutionPlan, top_id: NodeId) -> (String, Vec<Value>) {
+    let subtree = plan
+        .freeze()
+        .execution_view()
+        .dql_subtree(top_id)
+        .expect("dql subtree");
+    let sp = SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest, false).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
-    let sql = plan
-        .generate_sql(&nodes, TEMPLATE, table_name, None)
+    let params = plan
+        .local_sql_params(top_id, Snapshot::Oldest)
+        .expect("local sql params");
+    let (constant_ids, params) = params.into_parts();
+    let sql = subtree
+        .generate_sql(&nodes, TEMPLATE, table_name, Some(constant_ids.as_slice()))
         .unwrap();
-    let params = plan.get_ir_plan().constants.clone();
     (sql, params)
 }
 
 fn custom_plan_dispatch(
     runtime: &RouterRuntimeMock,
-    plan: ExecutionPlan,
+    plan: &ExecutionPlan,
+    top_id: NodeId,
     buckets: &Buckets,
 ) -> Vec<(String, Vec<Value>, String, Vec<u64>)> {
     let mut info = Vec::new();
     let mut rs_bucket_vec: Vec<(String, Vec<u64>)> =
         runtime.vshard_mock.group(buckets).drain().collect();
     rs_bucket_vec.sort_by_key(|(rs, _)| rs.clone());
-    let (rs_ir, _) = prepare_rs_to_ir_map(&rs_bucket_vec, plan).unwrap();
+    let (rs_ir, _) = prepare_rs_to_ir_map(&rs_bucket_vec, plan.clone(), top_id).unwrap();
     for (rs, ex_plan) in rs_ir {
-        let (pattern, params) = to_sql(&ex_plan);
+        let (pattern, params) = to_sql(&ex_plan, top_id);
         let buckets = rs_bucket_vec
             .iter()
             .find_map(|(name, buckets)| {
@@ -1911,7 +1925,7 @@ impl Router for RouterRuntimeMock {
         motion_node_id: &NodeId,
         _buckets: &Buckets,
     ) -> Result<VirtualTable, SbroadError> {
-        plan.unlink_motion_subtree(*motion_node_id)?;
+        plan.mark_motion_subtree_unlinked(*motion_node_id)?;
         Ok(self
             .virtual_tables
             .borrow()

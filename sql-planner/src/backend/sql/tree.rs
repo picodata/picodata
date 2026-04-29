@@ -1,5 +1,5 @@
 use crate::errors::{Entity, SbroadError};
-use crate::executor::ir::ExecutionPlan;
+use crate::executor::ir::{DqlSubtree, ExecutionPlan, SerializeAsEmptyState, SqlExecutionView};
 use crate::ir::expression::{FunctionFeature, TrimKind};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
@@ -11,8 +11,8 @@ use crate::ir::node::{
     ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, SubQueryReference, Trim, UnaryExpr,
     Union, UnionAll, Values, ValuesRow, Window,
 };
-use crate::ir::operator::{OrderByElement, OrderByEntity, OrderByType, Unary};
-use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy};
+use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, OrderByType, Unary};
+use crate::ir::transformation::redistribution::MotionPolicy;
 use crate::ir::tree::traversal::{LevelNode, PostOrder};
 use crate::ir::tree::Snapshot;
 use crate::ir::Plan;
@@ -762,7 +762,7 @@ pub struct SyntaxPlan<'p> {
     /// This vec should be empty after WINDOWS are handled.
     ///
     /// map of { name, sn_id }.
-    plan: &'p ExecutionPlan,
+    plan: &'p dyn SqlExecutionView,
     snapshot: Snapshot,
     /// If set to `true`, all children of the local motions will be added.
     skip_serialize_as_empty_opcode: bool,
@@ -791,8 +791,12 @@ impl<'p> SyntaxPlan<'p> {
             let plan = self.plan.get_ir_plan();
             let node = plan.get_node(plan_id).expect("node in the plan must exist");
             match node {
-                Node::Relational(Relational::Motion(Motion { child, .. })) => {
-                    let child_id = child.expect("MOTION child must exist");
+                Node::Relational(Relational::Motion(_)) => {
+                    let child_id = self
+                        .plan
+                        .effective_motion_child(plan_id)
+                        .expect("MOTION child lookup must succeed")
+                        .expect("MOTION child must exist");
                     if *id == child_id {
                         return;
                     }
@@ -829,19 +833,22 @@ impl<'p> SyntaxPlan<'p> {
             .get_node(plan_id)
             .expect("Plan node expected for popping.");
 
-        if let Node::Relational(Relational::Motion(Motion { child, .. })) = requested_plan_node {
-            let motion_child_id = child;
+        if let Node::Relational(Relational::Motion(_)) = requested_plan_node {
+            let motion_child_id = self
+                .plan
+                .effective_motion_child(plan_id)
+                .expect("MOTION child lookup must succeed");
             let motion_to_fix_id = if let Some(motion_child_id) = motion_child_id {
                 let motion_child_node = self
                     .plan
                     .get_ir_plan()
-                    .get_node(*motion_child_id)
+                    .get_node(motion_child_id)
                     .expect("motion child id is incorrect");
                 if matches!(
                     motion_child_node,
                     Node::Relational(Relational::Motion { .. })
                 ) {
-                    *motion_child_id
+                    motion_child_id
                 } else {
                     plan_id
                 }
@@ -860,27 +867,22 @@ impl<'p> SyntaxPlan<'p> {
             {
                 let mut should_cover_with_parentheses = true;
 
-                let empty_table_op = program
-                    .0
-                    .iter()
-                    .find(|op| matches!(op, MotionOpcode::SerializeAsEmptyTable(_)));
-                if matches!(
-                    empty_table_op,
-                    Some(MotionOpcode::SerializeAsEmptyTable(true))
-                ) {
+                let empty_table_state = self
+                    .plan
+                    .effective_serialize_as_empty_state(motion_to_fix_id, program);
+                if empty_table_state.is_enabled() {
                     // In `add_motion` we've created an `Inline` node for that case.
                     return sn_id;
                 }
-                let vtable_alias = if policy.is_local()
-                    && matches!(
-                        empty_table_op,
-                        Some(MotionOpcode::SerializeAsEmptyTable(false))
-                    ) {
+                let vtable_alias = if policy.is_local() && empty_table_state.is_disabled() {
                     // We don't want to generate a `SyntaxData::VTable` node
-                    // in case of Local policy with empty_table_op.
+                    // in case of Local policy with disabled SerializeAsEmptyTable.
                     // See `add_motion` function for details.
                     return sn_id;
                 } else {
+                    if !self.plan.contains_vtable_for_motion(motion_to_fix_id) {
+                        return sn_id;
+                    }
                     let vtable = self
                         .plan
                         .get_motion_vtable(motion_to_fix_id)
@@ -1172,22 +1174,50 @@ impl<'p> SyntaxPlan<'p> {
 
     fn add_selection_having(&mut self, id: NodeId) {
         let (plan, rel) = self.prologue_rel(id);
-        let (Relational::Selection(Selection { child, filter, .. })
-        | Relational::Having(Having { child, filter, .. })) = rel
-        else {
-            panic!("Expected FILTER node");
+        let (child, filter, has_bucket_filter) = match rel {
+            Relational::Selection(Selection { child, filter, .. }) => {
+                (*child, *filter, self.plan.get_bucket_ref(id).is_some())
+            }
+            Relational::Having(Having { child, filter, .. }) => (*child, *filter, false),
+            _ => panic!("Expected FILTER node"),
         };
 
         let filter_id = match self.snapshot {
-            Snapshot::Latest => *filter,
-            Snapshot::Oldest => *plan.undo.get_oldest(filter),
+            Snapshot::Latest => filter,
+            Snapshot::Oldest => *plan.undo.get_oldest(&filter),
         };
-        let child_plan_id = *child;
+        let should_wrap_filter =
+            has_bucket_filter && self.expression_subtree_contains_or(filter_id);
+        let child_plan_id = child;
         let filter_sn_id = self.pop_from_stack(filter_id, id);
         let child_sn_id = self.pop_from_stack(child_plan_id, id);
+        let filter_sn_id = if should_wrap_filter {
+            let lparen = self.nodes.push_sn_non_plan(SyntaxNode::new_lparen());
+            let rparen = self.nodes.push_sn_non_plan(SyntaxNode::new_rparen());
+            self.nodes.push_sn_non_plan(SyntaxNode::new_compound(vec![
+                lparen,
+                filter_sn_id,
+                rparen,
+            ]))
+        } else {
+            filter_sn_id
+        };
         let right = vec![filter_sn_id];
         let sn = SyntaxNode::new_pointer(id, Some(child_sn_id), right);
         self.nodes.push_sn_plan(sn);
+    }
+
+    fn expression_subtree_contains_or(&self, expr_id: NodeId) -> bool {
+        let plan = self.plan.get_ir_plan();
+        let expr_tree = PostOrder::new(|node| plan.nodes.expr_iter(node, true), plan.nodes.len());
+        expr_tree
+            .traverse_into_iter(expr_id)
+            .any(|LevelNode(_, id)| {
+                matches!(
+                    plan.get_expression_node(id),
+                    Ok(Expression::Bool(BoolExpr { op: Bool::Or, .. }))
+                )
+            })
     }
 
     fn add_group_by(&mut self, id: NodeId) {
@@ -1259,7 +1289,6 @@ impl<'p> SyntaxPlan<'p> {
         let (plan, motion) = self.prologue_rel(id);
         let Relational::Motion(Motion {
             policy,
-            child,
             program,
             output,
             ..
@@ -1268,7 +1297,10 @@ impl<'p> SyntaxPlan<'p> {
             panic!("Expected MOTION node");
         };
 
-        let first_child = *child;
+        let first_child = self
+            .plan
+            .effective_motion_child(id)
+            .expect("MOTION child lookup must succeed");
         if let MotionPolicy::LocalSegment { .. } = policy {
             #[cfg(feature = "mock")]
             {
@@ -1287,13 +1319,9 @@ impl<'p> SyntaxPlan<'p> {
             }
         }
 
-        let empty_table_op = program
-            .0
-            .iter()
-            .find(|op| matches!(op, MotionOpcode::SerializeAsEmptyTable(_)));
-        if let Some(op) = empty_table_op {
-            let is_enabled = matches!(op, MotionOpcode::SerializeAsEmptyTable(true))
-                && !self.skip_serialize_as_empty_opcode;
+        let empty_table_state = self.plan.effective_serialize_as_empty_state(id, program);
+        if empty_table_state != SerializeAsEmptyState::Absent {
+            let is_enabled = empty_table_state.is_enabled() && !self.skip_serialize_as_empty_opcode;
             if is_enabled {
                 let output_cols = plan.get_row_list(*output).expect("row aliases");
                 // We need to preserve types when doing `select null`,
@@ -1332,11 +1360,6 @@ impl<'p> SyntaxPlan<'p> {
                 let inline = SyntaxNode::new_inline(&empty_select);
                 let inline_sn_id = self.nodes.push_sn_non_plan(inline);
                 let sn = SyntaxNode::new_pointer(id, None, vec![inline_sn_id]);
-
-                // Remove motion's child from the stack (if any).
-                if let Some(child_id) = first_child {
-                    let _ = self.pop_from_stack(child_id, id);
-                }
 
                 // Append an empty table select instead of motion.
                 self.nodes.push_sn_plan(sn);
@@ -1698,9 +1721,7 @@ impl<'p> SyntaxPlan<'p> {
             .get_expression_node(child)
             .expect("alias child expression");
         if let Expression::Reference(_) = child_expr {
-            let alias = plan
-                .get_alias_from_reference_node(&child_expr)
-                .expect("alias name");
+            let alias = self.plan.reference_alias(&child_expr).expect("alias name");
             if alias == name {
                 let sn = SyntaxNode::new_pointer(id, None, vec![child_sn_id]);
                 self.nodes.push_sn_plan(sn);
@@ -2582,7 +2603,7 @@ impl<'p> SyntaxPlan<'p> {
         Ok(())
     }
 
-    pub(crate) fn empty(plan: &'p ExecutionPlan) -> Self {
+    pub(crate) fn empty(plan: &'p dyn SqlExecutionView) -> Self {
         SyntaxPlan {
             nodes: SyntaxNodes::with_capacity(plan.get_ir_plan().nodes.len() * 2),
             top: None,
@@ -2604,6 +2625,28 @@ impl<'p> SyntaxPlan<'p> {
         snapshot: Snapshot,
         skip_serialize_as_empty_opcode: bool,
     ) -> Result<Self, SbroadError> {
+        Self::new_for_view(plan, top, snapshot, skip_serialize_as_empty_opcode)
+    }
+
+    pub fn new_for_dql_subtree(
+        plan: &'p DqlSubtree<'_>,
+        snapshot: Snapshot,
+        skip_serialize_as_empty_opcode: bool,
+    ) -> Result<Self, SbroadError> {
+        Self::new_for_view(
+            plan,
+            plan.sql_top_id(),
+            snapshot,
+            skip_serialize_as_empty_opcode,
+        )
+    }
+
+    fn new_for_view(
+        plan: &'p dyn SqlExecutionView,
+        top: NodeId,
+        snapshot: Snapshot,
+        skip_serialize_as_empty_opcode: bool,
+    ) -> Result<Self, SbroadError> {
         let mut sp = SyntaxPlan::empty(plan);
         sp.snapshot = snapshot;
         sp.skip_serialize_as_empty_opcode = skip_serialize_as_empty_opcode;
@@ -2611,9 +2654,75 @@ impl<'p> SyntaxPlan<'p> {
 
         // Wrap plan's nodes and preserve their ids.
         let capacity = ir_plan.nodes.len();
+        let mut empty_motion_ids = HashSet::new();
+        if !skip_serialize_as_empty_opcode {
+            match snapshot {
+                Snapshot::Latest => {
+                    let dft_post = PostOrder::new(
+                        |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
+                            if plan.effective_motion_leaf_output(node).is_some() {
+                                Box::new(std::iter::empty())
+                            } else {
+                                Box::new(ir_plan.subtree_iter(node, false))
+                            }
+                        },
+                        capacity,
+                    );
+                    for LevelNode(_, id) in dft_post.traverse_into_iter(top) {
+                        if let Ok(Node::Relational(Relational::Motion(Motion {
+                            program, ..
+                        }))) = ir_plan.get_node(id)
+                        {
+                            if plan
+                                .effective_serialize_as_empty_state(id, program)
+                                .is_enabled()
+                            {
+                                empty_motion_ids.insert(id);
+                            }
+                        }
+                    }
+                }
+                Snapshot::Oldest => {
+                    let dft_post = PostOrder::new(
+                        |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
+                            if plan.effective_motion_leaf_output(node).is_some() {
+                                Box::new(std::iter::empty())
+                            } else {
+                                Box::new(ir_plan.flashback_subtree_iter(node))
+                            }
+                        },
+                        capacity,
+                    );
+                    for LevelNode(_, id) in dft_post.traverse_into_iter(top) {
+                        if let Ok(Node::Relational(Relational::Motion(Motion {
+                            program, ..
+                        }))) = ir_plan.get_node(id)
+                        {
+                            if plan
+                                .effective_serialize_as_empty_state(id, program)
+                                .is_enabled()
+                            {
+                                empty_motion_ids.insert(id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
         match snapshot {
             Snapshot::Latest => {
-                let dft_post = PostOrder::new(|node| ir_plan.subtree_iter(node, false), capacity);
+                let dft_post = PostOrder::new(
+                    |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
+                        if plan.effective_motion_leaf_output(node).is_some()
+                            || empty_motion_ids.contains(&node)
+                        {
+                            Box::new(std::iter::empty())
+                        } else {
+                            Box::new(ir_plan.subtree_iter(node, false))
+                        }
+                    },
+                    capacity,
+                );
                 for level_node in dft_post.traverse_into_iter(top) {
                     let id = level_node.1;
                     // it works only for post-order traversal
@@ -2625,8 +2734,18 @@ impl<'p> SyntaxPlan<'p> {
                 }
             }
             Snapshot::Oldest => {
-                let dft_post =
-                    PostOrder::new(|node| ir_plan.flashback_subtree_iter(node), capacity);
+                let dft_post = PostOrder::new(
+                    |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
+                        if plan.effective_motion_leaf_output(node).is_some()
+                            || empty_motion_ids.contains(&node)
+                        {
+                            Box::new(std::iter::empty())
+                        } else {
+                            Box::new(ir_plan.flashback_subtree_iter(node))
+                        }
+                    },
+                    capacity,
+                );
 
                 for level_node in dft_post.traverse_into_iter(top) {
                     let id = level_node.1;

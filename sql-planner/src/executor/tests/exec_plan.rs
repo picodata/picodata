@@ -2,9 +2,11 @@ use super::*;
 use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use crate::executor::engine::helpers::table_name;
 use crate::executor::engine::mock::{DispatchInfo, PortMocked, RouterRuntimeMock};
-use crate::ir::node::{ArenaType, Node, Over, Projection, ReferenceTarget, Window};
+use crate::ir::node::relational::Relational;
+use crate::ir::node::{ArenaType, Motion, Node, Over, Projection, ReferenceTarget, Window};
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::tests::{vcolumn_integer_user_non_null, vcolumn_user_non_null};
+use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy, Program};
 use crate::ir::tree::Snapshot;
 use crate::ir::types::{CastType, DerivedType, UnrestrictedType as Type};
@@ -28,20 +30,131 @@ fn reshard_vtable(
 /// Helper function to generate sql from `exec_plan` from given `top_id` node.
 /// Used for testing.
 fn get_sql_from_execution_plan(
-    exec_plan: &mut ExecutionPlan,
+    exec_plan: &ExecutionPlan,
     top_id: NodeId,
     snapshot: Snapshot,
     name_base: u64,
 ) -> PatternWithParams {
-    let subplan = exec_plan.take_subtree(top_id, &Buckets::Any).unwrap();
-    let subplan_top_id = subplan.get_ir_plan().get_top().unwrap();
-    let sp = SyntaxPlan::new(&subplan, subplan_top_id, snapshot, false).unwrap();
+    let subtree = exec_plan
+        .freeze()
+        .execution_view()
+        .dql_subtree(top_id)
+        .unwrap();
+    let sp = SyntaxPlan::new_for_dql_subtree(&subtree, snapshot, false).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
-    let sql = subplan
-        .generate_sql(&nodes, name_base, table_name, None)
+    let params = exec_plan.local_sql_params(top_id, snapshot).unwrap();
+    let sql = subtree
+        .generate_sql(&nodes, name_base, table_name, Some(params.constant_ids()))
         .unwrap();
-    PatternWithParams::new(sql, subplan.get_ir_plan().constants.clone())
+    PatternWithParams::new(sql, params.params().to_vec())
+}
+
+#[test]
+fn frozen_plan_borrows_execution_plan_read_only() {
+    let plan = sql_to_optimized_ir(r#"select "id" from "test_space""#, vec![]);
+    let mut exec_plan = ExecutionPlan::new(plan);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    exec_plan.set_plan_id(top_id).unwrap();
+
+    let view = exec_plan.freeze().execution_view();
+
+    assert_eq!(top_id, view.get_ir_plan().get_top().unwrap());
+    assert_eq!(
+        exec_plan.get_ir_plan().get_top().unwrap(),
+        view.as_execution_plan().get_ir_plan().get_top().unwrap()
+    );
+
+    drop(view);
+
+    exec_plan.set_plan_id(top_id).unwrap();
+}
+
+#[test]
+fn dql_subtree_borrows_execution_view_read_only() {
+    let plan = sql_to_optimized_ir(r#"select "id" from "test_space""#, vec![]);
+    let mut exec_plan = ExecutionPlan::new(plan);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    exec_plan.set_plan_id(top_id).unwrap();
+
+    let subtree = exec_plan
+        .freeze()
+        .execution_view()
+        .dql_subtree(top_id)
+        .unwrap();
+
+    assert_eq!(top_id, subtree.sql_top_id());
+    assert_eq!(top_id, subtree.get_ir_plan().get_top().unwrap());
+    assert_eq!(
+        exec_plan.get_ir_plan().get_top().unwrap(),
+        subtree.as_execution_plan().get_ir_plan().get_top().unwrap()
+    );
+
+    drop(subtree);
+
+    exec_plan.set_plan_id(top_id).unwrap();
+}
+
+#[test]
+fn dql_subtree_generates_same_sql_as_execution_plan() {
+    let exec_plan = ExecutionPlan::new(sql_to_optimized_ir(
+        r#"select "id" from "test_space" where "id" = 1"#,
+        vec![],
+    ));
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let params = exec_plan
+        .local_sql_params(top_id, Snapshot::Oldest)
+        .unwrap();
+
+    let old_sp = SyntaxPlan::new(&exec_plan, top_id, Snapshot::Oldest, false).unwrap();
+    let old_ordered = OrderedSyntaxNodes::try_from(old_sp).unwrap();
+    let old_nodes = old_ordered.to_syntax_data().unwrap();
+    let old_sql = exec_plan
+        .generate_sql(
+            &old_nodes,
+            TEMPLATE,
+            table_name,
+            Some(params.constant_ids()),
+        )
+        .unwrap();
+
+    let subtree = exec_plan
+        .freeze()
+        .execution_view()
+        .dql_subtree(top_id)
+        .unwrap();
+    let new_sp = SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest, false).unwrap();
+    let new_ordered = OrderedSyntaxNodes::try_from(new_sp).unwrap();
+    let new_nodes = new_ordered.to_syntax_data().unwrap();
+    let new_sql = subtree
+        .generate_sql(
+            &new_nodes,
+            TEMPLATE,
+            table_name,
+            Some(params.constant_ids()),
+        )
+        .unwrap();
+
+    assert_eq!(old_sql, new_sql);
+}
+
+#[test]
+fn update_delete_tuple_len_overlay_keeps_ir_intact() {
+    let plan = sql_to_optimized_ir(r#"explain (logical) update "t" set "a" = 1"#, vec![]);
+    let mut exec_plan = ExecutionPlan::new(plan);
+    let update_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let explain_before = exec_plan.get_ir_plan().explain_logical().unwrap();
+
+    exec_plan.set_update_delete_tuple_len(update_id, 2).unwrap();
+
+    assert_eq!(2, exec_plan.get_update_delete_tuple_len(update_id).unwrap());
+    assert_eq!(
+        explain_before,
+        exec_plan.get_ir_plan().explain_logical().unwrap()
+    );
+
+    let view = exec_plan.freeze().execution_view();
+    assert_eq!(update_id, view.get_ir_plan().get_top().unwrap());
 }
 
 #[test]
@@ -82,6 +195,112 @@ fn exec_plan_subtree_test() {
         sql.pattern,
         @r#"SELECT "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."id" in (SELECT "COL_1" FROM "TMP_0_0136")"#,
     )
+}
+
+#[test]
+fn mark_motion_unlinked_keeps_ir_child() {
+    let sql = r#"SELECT "FIRST_NAME" FROM "test_space" where "id" in
+    (SELECT "identification_number" FROM "hash_testing" where "identification_number" > 1)"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let raw_child = query
+        .get_exec_plan()
+        .get_ir_plan()
+        .get_motion_child(motion_id)
+        .unwrap();
+
+    let mut virtual_table = virtual_table_23(None);
+    reshard_vtable(&query, motion_id, &mut virtual_table);
+
+    let exec_plan = query.get_mut_exec_plan();
+    exec_plan
+        .set_motion_vtable(&motion_id, virtual_table, &coordinator)
+        .unwrap();
+    exec_plan.mark_motion_subtree_unlinked(motion_id).unwrap();
+
+    let Relational::Motion(Motion { child, .. }) = exec_plan
+        .get_ir_plan()
+        .get_relation_node(motion_id)
+        .unwrap()
+    else {
+        panic!("expected motion node");
+    };
+    assert_eq!(*child, Some(raw_child));
+    assert_eq!(exec_plan.effective_motion_child(motion_id).unwrap(), None);
+
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let constants = exec_plan
+        .get_ir_plan()
+        .get_const_list(top_id, Snapshot::Oldest);
+    let sp = SyntaxPlan::new(exec_plan, top_id, Snapshot::Oldest, false).unwrap();
+    let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
+    let nodes = ordered.to_syntax_data().unwrap();
+    let sql = exec_plan
+        .generate_sql(&nodes, TEMPLATE, table_name, Some(constants))
+        .unwrap();
+
+    assert!(sql.contains(table_name(TEMPLATE, motion_id).as_str()));
+    assert!(!sql.contains("hash_testing"));
+}
+
+#[test]
+fn subtree_dispatch_flags_track_segmented_vtables() {
+    let sql = r#"SELECT "FIRST_NAME" FROM "test_space" where "id" in
+    (SELECT "identification_number" FROM "hash_testing" where "identification_number" > 1)"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let top_id = query.get_exec_plan().get_ir_plan().get_top().unwrap();
+    let flags = query
+        .get_exec_plan()
+        .subtree_dispatch_flags_at(top_id)
+        .unwrap();
+    assert!(!flags.has_segmented_tables);
+    assert!(!flags.has_customization_opcodes);
+
+    let mut virtual_table = virtual_table_23(None);
+    reshard_vtable(&query, motion_id, &mut virtual_table);
+
+    let exec_plan = query.get_mut_exec_plan();
+    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    vtables.insert(motion_id, Rc::new(virtual_table));
+    exec_plan.set_vtables(vtables);
+
+    let flags = exec_plan.subtree_dispatch_flags_at(top_id).unwrap();
+    assert!(flags.has_segmented_tables);
+    assert!(!flags.has_customization_opcodes);
+
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+    let flags = exec_plan
+        .subtree_dispatch_flags_at(motion_child_id)
+        .unwrap();
+    assert!(!flags.has_segmented_tables);
+
+    exec_plan.set_vtables(HashMap::new());
+    let flags = exec_plan.subtree_dispatch_flags_at(top_id).unwrap();
+    assert!(!flags.has_segmented_tables);
+}
+
+#[test]
+fn subtree_dispatch_flags_find_customization_opcodes() {
+    let plan = sql_to_optimized_ir(
+        r#"select "a", "b" from "global_t"
+        union all
+        select "e", "f" from "t2""#,
+        vec![],
+    );
+    let exec_plan = ExecutionPlan::new(plan);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+
+    let flags = exec_plan.subtree_dispatch_flags_at(top_id).unwrap();
+    assert!(!flags.has_segmented_tables);
+    assert!(flags.has_customization_opcodes);
 }
 
 #[test]
@@ -639,18 +858,6 @@ fn global_union_all3() {
 
     let slices = query.exec_plan.get_ir_plan().clone_slices();
     let sq_motion_id = *slices.slice(0).unwrap().position(0).unwrap();
-    let sq_motion_child = query
-        .exec_plan
-        .get_ir_plan()
-        .get_motion_subtree_root(sq_motion_id)
-        .unwrap();
-
-    // imitate plan execution
-    query
-        .exec_plan
-        .take_subtree(sq_motion_child, &Buckets::Any)
-        .unwrap();
-
     let mut sq_vtable = VirtualTable::new();
     sq_vtable.add_column(vcolumn_integer_user_non_null());
     sq_vtable.add_tuple(vec![Value::Integer(1)]);
@@ -658,18 +865,12 @@ fn global_union_all3() {
         .exec_plan
         .set_motion_vtable(&sq_motion_id, sq_vtable.clone(), &coordinator)
         .unwrap();
-
-    let groupby_motion_id = *slices.slice(0).unwrap().position(1).unwrap();
-    let groupby_motion_child = query
-        .exec_plan
-        .get_ir_plan()
-        .get_motion_subtree_root(groupby_motion_id)
-        .unwrap();
     query
         .exec_plan
-        .take_subtree(groupby_motion_child, &Buckets::Any)
+        .mark_motion_subtree_unlinked(sq_motion_id)
         .unwrap();
 
+    let groupby_motion_id = *slices.slice(0).unwrap().position(1).unwrap();
     let mut groupby_vtable = VirtualTable::new();
     // these tuples must belong to different replicasets
     let tuple1 = vec![Value::Integer(3)];
@@ -681,6 +882,10 @@ fn global_union_all3() {
     query
         .exec_plan
         .set_motion_vtable(&groupby_motion_id, groupby_vtable.clone(), &coordinator)
+        .unwrap();
+    query
+        .exec_plan
+        .mark_motion_subtree_unlinked(groupby_motion_id)
         .unwrap();
 
     let top_id = query.exec_plan.get_ir_plan().get_top().unwrap();
@@ -889,7 +1094,7 @@ fn exec_plan_order_by() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"COL_1\" as \"identification_number\" FROM (SELECT \"COL_1\" FROM \"TMP_0_0136\") as \"hash_testing\" ORDER BY \"hash_testing\".\"COL_1\""
+    pattern: "SELECT \"hash_testing\".\"COL_1\" as \"identification_number\" FROM (SELECT \"COL_1\" FROM \"TMP_0_0136\") as \"hash_testing\" ORDER BY \"hash_testing\".\"COL_1\""
     params: []
     "#);
 }
@@ -1109,7 +1314,7 @@ fn exec_plan_order_by_with_subquery() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"COL_1\" as \"identification_number\" FROM (SELECT \"COL_1\" FROM \"TMP_0_0136\") as \"hash_testing\" ORDER BY \"hash_testing\".\"COL_1\""
+    pattern: "SELECT \"hash_testing\".\"COL_1\" as \"identification_number\" FROM (SELECT \"COL_1\" FROM \"TMP_0_0136\") as \"hash_testing\" ORDER BY \"hash_testing\".\"COL_1\""
     params: []
     "#);
 }
@@ -1188,7 +1393,7 @@ fn exec_plan_order_by_with_join() {
     // Check main query.
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"COL_1\" as \"a\", \"COL_2\" as \"a\" FROM (SELECT \"COL_1\",\"COL_2\" FROM \"TMP_0_0136\") ORDER BY 1"
+    pattern: "SELECT \"COL_1\" as \"a\", \"COL_2\" as \"a\" FROM (SELECT \"COL_1\",\"COL_2\" FROM \"TMP_0_1136\") ORDER BY 1"
     params: []
     "#);
 }
@@ -1200,8 +1405,7 @@ fn get_top_plan_id(sql: &str, values: Vec<Value>) -> u64 {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, values).unwrap();
     let mut port = PortMocked::new();
     query.dispatch(&mut port).unwrap();
-    let ir = query.get_exec_plan().get_ir_plan();
-    let cache = ir.plan_id_cache.borrow();
+    let cache = &query.get_exec_plan().plan_id_cache;
     assert_eq!(1, cache.len());
     cache.values().map(|plan_id| *plan_id).next().unwrap()
 }
@@ -1344,6 +1548,16 @@ fn subtree_plan_id_12() {
 }
 
 #[test]
+fn subtree_plan_id_raw_explain() {
+    check_subtree_plan_ids_not_equal(
+        r#"select * from "t" where "a" = 1"#,
+        vec![],
+        r#"explain (raw) select * from "t" where "a" = 1"#,
+        vec![],
+    );
+}
+
+#[test]
 fn subtree_hash1() {
     check_subtree_plan_ids_are_equal(
         r#"select ?, ? from "t""#,
@@ -1455,14 +1669,7 @@ fn subtree_hash7() {
 }
 
 #[test]
-fn take_subtree_projection_windows_transfer() {
-    // Description: When take_tree was called, window references in the projection were not
-    // transferred to the new tree.
-    //
-    // If the projection's window field pointed to a window with index 0, and we added a motion
-    // with index 1, then when we took the tree, the tree was traversed in post-order. This
-    // caused the motion to receive index 0 and the window to receive index 1. The test
-    // verifies that the window reference is now properly transferred.
+fn dql_subtree_projection_windows_stay_in_original_plan() {
     let mut plan = Plan::default();
 
     let a_value = plan.nodes.add_const(1.into());
@@ -1591,17 +1798,17 @@ fn take_subtree_projection_windows_transfer() {
         );
     }
 
-    let mut execution_plan = ExecutionPlan::new(plan);
-
-    let new_plan = execution_plan
-        .take_subtree(projection, &Buckets::Any)
+    let execution_plan = ExecutionPlan::new(plan);
+    let subtree = execution_plan
+        .freeze()
+        .execution_view()
+        .dql_subtree(projection)
         .unwrap();
-
-    let new_top = new_plan.get_ir_plan().get_top().unwrap();
+    SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest, false).unwrap();
 
     {
         let Node::Relational(Relational::Projection(Projection { windows, .. })) =
-            new_plan.get_ir_plan().get_node(new_top).unwrap()
+            execution_plan.get_ir_plan().get_node(projection).unwrap()
         else {
             panic!("should be projection")
         };
@@ -1613,7 +1820,7 @@ fn take_subtree_projection_windows_transfer() {
         assert_eq!(
             *window,
             NodeId {
-                offset: 1,
+                offset: 0,
                 arena_type: ArenaType::Arena136
             }
         );

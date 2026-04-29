@@ -62,6 +62,56 @@ fn table_seg_name() {
 }
 
 #[test]
+fn has_bucket_id_primary_key_prefix() {
+    let bucket_id = || {
+        Column::new(
+            "bucket_id",
+            DerivedType::new(UnrestrictedType::Integer),
+            ColumnRole::Sharding,
+            false,
+        )
+    };
+    let a = || column_user_non_null(SmolStr::from("a"), UnrestrictedType::Integer);
+    let b = || column_user_non_null(SmolStr::from("b"), UnrestrictedType::Integer);
+
+    let bucket_prefix = Table::new_sharded(
+        random(),
+        "bucket_prefix",
+        vec![bucket_id(), a(), b()],
+        &["a"],
+        &["bucket_id", "a"],
+        SpaceEngine::Memtx,
+    )
+    .unwrap();
+    assert!(bucket_prefix.has_bucket_id_primary_key_prefix());
+
+    let bucket_not_in_pk = Table::new_sharded(
+        random(),
+        "bucket_not_in_pk",
+        vec![bucket_id(), a(), b()],
+        &["a"],
+        &["a"],
+        SpaceEngine::Memtx,
+    )
+    .unwrap();
+    assert!(!bucket_not_in_pk.has_bucket_id_primary_key_prefix());
+
+    let bucket_not_prefix = Table::new_sharded(
+        random(),
+        "bucket_not_prefix",
+        vec![bucket_id(), a(), b()],
+        &["a"],
+        &["a", "bucket_id"],
+        SpaceEngine::Memtx,
+    )
+    .unwrap();
+    assert!(!bucket_not_prefix.has_bucket_id_primary_key_prefix());
+
+    let global = Table::new_global(random(), "global", vec![a()], &["a"]).unwrap();
+    assert!(!global.has_bucket_id_primary_key_prefix());
+}
+
+#[test]
 fn table_seg_duplicate_columns() {
     assert_eq!(
         Table::new_sharded(

@@ -176,8 +176,8 @@ pub enum MotionOpcode {
     PrimaryKey(Vec<ColumnPosition>),
     /// Call `reshard` method on a vtable, if we met `Segment` or `LocalSegment` motion policy.
     ReshardIfNeeded,
-    /// Call `rearrange_for_update` method on vtable and then call `set_update_delete_tuple_len`
-    /// on `Update` relational node.
+    /// Call `rearrange_for_update` method on vtable and then store the delete tuple length
+    /// in the execution plan overlay.
     RearrangeForShardedUpdate {
         update_id: NodeId,
         old_shard_columns_len: usize,
@@ -190,15 +190,15 @@ pub enum MotionOpcode {
     /// empty table.
     ///
     /// Relevant only for Local motion policy. Must be initialized to `true` by planner,
-    /// executor guarantees to mark only one replicaset which will have `false` value
-    /// in this opcode. For all replicasets that will have `true` value, executor unlinks
-    /// the sub-trees below the given motion nodes.
+    /// executor guarantees to render only one replicaset with effective `false` value.
+    /// For all replicasets that keep effective `true` value, executor skips sub-trees
+    /// below the given motion nodes during local SQL generation.
     ///
     /// Note: currently this opcode is only used for execution of union all having global
     /// child and sharded child.
     ///
-    /// Note: look at `disable_serialize_as_empty_opcode` to see where we set the flag value
-    /// to `false`.
+    /// Note: the effective `false` value is stored outside of IR as an execution-plan
+    /// overlay, so per-replicaset customization does not mutate the plan.
     SerializeAsEmptyTable(bool),
     RemoveDuplicates,
 }
@@ -2037,7 +2037,7 @@ impl Plan {
                 ));
             }
             match kind {
-                UpdateStrategy::ShardedUpdate { .. } => {
+                UpdateStrategy::ShardedUpdate => {
                     let new_shard_cols_positions = table.get_sk()?.to_vec();
                     let op = MotionOpcode::RearrangeForShardedUpdate {
                         update_id,

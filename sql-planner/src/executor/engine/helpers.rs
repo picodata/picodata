@@ -33,7 +33,7 @@ use crate::ir::value::{EncodedValue, MsgPackValue};
 use crate::{
     errors::{Action, Entity, SbroadError},
     executor::{
-        ir::{ExecutionPlan, QueryType},
+        ir::ExecutionPlan,
         result::MetadataColumn,
         vtable::{calculate_unified_types, VTableTuple, VirtualTable},
     },
@@ -659,9 +659,8 @@ pub fn write_shared_update_args<'t>(
 ///
 /// # Errors
 /// - Invalid plan.
-fn has_zero_limit_clause(plan: &ExecutionPlan) -> Result<bool, SbroadError> {
+fn has_zero_limit_clause(plan: &ExecutionPlan, top_id: NodeId) -> Result<bool, SbroadError> {
     let ir = plan.get_ir_plan();
-    let top_id = ir.get_top()?;
     if let Relational::Limit(Limit { limit, .. }) = ir.get_relation_node(top_id)? {
         return Ok(*limit == 0);
     }
@@ -685,8 +684,8 @@ fn dml_get_motion_child(
         Children::None => Ok(None),
         Children::Single(child_id) => {
             let child = ir_plan.get_relation_node(*child_id)?;
-            if let Relational::Motion(Motion { child: Some(_), .. }) = child {
-                Ok(Some(ir_plan.get_motion_subtree_root(*child_id)?))
+            if let Relational::Motion(_) = child {
+                Ok(ex_plan.effective_motion_subtree_root(*child_id)?)
             } else {
                 Ok(None)
             }
@@ -791,9 +790,8 @@ fn generate_pattern_with_params_for_block(
         })
     }
 
-    plan.get_mut_ir_plan()
-        .stash_constants_in_subtree(query_id, Snapshot::Oldest)?;
-    let params = plan.to_params().to_vec();
+    let sql_params = plan.local_sql_params(query_id, Snapshot::Oldest)?;
+    let (constant_ids, params) = sql_params.into_parts();
 
     // TODO: replace with the actual value of `plan_id` when caching is implemented.
     let plan_id = 0;
@@ -806,9 +804,14 @@ fn generate_pattern_with_params_for_block(
         let bucket_id = bucket_id.ok_or_else(|| {
             SbroadError::Other("INSERT in transaction requires a known target bucket".into())
         })?;
-        let pattern =
-            generate_insert_pattern_for_block(plan, query_id, plan_id, params, bucket_id)?;
-        plan.get_mut_ir_plan().constants.clear();
+        let pattern = generate_insert_pattern_for_block(
+            plan,
+            query_id,
+            plan_id,
+            constant_ids,
+            params,
+            bucket_id,
+        )?;
         return Ok(pattern);
     }
 
@@ -854,7 +857,12 @@ fn generate_pattern_with_params_for_block(
             // WHERE <expr>
             update_nodes.extend(select.filter);
 
-            let pattern = plan.generate_sql(&update_nodes, plan_id, table_name, None)?;
+            let pattern = plan.generate_sql(
+                &update_nodes,
+                plan_id,
+                table_name,
+                Some(constant_ids.as_slice()),
+            )?;
             PatternWithParams { pattern, params }
         }
         Relational::Delete(Delete { child: Some(_), .. }) => {
@@ -873,16 +881,21 @@ fn generate_pattern_with_params_for_block(
             // WHERE <expr>
             delete_nodes.extend(select.filter);
 
-            let pattern = plan.generate_sql(&delete_nodes, plan_id, table_name, None)?;
+            let pattern = plan.generate_sql(
+                &delete_nodes,
+                plan_id,
+                table_name,
+                Some(constant_ids.as_slice()),
+            )?;
             PatternWithParams { pattern, params }
         }
         _ => {
-            let pattern = plan.generate_sql(&nodes, plan_id, table_name, None)?;
+            let pattern =
+                plan.generate_sql(&nodes, plan_id, table_name, Some(constant_ids.as_slice()))?;
             PatternWithParams { pattern, params }
         }
     };
 
-    plan.get_mut_ir_plan().constants.clear();
     Ok(pattern)
 }
 
@@ -895,6 +908,7 @@ fn generate_insert_pattern_for_block(
     plan: &mut ExecutionPlan,
     insert_id: NodeId,
     plan_id: u64,
+    constant_ids: Vec<NodeId>,
     mut params: Vec<Value>,
     bucket_id: u64,
 ) -> Result<PatternWithParams, SbroadError> {
@@ -996,7 +1010,7 @@ fn generate_insert_pattern_for_block(
         }
     }
 
-    let pattern = plan.generate_sql(&nodes, plan_id, table_name, None)?;
+    let pattern = plan.generate_sql(&nodes, plan_id, table_name, Some(constant_ids.as_slice()))?;
     Ok(PatternWithParams { pattern, params })
 }
 
@@ -1077,36 +1091,60 @@ pub fn dispatch_impl<'p>(
         );
     }
 
-    let mut sub_plan = plan.take_subtree(top_id, buckets)?;
-
     let tier = {
-        match sub_plan.get_ir_plan().tier.as_ref() {
+        match plan.get_ir_plan().tier.as_ref() {
             None => coordinator.get_current_tier_name()?,
             tier => tier.cloned(),
         }
     };
     let tier_runtime = coordinator.get_vshard_object_by_tier(tier.as_ref())?;
-    if sub_plan.get_ir_plan().is_raw_explain() {
-        if sub_plan.get_ir_plan().is_dml()? {
-            let top_id = sub_plan.get_ir_plan().get_top()?;
-            let Some(dql_child_id) = dml_get_motion_child(&sub_plan, top_id)? else {
+    plan.prepare_bucket_filter_for_dispatch(top_id, buckets)?;
+    let frozen_plan = Rc::new(std::mem::take(plan));
+    let dispatch_result = if frozen_plan.get_ir_plan().is_raw_explain() {
+        let top = frozen_plan.get_ir_plan().get_relation_node(top_id)?;
+        let top_id = if top.is_dml() {
+            let Some(dql_child_id) = dml_get_motion_child(&frozen_plan, top_id)? else {
                 // Dispatch is called for each motion in `materialize_subtree`.
-                // Each dispatch unlinks the motion subtree due to the call to `take_subtree`.
-                // We should not return an error because the child motion may have been removed by a previous dispatch call.
+                // Each dispatch may mark the motion subtree as already materialized.
+                // We should not return an error because the child motion may have been
+                // removed from the effective execution view by a previous dispatch call.
+                let restored = Rc::try_unwrap(frozen_plan).map_err(|_| {
+                    SbroadError::Invalid(
+                        Entity::Plan,
+                        Some("frozen execution plan is still referenced".into()),
+                    )
+                })?;
+                let mut restored = restored;
+                restored.clear_bucket_filter();
+                *plan = restored;
                 return Ok(());
             };
-            sub_plan.get_mut_ir_plan().set_top(dql_child_id)?;
-        }
-        tier_runtime.exec_ir_on_any_node(sub_plan, buckets, port)?;
-        return Ok(());
-    }
-
-    if has_zero_limit_clause(&sub_plan)? {
-        empty_plan_write(port, &sub_plan)?;
-        return Ok(());
-    }
-    dispatch_by_buckets(sub_plan, buckets, &tier_runtime, port)?;
-    Ok(())
+            dql_child_id
+        } else {
+            top_id
+        };
+        tier_runtime.exec_ir_on_any_node(Rc::clone(&frozen_plan), top_id, buckets, port)
+    } else if has_zero_limit_clause(&frozen_plan, top_id)? {
+        empty_plan_write_for_top(port, &frozen_plan, top_id)
+    } else {
+        dispatch_by_buckets(
+            Rc::clone(&frozen_plan),
+            top_id,
+            buckets,
+            &tier_runtime,
+            port,
+        )
+    };
+    let restored = Rc::try_unwrap(frozen_plan).map_err(|_| {
+        SbroadError::Invalid(
+            Entity::Plan,
+            Some("frozen execution plan is still referenced".into()),
+        )
+    })?;
+    let mut restored = restored;
+    restored.clear_bucket_filter();
+    *plan = restored;
+    dispatch_result
 }
 
 /// Helper function that chooses one of the methods for execution
@@ -1115,14 +1153,16 @@ pub fn dispatch_impl<'p>(
 /// # Errors
 /// - Failed to dispatch
 pub fn dispatch_by_buckets<'p>(
-    sub_plan: ExecutionPlan,
+    sub_plan: Rc<ExecutionPlan>,
+    top_id: NodeId,
     buckets: &Buckets,
     runtime: &impl Vshard,
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError> {
     match buckets {
         Buckets::Any => {
-            if sub_plan.has_customization_opcodes() {
+            let flags = sub_plan.subtree_dispatch_flags_at(top_id)?;
+            if flags.has_customization_opcodes {
                 return Err(SbroadError::Invalid(
                     Entity::SubTree,
                     Some(
@@ -1133,19 +1173,17 @@ pub fn dispatch_by_buckets<'p>(
             }
             // Check that all vtables don't have index. Because if they do,
             // they will be filtered later by filter_vtable
-            for (motion_id, vtable) in sub_plan.get_vtables() {
-                if !vtable.get_bucket_index().is_empty() {
-                    return Err(SbroadError::Invalid(
-                        Entity::Motion,
-                        Some(format_smolstr!("Motion ({motion_id:?}) in subtree with distribution Single, but policy is not Full.")),
-                    ));
-                }
+            if let Some(motion_id) = flags.segmented_motion_id {
+                return Err(SbroadError::Invalid(
+                    Entity::Motion,
+                    Some(format_smolstr!("Motion ({motion_id:?}) in subtree with distribution Single, but policy is not Full.")),
+                ));
             }
-            runtime.exec_ir_on_any_node(sub_plan, buckets, port)?;
+            runtime.exec_ir_on_any_node(sub_plan, top_id, buckets, port)?;
             Ok(())
         }
         Buckets::All | Buckets::Filtered(_) => {
-            runtime.exec_ir_on_buckets(sub_plan, buckets, port)?;
+            runtime.exec_ir_on_buckets(sub_plan, top_id, buckets, port)?;
             Ok(())
         }
     }
@@ -1300,7 +1338,7 @@ pub fn materialize_motion(
     );
     plan.set_plan_id(top_id)?;
 
-    // We should get a motion alias name before we take the subtree in `dispatch` method.
+    // We should get a motion alias name before dispatching the subtree.
     let motion_node = plan.get_ir_plan().get_relation_node(motion_node_id)?;
     let alias = if let Relational::Motion(Motion { alias, .. }) = motion_node {
         alias.clone()
@@ -1311,12 +1349,12 @@ pub fn materialize_motion(
     let columns = vtable_columns(plan.get_ir_plan(), top_id)?;
 
     let mut port = runtime.new_port();
-    // Dispatch the motion subtree (it will be replaced with invalid values).
+    // Dispatch the motion subtree.
     runtime.dispatch(plan, top_id, buckets, &mut port)?;
 
     if !plan.get_ir_plan().is_dml_on_global_table()? {
-        // Unlink motion node's child sub tree (it is already replaced with invalid values).
-        plan.unlink_motion_subtree(motion_node_id)?;
+        // Mark motion node's child subtree as already materialized.
+        plan.mark_motion_subtree_unlinked(motion_node_id)?;
     } else {
         // In case of global DML requests we must leave the tree unchanged,
         // because the DML portion of the query may fail due to CAS errors and
@@ -1621,18 +1659,24 @@ pub fn sharding_key_from_map<'rec, S: ::std::hash::BuildHasher>(
 pub fn try_get_metadata_from_plan(
     plan: &ExecutionPlan,
 ) -> Result<Option<Vec<MetadataColumn>>, SbroadError> {
-    fn is_dql_exec_plan(plan: &ExecutionPlan) -> Result<bool, SbroadError> {
-        let ir = plan.get_ir_plan();
-        Ok(matches!(plan.query_type()?, QueryType::DQL) && !ir.is_raw_explain())
-    }
+    let top_id = plan.get_ir_plan().get_top()?;
+    try_get_metadata_from_plan_for_top(plan, top_id)
+}
 
-    if !is_dql_exec_plan(plan)? {
+/// Try to get metadata from a top node. If the node is not DQL, `None` is returned.
+///
+/// # Errors
+/// - Invalid execution plan.
+pub fn try_get_metadata_from_plan_for_top(
+    plan: &ExecutionPlan,
+    top_id: NodeId,
+) -> Result<Option<Vec<MetadataColumn>>, SbroadError> {
+    let ir = plan.get_ir_plan();
+    if ir.get_relation_node(top_id)?.is_dml() || ir.is_raw_explain() {
         return Ok(None);
     }
 
     // Get metadata (column types) from the top node's output tuple.
-    let ir = plan.get_ir_plan();
-    let top_id = ir.get_top()?;
     let top_output_id = ir.get_relation_node(top_id)?.output();
     let columns = ir.get_row_list(top_output_id)?;
     let mut metadata = Vec::with_capacity(columns.len());
@@ -1657,8 +1701,11 @@ fn to_mp_err(msg: SmolStr) -> SbroadError {
     SbroadError::FailedTo(Action::Encode, Some(Entity::MsgPack), msg)
 }
 
-fn metadata_write<'p>(port: &mut impl Port<'p>, plan: &Plan) -> Result<(), SbroadError> {
-    let top_id = plan.get_top()?;
+fn metadata_write<'p>(
+    port: &mut impl Port<'p>,
+    plan: &Plan,
+    top_id: NodeId,
+) -> Result<(), SbroadError> {
     let top_output_id = plan.get_relation_node(top_id)?.output();
     let columns = plan.get_row_list(top_output_id)?;
     let mut mp: Vec<u8> = Vec::new();
@@ -1690,13 +1737,22 @@ pub fn empty_plan_write<'p>(
     port: &mut impl Port<'p>,
     plan: &ExecutionPlan,
 ) -> Result<(), SbroadError> {
-    let query_type = plan.query_type()?;
-    match query_type {
-        QueryType::DML => {
+    let top_id = plan.get_ir_plan().get_top()?;
+    empty_plan_write_for_top(port, plan, top_id)
+}
+
+pub fn empty_plan_write_for_top<'p>(
+    port: &mut impl Port<'p>,
+    plan: &ExecutionPlan,
+    top_id: NodeId,
+) -> Result<(), SbroadError> {
+    let top = plan.get_ir_plan().get_relation_node(top_id)?;
+    match top.is_dml() {
+        true => {
             port.add_mp(b"\xcc\x00".as_ref());
         }
-        QueryType::DQL => {
-            metadata_write(port, plan.get_ir_plan())?;
+        false => {
+            metadata_write(port, plan.get_ir_plan(), top_id)?;
         }
     }
     Ok(())

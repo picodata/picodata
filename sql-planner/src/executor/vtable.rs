@@ -9,7 +9,6 @@ use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::{EncodedValue, Value};
 use ahash::AHashSet;
 use rmp::encode::{write_array_len, write_map_len, write_str, write_uint};
-use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr};
 use sql_protocol::dql_encoder::MsgpackEncode;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
@@ -28,7 +27,7 @@ pub type VTableTuple = Vec<Value>;
 /// Helper struct to group tuples by buckets.
 /// key:   bucket id.
 /// value: list of positions in the `tuples` list (see `VirtualTable`) corresponding to the bucket.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct VTableIndex {
     value: HashMap<u64, Vec<usize>, RepeatableState>,
 }
@@ -58,7 +57,7 @@ impl From<HashMap<u64, Vec<usize>, RepeatableState>> for VTableIndex {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VirtualTableMeta {
     /// List of the columns.
     pub columns: Vec<Column>,
@@ -70,7 +69,7 @@ pub struct VirtualTableMeta {
 
 /// Result tuple storage, created by the executor. All tuples
 /// have a distribution key.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VirtualTable {
     /// List of the columns.
     /// TODO: Make it `VTableColumn` (not containing `name` field) instead of a `Column`.

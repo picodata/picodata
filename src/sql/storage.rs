@@ -2,7 +2,7 @@
 //! Implements the `sbroad` crate infrastructure
 //! for execution of the dispatched query plan subtrees.
 
-use crate::sql::dispatch::port_write_metadata;
+use crate::sql::dispatch::port_write_metadata_for_top;
 use crate::sql::router::{
     calculate_bucket_id, get_index_version_by_pk, get_table_name_and_version, get_table_version,
     get_table_version_by_id, VersionMap,
@@ -14,7 +14,7 @@ use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::engine::helpers::table_name;
 use sql::executor::engine::helpers::vshard::get_random_bucket;
 use sql::executor::engine::{CachedStmt, CachedStmtRef, QueryCache, StorageCache, Vshard};
-use sql::executor::ir::{ExecutionPlan, QueryType};
+use sql::executor::ir::ExecutionPlan;
 use sql::executor::lru::{Cache, EvictFn, LRUCache};
 use sql::executor::protocol::SchemaInfo;
 use sql::executor::{Port, PortType};
@@ -32,6 +32,7 @@ use smol_str::{format_smolstr, SmolStr};
 use sql::executor::vdbe::SqlStmt;
 use sql::executor::vtable::{VirtualTable, VirtualTableTupleEncoder};
 use sql::ir::node::BlockStatement;
+use sql::ir::node::NodeId;
 use sql::ir::tree::Snapshot;
 use sql::ir::value::Value;
 use sql_protocol::decode::{ProtocolMessage, ProtocolMessageIter, ProtocolMessageType};
@@ -76,6 +77,19 @@ struct RetiredPlan {
 struct RecentlyRetiredPlan {
     plan_id: u64,
     table_lock: TempTableLockRef,
+}
+
+fn generate_local_dql_sql(
+    ex_plan: &ExecutionPlan,
+    top_id: NodeId,
+    plan_id: u64,
+    constant_ids: &[NodeId],
+) -> Result<String, SbroadError> {
+    let subtree = ex_plan.freeze().execution_view().dql_subtree(top_id)?;
+    let sp = SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest, false)?;
+    let ordered = OrderedSyntaxNodes::try_from(sp)?;
+    let nodes = ordered.to_syntax_data()?;
+    subtree.generate_sql(&nodes, plan_id, table_name, Some(constant_ids))
 }
 
 fn take_recently_retired() -> Vec<RecentlyRetiredPlan> {
@@ -616,12 +630,13 @@ impl Vshard for StorageRuntime {
 
     fn exec_ir_on_any_node<'p>(
         &self,
-        mut ex_plan: ExecutionPlan,
+        ex_plan: Rc<ExecutionPlan>,
+        top_id: NodeId,
         buckets: &Buckets,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
+        let ex_plan = ex_plan.as_ref();
         let plan = ex_plan.get_ir_plan();
-        let top_id = plan.get_top()?;
 
         if plan.is_raw_explain() {
             let sql_vdbe_opcode_max = plan.effective_options.sql_vdbe_opcode_max as u64;
@@ -633,14 +648,13 @@ impl Vshard for StorageRuntime {
                 .map(|(node_id, table)| (table_name(plan_id, *node_id), table.clone()))
                 .collect::<HashMap<_, _>>();
 
-            let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Oldest, false)?;
-            let ordered = OrderedSyntaxNodes::try_from(sp)?;
-            let nodes = ordered.to_syntax_data()?;
-            let local_sql = ex_plan.generate_sql(&nodes, plan_id, table_name, None)?;
+            let sql_params = ex_plan.local_sql_params(top_id, Snapshot::Oldest)?;
+            let local_sql =
+                generate_local_dql_sql(ex_plan, top_id, plan_id, sql_params.constant_ids())?;
 
             let schema_info = SchemaInfo::new(
-                std::mem::take(&mut ex_plan.get_mut_ir_plan().table_version_map),
-                std::mem::take(&mut ex_plan.get_mut_ir_plan().index_version_map),
+                ex_plan.get_ir_plan().table_version_map.clone(),
+                ex_plan.get_ir_plan().index_version_map.clone(),
             );
 
             let miss_info = ExpandedLocalExecutionInfo {
@@ -654,7 +668,7 @@ impl Vshard for StorageRuntime {
             explain_execute(
                 self,
                 miss_info,
-                ex_plan.to_params(),
+                sql_params.params(),
                 sql_vdbe_opcode_max,
                 location,
                 port,
@@ -663,15 +677,14 @@ impl Vshard for StorageRuntime {
             return Ok(());
         }
 
-        let query_type = ex_plan.query_type()?;
-        if let QueryType::DML = query_type {
+        if plan.get_relation_node(top_id)?.is_dml() {
             // DML queries are not supported on arbitrary nodes
             return Err(SbroadError::Other(
                 "DML queries are not supported on arbitrary nodes".into(),
             ));
         }
 
-        port_write_metadata(port, &ex_plan)?;
+        port_write_metadata_for_top(port, ex_plan, top_id)?;
 
         let plan_id = ex_plan.get_plan_id()?;
         let vtables = ex_plan
@@ -679,11 +692,12 @@ impl Vshard for StorageRuntime {
             .iter()
             .map(|(node_id, table)| (table_name(plan_id, *node_id), table.clone()))
             .collect::<HashMap<_, _>>();
+        let sql_params = ex_plan.local_sql_params(top_id, Snapshot::Oldest)?;
         let info = LocalExecutionInfo::new(
             &vtables,
             plan.effective_options.sql_motion_row_max as u64,
             plan.effective_options.sql_vdbe_opcode_max as u64,
-            msgpack::encode(&ex_plan.to_params()),
+            msgpack::encode(&sql_params.params()),
         );
 
         use sql::executor::vdbe::ExecutionInsight::*;
@@ -698,14 +712,12 @@ impl Vshard for StorageRuntime {
                 StaleStmt => report_storage_cache_miss("dql", "local", "stale"),
             }
         } else {
-            let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Oldest, false)?;
-            let ordered = OrderedSyntaxNodes::try_from(sp)?;
-            let nodes = ordered.to_syntax_data()?;
-            let local_sql = ex_plan.generate_sql(&nodes, plan_id, table_name, None)?;
+            let local_sql =
+                generate_local_dql_sql(ex_plan, top_id, plan_id, sql_params.constant_ids())?;
 
             let schema_info = SchemaInfo::new(
-                std::mem::take(&mut ex_plan.get_mut_ir_plan().table_version_map),
-                std::mem::take(&mut ex_plan.get_mut_ir_plan().index_version_map),
+                ex_plan.get_ir_plan().table_version_map.clone(),
+                ex_plan.get_ir_plan().index_version_map.clone(),
             );
 
             let miss_info = ExpandedLocalExecutionInfo {
@@ -727,7 +739,8 @@ impl Vshard for StorageRuntime {
 
     fn exec_ir_on_buckets<'p>(
         &self,
-        _sub_plan: ExecutionPlan,
+        _sub_plan: Rc<ExecutionPlan>,
+        _top_id: NodeId,
         _buckets: &Buckets,
         _port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {

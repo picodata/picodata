@@ -466,7 +466,7 @@ FROM
           "COL_2",
           "COL_3"
         FROM
-          "TMP_795443537505424829_0136"
+          "TMP_1150632142612237307_0136"
       ) as "testing_space" ON CAST(true AS bool)
     GROUP BY
       "testing_space"."id",
@@ -483,7 +483,7 @@ LIMIT
 ''
 plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
-        [0] SCAN TABLE TMP_795443537505424829_0136 (~1048576 rows)
+        [0] SCAN TABLE TMP_1150632142612237307_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
@@ -517,7 +517,7 @@ FROM
           "COL_4",
           "COL_5"
         FROM
-          "TMP_7751910730270557539_0136"
+          "TMP_11711948711825086346_1136"
       )
     GROUP BY
       "COL_0",
@@ -533,7 +533,7 @@ LIMIT
 '  1'
 ''
 plan:
-    [0] SCAN TABLE TMP_7751910730270557539_0136 (~1048576 rows)
+    [0] SCAN TABLE TMP_11711948711825086346_1136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 
@@ -580,12 +580,12 @@ plan:
 │ 2. Query (STORAGE) │
 ╰────────────────────╯
 ''
-SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."name" in ( SELECT "COL_0" FROM "TMP_6029770779943228052_0136" )
+SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."name" in ( SELECT "COL_0" FROM "TMP_3367743013833706193_0136" )
 ''
 plan:
     [0] SCAN TABLE testing_space (~983040 rows)
     [0] EXECUTE LIST SUBQUERY 1
-    [1] SCAN TABLE TMP_6029770779943228052_0136 (~1048576 rows)
+    [1] SCAN TABLE TMP_3367743013833706193_0136 (~1048576 rows)
 
 -- TEST: test_raw_explain-9
 -- SQL:
@@ -610,22 +610,22 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "id" FROM ( SELECT "COL_0", "COL_1" FROM "TMP_1599265012539281798_0136" ) GROUP BY "COL_0" HAVING sum ("COL_1") = CAST(0 AS int)
+SELECT "COL_0" as "id" FROM ( SELECT "COL_0", "COL_1" FROM "TMP_16257932469474110742_0136" ) GROUP BY "COL_0" HAVING sum ("COL_1") = CAST(0 AS int)
 ''
 plan:
-    [0] SCAN TABLE TMP_1599265012539281798_0136 (~1048576 rows)
+    [0] SCAN TABLE TMP_16257932469474110742_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 ╭────────────────────╮
 │ 3. Query (STORAGE) │
 ╰────────────────────╯
 ''
-SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "COL_0" FROM "TMP_12108310727876432219_0136" )
+SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "COL_0" FROM "TMP_13972189527136072344_1136" )
 ''
 plan:
     [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~24 rows)
     [0] EXECUTE LIST SUBQUERY 1
-    [1] SCAN TABLE TMP_12108310727876432219_0136 (~1048576 rows)
+    [1] SCAN TABLE TMP_13972189527136072344_1136 (~1048576 rows)
 
 -- TEST: test_raw_explain-11
 -- SQL:
@@ -659,22 +659,22 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "id" FROM ( SELECT "COL_0", "COL_1" FROM "TMP_17992124938322492506_0136" ) GROUP BY "COL_0" HAVING sum ("COL_1") = CAST(0 AS int)
+SELECT "COL_0" as "id" FROM ( SELECT "COL_0", "COL_1" FROM "TMP_15152002639147469178_1136" ) GROUP BY "COL_0" HAVING sum ("COL_1") = CAST(0 AS int)
 ''
 plan:
-    [0] SCAN TABLE TMP_17992124938322492506_0136 (~1048576 rows)
+    [0] SCAN TABLE TMP_15152002639147469178_1136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 ╭────────────────────╮
 │ 3. Query (STORAGE) │
 ╰────────────────────╯
 ''
-SELECT CAST(-1 AS int) as "col_0", "testing_space"."id" as "col_1" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "COL_0" FROM "TMP_17388536538104774043_0136" )
+SELECT CAST(-1 AS int) as "col_0", "testing_space"."id" as "col_1" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "COL_0" FROM "TMP_15112249614234427908_2136" )
 ''
 plan:
     [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~24 rows)
     [0] EXECUTE LIST SUBQUERY 1
-    [1] SCAN TABLE TMP_17388536538104774043_0136 (~1048576 rows)
+    [1] SCAN TABLE TMP_15112249614234427908_2136 (~1048576 rows)
 
 -- TEST: test_raw_explain-13
 -- SQL:
@@ -767,12 +767,12 @@ plan:
 │ 2. Query (STORAGE) │
 ╰────────────────────╯
 ''
-SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."product_units" in ( SELECT "COL_0" FROM "TMP_8034078592994454592_0136" )
+SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."product_units" in ( SELECT "COL_0" FROM "TMP_10954093023257315680_0136" )
 ''
 plan:
     [0] SCAN TABLE testing_space (~983040 rows)
     [0] EXECUTE LIST SUBQUERY 1
-    [1] SCAN TABLE TMP_8034078592994454592_0136 (~1048576 rows)
+    [1] SCAN TABLE TMP_10954093023257315680_0136 (~1048576 rows)
 
 -- TEST: test_raw_explain-19
 -- SQL:
@@ -791,10 +791,10 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT * FROM ( SELECT "COL_0", "COL_1", "COL_2" FROM "TMP_13062017678802601205_0136" ) as "testing_space"
+SELECT * FROM ( SELECT "COL_0", "COL_1", "COL_2" FROM "TMP_13978981307274113494_0136" ) as "testing_space"
 ''
 plan:
-    [0] SCAN TABLE TMP_13062017678802601205_0136 (~1048576 rows)
+    [0] SCAN TABLE TMP_13978981307274113494_0136 (~1048576 rows)
 
 -- TEST: test_raw_explain-20
 -- SQL:
@@ -842,10 +842,10 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "name", "global_rows", "global_units", "local_units" FROM ( SELECT "COL_0" as "name", sum ("COL_1") as "global_rows", sum ("COL_3") as "global_units", sum ("COL_2") as "local_units" FROM ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "TMP_9968167426011738410_0136" ) GROUP BY "COL_0" HAVING sum ("COL_2") > sum ("COL_3") ) ORDER BY "global_units" DESC LIMIT 10
+SELECT "name", "global_rows", "global_units", "local_units" FROM ( SELECT "COL_0" as "name", sum ("COL_1") as "global_rows", sum ("COL_3") as "global_units", sum ("COL_2") as "local_units" FROM ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "TMP_11829731252676995657_0136" ) GROUP BY "COL_0" HAVING sum ("COL_2") > sum ("COL_3") ) ORDER BY "global_units" DESC LIMIT 10
 ''
 plan:
-    [0] SCAN TABLE TMP_9968167426011738410_0136 (~1048576 rows)
+    [0] SCAN TABLE TMP_11829731252676995657_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 
@@ -886,22 +886,22 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "name" FROM ( SELECT "COL_0" FROM "TMP_12717773680345951425_0136" ) ORDER BY "COL_0" LIMIT 1
+SELECT "COL_0" as "name" FROM ( SELECT "COL_0" FROM "TMP_11608449259018360098_0136" ) ORDER BY "COL_0" LIMIT 1
 ''
 plan:
-    [0] SCAN TABLE TMP_12717773680345951425_0136 (~1048576 rows)
+    [0] SCAN TABLE TMP_11608449259018360098_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
 ╭───────────────────╮
 │ 3. Query (ROUTER) │
 ╰───────────────────╯
 ''
-VALUES ( ( SELECT CAST(1 AS int) as "col_1"), ( SELECT "COL_0" FROM "TMP_11050758999591598030_0136" ), CAST(42 AS int) + CAST(67 AS int) )
+VALUES ( ( SELECT CAST(1 AS int) as "col_1"), ( SELECT "COL_0" FROM "TMP_13221232348444829292_1136" ), CAST(42 AS int) + CAST(67 AS int) )
 ''
 plan:
     [0] EXECUTE SCALAR SUBQUERY 1
     [0] EXECUTE SCALAR SUBQUERY 2
-    [2] SCAN TABLE TMP_11050758999591598030_0136 (~1048576 rows)
+    [2] SCAN TABLE TMP_13221232348444829292_1136 (~1048576 rows)
 
 -- TEST: test_raw_explain-25
 -- SQL:
@@ -1018,10 +1018,10 @@ plan:
 │ 3. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" FROM "TMP_9663148926645388081_0136" LIMIT 1
+SELECT "COL_0" FROM "TMP_7934279834277496778_0136" LIMIT 1
 ''
 plan:
-    [0] SCAN TABLE TMP_9663148926645388081_0136 (~1048576 rows)
+    [0] SCAN TABLE TMP_7934279834277496778_0136 (~1048576 rows)
 ''
 ╭───────────────────╮
 │ 4. Query (ROUTER) │
@@ -1036,13 +1036,13 @@ Failed to compile SQL statement: Failed to execute an empty SQL statement
 │ 5. Query (STORAGE) │
 ╰────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1" FROM "t" INNER JOIN ( SELECT "COL_0" FROM "TMP_9127633025172155963_0136" ) as "a" ON ( SELECT "COL_0" FROM "TMP_9127633025172155963_1136" )
+SELECT CAST(1 AS int) as "col_1" FROM "t" INNER JOIN ( SELECT "COL_0" FROM "TMP_7002119783055804240_2136" ) as "a" ON ( SELECT "COL_0" FROM "TMP_7002119783055804240_3136" )
 ''
 plan:
     [0] SCAN TABLE t (~1048576 rows)
     [0] EXECUTE SCALAR SUBQUERY 1
-    [1] SCAN TABLE TMP_9127633025172155963_1136 (~1048576 rows)
-        [0] SCAN TABLE TMP_9127633025172155963_0136 (~1048576 rows)
+    [1] SCAN TABLE TMP_7002119783055804240_3136 (~1048576 rows)
+        [0] SCAN TABLE TMP_7002119783055804240_2136 (~1048576 rows)
 
 -- TEST: init-block
 -- SQL:

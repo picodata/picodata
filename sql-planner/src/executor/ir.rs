@@ -1,32 +1,30 @@
-use std::collections::{HashMap, HashSet};
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use ahash::{AHashMap, AHashSet};
-use serde::{Deserialize, Serialize};
-use smol_str::{format_smolstr, ToSmolStr};
+use itertools::Itertools;
+use smol_str::{format_smolstr, SmolStr};
 
 use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::engine::Vshard;
 use crate::executor::vtable::{VirtualTable, VirtualTableMap};
 use crate::executor::Buckets;
-use crate::ir::node::expression::ExprOwned;
-use crate::ir::node::expression::{Expression, MutExpression};
-use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
-use crate::ir::node::{
-    Alias, ArenaType, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Delete,
-    GroupBy, Having, IndexExpr, Insert, Join, Like, Motion, Node136, NodeId, NodeOwned, OrderBy,
-    Over, Projection, Reference, ReferenceTarget, Row, ScalarFunction, ScanRelation, Selection,
-    SubQueryReference, Trim, UnaryExpr, Update, ValuesRow, Window,
-};
-use crate::ir::operator::{OrderByElement, OrderByEntity};
+use crate::ir::bucket::BucketSet;
+use crate::ir::node::expression::Expression;
+use crate::ir::node::relational::Relational;
+use crate::ir::node::{Alias, Motion, Node, Node136, NodeId, Reference, SubQueryReference, Update};
+use crate::ir::operator::UpdateStrategy;
 use crate::ir::relation::SpaceEngine;
-use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy};
-use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter, REL_CAPACITY};
+use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy, Program};
+use crate::ir::tree::subtree::ExecPlanSubtreeIterator;
+use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter};
 use crate::ir::tree::Snapshot;
-use crate::ir::Plan;
+use crate::ir::value::Value;
+use crate::ir::{Plan, SubtreeViewKey};
 
 /// Query type (used to parse the returned results).
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum QueryType {
     /// SELECT query.
     DQL,
@@ -51,8 +49,31 @@ impl ConnectionType {
     }
 }
 
+/// Effective state of a motion's `SerializeAsEmptyTable` opcode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SerializeAsEmptyState {
+    /// The motion program has no `SerializeAsEmptyTable` opcode.
+    Absent,
+    /// The opcode is present and effective SQL must render an empty table.
+    Enabled,
+    /// The opcode is present but disabled by its value or an execution overlay.
+    Disabled,
+}
+
+impl SerializeAsEmptyState {
+    /// Returns whether effective SQL must render the motion as an empty table.
+    pub(crate) fn is_enabled(self) -> bool {
+        matches!(self, Self::Enabled)
+    }
+
+    /// Returns whether the opcode is present but effectively disabled.
+    pub(crate) fn is_disabled(self) -> bool {
+        matches!(self, Self::Disabled)
+    }
+}
+
 /// Wrapper over `Plan` containing `vtables` map.
-#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ExecutionPlan {
     request_id: String,
     /// IR plan contains motions.
@@ -60,45 +81,627 @@ pub struct ExecutionPlan {
     /// Virtual tables for `Motion` nodes.
     /// Map of { `Motion` node_id -> it's corresponding data }
     vtables: VirtualTableMap,
-    /// It is calculated via `set_plan_id` during `materialize_motion`
-    /// and stored in `plan_id_cache` in the original IR plan.
+    /// It is calculated via `set_plan_id` during `materialize_motion`.
     pub(crate) plan_id: Option<u64>,
+    /// Plan id cache for motion subtrees during the current execution.
+    pub(crate) plan_id_cache: AHashMap<NodeId, u64>,
+    /// SQL parameter count cache for motion subtrees during the current execution.
+    plan_id_sql_parameter_count_cache: AHashMap<NodeId, usize>,
+    /// SQL parameter count for the currently selected `plan_id`.
+    plan_id_sql_parameter_count: Option<usize>,
+    /// Delete tuple lengths calculated for sharded updates during execution.
+    update_delete_tuple_lens: AHashMap<NodeId, usize>,
+    /// Read-only bucket predicate overlay for local SQL.
+    ///
+    /// Used for sharded tables whose primary key starts with `bucket_id`.
+    /// The generated `bucket_id IN (...)` predicate lets the local SQL planner
+    /// use the primary key without mutating the IR plan.
+    bucket_filter: Option<BucketFilter>,
+    /// Read-only override for `SerializeAsEmptyTable`.
+    ///
+    /// Used by per-replicaset customization to render selected motions as if
+    /// the opcode were disabled without mutating the IR plan.
+    serialize_as_empty_disabled_motions: HashSet<NodeId>,
+    /// Read-only overlay for motions whose subtree has already been materialized.
+    ///
+    /// Such motions are rendered and traversed as leaves without mutating the IR
+    /// motion node.
+    unlinked_motions: HashSet<NodeId>,
+    /// Derived cache for effective subtree metadata during this execution.
+    subtree_view_cache: SubtreeViewCache,
 }
 
-/// Translates the original plan's node id to the new sub-plan one.
-struct SubtreeMap {
-    inner: AHashMap<NodeId, NodeId>,
+/// Read-only execution plan borrow.
+///
+/// While this value exists, Rust's borrow checker prevents mutable access to
+/// the underlying `ExecutionPlan`.
+#[derive(Clone, Copy, Debug)]
+pub struct FrozenPlan<'plan> {
+    exec_plan: &'plan ExecutionPlan,
 }
 
-impl SubtreeMap {
-    fn with_capacity(capacity: usize) -> Self {
-        SubtreeMap {
-            inner: AHashMap::with_capacity(capacity),
+impl<'plan> FrozenPlan<'plan> {
+    /// Creates a read-only view over the frozen execution plan.
+    ///
+    /// The returned view keeps the same borrow lifetime and can be narrowed to
+    /// a DQL subtree without cloning or mutating the plan.
+    #[must_use]
+    pub fn execution_view(self) -> ExecutionView<'plan> {
+        ExecutionView { frozen: self }
+    }
+}
+
+/// Read-only execution plan view available after the plan is frozen.
+#[derive(Debug)]
+pub struct ExecutionView<'plan> {
+    frozen: FrozenPlan<'plan>,
+}
+
+impl<'plan> ExecutionView<'plan> {
+    /// Narrows the read-only view to a DQL subtree rooted at `sql_top_id`.
+    ///
+    /// # Errors
+    /// - If `sql_top_id` does not reference a node in the underlying plan.
+    pub fn dql_subtree(self, sql_top_id: NodeId) -> Result<DqlSubtree<'plan>, SbroadError> {
+        self.get_ir_plan().get_node(sql_top_id)?;
+        Ok(DqlSubtree {
+            view: self,
+            sql_top_id,
+        })
+    }
+
+    /// Returns the execution plan behind this read-only view.
+    #[must_use]
+    pub(crate) fn as_execution_plan(&self) -> &'plan ExecutionPlan {
+        self.frozen.exec_plan
+    }
+
+    /// Returns the IR plan behind this read-only view.
+    #[must_use]
+    pub(crate) fn get_ir_plan(&self) -> &'plan Plan {
+        self.as_execution_plan().get_ir_plan()
+    }
+}
+
+/// Read-only DQL subtree view available after the plan is frozen.
+#[derive(Debug)]
+pub struct DqlSubtree<'plan> {
+    view: ExecutionView<'plan>,
+    sql_top_id: NodeId,
+}
+
+impl<'plan> DqlSubtree<'plan> {
+    /// Returns the node id used as the SQL root for this subtree.
+    #[must_use]
+    pub(crate) fn sql_top_id(&self) -> NodeId {
+        self.sql_top_id
+    }
+
+    /// Returns the execution plan behind this DQL subtree view.
+    #[must_use]
+    pub(crate) fn as_execution_plan(&self) -> &'plan ExecutionPlan {
+        self.view.as_execution_plan()
+    }
+
+    /// Returns the IR plan behind this DQL subtree view.
+    #[must_use]
+    pub(crate) fn get_ir_plan(&self) -> &'plan Plan {
+        self.view.get_ir_plan()
+    }
+
+    fn effective_reference_alias(&self, expr: &Expression) -> Result<SmolStr, SbroadError> {
+        let plan = self.get_ir_plan();
+        let Some((rel_id, position)) = reference_target(expr) else {
+            return Ok(SmolStr::from(plan.get_alias_from_reference_node(expr)?));
+        };
+        if let Some(alias) = self.materialized_motion_alias(rel_id, position)? {
+            return Ok(alias);
+        }
+        if let Some(alias) = self.renamed_output_alias(rel_id, position, &mut AHashSet::new())? {
+            return Ok(alias);
+        }
+        Ok(SmolStr::from(plan.get_alias_from_reference_node(expr)?))
+    }
+
+    fn renamed_output_alias(
+        &self,
+        rel_id: NodeId,
+        position: usize,
+        visited: &mut AHashSet<NodeId>,
+    ) -> Result<Option<SmolStr>, SbroadError> {
+        if !visited.insert(rel_id) {
+            return Ok(None);
+        }
+
+        let plan = self.get_ir_plan();
+        let rel = plan.get_relation_node(rel_id)?;
+        let output = rel.output();
+        let output_list = plan.get_row_list(output)?;
+        let Some(alias_id) = output_list.get(position) else {
+            return Ok(None);
+        };
+        let Expression::Alias(Alias { child, .. }) = plan.get_expression_node(*alias_id)? else {
+            return Ok(None);
+        };
+        let Expression::Reference(Reference {
+            target,
+            position,
+            asterisk_source,
+            ..
+        }) = plan.get_expression_node(*child)?
+        else {
+            return Ok(None);
+        };
+        if matches!(rel, Relational::Projection(_)) && asterisk_source.is_none() {
+            return Ok(None);
+        }
+
+        let Some(child_rel_id) = target.first() else {
+            return Ok(None);
+        };
+        if let Some(alias) = self.materialized_motion_alias(*child_rel_id, *position)? {
+            return Ok(Some(alias));
+        }
+        self.renamed_output_alias(*child_rel_id, *position, visited)
+    }
+
+    fn materialized_motion_alias(
+        &self,
+        motion_id: NodeId,
+        position: usize,
+    ) -> Result<Option<SmolStr>, SbroadError> {
+        if !self.contains_vtable_for_motion(motion_id) {
+            return Ok(None);
+        }
+        if !self.get_ir_plan().get_relation_node(motion_id)?.is_motion() {
+            return Ok(None);
+        }
+        let vtable = self.get_motion_vtable(motion_id)?;
+        let Some(column) = vtable.get_columns().get(position) else {
+            return Err(SbroadError::NotFound(
+                Entity::Name,
+                format_smolstr!("for column at position {position}"),
+            ));
+        };
+        Ok(Some(column.name.clone()))
+    }
+}
+
+fn reference_target(expr: &Expression) -> Option<(NodeId, usize)> {
+    match expr {
+        Expression::Reference(Reference {
+            target, position, ..
+        }) => target.first().map(|rel_id| (*rel_id, *position)),
+        Expression::SubQueryReference(SubQueryReference {
+            rel_id, position, ..
+        }) => Some((*rel_id, *position)),
+        _ => None,
+    }
+}
+
+/// Common SQL rendering interface for a full plan or a read-only subtree view.
+pub(crate) trait SqlExecutionView: std::fmt::Debug {
+    /// Returns the underlying execution plan used for shared metadata access.
+    fn as_execution_plan(&self) -> &ExecutionPlan;
+
+    /// Returns the IR plan visible through this view.
+    fn get_ir_plan(&self) -> &Plan {
+        self.as_execution_plan().get_ir_plan()
+    }
+
+    /// Returns virtual tables visible through this view.
+    fn get_vtables(&self) -> &VirtualTableMap {
+        self.as_execution_plan().get_vtables()
+    }
+
+    /// Returns the virtual table materialized for `motion_id`.
+    fn get_motion_vtable(&self, motion_id: NodeId) -> Result<Rc<VirtualTable>, SbroadError> {
+        self.as_execution_plan().get_motion_vtable(motion_id)
+    }
+
+    /// Returns whether `motion_id` has a materialized virtual table.
+    fn contains_vtable_for_motion(&self, motion_id: NodeId) -> bool {
+        self.as_execution_plan()
+            .contains_vtable_for_motion(motion_id)
+    }
+
+    /// Resolves a reference alias as it should be rendered in SQL.
+    fn reference_alias(&self, expr: &Expression) -> Result<SmolStr, SbroadError> {
+        Ok(SmolStr::from(
+            self.get_ir_plan().get_alias_from_reference_node(expr)?,
+        ))
+    }
+
+    /// Returns the synthetic `bucket_id` reference for a selection node.
+    fn get_bucket_ref(&self, selection_id: NodeId) -> Option<NodeId> {
+        self.as_execution_plan().get_bucket_ref(selection_id)
+    }
+
+    /// Returns bucket ids appended as SQL parameters by the active bucket filter.
+    fn get_bucket_filter_ids(&self) -> Option<&[u64]> {
+        self.as_execution_plan().get_bucket_filter_ids()
+    }
+
+    /// Returns the effective child of a motion after execution overlays.
+    fn effective_motion_child(&self, motion_id: NodeId) -> Result<Option<NodeId>, SbroadError> {
+        self.as_execution_plan().effective_motion_child(motion_id)
+    }
+
+    /// Returns the output node if the motion is rendered as a leaf in this view.
+    fn effective_motion_leaf_output(&self, node_id: NodeId) -> Option<NodeId> {
+        self.as_execution_plan()
+            .effective_motion_leaf_output(node_id)
+    }
+
+    /// Returns the effective `SerializeAsEmptyTable` state for a motion.
+    fn effective_serialize_as_empty_state(
+        &self,
+        motion_id: NodeId,
+        program: &Program,
+    ) -> SerializeAsEmptyState {
+        self.as_execution_plan()
+            .effective_serialize_as_empty_state(motion_id, program)
+    }
+}
+
+impl SqlExecutionView for ExecutionPlan {
+    fn as_execution_plan(&self) -> &ExecutionPlan {
+        self
+    }
+}
+
+impl SqlExecutionView for ExecutionView<'_> {
+    fn as_execution_plan(&self) -> &ExecutionPlan {
+        ExecutionView::as_execution_plan(self)
+    }
+}
+
+impl SqlExecutionView for DqlSubtree<'_> {
+    fn as_execution_plan(&self) -> &ExecutionPlan {
+        DqlSubtree::as_execution_plan(self)
+    }
+
+    fn reference_alias(&self, expr: &Expression) -> Result<SmolStr, SbroadError> {
+        self.effective_reference_alias(expr)
+    }
+}
+
+/// Iterator over an effective execution subtree.
+///
+/// It either yields a single replacement leaf or delegates to the normal IR
+/// subtree iterator.
+pub(crate) enum EffectiveExecPlanSubtreeIterator<'plan> {
+    /// A subtree collapsed to one effective leaf node.
+    Once(std::iter::Once<NodeId>),
+    /// A regular IR execution subtree traversal.
+    Subtree(ExecPlanSubtreeIterator<'plan>),
+}
+
+impl Iterator for EffectiveExecPlanSubtreeIterator<'_> {
+    type Item = NodeId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            EffectiveExecPlanSubtreeIterator::Once(iter) => iter.next(),
+            EffectiveExecPlanSubtreeIterator::Subtree(iter) => iter.next(),
+        }
+    }
+}
+
+/// Flags derived from an effective subtree and used to choose dispatch mode.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SubtreeDispatchFlags {
+    /// Whether the subtree reads segmented virtual tables.
+    pub has_segmented_tables: bool,
+    /// Whether the subtree contains per-replicaset customization opcodes.
+    pub has_customization_opcodes: bool,
+    /// Motion whose materialized vtable makes the subtree segmented.
+    pub(crate) segmented_motion_id: Option<NodeId>,
+}
+
+#[derive(Debug)]
+struct SubtreeViewSummary {
+    key: SubtreeViewKey,
+    constant_ids: Vec<NodeId>,
+    dispatch_flags: SubtreeDispatchFlags,
+}
+
+#[derive(Debug, Default)]
+struct SubtreeViewCache {
+    inner: Rc<RefCell<AHashMap<NodeId, Rc<SubtreeViewSummary>>>>,
+}
+
+impl Clone for SubtreeViewCache {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl SubtreeViewCache {
+    fn get(&self, top_id: NodeId) -> Option<Rc<SubtreeViewSummary>> {
+        self.inner.borrow().get(&top_id).cloned()
+    }
+
+    fn insert(&self, top_id: NodeId, summary: Rc<SubtreeViewSummary>) {
+        self.inner.borrow_mut().insert(top_id, summary);
+    }
+
+    fn clear(&self) {
+        self.inner.borrow_mut().clear();
+    }
+}
+
+impl PartialEq for SubtreeViewCache {
+    fn eq(&self, _other: &Self) -> bool {
+        // The cache stores derived per-execution subtree metadata. Warm and
+        // cold caches must compare equally so `ExecutionPlan` equality reflects
+        // only plan data and execution overlays that affect behavior.
+        true
+    }
+}
+
+impl Eq for SubtreeViewCache {}
+
+/// Builds and caches effective subtree metadata for one execution plan root.
+pub(crate) struct SubtreeViewBuilder<'plan> {
+    exec_plan: &'plan ExecutionPlan,
+    summary: Rc<SubtreeViewSummary>,
+}
+
+impl<'plan> SubtreeViewBuilder<'plan> {
+    /// Returns a builder for `top_id`, reusing cached metadata when available.
+    ///
+    /// # Errors
+    /// - If the effective subtree rooted at `top_id` cannot be traversed.
+    pub(crate) fn new(
+        exec_plan: &'plan ExecutionPlan,
+        top_id: NodeId,
+    ) -> Result<Self, SbroadError> {
+        if let Some(summary) = exec_plan.subtree_view_cache.get(top_id) {
+            return Ok(Self { exec_plan, summary });
+        }
+
+        let summary = Rc::new(Self::build_summary(exec_plan, top_id)?);
+        exec_plan
+            .subtree_view_cache
+            .insert(top_id, Rc::clone(&summary));
+
+        Ok(Self { exec_plan, summary })
+    }
+
+    fn build_summary(
+        exec_plan: &'plan ExecutionPlan,
+        top_id: NodeId,
+    ) -> Result<SubtreeViewSummary, SbroadError> {
+        let ir_plan = exec_plan.get_ir_plan();
+        let subtree = PostOrder::new(
+            |node| exec_plan.effective_sql_subtree_iter(node, Snapshot::Oldest),
+            ir_plan.nodes.len(),
+        );
+        let subtree_nodes = subtree.traverse_into_iter(top_id).collect::<Vec<_>>();
+        let node_ids = subtree_nodes
+            .iter()
+            .map(|LevelNode(_, id)| *id)
+            .collect::<Vec<_>>();
+        let node_levels = subtree_nodes
+            .iter()
+            .map(|LevelNode(level, _)| *level as u32)
+            .collect::<Vec<_>>();
+        let constants = PostOrderWithFilter::new(
+            |node| exec_plan.effective_sql_subtree_output_first_iter(node, Snapshot::Oldest),
+            |node| {
+                matches!(
+                    ir_plan.get_node(node),
+                    Ok(Node::Expression(Expression::Constant(_)))
+                )
+            },
+            ir_plan.nodes.len(),
+        );
+        let mut constant_ids = Vec::new();
+        let mut constant_set = HashSet::new();
+        for LevelNode(_, node_id) in constants.traverse_into_iter(top_id) {
+            if constant_set.insert(node_id) {
+                constant_ids.push(node_id);
+            }
+        }
+
+        let mut leaf_motions = Vec::new();
+        let mut serialize_as_empty = Vec::new();
+        let mut dispatch_flags = SubtreeDispatchFlags::default();
+
+        for node_id in &node_ids {
+            if exec_plan.effective_motion_leaf_output(*node_id).is_some() {
+                leaf_motions.push(*node_id);
+            }
+            if !dispatch_flags.has_segmented_tables {
+                if let Some(vtable) = exec_plan.get_vtables().get(node_id) {
+                    if !vtable.get_bucket_index().is_empty() {
+                        dispatch_flags.has_segmented_tables = true;
+                        dispatch_flags.segmented_motion_id = Some(*node_id);
+                    }
+                }
+            }
+            if let Node::Relational(Relational::Motion(Motion { program, .. })) =
+                ir_plan.get_node(*node_id)?
+            {
+                if program
+                    .0
+                    .iter()
+                    .any(|op| matches!(op, MotionOpcode::SerializeAsEmptyTable(_)))
+                {
+                    dispatch_flags.has_customization_opcodes = true;
+                }
+                match exec_plan.effective_serialize_as_empty_state(*node_id, program) {
+                    SerializeAsEmptyState::Absent => {}
+                    SerializeAsEmptyState::Enabled => serialize_as_empty.push((*node_id, true)),
+                    SerializeAsEmptyState::Disabled => serialize_as_empty.push((*node_id, false)),
+                }
+            }
+        }
+
+        Ok(SubtreeViewSummary {
+            key: SubtreeViewKey {
+                top_id,
+                node_ids,
+                node_levels,
+                leaf_motions,
+                serialize_as_empty,
+            },
+            constant_ids,
+            dispatch_flags,
+        })
+    }
+
+    /// Returns the execution plan for which this subtree summary was built.
+    pub(crate) fn exec_plan(&self) -> &'plan ExecutionPlan {
+        self.exec_plan
+    }
+
+    /// Returns the cache key describing the effective subtree shape.
+    pub(crate) fn key(&self) -> &SubtreeViewKey {
+        &self.summary.key
+    }
+
+    /// Returns node ids rendered by the effective SQL subtree.
+    pub(crate) fn node_ids(&self) -> &[NodeId] {
+        &self.summary.key.node_ids
+    }
+
+    /// Returns tree levels for nodes rendered by the effective SQL subtree.
+    pub(crate) fn node_levels(&self) -> &[u32] {
+        &self.summary.key.node_levels
+    }
+
+    /// Returns constant node ids in SQL parameter order.
+    pub(crate) fn constant_ids(&self) -> &[NodeId] {
+        &self.summary.constant_ids
+    }
+
+    /// Returns dispatch flags derived for this effective subtree.
+    pub(crate) fn dispatch_flags(&self) -> SubtreeDispatchFlags {
+        self.summary.dispatch_flags
+    }
+}
+
+/// SQL parameter data collected without mutating the IR plan.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalSqlParams {
+    constant_ids: Vec<NodeId>,
+    params: Vec<Value>,
+}
+
+impl LocalSqlParams {
+    /// Returns constant node ids in SQL placeholder order.
+    #[must_use]
+    pub fn constant_ids(&self) -> &[NodeId] {
+        &self.constant_ids
+    }
+
+    /// Returns SQL parameter values in the order expected by local SQL.
+    #[must_use]
+    pub fn params(&self) -> &[Value] {
+        &self.params
+    }
+
+    /// Splits the collected node ids and parameter values without cloning.
+    pub fn into_parts(self) -> (Vec<NodeId>, Vec<Value>) {
+        (self.constant_ids, self.params)
+    }
+}
+
+/// SQL-visible bucket filter attached to selected storage subtrees.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct BucketFilter {
+    /// Normalized bucket ids used as SQL suffix parameters.
+    bucket_ids: Vec<u64>,
+    /// Map of `Selection` node id to the system `bucket_id` reference node id
+    /// rendered on the left-hand side of the generated `IN (...)` predicate.
+    targets: AHashMap<NodeId, NodeId>,
+}
+
+fn bucket_filter_calculate(
+    exec_plan: &ExecutionPlan,
+    top_id: NodeId,
+    buckets: &Buckets,
+) -> Result<Option<BucketFilter>, SbroadError> {
+    let Buckets::Filtered(BucketSet::Exact(bucket_ids)) = buckets else {
+        return Ok(None);
+    };
+    if bucket_ids.is_empty() {
+        return Ok(None);
+    }
+
+    let plan = exec_plan.get_ir_plan();
+    let mut relation_name: Option<&SmolStr> = None;
+    let mut targets = AHashMap::new();
+    let subtree = PostOrder::new(
+        |node| exec_plan.effective_exec_plan_subtree_iter(node, Snapshot::Oldest),
+        plan.nodes.len(),
+    );
+    for LevelNode(_, node_id) in subtree.traverse_into_iter(top_id) {
+        let Ok(Node::Relational(rel)) = plan.get_node(node_id) else {
+            continue;
+        };
+        if let Some(node_relation_name) = bucket_filter_relation_name(&rel) {
+            match relation_name {
+                Some(name) if name != node_relation_name => return Ok(None),
+                Some(_) => {}
+                None => relation_name = Some(node_relation_name),
+            }
+        };
+        if let Relational::Selection(selection) = rel {
+            if let Some(bucket_ref_id) = bucket_ref_from_output(plan, selection.output)? {
+                targets.insert(node_id, bucket_ref_id);
+            }
         }
     }
 
-    fn get_id(&self, expr_id: NodeId) -> NodeId {
-        *self
-            .inner
-            .get(&expr_id)
-            .unwrap_or_else(|| panic!("Could not find node with id {expr_id:?} in subtree map"))
+    if targets.is_empty() {
+        return Ok(None);
     }
 
-    fn get_id_if_exist(&self, expr_id: NodeId) -> Option<&NodeId> {
-        self.inner.get(&expr_id)
+    let Some(relation_name) = relation_name else {
+        return Ok(None);
+    };
+    let Some(table) = plan.relations.tables.get(relation_name) else {
+        return Ok(None);
+    };
+    if !table.has_bucket_id_primary_key_prefix() {
+        return Ok(None);
     }
 
-    fn contains_key(&self, expr_id: NodeId) -> bool {
-        self.inner.contains_key(&expr_id)
-    }
+    let bucket_ids = bucket_ids.iter().copied().sorted_unstable().collect();
 
-    fn insert(&mut self, old_id: NodeId, new_id: NodeId) {
-        self.inner.insert(old_id, new_id);
+    Ok(Some(BucketFilter {
+        bucket_ids,
+        targets,
+    }))
+}
+
+fn bucket_filter_relation_name<'plan>(rel: &Relational<'plan>) -> Option<&'plan SmolStr> {
+    match rel {
+        Relational::ScanRelation(scan) => Some(&scan.relation),
+        Relational::Insert(insert) => Some(&insert.relation),
+        Relational::Delete(delete) => Some(&delete.relation),
+        Relational::Update(update) => Some(&update.relation),
+        _ => None,
     }
 }
 
-/// Expected number of plan nodes which are part of Subquery/CTE subtrees.
-const SQ_IDS_CAPACITY: usize = 100;
+fn bucket_ref_from_output(plan: &Plan, output_id: NodeId) -> Result<Option<NodeId>, SbroadError> {
+    let output_expr = plan.get_expression_node(output_id)?;
+    let row_list = output_expr.get_row_list()?;
+    let bucket_ref_id = row_list.iter().find_map(|col_id| {
+        let col_id = plan.get_child_under_alias(*col_id).ok()?;
+        let expr = plan.get_expression_node(col_id).ok()?;
+        let Expression::Reference(Reference { is_system, .. }) = expr else {
+            return None;
+        };
+        is_system.then_some(col_id)
+    });
+
+    Ok(bucket_ref_id)
+}
 
 impl ExecutionPlan {
     pub fn new(plan: Plan) -> Self {
@@ -107,12 +710,314 @@ impl ExecutionPlan {
             plan,
             vtables: VirtualTableMap::new(),
             plan_id: None,
+            plan_id_cache: AHashMap::new(),
+            plan_id_sql_parameter_count_cache: AHashMap::new(),
+            plan_id_sql_parameter_count: None,
+            update_delete_tuple_lens: AHashMap::new(),
+            bucket_filter: None,
+            serialize_as_empty_disabled_motions: HashSet::new(),
+            unlinked_motions: HashSet::new(),
+            subtree_view_cache: SubtreeViewCache::default(),
         }
     }
 
     #[must_use]
     pub fn get_request_id(&self) -> &str {
         &self.request_id
+    }
+
+    /// Freeze this execution plan as a read-only borrow.
+    ///
+    /// The guarantee is provided by Rust borrow checking: code holding the
+    /// returned value cannot also hold a mutable borrow of this plan.
+    #[must_use]
+    pub fn freeze(&self) -> FrozenPlan<'_> {
+        FrozenPlan { exec_plan: self }
+    }
+
+    /// Returns the bucket reference attached to `selection_id` by the active
+    /// bucket filter overlay.
+    pub(crate) fn get_bucket_ref(&self, selection_id: NodeId) -> Option<NodeId> {
+        self.bucket_filter
+            .as_ref()?
+            .targets
+            .get(&selection_id)
+            .copied()
+    }
+
+    /// Prepares a read-only bucket filter overlay for dispatching `top_id`.
+    ///
+    /// The overlay appends bucket ids as local SQL parameters without changing
+    /// the IR plan.
+    ///
+    /// # Errors
+    /// - If the effective subtree cannot be inspected.
+    pub(crate) fn prepare_bucket_filter_for_dispatch(
+        &mut self,
+        top_id: NodeId,
+        buckets: &Buckets,
+    ) -> Result<(), SbroadError> {
+        self.bucket_filter = bucket_filter_calculate(self, top_id, buckets)?;
+        Ok(())
+    }
+
+    /// Clears the bucket filter overlay after dispatch customization.
+    pub(crate) fn clear_bucket_filter(&mut self) {
+        self.bucket_filter = None;
+    }
+
+    /// Disables `SerializeAsEmptyTable` for selected motions through an overlay.
+    ///
+    /// Cached effective subtree and plan-id metadata is cleared because SQL
+    /// shape can change.
+    pub(crate) fn disable_serialize_as_empty_for_motions(
+        &mut self,
+        motion_ids: impl IntoIterator<Item = NodeId>,
+    ) {
+        self.subtree_view_cache.clear();
+        self.plan_id = None;
+        self.plan_id_sql_parameter_count = None;
+        self.plan_id_cache.clear();
+        self.plan_id_sql_parameter_count_cache.clear();
+        self.serialize_as_empty_disabled_motions.extend(motion_ids);
+    }
+
+    /// Returns effective `SerializeAsEmptyTable` state.
+    pub(crate) fn effective_serialize_as_empty_state(
+        &self,
+        motion_id: NodeId,
+        program: &Program,
+    ) -> SerializeAsEmptyState {
+        let Some(MotionOpcode::SerializeAsEmptyTable(enabled)) = program
+            .0
+            .iter()
+            .find(|op| matches!(op, MotionOpcode::SerializeAsEmptyTable(_)))
+        else {
+            return SerializeAsEmptyState::Absent;
+        };
+        if self
+            .serialize_as_empty_disabled_motions
+            .contains(&motion_id)
+        {
+            return SerializeAsEmptyState::Disabled;
+        }
+        if *enabled {
+            SerializeAsEmptyState::Enabled
+        } else {
+            SerializeAsEmptyState::Disabled
+        }
+    }
+
+    /// Marks a materialized motion as an effective leaf without mutating the IR.
+    ///
+    /// # Errors
+    /// - If `motion_id` is not a motion node.
+    pub(crate) fn mark_motion_subtree_unlinked(
+        &mut self,
+        motion_id: NodeId,
+    ) -> Result<(), SbroadError> {
+        let Relational::Motion(_) = self.get_ir_plan().get_relation_node(motion_id)? else {
+            return Err(SbroadError::Invalid(
+                Entity::Relational,
+                Some(format_smolstr!("node ({motion_id:?}) is not motion")),
+            ));
+        };
+        self.subtree_view_cache.clear();
+        self.unlinked_motions.insert(motion_id);
+        Ok(())
+    }
+
+    /// Returns whether a motion subtree is currently treated as materialized.
+    pub(crate) fn is_motion_subtree_unlinked(&self, motion_id: NodeId) -> bool {
+        self.unlinked_motions.contains(&motion_id)
+    }
+
+    /// Returns the effective motion child after applying execution overlays.
+    ///
+    /// `Ok(None)` means the motion is rendered as a leaf because it has a
+    /// materialized non-local virtual table or was explicitly unlinked.
+    ///
+    /// # Errors
+    /// - If `motion_id` is not a motion node.
+    pub(crate) fn effective_motion_child(
+        &self,
+        motion_id: NodeId,
+    ) -> Result<Option<NodeId>, SbroadError> {
+        let Relational::Motion(Motion { child, policy, .. }) =
+            self.get_ir_plan().get_relation_node(motion_id)?
+        else {
+            return Err(SbroadError::Invalid(
+                Entity::Relational,
+                Some(format_smolstr!("node ({motion_id:?}) is not motion")),
+            ));
+        };
+        if self.is_motion_subtree_unlinked(motion_id)
+            || self.contains_vtable_for_motion(motion_id) && !policy.is_local()
+        {
+            return Ok(None);
+        }
+        Ok(*child)
+    }
+
+    /// Returns the output node used when `node_id` is an effective motion leaf.
+    pub(crate) fn effective_motion_leaf_output(&self, node_id: NodeId) -> Option<NodeId> {
+        let Ok(Node::Relational(Relational::Motion(Motion { output, policy, .. }))) =
+            self.get_ir_plan().get_node(node_id)
+        else {
+            return None;
+        };
+        if self.is_motion_subtree_unlinked(node_id)
+            || self.contains_vtable_for_motion(node_id) && !policy.is_local()
+        {
+            return Some(*output);
+        }
+        None
+    }
+
+    /// Returns the root below a motion if the motion subtree is still visible.
+    ///
+    /// # Errors
+    /// - If `motion_id` is not a motion node.
+    pub(crate) fn effective_motion_subtree_root(
+        &self,
+        motion_id: NodeId,
+    ) -> Result<Option<NodeId>, SbroadError> {
+        if self.effective_motion_child(motion_id)?.is_none() {
+            return Ok(None);
+        }
+        Ok(Some(self.get_ir_plan().get_motion_subtree_root(motion_id)?))
+    }
+
+    /// Iterates an execution subtree after materialized motion overlays.
+    pub(crate) fn effective_exec_plan_subtree_iter(
+        &self,
+        current: NodeId,
+        snapshot: Snapshot,
+    ) -> EffectiveExecPlanSubtreeIterator<'_> {
+        if let Some(output) = self.effective_motion_leaf_output(current) {
+            return EffectiveExecPlanSubtreeIterator::Once(std::iter::once(output));
+        }
+        EffectiveExecPlanSubtreeIterator::Subtree(
+            self.get_ir_plan().exec_plan_subtree_iter(current, snapshot),
+        )
+    }
+
+    /// Iterates a SQL subtree after all SQL-rendering overlays.
+    ///
+    /// Unlike execution traversal, this also collapses enabled
+    /// `SerializeAsEmptyTable` motions to their output node.
+    pub(crate) fn effective_sql_subtree_iter(
+        &self,
+        current: NodeId,
+        snapshot: Snapshot,
+    ) -> EffectiveExecPlanSubtreeIterator<'_> {
+        self.effective_sql_subtree_iter_with(current, snapshot, false)
+    }
+
+    fn effective_sql_subtree_output_first_iter(
+        &self,
+        current: NodeId,
+        snapshot: Snapshot,
+    ) -> EffectiveExecPlanSubtreeIterator<'_> {
+        self.effective_sql_subtree_iter_with(current, snapshot, true)
+    }
+
+    fn effective_sql_subtree_iter_with(
+        &self,
+        current: NodeId,
+        snapshot: Snapshot,
+        output_first: bool,
+    ) -> EffectiveExecPlanSubtreeIterator<'_> {
+        if let Some(output) = self.effective_motion_leaf_output(current) {
+            return EffectiveExecPlanSubtreeIterator::Once(std::iter::once(output));
+        }
+        if let Ok(Node::Relational(Relational::Motion(Motion {
+            output, program, ..
+        }))) = self.get_ir_plan().get_node(current)
+        {
+            if self
+                .effective_serialize_as_empty_state(current, program)
+                .is_enabled()
+            {
+                return EffectiveExecPlanSubtreeIterator::Once(std::iter::once(*output));
+            }
+        }
+        let ir_plan = self.get_ir_plan();
+        let subtree = if output_first {
+            ir_plan.exec_plan_subtree_output_first_iter(current, snapshot)
+        } else {
+            ir_plan.exec_plan_subtree_iter(current, snapshot)
+        };
+        EffectiveExecPlanSubtreeIterator::Subtree(subtree)
+    }
+
+    /// Returns bucket ids appended to SQL parameters by the active filter.
+    pub(crate) fn get_bucket_filter_ids(&self) -> Option<&[u64]> {
+        Some(self.bucket_filter.as_ref()?.bucket_ids.as_slice())
+    }
+
+    /// Returns the number of SQL parameters in the current effective SQL tree.
+    ///
+    /// # Errors
+    /// - If the plan top or effective subtree cannot be inspected.
+    pub(crate) fn sql_parameter_count(&self) -> Result<usize, SbroadError> {
+        let top_id = self.get_ir_plan().get_top()?;
+        Ok(SubtreeViewBuilder::new(self, top_id)?.constant_ids().len())
+    }
+
+    /// Returns the plan-id parameter count plus active bucket-filter parameters.
+    ///
+    /// # Errors
+    /// - If the SQL parameter count cannot be calculated.
+    pub(crate) fn parameter_count(&self) -> Result<usize, SbroadError> {
+        Ok(self
+            .plan_id_sql_parameter_count
+            .map_or_else(|| self.sql_parameter_count(), Ok)?
+            + self
+                .bucket_filter
+                .as_ref()
+                .map_or(0, |filter| filter.bucket_ids.len()))
+    }
+
+    /// Collects constant node ids and SQL parameter values for local SQL.
+    ///
+    /// For `Snapshot::Oldest`, constants are collected from the cached effective
+    /// SQL subtree. Bucket filter values are appended after IR constants.
+    ///
+    /// # Errors
+    /// - If the effective subtree cannot be inspected.
+    /// - If a collected constant cannot be converted to a parameter value.
+    /// - If the parameter count exceeds the local SQL placeholder limit.
+    pub fn local_sql_params(
+        &self,
+        top_id: NodeId,
+        snapshot: Snapshot,
+    ) -> Result<LocalSqlParams, SbroadError> {
+        let constant_ids = match snapshot {
+            Snapshot::Oldest => SubtreeViewBuilder::new(self, top_id)?
+                .constant_ids()
+                .to_vec(),
+            Snapshot::Latest => self.get_ir_plan().get_const_list(top_id, snapshot),
+        };
+        let mut params = Vec::with_capacity(constant_ids.len());
+        for (num, const_id) in constant_ids.iter().enumerate() {
+            let _: u16 = (num + 1).try_into().map_err(|_| {
+                SbroadError::Other(format_smolstr!("too many parameters in local sql: {num}"))
+            })?;
+            params.push(self.get_ir_plan().as_const_value_ref(*const_id)?.clone());
+        }
+        if let Some(filter) = &self.bucket_filter {
+            params.extend(
+                filter
+                    .bucket_ids
+                    .iter()
+                    .map(|bucket_id| Value::Integer(*bucket_id as i64)),
+            );
+        }
+        Ok(LocalSqlParams {
+            constant_ids,
+            params,
+        })
     }
 
     /// Returns the node id from which the `plan_id` should be calculated.
@@ -137,9 +1042,7 @@ impl ExecutionPlan {
                         ..
                     }) = ir.get_relation_node(child_id)?
                     {
-                        let cacheable_subtree_root_id =
-                            self.plan.get_motion_subtree_root(child_id)?;
-                        Some(cacheable_subtree_root_id)
+                        self.effective_motion_subtree_root(child_id)?
                     } else {
                         None
                     }
@@ -150,19 +1053,103 @@ impl ExecutionPlan {
         Ok(node_id)
     }
 
+    /// Calculates or loads the cached plan id for the effective subtree.
+    ///
+    /// The matching SQL parameter count is cached together with the id so later
+    /// calls can salt cache ids without walking the subtree again.
+    ///
+    /// The selected `plan_id` and parameter count are valid for the current
+    /// effective SQL shape. After calling this method, callers must not mutate
+    /// IR shape or virtual-table metadata for that selected shape before using
+    /// `plan_id` or `parameter_count`. Shape-changing execution overlays must
+    /// clear or recalculate their own plan-id metadata.
+    ///
+    /// # Errors
+    /// - If the subtree plan id or SQL parameter count cannot be calculated.
     pub fn set_plan_id(&mut self, top_id: NodeId) -> Result<u64, SbroadError> {
-        let mut plan_id_cache = self.get_ir_plan().plan_id_cache.borrow_mut();
-        let plan_id = match plan_id_cache.entry(top_id) {
-            std::collections::hash_map::Entry::Occupied(entry) => *entry.get(),
-            std::collections::hash_map::Entry::Vacant(entry) => {
-                let plan_id = self.calculate_plan_id(top_id)?;
-                *entry.insert(plan_id)
-            }
+        let (plan_id, sql_parameter_count) = if let Some(plan_id) = self.plan_id_cache.get(&top_id)
+        {
+            let sql_parameter_count =
+                if let Some(count) = self.plan_id_sql_parameter_count_cache.get(&top_id) {
+                    *count
+                } else {
+                    let count = self.sql_parameter_count()?;
+                    self.plan_id_sql_parameter_count_cache.insert(top_id, count);
+                    count
+                };
+            (*plan_id, sql_parameter_count)
+        } else {
+            let (plan_id, sql_parameter_count) =
+                self.calculate_plan_id_with_parameter_count(top_id)?;
+            self.plan_id_cache.insert(top_id, plan_id);
+            self.plan_id_sql_parameter_count_cache
+                .insert(top_id, sql_parameter_count);
+            (plan_id, sql_parameter_count)
         };
-        drop(plan_id_cache);
 
         self.plan_id = Some(plan_id);
+        self.plan_id_sql_parameter_count = Some(sql_parameter_count);
         Ok(plan_id)
+    }
+
+    /// Stores the delete tuple width for a sharded update overlay.
+    ///
+    /// # Errors
+    /// - If `update_id` is not a sharded update node.
+    pub(crate) fn set_update_delete_tuple_len(
+        &mut self,
+        update_id: NodeId,
+        len: usize,
+    ) -> Result<(), SbroadError> {
+        let node = self.get_ir_plan().get_relation_node(update_id)?;
+        if !matches!(
+            node,
+            Relational::Update(Update {
+                strategy: UpdateStrategy::ShardedUpdate,
+                ..
+            })
+        ) {
+            return Err(SbroadError::Invalid(
+                Entity::Node,
+                Some(format_smolstr!("expected sharded Update, got: {node:?}")),
+            ));
+        }
+
+        self.update_delete_tuple_lens.insert(update_id, len);
+        Ok(())
+    }
+
+    /// Returns the delete tuple width calculated for a sharded update.
+    ///
+    /// # Errors
+    /// - If `update_id` is not a sharded update node.
+    /// - If the width has not been stored in the execution overlay.
+    pub fn get_update_delete_tuple_len(&self, update_id: NodeId) -> Result<usize, SbroadError> {
+        let node = self.get_ir_plan().get_relation_node(update_id)?;
+        if !matches!(
+            node,
+            Relational::Update(Update {
+                strategy: UpdateStrategy::ShardedUpdate,
+                ..
+            })
+        ) {
+            return Err(SbroadError::Invalid(
+                Entity::Node,
+                Some(format_smolstr!("expected sharded Update, got: {node:?}")),
+            ));
+        }
+
+        self.update_delete_tuple_lens
+            .get(&update_id)
+            .copied()
+            .ok_or_else(|| {
+                SbroadError::Invalid(
+                    Entity::Node,
+                    Some(format_smolstr!(
+                        "expected sharded Update with delete len, got: {node:?}"
+                    )),
+                )
+            })
     }
 
     #[must_use]
@@ -177,6 +1164,7 @@ impl ExecutionPlan {
 
     #[allow(dead_code)]
     pub fn get_mut_ir_plan(&mut self) -> &mut Plan {
+        self.subtree_view_cache.clear();
         &mut self.plan
     }
 
@@ -186,10 +1174,12 @@ impl ExecutionPlan {
     }
 
     pub fn get_mut_vtables(&mut self) -> &mut VirtualTableMap {
+        self.subtree_view_cache.clear();
         &mut self.vtables
     }
 
     pub fn set_vtables(&mut self, vtables: VirtualTableMap) {
+        self.subtree_view_cache.clear();
         self.vtables = vtables;
     }
 
@@ -270,8 +1260,7 @@ impl ExecutionPlan {
                         *old_shard_columns_len,
                         new_shard_columns_positions,
                     )? {
-                        let plan = self.get_mut_ir_plan();
-                        plan.set_update_delete_tuple_len(update_id, v)?;
+                        self.set_update_delete_tuple_len(update_id, v)?;
                     }
                 }
                 MotionOpcode::AddMissingRowsForLeftJoin { motion_id, .. } => {
@@ -322,6 +1311,17 @@ impl ExecutionPlan {
         false
     }
 
+    /// Returns dispatch flags derived from the effective subtree at `top_id`.
+    ///
+    /// # Errors
+    /// - If the effective subtree cannot be inspected.
+    pub fn subtree_dispatch_flags_at(
+        &self,
+        top_id: NodeId,
+    ) -> Result<SubtreeDispatchFlags, SbroadError> {
+        Ok(SubtreeViewBuilder::new(self, top_id)?.dispatch_flags())
+    }
+
     /// Extract policy from motion node
     ///
     /// # Errors
@@ -336,671 +1336,6 @@ impl ExecutionPlan {
             Entity::Relational,
             Some("invalid motion".into()),
         ))
-    }
-
-    /// Unlink the subtree of the motion node.
-    /// This logic is applied as an optimization: when we dispatch plan subtrees to the storages,
-    /// we don't need to dispatch a subtrees of `Motion` nodes as soon as they are already replaced
-    /// with vtables. So we replace its `children` field with an empty vec.
-    ///
-    /// # Errors
-    /// - not a motion node
-    pub fn unlink_motion_subtree(&mut self, motion_id: NodeId) -> Result<(), SbroadError> {
-        let motion = self.get_mut_ir_plan().get_mut_relation_node(motion_id)?;
-        if let MutRelational::Motion(Motion { child, .. }) = motion {
-            *child = None;
-        } else {
-            return Err(SbroadError::Invalid(
-                Entity::Relational,
-                Some(format_smolstr!("node ({motion_id:?}) is not motion")),
-            ));
-        }
-        Ok(())
-    }
-
-    /// Build a new execution plan from the subtree of the existing execution plan.
-    /// The operation is destructive and the subtree is removed from the original plan.
-    ///
-    /// # Errors
-    /// - the original execution plan is invalid
-    ///
-    /// # Panics
-    /// - Plan is in invalid state
-    #[allow(clippy::too_many_lines)]
-    pub fn take_subtree(
-        &mut self,
-        subtree_id: NodeId,
-        buckets: &Buckets,
-    ) -> Result<Self, SbroadError> {
-        // Get the subtree nodes indexes.
-        let plan = self.get_ir_plan();
-        let top_id = plan.get_top()?;
-
-        // XXX For historical reasons we destructively extract the subtree
-        // before sending it to a storage for execution. Ideally we would not
-        // do this and instead just send it via a read-only reference, and this
-        // will be done in future when we switch to the new sql-protocol.
-        //
-        // But for now we introduce this hack. It is needed because global DML
-        // operations go through CAS API, which may require retrying the request
-        // in expected situations (for example due to automatic compaction of
-        // raft log). In order to support correct DQL + DML queries we need to
-        // keep the original plan intact during the retry.
-        let dont_mutate = plan.is_dml_on_global_table()?;
-
-        // We don't cut CTE and subquery subtrees during plan traversal
-        // as they can be reused in other slices of the plan.
-        // So, we collect such subtree nodes into the set to avoid their removal.
-        //
-        // E.g. look at `one-sharded-one-global-filter-subquery` test to see an
-        // example of a subquery which is referenced by several nodes (one
-        // below Motion and one above it). Such a situation is caused by our
-        // EXCEPT implementation logic.
-        let mut nodes_to_save = AHashSet::default();
-        if !dont_mutate {
-            let rel_tree = PostOrderWithFilter::new(
-                |node| plan.nodes.rel_iter(node),
-                |node| {
-                    matches!(
-                        plan.get_relation_node(node),
-                        Ok(Relational::ScanCte(_) | Relational::ScanSubQuery(_))
-                    )
-                },
-                REL_CAPACITY,
-            );
-
-            // Preallocate memory for all subqueries and CTE subtrees.
-            nodes_to_save.reserve(SQ_IDS_CAPACITY * 2);
-
-            for LevelNode(_, node_id) in rel_tree.traverse_into_iter(top_id) {
-                let subtree = PostOrder::new(
-                    |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
-                    REL_CAPACITY,
-                );
-                for LevelNode(_, id) in subtree.traverse_into_iter(node_id) {
-                    nodes_to_save.insert(id);
-                }
-            }
-        }
-
-        let subtree = PostOrder::new(
-            |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
-            plan.nodes.len(),
-        );
-        let nodes = subtree.traverse_into_vec(subtree_id);
-
-        let mut subtree_map = SubtreeMap::with_capacity(nodes.len());
-        let vtables_capacity = self.get_vtables().len();
-        // Map of { plan node_id -> virtual table }.
-        let mut new_vtables: HashMap<NodeId, Rc<VirtualTable>> =
-            HashMap::with_capacity(vtables_capacity);
-
-        let mut new_plan = Plan::new();
-        new_plan.explain_options = plan.explain_options;
-        // In case we have a Motion among rel node children (maybe not direct), we
-        // need to rename rel output aliases, because Motion
-        // may have changed them according to its vtable column names.
-        // This map tracks outputs of rel nodes that have changed their aliases.
-        let mut rel_renamed_output_lists: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
-
-        // In motion, we can eliminate children. To keep references valid, we use this set.
-        // This set is also needed for debugging purposes: if we traverse in the wrong order,
-        // the array will contain references that point to incorrect locations.
-        let mut invalid_refs = HashSet::with_capacity(nodes.len());
-
-        for LevelNode(_, node_id) in nodes {
-            // We have already processed this node (sub-queries in BETWEEN
-            // and CTEs can be referred twice).
-            if subtree_map.contains_key(node_id) {
-                continue;
-            }
-
-            let mut_plan = self.get_mut_ir_plan();
-
-            // Replace the node with some invalid value.
-            let node = mut_plan.get_node(node_id)?;
-            let mut node: NodeOwned = if dont_mutate || nodes_to_save.contains(&node_id) {
-                node.into_owned()
-            } else {
-                mut_plan.replace_with_stub(node_id)
-            };
-
-            let mut is_invalid_ref = false;
-            let ir_plan = self.get_ir_plan();
-            match node {
-                NodeOwned::Relational(ref mut rel) => {
-                    match rel {
-                        RelOwned::Selection(Selection {
-                            filter: ref mut expr_id,
-                            ..
-                        })
-                        | RelOwned::Having(Having {
-                            filter: ref mut expr_id,
-                            ..
-                        })
-                        | RelOwned::Join(Join {
-                            condition: ref mut expr_id,
-                            ..
-                        }) => {
-                            // We transform selection's, having's filter and join's condition to DNF for a better bucket calculation.
-                            // But as a result we can produce an extremely verbose SQL query from such a plan (tarantool's
-                            // parser can fail to parse such SQL).
-
-                            // XXX: UNDO operation can cause problems if we introduce more complicated transformations
-                            // for filter/condition (but then the UNDO logic should be changed as well).
-                            let undo_expr_id = ir_plan.undo.get_oldest(expr_id);
-                            *expr_id = subtree_map.get_id(*undo_expr_id);
-                        }
-                        RelOwned::ScanRelation(ScanRelation {
-                            relation,
-                            indexed_by,
-                            ..
-                        }) => {
-                            let table = ir_plan
-                                .relations
-                                .get(relation)
-                                .unwrap_or_else(|| {
-                                    panic!(
-                                        "could not find relation {relation} in the original plan"
-                                    )
-                                })
-                                .clone();
-
-                            if cfg!(not(feature = "mock")) {
-                                if let Some(indexed_by) = indexed_by {
-                                    let index = ir_plan.indexes.get(indexed_by).ok_or(
-                                        SbroadError::NotFound(
-                                            Entity::Index,
-                                            format_smolstr!("with name {indexed_by}"),
-                                        ),
-                                    )?;
-                                    new_plan.index_version_map.insert(
-                                        [index.table_id, index.id],
-                                        *ir_plan
-                                            .index_version_map
-                                            .get(&[index.table_id, index.id])
-                                            .expect("index id and version must exist"),
-                                    );
-                                }
-                                new_plan.table_version_map.insert(
-                                    table.id,
-                                    ir_plan.table_version_map.get(&table.id).cloned().unwrap(),
-                                );
-                            }
-
-                            new_plan.add_rel(table);
-                        }
-                        RelOwned::Insert(Insert { relation, .. })
-                        | RelOwned::Delete(Delete { relation, .. })
-                        | RelOwned::Update(Update { relation, .. }) => {
-                            let table = ir_plan
-                                .relations
-                                .get(relation)
-                                .expect("relation must exist")
-                                .clone();
-
-                            if cfg!(not(feature = "mock")) {
-                                new_plan.table_version_map.insert(
-                                    table.id,
-                                    ir_plan.table_version_map.get(&table.id).cloned().unwrap(),
-                                );
-                            }
-
-                            new_plan.add_rel(table);
-                        }
-                        RelOwned::Motion(Motion {
-                            child,
-                            policy,
-                            output,
-                            ..
-                        }) => {
-                            if let Some(vtable) = self.get_vtables().get(&node_id) {
-                                let next_id = new_plan.nodes.next_id(ArenaType::Arena136);
-                                new_vtables.insert(next_id, Rc::clone(vtable));
-
-                                // We need to fix motion aliases based on materialized
-                                // vtable. Motion's aliases will copy "COL_i" naming of
-                                // vtable.
-                                let output_list: Vec<NodeId> =
-                                    new_plan.get_row_list(subtree_map.get_id(*output))?.to_vec();
-
-                                if node_id != top_id {
-                                    // We should rename Motion aliases only in case it's not a
-                                    // top node. Otherwise, it has no effect as soon as `to_sql`
-                                    // will use column names of vtable and ignore motion aliases.
-                                    vtable
-                                        .get_columns().iter()
-                                        .zip(output_list.iter())
-                                        .map(|(vtable_column, alias_id)| {
-                                            let alias = new_plan.get_mut_expression_node(
-                                                *alias_id
-                                            )?;
-                                            let MutExpression::Alias(Alias { ref mut name, .. }) = alias else {
-                                                return Err(SbroadError::Invalid(
-                                                    Entity::Expression,
-                                                    Some(format_smolstr!("Expected Alias under Motion output, got {alias:?}"))
-                                                ))
-                                            };
-                                            *name = vtable_column.name.clone();
-                                            Ok(())
-                                        })
-                                        .collect::<Result<Vec<()>, SbroadError>>()?;
-                                }
-                            }
-                            // We should not remove the child of a local motion node.
-                            // The subtree is needed to compile the SQL on the storage.
-                            if !policy.is_local() {
-                                *child = None;
-
-                                // We need to make invalid reference leafs
-                                if !invalid_refs.is_empty() {
-                                    let output_list: Vec<NodeId> = new_plan
-                                        .get_row_list(subtree_map.get_id(*output))?
-                                        .to_vec();
-
-                                    for node in output_list {
-                                        let node = new_plan.get_child_under_alias(node)?;
-
-                                        if !invalid_refs.contains(&node) {
-                                            continue;
-                                        }
-
-                                        invalid_refs.remove(&node);
-
-                                        if let MutExpression::Reference(Reference {
-                                            ref mut target,
-                                            ..
-                                        }) = new_plan.get_mut_expression_node(node)?
-                                        {
-                                            *target = ReferenceTarget::Leaf;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        RelOwned::GroupBy(GroupBy { gr_exprs, .. }) => {
-                            let mut new_cols: Vec<NodeId> = Vec::with_capacity(gr_exprs.len());
-                            for col_id in gr_exprs.iter() {
-                                let new_col_id = subtree_map.get_id(*col_id);
-                                new_cols.push(new_col_id);
-                            }
-                            *gr_exprs = new_cols;
-                        }
-                        RelOwned::OrderBy(OrderBy {
-                            order_by_elements, ..
-                        }) => {
-                            let mut new_elements: Vec<OrderByElement> =
-                                Vec::with_capacity(order_by_elements.len());
-                            for element in order_by_elements.iter() {
-                                let new_entity = match element.entity {
-                                    OrderByEntity::Expression { expr_id } => {
-                                        let new_element_id = subtree_map.get_id(expr_id);
-                                        OrderByEntity::Expression {
-                                            expr_id: new_element_id,
-                                        }
-                                    }
-                                    OrderByEntity::Index { value } => {
-                                        OrderByEntity::Index { value }
-                                    }
-                                };
-                                new_elements.push(OrderByElement {
-                                    entity: new_entity,
-                                    order_type: element.order_type,
-                                });
-                            }
-                            *order_by_elements = new_elements;
-                        }
-                        RelOwned::ValuesRow(ValuesRow { data, .. }) => {
-                            *data = subtree_map.get_id(*data);
-                        }
-                        RelOwned::Projection(Projection {
-                            windows,
-                            group_by,
-                            having,
-                            ..
-                        }) => {
-                            for window in windows {
-                                *window = subtree_map.get_id(*window);
-                            }
-                            if let Some(group_by_id) = group_by {
-                                *group_by_id = subtree_map.get_id(*group_by_id);
-                            }
-                            if let Some(having_id) = having {
-                                *having_id = subtree_map.get_id(*having_id);
-                            }
-                        }
-                        RelOwned::Except { .. }
-                        | RelOwned::Intersect { .. }
-                        | RelOwned::SelectWithoutScan { .. }
-                        | RelOwned::ScanSubQuery { .. }
-                        | RelOwned::ScanCte { .. }
-                        | RelOwned::Union { .. }
-                        | RelOwned::UnionAll { .. }
-                        | RelOwned::Values { .. }
-                        | RelOwned::Limit { .. } => {}
-                    }
-
-                    for child_id in rel.mut_children() {
-                        *child_id = subtree_map.get_id(*child_id);
-
-                        let child_rel_node = new_plan.get_relation_node(*child_id)?;
-                        if let Relational::Motion(Motion { output, .. }) = child_rel_node {
-                            let motion_output_list: Vec<NodeId> =
-                                new_plan.get_row_list(*output)?.to_vec();
-                            rel_renamed_output_lists.insert(*child_id, motion_output_list);
-                        }
-                    }
-
-                    for subquery_id in rel.mut_subqueries() {
-                        *subquery_id = subtree_map.get_id(*subquery_id);
-
-                        let child_rel_node = new_plan.get_relation_node(*subquery_id)?;
-                        if let Relational::Motion(Motion { output, .. }) = child_rel_node {
-                            let motion_output_list: Vec<NodeId> =
-                                new_plan.get_row_list(*output)?.to_vec();
-                            rel_renamed_output_lists.insert(*subquery_id, motion_output_list);
-                        }
-                    }
-
-                    if rel.has_output() {
-                        let output = rel.mut_output();
-                        *rel.mut_output() = subtree_map.get_id(*output);
-
-                        // If we deal with Projection we have to fix
-                        // only References that have an Asterisk source.
-                        // References without asterisks would be covered with aliases like
-                        // "COL_1 as <alias>".
-                        // If we deal with `top_id` node we shouldn't rename its aliases with motion child.
-                        // F.e., `SELECT * FROM t LIMIT 1`
-                        let is_projection = matches!(rel, RelOwned::Projection(_));
-                        if !rel_renamed_output_lists.is_empty() {
-                            let rel_output_list: Vec<NodeId> =
-                                new_plan.get_row_list(*rel.mut_output())?.to_vec();
-
-                            for output_id in &rel_output_list {
-                                let ref_under_alias = new_plan.get_child_under_alias(*output_id)?;
-                                let ref_expr = new_plan.get_expression_node(ref_under_alias)?;
-                                let Expression::Reference(Reference {
-                                    position,
-                                    target,
-                                    asterisk_source,
-                                    ..
-                                }) = ref_expr
-                                else {
-                                    continue;
-                                };
-
-                                if node_id == top_id || is_projection && asterisk_source.is_none() {
-                                    continue;
-                                }
-
-                                if target.is_leaf() {
-                                    break;
-                                }
-
-                                let ref_rel_node = target
-                                    .first()
-                                    .expect("Reference must have at least one target.");
-
-                                if let Some(child_output_list) =
-                                    rel_renamed_output_lists.get(ref_rel_node)
-                                {
-                                    let child_output_alias_id =
-                                        child_output_list.get(*position).unwrap_or_else(|| {
-                                            panic!(
-                                                "Unable to get motion output at requested position."
-                                            );
-                                        });
-                                    let child_alias =
-                                        new_plan.get_expression_node(*child_output_alias_id)?;
-                                    let child_alias_name =
-                                        child_alias.get_alias_name()?.to_smolstr();
-
-                                    let rel_alias = new_plan.get_mut_expression_node(*output_id)?;
-                                    if let MutExpression::Alias(Alias { ref mut name, .. }) =
-                                        rel_alias
-                                    {
-                                        *name = child_alias_name;
-                                    } else {
-                                        panic!("Expected alias under Row output list");
-                                    }
-                                }
-                            }
-
-                            let arena_type = rel.arena_type();
-                            let next_id = new_plan.nodes.next_id(arena_type);
-
-                            rel_renamed_output_lists.insert(next_id, rel_output_list);
-                        }
-                    }
-                }
-                NodeOwned::Expression(ref mut expr) => match expr {
-                    ExprOwned::Window(Window {
-                        ref mut partition,
-                        ref mut ordering,
-                        ref mut frame,
-                        ..
-                    }) => {
-                        if let Some(partition) = partition {
-                            for expr_id in partition {
-                                *expr_id = subtree_map.get_id(*expr_id);
-                            }
-                        }
-                        if let Some(ordering) = ordering {
-                            for element in ordering {
-                                match &mut element.entity {
-                                    OrderByEntity::Expression { expr_id } => {
-                                        *expr_id = subtree_map.get_id(*expr_id);
-                                    }
-                                    OrderByEntity::Index { .. } => {}
-                                }
-                            }
-                        }
-                        if let Some(frame) = frame {
-                            match &mut frame.bound {
-                                Bound::Single(BoundType::PrecedingOffset(expr_id))
-                                | Bound::Single(BoundType::FollowingOffset(expr_id)) => {
-                                    *expr_id = subtree_map.get_id(*expr_id);
-                                }
-                                Bound::Between(b_start, b_end) => {
-                                    for b_type in [b_start, b_end].iter_mut() {
-                                        match b_type {
-                                            BoundType::PrecedingOffset(expr_id)
-                                            | BoundType::FollowingOffset(expr_id) => {
-                                                *expr_id = subtree_map.get_id(*expr_id);
-                                            }
-                                            _ => {}
-                                        }
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    ExprOwned::Over(Over {
-                        ref mut stable_func,
-                        ref mut filter,
-                        ref mut window,
-                        ..
-                    }) => {
-                        if let Some(filter) = filter {
-                            *filter = subtree_map.get_id(*filter)
-                        }
-                        *stable_func = subtree_map.get_id(*stable_func);
-                        *window = subtree_map.get_id(*window);
-                    }
-                    ExprOwned::Alias(Alias { ref mut child, .. })
-                    | ExprOwned::Cast(Cast { ref mut child, .. })
-                    | ExprOwned::Unary(UnaryExpr { ref mut child, .. }) => {
-                        *child = subtree_map.get_id(*child);
-                    }
-                    ExprOwned::Index(IndexExpr {
-                        ref mut child,
-                        ref mut which,
-                    }) => {
-                        *child = subtree_map.get_id(*child);
-                        *which = subtree_map.get_id(*which);
-                    }
-                    ExprOwned::Bool(BoolExpr {
-                        ref mut left,
-                        ref mut right,
-                        ..
-                    })
-                    | ExprOwned::Arithmetic(ArithmeticExpr {
-                        ref mut left,
-                        ref mut right,
-                        ..
-                    })
-                    | ExprOwned::Concat(Concat {
-                        ref mut left,
-                        ref mut right,
-                        ..
-                    }) => {
-                        *left = subtree_map.get_id(*left);
-                        *right = subtree_map.get_id(*right);
-                    }
-                    ExprOwned::Like(Like {
-                        escape: ref mut escape_id,
-                        ref mut right,
-                        ref mut left,
-                    }) => {
-                        *left = subtree_map.get_id(*left);
-                        *right = subtree_map.get_id(*right);
-                        *escape_id = subtree_map.get_id(*escape_id);
-                    }
-                    ExprOwned::Trim(Trim {
-                        ref mut pattern,
-                        ref mut target,
-                        ..
-                    }) => {
-                        if let Some(pattern) = pattern {
-                            *pattern = subtree_map.get_id(*pattern);
-                        }
-                        *target = subtree_map.get_id(*target);
-                    }
-                    ExprOwned::Reference(Reference { ref mut target, .. }) => match target {
-                        ReferenceTarget::Leaf => {}
-                        ReferenceTarget::Single(node_id) => {
-                            match subtree_map.get_id_if_exist(*node_id) {
-                                Some(node) => {
-                                    *target = ReferenceTarget::Single(*node);
-                                }
-                                None => is_invalid_ref = true,
-                            }
-                        }
-                        ReferenceTarget::Union(left, right) => {
-                            match (
-                                subtree_map.get_id_if_exist(*left),
-                                subtree_map.get_id_if_exist(*right),
-                            ) {
-                                (Some(left), Some(right)) => {
-                                    *target = ReferenceTarget::Union(*left, *right);
-                                }
-                                _ => is_invalid_ref = true,
-                            }
-                        }
-                        ReferenceTarget::Values(nodes) => {
-                            if nodes
-                                .iter()
-                                .any(|node| subtree_map.get_id_if_exist(*node).is_none())
-                            {
-                                is_invalid_ref = true;
-                            } else {
-                                let new_targets = nodes
-                                    .iter()
-                                    .map(|node_id| subtree_map.get_id(*node_id))
-                                    .collect();
-                                *target = ReferenceTarget::Values(new_targets);
-                            }
-                        }
-                    },
-                    ExprOwned::SubQueryReference(SubQueryReference { rel_id, .. }) => {
-                        match subtree_map.get_id_if_exist(*rel_id) {
-                            Some(node) => {
-                                *rel_id = *node;
-                            }
-                            None => is_invalid_ref = true,
-                        }
-                    }
-                    ExprOwned::Row(Row {
-                        list: ref mut children,
-                        ..
-                    })
-                    | ExprOwned::ScalarFunction(ScalarFunction {
-                        ref mut children, ..
-                    }) => {
-                        for child in children {
-                            *child = subtree_map.get_id(*child);
-                        }
-                    }
-                    ExprOwned::Constant { .. }
-                    | ExprOwned::CountAsterisk { .. }
-                    | ExprOwned::Timestamp(_)
-                    | ExprOwned::Parameter { .. } => {}
-                    ExprOwned::Case(Case {
-                        search_expr,
-                        when_blocks,
-                        else_expr,
-                    }) => {
-                        if let Some(search_expr) = search_expr {
-                            *search_expr = subtree_map.get_id(*search_expr);
-                        }
-                        for (cond_expr, res_expr) in when_blocks {
-                            *cond_expr = subtree_map.get_id(*cond_expr);
-                            *res_expr = subtree_map.get_id(*res_expr);
-                        }
-                        if let Some(else_expr) = else_expr {
-                            *else_expr = subtree_map.get_id(*else_expr);
-                        }
-                    }
-                },
-                NodeOwned::Invalid { .. }
-                | NodeOwned::Ddl { .. }
-                | NodeOwned::Acl { .. }
-                | NodeOwned::Tcl(_)
-                | NodeOwned::Plugin { .. }
-                | NodeOwned::Deallocate { .. }
-                | NodeOwned::Block { .. } => {
-                    panic!("Unexpected node in `take_subtree`: {node:?}")
-                }
-            }
-
-            let id = new_plan.nodes.push(node.into());
-
-            if is_invalid_ref {
-                invalid_refs.insert(id);
-            }
-
-            subtree_map.insert(node_id, id);
-            if subtree_id == node_id {
-                new_plan.set_top(id)?;
-            }
-        }
-
-        if !invalid_refs.is_empty() {
-            return Err(SbroadError::Other(format_smolstr!(
-                "invalid references ({}) should be resolved",
-                invalid_refs.len()
-            )));
-        }
-
-        new_plan.add_condition_on_bucket_id(buckets)?;
-        new_plan.stash_constants(Snapshot::Oldest)?;
-        new_plan.effective_options = self.get_ir_plan().effective_options.clone();
-        new_plan.tier.clone_from(&self.get_ir_plan().tier);
-
-        let vtables = if new_vtables.is_empty() {
-            VirtualTableMap::new()
-        } else {
-            new_vtables
-        };
-        let new_exec_plan = ExecutionPlan {
-            request_id: self.request_id.clone(),
-            plan: new_plan,
-            vtables,
-            plan_id: std::mem::take(&mut self.plan_id),
-        };
-        Ok(new_exec_plan)
     }
 
     /// # Errors

@@ -247,7 +247,7 @@ def test_with_sk_and_pk_different(cluster: Cluster):
     res = i1.sql("SELECT bucket_id, * FROM sharded_table WHERE a = 42")
     assert res == [[214, 42, 43, 44]]
     res = i1.sql("EXPLAIN(RAW) SELECT * FROM sharded_table WHERE b = 43")
-    assert '"bucket_id" in (CAST(214 AS int))' in "\n".join(res)
+    assert '"sharded_table"."bucket_id" IN (CAST(214 AS int))' in "\n".join(res)
     res = i1.sql("SELECT * FROM sharded_table WHERE b = 43")
     assert res == [[42, 43, 44]]
     # sharded update
