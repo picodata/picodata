@@ -28,9 +28,10 @@ use crate::executor::ir::ExecutionPlan;
 use crate::executor::vdbe::ExecutionInsight;
 use crate::ir::bucket::{BucketSet, Buckets};
 use crate::ir::node::block::{BlockOwned, MutBlock};
+use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{MutRelational, Relational};
-use crate::ir::node::{AnonymousBlock, Motion, NodeId};
-use crate::ir::transformation::redistribution::MotionPolicy;
+use crate::ir::node::{AnonymousBlock, Insert, Motion, NodeId, Values, ValuesRow};
+use crate::ir::transformation::redistribution::{MotionPolicy, Target};
 use crate::ir::tree::traversal::{PostOrder, REL_CAPACITY};
 use crate::ir::value::Value;
 use crate::ir::{Plan, Slices};
@@ -88,6 +89,9 @@ impl Plan {
             top_id: NodeId,
         ) -> Result<(), SbroadError> {
             let top = plan.get_relation_node(top_id)?;
+            if matches!(top, Relational::Insert(_)) {
+                return eliminate_insert_motion(plan, top_id);
+            }
             if top.is_dml() {
                 // Ensure motion is local.
                 let top_children = plan.get_relation_children(top_id)?;
@@ -112,6 +116,84 @@ impl Plan {
                     MutRelational::Delete(delete) => delete.child = Some(motion_child_id),
                     _ => {}
                 }
+            }
+
+            Ok(())
+        }
+
+        // Eliminate the motion under an INSERT in a transaction.
+        //
+        // Expected shape: Insert -> Motion(Segment | LocalSegment) -> Values -> ValuesRow*.
+        // Each ValuesRow cell at a sharding-key position must be a Constant or Parameter
+        // (parameters become constants after binding). Other cells may hold arbitrary
+        // expressions — they will be evaluated by the storage's local SQL.
+        fn eliminate_insert_motion(plan: &mut Plan, insert_id: NodeId) -> Result<(), SbroadError> {
+            // INSERT into a global table gets MotionPolicy::Full and is not supported in blocks;
+            // leave the motion in place so the block optimizer reports it.
+            if plan.dml_node_table(insert_id)?.is_global() {
+                return Ok(());
+            }
+
+            let motion_id = plan.dml_child_id(insert_id)?;
+            let Relational::Motion(Motion { policy, .. }) = plan.get_relation_node(motion_id)?
+            else {
+                return Ok(());
+            };
+            let (MotionPolicy::Segment(key) | MotionPolicy::LocalSegment(key)) = policy else {
+                return Ok(());
+            };
+
+            let values_id = plan.get_rel_child(motion_id, 0)?;
+            let Relational::Values(Values {
+                children: values_rows,
+                ..
+            }) = plan.get_relation_node(values_id)?
+            else {
+                return Ok(());
+            };
+
+            // Collect cell positions in each ValuesRow's data tuple that correspond to
+            // sharding-key columns.
+            let key_positions: Vec<usize> = key
+                .targets
+                .iter()
+                .filter_map(|t| match t {
+                    Target::Reference(pos) => Some(*pos),
+                    Target::Value(_) => None,
+                })
+                .collect();
+
+            for row_id in values_rows {
+                let Relational::ValuesRow(ValuesRow {
+                    data, subqueries, ..
+                }) = plan.get_relation_node(*row_id)?
+                else {
+                    panic!("Expected ValuesRow under Values, got {row_id:?}");
+                };
+                if !subqueries.is_empty() {
+                    return Err(SbroadError::other(
+                        "INSERT in transaction does not support subqueries in VALUES",
+                    ));
+                }
+                let row_list = plan.get_row_list(*data)?;
+                for pos in &key_positions {
+                    let cell_id = *row_list
+                        .get(*pos)
+                        .expect("sharding-key position must exist in values row");
+                    let cell = plan.get_expression_node(cell_id)?;
+                    if !matches!(cell, Expression::Constant(_) | Expression::Parameter(_)) {
+                        return Err(SbroadError::other(
+                            "INSERT in transaction requires constant or parameter values for sharding-key columns"
+                        ));
+                    }
+                }
+            }
+
+            // Re-point Insert's child directly to Values, dropping the Motion node.
+            if let MutRelational::Insert(Insert { child, .. }) =
+                plan.get_mut_relation_node(insert_id)?
+            {
+                *child = values_id;
             }
 
             Ok(())

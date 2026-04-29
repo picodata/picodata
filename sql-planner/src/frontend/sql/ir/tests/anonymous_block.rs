@@ -222,7 +222,7 @@ fn block_query_has_motions_errors() {
             "SELECT",
         ),
         (
-            "DO $$ BEGIN INSERT INTO t1 VALUES ('1',2); END $$",
+            "DO $$ BEGIN INSERT INTO t1 SELECT a, b FROM t1; END $$",
             "INSERT",
         ),
     ];

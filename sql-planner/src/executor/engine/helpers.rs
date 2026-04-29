@@ -19,6 +19,7 @@ use crate::{
             expression::Expression, relational::Relational, Alias, Constant, Delete, Limit, Motion,
             NodeId, Update, Values, ValuesRow,
         },
+        operator::ConflictStrategy,
         types::DerivedType,
     },
 };
@@ -718,6 +719,7 @@ fn dml_get_motion_child(
 fn generate_pattern_with_params_for_block(
     plan: &mut ExecutionPlan,
     query_id: NodeId,
+    bucket_id: Option<u64>,
 ) -> Result<PatternWithParams, SbroadError> {
     use crate::backend::sql::tree::SyntaxData;
 
@@ -813,6 +815,21 @@ fn generate_pattern_with_params_for_block(
 
     // TODO: replace with the actual value of `plan_id` when caching is implemented.
     let plan_id = 0;
+
+    // INSERT is special: the generic SyntaxPlan panics on Insert nodes (DML can't
+    // be rendered directly). After block-optimization the Insert sits on top of a
+    // Values node, so we render the Values subtree and prepend an
+    // `INSERT [OR REPLACE|IGNORE] INTO "t" ("c1", ...)` envelope.
+    if let Relational::Insert(_) = plan.get_ir_plan().get_relation_node(query_id)? {
+        let bucket_id = bucket_id.ok_or_else(|| {
+            SbroadError::Other("INSERT in transaction requires a known target bucket".into())
+        })?;
+        let pattern =
+            generate_insert_pattern_for_block(plan, query_id, plan_id, params, bucket_id)?;
+        plan.get_mut_ir_plan().constants.clear();
+        return Ok(pattern);
+    }
+
     let sp = SyntaxPlan::new(plan, query_id, Snapshot::Oldest, false)?;
     let on = OrderedSyntaxNodes::try_from(sp)?;
     let nodes = on.to_syntax_data()?;
@@ -887,6 +904,120 @@ fn generate_pattern_with_params_for_block(
     Ok(pattern)
 }
 
+/// Build the SQL pattern for a block-optimized INSERT.
+///
+/// The motion above Insert has already been eliminated by `optimize_block`, so the
+/// child is a Values node. We render the Values subtree via `SyntaxPlan` and prepend
+/// an `INSERT [OR REPLACE|IGNORE] INTO "t" ("c1", ...)` envelope inline.
+fn generate_insert_pattern_for_block(
+    plan: &mut ExecutionPlan,
+    insert_id: NodeId,
+    plan_id: u64,
+    mut params: Vec<Value>,
+    bucket_id: u64,
+) -> Result<PatternWithParams, SbroadError> {
+    use crate::backend::sql::tree::SyntaxData;
+
+    let Relational::Insert(insert) = plan.get_ir_plan().get_relation_node(insert_id)? else {
+        panic!(
+            "expected Insert node, got {:?}",
+            plan.get_ir_plan().get_relation_node(insert_id)?
+        )
+    };
+
+    let relation = plan
+        .get_ir_plan()
+        .relations
+        .get(&insert.relation)
+        .ok_or_else(|| {
+            SbroadError::NotFound(
+                Entity::Table,
+                format_smolstr!("{} among plan relations", insert.relation),
+            )
+        })?;
+
+    // Find the bucket_id (Sharding-role) column on the table — local Tarantool
+    // SQL won't compute it for us, so we have to provide its value explicitly.
+    let bucket_col_name = relation
+        .columns
+        .iter()
+        .find(|c| c.role == ColumnRole::Sharding)
+        .map(|c| c.name.clone())
+        .ok_or_else(|| {
+            SbroadError::Invalid(
+                Entity::Table,
+                Some(format_smolstr!(
+                    "sharded table {} has no bucket_id column",
+                    insert.relation
+                )),
+            )
+        })?;
+
+    let mut envelope = String::new();
+    envelope.push_str(match insert.conflict_strategy {
+        ConflictStrategy::DoFail => "INSERT INTO ",
+        ConflictStrategy::DoReplace => "INSERT OR REPLACE INTO ",
+        ConflictStrategy::DoNothing => "INSERT OR IGNORE INTO ",
+    });
+    envelope.push('"');
+    envelope.push_str(&insert.relation);
+    envelope.push_str("\" (");
+    for col_pos in &insert.columns {
+        let col_name = &relation
+            .columns
+            .get(*col_pos)
+            .ok_or_else(|| {
+                SbroadError::NotFound(
+                    Entity::Column,
+                    format_smolstr!("at position {col_pos} in {}", insert.relation),
+                )
+            })?
+            .name;
+        envelope.push('"');
+        envelope.push_str(col_name);
+        envelope.push_str("\", ");
+    }
+    envelope.push('"');
+    envelope.push_str(&bucket_col_name);
+    envelope.push_str("\")");
+
+    let sp = SyntaxPlan::new(plan, insert.child, Snapshot::Oldest, false)?;
+    let on = OrderedSyntaxNodes::try_from(sp)?;
+    let values_nodes = on.to_syntax_data()?;
+
+    // Append the bucket_id value to the params array once and reference it via
+    // the same `$N` placeholder appended to every row's tuple.
+    let bucket_param_idx = params.len() + 1;
+    params.push(Value::Integer(bucket_id as i64));
+    let bucket_placeholder = format_smolstr!(", ${bucket_param_idx}");
+
+    // The Values syntax data renders as `VALUES (<row1>),(<row2>),...`. Track
+    // parenthesis depth so we inject the bucket placeholder only at the row's
+    // outer closing `)`, not inside nested function calls or sub-expressions.
+    let mut nodes: Vec<SyntaxData> = Vec::with_capacity(values_nodes.len() + 1);
+    nodes.push(SyntaxData::Inline(SmolStr::from(envelope)));
+    let mut depth: i32 = 0;
+    for data in values_nodes.iter() {
+        match data {
+            SyntaxData::OpenParenthesis => {
+                depth += 1;
+                nodes.push(SyntaxData::clone(*data));
+            }
+            SyntaxData::CloseParenthesis => {
+                if depth == 1 {
+                    nodes.push(SyntaxData::Inline(bucket_placeholder.clone()));
+                }
+                depth -= 1;
+                nodes.push(SyntaxData::clone(*data));
+            }
+            _ => nodes.push(SyntaxData::clone(*data)),
+        }
+    }
+
+    let pattern = plan.generate_sql(&nodes, plan_id, table_name, None)?;
+    Ok(PatternWithParams { pattern, params })
+}
+
 /// A helper function to dispatch the execution plan from the router to the storages.
 ///
 /// # Errors
@@ -923,9 +1054,24 @@ pub fn dispatch_impl<'p>(
             .map(|(name, ty)| MetadataColumn::new(name.to_string(), ty.to_string()))
             .collect();
 
+        // For INSERT statements we need the concrete bucket id to populate the
+        // bucket_id column. The block dispatcher already enforces that all
+        // statements target a single bucket; extract it here.
+        let block_bucket_id = match buckets {
+            Buckets::Filtered(crate::ir::bucket::BucketSet::Exact(set)) => {
+                assert!(set.len() == 1);
+                set.iter().copied().next()
+            }
+            _ => None,
+        };
+
         let mut statements = Vec::with_capacity(block.statements.len());
         for stmt in block.statements {
-            statements.push(stmt.try_map(|id| generate_pattern_with_params_for_block(plan, id))?);
+            statements.push(
+                stmt.try_map(|id| {
+                    generate_pattern_with_params_for_block(plan, id, block_bucket_id)
+                })?,
+            );
         }
 
         let vdbe_max_steps = plan.get_ir_plan().effective_options.sql_vdbe_opcode_max as _;

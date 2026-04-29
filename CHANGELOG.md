@@ -24,6 +24,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Improved accuracy of `space:len()` for Vinyl tables.
 - Support `DELETE` statementes inside transactional `DO` blocks.
+- Support `INSERT` statements inside transactional `DO` blocks.
 
 ### Fixes
 
