@@ -3349,6 +3349,7 @@ def test_create_plugin_too_many_versions(cluster: Cluster):
     assert rows == [["0.1.2"], ["0.1.3"]]
 
 
+@pytest.mark.skip_asan("plug_wrong_version is a standalone workspace built without ASan profiles")
 def test_picoplugin_version_compatibility_check(cluster: Cluster):
     # TODO: implement a proper plugin installation routine for tests
     cargo_target_dir = project_tests_path() / "plug_wrong_version" / "target" / "debug"
