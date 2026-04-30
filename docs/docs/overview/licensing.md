@@ -93,7 +93,7 @@ Picodata Enterprise включает все функции открытой ве
 - [дополнительные плагины](#plugins), которые существенно расширяют
   возможности СУБД
 
-[соответствие]: https://picodata.io/wp-content/uploads/2025/03/fstek-2025.pdf
+[соответствие]: https://picodata.io/certificates/fstek-ud4.pdf
 [подтверждение]: https://reestr.digital.gov.ru/reestr/528856/?sphrase_id=2073288
 
 ### Плагины {: #plugins }
