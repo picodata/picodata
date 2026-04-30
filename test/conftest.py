@@ -284,6 +284,12 @@ def pytest_addoption(parser: pytest.Parser):
         default=False,
         help="Update EXPECTED in sql tests (test/int/sql et al)",
     )
+    parser.addoption(
+        "--skip-asan",
+        action="store_true",
+        default=False,
+        help="Skip tests marked with @pytest.mark.skip_asan (for sanitizer runs)",
+    )
 
 
 def pytest_configure(config: pytest.Config):
@@ -318,7 +324,9 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
     with_webui = config.getoption("--with-webui")
     if not with_webui:
-        skip = pytest.mark.skip(reason="run: pytest --with-webui")
+        skip_webui = pytest.mark.skip(reason="run: pytest --with-webui")
+
+    skip_asan = config.getoption("--skip-asan")
 
     collect_versions = config.getoption("--collect-required-rolling-versions")
     if collect_versions:
@@ -326,7 +334,15 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
     for item in items:
         if not with_webui and "webui" in item.keywords:
-            item.add_marker(skip)
+            item.add_marker(skip_webui)
+
+        if "skip_asan" in item.keywords:
+            marker = next(item.iter_markers(name="skip_asan"))
+            reason = marker.args[0] if marker.args else None
+            if not reason:
+                raise pytest.UsageError(f"{item.nodeid}: @pytest.mark.skip_asan requires a reason string")
+            if skip_asan:
+                item.add_marker(pytest.mark.skip(reason=f"ASan: {reason}"))
 
         if collect_versions:
             for marker in item.iter_markers(name="required_rolling_versions"):
