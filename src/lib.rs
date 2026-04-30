@@ -1356,10 +1356,22 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
         };
         tier.can_vote
     };
-    discovery::init_global(
-        config.instance.peers().iter().map(|a| a.to_host_port()),
-        can_vote,
-    );
+
+    // Initial set for the discovery algorithm. Note that the algorithm requires
+    // that all instances in the discovery group must have at least one known
+    // peer in common.
+    let mut known_peers = vec![];
+    for peer in config.instance.peers() {
+        known_peers.push(peer.to_host_port());
+    }
+    if can_vote {
+        // Every voter instance adds itself to the known peers set. We do this
+        // so that cluster can bootstrap successfully even if the user didn't
+        // specify a voter instance in the initial `--peer` set.
+        known_peers.push(config.instance.iproto.advertise().to_host_port());
+    }
+
+    discovery::init_global(known_peers, can_vote);
 
     if let Some((storage, raft_storage)) = get_initialized_storage()? {
         if let Some(raft_id) = raft_storage.raft_id()? {
