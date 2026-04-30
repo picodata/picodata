@@ -371,7 +371,13 @@ fn parse_proc_params(
             .first()
             .expect("Expected specific type under ColumnDefType node");
         let type_node = ast.nodes.get_node(*type_node_inner_id)?;
-        let data_type = UnrestrictedType::try_from(type_node.rule)?;
+        let data_type = if let Some(suffix_id) = column_def_type_node.children.get(1) {
+            let suffix = ast.nodes.get_node(*suffix_id)?;
+            assert_eq!(suffix.rule, Rule::ArraySuffix);
+            UnrestrictedType::Array
+        } else {
+            UnrestrictedType::try_from(type_node.rule)?
+        };
         params.push(ParamDef { data_type });
     }
     Ok(params)
@@ -975,7 +981,11 @@ fn parse_create_table(
                         .first()
                         .expect("ColumnDef must have a type child");
                     let ty_node = ast.nodes.get_node(*ty_node_id)?;
-                    let data_type = parse_column_def_type(ty_node, ast)?;
+                    let data_type = if column_ty_node.children.get(1).is_some() {
+                        DomainType::Array
+                    } else {
+                        parse_column_def_type(ty_node, ast)?
+                    };
                     let mut is_nullable = true;
 
                     for def_child_id in column_def_children.iter().skip(2) {
@@ -1366,11 +1376,16 @@ fn parse_alter_table(
                                     Rule::AlterTableColumnAddParam => {
                                         let name = parse_identifier(ast, node.child_n(0))?;
 
-                                        let data_type_node = ast.nodes.get_node(node.child_n(1))?;
-                                        debug_assert_eq!(data_type_node.rule, Rule::ColumnDefType);
+                                        let column_ty_node = ast.nodes.get_node(node.child_n(1))?;
+                                        debug_assert_eq!(column_ty_node.rule, Rule::ColumnDefType);
                                         let data_type_node =
-                                            ast.nodes.get_node(data_type_node.first_child())?;
-                                        let data_type = parse_column_def_type(data_type_node, ast)?;
+                                            ast.nodes.get_node(column_ty_node.first_child())?;
+                                        let data_type = if column_ty_node.children.get(1).is_some()
+                                        {
+                                            DomainType::Array
+                                        } else {
+                                            parse_column_def_type(data_type_node, ast)?
+                                        };
 
                                         let is_nullable = if let Some(id) = node.children.get(2) {
                                             let node = ast.nodes.get_node(*id)?;
