@@ -65,6 +65,14 @@ from framework.util import ExpectedError
 pytest_plugins = "framework.sqltester"
 
 # ---------------------------------------------------------------------------
+# Timeout scaling for slow environments (e.g. ASan-instrumented builds)
+# ---------------------------------------------------------------------------
+# Set TIMEOUT_SCALE_FACTOR > 1 to proportionally increase all timeouts.
+# sanitizer.py sets this to 3 by default for ASan runs.
+
+TIMEOUT_SCALE = float(os.getenv("TIMEOUT_SCALE_FACTOR", "1"))
+
+# ---------------------------------------------------------------------------
 # Test deadline tracking for Retriable / log_crawler
 # ---------------------------------------------------------------------------
 # pytest-timeout kills tests via SIGALRM after `timeout` seconds (see
@@ -78,7 +86,7 @@ pytest_plugins = "framework.sqltester"
 # the fallback is 120 s from "now".
 
 _test_deadline: float | None = None
-_DEFAULT_TIMEOUT = 120  # seconds — fallback when not inside a test
+_DEFAULT_TIMEOUT = int(120 * TIMEOUT_SCALE)  # seconds — fallback when not inside a test
 
 
 def get_test_deadline() -> float:
@@ -115,10 +123,11 @@ MAX_LOGIN_ATTEMPTS = 4
 PICO_SERVICE_ID = 32
 
 CLI_TIMEOUT = 10  # seconds
+DEFAULT_RPC_TIMEOUT = 10  # seconds — default for call/eval/sql
 
 TOO_LONG_FOR_LOGS = 512
 
-WAIT_ONLINE_TIMEOUT = int(os.getenv("WAIT_ONLINE_TIMEOUT") or 30)
+WAIT_ONLINE_TIMEOUT = int(os.getenv("WAIT_ONLINE_TIMEOUT") or int(30 * TIMEOUT_SCALE))
 SSL_DIR = Path(os.path.realpath(__file__)).parent / "ssl_certs"
 
 
@@ -214,6 +223,28 @@ def clamp_for_logs(*args):
     return args_string
 
 
+def _apply_timeout_scale_factor(config: pytest.Config):
+    """
+    Scale pytest-timeout value by TIMEOUT_SCALE_FACTOR if --timeout wasn't
+    explicitly passed on command line. Used for ASan runs where tests are slower.
+    """
+    scale_factor_str = os.environ.get("TIMEOUT_SCALE_FACTOR")
+    if not scale_factor_str:
+        return
+
+    # Check if --timeout was passed on command line
+    for arg in sys.argv:
+        if arg.startswith("--timeout"):
+            return
+
+    scale_factor = float(scale_factor_str)
+    ini_timeout = config.getini("timeout")
+    if ini_timeout:
+        scaled = float(ini_timeout) * scale_factor
+        config._inicache["timeout"] = str(scaled)
+        log.info(f"Scaled timeout by {scale_factor}: {ini_timeout} -> {scaled}")
+
+
 def pytest_addoption(parser: pytest.Parser):
     parser.addoption(
         "--with-flamegraph",
@@ -264,6 +295,7 @@ def pytest_configure(config: pytest.Config):
     - Runs once even with `pytest-xdist` parallel workers.
     """
     random_seed(config)
+    _apply_timeout_scale_factor(config)
 
 
 def pytest_report_header(config: pytest.Config):
@@ -1015,7 +1047,7 @@ class Instance:
         *args,
         user: str | None = None,
         password: str | None = None,
-        timeout: int | float = 10,
+        timeout: int | float = DEFAULT_RPC_TIMEOUT,
         error_log_level: int = logging.ERROR,
     ):
         log.info(f"{self.name or self.port} RPC CALL {fn}{clamp_for_logs(args)}", stacklevel=2)
@@ -1036,7 +1068,7 @@ class Instance:
         *args,
         user: str | None = None,
         password: str | None = None,
-        timeout: int | float = 10,
+        timeout: int | float = DEFAULT_RPC_TIMEOUT,
         error_log_level: int = logging.ERROR,
     ):
         # NOTE: Not using short_expr at first intentionally
@@ -1112,7 +1144,7 @@ class Instance:
         sudo=False,
         user: str | None = None,
         password: str | None = None,
-        timeout: int | float = 10,
+        timeout: int | float = DEFAULT_RPC_TIMEOUT,
         error_log_level: int = logging.ERROR,
     ):
         """
@@ -1185,7 +1217,7 @@ class Instance:
         with_auth: str | None = None,
         user: str | None = None,
         password: str | None = None,
-        timeout: int | float = 10,
+        timeout: int | float = DEFAULT_RPC_TIMEOUT,
     ):
         sql = f"CREATE USER \"{with_name}\" WITH PASSWORD '{with_password}' " + (
             ("USING " + with_auth) if with_auth else ""
@@ -1685,7 +1717,7 @@ class Instance:
     def instance_info(
         self,
         target: "Instance | None" = None,
-        timeout: int | float = 10,
+        timeout: int | float = DEFAULT_RPC_TIMEOUT,
         error_log_level: int = logging.ERROR,
     ) -> dict[str, Any]:
         """Call .proc_instance_info on the instance
@@ -2875,8 +2907,10 @@ class Cluster:
         self,
         i: Instance,
         expected: int,
-        max_retries: int = 10,
+        max_retries: int | None = None,
     ):
+        if max_retries is None:
+            max_retries = 10
         attempt = 1
         previous_active = None
         while True:
