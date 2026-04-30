@@ -12,7 +12,7 @@ RUN dnf -y install dnf-plugins-core epel-release \
     && dnf install -y --nobest \
                 openssl-devel libunwind libunwind-devel \
                 gcc gcc-c++ make cmake git libstdc++-static libtool patch \
-                nodejs npm \
+                clang-devel nodejs npm \
     && dnf clean all
 
 WORKDIR /build/picodata
