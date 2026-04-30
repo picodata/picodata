@@ -23,6 +23,7 @@ with the `YY.MINOR.MICRO` scheme.
 ### Features
 
 - Improved accuracy of `space:len()` for Vinyl tables.
+- Support `DELETE` statementes inside transactional `DO` blocks.
 
 ### Fixes
 
