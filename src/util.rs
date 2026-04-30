@@ -789,6 +789,7 @@ pub fn check_msgpack_matches_type(
         // This is very bad. You should always implement Display for error types and format them using Display, not Debug!
         Error::other(format!("{e:?}")))?;
     let ok = match expected_type {
+        SbroadType::Array => is_array(marker),
         SbroadType::Any => true,
         SbroadType::Boolean => matches!(marker, Marker::True | Marker::False),
         SbroadType::Integer => is_int(marker),
@@ -813,6 +814,14 @@ pub fn check_msgpack_matches_type(
     }
 
     return Ok(());
+
+    #[inline(always)]
+    fn is_array(marker: Marker) -> bool {
+        matches!(
+            marker,
+            Marker::FixArray { .. } | Marker::Array16 | Marker::Array32
+        )
+    }
 
     #[inline(always)]
     fn is_map(marker: Marker) -> bool {

@@ -17,6 +17,7 @@ use crate::frontend::sql::ast::Rule;
 /// Precise mapping to tarantool field types.
 #[derive(Serialize, Deserialize, PartialEq, Hash, Debug, Eq, Clone, Copy)]
 pub enum DomainType {
+    Array,
     Json,
     Boolean,
     Datetime,
@@ -51,6 +52,7 @@ impl DomainType {
 impl fmt::Display for DomainType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            DomainType::Array => write!(f, "array"),
             DomainType::Boolean => write!(f, "bool"),
             DomainType::Decimal => write!(f, "decimal"),
             DomainType::Datetime => write!(f, "datetime"),
@@ -68,6 +70,7 @@ impl fmt::Display for DomainType {
 impl From<&DomainType> for FieldType {
     fn from(data_type: &DomainType) -> Self {
         match data_type {
+            DomainType::Array => FieldType::Array,
             DomainType::Boolean => FieldType::Boolean,
             DomainType::Decimal => FieldType::Decimal,
             DomainType::Datetime => FieldType::Datetime,
@@ -85,6 +88,7 @@ impl From<&DomainType> for FieldType {
 impl From<&DomainType> for SpaceFieldType {
     fn from(data_type: &DomainType) -> Self {
         match data_type {
+            DomainType::Array => SpaceFieldType::Array,
             DomainType::Boolean => SpaceFieldType::Boolean,
             DomainType::Datetime => SpaceFieldType::Datetime,
             DomainType::Decimal => SpaceFieldType::Decimal,
@@ -102,6 +106,7 @@ impl From<&DomainType> for SpaceFieldType {
 impl From<&DomainType> for UnrestrictedType {
     fn from(data_type: &DomainType) -> Self {
         match data_type {
+            DomainType::Array => UnrestrictedType::Array,
             DomainType::Boolean => UnrestrictedType::Boolean,
             DomainType::Datetime => UnrestrictedType::Datetime,
             DomainType::Decimal => UnrestrictedType::Decimal,

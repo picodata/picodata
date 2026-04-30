@@ -27,3 +27,8 @@ class TestCreateTableWithBucketId(ClusterSingleInstance):
 @sql_test_file("create_table_with_options.sql")
 class TestCreateTableWithOptions(ClusterSingleInstance):
     pass
+
+
+@sql_test_file("create_table_array.sql")
+class TestCreateTableArray(ClusterSingleInstance):
+    pass

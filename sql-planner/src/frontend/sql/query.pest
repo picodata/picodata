@@ -539,7 +539,14 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
                 CaseElseBlock = ${ ^"else" ~ W ~ Expr }
             CastOp = ${ ^"cast" ~ WO ~ "(" ~ WO ~ Expr ~ W ~ ^"as" ~ W ~ Type ~ WO ~ ")" }
 
-                ColumnDefType = { DomainType | Type }
+                ColumnDefType = { (DomainType | Type) ~ ArraySuffix? }
+                    // Accepted: T[], T[N], T[][], T[N][M], T[][N], T ARRAY, T ARRAY[N]
+                    // Rejected: T ARRAY[], T ARRAY[N][M]
+                    ArraySuffix = { (WO ~ ArrayBracketSuffix) | (W ~ ArrayKeywordSuffix) }
+                        ArrayBracketSuffix = { ArrayBound ~ (WO ~ ArrayBound)* }
+                        ArrayKeywordSuffix = { ^"array" ~ (WO ~ ArraySizedBound)? }
+                            ArrayBound = { "[" ~ WO ~ Unsigned? ~ WO ~ "]" }
+                            ArraySizedBound = { "[" ~ WO ~ Unsigned ~ WO ~ "]" }
 
                 // Additional special types availiable only for DDL statements (CREATE TABLE, ALTER TABLE)
                 DomainType = { TypeUnsigned }
