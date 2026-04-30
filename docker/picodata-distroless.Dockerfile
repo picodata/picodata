@@ -20,7 +20,8 @@ RUN set -e; \
         libzstd-dev \
         make \
         ncurses-dev \
-        pkg-config
+        pkg-config \
+        libclang-dev
 
 ARG RUST_VERSION
 RUN set -e; \
