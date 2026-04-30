@@ -26,9 +26,10 @@ COPY --from=builder /build/picodata/target/release/picodata /usr/bin/picodata
 
 RUN chmod 755 /usr/bin/picodata \
     && mkdir -p /var/lib/picodata && mkdir -p /var/run/picodata \
+    && mkdir -p /usr/share/picodata \
     && groupadd -g 1000 picodata \
     && useradd -u 1000 -g 1000 picodata -s /usr/sbin/nologin \
-    && chown 1000:1000 -R /var/lib/picodata
+    && chown 1000:1000 -R /var/lib/picodata /usr/share/picodata
 
 USER 1000:1000
 ENV PICODATA_PG_LISTEN 0.0.0.0:4327
