@@ -917,6 +917,36 @@ def test_concurrent_join_does_not_fail_with_bootstrap_connection_error(cluster: 
     lagger.wait_online()
 
 
+def test_non_voter_peer(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            can_vote: true
+        storage:
+            can_vote: false
+        """
+    )
+
+    voter = cluster.add_instance(wait_online=False, tier="arbiter")
+    non_voter = cluster.add_instance(wait_online=False, tier="storage")
+
+    assert non_voter.iproto_listen
+
+    # Both instances have a non-voter instance in their `--peer` option
+    voter.peers = [non_voter.iproto_listen]
+    non_voter.peers = [non_voter.iproto_listen]
+
+    # Cluster still successfully bootstraps, because instances share their own
+    # addresses, and a voter instance if there is one is eventually chosen leader
+    cluster.wait_online()
+
+    # Sanity check that the voter for elected leader
+    assert cluster.leader() == voter
+
+
 def test_sentinel_does_not_panic_on_long_activation_wait(cluster: Cluster):
     cluster.add_instance(name="leader")
 

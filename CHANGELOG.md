@@ -36,6 +36,8 @@ with the `YY.MINOR.MICRO` scheme.
   - Replace vshard-based Lua dispatch with ConnectionPool::call_raw for
     the proc_query_metadata callback. This fixes SQL query execution from
     arbiter tier instances (bucket_count=0) where no vshard router exists.
+- [picodata#2888] Fixed a bug where cluster would fail to bootstrap if there were no voter
+  instances in the initial `--peer` set.
 
 ## [26.1.2] - 2026-04-14 
 
