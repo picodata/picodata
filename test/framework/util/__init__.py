@@ -63,6 +63,43 @@ def is_in_ci() -> bool:
     return os.environ.get("CI") is not None
 
 
+def is_cargo_build_disabled() -> bool:
+    """Check if we want to skip (re)building binaries with cargo."""
+    return os.environ.get("SKIP_CARGO_BUILD") is not None
+
+
+def are_rolling_binaries_required() -> bool:
+    """Check if we want to raise an error for missing rolling binaries."""
+    return os.environ.get("ROLLING_BINARIES_REQUIRED") is not None
+
+
+def should_perform_cargo_build() -> bool:
+    """
+    We may want to skip (re)building object files to make sure they don't change.
+    This is particularly important for instrumented runs (lcov coverage, ASAN).
+    We also want to avoid rebuilding in CI pipelines for consistency and speed.
+    """
+    if is_in_ci():
+        return False
+    if is_cargo_build_disabled():
+        return False
+    return True
+
+
+def should_err_on_missing_binaries() -> bool:
+    """
+    Rolling binaries are only available for specific platforms and therefore
+    it is not always feasible to get the tests that require these binaries to succeed.
+    As such, we opt for skipping them by default unless explicitly asked for.
+    We expect these binaries to be always present in CI pipelines.
+    """
+    if is_in_ci():
+        return True
+    if are_rolling_binaries_required():
+        return True
+    return False
+
+
 def ask_yes_no(prompt: str, repeat: bool = False) -> bool:
     """
     Ask the user a yes/no question and return the answer as a boolean.

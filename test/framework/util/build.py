@@ -13,7 +13,8 @@ from framework.util.path import project_tests_path
 from framework.util.version import VersionAlias
 from framework.util import copy_plugin_library
 from framework.util import eprint
-from framework.util import is_in_ci
+from framework.util import should_perform_cargo_build
+from framework.util import should_err_on_missing_binaries
 from packaging.version import Version
 from pathlib import Path
 from typing import Any
@@ -47,11 +48,8 @@ def perform_cargo_build(enable_webui: bool = False) -> None:
     # NOTE: this makes the logs prettier - let it rest here.
     eprint("")
 
-    if is_in_ci():
-        log.info(
-            "Skipping `cargo build` as we are running in CI. "
-            "We don't need to build it here, as it was built and cached in a separate job."
-        )
+    if not should_perform_cargo_build():
+        log.info("Skipping `cargo build` (SKIP_CARGO_BUILD or CI mode set).")
         return
 
     cargo_flags = ["--all"]  # this should be included for Makefile to work correctly
@@ -208,7 +206,9 @@ class Executable:
                 return
 
         message = f"'{name}' binary is required to test against {self.version}"
-        raise ValueError(message) if is_in_ci() else pytest.skip(message)
+        if should_err_on_missing_binaries():
+            raise ValueError(message)
+        pytest.skip(message)
 
     @property
     def resolved(self) -> bool:
