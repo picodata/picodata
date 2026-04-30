@@ -13,7 +13,7 @@
 - [Astra Linux 1.7 и 1.8 SE](#astra)
 - [Debian 11 "Bullseye", 12 "Bookworm" и 13 "Trixie"](#debian)
 - [Ubuntu 20.04 (Focal Fossa), 22.04 (Jammy Jellyfish), 24.04 (Noble Numbat) и совместимые дистрибутивы](#ubuntu)
-- [Семейство Alt Linux на основе платформы p10](#altlinux)
+- [Семейство Alt Linux на основе платформ p10 и p11](#altlinux)
 - [ROSA Chrome (платформа 2021.1)](#rosalinux)
 
 Готовые пакеты можно установить как через добавление репозиториев, так и
@@ -108,7 +108,7 @@ dnf install -y picodata
 dnf install -y tarantool-picodata
 ```
 
-### Fedora 39–43 {: #fedora }
+### Fedora 41–43 {: #fedora }
 
 Создайте файл `/etc/yum.repos.d/picodata.repo`:
 
@@ -299,15 +299,19 @@ apt install picodata
 apt install tarantool-picodata
 ```
 
-### Alt Linux (платформа p10) {: #altlinux }
+### Alt Linux (платформы p10 и p11) {: #altlinux }
 
 Подключите репозиторий Picodata, используя следующие команды в терминале
 (здесь и далее команды следует вводить с <a href="#priv">правами администратора</a>)):
 
 ```shell
-wget https://download.picodata.io/tarantool-picodata/altlinux/p10/picodata-release-1.0.3.0-1.p10.x86_64.rpm
-apt-get install -y ./picodata-release-1.0.3.0-1.p10.x86_64.rpm
 curl -s https://download.picodata.io/tarantool-picodata/picodata.gpg.key | gpg --no-default-keyring --keyring gnupg-ring:/usr/lib/alt-gpgkeys/pubring.gpg --import
+. /etc/os-release
+echo "
+rpm https://download.picodata.io/tarantool-picodata/altlinux/ ${ALT_BRANCH_ID}/x86_64 main
+rpm https://download.picodata.io/tarantool-picodata/altlinux/ ${ALT_BRANCH_ID}/x86_64 debuginfo
+rpm-src https://download.picodata.io/tarantool-picodata/altlinux/ ${ALT_BRANCH_ID}/x86_64 main
+" > /etc/apt/sources.list.d/picodata.list
 ```
 
 Обновите список источников:
@@ -491,11 +495,11 @@ Corepack, который сам установит необходимую вер
     ```
 
 
-??? example "Alt Server p10"
+??? example "Alt Server p10 и p11"
     Установка общих зависимостей для сборки:
     ```shell
     su -
-    apt-get install -y gcc gcc-c++ cmake git patch libstdc++-devel-static libgomp-devel-static libssl-devel-static
+    apt-get install -y gcc gcc-c++ cmake git patch libstdc++-devel-static libgomp-devel-static libssl-devel-static autoconf systemd-devel automake make libtool clang
     ```
 
     <!--
