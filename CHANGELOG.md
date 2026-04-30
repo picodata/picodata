@@ -22,9 +22,6 @@ with the `YY.MINOR.MICRO` scheme.
   so unrelated scopes never merge, and parameter placeholders are kept
   separate from constants to avoid leaking unsafe bindings into execution-time
   filters.
-
-### Changed
-
 - Optimize `/api/v1/tiers` and `/api/v1/cluster` endpoints to reduce RPC calls.
   HTTP addresses are now read from `_pico_peer_address` storage instead of RPC,
   and memory info is only fetched from replicaset leaders. This reduces the
