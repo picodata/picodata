@@ -43,6 +43,7 @@ with the `YY.MINOR.MICRO` scheme.
   request the logical query plan. This facet can be combined with `RAW`,
   `BUCKETS`, and `FMT` options. The default `EXPLAIN` with no facets specified
   now emits both `LOGICAL` and `BUCKETS`.
+- Support `DELETE` statementes inside transactional `DO` blocks.
 
 ### Fixes
 

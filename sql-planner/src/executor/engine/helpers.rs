@@ -16,8 +16,8 @@ use crate::{
     executor::vtable::vtable_indexed_column_name,
     ir::{
         node::{
-            expression::Expression, relational::Relational, Alias, Constant, Limit, Motion, NodeId,
-            Update, Values, ValuesRow,
+            expression::Expression, relational::Relational, Alias, Constant, Delete, Limit, Motion,
+            NodeId, Update, Values, ValuesRow,
         },
         types::DerivedType,
     },
@@ -800,47 +800,69 @@ fn generate_pattern_with_params_for_block(
     let nodes = on.to_syntax_data()?;
 
     let ir_plan = plan.get_ir_plan();
-    let pattern = if let Relational::Update(update) = ir_plan.get_relation_node(query_id)? {
-        // Generate SQL for UPDATE by translating SELECT syntax data.
-        let mut update_nodes = Vec::new();
-        let select = parse_select(&nodes, ir_plan)?;
+    let pattern = match ir_plan.get_relation_node(query_id)? {
+        Relational::Update(update) => {
+            // Generate SQL for UPDATE by translating SELECT syntax data.
+            let mut update_nodes = Vec::new();
+            let select = parse_select(&nodes, ir_plan)?;
 
-        // UPDATE <relation>
-        update_nodes.push(SyntaxData::PlanId(query_id));
+            // UPDATE <relation>
+            update_nodes.push(SyntaxData::PlanId(query_id));
 
-        let relation = ir_plan
-            .relations
-            .get(&update.relation)
-            .expect("cannot miss UPDATE relation");
+            let relation = ir_plan
+                .relations
+                .get(&update.relation)
+                .expect("cannot miss UPDATE relation");
 
-        // INDEXED BY
-        if let Some(indexed_by) = select.indexed_by {
-            update_nodes.push(indexed_by);
+            // INDEXED BY
+            if let Some(indexed_by) = select.indexed_by {
+                update_nodes.push(indexed_by);
+            }
+
+            // SET
+            update_nodes.push(SyntaxData::Inline(SmolStr::from(" SET ")));
+
+            // col1 = expr1, col2 = expr2
+            for (update_col, proj_col) in &update.update_columns_map {
+                update_nodes.push(SyntaxData::Inline(format_smolstr!(
+                    "\"{}\" = ",
+                    relation.columns[*update_col].name,
+                )));
+                update_nodes.extend(select.projection[*proj_col].clone());
+                update_nodes.push(SyntaxData::Comma);
+            }
+            // Remove last comma
+            update_nodes.pop();
+
+            // WHERE <expr>
+            update_nodes.extend(select.filter);
+
+            let pattern = plan.generate_sql(&update_nodes, plan_id, table_name, None)?;
+            PatternWithParams { pattern, params }
         }
+        Relational::Delete(Delete { child: Some(_), .. }) => {
+            // Generate SQL for DELETE with WHERE by translating SELECT syntax data.
+            let mut delete_nodes = Vec::new();
+            let select = parse_select(&nodes, ir_plan)?;
 
-        // SET
-        update_nodes.push(SyntaxData::Inline(SmolStr::from(" SET ")));
+            // DELETE FROM <relation>
+            delete_nodes.push(SyntaxData::PlanId(query_id));
 
-        // col1 = expr1, col2 = expr2
-        for (update_col, proj_col) in &update.update_columns_map {
-            update_nodes.push(SyntaxData::Inline(format_smolstr!(
-                "\"{}\" = ",
-                relation.columns[*update_col].name,
-            )));
-            update_nodes.extend(select.projection[*proj_col].clone());
-            update_nodes.push(SyntaxData::Comma);
+            // INDEXED BY
+            if let Some(indexed_by) = select.indexed_by {
+                delete_nodes.push(indexed_by);
+            }
+
+            // WHERE <expr>
+            delete_nodes.extend(select.filter);
+
+            let pattern = plan.generate_sql(&delete_nodes, plan_id, table_name, None)?;
+            PatternWithParams { pattern, params }
         }
-        // Remove last comma
-        update_nodes.pop();
-
-        // WHERE <expr>
-        update_nodes.extend(select.filter);
-
-        let pattern = plan.generate_sql(&update_nodes, plan_id, table_name, None)?;
-        PatternWithParams { pattern, params }
-    } else {
-        let pattern = plan.generate_sql(&nodes, plan_id, table_name, None)?;
-        PatternWithParams { pattern, params }
+        _ => {
+            let pattern = plan.generate_sql(&nodes, plan_id, table_name, None)?;
+            PatternWithParams { pattern, params }
+        }
     };
 
     plan.get_mut_ir_plan().constants.clear();

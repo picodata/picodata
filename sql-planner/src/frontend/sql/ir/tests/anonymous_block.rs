@@ -225,11 +225,6 @@ fn block_query_has_motions_errors() {
             "DO $$ BEGIN INSERT INTO t1 VALUES ('1',2); END $$",
             "INSERT",
         ),
-        ("DO $$ BEGIN DELETE FROM t2 WHERE e = f; END $$", "DELETE"),
-        (
-            "DO $$ BEGIN RETURN QUERY SELECT a FROM t WHERE a = 1; RETURN QUERY SELECT e FROM t2 WHERE e = 1; DELETE FROM t2 WHERE e = f; END $$",
-            "DELETE"
-        ),
     ];
 
     for (block, keyword) in test_cases {
@@ -239,5 +234,59 @@ fn block_query_has_motions_errors() {
             error.to_string(),
             format!("{keyword} query has motions which are not allowed in transactions")
         );
+    }
+}
+
+#[test]
+fn delete_in_block_parsing() {
+    let ok_cases = [
+        "DO $$ BEGIN DELETE FROM t2; END $$",
+        "DO $$ BEGIN DELETE FROM t2 WHERE e = f; END $$",
+        "DO $$ BEGIN DELETE FROM t2 WHERE e = 1; END $$",
+        "DO $$ BEGIN DELETE FROM t2; DELETE FROM t2 WHERE e = f; END $$",
+        "DO $$ BEGIN RETURN QUERY SELECT e FROM t2 WHERE e = 1; DELETE FROM t2 WHERE e = f; END $$",
+        "DO $$ BEGIN DELETE FROM t2 WHERE f = $1; END $$",
+    ];
+
+    for query in ok_cases {
+        eprintln!("{query}");
+        let _ = sql_to_ir_without_bind(query, &[]);
+    }
+}
+
+#[test]
+fn delete_in_block_optimize() {
+    let ok_cases = [
+        "DO $$ BEGIN DELETE FROM t2; END $$",
+        "DO $$ BEGIN DELETE FROM t2 WHERE e = f; END $$",
+        "DO $$ BEGIN DELETE FROM t2 WHERE e = 1; END $$",
+        "DO $$ BEGIN DELETE FROM t2; DELETE FROM t2 WHERE e = f; END $$",
+        "DO $$ BEGIN RETURN QUERY SELECT e FROM t2 WHERE e = 1; DELETE FROM t2 WHERE e = f; END $$",
+    ];
+
+    for query in ok_cases {
+        eprintln!("{query}");
+        let plan = sql_to_ir_without_bind(query, &[]);
+        plan.optimize_block().unwrap();
+    }
+}
+
+#[test]
+fn delete_in_block_errors() {
+    let error_cases = [
+        (
+            "DO $$ BEGIN DELETE FROM t2 WHERE e = (SELECT 1); END $$",
+            "DELETE in transaction cannot have subqueries",
+        ),
+        (
+            "DO $$ BEGIN DELETE FROM t2 WHERE e IN (SELECT e FROM t2); END $$",
+            "DELETE in transaction cannot have subqueries",
+        ),
+    ];
+
+    for (query, error_pattern) in error_cases {
+        let error = expect_sql_to_ir_error(query, &[]);
+        eprintln!("{}: {} vs {}", query, error, error_pattern);
+        assert!(error.to_string().contains(error_pattern));
     }
 }

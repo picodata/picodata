@@ -107,10 +107,12 @@ impl Plan {
                     return Ok(());
                 }
 
-                // Unlink update's child.
+                // Unlink the DML node's motion child.
                 let motion_child_id = plan.get_rel_child(*motion_id, 0)?;
-                if let MutRelational::Update(update) = plan.get_mut_relation_node(top_id)? {
-                    update.child = motion_child_id
+                match plan.get_mut_relation_node(top_id)? {
+                    MutRelational::Update(update) => update.child = motion_child_id,
+                    MutRelational::Delete(delete) => delete.child = Some(motion_child_id),
+                    _ => {}
                 }
             }
 

@@ -3,6 +3,7 @@ use crate::executor::ir::ExecutionPlan;
 use crate::ir::expression::{FunctionFeature, TrimKind};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
+use crate::ir::node::Delete;
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Except, FrameType,
     GroupBy, Having, IndexExpr, Intersect, Join, Like, Limit, Motion, Node, NodeId, OrderBy, Over,
@@ -982,7 +983,12 @@ impl<'p> SyntaxPlan<'p> {
             }
             Node::Relational(ref rel) => match rel {
                 Relational::Update { .. } => (),
-                Relational::Delete { .. } => self.add_delete(id),
+                // Delete without WHERE has no child to generate SELECT syntax from,
+                // so we add the node directly. Delete with WHERE is handled like Update:
+                // the child SELECT syntax is generated and translated in
+                // generate_pattern_with_params_for_block.
+                Relational::Delete(Delete { child: None, .. }) => self.add_delete(id),
+                Relational::Delete(Delete { child: Some(_), .. }) => (),
                 Relational::Insert { .. } => {
                     panic!("DML node {node:?} is not supported in the syntax plan")
                 }

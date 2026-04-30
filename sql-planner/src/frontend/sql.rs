@@ -2070,22 +2070,23 @@ fn parse_anonymous_block(
     map: &Translation,
     plan: &Plan,
 ) -> Result<AnonymousBlock, SbroadError> {
-    fn ensure_can_generate_local_sql_for_update(
-        update_id: NodeId,
+    fn ensure_can_generate_local_sql_for_dml(
+        kind: &str,
+        top_id: NodeId,
         plan: &Plan,
     ) -> Result<(), SbroadError> {
         let dfs = PostOrder::new(|x| plan.nodes.rel_iter(x), REL_CAPACITY);
-        for LevelNode(_, id) in dfs.traverse_into_iter(update_id) {
+        for LevelNode(_, id) in dfs.traverse_into_iter(top_id) {
             match plan.get_relation_node(id)? {
                 Relational::ScanSubQuery(_) => {
-                    return Err(SbroadError::other(
-                        "UPDATE in transaction cannot have subqueries",
-                    ))
+                    return Err(SbroadError::Other(format_smolstr!(
+                        "{kind} in transaction cannot have subqueries"
+                    )))
                 }
                 Relational::Join(_) => {
-                    return Err(SbroadError::other(
-                        "UPDATE in transaction cannot have joins",
-                    ))
+                    return Err(SbroadError::Other(format_smolstr!(
+                        "{kind} in transaction cannot have joins"
+                    )))
                 }
                 _ => (),
             }
@@ -2093,6 +2094,7 @@ fn parse_anonymous_block(
 
         Ok(())
     }
+
     let node = ast.nodes.get_node(node_id)?;
     let mut statements = Vec::new();
     let mut return_columns: Vec<(String, DerivedType)> = Vec::new();
@@ -2215,8 +2217,14 @@ fn parse_anonymous_block(
     // Ensure `generate_pattern_with_params_for_block` can handle queries.
     for stmt in &statements {
         let node_id = *stmt.get();
-        if let Relational::Update(_) = plan.get_relation_node(node_id)? {
-            ensure_can_generate_local_sql_for_update(node_id, plan)?;
+        match plan.get_relation_node(node_id)? {
+            Relational::Update(_) => {
+                ensure_can_generate_local_sql_for_dml("UPDATE", node_id, plan)?
+            }
+            Relational::Delete(_) => {
+                ensure_can_generate_local_sql_for_dml("DELETE", node_id, plan)?
+            }
+            _ => {}
         }
     }
 

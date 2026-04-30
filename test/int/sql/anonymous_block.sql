@@ -258,12 +258,22 @@ END $$;
 1,1,1,
 4,4,4,
 
--- TEST: cannot-modify-global-table
+-- TEST: cannot-update-global-table
 -- SQL:
 DO $$
 BEGIN
   RETURN QUERY SELECT * FROM g ORDER BY 1 LIMIT 1;
   UPDATE g SET b = a WHERE b = 1;
+END $$;
+-- ERROR:
+cannot modify global table g within transaction
+
+-- TEST: cannot-delete-from-global-table
+-- SQL:
+DO $$
+BEGIN
+  RETURN QUERY SELECT * FROM g ORDER BY 1 LIMIT 1;
+  DELETE FROM g WHERE b = 1;
 END $$;
 -- ERROR:
 cannot modify global table g within transaction
@@ -332,14 +342,60 @@ Reached a limit on max executed vdbe opcodes. Limit: 1
 -- TEST: block-delete-1
 -- SQL:
 do $$ BEGIN DELETE FROM t WHERE pk = 1; END $$;
--- ERROR:
-DELETE query has motions which are not allowed in transactions
+
+-- TEST: block-delete-1-check
+-- SQL:
+SELECT * FROM t WHERE pk = 1;
 
 -- TEST: block-delete-2
 -- SQL:
 do $$ BEGIN DELETE FROM t; END $$;
 -- ERROR:
 transaction cannot be executed on all buckets
+
+-- TEST: block-delete-with-return-query
+-- SQL:
+DO $$
+BEGIN
+  RETURN QUERY SELECT * FROM t WHERE pk = 2;
+  DELETE FROM t WHERE pk = 2;
+END $$;
+-- EXPECTED:
+2, 6, 2
+
+-- TEST: explain-block-delete-with-return-query
+-- SQL:
+EXPLAIN (raw)
+DO $$ BEGIN
+  RETURN QUERY SELECT * FROM t WHERE pk = 2;
+  DELETE FROM t WHERE pk = 2;
+END $$;
+-- EXPECTED:
+1. Return query (FILTERED STORAGE):
+SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(2 AS int)
++----------+-------+------+--------------------------------------------------+
+| selectid | order | from | detail                                           |
++============================================================================+
+| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
++----------+-------+------+--------------------------------------------------+
+''
+2. Query (FILTERED STORAGE):
+DELETE FROM "t" WHERE "t"."pk" = CAST(2 AS int)
++----------+-------+------+--------------------------------------------------+
+| selectid | order | from | detail                                           |
++============================================================================+
+| 0        | 0     | 0    | SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row) |
++----------+-------+------+--------------------------------------------------+
+
+-- TEST: block-delete-with-return-query-check
+-- SQL:
+SELECT * FROM t WHERE pk = 2;
+
+-- TEST: block-delete-with-subquery-1
+-- SQL:
+do $$ BEGIN DELETE FROM t WHERE pk = (SELECT 1); END $$;
+-- ERROR:
+DELETE in transaction cannot have subqueries
 
 -- TEST: block-insert-1
 -- SQL:
