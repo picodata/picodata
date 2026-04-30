@@ -38,11 +38,13 @@ RUN curl -SLO https://deb.nodesource.com/nsolid_setup_deb.sh && \
 WORKDIR /build/picodata
 COPY . .
 RUN cargo build --locked --release --features webui
+RUN mkdir -p /usr/share/picodata
 
 
 FROM docker-public.binary.picodata.io/distroless/cc-debian13
 
 COPY --from=builder /build/picodata/target/release/picodata /usr/bin/picodata
+COPY --from=builder /usr/share/picodata /usr/share/picodata
 
 ENV PICODATA_PG_LISTEN 0.0.0.0:4327
 WORKDIR /var/lib/picodata
