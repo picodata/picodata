@@ -4,7 +4,7 @@ use super::execute::{
     tuple_insert_from_plan,
 };
 use super::port::PicoPortOwned;
-use super::storage::{execute_block_locally, FullDeleteInfo, StorageRuntime};
+use super::storage::{FullDeleteInfo, StorageRuntime};
 use crate::catalog::pico_table::PicoTable;
 use crate::config::{DEFAULT_SQL_PREEMPTION, DYNAMIC_CONFIG};
 use crate::metrics::{observe_sql_local_query_duration, record_sql_local_query_total};
@@ -620,17 +620,13 @@ pub(crate) fn block_dispatch<'p>(
             // Block cannot have any motions.
             let motion_max_rows = 0;
 
-            if !metadata.is_empty() {
-                dql_execution_result_process(
-                    port,
-                    lua_table,
-                    replicasets.len(),
-                    columns as _,
-                    motion_max_rows,
-                )?;
-            } else {
-                dml_process(port, lua_table, replicasets.len())?;
-            }
+            dql_execution_result_process(
+                port,
+                lua_table,
+                replicasets.len(),
+                columns as _,
+                motion_max_rows,
+            )?;
 
             Ok(())
         }
@@ -644,48 +640,14 @@ fn execute_block_locally_for_dispatch<'p>(
 ) -> SqlResult<()> {
     let runtime = StorageRuntime::new();
     runtime.validate_block_schema(&block)?;
-
-    if !metadata.is_empty() {
-        port_write_block_metadata(port, metadata)?;
-        return execute_block_locally(block, port);
-    }
-
-    let mut tmp_port = PicoPortOwned::new();
-    execute_block_locally(block, &mut tmp_port)?;
-    let changed = parse_execute_dml_row_count(&tmp_port)?;
-    port_write_local_dml_response(port, changed)
-}
-
-fn parse_execute_dml_row_count(port: &PicoPortOwned) -> SqlResult<u64> {
-    let mp = port.iter().next().ok_or_else(|| {
-        SbroadError::DispatchError("local block DML port must not be empty".into())
-    })?;
-    let mut cursor = Cursor::new(mp);
-    let array_len = read_array_len(&mut cursor).map_err(|e| {
-        SbroadError::DispatchError(format_smolstr!(
-            "failed to decode local block DML response array length: {e}"
-        ))
-    })?;
-    if array_len != 1 {
-        return Err(SbroadError::DispatchError(format_smolstr!(
-            "expected single-element local block DML response, got array length {array_len}"
-        )));
-    }
-    read_int(&mut cursor).map_err(|e| {
-        SbroadError::DispatchError(format_smolstr!(
-            "failed to decode local block DML row count: {e}"
-        ))
-    })
+    port_write_block_metadata(port, metadata)?;
+    port.process_txn(block.statements, block.vdbe_max_steps)
 }
 
 fn port_write_block_metadata<'p>(
     port: &mut impl Port<'p>,
     metadata: &[MetadataColumn],
 ) -> SqlResult<()> {
-    if metadata.is_empty() {
-        return Ok(());
-    }
-
     write_metadata(
         port,
         metadata

@@ -503,6 +503,18 @@ END $$;
 -- ERROR:
 INSERT query has motions which are not allowed in transactions
 
+-- TEST: dollar-in-string-literals-is-not-replaced-with-colon
+-- SQL:
+DO $$ BEGIN RETURN QUERY SELECT '$1'; END $$;
+-- EXPECTED:
+$1,
+
+-- TEST: dollar-in-identifiers-is-not-replaced-with-colon
+-- SQL:
+DO $$ BEGIN RETURN QUERY WITH t("$1", ":1") AS (SELECT 1, 2) SELECT "$1", ":1" FROM t; END $$;
+-- EXPECTED:
+1,2,
+
 -- TEST: block-with-motions
 -- SQL:
 DO $$ BEGIN RETURN QUERY SELECT * FROM t WHERE pk = 1 LIMIT 1; END $$;
@@ -595,6 +607,63 @@ plan:
 ╰─────────────────────────────╯
 ''
 DELETE FROM "t" WHERE "t"."pk" = CAST(2 AS int)
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
+
+
+-- TEST: block-delete-with-return-query-check
+-- SQL:
+SELECT * FROM t WHERE pk = 2;
+
+-- TEST: explain-block-multistmt-with-constants
+-- SQL:
+EXPLAIN (raw)
+DO $$ BEGIN
+  RETURN QUERY SELECT * FROM t WHERE pk = 1;
+  RETURN QUERY SELECT * FROM t WHERE pk = 1;
+END $$;
+-- EXPECTED:
+╭────────────────────────────────────╮
+│ 1. Return query (FILTERED STORAGE) │
+╰────────────────────────────────────╯
+''
+SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
+''
+╭────────────────────────────────────╮
+│ 2. Return query (FILTERED STORAGE) │
+╰────────────────────────────────────╯
+''
+SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
+
+-- TEST: explain-block-mixed-stmts-with-constants
+-- SQL:
+EXPLAIN (raw)
+DO $$ BEGIN
+  RETURN QUERY SELECT * FROM t WHERE pk = 1;
+  DELETE FROM t WHERE pk = 1;
+END $$;
+-- EXPECTED:
+╭────────────────────────────────────╮
+│ 1. Return query (FILTERED STORAGE) │
+╰────────────────────────────────────╯
+''
+SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
+''
+╭─────────────────────────────╮
+│ 2. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
+''
+DELETE FROM "t" WHERE "t"."pk" = CAST(1 AS int)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)

@@ -1411,7 +1411,7 @@ where
                     },
                 }
             }
-            SyntaxData::Parameter(id, index) => {
+            SyntaxData::Parameter(id, index) | SyntaxData::ParameterColon(id, index) => {
                 let (param_type, index) = match ir_plan.get_node(*id) {
                     Ok(Node::Expression(Expression::Parameter(Parameter {
                         param_type, ..
@@ -1439,9 +1439,15 @@ where
                     node => panic!("parameter node points to {node:?}"),
                 };
 
+                let prefix = if matches!(data, SyntaxData::ParameterColon(..)) {
+                    ':'
+                } else {
+                    '$'
+                };
+
                 match param_type.get() {
-                    Some(ty) => sql.push_str(&format_smolstr!("CAST(${index} AS {ty})")),
-                    None => sql.push_str(&format_smolstr!("${index}")),
+                    Some(ty) => sql.push_str(&format_smolstr!("CAST({prefix}{index} AS {ty})")),
+                    None => sql.push_str(&format_smolstr!("{prefix}{index}")),
                 }
 
                 assert!(index <= constants_count);

@@ -323,6 +323,12 @@ impl fmt::Display for Value {
     }
 }
 
+impl AsRef<Value> for Value {
+    fn as_ref(&self) -> &Value {
+        self
+    }
+}
+
 impl From<bool> for Value {
     fn from(f: bool) -> Self {
         Value::Boolean(f)

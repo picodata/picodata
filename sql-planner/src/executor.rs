@@ -22,6 +22,7 @@
 //!    - builds a virtual table with query results that correspond to the original motion.
 //! 5. Repeats step 3 till we are done with motion layers.
 //! 6. Executes the final IR top subtree and returns the final result to the user.
+use crate::backend::sql::ir::PatternWithParams;
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::{Router, Vshard};
 use crate::executor::ir::ExecutionPlan;
@@ -31,7 +32,7 @@ use crate::ir::explain::{execution_info::BucketsInfo, LogicalExplain};
 use crate::ir::node::block::{BlockOwned, MutBlock};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{MutRelational, Relational};
-use crate::ir::node::{AnonymousBlock, Insert, Motion, NodeId, Values, ValuesRow};
+use crate::ir::node::{AnonymousBlock, BlockStatement, Insert, Motion, NodeId, Values, ValuesRow};
 use crate::ir::options::OptionKind;
 use crate::ir::transformation::redistribution::{MotionPolicy, Target};
 use crate::ir::tree::traversal::{PostOrder, REL_CAPACITY};
@@ -317,6 +318,18 @@ pub trait Port<'p>: io::Write {
     fn set_type(&mut self, port_type: PortType);
 
     fn size(&self) -> u32;
+
+    /// Compile and execute a block of statements as a single VDBE program.
+    ///
+    /// All statements (ReturnQuery, Query, Let, If) are assembled into one
+    /// root VDBE and executed inside a transaction.
+    fn process_txn(
+        &mut self,
+        stmts: Vec<BlockStatement<PatternWithParams>>,
+        vdbe_max_steps: u64,
+    ) -> Result<(), SbroadError>
+    where
+        Self: Sized;
 }
 
 /// The purpose of that structure is to persist data

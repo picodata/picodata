@@ -116,6 +116,12 @@ pub enum SyntaxData {
     PlanId(NodeId),
     /// parameter (a wrapper over a plan constants)
     Parameter(NodeId, usize),
+    /// Same as `Parameter`, but renders as `:N` instead of `$N`. Used by the
+    /// block-VDBE path so tarantool's local SQL frontend produces named bind
+    /// variables (`:N`), which is the form picodata's block patcher in
+    /// `src/vdbe/mod.rs` expects when reading parameter names back from
+    /// `pVList` to decide positional vs LET-style references.
+    ParameterColon(NodeId, usize),
     /// virtual table (the key is a motion node id
     /// pointing to the execution plan's virtual table)
     VTable(NodeId),
@@ -587,7 +593,9 @@ impl SyntaxNodes {
     fn push_sn_plan(&mut self, node: SyntaxNode) -> usize {
         let id = self.next_id();
         match node.data {
-            SyntaxData::PlanId(_) | SyntaxData::Parameter(..) => self.stack.push(id),
+            SyntaxData::PlanId(_) | SyntaxData::Parameter(..) | SyntaxData::ParameterColon(..) => {
+                self.stack.push(id)
+            }
             _ => {
                 unreachable!("Expected a plan node wrapper.");
             }
@@ -600,7 +608,7 @@ impl SyntaxNodes {
         let id = self.next_id();
         assert!(!matches!(
             node.data,
-            SyntaxData::PlanId(_) | SyntaxData::Parameter(..)
+            SyntaxData::PlanId(_) | SyntaxData::Parameter(..) | SyntaxData::ParameterColon(..)
         ));
         self.arena.push(node);
         id
@@ -778,7 +786,10 @@ impl<'p> SyntaxPlan<'p> {
     fn check_plan_node(&self, sn_id: usize, plan_id: NodeId) {
         let sn = self.nodes.get_sn(sn_id);
         let SyntaxNode {
-            data: SyntaxData::PlanId(id) | SyntaxData::Parameter(id, ..),
+            data:
+                SyntaxData::PlanId(id)
+                | SyntaxData::Parameter(id, ..)
+                | SyntaxData::ParameterColon(id, ..),
             ..
         } = sn
         else {
@@ -2861,6 +2872,27 @@ impl OrderedSyntaxNodes {
         OrderedSyntaxNodes {
             arena: Vec::new(),
             positions: Vec::new(),
+        }
+    }
+
+    /// Iterate over the syntax data of every node in the arena, mutably.
+    ///
+    /// Used by callers that need to rewrite specific variants in place
+    /// without allocating a new sequence (e.g. the block-pattern generator
+    /// swaps `Parameter` → `ParameterColon`).
+    pub fn data_mut(&mut self) -> impl Iterator<Item = &mut SyntaxData> {
+        self.arena.iter_mut().map(|n| &mut n.data)
+    }
+
+    // Render parameters as `:N` instead of `$N`: picodata's block-VDBE
+    // patcher reads names back from pVList and expects the `:` prefix.
+    // Skipped on the EXPLAIN RAW path, which compiles the SQL directly via
+    // SqlStmt::compile/process_stmt and binds parameters by `$N` index.
+    pub fn render_params_with_colon(&mut self) {
+        for data in self.data_mut() {
+            if let SyntaxData::Parameter(id, idx) = *data {
+                *data = SyntaxData::ParameterColon(id, idx);
+            }
         }
     }
 }

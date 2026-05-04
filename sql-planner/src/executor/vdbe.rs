@@ -86,14 +86,30 @@ impl SqlStmt {
 
         assert!(!stmt.is_null());
 
-        // Loops over VDBE opcodes to accumulate their sizes; never fails.
-        // SAFETY: Safe as stmt is asserted to to have not-null value.
-        let size = unsafe { sql_stmt_est_size(stmt) };
+        // SAFETY: stmt is asserted non-null above.
+        Ok(unsafe { Self::wrap_stmt_ptr(stmt) })
+    }
 
-        Ok(Self {
-            ptr: NonNull::new(stmt).unwrap(),
+    /// Wrap an externally-prepared VDBE pointer.
+    ///
+    /// Takes ownership: the statement will be finalized on drop.
+    ///
+    /// # Safety
+    /// `ptr` must be a non-null, owned VDBE that has been made ready (e.g.
+    /// via `sqlVdbeMakeReady`) and is not currently executing.
+    pub unsafe fn from_raw(ptr: *mut c_void) -> Self {
+        Self::wrap_stmt_ptr(ptr)
+    }
+
+    /// # Safety
+    /// `ptr` must be a non-null, owned VDBE statement pointer.
+    unsafe fn wrap_stmt_ptr(ptr: *mut c_void) -> Self {
+        // Loops over VDBE opcodes to accumulate their sizes; never fails.
+        let size = sql_stmt_est_size(ptr);
+        Self {
+            ptr: NonNull::new(ptr).expect("non-null vdbe ptr"),
             size_estimate: size,
-        })
+        }
     }
 
     /// Execute statement with given parameters into a port.
@@ -164,6 +180,38 @@ impl SqlStmt {
         }
     }
 
+    /// Execute the statement once with high-level params, without busy or
+    /// stale-schema retry.
+    ///
+    /// Suited for VDBEs that were not produced by `compile()` and so have no
+    /// SQL source string to recompile from (e.g. assembled block programs).
+    pub fn execute_once<P: AsRef<Value>>(
+        &mut self,
+        params: &[P],
+        opcode_max: u64,
+        port: &mut PortC,
+    ) -> SqlResult<()> {
+        let encoded: Vec<EncodedValue> = params
+            .iter()
+            .map(|p| EncodedValue::from(p.as_ref()))
+            .collect();
+        let param_data =
+            Cow::from(rmp_serde::to_vec(&encoded).map_err(SqlError::FailedToEncodeStmtParams)?);
+        self.execute_once_with_raw_params(param_data.iter().as_slice(), opcode_max, port)
+    }
+
+    /// Execute the statement once with pre-encoded msgpack params, without
+    /// busy or stale-schema retry. See [`Self::execute_once`] for the rationale.
+    pub fn execute_once_with_raw_params(
+        &mut self,
+        params: &[u8],
+        opcode_max: u64,
+        port: &mut PortC,
+    ) -> SqlResult<()> {
+        with_su(ADMIN_ID, || self.execute_raw(params, opcode_max, port))
+            .expect("must be able to su into admin")
+    }
+
     /// Check if statement is currently executed by another thread.
     fn is_busy(&self) -> bool {
         // SAFETY: Safe as it is asserted that ptr is not null in `Self::new`.
@@ -188,6 +236,15 @@ impl SqlStmt {
     /// Get estimated amount of memory occupied by this statement.
     pub fn estimated_size(&self) -> usize {
         self.size_estimate
+    }
+
+    /// Raw pointer to the underlying tarantool VDBE statement.
+    ///
+    /// Returned as `*mut c_void` because the `Vdbe` struct is not visible
+    /// to this crate (its bindings live in the picodata crate's bindgen).
+    /// Callers that need the typed `*mut Vdbe` cast it themselves.
+    pub fn as_ptr(&self) -> *mut c_void {
+        self.ptr.as_ptr()
     }
 }
 

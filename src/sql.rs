@@ -284,12 +284,8 @@ fn dispatch_bound_statement_impl<'p>(
         let plan = query.get_exec_plan().get_ir_plan();
         let top_id = plan.get_top().expect("must be set");
         let block = plan.get_block_node(top_id)?;
-        if let Block::Anonymous(AnonymousBlock { return_columns, .. }) = block {
-            if return_columns.is_empty() {
-                port.set_type(PortType::DispatchDml);
-            } else {
-                port.set_type(PortType::DispatchDql);
-            }
+        if let Block::Anonymous(_) = block {
+            port.set_type(PortType::DispatchDql);
         }
     } else {
         port.set_type(PortType::DispatchDml);

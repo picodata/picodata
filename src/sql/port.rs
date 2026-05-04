@@ -15,7 +15,11 @@ use std::ptr::NonNull;
 use tarantool::ffi::sql::{obuf_append, Obuf, Port, PortC, PortVTable};
 
 use super::lua::escape_bytes;
+use crate::vdbe::txn::execute_block_into_port;
+use sql::backend::sql::ir::PatternWithParams;
+use sql::errors::SbroadError;
 use sql::executor::vdbe::{ExecutionInsight, SqlError, SqlStmt};
+use sql::ir::node::BlockStatement;
 use sql::ir::value::Value;
 
 /// The response of dump_mp callback is used in the IPROTO body
@@ -204,6 +208,25 @@ impl SqlPort<'_> for PicoPortOwned {
     fn size(&self) -> u32 {
         self.port_c().size() as u32
     }
+
+    fn process_txn(
+        &mut self,
+        stmts: Vec<BlockStatement<PatternWithParams>>,
+        vdbe_max_steps: u64,
+    ) -> Result<(), SbroadError> {
+        execute_block_in_txn(self.port_c_mut(), &stmts, vdbe_max_steps)
+    }
+}
+
+fn execute_block_in_txn(
+    port: &mut PortC,
+    stmts: &[BlockStatement<PatternWithParams>],
+    vdbe_max_steps: u64,
+) -> Result<(), SbroadError> {
+    tarantool::transaction::transaction(|| {
+        execute_block_into_port(stmts, vdbe_max_steps, port).map_err(SbroadError::other)
+    })?;
+    Ok(())
 }
 
 impl Write for PicoPortOwned {
@@ -270,6 +293,14 @@ impl<'p> SqlPort<'p> for PicoPortC<'p> {
 
     fn size(&self) -> u32 {
         self.port.size() as u32
+    }
+
+    fn process_txn(
+        &mut self,
+        stmts: Vec<BlockStatement<PatternWithParams>>,
+        vdbe_max_steps: u64,
+    ) -> Result<(), SbroadError> {
+        execute_block_in_txn(self.port, &stmts, vdbe_max_steps)
     }
 }
 

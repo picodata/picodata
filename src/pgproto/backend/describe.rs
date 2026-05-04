@@ -424,13 +424,7 @@ impl Describe {
             let top = plan.get_top()?;
             let block = plan.get_block_node(top)?;
             match block {
-                Block::Anonymous(AnonymousBlock { return_columns, .. }) => {
-                    if return_columns.is_empty() {
-                        QueryType::Dml
-                    } else {
-                        QueryType::Dql
-                    }
-                }
+                Block::Anonymous(_) => QueryType::Dql,
                 Block::CallProcedure(_) => QueryType::Dml,
             }
         } else {

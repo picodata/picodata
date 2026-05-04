@@ -31,7 +31,6 @@ use crate::metrics::{
 use smol_str::{format_smolstr, SmolStr};
 use sql::executor::vdbe::SqlStmt;
 use sql::executor::vtable::{VirtualTable, VirtualTableTupleEncoder};
-use sql::ir::node::BlockStatement;
 use sql::ir::node::NodeId;
 use sql::ir::tree::Snapshot;
 use sql::ir::value::Value;
@@ -43,7 +42,6 @@ use std::collections::{hash_map::Entry, HashMap};
 use std::rc::Rc;
 use tarantool::space::SpaceId;
 
-use super::execute::port_write_execute_dml;
 use crate::schema::{ADMIN_ID, SPACE_ID_TEMPORARY_MIN};
 use crate::sql::execute::{
     acquire_cached_stmt_or_retry, dml_execute, dql_execute, drop_temp_tables, explain_execute,
@@ -53,7 +51,6 @@ use crate::sql::execute::{
 use crate::sql::lock::{
     new_temp_table_lock, try_lock_temp_table, TempTableLockRef, TempTableLockWeak,
 };
-use crate::sql::port::PicoPortOwned;
 use crate::tlog;
 use sql::executor::engine::BlockExecData;
 use sql::executor::result::MetadataColumn;
@@ -826,16 +823,10 @@ impl StorageRuntime {
         block: BlockExecData,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
-        let is_dql = block.returns_rows;
         self.validate_block_schema(&block)?;
 
-        execute_block_locally(block, port)?;
-
-        if is_dql {
-            port.set_type(PortType::ExecuteDql);
-        } else {
-            port.set_type(PortType::ExecuteDml);
-        }
+        port.process_txn(block.statements, block.vdbe_max_steps)?;
+        port.set_type(PortType::ExecuteDql);
 
         Ok(())
     }
@@ -878,51 +869,4 @@ pub fn explain_execute_block<'p>(
     }
 
     Ok(())
-}
-
-pub fn execute_block_locally<'p>(
-    block: BlockExecData,
-    port: &mut impl Port<'p>,
-) -> Result<(), SbroadError> {
-    let is_dml = !block
-        .statements
-        .iter()
-        .any(|stmt| matches!(&stmt, BlockStatement::ReturnQuery(_)));
-
-    let mut row_count = 0;
-    tarantool::transaction::transaction(|| -> Result<(), SbroadError> {
-        for stmt in block.statements {
-            match stmt {
-                BlockStatement::ReturnQuery(pattern) => {
-                    let (sql, params) = pattern.into_parts();
-                    let mut vdbe = SqlStmt::compile(&sql)?;
-                    port.process_stmt(&mut vdbe, &params, block.vdbe_max_steps)?;
-                }
-                BlockStatement::Query(pattern) => {
-                    let (sql, params) = pattern.into_parts();
-                    let mut vdbe = SqlStmt::compile(&sql)?;
-                    let mut tmp_port = PicoPortOwned::new();
-                    tmp_port.process_stmt(&mut vdbe, &params, block.vdbe_max_steps)?;
-                    row_count += parse_row_count_from_port(&tmp_port);
-                }
-            }
-        }
-        Ok(())
-    })?;
-
-    if is_dml {
-        port_write_execute_dml(port, row_count);
-    }
-
-    Ok(())
-}
-
-/// Extract row_count written by vdbe into the port.
-fn parse_row_count_from_port(port: &PicoPortOwned) -> u64 {
-    let mp = port.iter().next().expect("port must not be emtpy");
-    let mut cursor = std::io::Cursor::new(mp);
-    let array_len = rmp::decode::read_array_len(&mut cursor).expect("malformed port");
-    assert_eq!(array_len, 1);
-    let row_count = rmp::decode::read_int(&mut cursor).expect("malformed port");
-    row_count
 }

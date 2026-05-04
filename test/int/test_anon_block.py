@@ -1,7 +1,7 @@
-import psycopg
 import threading
 
-from conftest import Cluster, find_routed_pk, Postgres
+import psycopg
+from conftest import Cluster, Postgres, find_routed_pk
 
 
 def setup_user_and_table(instance):
@@ -52,14 +52,14 @@ def test_local_filtered_dml_block_dispatch(cluster: Cluster):
     leader.sql("CREATE TABLE t (pk INTEGER PRIMARY KEY, a INTEGER)")
     leader.sql("INSERT INTO t VALUES (?, ?)", local_pk, 0)
 
-    dml = leader.sql(
+    block = leader.sql(
         f"""
         DO $$ BEGIN
             UPDATE t SET a = a + 1 WHERE pk = {local_pk};
         END $$;
         """
     )
-    assert dml == {"row_count": 1}
+    assert block == []
     assert leader.sql("SELECT a FROM t WHERE pk = ?", local_pk) == [[1]]
 
 

@@ -1373,6 +1373,17 @@ pub enum BlockStatement<T> {
     ///
     /// Example: `UPDATE t SET b = 1 WHERE pk = 1;`
     Query(T),
+
+    /// Assign the scalar result of `query` to variable `var`.
+    ///
+    /// Example: `LET :x = (SELECT a FROM t WHERE pk = 1);`
+    Let { var: String, query: T },
+
+    /// Conditional block: execute `body` statements only when `cond` is true.
+    ///
+    /// `cond` must be a scalar boolean query (`SELECT <bool_expr>`).
+    /// NULL condition skips the body.
+    If { cond: T, body: Vec<T> },
 }
 
 impl<T> BlockStatement<T> {
@@ -1381,6 +1392,7 @@ impl<T> BlockStatement<T> {
         match self {
             Self::ReturnQuery(v) => v,
             Self::Query(v) => v,
+            _ => unimplemented!(),
         }
     }
 
@@ -1389,6 +1401,7 @@ impl<T> BlockStatement<T> {
         match self {
             Self::ReturnQuery(v) => v,
             Self::Query(v) => v,
+            _ => unimplemented!(),
         }
     }
 
@@ -1397,6 +1410,7 @@ impl<T> BlockStatement<T> {
         match self {
             Self::ReturnQuery(v) => v,
             Self::Query(v) => v,
+            _ => unimplemented!(),
         }
     }
 
@@ -1408,6 +1422,7 @@ impl<T> BlockStatement<T> {
         Ok(match self {
             Self::ReturnQuery(v) => BlockStatement::ReturnQuery(f(v)?),
             Self::Query(v) => BlockStatement::Query(f(v)?),
+            _ => unimplemented!(),
         })
     }
 
@@ -1415,6 +1430,8 @@ impl<T> BlockStatement<T> {
         match self {
             BlockStatement::ReturnQuery(_) => "Return query",
             BlockStatement::Query(_) => "Query",
+            BlockStatement::Let { .. } => "Let",
+            BlockStatement::If { .. } => "If",
         }
     }
 }

@@ -701,6 +701,7 @@ fn generate_pattern_with_params_for_block(
     plan: &mut ExecutionPlan,
     query_id: NodeId,
     bucket_id: Option<u64>,
+    use_colon_params: bool,
 ) -> Result<PatternWithParams, SbroadError> {
     use crate::backend::sql::tree::SyntaxData;
 
@@ -811,12 +812,16 @@ fn generate_pattern_with_params_for_block(
             constant_ids,
             params,
             bucket_id,
+            use_colon_params,
         )?;
         return Ok(pattern);
     }
 
     let sp = SyntaxPlan::new(plan, query_id, Snapshot::Oldest, false)?;
-    let on = OrderedSyntaxNodes::try_from(sp)?;
+    let mut on = OrderedSyntaxNodes::try_from(sp)?;
+    if use_colon_params {
+        on.render_params_with_colon();
+    }
     let nodes = on.to_syntax_data()?;
 
     let ir_plan = plan.get_ir_plan();
@@ -911,6 +916,7 @@ fn generate_insert_pattern_for_block(
     constant_ids: Vec<NodeId>,
     mut params: Vec<Value>,
     bucket_id: u64,
+    use_colon_params: bool,
 ) -> Result<PatternWithParams, SbroadError> {
     use crate::backend::sql::tree::SyntaxData;
 
@@ -978,14 +984,21 @@ fn generate_insert_pattern_for_block(
     envelope.push_str("\")");
 
     let sp = SyntaxPlan::new(plan, insert.child, Snapshot::Oldest, false)?;
-    let on = OrderedSyntaxNodes::try_from(sp)?;
+    let mut on = OrderedSyntaxNodes::try_from(sp)?;
+    if use_colon_params {
+        on.render_params_with_colon();
+    }
     let values_nodes = on.to_syntax_data()?;
 
     // Append the bucket_id value to the params array once and reference it via
     // the same `$N` placeholder appended to every row's tuple.
     let bucket_param_idx = params.len() + 1;
     params.push(Value::Integer(bucket_id as i64));
-    let bucket_placeholder = format_smolstr!(", ${bucket_param_idx}");
+    let bucket_placeholder = if use_colon_params {
+        format_smolstr!(", :{bucket_param_idx}")
+    } else {
+        format_smolstr!(", ${bucket_param_idx}")
+    };
 
     // The Values syntax data renders as `VALUES (<row1>),(<row2>),...`. Track
     // parenthesis depth so we inject the bucket placeholder only at the row's
@@ -1061,13 +1074,12 @@ pub fn dispatch_impl<'p>(
             _ => None,
         };
 
+        let use_colon_params = !plan.get_ir_plan().is_raw_explain();
         let mut statements = Vec::with_capacity(block.statements.len());
         for stmt in block.statements {
-            statements.push(
-                stmt.try_map(|id| {
-                    generate_pattern_with_params_for_block(plan, id, block_bucket_id)
-                })?,
-            );
+            statements.push(stmt.try_map(|id| {
+                generate_pattern_with_params_for_block(plan, id, block_bucket_id, use_colon_params)
+            })?);
         }
 
         let vdbe_max_steps = plan.get_ir_plan().effective_options.sql_vdbe_opcode_max as _;

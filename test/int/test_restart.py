@@ -167,11 +167,11 @@ def test_wait_vshard_router(cluster: Cluster):
 
     i1.restart()
 
-    dml = i2.sql(
+    i2.sql(
         """
         DO $$ BEGIN
             UPDATE t0 SET c = 3 WHERE b = 1;
         END $$;
         """
     )
-    assert dml["row_count"] == 1
+    assert i2.sql("SELECT c FROM t0 WHERE b = 1") == [[3]]
