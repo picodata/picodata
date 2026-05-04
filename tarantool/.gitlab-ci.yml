@@ -193,7 +193,8 @@ build-base-image-fork-on-trigger:
 test-vanilla-debug:
   extends: .test
   needs:
-    - build-base-image-vanilla
+    - job: build-base-image-vanilla
+      optional: true
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/vanilla-cache.tar
     BASE_IMAGE_NAME: ${BASE_IMAGE_VANILLA}
@@ -205,7 +206,8 @@ test-vanilla-debug:
 test-vanilla-release:
   extends: .test
   needs:
-    - build-base-image-vanilla
+    - job: build-base-image-vanilla
+      optional: true
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/vanilla-release-cache.tar
     BASE_IMAGE_NAME: ${BASE_IMAGE_VANILLA}
@@ -217,7 +219,8 @@ test-vanilla-release:
 bench-vanilla:
   extends: .test
   needs:
-    - build-base-image-vanilla
+    - job: build-base-image-vanilla
+      optional: true
   variables:
     BASE_IMAGE_NAME: ${BASE_IMAGE_VANILLA}
   script:
@@ -227,7 +230,8 @@ bench-vanilla:
 test-fork-debug:
   extends: .test
   needs:
-    - build-base-image-fork
+    - job: build-base-image-fork
+      optional: true
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/picodata-cache.tar
     BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
@@ -239,7 +243,8 @@ test-fork-debug:
 test-fork-debug-standalone-decimal:
   extends: .test
   needs:
-    - build-base-image-fork
+    - job: build-base-image-fork
+      optional: true
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/picodata-cache.tar
     BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
@@ -251,7 +256,8 @@ test-fork-debug-standalone-decimal:
 test-fork-release:
   extends: .test
   needs:
-    - build-base-image-fork
+    - job: build-base-image-fork
+      optional: true
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/picodata-release-cache.tar
     BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
@@ -278,7 +284,8 @@ test-fork-debug-on-trigger:
 test-tlua-debug:
   extends: .test
   needs:
-    - build-base-image-vanilla
+    - job: build-base-image-vanilla
+      optional: true
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/vanilla-cache.tar
     BASE_IMAGE_NAME: ${BASE_IMAGE_VANILLA}
@@ -292,7 +299,8 @@ test-tlua-debug:
 test-tlua-release:
   extends: .test
   needs:
-    - build-base-image-vanilla
+    - job: build-base-image-vanilla
+      optional: true
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/vanilla-cache.tar
     BASE_IMAGE_NAME: ${BASE_IMAGE_VANILLA}
