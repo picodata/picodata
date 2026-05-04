@@ -60,6 +60,8 @@ with the `YY.MINOR.MICRO` scheme.
   only and do not affect the internal implementation for now.
 - Introduce `CONTEXT` facet in `EXPLAIN` statement that shows query execution
   options and remove them from `LOGICAL` facet output.
+- Added new `pico_instance_health_status` SQL scalar function to get current
+  instance's health status, - SQL wrapper over `/api/v1/health/status`.
 
 ### Fixes
 

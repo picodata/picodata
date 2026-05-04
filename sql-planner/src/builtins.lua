@@ -110,6 +110,14 @@ builtins.JSON_EXTRACT_PATH = function (mp)
   return res
 end
 
+builtins.PICO_INSTANCE_HEALTH_STATUS = function(instance_uuid)
+    -- TODO: <https://git.picodata.io/core/tarantool/-/issues/119>
+    -- We would like to just use this Rust stored procedure from SQL directly,
+    -- but at the moment tarantool's SQL engine doesn't support returning MAP
+    -- and ARRAY from native stored procedures, but does so from Lua ones.
+    return box.func[".proc_instance_health_status"]:call({instance_uuid})
+end
+
 
 local function init()
     if rawget(_G, module) == nil then
@@ -129,6 +137,18 @@ local function create_functions()
     box.schema.func.create("_pico_bucket", {
         language = 'LUA',
         returns = 'ARRAY',
+        body = body,
+        param_list = { 'string' },
+        exports = { 'SQL' },
+        is_deterministic = false,
+        if_not_exists = true
+    })
+
+    body = string.format("function(...) return %s.builtins.PICO_INSTANCE_HEALTH_STATUS(...) end",
+        module)
+    box.schema.func.create("pico_instance_health_status", {
+        language = 'LUA',
+        returns = 'map',
         body = body,
         param_list = { 'string' },
         exports = { 'SQL' },

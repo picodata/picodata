@@ -511,6 +511,7 @@ fn default_type_system() -> TypeSystem {
             [],
             Text,
         ),
+        Function::new_scalar("pico_instance_health_status", [Text], Map),
         Function::new_scalar("_pico_bucket", [Text], Array),
         Function::new_scalar("like", [Text, Text, Text], Boolean),
         Function::new_scalar("trim", [Text], Text),

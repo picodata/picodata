@@ -1120,7 +1120,7 @@ fn check_instance_ready() -> Result<(), HealthCheckError> {
     Ok(())
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 enum HealthStatusLevel {
     Healthy,
@@ -1128,10 +1128,10 @@ enum HealthStatusLevel {
     Broken,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RaftStatus {
-    state: &'static str,
+    state: SmolStr,
     term: u64,
     leader_id: u64,
     leader_name: SmolStr,
@@ -1141,7 +1141,7 @@ struct RaftStatus {
     persisted_index: u64,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BucketStatus {
     active: usize,
@@ -1152,14 +1152,14 @@ struct BucketStatus {
     total: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ClusterStatus {
-    uuid: &'static str,
+    uuid: SmolStr,
     version: SmolStr,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HealthStatus {
     status: HealthStatusLevel,
@@ -1169,12 +1169,12 @@ pub(crate) struct HealthStatus {
     uptime_seconds: u64,
     name: SmolStr,
     uuid: SmolStr,
-    version: &'static str,
+    version: SmolStr,
     raft_id: u64,
     tier: SmolStr,
     replicaset: SmolStr,
-    current_state: &'static str,
-    target_state: &'static str,
+    current_state: SmolStr,
+    target_state: SmolStr,
     #[serde(skip_serializing_if = "Option::is_none")]
     target_state_reason: Option<SmolStr>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1266,7 +1266,7 @@ fn determine_health_status(
 /// This endpoint always returns HTTP 200 after startup completion.
 /// The actual health status is sent in the response body, allowing
 /// monitoring systems to always receive meaningful data.
-fn http_api_health_status() -> traft::Result<HealthStatus> {
+pub(crate) fn http_api_health_status() -> traft::Result<HealthStatus> {
     // If node is not yet initialized, fail with an error.
     // Once node is available, all topology data should be present.
     let node = node::global()?;
@@ -1360,17 +1360,17 @@ fn http_api_health_status() -> traft::Result<HealthStatus> {
         uptime_seconds,
         name: instance.name.0.clone(),
         uuid: instance.uuid.clone(),
-        version: crate::info::PICODATA_VERSION,
+        version: crate::info::PICODATA_VERSION.into(),
         raft_id: instance.raft_id,
         tier: instance.tier.clone(),
         replicaset: instance.replicaset_name.0.clone(),
-        current_state: instance.current_state.variant.as_str(),
-        target_state: instance.target_state.variant.as_str(),
+        current_state: instance.current_state.variant.to_smolstr(),
+        target_state: instance.target_state.variant.to_smolstr(),
         target_state_reason: instance.target_state_reason.clone(),
         target_state_change_time: instance.target_state_change_time.map(|dt| dt.to_smolstr()),
         limbo_owner,
         raft: RaftStatus {
-            state: raft_status.raft_state.as_str(),
+            state: raft_status.raft_state.to_smolstr(),
             term: raft_status.term,
             leader_id,
             leader_name,
@@ -1381,7 +1381,7 @@ fn http_api_health_status() -> traft::Result<HealthStatus> {
         },
         buckets: bucket_status,
         cluster: ClusterStatus {
-            uuid: cluster_uuid,
+            uuid: cluster_uuid.to_smolstr(),
             version: cluster_version,
         },
     })

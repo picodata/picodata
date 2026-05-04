@@ -34,6 +34,7 @@ proc_get_index
 proc_get_vclock
 proc_get_vshard_config
 proc_instance_dir
+proc_instance_health_status
 proc_instance_info
 proc_instance_name
 proc_instance_uuid

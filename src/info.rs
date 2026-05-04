@@ -1,4 +1,5 @@
 use crate::config::PicodataConfig;
+use crate::http_server::HealthStatus;
 use crate::instance::InstanceName;
 use crate::instance::State;
 use crate::replicaset::ReplicasetName;
@@ -811,4 +812,36 @@ pub fn proc_get_vshard_config(tier_name: Option<SmolStr>) -> Result<RawByteBuf, 
     let config = VshardConfig::from_storage(node, &tier.name, tier.bucket_count)?;
     let data = rmp_serde::to_vec_named(&config).map_err(Error::other)?;
     Ok(RawByteBuf::from(data))
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// .proc_instance_health_status
+////////////////////////////////////////////////////////////////////////////////
+
+#[proc]
+pub fn proc_instance_health_status(uuid: SmolStr) -> Result<Option<HealthStatus>, Error> {
+    let node = node::global()?;
+    let cache = node.topology_cache.get();
+    let me = cache.this_instance();
+    match cache.instance_by_uuid(&uuid) {
+        Ok(instance) if instance == me => {
+            let status = crate::http_server::http_api_health_status()?;
+            Ok(Some(status))
+        }
+        Ok(instance) => {
+            let future = async {
+                node.pool
+                    .call_raw(
+                        &instance.name,
+                        crate::proc_name!(proc_instance_health_status),
+                        &(uuid,),
+                        REDIRECT_RPC_TIMEOUT,
+                    )?
+                    .await
+            };
+            Ok(fiber::block_on(future)?)
+        }
+        Err(Error::NoSuchInstance(_)) => Ok(None),
+        Err(error) => Err(error),
+    }
 }

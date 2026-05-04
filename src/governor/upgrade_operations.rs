@@ -112,6 +112,9 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
     (
         "26.2.1",
         &[
+            // Creation of Lua stored function `pico_instance_health_status`.
+            ("exec_script", InternalScript::CreateIfNotExistSqlBuiltins.as_str()),
+            ("proc_name", "proc_instance_health_status"),
             ("proc_name", "proc_raft_transfer_leader"),
         ]
     ),

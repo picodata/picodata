@@ -221,6 +221,11 @@ pub fn get_builtin_functions() -> &'static [Function] {
                 DerivedType::new(UnrestrictedType::String),
                 false,
             ),
+            Function::new_volatile(
+                "pico_instance_health_status".into(),
+                DerivedType::new(UnrestrictedType::Map),
+                false,
+            ),
         ]
     })
 }
