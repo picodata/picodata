@@ -2276,7 +2276,56 @@ impl Plan {
                 // Build a virtual table on the router node.
                 // If the child node is already some motion (UNION DISTINCT, etc.),
                 // no need to add another motion.
-                if !self.get_relation_node(child_id)?.is_motion() {
+
+                let mut child = self.get_relation_node(child_id)?;
+
+                // Column renaming (`WITH cte (a, b) AS ...`) wraps the body in
+                // a Projection over a ScanSubQuery, so the original motion (if
+                // any) sits two levels below. Peel both wrappers to inspect the
+                // real body — otherwise we'd add a redundant materialization
+                // motion on top of one that already exists.
+                if let Relational::Projection(Projection {
+                    child: Some(subquery_id),
+                    output,
+                    ..
+                }) = child
+                {
+                    let subquery_opt = self.get_relation_node(*subquery_id)?;
+                    if let Relational::ScanSubQuery(ScanSubQuery {
+                        child: child_id, ..
+                    }) = subquery_opt
+                    {
+                        let row = self.get_row_list(*output)?;
+
+                        // All output columns must be direct references to this subquery. Otherwise,
+                        // the original CTE's projection may contain something other than a plain
+                        // column reference (e.g., a volatile function), in which case the motion
+                        // must go on top of the projection. When the projection is just simple
+                        // references, we can look through it and check the motion underneath.
+                        let mut direct_refs = true;
+                        for col in row {
+                            let col_ref = self.get_child_under_alias(*col)?;
+                            match self.get_expression_node(col_ref)? {
+                                Expression::Reference(Reference {
+                                    target: Single(ref_id),
+                                    ..
+                                }) if ref_id == subquery_id => {
+                                    continue;
+                                }
+                                _ => {
+                                    direct_refs = false;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if direct_refs {
+                            child = self.get_relation_node(*child_id)?;
+                        }
+                    }
+                }
+
+                if !child.is_motion() {
                     map.upsert_child(child_id, MotionPolicy::Full, Program::default());
                 }
             }

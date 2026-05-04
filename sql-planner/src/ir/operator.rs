@@ -1495,69 +1495,82 @@ impl Plan {
         self.add_relational(sq.into())
     }
 
-    /// Appends a new CTE node to the plan arena.
+    /// Normalizes a CTE body before it is exposed via `add_cte_scan`:
+    /// ensures the top node is a `Projection` (wrapping non-Projection children
+    /// in `ScanSubQuery` + `Projection`) and renames output aliases to match the
+    /// explicit `WITH cte (col1, ...)` column list. Returns the NodeId of the
+    /// resulting `Projection`. Empty `columns` means "no rename" — `child` is
+    /// returned unchanged.
     ///
     /// # Errors
-    /// - CTE has incorrect amount of columns;
+    /// - The explicit column list length does not match the body's output arity.
     ///
     /// # Panics
-    /// - child node is not a valid relational node.
-    pub fn add_cte(
+    /// - `child` is not a relational node.
+    /// - The body's output row is not a list of `Alias` expressions.
+    pub fn transform_cte_columns(
         &mut self,
         child: NodeId,
         alias: SmolStr,
         columns: Vec<SmolStr>,
     ) -> Result<NodeId, SbroadError> {
+        if columns.is_empty() {
+            return Ok(child);
+        }
+
         let child_node = self
             .get_relation_node(child)
             .expect("CTE child node is not a relational node");
         let mut child_id = child;
 
-        if !columns.is_empty() {
-            let mut child_output_id = child_node.output();
-            // Child must be a projection, but sometimes we need to get our hand dirty to maintain
-            // this invariant. For instance, child can be VALUES, LIMIT or UNION. In such cases
-            // we wrap the child with a subquery and change names in the subquery's projection.
-            if !matches!(child_node, Relational::Projection { .. }) {
-                let sq_id = self
-                    .add_sub_query(child_id, Some(&alias))
-                    .expect("add subquery in cte");
-                child_id = self
-                    .add_proj(sq_id, vec![], &[], false, false)
-                    .expect("add projection in cte");
-                child_output_id = self
-                    .get_relational_output(child_id)
-                    .expect("projection has an output tuple");
-            }
-
-            // If CTE has explicit column names, let's rename the columns in the child projection.
-            let child_columns = self
-                .get_expression_node(child_output_id)
-                .expect("output row")
-                .clone_row_list()?;
-            if child_columns.len() != columns.len() {
-                return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                    "expected {} columns in CTE, got {}",
-                    child_columns.len(),
-                    columns.len()
-                )));
-            }
-            for (col_id, col_name) in child_columns.into_iter().zip(columns.into_iter()) {
-                let col_alias = self
-                    .get_mut_expression_node(col_id)
-                    .expect("column expression");
-                if let MutExpression::Alias(Alias { name, .. }) = col_alias {
-                    *name = col_name;
-                } else {
-                    panic!("Expected a row of aliases in the output tuple");
-                };
-            }
+        let mut child_output_id = child_node.output();
+        // Child must be a projection, but sometimes we need to get our hand dirty to maintain
+        // this invariant. For instance, child can be VALUES, LIMIT or UNION. In such cases
+        // we wrap the child with a subquery and change names in the subquery's projection.
+        if !matches!(child_node, Relational::Projection { .. }) {
+            let sq_id = self
+                .add_sub_query(child_id, Some(&alias))
+                .expect("add subquery in cte");
+            child_id = self
+                .add_proj(sq_id, vec![], &[], false, false)
+                .expect("add projection in cte");
+            child_output_id = self
+                .get_relational_output(child_id)
+                .expect("projection has an output tuple");
         }
 
-        let output = self.add_row_for_output(child_id, &[], true, None)?;
+        // If CTE has explicit column names, let's rename the columns in the child projection.
+        let child_columns = self
+            .get_expression_node(child_output_id)
+            .expect("output row")
+            .clone_row_list()?;
+        if child_columns.len() != columns.len() {
+            return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
+                "expected {} columns in CTE, got {}",
+                child_columns.len(),
+                columns.len()
+            )));
+        }
+        for (col_id, col_name) in child_columns.into_iter().zip(columns.into_iter()) {
+            let col_alias = self
+                .get_mut_expression_node(col_id)
+                .expect("column expression");
+            if let MutExpression::Alias(Alias { name, .. }) = col_alias {
+                *name = col_name;
+            } else {
+                panic!("Expected a row of aliases in the output tuple");
+            };
+        }
+
+        Ok(child_id)
+    }
+
+    /// Appends a new ScanCTE node to the plan arena.
+    pub fn add_cte_scan(&mut self, child: NodeId, alias: SmolStr) -> Result<NodeId, SbroadError> {
+        let output = self.add_row_for_output(child, &[], true, None)?;
         let cte = ScanCte {
             alias,
-            child: child_id,
+            child,
             output,
         };
         let cte_id = self.add_relational(cte.into())?;

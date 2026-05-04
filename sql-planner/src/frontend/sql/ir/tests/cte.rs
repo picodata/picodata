@@ -96,6 +96,36 @@ fn reuse_cte_union_all() {
 }
 
 #[test]
+fn reuse_func_in_cte() {
+    // assume that the function is random
+    // we expect that function will be executed only once (materialized)
+    // otherwise, it will be executed twice and results for scan would be different
+    let sql = r#"
+        explain (logical) WITH cte AS (select trim('some'))
+        SELECT * FROM cte
+        UNION
+        SELECT * FROM cte
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    motion [policy: full, program: RemoveDuplicates]
+      union
+        projection (cte.col_1::string -> col_1)
+          scan cte cte($0)
+        projection (cte.col_1::string -> col_1)
+          scan cte cte($0)
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (TRIM('some'::string) -> col_1)
+
+    execution options:
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
+    ");
+}
+
+#[test]
 fn reuse_union_in_cte() {
     let sql = r#"
         explain (logical) WITH cte (a) AS (
@@ -133,6 +163,81 @@ fn reuse_union_in_cte() {
 }
 
 #[test]
+fn reuse_union_in_cte_without_rename() {
+    let sql = r#"
+        explain (logical) WITH cte AS (
+            SELECT "FIRST_NAME" FROM "test_space"
+            UNION
+            SELECT "FIRST_NAME" FROM "test_space"
+        )
+        SELECT * FROM cte
+        UNION
+        SELECT * FROM cte
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    motion [policy: full, program: RemoveDuplicates]
+      union
+        projection (cte."FIRST_NAME"::string -> "FIRST_NAME")
+          scan cte cte($0)
+        projection (cte."FIRST_NAME"::string -> "FIRST_NAME")
+          scan cte cte($0)
+    subquery $0:
+      motion [policy: full, program: RemoveDuplicates]
+        union
+          projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+            scan test_space
+          projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+            scan test_space
+
+    execution options:
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn reuse_union_in_cte_with_projection() {
+    let sql = r#"
+        explain (logical) WITH cte AS (
+            SELECT "FIRST_NAME" AS another
+            FROM (
+                SELECT "FIRST_NAME" FROM "test_space"
+                UNION
+                SELECT "FIRST_NAME" FROM "test_space"
+                )
+        )
+        SELECT * FROM cte
+        UNION
+        SELECT * FROM cte
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    motion [policy: full, program: RemoveDuplicates]
+      union
+        projection (cte.another::string -> another)
+          scan cte cte($0)
+        projection (cte.another::string -> another)
+          scan cte cte($0)
+    subquery $0:
+      projection (unnamed_subquery."FIRST_NAME"::string -> another)
+        scan unnamed_subquery
+          motion [policy: full, program: RemoveDuplicates]
+            union
+              projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+                scan test_space
+              projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+                scan test_space
+
+    execution options:
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
 fn reuse_cte_values() {
     let sql = r#"
         explain (logical) WITH cte (b) AS (VALUES(1))
@@ -151,9 +256,67 @@ fn reuse_cte_values() {
               scan cte c2($0)
         scan cte cte($0)
     subquery $0:
+      projection (cte."COLUMN_1"::int -> b)
+        scan cte
+          motion [policy: full, program: ReshardIfNeeded]
+            values
+              value ROW(1::int)
+
+    execution options:
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn reuse_cte_values_without_rename() {
+    let sql = r#"
+        explain (logical) WITH cte AS (VALUES(1))
+        SELECT t.c FROM (SELECT count(*) as c FROM cte c1 JOIN cte c2 ON true) t
+        JOIN cte ON true
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    projection (t.c::int -> c)
+      join on (true::bool)
+        scan t
+          projection (count(*)::int -> c)
+            join on (true::bool)
+              scan cte c1($0)
+              scan cte c2($0)
+        scan cte cte($0)
+    subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
-        projection (cte."COLUMN_1"::int -> b)
-          scan cte
+        values
+          value ROW(1::int)
+
+    execution options:
+      sql_vdbe_opcode_max = 45000
+      sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn reuse_cte_values_with_projection_and_function() {
+    let sql = r#"
+        explain (logical) WITH cte AS (SELECT instance_uuid() FROM (VALUES(1)) s)
+        SELECT * FROM cte
+        UNION  ALL
+        SELECT * FROM cte
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    union all
+      projection (cte.col_1::string -> col_1)
+        scan cte cte($0)
+      projection (cte.col_1::string -> col_1)
+        scan cte cte($0)
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (".proc_instance_uuid"()::string -> col_1)
+          scan s
             motion [policy: full, program: ReshardIfNeeded]
               values
                 value ROW(1::int)
@@ -390,12 +553,11 @@ fn values_in_cte() {
     projection (cte.a::string -> a)
       scan cte cte($0)
     subquery $0:
-      motion [policy: full, program: ReshardIfNeeded]
-        projection (cte."COLUMN_1"::string -> a)
-          scan cte
-            motion [policy: full, program: ReshardIfNeeded]
-              values
-                value ROW('a'::string)
+      projection (cte."COLUMN_1"::string -> a)
+        scan cte
+          motion [policy: full, program: ReshardIfNeeded]
+            values
+              value ROW('a'::string)
 
     execution options:
       sql_vdbe_opcode_max = 45000
@@ -416,12 +578,11 @@ fn union_all_in_cte() {
     projection (cte2.a::string -> a)
       scan cte cte2($1)
     subquery $0:
-      motion [policy: full, program: ReshardIfNeeded]
-        projection (cte1."COLUMN_1"::string -> a)
-          scan cte1
-            motion [policy: full, program: ReshardIfNeeded]
-              values
-                value ROW('a'::string)
+      projection (cte1."COLUMN_1"::string -> a)
+        scan cte1
+          motion [policy: full, program: ReshardIfNeeded]
+            values
+              value ROW('a'::string)
     subquery $1:
       motion [policy: full, program: ReshardIfNeeded]
         union all

@@ -59,7 +59,7 @@ use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
     AlterSystem, AlterUser, AuditPolicy, BoolExpr, CallProcedure, Constant, CountAsterisk,
     CreateIndex, CreateProc, CreateRole, CreateTable, CreateUser, DropIndex, DropProc, DropRole,
-    DropTable, DropUser, GrantPrivilege, Node, NodeId, RenameRoutine, RevokePrivilege, ScanCte,
+    DropTable, DropUser, GrantPrivilege, Node, NodeId, RenameRoutine, RevokePrivilege,
     ScanRelation, SetParam, SetTransaction, Trim, VinylOptions,
 };
 use crate::ir::operator::{
@@ -1717,30 +1717,27 @@ where
     let scan_name = parse_normalized_identifier(ast, node_id)?;
     // First we try to find CTE with the given name, cause CTE should have higher precedence
     // over table with the same name
-    let cte = ctes.get(&scan_name).copied();
-    match cte {
-        Some(cte_id) => {
-            map.add(node_id, cte_id);
-        }
-        None => {
-            let table = metadata.table(scan_name.as_str());
-            match table {
-                Ok(table) => {
-                    plan.add_rel(table);
-                    let scan_id = plan.add_scan(scan_name.as_str(), None)?;
-                    map.add(node_id, scan_id);
-                }
-                Err(SbroadError::NotFound(..)) => {
-                    return Err(SbroadError::NotFound(
-                        Entity::Table,
-                        format_smolstr!("with name {}", to_user(scan_name)),
-                    ))
-                }
-                Err(e) => return Err(e),
-            }
-        }
+    if let Some(child_id) = ctes.get(&scan_name) {
+        let cte_id = plan.add_cte_scan(*child_id, scan_name.clone())?;
+        map.add(node_id, cte_id);
+        return Ok(());
     }
-    Ok(())
+
+    let table = metadata.table(scan_name.as_str());
+    match table {
+        Ok(table) => {
+            plan.add_rel(table);
+            let scan_id = plan.add_scan(scan_name.as_str(), None)?;
+            map.add(node_id, scan_id);
+
+            Ok(())
+        }
+        Err(SbroadError::NotFound(..)) => Err(SbroadError::NotFound(
+            Entity::Table,
+            format_smolstr!("with name {}", to_user(scan_name)),
+        )),
+        Err(e) => Err(e),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1799,9 +1796,8 @@ fn parse_cte<M: Metadata>(
             )),
         ));
     }
-    let cte_id = plan.add_cte(child_id, name.clone(), columns)?;
-    ctes.insert(name, cte_id);
-    map.add(node_id, cte_id);
+    let child_id = plan.transform_cte_columns(child_id, name.clone(), columns)?;
+    ctes.insert(name, child_id);
     Ok(())
 }
 
@@ -6364,15 +6360,8 @@ impl AbstractSyntaxTree {
 
                     if let Some(alias_name) = alias {
                         used_aliases.insert(alias_name.clone());
-                        // CTE scans can have different aliases, so clone the CTE scan node,
-                        // preserving its subtree.
-                        if let Relational::ScanCte(ScanCte { child, .. }) = rel_child_node {
-                            let scan_id = plan.add_cte(*child, alias_name, vec![])?;
-                            map.add(id, scan_id);
-                        } else {
-                            let mut scan = plan.get_mut_relation_node(rel_child_id_plan)?;
-                            scan.set_scan_name(Some(alias_name.to_smolstr()))?;
-                        }
+                        let mut scan = plan.get_mut_relation_node(rel_child_id_plan)?;
+                        scan.set_scan_name(Some(alias_name.to_smolstr()))?;
                     } else if matches!(rel_child_node, Relational::ScanSubQuery(_)) {
                         unnamed_subqueries.push(rel_child_id_plan);
                     }

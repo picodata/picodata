@@ -101,6 +101,9 @@ with the `YY.MINOR.MICRO` scheme.
   (e.g., `GRANT admin TO somebody`). We do not support privilege inheritance
   via `GRANT user1 TO user2`. The system now validates the grantee type and
   returns a proper `NoSuchRole` error instead of panicking.
+- Reused CTE bodies are now materialized once per query instead of being
+  silently inlined per reference, fixing wrong results for non-deterministic
+  CTE bodies and avoiding redundant recomputation.
 
 ### Breaking changes
 
