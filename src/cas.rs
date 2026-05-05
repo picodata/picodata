@@ -96,7 +96,13 @@ pub fn check_dml_prohibited(storage: &Catalog, dml: &Dml) -> traft::Result<()> {
                 check_config_prohibited(&key)?
             }
             Dml::Update { key, .. } => check_config_prohibited(&String::decode(key.as_ref())?)?,
-            Dml::Delete { key, .. } => check_config_prohibited(&String::decode(key.as_ref())?)?,
+            Dml::Delete { .. } => {
+                let error = format!(
+                    "DELETE on table '{}' is denied for all users",
+                    storage::DbConfig::TABLE_NAME
+                );
+                return Err(traft::error::Error::other(error));
+            }
         }
     }
 
@@ -2645,5 +2651,31 @@ mod tests {
             }],
             table_full_change: false,
         })
+    }
+
+    #[tarantool::test]
+    fn validate_check_dml_prohibited() {
+        let storage = Catalog::for_tests();
+
+        {
+            let error = check_dml_prohibited(
+                &storage,
+                &Dml::Delete {
+                    table: storage::DbConfig::TABLE_ID,
+                    key: (1,).to_tuple_buffer().unwrap(),
+                    initiator: ADMIN_ID,
+                    metainfo: None,
+                    cas: None,
+                },
+            )
+            .unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "DELETE on table '{}' is denied for all users",
+                    storage::DbConfig::TABLE_NAME
+                )
+            );
+        }
     }
 }

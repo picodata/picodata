@@ -3254,3 +3254,19 @@ def test_cannot_drop_primary_index(instance: Instance):
             DROP INDEX "1027_pkey"
             OPTION (TIMEOUT = 3.0);
         """)
+
+
+def test_do_not_panic_after_attempt_to_truncate_pico_db_config(cluster: Cluster):
+    cluster.deploy(instance_count=3)
+
+    with pytest.raises(
+        expected_exception=TarantoolError,
+        match="TRUNCATE on table '_pico_db_config' is denied for all users",
+    ):
+        cluster.leader().sql("TRUNCATE _pico_db_config")
+
+    for instance in cluster.instances:
+        instance.terminate()
+        instance.start_and_wait()
+
+    cluster.check_health()

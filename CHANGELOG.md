@@ -166,7 +166,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed NOT push-down: no longer short-circuits before recursing into operand
   subtrees. The pass now also descends into Cast children to simplify NOTs nested inside.
 - [picodata#2775] Dropping the primary index is now rejected with a clear error.
-
+- `_pico_db_config` can no longer be truncated or deleted, as such operations
+  may break instances or clusters.
 
 ### Breaking changes
 

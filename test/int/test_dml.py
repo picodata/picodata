@@ -1,6 +1,7 @@
-from conftest import Cluster, Instance
+from conftest import Cluster, Instance, TarantoolError
 from framework.log import log
 from framework.thread import spawn_thread
+import pytest
 import time
 
 
@@ -193,6 +194,20 @@ def test_global_space_dml_catchup_by_snapshot(cluster: Cluster):
     # Follower boot by snapshot
     i7 = cluster.add_instance(wait_online=True, replicaset_name="r3")
     assert i7.call("box.space.candy:select") == expected_tuples
+
+
+def test_deletion_from_db_config(instance: Instance):
+    with pytest.raises(
+        TarantoolError,
+        match="DELETE on table '_pico_db_config' is denied for all users",
+    ):
+        instance.sql("DELETE FROM _pico_db_config")
+
+    with pytest.raises(
+        TarantoolError,
+        match="TRUNCATE on table '_pico_db_config' is denied for all users",
+    ):
+        instance.sql("TRUNCATE _pico_db_config")
 
 
 def test_vinyl_tmp_table(cluster: Cluster):

@@ -29,7 +29,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::config::AlterSystemParametersRef;
-use crate::storage::SPACE_ID_INTERNAL_MAX;
+use crate::storage::{SystemTable, SPACE_ID_INTERNAL_MAX};
 use crate::traft::error::Error;
 use crate::traft::op::Dml;
 use crate::{
@@ -198,6 +198,17 @@ fn forbid_drop_if_primary_key(index_id: IndexId) -> tarantool::Result<()> {
     Ok(())
 }
 
+fn forbid_truncate_on_db_config(space_id: u32) -> tarantool::Result<()> {
+    if space_id != crate::storage::DbConfig::TABLE_ID {
+        return Ok(());
+    }
+
+    let code = TarantoolErrorCode::AccessDenied;
+    let table = crate::storage::DbConfig::TABLE_NAME;
+    let msg = format!("TRUNCATE on table '{table}' is denied for all users");
+    Err(BoxError::new(code, msg).into())
+}
+
 /// There are no cases when box_access_check_ddl is called several times
 /// in a row so it is ok that we need to switch once to user who initiated the request
 /// This wrapper is needed because usually before checking permissions we need to
@@ -281,6 +292,8 @@ fn access_check_ddl(storage: &Catalog, ddl: &op::Ddl, as_user: UserId) -> tarant
             )
         }
         op::Ddl::TruncateTable { id, .. } => {
+            forbid_truncate_on_db_config(*id)?;
+
             let space = space_by_id(*id)?;
             let meta = space.meta()?;
 
@@ -847,7 +860,7 @@ mod tests {
             Distribution, PrivilegeDef, PrivilegeType, SchemaObjectType, UserDef, ADMIN_ID,
             UNIVERSE_ID,
         },
-        storage::Catalog,
+        storage::{Catalog, DbConfig, SystemTable},
         traft::op::{Acl, Ddl, Dml, Op},
     };
     use sql::ir::operator::ConflictStrategy;
@@ -1135,6 +1148,26 @@ mod tests {
                 user_id,
             )
             .unwrap();
+        }
+
+        // truncate on _pico_db_config is forbidden
+        {
+            let error = access_check_ddl(
+                &storage,
+                &Ddl::TruncateTable {
+                    id: DbConfig::TABLE_ID,
+                    initiator: ADMIN_ID,
+                },
+                user_id,
+            )
+            .unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "box error: AccessDenied: TRUNCATE on table '{}' is denied for all users",
+                    DbConfig::TABLE_NAME
+                )
+            );
         }
 
         // owner has privileges on the object
