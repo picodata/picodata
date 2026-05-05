@@ -8,9 +8,7 @@ use super::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
 use super::types::{CastType, DerivedType};
 use super::value::Value;
 use crate::errors::{Entity, SbroadError};
-use crate::executor::ExecutingQuery;
 use crate::ir::bucket::{BucketSet, Buckets};
-use crate::ir::explain::execution_info::BucketsInfo;
 use crate::ir::expression::TrimKind;
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Case, Cast, Constant, Delete, Having, IndexExpr, Insert, Join,
@@ -28,7 +26,6 @@ use crate::ir::transformation::redistribution::{
 use crate::ir::{node, ExplainOptions, Plan};
 use crate::utils::indent;
 use crate::utils::OrderedMap;
-use crate::Router;
 use itertools::Itertools;
 use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr, SmolStrBuilder, ToSmolStr};
@@ -1950,37 +1947,6 @@ impl LogicalExplain {
         };
 
         Ok(result)
-    }
-}
-
-impl<'a, C> ExecutingQuery<'a, C>
-where
-    C: Router,
-{
-    pub fn explain_forward(&mut self) -> Result<String, SbroadError> {
-        let mut buf = String::new();
-        let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
-        if !explain_options.has_single_facet() {
-            writeln!(&mut buf, "# Forward").unwrap();
-            writeln!(&mut buf).unwrap();
-        }
-
-        writeln!(&mut buf, "forward analysis (on > ro_to_rw > off):").unwrap();
-
-        let info = BucketsInfo::new_from_query(self)?;
-        match info {
-            BucketsInfo::Unknown => {
-                write!(indent(&mut buf), "forward = on").unwrap();
-            }
-            BucketsInfo::Calculated(calculated) => {
-                let forward_option = self
-                    .get_coordinator()
-                    .get_possible_forward_option(&calculated.buckets, &mut None)?;
-                write!(indent(&mut buf), "forward = {}", forward_option).unwrap();
-            }
-        }
-
-        Ok(buf)
     }
 }
 

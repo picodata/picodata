@@ -36,7 +36,7 @@ use crate::ir::transformation::redistribution::{MotionPolicy, Target};
 use crate::ir::tree::traversal::{PostOrder, REL_CAPACITY};
 use crate::ir::value::Value;
 use crate::ir::{ExplainOptions, Plan, Slices};
-use crate::utils::{indent_custom, indent_with_prefix};
+use crate::utils::{indent, indent_custom, indent_with_prefix};
 use crate::BoundStatement;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::collections::HashMap;
@@ -684,6 +684,27 @@ where
             writeln!(&mut buf).unwrap();
         }
         write!(&mut buf, "{explain}").unwrap();
+
+        Ok(buf)
+    }
+
+    pub fn explain_forward(&mut self) -> Result<String, SbroadError> {
+        let info = BucketsInfo::new_from_query(self)?;
+        let forward = match info {
+            BucketsInfo::Unknown => crate::ir::options::Forward::On,
+            BucketsInfo::Calculated(calculated) => self
+                .get_coordinator()
+                .get_possible_forward_option(&calculated.buckets, &mut None)?,
+        };
+
+        let mut buf = String::new();
+        let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
+        if !explain_options.has_single_facet() {
+            writeln!(&mut buf, "# Forward").unwrap();
+            writeln!(&mut buf).unwrap();
+        }
+        writeln!(&mut buf, "forward analysis (on > ro_to_rw > off):").unwrap();
+        write!(indent(&mut buf), "forward = {forward}").unwrap();
 
         Ok(buf)
     }
