@@ -45,6 +45,7 @@ ansible-galaxy install -f git+https://git.picodata.io/core/picodata-ansible.git
 с ролью описаны в разделе [Развертывание кластера через
 Ansible](../admin/deploy_ansible.md)
 
+<!--
 ## Helm-чарт Picodata {: #helm }
 
 Helm-чарт для Picodata доступен в Git-репозитории
@@ -60,3 +61,4 @@ helm upgrade --install picodata -n picodata . --create-namespace
 
 Более подробно использование чарта для развертывания кластера Picodata в контейнерной
 среде описано в разделе [Picodata в Kubernetes](../admin/deploy_kubernetes.md)
+ -->
