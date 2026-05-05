@@ -126,7 +126,9 @@ WINDOW
     win AS (ORDER BY y + 2 * (SELECT 111) + (SELECT 2)),
     win1 AS (PARTITION BY x + (SELECT 3));
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (avg(x::int::int) over (partition by (x::int + ROW($0)) ) -> col_1, sum(x::int::int) over (order by (y::int + 2::int * ROW($2) + ROW($1)) ) -> col_2)
   motion [policy: full, program: ReshardIfNeeded]
@@ -146,7 +148,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -169,7 +173,9 @@ WINDOW
         )
     )::int);
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (row_number() over (partition by (x::int + ROW($1)) ) -> col_1, sum(y::int::int) over (partition by (x::int + ROW($1)) ) -> col_2, max(x::int::int) over (order by (x::int + ROW($0)::int) ) -> col_3)
   motion [policy: full, program: ReshardIfNeeded]
@@ -193,7 +199,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -201,7 +209,9 @@ buckets = [1-3000]
 -- SQL:
 explain select 1 from t6 window w as (partition by (select 1 from t6 window w as ()));
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (1::int -> col_1)
   scan t6
@@ -210,7 +220,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 

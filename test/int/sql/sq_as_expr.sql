@@ -324,7 +324,9 @@ SELECT t1.a FROM t1 d JOIN t1 ON t1.b = d.a WHERE t1.b = d.c AND (SELECT e.a FRO
 -- SQL:
 EXPLAIN SELECT (values (1)) from testing_space;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (ROW($0) -> col_1)
   scan testing_space
@@ -338,7 +340,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -346,7 +350,9 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN SELECT "id" FROM "testing_space" ORDER BY "id" + (VALUES (1));
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (id::int)
   order by (id::int + ROW($0))
@@ -364,7 +370,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -372,7 +380,9 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN SELECT (values ((values (1)))) from testing_space;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (ROW($1) -> col_1)
   scan testing_space
@@ -391,7 +401,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -399,7 +411,9 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN SELECT (values ((values (1)))) from testing_space;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (ROW($1) -> col_1)
   scan testing_space
@@ -418,7 +432,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -426,7 +442,9 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN SELECT "id" FROM "testing_space" WHERE (VALUES (true));
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (testing_space.id::int -> id)
   selection (ROW($0))
@@ -441,7 +459,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -449,7 +469,9 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN SELECT (values (1)), (values (2)) from testing_space;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (ROW($1) -> col_1, ROW($0) -> col_2)
   scan testing_space
@@ -468,6 +490,8 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]

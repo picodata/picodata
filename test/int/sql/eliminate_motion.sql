@@ -13,7 +13,9 @@ SELECT count(*) FROM t1 WHERE a = 1 GROUP BY a;
 -- SQL:
 EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 GROUP BY a;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (count(*)::int -> col_1)
   group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
@@ -24,7 +26,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1934]
 
@@ -38,7 +42,9 @@ SELECT count(*) FROM t1 WHERE a = 1 GROUP BY a LIMIT 1;
 -- SQL:
 EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 GROUP BY a LIMIT 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 limit 1
   projection (count(*)::int -> col_1)
@@ -50,7 +56,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1934]
 
@@ -64,7 +72,9 @@ SELECT count(*) FROM t1 WHERE a = 1 AND (a < 2 OR a > 3) GROUP BY a;
 -- SQL:
 EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 AND (a < 2 OR a > 3) GROUP BY a;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (count(*)::int -> col_1)
   group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
@@ -75,7 +85,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1934]
 
@@ -89,7 +101,9 @@ SELECT count(*) FROM t1 WHERE a = 1 AND (a < 2 OR a > 3) AND b = 2 GROUP BY a;
 -- SQL:
 EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 AND (a < 2 OR a > 3) AND b = 2 GROUP BY a;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (count(*)::int -> col_1)
   group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
@@ -100,7 +114,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1934]
 
@@ -114,7 +130,9 @@ SELECT count(*) FROM t1 WHERE a = 1 AND a < 10 AND b = 2 GROUP BY a;
 -- SQL:
 EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 AND a < 10 AND b = 2 GROUP BY a;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (count(*)::int -> col_1)
   group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
@@ -125,7 +143,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1934]
 
@@ -139,7 +159,9 @@ SELECT count(*) FROM t1 WHERE a = 1 OR a = 2 GROUP BY a;
 -- SQL:
 EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 OR a = 2 GROUP BY a;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (sum(count_1::int)::int -> col_1)
   group by (gr_expr_1::int) output (gr_expr_1::int, count_1::int)
@@ -153,7 +175,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets <= [1410,1934]
 
@@ -166,7 +190,9 @@ SELECT count(*) FROM t1 WHERE a = 1 AND a < 10 AND a = 2 GROUP BY a;
 -- SQL:
 EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 AND a < 10 AND a = 2 GROUP BY a;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (sum(count_1::int)::int -> col_1)
   group by (gr_expr_1::int) output (gr_expr_1::int, count_1::int)
@@ -180,7 +206,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets <= []
 
@@ -194,7 +222,9 @@ SELECT DISTINCT b FROM t1 WHERE a = 5 AND (a > 4 OR a < 4);
 -- SQL:
 EXPLAIN SELECT DISTINCT b FROM t1 WHERE a = 5 AND (a > 4 OR a < 4);
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (t1.b::int -> b)
   selection ((t1.a::int = 5::int and (t1.a::int > 4::int or t1.a::int < 4::int)))
@@ -204,7 +234,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [219]
 
@@ -225,7 +257,9 @@ SELECT * FROM t WHERE a = 1 AND b = 1 ORDER BY id LIMIT 1;
 -- SQL:
 EXPLAIN SELECT * FROM t WHERE a = 1 AND b = 1 ORDER BY id LIMIT 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 limit 1
   projection (id::int, a::int, b::int)
@@ -239,7 +273,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1934]
 
@@ -253,7 +289,9 @@ SELECT id FROM t WHERE a = 1 ORDER BY id;
 -- SQL:
 EXPLAIN SELECT id FROM t WHERE a = 1 ORDER BY id;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (id::int)
   order by (id::int)
@@ -266,7 +304,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1934]
 
@@ -280,7 +320,9 @@ SELECT * FROM t WHERE a = 4 LIMIT 1;
 -- SQL:
 EXPLAIN SELECT * FROM t WHERE a = 4 LIMIT 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 limit 1
   projection (t.id::int -> id, t.a::int -> a, t.b::int -> b)
@@ -291,7 +333,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [2752]
 
@@ -305,7 +349,9 @@ SELECT sum(b), count(*), min(id) FROM t WHERE a = 1;
 -- SQL:
 EXPLAIN SELECT sum(b), count(*), min(id) FROM t WHERE a = 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (sum(t.b::int::int)::decimal -> col_1, count(*)::int -> col_2, min(t.id::int::int)::int -> col_3)
   selection (t.a::int = 1::int)
@@ -315,7 +361,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1934]
 
@@ -329,7 +377,9 @@ SELECT b, count(*) FROM t WHERE a = 1 GROUP BY b HAVING count(*) > 1;
 -- SQL:
 EXPLAIN SELECT b, count(*) FROM t WHERE a = 1 GROUP BY b HAVING count(*) > 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (t.b::int -> b, count(*)::int -> col_1)
   having (count(*)::int > 1::int)
@@ -341,7 +391,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1934]
 
@@ -355,7 +407,9 @@ SELECT id FROM (SELECT * FROM t WHERE a = 4) sub ORDER BY id LIMIT 1;
 -- SQL:
 EXPLAIN SELECT id FROM (SELECT * FROM t WHERE a = 4) sub ORDER BY id LIMIT 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 limit 1
   projection (id::int)
@@ -371,7 +425,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [2752]
 
@@ -385,7 +441,9 @@ SELECT id FROM t WHERE b = 1 ORDER BY id LIMIT 1;
 -- SQL:
 EXPLAIN SELECT id FROM t WHERE b = 1 ORDER BY id LIMIT 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 limit 1
   projection (id::int)
@@ -403,7 +461,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -417,7 +477,9 @@ SELECT id FROM t ORDER BY id LIMIT 1;
 -- SQL:
 EXPLAIN SELECT id FROM t ORDER BY id LIMIT 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 limit 1
   projection (id::int)
@@ -434,7 +496,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -448,7 +512,9 @@ SELECT id FROM t WHERE a = 1 OR a = 4 ORDER BY id LIMIT 1;
 -- SQL:
 EXPLAIN SELECT id FROM t WHERE a = 1 OR a = 4 ORDER BY id LIMIT 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 limit 1
   projection (id::int)
@@ -466,7 +532,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets <= [1934,2752]
 
@@ -480,7 +548,9 @@ SELECT * FROM (SELECT * FROM t WHERE a = 4) s WHERE b = 5 ORDER BY a LIMIT 1;
 -- SQL:
 EXPLAIN SELECT * FROM (SELECT * FROM t WHERE a = 4) s WHERE b = 5 ORDER BY a LIMIT 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 limit 1
   projection (id::int, a::int, b::int)
@@ -497,7 +567,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [2752]
 
@@ -511,7 +583,9 @@ WITH cte AS (SELECT * FROM t WHERE a = 1) SELECT id FROM cte ORDER BY id LIMIT 1
 -- SQL:
 EXPLAIN WITH cte AS (SELECT * FROM t WHERE a = 1) SELECT id FROM cte ORDER BY id LIMIT 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 limit 1
   projection (id::int)
@@ -528,7 +602,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1934]
 
@@ -542,7 +618,9 @@ WITH cte AS (SELECT * FROM t) SELECT id FROM cte WHERE a = 2 ORDER BY id LIMIT 1
 -- SQL:
 EXPLAIN WITH cte AS (SELECT * FROM t) SELECT id FROM cte WHERE a = 2 ORDER BY id LIMIT 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 limit 1
   projection (id::int)
@@ -560,7 +638,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -574,7 +654,9 @@ WITH cte AS (SELECT count(*) as cnt FROM t WHERE a = 1) SELECT cnt FROM cte;
 -- SQL:
 EXPLAIN WITH cte AS (SELECT count(*) as cnt FROM t WHERE a = 1) SELECT cnt FROM cte;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (cte.cnt::int -> cnt)
   scan cte cte($0)
@@ -587,7 +669,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1934]
 
@@ -605,7 +689,9 @@ EXPLAIN WITH cte AS (SELECT * FROM t WHERE a = 1)
 SELECT * FROM cte c1 JOIN cte c2 ON c1.b = c2.b
 ORDER BY c1.id LIMIT 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 limit 1
   projection (id::int, a::int, b::int, id::int, a::int, b::int)
@@ -629,7 +715,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets <= [1934]
 
@@ -643,7 +731,9 @@ WITH cte AS (SELECT * FROM t WHERE a = 4) SELECT id FROM (SELECT * FROM cte) s W
 -- SQL:
 EXPLAIN WITH cte AS (SELECT * FROM t WHERE a = 4) SELECT id FROM (SELECT * FROM cte) s WHERE b = 5 ORDER BY id LIMIT 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 limit 1
   projection (id::int)
@@ -663,7 +753,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [2752]
 
@@ -677,7 +769,9 @@ SELECT id FROM t WHERE a = 1 UNION ALL SELECT id FROM t WHERE a = 4 ORDER BY id 
 -- SQL:
 EXPLAIN SELECT id FROM t WHERE a = 1 UNION ALL SELECT id FROM t WHERE a = 4 ORDER BY id LIMIT 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 limit 1
   projection (id::int)
@@ -699,7 +793,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets <= [1934,2752]
 
@@ -713,7 +809,9 @@ SELECT id FROM t WHERE a = 1 UNION SELECT id FROM t WHERE a = 4 ORDER BY id LIMI
 -- SQL:
 EXPLAIN SELECT id FROM t WHERE a = 1 UNION SELECT id FROM t WHERE a = 4 ORDER BY id LIMIT 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 limit 1
   projection (id::int)
@@ -736,7 +834,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets <= [1934,2752]
 
@@ -749,7 +849,9 @@ SELECT t1.id FROM t t1 JOIN t t2 ON t1.b = t2.b WHERE t1.a = 1 AND t2.a = 4 ORDE
 -- SQL:
 EXPLAIN SELECT t1.id FROM t t1 JOIN t t2 ON t1.b = t2.b WHERE t1.a = 1 AND t2.a = 4 ORDER BY t1.id LIMIT 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 limit 1
   projection (id::int)
@@ -767,7 +869,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -781,7 +885,9 @@ SELECT id FROM t WHERE a = 1 EXCEPT SELECT id FROM t WHERE a = 4 ORDER BY id LIM
 -- SQL:
 EXPLAIN SELECT id FROM t WHERE a = 1 EXCEPT SELECT id FROM t WHERE a = 4 ORDER BY id LIMIT 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 limit 1
   projection (id::int)
@@ -804,7 +910,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets <= [1934,2752]
 
@@ -818,7 +926,9 @@ SELECT DISTINCT b FROM t WHERE a = 4;
 -- SQL:
 EXPLAIN SELECT DISTINCT b FROM t WHERE a = 4;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (t.b::int -> b)
   selection (t.a::int = 4::int)
@@ -828,7 +938,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [2752]
 
@@ -842,7 +954,9 @@ null
 -- SQL:
 EXPLAIN SELECT count(*) FROM t WHERE a = 1 AND a = 2;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (sum(count_1::int)::int -> col_1)
   motion [policy: full, program: ReshardIfNeeded]
@@ -854,7 +968,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets <= []
 
@@ -874,7 +990,9 @@ SELECT DISTINCT b FROM t0 WHERE a = 1;
 -- SQL:
 EXPLAIN (RAW) SELECT DISTINCT b FROM t0 WHERE a = 1;
 -- EXPECTED:
-1. Query (FILTERED STORAGE):
+╭─────────────────────────────╮
+│ 1. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
 ''
 SELECT DISTINCT "t0"."b" FROM "t0" WHERE "t0"."a" = CAST(1 AS int)
 ''

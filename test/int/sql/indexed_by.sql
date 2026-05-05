@@ -29,7 +29,9 @@ sbroad: index aa not found
 -- SQL:
 explain (raw) SELECT a FROM t INDEXED BY aaa WHERE true;
 -- EXPECTED:
-1. Query (STORAGE):
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT "t"."a" FROM "t" INDEXED BY "aaa" WHERE CAST(true AS bool)
 ''
@@ -40,7 +42,9 @@ plan:
 -- SQL:
 explain (raw) SELECT a FROM t WHERE true;
 -- EXPECTED:
-1. Query (STORAGE):
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT "t"."a" FROM "t" WHERE CAST(true AS bool)
 ''
@@ -51,7 +55,9 @@ plan:
 -- SQL:
 explain (raw) SELECT a FROM t INDEXED BY aaa WHERE a > 10 UNION SELECT d from s INDEXED by bbb WHERE f < -5;
 -- EXPECTED:
-1. Query (STORAGE):
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT "t"."a" FROM "t" INDEXED BY "aaa" WHERE "t"."a" > CAST(10 AS int) UNION SELECT "s"."d" FROM "s" INDEXED BY "bbb" WHERE "s"."f" < CAST(-5 AS int)
 ''
@@ -64,14 +70,18 @@ plan:
 -- SQL:
 explain (raw) SELECT * FROM (SELECT * FROM t INDEXED BY aaa WHERE a > 10) JOIN (SELECT d from s INDEXED by bbb WHERE f < -5) ON true;
 -- EXPECTED:
-1. Query (STORAGE):
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT "s"."d" FROM "s" INDEXED BY "bbb" WHERE "s"."f" < CAST(-5 AS int)
 ''
 plan:
     [0] SCAN TABLE s USING COVERING INDEX bbb (~983040 rows)
 ''
-2. Query (STORAGE):
+╭────────────────────╮
+│ 2. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT * FROM ( SELECT "t"."a", "t"."b", "t"."c" FROM "t" INDEXED BY "aaa" WHERE "t"."a" > CAST(10 AS int) ) as "unnamed_subquery" INNER JOIN ( SELECT "COL_0" FROM "TMP_11262775988279806722_0136" ) as "unnamed_subquery_1" ON CAST(true AS bool)
 ''
@@ -83,7 +93,9 @@ plan:
 -- SQL:
 explain SELECT a FROM t INDEXED BY aaa WHERE true;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (t.a::int -> a)
   selection (true::bool)
@@ -93,7 +105,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -101,7 +115,9 @@ buckets = [1-3000]
 -- SQL:
 explain SELECT a FROM t AS ttt INDEXED BY aaa WHERE true;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (ttt.a::int -> a)
   selection (true::bool)
@@ -111,7 +127,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -131,7 +149,9 @@ invalid index: INDEXED BY clause is only supported for tables
 -- SQL:
 explain DELETE FROM t INDEXED by aaa WHERE true
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 delete from t
   motion [policy: local, program: [PrimaryKey(0), ReshardIfNeeded]]
@@ -143,7 +163,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -151,7 +173,9 @@ buckets = [1-3000]
 -- SQL:
 explain UPDATE t INDEXED BY aaa SET b = d FROM s INDEXED BY bbb WHERE TRUE
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 update t (b = col_0)
   motion [policy: local, program: ReshardIfNeeded]
@@ -166,7 +190,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 

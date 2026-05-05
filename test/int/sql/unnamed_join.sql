@@ -100,7 +100,9 @@ with r9 as (select 'clientMdmId' as mdm_id_first, client_id
 select *
 from r9_mdm;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id, r9_mdm.client_id::string -> client_id, r9_mdm.src_system::string -> src_system, r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id)
   scan cte r9_mdm($1)
@@ -122,7 +124,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -138,7 +142,9 @@ with unnamed_join as (select 'clientMdmId' as mdm_id_first, client_id
 select *
 from r9_mdm;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id, r9_mdm.client_id::string -> client_id, r9_mdm.src_system::string -> src_system, r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id)
   scan cte r9_mdm($1)
@@ -160,7 +166,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -176,7 +184,9 @@ with r9 as (select 'clientMdmId' as mdm_id_first, client_id
 select *
 from r9_mdm;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id, r9_mdm.client_id::string -> client_id, r9_mdm.src_system::string -> src_system, r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id)
   scan cte r9_mdm($1)
@@ -198,7 +208,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -225,7 +237,9 @@ with r9 as (select 'clientMdmId' as mdm_id_first, client_id
 select *
 from r9_mdm;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id, r9_mdm.client_id::string -> client_id, r9_mdm.src_system::string -> src_system, r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id)
   scan cte r9_mdm($1)
@@ -247,6 +261,8 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]

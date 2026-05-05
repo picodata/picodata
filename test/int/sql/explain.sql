@@ -30,7 +30,9 @@ INSERT INTO "space_simple_shard_key_hist" ("id", "name", "sysOp") VALUES (1, 'ok
 EXPLAIN SELECT "id", "name" FROM "testing_space"
     WHERE "id" in (SELECT "id" FROM "space_simple_shard_key_hist" WHERE "sysOp" < 0);
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (testing_space.id::int -> id, testing_space.name::string -> name)
   selection (testing_space.id::int in ROW($0))
@@ -45,7 +47,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -61,7 +65,9 @@ INNER JOIN
     ON "t3"."id" = "t8"."tid"
 WHERE "t3"."name" = '123';
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (t3.id::int -> id, t3.name::string -> name, t8.tid::int -> tid)
   selection (t3.name::string = '123'::string)
@@ -83,7 +89,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -97,7 +105,9 @@ EXPLAIN SELECT * FROM (
         ) as "t1"
         WHERE "id" = 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (t1.id::int -> id, t1.name::string -> name)
   selection (t1.id::int = 1::int)
@@ -114,7 +124,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1934]
 
@@ -122,7 +134,9 @@ buckets = [1934]
 -- SQL:
 EXPLAIN select "id" from "arithmetic_space" where "a" + "b" = "b" + "a";
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (arithmetic_space.id::int -> id)
   selection (arithmetic_space.a::int + arithmetic_space.b::int = arithmetic_space.b::int + arithmetic_space.a::int)
@@ -132,7 +146,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -140,7 +156,9 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN select "id" from "arithmetic_space" where "a" + "b" > 0 and "b" * "a" = 5;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (arithmetic_space.id::int -> id)
   selection ((arithmetic_space.a::int + arithmetic_space.b::int > 0::int and arithmetic_space.b::int * arithmetic_space.a::int = 5::int))
@@ -150,7 +168,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -166,7 +186,9 @@ INNER JOIN
 ON "t3"."id" + "t3"."a" * 2 = "t8"."id1" + 4
 WHERE "t3"."id" = 2;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (t3.id::int -> id, t3.a::int -> a, t8.id1::int -> id1)
   selection (t3.id::int = 2::int)
@@ -189,7 +211,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -205,7 +229,9 @@ INNER JOIN
 ON "t3"."id" + "t3"."a" * 2 = "t8"."id1" + 4
 WHERE "t3"."id" = 2;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (t3.id::int -> id, t3.a::int -> a, t8.id1::int -> id1)
   selection (t3.id::int = 2::int)
@@ -228,7 +254,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -236,7 +264,9 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN select "id" + 2 from "arithmetic_space";
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (arithmetic_space.id::int + 2::int -> col_1)
   scan arithmetic_space
@@ -245,7 +275,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -253,7 +285,9 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN select "a" + "b" * "c" from "arithmetic_space";
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (arithmetic_space.a::int + arithmetic_space.b::int * arithmetic_space.c::int -> col_1)
   scan arithmetic_space
@@ -262,7 +296,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -270,7 +306,9 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN select ("a" + "b") * "c" from "arithmetic_space";
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection ((arithmetic_space.a::int + arithmetic_space.b::int) * arithmetic_space.c::int -> col_1)
   scan arithmetic_space
@@ -279,7 +317,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -287,7 +327,9 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN select "a" > "b" from "arithmetic_space";
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (arithmetic_space.a::int > arithmetic_space.b::int -> col_1)
   scan arithmetic_space
@@ -296,7 +338,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -304,7 +348,9 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN select "a" is null from "arithmetic_space";
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (arithmetic_space.a::int is null -> col_1)
   scan arithmetic_space
@@ -313,7 +359,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -321,7 +369,9 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN WITH t(a) AS (SELECT '1') SELECT * FROM t t1 WHERE t1.a = trim('');
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (t1.a::string -> a)
   selection (t1.a::string = TRIM(''::string))
@@ -335,7 +385,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
 
@@ -343,7 +395,9 @@ buckets = any
 -- SQL:
 EXPLAIN SELECT CASE WHEN TRUE THEN '1' ELSE TRIM('2') END;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (case when true::bool then '1'::string else TRIM('2'::string) end -> col_1)
 ''
@@ -351,7 +405,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
 
@@ -359,7 +415,9 @@ buckets = any
 -- SQL:
 EXPLAIN (RAW, FMT) SELECT "id" from testing_space UNION SELECT "id" from testing_space;
 -- EXPECTED:
-1. Query (STORAGE):
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT
   "testing_space"."id"
@@ -380,7 +438,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) SELECT * from testing_space WHERE "id" = 1;
 -- EXPECTED:
-1. Query (FILTERED STORAGE):
+╭─────────────────────────────╮
+│ 1. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
 ''
 SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = CAST(1 AS int)
 ''
@@ -391,7 +451,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) SELECT * from testing_space WHERE "id" = 1 ORDER BY 1 LIMIT 1;
 -- EXPECTED:
-1. Query (FILTERED STORAGE):
+╭─────────────────────────────╮
+│ 1. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
 ''
 SELECT "id", "name", "product_units" FROM ( SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = CAST(1 AS int) ) ORDER BY 1 LIMIT 1
 ''
@@ -402,7 +464,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) SELECT * from testing_space WHERE "id" = 1 GROUP BY 1, 2, 3 ORDER BY 1 LIMIT 1;
 -- EXPECTED:
-1. Query (FILTERED STORAGE):
+╭─────────────────────────────╮
+│ 1. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
 ''
 SELECT "id", "name", "product_units" FROM ( SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = CAST(1 AS int) GROUP BY "testing_space"."id", "testing_space"."name", "testing_space"."product_units" ) ORDER BY 1 LIMIT 1
 ''
@@ -414,7 +478,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW, FMT) SELECT * from testing_space JOIN testing_space ON true GROUP BY 1, 2, 3, 4, 5, 6 ORDER BY 1 LIMIT 1;
 -- EXPECTED:
-1. Query (STORAGE):
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT
   "testing_space"."id",
@@ -427,7 +493,9 @@ FROM
 plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
 ''
-2. Query (STORAGE):
+╭────────────────────╮
+│ 2. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT
   "gr_expr_1",
@@ -475,7 +543,9 @@ plan:
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
-3. Query (ROUTER):
+╭───────────────────╮
+│ 3. Query (ROUTER) │
+╰───────────────────╯
 ''
 SELECT
   "id",
@@ -527,7 +597,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) INSERT INTO testing_space VALUES (1, '1', 1);
 -- EXPECTED:
-1. Query (ROUTER):
+╭───────────────────╮
+│ 1. Query (ROUTER) │
+╰───────────────────╯
 ''
 VALUES ( CAST(1 AS int), CAST('1' AS string), CAST(1 AS int) )
 ''
@@ -538,7 +610,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) DELETE FROM testing_space WHERE "product_units" < 10 AND "name" = 'beluga';
 -- EXPECTED:
-1. Query (STORAGE):
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."product_units" < CAST(10 AS int) and "testing_space"."name" = CAST('beluga' AS string)
 ''
@@ -549,14 +623,18 @@ plan:
 -- SQL:
 EXPLAIN (RAW) DELETE FROM testing_space WHERE "name" IN (SELECT "name" FROM testing_space_hist WHERE "product_units" > 10);
 -- EXPECTED:
-1. Query (STORAGE):
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT "testing_space_hist"."name" FROM "testing_space_hist" WHERE "testing_space_hist"."product_units" > CAST(10 AS int)
 ''
 plan:
     [0] SCAN TABLE testing_space_hist (~983040 rows)
 ''
-2. Query (STORAGE):
+╭────────────────────╮
+│ 2. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."name" in ( SELECT "COL_0" FROM "TMP_6029770779943228052_0136" )
 ''
@@ -575,14 +653,18 @@ EXPLAIN (RAW) DELETE FROM testing_space;
 -- SQL:
 EXPLAIN (RAW) DELETE FROM testing_space WHERE id IN ( SELECT id FROM testing_space_hist GROUP BY id HAVING SUM(product_units) = 0 );
 -- EXPECTED:
-1. Query (STORAGE):
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT "testing_space_hist"."id" as "gr_expr_1", sum ( CAST ("testing_space_hist"."product_units" as int) ) as "sum_1" FROM "testing_space_hist" GROUP BY "testing_space_hist"."id"
 ''
 plan:
     [0] SCAN TABLE testing_space_hist (~1048576 rows)
 ''
-2. Query (ROUTER):
+╭───────────────────╮
+│ 2. Query (ROUTER) │
+╰───────────────────╯
 ''
 SELECT "COL_0" as "id" FROM ( SELECT "COL_0", "COL_1" FROM "TMP_1599265012539281798_0136" ) GROUP BY "COL_0" HAVING sum ("COL_1") = CAST(0 AS int)
 ''
@@ -590,7 +672,9 @@ plan:
     [0] SCAN TABLE TMP_1599265012539281798_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
-3. Query (STORAGE):
+╭────────────────────╮
+│ 3. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "COL_0" FROM "TMP_12108310727876432219_0136" )
 ''
@@ -603,7 +687,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) UPDATE testing_space SET product_units = 0 WHERE id IN ( SELECT id FROM testing_space_hist WHERE product_units < 0 );
 -- EXPECTED:
-1. Query (STORAGE):
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT CAST(0 AS int) as "col_0", "testing_space"."id" as "col_1" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "testing_space_hist"."id" FROM "testing_space_hist" WHERE "testing_space_hist"."product_units" < CAST(0 AS int) )
 ''
@@ -616,14 +702,18 @@ plan:
 -- SQL:
 EXPLAIN (RAW) UPDATE testing_space SET product_units = -1 WHERE id IN ( SELECT id FROM testing_space_hist GROUP BY id HAVING SUM(product_units) = 0 );
 -- EXPECTED:
-1. Query (STORAGE):
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT "testing_space_hist"."id" as "gr_expr_1", sum ( CAST ("testing_space_hist"."product_units" as int) ) as "sum_1" FROM "testing_space_hist" GROUP BY "testing_space_hist"."id"
 ''
 plan:
     [0] SCAN TABLE testing_space_hist (~1048576 rows)
 ''
-2. Query (ROUTER):
+╭───────────────────╮
+│ 2. Query (ROUTER) │
+╰───────────────────╯
 ''
 SELECT "COL_0" as "id" FROM ( SELECT "COL_0", "COL_1" FROM "TMP_17992124938322492506_0136" ) GROUP BY "COL_0" HAVING sum ("COL_1") = CAST(0 AS int)
 ''
@@ -631,7 +721,9 @@ plan:
     [0] SCAN TABLE TMP_17992124938322492506_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
-3. Query (STORAGE):
+╭────────────────────╮
+│ 3. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT CAST(-1 AS int) as "col_0", "testing_space"."id" as "col_1" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "COL_0" FROM "TMP_17388536538104774043_0136" )
 ''
@@ -644,7 +736,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) DELETE FROM testing_space WHERE id IN (10, 15, 42);
 -- EXPECTED:
-1. Query (FILTERED STORAGE):
+╭─────────────────────────────╮
+│ 1. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
 ''
 SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."id" in ( CAST(10 AS int), CAST(15 AS int), CAST(42 AS int) )
 ''
@@ -656,7 +750,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) UPDATE testing_space SET product_units = product_units + 10 WHERE id IN (10, 15, 42);
 -- EXPECTED:
-1. Query (FILTERED STORAGE):
+╭─────────────────────────────╮
+│ 1. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
 ''
 SELECT "testing_space"."product_units" + CAST(10 AS int) as "col_0", "testing_space"."id" as "col_1" FROM "testing_space" WHERE "testing_space"."id" in ( CAST(10 AS int), CAST(15 AS int), CAST(42 AS int) )
 ''
@@ -668,7 +764,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) INSERT INTO testing_space SELECT * FROM testing_space WHERE id = 42;
 -- EXPECTED:
-1. Query (FILTERED STORAGE):
+╭─────────────────────────────╮
+│ 1. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
 ''
 SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = CAST(42 AS int)
 ''
@@ -679,7 +777,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW, FMT) INSERT INTO testing_space SELECT * FROM testing_space WHERE id = 42;
 -- EXPECTED:
-1. Query (FILTERED STORAGE):
+╭─────────────────────────────╮
+│ 1. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
 ''
 SELECT
   "testing_space"."id",
@@ -697,7 +797,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) INSERT INTO testing_space VALUES (42, 'beluga', (SELECT 1000));
 -- EXPECTED:
-1. Query (ROUTER):
+╭───────────────────╮
+│ 1. Query (ROUTER) │
+╰───────────────────╯
 ''
 VALUES ( CAST(42 AS int), CAST('beluga' AS string), ( SELECT CAST(1000 AS int) as "col_1") )
 ''
@@ -708,14 +810,18 @@ plan:
 -- SQL:
 EXPLAIN (RAW) DELETE FROM testing_space WHERE product_units IN ( SELECT id FROM testing_space );
 -- EXPECTED:
-1. Query (STORAGE):
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT "testing_space"."id" FROM "testing_space"
 ''
 plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
 ''
-2. Query (STORAGE):
+╭────────────────────╮
+│ 2. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."product_units" in ( SELECT "COL_0" FROM "TMP_8034078592994454592_0136" )
 ''
@@ -728,14 +834,18 @@ plan:
 -- SQL:
 EXPLAIN (RAW) INSERT INTO testing_space WITH testing_space AS (SELECT * FROM testing_space) SELECT * FROM testing_space;
 -- EXPECTED:
-1. Query (STORAGE):
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space"
 ''
 plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
 ''
-2. Query (ROUTER):
+╭───────────────────╮
+│ 2. Query (ROUTER) │
+╰───────────────────╯
 ''
 SELECT * FROM ( SELECT "COL_0", "COL_1", "COL_2" FROM "TMP_13062017678802601205_0136" ) as "testing_space"
 ''
@@ -746,7 +856,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) INSERT INTO testing_space SELECT 1, '1', 1;
 -- EXPECTED:
-1. Query (ROUTER):
+╭───────────────────╮
+│ 1. Query (ROUTER) │
+╰───────────────────╯
 ''
 SELECT CAST(1 AS int) as "col_1", CAST('1' AS string) as "col_2", CAST(1 AS int) as "col_3"
 ''
@@ -757,7 +869,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) SELECT * FROM testing_space_global WHERE (product_units > 10 AND name LIKE 'sosisky_') ORDER BY product_units DESC LIMIT 10;
 -- EXPECTED:
-1. Query (ROUTER):
+╭───────────────────╮
+│ 1. Query (ROUTER) │
+╰───────────────────╯
 ''
 SELECT "id", "name", "product_units" FROM ( SELECT * FROM "testing_space_global" WHERE "testing_space_global"."product_units" > CAST(10 AS int) and "testing_space_global"."name" LIKE CAST('sosisky_' AS string) ESCAPE CAST('\' AS string) ) ORDER BY "product_units" DESC LIMIT 10
 ''
@@ -769,7 +883,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) SELECT g.name, COUNT(*) AS global_rows, SUM(g.product_units) AS global_units, SUM(l.product_units) AS local_units FROM testing_space_global g JOIN testing_space l ON g.name = l.name WHERE g.product_units > 5 GROUP BY g.name HAVING SUM(l.product_units) > SUM(g.product_units) ORDER BY global_units DESC LIMIT 10;
 -- EXPECTED:
-1. Query (STORAGE):
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT "g"."name" as "gr_expr_1", count (*) as "count_1", sum (CAST ("l"."product_units" as int)) as "sum_3", sum (CAST ("g"."product_units" as int)) as "sum_2" FROM "testing_space_global" as "g" INNER JOIN "testing_space" as "l" ON "g"."name" = "l"."name" WHERE "g"."product_units" > CAST(5 AS int) GROUP BY "g"."name"
 ''
@@ -778,7 +894,9 @@ plan:
         [0] SCAN TABLE testing_space AS l (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
-2. Query (ROUTER):
+╭───────────────────╮
+│ 2. Query (ROUTER) │
+╰───────────────────╯
 ''
 SELECT "name", "global_rows", "global_units", "local_units" FROM ( SELECT "COL_0" as "name", sum ("COL_1") as "global_rows", sum ("COL_3") as "global_units", sum ("COL_2") as "local_units" FROM ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "TMP_9968167426011738410_0136" ) GROUP BY "COL_0" HAVING sum ("COL_2") > sum ("COL_3") ) ORDER BY "global_units" DESC LIMIT 10
 ''
@@ -791,7 +909,9 @@ plan:
 -- SQL:
 EXPLAIN (FMT, RAW) DELETE FROM testing_space_global WHERE id = 15 OR product_units < 10;
 -- EXPECTED:
-1. Query (ROUTER):
+╭───────────────────╮
+│ 1. Query (ROUTER) │
+╰───────────────────╯
 ''
 SELECT
   "testing_space_global"."id" as "pk_col_0"
@@ -808,7 +928,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) INSERT INTO testing_space_global VALUES ((SELECT 1), (SELECT name FROM testing_space ORDER BY name LIMIT 1), 42 + 67);
 -- EXPECTED:
-1. Query (STORAGE):
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT "name" FROM ( SELECT "testing_space"."name" FROM "testing_space" ) ORDER BY "name" LIMIT 1
 ''
@@ -816,7 +938,9 @@ plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
-2. Query (ROUTER):
+╭───────────────────╮
+│ 2. Query (ROUTER) │
+╰───────────────────╯
 ''
 SELECT "COL_0" as "name" FROM ( SELECT "COL_0" FROM "TMP_12717773680345951425_0136" ) ORDER BY "COL_0" LIMIT 1
 ''
@@ -824,7 +948,9 @@ plan:
     [0] SCAN TABLE TMP_12717773680345951425_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
-3. Query (ROUTER):
+╭───────────────────╮
+│ 3. Query (ROUTER) │
+╰───────────────────╯
 ''
 VALUES ( ( SELECT CAST(1 AS int) as "col_1"), ( SELECT "COL_0" FROM "TMP_11050758999591598030_0136" ), CAST(42 AS int) + CAST(67 AS int) )
 ''
@@ -837,7 +963,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) UPDATE testing_space_global SET name = upper(name);
 -- EXPECTED:
-1. Query (ROUTER):
+╭───────────────────╮
+│ 1. Query (ROUTER) │
+╰───────────────────╯
 ''
 SELECT upper (CAST ("testing_space_global"."name" as string)) as "col_0", "testing_space_global"."id" as "col_1" FROM "testing_space_global"
 ''
@@ -848,7 +976,9 @@ plan:
 -- SQL:
 EXPLAIN (FMT) SELECT * FROM testing_space WHERE id = 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (
   testing_space.id::int -> id,
@@ -862,7 +992,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1934]
 
@@ -870,7 +1002,9 @@ buckets = [1934]
 -- SQL:
 EXPLAIN (RAW, FMT, FMT, RAW, FMT) SELECT * FROM testing_space WHERE id = 1;
 -- EXPECTED:
-1. Query (FILTERED STORAGE):
+╭─────────────────────────────╮
+│ 1. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
 ''
 SELECT
   "testing_space"."id",
@@ -892,7 +1026,9 @@ CREATE TABLE g (id INT PRIMARY KEY) DISTRIBUTED GLOBALLY;
 -- SQL:
 EXPLAIN (RAW) SELECT max(id) FROM g HAVING true UNION SELECT 1;
 -- EXPECTED:
-1. Query (ROUTER):
+╭───────────────────╮
+│ 1. Query (ROUTER) │
+╰───────────────────╯
 ''
 SELECT max (CAST ("g"."id" as int)) as "col_1" FROM "g" HAVING CAST(true AS bool) UNION SELECT CAST(1 AS int) as "col_1"
 ''
@@ -903,7 +1039,9 @@ Failed to compile SQL statement: LIMIT clause should come after UNION not before
 -- SQL:
 EXPLAIN (RAW) SELECT * FROM g WHERE MAX(id) = 5;
 -- EXPECTED:
-1. Query (ROUTER):
+╭───────────────────╮
+│ 1. Query (ROUTER) │
+╰───────────────────╯
 ''
 SELECT * FROM "g" WHERE max (CAST ("g"."id" as int)) = CAST(5 AS int)
 ''
@@ -918,35 +1056,45 @@ CREATE TABLE t (a INT PRIMARY KEY);
 -- SQL:
 EXPLAIN (RAW) WITH a AS (SELECT 1 FROM t limit 1) SELECT 1 FROM t JOIN a ON (values (true));
 -- EXPECTED:
-1. Query (STORAGE):
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT CAST(1 AS int) as "col_1" FROM "t" LIMIT 1
 ''
 plan:
     [0] SCAN TABLE t (~1048576 rows)
 ''
-2. Query (ROUTER):
+╭───────────────────╮
+│ 2. Query (ROUTER) │
+╰───────────────────╯
 ''
 VALUES (CAST(true AS bool))
 ''
 plan:
     [0] TRIVIAL
 ''
-3. Query (ROUTER):
+╭───────────────────╮
+│ 3. Query (ROUTER) │
+╰───────────────────╯
 ''
 SELECT "COL_0" FROM "TMP_9663148926645388081_0136" LIMIT 1
 ''
 plan:
     [0] SCAN TABLE TMP_9663148926645388081_0136 (~1048576 rows)
 ''
-4. Query (ROUTER):
+╭───────────────────╮
+│ 4. Query (ROUTER) │
+╰───────────────────╯
 ''
 ''
 ''
 plan:
 Failed to compile SQL statement: Failed to execute an empty SQL statement
 ''
-5. Query (STORAGE):
+╭────────────────────╮
+│ 5. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT CAST(1 AS int) as "col_1" FROM "t" INNER JOIN ( SELECT "COL_0" FROM "TMP_9127633025172155963_0136" ) as "a" ON ( SELECT "COL_0" FROM "TMP_9127633025172155963_1136" )
 ''
@@ -971,14 +1119,18 @@ BEGIN
   RETURN QUERY SELECT b + 2 FROM t WHERE pk = 1;
 END $$;
 -- EXPECTED:
-1. Return query (FILTERED STORAGE):
+╭────────────────────────────────────╮
+│ 1. Return query (FILTERED STORAGE) │
+╰────────────────────────────────────╯
 ''
 SELECT "t"."a" + CAST(1 AS int) as "col_1" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
-2. Return query (FILTERED STORAGE):
+╭────────────────────────────────────╮
+│ 2. Return query (FILTERED STORAGE) │
+╰────────────────────────────────────╯
 ''
 SELECT "t"."b" + CAST(2 AS int) as "col_1" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
 ''
@@ -993,7 +1145,9 @@ BEGIN
   RETURN QUERY SELECT 1,2 UNION ALL SELECT 1,2;
 END $$;
 -- EXPECTED:
-1. Return query (ROUTER):
+╭──────────────────────────╮
+│ 1. Return query (ROUTER) │
+╰──────────────────────────╯
 ''
 SELECT CAST(1 AS int) as "col_1", CAST(2 AS int) as "col_2" UNION ALL SELECT CAST(1 AS int) as "col_1", CAST(2 AS int) as "col_2"
 ''
@@ -1009,14 +1163,18 @@ BEGIN
   RETURN QUERY SELECT 3,4;
 END $$;
 -- EXPECTED:
-1. Return query (ROUTER):
+╭──────────────────────────╮
+│ 1. Return query (ROUTER) │
+╰──────────────────────────╯
 ''
 VALUES (CAST(1 AS int), CAST(2 AS int)), (CAST(2 AS int), CAST(3 AS int))
 ''
 plan:
     [0] TRIVIAL
 ''
-2. Return query (ROUTER):
+╭──────────────────────────╮
+│ 2. Return query (ROUTER) │
+╰──────────────────────────╯
 ''
 SELECT CAST(3 AS int) as "col_1", CAST(4 AS int) as "col_2"
 ''
@@ -1033,21 +1191,27 @@ BEGIN
   RETURN QUERY SELECT 4;
 END $$;
 -- EXPECTED:
-1. Return query (FILTERED STORAGE):
+╭────────────────────────────────────╮
+│ 1. Return query (FILTERED STORAGE) │
+╰────────────────────────────────────╯
 ''
 SELECT CAST(2 AS int) as "col_1"
 ''
 plan:
     [0] TRIVIAL
 ''
-2. Return query (FILTERED STORAGE):
+╭────────────────────────────────────╮
+│ 2. Return query (FILTERED STORAGE) │
+╰────────────────────────────────────╯
 ''
 SELECT "t"."b" + CAST(2 AS int) as "col_1" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
-3. Return query (FILTERED STORAGE):
+╭────────────────────────────────────╮
+│ 3. Return query (FILTERED STORAGE) │
+╰────────────────────────────────────╯
 ''
 SELECT CAST(4 AS int) as "col_1"
 ''
@@ -1064,21 +1228,27 @@ BEGIN
   UPDATE t SET a = a + 1 WHERE pk = 1;
 END $$;
 -- EXPECTED:
-1. Return query (FILTERED STORAGE):
+╭────────────────────────────────────╮
+│ 1. Return query (FILTERED STORAGE) │
+╰────────────────────────────────────╯
 ''
 SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
-2. Query (FILTERED STORAGE):
+╭─────────────────────────────╮
+│ 2. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
 ''
 UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(1 AS int)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
-3. Query (FILTERED STORAGE):
+╭─────────────────────────────╮
+│ 3. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
 ''
 UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(1 AS int)
 ''
@@ -1095,21 +1265,27 @@ BEGIN
   UPDATE t SET a = a * 2 WHERE pk = 2;
 END $$;
 -- EXPECTED:
-1. Return query (FILTERED STORAGE):
+╭────────────────────────────────────╮
+│ 1. Return query (FILTERED STORAGE) │
+╰────────────────────────────────────╯
 ''
 SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(2 AS int)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
-2. Query (FILTERED STORAGE):
+╭─────────────────────────────╮
+│ 2. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
 ''
 UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(2 AS int)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
-3. Query (FILTERED STORAGE):
+╭─────────────────────────────╮
+│ 3. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
 ''
 UPDATE "t" SET "a" = "t"."a" * CAST(2 AS int) WHERE "t"."pk" = CAST(2 AS int)
 ''
@@ -1124,14 +1300,18 @@ BEGIN
   UPDATE t SET a = a * 2 WHERE pk = 3;
 END $$;
 -- EXPECTED:
-1. Query (FILTERED STORAGE):
+╭─────────────────────────────╮
+│ 1. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
 ''
 UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(3 AS int)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
-2. Query (FILTERED STORAGE):
+╭─────────────────────────────╮
+│ 2. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
 ''
 UPDATE "t" SET "a" = "t"."a" * CAST(2 AS int) WHERE "t"."pk" = CAST(3 AS int)
 ''
@@ -1171,7 +1351,9 @@ CREATE TABLE g (a INT PRIMARY KEY, d DOUBLE) DISTRIBUTED GLOBALLY;
 -- SQL:
 EXPLAIN INSERT INTO t VALUES (1, 1.0, '1'), (2, 2.0, '2'), (3, 3.0, '3');
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
@@ -1184,7 +1366,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [898,1787,2356]
 
@@ -1192,7 +1376,9 @@ buckets = [898,1787,2356]
 -- SQL:
 EXPLAIN SELECT * FROM t WHERE a = 1 and c = '1' or a = 2 and c = '2' or a = 3 and c = '3';
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (t.a::int -> a, t.b::double -> b, t.c::string -> c)
   selection ((t.a::int = 1::int and t.c::string = '1'::string) or (t.a::int = 2::int and t.c::string = '2'::string) or (t.a::int = 3::int and t.c::string = '3'::string))
@@ -1202,7 +1388,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [898,1787,2356]
 
@@ -1210,7 +1398,9 @@ buckets = [898,1787,2356]
 -- SQL:
 EXPLAIN INSERT INTO t VALUES (1 + 1, 1.0, '1'), (2, 2.0, '2'), (3, 3.0, '3');
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
@@ -1223,7 +1413,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = unknown
 
@@ -1231,7 +1423,9 @@ buckets = unknown
 -- SQL:
 EXPLAIN INSERT INTO t VALUES (1, (SELECT d FROM tt LIMIT 1), '2')
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
@@ -1250,7 +1444,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = unknown
 
@@ -1258,7 +1454,9 @@ buckets = unknown
 -- SQL:
 EXPLAIN INSERT INTO t VALUES (1, (SELECT d FROM g LIMIT 1), '2')
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
@@ -1274,6 +1472,8 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [2997]

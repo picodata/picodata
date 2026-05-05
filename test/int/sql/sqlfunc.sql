@@ -181,7 +181,9 @@ select sum(null + null);
 -- SQL:
 explain select cast(max(cast(1 as int)) as double);
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (max(1::double)::int::double -> col_1)
 ''
@@ -189,7 +191,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
 
@@ -197,7 +201,9 @@ buckets = any
 -- SQL:
 explain select cast(max(cast(1 as double)) as double);
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (max(1::double)::double::double -> col_1)
 ''
@@ -205,6 +211,8 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any

@@ -145,7 +145,9 @@ EXPLAIN (RAW, FMT) SELECT
 	) AS rn
 FROM t1 JOIN t2 ON t1.a = t2.a;
 -- EXPECTED:
-1. Query (STORAGE):
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT "t1"."a", "t1"."b" FROM "t1" INNER JOIN "t2" ON "t1"."a" = "t2"."a"
 ''
@@ -153,7 +155,9 @@ plan:
     [0] SCAN TABLE t1 (~1048576 rows)
         [0] SEARCH TABLE t2 USING PRIMARY KEY (a=?) (~1 row)
 ''
-2. Query (FILTERED STORAGE):
+╭─────────────────────────────╮
+│ 2. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
 ''
 SELECT
   "COL_0" as "a",

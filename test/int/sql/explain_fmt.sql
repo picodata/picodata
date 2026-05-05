@@ -2,7 +2,9 @@
 -- SQL:
 explain (fmt) select id, name from _pico_table;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (
   _pico_table.id::int -> id,
@@ -14,7 +16,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
 
@@ -22,7 +26,9 @@ buckets = any
 -- SQL:
 explain (fmt) select * from _pico_table;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (
   _pico_table.id::int -> id,
@@ -42,7 +48,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
 
@@ -50,7 +58,9 @@ buckets = any
 -- SQL:
 explain (fmt) select id * 2 + id * 3 + id * 4 from _pico_table;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (
   _pico_table.id::int * 2::int + _pico_table.id::int * 3::int + _pico_table.id::int * 4::int -> col_1
@@ -61,7 +71,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
 
@@ -76,7 +88,9 @@ select
   'hello'
 from _pico_table;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (
   10::int -> col_1,
@@ -94,7 +108,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
 
@@ -102,7 +118,9 @@ buckets = any
 -- SQL:
 explain (fmt) select 1, 2, 3, 4, 5, 6, 7;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (
   1::int -> col_1,
@@ -118,7 +136,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
 
@@ -129,7 +149,9 @@ select not ((id > 1000 and id < 2000 and id % 10 = 5) or
             (id > 3000 and id < 4000 and id % 4 = 2))
 from _pico_table;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (
   not (
@@ -150,7 +172,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
 
@@ -159,7 +183,9 @@ buckets = any
 explain (fmt)
 select count(*) from _pico_table where id in (1,2,3,4,5,6,7,8,9,10);
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (count(*)::int -> col_1)
   selection (
@@ -182,7 +208,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
 
@@ -192,7 +220,9 @@ explain (fmt)
 select count(*) from _pico_table
 where id = 1 or id = 2 or id = 2 or id = 4 or id = 5;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (count(*)::int -> col_1)
   selection (
@@ -204,7 +234,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
 
@@ -218,7 +250,9 @@ where id = 23456
       and description is not null
       and name != (select min(name) from _pico_table);
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (count(*)::int -> col_1)
   selection (
@@ -242,7 +276,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
 
@@ -251,7 +287,9 @@ buckets = any
 explain
 select case 1 when 1 then 1 end;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (case 1::int when 1::int then 1::int end -> col_1)
 ''
@@ -259,7 +297,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
 
@@ -268,7 +308,9 @@ buckets = any
 explain
 select case 1 when 1 then 1 else 2 end;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (case 1::int when 1::int then 1::int else 2::int end -> col_1)
 ''
@@ -276,7 +318,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
 
@@ -285,7 +329,9 @@ buckets = any
 explain (fmt)
 select 'hello', case 1 when 1 then 1 when 2 then 2 when 3 then 3 end * 2 + 2000;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (
   'hello'::string -> col_1,
@@ -300,7 +346,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
 
@@ -309,7 +357,9 @@ buckets = any
 explain (fmt)
 select 'hello', case 1 when 1 then 1 when 2 then 2 when 3 then 3 else 4 end * 2 + 2000;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (
   'hello'::string -> col_1,
@@ -325,7 +375,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
 
@@ -339,7 +391,9 @@ with q as (
          (4, '', 0, 0, 0)
 ) select count(*) from q;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (count(*)::int -> col_1)
   scan cte q($0)
@@ -373,7 +427,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
 
@@ -393,7 +449,9 @@ select
         else 4
     end * 2 + 2000;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (
   'hello'::string -> col_1,
@@ -413,6 +471,8 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any

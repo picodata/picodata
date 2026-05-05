@@ -37,10 +37,10 @@ use crate::ir::tree::traversal::{PostOrder, REL_CAPACITY};
 use crate::ir::value::Value;
 use crate::ir::{ExplainOptions, Plan, Slices};
 use crate::utils::{indent, indent_custom, indent_with_prefix};
-use crate::BoundStatement;
+use crate::{write_explain_header1, write_explain_header2, BoundStatement};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::collections::HashMap;
-use std::fmt::Write as _;
+use std::fmt::{self, Write as _};
 use std::io;
 use std::rc::Rc;
 use tarantool::msgpack;
@@ -680,7 +680,7 @@ where
         let mut buf = String::new();
         let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
         if !explain_options.has_single_facet() {
-            writeln!(&mut buf, "# Logical plan").unwrap();
+            write_explain_header1!(&mut buf, "# Logical plan").unwrap();
             writeln!(&mut buf).unwrap();
         }
         write!(&mut buf, "{explain}").unwrap();
@@ -700,7 +700,7 @@ where
         let mut buf = String::new();
         let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
         if !explain_options.has_single_facet() {
-            writeln!(&mut buf, "# Forward").unwrap();
+            write_explain_header1!(&mut buf, "# Forward").unwrap();
             writeln!(&mut buf).unwrap();
         }
         writeln!(&mut buf, "forward analysis (on > ro_to_rw > off):").unwrap();
@@ -720,7 +720,7 @@ where
         let mut buf = String::new();
         let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
         if !explain_options.has_single_facet() {
-            writeln!(&mut buf, "# Raw plan").unwrap();
+            write_explain_header1!(&mut buf, "# Raw plan").unwrap();
             writeln!(&mut buf).unwrap();
         }
         write!(&mut buf, "{raw_explain}").unwrap();
@@ -733,7 +733,7 @@ where
         let mut buf = String::new();
         let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
         if !explain_options.has_single_facet() {
-            writeln!(&mut buf, "# Buckets").unwrap();
+            write_explain_header1!(&mut buf, "# Buckets").unwrap();
             writeln!(&mut buf).unwrap();
         }
         write!(&mut buf, "{info}").unwrap();
@@ -852,11 +852,11 @@ fn format_sql(explain: &str, params: &[Value], should_fmt: bool) -> String {
 }
 
 fn write_raw_explain_entry(
-    f: &mut std::fmt::Formatter<'_>,
+    f: &mut fmt::Formatter<'_>,
     entry: &RawExplainEntry,
     idx: usize,
     should_fmt: bool,
-) -> std::fmt::Result {
+) -> fmt::Result {
     let sql = format_sql(&entry.sql, &entry.params, should_fmt);
     let plan = match &entry.tuples {
         Ok(tuples) => format_raw_plan(tuples, should_fmt),
@@ -864,8 +864,9 @@ fn write_raw_explain_entry(
     };
 
     let (kind, source) = (&entry.query, &entry.location);
-    write!(f, "{idx}. {kind} ({source}):\n\n")?;
-    write!(f, "{sql}\n\n")?;
+
+    write_explain_header2!(f, "{idx}. {kind} ({source})")?;
+    write!(f, "\n{sql}\n\n")?;
     write!(f, "plan:\n{plan}")?;
 
     Ok(())
@@ -877,8 +878,8 @@ struct RawExplain {
     should_fmt: bool,
 }
 
-impl std::fmt::Display for RawExplain {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for RawExplain {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut entries = self.entries.iter().enumerate().peekable();
         while let Some((idx, entry)) = entries.next() {
             write_raw_explain_entry(f, entry, idx + 1, self.should_fmt)?;

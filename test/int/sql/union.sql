@@ -156,7 +156,9 @@ select count(*) over win from t WINDOW win as () union select 1;
 -- SQL:
 explain select row_number() over () from t union select 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 motion [policy: full, program: RemoveDuplicates]
   union
@@ -170,7 +172,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -178,7 +182,9 @@ buckets = [1-3000]
 -- SQL:
 explain select count(*) over win from t WINDOW win as () union select 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 motion [policy: full, program: RemoveDuplicates]
   union
@@ -192,7 +198,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -206,7 +214,9 @@ select row_number() over () from t union all select 1;
 -- SQL:
 explain select row_number() over () from t union all select 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 union all
   projection (row_number() over () -> col_1)
@@ -219,6 +229,8 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]

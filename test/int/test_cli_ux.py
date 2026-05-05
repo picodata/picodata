@@ -418,7 +418,9 @@ def test_sql_explain_ok(cluster: Cluster):
     assert output == snapshot(
         (
             """\
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       \n\
+──────────────────────────────────────────────────────────────────────
 
 insert into assets on conflict: fail
   motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
@@ -429,7 +431,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            \n\
+──────────────────────────────────────────────────────────────────────
 
 buckets = [1934]
 
@@ -446,7 +450,9 @@ buckets = [1934]
     assert output == snapshot(
         (
             """\
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       \n\
+──────────────────────────────────────────────────────────────────────
 
 update characters (year = col_0)
   motion [policy: local, program: ReshardIfNeeded]
@@ -457,7 +463,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            \n\
+──────────────────────────────────────────────────────────────────────
 
 buckets = [1-3000]
 
@@ -474,7 +482,9 @@ buckets = [1-3000]
     assert output == snapshot(
         (
             """\
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       \n\
+──────────────────────────────────────────────────────────────────────
 
 update characters (name = col_0, year = col_1)
   motion [policy: local, program: ReshardIfNeeded]
@@ -486,7 +496,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            \n\
+──────────────────────────────────────────────────────────────────────
 
 buckets = [1410]
 

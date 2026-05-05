@@ -135,7 +135,9 @@ SELECT
 FROM
 	t1 JOIN t2 ON t1.b = t2.b;
 -- EXPECTED:
-1. Query (STORAGE):
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
 ''
 SELECT
   "t1"."b",

@@ -12,6 +12,56 @@ use tarantool::fiber::Mutex as TMutex;
 
 pub const INDENT: &str = "  ";
 
+pub fn make_explain_header1(s: impl ToString) -> comfy_table::Table {
+    let mut header = ::comfy_table::Table::new();
+    header
+        .load_preset(::comfy_table::presets::UTF8_HORIZONTAL_ONLY)
+        .set_content_arrangement(::comfy_table::ContentArrangement::DynamicFullWidth)
+        .add_row([s.to_string()])
+        .set_width(70);
+
+    header
+}
+
+pub fn make_explain_header2(s: impl ToString) -> comfy_table::Table {
+    let mut header = ::comfy_table::Table::new();
+    header
+        .load_preset(::comfy_table::presets::UTF8_BORDERS_ONLY)
+        .apply_modifier(::comfy_table::modifiers::UTF8_ROUND_CORNERS)
+        .set_content_arrangement(::comfy_table::ContentArrangement::Disabled)
+        .add_row([s.to_string()]);
+
+    header
+}
+
+/// Example:
+/// ```markdown
+/// ────────────────
+///  # Logical plan
+/// ────────────────
+/// ```
+#[macro_export]
+macro_rules! write_explain_header1 {
+    ($f:expr, $($args:tt)+) => {{
+        let header = $crate::utils::make_explain_header1(format!($($args)+));
+        writeln!($f, "{header}")
+    }};
+}
+
+/// Example:
+/// ```markdown
+/// ╭────────────────────╮
+/// │ 1. Query (STORAGE) │
+/// ╰────────────────────╯
+/// ```
+#[macro_export]
+macro_rules! write_explain_header2 {
+    ($f:expr, $($args:tt)+) => {{
+        let header = $crate::utils::make_explain_header2(format!($($args)+));
+        writeln!($f, "{header}")
+    }};
+}
+
 /// Transform a writer into an indented writer. This effect is additive.
 pub fn indent<'a, D>(f: &'a mut D) -> indenter::Indented<'a, D> {
     indenter::indented(f).with_str(INDENT)

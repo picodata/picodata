@@ -7,7 +7,9 @@ CREATE TABLE t (a INT, b DECIMAL, PRIMARY KEY (b));
 -- SQL:
 EXPLAIN SELECT * FROM t WHERE b = 1;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (t.a::int -> a, t.b::decimal -> b)
   selection (t.b::decimal = 1::int)
@@ -17,7 +19,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1934]
 
@@ -25,7 +29,9 @@ buckets = [1934]
 -- SQL:
 EXPLAIN SELECT * FROM t WHERE b = 1::decimal;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (t.a::int -> a, t.b::decimal -> b)
   selection (t.b::decimal = 1::decimal)
@@ -35,7 +41,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [2135]
 
@@ -43,7 +51,9 @@ buckets = [2135]
 -- SQL:
 EXPLAIN SELECT * FROM t WHERE b = 1.0;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (t.a::int -> a, t.b::decimal -> b)
   selection (t.b::decimal = 1.0::decimal)
@@ -53,7 +63,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [712]
 
@@ -61,7 +73,9 @@ buckets = [712]
 -- SQL:
 EXPLAIN INSERT INTO t VALUES (1, 1);
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_2")]), program: ReshardIfNeeded]
@@ -72,7 +86,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1934]
 
@@ -80,7 +96,9 @@ buckets = [1934]
 -- SQL:
 EXPLAIN INSERT INTO t VALUES (1, 1.0);
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_2")]), program: ReshardIfNeeded]
@@ -91,6 +109,8 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [712]

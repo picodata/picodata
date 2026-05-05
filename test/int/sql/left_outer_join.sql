@@ -108,7 +108,9 @@ explain select * from (select "id" as "A" from "arithmetic_space") as "T1"
 left outer join (select "id" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" = "T2"."B";
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
   left join on ("T1"."A"::int = "T2"."B"::int)
@@ -123,7 +125,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -146,7 +150,9 @@ explain select * from (select "id" as "A" from "arithmetic_space") as "T1"
 left join (select "a" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" = "T2"."B";
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
   left join on ("T1"."A"::int = "T2"."B"::int)
@@ -162,7 +168,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = unknown
 
@@ -184,7 +192,9 @@ explain select * from (select "id" as "A" from "arithmetic_space") as "T1"
 left join (select "a" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" < "T2"."B";
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
   left join on ("T1"."A"::int < "T2"."B"::int)
@@ -200,7 +210,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -251,7 +263,9 @@ explain select * from (select "a" as "A" from "arithmetic_space") as "T1"
 left join (select "id" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" in (select "a" + 1 from "arithmetic_space");
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
   left join on ("T1"."A"::int in ROW($0))
@@ -272,7 +286,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
 
@@ -296,7 +312,9 @@ explain select * from (select "id" as "A" from "arithmetic_space") as t1
 left join (select "id" as "B" from "arithmetic_space2") as t2
 on t1."A" in (select "c" from "arithmetic_space");
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (t1."A"::int -> "A", t2."B"::int -> "B")
   left join on (t1."A"::int in ROW($0))
@@ -317,7 +335,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = unknown
 

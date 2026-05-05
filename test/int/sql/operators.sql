@@ -332,7 +332,9 @@ true
 -- SQL:
 explain select (1 between 1 and 20) between (2 between 1 and 30) and (3 between 1 and 40);
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (((1::int >= 1::int and 1::int <= 20::int) >= (2::int >= 1::int and 2::int <= 30::int) and (1::int >= 1::int and 1::int <= 20::int) <= (3::int >= 1::int and 3::int <= 40::int)) -> col_1)
 ''
@@ -340,7 +342,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
 

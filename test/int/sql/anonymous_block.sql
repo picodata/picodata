@@ -476,7 +476,9 @@ BEGIN
   INSERT INTO t VALUES (400, 99 + 1, 1 + 1);
 END $$;
 -- EXPECTED:
-1. Query (FILTERED STORAGE):
+╭─────────────────────────────╮
+│ 1. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
 ''
 INSERT INTO "t" ("pk", "a", "b", "bucket_id") VALUES ( CAST(400 AS int), CAST(99 AS int) + CAST(1 AS int), CAST(1 AS int) + CAST(1 AS int), 590 )
 ''
@@ -579,14 +581,18 @@ DO $$ BEGIN
   DELETE FROM t WHERE pk = 2;
 END $$;
 -- EXPECTED:
-1. Return query (FILTERED STORAGE):
+╭────────────────────────────────────╮
+│ 1. Return query (FILTERED STORAGE) │
+╰────────────────────────────────────╯
 ''
 SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(2 AS int)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
-2. Query (FILTERED STORAGE):
+╭─────────────────────────────╮
+│ 2. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
 ''
 DELETE FROM "t" WHERE "t"."pk" = CAST(2 AS int)
 ''

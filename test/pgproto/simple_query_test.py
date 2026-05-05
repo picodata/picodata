@@ -114,7 +114,9 @@ def test_explain(postgres: Postgres):
     cur.execute("explain " + query)
     plan = cur.fetchall()
     assert "\n".join(row[0] for row in plan) == snapshot("""\
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       \n\
+──────────────────────────────────────────────────────────────────────
 
 insert into explain on conflict: fail
   motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
@@ -125,7 +127,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            \n\
+──────────────────────────────────────────────────────────────────────
 
 buckets = [84]\
 """)
@@ -134,7 +138,9 @@ buckets = [84]\
     cur.execute("explain " + query)
     plan = cur.fetchall()
     assert "\n".join(row[0] for row in plan) == snapshot("""\
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       \n\
+──────────────────────────────────────────────────────────────────────
 
 insert into explain on conflict: fail
   motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
@@ -145,7 +151,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            \n\
+──────────────────────────────────────────────────────────────────────
 
 buckets = [84]\
 """)
@@ -156,7 +164,9 @@ buckets = [84]\
     cur.execute("explain " + query)
     plan = cur.fetchall()
     assert "\n".join(row[0] for row in plan) == snapshot("""\
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       \n\
+──────────────────────────────────────────────────────────────────────
 
 projection (explain.id::int -> id)
   scan explain
@@ -165,7 +175,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            \n\
+──────────────────────────────────────────────────────────────────────
 
 buckets = [1-3000]\
 """)
@@ -174,7 +186,9 @@ buckets = [1-3000]\
     cur.execute("explain " + query)
     plan = cur.fetchall()
     assert "\n".join(row[0] for row in plan) == snapshot("""\
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       \n\
+──────────────────────────────────────────────────────────────────────
 
 projection (explain.id::int -> id)
   scan explain
@@ -183,7 +197,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            \n\
+──────────────────────────────────────────────────────────────────────
 
 buckets = [1-3000]\
 """)

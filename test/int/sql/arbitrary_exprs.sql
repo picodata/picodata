@@ -282,7 +282,9 @@ true
 -- SQL:
 EXPLAIN SELECT current_state[1] FROM _pico_instance;
 -- EXPECTED:
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
 ''
 projection (_pico_instance.current_state::array[1::int] -> col_1)
   scan _pico_instance
@@ -291,7 +293,9 @@ execution options:
   sql_vdbe_opcode_max = 45000
   sql_motion_row_max = 5000
 ''
-# Buckets
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
 
@@ -299,7 +303,9 @@ buckets = any
 -- SQL:
 EXPLAIN (raw) SELECT current_state[1] FROM _pico_instance;
 -- EXPECTED:
-1. Query (ROUTER):
+╭───────────────────╮
+│ 1. Query (ROUTER) │
+╰───────────────────╯
 ''
 SELECT "_pico_instance"."current_state" [ CAST($1 AS int) ] as "col_1" FROM "_pico_instance"
 ''
