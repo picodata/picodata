@@ -126,7 +126,7 @@ search:
 Гистограмма длительности локальных SQL-запросов, выполненных в обход `iproto`
 на текущем инстансе (в секундах)
 
-Метки: `query_type` (`dql`, `dml`), `result` (`ok`, `err`)
+Метки: `tier`, `replicaset`, `query_type` (`dql`, `dml`), `result` (`ok`, `err`)
 
 Тип: histogram
 
@@ -135,7 +135,7 @@ search:
 Общее количество локальных SQL-запросов, выполненных в обход `iproto`
 на текущем инстансе
 
-Метки: `query_type` (`dql`, `dml`), `result` (`ok`, `err`)
+Метки: `tier`, `replicaset`, `query_type` (`dql`, `dml`), `result` (`ok`, `err`)
 
 Тип: counter
 

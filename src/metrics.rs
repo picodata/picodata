@@ -343,7 +343,7 @@ pub static SQL_LOCAL_QUERY_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
             "pico_sql_local_query_total",
             "Total number of local SQL query executions that bypass iproto since startup",
         ),
-        &["query_type", "result"],
+        &["tier", "replicaset", "query_type", "result"],
     )
     .unwrap()
 });
@@ -354,7 +354,7 @@ pub static SQL_LOCAL_QUERY_DURATION: LazyLock<HistogramVec> = LazyLock::new(|| {
             "pico_sql_local_query_duration",
             "Histogram of local SQL query execution durations that bypass iproto (in seconds)",
         ),
-        &["query_type", "result"],
+        &["tier", "replicaset", "query_type", "result"],
     )
     .unwrap()
 });
@@ -389,13 +389,13 @@ pub fn report_storage_cache_hit(query_type: &str, rpc_type: &str) {
 
 pub fn record_sql_local_query_total(query_type: &str, result: &str) {
     SQL_LOCAL_QUERY_TOTAL
-        .with_label_values(&[query_type, result])
+        .with_label_values(&[my_tier(), my_replicaset(), query_type, result])
         .inc()
 }
 
 pub fn observe_sql_local_query_duration(query_type: &str, result: &str, duration: &Duration) {
     SQL_LOCAL_QUERY_DURATION
-        .with_label_values(&[query_type, result])
+        .with_label_values(&[my_tier(), my_replicaset(), query_type, result])
         .observe(duration.as_secs_f64())
 }
 
