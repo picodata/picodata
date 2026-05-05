@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Picodata в Kubernetes
 
 ## Структура чарта Picodata {: #picodata_chart }

@@ -18,6 +18,7 @@ edit_uri: -/blob/master/docs/docs
 not_in_nav: |
   index.md
   reference/api.md
+  admin/deploy_kubernetes.md
   architecture/clusterwide_schema.md
   dev/connectors_index.md
   dev/connectors/java.md
@@ -57,7 +58,7 @@ nav:
           - admin/local_monitoring.md
           - admin/grafana_monitoring.md
       - admin/deploy_ansible.md
-      - admin/deploy_kubernetes.md
+    #   - admin/deploy_kubernetes.md
       - admin/server_setup.md
       - admin/cluster_mgmt.md
       - admin/cluster_update.md
