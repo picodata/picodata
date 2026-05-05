@@ -105,7 +105,7 @@ impl PluginState {
 
 type MetricsHandlerMap = HashMap<ServiceId, Rc<FfiMetricsHandler>>;
 type BackgroundJobCancellationTokenMap =
-    HashMap<ServiceId, Vec<(SmolStr, FfiBackgroundJobCancellationToken)>>;
+    HashMap<ServiceId, Vec<(SmolStr, Rc<FfiBackgroundJobCancellationToken>)>>;
 
 pub struct PluginManager {
     /// List of pairs (plugin name -> plugin state).
@@ -1043,19 +1043,17 @@ impl PluginManager {
         // Release the lock.
         drop(guard);
 
+        // First, send cancellation signals to all jobs.
         for (service, jobs) in &service_jobs {
             background::cancel_jobs(service, jobs);
         }
 
-        const DEFAULT_BACKGROUND_JOB_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
-
-        let start = fiber::clock();
-        for (service, jobs) in &service_jobs {
-            let timeout = service.background_job_shutdown_timeout.get();
-            let timeout = timeout.unwrap_or(DEFAULT_BACKGROUND_JOB_SHUTDOWN_TIMEOUT);
-            let deadline = start.saturating_add(timeout);
-
-            background::wait_jobs_finished(service, jobs, deadline);
+        // Then wait for all jobs to finish. This uses no timeout to guarantee
+        // all background job fibers terminate before we unload the plugin.
+        // Otherwise, the scheduler may switch to a still-running fiber after
+        // the code is unloaded, causing a crash.
+        for (service, jobs) in service_jobs {
+            background::wait_jobs_finished(service, jobs);
         }
     }
 

@@ -8,6 +8,7 @@ use crate::plugin::interface::ServiceId;
 use crate::util::tarantool_error_to_box_error;
 use crate::util::DisplayErrorLocation;
 use std::cell::Cell;
+use std::rc::Rc;
 use std::time::Duration;
 use tarantool::error::BoxError;
 use tarantool::error::TarantoolErrorCode;
@@ -35,14 +36,13 @@ where
     F: FnOnce(CancellationToken) + 'static,
 {
     let (token, handle) = CancellationToken::new();
-    let finish_channel = handle.finish_channel.clone();
+    let finish_event = Rc::clone(&handle.finish_event);
 
     let fiber_id = fiber::Builder::new()
         .name(tag)
         .func(move || {
             job(token);
-            // send shutdown signal to the waiter side
-            _ = finish_channel.send(());
+            finish_event.signal();
         })
         .start_non_joinable()
         .map_err(tarantool_error_to_box_error)?;
@@ -54,7 +54,7 @@ where
     let token = FfiBackgroundJobCancellationToken::new(
         fiber_id,
         handle.cancel_channel,
-        handle.finish_channel,
+        handle.finish_event,
     );
     register_background_job_cancellation_token(plugin, service, version, tag, token)?;
 
@@ -186,7 +186,7 @@ impl CancellationToken {
             },
             CancellationTokenHandle {
                 cancel_channel: cancel_tx,
-                finish_channel: Channel::new(1),
+                finish_event: Rc::new(OnceEvent::new()),
             },
         )
     }
@@ -212,21 +212,21 @@ impl CancellationToken {
 #[deprecated = "don't use this"]
 pub struct CancellationTokenHandle {
     cancel_channel: Channel<()>,
-    finish_channel: Channel<()>,
+    finish_event: Rc<OnceEvent>,
 }
 
 #[allow(deprecated)]
 impl CancellationTokenHandle {
-    /// Cancel related job and return a backpressure channel.
-    /// Caller should wait a message in the backpressure channel
-    /// to make sure the job is completed successfully (graceful shutdown occurred).
-    pub fn cancel(self) -> Channel<()> {
+    /// Cancel related job and return a finish event.
+    /// Caller should wait on the finish event to make sure the job
+    /// is completed successfully (graceful shutdown occurred).
+    pub fn cancel(self) -> Rc<OnceEvent> {
         let Self {
             cancel_channel,
-            finish_channel,
+            finish_event,
         } = self;
         _ = cancel_channel.send(());
-        finish_channel
+        finish_event
     }
 }
 
@@ -377,13 +377,49 @@ pub fn set_jobs_shutdown_timeout(plugin: &str, service: &str, version: &str, tim
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// OnceEvent
+////////////////////////////////////////////////////////////////////////////////
+
+/// A one-time event that can be signaled once and waited on by multiple fibers.
+/// Late waiters (after signal) return immediately.
+#[derive(Debug)]
+pub struct OnceEvent {
+    finished: Cell<bool>,
+    cond: fiber::Cond,
+}
+
+impl OnceEvent {
+    fn new() -> Self {
+        Self {
+            finished: Cell::new(false),
+            cond: fiber::Cond::new(),
+        }
+    }
+
+    /// Signal that the job has finished. Wakes all waiting fibers.
+    pub fn signal(&self) {
+        self.finished.set(true);
+        self.cond.broadcast();
+    }
+
+    #[inline]
+    pub fn is_finished(&self) -> bool {
+        self.finished.get()
+    }
+
+    pub fn wait_timeout(&self, timeout: Duration) {
+        self.cond.wait_timeout(timeout);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // CancellationCallbackState
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug)]
 pub struct CancellationCallbackState {
     cancel_channel: Channel<()>,
-    finish_channel: Channel<()>,
+    finish_event: Rc<OnceEvent>,
     status: Cell<CancellationCallbackStatus>,
 }
 
@@ -396,10 +432,10 @@ pub enum CancellationCallbackStatus {
 }
 
 impl CancellationCallbackState {
-    fn new(cancel_channel: Channel<()>, finish_channel: Channel<()>) -> Self {
+    fn new(cancel_channel: Channel<()>, finish_event: Rc<OnceEvent>) -> Self {
         Self {
             cancel_channel,
-            finish_channel,
+            finish_event,
             status: Cell::new(CancellationCallbackStatus::Initial),
         }
     }
@@ -409,17 +445,37 @@ impl CancellationCallbackState {
         let next_status = action;
 
         if next_status == JobCancelled as u64 {
+            // Cancellation is idempotent.
+            if self.status.get() == JobCancelled || self.status.get() == JobFinished {
+                return Ok(());
+            }
             debug_assert_eq!(self.status.get(), Initial);
             _ = self.cancel_channel.send(());
 
             self.status.set(JobCancelled);
         } else if next_status == JobFinished as u64 {
-            debug_assert_eq!(self.status.get(), JobCancelled);
-            self.finish_channel.recv_timeout(timeout).map_err(|e| {
-                BoxError::new(TarantoolErrorCode::Timeout, i_wish_this_was_simpler_and_im_sad_that_i_have_created_this_problem_for_my_self_recv_error_to_string(e))
-            })?;
+            if self.status.get() != JobCancelled && self.status.get() != JobFinished {
+                return Err(BoxError::new(
+                    TarantoolErrorCode::IllegalParams,
+                    "cannot wait for job that wasn't cancelled",
+                ));
+            }
 
-            self.status.set(JobFinished);
+            let deadline = fiber::clock().saturating_add(timeout);
+
+            loop {
+                if self.finish_event.is_finished() {
+                    self.status.set(JobFinished);
+                    return Ok(());
+                }
+
+                let remaining = deadline.duration_since(fiber::clock());
+                if remaining.is_zero() {
+                    return Err(BoxError::new(TarantoolErrorCode::Timeout, "timeout"));
+                }
+
+                self.finish_event.wait_timeout(remaining);
+            }
         } else {
             return Err(BoxError::new(
                 TarantoolErrorCode::IllegalParams,
@@ -428,16 +484,6 @@ impl CancellationCallbackState {
         }
 
         Ok(())
-    }
-}
-
-#[inline]
-fn i_wish_this_was_simpler_and_im_sad_that_i_have_created_this_problem_for_my_self_recv_error_to_string(
-    e: fiber::channel::RecvError,
-) -> &'static str {
-    match e {
-        fiber::channel::RecvError::Timeout => "timeout",
-        fiber::channel::RecvError::Disconnected => "disconnected",
     }
 }
 
@@ -469,8 +515,8 @@ impl Drop for FfiBackgroundJobCancellationToken {
 }
 
 impl FfiBackgroundJobCancellationToken {
-    fn new(fiber_id: FiberId, cancel_channel: Channel<()>, finish_channel: Channel<()>) -> Self {
-        let callback_state = CancellationCallbackState::new(cancel_channel, finish_channel);
+    fn new(fiber_id: FiberId, cancel_channel: Channel<()>, finish_event: Rc<OnceEvent>) -> Self {
+        let callback_state = CancellationCallbackState::new(cancel_channel, finish_event);
         let callback = move |action, timeout| {
             let res = callback_state.cancellation_callback(action, timeout);
             if let Err(e) = res {

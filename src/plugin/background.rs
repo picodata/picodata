@@ -6,6 +6,7 @@ use picodata_plugin::background::JobCancellationResult;
 use picodata_plugin::error_code::ErrorCode;
 use picodata_plugin::plugin::interface::ServiceId;
 use smol_str::SmolStr;
+use std::rc::Rc;
 use std::time::Duration;
 use tarantool::error::BoxError;
 use tarantool::fiber;
@@ -31,7 +32,7 @@ pub fn register_background_job_cancellation_token(
 
     let mut guard = manager.background_job_cancellation_tokens.lock();
     let all_jobs = guard.entry(service).or_default();
-    all_jobs.push((job_tag, token));
+    all_jobs.push((job_tag, Rc::new(token)));
 
     Ok(())
 }
@@ -54,38 +55,56 @@ pub fn cancel_background_jobs_by_tag(
         return Err(BoxError::new(ErrorCode::NoSuchService, format!("service `{service_id}` not found")));
     };
 
-    let mut guard = manager.background_job_cancellation_tokens.lock();
-    let Some(all_jobs) = guard.get_mut(&service.id) else {
-        return Ok(JobCancellationResult::new(0, 0));
-    };
-
     let target_tag = job_tag;
     let mut jobs_to_cancel = vec![];
-    let mut cursor = 0;
-    while cursor < all_jobs.len() {
-        let (job_tag, _) = &all_jobs[cursor];
-        if &target_tag == job_tag {
-            let token = all_jobs.swap_remove(cursor);
-            jobs_to_cancel.push(token);
-            continue;
-        }
 
-        cursor += 1;
+    {
+        let guard = manager.background_job_cancellation_tokens.lock();
+        let Some(all_jobs) = guard.get(&service.id) else {
+            return Ok(JobCancellationResult::new(0, 0));
+        };
+
+        // Clone Rcs of matching tokens. They stay in the map so that
+        // stop_background_jobs can see them if called concurrently.
+        for (job_tag, token) in all_jobs {
+            if &target_tag == job_tag {
+                jobs_to_cancel.push((job_tag.clone(), Rc::clone(token)));
+            }
+        }
     }
 
-    // Release the lock.
-    drop(guard);
+    if jobs_to_cancel.is_empty() {
+        return Ok(JobCancellationResult::new(0, 0));
+    }
 
     cancel_jobs(&service, &jobs_to_cancel);
 
     let deadline = fiber::clock().saturating_add(timeout);
-    let n_timeouts = wait_jobs_finished(&service, &jobs_to_cancel, deadline);
+    let (finished_jobs, timed_out_jobs) =
+        wait_jobs_finished_deadline(&service, &jobs_to_cancel, Some(deadline));
 
-    let n_total = jobs_to_cancel.len();
-    Ok(JobCancellationResult::new(n_total as _, n_timeouts))
+    let n_timeouts = timed_out_jobs.len();
+    let n_total = finished_jobs.len() + n_timeouts;
+
+    // Remove finished jobs from the map.
+    if !finished_jobs.is_empty() {
+        let mut guard = manager.background_job_cancellation_tokens.lock();
+        if let Some(all_jobs) = guard.get_mut(&service.id) {
+            all_jobs.retain(|(_, token)| {
+                !finished_jobs
+                    .iter()
+                    .any(|finished| Rc::ptr_eq(token, finished))
+            });
+        }
+    }
+
+    Ok(JobCancellationResult::new(n_total as _, n_timeouts as _))
 }
 
-pub fn cancel_jobs(service: &ServiceState, jobs: &[(SmolStr, FfiBackgroundJobCancellationToken)]) {
+pub fn cancel_jobs(
+    service: &ServiceState,
+    jobs: &[(SmolStr, Rc<FfiBackgroundJobCancellationToken>)],
+) {
     let service_id = &service.id;
     for (job_tag, token) in jobs {
         #[rustfmt::skip]
@@ -94,28 +113,52 @@ pub fn cancel_jobs(service: &ServiceState, jobs: &[(SmolStr, FfiBackgroundJobCan
     }
 }
 
-/// Returns the number of jobs which is didn't finish in time.
+/// Waits for all jobs to finish without any timeout.
+/// Used during plugin shutdown to ensure all fibers terminate before unloading.
 pub fn wait_jobs_finished(
     service: &ServiceState,
-    jobs: &[(SmolStr, FfiBackgroundJobCancellationToken)],
-    deadline: Instant,
-) -> u32 {
+    jobs: Vec<(SmolStr, Rc<FfiBackgroundJobCancellationToken>)>,
+) {
+    let _ = wait_jobs_finished_deadline(service, &jobs, None);
+}
+
+/// Waits for jobs to finish and partitions them into finished and timed-out.
+/// Returns (finished jobs, timed-out jobs) so caller can identify which jobs completed.
+///
+/// If `deadline` is `None`, waits indefinitely.
+fn wait_jobs_finished_deadline(
+    service: &ServiceState,
+    jobs: &[(SmolStr, Rc<FfiBackgroundJobCancellationToken>)],
+    deadline: Option<Instant>,
+) -> (
+    Vec<Rc<FfiBackgroundJobCancellationToken>>,
+    Vec<Rc<FfiBackgroundJobCancellationToken>>,
+) {
     let service_id = &service.id;
 
-    let mut n_timeouts = 0;
+    let mut finished = vec![];
+    let mut timed_out = vec![];
+
     for (job_tag, token) in jobs {
-        let timeout = deadline.duration_since(fiber::clock());
+        let timeout = match deadline {
+            Some(dl) => dl.duration_since(fiber::clock()),
+            None => tarantool::clock::INFINITY,
+        };
         let res = token.wait_job_finished(timeout);
-        if res.is_err() {
+        if res.is_ok() {
+            finished.push(Rc::clone(token));
+        } else {
             let e = BoxError::last();
             #[rustfmt::skip]
             tlog!(Warning, "service {service_id} job `{job_tag}` didn't finish in time: {e}");
-
-            n_timeouts += 1;
+            timed_out.push(Rc::clone(token));
+            if deadline.is_none() {
+                unreachable!("infinite timeout expired");
+            }
         }
     }
 
-    n_timeouts
+    (finished, timed_out)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
