@@ -152,7 +152,7 @@ INSERT INTO a
 ```sql
 CREATE TABLE a (id INT PRIMARY KEY, val INT);
 CREATE TABLE b (id INT PRIMARY KEY, val INT);
-CREATE TABLE c (id INT PRIMARY KEY, val INT);
+CREATE TABLE c (id INT PRIMARY KEY, val INT) DISTRIBUTED BY (val);
 ```
 
 Данные, лежащие в таблицах `b` и `c`:
@@ -177,7 +177,7 @@ admin=> SELECT bucket_id, * FROM c;
 ```sql
 INSERT INTO a
     SELECT * FROM b
-    WHERE b.id IN (SELECT id FROM c ORDER BY id LIMIT 10);
+    WHERE b.id IN (SELECT id FROM c WHERE val = 2 ORDER BY id LIMIT 10);
 ```
 
 Конфигурация кластера, используемая в примерах:
@@ -194,7 +194,8 @@ INSERT INTO a
 -- исполняем на узле, содержащем бакет
 INSERT INTO a
     SELECT * FROM b
-    WHERE b.id IN (SELECT id FROM c ORDER BY id LIMIT 10);
+    WHERE b.id IN (SELECT id FROM c WHERE val = 2 ORDER BY 1 LIMIT 10)
+OPTION (FORWARD = OFF);
 ```
 
 Он успешно выполнится, т.к. результатом подзапроса будет значение `2`,
@@ -203,13 +204,14 @@ INSERT INTO a
 Вставим еще одну строку в таблицу `c`:
 
 ```sql
-INSERT INTO c VALUES (1, 1);
+INSERT INTO c VALUES (1, 2);
 ```
 
 Теперь выполнение запроса с опцией `forward = off` приведет к ошибке 
 
 ```
-ERROR:  sbroad: invalid option: cannot satisfy "forward = off" option
+ERROR:  sbroad: invalid option: cannot satisfy "forward = off":
+buckets span multiple nodes and are not present on the current node, try using "forward = on" instead
 ```
 
 т.к. результатом подзапроса будут значения `1` и `2`, соответствующие бакетaм
