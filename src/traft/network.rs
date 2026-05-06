@@ -826,7 +826,10 @@ mod tests {
         assert_eq!(result, 3u32);
     }
 
-    #[::tarantool::test]
+    #[::tarantool::test(skip_if(
+        cfg(asan),
+        reason = "Relies on call_timeout which is too small for ASAN-instrumented runs"
+    ))]
     fn unresponsive_connection() {
         use tarantool::fiber::YieldResult::*;
 
@@ -931,7 +934,10 @@ mod tests {
         );
     }
 
-    #[::tarantool::test]
+    #[::tarantool::test(skip_if(
+        cfg(asan),
+        reason = "Relies on call_timeout which is too small for ASAN-instrumented runs"
+    ))]
     fn multiple_messages() {
         let l = tarantool::lua_state();
 
