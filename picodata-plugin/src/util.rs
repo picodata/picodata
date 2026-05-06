@@ -716,7 +716,10 @@ mod test {
         assert_eq!(vec, data);
     }
 
-    #[tarantool::test]
+    #[tarantool::test(skip_if(
+        cfg(asan),
+        reason = "RegionBuffer built with ASAN uses different region_join() implementation that does not uphold the checked invariants"
+    ))]
     fn region_buffer_tiny_allocation() {
         // Needed because we forget the RegionBuffer at the end of the function
         let _guard = RegionGuard::new();
