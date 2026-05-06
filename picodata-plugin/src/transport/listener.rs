@@ -146,13 +146,12 @@ impl TlsAcceptor {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// ListenerConfig (internal)
+// ListenerConfig
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Contains configuration needed to setup a [`PicoListener`].
 ///
 /// [`PicoListener`]: PicoListener
-#[internal]
 #[derive(Clone, Debug)]
 pub struct ListenerConfig {
     /// The address to listen on.
@@ -166,7 +165,6 @@ pub struct ListenerConfig {
 /// Contains PEM-encoded TLS configuration needed to set up TLS for [`PicoListener`].
 ///
 /// [`PicoListener`]: PicoListener
-#[internal]
 #[derive(Clone, Debug)]
 pub struct ListenerTlsConfig {
     /// PEM-encoded certificate chain.
@@ -179,6 +177,7 @@ pub struct ListenerTlsConfig {
 
 impl ListenerTlsConfig {
     /// Inflate the stored PEM-encoded representations of certificates and keys into a [`LoadedListenerTlsConfig`]
+    #[internal]
     pub fn load(&self) -> Result<LoadedListenerTlsConfig, TlsConfigError> {
         let cert_chain = X509::stack_from_pem(&self.cert_chain_pem)?;
         let key = PKey::private_key_from_pem(&self.key_pem)?;
@@ -231,21 +230,43 @@ impl From<crate::internal::types::FfiListenerConfig> for ListenerConfig {
     }
 }
 
-/// Get listener configuration by calling picodata via FFI.
-fn get_listener_config(
-    plugin: &str,
-    service: &str,
-) -> Result<ListenerConfig, FfiListenerConfigError> {
-    use crate::util::FfiSafeStr;
-
-    let ffi_config = unsafe {
+/// Gets plugin listener configuration for the service associated with the given context.
+///
+/// This function will call picodata via FFI to access the corresponding plugin configuration section.
+///
+/// # Returns
+///
+/// - `Ok(Some(config))` if the configuration is defined, is valid and enabled
+/// - `Ok(None)` if the configuration is defined, but disabled
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The listener configuration for the requested service is missing or malformed
+pub fn get_plugin_listener_config(
+    context: &PicoContext,
+) -> Result<Option<ListenerConfig>, PicoListenerError> {
+    let result = unsafe {
         crate::internal::ffi::pico_ffi_get_listener_config(
-            FfiSafeStr::from(plugin),
-            FfiSafeStr::from(service),
+            context.plugin_name,
+            context.service_name,
         )
     };
 
-    ffi_config.into_result().map(ListenerConfig::from)
+    match result.into_result() {
+        Ok(config) => Ok(Some(config.into())),
+        Err(FfiListenerConfigError::Disabled) => Ok(None),
+        Err(FfiListenerConfigError::Undefined) => Err(PicoListenerError::Config(format!(
+            "configuration for plugin {}.{} is not defined",
+            context.plugin_name(),
+            context.service_name()
+        ))),
+        Err(FfiListenerConfigError::Malformed) => Err(PicoListenerError::Config(format!(
+            "configuration for plugin {}.{} is malformed. See picodata logs for more details.",
+            context.plugin_name(),
+            context.service_name()
+        ))),
+    }
 }
 
 /// Parse a listen address string into SocketAddr.
@@ -334,8 +355,8 @@ impl PicoListener {
 
     /// Creates a new listener for the service associated with the given context.
     ///
-    /// This method looks up the configuration from the global registry.
-    /// The configuration must have been registered by picodata before calling this method.
+    /// This method will call picodata via FFI to access the corresponding plugin configuration section.
+    /// If the configuration is found, it will create
     ///
     /// # Returns
     ///
@@ -345,22 +366,13 @@ impl PicoListener {
     /// # Errors
     ///
     /// Returns an error if:
-    /// - The listener configuration is missing or invalid
+    /// - The listener configuration for the requested service is missing or malformed
     /// - The socket cannot be bound
     /// - TLS is enabled but certificates could not be parsed
     pub fn bind(context: &PicoContext) -> Result<Option<Self>, PicoListenerError> {
-        let plugin = context.plugin_name();
-        let service = context.service_name();
-
-        match get_listener_config(plugin, service) {
-            Ok(config) => Ok(Some(Self::bind_with_config(&config)?)),
-            Err(FfiListenerConfigError::Disabled) => Ok(None),
-            Err(FfiListenerConfigError::Undefined) => Err(PicoListenerError::Config(format!(
-                "configuration for plugin {plugin}.{service} is undefined"
-            ))),
-            Err(FfiListenerConfigError::Malformed) => Err(PicoListenerError::Config(format!(
-                "configuration for plugin {plugin}.{service} is malformed. See picodata logs for more details."
-            ))),
+        match get_plugin_listener_config(context)? {
+            Some(config) => Ok(Some(Self::bind_with_config(&config)?)),
+            None => Ok(None),
         }
     }
 

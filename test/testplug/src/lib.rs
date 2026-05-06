@@ -1028,6 +1028,32 @@ impl Service for ListenerService {
     }
 }
 
+/// Used to test the API for custom plugin listeners: it will only retrieve the config, but won't implement the listener for you.
+struct CustomListenerService;
+
+impl Service for CustomListenerService {
+    type Config = ListenerServiceConfig;
+
+    fn on_start(&mut self, ctx: &PicoContext, _cfg: Self::Config) -> CallbackResult<()> {
+        tarantool::say_info!("CustomListenerService on_start called");
+
+        if let Some(listener) =
+            picodata_plugin::transport::listener::get_plugin_listener_config(ctx)?
+        {
+            tarantool::say_info!("Listener configuration: {:?}", listener);
+        } else {
+            tarantool::say_info!("Listener is disabled in configuration");
+        }
+
+        Ok(())
+    }
+
+    fn on_stop(&mut self, _ctx: &PicoContext) -> CallbackResult<()> {
+        tarantool::say_info!("CustomListenerService stopped");
+        Ok(())
+    }
+}
+
 // Ensures that macros usage at least compiles.
 #[tarantool::proc]
 fn example_stored_proc() {}
@@ -1075,4 +1101,5 @@ pub fn service_registrar(reg: &mut ServiceRegistry) {
     reg.add("testservice_4", "0.4.0", Service4WithExtendedConfig::new);
 
     reg.add("listenerservice", "0.1.0", || ListenerService);
+    reg.add("customlistenerservice", "0.1.0", || CustomListenerService);
 }

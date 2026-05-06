@@ -7,7 +7,7 @@ import time
 from conftest import Cluster, PortDistributor
 
 
-def install_and_enable_plugin(instance):
+def install_and_enable_listener_plugin(instance):
     """Install and enable plugin using pico API."""
     instance.call("pico.install_plugin", "testplug_listener", "0.1.0", timeout=10)
 
@@ -20,6 +20,21 @@ def install_and_enable_plugin(instance):
     )
 
     instance.call("pico.enable_plugin", "testplug_listener", "0.1.0", timeout=10)
+
+
+def install_and_enable_custom_listener_plugin(instance):
+    """Install and enable plugin using pico API."""
+    instance.call("pico.install_plugin", "testplug_custom_listener", "0.1.0", timeout=10)
+
+    instance.call(
+        "pico.service_append_tier",
+        "testplug_custom_listener",
+        "0.1.0",
+        "customlistenerservice",
+        "default",
+    )
+
+    instance.call("pico.enable_plugin", "testplug_custom_listener", "0.1.0", timeout=10)
 
 
 def test_plugin_listener_disabled(cluster: Cluster, port_distributor: PortDistributor):
@@ -42,7 +57,7 @@ instance:
 
     (i1,) = cluster.deploy(instance_count=1)
 
-    install_and_enable_plugin(i1)
+    install_and_enable_listener_plugin(i1)
 
     i1.wait_online()
 
@@ -72,7 +87,7 @@ instance:
 
     (i1,) = cluster.deploy(instance_count=1)
 
-    install_and_enable_plugin(i1)
+    install_and_enable_listener_plugin(i1)
 
     time.sleep(1)
 
@@ -126,7 +141,7 @@ instance:
 
     (i1,) = cluster.deploy(instance_count=1)
 
-    install_and_enable_plugin(i1)
+    install_and_enable_listener_plugin(i1)
 
     time.sleep(1)
 
@@ -181,7 +196,7 @@ instance:
 
     (i1,) = cluster.deploy(instance_count=1)
 
-    install_and_enable_plugin(i1)
+    install_and_enable_listener_plugin(i1)
 
     i1.wait_online()
 
@@ -211,7 +226,7 @@ instance:
 
     (i1,) = cluster.deploy(instance_count=1)
 
-    install_and_enable_plugin(i1)
+    install_and_enable_listener_plugin(i1)
 
     time.sleep(1)
 
@@ -285,7 +300,7 @@ instance:
 
     (i1,) = cluster.deploy(instance_count=1)
 
-    install_and_enable_plugin(i1)
+    install_and_enable_listener_plugin(i1)
 
     time.sleep(1)
 
@@ -342,7 +357,7 @@ instance:
 
     try:
         (i1,) = cluster.deploy(instance_count=1)
-        install_and_enable_plugin(i1)
+        install_and_enable_listener_plugin(i1)
         raise AssertionError("Expected failure due to invalid cert_file")
     except Exception as e:
         assert (
@@ -378,7 +393,7 @@ instance:
 
     (i1,) = cluster.deploy(instance_count=1)
 
-    install_and_enable_plugin(i1)
+    install_and_enable_listener_plugin(i1)
 
     time.sleep(1)
 
@@ -433,7 +448,7 @@ instance:
 
     (i1,) = cluster.deploy(instance_count=1)
 
-    install_and_enable_plugin(i1)
+    install_and_enable_listener_plugin(i1)
 
     result = i1.sql(
         "SELECT address FROM _pico_peer_address WHERE connection_type = 'plugin:testplug_listener.listenerservice'"
@@ -470,7 +485,7 @@ instance:
 
     try:
         (i1,) = cluster.deploy(instance_count=1)
-        install_and_enable_plugin(i1)
+        install_and_enable_listener_plugin(i1)
         time.sleep(1)
         raise AssertionError("Expected failure due to port conflict")
     except Exception as e:
@@ -503,7 +518,7 @@ instance:
 
     (i1,) = cluster.deploy(instance_count=1)
 
-    install_and_enable_plugin(i1)
+    install_and_enable_listener_plugin(i1)
 
     result = i1.sql(
         "SELECT address FROM _pico_peer_address WHERE connection_type = 'plugin:testplug_listener.listenerservice'"
@@ -540,7 +555,7 @@ instance:
 
     (i1,) = cluster.deploy(instance_count=1)
 
-    install_and_enable_plugin(i1)
+    install_and_enable_listener_plugin(i1)
 
     result = i1.sql(
         "SELECT address FROM _pico_peer_address WHERE connection_type = 'plugin:testplug_listener.listenerservice'"
@@ -674,7 +689,7 @@ instance:
     i2.start()
     i2.wait_online()
 
-    install_and_enable_plugin(i1)
+    install_and_enable_listener_plugin(i1)
 
     time.sleep(2)
 
@@ -733,7 +748,7 @@ instance:
 
     (i1,) = cluster.deploy(instance_count=1)
 
-    install_and_enable_plugin(i1)
+    install_and_enable_listener_plugin(i1)
 
     time.sleep(1)
 
@@ -802,7 +817,7 @@ instance:
 
     (i1,) = cluster.deploy(instance_count=1)
 
-    install_and_enable_plugin(i1)
+    install_and_enable_listener_plugin(i1)
 
     time.sleep(1)
 
@@ -828,3 +843,38 @@ instance:
         response = ssock.recv(1024)
 
         assert response == test_data, f"Expected echo of {test_data!r}, got {response!r}"
+
+
+def test_plugin_custom_listener(cluster: Cluster, port_distributor: PortDistributor):
+    """Test that plugin can get configuration for custom listener configuration."""
+    from conftest import log_crawler
+
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    tier:
+        default:
+instance:
+    cluster_name: test
+    plugin:
+        testplug_custom_listener:
+            service:
+                customlistenerservice:
+                    listener:
+                        enabled: true
+                        listen: 127.0.0.1:1337
+"""
+    )
+
+    (i1,) = cluster.deploy(instance_count=1)
+
+    message = (
+        'Listener configuration: ListenerConfig { listen: "127.0.0.1:1337", advertise: "127.0.0.1:1337", tls: None }'
+    )
+    lc = log_crawler(i1, message)
+
+    install_and_enable_custom_listener_plugin(i1)
+    i1.wait_online()
+
+    # check that the plugin receives the config that was specified in the config file
+    assert lc.matched
