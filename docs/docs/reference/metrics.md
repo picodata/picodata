@@ -1059,6 +1059,87 @@ ID узла, за которого голосует текущий узел / ID
 
 `tnt_slab_quota_used_ratio 50`
 
+### tnt_slab_system_arena_size
+
+Общий объем памяти, доступный системному аллокатору для хранения
+кортежей и индексов системных таблиц
+(см. [memtx system allocator](../architecture/memtx_allocator.md)).
+Включает выделенные, но в настоящее время свободные блоки.
+
+Тип: gauge
+
+`tnt_slab_system_arena_size 33554432`
+
+### tnt_slab_system_arena_used
+
+Эффективная память, используемая системным аллокатором для хранения
+как кортежей, так и индексов. Игнорирует выделенные, но в настоящее
+время свободные слабы.
+
+Тип: gauge
+
+`tnt_slab_system_arena_used 2914912`
+
+### tnt_slab_system_arena_used_ratio
+
+Показатель использования арены системным аллокатором / System slab arena_used_ratio info
+
+Тип: gauge
+
+`tnt_slab_system_arena_used_ratio 8.7`
+
+### tnt_slab_system_items_size
+
+Размер элементов системного slab / System slab items_size info
+
+Тип: gauge
+
+`tnt_slab_system_items_size 2946096`
+
+### tnt_slab_system_items_used
+
+Число используемых элементов системного slab / System slab items_used info
+
+Тип: gauge
+
+`tnt_slab_system_items_used 359008`
+
+### tnt_slab_system_items_used_ratio
+
+Показатель использования элементов системного slab / System slab items_used_ratio info
+
+Тип: gauge
+
+`tnt_slab_system_items_used_ratio 12.19`
+
+### tnt_slab_system_quota_size
+
+Объем памяти, доступный системному аллокатору. Равен `memtx_system_memory`.
+
+Тип: gauge
+
+`tnt_slab_system_quota_size 33554432`
+
+### tnt_slab_system_quota_used
+
+Объем памяти, который уже зарезервирован системным аллокатором для slab.
+Исчерпание квоты приводит к **аварийной остановке инстанса** на ближайшей
+записи в raft-журнал — рекомендуется настраивать оповещение по
+`tnt_slab_system_quota_used_ratio`
+(см. [memtx system allocator](../architecture/memtx_allocator.md#memtx_system_allocator_prometheus_metrics)).
+
+Тип: gauge
+
+`tnt_slab_system_quota_used 33554432`
+
+### tnt_slab_system_quota_used_ratio
+
+Квота использования памяти системным аллокатором / System slab quota_used_ratio info
+
+Тип: gauge
+
+`tnt_slab_system_quota_used_ratio 100`
+
 ### tnt_space_bsize
 
 Общее количество байтов во всех кортежах.

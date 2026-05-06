@@ -62,10 +62,63 @@ def test_picodata_metrics(cluster: Cluster) -> None:
         "pico_raft_term",
         "pico_raft_state",
         "pico_raft_leader_id",
+        "tnt_slab_arena_size",
+        "tnt_slab_arena_used",
+        "tnt_slab_arena_used_ratio",
+        "tnt_slab_items_size",
+        "tnt_slab_items_used",
+        "tnt_slab_items_used_ratio",
+        "tnt_slab_quota_size",
+        "tnt_slab_quota_used",
+        "tnt_slab_quota_used_ratio",
+        "tnt_slab_system_arena_size",
+        "tnt_slab_system_arena_used",
+        "tnt_slab_system_arena_used_ratio",
+        "tnt_slab_system_items_size",
+        "tnt_slab_system_items_used",
+        "tnt_slab_system_items_used_ratio",
+        "tnt_slab_system_quota_size",
+        "tnt_slab_system_quota_used",
+        "tnt_slab_system_quota_used_ratio",
     ]
 
     for metric in expected_metrics:
         assert metric in metrics_output, f"Metric '{metric}' not found in /metrics output"
+
+
+@pytest.mark.webui
+def test_slab_system_metrics_after_startup(instance: Instance) -> None:
+    """
+    On a freshly started instance with no user data, the user memtx allocator
+    must report zero usage while the system allocator must already hold the
+    system catalog (raft state, _pico_*, _space, etc.).
+
+    Validates the routing rule documented in architecture/memtx_allocator.md:
+    tables with id <= SPACE_ID_INTERNAL_MAX (1024) go to the system arena.
+    """
+    metrics = instance.get_metrics()
+
+    def gauge(name: str) -> float:
+        family = metrics.get(name)
+        assert family is not None, f"Metric '{name}' not found in /metrics output"
+        assert len(family.samples) == 1, f"Metric '{name}' has {len(family.samples)} samples, expected 1"
+        return family.samples[0].value
+
+    # User allocator: no user tables exist yet, so every *_used must be 0.
+    assert gauge("tnt_slab_arena_used") == 0
+    assert gauge("tnt_slab_items_used") == 0
+    assert gauge("tnt_slab_quota_used") == 0
+
+    # User quota itself is non-zero (matches --memtx-memory).
+    assert gauge("tnt_slab_quota_size") > 0
+
+    # System allocator already holds the system catalog and raft state.
+    assert gauge("tnt_slab_system_arena_used") > 0
+    assert gauge("tnt_slab_system_items_used") > 0
+    assert gauge("tnt_slab_system_quota_used") > 0
+
+    # System quota itself is non-zero (matches --memtx-system-memory).
+    assert gauge("tnt_slab_system_quota_size") > 0
 
 
 def check_metric(
