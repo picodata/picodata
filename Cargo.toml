@@ -207,5 +207,8 @@ debug = "line-tables-only"
 lto = "off"
 codegen-units = 64
 
-[profile.asan-dev]
-inherits = "dev"
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(asan)"] }
+
+[lints]
+workspace = true

@@ -96,11 +96,11 @@ def cargo_build_path() -> Path:
     cargo_metadata_dict = _cargo_metadata_json()
     cargo_target_directory = Path(cargo_metadata_dict["target_directory"])
 
-    # HACK: in order to disable sanitizers (e.g., ASan) for build.rs, we have to
-    # pass `--target` or set `CARGO_BUILD_TARGET`, which will affect the path.
+    # When `--target` or `CARGO_BUILD_TARGET` is set, cargo places artifacts
+    # under target/<triple>/<profile>/ instead of target/<profile>/.
     cargo_build_target = os.environ.get("CARGO_BUILD_TARGET")
-    if cargo_build_target is None and cargo_build_profile().startswith("asan"):
-        cargo_target_directory /= rustc_target_triple()
+    if cargo_build_target is not None:
+        cargo_target_directory /= cargo_build_target
 
     profile = cargo_build_profile()
     build_profile_directory = "debug" if profile == "dev" else profile

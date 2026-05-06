@@ -28,6 +28,7 @@ pub fn main(args: args::Test) -> ! {
     let mut cnt_passed = 0u32;
     let mut failed = vec![];
     let mut cnt_skipped = 0u32;
+    let mut cnt_filtered_out = 0u32;
 
     let now = std::time::Instant::now();
 
@@ -36,11 +37,16 @@ pub fn main(args: args::Test) -> ! {
     for t in tests {
         if let Some(filter) = args.filter.as_ref() {
             if !t.name().contains(filter) {
-                cnt_skipped += 1;
+                cnt_filtered_out += 1;
                 continue;
             }
         }
         if args.skip.iter().any(|s| t.name().contains(s)) {
+            cnt_filtered_out += 1;
+            continue;
+        }
+        if let Some(reason) = t.skip() {
+            println!("test {} ... skipped: {reason}", t.name());
             cnt_skipped += 1;
             continue;
         }
@@ -158,6 +164,7 @@ pub fn main(args: args::Test) -> ! {
     print!(" {cnt_passed} passed;");
     print!(" {} failed;", failed.len());
     print!(" {cnt_skipped} skipped;");
+    print!(" {cnt_filtered_out} filtered out;");
     println!(" finished in {:.2}s", now.elapsed().as_secs_f32());
     println!();
 

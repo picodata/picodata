@@ -1,7 +1,7 @@
 use build_rs_helpers::{
     cargo,
     cmake::{self, CmakeVariables},
-    pkg_config, rustc, CommandExt,
+    is_asan_enabled, pkg_config, rustc, CommandExt,
 };
 use std::{path::PathBuf, process::Command};
 
@@ -169,8 +169,7 @@ impl TarantoolBuildRoot {
             ];
 
             // Tarantool won't let us use gcc for an asan build.
-            let profile = cargo::get_build_profile();
-            if profile.starts_with("asan") {
+            if is_asan_enabled() {
                 cargo::warning("ASan has been enabled, this may affect the performance");
                 configure_cmd.envs([("CC", "clang"), ("CXX", "clang++")]);
                 common_args.push("-DENABLE_ASAN=ON".to_string());
