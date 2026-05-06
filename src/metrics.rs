@@ -267,51 +267,69 @@ static INFO_UPTIME: LazyLock<GaugeVec> = LazyLock::new(|| {
     .expect("Failed to create pico_info_uptime gauge")
 });
 
-pub static ROUTER_CACHE_STATEMENTS_ADDED_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
-    IntCounter::with_opts(prometheus::Opts::new(
-        "pico_router_cache_statements_added_total",
-        "Total number of statements added to the router cache since startup",
-    ))
+pub static ROUTER_CACHE_STATEMENTS_ADDED_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    IntCounterVec::new(
+        prometheus::Opts::new(
+            "pico_router_cache_statements_added_total",
+            "Total number of statements added to the router cache since startup",
+        ),
+        &["tier", "replicaset"],
+    )
     .unwrap()
 });
 
-pub static ROUTER_CACHE_STATEMENTS_EVICTED_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
-    IntCounter::with_opts(prometheus::Opts::new(
-        "pico_router_cache_statements_evicted_total",
-        "Total number of statements evicted from the router cache since startup",
-    ))
+pub static ROUTER_CACHE_STATEMENTS_EVICTED_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    IntCounterVec::new(
+        prometheus::Opts::new(
+            "pico_router_cache_statements_evicted_total",
+            "Total number of statements evicted from the router cache since startup",
+        ),
+        &["tier", "replicaset"],
+    )
     .unwrap()
 });
 
-pub static ROUTER_CACHE_HITS_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
-    IntCounter::with_opts(prometheus::Opts::new(
-        "pico_router_cache_hits_total",
-        "Total number of requests to the router cache resulted in cache hit since startup",
-    ))
+pub static ROUTER_CACHE_HITS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    IntCounterVec::new(
+        prometheus::Opts::new(
+            "pico_router_cache_hits_total",
+            "Total number of requests to the router cache resulted in cache hit since startup",
+        ),
+        &["tier", "replicaset"],
+    )
     .unwrap()
 });
 
-pub static ROUTER_CACHE_MISSES_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
-    IntCounter::with_opts(prometheus::Opts::new(
-        "pico_router_cache_misses_total",
-        "Total number of requests to the router cache resulted in cache miss since startup",
-    ))
+pub static ROUTER_CACHE_MISSES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    IntCounterVec::new(
+        prometheus::Opts::new(
+            "pico_router_cache_misses_total",
+            "Total number of requests to the router cache resulted in cache miss since startup",
+        ),
+        &["tier", "replicaset"],
+    )
     .unwrap()
 });
 
-pub static STORAGE_CACHE_STATEMENTS_ADDED_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
-    IntCounter::with_opts(prometheus::Opts::new(
-        "pico_storage_cache_statements_added_total",
-        "Total number of statements added to the storage cache since startup",
-    ))
+pub static STORAGE_CACHE_STATEMENTS_ADDED_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    IntCounterVec::new(
+        prometheus::Opts::new(
+            "pico_storage_cache_statements_added_total",
+            "Total number of statements added to the storage cache since startup",
+        ),
+        &["tier", "replicaset"],
+    )
     .unwrap()
 });
 
-pub static STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
-    IntCounter::with_opts(prometheus::Opts::new(
-        "pico_storage_cache_statements_evicted_total",
-        "Total number of statements evicted from the storage cache since startup",
-    ))
+pub static STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    IntCounterVec::new(
+        prometheus::Opts::new(
+            "pico_storage_cache_statements_evicted_total",
+            "Total number of statements evicted from the storage cache since startup",
+        ),
+        &["tier", "replicaset"],
+    )
     .unwrap()
 });
 
@@ -321,7 +339,7 @@ pub static STORAGE_1ST_REQUESTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|
             "pico_storage_1st_requests_total",
             "Total number of 1st requests to the storage cache since startup (aka total number of requests to the cache)",
         ),
-        &["query_type", "result"],
+        &["tier", "replicaset", "query_type", "result"],
     )
     .unwrap()
 });
@@ -332,7 +350,7 @@ pub static STORAGE_2ND_REQUESTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|
             "pico_storage_2nd_requests_total",
             "Total number of 2nd reqests to the storage cache since startup (aka total number of cache misses)",
         ),
-        &["query_type", "result"]
+        &["tier", "replicaset", "query_type", "result"]
     )
     .unwrap()
 });
@@ -365,7 +383,7 @@ pub static STORAGE_CACHE_HITS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| 
             "pico_storage_cache_hits_total",
             "The total number cache hits on the storage",
         ),
-        &["query_type", "rpc_type"],
+        &["tier", "replicaset", "query_type", "rpc_type"],
     )
     .unwrap()
 });
@@ -376,14 +394,14 @@ pub static STORAGE_CACHE_MISSES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|
             "pico_storage_cache_misses_total",
             "The total number of cache misses on the storage",
         ),
-        &["query_type", "rpc_type", "miss_type"],
+        &["tier", "replicaset", "query_type", "rpc_type", "miss_type"],
     )
     .unwrap()
 });
 
 pub fn report_storage_cache_hit(query_type: &str, rpc_type: &str) {
     STORAGE_CACHE_HITS_TOTAL
-        .with_label_values(&[query_type, rpc_type])
+        .with_label_values(&[my_tier(), my_replicaset(), query_type, rpc_type])
         .inc()
 }
 
@@ -401,8 +419,56 @@ pub fn observe_sql_local_query_duration(query_type: &str, result: &str, duration
 
 pub fn report_storage_cache_miss(query_type: &str, rpc_type: &str, miss_type: &str) {
     STORAGE_CACHE_MISSES_TOTAL
-        .with_label_values(&[query_type, rpc_type, miss_type])
+        .with_label_values(&[my_tier(), my_replicaset(), query_type, rpc_type, miss_type])
         .inc()
+}
+
+pub fn record_router_cache_hit() {
+    ROUTER_CACHE_HITS_TOTAL
+        .with_label_values(&[my_tier(), my_replicaset()])
+        .inc();
+}
+
+pub fn record_router_cache_miss() {
+    ROUTER_CACHE_MISSES_TOTAL
+        .with_label_values(&[my_tier(), my_replicaset()])
+        .inc();
+}
+
+pub fn record_router_cache_statement_added() {
+    ROUTER_CACHE_STATEMENTS_ADDED_TOTAL
+        .with_label_values(&[my_tier(), my_replicaset()])
+        .inc();
+}
+
+pub fn record_router_cache_statement_evicted() {
+    ROUTER_CACHE_STATEMENTS_EVICTED_TOTAL
+        .with_label_values(&[my_tier(), my_replicaset()])
+        .inc();
+}
+
+pub fn record_storage_cache_statement_added() {
+    STORAGE_CACHE_STATEMENTS_ADDED_TOTAL
+        .with_label_values(&[my_tier(), my_replicaset()])
+        .inc();
+}
+
+pub fn record_storage_cache_statement_evicted() {
+    STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL
+        .with_label_values(&[my_tier(), my_replicaset()])
+        .inc();
+}
+
+pub fn record_storage_1st_request(query_type: &str, result: &str) {
+    STORAGE_1ST_REQUESTS_TOTAL
+        .with_label_values(&[my_tier(), my_replicaset(), query_type, result])
+        .inc();
+}
+
+pub fn record_storage_2nd_request(query_type: &str, result: &str) {
+    STORAGE_2ND_REQUESTS_TOTAL
+        .with_label_values(&[my_tier(), my_replicaset(), query_type, result])
+        .inc();
 }
 
 pub fn record_governor_change() {

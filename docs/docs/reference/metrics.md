@@ -72,6 +72,38 @@ search:
 
 Тип: gauge
 
+### pico_router_cache_hits_total
+
+Общее количество попаданий в кэш плана запроса на роутере
+
+Метки: `tier`, `replicaset`
+
+Тип: counter
+
+### pico_router_cache_misses_total
+
+Общее количество промахов кэша плана запроса на роутере
+
+Метки: `tier`, `replicaset`
+
+Тип: counter
+
+### pico_router_cache_statements_added_total
+
+Общее количество планов запросов, добавленных в кэш роутера с момента старта
+
+Метки: `tier`, `replicaset`
+
+Тип: counter
+
+### pico_router_cache_statements_evicted_total
+
+Общее количество планов запросов, вытесненных из кэша роутера с момента старта
+
+Метки: `tier`, `replicaset`
+
+Тип: counter
+
 ### pico_rpc_request_duration
 
 Гистограмма длительности выполнения запросов RPC (в миллисекундах)
@@ -174,6 +206,61 @@ search:
 ### pico_sql_yields_total
 
 Общее количество переключений выполнения в режиме неблокирующего SQL
+
+Тип: counter
+
+### pico_storage_1st_requests_total
+
+Общее количество первых RPC-запросов от роутера к стораджу при выполнении SQL
+(плановый идентификатор без полного текста запроса). Метрика покрывает как
+DQL-, так и DML-запросы и отражает реальную нагрузку SQL на инстанс-сторадже.
+
+Метки: `tier`, `replicaset`, `query_type` (`dql`, `dml`, `block`), `result` (`ok`, `err`)
+
+Тип: counter
+
+### pico_storage_2nd_requests_total
+
+Общее количество вторых RPC-запросов от роутера к стораджу при выполнении SQL.
+Второй запрос отправляется только при промахе кэша плана на стороне стораджа
+(только для DQL): роутер дополнительно высылает полный текст SQL-запроса
+и метаданные виртуальных таблиц.
+
+Метки: `tier`, `replicaset`, `query_type` (`dql`), `result` (`ok`, `err`)
+
+Тип: counter
+
+### pico_storage_cache_hits_total
+
+Общее количество попаданий в кэш плана запроса на стороне стораджа
+
+Метки: `tier`, `replicaset`, `query_type` (`dql`), `rpc_type` (`1st`, `2nd`, `local`)
+
+Тип: counter
+
+### pico_storage_cache_misses_total
+
+Общее количество промахов кэша плана запроса на стороне стораджа
+
+Метки: `tier`, `replicaset`, `query_type` (`dql`), `rpc_type` (`1st`, `2nd`, `local`),
+`miss_type` (`true` — отсутствие плана в кэше, `busy` — план занят другим
+исполнением, `stale` — план есть, но устарел из-за изменения схемы)
+
+Тип: counter
+
+### pico_storage_cache_statements_added_total
+
+Общее количество планов запросов, добавленных в кэш стораджа с момента старта
+
+Метки: `tier`, `replicaset`
+
+Тип: counter
+
+### pico_storage_cache_statements_evicted_total
+
+Общее количество планов запросов, вытесненных из кэша стораджа с момента старта
+
+Метки: `tier`, `replicaset`
 
 Тип: counter
 

@@ -74,33 +74,36 @@ def check_metric(
     found_family = families.get(name)
     if value is None:
         if not labels:
-            assert found_family is None, "Metric {} found".format(name)
+            # Labelled-vector families register at startup but stay empty until first observation.
+            # Treat "no samples" the same as "no family" so callers can probe absence without
+            # caring about the family's registration state.
+            assert found_family is None or not found_family.samples, "Metric {} found".format(name)
         elif found_family is not None:
             for sample in found_family.samples:
                 match_all_labels = all([sample.labels.get(lbl) == val for lbl, val in labels.items()])
                 assert not match_all_labels, "Labeled {} metric found".format(name)
     else:
-        assert found_family is not None, "Metric {} not found".format(name)
         if not labels:
-            assert len(found_family.samples) == 1, "Metric has {} samples instead of 1".format(
-                len(found_family.samples)
-            )
-            sample = found_family.samples[0]
-            assert sample.value == value, "Metric has unexpected value"
+            # Sum across all label combinations so multi-tier / multi-replicaset fixtures and
+            # vector counters with one sample per (tier, replicaset) both work.
+            # A missing family means "no observations yet"; aggregate = 0.
+            real_value = sum(s.value for s in found_family.samples) if found_family else 0
+            assert real_value == value, "Metric {} aggregate {} != {}".format(name, real_value, value)
+            return
+        assert found_family is not None, "Metric {} not found".format(name)
+        filtered_samples = []
+        for sample in found_family.samples:
+            if all([sample.labels.get(label) == value for label, value in labels.items()]):
+                filtered_samples.append(sample)
+        if aggregate:
+            real_value = aggregate(filtered_samples)
         else:
-            filtered_samples = []
-            for sample in found_family.samples:
-                if all([sample.labels.get(label) == value for label, value in labels.items()]):
-                    filtered_samples.append(sample)
-            if aggregate:
-                real_value = aggregate(filtered_samples)
-            else:
-                assert len(filtered_samples) == 1, "Labeled metric has {} samples instead of 1".format(
-                    len(filtered_samples)
-                )
-                sample = filtered_samples[0]
-                real_value = sample.value
-            assert real_value == value, "Labeled metric has unexpected value"
+            assert len(filtered_samples) == 1, "Labeled metric has {} samples instead of 1".format(
+                len(filtered_samples)
+            )
+            sample = filtered_samples[0]
+            real_value = sample.value
+        assert real_value == value, "Labeled metric has unexpected value"
 
 
 @pytest.mark.webui

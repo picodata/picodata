@@ -1,5 +1,5 @@
 use crate::metrics::{
-    report_storage_cache_hit, report_storage_cache_miss, STORAGE_2ND_REQUESTS_TOTAL,
+    record_storage_2nd_request, report_storage_cache_hit, report_storage_cache_miss,
 };
 use crate::preemption::scheduler_options;
 use crate::sql::lock::{lock_temp_table, TempTableLease, TempTableLockRef};
@@ -601,9 +601,7 @@ where
                 runtime, request_id, plan_id, sender_id, info, port, timeout,
             );
             let result = if res.is_err() { "err" } else { "ok" };
-            STORAGE_2ND_REQUESTS_TOTAL
-                .with_label_values(&["dql", result])
-                .inc();
+            record_storage_2nd_request("dql", result);
             res
         },
     );

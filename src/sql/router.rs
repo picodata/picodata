@@ -48,8 +48,8 @@ use crate::sql::storage::StorageRuntime;
 use crate::traft::node;
 
 use crate::metrics::{
-    ROUTER_CACHE_HITS_TOTAL, ROUTER_CACHE_MISSES_TOTAL, ROUTER_CACHE_STATEMENTS_ADDED_TOTAL,
-    ROUTER_CACHE_STATEMENTS_EVICTED_TOTAL,
+    record_router_cache_hit, record_router_cache_miss, record_router_cache_statement_added,
+    record_router_cache_statement_evicted,
 };
 use tarantool::space::SpaceId;
 use tarantool::tuple::{KeyDef, Tuple};
@@ -282,7 +282,7 @@ pub struct PicoRouterCache {
 impl PicoRouterCache {
     pub fn new(capacity: usize) -> Result<Self, SbroadError> {
         fn evict(_key: &SmolStr, _value: &mut Rc<Plan>) -> Result<(), SbroadError> {
-            ROUTER_CACHE_STATEMENTS_EVICTED_TOTAL.inc();
+            record_router_cache_statement_evicted();
             Ok(())
         }
 
@@ -363,9 +363,9 @@ impl Cache<SmolStr, Rc<Plan>> for PicoRouterCache {
         let value = do_get(&mut self.inner, key)?;
 
         if value.is_some() {
-            ROUTER_CACHE_HITS_TOTAL.inc();
+            record_router_cache_hit();
         } else {
-            ROUTER_CACHE_MISSES_TOTAL.inc();
+            record_router_cache_miss();
         }
 
         Ok(value)
@@ -373,7 +373,7 @@ impl Cache<SmolStr, Rc<Plan>> for PicoRouterCache {
 
     fn put(&mut self, key: SmolStr, value: Rc<Plan>) -> Result<Option<Rc<Plan>>, SbroadError> {
         let removed = self.inner.put(key, value)?;
-        ROUTER_CACHE_STATEMENTS_ADDED_TOTAL.inc();
+        record_router_cache_statement_added();
         Ok(removed)
     }
 }

@@ -2108,7 +2108,7 @@
               "refId": "A"
             }
           ],
-          "title": "SQL query durations — top 10 replicasets by p99",
+          "title": "SQL query durations - top 10 replicasets by p99",
           "type": "timeseries"
         },
         {
@@ -2211,7 +2211,7 @@
               "refId": "A"
             }
           ],
-          "title": "CAS operation durations — top 10 instances by p99",
+          "title": "CAS operation durations - top 10 instances by p99",
           "type": "timeseries"
         },
         {
@@ -2314,7 +2314,7 @@
               "refId": "A"
             }
           ],
-          "title": "Internal RPC request durations — top 10 procs by p99",
+          "title": "Internal RPC request durations - top 10 procs by p99",
           "type": "timeseries"
         },
         {
@@ -2757,7 +2757,7 @@
               "refId": "A"
             }
           ],
-          "title": "Local DML query durations — top 10 replicasets by p99",
+          "title": "Local DML query durations - top 10 replicasets by p99",
           "type": "timeseries"
         },
         {
@@ -2860,7 +2860,7 @@
               "refId": "A"
             }
           ],
-          "title": "Local DQL query durations — top 10 replicasets by p99",
+          "title": "Local DQL query durations - top 10 replicasets by p99",
           "type": "timeseries"
         }
       ],
@@ -2910,8 +2910,8 @@
             "overrides": []
           },
           "gridPos": {
-            "h": 4,
-            "w": 5,
+            "h": 8,
+            "w": 8,
             "x": 0,
             "y": 198
           },
@@ -2936,44 +2936,17 @@
           "pluginVersion": "12.2.1",
           "targets": [
             {
-              "editorMode": "code",
-              "exemplar": false,
-              "expr": "sum(rate(pico_router_cache_hits_total{job=~\"$job\"}[1m])) / clamp_min(sum(rate(pico_router_cache_hits_total{job=~\"$job\"}[1m]) + rate(pico_router_cache_misses_total{job=~\"$job\"}[1m])), 1)",
-              "format": "time_series",
-              "hide": true,
-              "instant": false,
-              "interval": "",
-              "legendFormat": "1m",
-              "range": true,
-              "refId": "A"
-            },
-            {
               "datasource": {
                 "type": "prometheus",
                 "uid": "${prometheus}"
               },
               "editorMode": "code",
-              "expr": "sum(rate(pico_router_cache_hits_total{job=~\"$job\"}[5m])) / clamp_min(sum(rate(pico_router_cache_hits_total{job=~\"$job\"}[5m]) + rate(pico_router_cache_misses_total{job=~\"$job\"}[5m])), 1)",
+              "expr": "sum(rate(pico_router_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[5m])) / clamp_min(sum(rate(pico_router_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[5m]) + rate(pico_router_cache_misses_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[5m])), 1)",
               "hide": false,
               "instant": false,
               "legendFormat": "5m",
               "range": true,
-              "refId": "B"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${prometheus}"
-              },
-              "editorMode": "code",
-              "exemplar": false,
-              "expr": "sum(rate(pico_router_cache_hits_total{job=~\"$job\"}[20m])) / clamp_min(sum(rate(pico_router_cache_hits_total{job=~\"$job\"}[20m]) + rate(pico_router_cache_misses_total{job=~\"$job\"}[20m])), 1)",
-              "format": "time_series",
-              "hide": true,
-              "instant": false,
-              "legendFormat": "20m",
-              "range": true,
-              "refId": "C"
+              "refId": "A"
             }
           ],
           "title": "Clusterwide router cache hitrate (5 mins)",
@@ -3044,8 +3017,8 @@
           },
           "gridPos": {
             "h": 8,
-            "w": 9,
-            "x": 5,
+            "w": 8,
+            "x": 16,
             "y": 198
           },
           "id": 200,
@@ -3066,13 +3039,13 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "rate(pico_router_cache_hits_total{job=~\"$job\"}[$__rate_interval]) / (rate(pico_router_cache_hits_total{job=~\"$job\"}[$__rate_interval]) + rate(pico_router_cache_misses_total{job=~\"$job\"}[$__rate_interval]))",
-              "legendFormat": "__auto",
+              "expr": "bottomk(10, sum by (instance_name) (rate(pico_router_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) / (sum by (instance_name) (rate(pico_router_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) + sum by (instance_name) (rate(pico_router_cache_misses_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval]))))",
+              "legendFormat": "{{instance_name}}",
               "range": true,
               "refId": "A"
             }
           ],
-          "title": "Router cache hitrate",
+          "title": "Router cache hitrate - 10 worst instances",
           "type": "timeseries"
         },
         {
@@ -3138,9 +3111,9 @@
           },
           "gridPos": {
             "h": 8,
-            "w": 10,
-            "x": 14,
-            "y": 198
+            "w": 8,
+            "x": 16,
+            "y": 206
           },
           "id": 216,
           "options": {
@@ -3160,14 +3133,15 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "(pico_router_cache_statements_added_total{job=~\"$job\"} - pico_router_cache_statements_evicted_total{job=~\"$job\"}) / clamp_min(rate(pico_router_cache_statements_evicted_total{job=~\"$job\"}[$__rate_interval]), 1)",
-              "legendFormat": "__auto",
+              "expr": "bottomk(10, sum by (instance_name) (pico_router_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"} - pico_router_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}) / sum by (instance_name) (rate(pico_router_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])))",
+              "legendFormat": "{{instance_name}}",
               "range": true,
               "refId": "A"
             }
           ],
-          "title": "Estimated router cache entry lifetime",
-          "type": "timeseries"
+          "title": "Estimated router cache entry lifetime - 10 most churning instances",
+          "type": "timeseries",
+          "description": "Shows up only when the cache is evicting."
         },
         {
           "datasource": {
@@ -3199,10 +3173,10 @@
             "overrides": []
           },
           "gridPos": {
-            "h": 4,
-            "w": 5,
+            "h": 8,
+            "w": 8,
             "x": 0,
-            "y": 202
+            "y": 206
           },
           "id": 215,
           "options": {
@@ -3227,7 +3201,7 @@
             {
               "editorMode": "code",
               "exemplar": false,
-              "expr": "(sum(pico_router_cache_statements_added_total{job=~\"$job\"}) - sum(pico_router_cache_statements_evicted_total{job=~\"$job\"}) ) / clamp_min(sum(rate(pico_router_cache_statements_evicted_total{job=~\"$job\"}[1m])), 1)",
+              "expr": "(sum(pico_router_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}) - sum(pico_router_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"})) / clamp_min(sum(rate(pico_router_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[1m])), 1)",
               "format": "time_series",
               "hide": true,
               "instant": false,
@@ -3242,7 +3216,7 @@
                 "uid": "${prometheus}"
               },
               "editorMode": "code",
-              "expr": "(sum(pico_router_cache_statements_added_total{job=~\"$job\"}) - sum(pico_router_cache_statements_evicted_total{job=~\"$job\"}) ) / clamp_min(sum(rate(pico_router_cache_statements_evicted_total{job=~\"$job\"}[5m])), 1)",
+              "expr": "(sum(pico_router_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}) - sum(pico_router_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"})) / clamp_min(sum(rate(pico_router_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[5m])), 1)",
               "hide": false,
               "instant": false,
               "legendFormat": "5m",
@@ -3256,7 +3230,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "(sum(pico_router_cache_statements_added_total{job=~\"$job\"}) - sum(pico_router_cache_statements_evicted_total{job=~\"$job\"}) ) / clamp_min(sum(rate(pico_router_cache_statements_evicted_total{job=~\"$job\"}[20m])), 1)",
+              "expr": "(sum(pico_router_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}) - sum(pico_router_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"})) / clamp_min(sum(rate(pico_router_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[20m])), 1)",
               "format": "time_series",
               "hide": true,
               "instant": false,
@@ -3266,7 +3240,8 @@
             }
           ],
           "title": "Clusterwide router cache entry lifetime (5 minutes)",
-          "type": "stat"
+          "type": "stat",
+          "description": "Shows up only when the cache is evicting."
         },
         {
           "datasource": {
@@ -3301,10 +3276,10 @@
             "overrides": []
           },
           "gridPos": {
-            "h": 4,
-            "w": 5,
+            "h": 8,
+            "w": 8,
             "x": 0,
-            "y": 375
+            "y": 214
           },
           "id": 204,
           "options": {
@@ -3327,39 +3302,19 @@
           "pluginVersion": "12.2.1",
           "targets": [
             {
-              "editorMode": "code",
-              "expr": "sum(rate(pico_storage_cache_1st_requests_total{job=~\"$job\"}[1m]) - rate(pico_storage_cache_2nd_requests_total{job=~\"$job\"}[1m])) / clamp_min(sum(rate(pico_storage_cache_1st_requests_total{job=~\"$job\"}[1m])), 1)",
-              "hide": true,
-              "legendFormat": "1m",
-              "range": true,
-              "refId": "A"
-            },
-            {
               "datasource": {
                 "type": "prometheus",
                 "uid": "${prometheus}"
               },
               "editorMode": "code",
-              "expr": "sum(rate(pico_storage_cache_1st_requests_total{job=~\"$job\"}[5m]) - rate(pico_storage_cache_2nd_requests_total{job=~\"$job\"}[5m])) / clamp_min(sum(rate(pico_storage_cache_1st_requests_total{job=~\"$job\"}[5m])), 1)",
+              "expr": "sum(rate(pico_storage_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[5m])) / clamp_min(sum(rate(pico_storage_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[5m])) + sum(rate(pico_storage_cache_misses_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[5m])), 1)",
               "hide": false,
               "legendFormat": "5m",
               "range": true,
-              "refId": "B"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${prometheus}"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(pico_storage_cache_1st_requests_total{job=~\"$job\"}[20m]) - rate(pico_storage_cache_2nd_requests_total{job=~\"$job\"}[20m])) / clamp_min(sum(rate(pico_storage_cache_1st_requests_total{job=~\"$job\"}[20m])), 1)",
-              "hide": true,
-              "legendFormat": "20m",
-              "range": true,
-              "refId": "C"
+              "refId": "A"
             }
           ],
-          "title": "Clusterwide storage cache hitrate (5 minutes)",
+          "title": "Clusterwide storage cache hitrate (5 mins)",
           "type": "stat"
         },
         {
@@ -3427,9 +3382,9 @@
           },
           "gridPos": {
             "h": 8,
-            "w": 9,
-            "x": 5,
-            "y": 375
+            "w": 8,
+            "x": 16,
+            "y": 214
           },
           "id": 201,
           "options": {
@@ -3449,13 +3404,13 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "(rate(pico_storage_cache_1st_requests_total{job=~\"$job\"}[$__rate_interval]) - rate(pico_storage_cache_2nd_requests_total{job=~\"$job\"}[$__rate_interval])) / rate(pico_storage_cache_1st_requests_total{job=~\"$job\"}[$__rate_interval])",
-              "legendFormat": "__auto",
+              "expr": "bottomk(10, sum by (instance_name) (rate(pico_storage_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) / (sum by (instance_name) (rate(pico_storage_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) + sum by (instance_name) (rate(pico_storage_cache_misses_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval]))))",
+              "legendFormat": "{{instance_name}}",
               "range": true,
               "refId": "A"
             }
           ],
-          "title": "Storage cache hitrate",
+          "title": "Storage cache hitrate - 10 worst instances",
           "type": "timeseries"
         },
         {
@@ -3521,9 +3476,9 @@
           },
           "gridPos": {
             "h": 8,
-            "w": 10,
-            "x": 14,
-            "y": 375
+            "w": 8,
+            "x": 16,
+            "y": 222
           },
           "id": 217,
           "options": {
@@ -3543,14 +3498,15 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "(pico_storage_cache_statements_added_total{job=~\"$job\"} - pico_storage_cache_statements_evicted_total{job=~\"$job\"}) / clamp_min(rate(pico_storage_cache_statements_evicted_total{job=~\"$job\"}[$__rate_interval]), 1)",
-              "legendFormat": "__auto",
+              "expr": "bottomk(10, sum by (instance_name) (pico_storage_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"} - pico_storage_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}) / sum by (instance_name) (rate(pico_storage_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])))",
+              "legendFormat": "{{instance_name}}",
               "range": true,
               "refId": "A"
             }
           ],
-          "title": "Estimated storage cache entry lifetime",
-          "type": "timeseries"
+          "title": "Estimated storage cache entry lifetime - 10 most churning instances",
+          "type": "timeseries",
+          "description": "Shows up only when the cache is evicting."
         },
         {
           "datasource": {
@@ -3582,10 +3538,10 @@
             "overrides": []
           },
           "gridPos": {
-            "h": 4,
-            "w": 5,
+            "h": 8,
+            "w": 8,
             "x": 0,
-            "y": 379
+            "y": 222
           },
           "id": 218,
           "options": {
@@ -3610,7 +3566,7 @@
             {
               "editorMode": "code",
               "exemplar": false,
-              "expr": "(sum(pico_storage_cache_statements_added_total{job=~\"$job\"}) - sum(pico_storage_cache_statements_evicted_total{job=~\"$job\"}) ) / clamp_min(sum(rate(pico_storage_cache_statements_evicted_total{job=~\"$job\"}[1m])), 1)",
+              "expr": "(sum(pico_storage_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}) - sum(pico_storage_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"})) / clamp_min(sum(rate(pico_storage_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[1m])), 1)",
               "format": "time_series",
               "hide": true,
               "instant": false,
@@ -3625,7 +3581,7 @@
                 "uid": "${prometheus}"
               },
               "editorMode": "code",
-              "expr": "(sum(pico_storage_cache_statements_added_total) - sum(pico_storage_cache_statements_evicted_total) ) / clamp_min(sum(rate(pico_storage_cache_statements_evicted_total[5m])), 1)",
+              "expr": "(sum(pico_storage_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}) - sum(pico_storage_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"})) / clamp_min(sum(rate(pico_storage_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[5m])), 1)",
               "hide": false,
               "instant": false,
               "legendFormat": "5m",
@@ -3639,7 +3595,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "(sum(pico_storage_cache_statements_added_total) - sum(pico_storage_cache_statements_evicted_total) ) / clamp_min(sum(rate(pico_storage_cache_statements_evicted_total[20m])), 1)",
+              "expr": "(sum(pico_storage_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}) - sum(pico_storage_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"})) / clamp_min(sum(rate(pico_storage_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[20m])), 1)",
               "format": "time_series",
               "hide": true,
               "instant": false,
@@ -3649,7 +3605,8 @@
             }
           ],
           "title": "Clusterwide storage cache entry lifetime (5 minutes)",
-          "type": "stat"
+          "type": "stat",
+          "description": "Shows up only when the cache is evicting."
         },
         {
           "datasource": {
@@ -3716,7 +3673,7 @@
             "h": 7,
             "w": 8,
             "x": 0,
-            "y": 383
+            "y": 230
           },
           "id": 210,
           "options": {
@@ -3736,8 +3693,8 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "pico_router_cache_statements_added_total{job=~\"$job\"}",
-              "legendFormat": "__auto",
+              "expr": "sum by (instance_name) (pico_router_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"})",
+              "legendFormat": "{{instance_name}}",
               "range": true,
               "refId": "A"
             }
@@ -3810,7 +3767,7 @@
             "h": 7,
             "w": 8,
             "x": 8,
-            "y": 383
+            "y": 230
           },
           "id": 205,
           "options": {
@@ -3830,8 +3787,8 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "rate(pico_router_cache_statements_added_total{job=~\"$job\"}[$__rate_interval])",
-              "legendFormat": "__auto",
+              "expr": "sum by (instance_name) (rate(pico_router_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval]))",
+              "legendFormat": "{{instance_name}}",
               "range": true,
               "refId": "A"
             }
@@ -3904,7 +3861,7 @@
             "h": 7,
             "w": 8,
             "x": 16,
-            "y": 383
+            "y": 230
           },
           "id": 211,
           "options": {
@@ -3924,8 +3881,8 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "pico_router_cache_statements_added_total{job=~\"$job\"} - pico_router_cache_statements_evicted_total{job=~\"$job\"}",
-              "legendFormat": "__auto",
+              "expr": "sum by (instance_name) (pico_router_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"} - pico_router_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"})",
+              "legendFormat": "{{instance_name}}",
               "range": true,
               "refId": "A"
             }
@@ -3998,7 +3955,7 @@
             "h": 7,
             "w": 8,
             "x": 0,
-            "y": 390
+            "y": 237
           },
           "id": 212,
           "options": {
@@ -4018,8 +3975,8 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "pico_storage_cache_statements_added_total{job=~\"$job\"}",
-              "legendFormat": "__auto",
+              "expr": "sum by (instance_name) (pico_storage_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"})",
+              "legendFormat": "{{instance_name}}",
               "range": true,
               "refId": "A"
             }
@@ -4092,7 +4049,7 @@
             "h": 7,
             "w": 8,
             "x": 8,
-            "y": 390
+            "y": 237
           },
           "id": 213,
           "options": {
@@ -4112,8 +4069,8 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "rate(pico_storage_cache_statements_added_total{job=~\"$job\"}[$__rate_interval])",
-              "legendFormat": "__auto",
+              "expr": "sum by (instance_name) (rate(pico_storage_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval]))",
+              "legendFormat": "{{instance_name}}",
               "range": true,
               "refId": "A"
             }
@@ -4186,7 +4143,7 @@
             "h": 7,
             "w": 8,
             "x": 16,
-            "y": 390
+            "y": 237
           },
           "id": 214,
           "options": {
@@ -4206,14 +4163,530 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "pico_storage_cache_statements_added_total{job=~\"$job\"} - pico_storage_cache_statements_evicted_total{job=~\"$job\"}",
-              "legendFormat": "__auto",
+              "expr": "sum by (instance_name) (pico_storage_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"} - pico_storage_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"})",
+              "legendFormat": "{{instance_name}}",
               "range": true,
               "refId": "A"
             }
           ],
           "title": "Current storage cache entries",
           "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "axisSoftMax": 1,
+                "axisSoftMin": 0,
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "smooth",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 198
+          },
+          "id": 230,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "12.2.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${prometheus}"
+              },
+              "editorMode": "code",
+              "expr": "quantile(0.5, sum by (instance_name) (rate(pico_router_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) / (sum by (instance_name) (rate(pico_router_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) + sum by (instance_name) (rate(pico_router_cache_misses_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval]))))",
+              "legendFormat": "p50",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${prometheus}"
+              },
+              "editorMode": "code",
+              "expr": "quantile(0.95, sum by (instance_name) (rate(pico_router_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) / (sum by (instance_name) (rate(pico_router_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) + sum by (instance_name) (rate(pico_router_cache_misses_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval]))))",
+              "legendFormat": "p95",
+              "range": true,
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${prometheus}"
+              },
+              "editorMode": "code",
+              "expr": "quantile(0.99, sum by (instance_name) (rate(pico_router_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) / (sum by (instance_name) (rate(pico_router_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) + sum by (instance_name) (rate(pico_router_cache_misses_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval]))))",
+              "legendFormat": "p99",
+              "range": true,
+              "refId": "C"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${prometheus}"
+              },
+              "editorMode": "code",
+              "expr": "quantile(0.999, sum by (instance_name) (rate(pico_router_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) / (sum by (instance_name) (rate(pico_router_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) + sum by (instance_name) (rate(pico_router_cache_misses_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval]))))",
+              "legendFormat": "p99.9",
+              "range": true,
+              "refId": "D"
+            }
+          ],
+          "title": "Router cache hitrate - quantiles across instances",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "axisSoftMax": 1,
+                "axisSoftMin": 0,
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "smooth",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 214
+          },
+          "id": 231,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "12.2.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${prometheus}"
+              },
+              "editorMode": "code",
+              "expr": "quantile(0.5, sum by (instance_name) (rate(pico_storage_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) / (sum by (instance_name) (rate(pico_storage_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) + sum by (instance_name) (rate(pico_storage_cache_misses_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval]))))",
+              "legendFormat": "p50",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${prometheus}"
+              },
+              "editorMode": "code",
+              "expr": "quantile(0.95, sum by (instance_name) (rate(pico_storage_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) / (sum by (instance_name) (rate(pico_storage_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) + sum by (instance_name) (rate(pico_storage_cache_misses_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval]))))",
+              "legendFormat": "p95",
+              "range": true,
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${prometheus}"
+              },
+              "editorMode": "code",
+              "expr": "quantile(0.99, sum by (instance_name) (rate(pico_storage_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) / (sum by (instance_name) (rate(pico_storage_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) + sum by (instance_name) (rate(pico_storage_cache_misses_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval]))))",
+              "legendFormat": "p99",
+              "range": true,
+              "refId": "C"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${prometheus}"
+              },
+              "editorMode": "code",
+              "expr": "quantile(0.999, sum by (instance_name) (rate(pico_storage_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) / (sum by (instance_name) (rate(pico_storage_cache_hits_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])) + sum by (instance_name) (rate(pico_storage_cache_misses_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval]))))",
+              "legendFormat": "p99.9",
+              "range": true,
+              "refId": "D"
+            }
+          ],
+          "title": "Storage cache hitrate - quantiles across instances",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  }
+                ]
+              },
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 206
+          },
+          "id": 232,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "12.2.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${prometheus}"
+              },
+              "editorMode": "code",
+              "expr": "quantile(0.5, sum by (instance_name) (pico_router_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"} - pico_router_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}) / sum by (instance_name) (rate(pico_router_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])))",
+              "legendFormat": "p50",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${prometheus}"
+              },
+              "editorMode": "code",
+              "expr": "quantile(0.95, sum by (instance_name) (pico_router_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"} - pico_router_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}) / sum by (instance_name) (rate(pico_router_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])))",
+              "legendFormat": "p95",
+              "range": true,
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${prometheus}"
+              },
+              "editorMode": "code",
+              "expr": "quantile(0.99, sum by (instance_name) (pico_router_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"} - pico_router_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}) / sum by (instance_name) (rate(pico_router_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])))",
+              "legendFormat": "p99",
+              "range": true,
+              "refId": "C"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${prometheus}"
+              },
+              "editorMode": "code",
+              "expr": "quantile(0.999, sum by (instance_name) (pico_router_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"} - pico_router_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}) / sum by (instance_name) (rate(pico_router_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])))",
+              "legendFormat": "p99.9",
+              "range": true,
+              "refId": "D"
+            }
+          ],
+          "title": "Router cache entry lifetime - quantiles across instances",
+          "type": "timeseries",
+          "description": "Shows up only when the cache is evicting."
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  }
+                ]
+              },
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 222
+          },
+          "id": 233,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "12.2.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${prometheus}"
+              },
+              "editorMode": "code",
+              "expr": "quantile(0.5, sum by (instance_name) (pico_storage_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"} - pico_storage_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}) / sum by (instance_name) (rate(pico_storage_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])))",
+              "legendFormat": "p50",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${prometheus}"
+              },
+              "editorMode": "code",
+              "expr": "quantile(0.95, sum by (instance_name) (pico_storage_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"} - pico_storage_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}) / sum by (instance_name) (rate(pico_storage_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])))",
+              "legendFormat": "p95",
+              "range": true,
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${prometheus}"
+              },
+              "editorMode": "code",
+              "expr": "quantile(0.99, sum by (instance_name) (pico_storage_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"} - pico_storage_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}) / sum by (instance_name) (rate(pico_storage_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])))",
+              "legendFormat": "p99",
+              "range": true,
+              "refId": "C"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${prometheus}"
+              },
+              "editorMode": "code",
+              "expr": "quantile(0.999, sum by (instance_name) (pico_storage_cache_statements_added_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"} - pico_storage_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}) / sum by (instance_name) (rate(pico_storage_cache_statements_evicted_total{instance=~\"$instance\", job=\"$job\", tier=~\"$tier\", replicaset=~\"$replicaset\"}[$__rate_interval])))",
+              "legendFormat": "p99.9",
+              "range": true,
+              "refId": "D"
+            }
+          ],
+          "title": "Storage cache entry lifetime - quantiles across instances",
+          "type": "timeseries",
+          "description": "Shows up only when the cache is evicting."
         }
       ],
       "title": "Picodata query caches statistics",
@@ -8157,7 +8630,7 @@
               "showLineNumbers": false,
               "showMiniMap": false
             },
-            "content": "`quota_used_ratio` > 90%, `arena_used_ratio` > 90%, 50% < `items_used_ratio` < 90% – your memory is highly fragmented. See [docs](https://www.Picodata.io/en/doc/1.10/reference/reference_lua/box_slab/#lua-function.box.slab.info) for more info.\n\n`quota_used_ratio` > 90%, `arena_used_ratio` > 90%, `items_used_ratio` > 90% – you are running out of memory. You should consider increasing Picodata’s memory limit (*box.cfg.memtx_memory*).\n",
+            "content": "`quota_used_ratio` > 90%, `arena_used_ratio` > 90%, 50% < `items_used_ratio` < 90% \u2013 your memory is highly fragmented. See [docs](https://www.Picodata.io/en/doc/1.10/reference/reference_lua/box_slab/#lua-function.box.slab.info) for more info.\n\n`quota_used_ratio` > 90%, `arena_used_ratio` > 90%, `items_used_ratio` > 90% \u2013 you are running out of memory. You should consider increasing Picodata\u2019s memory limit (*box.cfg.memtx_memory*).\n",
             "mode": "markdown"
           },
           "pluginVersion": "12.2.1",
@@ -8278,7 +8751,7 @@
           "datasource": {
             "uid": "$prometheus"
           },
-          "description": "`arena_used_ratio` = `arena_used` / `arena_size`.\n\n`arena_used` – used for both tuples and indexes.\n\n`arena_size` – allocated for both tuples and indexes.\n",
+          "description": "`arena_used_ratio` = `arena_used` / `arena_size`.\n\n`arena_used` \u2013 used for both tuples and indexes.\n\n`arena_size` \u2013 allocated for both tuples and indexes.\n",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -8382,7 +8855,7 @@
           "datasource": {
             "uid": "$prometheus"
           },
-          "description": "`items_used_ratio` = `items_used` / `items_size`.\n\n`items_used` – used only for tuples.\n\n`items_size` – allocated only for tuples.\n",
+          "description": "`items_used_ratio` = `items_used` / `items_size`.\n\n`items_used` \u2013 used only for tuples.\n\n`items_size` \u2013 allocated only for tuples.\n",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -8486,7 +8959,7 @@
           "datasource": {
             "uid": "$prometheus"
           },
-          "description": "`quota_used_ratio` = `quota_used` / `quota_size`.\n\n`quota_used` – used by slab allocator (for both tuple and index slabs).\n\n`quota_size` – memory limit for slab allocator (as configured in the *memtx_memory* parameter).\n",
+          "description": "`quota_used_ratio` = `quota_used` / `quota_size`.\n\n`quota_used` \u2013 used by slab allocator (for both tuple and index slabs).\n\n`quota_size` \u2013 memory limit for slab allocator (as configured in the *memtx_memory* parameter).\n",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -12047,7 +12520,7 @@
               "expr": "tnt_space_len{instance=~\"$instance\", engine=\"memtx\", job=~\"$job\"}",
               "format": "time_series",
               "intervalFactor": 2,
-              "legendFormat": "{{instance_name}} — {{name}}",
+              "legendFormat": "{{instance_name}} - {{name}}",
               "range": true,
               "refId": "A"
             }
@@ -12151,7 +12624,7 @@
               "expr": "tnt_vinyl_tuples{instance=~\"$instance\",engine=\"vinyl\",job=~\"$job\"}",
               "format": "time_series",
               "intervalFactor": 2,
-              "legendFormat": "{{instance_name}} — {{name}}",
+              "legendFormat": "{{instance_name}} - {{name}}",
               "refId": "A"
             }
           ],
@@ -12253,7 +12726,7 @@
               "expr": "tnt_space_bsize{instance=~\"$instance\",engine=\"memtx\",job=~\"$job\"}",
               "format": "time_series",
               "intervalFactor": 2,
-              "legendFormat": "{{instance_name}} — {{name}}",
+              "legendFormat": "{{instance_name}} - {{name}}",
               "refId": "A"
             }
           ],
@@ -12355,7 +12828,7 @@
               "expr": "tnt_space_index_bsize{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
               "intervalFactor": 2,
-              "legendFormat": "{{instance_name}} — {{name}} ({{index_name}})",
+              "legendFormat": "{{instance_name}} - {{name}} ({{index_name}})",
               "refId": "A"
             }
           ],
@@ -12457,7 +12930,7 @@
               "expr": "tnt_space_total_bsize{instance=~\"$instance\",engine=\"memtx\",job=~\"$job\"}",
               "format": "time_series",
               "intervalFactor": 2,
-              "legendFormat": "{{instance_name}} — {{name}}",
+              "legendFormat": "{{instance_name}} - {{name}}",
               "refId": "A"
             }
           ],
@@ -13312,7 +13785,7 @@
           "datasource": {
             "uid": "$prometheus"
           },
-          "description": "«Level 0» (L0) memory area in bytes. L0 is the area that\nvinyl can use for in-memory storage of an LSM tree.\nBy monitoring this metric, you can see when L0 is getting\nclose to its maximum (tnt_vinyl_regulator_dump_watermark),\nat which time a dump will occur. You can expect L0 = 0\nimmediately after the dump operation is completed.\n\nPanel works with `metrics >= 0.8.0`.\n",
+          "description": "\u00abLevel 0\u00bb (L0) memory area in bytes. L0 is the area that\nvinyl can use for in-memory storage of an LSM tree.\nBy monitoring this metric, you can see when L0 is getting\nclose to its maximum (tnt_vinyl_regulator_dump_watermark),\nat which time a dump will occur. You can expect L0 = 0\nimmediately after the dump operation is completed.\n\nPanel works with `metrics >= 0.8.0`.\n",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -13619,7 +14092,7 @@
           "datasource": {
             "uid": "$prometheus"
           },
-          "description": "Average per second rate of commits (successful transaction ends).\nIt includes implicit commits: for example, any insert operation causes a commit\nunless it is within a `box.begin()`–`box.commit()` block.\n\nPanel works with `metrics >= 0.8.0`.\n",
+          "description": "Average per second rate of commits (successful transaction ends).\nIt includes implicit commits: for example, any insert operation causes a commit\nunless it is within a `box.begin()`\u2013`box.commit()` block.\n\nPanel works with `metrics >= 0.8.0`.\n",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -13723,7 +14196,7 @@
           "datasource": {
             "uid": "$prometheus"
           },
-          "description": "Average per second rate of rollbacks (unsuccessful transaction ends).\nThis is not merely a count of explicit `box.rollback()` requests — it includes requests\nthat ended with errors.\nPanel works with `metrics >= 0.8.0`.\n",
+          "description": "Average per second rate of rollbacks (unsuccessful transaction ends).\nThis is not merely a count of explicit `box.rollback()` requests - it includes requests\nthat ended with errors.\nPanel works with `metrics >= 0.8.0`.\n",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -13827,7 +14300,7 @@
           "datasource": {
             "uid": "$prometheus"
           },
-          "description": "Average per second rate of conflicts that caused transactions to roll back.\nThe ratio `tx conflicts` / `tx commits` above 5% indicates that vinyl is not healthy.\nAt this moment you’ll probably see a lot of other problems with vinyl.\n\nPanel works with `metrics >= 0.8.0`.\n",
+          "description": "Average per second rate of conflicts that caused transactions to roll back.\nThe ratio `tx conflicts` / `tx commits` above 5% indicates that vinyl is not healthy.\nAt this moment you\u2019ll probably see a lot of other problems with vinyl.\n\nPanel works with `metrics >= 0.8.0`.\n",
           "fieldConfig": {
             "defaults": {
               "color": {

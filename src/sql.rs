@@ -7,7 +7,7 @@ use crate::cas::Predicate;
 use crate::catalog::governor_queue;
 use crate::column_name;
 use crate::config::{AlterSystemParameters, DYNAMIC_CONFIG};
-use crate::metrics::{self, STORAGE_1ST_REQUESTS_TOTAL};
+use crate::metrics;
 use crate::plugin::{InheritOpts, PluginIdentifier, TopologyUpdateOpKind};
 use crate::schema::{
     wait_for_ddl_commit, CreateIndexParams, CreateProcParams, CreateTableParams, DdlError,
@@ -2894,9 +2894,7 @@ pub unsafe extern "C" fn proc_sql_execute(
 
         let result = if rc == 0 { "ok" } else { "err" };
 
-        STORAGE_1ST_REQUESTS_TOTAL
-            .with_label_values(&[query_type, result])
-            .inc();
+        metrics::record_storage_1st_request(query_type, result);
 
         let is_replica = node::global()
             .map(|node| node.is_readonly())

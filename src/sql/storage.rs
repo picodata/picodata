@@ -25,8 +25,8 @@ use std::cell::{OnceCell, RefCell};
 use std::time::Duration;
 
 use crate::metrics::{
-    report_storage_cache_hit, report_storage_cache_miss, STORAGE_CACHE_STATEMENTS_ADDED_TOTAL,
-    STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL,
+    record_storage_cache_statement_added, record_storage_cache_statement_evicted,
+    report_storage_cache_hit, report_storage_cache_miss,
 };
 use smol_str::{format_smolstr, SmolStr};
 use sql::executor::vdbe::SqlStmt;
@@ -199,7 +199,7 @@ pub(crate) struct StorageCacheEntry {
 /// Actual table drops are attempted later outside the mutex.
 fn make_evict_fn() -> EvictFn<u64, StorageCacheEntry> {
     Box::new(move |plan_id: &u64, val: &mut StorageCacheEntry| {
-        STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL.inc();
+        record_storage_cache_statement_evicted();
         retire_plan(*plan_id, val);
         Ok(())
     })
@@ -355,7 +355,7 @@ impl StorageCache for PicoStorageCache {
         self.mem_used += mem_added;
         self.mem_used -= mem_removed;
 
-        STORAGE_CACHE_STATEMENTS_ADDED_TOTAL.inc();
+        record_storage_cache_statement_added();
         Ok(())
     }
     fn get(&mut self, plan_id: &u64) -> Result<Option<CachedStmtRef<Self::LockRef>>, SbroadError> {
