@@ -436,9 +436,16 @@ pub fn record_router_cache_miss() {
 }
 
 pub fn record_router_cache_statement_added() {
+    let tier = my_tier();
+    let replicaset = my_replicaset();
     ROUTER_CACHE_STATEMENTS_ADDED_TOTAL
-        .with_label_values(&[my_tier(), my_replicaset()])
+        .with_label_values(&[tier, replicaset])
         .inc();
+    // Prime the evicted counter at 0 for the same labelset so dashboards can
+    // freely write `added - evicted` without an `OR vector(0)` fallback.
+    ROUTER_CACHE_STATEMENTS_EVICTED_TOTAL
+        .with_label_values(&[tier, replicaset])
+        .inc_by(0);
 }
 
 pub fn record_router_cache_statement_evicted() {
@@ -448,9 +455,14 @@ pub fn record_router_cache_statement_evicted() {
 }
 
 pub fn record_storage_cache_statement_added() {
+    let tier = my_tier();
+    let replicaset = my_replicaset();
     STORAGE_CACHE_STATEMENTS_ADDED_TOTAL
-        .with_label_values(&[my_tier(), my_replicaset()])
+        .with_label_values(&[tier, replicaset])
         .inc();
+    STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL
+        .with_label_values(&[tier, replicaset])
+        .inc_by(0);
 }
 
 pub fn record_storage_cache_statement_evicted() {

@@ -209,7 +209,7 @@ search:
 
 Тип: counter
 
-### pico_storage_1st_requests_total
+### pico_storage_1st_requests_total {: #pico_storage_1st_requests_total }
 
 Общее количество первых RPC-запросов от роутера к стораджу при выполнении SQL
 (плановый идентификатор без полного текста запроса). Метрика покрывает как
@@ -219,7 +219,7 @@ DQL-, так и DML-запросы и отражает реальную нагр
 
 Тип: counter
 
-### pico_storage_2nd_requests_total
+### pico_storage_2nd_requests_total {: #pico_storage_2nd_requests_total }
 
 Общее количество вторых RPC-запросов от роутера к стораджу при выполнении SQL.
 Второй запрос отправляется только при промахе кэша плана на стороне стораджа
