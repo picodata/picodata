@@ -23,6 +23,7 @@ pub fn with_custom_section() {
             "tarantool_module_test_runner::test_attr::with_custom_section",
             with_custom_section,
             false,
+            None,
         )]
     )
 }

@@ -7,3 +7,4 @@ license-file.workspace = true
 [dependencies]
 jobserver = "0.1.26"
 pkg-config = "0.3"
+rustflags = { workspace = true }

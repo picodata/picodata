@@ -88,11 +88,15 @@ build-release-pkg: build
 # See https://github.com/rust-lang/cargo/issues/6375#issuecomment-444900324.
 DEFAULT_TARGET := $(shell cargo -vV | sed -n 's|host: ||p')
 
+# ASan build: uses --cfg asan flag instead of a dedicated Cargo profile.
+# Artifacts go to asan-dev/ to avoid conflicts with regular builds.
 # TODO: drop nightly features once sanitizers are stable.
 .PHONY: build-asan-dev
-build-asan-dev: override CARGO_ENV = RUSTC_BOOTSTRAP=1 RUSTFLAGS=-Zsanitizer=address
+build-asan-dev: override CARGO_ENV = RUSTC_BOOTSTRAP=1
+build-asan-dev: override CARGO_ENV += CARGO_TARGET_DIR=asan-dev
+build-asan-dev: override CARGO_ENV += RUSTFLAGS='-Zsanitizer=address --cfg asan'
+build-asan-dev: override CARGO_ENV += RUSTDOCFLAGS='-Zsanitizer=address --cfg asan'
 build-asan-dev: override CARGO_FLAGS += --target=$(DEFAULT_TARGET)
-build-asan-dev: override CARGO_FLAGS += --profile=asan-dev
 build-asan-dev: build
 
 # XXX: make sure we pass proper flags to cargo test so resulting picodata binary can be

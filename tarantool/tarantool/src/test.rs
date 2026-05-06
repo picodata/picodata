@@ -13,11 +13,14 @@ pub struct TestCase {
     // TODO: Support functions returning `Result`
     f: fn(),
     should_panic: bool,
+    skip: Option<&'static str>,
 }
 
 impl PartialEq for TestCase {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.should_panic == other.should_panic
+        self.name == other.name
+            && self.should_panic == other.should_panic
+            && self.skip == other.skip
     }
 }
 
@@ -28,11 +31,17 @@ impl TestCase {
     /// used, so users don't usually use it directly.
     ///
     /// [`tarantool::test`]: macro@crate::test
-    pub const fn new(name: &'static str, f: fn(), should_panic: bool) -> Self {
+    pub const fn new(
+        name: &'static str,
+        f: fn(),
+        should_panic: bool,
+        skip: Option<&'static str>,
+    ) -> Self {
         Self {
             name,
             f,
             should_panic,
+            skip,
         }
     }
 
@@ -54,13 +63,18 @@ impl TestCase {
         self.should_panic
     }
 
+    /// Check if the test case should be skipped and return the reason.
+    pub fn skip(&self) -> Option<&'static str> {
+        self.skip
+    }
+
     /// Convert the test case into a struct that can be used with the [`tester`]
     /// crate.
     pub const fn to_tester(&self) -> TestDescAndFn {
         TestDescAndFn {
             desc: TestDesc {
                 name: TestName::StaticTestName(self.name),
-                ignore: false,
+                ignore: self.skip.is_some(),
                 should_panic: if self.should_panic {
                     ShouldPanic::Yes
                 } else {

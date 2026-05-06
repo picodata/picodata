@@ -20,3 +20,6 @@ members = [
 
 [profile.dev]
 lto = "thin"
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(asan)"] }

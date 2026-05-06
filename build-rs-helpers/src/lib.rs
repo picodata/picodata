@@ -9,6 +9,18 @@ pub mod cmake;
 pub mod exports;
 pub mod rustc;
 
+/// Check if ASan is enabled by looking for `--cfg asan` in RUSTFLAGS.
+pub fn is_asan_enabled() -> bool {
+    for flag in rustflags::from_env() {
+        if let rustflags::Flag::Cfg { name, value: None } = flag {
+            if name == "asan" {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 use std::{ffi::OsStr, panic::Location, path::PathBuf, process::Command};
 
 pub trait CommandExt {

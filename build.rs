@@ -1,4 +1,4 @@
-use build_rs_helpers::{cargo, rustc, CommandExt};
+use build_rs_helpers::{cargo, is_asan_enabled, rustc, CommandExt};
 use std::{
     collections::{HashMap, HashSet},
     ffi::OsString,
@@ -164,8 +164,7 @@ fn export_public_symbols() {
     }
 
     // Add extra symbols for ASan (tarantool/src/lua/utils.lua).
-    let profile = cargo::get_build_profile();
-    if profile.starts_with("asan") {
+    if is_asan_enabled() {
         symbols.extend([
             "__asan_unpoison_memory_region".into(),
             "__asan_poison_memory_region".into(),
