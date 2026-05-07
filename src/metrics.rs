@@ -377,6 +377,20 @@ pub static SQL_LOCAL_QUERY_DURATION: LazyLock<HistogramVec> = LazyLock::new(|| {
     .unwrap()
 });
 
+pub static SQL_STORAGE_QUERY_DURATION: LazyLock<HistogramVec> = LazyLock::new(|| {
+    HistogramVec::new(
+        HistogramOpts::new(
+            "pico_sql_storage_query_duration",
+            "Histogram of storage-side SQL query execution durations served via .proc_sql_execute (in seconds)",
+        )
+        .buckets(vec![
+            0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0,
+        ]),
+        &["tier", "replicaset", "query_type", "result"],
+    )
+    .unwrap()
+});
+
 pub static STORAGE_CACHE_HITS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     IntCounterVec::new(
         Opts::new(
@@ -413,6 +427,12 @@ pub fn record_sql_local_query_total(query_type: &str, result: &str) {
 
 pub fn observe_sql_local_query_duration(query_type: &str, result: &str, duration: &Duration) {
     SQL_LOCAL_QUERY_DURATION
+        .with_label_values(&[my_tier(), my_replicaset(), query_type, result])
+        .observe(duration.as_secs_f64())
+}
+
+pub fn observe_sql_storage_query_duration(query_type: &str, result: &str, duration: &Duration) {
+    SQL_STORAGE_QUERY_DURATION
         .with_label_values(&[my_tier(), my_replicaset(), query_type, result])
         .observe(duration.as_secs_f64())
 }
@@ -656,6 +676,7 @@ pub fn register_metrics(registry: &prometheus::Registry) -> prometheus::Result<(
     registry.register(Box::new(STORAGE_2ND_REQUESTS_TOTAL.clone()))?;
     registry.register(Box::new(SQL_LOCAL_QUERY_DURATION.clone()))?;
     registry.register(Box::new(SQL_LOCAL_QUERY_TOTAL.clone()))?;
+    registry.register(Box::new(SQL_STORAGE_QUERY_DURATION.clone()))?;
     registry.register(Box::new(ROUTER_CACHE_STATEMENTS_ADDED_TOTAL.clone()))?;
     registry.register(Box::new(ROUTER_CACHE_STATEMENTS_EVICTED_TOTAL.clone()))?;
     registry.register(Box::new(ROUTER_CACHE_HITS_TOTAL.clone()))?;

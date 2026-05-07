@@ -2890,11 +2890,14 @@ pub unsafe extern "C" fn proc_sql_execute(
                 return report("instance is read-only: ", e.into());
             }
         }
+        let start = Instant::now_fiber();
         let rc = proc_sql_execute_impl(args, &mut port);
+        let duration = Instant::now_fiber().duration_since(start);
 
         let result = if rc == 0 { "ok" } else { "err" };
 
         metrics::record_storage_1st_request(query_type, result);
+        metrics::observe_sql_storage_query_duration(query_type, result, &duration);
 
         let is_replica = node::global()
             .map(|node| node.is_readonly())

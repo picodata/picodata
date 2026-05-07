@@ -167,6 +167,8 @@ def test_router_and_storage_cache_metrics(instance: Instance):
     # ACL is not executed on storage so no requests are reported
     check_metric(metrics, "pico_storage_1st_requests", None)
     check_metric(metrics, "pico_storage_2nd_requests", None)
+    # No .proc_sql_execute invocations -> no storage-side duration observations.
+    check_metric(metrics, "pico_sql_storage_query_duration", None)
 
     ################
     # Run DML query
@@ -203,6 +205,7 @@ def test_router_and_storage_cache_metrics(instance: Instance):
     check_metric(metrics, "pico_sql_local_query", 1, query_type="dql", result="ok")
     check_metric(metrics, "pico_storage_1st_requests", None, query_type="dql", result="ok")
     check_metric(metrics, "pico_storage_2nd_requests", None, query_type="dql", result="ok")
+    check_metric(metrics, "pico_sql_storage_query_duration", None, query_type="dql", result="ok")
 
     #####################################
     # Run the same DQL query via pgproto
@@ -223,6 +226,7 @@ def test_router_and_storage_cache_metrics(instance: Instance):
     check_metric(metrics, "pico_sql_local_query", 2, query_type="dql", result="ok")
     check_metric(metrics, "pico_storage_1st_requests", None, query_type="dql", result="ok")
     check_metric(metrics, "pico_storage_2nd_requests", None, query_type="dql", result="ok")
+    check_metric(metrics, "pico_sql_storage_query_duration", None, query_type="dql", result="ok")
 
     ##############################################
     # Ensure storage cache evictions are reported
@@ -757,6 +761,9 @@ def test_replica_local_dql_bypasses_iproto(instance: Instance):
         OPTION (read_preference = replica)
     """
 
+    def histogram_count(samples: list[Sample]) -> float:
+        return next((s.value for s in samples if s.name.endswith("_count")), 0)
+
     leader_metrics = leader.get_metrics()
     replica_metrics = replica.get_metrics()
     check_metric(leader_metrics, "pico_sql_local_query", None, query_type="dql", result="ok")
@@ -765,6 +772,7 @@ def test_replica_local_dql_bypasses_iproto(instance: Instance):
     check_metric(replica_metrics, "pico_sql_replicas_read", None)
     check_metric(replica_metrics, "pico_storage_1st_requests", None, query_type="dql", result="ok")
     check_metric(replica_metrics, "pico_storage_2nd_requests", None, query_type="dql", result="ok")
+    check_metric(replica_metrics, "pico_sql_storage_query_duration", None, query_type="dql", result="ok")
 
     # A leader cannot use the local fast-path for read_preference=replica.
     assert leader.sql(query) == [[replica.name, 1, 2]]
@@ -777,6 +785,15 @@ def test_replica_local_dql_bypasses_iproto(instance: Instance):
     check_metric(replica_metrics, "pico_sql_replicas_read", 1)
     check_metric(replica_metrics, "pico_storage_1st_requests", 1, query_type="dql", result="ok")
     check_metric(replica_metrics, "pico_storage_2nd_requests", 1, query_type="dql", result="ok")
+    # Each .proc_sql_execute call observes the histogram once; _count == 1st request count.
+    check_metric(
+        replica_metrics,
+        "pico_sql_storage_query_duration",
+        1,
+        aggregate=histogram_count,
+        query_type="dql",
+        result="ok",
+    )
 
     # The same query on the replica stays on the current instance and bypasses iproto.
     assert replica.sql(query) == [[replica.name, 1, 2]]
@@ -789,6 +806,14 @@ def test_replica_local_dql_bypasses_iproto(instance: Instance):
     check_metric(replica_metrics, "pico_sql_replicas_read", 1)
     check_metric(replica_metrics, "pico_storage_1st_requests", 1, query_type="dql", result="ok")
     check_metric(replica_metrics, "pico_storage_2nd_requests", 1, query_type="dql", result="ok")
+    check_metric(
+        replica_metrics,
+        "pico_sql_storage_query_duration",
+        1,
+        aggregate=histogram_count,
+        query_type="dql",
+        result="ok",
+    )
 
 
 @pytest.mark.webui

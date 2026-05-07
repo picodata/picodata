@@ -171,6 +171,15 @@ search:
 
 Тип: counter
 
+### pico_sql_storage_query_duration
+
+Гистограмма длительности выполнения SQL-запросов на стороне стораджа,
+обслуженных через `.proc_sql_execute` (в секундах)
+
+Метки: `tier`, `replicaset`, `query_type` (`dql`, `dml`, `block`), `result` (`ok`, `err`)
+
+Тип: histogram
+
 ### pico_sql_replicas_read_total
 
 Общее количество исполнений DQL-запросов на репликах (см. [read_preference](./db_config.md#read_preference))
