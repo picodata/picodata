@@ -11,7 +11,7 @@ use crate::{
 };
 
 use super::{
-    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, CountAsterisk, Like,
+    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, CountAsterisk, LetVarRef, Like,
     NodeAligned, NodeId, Over, Parameter, Reference, Row, ScalarFunction, SubQueryReference,
     Timestamp, Trim, UnaryExpr, Window,
 };
@@ -76,6 +76,15 @@ impl ExprChildren for Timestamp {
 }
 
 impl ExprChildren for Parameter {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        SmallVec::new()
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        SmallVec::new()
+    }
+}
+
+impl ExprChildren for LetVarRef {
     fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
         SmallVec::new()
     }
@@ -353,6 +362,7 @@ pub enum ExprOwned {
     Over(Over),
     Window(Window),
     Parameter(Parameter),
+    LetVarRef(LetVarRef),
 }
 
 impl From<ExprOwned> for NodeAligned {
@@ -378,6 +388,7 @@ impl From<ExprOwned> for NodeAligned {
             ExprOwned::Unary(unary) => unary.into(),
             ExprOwned::Timestamp(lt) => lt.into(),
             ExprOwned::Parameter(param) => param.into(),
+            ExprOwned::LetVarRef(let_var_ref) => let_var_ref.into(),
         }
     }
 }
@@ -416,6 +427,7 @@ pub enum Expression<'a> {
     Over(&'a Over),
     Window(&'a Window),
     Parameter(&'a Parameter),
+    LetVarRef(&'a LetVarRef),
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -441,6 +453,7 @@ pub enum MutExpression<'a> {
     Over(&'a mut Over),
     Window(&'a mut Window),
     Parameter(&'a mut Parameter),
+    LetVarRef(&'a mut LetVarRef),
 }
 
 #[allow(dead_code)]
@@ -530,6 +543,8 @@ impl Expression<'_> {
             | Expression::Over(_)
             // `$1`
             | Expression::Parameter(_)
+            // `:my_let_var` — bare identifier rendered as a colon-prefixed bind name
+            | Expression::LetVarRef(_)
             // -- doesn't have its own repesentation
             | Expression::Reference(_)
             // `ROW(...)`
@@ -590,6 +605,7 @@ impl Expression<'_> {
             | Expression::CountAsterisk(_)
             | Expression::Over(_)
             | Expression::Parameter(_)
+            | Expression::LetVarRef(_)
             | Expression::Reference(_)
             | Expression::Row(_)
             | Expression::ScalarFunction(_)
@@ -664,6 +680,7 @@ impl Expression<'_> {
             Expression::Over(n) => n.expr_children(),
             Expression::Window(n) => n.expr_children(),
             Expression::Parameter(n) => n.expr_children(),
+            Expression::LetVarRef(n) => n.expr_children(),
         }
     }
 
@@ -707,6 +724,7 @@ impl Expression<'_> {
             Expression::Unary(unary) => ExprOwned::Unary((*unary).clone()),
             Expression::Timestamp(lt) => ExprOwned::Timestamp((*lt).clone()),
             Expression::Parameter(param) => ExprOwned::Parameter((*param).clone()),
+            Expression::LetVarRef(let_var_ref) => ExprOwned::LetVarRef((*let_var_ref).clone()),
         }
     }
 }
@@ -735,6 +753,7 @@ impl MutExpression<'_> {
             MutExpression::Over(n) => n.expr_children_mut(),
             MutExpression::Window(n) => n.expr_children_mut(),
             MutExpression::Parameter(n) => n.expr_children_mut(),
+            MutExpression::LetVarRef(n) => n.expr_children_mut(),
         }
     }
 
@@ -780,6 +799,7 @@ impl ExprOwned {
             ExprOwned::Over(n) => n.expr_children_mut(),
             ExprOwned::Window(n) => n.expr_children_mut(),
             ExprOwned::Parameter(n) => n.expr_children_mut(),
+            ExprOwned::LetVarRef(n) => n.expr_children_mut(),
         };
         for child in children {
             f(child)?;

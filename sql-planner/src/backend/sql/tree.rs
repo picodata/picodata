@@ -122,6 +122,9 @@ pub enum SyntaxData {
     /// `src/vdbe/mod.rs` expects when reading parameter names back from
     /// `pVList` to decide positional vs LET-style references.
     ParameterColon(NodeId, usize),
+    /// LET-variable reference, rendered as `:<name>` (no leading dollar, no
+    /// numeric index). Can be produced only in transactional block path.
+    LetVarRef(NodeId, SmolStr),
     /// virtual table (the key is a motion node id
     /// pointing to the execution plan's virtual table)
     VTable(NodeId),
@@ -503,6 +506,14 @@ impl SyntaxNode {
         }
     }
 
+    fn new_let_var_ref(id: NodeId, name: SmolStr) -> Self {
+        SyntaxNode {
+            data: SyntaxData::LetVarRef(id, name),
+            left: None,
+            right: Vec::new(),
+        }
+    }
+
     fn left_id_or_err(&self) -> Result<usize, SbroadError> {
         match self.left {
             Some(id) => Ok(id),
@@ -593,9 +604,10 @@ impl SyntaxNodes {
     fn push_sn_plan(&mut self, node: SyntaxNode) -> usize {
         let id = self.next_id();
         match node.data {
-            SyntaxData::PlanId(_) | SyntaxData::Parameter(..) | SyntaxData::ParameterColon(..) => {
-                self.stack.push(id)
-            }
+            SyntaxData::PlanId(_)
+            | SyntaxData::Parameter(..)
+            | SyntaxData::ParameterColon(..)
+            | SyntaxData::LetVarRef(..) => self.stack.push(id),
             _ => {
                 unreachable!("Expected a plan node wrapper.");
             }
@@ -608,7 +620,10 @@ impl SyntaxNodes {
         let id = self.next_id();
         assert!(!matches!(
             node.data,
-            SyntaxData::PlanId(_) | SyntaxData::Parameter(..) | SyntaxData::ParameterColon(..)
+            SyntaxData::PlanId(_)
+                | SyntaxData::Parameter(..)
+                | SyntaxData::ParameterColon(..)
+                | SyntaxData::LetVarRef(..)
         ));
         self.arena.push(node);
         id
@@ -789,7 +804,8 @@ impl<'p> SyntaxPlan<'p> {
             data:
                 SyntaxData::PlanId(id)
                 | SyntaxData::Parameter(id, ..)
-                | SyntaxData::ParameterColon(id, ..),
+                | SyntaxData::ParameterColon(id, ..)
+                | SyntaxData::LetVarRef(id, ..),
             ..
         } = sn
         else {
@@ -1050,6 +1066,10 @@ impl<'p> SyntaxPlan<'p> {
                 Expression::ScalarFunction { .. } => self.add_stable_func(id),
                 Expression::Trim { .. } => self.add_trim(id),
                 Expression::Timestamp { .. } | Expression::Parameter { .. } => {}
+                Expression::LetVarRef(let_var_ref) => {
+                    let sn = SyntaxNode::new_let_var_ref(id, let_var_ref.name.clone());
+                    self.nodes.push_sn_plan(sn);
+                }
             },
         }
     }

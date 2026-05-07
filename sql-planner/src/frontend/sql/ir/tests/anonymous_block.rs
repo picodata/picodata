@@ -102,10 +102,10 @@ fn anonymous_blocks_parsing_errors() {
             "DO LANGUAGE SQL $$ BEGIN CREATE USER u WITH PASSWORD 'Passw0rd'; END $$",
             "rule parsing error",
         ),
-        // LET is not supported yet
+        // Unused LET is rejected.
         (
             "DO LANGUAGE SQL $$ BEGIN LET v = (SELECT 1);  END $$",
-            "LET statements are not supported yet",
+            "LET variable \"v\" is declared but never used",
         ),
         // LET rhs must be SELECT or UPDATE queries
         (
@@ -287,6 +287,130 @@ fn delete_in_block_errors() {
     for (query, error_pattern) in error_cases {
         let error = expect_sql_to_ir_error(query, &[]);
         eprintln!("{}: {} vs {}", query, error, error_pattern);
+        assert!(error.to_string().contains(error_pattern));
+    }
+}
+
+/// Tests that LET resolution + planning succeed end-to-end (down to
+/// `sql_to_ir_without_bind`).
+#[test]
+fn let_resolution_ok() {
+    // The mock metadata gives `t1` (a: string, b: int) and `t2`
+    // (e/f/g/h: int). LET RHS types are picked to match the consumer.
+    let cases = [
+        // Basic LET → bare-identifier reference.
+        "DO $$ BEGIN \
+            LET v = (SELECT b FROM t1 WHERE a = 'x'); \
+            UPDATE t2 SET e = v; \
+        END $$",
+        // LET reused across multiple later statements.
+        "DO $$ BEGIN \
+            LET v = (SELECT b FROM t1 WHERE a = 'x'); \
+            UPDATE t2 SET e = v; \
+            UPDATE t2 SET f = v WHERE e = v; \
+        END $$",
+        // LET RHS referencing a prior LET.
+        "DO $$ BEGIN \
+            LET a = (SELECT 1); \
+            LET b = (SELECT a + 1); \
+            UPDATE t2 SET e = a + b; \
+        END $$",
+        // LET shadowed by a same-type redeclaration. Both decls must be
+        // used to satisfy the unused-LET check: the second LET RHS
+        // references the first, and the trailing UPDATE references the
+        // second. (DML statements must come after all LET / RETURN QUERY,
+        // so no interleaving with DML in between.)
+        "DO $$ BEGIN \
+            LET v = (SELECT 1); \
+            LET v = (SELECT v + 1); \
+            UPDATE t2 SET e = v; \
+        END $$",
+        // RETURN QUERY can also reference a LET.
+        "DO $$ BEGIN \
+            LET v = (SELECT b FROM t1 WHERE a = 'x'); \
+            RETURN QUERY SELECT v; \
+        END $$",
+        // LET and RETURN QUERY can interleave freely (only DML must come
+        // after LET / RETURN QUERY).
+        "DO $$ BEGIN \
+            LET a = (SELECT 1); \
+            RETURN QUERY SELECT a; \
+            LET b = (SELECT 2); \
+            RETURN QUERY SELECT b; \
+        END $$",
+    ];
+
+    for query in cases {
+        eprintln!("{query}");
+        let _ = sql_to_ir_without_bind(query, &[]);
+    }
+}
+
+/// Tests for LET resolution errors: ambiguity, use-before-declare,
+/// multi-column RHS, type mismatch on redeclaration, unused LET.
+#[test]
+fn let_resolution_errors() {
+    let cases = [
+        // Use before declaration: `v` is a column of t1 (and we don't have
+        // one anyway), and the LET hasn't been pushed into scope yet.
+        (
+            "DO $$ BEGIN UPDATE t2 SET e = v; LET v = (SELECT 1); END $$",
+            "column with name \"v\" not found",
+        ),
+        // Self-reference inside the LET RHS (no prior `v` exists). The RHS
+        // is `(SELECT v + 1)` with no relation in scope, so the bare `v`
+        // hits the "Reference … met under Values" path after the LET
+        // lookup misses.
+        (
+            "DO $$ BEGIN LET v = (SELECT v + 1); UPDATE t2 SET e = v; END $$",
+            "Reference v met under Values",
+        ),
+        // Ambiguity: relation `t2` has a column `e`, and a LET also named
+        // `e`. A bare `e` inside an UPDATE on `t2` would otherwise be
+        // ambiguous.
+        (
+            "DO $$ BEGIN LET e = (SELECT 1); UPDATE t2 SET e = e + 1; END $$",
+            "column reference \"e\" is ambiguous: it could refer to either a LET variable or a table column",
+        ),
+        // Multi-column LET RHS is rejected at planning time (single-row
+        // checking is deferred to runtime per the design).
+        (
+            "DO $$ BEGIN LET v = (SELECT a, b FROM t1); UPDATE t2 SET e = v; END $$",
+            "LET RHS must be a single-column query",
+        ),
+        // Redeclaration with a different type. (No DML between the two
+        // LETs — the ordering rule still applies.)
+        (
+            "DO $$ BEGIN \
+                LET v = (SELECT 1::int); \
+                LET v = (SELECT 'x'); \
+                UPDATE t2 SET e = v; \
+            END $$",
+            "cannot be redeclared with a different type",
+        ),
+        // Unused LET.
+        (
+            "DO $$ BEGIN LET v = (SELECT 1); RETURN QUERY SELECT 1; END $$",
+            "LET variable \"v\" is declared but never used",
+        ),
+        // A redeclaration creates a fresh binding; the new binding still
+        // has to be used for the unused-LET check to pass. Here both
+        // declarations of `v` exist but the second is never referenced
+        // before the block ends.
+        (
+            "DO $$ BEGIN \
+                LET v = (SELECT 1); \
+                RETURN QUERY SELECT v; \
+                LET v = (SELECT 2); \
+                RETURN QUERY SELECT 3; \
+            END $$",
+            "LET variable \"v\" is declared but never used",
+        ),
+    ];
+
+    for (query, error_pattern) in cases {
+        let error = expect_sql_to_ir_error(query, &[]);
+        eprintln!("{query}: {} vs {error_pattern}", error);
         assert!(error.to_string().contains(error_pattern));
     }
 }

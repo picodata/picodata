@@ -4,7 +4,7 @@ use crate::{
     errors::{Entity, SbroadError},
     executor::vtable::calculate_unified_types,
     ir::{
-        node::{Over, Parameter, SubQueryReference},
+        node::{LetVarRef, Over, Parameter, SubQueryReference},
         types::{DerivedType, UnrestrictedType},
         Plan,
     },
@@ -185,6 +185,7 @@ impl Expression<'_> {
             Expression::CountAsterisk(_) => DerivedType::new(UnrestrictedType::Integer),
             Expression::Timestamp(_) => DerivedType::new(UnrestrictedType::Datetime),
             Expression::Parameter(Parameter { param_type, .. }) => *param_type,
+            Expression::LetVarRef(LetVarRef { var_type, .. }) => *var_type,
         };
         Ok(ty)
     }

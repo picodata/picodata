@@ -493,6 +493,29 @@ impl From<Parameter> for NodeAligned {
     }
 }
 
+/// Reference to a LET variable inside a transactional block.
+///
+/// Created by the parser when an identifier inside a block statement resolves
+/// to a previously-declared LET variable. The variable's type is fixed at LET
+/// declaration time; at runtime, the block VDBE binds named-variable
+/// (`:name`) slots to the LET subprogram's stored value.
+///
+/// Example: in `LET v = (SELECT 1); RETURN QUERY SELECT v + 1;`, the second
+/// statement contains a `LetVarRef { name: "v", ... }` for the `v` operand.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LetVarRef {
+    /// LET variable name (already passed through `normalize_name_from_sql`).
+    pub name: SmolStr,
+    /// Type of the LET RHS, taken from the RHS's projection at declaration time.
+    pub var_type: DerivedType,
+}
+
+impl From<LetVarRef> for NodeAligned {
+    fn from(value: LetVarRef) -> Self {
+        Self::Node32(Node32::LetVarRef(value))
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CountAsterisk {}
 
@@ -1377,6 +1400,7 @@ pub enum BlockStatement<T> {
     /// Assign the scalar result of `query` to variable `var`.
     ///
     /// Example: `LET :x = (SELECT a FROM t WHERE pk = 1);`
+    /// TODO: var: SmolStr
     Let { var: String, query: T },
 
     /// Conditional block: execute `body` statements only when `cond` is true.
@@ -1390,27 +1414,27 @@ impl<T> BlockStatement<T> {
     /// Take the query from the statement.
     pub fn take(self) -> T {
         match self {
-            Self::ReturnQuery(v) => v,
-            Self::Query(v) => v,
-            _ => unimplemented!(),
+            Self::ReturnQuery(v) | Self::Query(v) => v,
+            Self::Let { query, .. } => query,
+            Self::If { .. } => unimplemented!(),
         }
     }
 
     /// Get a reference to the query from the statement.
     pub fn get(&self) -> &T {
         match self {
-            Self::ReturnQuery(v) => v,
-            Self::Query(v) => v,
-            _ => unimplemented!(),
+            Self::ReturnQuery(v) | Self::Query(v) => v,
+            Self::Let { query, .. } => query,
+            Self::If { .. } => unimplemented!(),
         }
     }
 
     /// Get a mutable reference to the query from the statement.
     pub fn get_mut(&mut self) -> &mut T {
         match self {
-            Self::ReturnQuery(v) => v,
-            Self::Query(v) => v,
-            _ => unimplemented!(),
+            Self::ReturnQuery(v) | Self::Query(v) => v,
+            Self::Let { query, .. } => query,
+            Self::If { .. } => unimplemented!(),
         }
     }
 
@@ -1422,7 +1446,11 @@ impl<T> BlockStatement<T> {
         Ok(match self {
             Self::ReturnQuery(v) => BlockStatement::ReturnQuery(f(v)?),
             Self::Query(v) => BlockStatement::Query(f(v)?),
-            _ => unimplemented!(),
+            Self::Let { var, query } => BlockStatement::Let {
+                var,
+                query: f(query)?,
+            },
+            Self::If { .. } => unimplemented!(),
         })
     }
 
@@ -1507,6 +1535,7 @@ pub enum Node32 {
     DropSchema,
     SubQueryReference(SubQueryReference),
     Backup(Backup),
+    LetVarRef(LetVarRef),
     // begin the section to allow in-place swapping with Constant using the replace32()
     Parameter(Parameter),
     Constant(Constant),
@@ -1552,6 +1581,9 @@ impl Node32 {
             Node32::Backup(backup) => NodeOwned::Ddl(DdlOwned::Backup(backup)),
             Node32::Constant(constant) => NodeOwned::Expression(ExprOwned::Constant(constant)),
             Node32::Parameter(param) => NodeOwned::Expression(ExprOwned::Parameter(param)),
+            Node32::LetVarRef(let_var_ref) => {
+                NodeOwned::Expression(ExprOwned::LetVarRef(let_var_ref))
+            }
             Node32::Timestamp(lt) => NodeOwned::Expression(ExprOwned::Timestamp(lt)),
         }
     }

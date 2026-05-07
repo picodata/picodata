@@ -4,7 +4,7 @@ use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant, Frame,
-    FrameType, IndexExpr, Like, NodeId, Over, Parameter, Reference, Row, ScalarFunction,
+    FrameType, IndexExpr, LetVarRef, Like, NodeId, Over, Parameter, Reference, Row, ScalarFunction,
     SubQueryReference, Trim, UnaryExpr, ValuesRow, Window,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, Unary};
@@ -175,6 +175,15 @@ pub fn to_type_expr(
     match plan.get_expression_node(node_id)? {
         Expression::Parameter(Parameter { index, .. }) => {
             Ok(TypeExpr::new(node_id, TypeExprKind::Parameter(index - 1)))
+        }
+        Expression::LetVarRef(LetVarRef { var_type, .. }) => {
+            // LET variables behave like typed references.
+            let Some(sbroad_type) = var_type.get() else {
+                return Ok(TypeExpr::new(node_id, TypeExprKind::Null));
+            };
+            let ty = Type::from(*sbroad_type);
+            let kind = TypeExprKind::Reference(ty);
+            Ok(TypeExpr::new(node_id, kind))
         }
         Expression::Constant(value) => {
             let Some(sbroad_type) = *value.value.get_type().get() else {

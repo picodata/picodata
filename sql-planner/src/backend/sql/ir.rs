@@ -1371,7 +1371,8 @@ where
                         | Expression::Trim { .. }
                         | Expression::Unary { .. }
                         | Expression::Timestamp { .. }
-                        | Expression::Parameter { .. } => {}
+                        | Expression::Parameter { .. }
+                        | Expression::LetVarRef { .. } => {}
                         Expression::Constant(Constant { value, .. }) => {
                             write!(sql, "{value}").map_err(|e| {
                                 SbroadError::FailedTo(
@@ -1409,6 +1410,20 @@ where
                             sql.push('*');
                         }
                     },
+                }
+            }
+            SyntaxData::LetVarRef(id, name) => {
+                // Render LET-variable reference as `:<name>`; wrap in a
+                // CAST when type is known, mirroring the param path.
+                let var_type = match ir_plan.get_node(*id) {
+                    Ok(Node::Expression(Expression::LetVarRef(let_var_ref))) => {
+                        let_var_ref.var_type
+                    }
+                    node => panic!("let var ref node points to {node:?}"),
+                };
+                match var_type.get() {
+                    Some(ty) => sql.push_str(&format_smolstr!("CAST(:{name} AS {ty})")),
+                    None => sql.push_str(&format_smolstr!(":{name}")),
                 }
             }
             SyntaxData::Parameter(id, index) | SyntaxData::ParameterColon(id, index) => {

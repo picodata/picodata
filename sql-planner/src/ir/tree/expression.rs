@@ -171,7 +171,8 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
                         | Expression::SubQueryReference { .. }
                         | Expression::CountAsterisk { .. }
                         | Expression::Timestamp { .. }
-                        | Expression::Parameter { .. } => None,
+                        | Expression::Parameter { .. }
+                        | Expression::LetVarRef { .. } => None,
                     }
                 }
                 Node::Acl(_)

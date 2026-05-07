@@ -19,7 +19,7 @@ use std::hash::BuildHasher;
 use super::node::expression::Expression;
 use super::node::relational::Relational;
 use super::node::{
-    ArithmeticExpr, Like, Limit, Over, Parameter, ScalarFunction, Timestamp, Window,
+    ArithmeticExpr, LetVarRef, Like, Limit, Over, Parameter, ScalarFunction, Timestamp, Window,
 };
 
 /// Helper macros to build a hash map or set
@@ -355,6 +355,9 @@ impl Plan {
                         buf,
                         "Parameter [type = {param_type}, index = {index}, unique: {unique}]"
                     )?;
+                }
+                Expression::LetVarRef(LetVarRef { name, var_type }) => {
+                    writeln!(buf, "LetVarRef [name = {name}, type = {var_type}]")?;
                 }
             };
         }

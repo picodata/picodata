@@ -28,7 +28,9 @@ use super::{
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::to_user;
 use crate::ir::node::relational::Relational;
-use crate::ir::node::{IndexExpr, Parameter, ReferenceAsteriskSource, SubQueryReference};
+use crate::ir::node::{
+    IndexExpr, LetVarRef, Parameter, ReferenceAsteriskSource, SubQueryReference,
+};
 use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::types::UnrestrictedType;
 use crate::ir::{Nodes, Plan};
@@ -315,6 +317,18 @@ impl<'plan> Comparator<'plan> {
                         {
                             return Ok((l_param_type, l_index, l_unique)
                                 == (r_param_type, r_index, r_unique));
+                        }
+                    }
+                    Expression::LetVarRef(LetVarRef {
+                        name: l_name,
+                        var_type: l_var_type,
+                    }) => {
+                        if let Expression::LetVarRef(LetVarRef {
+                            name: r_name,
+                            var_type: r_var_type,
+                        }) = right
+                        {
+                            return Ok((l_name, l_var_type) == (r_name, r_var_type));
                         }
                     }
                     Expression::Window(Window {
@@ -932,6 +946,10 @@ impl<'plan> Comparator<'plan> {
             }
             Expression::Parameter(_) => {
                 "Parameter".hash(state);
+            }
+            Expression::LetVarRef(let_var_ref) => {
+                "LetVarRef".hash(state);
+                let_var_ref.name.hash(state);
             }
         }
     }
@@ -1772,6 +1790,10 @@ impl Plan {
                 return Ok(col_type_inner.is_none_or(|t| matches!(t, UnrestrictedType::Boolean)));
             }
             Expression::Parameter(_) => return Ok(true),
+            Expression::LetVarRef(LetVarRef { var_type, .. }) => {
+                let var_type_inner = var_type.get();
+                return Ok(var_type_inner.is_none_or(|t| matches!(t, UnrestrictedType::Boolean)));
+            }
             _ => {}
         }
         Ok(false)

@@ -129,7 +129,8 @@ impl ReferredMap {
                 | Expression::CountAsterisk { .. }
                 | Expression::Timestamp { .. }
                 | Expression::SubQueryReference(SubQueryReference { .. })
-                | Expression::Parameter { .. } => Referred::None,
+                | Expression::Parameter { .. }
+                | Expression::LetVarRef { .. } => Referred::None,
                 Expression::Reference(Reference { target, .. }) => {
                     if target == &ReferenceTarget::Single(inner_child) {
                         Referred::Inner

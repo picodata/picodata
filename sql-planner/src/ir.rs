@@ -120,6 +120,9 @@ impl Nodes {
                 }
                 Node32::Constant(constant) => Node::Expression(Expression::Constant(constant)),
                 Node32::Parameter(param) => Node::Expression(Expression::Parameter(param)),
+                Node32::LetVarRef(let_var_ref) => {
+                    Node::Expression(Expression::LetVarRef(let_var_ref))
+                }
                 Node32::Timestamp(lt) => Node::Expression(Expression::Timestamp(lt)),
                 Node32::Backup(backup) => Node::Ddl(Ddl::Backup(backup)),
             }),
@@ -268,6 +271,9 @@ impl Nodes {
                     }
                     Node32::Parameter(param) => {
                         MutNode::Expression(MutExpression::Parameter(param))
+                    }
+                    Node32::LetVarRef(let_var_ref) => {
+                        MutNode::Expression(MutExpression::LetVarRef(let_var_ref))
                     }
                     Node32::Timestamp(lt) => MutNode::Expression(MutExpression::Timestamp(lt)),
                     Node32::Backup(backup) => MutNode::Ddl(MutDdl::Backup(backup)),

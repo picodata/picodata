@@ -691,3 +691,169 @@ UPDATE in transaction cannot have subqueries
 do $$ BEGIN UPDATE t SET b = 1 FROM (SELECT 1) WHERE pk = 1; END $$;
 -- ERROR:
 UPDATE in transaction cannot have subqueries
+
+-- TEST: let-init
+-- SQL:
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1 (pk INT PRIMARY KEY, a INT, b INT);
+INSERT INTO t1 VALUES (1,1,1), (2,2,2), (3,3,3), (4,4,4);
+DROP TABLE IF EXISTS t2;
+CREATE TABLE t2 (pk INT PRIMARY KEY, a INT, b INT);
+INSERT INTO t2 VALUES (1,-1,-1), (2,-2,-2), (3,-3,-3), (4,-4,-4);
+
+-- TEST: let-basic
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t1 WHERE pk = 1);
+  RETURN QUERY SELECT a + v FROM t2 WHERE pk = 1;
+END $$;
+-- EXPECTED:
+0,
+
+-- TEST: let-feeds-update
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t1 WHERE pk = 1);
+  UPDATE t2 SET b = v + 100 WHERE pk = 1;
+END $$;
+
+-- TEST: let-feeds-update-check
+-- SQL:
+SELECT * FROM t2 WHERE pk = 1;
+-- EXPECTED:
+1, -1, 101
+
+-- TEST: let-reused
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t1 WHERE pk = 2);
+  RETURN QUERY SELECT v;
+  RETURN QUERY SELECT v + v;
+END $$;
+-- EXPECTED:
+2,
+4,
+
+-- TEST: let-from-prior-let
+-- SQL:
+DO $$
+BEGIN
+  LET x = (SELECT a FROM t1 WHERE pk = 2);
+  LET y = (SELECT x + 1);
+  RETURN QUERY SELECT x;
+  RETURN QUERY SELECT y;
+END $$;
+-- EXPECTED:
+2,
+3,
+
+-- TEST: let-redeclared-same-type
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t1 WHERE pk = 2);
+  LET v = (SELECT v + 100);
+  RETURN QUERY SELECT v;
+END $$;
+-- EXPECTED:
+102,
+
+-- TEST: let-null-when-rhs-empty
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t1 WHERE pk = 999);
+  RETURN QUERY SELECT v IS NULL;
+END $$;
+-- EXPECTED:
+True,
+
+-- TEST: let-on-shard-key-rejects
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t1 WHERE pk = 2);
+  RETURN QUERY SELECT a FROM t1 WHERE pk = v;
+END $$;
+-- ERROR:
+transaction cannot be executed on all buckets
+
+-- TEST: let-rhs-must-be-single-column
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a, b FROM t1 WHERE pk = 1);
+  RETURN QUERY SELECT v;
+END $$;
+-- ERROR:
+LET RHS must be a single-column query
+
+-- TEST: let-unused-rejected
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t1 WHERE pk = 1);
+  RETURN QUERY SELECT 1;
+END $$;
+-- ERROR:
+LET variable "v" is declared but never used
+
+-- TEST: let-unused-redefined-rejected
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t1 WHERE pk = 1);
+  LET v = (SELECT a FROM t2 WHERE pk = 1);
+  RETURN QUERY SELECT 1;
+END $$;
+-- ERROR:
+LET variable "v" is declared but never used
+
+-- TEST: let-redeclared-different-type-rejected-1
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t2 WHERE pk = 1);
+  LET v = (SELECT 'x');
+  RETURN QUERY SELECT v;
+END $$;
+-- ERROR:
+LET variable "v" cannot be redeclared with a different type
+
+-- TEST: let-redeclared-different-type-rejected-2
+-- SQL:
+DO $$
+BEGIN
+  LET a = (SELECT 1);
+  RETURN QUERY SELECT a::text;
+  LET a = (SELECT 'kek');
+  RETURN QUERY SELECT a;
+END $$;
+-- ERROR:
+LET variable "a" cannot be redeclared with a different type
+
+-- TEST: let-redeclared-returns-new-value
+-- SQL:
+DO $$
+BEGIN
+  LET a = (SELECT 1);
+  RETURN QUERY SELECT a;
+  LET a = (SELECT 2);
+  RETURN QUERY SELECT a;
+END $$;
+-- EXPECTED:
+1,
+2
+
+-- TEST: let-ambiguous-with-column
+-- SQL:
+DO $$
+BEGIN
+  LET a = (SELECT 1);
+  RETURN QUERY SELECT a FROM t1 WHERE pk = 1;
+END $$;
+-- ERROR:
+column reference "a" is ambiguous: it could refer to either a LET variable or a table column

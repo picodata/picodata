@@ -29,6 +29,7 @@ pub fn execute_block_into_port(
 /// determines the kind:
 /// - `:N`    (digit)  — positional query parameter
 /// - `:name` (letter) — LET variable reference
+#[derive(Debug)]
 enum ParamName<'a> {
     /// `:N` — positional query parameter. Holds the 1-based index N.
     Positional(i32),
@@ -52,7 +53,6 @@ impl<'a> ParamName<'a> {
 struct CompiledSubprogram {
     subprogram: Box<SubProgram>,
     n_res_column: u16,
-    n_var: i32,
     // OP_Variable ops in `subprogram.aOp` reference parameter name strings
     // stored in this VList via P4_STATIC p4.z pointers. We hold on to it
     // until those ops are patched (which nulls p4.z), then free it in Drop.
@@ -80,7 +80,6 @@ impl CompiledSubprogram {
         subprogram.nCsr = vdbe.nCursor;
 
         let n_res_column = vdbe.nResColumn;
-        let n_var = vdbe.nVar;
 
         // Ownership of aOp now belongs to the subprogram; null it out on the
         // source VDBE so its Drop doesn't free the opcode array a second time.
@@ -99,7 +98,6 @@ impl CompiledSubprogram {
         Ok(Self {
             subprogram,
             n_res_column,
-            n_var,
             p_v_list,
         })
     }
@@ -113,6 +111,25 @@ impl CompiledSubprogram {
         // destructor (SubProgram is a plain C struct), so dropping it is a
         // bare deallocation.
         std::mem::replace(&mut self.subprogram, unsafe { alloc_zeroed() })
+    }
+
+    /// Count the number of positional parameters in the subprogram.
+    // FIXME: this looks more like max_positional_parameter_index
+    fn count_positional_parameters(&self) -> i32 {
+        let ops = unsafe {
+            std::slice::from_raw_parts(self.subprogram.aOp, self.subprogram.nOp as usize)
+        };
+        let mut count = 0;
+        for op in ops {
+            if op.opcode as i32 == OP_Variable {
+                let name = unsafe { Self::op_var_name(op) }.expect("OP_Variable without p4.z name");
+                if let ParamName::Positional(idx) = ParamName::parse(name) {
+                    count = std::cmp::max(count, idx);
+                }
+            }
+        }
+
+        count
     }
 
     /// Patch all OP_Variable opcodes, resolving each to its global aVar slot.
@@ -354,46 +371,43 @@ fn compile_and_assemble(
         )
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Total bind-variable count across all subprograms, taken from vdbe.nVar
-    // set by sqlVdbeMakeReady for each compiled statement. Each :N placeholder
-    // in the input pattern ends up as one entry in nVar; named refs (:foo,
-    // emitted only by LET/IF) would add to nVar without a corresponding value
-    // in `query.params`.
-    let total_query_params: i32 = compiled
+    let total_number_of_positional_params: i32 = compiled
         .iter()
         .map(|stmt| match stmt {
             BlockStatement::Let { query, .. }
             | BlockStatement::ReturnQuery(query)
-            | BlockStatement::Query(query) => query.n_var,
+            | BlockStatement::Query(query) => query.count_positional_parameters(),
             BlockStatement::If { cond, body } => {
-                cond.n_var + body.iter().map(|b| b.n_var).sum::<i32>()
+                cond.count_positional_parameters()
+                    + body
+                        .iter()
+                        .map(|b| b.count_positional_parameters())
+                        .sum::<i32>()
             }
         })
         .sum();
 
-    // For Query/ReturnQuery-only blocks (the only shape the current frontend
-    // emits) every OP_Variable references a positional :N placeholder, so the
-    // total nVar count must match the total number of supplied values. LET/IF
-    // refs would break this equality and require subtracting the named-ref
-    // count; revisit when the parser starts emitting LET/IF.
+    let total_number_of_passsed_params = stmts
+        .iter()
+        .map(|stmt| match stmt {
+            BlockStatement::Let { query, .. }
+            | BlockStatement::ReturnQuery(query)
+            | BlockStatement::Query(query) => query.params.len(),
+            BlockStatement::If { cond, body } => {
+                cond.params.len() + body.iter().map(|b| b.params.len()).sum::<usize>()
+            }
+        })
+        .sum::<usize>();
+
+    // Esnure all parameters will be bound.
     debug_assert_eq!(
-        total_query_params as usize,
-        stmts
-            .iter()
-            .map(|stmt| match stmt {
-                BlockStatement::Let { query, .. }
-                | BlockStatement::ReturnQuery(query)
-                | BlockStatement::Query(query) => query.params.len(),
-                BlockStatement::If { cond, body } =>
-                    cond.params.len() + body.iter().map(|b| b.params.len()).sum::<usize>(),
-            })
-            .sum::<usize>(),
-        "VDBE bind-variable count must match number of supplied parameter values",
+        total_number_of_passsed_params, total_number_of_positional_params as usize,
+        "the number of passed parameters in program doesn't match the actuall number",
     );
 
     // Allocate aVar slots for LET variables and IF condition results.
     let (all_let_vars, if_cond_slots, total_var_slots) =
-        build_var_slots(&compiled, total_query_params);
+        build_var_slots(&compiled, total_number_of_positional_params);
 
     // Patch OP_ResultRow: LET → named slot, IF cond → anonymous slot.
     let mut if_idx = 0usize;

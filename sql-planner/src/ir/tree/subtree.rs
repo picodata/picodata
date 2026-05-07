@@ -314,7 +314,8 @@ fn subtree_next<'plan>(
                 | Expression::CountAsterisk { .. }
                 | Expression::Timestamp { .. }
                 | Expression::Reference { .. }
-                | Expression::Parameter { .. } => None,
+                | Expression::Parameter { .. }
+                | Expression::LetVarRef { .. } => None,
                 Expression::SubQueryReference(SubQueryReference { rel_id, .. }) => {
                     if !iter.need_subquery() {
                         return None;

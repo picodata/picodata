@@ -9,7 +9,7 @@ use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
     Alias, AlterColumn, AlterTable, AlterTableOp, AnonymousBlock, Backup, BlockStatement, Bound,
-    BoundType, Frame, FrameType, GroupBy, Node32, Over, Parameter, Reference,
+    BoundType, Frame, FrameType, GroupBy, LetVarRef, Node32, Over, Parameter, Reference,
     ReferenceAsteriskSource, ReferenceTarget, RenameIndex, Row, ScalarFunction, SubQueryReference,
     TimeParameters, Timestamp, TruncateTable, Values, ValuesRow, Window,
 };
@@ -2075,11 +2075,12 @@ fn dql_return_columns(
     Ok(columns)
 }
 
-fn parse_anonymous_block(
+fn parse_anonymous_block<M: Metadata>(
     ast: &AbstractSyntaxTree,
     node_id: usize,
     map: &Translation,
     plan: &Plan,
+    worker: &ExpressionsWorker<'_, M>,
 ) -> Result<AnonymousBlock, SbroadError> {
     fn ensure_can_generate_local_sql_for_dml(
         kind: &str,
@@ -2142,6 +2143,24 @@ fn parse_anonymous_block(
                     ));
                 }
                 statements.push(BlockStatement::Query(query_id));
+            }
+            Rule::BlockLetStatement => {
+                // The master loop has already pushed the LET decl into
+                // `worker.let_scope` and stashed the variable name in
+                // `worker.let_var_names`; here we just rebuild the
+                // BlockStatement::Let by combining the name with the RHS
+                // plan id forwarded through `map`.
+                let sub_query_id = map.get(*child_id)?;
+                let query_id = plan
+                    .get_rel_child(sub_query_id, 0)
+                    .expect("subquery cannot miss a child");
+                let var = worker.let_var_names.get(child_id).cloned().ok_or_else(|| {
+                    SbroadError::other("LET variable name was not recorded during parsing")
+                })?;
+                statements.push(BlockStatement::Let {
+                    var: format!(":{var}"),
+                    query: query_id,
+                });
             }
             rule => unreachable!("{rule:?} is unexpected according to the grammar"),
         }
@@ -2236,6 +2255,16 @@ fn parse_anonymous_block(
                 ensure_can_generate_local_sql_for_dml("DELETE", node_id, plan)?
             }
             _ => {}
+        }
+    }
+
+    // Reject unused LET declarations.
+    for decl in &worker.let_scope.decls {
+        if !decl.used {
+            return Err(SbroadError::Other(format_smolstr!(
+                "LET variable \"{}\" is declared but never used",
+                decl.name
+            )));
         }
     }
 
@@ -2880,6 +2909,88 @@ fn try_deconstruct_between_expr<'a>(
 }
 
 /// Helper struct holding values and references needed for `parse_expr` calls.
+/// One LET declaration tracked by the parser's block scope.
+///
+/// Stored in execution order by [`LetVarScope`]. `used` flips to `true` the
+/// first time a downstream block statement resolves to this declaration; an
+/// unused LET is rejected after the block is fully parsed.
+#[derive(Debug, Clone)]
+struct LetVarDecl {
+    /// Variable name, normalized through `normalize_name_from_sql`.
+    name: SmolStr,
+    /// Type derived from the LET RHS (may be `Unknown` when the RHS is e.g.
+    /// a plain `SELECT $1` with an unconstrained parameter).
+    // FIXME: Infer the type using type system so there will be no variables of unknown type.
+    ty: DerivedType,
+    /// Whether at least one later block statement referenced this
+    /// declaration. Resets to `false` on redeclaration.
+    used: bool,
+}
+
+/// LET-variable scope for a single transactional block.
+///
+/// The parser walks the AST in post-order; we install a new declaration into
+/// the scope when the master loop hits the corresponding `BlockLetStatement`,
+/// which happens *after* the LET RHS subtree has been planned. Subsequent
+/// block-statement subtrees see the updated scope when they run identifier
+/// resolution inside [`parse_expr_pratt`].
+///
+/// Shadowing is allowed only when the new RHS type matches the previously
+/// recorded type; otherwise the parser rejects the redeclaration.
+/// A successful redeclaration resets the `used` flag — the *new* binding has
+/// to be referenced afterward to be considered used, or the unused-LET check
+/// fires for it.
+#[derive(Debug, Default, Clone)]
+struct LetVarScope {
+    /// All declarations in source order. We keep the full history (rather
+    /// than a flat name → decl map) so the unused-LET check can point at
+    /// the specific shadowed binding that was never referenced.
+    decls: Vec<LetVarDecl>,
+    /// `name → index into decls` of the currently-active binding for that
+    /// name. Lookups consult only this map; shadowed entries are reachable
+    /// only via `decls` for diagnostics.
+    by_name: HashMap<SmolStr, usize>,
+}
+
+impl LetVarScope {
+    fn lookup(&self, name: &str) -> Option<&LetVarDecl> {
+        self.by_name.get(name).map(|idx| &self.decls[*idx])
+    }
+
+    fn mark_used(&mut self, name: &str) {
+        if let Some(idx) = self.by_name.get(name).copied() {
+            self.decls[idx].used = true;
+        }
+    }
+
+    /// Push a fresh LET declaration. Returns an error if an existing binding
+    /// with the same name has a different type — same-type redeclaration is
+    /// allowed and shares the runtime aVar slot (see `build_var_slots` in
+    /// `src/vdbe/txn.rs`).
+    fn declare(&mut self, name: SmolStr, ty: DerivedType) -> Result<(), SbroadError> {
+        if let Some(prev) = self.lookup(&name) {
+            // Compare only when both sides have a known type. An unknown
+            // type matches anything.
+            if let (Some(prev_ty), Some(new_ty)) = (prev.ty.get(), ty.get()) {
+                if prev_ty != new_ty {
+                    return Err(SbroadError::Other(format_smolstr!(
+                        "LET variable \"{name}\" cannot be redeclared with a different type \
+                         (was {prev_ty}, now {new_ty})"
+                    )));
+                }
+            }
+        }
+        let idx = self.decls.len();
+        self.decls.push(LetVarDecl {
+            name: name.clone(),
+            ty,
+            used: false,
+        });
+        self.by_name.insert(name, idx);
+        Ok(())
+    }
+}
+
 struct ExpressionsWorker<'worker, M>
 where
     M: Metadata,
@@ -2940,6 +3051,13 @@ where
     curr_window_sqs: Vec<NodeId>,
     /// Are we inside a GroupBy grouping expression.
     inside_grouping_expression: bool,
+    /// LET-variable scope for the current anonymous block.
+    let_scope: LetVarScope,
+    /// Maps a `BlockLetStatement` AST node id to the LET variable's
+    /// normalized name, so [`parse_anonymous_block`] can recover the name
+    /// when it builds `BlockStatement::Let { var, query }` from the
+    /// `Translation` map (which carries only the RHS plan id).
+    let_var_names: HashMap<usize, SmolStr>,
 }
 
 impl<'worker, M> ExpressionsWorker<'worker, M>
@@ -2968,6 +3086,8 @@ where
             named_windows_sqs: HashMap::new(),
             curr_window_sqs: Vec::new(),
             inside_grouping_expression: false,
+            let_scope: LetVarScope::default(),
+            let_var_names: HashMap::new(),
         }
     }
 
@@ -4570,6 +4690,42 @@ where
                             rule => unreachable!("Expr::parse expected identifier continuation, found {:?}", rule)
                         }
                     };
+
+                    // LET-variable resolution. Only applies to bare identifiers
+                    // inside an anonymous block — qualified `t.x` always
+                    // refers to a column. If the LET scope has the name we
+                    // also probe the relation columns to detect ambiguity:
+                    // a column with the same name shadowing a LET would be
+                    // surprising, so we report the conflict instead of
+                    // silently picking one.
+                    let is_bare_ident = is_simple_id && scan_name.is_none();
+                    let let_decl = worker.let_scope.lookup(&col_name);
+                    // FIXME: use let chain after bumping rust to 2024
+                    if let (Some(let_decl), true) = (let_decl, is_bare_ident) {
+                        let let_ty = let_decl.ty;
+                        for rel_id in referred_relation_ids {
+                            if worker.build_columns_map(plan, *rel_id).is_ok()
+                                && worker
+                                    .columns_map_get_positions(*rel_id, &col_name, None)
+                                    .is_ok()
+                            {
+                                return Err(SbroadError::Other(format_smolstr!(
+                                    "column reference \"{col_name}\" is ambiguous: \
+                                     it could refer to either a LET variable or a table column"
+                                )));
+                            }
+                        }
+                        worker.let_scope.mark_used(&col_name);
+                        let plan_id = plan.nodes.push(
+                            LetVarRef {
+                                name: col_name.clone(),
+                                var_type: let_ty,
+                            }
+                            .into(),
+                        );
+                        worker.reference_to_name_map.insert(plan_id, col_name);
+                        return Ok(ParseExpression::PlanId { plan_id });
+                    }
 
                     if referred_relation_ids.is_empty() {
                         return Err(SbroadError::Invalid(
@@ -7068,7 +7224,49 @@ impl AbstractSyntaxTree {
                     map.add(id, child_id);
                 }
                 Rule::BlockLetStatement => {
-                    return Err(SbroadError::other("LET statements are not supported yet"));
+                    // Children: [Identifier (var name), SubQuery (RHS)]. The
+                    // SubQuery has already been planned by the post-order DFS
+                    // (we get its id via `map`). We:
+                    //   1. Extract and normalize the variable name.
+                    //   2. Pull the LET RHS's single-column type so subsequent
+                    //      identifier-resolution sites can give LET refs a
+                    //      concrete type (mirrors how columns get their type
+                    //      from the underlying scan).
+                    //   3. Push the decl into `worker.let_scope` so later
+                    //      block statements see it.
+                    //   4. Stash the variable name keyed by the ast id so
+                    //      `parse_anonymous_block` can rebuild
+                    //      `BlockStatement::Let { var, query }`.
+                    //   5. Forward the SubQuery plan id under the
+                    //      BlockLetStatement ast id (same convention as
+                    //      `BlockReturnQueryStatement` / `BlockQueryStatement`).
+                    let var_name_ast_id = node
+                        .children
+                        .first()
+                        .expect("BlockLetStatement must have an Identifier child");
+                    let var_name = parse_identifier(self, *var_name_ast_id)?;
+                    let subquery_ast_id = node
+                        .children
+                        .get(1)
+                        .expect("BlockLetStatement must have a SubQuery child");
+                    let subquery_plan_id = map.get(*subquery_ast_id)?;
+
+                    // The SubQuery wraps a SELECT-like relational tree. Its
+                    // output row carries the columns; LET requires a single
+                    // column (multi-column RHS is rejected here, multi-row is
+                    // a runtime concern handled by the block VDBE).
+                    let columns = dql_return_columns(&plan, subquery_plan_id)?;
+                    if columns.len() != 1 {
+                        return Err(SbroadError::Other(format_smolstr!(
+                            "LET RHS must be a single-column query, got {} columns",
+                            columns.len()
+                        )));
+                    }
+                    let var_type = columns[0].1;
+
+                    worker.let_scope.declare(var_name.clone(), var_type)?;
+                    worker.let_var_names.insert(id, var_name);
+                    map.add(id, subquery_plan_id);
                 }
                 Rule::AnonymousBlock => {
                     // At the moment all queries are parsed analyzed so we can set parameter
@@ -7079,7 +7277,7 @@ impl AbstractSyntaxTree {
                     let param_types = get_parameter_derived_types(&type_analyzer);
                     plan.set_types_in_parameter_nodes(&param_types)?;
 
-                    let block = parse_anonymous_block(self, id, &map, &plan)?;
+                    let block = parse_anonymous_block(self, id, &map, &plan, &worker)?;
                     let plan_id = plan.nodes.push(block.into());
                     map.add(id, plan_id);
                 }

@@ -12,7 +12,7 @@ use crate::executor::vtable::{VirtualTable, VirtualTableMap};
 use crate::executor::Buckets;
 use crate::ir::bucket::BucketSet;
 use crate::ir::node::expression::Expression;
-use crate::ir::node::relational::Relational;
+use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{Alias, Motion, Node, Node136, NodeId, Reference, SubQueryReference, Update};
 use crate::ir::operator::UpdateStrategy;
 use crate::ir::relation::SpaceEngine;
@@ -1336,6 +1336,20 @@ impl ExecutionPlan {
             Entity::Relational,
             Some("invalid motion".into()),
         ))
+    }
+
+    /// Unlink the subtree of the motion node.
+    pub fn unlink_motion_subtree(&mut self, motion_id: NodeId) -> Result<(), SbroadError> {
+        let motion = self.get_mut_ir_plan().get_mut_relation_node(motion_id)?;
+        if let MutRelational::Motion(Motion { child, .. }) = motion {
+            *child = None;
+        } else {
+            return Err(SbroadError::Invalid(
+                Entity::Relational,
+                Some(format_smolstr!("node ({motion_id:?}) is not motion")),
+            ));
+        }
+        Ok(())
     }
 
     /// # Errors
