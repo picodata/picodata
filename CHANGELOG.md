@@ -12,6 +12,9 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### Breaking changes
 
+- `CancellationTokenHandle::cancel()` now returns `Rc<OnceEvent>` instead of
+  `Channel<()>`. Use `finish_event.is_finished()` to check completion or
+  `finish_event.wait_timeout(duration)` to wait with a timeout.
 - Rename fields in `/api/v1/health/status` response: `reasons` to `issues`,
   status level `unhealthy` to `broken`.
 - `picodata demo` subcommand is now gated behind the `demo` Cargo feature,
@@ -19,6 +22,9 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### Fixes
 
+- Fixed crash when disabling a plugin with slow background jobs. Previously,
+  if a job didn't finish within the shutdown timeout, the plugin library could
+  be unloaded while the job fiber was still running.
 - Fixed the `NO_ROUTE_TO_BUCKET` error that occurred when sending a request to
   the single node of a replicaset during its restart. This error is now retried
   by the router.
