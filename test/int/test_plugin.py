@@ -2981,6 +2981,74 @@ def test_sdk_background(cluster: Cluster):
     PluginReflection.clear_persisted_data(i1)
 
 
+def test_sdk_background_slow_stop(cluster: Cluster):
+    """
+    This test creates a background job that takes longer than the shutdown
+    timeout to stop. Even though wait_job_finished() times out, we must still
+    wait for the fiber to actually terminate before unloading the library.
+
+    Without the fix, the library would be unloaded while the fiber is still
+    sleeping, causing a crash when the fiber wakes up.
+    """
+    [i1] = cluster.deploy(instance_count=1)
+
+    plugin = _PLUGIN_W_SDK
+    [service] = _PLUGIN_W_SDK_SERVICES
+
+    install_and_enable_plugin(
+        i1,
+        plugin,
+        [service],
+        migrate=True,
+        default_config={"test_type": "background_slow_stop"},
+    )
+
+    Retriable().call(PluginReflection.assert_persisted_data_exists, "slow_stop_running", i1)
+
+    # Disable the plugin - this will timeout waiting for the job to finish,
+    # but should still wait for the fiber to terminate before unloading
+    i1.call("pico.disable_plugin", plugin, "0.1.0")
+
+    Retriable().call(PluginReflection.assert_persisted_data_exists, "slow_stop_done", i1)
+
+    # Re-enable to verify no crash occurred
+    i1.call("pico.enable_plugin", plugin, "0.1.0")
+    Retriable().call(PluginReflection.assert_persisted_data_exists, "slow_stop_running", i1)
+
+    i1.call("pico.disable_plugin", plugin, "0.1.0")
+    Retriable().call(PluginReflection.assert_persisted_data_exists, "slow_stop_done", i1)
+
+    PluginReflection.clear_persisted_data(i1)
+
+
+def test_sdk_background_concurrent_wait(cluster: Cluster):
+    """
+    Test that multiple fibers can wait for the same background job to finish.
+
+    The test spawns two fibers that both call cancel_jobs_by_tag on the same
+    job. When the job finishes, both fibers should complete successfully
+    with n_timeouts == 0.
+    """
+    [i1] = cluster.deploy(instance_count=1)
+
+    plugin = _PLUGIN_W_SDK
+    [service] = _PLUGIN_W_SDK_SERVICES
+
+    install_and_enable_plugin(
+        i1,
+        plugin,
+        [service],
+        migrate=True,
+        default_config={"test_type": "background_concurrent_wait"},
+    )
+
+    # Run the concurrent wait test via RPC.
+    # The test spawns two fibers that both wait on the same job token,
+    # unblocks the job, and verifies both fibers succeed.
+    context = make_context(service=service)
+    i1.call(".proc_rpc_dispatch", "/test_concurrent_wait", b"", context)
+
+
 def test_sdk_authentication_unknown_user(cluster: Cluster):
     inst = cluster.add_instance()
 

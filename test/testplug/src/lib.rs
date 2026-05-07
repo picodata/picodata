@@ -1,5 +1,6 @@
 #![allow(clippy::disallowed_names)]
 
+use picodata_plugin::background;
 use picodata_plugin::background::CancellationToken;
 use picodata_plugin::internal::types::{Dml, Op, Predicate};
 use picodata_plugin::log::rs_log;
@@ -15,7 +16,7 @@ use picodata_plugin::system::tarantool::tlua::{
     LuaFunction, LuaRead, LuaState, LuaThread, PushGuard, PushInto,
 };
 use picodata_plugin::system::tarantool::tuple::Tuple;
-use picodata_plugin::system::tarantool::util::DisplayAsHexBytes;
+use picodata_plugin::system::tarantool::util::{DisplayAsHexBytes, IntoClones};
 use picodata_plugin::system::tarantool::{fiber, index, tlua};
 use picodata_plugin::transport::context::Context;
 use picodata_plugin::transport::listener::PicoListener;
@@ -445,6 +446,87 @@ impl Service for Service3 {
                     .path("/test_cancel_tagged_timeout")
                     .register(move |_, _| {
                         background_tests::test_cancel_tagged_timeout(&service);
+
+                        Ok(rpc::Response::empty())
+                    })
+                    .unwrap();
+            }
+            "background_slow_stop" => {
+                // This job takes longer than the shutdown timeout to stop,
+                // but we must still wait for the fiber to terminate before
+                // unloading the library.
+                fn slow_stop_job(ct: CancellationToken) {
+                    while ct.wait_timeout(Duration::from_millis(50)).is_err() {
+                        save_persisted_data("slow_stop_running");
+                    }
+                    // Sleep for longer than the shutdown timeout.
+                    // The wait_job_finished will timeout, but we must still
+                    // wait for this fiber to die before unloading the library.
+                    fiber::sleep(Duration::from_millis(500));
+                    save_persisted_data("slow_stop_done");
+                }
+
+                ctx.register_job(slow_stop_job).unwrap();
+                // Set a very short timeout - shorter than the job's sleep
+                ctx.set_jobs_shutdown_timeout(Duration::from_millis(100));
+            }
+            "background_concurrent_wait" => {
+                // Test that multiple fibers can wait for the same job to finish.
+                const JOB_TAG: &str = "concurrent_wait_job";
+
+                // Control channel lets us delay job completion until both waiters are ready.
+                let (control_tx, control_rx) = fiber::Channel::<()>::new(1).into_clones();
+
+                background::register_tagged_job(
+                    &ctx.make_service_id(),
+                    move |ct: CancellationToken| {
+                        ct.wait_timeout(tarantool::clock::INFINITY).ok();
+                        _ = control_rx.recv(); // Wait for test to unblock us
+                    },
+                    JOB_TAG,
+                )
+                .unwrap();
+
+                let service = ctx.make_service_id();
+                rpc::RouteBuilder::from(ctx)
+                    .path("/test_concurrent_wait")
+                    .register(move |_, _| {
+                        let n_success = Rc::new(Cell::new(0u32));
+
+                        // Spawn two fibers that both wait on the same job
+                        for name in ["waiter_a", "waiter_b"] {
+                            let svc = service.clone();
+                            let counter = n_success.clone();
+                            fiber::Builder::new()
+                                .name(name)
+                                .func(move || {
+                                    let res = background::cancel_jobs_by_tag(
+                                        &svc,
+                                        JOB_TAG,
+                                        Duration::from_secs(5),
+                                    );
+                                    if res.is_ok_and(|r| r.n_timeouts == 0) {
+                                        counter.set(counter.get() + 1);
+                                    }
+                                })
+                                .start_non_joinable()
+                                .unwrap();
+                            // Small delay to ensure first fiber starts waiting before second
+                            fiber::sleep(Duration::from_millis(50));
+                        }
+
+                        // Both fibers are now waiting - unblock the job
+                        _ = control_tx.send(());
+
+                        // Give fibers time to complete
+                        fiber::sleep(Duration::from_millis(100));
+
+                        if n_success.get() != 2 {
+                            return Err(BoxError::new(
+                                tarantool::error::TarantoolErrorCode::Unknown,
+                                format!("expected 2 successes, got {}", n_success.get()),
+                            ));
+                        }
 
                         Ok(rpc::Response::empty())
                     })
