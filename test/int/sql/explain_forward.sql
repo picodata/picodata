@@ -99,7 +99,8 @@ OPTION (FORWARD = OFF);
 
 -- TEST: test-explain-forward-not-sharding-key
 -- SQL:
-EXPLAIN (FORWARD) SELECT * FROM t WHERE b = 'lol';
+EXPLAIN (FORWARD)
+SELECT * FROM t WHERE b = 'lol';
 -- EXPECTED:
 forward analysis (on > ro_to_rw > off):
   forward = on
@@ -110,6 +111,16 @@ SELECT * FROM t WHERE b = 'lol'
 OPTION (FORWARD = OFF);
 -- ERROR:
 sbroad: invalid option: cannot satisfy "forward = off": buckets span multiple nodes and are not present on the current node
+
+-- TEST: test-explain-forward-off-block-query
+-- SQL:
+EXPLAIN (FORWARD) DO $$ BEGIN
+    RETURN QUERY SELECT b FROM t WHERE a = 2;
+    UPDATE t SET b = 'lol' WHERE a = 2;
+END $$;
+-- EXPECTED:
+forward analysis (on > ro_to_rw > off):
+  forward = off
 
 -- TEST: test-forward-off-block-query
 -- SQL:
@@ -131,12 +142,34 @@ OPTION (FORWARD = RO_TO_RW);
 -- EXPECTED:
 'lol'
 
+-- TEST: test-explain-forward-on-block-query
+-- SQL:
+EXPLAIN (FORWARD)
+DO $$ BEGIN
+    LET var = (VALUES (123));
+    
+    RETURN QUERY SELECT b::int FROM t WHERE a = 1;
+    RETURN QUERY SELECT a FROM t WHERE a = 1;
+
+    IF var = 456 THEN
+        UPDATE t SET b = 'kek' WHERE a = 1;
+    END IF;
+END $$;
+-- EXPECTED:
+forward analysis (on > ro_to_rw > off):
+  forward = off
+
 -- TEST: test-forward-on-block-query
 -- SQL:
 DO $$ BEGIN
+    LET var = (VALUES (123));
+    
     RETURN QUERY SELECT b::int FROM t WHERE a = 1;
     RETURN QUERY SELECT a FROM t WHERE a = 1;
-    UPDATE t SET b = 'kek' WHERE a = 1;
+
+    IF var = 456 THEN
+        UPDATE t SET b = 'kek' WHERE a = 1;
+    END IF;
 END $$
 OPTION (FORWARD = ON);
 -- EXPECTED:

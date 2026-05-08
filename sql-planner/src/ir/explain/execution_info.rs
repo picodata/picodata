@@ -10,7 +10,7 @@ use crate::{
     },
     ir::{
         bucket::Buckets,
-        node::{relational::Relational, Motion, Node, NodeId},
+        node::{block::BlockOwned, relational::Relational, Motion, Node, NodeId},
         transformation::redistribution::MotionPolicy,
         tree::traversal::{LevelNode, PostOrder, REL_CAPACITY},
         Plan,
@@ -81,17 +81,24 @@ impl BucketsInfo {
         query: &mut ExecutingQuery<'_, R>,
     ) -> Result<Self, SbroadError> {
         let ir = query.get_exec_plan().get_ir_plan();
+        let coord = query.get_coordinator();
+        let vshard = coord.get_current_vshard_object().unwrap();
+        let bucket_count = vshard.bucket_count();
+
+        if ir.is_block()? {
+            let top_id = ir.get_top()?;
+            let block = ir.get_owned_block_node(top_id)?;
+            let BlockOwned::Anonymous(block) = block else {
+                unreachable!("plan.is_block() returned true, but top is {block:?}")
+            };
+            let buckets = query.get_block_buckets(&block)?;
+            return Ok(BucketsInfo::new_calculated(buckets, true, bucket_count));
+        }
 
         if ir.is_sharded_insert()? {
             let buckets = query.try_calculate_sharded_insert_buckets()?;
 
             return Ok(buckets.map_or(BucketsInfo::Unknown, |buckets| {
-                let bucket_count = query
-                    .get_coordinator()
-                    .get_current_vshard_object()
-                    .expect("node must be initialized")
-                    .bucket_count();
-
                 BucketsInfo::new_calculated(buckets, true, bucket_count)
             }));
         }
@@ -177,10 +184,6 @@ impl BucketsInfo {
         // Estimation is exact if we only have single
         // executable subtree == whole plan
         let is_exact = without_motions_ids.len() == 1 && without_motions_ids.contains(&top_id);
-        let bucket_count = query
-            .get_coordinator()
-            .get_current_vshard_object()?
-            .bucket_count();
 
         let buckets_info = BucketsInfo::new_calculated(buckets, is_exact, bucket_count);
 

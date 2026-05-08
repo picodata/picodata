@@ -508,8 +508,6 @@ fn dispatch_bound_statement_impl<'p>(
         port_write_dml_response(port, 1);
         Ok(())
     } else if query.is_explain() {
-        query.validate_explain_options()?;
-
         let plan = query.get_exec_plan().get_ir_plan();
         check_table_privileges(plan)?;
 

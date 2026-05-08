@@ -24,6 +24,7 @@
 //! 6. Executes the final IR top subtree and returns the final result to the user.
 use crate::backend::sql::ir::PatternWithParams;
 use crate::errors::{Entity, SbroadError};
+use crate::executor::engine::helpers::generate_pattern_with_params_for_block;
 use crate::executor::engine::{Router, Vshard};
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::vdbe::ExecutionInsight;
@@ -43,7 +44,7 @@ use crate::ir::value::Value;
 use crate::ir::{ExplainOptions, Plan, Slices};
 use crate::utils::{indent, indent_custom, indent_with_prefix};
 use crate::{write_explain_header1, write_explain_header2, BoundStatement};
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use smol_str::{format_smolstr, SmolStr};
 use std::collections::HashMap;
 use std::fmt::{self, Write as _};
 use std::io;
@@ -318,10 +319,7 @@ struct ExecutionContext {
 
 /// Query to execute.
 #[derive(Debug)]
-pub struct ExecutingQuery<'a, C>
-where
-    C: Router,
-{
+pub struct ExecutingQuery<'a, C> {
     /// Execution plan
     exec_plan: ExecutionPlan,
     /// Coordinator runtime
@@ -507,47 +505,7 @@ where
                 unreachable!("plan.is_block() returned true, but top is {block:?}")
             };
 
-            let mut block_buckets: Option<(StatementLocation, Buckets)> = None;
-            for entry in BlockEntries::new(&block.statements) {
-                let buckets = entry.with(|query_id| {
-                    let buckets = self.bucket_discovery(*query_id)?;
-                    match &buckets {
-                        Buckets::All => {
-                            return Err(SbroadError::Other(
-                                "transaction cannot be executed on all buckets".into(),
-                            ))
-                        }
-                        Buckets::Filtered(BucketSet::Exact(filtered)) if filtered.len() != 1 => {
-                            return Err(SbroadError::Other(format_smolstr!(
-                                "transaction can only be executed on a single bucket, got {buckets}"
-                            )));
-                        }
-                        Buckets::Filtered(BucketSet::Exact(_)) | Buckets::Any => {}
-                        Buckets::Filtered(BucketSet::Unknown(_, _)) => {
-                            panic!("buckets must already be determined")
-                        }
-                    }
-                    Ok(buckets)
-                })?;
-
-                // Cross-statement check carries two locations, so it lives outside the closure.
-                if matches!(buckets, Buckets::Filtered(_)) {
-                    if let Some((prev_location, prev_buckets)) = &block_buckets {
-                        if prev_buckets != &buckets {
-                            return Err(prev_location.wrap_error_with(
-                                &entry.location,
-                                SbroadError::Other(format_smolstr!(
-                                    "different buckets: {prev_buckets} and {buckets}"
-                                )),
-                            ));
-                        }
-                    } else {
-                        block_buckets = Some((entry.location, buckets));
-                    }
-                }
-            }
-
-            let buckets = block_buckets.map(|(_, b)| b).unwrap_or(Buckets::Any);
+            let buckets = self.get_block_buckets(&block)?;
             self.enforce_forward_option(&buckets)?;
 
             return self
@@ -597,26 +555,6 @@ where
                 }
                 _ => err,
             })?;
-
-        Ok(())
-    }
-
-    pub fn validate_explain_options(&self) -> Result<(), SbroadError> {
-        let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
-        let err = || -> Result<(), SbroadError> {
-            Err(SbroadError::Other(
-                "LOGICAL, BUCKETS, and FORWARD modes for explain are not implemented for transactions"
-                    .to_smolstr(),
-            ))
-        };
-
-        if self.is_block()? && explain_options.contains(ExplainOptions::Logical) {
-            return err();
-        }
-
-        if self.is_block()? && explain_options.contains(ExplainOptions::Buckets) {
-            return err();
-        }
 
         Ok(())
     }
@@ -689,17 +627,175 @@ where
         self.exec_plan.get_ir_plan().is_empty()
     }
 
-    pub fn explain_logical(&mut self) -> Result<String, SbroadError> {
+    fn get_block_logical(
+        &self,
+        block: &AnonymousBlock,
+    ) -> Result<Vec<LogicalExplain>, SbroadError> {
+        let mut explain = Vec::with_capacity(block.statements.len());
         let plan = self.get_exec_plan().get_ir_plan();
-        let top_id = plan.get_top()?;
-        let explain = LogicalExplain::new(plan, top_id)?;
+        for entry in BlockEntries::new(&block.statements) {
+            let explain_entry = entry.with(|query_id| LogicalExplain::new(plan, *query_id))?;
+            explain.push(explain_entry);
+        }
+
+        Ok(explain)
+    }
+
+    fn get_block_statements(
+        &self,
+        block: AnonymousBlock,
+        buckets: &Buckets,
+    ) -> Result<Vec<BlockStatement<PatternWithParams>>, SbroadError> {
+        let block_bucket_id = match buckets {
+            Buckets::Filtered(crate::ir::bucket::BucketSet::Exact(set)) => {
+                assert!(set.len() == 1);
+                set.iter().copied().next()
+            }
+            _ => None,
+        };
+
+        let mut statements = Vec::with_capacity(block.statements.len());
+        for stmt in block.statements {
+            statements.push(stmt.try_map(|id| {
+                generate_pattern_with_params_for_block(
+                    self.get_exec_plan(),
+                    id,
+                    block_bucket_id,
+                    false,
+                )
+            })?);
+        }
+
+        Ok(statements)
+    }
+
+    pub fn get_block_buckets(&mut self, block: &AnonymousBlock) -> Result<Buckets, SbroadError> {
+        let mut block_buckets: Option<(StatementLocation, Buckets)> = None;
+        for entry in BlockEntries::new(&block.statements) {
+            let buckets = entry.with(|query_id| {
+                let buckets = self.bucket_discovery(*query_id)?;
+                match &buckets {
+                    Buckets::All => {
+                        return Err(SbroadError::Other(
+                            "transaction cannot be executed on all buckets".into(),
+                        ))
+                    }
+                    Buckets::Filtered(BucketSet::Exact(filtered)) if filtered.len() != 1 => {
+                        return Err(SbroadError::Other(format_smolstr!(
+                            "transaction can only be executed on a single bucket, got {buckets}"
+                        )));
+                    }
+                    Buckets::Filtered(BucketSet::Exact(_)) | Buckets::Any => {}
+                    Buckets::Filtered(_) => {
+                        return Err(SbroadError::Other(
+                            "buckets cannot be filtered for this statement".into(),
+                        ))
+                    }
+                }
+                Ok(buckets)
+            })?;
+
+            // Cross-statement check carries two locations, so it lives outside the closure.
+            if matches!(buckets, Buckets::Filtered(_)) {
+                if let Some((prev_location, prev_buckets)) = &block_buckets {
+                    if prev_buckets != &buckets {
+                        return Err(prev_location.wrap_error_with(
+                            &entry.location,
+                            SbroadError::Other(format_smolstr!(
+                                "different buckets: {prev_buckets} and {buckets}"
+                            )),
+                        ));
+                    }
+                } else {
+                    block_buckets = Some((entry.location, buckets));
+                }
+            }
+        }
+
+        let buckets = block_buckets.map(|(_, b)| b).unwrap_or(Buckets::Any);
+        Ok(buckets)
+    }
+
+    pub fn explain_logical(&mut self) -> Result<String, SbroadError> {
         let mut buf = String::new();
         let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
         if !explain_options.has_single_facet() {
             write_explain_header1!(&mut buf, "# Logical plan").unwrap();
             writeln!(&mut buf).unwrap();
         }
-        write!(&mut buf, "{explain}").unwrap();
+
+        if self.is_block()? {
+            let top_id = self.exec_plan.get_ir_plan().get_top()?;
+            let block = self.exec_plan.get_ir_plan().get_owned_block_node(top_id)?;
+            let BlockOwned::Anonymous(block) = block else {
+                unreachable!("plan.is_block() returned true, but top is {block:?}")
+            };
+
+            let logical_explains = self.get_block_logical(&block)?;
+
+            let buckets = self.get_block_buckets(&block)?;
+            let block_statements = self.get_block_statements(block, &buckets)?;
+
+            let explain_options = self.exec_plan.get_ir_plan().explain_options;
+            let should_fmt = explain_options.contains(ExplainOptions::Fmt);
+
+            let mut stmt_idx = 0;
+            let mut statements = block_statements.iter().peekable();
+            while let Some(stmt) = statements.next() {
+                let mut explain_one = |buf: &mut String, sql: &PatternWithParams, kind: &str| {
+                    let source = buckets.determine_exec_location();
+                    write_explain_header2!(buf, "{}. {} ({source})", stmt_idx + 1, kind).unwrap();
+                    writeln!(buf).unwrap();
+
+                    let sql = format_sql(&sql.pattern, &sql.params, should_fmt);
+                    writeln!(buf, "{sql}").unwrap();
+                    writeln!(buf).unwrap();
+
+                    write!(buf, "{}", logical_explains[stmt_idx]).unwrap();
+
+                    stmt_idx += 1;
+                };
+
+                match stmt {
+                    BlockStatement::ReturnQuery(query) => {
+                        explain_one(&mut buf, query, "Return query")
+                    }
+                    BlockStatement::Query(query) => explain_one(&mut buf, query, "Query"),
+                    BlockStatement::Let { query, var } => {
+                        let var = var.strip_prefix(':').unwrap_or(var);
+                        let kind = format!("Let \"{var}\"");
+                        explain_one(&mut buf, query, &kind)
+                    }
+                    BlockStatement::If { cond, body } => {
+                        explain_one(&mut buf, cond, "If cond");
+                        let mut body_iter = body.iter().peekable();
+                        writeln!(&mut buf).unwrap();
+                        writeln!(&mut buf).unwrap();
+
+                        while let Some(body_query) = body_iter.next() {
+                            explain_one(&mut buf, body_query, "If body");
+
+                            let has_next = body_iter.peek().is_some();
+                            if has_next {
+                                writeln!(&mut buf).unwrap();
+                                writeln!(&mut buf).unwrap();
+                            }
+                        }
+                    }
+                };
+
+                let has_next = statements.peek().is_some();
+                if has_next {
+                    writeln!(&mut buf).unwrap();
+                    writeln!(&mut buf).unwrap();
+                }
+            }
+        } else {
+            let plan = self.get_exec_plan().get_ir_plan();
+            let top_id = plan.get_top()?;
+            let explain = LogicalExplain::new(plan, top_id)?;
+            write!(&mut buf, "{explain}").unwrap();
+        }
 
         Ok(buf)
     }
@@ -752,6 +848,7 @@ where
             write_explain_header1!(&mut buf, "# Buckets").unwrap();
             writeln!(&mut buf).unwrap();
         }
+
         write!(&mut buf, "{info}").unwrap();
 
         Ok(buf)

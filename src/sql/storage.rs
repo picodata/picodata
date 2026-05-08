@@ -856,17 +856,20 @@ pub fn explain_execute_block<'p>(
     location: &str,
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError> {
-    let mut explain_one =
-        |pattern: PatternWithParams, kind: &'static str| -> Result<(), SbroadError> {
-            let (sql, params) = pattern.into_parts();
-            explain_execute_guarded(&sql, &params, block.vdbe_max_steps, kind, location, port)
-        };
+    let mut explain_one = |pattern: PatternWithParams, kind: &str| -> Result<(), SbroadError> {
+        let (sql, params) = pattern.into_parts();
+        explain_execute_guarded(&sql, &params, block.vdbe_max_steps, kind, location, port)
+    };
 
     for stmt in block.statements.into_iter() {
         match stmt {
             BlockStatement::ReturnQuery(p) => explain_one(p, "Return query")?,
             BlockStatement::Query(p) => explain_one(p, "Query")?,
-            BlockStatement::Let { query, .. } => explain_one(query, "Let")?,
+            BlockStatement::Let { query, var } => {
+                let var = var.strip_prefix(':').unwrap_or(&var);
+                let kind = format!("Let \"{var}\"");
+                explain_one(query, &kind)?
+            }
             BlockStatement::If { cond, body } => {
                 explain_one(cond, "If cond")?;
                 for p in body {

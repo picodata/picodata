@@ -697,8 +697,8 @@ fn dml_get_motion_child(
 /// Generate pattern with params for block query.
 /// Note that this function can generate UPDATE queries,
 /// not sure if we should support it elsewhere.
-fn generate_pattern_with_params_for_block(
-    plan: &mut ExecutionPlan,
+pub fn generate_pattern_with_params_for_block(
+    plan: &ExecutionPlan,
     query_id: NodeId,
     bucket_id: Option<u64>,
     use_colon_params: bool,
@@ -910,7 +910,7 @@ fn generate_pattern_with_params_for_block(
 /// child is a Values node. We render the Values subtree via `SyntaxPlan` and prepend
 /// an `INSERT [OR REPLACE|IGNORE] INTO "t" ("c1", ...)` envelope inline.
 fn generate_insert_pattern_for_block(
-    plan: &mut ExecutionPlan,
+    plan: &ExecutionPlan,
     insert_id: NodeId,
     plan_id: u64,
     constant_ids: Vec<NodeId>,

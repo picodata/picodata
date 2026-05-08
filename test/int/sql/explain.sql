@@ -1258,16 +1258,6 @@ UPDATE "t" SET "a" = "t"."a" * CAST(2 AS int) WHERE "t"."pk" = CAST(3 AS int)
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 
--- TEST: explain-not-supported
--- SQL:
-EXPLAIN DO $$
-BEGIN
-  UPDATE t SET a = a + 1 WHERE pk = 3;
-  UPDATE t SET a = a * 2 WHERE pk = 3;
-END $$;
--- ERROR:
-sbroad: LOGICAL, BUCKETS, and FORWARD modes for explain are not implemented for transactions
-
 -- TEST: explain-query-different-buckets
 -- SQL:
 EXPLAIN (RAW) DO $$

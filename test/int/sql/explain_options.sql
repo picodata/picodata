@@ -866,3 +866,426 @@ buckets = [1-3000]
 ''
 sql_vdbe_opcode_max = 45000
 sql_motion_row_max = 5000
+
+-- TEST: buckets-raw-block-delete-select
+-- SQL:
+EXPLAIN (buckets, raw)
+DO $$ BEGIN
+    RETURN QUERY SELECT * FROM tt WHERE d = 42;
+    DELETE FROM tt WHERE d = 42;
+END $$;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭────────────────────────────────────╮
+│ 1. Return query (FILTERED STORAGE) │
+╰────────────────────────────────────╯
+''
+SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = CAST(42 AS int)
+''
+plan:
+    [0] SEARCH TABLE tt USING PRIMARY KEY (d=?) (~1 row)
+''
+╭─────────────────────────────╮
+│ 2. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
+''
+DELETE FROM "tt" WHERE "tt"."d" = CAST(42 AS int)
+''
+plan:
+    [0] SEARCH TABLE tt USING PRIMARY KEY (d=?) (~1 row)
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [2426]
+
+-- TEST: logical-forward-block-let-if-insert-select
+-- SQL:
+EXPLAIN (logical, forward)
+DO $$ BEGIN
+    LET var_1 = (SELECT c::INT FROM g WHERE true);
+
+    IF var_1 = 300 THEN
+        INSERT INTO tt VALUES (42);
+    END IF;
+    
+    INSERT INTO tt VALUES (42);
+END $$;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+╭───────────────────────────────────╮
+│ 1. Let "var_1" (FILTERED STORAGE) │
+╰───────────────────────────────────╯
+''
+SELECT CAST ("g"."c" as int) as "col_1" FROM "g" WHERE CAST(true AS bool)
+''
+projection (g.c::string::int -> col_1)
+  selection (true::bool)
+    scan g
+''
+╭───────────────────────────────╮
+│ 2. If cond (FILTERED STORAGE) │
+╰───────────────────────────────╯
+''
+SELECT CAST(:var_1 AS int) = CAST(300 AS int) as "cond"
+''
+projection (:var_1::int = 300::int -> cond)
+''
+╭───────────────────────────────╮
+│ 3. If body (FILTERED STORAGE) │
+╰───────────────────────────────╯
+''
+INSERT INTO "tt" ("d", "bucket_id") VALUES (CAST(42 AS int), 2426)
+''
+insert into tt on conflict: fail
+  values
+    value ROW(42::int)
+''
+╭─────────────────────────────╮
+│ 4. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
+''
+INSERT INTO "tt" ("d", "bucket_id") VALUES (CAST(42 AS int), 2426)
+''
+insert into tt on conflict: fail
+  values
+    value ROW(42::int)
+''
+──────────────────────────────────────────────────────────────────────
+ # Forward                                                            
+──────────────────────────────────────────────────────────────────────
+''
+forward analysis (on > ro_to_rw > off):
+  forward = off
+
+-- TEST: raw-logical-forward-buckets-context-block-selects
+-- SQL:
+EXPLAIN (raw, logical, forward, buckets, context)
+DO $$ BEGIN
+    LET a1 = (SELECT a FROM g WHERE b = 2.5);
+    LET a2 = (SELECT b FROM t WHERE a = 42 and c = 'kek' ORDER BY 1 DESC LIMIT 1);
+    RETURN QUERY SELECT a FROM g;
+
+    IF a2 THEN
+        UPDATE t SET b = 5.5 WHERE a = 42 AND c = 'kek';
+    END IF;
+    
+    IF a1 = -1 THEN
+        INSERT INTO t (a, c) VALUES (42, 'kek');
+    END IF;
+
+END $$;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+╭────────────────────────────────╮
+│ 1. Let "a1" (FILTERED STORAGE) │
+╰────────────────────────────────╯
+''
+SELECT "g"."a" FROM "g" WHERE "g"."b" = CAST(2.5 AS decimal)
+''
+projection (g.a::int -> a)
+  selection (g.b::double = 2.5::decimal)
+    scan g
+''
+╭────────────────────────────────╮
+│ 2. Let "a2" (FILTERED STORAGE) │
+╰────────────────────────────────╯
+''
+SELECT "b" FROM ( SELECT "t"."b" FROM "t" WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('kek' AS string) ) ORDER BY 1 DESC LIMIT 1
+''
+limit 1
+  projection (b::double)
+    order by (1 desc)
+      scan
+        projection (t.b::double -> b)
+          selection ((t.a::int = 42::int and t.c::string = 'kek'::string))
+            scan t
+''
+╭────────────────────────────────────╮
+│ 3. Return query (FILTERED STORAGE) │
+╰────────────────────────────────────╯
+''
+SELECT "g"."a" FROM "g"
+''
+projection (g.a::int -> a)
+  scan g
+''
+╭───────────────────────────────╮
+│ 4. If cond (FILTERED STORAGE) │
+╰───────────────────────────────╯
+''
+SELECT CAST(:a2 AS double) as "cond"
+''
+projection (:a2::double -> cond)
+''
+╭───────────────────────────────╮
+│ 5. If body (FILTERED STORAGE) │
+╰───────────────────────────────╯
+''
+UPDATE "t" SET "b" = CAST(5.5 AS decimal) WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('kek' AS string)
+''
+update t (b = col_0)
+  projection (5.5::decimal -> col_0, t.c::string -> col_1, t.a::int -> col_2)
+    selection ((t.a::int = 42::int and t.c::string = 'kek'::string))
+      scan t
+''
+╭───────────────────────────────╮
+│ 6. If cond (FILTERED STORAGE) │
+╰───────────────────────────────╯
+''
+SELECT CAST(:a1 AS int) = CAST(-1 AS int) as "cond"
+''
+projection (:a1::int = -1::int -> cond)
+''
+╭───────────────────────────────╮
+│ 7. If body (FILTERED STORAGE) │
+╰───────────────────────────────╯
+''
+INSERT INTO "t" ("a", "c", "bucket_id") VALUES (CAST(42 AS int), CAST('kek' AS string), 2873)
+''
+insert into t on conflict: fail
+  values
+    value ROW(42::int, 'kek'::string)
+''
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭────────────────────────────────╮
+│ 1. Let "a1" (FILTERED STORAGE) │
+╰────────────────────────────────╯
+''
+SELECT "g"."a" FROM "g" WHERE "g"."b" = CAST(2.5 AS decimal)
+''
+plan:
+    [0] SCAN TABLE g (~262144 rows)
+''
+╭────────────────────────────────╮
+│ 2. Let "a2" (FILTERED STORAGE) │
+╰────────────────────────────────╯
+''
+SELECT "b" FROM ( SELECT "t"."b" FROM "t" WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('kek' AS string) ) ORDER BY 1 DESC LIMIT 1
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
+''
+╭────────────────────────────────────╮
+│ 3. Return query (FILTERED STORAGE) │
+╰────────────────────────────────────╯
+''
+SELECT "g"."a" FROM "g"
+''
+plan:
+    [0] SCAN TABLE g (~1048576 rows)
+''
+╭───────────────────────────────╮
+│ 4. If cond (FILTERED STORAGE) │
+╰───────────────────────────────╯
+''
+SELECT CAST(:a2 AS double) as "cond"
+''
+plan:
+    [0] TRIVIAL
+''
+╭───────────────────────────────╮
+│ 5. If body (FILTERED STORAGE) │
+╰───────────────────────────────╯
+''
+UPDATE "t" SET "b" = CAST(5.5 AS decimal) WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('kek' AS string)
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
+''
+╭───────────────────────────────╮
+│ 6. If cond (FILTERED STORAGE) │
+╰───────────────────────────────╯
+''
+SELECT CAST(:a1 AS int) = CAST(-1 AS int) as "cond"
+''
+plan:
+    [0] TRIVIAL
+''
+╭───────────────────────────────╮
+│ 7. If body (FILTERED STORAGE) │
+╰───────────────────────────────╯
+''
+INSERT INTO "t" ("a", "c", "bucket_id") VALUES (CAST(42 AS int), CAST('kek' AS string), 2873)
+''
+plan:
+    [0] TRIVIAL
+''
+──────────────────────────────────────────────────────────────────────
+ # Forward                                                            
+──────────────────────────────────────────────────────────────────────
+''
+forward analysis (on > ro_to_rw > off):
+  forward = off
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [2873]
+''
+──────────────────────────────────────────────────────────────────────
+ # Context                                                            
+──────────────────────────────────────────────────────────────────────
+''
+sql_vdbe_opcode_max = 45000
+sql_motion_row_max = 5000
+
+-- TEST: raw-logical-forward-buckets-context-block-fmt-dml
+-- SQL:
+EXPLAIN (raw, logical, forward, buckets, context, fmt)
+DO $$ BEGIN
+    UPDATE t SET b = 2.0 WHERE a = 42 and c = 'lol';
+    DELETE FROM t WHERE a = 42 and c = 'lol';
+    INSERT INTO t VALUES (42, 2.5, 'lol');
+END $$;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+╭─────────────────────────────╮
+│ 1. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
+''
+UPDATE
+  "t"
+SET
+  "b" = CAST(2.0 AS decimal)
+WHERE
+  "t"."a" = CAST(42 AS int)
+  and "t"."c" = CAST('lol' AS string)
+''
+update t (b = col_0)
+  projection (
+    2.0::decimal -> col_0,
+    t.c::string -> col_1,
+    t.a::int -> col_2
+  )
+    selection (
+      (
+        t.a::int = 42::int
+        and t.c::string = 'lol'::string
+      )
+    )
+      scan t
+''
+╭─────────────────────────────╮
+│ 2. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
+''
+DELETE FROM
+  "t"
+WHERE
+  "t"."a" = CAST(42 AS int)
+  and "t"."c" = CAST('lol' AS string)
+''
+delete from t
+  projection (t.c::string -> pk_col_0, t.a::int -> pk_col_1)
+    selection (
+      (
+        t.a::int = 42::int
+        and t.c::string = 'lol'::string
+      )
+    )
+      scan t
+''
+╭─────────────────────────────╮
+│ 3. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
+''
+INSERT INTO
+  "t" ("a", "b", "c", "bucket_id")
+VALUES
+  (
+    CAST(42 AS int),
+    CAST(2.5 AS decimal),
+    CAST('lol' AS string),
+'    739'
+  )
+''
+insert into t on conflict: fail
+  values
+    value ROW(42::int, 2.5::decimal, 'lol'::string)
+''
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭─────────────────────────────╮
+│ 1. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
+''
+UPDATE
+  "t"
+SET
+  "b" = CAST(2.0 AS decimal)
+WHERE
+  "t"."a" = CAST(42 AS int)
+  and "t"."c" = CAST('lol' AS string)
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
+''
+╭─────────────────────────────╮
+│ 2. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
+''
+DELETE FROM
+  "t"
+WHERE
+  "t"."a" = CAST(42 AS int)
+  and "t"."c" = CAST('lol' AS string)
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
+''
+╭─────────────────────────────╮
+│ 3. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
+''
+INSERT INTO
+  "t" ("a", "b", "c", "bucket_id")
+VALUES
+  (
+    CAST(42 AS int),
+    CAST(2.5 AS decimal),
+    CAST('lol' AS string),
+'    739'
+  )
+''
+plan:
+    [0] TRIVIAL
+''
+──────────────────────────────────────────────────────────────────────
+ # Forward                                                            
+──────────────────────────────────────────────────────────────────────
+''
+forward analysis (on > ro_to_rw > off):
+  forward = off
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [739]
+''
+──────────────────────────────────────────────────────────────────────
+ # Context                                                            
+──────────────────────────────────────────────────────────────────────
+''
+sql_vdbe_opcode_max = 45000
+sql_motion_row_max = 5000

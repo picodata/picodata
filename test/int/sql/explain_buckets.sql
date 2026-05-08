@@ -80,3 +80,27 @@ buckets = unknown
 explain (buckets) insert into g values (1, 1, 'lol');
 -- EXPECTED:
 buckets = any
+
+-- TEST: buckets-block-let-if-delete-with-return-query
+-- SQL:
+EXPLAIN (buckets)
+DO $$ BEGIN
+  LET var = (SELECT a FROM g);
+  RETURN QUERY SELECT * FROM tt WHERE d = 2;
+
+  IF var = 90 THEN
+    DELETE FROM tt WHERE d = 2;
+  END IF;
+END $$;
+-- EXPECTED:
+buckets = [1410]
+
+-- TEST: buckets-block-multiple-return-query
+-- SQL:
+EXPLAIN (buckets)
+DO $$ BEGIN
+  RETURN QUERY SELECT * FROM tt WHERE d = 42;
+  RETURN QUERY SELECT a FROM g;
+END $$;
+-- EXPECTED:
+buckets = [2426]
