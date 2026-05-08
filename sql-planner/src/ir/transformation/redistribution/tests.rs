@@ -322,10 +322,6 @@ fn test_slices_1() {
         motion [policy: full, program: ReshardIfNeeded]
           projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
             scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 
     // check both motions are in the same slice
@@ -358,10 +354,6 @@ fn test_slices_2() {
             motion [policy: full, program: ReshardIfNeeded]
               projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
                 scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 
     // check both motions are in the same slice

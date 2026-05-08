@@ -558,6 +558,11 @@ fn dispatch_bound_statement_impl<'p>(
             explain.push(buckets);
         }
 
+        if query.is_explain_context() {
+            let context = query.explain_context()?;
+            explain.push(context);
+        }
+
         // Each entry in `explain` is a plain line without a trailing '\n'.
         // This is intentional: a trailing newline would produce extra blank lines
         // at the end of psql output. Since the entries themselves have no newline,

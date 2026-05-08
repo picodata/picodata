@@ -101,10 +101,6 @@ projection (t.a::int -> a)
   selection (true::bool)
     scan t (indexed by aaa)
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -122,10 +118,6 @@ explain SELECT a FROM t AS ttt INDEXED BY aaa WHERE true;
 projection (ttt.a::int -> a)
   selection (true::bool)
     scan t -> ttt (indexed by aaa)
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -159,10 +151,6 @@ delete from t
       selection (true::bool)
         scan t (indexed by aaa)
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -185,10 +173,6 @@ update t (b = col_0)
         motion [policy: full, program: ReshardIfNeeded]
           projection (s.d::int -> d, s.bucket_id::int -> bucket_id, s.e::int -> e, s.f::int -> f)
             scan s (indexed by bbb)
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            

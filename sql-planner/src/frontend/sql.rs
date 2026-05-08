@@ -7022,6 +7022,7 @@ impl AbstractSyntaxTree {
                                 Rule::ExplainBuckets => explain_options |= ExplainOptions::Buckets,
                                 Rule::ExplainLogical => explain_options |= ExplainOptions::Logical,
                                 Rule::ExplainForward => explain_options |= ExplainOptions::Forward,
+                                Rule::ExplainContext => explain_options |= ExplainOptions::Context,
                                 _ => panic!(
                                     "unknown explain option rule: {:?}",
                                     explain_option_node.rule

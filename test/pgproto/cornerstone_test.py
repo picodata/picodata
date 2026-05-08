@@ -424,10 +424,6 @@ def test_interactive_portals(pg_client: PgClient):
 projection (t.key::int -> key, t.value::string -> value)
   scan t
 
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────

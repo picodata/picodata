@@ -93,10 +93,6 @@ fn front_sql_global_tbl_sq1() {
         scan
           projection (t.a::int -> a1)
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
     check_selection_dist(&plan, DistMock::Global);
 }
@@ -129,10 +125,6 @@ fn front_sql_global_tbl_multiple_sqs1() {
         scan
           projection (t.a::int -> a1, t.b::int -> b1)
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
     check_selection_dist(&plan, DistMock::Global);
 }
@@ -167,10 +159,6 @@ fn front_sql_global_tbl_multiple_sqs2() {
         scan
           projection (t.a::int -> a1, t.b::int -> b1)
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
     check_selection_dist(&plan, DistMock::Global);
 }
@@ -193,10 +181,6 @@ fn front_sql_global_tbl_sq2() {
         scan
           projection (t.a::int -> a1, t.b::int -> b1)
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
     check_selection_dist(&plan, DistMock::Global);
 }
@@ -225,10 +209,6 @@ fn front_sql_global_tbl_sq3() {
         scan
           projection (t.a::int -> a1, t.b::int -> b1)
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
     check_selection_dist(&plan, DistMock::Global);
 }
@@ -254,10 +234,6 @@ fn front_sql_global_tbl_sq4() {
       scan
         projection (global_t.a::int::string -> a1)
           scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -280,10 +256,6 @@ fn front_sql_global_tbl_sq5() {
       scan
         projection (global_t.a::int -> a1)
           scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -326,10 +298,6 @@ fn front_sql_global_tbl_sq6() {
       scan
         projection (global_t.a::int * 10::int -> col_1)
           scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -359,10 +327,6 @@ fn front_sql_global_tbl_sq7() {
       scan
         projection (global_t.a::int -> a1)
           scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -389,10 +353,6 @@ fn front_sql_global_join1() {
       join on (true::bool)
         scan global_t
         scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
     check_join_dist(&plan, &[DistMock::Segment]);
 }
@@ -413,10 +373,6 @@ fn front_sql_global_join2() {
       join on (t2.e::int = global_t.a::int or global_t.b::int = t2.f::int)
         scan t2
         scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -436,10 +392,6 @@ fn front_sql_global_join3() {
       left join on (t2.e::int = global_t.a::int or global_t.b::int = t2.f::int)
         scan t2
         scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -463,10 +415,6 @@ fn front_sql_global_join4() {
               projection (sum(t2.e::int::int)::decimal -> sum_1)
                 scan t2
         scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -490,10 +438,6 @@ fn front_sql_global_join5() {
             motion [policy: full, program: ReshardIfNeeded]
               projection (sum(t2.e::int::int)::decimal -> sum_1)
                 scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -515,10 +459,6 @@ fn front_sql_global_join6() {
         scan s
           projection (t2.e::int * t2.e::int -> e)
             scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -540,10 +480,6 @@ fn front_sql_global_join7() {
           projection (t2.e::int * t2.e::int -> e)
             scan t2
         scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -565,10 +501,6 @@ fn front_sql_global_join8() {
           projection (global_t.a::int * global_t.a::int -> e)
             scan global_t
         scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -590,10 +522,6 @@ fn front_sql_global_join9() {
           projection (t2.e::int * t2.e::int -> e)
             scan t2
         scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -620,10 +548,6 @@ fn front_sql_global_join10() {
         scan
           projection (t2.e::int -> e)
             scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -650,10 +574,6 @@ fn front_sql_global_join11() {
         scan
           projection (t2.e::int -> e, t2.f::int -> f)
             scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -668,10 +588,6 @@ fn front_sql_global_aggregate1() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (sum(global_t.a::int::int)::decimal + avg((global_t.b::int + global_t.b::int)::int)::decimal -> col_1)
       scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -686,10 +602,6 @@ fn front_sql_global_aggregate2() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (sum(global_t.a::int::int)::decimal + avg((global_t.b::int + global_t.b::int)::int)::decimal -> col_1)
       scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -706,10 +618,6 @@ fn front_sql_global_aggregate3() {
     projection (global_t.b::int + global_t.a::int -> col_1, sum(global_t.a::int::int)::decimal -> col_2)
       group by (global_t.b::int + global_t.a::int) output (global_t.a::int -> a, global_t.b::int -> b)
         scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -728,10 +636,6 @@ fn front_sql_global_aggregate4() {
       having (avg(global_t.b::int::int)::decimal > 3::int)
         group by (global_t.b::int + global_t.a::int) output (global_t.a::int -> a, global_t.b::int -> b)
           scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -757,10 +661,6 @@ fn front_sql_global_aggregate5() {
         scan
           projection (t2.e::int -> e, t2.f::int -> f)
             scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -782,10 +682,6 @@ fn front_sql_global_left_join1() {
               projection (global_t.a::int -> a, global_t.b::int -> b)
                 scan global_t
             scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -809,10 +705,6 @@ fn front_sql_global_left_join2() {
                 projection (global_t.a::int -> a, global_t.b::int -> b)
                   scan global_t
               scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -836,10 +728,6 @@ fn front_sql_global_left_join3() {
                 projection (global_t.b::int * global_t.b::int -> b)
                   scan global_t
             scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -867,10 +755,6 @@ fn front_sql_global_left_join4() {
             scan unnamed_subquery_1
               projection (t2.e::int + 1::int -> e)
                 scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -887,10 +771,6 @@ fn front_order_by_from_global_node_must_not_add_motion() {
         scan
           projection (global_t.b::int -> b, global_t.a::int -> my_col)
             scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -922,10 +802,6 @@ fn front_sql_global_union_all1() {
           scan global_t
       projection (t2.e::int -> e, t2.f::int -> f)
         scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 
     check_union_dist(&plan, &[DistMock::Any]);
@@ -948,10 +824,6 @@ fn front_sql_global_union_all2() {
           scan global_t
       projection (t2.e::int -> e)
         scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 
     check_union_dist(&plan, &[DistMock::Any]);
@@ -982,10 +854,6 @@ fn front_sql_global_union_all3() {
                   scan t2
       projection (global_t.b::int -> b)
         scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 
     check_union_dist(&plan, &[DistMock::Single, DistMock::Single]);
@@ -1007,10 +875,6 @@ fn front_sql_global_union_all5() {
         scan global_t
       projection (global_t.b::int -> b)
         scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 
     check_union_dist(&plan, &[DistMock::Global]);
@@ -1033,10 +897,6 @@ fn front_sql_global_union() {
           scan global_t
         projection (global_t.b::int -> b)
           scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1058,10 +918,6 @@ fn front_sql_global_union1() {
             scan global_t
         projection (t2.e::int -> e)
           scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1083,10 +939,6 @@ fn front_sql_global_union2() {
           motion [policy: full, program: ReshardIfNeeded]
             projection (sum(t2.e::int::int)::decimal -> sum_1)
               scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1118,10 +970,6 @@ fn front_sql_union() {
                     scan t2
         projection (t2.f::int -> f)
           scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1150,10 +998,6 @@ fn check_plan_except_global_vs_segment() {
           projection (global_t.a::int -> a, global_t.b::int -> b)
             selection (global_t.a::int = 1::int)
               scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1179,10 +1023,6 @@ fn check_plan_except_global_vs_any() {
             scan t2
           projection (global_t.a::int -> a)
             scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1202,10 +1042,6 @@ fn check_plan_except_global_vs_global() {
         scan global_t
       projection (global_t.b::int -> b)
         scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1227,10 +1063,6 @@ fn check_plan_except_global_vs_single() {
         motion [policy: full, program: ReshardIfNeeded]
           projection (sum(t2.e::int::int)::decimal -> sum_1)
             scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1252,10 +1084,6 @@ fn check_plan_except_single_vs_global() {
             scan t2
       projection (global_t.a::int -> a)
         scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1275,10 +1103,6 @@ fn check_plan_except_segment_vs_global() {
         scan t2
       projection (global_t.a::int -> a, global_t.b::int -> b)
         scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1298,10 +1122,6 @@ fn check_plan_except_any_vs_global() {
         scan t2
       projection (global_t.b::int -> b)
         scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1341,9 +1161,5 @@ fn check_plan_except_non_trivial_global_subtree_vs_any() {
                 scan unnamed_subquery
                   projection (global_t.b::int -> "B")
                     scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }

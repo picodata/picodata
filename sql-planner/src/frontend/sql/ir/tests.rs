@@ -47,10 +47,6 @@ fn front_sql1() {
     projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
       selection (hash_testing.identification_number::int = 1::int)
         scan hash_testing
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -66,10 +62,6 @@ fn front_sql2() {
     projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
       selection ((hash_testing.identification_number::int = 1::int and hash_testing.product_code::string = '1'::string) or (hash_testing.identification_number::int = 2::int and hash_testing.product_code::string = '2'::string))
         scan hash_testing
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -98,10 +90,6 @@ fn front_sql3() {
             projection (hash_testing_hist.identification_number::int -> identification_number, hash_testing_hist.product_code::string -> product_code)
               selection (hash_testing_hist.sys_op::int > 1::int)
                 scan hash_testing_hist
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -134,10 +122,6 @@ fn front_sql4() {
             projection (hash_testing_hist.identification_number::int -> identification_number, hash_testing_hist.product_code::string -> product_code)
               selection (hash_testing_hist.sys_op::int > 1::int)
                 scan hash_testing_hist
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -159,10 +143,6 @@ fn front_sql5() {
           projection (hash_testing_hist.identification_number::int -> identification_number)
             selection (hash_testing_hist.product_code::string = 'a'::string)
               scan hash_testing_hist
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -184,10 +164,6 @@ fn front_sql6() {
             scan t
               projection (test_space.id::int -> id)
                 scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -202,10 +178,6 @@ fn front_sql8() {
     projection (t.identification_number::int -> identification_number, t.product_code::string -> product_code)
       selection (t.identification_number::int = 1::int)
         scan hash_testing -> t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -255,10 +227,6 @@ fn front_sql9() {
                 projection (hash_single_testing_hist.identification_number::int -> identification_number, hash_single_testing_hist.product_code::string -> product_code)
                   selection (hash_single_testing_hist.sys_op::int <= 0::int)
                     scan hash_single_testing_hist
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -273,10 +241,6 @@ fn front_sql10() {
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
           value ROW(1::int, 2::int, 3::int, 4::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -291,10 +255,6 @@ fn front_sql11() {
       motion [policy: segment([value(NULL), ref("COLUMN_1")]), program: ReshardIfNeeded]
         values
           value ROW(1::int, 2::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -309,10 +269,6 @@ fn front_sql14() {
       motion [policy: segment([value(NULL), ref(b)]), program: ReshardIfNeeded]
         projection (t.b::int -> b, t.d::int -> d)
           scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -328,10 +284,6 @@ fn front_sql16() {
     projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
       selection (hash_testing.product_code::string = 'кириллица'::string)
         scan hash_testing
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -346,10 +298,6 @@ fn front_sql17() {
     projection (hash_testing.identification_number::int -> identification_number)
       selection (hash_testing.product_code::string is null)
         scan hash_testing
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -364,10 +312,6 @@ fn front_sql18() {
     projection (hash_testing.product_code::string -> product_code)
       selection ((hash_testing.product_code::string >= '1'::string and hash_testing.product_code::string <= '2'::string))
         scan hash_testing
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -382,10 +326,6 @@ fn front_sql19() {
     projection (hash_testing.identification_number::int -> identification_number)
       selection (not hash_testing.product_code::string is null)
         scan hash_testing
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -393,89 +333,41 @@ fn front_sql19() {
 fn front_sql_is_true() {
     let input = r#"explain (logical) select true is true"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
-    projection (true::bool = true::bool -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
-    ");
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (true::bool = true::bool -> col_1)");
 
     let input = r#"explain (logical) select true is not true"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
-    projection (not true::bool = true::bool -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
-    ");
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (not true::bool = true::bool -> col_1)");
 }
 
 #[test]
 fn front_sql_is_false() {
     let input = r#"explain (logical) select true is false"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
-    projection (true::bool = false::bool -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
-    ");
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (true::bool = false::bool -> col_1)");
 
     let input = r#"explain (logical) select true is not false"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
-    projection (not true::bool = false::bool -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
-    ");
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (not true::bool = false::bool -> col_1)");
 }
 
 #[test]
 fn front_sql_is_null_unknown() {
     let input = r#"explain (logical) select true is null"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
-    projection (true::bool is null -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
-    ");
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (true::bool is null -> col_1)");
 
     let input = r#"explain (logical) select true is unknown"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
-    projection (true::bool is null -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
-    ");
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (true::bool is null -> col_1)");
 
     let input = r#"explain (logical) select true is not null"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
-    projection (not true::bool is null -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
-    ");
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (not true::bool is null -> col_1)");
 
     let input = r#"explain (logical) select true is not unknown"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
-    projection (not true::bool is null -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
-    ");
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (not true::bool is null -> col_1)");
 }
 
 #[test]
@@ -490,10 +382,6 @@ fn front_sql_between_with_additional_and_from_left() {
     projection (t.id::int -> id)
       selection ((t.id::int > 1::int and t.id::int >= t.id::int and t.id::int <= t.id::int + 10::int))
         scan test_space -> t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -509,10 +397,6 @@ fn front_sql_between_with_additional_not_from_left() {
     projection (t.id::int -> id)
       selection ((not (t.id::int >= t.id::int and t.id::int <= t.id::int + 10::int) and true::bool))
         scan test_space -> t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -528,10 +412,6 @@ fn front_sql_between_with_additional_and_from_left_and_right() {
     projection (t.id::int -> id)
       selection ((t.id::int > 1::int and t.id::int >= t.id::int and t.id::int <= t.id::int + 10::int and true::bool))
         scan test_space -> t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -547,10 +427,6 @@ fn front_sql_between_with_nested_not_from_the_left() {
     projection (t.id::int -> id)
       selection (true::bool)
         scan test_space -> t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -566,10 +442,6 @@ fn front_sql_between_with_nested_and_from_the_left() {
     projection (t.id::int -> id)
       selection (false::bool)
         scan test_space -> t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -615,10 +487,6 @@ fn front_sql_check_arbitrary_utf_in_single_quote_strings() {
     projection (hash_testing.identification_number::int -> identification_number)
       selection (hash_testing.product_code::string = '«123»§#*&%@/// / // \\ ƵǖḘỺʥ ͑ ͑  ͕ΆΨѮښ ۞ܤ'::string)
         scan hash_testing
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -627,13 +495,7 @@ fn front_sql_check_single_quotes_are_escaped() {
     let input = "explain (logical) select '', '''', 'left''right', '''center'''";
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
-    projection (''::string -> col_1, '''::string -> col_2, 'left'right'::string -> col_3, ''center''::string -> col_4)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
-    ");
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (''::string -> col_1, '''::string -> col_2, 'left'right'::string -> col_3, ''center''::string -> col_4)");
 }
 
 #[test]
@@ -647,10 +509,6 @@ fn front_sql_check_arbitraty_utf_in_identifiers() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection ("&ښ۞@ƶǖ".id::int -> from, "&ښ۞@ƶǖ".id::int -> select, "&ښ۞@ƶǖ".id::int -> "123»&%ښ۞@Ƶǖselect.""''\\", "&ښ۞@ƶǖ".id::int -> "aц1&@$ƶǖ^&«»§&ښ۞@ƶǖ")
       scan test_space -> "&ښ۞@ƶǖ"
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -666,10 +524,6 @@ fn front_sql_check_inapplicatable_symbols() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection ("TBL"."A"::int * "TBL"."A"::int -> col_1, "TBL"."B"::int + "TBL"."B"::int -> col_2, "TBL"."A"::int - "TBL"."A"::int -> col_3)
       scan "TBL"
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -682,10 +536,6 @@ fn front_projection_with_scan_specification_under_scan() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op)
       scan hash_testing
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -702,10 +552,6 @@ fn front_projection_with_scan_specification_under_join() {
         motion [policy: full, program: ReshardIfNeeded]
           projection (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op, test_space.bucket_id::int -> bucket_id)
             scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -724,10 +570,6 @@ fn front_projection_with_scan_specification_under_join_of_subqueries() {
           scan ts_sq
             projection (ts.id::int -> id, ts."sysFrom"::int -> "sysFrom", ts."FIRST_NAME"::string -> "FIRST_NAME", ts.sys_op::int -> sys_op)
               scan test_space -> ts
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -744,10 +586,6 @@ fn front_order_by_with_simple_select() {
           scan
             projection (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op)
               scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -796,10 +634,6 @@ fn front_order_by_with_order_type_specification() {
           scan
             projection (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op)
               scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -816,10 +650,6 @@ fn front_order_by_with_indices() {
           scan
             projection (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op)
               scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -836,10 +666,6 @@ fn front_order_by_ordering_by_expressions_from_projection() {
           scan
             projection (test_space.id::int -> my_col, test_space.id::int -> id)
               scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -876,10 +702,6 @@ fn front_order_by_over_single_distribution_must_not_add_motion() {
                 motion [policy: full, program: ReshardIfNeeded]
                   projection (count(test_space.id::int::int)::int -> count_1)
                     scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -899,10 +721,6 @@ fn front_join_with_identical_columns() {
           scan unnamed_subquery_1
             projection (test_space."sysFrom"::int -> "sysFrom")
               scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -933,10 +751,6 @@ fn front_join_with_vtable_ambiguous_column_name() {
                   scan t2
                     projection (test_space.id::int -> id)
                       scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -952,10 +766,6 @@ fn front_case_search() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (case test_space.id::int when 1::int then true::bool end -> col_1)
       scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -975,10 +785,6 @@ fn front_case_simple() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (case when true::bool = true::bool then 'Moscow'::string when (1::int <> 2::int and 4::int < 5::int) then '42'::string else 'false'::string end -> case_result)
       scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1002,10 +808,6 @@ fn front_case_nested() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (case test_space.id::int when 1::int then case test_space."sysFrom"::int when 69::int then true::bool when 42::int then false::bool end when 2::int then 42::int = 42::int else false::bool end -> case_result)
       scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -1024,10 +826,6 @@ fn front_sql_subquery_column_duplicates() {
       scan
         projection (test_space.id::int -> id, test_space.id::int -> id)
           scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1156,10 +954,6 @@ fn front_sql_join_on_bucket_id1() {
           projection (test_space.bucket_id::int -> bucket_id)
             selection (test_space.id::int = 1::int)
               scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1182,10 +976,6 @@ fn front_sql_join_on_bucket_id2() {
             projection (test_space.bucket_id::int -> bucket_id)
               selection (test_space.id::int = 1::int)
                 scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1204,10 +994,6 @@ fn front_sql_groupby_on_bucket_id() {
         scan t
           projection (t2.bucket_id::int -> b)
             scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1230,10 +1016,6 @@ fn front_sql_sq_on_bucket_id() {
       scan
         projection (test_space.bucket_id::int -> bucket_id, test_space.id::int -> id)
           scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1253,10 +1035,6 @@ fn front_sql_except_on_bucket_id() {
         scan t2
       projection (test_space.id::int -> id, test_space.bucket_id::int -> bucket_id)
         scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1275,10 +1053,6 @@ fn front_sql_exists_subquery_select_from_table() {
         scan
           projection (0::int -> col_1)
             scan hash_testing
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1297,10 +1071,6 @@ fn front_sql_not_exists_subquery_select_from_table() {
         scan
           projection (0::int -> col_1)
             scan hash_testing
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1320,10 +1090,6 @@ fn front_sql_exists_subquery_select_from_table_with_condition() {
           projection (0::int -> col_1)
             selection (hash_testing.identification_number::int <> 42::int)
               scan hash_testing
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1339,10 +1105,6 @@ fn front_sql_groupby() {
           projection (hash_testing.identification_number::int -> gr_expr_1, hash_testing.product_code::string -> gr_expr_2)
             group by (hash_testing.identification_number::int, hash_testing.product_code::string) output (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op, hash_testing.bucket_id::int -> bucket_id)
               scan hash_testing
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1362,10 +1124,6 @@ fn front_sql_groupby_less_cols_in_proj() {
           projection (hash_testing.identification_number::int -> gr_expr_1, hash_testing.product_units::bool -> gr_expr_2)
             group by (hash_testing.identification_number::int, hash_testing.product_units::bool) output (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op, hash_testing.bucket_id::int -> bucket_id)
               scan hash_testing
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1389,10 +1147,6 @@ fn front_sql_groupby_union_1() {
                   scan hash_testing
       projection (hash_testing.identification_number::int -> identification_number)
         scan hash_testing
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1422,10 +1176,6 @@ fn front_sql_groupby_union_2() {
                         scan hash_testing
             projection (hash_testing.identification_number::int -> identification_number)
               scan hash_testing
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1453,10 +1203,6 @@ fn front_sql_groupby_join_1() {
                   scan t
                     projection (test_space.id::int -> id)
                       scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1469,10 +1215,6 @@ fn front_sql_groupby_bucket_id() {
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
       group by (t.a::int, t.b::int, t.c::int, t.d::int, t.bucket_id::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
         scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1496,10 +1238,6 @@ fn front_sql_join() {
           scan t
             projection (test_space.id::int -> id)
               scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 
     // here hash_single_testing is sharded by "identification_number", so it is a local join
@@ -1520,10 +1258,6 @@ fn front_sql_join() {
         scan t2
           projection (test_space.id::int -> id)
             scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 
     // check we have no error, in case one of the join children has Distribution::Single
@@ -1547,10 +1281,6 @@ fn front_sql_join() {
               motion [policy: full, program: ReshardIfNeeded]
                 projection (sum(test_space.id::int::int)::decimal -> sum_1)
                   scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1569,10 +1299,6 @@ fn front_sql_groupby_insert() {
               projection (t.b::int -> gr_expr_1, t.d::int -> gr_expr_2)
                 group by (t.b::int, t.d::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                   scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1616,10 +1342,6 @@ fn front_sql_aggregates() {
           projection (t.b::int -> gr_expr_1, count(t.a::int::int)::int -> count_1, count(t.b::int::int)::int -> count_2)
             group by (t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1642,10 +1364,6 @@ fn front_sql_distinct_asterisk() {
                   scan unnamed_subquery_1
                     projection (test_space.id::int -> id)
                       scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1662,10 +1380,6 @@ fn front_sql_avg_aggregate() {
         projection (t.b::int::int -> gr_expr_1, sum(t.b::int::int)::decimal -> avg_1, count(t.b::int::int)::int -> avg_2)
           group by (t.b::int::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1681,10 +1395,6 @@ fn front_sql_total_aggregate() {
         projection (t.b::int::int -> gr_expr_1, total(t.b::int::int)::double -> total_1)
           group by (t.b::int::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1700,10 +1410,6 @@ fn front_sql_min_aggregate() {
         projection (t.b::int::int -> gr_expr_1, min(t.b::int::int)::int -> min_1)
           group by (t.b::int::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1719,10 +1425,6 @@ fn front_sql_max_aggregate() {
         projection (t.b::int::int -> gr_expr_1, max(t.b::int::int)::int -> max_1)
           group by (t.b::int::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1738,10 +1440,6 @@ fn front_sql_group_concat_aggregate() {
         projection (test_space."FIRST_NAME"::string::string -> gr_expr_1, group_concat(test_space."FIRST_NAME"::string::string)::string -> group_concat_1)
           group by (test_space."FIRST_NAME"::string::string) output (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op, test_space.bucket_id::int -> bucket_id)
             scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -1757,10 +1455,6 @@ fn front_sql_group_concat_aggregate2() {
         projection (test_space."FIRST_NAME"::string::string -> gr_expr_1, group_concat(test_space."FIRST_NAME"::string::string, ' '::string)::string -> group_concat_1)
           group by (test_space."FIRST_NAME"::string::string) output (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op, test_space.bucket_id::int -> bucket_id)
             scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -1774,10 +1468,6 @@ fn front_sql_string_agg_alias_to_group_concat() {
       motion [policy: full, program: ReshardIfNeeded]
         projection (group_concat(test_space."FIRST_NAME"::string::string, ','::string)::string -> group_concat_1)
           scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 
     // Test 2
@@ -1790,10 +1480,6 @@ fn front_sql_string_agg_alias_to_group_concat() {
           projection (test_space.id::int -> gr_expr_1, group_concat(test_space."FIRST_NAME"::string::string, ','::string)::string -> group_concat_1)
             group by (test_space.id::int) output (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op, test_space.bucket_id::int -> bucket_id)
               scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -1808,10 +1494,6 @@ fn front_sql_count_asterisk1() {
       motion [policy: full, program: ReshardIfNeeded]
         projection (count(*)::int -> count_1)
           scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1828,10 +1510,6 @@ fn front_sql_count_asterisk2() {
           projection (t.b::int -> gr_expr_1, count(*)::int -> count_1)
             group by (t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1864,10 +1542,6 @@ fn front_sql_aggregates_with_subexpressions() {
           projection (t.b::int -> gr_expr_1, count(TRIM(t.a::int::string)::string)::int -> count_2, count((t.a::int * t.b::int + 1::int)::int)::int -> count_1)
             group by (t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1885,10 +1559,6 @@ fn front_sql_aggregates_with_distinct1() {
           projection (t.b::int -> gr_expr_1, t.a::int::int -> gr_expr_2, t.b::int::int -> gr_expr_3)
             group by (t.b::int, t.a::int::int, t.b::int::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1906,10 +1576,6 @@ fn front_sql_aggregates_with_distinct2() {
           projection (t.b::int -> gr_expr_1, (t.a::int + t.b::int + 3::int)::int -> gr_expr_2)
             group by (t.b::int, (t.a::int + t.b::int + 3::int)::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1925,10 +1591,6 @@ fn front_sql_aggregates_with_distinct3() {
         projection ((t.a::int + t.b::int + 3::int)::int -> gr_expr_1)
           group by ((t.a::int + t.b::int + 3::int)::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -1972,10 +1634,6 @@ fn front_sql_option_basic() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
       scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 1000
-      sql_motion_row_max = 10
     ");
 }
 
@@ -1987,10 +1645,6 @@ fn front_sql_option_with_param() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
       scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 1000
-      sql_motion_row_max = 10
     ");
 }
 
@@ -2005,10 +1659,6 @@ fn front_sql_pg_style_params1() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (1000::int -> col_1, 'hi'::string -> col_2, 1000::int -> col_3)
       scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2023,10 +1673,6 @@ fn front_sql_pg_style_params2() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (1000::int -> col_1, 'hi'::string -> col_2, 1000::int -> col_3)
       scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 1000
-      sql_motion_row_max = 1000
     ");
 }
 
@@ -2049,10 +1695,6 @@ fn front_sql_pg_style_params3() {
               group by (t.a::int + 42::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                 selection (t.a::int = 42::int)
                   scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 42
-      sql_motion_row_max = 42
     ");
 }
 
@@ -2144,10 +1786,6 @@ fn front_sql_pg_style_params9() {
     subquery $1:
       scan
         projection (6::int -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2170,10 +1808,6 @@ fn front_sql_tnt_style_params1() {
     subquery $1:
       scan
         projection (6::int -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2184,13 +1818,7 @@ fn front_sql_tnt_style_params2() {
 
     let plan = sql_to_optimized_ir(input, vec![Value::Integer(1)]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
-    projection ((1::int >= 1::int and 1::int <= 2::int) -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
-    ");
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection ((1::int >= 1::int and 1::int <= 2::int) -> col_1)");
 }
 
 #[test]
@@ -2202,10 +1830,6 @@ fn front_sql_option_defaults() {
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
       selection ((t.a::int = 1000::int and t.b::int = 10::int))
         scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2236,10 +1860,6 @@ fn front_sql_aggregate_without_groupby() {
       motion [policy: full, program: ReshardIfNeeded]
         projection (sum((t.a::int * t.b::int + 1::int)::int)::decimal -> sum_1)
           scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2256,10 +1876,6 @@ fn front_sql_aggregate_without_groupby2() {
           motion [policy: full, program: ReshardIfNeeded]
             projection (count(test_space.id::int::int)::int -> count_1)
               scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2276,10 +1892,6 @@ fn front_sql_aggregate_on_aggregate() {
           motion [policy: full, program: ReshardIfNeeded]
             projection (count(test_space.id::int::int)::int -> count_1)
               scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2302,10 +1914,6 @@ fn front_sql_union_single_left() {
           motion [policy: full, program: ReshardIfNeeded]
             projection (sum(t.a::int::int)::decimal -> sum_1)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2328,10 +1936,6 @@ fn front_sql_union_single_right() {
               scan t
       projection (t.a::int -> a)
         scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2355,10 +1959,6 @@ fn front_sql_union_single_both() {
         motion [policy: full, program: ReshardIfNeeded]
           projection (sum(t.a::int::int)::decimal -> sum_1)
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2376,10 +1976,6 @@ fn front_sql_insert_single() {
           motion [policy: full, program: ReshardIfNeeded]
             projection (count(t.d::int::int)::int -> count_2, sum(t.b::int::int)::decimal -> sum_1)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2400,10 +1996,6 @@ fn front_sql_except_single_right() {
           motion [policy: full, program: ReshardIfNeeded]
             projection (sum(t.a::int::int)::decimal -> sum_1, count(t.b::int::int)::int -> count_2)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 
     let input = r#"explain (logical) SELECT "b", "a" from "t"
@@ -2422,10 +2014,6 @@ fn front_sql_except_single_right() {
           motion [policy: full, program: ReshardIfNeeded]
             projection (sum(t.a::int::int)::decimal -> sum_1, count(t.b::int::int)::int -> count_2)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2446,10 +2034,6 @@ fn front_sql_except_single_left() {
               scan t
       projection (t.a::int -> a, t.b::int -> b)
         scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2473,10 +2057,6 @@ fn front_sql_except_single_both() {
           motion [policy: full, program: ReshardIfNeeded]
             projection (sum(t.a::int::int)::decimal -> sum_1, sum(t.b::int::int)::decimal -> sum_2)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2494,10 +2074,6 @@ fn front_sql_groupby_expression() {
           projection (t.a::int + t.b::int -> gr_expr_1)
             group by (t.a::int + t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2515,10 +2091,6 @@ fn front_sql_groupby_expression2() {
           projection (t.a::int + t.b::int -> gr_expr_1, count(t.a::int::int)::int -> count_1)
             group by (t.a::int + t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2536,10 +2108,6 @@ fn front_sql_groupby_expression3() {
           projection (t.a::int + t.b::int -> gr_expr_1, t.c::int * t.d::int -> gr_expr_2, count((t.a::int * t.b::int)::int)::int -> count_2, sum((t.c::int * t.d::int)::int)::decimal -> sum_1)
             group by (t.a::int + t.b::int, t.c::int * t.d::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2557,10 +2125,6 @@ fn front_sql_groupby_expression4() {
           projection (t.a::int + t.b::int -> gr_expr_1, t.a::int -> gr_expr_2)
             group by (t.a::int + t.b::int, t.a::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2589,10 +2153,6 @@ fn front_sql_groupby_with_aggregates() {
                 projection (t2.g::int -> gr_expr_1, t2.e::int -> gr_expr_2, sum(t2.f::int::int)::decimal -> sum_1)
                   group by (t2.g::int, t2.e::int) output (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
                     scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2615,10 +2175,6 @@ fn front_sql_left_join() {
           scan i
             projection (t.b::int -> c, t.d::int -> d)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2645,10 +2201,6 @@ fn front_sql_left_join_single_left() {
           scan t2
             projection (test_space.id::int -> b)
               scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2676,10 +2228,6 @@ fn front_sql_left_join_single_left2() {
           scan t2
             projection (test_space.id::int -> b)
               scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2707,10 +2255,6 @@ fn front_sql_left_join_single_both() {
             motion [policy: full, program: ReshardIfNeeded]
               projection (count(test_space.id::int::int)::int -> count_1)
                 scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2736,10 +2280,6 @@ fn front_sql_nested_subqueries() {
           projection (t1.a::string::int -> col_1)
             selection (t1.a::string in ROW($0))
               scan t1
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2762,10 +2302,6 @@ fn front_sql_having1() {
             projection (t.a::int -> gr_expr_1, t.b::int::int -> gr_expr_2, sum(t.b::int::int)::decimal -> sum_1)
               group by (t.a::int, t.b::int::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                 scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2784,10 +2320,6 @@ fn front_sql_having2() {
           projection (t.b::int::int -> gr_expr_1, sum(t.a::int::int)::decimal -> sum_1)
             group by (t.b::int::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2805,10 +2337,6 @@ fn front_sql_having3() {
         motion [policy: full, program: ReshardIfNeeded]
           projection (sum(t.a::int::int)::decimal -> sum_1)
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2851,10 +2379,6 @@ fn front_sql_having_with_sq() {
           projection (test_space."sysFrom"::int -> "sysFrom")
             selection (test_space."sysFrom"::int = 2::int)
               scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -2898,10 +2422,6 @@ fn front_sql_having_with_sq_segment_motion() {
         scan
           projection (t.a::int -> a, t.d::int -> d)
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -2929,10 +2449,6 @@ fn front_sql_having_with_sq_segment_local_motion() {
         scan
           projection (t.a::int -> a, t.b::int -> b)
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -2949,10 +2465,6 @@ fn front_sql_unique_local_aggregates() {
       motion [policy: full, program: ReshardIfNeeded]
         projection (sum(t.a::int::int)::decimal -> sum_1, count(t.a::int::int)::int -> count_2)
           scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -2973,10 +2485,6 @@ fn front_sql_unique_local_groupings() {
           projection (t.b::int -> gr_expr_1, t.a::int::int -> gr_expr_2, t.b::int::int -> gr_expr_3)
             group by (t.b::int, t.a::int::int, t.b::int::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3007,10 +2515,6 @@ ON "t3"."a" = "ij"."id"
               scan ts
                 projection (test_space.id::int -> id)
                   scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3029,10 +2533,6 @@ fn front_sql_select_distinct() {
           projection (t.a::int -> gr_expr_1, t.a::int + t.b::int -> gr_expr_2)
             group by (t.a::int, t.a::int + t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3049,10 +2549,6 @@ fn front_sql_select_distinct_asterisk() {
           projection (t.a::int -> gr_expr_1, t.b::int -> gr_expr_2, t.c::int -> gr_expr_3, t.d::int -> gr_expr_4)
             group by (t.a::int, t.b::int, t.c::int, t.d::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3086,10 +2582,6 @@ fn front_sql_select_distinct_with_aggr() {
           projection (t.b::int -> gr_expr_1, sum(t.a::int::int)::decimal -> sum_1)
             group by (t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3104,10 +2596,6 @@ fn front_sql_select_distinct_with_aggr2() {
       motion [policy: full, program: ReshardIfNeeded]
         projection (sum(t.a::int::int)::decimal -> sum_1)
           scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3122,10 +2610,6 @@ fn front_sql_insert_on_conflict() {
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
           value ROW(1::int, 1::int, 1::int, 1::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 
     input = r#"explain (logical) insert into "t" values (1, 1, 1, 1) on conflict do replace"#;
@@ -3135,10 +2619,6 @@ fn front_sql_insert_on_conflict() {
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
           value ROW(1::int, 1::int, 1::int, 1::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -3154,10 +2634,6 @@ fn front_sql_insert_1() {
         projection (t.a::int -> a)
           selection ((t.a::int = 1::int and t.b::int = 2::int) or (t.a::int = 2::int and t.b::int = 3::int))
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3173,10 +2649,6 @@ fn front_sql_insert_2() {
         projection (t.a::int -> a, t.b::int -> b)
           selection ((t.a::int = 1::int and t.b::int = 2::int))
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3193,10 +2665,6 @@ fn front_sql_insert_3() {
         projection (t.a::int -> a, t.b::int -> b)
           selection ((t.a::int = 1::int and t.b::int = 2::int) or (t.a::int = 3::int and t.b::int = 4::int))
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3212,10 +2680,6 @@ fn front_sql_insert_4() {
         projection (t.b::int -> b, t.a::int -> a)
           selection ((t.a::int = 1::int and t.b::int = 2::int))
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3231,10 +2695,6 @@ fn front_sql_insert_5() {
         projection (5::int -> col_1, 6::int -> col_2)
           selection ((t.a::int = 1::int and t.b::int = 2::int))
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3252,10 +2712,6 @@ fn front_sql_insert_6() {
           value ROW(1::int, 2::int)
           value ROW(1::int, 2::int)
           value ROW(3::int, 4::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -3286,10 +2742,6 @@ fn front_sql_insert_8() {
       motion [policy: segment([ref(identification_number), ref(product_code)]), program: ReshardIfNeeded]
         projection (hash_single_testing.identification_number::int -> identification_number, hash_single_testing.product_code::string -> product_code, hash_single_testing.product_units::bool -> product_units, hash_single_testing.sys_op::int -> sys_op)
           scan hash_single_testing
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3303,10 +2755,6 @@ fn front_sql_insert_9() {
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
           value ROW(1::int, 2::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -3334,10 +2782,6 @@ fn front_sql_update1() {
       motion [policy: segment([]), program: [PrimaryKey(1), RearrangeForShardedUpdate(0, 1)]]
         projection (1::int -> col_0, t.b::int -> col_1, t.c::int -> col_2, t.d::int -> col_3, t.bucket_id::int -> col_4, t.a::int -> col_5, t.b::int -> col_6)
           scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3351,10 +2795,6 @@ fn front_sql_update2() {
       motion [policy: local, program: ReshardIfNeeded]
         projection (t.a::int + t.b::int -> col_0, t.b::int -> col_1)
           scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3369,10 +2809,6 @@ fn front_sql_update3() {
         projection (t.a::int + t.b::int -> col_0, t.b::int -> col_1)
           selection (t.c::int = 1::int)
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3395,10 +2831,6 @@ fn front_sql_update4() {
               scan unnamed_subquery
                 projection (t1.a::string -> a1, t1.b::int -> b1)
                   scan t1
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3417,10 +2849,6 @@ fn front_sql_update5() {
           join on (t3_2.a::int = test_space.id::int)
             scan t3_2
             scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3445,10 +2873,6 @@ fn front_sql_update6() {
             motion [policy: full, program: ReshardIfNeeded]
               projection (sum(t3.b::int::int)::decimal -> sum_1)
                 scan t3
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3462,10 +2886,6 @@ fn front_sql_update7() {
       motion [policy: local, program: ReshardIfNeeded]
         projection (1::int -> col_0, t3.a::string -> col_1)
           scan t3
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3479,10 +2899,6 @@ fn front_sql_update8() {
       motion [policy: local, program: ReshardIfNeeded]
         projection (1::int + 1::int -> col_0, t3.a::string -> col_1)
           scan t3
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3504,10 +2920,6 @@ fn front_sql_not_true() {
     projection (t.a::int -> a)
       selection (not true::bool)
         scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3522,10 +2934,6 @@ fn front_sql_not_equal() {
           motion [policy: full, program: ReshardIfNeeded]
             values
               value ROW(1::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -3540,10 +2948,6 @@ fn front_sql_not_cast() {
           motion [policy: full, program: ReshardIfNeeded]
             values
               value ROW(1::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -3558,10 +2962,6 @@ fn from_sql_not_column() {
           motion [policy: full, program: ReshardIfNeeded]
             values
               value ROW(true::bool)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -3576,10 +2976,6 @@ fn front_sql_not_or() {
           motion [policy: full, program: ReshardIfNeeded]
             values
               value ROW(1::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -3593,10 +2989,6 @@ fn front_sql_not_and_with_parentheses() {
         motion [policy: full, program: ReshardIfNeeded]
           values
             value ROW(1::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3611,10 +3003,6 @@ fn front_sql_not_or_with_parentheses() {
           motion [policy: full, program: ReshardIfNeeded]
             values
               value ROW(1::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -3636,10 +3024,6 @@ fn front_sql_not_exists() {
             motion [policy: full, program: ReshardIfNeeded]
               values
                 value ROW(1::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -3662,10 +3046,6 @@ fn front_sql_not_in() {
               motion [policy: full, program: ReshardIfNeeded]
                 values
                   value ROW(1::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -3700,10 +3080,6 @@ fn front_sql_not_complex_query() {
               motion [policy: full, program: ReshardIfNeeded]
                 values
                   value ROW(1::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -3717,10 +3093,6 @@ fn front_sql_arithmetic_with_parentheses() {
         motion [policy: full, program: ReshardIfNeeded]
           values
             value ROW(1::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3735,10 +3107,6 @@ fn front_sql_to_date() {
         motion [policy: full, program: ReshardIfNeeded]
           values
             value ROW('2010/10/10'::string)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -3759,11 +3127,7 @@ fn front_sql_current_date() {
     scan unnamed_subquery
       motion [policy: full, program: ReshardIfNeeded]
         values
-          value ROW('2010/10/10'::string)
-
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000"#
+          value ROW('2010/10/10'::string)"#
     );
 
     assert_eq!(expected_explain, plan.explain_logical().unwrap());
@@ -3960,10 +3324,6 @@ fn front_subqueries_interpreted_as_expression() {
         motion [policy: full, program: ReshardIfNeeded]
           values
             value ROW(2::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -3982,10 +3342,6 @@ fn front_subqueries_interpreted_as_expression_as_required_child() {
         motion [policy: full, program: ReshardIfNeeded]
           values
             value ROW(1::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -4007,10 +3363,6 @@ fn front_subqueries_interpreted_as_expression_nested() {
         motion [policy: full, program: ReshardIfNeeded]
           values
             value ROW(ROW($0))
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -4032,10 +3384,6 @@ fn front_subqueries_interpreted_as_expression_under_group_by() {
         motion [policy: full, program: ReshardIfNeeded]
           values
             value ROW(1::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -4044,13 +3392,7 @@ fn front_select_without_scan() {
     let input = r#"explain (logical) select 1"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
-    projection (1::int -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
-    ");
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (1::int -> col_1)");
 }
 
 #[test]
@@ -4072,10 +3414,6 @@ fn front_select_without_scan_2() {
         motion [policy: full, program: ReshardIfNeeded]
           values
             value ROW(1::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -4117,10 +3455,6 @@ fn front_select_without_scan_5() {
         scan
           projection (t2.e::int -> e, t2.f::int -> f)
             scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -4139,10 +3473,6 @@ fn front_select_without_scan_6() {
     subquery $1:
       scan
         projection (1::int -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -4155,10 +3485,6 @@ fn front_sql_check_concat_with_parameters() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     values
       value ROW('a'::string || 'b'::string)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 

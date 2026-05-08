@@ -12,10 +12,6 @@ projection (
 )
   scan _pico_table
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -44,10 +40,6 @@ projection (
 )
   scan _pico_table
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -66,10 +58,6 @@ projection (
   _pico_table.id::int * 2::int + _pico_table.id::int * 3::int + _pico_table.id::int * 4::int -> col_1
 )
   scan _pico_table
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -104,10 +92,6 @@ projection (
 )
   scan _pico_table
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -131,10 +115,6 @@ projection (
   6::int -> col_6,
   7::int -> col_7
 )
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -168,10 +148,6 @@ projection (
 )
   scan _pico_table
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -204,10 +180,6 @@ projection (count(*)::int -> col_1)
   )
     scan _pico_table
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -229,10 +201,6 @@ projection (count(*)::int -> col_1)
     _pico_table.id::int = 1::int or _pico_table.id::int = 2::int or _pico_table.id::int = 2::int or _pico_table.id::int = 4::int or _pico_table.id::int = 5::int
   )
     scan _pico_table
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -272,10 +240,6 @@ subquery $0:
     )
       scan _pico_table
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -293,10 +257,6 @@ select case 1 when 1 then 1 end;
 ''
 projection (case 1::int when 1::int then 1::int end -> col_1)
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -313,10 +273,6 @@ select case 1 when 1 then 1 else 2 end;
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (case 1::int when 1::int then 1::int else 2::int end -> col_1)
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -342,10 +298,6 @@ projection (
   end * 2::int + 2000::int -> col_2
 )
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -370,10 +322,6 @@ projection (
     else 4::int
   end * 2::int + 2000::int -> col_2
 )
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -423,10 +371,6 @@ subquery $0:
       )
       value ROW(4::int, ''::string, 0::int, 0::int, 0::int)
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -466,10 +410,6 @@ projection (
     else 4::int
   end * 2::int + 2000::int -> col_2
 )
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            

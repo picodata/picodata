@@ -16,10 +16,6 @@ fn select_values_rows() {
           values
             value ROW(1::int, 2::int, 'txt'::string)
 
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
-
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
     ──────────────────────────────────────────────────────────────────────
@@ -43,10 +39,6 @@ fn insert_values_rows() {
         values
           value ROW('txt'::string, 2::int)
 
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
-
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
     ──────────────────────────────────────────────────────────────────────
@@ -60,7 +52,7 @@ fn select_selection() {
     let sql = r#"explain (logical, buckets) SELECT * FROM t3 WHERE a = 'kek'::text::text::text"#;
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -68,10 +60,6 @@ fn select_selection() {
     projection (t3.a::string -> a, t3.b::int -> b)
       selection (t3.a::string = 'kek'::string)
         scan t3
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -86,7 +74,7 @@ fn update_selection() {
     let sql = r#"explain (logical, buckets) UPDATE t SET c = 2 WHERE a = 1::int::int and b = 2::integer::decimal"#;
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -96,10 +84,6 @@ fn update_selection() {
         projection (2::int -> col_0, t.b::int -> col_1)
           selection ((t.a::int = 1::int and t.b::int = 2::decimal))
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -114,7 +98,7 @@ fn delete_selection() {
     let sql = r#"explain (logical, buckets) DELETE FROM "t2" where "e" = 3::integer and "f" = 2::decimal"#;
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -124,10 +108,6 @@ fn delete_selection() {
         projection (t2.g::int -> pk_col_0, t2.h::int -> pk_col_1)
           selection ((t2.e::int = 3::int and t2.f::int = 2::decimal))
             scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            

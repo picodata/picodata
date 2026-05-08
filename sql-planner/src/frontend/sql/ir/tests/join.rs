@@ -28,10 +28,6 @@ fn milti_join1() {
             scan t3
               projection (test_space.id::int -> id)
                 scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -53,10 +49,6 @@ fn milti_join2() {
         motion [policy: full, program: ReshardIfNeeded]
           projection (t4.bucket_id::int -> bucket_id, t4.c::string -> c, t4.d::int -> d)
             scan t4
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -82,10 +74,6 @@ fn milti_join3() {
         motion [policy: full, program: ReshardIfNeeded]
           projection (t4.bucket_id::int -> bucket_id, t4.c::string -> c, t4.d::int -> d)
             scan t4
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -107,9 +95,5 @@ fn milti_join4() {
         motion [policy: full, program: ReshardIfNeeded]
           projection (t3.bucket_id::int -> bucket_id, t3.a::string -> a, t3.b::int -> b)
             scan t3
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }

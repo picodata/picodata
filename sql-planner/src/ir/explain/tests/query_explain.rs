@@ -9,16 +9,12 @@ fn test_query_explain_1() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
     projection (1::int -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -34,17 +30,13 @@ fn test_query_explain_2() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
     projection (t2.e::int -> e)
       scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -60,7 +52,7 @@ fn test_query_explain_3() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -68,10 +60,6 @@ fn test_query_explain_3() {
     projection (t2.e::int -> e)
       selection ((t2.e::int = 1::int and t2.f::int = 13::int))
         scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -87,7 +75,7 @@ fn test_query_explain_4() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -96,10 +84,6 @@ fn test_query_explain_4() {
       motion [policy: full, program: ReshardIfNeeded]
         projection (count(*)::int -> count_1)
           scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -118,7 +102,7 @@ fn test_query_explain_prepared_single_key_aggregate_stays_single_node() {
     let metadata = &RouterRuntimeMock::new();
     let mut query =
         ExecutingQuery::from_text_and_params(metadata, sql, vec![Value::Integer(1)]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -126,10 +110,6 @@ fn test_query_explain_prepared_single_key_aggregate_stays_single_node() {
     projection (count(*)::int -> col_1)
       selection (t5.a::int = 1::int)
         scan t5
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -148,7 +128,7 @@ fn test_query_explain_prepared_single_key_with_constant_keeps_reduce_stage() {
     let metadata = &RouterRuntimeMock::new();
     let mut query =
         ExecutingQuery::from_text_and_params(metadata, sql, vec![Value::Integer(1)]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -158,10 +138,6 @@ fn test_query_explain_prepared_single_key_with_constant_keeps_reduce_stage() {
         projection (count(*)::int -> count_1)
           selection ((t5.a::int = 1::int and t5.a::int = 1::int))
             scan t5
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -184,7 +160,7 @@ fn test_query_explain_prepared_reused_parameters_keep_reduce_stage() {
         vec![Value::Integer(1), Value::Integer(1)],
     )
     .unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -194,10 +170,6 @@ fn test_query_explain_prepared_reused_parameters_keep_reduce_stage() {
         projection (count(*)::int -> count_1)
           selection ((t5.a::int = 1::int and t5.a::int = 1::int and t5.a::int = 1::int))
             scan t5
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -238,17 +210,13 @@ fn test_query_explain_5() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
     projection (global_t.a::int -> a)
       scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -274,10 +242,6 @@ fn test_query_explain_6() {
         values
           value ROW('1'::string, 1::int)
 
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
-
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
     ──────────────────────────────────────────────────────────────────────
@@ -292,7 +256,7 @@ fn test_query_explain_7() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -301,10 +265,6 @@ fn test_query_explain_7() {
       motion [policy: local segment([ref(a), ref(b)]), program: ReshardIfNeeded]
         projection (t1.a::string -> a, t1.b::int -> b)
           scan t1
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -320,7 +280,7 @@ fn test_query_explain_8() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -329,10 +289,6 @@ fn test_query_explain_8() {
       motion [policy: full, program: ReshardIfNeeded]
         values
           value ROW(1::int, 1::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -348,16 +304,12 @@ fn test_query_explain_9() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
     delete from t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -373,7 +325,7 @@ fn test_query_explain_10() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -383,10 +335,6 @@ fn test_query_explain_10() {
         projection (20::int -> col_0, t2.f::int -> col_1, t2.g::int -> col_2, t2.h::int -> col_3, t2.bucket_id::int -> col_4, t2.e::int -> col_5, t2.f::int -> col_6)
           selection (ROW(t2.e::int, t2.f::int) = ROW(10::int, 10::int))
             scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -411,7 +359,7 @@ fn test_query_explain_11() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -431,10 +379,6 @@ fn test_query_explain_11() {
                     projection (t1.a::string -> a, t1.b::int -> b)
                       selection (ROW(t1.a::string, t1.b::int) = ROW('20'::string, 20::int))
                         scan t1
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -458,7 +402,7 @@ fn test_query_explain_12() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -475,10 +419,6 @@ fn test_query_explain_12() {
               selection (ROW(t1.a::string, t1.b::int) = ROW('20'::string, 20::int))
                 scan t1
 
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
-
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
     ──────────────────────────────────────────────────────────────────────
@@ -493,7 +433,7 @@ fn test_query_explain_13() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -503,10 +443,6 @@ fn test_query_explain_13() {
         projection (t1.a::string -> a, t1.b::int -> b)
           selection (ROW(t1.a::string, t1.b::int) = ROW('1'::string, 1::int))
             scan t1
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -522,7 +458,7 @@ fn test_query_explain_14() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -530,10 +466,6 @@ fn test_query_explain_14() {
     projection (t1.a::string -> a, t1.b::int -> b)
       selection ((ROW(t1.a::string, t1.b::int) = ROW('1'::string, 1::int) and ROW(t1.a::string, t1.b::int) = ROW('2'::string, 2::int)))
         scan t1
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -549,16 +481,12 @@ fn test_query_explain_15() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
     projection (1::int -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 1
-      sql_motion_row_max = 2
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -579,16 +507,12 @@ fn test_query_explain_16() {
         vec![Value::Integer(14), Value::Integer(88)],
     )
     .unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
     projection (1::int -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 14
-      sql_motion_row_max = 88
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -604,7 +528,7 @@ fn test_query_explain_17() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -613,10 +537,6 @@ fn test_query_explain_17() {
       motion [policy: local, program: ReshardIfNeeded]
         projection (1::int -> col_0, t.b::int -> col_1)
           scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 1
-      sql_motion_row_max = 2
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -650,10 +570,6 @@ fn test_query_explain_18() {
               value ROW(5::int, 6::int)
               value ROW(7::int, 8::int)
 
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
-
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
     ──────────────────────────────────────────────────────────────────────
@@ -675,10 +591,6 @@ fn test_query_explain_19() {
 
     projection (sum(1.0::decimal)::decimal -> col_1)
 
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
-
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
     ──────────────────────────────────────────────────────────────────────
@@ -693,16 +605,12 @@ fn test_query_explain_20() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
     projection (sum(1::int)::decimal -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -718,16 +626,12 @@ fn test_query_explain_21() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
     projection (sum(1::double)::double -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -743,16 +647,12 @@ fn test_query_explain_22() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
     projection (avg(1.0::decimal)::decimal -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -768,16 +668,12 @@ fn test_query_explain_23() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
     projection (avg(1::int)::decimal -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -793,16 +689,12 @@ fn test_query_explain_24() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @"
+    insta::assert_snapshot!(query.explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
     projection (avg(1::double)::double -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            

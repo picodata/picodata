@@ -22,10 +22,6 @@ projection (count(*)::int -> col_1)
     selection (t1.a::int = 1::int)
       scan t1
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -52,10 +48,6 @@ limit 1
       selection (t1.a::int = 1::int)
         scan t1
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -80,10 +72,6 @@ projection (count(*)::int -> col_1)
   group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
     selection ((t1.a::int = 1::int and (t1.a::int < 2::int or t1.a::int > 3::int)))
       scan t1
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -110,10 +98,6 @@ projection (count(*)::int -> col_1)
     selection ((t1.a::int = 1::int and (t1.a::int < 2::int or t1.a::int > 3::int) and t1.b::int = 2::int))
       scan t1
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -138,10 +122,6 @@ projection (count(*)::int -> col_1)
   group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
     selection ((t1.a::int = 1::int and t1.a::int < 10::int and t1.b::int = 2::int))
       scan t1
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -171,10 +151,6 @@ projection (sum(count_1::int)::int -> col_1)
           selection (t1.a::int = 1::int or t1.a::int = 2::int)
             scan t1
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -202,10 +178,6 @@ projection (sum(count_1::int)::int -> col_1)
           selection ((t1.a::int = 1::int and t1.a::int < 10::int and t1.a::int = 2::int))
             scan t1
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -229,10 +201,6 @@ EXPLAIN SELECT DISTINCT b FROM t1 WHERE a = 5 AND (a > 4 OR a < 4);
 projection (t1.b::int -> b)
   selection ((t1.a::int = 5::int and (t1.a::int > 4::int or t1.a::int < 4::int)))
     scan t1
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -269,10 +237,6 @@ limit 1
           selection ((t.a::int = 1::int and t.b::int = 1::int))
             scan t
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -300,10 +264,6 @@ projection (id::int)
         selection (t.a::int = 1::int)
           scan t
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -329,10 +289,6 @@ limit 1
     selection (t.a::int = 4::int)
       scan t
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -356,10 +312,6 @@ EXPLAIN SELECT sum(b), count(*), min(id) FROM t WHERE a = 1;
 projection (sum(t.b::int::int)::decimal -> col_1, count(*)::int -> col_2, min(t.id::int::int)::int -> col_3)
   selection (t.a::int = 1::int)
     scan t
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -386,10 +338,6 @@ projection (t.b::int -> b, count(*)::int -> col_1)
     group by (t.b::int) output (t.id::int -> id, t.bucket_id::int -> bucket_id, t.a::int -> a, t.b::int -> b)
       selection (t.a::int = 1::int)
         scan t
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -420,10 +368,6 @@ limit 1
             projection (t.id::int -> id, t.a::int -> a, t.b::int -> b)
               selection (t.a::int = 4::int)
                 scan t
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -457,10 +401,6 @@ limit 1
                   selection (t.b::int = 1::int)
                     scan t
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -491,10 +431,6 @@ limit 1
               scan
                 projection (t.id::int -> id)
                   scan t
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -528,10 +464,6 @@ limit 1
                   selection (t.a::int = 1::int or t.a::int = 4::int)
                     scan t
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -563,10 +495,6 @@ limit 1
                 selection (t.a::int = 4::int)
                   scan t
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -597,10 +525,6 @@ subquery $0:
   projection (t.id::int -> id, t.a::int -> a, t.b::int -> b)
     selection (t.a::int = 1::int)
       scan t
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -634,10 +558,6 @@ subquery $0:
     projection (t.id::int -> id, t.a::int -> a, t.b::int -> b)
       scan t
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -664,10 +584,6 @@ subquery $0:
   projection (count(*)::int -> cnt)
     selection (t.a::int = 1::int)
       scan t
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -711,10 +627,6 @@ subquery $0:
     selection (t.a::int = 1::int)
       scan t
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -748,10 +660,6 @@ subquery $0:
   projection (t.id::int -> id, t.a::int -> a, t.b::int -> b)
     selection (t.a::int = 4::int)
       scan t
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -788,10 +696,6 @@ limit 1
                   projection (t.id::int -> id)
                     selection (t.a::int = 4::int)
                       scan t
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -830,10 +734,6 @@ limit 1
                       selection (t.a::int = 4::int)
                         scan t
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -864,10 +764,6 @@ limit 1
               motion [policy: full, program: ReshardIfNeeded]
                 projection (t2.id::int -> id, t2.bucket_id::int -> bucket_id, t2.a::int -> a, t2.b::int -> b)
                   scan t -> t2
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -906,10 +802,6 @@ limit 1
                       selection (t.a::int = 4::int)
                         scan t
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -933,10 +825,6 @@ EXPLAIN SELECT DISTINCT b FROM t WHERE a = 4;
 projection (t.b::int -> b)
   selection (t.a::int = 4::int)
     scan t
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -963,10 +851,6 @@ projection (sum(count_1::int)::int -> col_1)
     projection (count(*)::int -> count_1)
       selection ((t.a::int = 1::int and t.a::int = 2::int))
         scan t
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            

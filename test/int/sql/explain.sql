@@ -43,10 +43,6 @@ subquery $0:
       selection (space_simple_shard_key_hist."sysOp"::int < 0::int)
         scan space_simple_shard_key_hist
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -85,10 +81,6 @@ projection (t3.id::int -> id, t3.name::string -> name, t8.tid::int -> tid)
           selection (testing_space.id::int <> 1::int)
             scan testing_space
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -120,10 +112,6 @@ projection (t1.id::int -> id, t1.name::string -> name)
           selection (space_simple_shard_key_hist."sysOp"::int > 0::int)
             scan space_simple_shard_key_hist
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -142,10 +130,6 @@ projection (arithmetic_space.id::int -> id)
   selection (arithmetic_space.a::int + arithmetic_space.b::int = arithmetic_space.b::int + arithmetic_space.a::int)
     scan arithmetic_space
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -163,10 +147,6 @@ EXPLAIN select "id" from "arithmetic_space" where "a" + "b" > 0 and "b" * "a" = 
 projection (arithmetic_space.id::int -> id)
   selection ((arithmetic_space.a::int + arithmetic_space.b::int > 0::int and arithmetic_space.b::int * arithmetic_space.a::int = 5::int))
     scan arithmetic_space
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -207,10 +187,6 @@ projection (t3.id::int -> id, t3.a::int -> a, t8.id1::int -> id1)
             selection (arithmetic_space2.c::int < 0::int)
               scan arithmetic_space2
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -250,10 +226,6 @@ projection (t3.id::int -> id, t3.a::int -> a, t8.id1::int -> id1)
             selection (arithmetic_space2.c::int < 0::int)
               scan arithmetic_space2
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -270,10 +242,6 @@ EXPLAIN select "id" + 2 from "arithmetic_space";
 ''
 projection (arithmetic_space.id::int + 2::int -> col_1)
   scan arithmetic_space
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -292,10 +260,6 @@ EXPLAIN select "a" + "b" * "c" from "arithmetic_space";
 projection (arithmetic_space.a::int + arithmetic_space.b::int * arithmetic_space.c::int -> col_1)
   scan arithmetic_space
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -312,10 +276,6 @@ EXPLAIN select ("a" + "b") * "c" from "arithmetic_space";
 ''
 projection ((arithmetic_space.a::int + arithmetic_space.b::int) * arithmetic_space.c::int -> col_1)
   scan arithmetic_space
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -334,10 +294,6 @@ EXPLAIN select "a" > "b" from "arithmetic_space";
 projection (arithmetic_space.a::int > arithmetic_space.b::int -> col_1)
   scan arithmetic_space
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -354,10 +310,6 @@ EXPLAIN select "a" is null from "arithmetic_space";
 ''
 projection (arithmetic_space.a::int is null -> col_1)
   scan arithmetic_space
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -381,10 +333,6 @@ subquery $0:
     scan t
       projection ('1'::string -> col_1)
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -400,10 +348,6 @@ EXPLAIN SELECT CASE WHEN TRUE THEN '1' ELSE TRIM('2') END;
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (case when true::bool then '1'::string else TRIM('2'::string) end -> col_1)
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -988,10 +932,6 @@ projection (
   selection (testing_space.id::int = 1::int)
     scan testing_space
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -1362,10 +1302,6 @@ insert into t on conflict: fail
       value ROW(2::int, 2.0::decimal, '2'::string)
       value ROW(3::int, 3.0::decimal, '3'::string)
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -1383,10 +1319,6 @@ EXPLAIN SELECT * FROM t WHERE a = 1 and c = '1' or a = 2 and c = '2' or a = 3 an
 projection (t.a::int -> a, t.b::double -> b, t.c::string -> c)
   selection ((t.a::int = 1::int and t.c::string = '1'::string) or (t.a::int = 2::int and t.c::string = '2'::string) or (t.a::int = 3::int and t.c::string = '3'::string))
     scan t
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -1408,10 +1340,6 @@ insert into t on conflict: fail
       value ROW(1::int + 1::int, 1.0::decimal, '1'::string)
       value ROW(2::int, 2.0::decimal, '2'::string)
       value ROW(3::int, 3.0::decimal, '3'::string)
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -1440,10 +1368,6 @@ subquery $0:
             projection (tt.d::double -> d)
               scan tt
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -1467,10 +1391,6 @@ subquery $0:
     limit 1
       projection (g.d::double -> d)
         scan g
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            

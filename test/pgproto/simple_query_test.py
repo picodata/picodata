@@ -123,10 +123,6 @@ insert into explain on conflict: fail
     values
       value ROW(0::int)
 
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
@@ -146,10 +142,6 @@ insert into explain on conflict: fail
   motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
       value ROW(0::int)
-
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
@@ -171,10 +163,6 @@ buckets = [84]\
 projection (explain.id::int -> id)
   scan explain
 
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
@@ -192,10 +180,6 @@ buckets = [1-3000]\
 
 projection (explain.id::int -> id)
   scan explain
-
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\

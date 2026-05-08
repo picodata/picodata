@@ -427,10 +427,6 @@ insert into assets on conflict: fail
     values
       value ROW(1::int, 'Woody'::string, 2561::int)
 
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
@@ -458,10 +454,6 @@ update characters (year = col_0)
   motion [policy: local, program: ReshardIfNeeded]
     projection (2010::int -> col_0, characters.id::int -> col_1)
       scan characters
-
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
@@ -491,10 +483,6 @@ update characters (name = col_0, year = col_1)
     projection ('Etch'::string -> col_0, 2010::int -> col_1, characters.id::int -> col_2)
       selection (characters.id::int = 2::int)
         scan characters
-
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\

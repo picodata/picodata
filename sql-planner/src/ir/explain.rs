@@ -19,7 +19,6 @@ use crate::ir::node::{
 use crate::ir::operator::{
     Bool, ConflictStrategy, JoinKind, OrderByElement, OrderByEntity, OrderByType,
 };
-use crate::ir::options::OptionKind;
 use crate::ir::transformation::redistribution::{
     MotionKey as IrMotionKey, MotionPolicy as IrMotionPolicy, Program, Target as IrTarget,
 };
@@ -1379,32 +1378,32 @@ impl Display for ExplainNode {
         match self {
             // Short items.
             ExplainNode::Delete(name) => {
-                writeln!(f, "delete from {name}", name = properly_quoted_name(name))?;
+                write!(f, "delete from {name}", name = properly_quoted_name(name))?;
             }
             ExplainNode::Insert(name, conflict) => {
-                writeln!(
+                write!(
                     f,
                     "insert into {name} on conflict: {conflict}",
                     name = properly_quoted_name(name)
                 )?;
             }
             ExplainNode::Cte(name, reference) => {
-                writeln!(
+                write!(
                     f,
                     "scan cte {name}({reference})",
                     name = properly_quoted_name(name)
                 )?;
             }
-            ExplainNode::Scan(scan) => writeln!(f, "{scan}")?,
-            ExplainNode::SubQuery(subquery) => writeln!(f, "{subquery}")?,
-            ExplainNode::Motion(motion) => writeln!(f, "{motion}")?,
-            ExplainNode::Limit(limit) => writeln!(f, "limit {limit}")?,
+            ExplainNode::Scan(scan) => write!(f, "{scan}")?,
+            ExplainNode::SubQuery(subquery) => write!(f, "{subquery}")?,
+            ExplainNode::Motion(motion) => write!(f, "{motion}")?,
+            ExplainNode::Limit(limit) => write!(f, "limit {limit}")?,
 
             // Potentially long expression lists.
-            ExplainNode::Projection(projection) => writeln!(f, "{projection}")?,
-            ExplainNode::GroupBy(group_by) => writeln!(f, "{group_by}")?,
-            ExplainNode::OrderBy(order_by) => writeln!(f, "{order_by}")?,
-            ExplainNode::Update(update) => writeln!(f, "{update}")?,
+            ExplainNode::Projection(projection) => write!(f, "{projection}")?,
+            ExplainNode::GroupBy(group_by) => write!(f, "{group_by}")?,
+            ExplainNode::OrderBy(order_by) => write!(f, "{order_by}")?,
+            ExplainNode::Update(update) => write!(f, "{update}")?,
 
             // A single but potentially large expression.
             ExplainNode::Join(col_expr, kind, should_fmt) => {
@@ -1412,25 +1411,25 @@ impl Display for ExplainNode {
                     JoinKind::LeftOuter => write!(f, "{kind} ")?,
                     JoinKind::Inner => {}
                 }
-                writeln!(f, "join on {}", FmtSmartParens(col_expr, *should_fmt))?;
+                write!(f, "join on {}", FmtSmartParens(col_expr, *should_fmt))?;
             }
             ExplainNode::Selection(col_expr, should_fmt) => {
-                writeln!(f, "selection {}", FmtSmartParens(col_expr, *should_fmt))?;
+                write!(f, "selection {}", FmtSmartParens(col_expr, *should_fmt))?;
             }
             ExplainNode::Having(col_expr, should_fmt) => {
-                writeln!(f, "having {}", FmtSmartParens(col_expr, *should_fmt))?;
+                write!(f, "having {}", FmtSmartParens(col_expr, *should_fmt))?;
             }
             ExplainNode::ValueRow(col_expr) => {
                 // `col_expr` is a `ROW(...)` which has its own multiline fmt logic.
-                writeln!(f, "value {col_expr}")?;
+                write!(f, "value {col_expr}")?;
             }
 
             // Boring.
-            ExplainNode::Value => writeln!(f, "values")?,
-            ExplainNode::Union => writeln!(f, "union")?,
-            ExplainNode::UnionAll => writeln!(f, "union all")?,
-            ExplainNode::Intersect => writeln!(f, "intersect")?,
-            ExplainNode::Except => writeln!(f, "except")?,
+            ExplainNode::Value => write!(f, "values")?,
+            ExplainNode::Union => write!(f, "union")?,
+            ExplainNode::UnionAll => write!(f, "union all")?,
+            ExplainNode::Intersect => write!(f, "intersect")?,
+            ExplainNode::Except => write!(f, "except")?,
         };
 
         Ok(())
@@ -1450,6 +1449,7 @@ impl Display for ExplainTreePart {
 
         let mut f = indent(f);
         for child in &self.children {
+            writeln!(f)?;
             write!(f, "{child}")?;
         }
 
@@ -1506,30 +1506,20 @@ pub struct LogicalExplain {
     main_query: ExplainTreePart,
     subqueries: OrderedMap<NodeId, ExplainTreePart, RepeatableState>,
     windows: Vec<ExplainTreePart>,
-    exec_options: Vec<(OptionKind, Value)>,
 }
 
 impl Display for LogicalExplain {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.main_query)?;
         for (pos, (_, sq)) in self.subqueries.iter().enumerate() {
+            writeln!(f)?;
             writeln!(f, "subquery ${pos}:")?;
             write!(indent(f), "{sq}")?;
         }
         for (pos, window) in self.windows.iter().enumerate() {
+            writeln!(f)?;
             writeln!(f, "window ${pos}:")?;
             write!(f, "{window}")?;
-        }
-        if !self.exec_options.is_empty() {
-            writeln!(f)?;
-            writeln!(f, "execution options:")?;
-
-            let (key, value) = self.exec_options.first().expect("must be specified");
-            write!(indent(f), "{key} = {value}")?;
-            for (key, value) in self.exec_options.iter().skip(1) {
-                writeln!(f)?;
-                write!(indent(f), "{key} = {value}")?;
-            }
         }
 
         Ok(())
@@ -1928,22 +1918,10 @@ impl LogicalExplain {
             .pop()
             .ok_or_else(|| SbroadError::NotFound(Entity::Node, "that is explain top".into()))?;
 
-        let exec_options = vec![
-            (
-                OptionKind::VdbeOpcodeMax,
-                Value::Integer(ir.effective_options.sql_vdbe_opcode_max),
-            ),
-            (
-                OptionKind::MotionRowMax,
-                Value::Integer(ir.effective_options.sql_motion_row_max),
-            ),
-        ];
-
         let result = Self {
             main_query,
             subqueries: known_subqueries,
             windows: Vec::new(),
-            exec_options,
         };
 
         Ok(result)

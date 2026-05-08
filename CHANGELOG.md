@@ -58,6 +58,8 @@ with the `YY.MINOR.MICRO` scheme.
   `ALTER TABLE ADD COLUMN`. Supported syntax: `T[]`, `T[N]`, `T[N][M]`,
   `T[][]`, `T ARRAY`, `T ARRAY[N]`. Declared type and sizes are documentation
   only and do not affect the internal implementation for now.
+- Introduce `CONTEXT` facet in `EXPLAIN` statement that shows query execution
+  options and remove them from `LOGICAL` facet output.
 
 ### Fixes
 

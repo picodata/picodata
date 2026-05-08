@@ -47,10 +47,6 @@ explain DELETE FROM "g"
 ''
 delete from g
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────

@@ -14,10 +14,6 @@ fn front_numeric_param_in_cast() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (1::decimal -> col_1)
       scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -32,10 +28,6 @@ fn front_number_param_in_cast() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (1::decimal -> col_1)
       scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -46,10 +38,6 @@ fn front_param_in_cast() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (1::int -> col_1)
       scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -63,10 +51,6 @@ fn front_params1() {
     projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
       selection ((test_space.sys_op::int = 0::int and test_space."sysFrom"::int > 1::int))
         scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -81,10 +65,6 @@ fn front_params2() {
     projection (test_space.id::int -> id)
       selection ((test_space.sys_op::int = NULL::unknown and test_space."FIRST_NAME"::string = 'hello'::string))
         scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -100,10 +80,6 @@ fn front_params3() {
     projection (test_space.id::int -> id)
       selection ((test_space.sys_op::int = NULL::unknown and test_space."FIRST_NAME"::string = 'кириллица'::string))
         scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -122,10 +98,6 @@ fn front_params4() {
     projection (test_space.id::int -> id)
       selection (test_space."FIRST_NAME"::string = '''± !@#$%^&*()_+=-\/><";:,.`~'::string)
         scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -152,10 +124,6 @@ fn front_params5() {
           projection (test_space_hist."sysFrom"::int -> "sysFrom")
             selection (test_space_hist.sys_op::int = 1::int)
               scan test_space_hist
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -191,10 +159,6 @@ fn front_params6() {
             projection (test_space.id::int -> id)
               selection (test_space.sys_op::int = 2::int)
                 scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 

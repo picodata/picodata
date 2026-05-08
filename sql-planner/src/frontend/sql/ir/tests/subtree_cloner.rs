@@ -117,10 +117,6 @@ fn except_transform_with_dag_plan() {
               motion [policy: full, program: ReshardIfNeeded]
                 values
                   value ROW(1::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 

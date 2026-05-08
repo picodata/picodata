@@ -13,10 +13,6 @@ explain (logical) select * from _pico_table;
 -- EXPECTED:
 projection (_pico_table.id::int -> id, _pico_table.name::string -> name, _pico_table.distribution::map -> distribution, _pico_table.format::array -> format, _pico_table.schema_version::int -> schema_version, _pico_table.operable::bool -> operable, _pico_table.engine::string -> engine, _pico_table.owner::int -> owner, _pico_table.description::string -> description, _pico_table.opts::array -> opts)
   scan _pico_table
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 
 -- TEST: many-rel-operators
 -- SQL:
@@ -41,10 +37,6 @@ limit 2
                               motion [policy: full, program: ReshardIfNeeded]
                                 projection (tt.a::int -> a, tt.b::double -> b, tt.c::string -> c, tt.bucket_id::int -> bucket_id)
                                   scan t -> tt
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 
 -- TEST: many-rel-operators-fmt
 -- SQL:
@@ -132,10 +124,6 @@ limit 2
                                   tt.bucket_id::int -> bucket_id
                                 )
                                   scan t -> tt
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 
 -- TEST: insert
 -- SQL:
@@ -145,10 +133,6 @@ insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
       value ROW(1::int, 1::int, '1'::string)
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 
 -- TEST: delete
 -- SQL:
@@ -159,10 +143,6 @@ delete from t
     projection (t.c::string -> pk_col_0, t.a::int -> pk_col_1)
       selection ((t.a::int = 1::int and t.c::string = '1'::string))
         scan t
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 
 -- TEST: update
 -- SQL:
@@ -173,7 +153,3 @@ update t (b = col_0)
     projection (t.b::double + 1::int -> col_0, t.c::string -> col_1, t.a::int -> col_2)
       selection (t.a::int = 1::int)
         scan t
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000

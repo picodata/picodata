@@ -32,6 +32,7 @@ use crate::ir::node::block::{BlockOwned, MutBlock};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{AnonymousBlock, Insert, Motion, NodeId, Values, ValuesRow};
+use crate::ir::options::OptionKind;
 use crate::ir::transformation::redistribution::{MotionPolicy, Target};
 use crate::ir::tree::traversal::{PostOrder, REL_CAPACITY};
 use crate::ir::value::Value;
@@ -629,6 +630,10 @@ where
         self.exec_plan.get_ir_plan().is_explain_forward()
     }
 
+    pub fn is_explain_context(&self) -> bool {
+        self.exec_plan.get_ir_plan().is_explain_context()
+    }
+
     pub fn is_block(&self) -> Result<bool, SbroadError> {
         self.exec_plan.get_ir_plan().is_block()
     }
@@ -737,6 +742,25 @@ where
             writeln!(&mut buf).unwrap();
         }
         write!(&mut buf, "{info}").unwrap();
+
+        Ok(buf)
+    }
+
+    pub fn explain_context(&mut self) -> Result<String, SbroadError> {
+        let mut buf = String::new();
+
+        let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
+        if !explain_options.has_single_facet() {
+            write_explain_header1!(&mut buf, "# Context").unwrap();
+            writeln!(&mut buf).unwrap();
+        }
+
+        let plan = self.get_exec_plan().get_ir_plan();
+        let opcode_max = plan.effective_options.sql_vdbe_opcode_max;
+        let row_max = plan.effective_options.sql_motion_row_max;
+
+        writeln!(&mut buf, "{} = {opcode_max}", OptionKind::VdbeOpcodeMax).unwrap();
+        write!(&mut buf, "{} = {row_max}", OptionKind::MotionRowMax).unwrap();
 
         Ok(buf)
     }

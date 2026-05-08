@@ -144,10 +144,6 @@ subquery $2:
   scan
     projection (111::int -> col_1)
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -195,10 +191,6 @@ subquery $1:
   scan
     projection (2::int -> col_1)
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -215,10 +207,6 @@ explain select 1 from t6 window w as (partition by (select 1 from t6 window w as
 ''
 projection (1::int -> col_1)
   scan t6
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            

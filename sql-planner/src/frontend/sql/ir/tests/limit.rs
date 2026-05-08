@@ -14,10 +14,6 @@ fn select() {
         limit 100
           projection (test_space.id::int -> id)
             scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -40,10 +36,6 @@ fn union_all() {
               scan hash_testing
             projection (t2.e::int::string -> col_1)
               scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -60,10 +52,6 @@ fn aggregate() {
           projection (t.b::int::int -> gr_expr_1, min(t.b::int::int)::int -> min_1)
             group by (t.b::int::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -81,10 +69,6 @@ fn group_by() {
             projection (t.b::int -> gr_expr_1, count(*)::int -> count_1)
               group by (t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                 scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -102,10 +86,6 @@ fn single_limit() {
               limit 1
                 projection (test_space.id::int -> id)
                   scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -135,10 +115,6 @@ fn join() {
               motion [policy: full, program: ReshardIfNeeded]
                 projection (t4.bucket_id::int -> bucket_id, t4.c::string -> c, t4.d::int -> d)
                   scan t4
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -150,10 +126,6 @@ fn limit_all() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (test_space.id::int -> id)
       scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -165,10 +137,6 @@ fn limit_null() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (test_space.id::int -> id)
       scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -190,10 +158,6 @@ fn explicit_select_bucket_id_from_subquery_under_limit() {
             scan x
               projection (test_space.bucket_id::int -> bucket_id, test_space.id::int -> id)
                 scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -216,10 +180,6 @@ fn explicit_select_bucket_id_from_cte_under_limit() {
       motion [policy: full, program: ReshardIfNeeded]
         projection (test_space.bucket_id::int -> bucket_id, test_space.id::int -> id)
           scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -257,10 +217,6 @@ fn limit_pushdown_window() {
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.a::int -> a)
             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -338,10 +294,6 @@ fn limit_pushdown_distinct_order_by_alias() {
                           projection (t.a::int -> gr_expr_1)
                             group by (t.a::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -369,10 +321,6 @@ fn limit_pushdown_distinct_order_by_expr_over_duplicated_aliases() {
                           projection (t.a::int -> gr_expr_1, t.b::int -> gr_expr_2)
                             group by (t.a::int, t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -400,10 +348,6 @@ fn limit_pushdown_distinct_order_by_ordinal_position() {
                           projection (t.a::int -> gr_expr_1, t.b::int -> gr_expr_2)
                             group by (t.a::int, t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -425,10 +369,6 @@ fn limit_pushdown_order_by_subquery_no_pushdown() {
     subquery $0:
       scan
         projection (1::int -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -455,10 +395,6 @@ fn limit_pushdown_except() {
                         projection (t.a::int -> a)
                           selection (t.a::int = 1::int)
                             scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -480,10 +416,6 @@ fn limit_pushdown_aggregate_in_order_by() {
                   projection (t.b::int -> gr_expr_1)
                     group by (t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                       scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -503,10 +435,6 @@ fn limit_pushdown_distinct() {
               projection (t.a::int -> gr_expr_1, t.b::int -> gr_expr_2)
                 group by (t.a::int, t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                   scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -526,10 +454,6 @@ fn limit_pushdown_having_filter_aggregate() {
               projection (t.b::int -> gr_expr_1, count(*)::int -> count_1)
                 group by (t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                   scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -552,10 +476,6 @@ fn limit_pushdown_orderby_and_having() {
                     projection (t.b::int -> gr_expr_1)
                       group by (t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                         scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 

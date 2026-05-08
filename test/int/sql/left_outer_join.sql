@@ -121,10 +121,6 @@ projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
       projection (arithmetic_space2.id::int -> "B")
         scan arithmetic_space2
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -164,10 +160,6 @@ projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
         projection (arithmetic_space2.a::int -> "B")
           scan arithmetic_space2
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -205,10 +197,6 @@ projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
       scan "T2"
         projection (arithmetic_space2.a::int -> "B")
           scan arithmetic_space2
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -282,10 +270,6 @@ subquery $0:
       projection (arithmetic_space.a::int + 1::int -> col_1)
         scan arithmetic_space
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -330,10 +314,6 @@ subquery $0:
     scan
       projection (arithmetic_space.c::int -> c)
         scan arithmetic_space
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            

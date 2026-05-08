@@ -17,10 +17,6 @@ fn cte() {
       motion [policy: full, program: ReshardIfNeeded]
         projection (test_space."FIRST_NAME"::string -> a)
           scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -35,10 +31,6 @@ fn global_cte() {
     subquery $0:
       projection (global_t.a::int -> a)
         scan global_t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -61,10 +53,6 @@ fn nested_cte() {
     subquery $1:
       projection (cte1.a::string -> a)
         scan cte cte1($0)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -88,10 +76,6 @@ fn reuse_cte_union_all() {
       motion [policy: full, program: ReshardIfNeeded]
         projection (test_space."FIRST_NAME"::string -> a)
           scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -118,10 +102,6 @@ fn reuse_func_in_cte() {
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
         projection (TRIM('some'::string) -> col_1)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -155,10 +135,6 @@ fn reuse_union_in_cte() {
                 scan test_space
               projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
                 scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -190,10 +166,6 @@ fn reuse_union_in_cte_without_rename() {
             scan test_space
           projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
             scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -230,10 +202,6 @@ fn reuse_union_in_cte_with_projection() {
                 scan test_space
               projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
                 scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -261,10 +229,6 @@ fn reuse_cte_values() {
           motion [policy: full, program: ReshardIfNeeded]
             values
               value ROW(1::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -277,7 +241,7 @@ fn reuse_cte_values_without_rename() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (t.c::int -> c)
       join on (true::bool)
         scan t
@@ -290,11 +254,7 @@ fn reuse_cte_values_without_rename() {
       motion [policy: full, program: ReshardIfNeeded]
         values
           value ROW(1::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
-    "#);
+    ");
 }
 
 #[test]
@@ -320,10 +280,6 @@ fn reuse_cte_values_with_projection_and_function() {
             motion [policy: full, program: ReshardIfNeeded]
               values
                 value ROW(1::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -372,10 +328,6 @@ fn join_cte() {
       motion [policy: full, program: ReshardIfNeeded]
         projection (test_space."FIRST_NAME"::string -> a)
           scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -394,10 +346,6 @@ fn agg_cte() {
       motion [policy: full, program: ReshardIfNeeded]
         projection (test_space."FIRST_NAME"::string -> a)
           scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -428,10 +376,6 @@ fn limit_pushdown_does_not_mutate_cte() {
       scan
         projection (cte.a::int -> a)
           scan cte cte($0)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -454,10 +398,6 @@ fn limit_pushdown_does_not_mutate_used_once_cte() {
       motion [policy: full, program: ReshardIfNeeded]
         projection (t.a::int -> a)
           scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -477,10 +417,6 @@ fn limit_pushdown_does_not_mutate_used_once_cte_with_aggr_over_it() {
       motion [policy: full, program: ReshardIfNeeded]
         projection (t.a::int -> a)
           scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -506,10 +442,6 @@ fn used_once_single_node_cte_does_not_materialize() {
             projection (t.a::int -> a)
               selection (ROW(t.a::int, t.b::int) = ROW(1::int, 2::int))
                 scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -534,10 +466,6 @@ fn sq_cte() {
       scan
         projection (cte.a::string -> a)
           scan cte cte($0)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -558,10 +486,6 @@ fn values_in_cte() {
           motion [policy: full, program: ReshardIfNeeded]
             values
               value ROW('a'::string)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -590,10 +514,6 @@ fn union_all_in_cte() {
             scan cte cte1($0)
           projection (cte1.a::string -> a)
             scan cte cte1($0)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -619,10 +539,6 @@ fn join_in_cte() {
             motion [policy: full, program: ReshardIfNeeded]
               projection (t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op, t2.bucket_id::int -> bucket_id)
                 scan test_space -> t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -647,10 +563,6 @@ fn order_by_in_cte() {
             scan
               projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
                 scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -668,10 +580,6 @@ fn table_name_conflict() {
       motion [policy: full, program: ReshardIfNeeded]
         projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
           scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -730,9 +638,5 @@ fn cte_with_left_join() {
       motion [policy: full, program: ReshardIfNeeded]
         projection (t2.e::int -> "E")
           scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }

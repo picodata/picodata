@@ -62,10 +62,6 @@ fn like_explain1() {
     projection (t1.a::string LIKE t1.a::string ESCAPE '\'::string -> col_1)
       selection (t1.a::string || 'a'::string LIKE 'a'::string || 'a'::string ESCAPE '\'::string)
         scan t1
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -79,10 +75,6 @@ fn like_explain2() {
     projection (t1.a::string LIKE t1.a::string ESCAPE '\'::string -> col_1)
       selection (t1.a::string || 'a'::string LIKE 'a'::string || 'a'::string ESCAPE 'x'::string)
         scan t1
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -99,10 +91,6 @@ fn like_explain3() {
           projection (t1.a::string LIKE t1.a::string ESCAPE '\'::string -> gr_expr_1)
             group by (t1.a::string LIKE t1.a::string ESCAPE '\'::string) output (t1.a::string -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
               scan t1
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -131,10 +119,6 @@ fn like_explain4() {
         scan
           projection ('hi'::string -> col_1)
             scan t1
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -152,9 +136,5 @@ fn ilike_explain() {
           projection (lower(t1.a::string::string)::string LIKE lower(t1.a::string::string)::string ESCAPE 'x'::string -> gr_expr_1)
             group by (lower(t1.a::string::string)::string LIKE lower(t1.a::string::string)::string ESCAPE 'x'::string) output (t1.a::string -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
               scan t1
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }

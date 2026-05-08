@@ -643,13 +643,14 @@ bitflags! {
         const Fmt     = 1 << 2;
         const Buckets = 1 << 3;
         const Forward = 1 << 4;
+        const Context = 1 << 5;
     }
 }
 
 impl ExplainOptions {
     #[inline(always)]
     pub fn facets() -> Self {
-        Self::Logical | Self::Raw | Self::Buckets | Self::Forward
+        Self::Logical | Self::Raw | Self::Buckets | Self::Forward | Self::Context
     }
 
     #[inline(always)]
@@ -1319,6 +1320,10 @@ impl Plan {
 
     pub fn is_explain_forward(&self) -> bool {
         self.explain_options.contains(ExplainOptions::Forward)
+    }
+
+    pub fn is_explain_context(&self) -> bool {
+        self.explain_options.contains(ExplainOptions::Context)
     }
 
     /// Checks that plan is a block of queries.

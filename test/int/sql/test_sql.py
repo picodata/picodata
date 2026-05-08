@@ -6558,10 +6558,6 @@ def test_explain(cluster: Cluster):
 projection (t.a::int -> a)
   scan t
 
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
@@ -6580,10 +6576,6 @@ projection (t.a::int -> a)
   selection (t.a::int = 1::int)
     scan t
 
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
@@ -6600,10 +6592,6 @@ buckets = [1934]\
 projection (t.a::int -> a)
   selection ((t.a::int = 1::int and t.a::int = 2::int))
     scan t
-
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
@@ -6627,10 +6615,6 @@ projection (t.a::int -> a)
       projection (t2.a::int -> a, t2.bucket_id::int -> bucket_id, t2.b::int -> b)
         scan t -> t2
 
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
@@ -6647,10 +6631,6 @@ buckets = unknown\
 
 projection (_pico_table.id::int -> id)
   scan _pico_table
-
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
@@ -6674,10 +6654,6 @@ motion [policy: full, program: RemoveDuplicates]
     projection (t.a::int -> a)
       scan t
 
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
@@ -6698,10 +6674,6 @@ insert into t on conflict: fail
     values
       value ROW(1::int, 2::int)
 
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
@@ -6720,10 +6692,6 @@ insert into t on conflict: fail
   motion [policy: local segment([ref(a)]), program: ReshardIfNeeded]
     projection (t.a::int -> a, t.b::int -> b)
       scan t
-
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
@@ -6744,10 +6712,6 @@ update t (b = col_0)
     projection (1::int -> col_0, t.a::int -> col_1)
       selection (t.b::int = 3::int)
         scan t
-
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
@@ -6771,10 +6735,6 @@ update t2 (c = col_0, bucket_id = col_1, d = col_2)
       selection (t2.d::int = 2::int or t2.d::int = 2002::int)
         scan t2
 
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
@@ -6790,10 +6750,6 @@ buckets = unknown\
 ──────────────────────────────────────────────────────────────────────
 
 delete from t
-
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
@@ -6816,10 +6772,6 @@ insert into g on conflict: fail
     projection (t.a::int -> a, t.b::int -> b)
       scan t
 
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
@@ -6837,10 +6789,6 @@ insert into g on conflict: fail
   motion [policy: full, program: ReshardIfNeeded]
     projection (g.u::int -> u, g.v::int -> v)
       scan g
-
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
@@ -6936,10 +6884,6 @@ def test_vdbe_steps_and_vtable_rows(cluster: Cluster):
 projection (t.a::int -> a)
   scan t
 
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
@@ -6960,10 +6904,6 @@ buckets = [1-3000]\
 
 projection (t.a::int -> a)
   scan t
-
-execution options:
-  sql_vdbe_opcode_max = 50000
-  sql_motion_row_max = 5000
 
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
@@ -6986,10 +6926,6 @@ buckets = [1-3000]\
 
 projection (t.a::int -> a)
   scan t
-
-execution options:
-  sql_vdbe_opcode_max = 50000
-  sql_motion_row_max = 6000
 
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\

@@ -282,10 +282,6 @@ update t (b = col_0)
       )
         scan t
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
@@ -332,10 +328,6 @@ delete from t
       )
         scan t
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
@@ -374,10 +366,6 @@ insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
       value ROW(2::int, 2::int, '2'::string)
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -420,10 +408,6 @@ limit 1
                       projection (t.a::int -> gr_expr_1)
                         group by (t.a::int) output (t.a::int -> a, t.b::double -> b, t.c::string -> c, t.bucket_id::int -> bucket_id)
                           scan t
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -478,10 +462,6 @@ limit 1
                         group by (t.a::int) output (t.a::int -> a, t.b::double -> b, t.c::string -> c, t.bucket_id::int -> bucket_id)
                           scan t
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -504,10 +484,6 @@ insert into t on conflict: fail
           scan
             projection (tt.d::int -> d, tt.d::int -> d, tt.d::int -> d)
               scan tt
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -555,10 +531,6 @@ limit 1
                         group by (t.a::int) output (t.a::int -> a, t.b::double -> b, t.c::string -> c, t.bucket_id::int -> bucket_id)
                           scan t
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -591,10 +563,6 @@ limit 1
                           projection (t.b::double -> gr_expr_1)
                             group by (t.b::double) output (t.a::int -> a, t.b::double -> b, t.c::string -> c, t.bucket_id::int -> bucket_id)
                               scan t
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -689,10 +657,6 @@ limit 1
                               scan tt
                                 projection (t.b::double -> b)
                                   scan t
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -829,3 +793,76 @@ plan:
 ''
 forward analysis (on > ro_to_rw > off):
   forward = off
+
+-- TEST: raw-forward-context-select
+-- SQL:
+explain (raw, forward, context) select id from _pico_table where id = 1;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭───────────────────╮
+│ 1. Query (ROUTER) │
+╰───────────────────╯
+''
+SELECT "_pico_table"."id" FROM "_pico_table" WHERE "_pico_table"."id" = CAST(1 AS int)
+''
+plan:
+    [0] SEARCH TABLE _pico_table USING PRIMARY KEY (id=?) (~1 row)
+''
+──────────────────────────────────────────────────────────────────────
+ # Forward                                                            
+──────────────────────────────────────────────────────────────────────
+''
+forward analysis (on > ro_to_rw > off):
+  forward = off
+''
+──────────────────────────────────────────────────────────────────────
+ # Context                                                            
+──────────────────────────────────────────────────────────────────────
+''
+sql_vdbe_opcode_max = 45000
+sql_motion_row_max = 5000
+
+-- TEST: logical-buckets-context-select
+-- SQL:
+explain (logical, buckets, context) select id from _pico_table where id = 1;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (_pico_table.id::int -> id)
+  selection (_pico_table.id::int = 1::int)
+    scan _pico_table
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = any
+''
+──────────────────────────────────────────────────────────────────────
+ # Context                                                            
+──────────────────────────────────────────────────────────────────────
+''
+sql_vdbe_opcode_max = 45000
+sql_motion_row_max = 5000
+
+-- TEST: buckets-context-delete
+-- SQL:
+explain (buckets, context) delete from t where a = 42;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1-3000]
+''
+──────────────────────────────────────────────────────────────────────
+ # Context                                                            
+──────────────────────────────────────────────────────────────────────
+''
+sql_vdbe_opcode_max = 45000
+sql_motion_row_max = 5000

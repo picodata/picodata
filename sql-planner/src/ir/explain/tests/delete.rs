@@ -4,13 +4,7 @@ use super::*;
 fn delete1_test() {
     let sql = r#"explain (logical) DELETE FROM "t1""#;
     let plan = sql_to_optimized_ir(sql, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
-    delete from t1
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
-    ");
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"delete from t1");
 }
 
 #[test]
@@ -23,10 +17,6 @@ fn delete2_test() {
         projection (t1.a::string -> pk_col_0, t1.b::int -> pk_col_1)
           selection (t1.b::int > 3::int)
             scan t1
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -45,9 +35,5 @@ fn delete3_test() {
         scan
           projection (t1.b::int::string -> col_1)
             scan t1
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }

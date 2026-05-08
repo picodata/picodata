@@ -21,10 +21,6 @@ fn front_select_chaning_1() {
           scan t2
       projection (t3.a::string -> a)
         scan t3
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -66,10 +62,6 @@ fn front_select_chaining_2() {
                   scan t2
               projection (t3.a::string -> a)
                 scan t3
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -94,10 +86,6 @@ fn front_select_chaining_3() {
                 scan hash_testing
               projection (t2.e::int::string -> col_1)
                 scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -120,10 +108,6 @@ fn union_under_insert() {
             scan t2
           projection (t2.f::int -> f, t2.e::int -> e, 2::int -> col_1, 2::int -> col_2)
             scan t2
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -152,10 +136,6 @@ fn union_under_insert1() {
               motion [policy: full, program: ReshardIfNeeded]
                 values
                   value ROW(2::int, 2::int)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -181,10 +161,6 @@ fn limit_pushdown_with_union() {
                           scan t
                         projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
                           scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 
     let sql = r#"
@@ -206,10 +182,6 @@ fn limit_pushdown_with_union() {
                         scan t
                       projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
                         scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -239,9 +211,5 @@ fn limit_pushdown_with_union_and_group_by() {
                               projection (t.a::int -> gr_expr_1)
                                 group by (t.a::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                                   scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }

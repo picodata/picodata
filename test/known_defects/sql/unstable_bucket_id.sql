@@ -15,10 +15,6 @@ projection (t.a::int -> a, t.b::decimal -> b)
   selection (t.b::decimal = 1::int)
     scan t
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -37,10 +33,6 @@ projection (t.a::int -> a, t.b::decimal -> b)
   selection (t.b::decimal = 1::decimal)
     scan t
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -58,10 +50,6 @@ EXPLAIN SELECT * FROM t WHERE b = 1.0;
 projection (t.a::int -> a, t.b::decimal -> b)
   selection (t.b::decimal = 1.0::decimal)
     scan t
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -82,10 +70,6 @@ insert into t on conflict: fail
     values
       value ROW(1::int, 1::int)
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -104,10 +88,6 @@ insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_2")]), program: ReshardIfNeeded]
     values
       value ROW(1::int, 1.0::decimal)
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            

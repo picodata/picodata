@@ -120,10 +120,6 @@ subquery $1:
             scan a_cd_corporate_client -> m
       scan cte m_f($0)
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -162,10 +158,6 @@ subquery $1:
             scan a_cd_corporate_client -> m
       scan cte m_f($0)
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -203,10 +195,6 @@ subquery $1:
             scan cte unnamed_join($0)
             scan a_cd_corporate_client -> unnamed_join_2
       scan cte unnamed_join_1($0)
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -256,10 +244,6 @@ subquery $1:
             scan cte r9($0)
             scan unnamed_join -> m
       scan cte m_f($0)
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            

@@ -18,10 +18,6 @@ fn unnamed_subquery1_test() {
       scan unnamed_subquery
         projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
           scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -41,10 +37,6 @@ fn unnamed_subquery2_test() {
           scan unnamed_subquery_1
             projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -63,10 +55,6 @@ fn unnamed_subquery_name_conflict1_test() {
           scan unnamed_subquery
             projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
               scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -86,10 +74,6 @@ fn unnamed_subquery_name_conflict2_test() {
       motion [policy: full, program: ReshardIfNeeded]
         projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
           scan t
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 

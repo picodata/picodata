@@ -7,10 +7,6 @@ fn concat1_test() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection ('1'::string || 'hello'::string -> col_1)
       scan t1
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }
 
@@ -23,9 +19,5 @@ fn concat2_test() {
     projection (t1.a::string -> a)
       selection (('1'::string || t1.a::string) || '2'::string = '42'::string)
         scan t1
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }

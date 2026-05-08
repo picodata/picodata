@@ -8,10 +8,6 @@ fn trim() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (TRIM(test_space."FIRST_NAME"::string) -> col_1)
       scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -23,10 +19,6 @@ fn trim_leading_from() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (TRIM(leading from test_space."FIRST_NAME"::string) -> col_1)
       scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -38,10 +30,6 @@ fn trim_both_space_from() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (TRIM(both ' '::string from test_space."FIRST_NAME"::string) -> col_1)
       scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 

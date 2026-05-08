@@ -11,10 +11,6 @@ fn insert1() {
       motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
         values
           value ROW(1::int, 'test'::string)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -29,10 +25,6 @@ fn insert2() {
       motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
         values
           value ROW(1::int, 'test'::string)
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     "#);
 }
 
@@ -47,9 +39,5 @@ fn insert3() {
       motion [policy: local segment([ref(id)]), program: ReshardIfNeeded]
         projection (test_space.id::int -> id, test_space.id::int -> id)
           scan test_space
-
-    execution options:
-      sql_vdbe_opcode_max = 45000
-      sql_motion_row_max = 5000
     ");
 }

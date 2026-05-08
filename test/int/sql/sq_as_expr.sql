@@ -336,10 +336,6 @@ subquery $0:
       values
         value ROW(1::int)
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -365,10 +361,6 @@ subquery $0:
     motion [policy: full, program: ReshardIfNeeded]
       values
         value ROW(1::int)
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -397,10 +389,6 @@ subquery $1:
       values
         value ROW(ROW($0))
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -428,10 +416,6 @@ subquery $1:
       values
         value ROW(ROW($0))
 ''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
-''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -454,10 +438,6 @@ subquery $0:
     motion [policy: full, program: ReshardIfNeeded]
       values
         value ROW(true::bool)
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -485,10 +465,6 @@ subquery $1:
     motion [policy: full, program: ReshardIfNeeded]
       values
         value ROW(1::int)
-''
-execution options:
-  sql_vdbe_opcode_max = 45000
-  sql_motion_row_max = 5000
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
