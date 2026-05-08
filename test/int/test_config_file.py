@@ -149,6 +149,291 @@ instance:
     )
 
 
+def test_config_storage_conflicts_on_restart(cluster: Cluster):
+    # Add `new-tier` so we can change persisted `default` tier.
+    # Note: If we set nonexistent tier we will fail while attempting to
+    # read `can_vote` parameter for that tier during discovery.
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: default-cluster-name
+    default_replication_factor: 2
+    default_bucket_count: 3000
+    tier:
+        default:
+        new-tier:
+            can_vote: false
+            replication_factor: 1
+"""
+    )
+    instance = cluster.add_instance()
+
+    instance.terminate()
+
+    #
+    # Change cluster_name
+    #
+    was = instance.cluster_name  # type: ignore
+    instance.cluster_name = "new-cluster-name"
+    assert instance.cluster_name != was
+    err = f"""\
+invalid configuration: instance restarted with a different `cluster_name`, which is not allowed, was: '{was}' became: 'new-cluster-name'
+"""  # noqa: E501
+    crawler = log_crawler(instance, err)
+    instance.fail_to_start()
+    assert crawler.matched
+    instance.cluster_name = was
+
+    #
+    # Change instance name
+    #
+    was = instance.name  # type: ignore
+    instance.name = "new-instance-name"
+    assert instance.name != was
+    err = f"""\
+invalid configuration: instance restarted with a different `instance_name`, which is not allowed, was: '{was}' became: 'new-instance-name'
+"""  # noqa: E501
+    crawler = log_crawler(instance, err)
+    instance.fail_to_start()
+    assert crawler.matched
+    instance.name = was
+
+    #
+    # Change tier
+    #
+    was = instance.tier  # type: ignore
+    instance.tier = "new-tier"
+    assert instance.tier != was
+    err = """\
+invalid configuration: instance restarted with a different `tier`, which is not allowed, was: 'default' became: 'new-tier'
+"""  # noqa: E501
+    crawler = log_crawler(instance, err)
+    instance.fail_to_start()
+    assert crawler.matched
+    instance.tier = was
+
+    #
+    # Change replicaset_name
+    #
+    was = instance.replicaset_name  # type: ignore
+    instance.replicaset_name = "new-replicaset-name"
+    assert instance.replicaset_name != was
+    err = f"""\
+invalid configuration: instance restarted with a different `replicaset_name`, which is not allowed, was: '{was}' became: 'new-replicaset-name'
+"""  # noqa: E501
+    crawler = log_crawler(instance, err)
+    instance.fail_to_start()
+    assert crawler.matched
+    instance.replicaset_name = was
+
+    #
+    # Change advertise address
+    #
+    was = instance.iproto_listen  # type: ignore
+    instance.env["PICODATA_IPROTO_ADVERTISE"] = "example.com:1234"
+    assert instance.env["PICODATA_IPROTO_ADVERTISE"] != was
+    err = f"""\
+invalid configuration: instance restarted with a different iproto advertise address, which is not allowed, was: '{was}' became: 'example.com:1234'
+"""  # noqa: E501
+    crawler = log_crawler(instance, err)
+    instance.fail_to_start()
+    assert crawler.matched
+    del instance.env["PICODATA_IPROTO_ADVERTISE"]
+
+    #
+    # Change tier configuration: add new tier
+    #
+    cluster.config_path = None
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: default-cluster-name
+    default_replication_factor: 2
+    default_bucket_count: 3000
+    tier:
+        default:
+        new-tier:
+            can_vote: false
+            replication_factor: 1
+        new-new-tier:
+"""
+    )
+    err = """\
+invalid configuration: instance restarted with a different set of tiers in configuration file, which is not allowed: tiers previously not seen: 'new-new-tier'
+"""  # noqa: E501
+    crawler = log_crawler(instance, err)
+    instance.fail_to_start()
+    assert crawler.matched
+
+    #
+    # Change tier configuration: remove old tier
+    #
+    cluster.config_path = None
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: default-cluster-name
+    default_replication_factor: 2
+    default_bucket_count: 3000
+    tier:
+        default:
+"""
+    )
+    err = """\
+invalid configuration: instance restarted with a different set of tiers in configuration file, which is not allowed: tiers not found in configuration: 'new-tier'
+"""  # noqa: E501
+    crawler = log_crawler(instance, err)
+    instance.fail_to_start()
+    assert crawler.matched
+
+    #
+    # Change tier configuration: default_replication_factor
+    #
+    cluster.config_path = None
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: default-cluster-name
+    default_replication_factor: 69
+    default_bucket_count: 3000
+    tier:
+        default:
+        new-tier:
+            can_vote: false
+            replication_factor: 1
+"""
+    )
+    err = """\
+invalid configuration: instance restarted with a different tier configuration, which is not allowed: tier 'default' `replication_factor` was persisted as `2`, but became `69`
+"""  # noqa: E501
+    crawler = log_crawler(instance, err)
+    instance.fail_to_start()
+    assert crawler.matched
+
+    #
+    # Change tier configuration: default_bucket_count
+    #
+    cluster.config_path = None
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: default-cluster-name
+    default_replication_factor: 2
+    default_bucket_count: 6000
+    tier:
+        default:
+        new-tier:
+            can_vote: false
+            replication_factor: 1
+"""
+    )
+    err = """\
+invalid configuration: instance restarted with a different tier configuration, which is not allowed: tier 'default' `bucket_count` was persisted as `3000`, but became `6000`
+"""  # noqa: E501
+    crawler = log_crawler(instance, err)
+    instance.fail_to_start()
+    assert crawler.matched
+
+    #
+    # Change tier configuration: can_vote
+    #
+    cluster.config_path = None
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: default-cluster-name
+    default_replication_factor: 2
+    default_bucket_count: 3000
+    tier:
+        default:
+        new-tier:
+            can_vote: true
+            replication_factor: 1
+"""
+    )
+    err = """\
+invalid configuration: instance restarted with a different tier configuration, which is not allowed: tier 'new-tier' `can_vote` was persisted as `false`, but became `true`
+"""  # noqa: E501
+    crawler = log_crawler(instance, err)
+    instance.fail_to_start()
+    assert crawler.matched
+
+    #
+    # Change tier configuration: replication_factor
+    #
+    cluster.config_path = None
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: default-cluster-name
+    default_replication_factor: 2
+    default_bucket_count: 3000
+    tier:
+        default:
+        new-tier:
+            can_vote: true
+"""
+    )
+    err = """\
+invalid configuration: instance restarted with a different tier configuration, which is not allowed: tier 'new-tier' `replication_factor` was persisted as `1`, but became `2`
+"""  # noqa: E501
+    crawler = log_crawler(instance, err)
+    instance.fail_to_start()
+    assert crawler.matched
+
+    #
+    # Change tier configuration: bucket_count
+    #
+    cluster.config_path = None
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: default-cluster-name
+    default_replication_factor: 2
+    default_bucket_count: 3000
+    tier:
+        default:
+            bucket_count: 0
+        new-tier:
+            can_vote: true
+            replication_factor: 1
+"""
+    )
+    err = """\
+invalid configuration: instance restarted with a different tier configuration, which is not allowed: tier 'default' `bucket_count` was persisted as `3000`, but became `0`
+"""  # noqa: E501
+    crawler = log_crawler(instance, err)
+    instance.fail_to_start()
+    assert crawler.matched
+
+    #
+    # Change tier configuration: experimental_sharding_implementation
+    #
+    cluster.config_path = None
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: default-cluster-name
+    default_replication_factor: 2
+    default_bucket_count: 3000
+    tier:
+        default:
+            bucket_count: 3000
+            experimental_sharding_implementation: false
+        new-tier:
+            can_vote: false
+            replication_factor: 1
+            experimental_sharding_implementation: true
+"""
+    )
+    err = """\
+invalid configuration: instance restarted with a different tier configuration, which is not allowed: tier 'new-tier' `experimental_sharding_implementation` was persisted as `false`, but became `true`
+"""  # noqa: E501
+    crawler = log_crawler(instance, err)
+    instance.fail_to_start()
+    assert crawler.matched
+
+
 def test_default_path_to_config_file(cluster: Cluster):
     instance = cluster.add_instance(wait_online=False)
 
