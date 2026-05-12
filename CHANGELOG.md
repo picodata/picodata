@@ -62,6 +62,7 @@ with the `YY.MINOR.MICRO` scheme.
   options and remove them from `LOGICAL` facet output.
 - Added new `pico_instance_health_status` SQL scalar function to get current
   instance's health status, - SQL wrapper over `/api/v1/health/status`.
+- Improved accuracy of `space:len()` for Vinyl tables.
 
 ### Fixes
 
