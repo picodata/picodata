@@ -2,7 +2,7 @@ import { SxProps } from "@mui/material";
 
 import { Content } from "shared/ui/layout/Content/Content";
 import { useTranslation } from "shared/intl";
-import { useClusterInfo } from "shared/entity/cluster/info";
+import { ClusterInfoType, useClusterInfo } from "shared/entity/cluster/info";
 
 import { CapacityProgress } from "./CapacityProgress/CapacityProgress";
 import {
@@ -106,7 +106,7 @@ export const ClusterInfo = ({ sx }: ClusterInfoProps) => {
           <ColumnName>{clusterTranslations.version.label}</ColumnName>
           <ColumnContent>
             <ColumnValue>
-              {(clusterInfoData as unknown).currentInstaceVersion}
+              {(clusterInfoData as ClusterInfoType).currentInstaceVersion}
             </ColumnValue>
             <ColumnLabel>{clusterTranslations.version.description}</ColumnLabel>
           </ColumnContent>

@@ -1,2 +1,2 @@
 export * from "./useQuery";
-export type { ClusterInfoType } from "./types";
+export type { ServerClusterInfoType as ClusterInfoType } from "./types";

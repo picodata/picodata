@@ -115,8 +115,8 @@ export const ReplicasetCardAlt = memo(
             <CapacityProgressCell>
               <CapacityProgress
                 percent={replicaset.capacityUsage}
-                currentValue={replicaset.memory.used}
-                limit={replicaset.memory.usable}
+                currentValue={replicaset.used}
+                limit={replicaset.usable}
                 size="small"
                 theme={"primary"}
                 progressLineWidth="100%"

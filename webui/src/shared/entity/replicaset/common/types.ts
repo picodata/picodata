@@ -5,6 +5,7 @@ import {
   InstanceNodeType,
 } from "../../instance/common/types";
 import { NodeType } from "../../tier";
+import { Memory } from "../../memory";
 
 export type ServerReplicasetType = {
   name: string;
@@ -13,21 +14,18 @@ export type ServerReplicasetType = {
   version: string;
   state: "Online" | "Offline" | "Expelled";
   capacityUsage: number;
-  memory: {
-    usable: number;
-    used: number;
-  };
+  replicasetState: "ready" | "not-ready";
 };
 
 export type ReplicasetType = Override<
   ServerReplicasetType,
-  {
-    instances: InstanceType[];
+  { instances: InstanceType[] }
+> &
+  Memory & {
     currentInstanceCount: number;
     hasRaftLeader: boolean;
     hasVoter: boolean;
-  }
->;
+  };
 export type ReplicasetNodeType = ReplicasetType & {
   instances: InstanceNodeType[];
   type: NodeType.Replicaset;

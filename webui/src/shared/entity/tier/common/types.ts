@@ -4,6 +4,7 @@ import {
   ReplicasetType,
   ServerReplicasetType,
 } from "../../replicaset/common/types";
+import { Memory } from "../../memory";
 
 export type ServerTierType = {
   name: string;
@@ -14,10 +15,6 @@ export type ServerTierType = {
   bucketCount: number;
   can_vote: boolean;
   replicasets: ServerReplicasetType[];
-  memory?: {
-    usable: number;
-    used: number;
-  };
   capacityUsage?: number;
 };
 
@@ -29,8 +26,11 @@ export enum NodeType {
 
 export type TierType = Override<
   ServerTierType,
-  { replicasets: ReplicasetType[]; hasRaftLeader: boolean }
->;
+  { replicasets: ReplicasetType[] }
+> &
+  Memory & {
+    hasRaftLeader: boolean;
+  };
 export type TierNodeType = TierType & {
   open: boolean;
   syntheticId: string;

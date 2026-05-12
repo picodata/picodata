@@ -1,6 +1,8 @@
 import { CircularProgress } from "@mui/material";
 
-import { useTiers } from "../../../shared/entity/tier";
+import { useTiers } from "shared/entity/tier";
+import { useMemory } from "shared/entity/memory";
+import { useNodes } from "shared/entity/node";
 
 import { ClusterInfo } from "./ClusterInfo/ClusterInfo";
 import { NodesContent } from "./NodesContent/NodesContent";
@@ -12,7 +14,11 @@ import {
 } from "./StyledComponents";
 
 export const NodesPage = () => {
-  const { data, isLoading } = useTiers();
+  const { data: tiers, isLoading: tiersIsLoading } = useTiers();
+  const { data: memory, isLoading: memoryIsLoading } = useMemory();
+
+  const data = useNodes(tiers, memory);
+  const isLoading = tiersIsLoading || memoryIsLoading;
   return !isLoading ? (
     <NodesPageContainer>
       <ClusterInfo sx={clusterInfoSx} />

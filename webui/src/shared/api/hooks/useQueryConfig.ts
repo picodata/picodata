@@ -28,7 +28,6 @@ export const useQueryConfig = <T>() => {
 
   return {
     ...defaultQueryConfig,
-    // networkMode: "online" as const,
     retryDelay,
     retry,
     refetchInterval() {
