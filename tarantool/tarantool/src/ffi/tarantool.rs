@@ -819,6 +819,7 @@ extern "C" {
     pub fn box_txn_commit() -> c_int;
     pub fn box_txn_rollback() -> c_int;
     pub fn box_txn_alloc(size: usize) -> *mut c_void;
+    pub fn box_txn_set_flags(flags: u32) -> c_int;
 }
 
 // Indexes, spaces and tuples.

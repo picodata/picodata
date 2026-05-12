@@ -85,6 +85,52 @@ where
     result.map_err(TransactionError::RolledBack)
 }
 
+/// Executes a transaction in the current fiber.
+/// Unlike [`transaction`] forces the transaction to be treated as
+/// asynchronous.
+///
+/// Normally when there are pending synchronous transactions that
+/// didn't receive all necessary acks yet (limbo is not empty)
+/// all trasnsactions even ones without operations on synchronous
+/// spaces will be queued to be applied after those synchronous
+/// transactions. This is important to preserve serializability,
+/// because logically asynchronous transactions have observed
+/// state of the database that depends on changes made by these
+/// synchronous transactions. Pending synchronous transactions
+/// may be rolled back due to new leader being elected.
+/// In that case unconfirmed tail of the log is disgarded.
+///
+/// Sometimes we need to intentionally violate this property.
+/// We may have local spaces that still need to be modified even
+/// when there is no quorum for synchronous transactions.
+/// For Picodata these are spaces that contain raft state.
+///
+/// When reaching for this wrapper make sure that transaction
+/// doesn't depend on state that may not be "stable" yet i.e.
+/// vulnerable to rollback due to leader change and other
+/// possibilities coming from out-of-order nature of such forcefully
+/// async transactions.
+///
+/// A transaction is attached to caller fiber, therefore one fiber can have
+/// only one active transaction.
+///
+/// - `f` - function will be invoked within transaction
+///
+/// Returns result of function `f` execution. Depending on the function result:
+/// - will **commit** - if function completes successfully
+/// - will **rollback** - if function completes with any error
+pub fn transaction_force_async<T, E, F>(f: F) -> Result<T, TransactionError<E>>
+where
+    F: FnOnce() -> Result<T, E>,
+    E: std::convert::From<TarantoolError>,
+{
+    let new_func = || -> Result<T, E> {
+        set_force_async()?;
+        f()
+    };
+    transaction(new_func)
+}
+
 /// Returns `true` if there's an active transaction.
 #[inline(always)]
 pub fn is_in_transaction() -> bool {
@@ -131,6 +177,23 @@ pub fn commit() -> Result<(), TarantoolError> {
 #[inline(always)]
 pub fn rollback() -> Result<(), TarantoolError> {
     if unsafe { ffi::box_txn_rollback() } < 0 {
+        return Err(TarantoolError::last());
+    }
+    Ok(())
+}
+
+const TXN_FORCE_ASYNC: u32 = 0x40;
+
+/// Sets TXN_FORCE_ASYNC flag into the current transaction's flags.
+///
+/// A transaction may be forced to be asynchronous, not
+/// wait for any ACKs, and not depend on prepending sync
+/// transactions.
+///
+/// Returns 0 on success, -1 if there is no current transaction.
+#[inline(always)]
+pub fn set_force_async() -> Result<(), TarantoolError> {
+    if unsafe { ffi::box_txn_set_flags(TXN_FORCE_ASYNC) } < 0 {
         return Err(TarantoolError::last());
     }
     Ok(())
