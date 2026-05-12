@@ -163,13 +163,12 @@ fn export_public_symbols() {
         build_rs_helpers::exports::read_file(f, &mut symbols).unwrap();
     }
 
-    // Add extra symbols for ASan (tarantool/src/lua/utils.lua).
+    // Export ASan runtime symbols.
+    // Firstly, for ASan integration in tarantool/src/lua/utils.lua.
+    // Secondly, so that plugins (cdylibs) built with ASan
+    // could resolve them from the main binary.
     if is_asan_enabled() {
-        symbols.extend([
-            "__asan_unpoison_memory_region".into(),
-            "__asan_poison_memory_region".into(),
-            "__asan_address_is_poisoned".into(),
-        ]);
+        symbols.insert("__asan_*".into());
     }
 
     // Sorted symbols file is much easier to navigate.
