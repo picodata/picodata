@@ -91,7 +91,7 @@ DEFAULT_TARGET := $(shell cargo -vV | sed -n 's|host: ||p')
 # TODO: drop nightly features once sanitizers are stable.
 .PHONY: build-asan-dev
 build-asan-dev: override CARGO_ENV = RUSTC_BOOTSTRAP=1
-build-asan-dev: override CARGO_ENV += CARGO_TARGET_DIR=asan-dev
+build-asan-dev: override CARGO_ENV += CARGO_TARGET_DIR=target/asan-dev
 build-asan-dev: override CARGO_ENV += RUSTFLAGS='-Zsanitizer=address --cfg asan'
 build-asan-dev: override CARGO_ENV += RUSTDOCFLAGS='-Zsanitizer=address --cfg asan'
 build-asan-dev: override CARGO_FLAGS += --target=$(DEFAULT_TARGET)
