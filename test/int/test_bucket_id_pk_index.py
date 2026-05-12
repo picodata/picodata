@@ -165,6 +165,7 @@ def test_simple_table_having_bucket_id_in_pk(cluster: Cluster, engine: str):
     res = i1.eval(f"return box.space._index:select({table_id})")
 
 
+@pytest.mark.skip_asan("vshard's internal CALL_TIMEOUT_MIN (0.5s) is too short for ASan-instrumented bulk inserts")
 def test_with_sk_prefix_of_pk(cluster: Cluster):
     """
     Sharding key is prefix of primary key.
@@ -207,6 +208,7 @@ def test_with_sk_prefix_of_pk(cluster: Cluster):
     assert res["row_count"] == 1
 
 
+@pytest.mark.skip_asan("vshard's internal CALL_TIMEOUT_MIN (0.5s) is too short for ASan-instrumented bulk inserts")
 def test_with_sk_and_pk_different(cluster: Cluster):
     """
     Sharding key is completely different from primary key.
