@@ -1411,37 +1411,47 @@ pub enum BlockStatement<T> {
 }
 
 impl<T> BlockStatement<T> {
-    /// Take the query from the statement.
-    pub fn take(self) -> T {
+    /// Iterate over every query subtree inside this statement in execution
+    /// order.
+    pub fn iter(&self) -> BlockStmtIter<'_, T> {
         match self {
-            Self::ReturnQuery(v) | Self::Query(v) => v,
-            Self::Let { query, .. } => query,
-            Self::If { .. } => unimplemented!(),
+            Self::ReturnQuery(v) | Self::Query(v) => BlockStmtIter::Single(Some(v)),
+            Self::Let { query, .. } => BlockStmtIter::Single(Some(query)),
+            Self::If { cond, body } => BlockStmtIter::If {
+                cond: Some(cond),
+                body: body.iter(),
+            },
         }
     }
 
-    /// Get a reference to the query from the statement.
-    pub fn get(&self) -> &T {
+    /// Mutable variant of [`iter`](Self::iter).
+    pub fn iter_mut(&mut self) -> BlockStmtIterMut<'_, T> {
         match self {
-            Self::ReturnQuery(v) | Self::Query(v) => v,
-            Self::Let { query, .. } => query,
-            Self::If { .. } => unimplemented!(),
+            Self::ReturnQuery(v) | Self::Query(v) => BlockStmtIterMut::Single(Some(v)),
+            Self::Let { query, .. } => BlockStmtIterMut::Single(Some(query)),
+            Self::If { cond, body } => BlockStmtIterMut::If {
+                cond: Some(cond),
+                body: body.iter_mut(),
+            },
         }
     }
 
-    /// Get a mutable reference to the query from the statement.
-    pub fn get_mut(&mut self) -> &mut T {
+    /// Owning variant of [`iter`](Self::iter).
+    pub fn into_queries(self) -> BlockStmtIntoIter<T> {
         match self {
-            Self::ReturnQuery(v) | Self::Query(v) => v,
-            Self::Let { query, .. } => query,
-            Self::If { .. } => unimplemented!(),
+            Self::ReturnQuery(v) | Self::Query(v) => BlockStmtIntoIter::Single(Some(v)),
+            Self::Let { query, .. } => BlockStmtIntoIter::Single(Some(query)),
+            Self::If { cond, body } => BlockStmtIntoIter::If {
+                cond: Some(cond),
+                body: body.into_iter(),
+            },
         }
     }
 
-    /// Map query from the statement using given function.
-    pub fn try_map<F, U, E>(self, f: F) -> Result<BlockStatement<U>, E>
+    /// Map every query subtree inside the statement using `f`.
+    pub fn try_map<F, U, E>(self, mut f: F) -> Result<BlockStatement<U>, E>
     where
-        F: FnOnce(T) -> Result<U, E>,
+        F: FnMut(T) -> Result<U, E>,
     {
         Ok(match self {
             Self::ReturnQuery(v) => BlockStatement::ReturnQuery(f(v)?),
@@ -1450,7 +1460,10 @@ impl<T> BlockStatement<T> {
                 var,
                 query: f(query)?,
             },
-            Self::If { .. } => unimplemented!(),
+            Self::If { cond, body } => BlockStatement::If {
+                cond: f(cond)?,
+                body: body.into_iter().map(f).collect::<Result<_, _>>()?,
+            },
         })
     }
 
@@ -1460,6 +1473,130 @@ impl<T> BlockStatement<T> {
             BlockStatement::Query(_) => "Query",
             BlockStatement::Let { .. } => "Let",
             BlockStatement::If { .. } => "If",
+        }
+    }
+}
+
+/// Iterator over every query subtree inside one [`BlockStatement`].
+pub enum BlockStmtIter<'a, T> {
+    /// Wraps a single inner query (`ReturnQuery`, `Query`, `Let`).
+    Single(Option<&'a T>),
+    /// Walks an `If`: yields `cond` first, then each `body[i]` in order.
+    If {
+        cond: Option<&'a T>,
+        body: std::slice::Iter<'a, T>,
+    },
+}
+
+impl<'a, T> Iterator for BlockStmtIter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<&'a T> {
+        match self {
+            Self::Single(slot) => slot.take(),
+            Self::If { cond, body } => cond.take().or_else(|| body.next()),
+        }
+    }
+}
+
+/// Mutable variant of [`BlockStmtIter`].
+pub enum BlockStmtIterMut<'a, T> {
+    Single(Option<&'a mut T>),
+    If {
+        cond: Option<&'a mut T>,
+        body: std::slice::IterMut<'a, T>,
+    },
+}
+
+impl<'a, T> Iterator for BlockStmtIterMut<'a, T> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<&'a mut T> {
+        match self {
+            Self::Single(slot) => slot.take(),
+            Self::If { cond, body } => cond.take().or_else(|| body.next()),
+        }
+    }
+}
+
+/// Owning variant of [`BlockStmtIter`].
+pub enum BlockStmtIntoIter<T> {
+    Single(Option<T>),
+    If {
+        cond: Option<T>,
+        body: std::vec::IntoIter<T>,
+    },
+}
+
+impl<T> Iterator for BlockStmtIntoIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        match self {
+            Self::Single(slot) => slot.take(),
+            Self::If { cond, body } => cond.take().or_else(|| body.next()),
+        }
+    }
+}
+
+/// Thin borrowing wrapper around a slice of [`BlockStatement`]s that
+/// iterates every inner query subtree of every statement, in execution
+/// order, as a single flat sequence — no nested loops at the call site.
+pub struct BlockQueries<'a, T> {
+    stmts: std::slice::Iter<'a, BlockStatement<T>>,
+    current: Option<BlockStmtIter<'a, T>>,
+}
+
+impl<'a, T> BlockQueries<'a, T> {
+    pub fn new(stmts: &'a [BlockStatement<T>]) -> Self {
+        Self {
+            stmts: stmts.iter(),
+            current: None,
+        }
+    }
+}
+
+impl<'a, T> Iterator for BlockQueries<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<&'a T> {
+        loop {
+            if let Some(it) = self.current.as_mut() {
+                if let Some(v) = it.next() {
+                    return Some(v);
+                }
+            }
+            self.current = Some(self.stmts.next()?.iter());
+        }
+    }
+}
+
+/// Mutable variant of [`BlockQueries`].
+pub struct BlockQueriesMut<'a, T> {
+    stmts: std::slice::IterMut<'a, BlockStatement<T>>,
+    current: Option<BlockStmtIterMut<'a, T>>,
+}
+
+impl<'a, T> BlockQueriesMut<'a, T> {
+    pub fn new(stmts: &'a mut [BlockStatement<T>]) -> Self {
+        Self {
+            stmts: stmts.iter_mut(),
+            current: None,
+        }
+    }
+}
+
+impl<'a, T> Iterator for BlockQueriesMut<'a, T> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<&'a mut T> {
+        loop {
+            if let Some(it) = self.current.as_mut() {
+                if let Some(v) = it.next() {
+                    return Some(v);
+                }
+            }
+            self.current = Some(self.stmts.next()?.iter_mut());
         }
     }
 }

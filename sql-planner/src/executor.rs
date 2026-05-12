@@ -32,7 +32,10 @@ use crate::ir::explain::{execution_info::BucketsInfo, LogicalExplain};
 use crate::ir::node::block::{BlockOwned, MutBlock};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{MutRelational, Relational};
-use crate::ir::node::{AnonymousBlock, BlockStatement, Insert, Motion, NodeId, Values, ValuesRow};
+use crate::ir::node::{
+    AnonymousBlock, BlockQueries, BlockQueriesMut, BlockStatement, Insert, Motion, NodeId, Values,
+    ValuesRow,
+};
 use crate::ir::options::OptionKind;
 use crate::ir::transformation::redistribution::{MotionPolicy, Target};
 use crate::ir::tree::traversal::{PostOrder, REL_CAPACITY};
@@ -210,17 +213,17 @@ impl Plan {
         };
 
         // Optimize subtrees and eliminate motions.
-        for stmt in &mut statements {
-            let query_id = *stmt.get();
+        for query_id_slot in BlockQueriesMut::new(&mut statements) {
             // Remember keyword for the top node before motions are added.
-            let keyword = self.as_keyword(query_id);
+            let keyword = self.as_keyword(*query_id_slot);
 
             // Set top so `optimize_subtree()` can update it when subtree's top changes.
-            self.set_top(query_id).expect("top node can't be missed");
-            self = self.optimize_subtree(*stmt.get())?;
-            eliminate_motions_in_subtree(&mut self, *stmt.get())?;
+            self.set_top(*query_id_slot)
+                .expect("top node can't be missed");
+            self = self.optimize_subtree(*query_id_slot)?;
+            eliminate_motions_in_subtree(&mut self, *query_id_slot)?;
             let new_top = self.get_top().expect("just set");
-            *stmt.get_mut() = new_top;
+            *query_id_slot = new_top;
 
             // Ensure no motions.
             if self.subtree_has_motions(new_top)? {
@@ -532,8 +535,8 @@ where
             };
 
             let mut block_buckets = None;
-            for query_id in block.statements.iter().map(|stmt| *stmt.get()) {
-                let buckets = self.bucket_discovery(query_id)?;
+            for query_id in BlockQueries::new(&block.statements) {
+                let buckets = self.bucket_discovery(*query_id)?;
                 match buckets {
                     Buckets::All => {
                         return Err(SbroadError::Other(format_smolstr!(

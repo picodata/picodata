@@ -856,16 +856,17 @@ pub fn explain_execute_block<'p>(
 ) -> Result<(), SbroadError> {
     for stmt in block.statements.into_iter() {
         let stmt_kind = stmt.kind();
-        let pattern = stmt.take();
-        let (sql, params) = pattern.into_parts();
-        explain_execute_guarded(
-            &sql,
-            &params,
-            block.vdbe_max_steps,
-            stmt_kind,
-            location,
-            port,
-        )?;
+        for pattern in stmt.into_queries() {
+            let (sql, params) = pattern.into_parts();
+            explain_execute_guarded(
+                &sql,
+                &params,
+                block.vdbe_max_steps,
+                stmt_kind,
+                location,
+                port,
+            )?;
+        }
     }
 
     Ok(())
