@@ -20,6 +20,10 @@ with the `YY.MINOR.MICRO` scheme.
 - `picodata demo` subcommand is now gated behind the `demo` Cargo feature,
   disabled by default. To build with demo, use `CARGO_FLAGS_EXTRA="--features demo"`.
 
+### Features
+
+- Improved accuracy of `space:len()` for Vinyl tables.
+
 ### Fixes
 
 - Fixed crash when disabling a plugin with slow background jobs. Previously,
