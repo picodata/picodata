@@ -86,10 +86,10 @@ fn anonymous_blocks_parsing_errors() {
             "DO LANGUAGE SQL $$ BEGIN RETURN QUERY SELECT false; RETURN QUERY SELECT true, 1; END $$",
             "RETURN QUERY types cannot be matched",
         ),
-        // QUERY statements must follow LET and RETURN QUERY statements
+        // QUERY and IF statements must follow LET and RETURN QUERY statements
         (
             "DO LANGUAGE SQL $$ BEGIN UPDATE t2 SET e = f; RETURN QUERY SELECT 2; END $$",
-            "QUERY statements must follow LET and RETURN QUERY statements",
+            "QUERY and IF statements must follow LET and RETURN QUERY statements",
         ),
         // DDL is not supported in blocks.
         (
@@ -405,6 +405,105 @@ fn let_resolution_errors() {
                 RETURN QUERY SELECT 3; \
             END $$",
             "LET variable \"v\" is declared but never used",
+        ),
+    ];
+
+    for (query, error_pattern) in cases {
+        let error = expect_sql_to_ir_error(query, &[]);
+        eprintln!("{query}: {} vs {error_pattern}", error);
+        assert!(error.to_string().contains(error_pattern));
+    }
+}
+
+/// Tests for IF parsing: bare-expression condition, DML body, interaction
+/// with LET, etc.
+#[test]
+fn if_resolution_ok() {
+    let cases = [
+        // Plain `IF <bool-expr> THEN UPDATE …; END IF;`. Cond is a literal,
+        // body is a single DML statement.
+        "DO $$ BEGIN \
+            IF true THEN UPDATE t2 SET e = f; END IF; \
+        END $$",
+        // Cond as a comparison.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN UPDATE t2 SET e = f; END IF; \
+        END $$",
+        // Cond references a LET defined earlier.
+        "DO $$ BEGIN \
+            LET v = (SELECT b FROM t1 WHERE a = 'x'); \
+            IF v > 0 THEN UPDATE t2 SET e = v; END IF; \
+        END $$",
+        // Multiple DML statements in the body.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN \
+                UPDATE t2 SET e = f; \
+                UPDATE t2 SET f = e WHERE e <> f; \
+                DELETE FROM t2 WHERE e = 0; \
+            END IF; \
+        END $$",
+        // DML after IF works.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN \
+                UPDATE t2 SET e = f; \
+                UPDATE t2 SET f = e WHERE e <> f; \
+                DELETE FROM t2 WHERE e = 0; \
+            END IF; \
+            UPDATE t2 SET e = f; \
+        END $$",
+    ];
+
+    for query in cases {
+        eprintln!("{query}");
+        let _ = sql_to_ir_without_bind(query, &[]);
+    }
+}
+
+/// Tests for IF parsing errors: condition shape, body restrictions,
+/// ordering rule.
+#[test]
+fn if_resolution_errors() {
+    let cases = [
+        // SELECT (DQL) is not allowed in body — `SELECT 1;` parses as a
+        // `BlockQueryStatement` but is rejected by the IF body's DML check.
+        (
+            "DO $$ BEGIN \
+                IF 1 > 0 THEN SELECT 1; END IF; \
+            END $$",
+            "IF body may only contain DML statements",
+        ),
+        // LET is not allowed inside IF body.
+        (
+            "DO $$ BEGIN \
+                IF 1 > 0 THEN LET v = (SELECT 1); END IF; \
+            END $$",
+            "LET is not allowed inside IF body",
+        ),
+        // RETURN QUERY is not allowed inside IF body.
+        (
+            "DO $$ BEGIN \
+                IF 1 > 0 THEN RETURN QUERY SELECT 1; END IF; \
+            END $$",
+            "RETURN QUERY is not allowed inside IF body",
+        ),
+        // Nested IF is not allowed.
+        (
+            "DO $$ BEGIN \
+                IF 1 > 0 THEN \
+                    IF 2 > 0 THEN UPDATE t2 SET e = f; END IF; \
+                END IF; \
+            END $$",
+            "nested IF is not allowed",
+        ),
+        // Can't interleave IF with DQL.
+        (
+            "DO $$ BEGIN \
+                IF 1 > 0 THEN \
+                    UPDATE t2 SET e = f; \
+                END IF; \
+                RETURN QUERY SELECT 1;
+            END $$",
+            "QUERY and IF statements must follow LET and RETURN QUERY statements",
         ),
     ];
 

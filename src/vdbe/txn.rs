@@ -459,8 +459,9 @@ fn compile_and_assemble(
         }
     }
 
-    // All result-producing subprograms (ReturnQuery and IF body) must have the
-    // same number of columns; LET, Query, and IF cond write to aVar or are DML.
+    // All `RETURN QUERY` statements must agree on the number of result
+    // columns. `LET` and `IF cond` write to aVar; plain `Query` and IF body
+    // queries are DML.
     let n_res_column = {
         let mut n: Option<u16> = None;
         let mut check = |sp: &CompiledSubprogram| -> Result<(), String> {
@@ -480,12 +481,9 @@ fn compile_and_assemble(
         for cs in &compiled {
             match cs {
                 BlockStatement::ReturnQuery(sp) => check(sp)?,
-                BlockStatement::If { body, .. } => {
-                    for sp in body {
-                        check(sp)?;
-                    }
-                }
-                BlockStatement::Let { .. } | BlockStatement::Query(_) => {}
+                BlockStatement::Let { .. }
+                | BlockStatement::Query(_)
+                | BlockStatement::If { .. } => {}
             }
         }
         n.unwrap_or(1)

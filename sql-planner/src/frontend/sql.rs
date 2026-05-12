@@ -2163,6 +2163,56 @@ fn parse_anonymous_block<M: Metadata>(
                     query: query_id,
                 });
             }
+            Rule::BlockIfStatement => {
+                // Children: [BlockIfCondition, BlockIfBodyStatement+].
+                let mut children = child.children.iter();
+                let cond_ast_id = children.next().expect("IF must have a condition");
+                let cond_id = map.get(*cond_ast_id)?;
+
+                let cond_cols = dql_return_columns(plan, cond_id)?;
+                if cond_cols.len() != 1 {
+                    return Err(SbroadError::other(
+                        "IF condition must produce a single column",
+                    ));
+                }
+
+                let mut body_ids: Vec<NodeId> = Vec::new();
+                for body_ast_id in children {
+                    let body_ast = ast.nodes.get_node(*body_ast_id)?;
+                    let inner_ast_id = body_ast
+                        .children
+                        .first()
+                        .expect("BlockIfBodyStatement must have an inner statement");
+                    match ast.nodes.get_node(*inner_ast_id)?.rule {
+                        Rule::BlockQueryStatement => {
+                            let query_id = map.get(*body_ast_id)?;
+                            if !plan.get_relation_node(query_id)?.is_dml() {
+                                return Err(SbroadError::other(
+                                    "IF body may only contain DML statements",
+                                ));
+                            }
+                            body_ids.push(query_id);
+                        }
+                        Rule::BlockLetStatement => {
+                            return Err(SbroadError::other("LET is not allowed inside IF body"));
+                        }
+                        Rule::BlockReturnQueryStatement => {
+                            return Err(SbroadError::other(
+                                "RETURN QUERY is not allowed inside IF body",
+                            ));
+                        }
+                        Rule::BlockIfStatement => {
+                            return Err(SbroadError::other("nested IF is not allowed"));
+                        }
+                        rule => unreachable!("{rule:?} is not a block statement inside IF body"),
+                    }
+                }
+
+                statements.push(BlockStatement::If {
+                    cond: cond_id,
+                    body: body_ids,
+                });
+            }
             rule => unreachable!("{rule:?} is unexpected according to the grammar"),
         }
     }
@@ -2199,12 +2249,12 @@ fn parse_anonymous_block<M: Metadata>(
         let r1 = ast.nodes.get_node(id1)?.rule;
         let r2 = ast.nodes.get_node(id2)?.rule;
         if let (
-            Rule::BlockQueryStatement,
+            Rule::BlockQueryStatement | Rule::BlockIfStatement,
             Rule::BlockLetStatement | Rule::BlockReturnQueryStatement,
         ) = (r1, r2)
         {
             return Err(SbroadError::Other(format_smolstr!(
-                "QUERY statements must follow LET and RETURN QUERY statements",
+                "QUERY and IF statements must follow LET and RETURN QUERY statements",
             )));
         }
     }
@@ -7267,6 +7317,41 @@ impl AbstractSyntaxTree {
                     worker.let_scope.declare(var_name.clone(), var_type)?;
                     worker.let_var_names.insert(id, var_name);
                     map.add(id, subquery_plan_id);
+                }
+                Rule::BlockIfCondition => {
+                    // Wrap the cond expression in `SELECT (<expr>) AS "cond"`.
+                    let expr_ast_id = node
+                        .children
+                        .first()
+                        .expect("BlockIfCondition must have an Expr child");
+                    let expr_pair = pairs_map.remove_pair(*expr_ast_id);
+                    let expr_plan_id = parse_scalar_expr(
+                        Pairs::single(expr_pair),
+                        &mut type_analyzer,
+                        DerivedType::new(UnrestrictedType::Boolean),
+                        &[],
+                        &mut worker,
+                        &mut plan,
+                        false, /* safe_for_volatile_function */
+                    )?;
+                    let alias_id = plan.nodes.add_alias("cond", expr_plan_id)?;
+                    let projection_id = plan.add_select_without_scan(&[alias_id])?;
+                    plan.fix_subquery_rows(&mut worker, projection_id)?;
+                    map.add(id, projection_id);
+                }
+                Rule::BlockIfBodyStatement => {
+                    let inner_ast_id = node
+                        .children
+                        .first()
+                        .expect("BlockIfBodyStatement must have a child");
+                    let inner_rule = self.nodes.get_node(*inner_ast_id)?.rule;
+                    if inner_rule != Rule::BlockIfStatement {
+                        let inner_plan_id = map.get(*inner_ast_id)?;
+                        map.add(id, inner_plan_id);
+                    }
+                }
+                Rule::BlockIfStatement => {
+                    // Built in `parse_anonymous_block`; nothing to map.
                 }
                 Rule::AnonymousBlock => {
                     // At the moment all queries are parsed analyzed so we can set parameter

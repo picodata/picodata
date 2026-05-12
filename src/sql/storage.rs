@@ -9,6 +9,7 @@ use crate::sql::router::{
 };
 use crate::traft::node;
 use serde::{Deserialize, Serialize};
+use sql::backend::sql::ir::PatternWithParams;
 use sql::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::engine::helpers::table_name;
@@ -20,6 +21,7 @@ use sql::executor::protocol::SchemaInfo;
 use sql::executor::{Port, PortType};
 use sql::ir::bucket::Buckets;
 use sql::ir::helpers::RepeatableState;
+use sql::ir::node::BlockStatement;
 use sql::ir::options::Options;
 use std::cell::{OnceCell, RefCell};
 use std::time::Duration;
@@ -854,18 +856,23 @@ pub fn explain_execute_block<'p>(
     location: &str,
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError> {
-    for stmt in block.statements.into_iter() {
-        let stmt_kind = stmt.kind();
-        for pattern in stmt.into_queries() {
+    let mut explain_one =
+        |pattern: PatternWithParams, kind: &'static str| -> Result<(), SbroadError> {
             let (sql, params) = pattern.into_parts();
-            explain_execute_guarded(
-                &sql,
-                &params,
-                block.vdbe_max_steps,
-                stmt_kind,
-                location,
-                port,
-            )?;
+            explain_execute_guarded(&sql, &params, block.vdbe_max_steps, kind, location, port)
+        };
+
+    for stmt in block.statements.into_iter() {
+        match stmt {
+            BlockStatement::ReturnQuery(p) => explain_one(p, "Return query")?,
+            BlockStatement::Query(p) => explain_one(p, "Query")?,
+            BlockStatement::Let { query, .. } => explain_one(query, "Let")?,
+            BlockStatement::If { cond, body } => {
+                explain_one(cond, "If cond")?;
+                for p in body {
+                    explain_one(p, "If body")?;
+                }
+            }
         }
     }
 

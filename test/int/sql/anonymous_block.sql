@@ -295,7 +295,7 @@ BEGIN
   RETURN QUERY SELECT * FROM _pico_table;
 END $$;
 -- ERROR:
-QUERY statements must follow LET and RETURN QUERY statements
+QUERY and IF statements must follow LET and RETURN QUERY statements
 
 -- TEST: insert-single-row
 -- SQL:
@@ -857,3 +857,315 @@ BEGIN
 END $$;
 -- ERROR:
 column reference "a" is ambiguous: it could refer to either a LET variable or a table column
+
+-- TEST: if-init
+-- SQL:
+DROP TABLE IF EXISTS t2;
+CREATE TABLE t2 (pk INT PRIMARY KEY, a INT, b INT);
+INSERT INTO t2 VALUES (1,10,10), (2,20,20), (3,30,30), (4,40,40);
+DROP TABLE IF EXISTS t3;
+CREATE TABLE t3 (pk INT PRIMARY KEY, a INT, b INT);
+INSERT INTO t3 VALUES (1,100,100), (2,200,200), (3,300,300), (4,400,400);
+DROP TABLE IF EXISTS g2;
+CREATE TABLE g2 (pk INT PRIMARY KEY, a INT) DISTRIBUTED GLOBALLY;
+INSERT INTO g2 VALUES (1, 1);
+
+-- TEST: if-true-fires
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    UPDATE t2 SET b = 99 WHERE pk = 1;
+  END IF;
+END $$;
+
+-- TEST: if-true-fires-check
+-- SQL:
+SELECT b FROM t2 WHERE pk = 1;
+-- EXPECTED:
+99,
+
+-- TEST: if-false-skipped
+-- SQL:
+DO $$
+BEGIN
+  RETURN QUERY SELECT b FROM t2 WHERE pk = 2;
+  IF false THEN
+    UPDATE t2 SET b = -1 WHERE pk = 2;
+  END IF;
+END $$;
+-- EXPECTED:
+20
+
+-- TEST: if-false-skipped-check
+-- SQL:
+SELECT b FROM t2 WHERE pk = 2;
+-- EXPECTED:
+20,
+
+-- TEST: if-null-skipped
+-- SQL:
+DO $$
+BEGIN
+  RETURN QUERY SELECT b FROM t2 WHERE pk = 3;
+  IF NULL THEN
+    UPDATE t2 SET b = -1 WHERE pk = 3;
+  END IF;
+END $$;
+-- EXPECTED:
+30
+
+-- TEST: if-null-skipped-check
+-- SQL:
+SELECT b FROM t2 WHERE pk = 3;
+-- EXPECTED:
+30,
+
+-- TEST: if-let-feeds-cond
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t2 WHERE pk = 1);
+  IF v > 0 THEN
+    UPDATE t2 SET b = 111 WHERE pk = 1;
+  END IF;
+END $$;
+
+-- TEST: if-let-feeds-cond-check
+-- SQL:
+SELECT b FROM t2 WHERE pk = 1;
+-- EXPECTED:
+111,
+
+-- TEST: if-let-feeds-body
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t2 WHERE pk = 1);
+  IF v + 1 = v + 1 THEN
+    UPDATE t2 SET b = v + 500 WHERE pk = 1;
+  END IF;
+END $$;
+
+-- TEST: if-let-feeds-body-check
+-- SQL:
+SELECT b FROM t2 WHERE pk = 1;
+-- EXPECTED:
+510,
+
+-- TEST: if-multiple-body-stmts
+-- SQL:
+DO $$
+BEGIN
+  IF null is null THEN
+    UPDATE t2 SET a = 777 WHERE pk = 4;
+    UPDATE t2 SET b = 888 WHERE pk = 4;
+  END IF;
+END $$;
+
+-- TEST: if-multiple-body-stmts-check
+-- SQL:
+SELECT a, b FROM t2 WHERE pk = 4;
+-- EXPECTED:
+777, 888
+
+-- TEST: updates-after-if
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    UPDATE t2 SET a = 0 WHERE pk = 4;
+    UPDATE t2 SET b = 0 WHERE pk = 4;
+  END IF;
+  UPDATE t2 SET a = a + 123 WHERE pk = 4;
+  UPDATE t2 SET b = b + 456 WHERE pk = 4;
+END $$;
+
+-- TEST: updates-after-if-check
+-- SQL:
+SELECT a, b FROM t2 WHERE pk = 4;
+-- EXPECTED:
+123, 456
+
+-- TEST: updates-with-let-var-after-if
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT 10);
+  IF v = v OR v <> v THEN
+    UPDATE t2 SET a = 0 WHERE pk = 4;
+    UPDATE t2 SET b = 0 WHERE pk = 4;
+  END IF;
+  UPDATE t2 SET a = a + v WHERE pk = 4;
+  UPDATE t2 SET b = b + v * 2 WHERE pk = 4;
+END $$;
+
+-- TEST: updates-with-let-var-after-check
+-- SQL:
+SELECT a, b FROM t2 WHERE pk = 4;
+-- EXPECTED:
+10, 20
+
+-- TEST: multiple-ifs
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t2 WHERE pk = 4);
+
+  RETURN QUERY SELECT a FROM t2 WHERE pk = 4;
+  RETURN QUERY SELECT b FROM t2 WHERE pk = 4;
+
+  IF v = 10 THEN
+    UPDATE t2 SET a = 0 WHERE pk = 4;
+  END IF;
+
+  IF v <> 10 THEN
+    UPDATE t2 SET b = 0 WHERE pk = 4;
+  END IF;
+
+  IF v = v OR v <> v THEN
+    UPDATE t2 SET a = a + v WHERE pk = 4;
+    UPDATE t2 SET b = b + v * 2 WHERE pk = 4;
+  END IF;
+END $$;
+-- EXPECTED:
+10, 20
+
+-- TEST: multiple-ifs-check
+-- SQL:
+SELECT a, b FROM t2 WHERE pk = 4;
+-- EXPECTED:
+10, 40
+
+-- TEST: if-body-must-be-dml
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    SELECT 1;
+  END IF;
+END $$;
+-- ERROR:
+IF body may only contain DML statements
+
+-- TEST: if-body-no-let
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    LET v = (SELECT 1);
+  END IF;
+END $$;
+-- ERROR:
+LET is not allowed inside IF body
+
+-- TEST: if-body-no-return-query
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    RETURN QUERY SELECT 1;
+  END IF;
+END $$;
+-- ERROR:
+RETURN QUERY is not allowed inside IF body
+
+-- TEST: if-body-no-nested-if
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    IF true THEN
+      UPDATE t2 SET b = 0 WHERE pk = 1;
+    END IF;
+  END IF;
+END $$;
+-- ERROR:
+nested IF is not allowed
+
+-- TEST: if-cross-sharded-tables
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    UPDATE t2 SET b = 1234 WHERE pk = 1;
+    UPDATE t3 SET b = 5678 WHERE pk = 1;
+  END IF;
+END $$;
+
+-- TEST: if-cross-sharded-tables-check
+-- SQL:
+SELECT b FROM t2 WHERE pk = 1
+UNION ALL
+SELECT b FROM t3 WHERE pk = 1
+ORDER BY 1;
+-- EXPECTED:
+1234,
+5678,
+
+-- TEST: explail-if-cross-sharded-tables
+-- SQL:
+EXPLAIN (raw)
+DO $$
+BEGIN
+  IF true THEN
+    UPDATE t2 SET b = 1234 WHERE pk = 1;
+    UPDATE t3 SET b = 5678 WHERE pk = 1;
+  END IF;
+END $$;
+-- EXPECTED:
+╭───────────────────────────────╮
+│ 1. If cond (FILTERED STORAGE) │
+╰───────────────────────────────╯
+''
+SELECT CAST(true AS bool) as "cond"
+''
+plan:
+    [0] TRIVIAL
+''
+╭───────────────────────────────╮
+│ 2. If body (FILTERED STORAGE) │
+╰───────────────────────────────╯
+''
+UPDATE "t2" SET "b" = CAST(1234 AS int) WHERE "t2"."pk" = CAST(1 AS int)
+''
+plan:
+    [0] SEARCH TABLE t2 USING PRIMARY KEY (pk=?) (~1 row)
+''
+╭───────────────────────────────╮
+│ 3. If body (FILTERED STORAGE) │
+╰───────────────────────────────╯
+''
+UPDATE "t3" SET "b" = CAST(5678 AS int) WHERE "t3"."pk" = CAST(1 AS int)
+''
+plan:
+    [0] SEARCH TABLE t3 USING PRIMARY KEY (pk=?) (~1 row)
+
+-- TEST: if-cond-rejects-volatile-functions
+-- SQL:
+DO $$ BEGIN IF instance_uuid() <> '' THEN UPDATE t SET b = a WHERE a = 1; END IF ; END $$;
+-- ERROR:
+volatile function is not allowed in filter clause not implemented
+
+-- TEST: if-body-rejects-global-update
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    UPDATE g2 SET a = 99 WHERE pk = 1;
+  END IF;
+END $$;
+-- ERROR:
+cannot modify global table
+
+-- TEST: if-cross-bucket-rejected
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    UPDATE t2 SET b = 0 WHERE pk = 1;
+    UPDATE t3 SET b = 0 WHERE pk = 2;
+  END IF;
+END $$;
+-- ERROR:
+transaction queries have different buckets

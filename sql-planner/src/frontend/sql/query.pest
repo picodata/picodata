@@ -11,10 +11,17 @@ ExplicitBlockLanguage = ${ ^"language" ~ W ~ BlockLanguage ~ W }
         SqlLanguage = { ^"sql" }
 
 AnonymousBlockCode = _{ ^"begin" ~ W ~ (WO ~ BlockStatement ~ WO)+ ~ WO ~ ^"end" }
-    BlockStatement = _{ BlockLetStatement | BlockReturnQueryStatement | BlockQueryStatement }
+    BlockStatement = _{ BlockIfStatement | BlockLetStatement | BlockReturnQueryStatement | BlockQueryStatement }
       BlockLetStatement = { ^"let" ~ W ~ Identifier ~ WO ~ "=" ~ WO ~ SubQuery ~ WO ~ ";" }
       BlockReturnQueryStatement = { ^"return" ~ W ~ ^"query" ~ W ~ Query ~ WO ~ ";" }
       BlockQueryStatement = { Query ~ WO ~ ";" }
+      BlockIfStatement = {
+          ^"if" ~ W ~ BlockIfCondition ~ W ~ ^"then"
+          ~ (WO ~ BlockIfBodyStatement ~ WO)+
+          ~ WO ~ ^"end" ~ W ~ ^"if" ~ WO ~ ";"
+      }
+        BlockIfCondition = { Expr }
+        BlockIfBodyStatement = { BlockStatement }
 
 AnonymousBlockOptions = { DqlOption }
 
@@ -160,7 +167,7 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable
                 PartitionList = { ^"list" }
                 PartitionHash = { ^"hash" }
             PartitionBySpec = !{ "(" ~ Identifier ~ ("," ~ Identifier)* ~ ")" }
-        Unlogged = @{ ^"unlogged" } 
+        Unlogged = @{ ^"unlogged" }
     DropTable = ${ ^"drop" ~ W ~ ^"table" ~ W ~ (IfExists ~ W)? ~ (PublicSchema)? ~ Table ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
     TruncateTable = ${ ^"truncate" ~ W ~ (^"table" ~ W)? ~ (PublicSchema)? ~ Table ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
     AlterTable = ${ ^"alter" ~ W ~ ^"table" ~ W ~ (PublicSchema)? ~ TableNameIdentifier ~ W ~ AlterTableAction ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)?}

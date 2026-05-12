@@ -1466,15 +1466,6 @@ impl<T> BlockStatement<T> {
             },
         })
     }
-
-    pub fn kind(&self) -> &'static str {
-        match self {
-            BlockStatement::ReturnQuery(_) => "Return query",
-            BlockStatement::Query(_) => "Query",
-            BlockStatement::Let { .. } => "Let",
-            BlockStatement::If { .. } => "If",
-        }
-    }
 }
 
 /// Iterator over every query subtree inside one [`BlockStatement`].
