@@ -44,6 +44,13 @@
 
 - `tlua::Ignore` helper struct for handling multiple return values when some of them are not important
 
+### Added (picodata)
+
+- `space::UpdateOps` SQL-compatible `sql_add`, `sql_sub`, `sql_and`, `sql_or`
+  helpers and their `into_sql_*` variants for Picodata update opcodes; unlike
+  the existing `add`, `sub`, `and`, and `or`, these propagate NULL with SQL
+  three-valued semantics.
+
 ### Fixed
 
 - `space::UpdateOps` now implements `Debug` & `Clone` builtin traits

@@ -669,6 +669,146 @@ pub fn update_ops() {
     let (op, key, start, count, value): (&str, &str, i32, i32, &str) =
         rmp_serde::from_slice(ops.next().unwrap().as_ref()).unwrap();
     assert_eq!((op, key, start, count, value), (":", "i", 10, 11, "str"));
+
+    // These Picodata-only checks intentionally reuse the formatless space:
+    // they insert tuples with different arities under distinct primary keys.
+    #[cfg(feature = "picodata")]
+    {
+        fn get<T>(space: &Space, key: i32) -> T
+        where
+            T: tarantool::tuple::DecodeOwned,
+        {
+            space.get(&[key]).unwrap().unwrap().decode().unwrap()
+        }
+
+        space.insert(&(2, 10, true)).unwrap();
+
+        // (2, 10, true) -> field 1 + 5 -> (2, 15, true)
+        space
+            .update(&[2], UpdateOps::new().sql_add(1, 5).unwrap())
+            .unwrap();
+        assert_eq!(get::<(i32, i32, bool)>(&space, 2), (2, 15, true));
+
+        // (2, 15, true) -> field 1 - 3 -> (2, 12, true)
+        space
+            .update(&[2], UpdateOps::new().sql_sub(1, 3).unwrap())
+            .unwrap();
+        assert_eq!(get::<(i32, i32, bool)>(&space, 2), (2, 12, true));
+
+        // (2, 12, true) -> field 2 AND false -> (2, 12, false)
+        space
+            .update(&[2], UpdateOps::new().sql_and(2, false).unwrap())
+            .unwrap();
+        assert_eq!(get::<(i32, i32, bool)>(&space, 2), (2, 12, false));
+
+        // (2, 12, false) -> field 2 OR true -> (2, 12, true)
+        space
+            .update(&[2], UpdateOps::new().sql_or(2, true).unwrap())
+            .unwrap();
+        assert_eq!(get::<(i32, i32, bool)>(&space, 2), (2, 12, true));
+
+        space.insert(&(3, 10)).unwrap();
+        // (3, 10) -> field 1 + NULL -> (3, NULL)
+        space
+            .update(
+                &[3],
+                UpdateOps::new().sql_add(1, Option::<i32>::None).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(get::<(i32, Option<i32>)>(&space, 3), (3, None));
+
+        space.insert(&(4, 10)).unwrap();
+        // (4, 10) -> field 1 - NULL -> (4, NULL)
+        space
+            .update(
+                &[4],
+                UpdateOps::new().sql_sub(1, Option::<i32>::None).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(get::<(i32, Option<i32>)>(&space, 4), (4, None));
+
+        space.insert(&(5, true)).unwrap();
+        // (5, true) -> field 1 AND NULL -> (5, NULL)
+        space
+            .update(
+                &[5],
+                UpdateOps::new().sql_and(1, Option::<bool>::None).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(get::<(i32, Option<bool>)>(&space, 5), (5, None));
+
+        space.insert(&(6, false)).unwrap();
+        // (6, false) -> field 1 OR NULL -> (6, NULL)
+        space
+            .update(
+                &[6],
+                UpdateOps::new().sql_or(1, Option::<bool>::None).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(get::<(i32, Option<bool>)>(&space, 6), (6, None));
+
+        let mut sql_ops = UpdateOps::new();
+        sql_ops
+            .sql_add("a", 1)
+            .unwrap()
+            .sql_sub("b", 2)
+            .unwrap()
+            .sql_and("c", true)
+            .unwrap()
+            .sql_or("d", false)
+            .unwrap();
+
+        let mut ops = sql_ops.as_slice().iter();
+
+        let (op, key, value): (&str, &str, i32) =
+            rmp_serde::from_slice(ops.next().unwrap().as_ref()).unwrap();
+        assert_eq!((op, key, value), ("p", "a", 1));
+
+        let (op, key, value): (&str, &str, i32) =
+            rmp_serde::from_slice(ops.next().unwrap().as_ref()).unwrap();
+        assert_eq!((op, key, value), ("m", "b", 2));
+
+        let (op, key, value): (&str, &str, bool) =
+            rmp_serde::from_slice(ops.next().unwrap().as_ref()).unwrap();
+        assert_eq!((op, key, value), ("a", "c", true));
+
+        let (op, key, value): (&str, &str, bool) =
+            rmp_serde::from_slice(ops.next().unwrap().as_ref()).unwrap();
+        assert_eq!((op, key, value), ("o", "d", false));
+
+        assert!(ops.next().is_none());
+
+        let ops = UpdateOps::new()
+            .into_sql_add("a", 1)
+            .unwrap()
+            .into_sql_sub("b", 2)
+            .unwrap()
+            .into_sql_and("c", true)
+            .unwrap()
+            .into_sql_or("d", false)
+            .unwrap()
+            .into_inner();
+
+        let mut ops = ops.iter();
+
+        let (op, key, value): (&str, &str, i32) =
+            rmp_serde::from_slice(ops.next().unwrap().as_ref()).unwrap();
+        assert_eq!((op, key, value), ("p", "a", 1));
+
+        let (op, key, value): (&str, &str, i32) =
+            rmp_serde::from_slice(ops.next().unwrap().as_ref()).unwrap();
+        assert_eq!((op, key, value), ("m", "b", 2));
+
+        let (op, key, value): (&str, &str, bool) =
+            rmp_serde::from_slice(ops.next().unwrap().as_ref()).unwrap();
+        assert_eq!((op, key, value), ("a", "c", true));
+
+        let (op, key, value): (&str, &str, bool) =
+            rmp_serde::from_slice(ops.next().unwrap().as_ref()).unwrap();
+        assert_eq!((op, key, value), ("o", "d", false));
+
+        assert!(ops.next().is_none());
+    }
 }
 
 pub fn upsert() {

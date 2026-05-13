@@ -1199,6 +1199,52 @@ impl UpdateOps {
         /// Field indexing is zero based (first field has index 0).
         /// Negative indexes are offset from array's end (last field has index -1).
         xor, '^';
+
+        /// SQL-compatible numeric addition operation.
+        /// Corresponds to tarantool's `{'p', field, value}`.
+        ///
+        /// Unlike [`UpdateOps::add`], if either the field or `value` is NULL,
+        /// the result is NULL.
+        ///
+        /// Field indexing is zero based (first field has index 0).
+        /// Negative indexes are offset from array's end (last field has index -1).
+        #[cfg(feature = "picodata")]
+        sql_add, 'p';
+
+        /// SQL-compatible numeric subtraction operation.
+        /// Corresponds to tarantool's `{'m', field, value}`.
+        ///
+        /// Unlike [`UpdateOps::sub`], if either the field or `value` is NULL,
+        /// the result is NULL.
+        ///
+        /// Field indexing is zero based (first field has index 0).
+        /// Negative indexes are offset from array's end (last field has index -1).
+        #[cfg(feature = "picodata")]
+        sql_sub, 'm';
+
+        /// SQL-compatible boolean AND operation with three-valued NULL semantics.
+        /// Corresponds to tarantool's `{'a', field, value}`.
+        ///
+        /// Unlike [`UpdateOps::and`], this is not a bitwise operation: operands
+        /// are SQL booleans, and NULL participates according to SQL three-valued
+        /// logic.
+        ///
+        /// Field indexing is zero based (first field has index 0).
+        /// Negative indexes are offset from array's end (last field has index -1).
+        #[cfg(feature = "picodata")]
+        sql_and, 'a';
+
+        /// SQL-compatible boolean OR operation with three-valued NULL semantics.
+        /// Corresponds to tarantool's `{'o', field, value}`.
+        ///
+        /// Unlike [`UpdateOps::or`], this is not a bitwise operation: operands
+        /// are SQL booleans, and NULL participates according to SQL three-valued
+        /// logic.
+        ///
+        /// Field indexing is zero based (first field has index 0).
+        /// Negative indexes are offset from array's end (last field has index -1).
+        #[cfg(feature = "picodata")]
+        sql_or, 'o';
     }
 
     /// Deletion operation.
@@ -1338,6 +1384,70 @@ impl UpdateOps {
         V: serde::Serialize,
     {
         self.ops.push(('^', field, value).to_tuple_buffer()?);
+        Ok(self)
+    }
+
+    /// SQL-compatible numeric addition operation.
+    /// Corresponds to tarantool's `{'p', field, value}`.
+    ///
+    /// Field indexing is zero based (first field has index 0).
+    /// Negative indexes are offset from array's end (last field has index -1).
+    #[cfg(feature = "picodata")]
+    #[inline(always)]
+    pub fn into_sql_add<K, V>(mut self, field: K, value: V) -> crate::Result<Self>
+    where
+        K: serde::Serialize,
+        V: serde::Serialize,
+    {
+        self.ops.push(('p', field, value).to_tuple_buffer()?);
+        Ok(self)
+    }
+
+    /// SQL-compatible numeric subtraction operation.
+    /// Corresponds to tarantool's `{'m', field, value}`.
+    ///
+    /// Field indexing is zero based (first field has index 0).
+    /// Negative indexes are offset from array's end (last field has index -1).
+    #[cfg(feature = "picodata")]
+    #[inline(always)]
+    pub fn into_sql_sub<K, V>(mut self, field: K, value: V) -> crate::Result<Self>
+    where
+        K: serde::Serialize,
+        V: serde::Serialize,
+    {
+        self.ops.push(('m', field, value).to_tuple_buffer()?);
+        Ok(self)
+    }
+
+    /// SQL-compatible boolean AND operation with three-valued NULL semantics.
+    /// Corresponds to tarantool's `{'a', field, value}`.
+    ///
+    /// Field indexing is zero based (first field has index 0).
+    /// Negative indexes are offset from array's end (last field has index -1).
+    #[cfg(feature = "picodata")]
+    #[inline(always)]
+    pub fn into_sql_and<K, V>(mut self, field: K, value: V) -> crate::Result<Self>
+    where
+        K: serde::Serialize,
+        V: serde::Serialize,
+    {
+        self.ops.push(('a', field, value).to_tuple_buffer()?);
+        Ok(self)
+    }
+
+    /// SQL-compatible boolean OR operation with three-valued NULL semantics.
+    /// Corresponds to tarantool's `{'o', field, value}`.
+    ///
+    /// Field indexing is zero based (first field has index 0).
+    /// Negative indexes are offset from array's end (last field has index -1).
+    #[cfg(feature = "picodata")]
+    #[inline(always)]
+    pub fn into_sql_or<K, V>(mut self, field: K, value: V) -> crate::Result<Self>
+    where
+        K: serde::Serialize,
+        V: serde::Serialize,
+    {
+        self.ops.push(('o', field, value).to_tuple_buffer()?);
         Ok(self)
     }
 
