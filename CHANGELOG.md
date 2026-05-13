@@ -72,6 +72,8 @@ with the `YY.MINOR.MICRO` scheme.
 - SQL dispatch now uses an explicitly frozen immutable execution plan passed
   through read-only views, allowing `take_subtree` and its subtree copies to be
   removed.
+- Extended constant folding: AND/OR identities, identity rules for equality with
+  true and inequality with false.
 
 ### WebUI
 - Added new instance filters: `isVoter` and `isRaftLeader`. Both support

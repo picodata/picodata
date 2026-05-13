@@ -621,3 +621,20 @@ fn same_column_in_eq() {
 
     assert_eq!(Buckets::Filtered(BucketSet::Exact(collection!())), buckets);
 }
+
+#[test]
+fn bool_eq_true_on_sharding_key() {
+    let query = r#"select * from bool_sharded where b = true"#;
+
+    let coordinator = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
+    let plan = query.exec_plan.get_ir_plan();
+    let top = plan.get_top().unwrap();
+    let buckets = query.bucket_discovery(top).unwrap();
+
+    let true_val = Value::Boolean(true);
+    let bucket_id = query.coordinator.determine_bucket_id(&[&true_val]).unwrap();
+    let expected: HashSet<_, _> = vec![bucket_id].into_iter().collect();
+
+    assert_eq!(Buckets::new_filtered(expected), buckets);
+}

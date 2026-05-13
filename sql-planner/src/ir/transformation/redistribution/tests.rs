@@ -128,6 +128,14 @@ fn inner_join_eq_chain() {
 }
 
 #[test]
+fn inner_join_eq_true_on_bool_sharding_key() {
+    let query = r#"SELECT * FROM bool_sharded AS t1 JOIN bool_sharded AS t2
+        ON t1.b = true AND t2.b = true"#;
+    let plan = sql_to_optimized_ir(query, vec![]);
+    assert_eq!(Slices::empty(), plan.slices);
+}
+
+#[test]
 fn inner_join_condition() {
     let query = r#"SELECT * FROM t5 AS t1 JOIN t5 AS t2
     ON t1.a::text::datetime = to_date('2000-01-01', '%F')"#;
