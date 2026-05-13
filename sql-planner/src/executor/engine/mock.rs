@@ -356,6 +356,41 @@ impl RouterConfigurationMock {
             .unwrap(),
         );
 
+        let bool_sharded_columns = vec![
+            Column::new(
+                "b",
+                DerivedType::new(UnrestrictedType::Boolean),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "payload",
+                DerivedType::new(UnrestrictedType::Integer),
+                ColumnRole::User,
+                true,
+            ),
+            Column::new(
+                "bucket_id",
+                DerivedType::new(UnrestrictedType::Integer),
+                ColumnRole::Sharding,
+                true,
+            ),
+        ];
+        let bool_sharded_key: &[&str] = &["b"];
+        let bool_sharded_pk: &[&str] = &["b"];
+        tables.insert(
+            "bool_sharded".to_smolstr(),
+            Table::new_sharded(
+                random(),
+                "bool_sharded",
+                bool_sharded_columns,
+                bool_sharded_key,
+                bool_sharded_pk,
+                SpaceEngine::Memtx,
+            )
+            .unwrap(),
+        );
+
         let columns = vec![
             Column::new(
                 "id",

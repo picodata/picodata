@@ -14,6 +14,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - [picodata#2952] Added the `instance.wal_dir` configuration parameter, which
   sets the directory where WAL files are stored.
+- Extended constant folding: AND/OR identities, identity rules for equality with
+  true and inequality with false.
 
 ## Fixes
 
