@@ -7,7 +7,7 @@
 use crate::errors::{Entity, SbroadError};
 use crate::frontend::sql::ir::SubtreeCloner;
 use crate::ir::node::expression::{Expression, MutExpression};
-use crate::ir::node::{BoolExpr, Constant, NodeId, Row, UnaryExpr};
+use crate::ir::node::{BoolExpr, Cast, Constant, NodeId, Row, UnaryExpr};
 use crate::ir::operator::{Bool, Unary};
 use crate::ir::transformation::OldNewTransformationMap;
 use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
@@ -21,7 +21,7 @@ use super::TransformationOldNewPair;
 /// It may be in two states:
 /// * None -- which means we haven't met `Not` operator and don't want to negate anything.
 /// * Active -- which means we want to negate current expression and pass it deeper.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum NotState {
     /// Not doesn't work.
     ///
@@ -77,7 +77,9 @@ fn call_expr_tree_not_push_down(
         |node| {
             matches!(
                 plan.get_node(node),
-                Ok(Node::Expression(Expression::Bool(_) | Expression::Row(_)))
+                Ok(Node::Expression(
+                    Expression::Bool(_) | Expression::Row(_) | Expression::Cast(_)
+                ))
             )
         },
         EXPR_CAPACITY,
@@ -97,6 +99,9 @@ fn call_expr_tree_not_push_down(
                     transformation_map.replace(id);
                 }
             }
+            MutExpression::Cast(Cast { child, .. }) => {
+                transformation_map.replace(child);
+            }
             _ => {}
         }
     }
@@ -112,7 +117,7 @@ impl Bool {
     ///
     /// # Returns:
     /// * `None` in case it is impossible to negate self
-    /// * `Some` of pair (`negated_self`, `should_proceed_not_push_down`)
+    /// * `Some` of pair (`negated_self`, `should_negate_children`)
     fn negate(&self) -> Option<(Bool, bool)> {
         match self {
             Bool::Or => Some((Bool::And, true)),
@@ -200,17 +205,25 @@ impl Plan {
 
                 if let NotState::On { .. } = not_state {
                     let negated_op: Option<(Bool, bool)> = op.negate();
-                    let Some((negated_op, should_proceed)) = negated_op else {
+                    let Some((negated_op, should_negate_children)) = negated_op else {
                         return self.cover_with_not(expr_id, &not_state);
                     };
-                    if !should_proceed {
-                        return self.add_bool(*left, negated_op, *right);
+                    let state = if should_negate_children {
+                        NotState::on(None)
+                    } else {
+                        NotState::Off
+                    };
+                    let new_left =
+                        self.push_down_not_for_expression(remember_left, state.clone(), map)?;
+                    if remember_left != new_left {
+                        map.insert(remember_left, new_left);
                     }
-                    let negated_left =
-                        self.push_down_not_for_expression(remember_left, NotState::on(None), map)?;
-                    let negated_right =
-                        self.push_down_not_for_expression(remember_right, NotState::on(None), map)?;
-                    self.add_bool(negated_left, negated_op, negated_right)?
+                    let new_right =
+                        self.push_down_not_for_expression(remember_right, state, map)?;
+                    if remember_right != new_right {
+                        map.insert(remember_right, new_right);
+                    }
+                    self.add_bool(new_left, negated_op, new_right)?
                 } else {
                     let new_left =
                         self.push_down_not_for_expression(remember_left, NotState::Off, map)?;
@@ -225,8 +238,15 @@ impl Plan {
                     expr_id
                 }
             }
+            Expression::Cast(Cast { child, .. }) => {
+                let child_id = *child;
+                let new_child = self.push_down_not_for_expression(child_id, NotState::Off, map)?;
+                if child_id != new_child {
+                    map.insert(child_id, new_child);
+                }
+                self.cover_with_not(expr_id, &not_state)?
+            }
             Expression::ScalarFunction(_)
-            | Expression::Cast(_)
             | Expression::Reference(_)
             | Expression::SubQueryReference(_) => self.cover_with_not(expr_id, &not_state)?,
             Expression::Row(Row { list, .. }) => {

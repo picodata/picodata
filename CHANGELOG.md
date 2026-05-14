@@ -158,6 +158,9 @@ with the `YY.MINOR.MICRO` scheme.
   replicas to fail applying the later entry and preventing raft from advancing.
   Such requests are now rejected with a retriable `CasConflictFound` error.
 - [picodata#2926] Reduced log verbosity in vshard for routine replicaset events.
+- Fixed NOT push-down: no longer short-circuits before recursing into operand
+  subtrees. The pass now also descends into Cast children to simplify NOTs nested inside.
+
 
 ### Breaking changes
 

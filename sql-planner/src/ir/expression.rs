@@ -19,7 +19,7 @@ use super::node::{
     Window,
 };
 use super::operator::OrderByEntity;
-use super::types::DerivedType;
+use super::types::{CastType, DerivedType};
 use super::{
     distribution, operator, Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant,
     Expression, LevelNode, MutExpression, MutNode, Node, NodeId, Reference, Row, ScalarFunction,
@@ -1753,6 +1753,10 @@ impl Plan {
             | Expression::Like { .. }
             | Expression::Arithmetic(_)
             | Expression::Unary(_)
+            | Expression::Cast(Cast {
+                to: CastType::Boolean,
+                ..
+            })
             | Expression::Constant(Constant {
                 value: Value::Boolean(_) | Value::Null,
                 ..

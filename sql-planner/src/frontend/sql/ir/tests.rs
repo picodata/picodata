@@ -395,7 +395,7 @@ fn front_sql_between_with_additional_not_from_left() {
 
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (t.id::int -> id)
-      selection ((not (t.id::int >= t.id::int and t.id::int <= t.id::int + 10::int) and true::bool))
+      selection (t.id::int < t.id::int or t.id::int > t.id::int + 10::int)
         scan test_space -> t
     ");
 }
@@ -410,7 +410,7 @@ fn front_sql_between_with_additional_and_from_left_and_right() {
 
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (t.id::int -> id)
-      selection ((t.id::int > 1::int and t.id::int >= t.id::int and t.id::int <= t.id::int + 10::int and true::bool))
+      selection ((t.id::int > 1::int and t.id::int >= t.id::int and t.id::int <= t.id::int + 10::int))
         scan test_space -> t
     ");
 }
@@ -3064,7 +3064,7 @@ fn front_sql_not_complex_query() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (not (not true::bool and 1::int + 1::int <> 1::int) -> col_1)
       selection (not exists ROW($0))
-        join on (not ts.nid::bool or false::bool <> (not false::bool)::bool)
+        join on (true::bool)
           scan ts
             projection (not test_space.id::int <> 2::int -> nid)
               scan test_space
