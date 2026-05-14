@@ -34,8 +34,12 @@
 
 ```sql
 DO $$ BEGIN
-  RETURN QUERY SELECT item FROM warehouse WHERE id = 2;
-  UPDATE warehouse SET item = 'grills' where id = 2;
+  LET cur = (SELECT money FROM bank WHERE id = 1);
+  RETURN QUERY SELECT cur;
+  IF cur >= 100 THEN
+    UPDATE bank SET money = money - 100 WHERE id = 1;
+    UPDATE bank SET money = money + 100 WHERE id = 1;
+  END IF;
 END $$;
 ```
 
@@ -77,7 +81,7 @@ DO $$ BEGIN
   LET cur = (SELECT money FROM bank WHERE id = 1);
   IF cur >= 100 THEN
     UPDATE bank SET money = money - 100 WHERE id = 1;
-    UPDATE bank SET money = money + 100 WHERE id = 2;
+    UPDATE bank SET money = money + 100 WHERE id = 1;
   END IF;
 END $$;
 ```
@@ -90,7 +94,6 @@ END $$;
 - В теле допускаются только [DML]-команды (`UPDATE` / `DELETE` /
   `INSERT`). Команды `LET`, `RETURN QUERY` и вложенный `IF` внутри
   тела не разрешены.
-- `IF` должен быть последней командой блока.
 
 ## Ограничения {: #limitations }
 

@@ -76,6 +76,8 @@ with the `YY.MINOR.MICRO` scheme.
   true and inequality with false.
 - Provide a way to match vdbe opcode or motion row limit error to specific
   storage query in EXPLAIN (RAW).
+- [picodata#2764] Transactional blocks now support LET statements.
+- [picodata#2765] Transactional blocks now support IF statements.
 
 ### WebUI
 - Added new instance filters: `isVoter` and `isRaftLeader`. Both support
