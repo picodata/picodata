@@ -22,7 +22,6 @@
 //!    - builds a virtual table with query results that correspond to the original motion.
 //! 5. Repeats step 3 till we are done with motion layers.
 //! 6. Executes the final IR top subtree and returns the final result to the user.
-use crate::backend::sql::ir::PatternWithParams;
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::generate_pattern_with_params_for_block;
 use crate::executor::engine::{Router, Vshard};
@@ -296,13 +295,11 @@ pub trait Port<'p>: io::Write {
 
     fn size(&self) -> u32;
 
-    /// Compile and execute a block of statements as a single VDBE program.
-    ///
-    /// All statements (ReturnQuery, Query, Let, If) are assembled into one
-    /// root VDBE and executed inside a transaction.
+    /// Execute an assembled block VDBE inside a transaction.
     fn process_txn(
         &mut self,
-        stmts: Vec<BlockStatement<PatternWithParams>>,
+        stmt: &mut SqlStmt,
+        params: &[&Value],
         vdbe_max_steps: u64,
     ) -> Result<(), SbroadError>
     where
@@ -649,13 +646,14 @@ where
         Ok(explain)
     }
 
+    #[allow(clippy::type_complexity)]
     fn generate_block_patterns(
         &self,
         block: AnonymousBlock,
         buckets: &Buckets,
-    ) -> Result<Vec<BlockStatement<PatternWithParams>>, SbroadError> {
+    ) -> Result<Vec<BlockStatement<(String, Vec<Value>)>>, SbroadError> {
         let block_bucket = match buckets {
-            Buckets::Filtered(crate::ir::bucket::BucketSet::Exact(set)) => {
+            Buckets::Filtered(BucketSet::Exact(set)) => {
                 assert!(set.len() == 1);
                 set.iter().copied().next()
             }
@@ -754,12 +752,15 @@ where
             let mut stmt_idx = 0;
             let mut statements = block_statements.iter().enumerate().peekable();
             while let Some((idx, stmt)) = statements.next() {
-                let mut explain_one = |buf: &mut String, sql: &PatternWithParams, kind: &str| {
+                let mut explain_one = |buf: &mut String,
+                                       query: &(String, Vec<Value>),
+                                       kind: &str| {
+                    let (sql, params) = query;
                     let source = buckets.determine_exec_location();
                     write_explain_header2!(buf, "{}. {} ({source})", stmt_idx + 1, kind).unwrap();
                     writeln!(buf).unwrap();
 
-                    let sql = format_sql(&sql.pattern, &sql.params, should_fmt);
+                    let sql = format_sql(sql, params, should_fmt);
                     writeln!(buf, "{sql}").unwrap();
                     writeln!(buf).unwrap();
 
@@ -774,7 +775,7 @@ where
                     }
                     BlockStatement::Query(query) => explain_one(&mut buf, query, "Query"),
                     BlockStatement::Let { query, var } => {
-                        let var = var.strip_prefix(':').unwrap_or(var);
+                        let var = var.strip_prefix(':').unwrap_or(var.as_str());
                         let kind = format_let_entry(unused_lets.contains(&idx), var);
                         explain_one(&mut buf, query, &kind)
                     }

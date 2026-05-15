@@ -1,28 +1,9 @@
 use super::ffi::*;
 use super::{alloc_zeroed, reserve, reserve_one};
-use ::sql::backend::sql::ir::PatternWithParams;
 use ::sql::executor::vdbe::SqlStmt;
 use ::sql::ir::node::BlockStatement;
-use ::sql::ir::value::Value;
 use smol_str::SmolStr;
 use std::collections::HashMap;
-use tarantool::ffi::sql::PortC;
-
-/// Compile and execute a block of statements into the given port.
-pub fn execute_block_into_port(
-    stmts: &[BlockStatement<PatternWithParams>],
-    vdbe_max_steps: u64,
-    port: &mut PortC,
-) -> Result<(), String> {
-    let params = collect_params(stmts);
-    let vdbe = compile_and_assemble(stmts)?;
-    // SAFETY: `compile_and_assemble` produces a freshly-prepared VDBE owned
-    // by us; wrapping it in `SqlStmt` transfers ownership so it gets
-    // finalized on drop.
-    let mut stmt = unsafe { SqlStmt::from_raw(vdbe.cast()) };
-    stmt.execute_once(&params, vdbe_max_steps, port)
-        .map_err(|e| e.to_string())
-}
 
 /// A parsed SQL parameter name from a compiled VDBE's OP_Variable opcode.
 ///
@@ -338,12 +319,9 @@ unsafe fn assemble_block_vdbe(
 ///Compile, patch, and assemble a block of statements into a VDBE program.
 ///
 /// TODO: enforce that each statement (LET, RETURN, IF cond) produces at most 1 row.
-fn compile_and_assemble(
-    // FIXME: Consider passing stmts as Vec<BlockStatement<String>.
-    // One way to to this is to return a vec of statements and a merged list of params
-    // (Vec<BlockStatement<String>, Vec<Params>) from generate_pattern_with_params_for_block.
-    stmts: &[BlockStatement<PatternWithParams>],
-) -> Result<*mut Vdbe, String> {
+pub(crate) fn compile_transactional_block(
+    stmts: &[BlockStatement<String>],
+) -> Result<SqlStmt, String> {
     // Compile all subprograms.
     let mut compiled: Vec<BlockStatement<CompiledSubprogram>> = stmts
         .iter()
@@ -352,19 +330,19 @@ fn compile_and_assemble(
                 match stmt {
                     BlockStatement::Let { var, query } => Ok(BlockStatement::Let {
                         var: var.clone(),
-                        query: CompiledSubprogram::compile(&query.pattern)?,
+                        query: CompiledSubprogram::compile(query)?,
                     }),
                     BlockStatement::ReturnQuery(query) => Ok(BlockStatement::ReturnQuery(
-                        CompiledSubprogram::compile(&query.pattern)?,
+                        CompiledSubprogram::compile(query)?,
                     )),
-                    BlockStatement::Query(query) => Ok(BlockStatement::Query(
-                        CompiledSubprogram::compile(&query.pattern)?,
-                    )),
+                    BlockStatement::Query(query) => {
+                        Ok(BlockStatement::Query(CompiledSubprogram::compile(query)?))
+                    }
                     BlockStatement::If { cond, body } => Ok(BlockStatement::If {
-                        cond: CompiledSubprogram::compile(&cond.pattern)?,
+                        cond: CompiledSubprogram::compile(cond)?,
                         body: body
                             .iter()
-                            .map(|bq| CompiledSubprogram::compile(&bq.pattern))
+                            .map(|bq| CompiledSubprogram::compile(bq))
                             .collect::<Result<_, _>>()?,
                     }),
                 }
@@ -387,24 +365,6 @@ fn compile_and_assemble(
             }
         })
         .sum();
-
-    let total_number_of_passsed_params = stmts
-        .iter()
-        .map(|stmt| match stmt {
-            BlockStatement::Let { query, .. }
-            | BlockStatement::ReturnQuery(query)
-            | BlockStatement::Query(query) => query.params.len(),
-            BlockStatement::If { cond, body } => {
-                cond.params.len() + body.iter().map(|b| b.params.len()).sum::<usize>()
-            }
-        })
-        .sum::<usize>();
-
-    // Esnure all parameters will be bound.
-    debug_assert_eq!(
-        total_number_of_passsed_params, total_number_of_positional_params as usize,
-        "the number of passed parameters in program doesn't match the actuall number",
-    );
 
     // Allocate aVar slots for LET variables and IF condition results.
     let (all_let_vars, if_cond_slots, total_var_slots) =
@@ -506,7 +466,7 @@ fn compile_and_assemble(
         .max()
         .unwrap_or(1);
 
-    Ok(unsafe {
+    let vdbe = unsafe {
         assemble_block_vdbe(
             compiled,
             &if_cond_slots,
@@ -514,29 +474,7 @@ fn compile_and_assemble(
             max_n_mem,
             total_var_slots,
         )
-    })
-}
-
-/// Collect the merged parameter list for a block of statements.
-///
-/// Parameters appear in execution order: for IF, condition params come before
-/// body params.
-fn collect_params(stmts: &[BlockStatement<PatternWithParams>]) -> Vec<&Value> {
-    let mut result = Vec::new();
-    for stmt in stmts {
-        match stmt {
-            BlockStatement::Let { query, .. }
-            | BlockStatement::ReturnQuery(query)
-            | BlockStatement::Query(query) => {
-                result.extend(query.params.iter());
-            }
-            BlockStatement::If { cond, body } => {
-                result.extend(cond.params.iter());
-                for bq in body {
-                    result.extend(bq.params.iter());
-                }
-            }
-        }
-    }
-    result
+    };
+    // SAFETY: `assemble_block_vdbe` produces a freshly-prepared VDBE owned by us.
+    Ok(unsafe { SqlStmt::from_raw(vdbe.cast()) })
 }

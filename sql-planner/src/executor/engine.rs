@@ -33,7 +33,6 @@ use super::preemption::SchedulerOptions;
 use super::Port;
 
 use super::result::MetadataColumn;
-use crate::backend::sql::ir::PatternWithParams;
 use crate::executor::vdbe::SqlStmt;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use tarantool::fiber::Mutex;
@@ -466,7 +465,9 @@ pub trait Router: QueryCache {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BlockExecData {
-    pub statements: Vec<BlockStatement<PatternWithParams>>,
+    pub statements: Vec<BlockStatement<String>>,
+    /// Per-query parameters in `BlockStatement::iter()` order.
+    pub params: Vec<Vec<Value>>,
     pub unused_lets: HashSet<usize>,
     pub table_versions: VersionMap,
     pub index_versions: HashMap<[u32; 2], u64, RepeatableState>,

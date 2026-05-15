@@ -639,9 +639,8 @@ fn execute_block_locally_for_dispatch<'p>(
     block: BlockExecData,
 ) -> SqlResult<()> {
     let runtime = StorageRuntime::new();
-    runtime.validate_block_schema(&block)?;
     port_write_block_metadata(port, metadata)?;
-    port.process_txn(block.statements, block.vdbe_max_steps)
+    runtime.execute_block(block, port)
 }
 
 fn port_write_block_metadata<'p>(

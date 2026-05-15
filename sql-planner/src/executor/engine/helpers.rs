@@ -1,12 +1,9 @@
 use crate::{
-    backend::sql::{
-        ir::PatternWithParams,
-        tree::{OrderedSyntaxNodes, SyntaxPlan},
-    },
+    backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan},
     executor::preemption::Scheduler,
     ir::{
         api::children::Children,
-        node::{block::BlockOwned, expression::MutExpression},
+        node::{block::BlockOwned, expression::MutExpression, BlockStatement},
         tree::Snapshot,
     },
 };
@@ -702,7 +699,7 @@ pub fn generate_pattern_with_params_for_block(
     query_id: NodeId,
     bucket_id: Option<u64>,
     use_colon_params: bool,
-) -> Result<PatternWithParams, SbroadError> {
+) -> Result<(String, Vec<Value>), SbroadError> {
     use crate::backend::sql::tree::SyntaxData;
 
     struct Select {
@@ -805,7 +802,7 @@ pub fn generate_pattern_with_params_for_block(
         let bucket_id = bucket_id.ok_or_else(|| {
             SbroadError::Other("INSERT in transaction requires a known target bucket".into())
         })?;
-        let pattern = generate_insert_pattern_for_block(
+        return generate_insert_pattern_for_block(
             plan,
             query_id,
             plan_id,
@@ -813,8 +810,7 @@ pub fn generate_pattern_with_params_for_block(
             params,
             bucket_id,
             use_colon_params,
-        )?;
-        return Ok(pattern);
+        );
     }
 
     let sp = SyntaxPlan::new(plan, query_id, Snapshot::Oldest, false)?;
@@ -825,7 +821,7 @@ pub fn generate_pattern_with_params_for_block(
     let nodes = on.to_syntax_data()?;
 
     let ir_plan = plan.get_ir_plan();
-    let pattern = match ir_plan.get_relation_node(query_id)? {
+    let pattern: String = match ir_plan.get_relation_node(query_id)? {
         Relational::Update(update) => {
             // Generate SQL for UPDATE by translating SELECT syntax data.
             let mut update_nodes = Vec::new();
@@ -862,13 +858,12 @@ pub fn generate_pattern_with_params_for_block(
             // WHERE <expr>
             update_nodes.extend(select.filter);
 
-            let pattern = plan.generate_sql(
+            plan.generate_sql(
                 &update_nodes,
                 plan_id,
                 table_name,
                 Some(constant_ids.as_slice()),
-            )?;
-            PatternWithParams { pattern, params }
+            )?
         }
         Relational::Delete(Delete { child: Some(_), .. }) => {
             // Generate SQL for DELETE with WHERE by translating SELECT syntax data.
@@ -886,22 +881,17 @@ pub fn generate_pattern_with_params_for_block(
             // WHERE <expr>
             delete_nodes.extend(select.filter);
 
-            let pattern = plan.generate_sql(
+            plan.generate_sql(
                 &delete_nodes,
                 plan_id,
                 table_name,
                 Some(constant_ids.as_slice()),
-            )?;
-            PatternWithParams { pattern, params }
+            )?
         }
-        _ => {
-            let pattern =
-                plan.generate_sql(&nodes, plan_id, table_name, Some(constant_ids.as_slice()))?;
-            PatternWithParams { pattern, params }
-        }
+        _ => plan.generate_sql(&nodes, plan_id, table_name, Some(constant_ids.as_slice()))?,
     };
 
-    Ok(pattern)
+    Ok((pattern, params))
 }
 
 /// Build the SQL pattern for a block-optimized INSERT.
@@ -917,7 +907,7 @@ fn generate_insert_pattern_for_block(
     mut params: Vec<Value>,
     bucket_id: u64,
     use_colon_params: bool,
-) -> Result<PatternWithParams, SbroadError> {
+) -> Result<(String, Vec<Value>), SbroadError> {
     use crate::backend::sql::tree::SyntaxData;
 
     let Relational::Insert(insert) = plan.get_ir_plan().get_relation_node(insert_id)? else {
@@ -1024,7 +1014,7 @@ fn generate_insert_pattern_for_block(
     }
 
     let pattern = plan.generate_sql(&nodes, plan_id, table_name, Some(constant_ids.as_slice()))?;
-    Ok(PatternWithParams { pattern, params })
+    Ok((pattern, params))
 }
 
 /// A helper function to dispatch the execution plan from the router to the storages.
@@ -1077,11 +1067,21 @@ pub fn dispatch_impl<'p>(
         let unused_lets = block.get_unused_lets();
 
         let use_colon_params = !plan.get_ir_plan().is_raw_explain();
-        let mut statements = Vec::with_capacity(block.statements.len());
+        let mut statements: Vec<BlockStatement<String>> =
+            Vec::with_capacity(block.statements.len());
+        let mut params: Vec<Vec<Value>> = Vec::new();
         for stmt in block.statements {
-            statements.push(stmt.try_map(|id| {
-                generate_pattern_with_params_for_block(plan, id, block_bucket_id, use_colon_params)
-            })?);
+            let mapped = stmt.try_map(|id| -> Result<String, SbroadError> {
+                let (pattern, stmt_params) = generate_pattern_with_params_for_block(
+                    plan,
+                    id,
+                    block_bucket_id,
+                    use_colon_params,
+                )?;
+                params.push(stmt_params);
+                Ok(pattern)
+            })?;
+            statements.push(mapped);
         }
 
         let vdbe_max_steps = plan.get_ir_plan().effective_options.sql_vdbe_opcode_max as _;
@@ -1091,6 +1091,7 @@ pub fn dispatch_impl<'p>(
         let exec_block = BlockExecData {
             statements,
             unused_lets,
+            params,
             table_versions,
             index_versions,
             vdbe_max_steps,

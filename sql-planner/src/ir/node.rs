@@ -1388,7 +1388,7 @@ impl From<CallProcedure> for NodeAligned {
 /// The lifecycle:
 /// 1) Parsing and planning: `BlockStatement<NodeId>`
 /// 2) Execution: `BlockStatement<PatternWithParams>`
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Hash, PartialEq, Eq, Serialize)]
 pub enum BlockStatement<T> {
     /// Execute query and return the result form the block.
     /// Query *must* be DQL so there are rows to return.

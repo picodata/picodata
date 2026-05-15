@@ -9,7 +9,6 @@ use crate::sql::router::{
 };
 use crate::traft::node;
 use serde::{Deserialize, Serialize};
-use sql::backend::sql::ir::PatternWithParams;
 use sql::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::engine::helpers::table_name;
@@ -25,6 +24,7 @@ use sql::ir::node::BlockStatement;
 use sql::ir::options::Options;
 use std::cell::{OnceCell, RefCell};
 use std::time::Duration;
+use std::vec::IntoIter;
 
 use crate::metrics::{
     record_storage_cache_statement_added, record_storage_cache_statement_evicted,
@@ -54,6 +54,7 @@ use crate::sql::lock::{
     new_temp_table_lock, try_lock_temp_table, TempTableLockRef, TempTableLockWeak,
 };
 use crate::tlog;
+use crate::vdbe::txn::compile_transactional_block;
 use sql::executor::engine::BlockExecData;
 use sql::executor::result::MetadataColumn;
 use tarantool::fiber::Mutex;
@@ -815,6 +816,7 @@ impl StorageRuntime {
                     ))
                 })?;
                 self.execute_block(block, port)?;
+                port.set_type(PortType::ExecuteDql);
             }
         }
         Ok(())
@@ -827,8 +829,10 @@ impl StorageRuntime {
     ) -> Result<(), SbroadError> {
         self.validate_block_schema(&block)?;
 
-        port.process_txn(block.statements, block.vdbe_max_steps)?;
-        port.set_type(PortType::ExecuteDql);
+        let merged: Vec<&Value> = block.params.iter().flat_map(|p| p.iter()).collect();
+        let mut stmt = compile_transactional_block(&block.statements)
+            .map_err(|e| SbroadError::FailedTo(Action::Build, Some(Entity::Query), e.into()))?;
+        port.process_txn(&mut stmt, &merged, block.vdbe_max_steps)?;
 
         Ok(())
     }
@@ -856,24 +860,27 @@ pub fn explain_execute_block<'p>(
     location: &str,
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError> {
-    let mut explain_one = |pattern: PatternWithParams, kind: &str| -> Result<(), SbroadError> {
-        let (sql, params) = pattern.into_parts();
-        explain_execute_guarded(&sql, &params, block.vdbe_max_steps, kind, location, port)
-    };
+    let vdbe_max_steps = block.vdbe_max_steps;
+    let params = &mut block.params.into_iter();
+    let mut explain_one =
+        |sql: String, params: Vec<Value>, kind: &str| -> Result<(), SbroadError> {
+            explain_execute_guarded(&sql, &params, vdbe_max_steps, kind, location, port)
+        };
 
+    let next_params = |params: &mut IntoIter<_>| params.next().expect("not enough params");
     for (idx, stmt) in block.statements.into_iter().enumerate() {
         match stmt {
-            BlockStatement::ReturnQuery(p) => explain_one(p, "Return query")?,
-            BlockStatement::Query(p) => explain_one(p, "Query")?,
+            BlockStatement::ReturnQuery(p) => explain_one(p, next_params(params), "Return query")?,
+            BlockStatement::Query(p) => explain_one(p, next_params(params), "Query")?,
             BlockStatement::Let { query, var } => {
                 let var = var.strip_prefix(':').unwrap_or(&var);
                 let kind = format_let_entry(block.unused_lets.contains(&idx), var);
-                explain_one(query, &kind)?
+                explain_one(query, next_params(params), &kind)?
             }
             BlockStatement::If { cond, body } => {
-                explain_one(cond, "If cond")?;
+                explain_one(cond, next_params(params), "If cond")?;
                 for p in body {
-                    explain_one(p, "If body")?;
+                    explain_one(p, next_params(params), "If body")?;
                 }
             }
         }

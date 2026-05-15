@@ -19,13 +19,11 @@ use crate::executor::lru::{Cache as _, LRUCache, DEFAULT_CAPACITY};
 use crate::executor::preemption::{SchedulerMetrics, SchedulerOptions};
 use crate::executor::vtable::VirtualTable;
 use crate::executor::ExecutingQuery;
-use crate::executor::PatternWithParams;
 use crate::executor::{Port, PortType};
 use crate::frontend::sql::ast::AbstractSyntaxTree;
 use crate::ir::bucket::{BucketSet, Buckets};
 use crate::ir::explain::LogicalExplain;
 use crate::ir::function::Function;
-use crate::ir::node::BlockStatement;
 use crate::ir::node::NodeId;
 use crate::ir::options::Forward;
 use crate::ir::relation::{Column, ColumnRole, SpaceEngine, Table};
@@ -106,7 +104,8 @@ impl Port<'_> for PortMocked {
 
     fn process_txn(
         &mut self,
-        _stmts: Vec<BlockStatement<PatternWithParams>>,
+        _stmt: &mut SqlStmt,
+        _params: &[&Value],
         _vdbe_max_steps: u64,
     ) -> Result<(), SbroadError>
     where
