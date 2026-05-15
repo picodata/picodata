@@ -953,7 +953,7 @@ helm-image:
       - DOCKERFILE: docker/picodata.Dockerfile
         DESTINATION: ${REGISTRY}/picodata:master
       - DOCKERFILE: docker/picodata-distroless.Dockerfile
-        DESTINATION: ${REGISTRY}/picodata:master-distroless
+        DESTINATION: ${REGISTRY}/picodata-distroless:master
   trigger:
     project: picodata/devops/picodata-in-docker
     branch: main
@@ -1046,7 +1046,7 @@ deploy-docker:
       - DOCKERFILE: docker/picodata.Dockerfile
         DESTINATION: ${REGISTRY}/picodata:${CI_COMMIT_TAG}
       - DOCKERFILE: docker/picodata-distroless.Dockerfile
-        DESTINATION: ${REGISTRY}/picodata:${CI_COMMIT_TAG}-distroless
+        DESTINATION: ${REGISTRY}/picodata-distroless:${CI_COMMIT_TAG}
   trigger:
     project: picodata/devops/picodata-in-docker
     branch: main
