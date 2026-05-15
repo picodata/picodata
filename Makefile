@@ -1,15 +1,15 @@
 # Cargo supports posix jobserver protocol to restrict its parallelism.
 # XXX: we don't need to propagate -jN if N > 1, make jobserver got us covered.
 # https://www.gnu.org/software/make/manual/html_node/POSIX-Jobserver.html
-MAKE_JOBSERVER_ARGS = $(filter -j%, $(MAKEFLAGS))
+MAKE_JOBSERVER_ARGS := $(filter -j%, $(MAKEFLAGS))
 ifneq ($(MAKE_JOBSERVER_ARGS),-j1)
-MAKE_JOBSERVER_ARGS =
+MAKE_JOBSERVER_ARGS :=
 endif
 
 # Select appropriate pytest parallelism flags.
-PYTEST_NUMPROCESSES = $(patsubst -j%, --numprocesses=%, $(filter -j%, $(MAKEFLAGS)))
+PYTEST_NUMPROCESSES := $(patsubst -j%, --numprocesses=%, $(filter -j%, $(MAKEFLAGS)))
 ifeq ($(PYTEST_NUMPROCESSES),)
-PYTEST_NUMPROCESSES = --numprocesses=auto
+PYTEST_NUMPROCESSES := --numprocesses=auto
 endif
 
 PYTEST_FLAGS :=
@@ -34,6 +34,9 @@ CARGO_FLAGS := $(LOCKED) $(WORKSPACE) $(CARGO_FEATURES)
 TARGET_DIR_ASAN := target/asan-dev
 TARGET_DIR_COV := target/cov
 
+# Extra flags for code coverage report builder.
+COV_REPORT_FLAGS :=
+
 .PHONY: default
 default: ;
 
@@ -56,32 +59,32 @@ build-plug-wrong-version:
 #  - CARGO_FLAGS overrides whatever we set internally
 #  - CARGO_FLAGS_EXTRA only appends to it without overriding
 .PHONY: build
+build: override CARGO_FLAGS += --lib --bins --tests
 build: tarantool-patch
 	if test -f ~/.cargo/env; then . ~/.cargo/env; fi && \
 		$(CARGO_ENV) \
 		cargo build $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) $(CARGO_FLAGS_EXTRA)
 
-# There are 4 build options. 3 for each build profile (dev, fast-release, release).
-# They are intended to be consumed by tests/local development.
-# Remaining `build-release-pkg` is intended for packages we ship as our release artifacts.
-# For now the only difference is absence of error_injection feature.
-.PHONY: build-dev
-build-dev: override CARGO_FLAGS += $(ERROR_INJECTION)
-build-dev: override CARGO_FLAGS += --profile=dev
-build-dev: build
-build-dev: build-plug-wrong-version
+# A template for `build-*` rules.
+define BUILD_TEMPLATE =
+.PHONY: build-$(1)
+build-$(1): override CARGO_FLAGS += $$(ERROR_INJECTION)
+build-$(1): override CARGO_FLAGS += --profile=$(1)
+build-$(1): build
+build-$(1): build-plug-wrong-version
 
-.PHONY: build-fast-release
-build-fast-release: override CARGO_FLAGS += $(ERROR_INJECTION)
-build-fast-release: override CARGO_FLAGS += --profile=fast-release
-build-fast-release: build
-build-fast-release: build-plug-wrong-version
+.PHONY: coverage-build-$(1)
+coverage-build-$(1): export CARGO_TARGET_DIR=$$(TARGET_DIR_COV)
+coverage-build-$(1):
+	tools/coverage.py run $$(MAKE) build-$(1)
+endef
 
-.PHONY: build-release
-build-release: override CARGO_FLAGS += $(ERROR_INJECTION)
-build-release: override CARGO_FLAGS += --profile=release
-build-release: build
-build-release: build-plug-wrong-version
+# These build profiles are intended to be used for CI and local development.
+# Still, there are two special cases which stand apart from the generated ones:
+#  - `build-release-pkg` is for the packages we ship as our release artifacts.
+#  - `build-asan-dev` is a developer convenience for local tinkering (not for CI).
+BUILD_PROFILES := dev fast-release release
+$(foreach PROFILE,$(BUILD_PROFILES),$(eval $(call BUILD_TEMPLATE,$(PROFILE))))
 
 # Ignore CARGO_FLAGS defaults from the above by using `=` instead of `+=`.
 # We only use `override` for the mandatory flags, because:
@@ -99,8 +102,8 @@ build-release-pkg: build
 # See https://github.com/rust-lang/cargo/issues/6375#issuecomment-444900324.
 DEFAULT_TARGET := $(shell cargo -vV | sed -n 's|host: ||p')
 
-# ASan build: uses --cfg asan flag instead of a dedicated Cargo profile.
-# Artifacts go to asan-dev/ to avoid conflicts with regular builds.
+# ASan build: uses `--cfg asan` flag instead of a dedicated Cargo profile.
+# Artifacts go to a dedicated target dir to avoid conflicts with regular builds.
 # TODO: drop nightly features once sanitizers are stable.
 .PHONY: build-asan-dev
 build-asan-dev: override CARGO_ENV = RUSTC_BOOTSTRAP=1
@@ -145,6 +148,49 @@ test-py:
 
 .PHONY: test
 test: test-rs test-py
+
+define TEST_TEMPLATE =
+.PHONY: coverage-test-$(1)
+coverage-test-$(1): export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-test-$(1):
+	tools/coverage.py run $(MAKE) test-$(1)
+endef
+
+TEST_PARTS := rs py
+$(foreach PART,$(TEST_PARTS),$(eval $(call TEST_TEMPLATE,$(PART))))
+
+.PHONY: coverage-report
+coverage-report: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-report:
+	tools/find-executables.sh $(CARGO_TARGET_DIR) > $(CARGO_TARGET_DIR)/binaries
+	tools/coverage.py report --input-objects=$(CARGO_TARGET_DIR)/binaries $(COV_REPORT_FLAGS)
+
+.PHONY: coverage-clean
+coverage-clean: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-clean:
+	tools/coverage.py clean
+
+.PHONY: coverage-purge
+coverage-purge: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-purge:
+	rm -rf $(CARGO_TARGET_DIR)
+
+# XXX: this target is for debug purposes (do not use in CI).
+.PHONY: coverage-demo
+coverage-demo: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-demo:
+	$(MAKE) coverage-build-dev
+
+	# Drop any possible coverage data for `build.rs`.
+	$(MAKE) coverage-clean
+
+	# Note that it's better to first run rust-based tests,
+	# then the python-based ones to prevent coverage loss
+	# due to accidental rebuilds changing signatures of bins.
+	$(MAKE) coverage-test-rs || true
+	$(MAKE) coverage-test-py || true
+
+	$(MAKE) coverage-report COV_REPORT_FLAGS=--open
 
 .PHONY: generate-snapshot
 generate-snapshot:
@@ -214,58 +260,6 @@ benchmark:
 .PHONY: flamegraph
 flamegraph:
 	PICODATA_LOG_LEVEL=warn poetry run pytest test/manual/test_benchmark.py --with-flamegraph
-
-
-.PHONY: coverage-test-rs
-coverage-test-rs: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
-coverage-test-rs:
-	tools/coverage.py run $(MAKE) test-rs
-
-.PHONY: coverage-test-py
-coverage-test-py: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
-coverage-test-py:
-	tools/coverage.py run $(MAKE) test-py
-
-.PHONY: coverage-build
-coverage-build: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
-coverage-build:
-	# Build everything in advance.
-	tools/coverage.py run $(MAKE) build CARGO_FLAGS_EXTRA="--lib --bins --tests"
-	tools/coverage.py run $(MAKE) build-plug-wrong-version
-
-.PHONY: coverage-report
-coverage-report: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
-coverage-report:
-	tools/find-executables.sh $(CARGO_TARGET_DIR) > $(CARGO_TARGET_DIR)/binaries
-	tools/coverage.py report --input-objects=$(CARGO_TARGET_DIR)/binaries --open
-
-.PHONY: coverage-clean
-coverage-clean: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
-coverage-clean:
-	tools/coverage.py clean
-
-.PHONY: coverage-purge
-coverage-purge: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
-coverage-purge:
-	rm -rf $(CARGO_TARGET_DIR)
-
-# XXX: this target is for debug purposes (do not use in CI).
-.PHONY: coverage-demo
-coverage-demo: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
-coverage-demo:
-	$(MAKE) coverage-build
-
-	# Drop any possible coverage data for `build.rs`.
-	$(MAKE) coverage-clean
-
-	# Note that it's better to first run rust-based tests,
-	# then the python-based ones to prevent coverage loss
-	# due to accidental rebuilds changing signatures of bins.
-	$(MAKE) coverage-test-rs
-	$(MAKE) coverage-test-py
-
-	$(MAKE) coverage-report
-
 
 .PHONY: k6
 k6:
