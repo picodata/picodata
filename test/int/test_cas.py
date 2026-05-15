@@ -166,7 +166,7 @@ def test_cas_errors(instance: Instance):
         # NOTE: this size is carefully chosen so that the inserted tuple doesn't
         # exceed the threshold, but the raft log tuple (which also contains some
         # additional metadata) does exceed the limit.
-        size = 1024 * 1024 - 18
+        size = 1024 * 1024 - 79
         instance.cas(
             "insert",
             "_pico_property",
@@ -174,7 +174,7 @@ def test_cas_errors(instance: Instance):
         )
     assert error.value.args[:2] == (
         "ER_SLAB_ALLOC_MAX",
-        "tuple size 1048600 exceeds the allowed limit",  # noqa: E501
+        "tuple size 1048592 exceeds the allowed limit",  # noqa: E501
     )
 
 
@@ -438,6 +438,41 @@ def test_cas_lua_api(cluster: Cluster):
         "CasConflictFound",
         f"ConflictFound: found a conflicting entry at index {read_index + 1}",
     )
+
+
+def test_global_unique_secondary_conflict_does_not_stall_apply(cluster: Cluster):
+    instances = cluster.deploy(instance_count=3)
+    leader = cluster.leader()
+    followers = [i for i in instances if i != leader]
+
+    leader.sql("""
+        CREATE TABLE g (id INT PRIMARY KEY, u INT NOT NULL)
+        DISTRIBUTED GLOBALLY
+    """)
+    leader.sql("CREATE UNIQUE INDEX g_u ON g (u)")
+
+    read_index = leader.raft_read_index(_3_SEC)
+
+    for follower in followers:
+        follower.kill()
+
+    idx1 = None
+    try:
+        idx1, _ = leader.cas("insert", "g", [1, 1], index=read_index)
+        with pytest.raises(TarantoolError) as e:
+            leader.cas("insert", "g", [2, 1], index=read_index)
+        assert e.value.args[:2] == (
+            "CasConflictFound",
+            f"ConflictFound: found a conflicting entry at index {idx1}",
+        )
+    finally:
+        for follower in followers:
+            follower.start()
+        for follower in followers:
+            follower.wait_online()
+
+    assert idx1 is not None
+    cluster.raft_wait_index(idx1)
 
 
 def test_cas_operable_table(cluster: Cluster):

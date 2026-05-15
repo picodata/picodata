@@ -128,6 +128,7 @@ impl From<types::Dml> for Dml {
                 tuple: unsafe { TupleBuffer::from_vec_unchecked(tuple.to_vec()) },
                 initiator,
                 conflict_strategy: ConflictStrategy::DoFail,
+                cas: None,
             },
             DmlInner::Replace {
                 table,
@@ -137,6 +138,7 @@ impl From<types::Dml> for Dml {
                 table,
                 tuple: unsafe { TupleBuffer::from_vec_unchecked(tuple.to_vec()) },
                 initiator,
+                cas: None,
             },
             DmlInner::Update {
                 table,
@@ -154,6 +156,7 @@ impl From<types::Dml> for Dml {
                     key: unsafe { TupleBuffer::from_vec_unchecked(key.to_vec()) },
                     ops,
                     initiator,
+                    cas: None,
                 }
             }
             DmlInner::Delete {
@@ -165,6 +168,7 @@ impl From<types::Dml> for Dml {
                 key: unsafe { TupleBuffer::from_vec_unchecked(key.to_vec()) },
                 initiator,
                 metainfo: None,
+                cas: None,
             },
         }
     }

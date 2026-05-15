@@ -421,7 +421,7 @@ pub mod tests {
     }
 
     fn check_update_instance(dml: &Dml, expected_name: impl Into<InstanceName>) -> &[TupleBuffer] {
-        let Dml::Update { table, key, ops, initiator } = dml else {
+        let Dml::Update { table, key, ops, initiator, .. } = dml else {
             panic!("expected Dml::Update, got {dml:?}");
         };
 

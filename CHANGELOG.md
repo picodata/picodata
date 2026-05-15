@@ -150,6 +150,11 @@ with the `YY.MINOR.MICRO` scheme.
   (`1st`, `2nd`) and the local fast-path (`local`) are reflected together.
 - All cache panels in `monitoring/dashboard/Picodata.json` now respect the
   dashboard's `$tier` and `$replicaset` template variables.
+- Fixed CAS conflict detection for globally distributed tables with secondary
+  unique indexes. Previously, stale CAS requests could be appended to the raft
+  log with different primary keys but the same secondary unique key, causing
+  replicas to fail applying the later entry and preventing raft from advancing.
+  Such requests are now rejected with a retriable `CasConflictFound` error.
 
 ### Breaking changes
 

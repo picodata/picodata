@@ -16,6 +16,7 @@ use ::tarantool::space::{Field, SpaceId};
 use ::tarantool::tlua;
 use ::tarantool::tuple::{ToTupleBuffer, TupleBuffer};
 use serde::{Deserialize, Serialize};
+use serde_bytes::Bytes;
 use smol_str::SmolStr;
 use sql::ir::operator::ConflictStrategy;
 use std::collections::BTreeMap;
@@ -558,7 +559,7 @@ impl Op {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Cluster-wide data modification operation.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "op_kind")]
 pub enum Dml {
@@ -569,12 +570,16 @@ pub enum Dml {
         initiator: UserId,
         #[serde(default)]
         conflict_strategy: ConflictStrategy,
+        #[serde(default)]
+        cas: Option<DmlCas>,
     },
     Replace {
         table: SpaceId,
         #[serde(with = "serde_bytes")]
         tuple: TupleBuffer,
         initiator: UserId,
+        #[serde(default)]
+        cas: Option<DmlCas>,
     },
     Update {
         table: SpaceId,
@@ -584,6 +589,8 @@ pub enum Dml {
         #[serde(with = "vec_of_raw_byte_buf")]
         ops: Vec<TupleBuffer>,
         initiator: UserId,
+        #[serde(default)]
+        cas: Option<DmlCas>,
     },
     Delete {
         table: SpaceId,
@@ -592,7 +599,116 @@ pub enum Dml {
         key: TupleBuffer,
         initiator: UserId,
         metainfo: Option<FullDeleteInfo>,
+        #[serde(default)]
+        cas: Option<DmlCas>,
     },
+}
+
+// rmp-serde normally encodes structs/enums in the compact array form. Adding a
+// trailing field to that form changes the array length and breaks older nodes.
+// Encode DML as a MessagePack map instead: older serde-based decoders ignore
+// unknown map keys by default as long as the type is not annotated with
+// #[serde(deny_unknown_fields)]. This lets new nodes include "cas" while old
+// nodes still decode the DML shape they know.
+impl Serialize for Dml {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+
+        match self {
+            Dml::Insert {
+                table,
+                tuple,
+                initiator,
+                conflict_strategy,
+                cas,
+            } => {
+                let cas = non_empty_dml_cas(cas);
+                let mut map = serializer.serialize_map(Some(5 + usize::from(cas.is_some())))?;
+                map.serialize_entry("op_kind", "insert")?;
+                map.serialize_entry("table", table)?;
+                map.serialize_entry("tuple", Bytes::new(tuple.as_ref()))?;
+                map.serialize_entry("initiator", initiator)?;
+                map.serialize_entry("conflict_strategy", conflict_strategy)?;
+                if let Some(cas) = cas {
+                    map.serialize_entry("cas", cas)?;
+                }
+                map.end()
+            }
+            Dml::Replace {
+                table,
+                tuple,
+                initiator,
+                cas,
+            } => {
+                let cas = non_empty_dml_cas(cas);
+                let mut map = serializer.serialize_map(Some(4 + usize::from(cas.is_some())))?;
+                map.serialize_entry("op_kind", "replace")?;
+                map.serialize_entry("table", table)?;
+                map.serialize_entry("tuple", Bytes::new(tuple.as_ref()))?;
+                map.serialize_entry("initiator", initiator)?;
+                if let Some(cas) = cas {
+                    map.serialize_entry("cas", cas)?;
+                }
+                map.end()
+            }
+            Dml::Update {
+                table,
+                key,
+                ops,
+                initiator,
+                cas,
+            } => {
+                let cas = non_empty_dml_cas(cas);
+                let mut map = serializer.serialize_map(Some(5 + usize::from(cas.is_some())))?;
+                map.serialize_entry("op_kind", "update")?;
+                map.serialize_entry("table", table)?;
+                map.serialize_entry("key", Bytes::new(key.as_ref()))?;
+                map.serialize_entry("ops", &TupleBuffers(ops))?;
+                map.serialize_entry("initiator", initiator)?;
+                if let Some(cas) = cas {
+                    map.serialize_entry("cas", cas)?;
+                }
+                map.end()
+            }
+            Dml::Delete {
+                table,
+                key,
+                initiator,
+                metainfo,
+                cas,
+            } => {
+                let cas = non_empty_dml_cas(cas);
+                let mut map = serializer.serialize_map(Some(5 + usize::from(cas.is_some())))?;
+                map.serialize_entry("op_kind", "delete")?;
+                map.serialize_entry("table", table)?;
+                map.serialize_entry("key", Bytes::new(key.as_ref()))?;
+                map.serialize_entry("initiator", initiator)?;
+                map.serialize_entry("metainfo", metainfo)?;
+                if let Some(cas) = cas {
+                    map.serialize_entry("cas", cas)?;
+                }
+                map.end()
+            }
+        }
+    }
+}
+
+fn non_empty_dml_cas(cas: &Option<DmlCas>) -> Option<&DmlCas> {
+    cas.as_ref().filter(|cas| cas.has_conflict_data())
+}
+
+struct TupleBuffers<'a>(&'a [TupleBuffer]);
+
+impl Serialize for TupleBuffers<'_> {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        vec_of_raw_byte_buf::serialize(self.0, serializer)
+    }
 }
 
 impl Dml {
@@ -625,6 +741,53 @@ impl Dml {
             Dml::Delete { .. } => DmlKind::Delete,
         }
     }
+
+    #[inline(always)]
+    pub fn cas(&self) -> Option<&DmlCas> {
+        match self {
+            Dml::Insert { cas, .. }
+            | Dml::Replace { cas, .. }
+            | Dml::Update { cas, .. }
+            | Dml::Delete { cas, .. } => non_empty_dml_cas(cas),
+        }
+    }
+
+    #[inline(always)]
+    pub fn set_cas(&mut self, new_cas: DmlCas) {
+        let new_cas = new_cas.has_conflict_data().then_some(new_cas);
+        match self {
+            Dml::Insert { cas, .. }
+            | Dml::Replace { cas, .. }
+            | Dml::Update { cas, .. }
+            | Dml::Delete { cas, .. } => *cas = new_cas,
+        }
+    }
+}
+
+/// Internal CAS conflict data computed by the leader while preparing the proposal.
+///
+/// It is stored in raft entries so later CAS requests can detect conflicts
+/// with in-flight DML operations touching unique secondary indexes or changing
+/// the whole table. User-facing CAS APIs do not accept this metadata.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DmlCas {
+    pub table_schema_version: u64,
+    pub unique_keys: Vec<CasKey>,
+    pub table_full_change: bool,
+}
+
+impl DmlCas {
+    #[inline(always)]
+    pub fn has_conflict_data(&self) -> bool {
+        !self.unique_keys.is_empty() || self.table_full_change
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CasKey {
+    pub index_id: IndexId,
+    #[serde(with = "serde_bytes")]
+    pub key: TupleBuffer,
 }
 
 ::tarantool::define_str_enum! {
@@ -655,6 +818,7 @@ impl Dml {
             tuple: tuple.to_tuple_buffer()?,
             initiator,
             conflict_strategy: ConflictStrategy::DoFail,
+            cas: None,
         };
         Ok(res)
     }
@@ -671,6 +835,7 @@ impl Dml {
             tuple: tuple.to_tuple_buffer()?,
             initiator,
             conflict_strategy: on_conflict,
+            cas: None,
         };
         Ok(res)
     }
@@ -686,6 +851,7 @@ impl Dml {
             tuple: TupleBuffer::try_from_vec(tuple)?,
             initiator,
             conflict_strategy: ConflictStrategy::DoFail,
+            cas: None,
         };
         Ok(res)
     }
@@ -701,6 +867,7 @@ impl Dml {
             table: space.into(),
             tuple: tuple.to_tuple_buffer()?,
             initiator,
+            cas: None,
         };
         Ok(res)
     }
@@ -718,6 +885,7 @@ impl Dml {
             key: key.to_tuple_buffer()?,
             ops: ops.into(),
             initiator,
+            cas: None,
         };
         Ok(res)
     }
@@ -735,6 +903,7 @@ impl Dml {
             key: key.to_tuple_buffer()?,
             initiator,
             metainfo,
+            cas: None,
         };
         Ok(res)
     }
@@ -753,6 +922,7 @@ impl Dml {
                     tuple,
                     initiator,
                     conflict_strategy: ConflictStrategy::DoFail,
+                    cas: None,
                 })
             }
             DmlKind::Replace => {
@@ -763,6 +933,7 @@ impl Dml {
                     table,
                     tuple,
                     initiator,
+                    cas: None,
                 })
             }
             DmlKind::Update => {
@@ -777,6 +948,7 @@ impl Dml {
                     key,
                     ops,
                     initiator,
+                    cas: None,
                 })
             }
             DmlKind::Delete => {
@@ -788,6 +960,7 @@ impl Dml {
                     key,
                     initiator,
                     metainfo: None,
+                    cas: None,
                 })
             }
         }
@@ -1312,5 +1485,218 @@ mod vec_of_raw_byte_buf {
             .map(|bb| TupleBuffer::try_from(bb.into_vec()))
             .collect();
         res.map_err(D::Error::custom)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+    #[serde(rename_all = "snake_case")]
+    #[serde(tag = "op_kind")]
+    enum OldDml {
+        Insert {
+            table: SpaceId,
+            #[serde(with = "serde_bytes")]
+            tuple: TupleBuffer,
+            initiator: UserId,
+            #[serde(default)]
+            conflict_strategy: ConflictStrategy,
+        },
+        Replace {
+            table: SpaceId,
+            #[serde(with = "serde_bytes")]
+            tuple: TupleBuffer,
+            initiator: UserId,
+        },
+        Update {
+            table: SpaceId,
+            #[serde(with = "serde_bytes")]
+            key: TupleBuffer,
+            #[serde(with = "super::vec_of_raw_byte_buf")]
+            ops: Vec<TupleBuffer>,
+            initiator: UserId,
+        },
+        Delete {
+            table: SpaceId,
+            #[serde(with = "serde_bytes")]
+            key: TupleBuffer,
+            initiator: UserId,
+            metainfo: Option<FullDeleteInfo>,
+        },
+    }
+
+    #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+    #[serde(rename_all = "snake_case")]
+    #[serde(tag = "kind")]
+    enum OldOp {
+        Dml(OldDml),
+        BatchDml { ops: Vec<OldDml> },
+    }
+
+    fn old_dml_variants() -> Vec<OldDml> {
+        vec![
+            OldDml::Insert {
+                table: 42,
+                tuple: (1, "one").to_tuple_buffer().unwrap(),
+                initiator: ADMIN_ID,
+                conflict_strategy: ConflictStrategy::DoNothing,
+            },
+            OldDml::Replace {
+                table: 42,
+                tuple: (2, "two").to_tuple_buffer().unwrap(),
+                initiator: ADMIN_ID,
+            },
+            OldDml::Update {
+                table: 42,
+                key: (1,).to_tuple_buffer().unwrap(),
+                ops: vec![],
+                initiator: ADMIN_ID,
+            },
+            OldDml::Delete {
+                table: 42,
+                key: (3,).to_tuple_buffer().unwrap(),
+                initiator: ADMIN_ID,
+                metainfo: None,
+            },
+        ]
+    }
+
+    fn new_dml_variants(cas: Option<DmlCas>) -> Vec<Dml> {
+        vec![
+            Dml::Insert {
+                table: 42,
+                tuple: (1, "one").to_tuple_buffer().unwrap(),
+                initiator: ADMIN_ID,
+                conflict_strategy: ConflictStrategy::DoNothing,
+                cas: cas.clone(),
+            },
+            Dml::Replace {
+                table: 42,
+                tuple: (2, "two").to_tuple_buffer().unwrap(),
+                initiator: ADMIN_ID,
+                cas: cas.clone(),
+            },
+            Dml::Update {
+                table: 42,
+                key: (1,).to_tuple_buffer().unwrap(),
+                ops: vec![],
+                initiator: ADMIN_ID,
+                cas: cas.clone(),
+            },
+            Dml::Delete {
+                table: 42,
+                key: (3,).to_tuple_buffer().unwrap(),
+                initiator: ADMIN_ID,
+                metainfo: None,
+                cas,
+            },
+        ]
+    }
+
+    fn compat_cas() -> DmlCas {
+        DmlCas {
+            table_schema_version: 7,
+            unique_keys: vec![CasKey {
+                index_id: 1,
+                key: (2,).to_tuple_buffer().unwrap(),
+            }],
+            table_full_change: false,
+        }
+    }
+
+    #[test]
+    fn old_dml_without_cas_decodes_with_default_cas() {
+        for old in old_dml_variants() {
+            let bytes = rmp_serde::to_vec(&old).unwrap();
+
+            let decoded: Dml = rmp_serde::from_slice(&bytes).unwrap();
+            assert!(decoded.cas().is_none());
+        }
+    }
+
+    #[test]
+    fn old_op_without_cas_decodes_with_default_cas() {
+        let old = OldOp::BatchDml {
+            ops: old_dml_variants(),
+        };
+        let bytes = rmp_serde::to_vec(&old).unwrap();
+
+        let decoded: Op = rmp_serde::from_slice(&bytes).unwrap();
+        let Op::BatchDml { ops } = decoded else {
+            panic!("expected batch dml op");
+        };
+        for dml in ops {
+            assert!(dml.cas().is_none());
+        }
+    }
+
+    #[test]
+    fn new_dml_with_cas_decodes_as_old_dml_shape() {
+        for (expected, dml) in old_dml_variants()
+            .into_iter()
+            .zip(new_dml_variants(Some(compat_cas())))
+        {
+            let bytes = rmp_serde::to_vec(&dml).unwrap();
+
+            let decoded: OldDml = rmp_serde::from_slice(&bytes).unwrap();
+            assert_eq!(decoded, expected);
+        }
+    }
+
+    #[test]
+    fn new_op_with_cas_decodes_as_old_op_shape() {
+        for (old_dml, dml) in old_dml_variants()
+            .into_iter()
+            .zip(new_dml_variants(Some(compat_cas())))
+        {
+            let expected = OldOp::Dml(old_dml);
+            let op = Op::Dml(dml);
+            let bytes = rmp_serde::to_vec(&op).unwrap();
+
+            let decoded: OldOp = rmp_serde::from_slice(&bytes).unwrap();
+            assert_eq!(decoded, expected);
+        }
+    }
+
+    #[test]
+    fn new_batch_dml_with_cas_decodes_as_old_op_shape() {
+        let expected = OldOp::BatchDml {
+            ops: old_dml_variants(),
+        };
+        let op = Op::BatchDml {
+            ops: new_dml_variants(Some(compat_cas())),
+        };
+        let bytes = rmp_serde::to_vec(&op).unwrap();
+
+        let decoded: OldOp = rmp_serde::from_slice(&bytes).unwrap();
+        assert_eq!(decoded, expected);
+    }
+
+    #[test]
+    fn new_dml_without_cas_omits_cas_key() {
+        for dml in new_dml_variants(None) {
+            assert!(!serialized_dml_has_cas_key(&dml));
+        }
+    }
+
+    #[test]
+    fn new_dml_with_cas_serializes_cas_key() {
+        for dml in new_dml_variants(Some(compat_cas())) {
+            assert!(serialized_dml_has_cas_key(&dml));
+        }
+    }
+
+    fn serialized_dml_has_cas_key(dml: &Dml) -> bool {
+        let bytes = rmp_serde::to_vec(dml).unwrap();
+        let value: rmpv::Value = rmp_serde::from_slice(&bytes).unwrap();
+        let rmpv::Value::Map(entries) = value else {
+            panic!("expected DML to serialize as map");
+        };
+
+        entries
+            .iter()
+            .any(|(key, _)| key.as_str().is_some_and(|key| key == "cas"))
     }
 }

@@ -941,6 +941,7 @@ mod test {
                     table: 69105,
                     tuple: ("foo", 100500, "bar").to_tuple_buffer().unwrap(),
                     initiator: 1337,
+                    cas: None,
                 }
                 .into(),
             ),

@@ -526,6 +526,7 @@ fn do_governor_loop_proc_before_online_batching(params: BatchingRpcTestParameter
                     key,
                     ops,
                     initiator,
+                    ..
                 } = dml
                 else {
                     panic!("expected Dml::Update, got {dml:?}");
@@ -772,6 +773,7 @@ fn do_governor_loop_proc_sharding_batching(params: BatchingRpcTestParameters) {
                 key,
                 ops,
                 initiator,
+                ..
             } = dml
             else {
                 panic!("expected Dml::Update, got {dml:?}");
@@ -1901,6 +1903,7 @@ fn do_governor_loop_create_plugin_batching(params: BatchingRpcTestParameters) {
                     table: Plugins::TABLE_ID,
                     tuple,
                     initiator,
+                    ..
                 } = dml
                 {
                     assert_eq!(*initiator, ADMIN_ID);
@@ -1919,6 +1922,7 @@ fn do_governor_loop_create_plugin_batching(params: BatchingRpcTestParameters) {
                     key,
                     initiator,
                     metainfo,
+                    ..
                 } = dml
                 {
                     assert_eq!(*initiator, ADMIN_ID);
@@ -2151,6 +2155,7 @@ fn do_governor_loop_enable_plugin_batching(params: BatchingRpcTestParameters) {
                     initiator,
                     key,
                     ops,
+                    ..
                 } = dml
                 {
                     assert_eq!(*initiator, ADMIN_ID);
@@ -2173,6 +2178,7 @@ fn do_governor_loop_enable_plugin_batching(params: BatchingRpcTestParameters) {
                     key,
                     initiator,
                     metainfo,
+                    ..
                 } = dml
                 {
                     assert_eq!(*initiator, ADMIN_ID);
@@ -2523,6 +2529,7 @@ fn do_governor_loop_alter_plugin_add_service_to_tier_batching(params: BatchingRp
                     table: crate::storage::ServiceRouteTable::TABLE_ID,
                     tuple,
                     initiator,
+                    ..
                 } = dml
                 {
                     assert_eq!(*initiator, ADMIN_ID);
@@ -2542,6 +2549,7 @@ fn do_governor_loop_alter_plugin_add_service_to_tier_batching(params: BatchingRp
                     table: crate::storage::Services::TABLE_ID,
                     tuple,
                     initiator,
+                    ..
                 } = dml
                 {
                     assert_eq!(*initiator, ADMIN_ID);
@@ -2576,6 +2584,7 @@ fn do_governor_loop_alter_plugin_add_service_to_tier_batching(params: BatchingRp
                     key,
                     initiator,
                     metainfo,
+                    ..
                 } = dml
                 {
                     assert_eq!(*initiator, ADMIN_ID);
@@ -2827,6 +2836,7 @@ fn do_governor_loop_alter_plugin_remove_service_from_tier_batching(
                     key,
                     initiator,
                     metainfo,
+                    ..
                 } = dml
                 {
                     assert_eq!(*initiator, ADMIN_ID);
@@ -2846,6 +2856,7 @@ fn do_governor_loop_alter_plugin_remove_service_from_tier_batching(
                     table: crate::storage::Services::TABLE_ID,
                     tuple,
                     initiator,
+                    ..
                 } = dml
                 {
                     assert_eq!(*initiator, ADMIN_ID);
@@ -2880,6 +2891,7 @@ fn do_governor_loop_alter_plugin_remove_service_from_tier_batching(
                     key,
                     initiator,
                     metainfo,
+                    ..
                 } = dml
                 {
                     assert_eq!(*initiator, ADMIN_ID);

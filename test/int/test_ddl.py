@@ -2101,7 +2101,7 @@ def test_truncate_deals_with_aba_problem(cluster: Cluster):
     ops = []
     for row in raft_log_rows:
         context = row[4]
-        if context is None or context[0] != "ddl_prepare":
+        if not isinstance(context, list) or context[0] != "ddl_prepare":
             continue
         ops.append(context[2])
     assert ops[0][0] == "create_table"

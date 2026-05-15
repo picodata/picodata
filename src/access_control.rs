@@ -1151,6 +1151,7 @@ mod tests {
                     tuple: TupleBuffer::from(Tuple::new(&(1,)).unwrap()),
                     initiator,
                     conflict_strategy: ConflictStrategy::DoFail,
+                    cas: None,
                 })
             };
 
