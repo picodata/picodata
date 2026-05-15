@@ -1125,3 +1125,109 @@ instance:
                 assert False, f"Expected 404 for {endpoint}, got {response.status}"
         except HTTPError as e:
             assert e.code == 404, f"Expected 404 for {endpoint}, got {e.code}"
+
+
+@pytest.mark.webui
+@pytest.mark.parametrize("auth_token", ["authorized", "unauthorized"], indirect=True)
+def test_instance_detail_api(instance: Instance, auth_token: Optional[str]):
+    """
+    Test GET /api/v1/instance/:uuid returns full instance info.
+
+    Verifies fields from _pico_instance, instance config, and box.info.replication.
+    """
+    http_listen = instance.http_listen
+
+    instance_info = instance.call(".proc_instance_info")
+    uuid = instance_info["uuid"]
+
+    url = f"http://{http_listen}/api/v1/instance/{uuid}"
+    with get_url(url, auth_token) as response:
+        assert response.status == 200
+        assert "application/json" in response.headers["Content-Type"]
+        body = json.load(response)
+
+    # Fields from _pico_instance
+    assert body["uuid"] == instance_info["uuid"]
+    assert body["name"] == instance_info["name"]
+    assert body["raftId"] == instance_info["raft_id"]
+    assert body["replicasetName"] == instance_info["replicaset_name"]
+    assert body["replicasetUuid"] == instance_info["replicaset_uuid"]
+    assert body["currentState"] == instance_info["current_state"]["variant"]
+    assert body["targetState"] == instance_info["target_state"]["variant"]
+    assert body["tier"] == instance_info["tier"]
+    assert body["picodataVersion"] == instance_info["picodata_version"]
+
+    # Config fields must be non-empty strings
+    assert body["instanceDir"]
+    assert body["backupDir"]
+    assert body["adminSocket"]
+    assert body["shareDir"]
+
+    # Log section
+    log = body["log"]
+    assert "level" in log
+    assert "format" in log
+
+    # Vinyl section
+    vinyl = body["vinyl"]
+    assert "memory" in vinyl
+    assert "cache" in vinyl
+    assert "bloomFpr" in vinyl
+
+    # Replication must be a JSON object or array
+    assert isinstance(body["replication"], dict)
+
+
+@pytest.mark.webui
+def test_instance_detail_api_not_found(instance: Instance):
+    """
+    Test GET /api/v1/instance/:uuid returns 404 for an unknown UUID.
+    """
+    http_listen = instance.http_listen
+    set_jwt_enabled(instance, False)
+
+    fake_uuid = "00000000-0000-0000-0000-000000000000"
+    url = f"http://{http_listen}/api/v1/instance/{fake_uuid}"
+
+    try:
+        with get_unauthorized(url) as response:
+            assert False, f"Expected 404 but got {response.status}"
+    except HTTPError as e:
+        assert e.code == 404
+        body = json.loads(e.read().decode())
+        assert body["error"] == "notFound"
+
+
+@pytest.mark.webui
+def test_instance_detail_api_rpc(cluster: Cluster):
+    """
+    Test GET /api/v1/instance/:uuid fetches data from a remote instance via RPC.
+
+    Queries i2's instance detail from i1's HTTP server.
+    """
+    i1, i2 = cluster.deploy(instance_count=2, enable_http=True)
+    http_listen = i1.http_listen
+
+    set_jwt_enabled(i1, False)
+
+    i2_info = i2.call(".proc_instance_info")
+    i2_uuid = i2_info["uuid"]
+
+    url = f"http://{http_listen}/api/v1/instance/{i2_uuid}"
+    with get_unauthorized(url) as response:
+        assert response.status == 200
+        body = json.load(response)
+
+    # Fields from _pico_instance for i2
+    assert body["uuid"] == i2_uuid
+    assert body["name"] == i2_info["name"]
+    assert body["raftId"] == i2_info["raft_id"]
+    assert body["replicasetName"] == i2_info["replicaset_name"]
+
+    # Config fields from i2
+    assert body["instanceDir"]
+    assert body["backupDir"]
+    assert body["adminSocket"]
+
+    # Replication info from i2's box.info
+    assert isinstance(body["replication"], dict)

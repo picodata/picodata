@@ -589,6 +589,28 @@ fn start_http_server(
         ))
     })?;
 
+    lua.exec_with(
+        r#"
+            local handler = ...
+            pico.httpd:route({method = 'GET', path = 'api/v1/instance/:uuid'}, function(req)
+                local auth_header = req.headers['authorization'] or ''
+                local uuid = req:stash('uuid') or ''
+                return handler(auth_header, uuid)
+            end)
+        "#,
+        tlua::Function::new(|auth_header: String, uuid: String| -> _ {
+            http_server::wrap_api_result(http_server::http_api_instance_detail_with_auth(
+                auth_header,
+                uuid,
+            ))
+        }),
+    )
+    .map_err(|err| {
+        Error::other(format!(
+            "failed to add route `/api/v1/instance/:uuid` to http server: {err}",
+        ))
+    })?;
+
     // Initialize all of the metrics here!
     let register_metrics = || {
         metrics::register_metrics(registry)?;

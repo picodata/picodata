@@ -851,8 +851,8 @@ pub fn proc_instance_health_status(uuid: SmolStr) -> Result<Option<HealthStatus>
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Upstream replication info for [ReplicationDetails].
-#[rustfmt::skip]
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
+#[serde(rename_all = "camelCase")]
 pub struct ReplicationUpstream {
     pub status: String,
     pub idle: f64,
@@ -861,8 +861,8 @@ pub struct ReplicationUpstream {
 }
 
 /// Downstream replication info for [ReplicationDetails].
-#[rustfmt::skip]
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
+#[serde(rename_all = "camelCase")]
 pub struct ReplicationDownstream {
     pub status: String,
     pub idle: Option<f64>,
@@ -871,8 +871,8 @@ pub struct ReplicationDownstream {
 }
 
 /// Per-replica entry from `box.info.replication`.
-#[rustfmt::skip]
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
+#[serde(rename_all = "camelCase")]
 pub struct ReplicationDetails {
     pub id: u64,
     pub uuid: String,
