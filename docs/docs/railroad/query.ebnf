@@ -46,6 +46,7 @@ expression  ::= ('NOT'* (
                     | lower
                     | pico_config_file_path
                     | pico_instance_dir
+                    | pico_instance_health_status
                     | pico_instance_name
                     | pico_instance_uuid
                     | pico_raft_leader_id
@@ -110,6 +111,7 @@ json_extract_path ::= 'JSON_EXTRACT_PATH' '(' expression ',' expression (',' exp
 instance_uuid    ::= 'INSTANCE_UUID' '(' ')'
 pico_config_file_path      ::= 'PICO_CONFIG_FILE_PATH' '(' text ')'
 pico_instance_dir     ::= 'PICO_INSTANCE_DIR' '(' text ')'
+pico_instance_health_status ::= 'PICO_INSTANCE_HEALTH_STATUS' '(' text ')'
 pico_instance_name    ::= 'PICO_INSTANCE_NAME' '(' text ')'
 pico_instance_uuid    ::= 'PICO_INSTANCE_UUID' '(' ')'
 pico_replicaset_name  ::= 'PICO_REPLICASET_NAME' '(' text ')'
@@ -250,7 +252,7 @@ create_table   ::= 'CREATE' 'UNLOGGED'? 'TABLE' ('IF' 'NOT' 'EXISTS')? table
                        column column_def_type ('NOT'? 'NULL')? ('PRIMARY' 'KEY')? (',' column column_def_type ('NOT'? 'NULL')? ('PRIMARY' 'KEY')?)*
                        (',' 'PRIMARY' 'KEY' '(' (bucket_id ',')? column (',' column)* ')')?
                    ')'
-                   ('USING' ('MEMTX' | 'VINYL' 
+                   ('USING' ('MEMTX' | 'VINYL'
                    ('WITH' '('
                      (
                          ('BLOOM_FPR' '=' decimal)

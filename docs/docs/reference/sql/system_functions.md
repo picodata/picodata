@@ -42,6 +42,28 @@ SELECT pico_instance_uuid();
 
 вернет значение [UUID] текущего инстанса.
 
+## PICO_INSTANCE_HEALTH_STATUS {: #pico_instance_health_status }
+
+Скалярная функция `pico_instance_health_status` позволяет получить
+сведения о состоянии и работоспособности инстанса в формате [JSON],
+предоставив текстовое значение его [UUID]. Является оберткой,
+предоставляющей доступ к HTTP-эндпоинту [`health/status`] из SQL.
+
+[JSON]: ../../reference/sql_types.md#json
+[`health/status`]: ../../admin/local_monitoring.md#instance_health_check
+
+**Синтаксис**
+
+![PICO_INSTANCE_HEALTH_STATUS](../../images/ebnf/pico_instance_health_status.svg)
+
+**Пример использования**
+
+```sql
+SELECT pico_instance_health_status(pico_instance_uuid());
+```
+
+вернет код состояния текущего инстанса.
+
 ## PICO_INSTANCE_NAME {: #pico_instance_name }
 
 Скалярная функция `pico_instance_name` позволяет узнать имя инстанса,
