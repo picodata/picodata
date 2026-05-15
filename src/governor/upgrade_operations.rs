@@ -120,6 +120,12 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("exec_script", InternalScript::InsertExperimentalShardingImplementationIntoPicoDbConfig.as_str()),
         ]
     ),
+    (
+        "26.2.2",
+        &[
+            ("proc_name", "proc_instance_details"),
+        ]
+    ),
 ];
 
 tarantool::define_str_enum! {

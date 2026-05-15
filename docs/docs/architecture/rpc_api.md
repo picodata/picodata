@@ -429,6 +429,58 @@ fn proc_get_vshard_config(tier_name) -> Result
 
 [тира]: ../overview/glossary.md#tier
 
+### .proc_instance_details {: #proc_instance_details }
+
+```rust
+fn proc_instance_details() -> InstanceDetails
+```
+
+Возвращает локальную информацию о текущем инстансе: параметры конфигурации
+и состояние репликации.
+
+Используется эндпоинтом `GET /api/v1/instance/:uuid` для
+получения данных с удаленных инстансов через RPC.
+
+Возвращаемое значение:
+
+- (MP_MAP `InstanceDetails`):
+    - `instance_dir`: (MP_STR) путь к рабочей директории инстанса
+    - `backup_dir`: (MP_STR) путь к директории резервных копий
+    - `admin_socket`: (MP_STR) путь к Unix-сокету администратора
+    - `share_dir`: (MP_STR) путь к директории с плагинами
+    - `audit`: (optional MP_STR) путь к файлу аудита
+    - `log`: (MP_MAP `LogDetails`) параметры журналирования:
+        - `level`: (optional MP_STR) уровень логирования
+        - `destination`: (optional MP_STR) назначение логов
+        - `format`: (optional MP_STR) формат логов
+    - `vinyl`: (MP_MAP `VinylDetails`) параметры движка Vinyl:
+        - `memory`: (optional MP_STR)
+        - `cache`: (optional MP_STR)
+        - `bloom_fpr`: (optional MP_FLOAT)
+        - `max_tuple_size`: (optional MP_STR)
+        - `page_size`: (optional MP_STR)
+        - `range_size`: (optional MP_STR)
+        - `run_count_per_level`: (optional MP_INT)
+        - `run_size_ratio`: (optional MP_FLOAT)
+        - `read_threads`: (optional MP_INT)
+        - `write_threads`: (optional MP_INT)
+        - `timeout`: (optional MP_FLOAT)
+    - `replication`: (MP_MAP) состояние репликации из `box.info.replication`,
+      ключ — числовой идентификатор реплики:
+        - `id`: (MP_UINT) идентификатор реплики
+        - `uuid`: (MP_STR) UUID реплики
+        - `lsn`: (MP_UINT) последний применённый LSN
+        - `upstream`: (optional MP_MAP `ReplicationUpstream`) состояние входящей репликации:
+            - `status`: (MP_STR)
+            - `idle`: (MP_FLOAT)
+            - `peer`: (optional MP_STR) адрес источника репликации
+            - `lag`: (MP_FLOAT)
+        - `downstream`: (optional MP_MAP `ReplicationDownstream`) состояние исходящей репликации:
+            - `status`: (MP_STR)
+            - `idle`: (optional MP_FLOAT)
+            - `vclock`: (optional MP_MAP) вектор часов реплики
+            - `lag`: (optional MP_FLOAT)
+
 ### .proc_instance_info {: #proc_instance_info }
 
 ```rust

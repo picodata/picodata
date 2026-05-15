@@ -5,7 +5,6 @@ use crate::instance::State;
 use crate::replicaset::ReplicasetName;
 use crate::sentinel::ActionKind;
 use crate::sentinel::FailStreakInfo;
-use crate::tlua;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::node;
@@ -21,6 +20,7 @@ use std::time::Duration;
 use tarantool::error::BoxError;
 use tarantool::fiber;
 use tarantool::proc;
+use tarantool::tlua::{self, Index as _};
 use tarantool::tuple::RawByteBuf;
 
 pub const PICODATA_VERSION: &'static str = std::env!("GIT_DESCRIBE");
@@ -844,4 +844,140 @@ pub fn proc_instance_health_status(uuid: SmolStr) -> Result<Option<HealthStatus>
         Err(Error::NoSuchInstance(_)) => Ok(None),
         Err(error) => Err(error),
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// .proc_instance_details
+////////////////////////////////////////////////////////////////////////////////
+
+/// Upstream replication info for [ReplicationDetails].
+#[rustfmt::skip]
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
+pub struct ReplicationUpstream {
+    pub status: String,
+    pub idle: f64,
+    pub peer: Option<String>,
+    pub lag: f64,
+}
+
+/// Downstream replication info for [ReplicationDetails].
+#[rustfmt::skip]
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
+pub struct ReplicationDownstream {
+    pub status: String,
+    pub idle: Option<f64>,
+    pub vclock: Option<HashMap<u64, u64>>,
+    pub lag: Option<f64>,
+}
+
+/// Per-replica entry from `box.info.replication`.
+#[rustfmt::skip]
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
+pub struct ReplicationDetails {
+    pub id: u64,
+    pub uuid: String,
+    pub lsn: u64,
+    pub upstream: Option<ReplicationUpstream>,
+    pub downstream: Option<ReplicationDownstream>,
+}
+
+/// Log configuration info for [InstanceDetails].
+#[derive(Clone, Debug, Default, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogDetails {
+    pub level: Option<String>,
+    pub destination: Option<String>,
+    pub format: Option<String>,
+}
+
+/// Vinyl configuration info for [InstanceDetails].
+#[derive(Clone, Debug, Default, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VinylDetails {
+    pub memory: Option<String>,
+    pub cache: Option<String>,
+    pub bloom_fpr: Option<f32>,
+    pub max_tuple_size: Option<String>,
+    pub page_size: Option<String>,
+    pub range_size: Option<String>,
+    pub run_count_per_level: Option<i32>,
+    pub run_size_ratio: Option<f32>,
+    pub read_threads: Option<i32>,
+    pub write_threads: Option<i32>,
+    pub timeout: Option<f32>,
+}
+
+impl LogDetails {
+    pub fn into_option(self) -> Option<Self> {
+        (self != Self::default()).then_some(self)
+    }
+}
+
+impl VinylDetails {
+    pub fn into_option(self) -> Option<Self> {
+        (self != Self::default()).then_some(self)
+    }
+}
+
+/// Instance-local info (config + box.info) returned from [proc_instance_details].
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
+pub struct InstanceDetails {
+    pub instance_dir: String,
+    pub backup_dir: String,
+    pub admin_socket: String,
+    pub share_dir: String,
+    pub audit: Option<String>,
+    pub log: LogDetails,
+    pub vinyl: VinylDetails,
+    pub replication: HashMap<u64, ReplicationDetails>,
+}
+
+impl tarantool::tuple::Encode for InstanceDetails {}
+
+fn get_replication() -> Result<HashMap<u64, ReplicationDetails>, tlua::LuaError> {
+    let lua = tarantool::lua_state();
+    let the_box: tlua::LuaTable<_> = lua.get("box").ok_or_else(tlua::WrongType::default)?;
+    let info: tlua::Indexable<_> = the_box.try_get("info")?;
+    info.try_get("replication")
+}
+
+pub fn impl_proc_instance_details() -> Result<InstanceDetails, Error> {
+    let picodata_config = PicodataConfig::get();
+    let instance = &picodata_config.instance;
+    let vinyl = &instance.vinyl;
+    let log = &instance.log;
+
+    let replication = get_replication()?;
+
+    Ok(InstanceDetails {
+        instance_dir: instance.instance_dir().display().to_string(),
+        backup_dir: instance.backup_dir().display().to_string(),
+        admin_socket: instance.admin_socket().display().to_string(),
+        share_dir: instance.share_dir().display().to_string(),
+        audit: instance.audit.clone(),
+        log: LogDetails {
+            level: log.level.map(|l| l.to_string()),
+            destination: log.destination.clone(),
+            format: log.format.map(|f| f.to_string()),
+        },
+        vinyl: VinylDetails {
+            memory: vinyl.memory.as_ref().map(|b| b.to_string()),
+            cache: vinyl.cache.as_ref().map(|b| b.to_string()),
+            bloom_fpr: vinyl.bloom_fpr,
+            max_tuple_size: vinyl.max_tuple_size.as_ref().map(|b| b.to_string()),
+            page_size: vinyl.page_size.as_ref().map(|b| b.to_string()),
+            range_size: vinyl.range_size.as_ref().map(|b| b.to_string()),
+            run_count_per_level: vinyl.run_count_per_level,
+            run_size_ratio: vinyl.run_size_ratio,
+            read_threads: vinyl.read_threads,
+            write_threads: vinyl.write_threads,
+            timeout: vinyl.timeout,
+        },
+        replication,
+    })
+}
+
+#[proc]
+pub fn proc_instance_details() -> Result<InstanceDetails, Error> {
+    impl_proc_instance_details()
 }

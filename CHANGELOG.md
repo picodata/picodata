@@ -164,6 +164,13 @@ with the `YY.MINOR.MICRO` scheme.
   Reexport in `internal` module is removed following a major release.
 - Deprecated `RegionBuffer::get` is removed following a major release.
 
+### RPC API
+
+- Added `.proc_instance_details` RPC call that returns instance-local information:
+  configuration fields (`instance_dir`, `backup_dir`, `admin_socket`, `share_dir`,
+  `audit`, `log`, `vinyl`) and per-replica replication state from `box.info.replication`.
+  Used by the new `GET /api/v1/instance/:uuid` HTTP endpoint.
+
 ## [26.1.1] - 2026-03-24
 
 ### Features
