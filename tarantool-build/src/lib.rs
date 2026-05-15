@@ -1,7 +1,7 @@
 use build_rs_helpers::{
     cargo,
     cmake::{self, CmakeVariables},
-    is_asan_enabled, pkg_config, rustc, CommandExt,
+    pkg_config, rustc, rustflags, CommandExt,
 };
 use std::{path::PathBuf, process::Command};
 
@@ -168,10 +168,36 @@ impl TarantoolBuildRoot {
                 "-DBUILD_DOC=FALSE".to_string(),
             ];
 
+            let clang_toolchain_env = [("CC", "clang"), ("CXX", "clang++")];
+
+            if rustflags::have_code_coverage() {
+                cargo::warning("Code coverage has been enabled");
+                configure_cmd.envs(clang_toolchain_env);
+
+                let mut flags = vec![
+                    "-fprofile-instr-generate".to_owned(),
+                    "-fcoverage-mapping".to_owned(),
+                ];
+                // TODO: for some reason, it doesn't work properly yet.
+                if let Some((from, to)) = rustflags::have_remap_path_prefix() {
+                    flags.push(format!(
+                        "-fcoverage-prefix-map={from}={to}",
+                        from = from.display(),
+                        to = to.display(),
+                    ));
+                }
+                let flags = flags.join(" ");
+
+                common_args.extend([
+                    format!("-DCMAKE_C_FLAGS={flags}"),
+                    format!("-DCMAKE_CXX_FLAGS={flags}"),
+                ]);
+            }
+
             // Tarantool won't let us use gcc for an asan build.
-            if is_asan_enabled() {
+            if rustflags::have_asan() {
                 cargo::warning("ASan has been enabled, this may affect the performance");
-                configure_cmd.envs([("CC", "clang"), ("CXX", "clang++")]);
+                configure_cmd.envs(clang_toolchain_env);
                 common_args.push("-DENABLE_ASAN=ON".to_string());
             }
 

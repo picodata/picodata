@@ -1,4 +1,4 @@
-use build_rs_helpers::{cargo, is_asan_enabled, rustc, CommandExt};
+use build_rs_helpers::{cargo, rustc, rustflags, CommandExt};
 use std::{
     collections::{HashMap, HashSet},
     ffi::OsString,
@@ -146,7 +146,7 @@ fn export_public_symbols() {
     // Firstly, for ASan integration in tarantool/src/lua/utils.lua.
     // Secondly, so that plugins (cdylibs) built with ASan
     // could resolve them from the main binary.
-    if is_asan_enabled() {
+    if rustflags::have_asan() {
         symbols.insert("__asan_*".into());
     }
 
