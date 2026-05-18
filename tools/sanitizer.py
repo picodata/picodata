@@ -16,6 +16,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
+DEFAULT_TIMEOUT_SCALE_FACTOR = 5.0
+
+
 def fmt_args(args: List[Any]) -> str:
     """Format command args for display, truncating if too long."""
     res = " ".join(str(x) for x in args)
@@ -185,7 +188,7 @@ class State:
         cwd: Path,
         output_dir: Optional[Path],
         fail_fast: bool,
-        timeout_scale_factor: float = 2.5,
+        timeout_scale_factor: float = DEFAULT_TIMEOUT_SCALE_FACTOR,
     ):
         # Warn about impactful environment variables
         for key in ("CARGO_TARGET_DIR", "CARGO_BUILD_TARGET_DIR", "CARGO_BUILD_BUILD_DIR"):
@@ -214,7 +217,7 @@ class State:
         env["SKIP_CARGO_BUILD"] = "1"
         print("warning: this script forcefully sets SKIP_CARGO_BUILD=1")
 
-        # Scale test timeouts for ASAN overhead (default 3x)
+        # Scale test timeouts for ASAN overhead
         env["TIMEOUT_SCALE_FACTOR"] = str(self.timeout_scale_factor)
 
         # Put artifacts in target/asan-dev/<triple>/ to separate from regular builds
@@ -390,8 +393,8 @@ Examples:
     parser.add_argument(
         "--timeout-scale-factor",
         type=float,
-        default=3.0,
-        help="Multiply test timeouts by this factor (default: 3 for ASan overhead)",
+        default=DEFAULT_TIMEOUT_SCALE_FACTOR,
+        help="Multiply test timeouts by this factor (default: {DEFAULT_TIMEOUT_SCALE_FACTOR} for ASan overhead)",
     )
 
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
