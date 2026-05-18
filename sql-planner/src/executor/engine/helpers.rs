@@ -1,13 +1,21 @@
 use crate::{
-    backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan},
-    executor::preemption::Scheduler,
+    backend::sql::{
+        ir::block_pattern_key,
+        tree::{OrderedSyntaxNodes, SyntaxPlan},
+    },
+    executor::{
+        lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY},
+        preemption::Scheduler,
+    },
     ir::{
         api::children::Children,
-        node::{block::BlockOwned, expression::MutExpression, BlockStatement},
+        node::{block::BlockOwned, expression::MutExpression, BlockEntries, BlockStatement},
         tree::Snapshot,
     },
 };
 use ahash::AHashMap;
+use std::cell::RefCell;
+use std::sync::Arc;
 
 use crate::{
     executor::vtable::vtable_indexed_column_name,
@@ -691,6 +699,60 @@ fn dml_get_motion_child(
     }
 }
 
+type BlockPatternCache = LRUCache<u64, Arc<Vec<BlockStatement<String>>>>;
+
+#[derive(Clone, Copy)]
+pub struct BlockPatternCacheHooks {
+    pub on_hit: fn(),
+    pub on_miss: fn(),
+    pub on_added: fn(),
+    pub on_evicted: fn(),
+}
+
+static BLOCK_PATTERN_CACHE_HOOKS: OnceLock<BlockPatternCacheHooks> = OnceLock::new();
+
+pub fn set_block_pattern_cache_hooks(hooks: BlockPatternCacheHooks) {
+    let _ = BLOCK_PATTERN_CACHE_HOOKS.set(hooks);
+}
+
+#[inline(always)]
+fn fire_block_pattern_cache_hook(pick: fn(&BlockPatternCacheHooks) -> fn()) {
+    if let Some(hooks) = BLOCK_PATTERN_CACHE_HOOKS.get() {
+        pick(hooks)();
+    }
+}
+
+fn block_pattern_evict_fn() -> EvictFn<u64, Arc<Vec<BlockStatement<String>>>> {
+    Box::new(|_key, _value| {
+        fire_block_pattern_cache_hook(|h| h.on_evicted);
+        Ok(())
+    })
+}
+
+thread_local! {
+    static BLOCK_PATTERN_CACHE: RefCell<BlockPatternCache> = RefCell::new(
+        LRUCache::new(DEFAULT_CAPACITY, Some(block_pattern_evict_fn()))
+            .expect("non-zero capacity"),
+    );
+}
+
+/// Compute the params of a single block query without rendering its SQL.
+fn generate_params_for_block_query(
+    plan: &mut ExecutionPlan,
+    query_id: NodeId,
+    bucket_id: Option<u64>,
+) -> Result<Vec<Value>, SbroadError> {
+    let sql_params = plan.local_sql_params(query_id, Snapshot::Oldest)?;
+    let (_, mut params) = sql_params.into_parts();
+    if let Relational::Insert(_) = plan.get_ir_plan().get_relation_node(query_id)? {
+        let bucket_id = bucket_id.ok_or_else(|| {
+            SbroadError::Other("INSERT in transaction requires a known target bucket".into())
+        })?;
+        params.push(Value::Integer(bucket_id as i64));
+    }
+    Ok(params)
+}
+
 /// Generate pattern with params for block query.
 /// Note that this function can generate UPDATE queries,
 /// not sure if we should support it elsewhere.
@@ -1067,22 +1129,63 @@ pub fn dispatch_impl<'p>(
         let unused_lets = block.get_unused_lets();
 
         let use_colon_params = !plan.get_ir_plan().is_raw_explain();
-        let mut statements: Vec<BlockStatement<String>> =
-            Vec::with_capacity(block.statements.len());
+        let cache_key: Option<u64> = if use_colon_params {
+            Some(block_pattern_key(plan, &block.statements)?)
+        } else {
+            None
+        };
+        let cached_patterns: Option<(u64, Arc<Vec<BlockStatement<String>>>)> = match cache_key {
+            Some(key) => {
+                let cached = BLOCK_PATTERN_CACHE.with(|c| -> Result<_, SbroadError> {
+                    Ok(c.borrow_mut().get(&key)?.cloned())
+                })?;
+                if cached.is_some() {
+                    fire_block_pattern_cache_hook(|h| h.on_hit);
+                } else {
+                    fire_block_pattern_cache_hook(|h| h.on_miss);
+                }
+                cached.map(|c| (key, c))
+            }
+            None => None,
+        };
+
         let mut params: Vec<Vec<Value>> = Vec::new();
-        for stmt in block.statements {
-            let mapped = stmt.try_map(|id| -> Result<String, SbroadError> {
-                let (pattern, stmt_params) = generate_pattern_with_params_for_block(
-                    plan,
-                    id,
-                    block_bucket_id,
-                    use_colon_params,
-                )?;
-                params.push(stmt_params);
-                Ok(pattern)
-            })?;
-            statements.push(mapped);
-        }
+        let statements: Vec<BlockStatement<String>> = if let Some((_, cached)) = &cached_patterns {
+            for entry in BlockEntries::new(&block.statements) {
+                entry.with(|id| {
+                    let query_params = generate_params_for_block_query(plan, *id, block_bucket_id)?;
+                    params.push(query_params);
+                    Ok(())
+                })?
+            }
+            (**cached).clone()
+        } else {
+            let mut statements = Vec::with_capacity(block.statements.len());
+            // FIXME: add error location tracing,
+            // (e.g. Statement 1 (RETURN QUERY): some shit happened)
+            for stmt in block.statements {
+                let mapped = stmt.try_map(|id| -> Result<String, SbroadError> {
+                    let (pattern, stmt_params) = generate_pattern_with_params_for_block(
+                        plan,
+                        id,
+                        block_bucket_id,
+                        use_colon_params,
+                    )?;
+                    params.push(stmt_params);
+                    Ok(pattern)
+                })?;
+                statements.push(mapped);
+            }
+            if let Some(key) = cache_key {
+                let cached = Arc::new(statements.clone());
+                BLOCK_PATTERN_CACHE.with(|c| -> Result<(), SbroadError> {
+                    c.borrow_mut().put(key, cached)?;
+                    Ok(())
+                })?;
+                fire_block_pattern_cache_hook(|h| h.on_added);
+            }
+            statements
+        };
 
         let vdbe_max_steps = plan.get_ir_plan().effective_options.sql_vdbe_opcode_max as _;
         let table_versions = std::mem::take(&mut plan.get_mut_ir_plan().table_version_map);

@@ -405,6 +405,53 @@ def test_storage_block_vdbe_cache_metrics(instance: Instance):
     assert metric_total(evicted) > base_evicted
 
 
+def test_router_block_pattern_cache_metrics(instance: Instance):
+    instance.sql("CREATE TABLE bc (pk INT PRIMARY KEY, a INT)")
+    instance.sql("INSERT INTO bc VALUES (1, 10)")
+
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_router_block_pattern_cache_hits", 0)
+    check_metric(metrics, "pico_router_block_pattern_cache_misses", 0)
+    check_metric(metrics, "pico_router_block_pattern_cache_statements_added", 0)
+    check_metric(metrics, "pico_router_block_pattern_cache_statements_evicted", 0)
+
+    # First block execution: miss + added.
+    instance.sql("DO $$ BEGIN RETURN QUERY SELECT a FROM bc WHERE pk = 1; END $$;")
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_router_block_pattern_cache_misses", 1)
+    check_metric(metrics, "pico_router_block_pattern_cache_statements_added", 1)
+    check_metric(metrics, "pico_router_block_pattern_cache_hits", 0)
+
+    # Re-running the same block hits the cache.
+    instance.sql("DO $$ BEGIN RETURN QUERY SELECT a FROM bc WHERE pk = 1; END $$;")
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_router_block_pattern_cache_hits", 1)
+    check_metric(metrics, "pico_router_block_pattern_cache_misses", 1)
+    check_metric(metrics, "pico_router_block_pattern_cache_statements_added", 1)
+
+    # A structurally different block misses again.
+    instance.sql("DO $$ BEGIN RETURN QUERY SELECT a FROM bc WHERE pk = 1 LIMIT 1; END $$;")
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_router_block_pattern_cache_misses", 2)
+    check_metric(metrics, "pico_router_block_pattern_cache_statements_added", 2)
+
+    # Fill the cache up to its default capacity (50) and then overflow it.
+    def select_n_cols(n: int) -> str:
+        cols = ", ".join(f"a AS c{j}" for j in range(n))
+        return f"DO $$ BEGIN RETURN QUERY SELECT {cols} FROM bc WHERE pk = 1; END $$;"
+
+    for i in range(48):
+        instance.sql(select_n_cols(i + 2))
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_router_block_pattern_cache_statements_added", 50)
+    check_metric(metrics, "pico_router_block_pattern_cache_statements_evicted", 0)
+
+    instance.sql(select_n_cols(50))
+    metrics = instance.get_metrics()
+    check_metric(metrics, "pico_router_block_pattern_cache_statements_added", 51)
+    check_metric(metrics, "pico_router_block_pattern_cache_statements_evicted", 1)
+
+
 @pytest.mark.webui
 def test_temp_table_lock_metrics(instance: Instance) -> None:
     instance.sql("CREATE TABLE temp_metrics (id INTEGER PRIMARY KEY, name TEXT)")

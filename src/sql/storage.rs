@@ -11,8 +11,9 @@ use crate::traft::node;
 use serde::{Deserialize, Serialize};
 use sql::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use sql::errors::{Action, Entity, SbroadError};
-use sql::executor::engine::helpers::table_name;
-use sql::executor::engine::helpers::vshard::get_random_bucket;
+use sql::executor::engine::helpers::{
+    set_block_pattern_cache_hooks, table_name, vshard::get_random_bucket, BlockPatternCacheHooks,
+};
 use sql::executor::engine::{CachedStmt, CachedStmtRef, QueryCache, StorageCache, Vshard};
 use sql::executor::ir::ExecutionPlan;
 use sql::executor::lru::{Cache, EvictFn, LRUCache};
@@ -27,8 +28,10 @@ use std::time::Duration;
 use std::vec::IntoIter;
 
 use crate::metrics::{
-    record_storage_cache_statement_added, record_storage_cache_statement_evicted,
-    report_storage_cache_hit, report_storage_cache_miss,
+    record_router_block_pattern_cache_hit, record_router_block_pattern_cache_miss,
+    record_router_block_pattern_cache_statement_added,
+    record_router_block_pattern_cache_statement_evicted, record_storage_cache_statement_added,
+    record_storage_cache_statement_evicted, report_storage_cache_hit, report_storage_cache_miss,
 };
 use smol_str::{format_smolstr, SmolStr};
 use sql::executor::vdbe::SqlStmt;
@@ -161,6 +164,13 @@ pub fn init_statement_cache(count_max: usize, size_max: usize) {
     });
 
     unsafe { stmt_cache_bump_temp_cb = Some(stmt_cache_bump_temp) };
+
+    set_block_pattern_cache_hooks(BlockPatternCacheHooks {
+        on_hit: record_router_block_pattern_cache_hit,
+        on_miss: record_router_block_pattern_cache_miss,
+        on_added: record_router_block_pattern_cache_statement_added,
+        on_evicted: record_router_block_pattern_cache_statement_evicted,
+    });
 }
 
 /// Try to finalize plans retired under the cache mutex.

@@ -12,7 +12,7 @@ use options::{OptionParamValue, OptionSpec, Options};
 use relation::Table;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
-use std::cell::{RefCell, RefMut};
+use std::cell::{OnceCell, RefCell, RefMut};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::slice::{Iter, IterMut};
@@ -723,6 +723,10 @@ pub struct Plan {
     /// Derived cache for reusable structural subtree hashes.
     #[serde(skip)]
     pub(crate) subtree_hash_cache: SubtreeHashCache,
+    /// Memoized hash identifying the SQL pattern of a transactional block.
+    /// Populated lazily on first call to `block_pattern_key`.
+    #[serde(skip)]
+    pub(crate) block_pattern_hash: BlockPatternHashCache,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -752,6 +756,21 @@ impl SubtreeHashCache {
 
     pub(crate) fn insert(&self, key: SubtreeViewKey, hash: SubtreeHash) {
         self.inner.borrow_mut().insert(key, hash);
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct BlockPatternHashCache {
+    inner: Rc<OnceCell<u64>>,
+}
+
+impl BlockPatternHashCache {
+    pub(crate) fn get(&self) -> Option<u64> {
+        self.inner.get().copied()
+    }
+
+    pub(crate) fn set(&self, hash: u64) {
+        let _ = self.inner.set(hash);
     }
 }
 
@@ -930,6 +949,7 @@ impl Plan {
             context: Some(RefCell::new(BuildContext::default())),
             tier: None,
             subtree_hash_cache: SubtreeHashCache::default(),
+            block_pattern_hash: BlockPatternHashCache::default(),
         }
     }
 

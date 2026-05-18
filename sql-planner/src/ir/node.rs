@@ -1440,7 +1440,7 @@ impl<T> BlockStatement<T> {
 /// error messages that point at the offending statement.
 ///
 /// Top-level statements and IF body items are reported with 1-based indices.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash)]
 pub enum StatementLocation {
     /// `statement N (KIND)` for top-level RETURN QUERY / Query / LET.
     TopLevel { stmt_idx: usize, kind: &'static str },
@@ -1482,6 +1482,18 @@ impl<'a, T> BlockEntry<'a, T> {
         F: FnOnce(&T) -> Result<R, SbroadError>,
     {
         f(self.query).map_err(|e| self.location.wrap_error(e))
+    }
+
+    /// Run `f` against the inner query with its location,
+    /// prefixing any error with the location.
+    ///
+    /// # Errors
+    /// Returns the closure's error, location-prefixed.
+    pub fn with_location<F, R>(&self, f: F) -> Result<R, SbroadError>
+    where
+        F: FnOnce(&T, &StatementLocation) -> Result<R, SbroadError>,
+    {
+        f(self.query, &self.location).map_err(|e| self.location.wrap_error(e))
     }
 }
 

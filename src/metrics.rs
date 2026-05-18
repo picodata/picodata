@@ -311,6 +311,52 @@ pub static ROUTER_CACHE_MISSES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(||
     .unwrap()
 });
 
+pub static ROUTER_BLOCK_PATTERN_CACHE_STATEMENTS_ADDED_TOTAL: LazyLock<IntCounterVec> =
+    LazyLock::new(|| {
+        IntCounterVec::new(
+            prometheus::Opts::new(
+                "pico_router_block_pattern_cache_statements_added_total",
+                "Total number of statements added to the router transactional block pattern cache since startup",
+            ),
+            &["tier", "replicaset"],
+        )
+        .unwrap()
+    });
+
+pub static ROUTER_BLOCK_PATTERN_CACHE_STATEMENTS_EVICTED_TOTAL: LazyLock<IntCounterVec> =
+    LazyLock::new(|| {
+        IntCounterVec::new(
+            prometheus::Opts::new(
+                "pico_router_block_pattern_cache_statements_evicted_total",
+                "Total number of statements evicted from the router transactional block pattern cache since startup",
+            ),
+            &["tier", "replicaset"],
+        )
+        .unwrap()
+    });
+
+pub static ROUTER_BLOCK_PATTERN_CACHE_HITS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    IntCounterVec::new(
+        prometheus::Opts::new(
+            "pico_router_block_pattern_cache_hits_total",
+            "Total number of router transactional block pattern cache hits since startup",
+        ),
+        &["tier", "replicaset"],
+    )
+    .unwrap()
+});
+
+pub static ROUTER_BLOCK_PATTERN_CACHE_MISSES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    IntCounterVec::new(
+        prometheus::Opts::new(
+            "pico_router_block_pattern_cache_misses_total",
+            "Total number of router transactional block pattern cache misses since startup",
+        ),
+        &["tier", "replicaset"],
+    )
+    .unwrap()
+});
+
 pub static STORAGE_CACHE_STATEMENTS_ADDED_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     IntCounterVec::new(
         prometheus::Opts::new(
@@ -470,6 +516,35 @@ pub fn record_router_cache_statement_added() {
 
 pub fn record_router_cache_statement_evicted() {
     ROUTER_CACHE_STATEMENTS_EVICTED_TOTAL
+        .with_label_values(&[my_tier(), my_replicaset()])
+        .inc();
+}
+
+pub fn record_router_block_pattern_cache_hit() {
+    ROUTER_BLOCK_PATTERN_CACHE_HITS_TOTAL
+        .with_label_values(&[my_tier(), my_replicaset()])
+        .inc();
+}
+
+pub fn record_router_block_pattern_cache_miss() {
+    ROUTER_BLOCK_PATTERN_CACHE_MISSES_TOTAL
+        .with_label_values(&[my_tier(), my_replicaset()])
+        .inc();
+}
+
+pub fn record_router_block_pattern_cache_statement_added() {
+    let tier = my_tier();
+    let replicaset = my_replicaset();
+    ROUTER_BLOCK_PATTERN_CACHE_STATEMENTS_ADDED_TOTAL
+        .with_label_values(&[tier, replicaset])
+        .inc();
+    ROUTER_BLOCK_PATTERN_CACHE_STATEMENTS_EVICTED_TOTAL
+        .with_label_values(&[tier, replicaset])
+        .inc_by(0);
+}
+
+pub fn record_router_block_pattern_cache_statement_evicted() {
+    ROUTER_BLOCK_PATTERN_CACHE_STATEMENTS_EVICTED_TOTAL
         .with_label_values(&[my_tier(), my_replicaset()])
         .inc();
 }
@@ -681,6 +756,14 @@ pub fn register_metrics(registry: &prometheus::Registry) -> prometheus::Result<(
     registry.register(Box::new(ROUTER_CACHE_STATEMENTS_EVICTED_TOTAL.clone()))?;
     registry.register(Box::new(ROUTER_CACHE_HITS_TOTAL.clone()))?;
     registry.register(Box::new(ROUTER_CACHE_MISSES_TOTAL.clone()))?;
+    registry.register(Box::new(
+        ROUTER_BLOCK_PATTERN_CACHE_STATEMENTS_ADDED_TOTAL.clone(),
+    ))?;
+    registry.register(Box::new(
+        ROUTER_BLOCK_PATTERN_CACHE_STATEMENTS_EVICTED_TOTAL.clone(),
+    ))?;
+    registry.register(Box::new(ROUTER_BLOCK_PATTERN_CACHE_HITS_TOTAL.clone()))?;
+    registry.register(Box::new(ROUTER_BLOCK_PATTERN_CACHE_MISSES_TOTAL.clone()))?;
     registry.register(Box::new(STORAGE_CACHE_HITS_TOTAL.clone()))?;
     registry.register(Box::new(STORAGE_CACHE_MISSES_TOTAL.clone()))?;
     registry.register(Box::new(SQL_TEMP_TABLE_LEASES_TOTAL.clone()))?;

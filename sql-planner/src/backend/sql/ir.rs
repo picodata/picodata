@@ -3,9 +3,9 @@ use crate::executor::protocol::VTablesMeta;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{RelOwned, Relational};
 use crate::ir::node::{
-    Alias, BoundType, Constant, Delete, FrameType, Join, Motion, Node, NodeId, Parameter,
-    Projection, Reference, ReferenceTarget, ScalarFunction, ScanRelation, SubQueryReference,
-    Update,
+    Alias, BlockEntries, BlockStatement, BoundType, Constant, Delete, FrameType, Join, Motion,
+    Node, NodeId, Parameter, Projection, Reference, ReferenceTarget, ScalarFunction, ScanRelation,
+    SubQueryReference, Update,
 };
 use crate::ir::relation::Column;
 use crate::ir::types::DerivedType;
@@ -568,6 +568,33 @@ fn hash_plan_id_part<T: Serialize + ?Sized>(
             format_smolstr!("{e}"),
         )
     })
+}
+
+/// Key for the router-side cache of rendered block SQL patterns.
+///
+/// Each plan caches its block hash in a `OnceCell` so repeated calls within
+/// the same plan instance are basically free.
+pub fn block_pattern_key(
+    exec_plan: &ExecutionPlan,
+    statements: &[BlockStatement<NodeId>],
+) -> Result<u64, SbroadError> {
+    let cache = &exec_plan.get_ir_plan().block_pattern_hash;
+    if let Some(hash) = cache.get() {
+        return Ok(hash);
+    }
+    let mut hasher = XxHash3_64::new();
+    for entry in BlockEntries::new(statements) {
+        entry.with_location(|id, loc| {
+            let loc = format_smolstr!("{}", &loc);
+            hasher.write(loc.as_bytes());
+            let sub = SubtreeViewBuilder::new(exec_plan, *id)?.subtree_hash()?;
+            hasher.write_u64(sub.hash);
+            Ok(())
+        })?;
+    }
+    let hash = hasher.finish();
+    cache.set(hash);
+    Ok(hash)
 }
 
 fn to_subtree_node_id(

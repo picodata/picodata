@@ -1169,3 +1169,61 @@ BEGIN
 END $$;
 -- ERROR:
 statement 1 \(IF body, query 1\) and statement 1 \(IF body, query 2\): different buckets: \[1934\] and \[1410\]
+
+-- TEST: cache-init
+-- SQL:
+DROP TABLE IF EXISTS tc;
+CREATE TABLE tc (pk INT PRIMARY KEY, a INT);
+INSERT INTO tc VALUES (1, 10), (2, 20);
+
+-- TEST: cache-dql-first
+-- SQL:
+DO $$ BEGIN RETURN QUERY SELECT a FROM tc WHERE pk = 1; END $$;
+-- EXPECTED:
+10,
+
+-- TEST: cache-dql-second
+-- SQL:
+DO $$ BEGIN RETURN QUERY SELECT a FROM tc WHERE pk = 1; END $$;
+-- EXPECTED:
+10,
+
+-- TEST: cache-dml-first
+-- SQL:
+DO $$ BEGIN UPDATE tc SET a = a + 1 WHERE pk = 2; END $$;
+
+-- TEST: cache-dml-second
+-- SQL:
+DO $$ BEGIN UPDATE tc SET a = a + 1 WHERE pk = 2; END $$;
+
+-- TEST: cache-dml-check
+-- SQL:
+SELECT a FROM tc WHERE pk = 2;
+-- EXPECTED:
+22,
+
+-- TEST: cache-let-and-if-first
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM tc WHERE pk = 1);
+  IF v > 0 THEN
+    UPDATE tc SET a = a + v WHERE pk = 1;
+  END IF;
+END $$;
+
+-- TEST: cache-let-and-if-second
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM tc WHERE pk = 1);
+  IF v > 0 THEN
+    UPDATE tc SET a = a + v WHERE pk = 1;
+  END IF;
+END $$;
+
+-- TEST: cache-let-and-if-check
+-- SQL:
+SELECT a FROM tc WHERE pk = 1;
+-- EXPECTED:
+40,
