@@ -1,16 +1,16 @@
-from typing import Dict, Callable
+from typing import Callable, Dict
 
-from conftest import (
-    Cluster,
-    find_routed_pk,
-    Instance,
-    TarantoolError,
-)
+import psycopg
 import pytest
 import requests  # type: ignore
+from conftest import (
+    Cluster,
+    Instance,
+    TarantoolError,
+    find_routed_pk,
+)
 from prometheus_client import Metric
 from prometheus_client.samples import Sample
-import psycopg
 
 
 @pytest.mark.webui
@@ -350,6 +350,59 @@ def test_router_and_storage_cache_metrics(instance: Instance):
 
     # Still can do some queries
     instance.sql("SELECT * FROM t JOIN t t2 on t.a = t2.a")
+
+
+@pytest.mark.webui
+def test_storage_block_vdbe_cache_metrics(instance: Instance):
+    instance.sql("CREATE TABLE bc (pk INT PRIMARY KEY, a INT)")
+    instance.sql("INSERT INTO bc VALUES (1, 10)")
+    instance.sql("INSERT INTO bc VALUES (2, 20)")
+
+    def metric_total(name: str, **labels) -> float:
+        family = instance.get_metrics().get(name)
+        if not family:
+            return 0
+        return sum(s.value for s in family.samples if all(s.labels.get(lbl) == val for lbl, val in labels.items()))
+
+    # The storage VDBE cache is shared with regular queries, so the DDL/DML
+    # above already populate it. Track block caching as a delta from this base.
+    added = "pico_storage_cache_statements_added"
+    base = metric_total(added)
+
+    def hits():
+        return metric_total("pico_storage_cache_hits", query_type="txn")
+
+    def misses():
+        return metric_total("pico_storage_cache_misses", query_type="txn")
+
+    # First block execution misses, compiles and caches the block VDBE.
+    instance.sql("DO $$ BEGIN RETURN QUERY SELECT a FROM bc WHERE pk = 1; END $$;")
+    assert metric_total(added) == base + 1
+    assert (hits(), misses()) == (0, 1)
+
+    # Re-running the identical block is served from the cache: a hit, nothing added.
+    instance.sql("DO $$ BEGIN RETURN QUERY SELECT a FROM bc WHERE pk = 1; END $$;")
+    assert metric_total(added) == base + 1
+    assert (hits(), misses()) == (1, 1)
+
+    # Only the parameter value differs: the rendered pattern (and VDBE) is reused.
+    instance.sql("DO $$ BEGIN RETURN QUERY SELECT a FROM bc WHERE pk = 2; END $$;")
+    assert metric_total(added) == base + 1
+    assert (hits(), misses()) == (2, 1)
+
+    # A structurally different block misses and is cached under a separate key.
+    instance.sql("DO $$ BEGIN RETURN QUERY SELECT a FROM bc WHERE pk = 1 LIMIT 1; END $$;")
+    assert metric_total(added) == base + 2
+    assert (hits(), misses()) == (2, 2)
+
+    # Shrinking the cache below its current size evicts entries.
+    evicted = "pico_storage_cache_statements_evicted"
+    base_evicted = metric_total(evicted)
+    instance.sql("ALTER SYSTEM SET sql_storage_cache_count_max = 1")
+    # With capacity 1, caching another distinct block evicts the previous entry.
+    instance.sql("DO $$ BEGIN RETURN QUERY SELECT a FROM bc WHERE pk = 1; END $$;")
+    instance.sql("DO $$ BEGIN RETURN QUERY SELECT a FROM bc WHERE pk = 1 LIMIT 1; END $$;")
+    assert metric_total(evicted) > base_evicted
 
 
 @pytest.mark.webui

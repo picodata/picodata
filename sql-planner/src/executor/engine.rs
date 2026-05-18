@@ -476,6 +476,13 @@ pub struct BlockExecData {
     pub explain_options: ExplainOptions,
 }
 
+/// Key for the storage-side cache of assembled block VDBEs.
+pub fn block_vdbe_key(stmts: &[BlockStatement<String>]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    stmts.hash(&mut hasher);
+    hasher.finish()
+}
+
 pub trait Vshard {
     /// Execute a query on a given buckets.
     ///

@@ -55,7 +55,7 @@ use crate::sql::lock::{
 };
 use crate::tlog;
 use crate::vdbe::txn::compile_transactional_block;
-use sql::executor::engine::BlockExecData;
+use sql::executor::engine::{block_vdbe_key, BlockExecData};
 use sql::executor::result::MetadataColumn;
 use tarantool::fiber::Mutex;
 use tarantool::msgpack;
@@ -829,9 +829,29 @@ impl StorageRuntime {
     ) -> Result<(), SbroadError> {
         self.validate_block_schema(&block)?;
 
+        let key = block_vdbe_key(&block.statements);
         let merged: Vec<&Value> = block.params.iter().flat_map(|p| p.iter()).collect();
-        let mut stmt = compile_transactional_block(&block.statements)
-            .map_err(|e| SbroadError::FailedTo(Action::Build, Some(Entity::Query), e.into()))?;
+
+        let maybe_cached = { self.cache.lock().get(&key)? };
+        let stmt_rc = if let Some(cached) = maybe_cached {
+            report_storage_cache_hit("txn", "local");
+            cached.stmt
+        } else {
+            report_storage_cache_miss("txn", "local", "true");
+            let stmt = compile_transactional_block(&block.statements)
+                .map_err(|e| SbroadError::FailedTo(Action::Build, Some(Entity::Query), e.into()))?;
+            let schema_info =
+                SchemaInfo::new(block.table_versions.clone(), block.index_versions.clone());
+            let cached = {
+                let mut cache = self.cache.lock();
+                cache.put(key, stmt, &schema_info, vec![])?;
+                cache.get(&key)?.expect("just inserted")
+            };
+            process_deferred_evictions()?;
+            cached.stmt
+        };
+
+        let mut stmt = stmt_rc.lock();
         port.process_txn(&mut stmt, &merged, block.vdbe_max_steps)?;
 
         Ok(())
