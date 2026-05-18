@@ -29,6 +29,9 @@ CARGO_FEATURES := $(ERROR_INJECTION) $(WEBUI)
 # Hence, we don't use `override` here but add it to all build prerequisites.
 CARGO_FLAGS := $(LOCKED) $(WORKSPACE) $(CARGO_FEATURES)
 
+# XXX: Only set if it's not in ENV.
+CARGO_TARGET_DIR ?= target
+
 # XXX: Specialized CARGO_TARGET_DIR values for ASan & code coverage.
 # We don't want to overwrite a regular build with these.
 TARGET_DIR_ASAN := target/asan-dev
@@ -160,8 +163,9 @@ $(foreach PART,$(TEST_PARTS),$(eval $(call TEST_TEMPLATE,$(PART))))
 .PHONY: coverage-report
 coverage-report: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
 coverage-report:
-	tools/find-executables.sh $(CARGO_TARGET_DIR) > $(CARGO_TARGET_DIR)/binaries
-	tools/coverage.py report --input-objects=$(CARGO_TARGET_DIR)/binaries $(COV_REPORT_FLAGS)
+	tools/coverage.py report \
+	  --input-objects=<(tools/find-executables.sh $(CARGO_TARGET_DIR)) \
+	  $(COV_REPORT_FLAGS)
 
 .PHONY: coverage-clean
 coverage-clean: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
@@ -179,12 +183,12 @@ coverage-demo: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
 coverage-demo:
 	$(MAKE) coverage-build-dev
 
-	# Drop any possible coverage data for `build.rs`.
+	@# Drop any possible coverage data for `build.rs`.
 	$(MAKE) coverage-clean
 
-	# Note that it's better to first run rust-based tests,
-	# then the python-based ones to prevent coverage loss
-	# due to accidental rebuilds changing signatures of bins.
+	@# Note that it's better to first run rust-based tests,
+	@# then the python-based ones to prevent coverage loss
+	@# due to accidental rebuilds changing signatures of bins.
 	$(MAKE) coverage-test-rs || true
 	$(MAKE) coverage-test-py || true
 
@@ -244,6 +248,27 @@ fmt:
 .PHONY: audit
 audit:
 	cargo deny --workspace check
+
+.PHONY: coverage-trim-target
+coverage-trim-target: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-trim-target:
+	tools/coverage.py run $(MAKE) trim-target
+
+# Here we intentionally draw a distinction between `target` and `CARGO_TARGET_DIR`.
+# From the standpoint of CI, it's easier to remove all unnecessary files from
+# top-level `target`, and then just put the whole dir in `artifacts`.
+.PHONY: trim-target
+trim-target:
+	@# Preserve the list itself.
+	echo "target/keep.list" > target/keep.list
+	@# Preserve all built binaries (picodata, tests, *.so).
+	tools/find-executables.sh "$(CARGO_TARGET_DIR)" >> target/keep.list
+	@# Preserve `cargo build --timings` statistics.
+	echo "$(CARGO_TARGET_DIR)/cargo-timings/" >> target/keep.list
+	@# Preserve code coverage data (if any).
+	echo "$(CARGO_TARGET_DIR)/coverage/" >> target/keep.list
+
+	tools/remove-unless-listed.py target target/keep.list
 
 .PHONY: clean
 clean:

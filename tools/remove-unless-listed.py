@@ -31,7 +31,15 @@ def remove(
 ):
     def handle_file(root: Path, name: str, is_dir: bool):
         file = (root / name).absolute()
-        should_rm = file not in keep_list
+
+        should_rm = True
+        for guard in keep_list:
+            if guard.is_dir() and file.is_relative_to(guard):
+                should_rm = False
+                break
+            elif file == guard:
+                should_rm = False
+                break
 
         print_opt.maybe_print(should_rm, file)
         if should_rm and not dry_run:
@@ -80,7 +88,7 @@ def main():
     args = parser.parse_args()
 
     with open(args.keep_list_file) as f:
-        keep_list = list(Path(x) for x in f.read().splitlines())
+        keep_list = list(Path(x).absolute() for x in f.read().splitlines())
     remove(Path(args.root), keep_list, print_opt=args.print, dry_run=args.dry_run)
 
 
