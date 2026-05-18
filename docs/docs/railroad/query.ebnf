@@ -30,7 +30,7 @@ from        ::= 'FROM' scan
 projection  ::= (table '.')? '*' | expression (('AS')? name)? | aggregate | window (('AS')? name)?
 scan_table  ::= (table ('AS'? name)? ('INDEXED' 'BY' index)?)
 scan        ::= (table ('AS'? name)? ('INDEXED BY' index)? | '(' dql ')' ('AS'? name)? )
-expression  ::= ('NOT'* (
+expression  ::= (('NOT'* (
                     (table '.')? column
                     | abs
                     | case
@@ -40,7 +40,6 @@ expression  ::= ('NOT'* (
                     | ilike
                     | json_extract_path
                     | instance_uuid
-                    | like
                     | literal
                     | localtimestamp
                     | lower
@@ -63,7 +62,7 @@ expression  ::= ('NOT'* (
                     | 'NOT'? 'EXISTS' '(' dql ')'
                     | '(' dql ')'
                     | '(' expression (',' expression)* ')'
-                ) ('IS' 'NOT'? ('NULL' | 'TRUE' | 'FALSE' | 'UNKNOWN'))*)
+                )) | like ) ('IS' 'NOT'? ('NULL' | 'TRUE' | 'FALSE' | 'UNKNOWN'))*
                 | expression
                 (
                     'NOT'? 'BETWEEN' expression 'AND'
@@ -114,7 +113,7 @@ pico_instance_name    ::= 'PICO_INSTANCE_NAME' '(' text ')'
 pico_instance_uuid    ::= 'PICO_INSTANCE_UUID' '(' ')'
 pico_replicaset_name  ::= 'PICO_REPLICASET_NAME' '(' text ')'
 pico_tier_name        ::= 'PICO_TIER_NAME' '(' text ')'
-_pico_bucket          ::= '_PICO_BUCKET' '(' string ')'
+_pico_bucket          ::= '_PICO_BUCKET' '(' text ')'
 to_char     ::= 'TO_CHAR' '(' expression ',' format ')'
 to_date     ::= 'TO_DATE' '(' expression ',' format ')'
 trim        ::= 'TRIM' '('
