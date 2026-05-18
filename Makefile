@@ -83,7 +83,6 @@ endef
 # These build profiles are intended to be used for CI and local development.
 # Still, there are two special cases which stand apart from the generated ones:
 #  - `build-release-pkg` is for the packages we ship as our release artifacts.
-#  - `build-asan-dev` is a developer convenience for local tinkering (not for CI).
 BUILD_PROFILES := dev fast-release release
 $(foreach PROFILE,$(BUILD_PROFILES),$(eval $(call BUILD_TEMPLATE,$(PROFILE))))
 
@@ -103,17 +102,6 @@ build-release-pkg: build
 # See https://github.com/rust-lang/cargo/issues/6375#issuecomment-444900324.
 DEFAULT_TARGET := $(shell cargo -vV | sed -n 's|host: ||p')
 
-# ASan build: uses `--cfg asan` flag instead of a dedicated Cargo profile.
-# Artifacts go to a dedicated target dir to avoid conflicts with regular builds.
-# TODO: drop nightly features once sanitizers are stable.
-.PHONY: build-asan-dev
-build-asan-dev: override CARGO_ENV = RUSTC_BOOTSTRAP=1
-build-asan-dev: override CARGO_ENV += CARGO_TARGET_DIR=$(TARGET_DIR_ASAN)
-build-asan-dev: override CARGO_ENV += RUSTFLAGS='-Zsanitizer=address --cfg asan'
-build-asan-dev: override CARGO_ENV += RUSTDOCFLAGS='-Zsanitizer=address --cfg asan'
-build-asan-dev: override CARGO_FLAGS += --target=$(DEFAULT_TARGET)
-build-asan-dev: build
-
 # XXX: make sure we pass proper flags to cargo test so resulting picodata binary can be
 # reused for python tests without recompilation
 # Note: tarantool and tlua are skipped intentionally, no need to run their doc tests in picodata
@@ -121,26 +109,22 @@ build-asan-dev: build
 # memory usage caused by doc tests compilation model. Doc tests are compiled as part of actual test run.
 # So, each parallel thread lanuched by cargo test spawns full blown compiler for each doctest
 # which at the end leads to OOM.
+CARGO_TEST_FLAGS ?= --workspace --exclude sql-planner --exclude tarantool --exclude tlua
+
 .PHONY: test-rs
 test-rs:
 	cargo test \
 	  $(MAKE_JOBSERVER_ARGS) \
 	  $(filter-out --workspace, $(CARGO_FLAGS)) \
 	  $(filter-out --workspace, $(CARGO_FLAGS_EXTRA)) \
-	  --workspace \
-	  --exclude sql-planner \
-	  --exclude tarantool \
-	  --exclude tlua \
+	  $(CARGO_TEST_FLAGS) \
 	  --tests
 
 	cargo test \
 	  $(MAKE_JOBSERVER_ARGS) \
 	  $(filter-out --workspace, $(CARGO_FLAGS)) \
 	  $(filter-out --workspace, $(CARGO_FLAGS_EXTRA)) \
-	  --workspace \
-	  --exclude sql-planner \
-	  --exclude tarantool \
-	  --exclude tlua \
+	  $(CARGO_TEST_FLAGS) \
 	  --doc -- --test-threads 2
 
 .PHONY: test-py
@@ -176,6 +160,23 @@ coverage-clean:
 coverage-purge: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
 coverage-purge:
 	rm -rf $(CARGO_TARGET_DIR)
+
+.PHONY: asan-build-dev
+asan-build-dev: export CARGO_TARGET_DIR=$(TARGET_DIR_ASAN)
+asan-build-dev:
+	tools/sanitizer.py run $(MAKE) build-dev \
+	  WORKSPACE= CARGO_FLAGS_EXTRA="-p picodata -p testplug"
+
+.PHONY: asan-test-rs
+asan-test-rs: export CARGO_TARGET_DIR=$(TARGET_DIR_ASAN)
+asan-test-rs:
+	tools/sanitizer.py run $(MAKE) test-rs CARGO_TEST_FLAGS="-p picodata"
+
+.PHONY: asan-test-py
+asan-test-py: export CARGO_TARGET_DIR=$(TARGET_DIR_ASAN)
+asan-test-py:
+	tools/sanitizer.py run $(MAKE) test-py \
+	  PYTEST_FLAGS="--ignore=test/perf --ignore=test/int/test_rolling.py $(PYTEST_FLAGS)"
 
 # XXX: this target is for debug purposes (do not use in CI).
 .PHONY: coverage-demo
