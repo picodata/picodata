@@ -63,13 +63,17 @@ class Registry:
                 VersionAlias.CURRENT,
             ),
             (
-                lambda entry_version: entry_version.major == self.current_version.major
-                and self.current_version.minor - entry_version.minor == 1,
+                lambda entry_version: (
+                    entry_version.major == self.current_version.major
+                    and self.current_version.minor - entry_version.minor == 1
+                ),
                 VersionAlias.PREVIOUS_MINOR,
             ),
             (
-                lambda entry_version: entry_version.major == self.current_version.major
-                and self.current_version.minor - entry_version.minor == 2,
+                lambda entry_version: (
+                    entry_version.major == self.current_version.major
+                    and self.current_version.minor - entry_version.minor == 2
+                ),
                 VersionAlias.BEFORELAST_MINOR,
             ),
             (
