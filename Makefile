@@ -178,7 +178,7 @@ asan-test-rs:
 asan-test-py: export CARGO_TARGET_DIR=$(TARGET_DIR_ASAN)
 asan-test-py:
 	tools/sanitizer.py run $(MAKE) test-py \
-	  PYTEST_FLAGS="--ignore=test/perf --ignore=test/int/test_rolling.py $(PYTEST_FLAGS)"
+	  PYTEST_FLAGS="--skip-asan --with-webui --ignore=test/perf --ignore=test/int/test_rolling.py $(PYTEST_FLAGS)"
 
 # XXX: this target is for debug purposes (do not use in CI).
 .PHONY: coverage-demo
