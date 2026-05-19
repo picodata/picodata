@@ -699,7 +699,13 @@ impl ExecutionPlan {
             sql.insert_str(0, "EXPLAIN QUERY PLAN ");
         }
 
-        assert_eq!(constants_count, params_idx.len());
+        if constants_count != params_idx.len() {
+            return Err(SbroadError::FailedTo(
+                Action::Build,
+                Some(Entity::Query),
+                "constants and parameters count differ".into(),
+            ));
+        }
 
         Ok(sql)
     }
