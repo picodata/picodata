@@ -162,7 +162,9 @@ export const FilterValueForm = ({
               {tagOptions
                 .filter(({ value: _value }) => value.includes(_value))
                 .map(({ label, value: _value }) => (
-                  <MultipleValueItem key={_value}>{label}</MultipleValueItem>
+                  <MultipleValueItem key={String(_value)}>
+                    {label}
+                  </MultipleValueItem>
                 ))}
             </MultipleValues>
           ) : null}

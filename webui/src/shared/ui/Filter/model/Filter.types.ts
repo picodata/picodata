@@ -1,5 +1,8 @@
 import { OverridableComponent } from "@mui/material/OverridableComponent";
 import { SvgIconTypeMap } from "@mui/material";
+
+type Value = string | number | boolean;
+
 export enum EditableValueStatusEnum {
   Done = "Done",
   Tag = "Tag",
@@ -20,7 +23,7 @@ export interface Expression {
 }
 
 export type TagOption = {
-  value: string;
+  value: Value;
   label: string;
 };
 
@@ -35,7 +38,7 @@ export type FilterValue = {
   id: string;
   tagKey: string;
   expression: Expression;
-  value: string | string[];
+  value: Value | Value[];
 };
 
 export type EditableFilterValue = Partial<FilterValue> &

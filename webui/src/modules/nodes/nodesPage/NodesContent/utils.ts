@@ -6,6 +6,7 @@ import AltRouteIcon from "@mui/icons-material/AltRoute";
 import AlbumIcon from "@mui/icons-material/Album";
 import CircleIcon from "@mui/icons-material/Circle";
 import { v4 as uuidv4 } from "uuid";
+import LibraryAddCheckIcon from "@mui/icons-material/LibraryAddCheck";
 
 import { InstanceNodeType, InstanceType } from "shared/entity/instance";
 import { sortByString } from "shared/utils/string/sort";
@@ -21,11 +22,13 @@ import {
   ExpressionEnum,
   FilterProps,
   FilterValue,
+  getYesNoOptions,
   SEARCH_TEXT_KEY,
   TagOption,
 } from "../../../../shared/ui/Filter";
 import { TIntlContext } from "../../../../shared/intl";
 
+import { StyledLeaderIcon } from "./common";
 import { TSortValue } from "./TopBar/SortBy/config";
 import { sortByStringProp } from "./hooks";
 
@@ -113,6 +116,8 @@ export const getFilterTags = (
     instanceVersionOptions,
     instanceCurrentStateOptions,
   ] = getTagOptions(instances, ["name", "version", "currentState"]);
+
+  const yesNoOptions = getYesNoOptions(translation);
   return [
     {
       id: uuidv4(),
@@ -155,6 +160,21 @@ export const getFilterTags = (
       label: translation.components.filterTags.currentState,
       icon: AlbumIcon,
       options: instanceCurrentStateOptions,
+    },
+
+    {
+      id: uuidv4(),
+      key: "isRaftLeader",
+      label: translation.components.filterTags.raftLeader,
+      icon: StyledLeaderIcon,
+      options: yesNoOptions,
+    },
+    {
+      id: uuidv4(),
+      key: "isVoter",
+      label: translation.components.filterTags.voter,
+      icon: LibraryAddCheckIcon,
+      options: yesNoOptions,
     },
     ...failureDomainTags,
   ];
@@ -291,15 +311,34 @@ const filterValueByExpressionType = (
       return true;
   }
 };
+const filterYesNoValueByExpressionType = (
+  expressionType: ExpressionEnum,
+  valueA: unknown,
+  valueB: unknown | unknown[]
+) => {
+  switch (expressionType) {
+    case ExpressionEnum.Is:
+      return typeof valueA === "boolean" && valueB;
+    case ExpressionEnum.IsNotOneOf:
+      return !valueA;
+    case ExpressionEnum.IsOneOf:
+      return (valueB as unknown[]).includes(valueA);
+    default:
+      return true;
+  }
+};
 const filterNodeByExpressionType = <
   T extends TierNodeType | ReplicasetNodeType | InstanceNodeType
 >(
   node: T,
   key: keyof T,
   value: unknown | unknown[],
-  expressionType: ExpressionEnum
+  expressionType: ExpressionEnum,
+  isBool: boolean
 ) => {
-  return filterValueByExpressionType(expressionType, node[key], value);
+  return isBool
+    ? filterYesNoValueByExpressionType(expressionType, node[key], value)
+    : filterValueByExpressionType(expressionType, node[key], value);
 };
 
 const tagKeyMapping: Record<string, string> = {
@@ -311,6 +350,10 @@ const tagKeyMapping: Record<string, string> = {
   currentState: "currentState",
   [SEARCH_TEXT_KEY]: SEARCH_TEXT_KEY,
 };
+const yesNoTagKeyMapping: Record<string, string> = {
+  isRaftLeader: "isRaftLeader",
+  isVoter: "isVoter",
+};
 
 const getIncludesFilterValue = <
   T extends TierNodeType | ReplicasetNodeType | InstanceNodeType
@@ -320,11 +363,14 @@ const getIncludesFilterValue = <
 ) => {
   return filterValues.every((filterValueItem) => {
     const itemKey = tagKeyMapping[filterValueItem.tagKey] as keyof T;
+    const yesNoItemKey = yesNoTagKeyMapping[filterValueItem.tagKey] as keyof T;
+
     return filterNodeByExpressionType(
       node,
-      itemKey,
+      itemKey ?? yesNoItemKey,
       filterValueItem.value,
-      filterValueItem.expression.type
+      filterValueItem.expression.type,
+      Boolean(yesNoItemKey)
     );
   });
 };
@@ -434,10 +480,13 @@ const getFilteredTiers = (
     ["replicaset", "leaderState"].includes(tagKey)
   );
   const instanceFilterValues = filterValue.filter(({ tagKey }) =>
-    ["instance", "version", "currentState"].includes(tagKey)
+    ["instance", "version", "currentState", "isVoter", "isRaftLeader"].includes(
+      tagKey
+    )
   );
   const failureDomainsFilterValues = filterValue.filter(
-    ({ tagKey }) => !Object.keys(tagKeyMapping).includes(tagKey)
+    ({ tagKey }) =>
+      !Object.keys({ ...tagKeyMapping, ...yesNoTagKeyMapping }).includes(tagKey)
   );
   const searchTextFilterValues = filterValue.filter(
     ({ tagKey }) => tagKey === SEARCH_TEXT_KEY

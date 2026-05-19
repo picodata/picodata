@@ -2,7 +2,7 @@ import { Box, styled } from "@mui/material";
 import { green } from "@mui/material/colors";
 import LibraryAddCheckIcon from "@mui/icons-material/LibraryAddCheck";
 
-import { Leader } from "../../../../../shared/icons";
+import { Leader } from "shared/icons";
 
 export const ITEM_GRID_COLUMNS_SCHEMA =
   "180px 2fr 120px 120px 160px 200px 1fr 2fr 60px";

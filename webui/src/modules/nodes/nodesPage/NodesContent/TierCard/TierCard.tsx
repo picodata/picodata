@@ -106,8 +106,8 @@ export const TierCardAlt = memo(
           <TierCapacityProgressCell>
             <CapacityProgress
               percent={tier.capacityUsage}
-              currentValue={tier.memory?.used ?? 0}
-              limit={tier.memory?.usable ?? 0}
+              currentValue={tier.used ?? 0}
+              limit={tier.usable ?? 0}
               size="small"
               theme={theme === "secondary" ? "primary" : "secondary"}
               progressLineWidth="100%"

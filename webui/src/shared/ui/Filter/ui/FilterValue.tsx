@@ -78,7 +78,7 @@ export const ValueElement = ({
           onClick={searchTextClickHandler}
           sx={{ paddingLeft: "10px", paddingRight: "10px" }}
         >
-          {itemValue}
+          {Array.isArray(itemValue) ? itemValue : String(itemValue)}
         </RestFilterValuePart>
       ) : (
         <>
@@ -95,7 +95,9 @@ export const ValueElement = ({
             onClick={valueClickHandler}
             sx={{ paddingRight: "10px" }}
           >
-            {Array.isArray(itemValue) ? itemValue.join(" | ") : itemValue}
+            {Array.isArray(itemValue)
+              ? itemValue.join(" | ")
+              : String(itemValue)}
           </RestFilterValuePart>
         </>
       )}

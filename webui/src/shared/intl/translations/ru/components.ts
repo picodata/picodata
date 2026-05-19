@@ -11,6 +11,8 @@ export const components: (typeof en)["components"] = {
     currentState: "Состояние инстанса",
     leaderState: "Состояние лидера",
     searchForThisText: "Поиск по тексту",
+    raftLeader: "Raft leader",
+    voter: "Голосует",
   },
   networkState: {
     label: {
