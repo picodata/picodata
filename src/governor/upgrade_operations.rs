@@ -118,11 +118,6 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("proc_name", "proc_instance_health_status"),
             ("proc_name", "proc_raft_transfer_leader"),
             ("exec_script", InternalScript::InsertExperimentalShardingImplementationIntoPicoDbConfig.as_str()),
-        ]
-    ),
-    (
-        "26.2.2",
-        &[
             ("proc_name", "proc_instance_details"),
         ]
     ),

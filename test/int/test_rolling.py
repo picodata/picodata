@@ -52,6 +52,7 @@ def test_upgrade_from_previous_minor_to_current(cluster: Cluster, registry: Regi
     assert current is not None
 
     cluster.change_executable(current)
+
     cluster.check_health()
 
 
@@ -79,6 +80,7 @@ def test_upgrade_from_previous_major_to_current(cluster: Cluster, registry: Regi
     assert to_executable is not None
 
     cluster.change_executable(to_executable)
+
     cluster.check_health()
 
 
@@ -116,7 +118,6 @@ def test_node_by_node_sequential_upgrade_success(cluster: Cluster, registry: Reg
     executable = registry.get_or_skip(VersionAlias.PREVIOUS_MINOR)
 
     cluster.change_executable(executable)
-
     # step 3
 
     cluster.check_health()
@@ -126,7 +127,6 @@ def test_node_by_node_sequential_upgrade_success(cluster: Cluster, registry: Reg
     current = registry.get(VersionAlias.CURRENT)
     assert current is not None
     cluster.change_executable(current)
-
     # step 5
 
     cluster.check_health()
@@ -161,6 +161,7 @@ def test_node_by_node_leaping_upgrade_failure(cluster: Cluster, registry: Regist
 
     error = ExpectedError(log_pattern="mismatches the leader's version")
     cluster.change_executable(current, error)
+
     cluster.check_health(error=error)
 
 
@@ -305,8 +306,8 @@ def test_successful_upgrade_then_failed_downgrade(cluster: Cluster, registry: Re
     assert current is not None
 
     cluster.change_executable(current)
-    cluster.check_health()
 
+    cluster.check_health()
     # step 3
 
     executable = registry.get_or_skip(VersionAlias.PREVIOUS_MINOR)
@@ -351,8 +352,8 @@ def test_upgrade_25_5_to_25_6_check_procs(cluster: Cluster, registry: Registry):
             assert result == []
 
     cluster.change_executable(to_executable)
-    cluster.check_health()
 
+    cluster.check_health()
     for instance in cluster.instances:
         for procedure in procedures:
             result = instance.call("box.space._func.index.name:select", [procedure])
@@ -383,8 +384,8 @@ def test_upgrade_unlogged_tables_existence(cluster: Cluster, registry: Registry)
     cluster.check_health()
 
     cluster.change_executable(to_executable)
-    cluster.check_health()
 
+    cluster.check_health()
     i = cluster.instances[0]
     res = i.sql("SELECT name, opts FROM _pico_table")
     for name, opts in res:
@@ -750,8 +751,8 @@ cluster:
     assert executable is not None
 
     cluster.change_executable(executable)
-    assert_version(cluster, Version("25.4.1"), registry)
 
+    assert_version(cluster, Version("25.4.1"), registry)
     # This version should have this bug.
     [[tier_is_default]] = instance.sql("SELECT is_default FROM _pico_tier")
     assert tier_is_default is False
@@ -762,15 +763,59 @@ cluster:
     assert executable is not None
 
     cluster.change_executable(executable)
-    assert_version(cluster, next_version, registry)
 
+    assert_version(cluster, next_version, registry)
     next_version = registry.next_version(Version("25.5.7"))
     executable = registry.get(next_version)
     assert executable is not None
 
     cluster.change_executable(executable)
-    assert_version(cluster, next_version, registry)
 
+    assert_version(cluster, next_version, registry)
     # The migration should have fixed the missing default tier bug.
     [[tier_is_default]] = instance.sql("SELECT is_default FROM _pico_tier")
     assert tier_is_default is True
+
+
+@pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
+        Version("26.1.1"),
+        get_or_make_registry().next_version(Version("26.1.1")),
+    ]
+)
+def test_upgrade_check_proc_instance_details(cluster: Cluster, registry: Registry):
+    from_version = Version("26.1.1")
+    from_executable = registry.get(from_version)
+    assert from_executable is not None
+
+    to_version = registry.next_version(from_version)
+    to_executable = registry.get(to_version)
+    assert to_executable is not None
+
+    # 1. Deploy cluster on the previous version (without proc_instance_details)
+    cluster.deploy(
+        executable=from_executable,
+        instance_count=4,
+        init_replication_factor=2,
+    )
+    cluster.check_health()
+    assert_version(cluster, from_version, registry)
+
+    # proc_instance_details was introduced in catalog version 26.2.1 and
+    # must not be present on 26.1.x
+    for instance in cluster.instances:
+        result = instance.call("box.space._func.index.name:select", ["proc_instance_details"])
+        assert result == []
+
+    # 2. Upgrade all nodes to the current version
+    cluster.change_executable(to_executable)
+    cluster.check_health()
+    assert_version(cluster, to_version, registry)
+
+    # 3. After upgrade the proc must be registered on every instance and
+    #    return a valid response with expected fields
+    for instance in cluster.instances:
+        result = instance.call(".proc_instance_details")
+        assert result is not None
+        assert "instance_dir" in result
