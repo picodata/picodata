@@ -42,6 +42,7 @@ nav:
       - tutorial/install.md
       - tutorial/run.md
       - tutorial/deploy.md
+      - tutorial/deploy-k8s.md
       - tutorial/node_add.md
       - tutorial/node_expel.md
       - tutorial/connecting.md
