@@ -23,9 +23,8 @@ from conftest import (
 )
 from framework.ldap import LdapServer, is_glauth_available
 from framework.thread import spawn_thread
-from framework.util.build import Executable
-from framework.util.build import project_tests_path
 from framework.util import copy_plugin_library
+from framework.util.build import Executable, cargo_build_path, project_tests_path
 
 _3_SEC = 3
 _DEFAULT_CFG = {"foo": True, "bar": 101, "baz": ["one", "two", "three"]}
@@ -3337,9 +3336,13 @@ def test_create_plugin_too_many_versions(cluster: Cluster):
 
 @pytest.mark.skip_asan("plug_wrong_version is a standalone workspace built without ASan profiles")
 def test_picoplugin_version_compatibility_check(cluster: Cluster):
+    cargo_target_dir = cargo_build_path(
+        cwd=project_tests_path() / "plug_wrong_version",
+        build_profile="debug",
+    )
+
     # TODO: implement a proper plugin installation routine for tests
-    cargo_target_dir = project_tests_path() / "plug_wrong_version" / "target" / "debug"
-    init_dummy_plugin(
+    cargo_target_dir = init_dummy_plugin(
         cluster,
         "plug_wrong_version",
         "0.1.0",

@@ -6,7 +6,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import pytest
 from packaging.version import Version
@@ -69,7 +69,7 @@ def perform_cargo_build(enable_webui: bool = False) -> None:
     subprocess.check_call(make_command)
 
 
-def _cargo_metadata_json() -> dict[str, Any]:
+def _cargo_metadata_json(cwd: Optional[Path] = None) -> dict[str, Any]:
     """
     Returns the parsed JSON output from `cargo metadata` command. The command is
     invoked with `--frozen` and `--no-deps` flags so that it never touches the
@@ -84,19 +84,19 @@ def _cargo_metadata_json() -> dict[str, Any]:
         "--frozen",
         "--no-deps",
     ]
-    raw_metadata = subprocess.check_output(metadata_command)
+    raw_metadata = subprocess.check_output(metadata_command, cwd=cwd)
     return json.loads(raw_metadata)
 
 
 @functools.cache
-def cargo_build_path() -> Path:
+def cargo_build_path(cwd: Optional[Path] = None, build_profile: Optional[str] = None) -> Path:
     """
     Returns the directory where Cargo places build artifacts for the current profile.
     Note that When an ASan profile is active and `CARGO_BUILD_TARGET` is not set, the
     host target triple is inserted into the path to mirror the layout Cargo uses when
     flag `--target` is passed.
     """
-    cargo_metadata_dict = _cargo_metadata_json()
+    cargo_metadata_dict = _cargo_metadata_json(cwd=cwd)
     cargo_target_directory = Path(cargo_metadata_dict["target_directory"])
 
     # When `--target` or `CARGO_BUILD_TARGET` is set, cargo places artifacts
@@ -105,7 +105,7 @@ def cargo_build_path() -> Path:
     if cargo_build_target is not None:
         cargo_target_directory /= cargo_build_target
 
-    profile = cargo_build_profile()
+    profile = build_profile or cargo_build_profile()
     build_profile_directory = "debug" if profile == "dev" else profile
     cargo_profile_directory = cargo_target_directory / build_profile_directory
 
