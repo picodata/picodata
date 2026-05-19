@@ -3187,3 +3187,70 @@ def test_vinyl_options_applied_to_indices(cluster: Cluster):
             """
         )
     assert "table engine memtx does not support option page_size" in str(exc.value)
+
+
+def test_cannot_drop_primary_index(instance: Instance):
+    # Test on explicitly sharded table.
+
+    instance.sql("""
+        CREATE TABLE warehouse_implicit (
+            id INTEGER NOT NULL,
+            item TEXT NOT NULL,
+            type TEXT NOT NULL,
+            PRIMARY KEY (id))
+        USING memtx
+        OPTION (TIMEOUT = 3.0);
+    """)
+
+    with pytest.raises(
+        expected_exception=TarantoolError,
+        match="DROP INDEX on primary index is forbidden",
+    ):
+        instance.sql("""
+            DROP INDEX "1025_pkey"
+            OPTION (TIMEOUT = 3.0);
+        """)
+
+    # Test on explicitly sharded table.
+
+    instance.sql("""
+        CREATE TABLE warehouse_explicit (
+            id INTEGER NOT NULL,
+            item TEXT NOT NULL,
+            type TEXT NOT NULL,
+            PRIMARY KEY (id))
+        USING memtx
+        DISTRIBUTED BY (id)
+        OPTION (TIMEOUT = 3.0);
+    """)
+
+    with pytest.raises(
+        expected_exception=TarantoolError,
+        match="DROP INDEX on primary index is forbidden",
+    ):
+        instance.sql("""
+            DROP INDEX "1026_pkey"
+            OPTION (TIMEOUT = 3.0);
+        """)
+
+    # Test on global table.
+
+    instance.sql("""
+        CREATE TABLE warehouse_global (
+            id INTEGER NOT NULL,
+            item TEXT NOT NULL,
+            type TEXT NOT NULL,
+            PRIMARY KEY (id))
+        USING memtx
+        DISTRIBUTED GLOBALLY
+        OPTION (TIMEOUT = 3.0);
+    """)
+
+    with pytest.raises(
+        expected_exception=TarantoolError,
+        match="DROP INDEX on primary index is forbidden",
+    ):
+        instance.sql("""
+            DROP INDEX "1027_pkey"
+            OPTION (TIMEOUT = 3.0);
+        """)

@@ -52,6 +52,7 @@ use tarantool::{
         SchemaObjectType as TntSchemaObjectType,
     },
     error::BoxError,
+    index::IndexId,
     session::{self, UserId},
     space::{Space, SystemSpace},
     tuple::Encode,
@@ -188,6 +189,15 @@ fn forbid_drop_if_system_space(storage: &Catalog, space_id: u32) -> tarantool::R
     .into());
 }
 
+fn forbid_drop_if_primary_key(index_id: IndexId) -> tarantool::Result<()> {
+    if index_id == 0 {
+        let error = "DROP INDEX on primary index is forbidden";
+        return Err(tarantool::error::Error::other(error));
+    }
+
+    Ok(())
+}
+
 /// There are no cases when box_access_check_ddl is called several times
 /// in a row so it is ok that we need to switch once to user who initiated the request
 /// This wrapper is needed because usually before checking permissions we need to
@@ -309,8 +319,11 @@ fn access_check_ddl(storage: &Catalog, ddl: &op::Ddl, as_user: UserId) -> tarant
                 as_user,
             )
         }
-        op::Ddl::DropIndex { space_id, .. } => {
+        op::Ddl::DropIndex {
+            space_id, index_id, ..
+        } => {
             forbid_drop_if_system_space(storage, *space_id)?;
+            forbid_drop_if_primary_key(*index_id)?;
 
             let space = space_by_id(*space_id)?;
             let meta = space.meta()?;

@@ -165,6 +165,7 @@ with the `YY.MINOR.MICRO` scheme.
 - [picodata#2926] Reduced log verbosity in vshard for routine replicaset events.
 - Fixed NOT push-down: no longer short-circuits before recursing into operand
   subtrees. The pass now also descends into Cast children to simplify NOTs nested inside.
+- [picodata#2775] Dropping the primary index is now rejected with a clear error.
 
 
 ### Breaking changes
@@ -189,7 +190,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Deprecated `advertise_address` setting is removed following a major release. Use `iproto` section instead.
 - `--cluster-name` argument for `picodata expel` is removed following a major release as it is no longer needed.
 - Deprecated `ServiceWorkerManager` is removed from `picodata_plugin` following a major release.
-- `authenticate` function from `picodata_plugin` is now accessible only through `authentication` module. 
+- `authenticate` function from `picodata_plugin` is now accessible only through `authentication` module.
   Reexport in `internal` module is removed following a major release.
 - Deprecated `RegionBuffer::get` is removed following a major release.
 
