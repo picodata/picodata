@@ -930,10 +930,12 @@ cluster:
     assert storage_2.call("box.space._space.index.name:get", "top_g") is not None
 
 
+@pytest.mark.skip_asan("Raft leader election timing is unreliable under ASan overhead")
 def test_ddl_on_replica_at_catchup_via_log_with_raft_leader_switchover(cluster: Cluster):
     check_ddl_on_replica_at_catchup_with_raft_leader_switchover(cluster, via_snapshot=False)
 
 
+@pytest.mark.skip_asan("Raft leader election timing is unreliable under ASan overhead")
 def test_ddl_on_replica_at_catchup_via_snapshot_with_raft_leader_switchover(cluster: Cluster):
     check_ddl_on_replica_at_catchup_with_raft_leader_switchover(cluster, via_snapshot=True)
 

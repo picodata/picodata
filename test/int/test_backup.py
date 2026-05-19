@@ -1226,6 +1226,7 @@ def test_restore_is_failing_after_new_instance_is_added(cluster: Cluster):
         cluster.restore(new_backup_folder_name)
 
 
+@pytest.mark.skip_asan("Backup/restore operations timeout under ASan overhead")
 def test_restore_without_cfg_defaults(cluster: Cluster):
     cluster.set_config_file(
         yaml="""

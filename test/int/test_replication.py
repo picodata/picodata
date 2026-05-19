@@ -242,6 +242,7 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
     assert i5.eval("return box.info.ro") is False
 
 
+@pytest.mark.skip_asan("Replication leader transfer timing is unreliable under ASan overhead")
 def test_expel_blocked_by_replicaset_master_switchover_to_online_replica(
     cluster: Cluster,
 ):

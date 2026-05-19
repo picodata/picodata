@@ -312,6 +312,7 @@ def get_table_size(instance: Instance, table_name: str):
     return table_size
 
 
+@pytest.mark.skip_asan("vshard's internal CALL_TIMEOUT_MIN (0.5s) is too short for ASan-instrumented bulk inserts")
 def test_is_bucket_rebalancing_means_data_migration(cluster: Cluster):
     i1 = cluster.add_instance()
     cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)

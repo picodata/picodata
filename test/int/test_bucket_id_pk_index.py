@@ -11,6 +11,7 @@ TABLE_SIZE = 9000
 BATCH_SIZE = 1000
 
 
+@pytest.mark.skip_asan("vshard's internal CALL_TIMEOUT_MIN (0.5s) is too short for ASan-instrumented bulk inserts")
 @pytest.mark.parametrize(
     "engine",
     ["memtx", "vinyl"],
