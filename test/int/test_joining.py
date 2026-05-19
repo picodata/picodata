@@ -755,6 +755,7 @@ def test_membership_inconsistency_at_raft_rejoin(cluster: Cluster):
     assert not instance_uuid_filepath.exists()
 
 
+@pytest.mark.skip_asan("Instance startup timeout (10s) is too short under ASan overhead")
 def test_self_pipe_message_size(cluster: Cluster):
     leader = cluster.add_instance(wait_online=True)
 
