@@ -1362,14 +1362,6 @@ Using configuration file '{args_path}'.");
         }
     }
 
-    #[inline]
-    pub fn max_tuple_size() -> usize {
-        // This is value is not configurable at the moment, but this may change
-        // in the future. At that point this function will probably also want to
-        // accept a `&self` parameter, but for now it's not necessary.
-        1048576
-    }
-
     pub fn log_config_params(&self) {
         for path in &leaf_field_paths::<PicodataConfig>() {
             let value = self
@@ -2171,6 +2163,27 @@ pub struct MemtxSection {
     pub max_tuple_size: Option<ByteSize>,
 }
 
+impl MemtxSection {
+    /// See [`Self::max_tuple_size`].
+    ///
+    /// # Panics
+    ///
+    /// - `max_tuple_size` is not set for the requested engine
+    ///   (should be guaranteed by config validation prior to this call, see
+    ///   [`PicodataConfig`] -> [`InstanceConfig`] -> [`MemtxSection`])
+    /// - [`ByteSize`] does not fit into [`u64`], or the resulting
+    ///   [`u64`] does not fit into [`usize`] on the target platform
+    pub fn max_tuple_size(&self) -> usize {
+        self.max_tuple_size
+            .as_ref()
+            .unwrap_or_else(|| panic!("max_tuple_size for memtx should be set"))
+            .as_u64()
+            .expect("ByteSize should represent a valid range")
+            .try_into()
+            .expect("u64 should fit into usize")
+    }
+}
+
 tarantool::define_str_enum! {
     #[derive(Default)]
     pub enum MemtxAllocator {
@@ -2252,6 +2265,27 @@ pub struct VinylSection {
     /// Corresponds to `box.cfg.vinyl_timeout`
     #[introspection(config_default = 60.)]
     pub timeout: Option<f32>,
+}
+
+impl VinylSection {
+    /// See [`Self::max_tuple_size`].
+    ///
+    /// # Panics
+    ///
+    /// - `max_tuple_size` is not set for the requested engine
+    ///   (should be guaranteed by config validation prior to this call, see
+    ///   [`PicodataConfig`] -> [`InstanceConfig`] -> [`MemtxSection`])
+    /// - [`ByteSize`] does not fit into [`u64`], or the resulting
+    ///   [`u64`] does not fit into [`usize`] on the target platform
+    pub fn max_tuple_size(&self) -> usize {
+        self.max_tuple_size
+            .as_ref()
+            .unwrap_or_else(|| panic!("max_tuple_size for vinyl should be set"))
+            .as_u64()
+            .expect("ByteSize should represent a valid range")
+            .try_into()
+            .expect("u64 should fit into usize")
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -5270,5 +5304,20 @@ instance:
                 )]
             );
         }
+    }
+
+    #[test]
+    fn config_parameter_both_engines_max_tuple_size() {
+        let yaml = r###"
+instance:
+    memtx:
+        max_tuple_size: 5242880
+    vinyl:
+        max_tuple_size: 2621440
+"###
+        .trim();
+        let config = PicodataConfig::read_yaml_contents(yaml).unwrap();
+        assert_eq!(config.instance.memtx.max_tuple_size(), 5242880);
+        assert_eq!(config.instance.vinyl.max_tuple_size(), 2621440);
     }
 }

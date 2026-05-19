@@ -851,7 +851,7 @@ impl NodeImpl {
         // Check resulting raft log entry does not exceed the maximum tuple size limit.
         let entry = context.to_raft_entry();
         let tuple_size = traft::Entry::tuple_size(index_before + 1, term, &[], &entry.context);
-        if tuple_size > PicodataConfig::max_tuple_size() {
+        if tuple_size > PicodataConfig::get().instance.memtx.max_tuple_size() {
             let message = format!("tuple size {tuple_size} exceeds the allowed limit");
             tlog!(Warning, "{message}");
             return Err(BoxError::new(TarantoolErrorCode::MemtxMaxTupleSize, message).into());
