@@ -394,7 +394,7 @@ build-linux:
 
     - |
       ci-log-section start "build" Build
-      make build-$BUILD_PROFILE CARGO_FLAGS_EXTRA="--timings"
+      make coverage-build-$BUILD_PROFILE CARGO_FLAGS_EXTRA="--timings"
       ci-log-section end "build"
 
     # Show sccache statistics
@@ -403,12 +403,16 @@ build-linux:
       sccache --show-stats
       ci-log-section end "sccache-stats"
 
+      du -hc --max-depth=1 target
+      make coverage-merge
+      make coverage-trim-target
+      du -hc --max-depth=1 target
+
   artifacts:
     paths:
-      - ./target/cargo-timings/cargo-timing.html
-      - target/$TARGET/picodata
-      - target/$TARGET/libtestplug.so
-      - test/plug_wrong_version/target/debug/libplug_wrong_version.so
+      - target
+      - test/plug_wrong_version/target/cov/x86_64-unknown-linux-gnu/debug/libplug_wrong_version.so
+    expire_in: 3 days
 
 test-rs-linux:
   stage: test
@@ -422,6 +426,10 @@ test-rs-linux:
       policy: pull
     - <<: *base_cache
       policy: pull
+    - key: target-testrs-$BUILD_PROFILE-$CI_PIPELINE_ID
+      paths:
+        - target
+      policy: push
   script:
     - tools/ensure_checkout.sh
 
@@ -441,7 +449,7 @@ test-rs-linux:
 
     - |
       ci-log-section start "test" Test
-      make test-rs \
+      make coverage-test-rs \
         CARGO_FLAGS_EXTRA="--profile=$BUILD_PROFILE"
       ci-log-section end "test"
 
@@ -450,6 +458,11 @@ test-rs-linux:
       ci-log-section start "sccache-stats" sccache statistics ...
       sccache --show-stats
       ci-log-section end "sccache-stats"
+
+      du -hc --max-depth=1 target
+      make coverage-merge
+      make coverage-trim-target
+      du -hc --max-depth=1 target
 
   artifacts:
     when: always
@@ -468,13 +481,6 @@ test-rs-linux:
       artifacts: true
     - job: install-rolling-binaries
       artifacts: true
-  cache:
-    - <<: *cache_git
-      policy: pull
-    - <<: *py_cache
-      policy: pull
-    - <<: *rolling_binaries_cache
-      policy: pull
   before_script:
     - export PATH="${ROLLING_BINARIES_DIR}:$PATH"
   artifacts:
@@ -489,13 +495,29 @@ test-py-sql-linux:
   stage: test
   extends:
     - .test-py-linux_base
+  cache:
+    - <<: *cache_git
+      policy: pull
+    - <<: *py_cache
+      policy: pull
+    - <<: *rolling_binaries_cache
+      policy: pull
+    - key: target-testpysql-$BUILD_PROFILE-$CI_PIPELINE_ID
+      paths:
+        - target
+      policy: push
   script:
     - *poetry-install
     - |
       ci-log-section start "test" Test
-      make test-py \
+      make coverage-test-py \
         PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k '(sql or pgproto)'"
       ci-log-section end "test"
+
+      du -hc --max-depth=1 target
+      make coverage-merge
+      make coverage-trim-target
+      du -hc --max-depth=1 target
   after_script:
     - ./tools/upload-flake-tracker-report.sh
 
@@ -545,13 +567,29 @@ test-py-not-sql-linux:
   stage: test
   extends:
     - .test-py-linux_base
+  cache:
+    - <<: *cache_git
+      policy: pull
+    - <<: *py_cache
+      policy: pull
+    - <<: *rolling_binaries_cache
+      policy: pull
+    - key: target-testpynotsql-$BUILD_PROFILE-$CI_PIPELINE_ID
+      paths:
+        - target
+      policy: push
   script:
     - *poetry-install
     - |
       ci-log-section start "test" Test
-      make test-py \
+      make coverage-test-py \
         PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k 'not (sql or pgproto)'"
       ci-log-section end "test"
+
+      du -hc --max-depth=1 target
+      make coverage-merge
+      make coverage-trim-target
+      du -hc --max-depth=1 target
   after_script:
     - ./tools/upload-flake-tracker-report.sh
 
@@ -1025,3 +1063,36 @@ clear-sccache:
     - <<: *base_cache
       policy: push
       when: always
+
+deploy-coverage:
+  stage: deploy
+  rules:
+    - <<: *if-build-base-changes-on-dev-branch
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+    - if: $CI_PIPELINE_SOURCE != "schedule"
+  variables:
+    GIT_STRATEGY: none
+  cache:
+    - <<: *cache_git
+      policy: pull
+    - key: target-testrs-dev-$CI_PIPELINE_ID
+      paths:
+        - target
+      policy: pull
+    - key: target-testpysql-dev-$CI_PIPELINE_ID
+      paths:
+        - target
+      policy: pull
+    - key: target-testpynotsql-dev-$CI_PIPELINE_ID
+      paths:
+        - target
+      policy: pull
+  dependencies: []
+  script:
+    - make coverage-report
+    - find target -ls
+    - ZIP_FILENAME=picodata_${CI_COMMIT_REF_SLUG}_${CI_COMMIT_SHORT_SHA}
+    - cd target/cov/coverage/report
+    - zip -r --quiet ../$ZIP_FILENAME .
+    - 'curl --fail --show-error --retry 3  --max-time 300 -s -H "Authorization: ApiKey ${REPORTFILER_UPLOAD_TOKEN}" -F "zipfile=@../${ZIP_FILENAME}.zip" https://fs.picodata.io/reportfiler/reportupload'

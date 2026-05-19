@@ -49,6 +49,7 @@ RUN rm -f /etc/yum.repos.d/pgdg-redhat-all.repo \
            zlib-devel \
            postgresql \
            cpio \
+           file \
     && npm install -g corepack \
     # use corepack to install and manage yarn version
     && corepack enable \
