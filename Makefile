@@ -67,7 +67,7 @@ build: tarantool-patch
 		cargo build $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) $(CARGO_FLAGS_EXTRA)
 
 # A template for `build-*` rules.
-define BUILD_TEMPLATE =
+override define BUILD_TEMPLATE
 .PHONY: build-$(1)
 build-$(1): override CARGO_FLAGS += $$(ERROR_INJECTION)
 build-$(1): override CARGO_FLAGS += --profile=$(1)
@@ -83,7 +83,7 @@ endef
 # These build profiles are intended to be used for CI and local development.
 # Still, there are two special cases which stand apart from the generated ones:
 #  - `build-release-pkg` is for the packages we ship as our release artifacts.
-BUILD_PROFILES := dev fast-release release
+override BUILD_PROFILES := dev fast-release release
 $(foreach PROFILE,$(BUILD_PROFILES),$(eval $(call BUILD_TEMPLATE,$(PROFILE))))
 
 # Ignore CARGO_FLAGS defaults from the above by using `=` instead of `+=`.
@@ -134,14 +134,14 @@ test-py:
 .PHONY: test
 test: test-rs test-py
 
-define TEST_TEMPLATE =
+override define TEST_TEMPLATE
 .PHONY: coverage-test-$(1)
 coverage-test-$(1): export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
 coverage-test-$(1):
 	tools/coverage.py run $(MAKE) test-$(1)
 endef
 
-TEST_PARTS := rs py
+override TEST_PARTS := rs py
 $(foreach PART,$(TEST_PARTS),$(eval $(call TEST_TEMPLATE,$(PART))))
 
 .PHONY: coverage-report
