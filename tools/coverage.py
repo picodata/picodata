@@ -94,7 +94,12 @@ class Cargo:
     def __init__(self, cwd: Path) -> None:
         # Log a few very impactful environment variables.
         # https://doc.rust-lang.org/cargo/reference/environment-variables.html
-        for key in ("CARGO_TARGET_DIR", "CARGO_BUILD_TARGET_DIR", "CARGO_BUILD_BUILD_DIR", "CARGO_BUILD_TARGET"):
+        for key in (
+            "CARGO_TARGET_DIR",
+            "CARGO_BUILD_TARGET_DIR",
+            "CARGO_BUILD_BUILD_DIR",
+            "CARGO_BUILD_TARGET",
+        ):
             value = os.environ.get(key)
             if value:
                 print(f"warning: environment contains {key}={value}", file=sys.stderr)
@@ -223,12 +228,18 @@ class LLVM:
 
         return name
 
-    def profdata(self, input_files_list: Path, output_profdata: Path) -> None:
+    def profdata(
+        self,
+        input_files_list: Path,
+        output_profdata: Path,
+        failure_mode: str,
+    ) -> None:
         check_call(
             [
                 self.resolve_tool("llvm-profdata"),
                 "merge",
                 "-sparse",
+                f"-failure-mode={failure_mode}",
                 f"-input-files={input_files_list}",
                 f"-output={output_profdata}",
             ]
@@ -275,12 +286,33 @@ class LLVM:
     def cov_report(self, **kwargs) -> None:
         self._cov(subcommand="report", **kwargs)
 
-    def cov_export(self, *, kind: str, output_file: Optional[Path], **kwargs) -> None:
-        extras = (f"-format={kind}",)
-        self._cov(subcommand="export", *extras, output_file=output_file, **kwargs)
+    def cov_export(
+        self,
+        *args,
+        kind: str,
+        output_file: Optional[Path],
+        **kwargs,
+    ) -> None:
+        self._cov(
+            *args,
+            f"-format={kind}",
+            subcommand="export",
+            output_file=output_file,
+            **kwargs,
+        )
 
-    def cov_show(self, *, kind: str, output_dir: Optional[Path] = None, **kwargs) -> None:
-        extras = [f"-format={kind}"]
+    def cov_show(
+        self,
+        *,
+        kind: str,
+        output_dir: Optional[Path] = None,
+        show_instantiations: bool = False,
+        **kwargs,
+    ) -> None:
+        extras = [
+            f"-format={kind}",
+            f"-show-instantiations={str(show_instantiations).lower()}",
+        ]
         if output_dir:
             extras.append(f"-output-dir={output_dir}")
 
@@ -303,7 +335,7 @@ class ProfDir:
     def file_names_hash(self) -> str:
         return hash_strings(map(str, self.files))
 
-    def merge(self, output_profdata: Path) -> bool:
+    def merge(self, output_profdata: Path, failure_mode: str) -> bool:
         files = self.files
         if not files:
             return False
@@ -319,7 +351,7 @@ class ProfDir:
 
         # An obvious make-ish optimization
         if files_mtime >= profdata_mtime:
-            self.llvm.profdata(files_list, output_profdata)
+            self.llvm.profdata(files_list, output_profdata, failure_mode)
 
         return True
 
@@ -349,7 +381,12 @@ class ReportData:
 
 class Report(ABC, ReportData):
     def _common_kwargs(self) -> Dict[str, Any]:
-        return dict(profdata=self.profdata, objects=self.objects, sources=self.sources, demangler=self.demangler)
+        return dict(
+            profdata=self.profdata,
+            objects=self.objects,
+            sources=self.sources,
+            demangler=self.demangler,
+        )
 
     @abstractmethod
     def generate(self) -> None:
@@ -371,11 +408,28 @@ class TextReport(Report):
 
 
 @dataclass
+class JsonReport(Report):
+    output_file: Path
+
+    def generate(self) -> None:
+        self.llvm.cov_export(
+            "-summary-only",
+            kind="text",
+            output_file=self.output_file,
+            **self._common_kwargs(),
+        )
+
+
+@dataclass
 class LcovReport(Report):
     output_file: Path
 
     def generate(self) -> None:
-        self.llvm.cov_export(kind="lcov", output_file=self.output_file, **self._common_kwargs())
+        self.llvm.cov_export(
+            kind="lcov",
+            output_file=self.output_file,
+            **self._common_kwargs(),
+        )
 
 
 @dataclass
@@ -383,7 +437,11 @@ class HtmlReport(Report):
     output_dir: Path
 
     def generate(self) -> None:
-        self.llvm.cov_show(kind="html", output_dir=self.output_dir, **self._common_kwargs())
+        self.llvm.cov_show(
+            kind="html",
+            output_dir=self.output_dir,
+            **self._common_kwargs(),
+        )
         print(f"HTML report is located at `{self.output_dir}`")
 
     def open(self) -> None:
@@ -391,7 +449,11 @@ class HtmlReport(Report):
         if not tool:
             raise Exception(f"Unknown platform {sys.platform}")
 
-        check_call([tool, self.output_dir / "index.html"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        check_call(
+            [tool, self.output_dir / "index.html"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
 
 @dataclass
@@ -453,7 +515,12 @@ class GithubPagesReport(HtmlReport):
 
 
 class State:
-    def __init__(self, cwd: Path, top_dir: Optional[Path], profraw_prefix: Optional[str]) -> None:
+    def __init__(
+        self,
+        cwd: Path,
+        top_dir: Optional[Path],
+        profraw_prefix: Optional[str],
+    ) -> None:
         # Use hostname by default
         self.profraw_prefix = profraw_prefix or socket.gethostname()
 
@@ -512,7 +579,7 @@ class State:
             ]
         )
 
-    def _merge_profraw(self) -> bool:
+    def _merge_profraw(self, failure_mode: str) -> bool:
         profdata_path = self.profdata_dir / "-".join(
             [
                 self.profraw_prefix,
@@ -520,27 +587,27 @@ class State:
             ]
         )
         print(f"* Merging profraw files into {profdata_path.name}")
-        did_merge_profraw = self.profraw_dir.merge(profdata_path)
+        did_merge_profraw = self.profraw_dir.merge(profdata_path, failure_mode)
 
         # We no longer need those profraws
         self.profraw_dir.clean()
 
         return did_merge_profraw
 
-    def _merge_profdata(self) -> bool:
-        self._merge_profraw()
+    def _merge_profdata(self, failure_mode: str) -> bool:
+        self._merge_profraw(failure_mode)
         print(f"* Merging profdata files into {self.final_profdata.name}")
-        return self.profdata_dir.merge(self.final_profdata)
+        return self.profdata_dir.merge(self.final_profdata, failure_mode)
 
     def do_run(self, args) -> None:
         check_call([*args.command, *args.args])
 
     def do_merge(self, args) -> None:
-        handlers = {
-            "profraw": self._merge_profraw,
-            "profdata": self._merge_profdata,
-        }
-        handlers[args.kind]()
+        match args.kind:
+            case "profraw":
+                self._merge_profraw(args.failure_mode)
+            case "profdata":
+                self._merge_profdata(args.failure_mode)
 
     def do_report(self, args) -> None:
         if args.all and args.sources:
@@ -561,7 +628,7 @@ class State:
             print(f"* Resolving crate sources: {', '.join(args.crates)}")
             sources.extend(self.cargo.crate_sources(args.crates))
 
-        if not self._merge_profdata():
+        if not self._merge_profdata(args.failure_mode):
             raise Exception(f"No coverage data files found at {self.top_dir}")
 
         objects = []
@@ -593,14 +660,36 @@ class State:
             objects=objects,
             sources=sources,
         )
-        formats = {
-            "html": lambda: HtmlReport(**params, output_dir=self.report_dir),
-            "text": lambda: TextReport(**params),
-            "lcov": lambda: LcovReport(**params, output_file=self.report_dir / "lcov.info"),
-            "summary": lambda: SummaryReport(**params),
-            "github": lambda: GithubPagesReport(**params, output_dir=self.report_dir, commit_url=args.commit_url),
-        }
-        report = formats[args.format]()
+
+        report = None
+        match args.format:
+            case "html":
+                report = HtmlReport(
+                    **params,
+                    output_dir=self.report_dir,
+                )
+            case "json":
+                report = JsonReport(
+                    **params,
+                    output_file=self.report_dir / "report.json",
+                )
+            case "lcov":
+                report = LcovReport(
+                    **params,
+                    output_file=self.report_dir / "lcov.info",
+                )
+            case "github":
+                report = GithubPagesReport(
+                    **params,
+                    output_dir=self.report_dir,
+                    commit_url=args.commit_url,
+                )
+            case "text":
+                report = TextReport(**params)
+            case "summary":
+                report = SummaryReport(**params)
+            case _:
+                raise Exception("unknown report format")
 
         print(f"* Rendering coverage report ({args.format})")
         report.generate()
@@ -608,6 +697,12 @@ class State:
         if args.open:
             print("* Opening the report")
             report.open()
+
+    def do_list(self, args) -> None:
+        for f in self.profraw_dir.files:
+            print(f)
+        for f in self.profdata_dir.files:
+            print(f)
 
     def do_clean(self, args: Any) -> None:
         # Wipe everything if no filters have been provided
@@ -637,60 +732,136 @@ self-contained example:
     """
 
     parser = argparse.ArgumentParser(
-        description="Coverage report builder", formatter_class=argparse.RawDescriptionHelpFormatter, epilog=example
+        description="Coverage report builder",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=example,
     )
     parser.add_argument("--dir", type=Path, help="output directory")
     parser.add_argument("--profraw-prefix", metavar="STRING", type=str)
 
     commands = parser.add_subparsers(title="commands", dest="subparser_name")
 
+    # RUN
     p_run = commands.add_parser("run", help="run a command with magic env")
     p_run.add_argument("command", nargs=1)
     p_run.add_argument("args", nargs=argparse.REMAINDER)
 
+    # MERGE
     p_merge = commands.add_parser("merge", help="save disk space by merging cov files")
-    p_merge.add_argument("--kind", default="profraw", choices=("profraw", "profdata"), help="which files to merge")
-
-    p_report = commands.add_parser("report", help="generate a coverage report")
-    p_report.add_argument("--profile", default="debug", choices=("debug", "release"), help="cargo build profile")
-    p_report.add_argument(
-        "--format", default="html", choices=("html", "text", "summary", "lcov", "github"), help="report format"
+    p_merge.add_argument(
+        "--kind",
+        default="profraw",
+        choices=("profraw", "profdata"),
+        help="which files to merge",
     )
-    p_report.add_argument("--input-objects", metavar="FILE", type=Path, help="file containing list of binaries")
+    p_merge.add_argument(
+        "--failure-mode",
+        default="all",
+        choices=("any", "all"),
+        help="`any` means failure if ANY single file is corrupt (default: `all`)",
+    )
+
+    # REPORT
+    p_report = commands.add_parser("report", help="generate a coverage report")
+    p_report.add_argument(
+        "--failure-mode",
+        default="all",
+        choices=("any", "all"),
+        help="`any` means failure if ANY single file is corrupt (default: `all`)",
+    )
+    p_report.add_argument(
+        "--profile",
+        default="debug",
+        choices=("debug", "release"),
+        help="cargo build profile",
+    )
+    p_report.add_argument(
+        "--format",
+        default="html",
+        choices=("html", "text", "json", "summary", "lcov", "github"),
+        help="report format",
+    )
+    p_report.add_argument(
+        "--input-objects",
+        metavar="FILE",
+        type=Path,
+        help="file containing list of binaries",
+    )
     p_report.add_argument(
         "--cargo-objects",
         default="auto",
         choices=("auto", "all", "none", "tests", "bins"),
         help="use cargo for auto discovery of binaries",
     )
-    p_report.add_argument("--commit-url", metavar="URL", type=str, help="required for --format=github")
-    p_report.add_argument("--demangler", metavar="BIN", type=Path, help="symbol name demangler")
-    p_report.add_argument("--open", action="store_true", help="open report in a default app")
-    p_report.add_argument("--all", action="store_true", help="show everything, e.g. deps")
     p_report.add_argument(
-        "--crate", action="append", dest="crates", metavar="NAME", help="include sources for named crate (repeatable)"
+        "--commit-url",
+        metavar="URL",
+        type=str,
+        help="required for --format=github",
     )
-    p_report.add_argument("sources", nargs="*", type=Path, help="source file or directory")
+    p_report.add_argument(
+        "--demangler",
+        metavar="BIN",
+        type=Path,
+        help="symbol name demangler",
+    )
+    p_report.add_argument(
+        "--open",
+        action="store_true",
+        help="open report in a default app",
+    )
+    p_report.add_argument(
+        "--all",
+        action="store_true",
+        help="show everything, e.g. deps",
+    )
+    p_report.add_argument(
+        "--crate",
+        action="append",
+        dest="crates",
+        metavar="NAME",
+        help="include sources for named crate (repeatable)",
+    )
+    p_report.add_argument(
+        "sources",
+        nargs="*",
+        type=Path,
+        help="source file or directory",
+    )
 
+    # LIST
+    _p_list = commands.add_parser("list", help="list coverage artifacts")
+
+    # CLEAN
     p_clean = commands.add_parser("clean", help="wipe coverage artifacts")
-    p_clean.add_argument("--report", action="store_true", help="pick generated report")
-    p_clean.add_argument("--prof", action="store_true", help="pick *.profdata & *.profraw")
+    p_clean.add_argument(
+        "--report",
+        action="store_true",
+        help="pick generated report",
+    )
+    p_clean.add_argument(
+        "--prof",
+        action="store_true",
+        help="pick *.profdata & *.profraw",
+    )
 
     args = parser.parse_args()
-    state = State(cwd=Path.cwd(), top_dir=args.dir, profraw_prefix=args.profraw_prefix)
-
-    handlers = {
-        "run": state.do_run,
-        "merge": state.do_merge,
-        "report": state.do_report,
-        "clean": state.do_clean,
-    }
-
-    handler = handlers.get(args.subparser_name)
-    if handler:
-        handler(args)
-    else:
-        parser.print_help()
+    state = State(
+        cwd=Path.cwd(),
+        top_dir=args.dir,
+        profraw_prefix=args.profraw_prefix,
+    )
+    match args.subparser_name:
+        case "run":
+            state.do_run(args)
+        case "merge":
+            state.do_merge(args)
+        case "report":
+            state.do_report(args)
+        case "list":
+            state.do_list(args)
+        case "clean":
+            state.do_clean(args)
 
 
 if __name__ == "__main__":
