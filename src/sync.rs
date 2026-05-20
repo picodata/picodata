@@ -18,7 +18,6 @@ use ::tarantool::{fiber, proc};
 use futures::stream::FuturesOrdered;
 use futures::{Future, StreamExt};
 use serde::{Deserialize, Serialize};
-use smol_str::SmolStr;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -306,6 +305,7 @@ mod tests {
     use super::*;
 
     use crate::instance::Instance;
+    use crate::tarantool::test_util;
     use crate::traft::network::ConnectionPool;
 
     #[::tarantool::test]
@@ -314,8 +314,7 @@ mod tests {
 
         // Connect to the current Tarantool instance
         let pool = ConnectionPool::new(node.storage.clone(), Default::default());
-        let l = ::tarantool::lua_state();
-        let listen: SmolStr = l.eval("return box.info.listen").unwrap();
+        let listen = test_util::listen_address();
 
         let instance = Instance {
             raft_id: 1337,

@@ -189,11 +189,28 @@ fn test_one(test: &TestCase) {
 
     crate::set_tarantool_compat_options();
 
+    let cargo_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = cargo_path.join("tarantool/tests/ssl_certs");
+    let cert_file = path.join("server.crt");
+    let key_file = path.join("server.key");
+    let ca_file = path.join("combined-ca.crt");
+
     let cfg = tarantool::Cfg {
-        listen: Some(tarantool::ListenConfig {
-            uri: "127.0.0.1:0".to_string(),
-            params: None,
-        }),
+        listen: vec![
+            tarantool::ListenConfig {
+                uri: "127.0.0.1:0".to_string(),
+                params: None,
+            },
+            tarantool::ListenConfig {
+                uri: "127.0.0.1:0".to_string(),
+                params: Some(tarantool::ListenConfigParams {
+                    transport: "ssl".to_string(),
+                    ssl_cert_file: Some(cert_file),
+                    ssl_key_file: Some(key_file),
+                    ssl_ca_file: Some(ca_file),
+                }),
+            },
+        ],
         read_only: false,
         log_level: Some(::tarantool::log::SayLevel::Verbose as u8),
         wal_mode: crate::config::WalMode::None,

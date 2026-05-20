@@ -26,7 +26,6 @@ use ::tarantool::util::IntoClones;
 use futures::future::poll_fn;
 use futures::Future;
 use futures::FutureExt as _;
-use smol_str::SmolStr;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -760,6 +759,7 @@ impl IdOfInstance for RaftIdOrName {
 
 mod tests {
     use super::*;
+    use crate::tarantool::test_util;
     use std::rc::Rc;
     use tarantool::fiber;
     use tarantool::tlua;
@@ -791,7 +791,7 @@ mod tests {
 
         // Connect to the current Tarantool instance
         let pool = ConnectionPool::new(node.storage.clone(), Default::default());
-        let listen: SmolStr = l.eval("return box.info.listen").unwrap();
+        let listen = test_util::listen_address();
 
         let instance = traft::Instance {
             raft_id: 1337,
@@ -861,7 +861,7 @@ mod tests {
         let call_timeout = Duration::from_millis(50);
         let pool = ConnectionPool::new(node.storage.clone(), opts);
 
-        let listen: SmolStr = l.eval("return box.info.listen").unwrap();
+        let listen = test_util::listen_address();
 
         let instance = traft::Instance {
             raft_id: 1337,
@@ -963,7 +963,7 @@ mod tests {
         let call_timeout = Duration::from_millis(50);
 
         let pool = ConnectionPool::new(node.storage.clone(), opts);
-        let listen: SmolStr = l.eval("return box.info.listen").unwrap();
+        let listen = test_util::listen_address();
 
         let instance = traft::Instance {
             raft_id: 1337,
@@ -1052,7 +1052,7 @@ mod tests {
         };
         let call_timeout = Duration::from_secs(3);
         let pool = ConnectionPool::new(storage.clone(), opts);
-        let listen: SmolStr = l.eval("return box.info.listen").unwrap();
+        let listen = test_util::listen_address();
 
         let instance = traft::Instance {
             raft_id: 1337,

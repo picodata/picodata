@@ -1,6 +1,7 @@
 mod methods;
 mod msgpack_helpers;
 mod tarantool;
+mod tests;
 mod typed_method;
 
 use crate::{scram, storage::Catalog};

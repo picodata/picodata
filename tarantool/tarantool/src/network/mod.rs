@@ -29,6 +29,7 @@ pub type Error = client::ClientError;
 #[cfg(feature = "network_client")]
 mod tests {
     use super::*;
+    use crate::auth::AuthMethod;
     use crate::test::util::listen_port;
 
     #[crate::test(tarantool = "crate")]
@@ -36,6 +37,7 @@ mod tests {
         // Wrong user
         {
             let mut config = Config::default();
+            config.auth_method = AuthMethod::ChapSha1;
             config.creds = Some(("no such user".into(), "password".into()));
             let client = ReconnClient::with_config("localhost".into(), listen_port(), config);
 
@@ -47,6 +49,7 @@ mod tests {
         // Wrong password
         {
             let mut config = Config::default();
+            config.auth_method = AuthMethod::ChapSha1;
             config.creds = Some(("test_user".into(), "wrong password".into()));
             let client = ReconnClient::with_config("localhost".into(), listen_port(), config);
 

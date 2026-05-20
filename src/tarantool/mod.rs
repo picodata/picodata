@@ -1,4 +1,5 @@
 pub mod box_region;
+pub mod test_util;
 
 use crate::config::{BootstrapStrategy, ByteSize, ElectionMode, PicodataConfig};
 use crate::config::{TlsSettings, WalMode};
@@ -332,7 +333,7 @@ pub struct Cfg {
     pub instance_uuid: Option<String>,
     pub replicaset_uuid: Option<String>,
 
-    pub listen: Option<ListenConfig>,
+    pub listen: Vec<ListenConfig>,
 
     pub read_only: bool,
     pub replication: Vec<ListenConfig>,
@@ -370,7 +371,7 @@ impl Cfg {
             // We don't need any of the fields below.
             instance_uuid: None,
             replicaset_uuid: None,
-            listen: None,
+            listen: Vec::new(),
 
             // On restore all storages should be writable.
             read_only: false,
@@ -409,7 +410,7 @@ impl Cfg {
             replicaset_uuid: None,
 
             // Listen port will be set a bit later.
-            listen: None,
+            listen: Vec::new(),
 
             // On discovery stage the local storage needs to be bootstrapped,
             // but if we're restarting this will be changed to `true`, because
@@ -450,7 +451,7 @@ impl Cfg {
             replicaset_uuid: Some(leader.replicaset_uuid.to_string()),
 
             // Listen port will be set after the global raft node is initialized.
-            listen: None,
+            listen: Vec::new(),
 
             // Must be writable, we're going to initialize the storage.
             read_only: false,
@@ -509,10 +510,10 @@ impl Cfg {
 
             // Needs to be set, because an applier will attempt to connect to
             // self and will block box.cfg() call until it succeeds.
-            listen: Some(ListenConfig::new(
+            listen: vec![ListenConfig::new(
                 config.instance.iproto.listen().to_host_port().into(),
                 tls_config,
-            )),
+            )],
 
             // Raft leader determines who is booting up in read_only mode.
             read_only: !resp.is_master,
@@ -580,7 +581,7 @@ impl Cfg {
 
             // We don't expect any incoming connections because we will
             // rebootstrap later.
-            listen: None,
+            listen: Vec::new(),
 
             // Even though we rebootstrap later, we need to persist data to Raft space.
             read_only: false,
