@@ -151,6 +151,11 @@ coverage-report:
 	  --input-objects=<(tools/find-executables.sh $(CARGO_TARGET_DIR)) \
 	  $(COV_REPORT_FLAGS)
 
+.PHONY: coverage-merge
+coverage-merge: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-merge:
+	tools/coverage.py merge
+
 .PHONY: coverage-clean
 coverage-clean: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
 coverage-clean:

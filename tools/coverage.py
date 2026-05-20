@@ -311,7 +311,7 @@ class ProfDir:
         profdata_mtime = file_mtime_or_zero(output_profdata)
         files_mtime = 0
 
-        files_list = self.cwd / "files.list"
+        files_list = output_profdata.with_name(f"{output_profdata.name}.list")
         with open(files_list, "w") as stream:
             for file in files:
                 files_mtime = max(files_mtime, file_mtime_or_zero(file))
