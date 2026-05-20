@@ -419,7 +419,7 @@ build-linux:
       if [ "$BUILD_PROFILE" = "dev" ]; then
         ci-log-section start "coverage-data" prepare coverage data ...
         du -hc --max-depth=1 target
-        make coverage-merge
+        make coverage-data-merge
         make coverage-trim-target
         du -hc --max-depth=1 target
         ci-log-section end "coverage-data"
@@ -488,7 +488,7 @@ test-rs-linux:
       if [ "$BUILD_PROFILE" = "dev" ]; then
         ci-log-section start "coverage-data" prepare coverage data ...
         du -hc --max-depth=1 target
-        make coverage-merge
+        make coverage-data-merge
         make coverage-trim-target
         du -hc --max-depth=1 target
         tar czf - target | curl --insecure --silent  --upload-file - --fail \
@@ -552,7 +552,7 @@ test-py-sql-linux:
       if [ "$BUILD_PROFILE" = "dev" ]; then
         ci-log-section start "coverage-data" prepare coverage data ...
         du -hc --max-depth=1 target
-        make coverage-merge
+        make coverage-data-merge
         make coverage-trim-target
         du -hc --max-depth=1 target
         tar czf - target | curl --insecure --silent  --upload-file - --fail \
@@ -633,7 +633,7 @@ test-py-not-sql-linux:
       if [ "$BUILD_PROFILE" = "dev" ]; then
         ci-log-section start "coverage-data" prepare coverage data ...
         du -hc --max-depth=1 target
-        make coverage-merge
+        make coverage-data-merge
         make coverage-trim-target
         du -hc --max-depth=1 target
         tar czf - target | curl --insecure --silent  --upload-file - --fail \

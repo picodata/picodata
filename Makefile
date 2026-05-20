@@ -156,19 +156,24 @@ coverage-report:
 	  --input-objects=$(CARGO_TARGET_DIR)/binaries.list \
 	  $(COV_REPORT_FLAGS)
 
-.PHONY: coverage-merge
-coverage-merge: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
-coverage-merge:
+.PHONY: coverage-data-merge
+coverage-data-merge: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-data-merge:
 	tools/coverage.py merge
+
+.PHONY: coverage-data-list
+coverage-data-list: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-data-list:
+	tools/coverage.py list
+
+.PHONY: coverage-data-clean
+coverage-data-clean: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-data-clean:
+	tools/coverage.py clean
 
 .PHONY: coverage-clean
 coverage-clean: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
 coverage-clean:
-	tools/coverage.py clean
-
-.PHONY: coverage-purge
-coverage-purge: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
-coverage-purge:
 	rm -rf $(CARGO_TARGET_DIR)
 
 .PHONY: asan-build-dev
@@ -195,7 +200,7 @@ coverage-demo:
 	$(MAKE) coverage-build-dev
 
 	@# Drop any possible coverage data for `build.rs`.
-	$(MAKE) coverage-clean
+	$(MAKE) coverage-data-clean
 
 	@# Note that it's better to first run rust-based tests,
 	@# then the python-based ones to prevent coverage loss
