@@ -879,7 +879,7 @@ table.legend {
             <td>768</td>
             <td>
             ```sql
-            ALTER SYSTEM SET iproto_net_msg_max = 0x400 FOR TIER default;
+            ALTER SYSTEM SET iproto_net_msg_max = 400 FOR TIER default;
             ```
             </td>
         </tr>
