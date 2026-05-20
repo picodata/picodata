@@ -60,7 +60,6 @@ build-plug-wrong-version:
 
 # CARGO_FLAGS_EXTRA is meant to be set outside the makefile by user
 .PHONY: build
-build: override CARGO_FLAGS += --lib --bins --tests
 build: tarantool-patch
 	if test -f ~/.cargo/env; then . ~/.cargo/env; fi && \
 		$(CARGO_ENV) \
@@ -77,7 +76,10 @@ build-$(1): build-plug-wrong-version
 .PHONY: coverage-build-$(1)
 coverage-build-$(1): export CARGO_TARGET_DIR=$$(TARGET_DIR_COV)
 coverage-build-$(1):
-	tools/coverage.py run $$(MAKE) build-$(1)
+	@# For code coverage we'd like to build everything in advance.
+	@# XXX: we can't use `--lib --bins --tests` simultaneously due to feature unification.
+	tools/coverage.py run $$(MAKE) build-$(1) CARGO_FLAGS="$$(CARGO_FLAGS) --lib --bins"
+	tools/coverage.py run $$(MAKE) build-$(1) CARGO_FLAGS="$$(CARGO_FLAGS) --tests"
 endef
 
 # These build profiles are intended to be used for CI and local development.
