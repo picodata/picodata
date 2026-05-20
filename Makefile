@@ -151,8 +151,9 @@ $(foreach PART,$(TEST_PARTS),$(eval $(call TEST_TEMPLATE,$(PART))))
 .PHONY: coverage-report
 coverage-report: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
 coverage-report:
+	tools/find-executables.sh $(CARGO_TARGET_DIR) > $(CARGO_TARGET_DIR)/binaries.list
 	tools/coverage.py report \
-	  --input-objects=<(tools/find-executables.sh $(CARGO_TARGET_DIR)) \
+	  --input-objects=$(CARGO_TARGET_DIR)/binaries.list \
 	  $(COV_REPORT_FLAGS)
 
 .PHONY: coverage-merge
