@@ -1,0 +1,114 @@
+default:
+  tags:
+    - docker-picodata
+  image:
+    name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
+    pull_policy: always
+  interruptible: true
+  retry:
+    max: 1
+    when:
+      - scheduler_failure
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - api_failure
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
+
+stages:
+  - build
+  - test
+
+variables:
+  FF_USE_FASTZIP: "true"
+  FF_TIMESTAMPS: "true"
+  CACHE_COMPRESSION_LEVEL: "fastest"
+  FF_NETWORK_PER_BUILD: 1
+  SCCACHE_DIR: $CI_PROJECT_DIR/.sccache
+  SCCACHE_CACHE_SIZE: "15G"
+  COMPILER_LAUNCHER: "sccache"
+  CARGO_HOME: $CI_PROJECT_DIR/.cargo
+
+  RUST_BACKTRACE: full
+  TARGET: debug
+  BUILD_PROFILE: dev
+  GIT_STRATEGY: none
+  # increase resources for asan jobs
+  KUBERNETES_CPU_REQUEST: 6
+  KUBERNETES_MEMORY_REQUEST: "8Gi"
+
+.cache_git: &cache_git
+  paths:
+    - $CI_PROJECT_DIR
+  key: cache_git-$CI_COMMIT_REF_SLUG
+
+.py_cache: &py_cache
+  paths:
+    - .venv
+  key: "py_cache-$CI_COMMIT_REF_SLUG"
+  fallback_keys:
+    - py_cache-$MAIN_BRANCH_SLUG
+
+asan-build-dev:
+  stage: build
+  cache:
+    - <<: *cache_git
+      policy: pull
+  script:
+    - tools/ensure_checkout.sh
+    - |
+      ci-log-section start "sccache-setup" Setting up sccache ...
+      sccache --show-stats
+      ci-log-section end "sccache-setup"
+    - |
+      ci-log-section start "asan-build" ASan Build
+      make asan-build-dev
+      ci-log-section end "asan-build"
+    - |
+      ci-log-section start "sccache-stats" sccache statistics ...
+      sccache --show-stats
+      ci-log-section end "sccache-stats"
+  artifacts:
+    paths:
+      - target/asan-dev/*/debug/picodata
+      - target/asan-dev/*/debug/libtestplug.so
+      - test/plug_wrong_version/target/debug/libplug_wrong_version.so
+
+asan-test-rs:
+  stage: test
+  cache:
+    - <<: *cache_git
+      policy: pull
+  script:
+    - tools/ensure_checkout.sh
+    - |
+      ci-log-section start "asan-test-rs" ASan Rust Tests
+      make asan-test-rs
+      ci-log-section end "asan-test-rs"
+  artifacts:
+    when: always
+    paths:
+      - core*
+
+asan-test-py:
+  stage: test
+  cache:
+    - <<: *cache_git
+      policy: pull
+    - <<: *py_cache
+      policy: pull
+  script:
+    - tools/ensure_checkout.sh
+    - |
+      ci-log-section start "asan-test-py" ASan Python Tests
+      make asan-test-py
+      ci-log-section end "asan-test-py"
+  artifacts:
+    when: always
+    paths:
+      - junit_pytest.xml
+      - core*
+    reports:
+      junit: junit_pytest.xml

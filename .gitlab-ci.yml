@@ -966,6 +966,37 @@ helm-image:
     branch: main
     strategy: depend
 
+asan:
+  stage: test
+  trigger:
+    include: .gitlab-ci-asan.yml
+    strategy: depend
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $WITH_ASAN == "1"
+    - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
+      changes:
+        paths:
+          - docker-build-base/**
+          - tools/clone.sh
+          - .gitlab-ci.yml
+        compare_to: *main-branch
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+      when: manual
+      allow_failure: true
+    - when: manual
+      allow_failure: true
+  inherit:
+    variables:
+      - MAIN_BRANCH
+      - WITH_ASAN
+      - MAIN_BRANCH_SLUG
+      - RUST_VERSION
+      - TARANTOOL_VERSION
+      - BASE_IMAGE
+      - BASE_IMAGE_TAG
+
 pack-on-tag:
   stage: pack
   rules:
