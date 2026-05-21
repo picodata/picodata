@@ -161,6 +161,13 @@ variables:
   fallback_keys:
     - py_cache-$MAIN_BRANCH_SLUG
 
+.pre_commit_cache: &pre_commit_cache
+  paths:
+    - .cache/pre-commit/
+  key: "pre_commit_cache-$CI_COMMIT_REF_SLUG"
+  fallback_keys:
+    - pre_commit_cache-$MAIN_BRANCH_SLUG
+
 .rolling_binaries_cache: &rolling_binaries_cache
   paths:
     - .rolling_binaries/
@@ -1177,3 +1184,47 @@ deploy-coverage:
     - |
       curl --fail --show-error --retry 3  --max-time 300 -s -H "Authorization: ApiKey ${REPORTFILER_UPLOAD_TOKEN}" \
         -F "zipfile=@../${ZIP_FILENAME}.zip" https://fs.picodata.io/reportfiler/reportupload
+
+validate-commit-headers:
+  stage: test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  variables:
+    # Full clone: large MRs or branches rebased onto an older base can
+    # have $CI_MERGE_REQUEST_DIFF_BASE_SHA outside a shallow window.
+    GIT_DEPTH: 0
+  cache:
+    - <<: *py_cache
+      policy: pull
+    - <<: *pre_commit_cache
+      policy: pull-push
+  before_script:
+    - *poetry-install
+    - poetry run pre-commit install-hooks
+  script:
+    - |
+      ci-log-section start "validate-commit-headers" Validating commit subjects via pre-commit ...
+      set -u
+      BASE="$CI_MERGE_REQUEST_DIFF_BASE_SHA"
+      HEAD_SHA="$(git rev-parse HEAD)"
+      echo "Range: ${BASE}..${HEAD_SHA}"
+
+      tmp="$(mktemp -d)"
+      trap 'rm -rf "$tmp"' EXIT
+
+      rc=0
+      for sha in $(git rev-list --no-merges --reverse "${BASE}..${HEAD_SHA}"); do
+        msg_file="$tmp/$sha"
+        git log -1 --format=%B "$sha" > "$msg_file"
+
+        if ! poetry run pre-commit run \
+              --hook-stage commit-msg \
+              --commit-msg-filename "$msg_file" \
+              conventional-pre-commit; then
+          subject="$(git log -1 --format=%s "$sha")"
+          echo "FAIL: $sha $subject" >&2
+          rc=1
+        fi
+      done
+      ci-log-section end "validate-commit-headers"
+      exit "$rc"

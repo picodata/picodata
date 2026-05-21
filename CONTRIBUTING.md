@@ -508,6 +508,72 @@ and descriptive commit titles and bodies explaining what changed, why the change
 was necessary, any important design decisions and/or tradeoffs, impact on users,
 compatibility, or performance, etc.
 
+#### Subject line (Conventional Commits)
+
+Every commit subject must follow the
+[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0):
+
+```
+<type>[(<scope>)][!]: <description>
+```
+
+* `<type>` — one of: `feat`, `fix`, `chore`, `refactor`, `docs` (or `doc`),
+  `perf`, `test`, `revert`, `build`, `ci`, `style`, plus the picodata-specific
+  prefixes `adr`, `git`, `empty`. Anything else (`sql:`, `cli:`, `traft:`, ...)
+  must be moved into the scope, e.g. `refactor(sql): ...`.
+* `(<scope>)` — optional, non-empty noun in parentheses.
+* `!` — optional breaking-change marker before the colon.
+* `<description>` — non-empty, separated from the colon by a single space.
+
+Examples:
+
+```
+feat(sql): support JSON ->> operator
+fix: reject empty replicaset on join
+chore!: drop deprecated RegionBuffer::get
+docs(dev): explain release-note workflow
+```
+
+The format is enforced locally and in CI by a `commit-msg` git hook driven by the
+[pre-commit](https://pre-commit.com/) framework.
+
+#### Installing the hook
+
+The local `commit-msg` hook validates only the commit subject
+(Conventional Commits). It runs the same `pre-commit` config CI uses:
+[`.pre-commit-config.yaml`](./.pre-commit-config.yaml).
+
+The hook needs `pre-commit` from the project's Poetry environment, so
+run `poetry install` first:
+
+```bash
+poetry install
+make setup-hooks
+```
+
+`make setup-hooks` invokes `poetry run pre-commit install --hook-type
+commit-msg`, which writes `.git/hooks/commit-msg`. The first commit
+after installation downloads and caches the upstream
+`conventional-pre-commit` hook.
+
+### Changelog Fragments
+
+When your MR has user-visible impact, add a small Markdown fragment under
+`release_notes/unreleased/`. The release manager consolidates all such
+fragments into a single `RELEASE_NOTES.md` section at release time and
+deletes them.
+
+Internal-only MRs (pure refactor with no behavioural effect, test churn,
+build tooling) do not need a fragment.
+
+`CHANGELOG.md` (developer-facing summary) is generated separately from
+commit subjects by `git-pico-cliff`; it is updated only on release
+branches by `tools/release_changelog.py`. Do not edit either file by hand
+outside the release-MR flow.
+
+See [`release_notes/README.md`](./release_notes/README.md) for the full spec and
+[`doc/dev/generating-changelog.md`](./doc/dev/generating-changelog.md) for the release flow.
+
 ### Merge Request Checklist
 
 The merge request template contains required checklist items. These fields

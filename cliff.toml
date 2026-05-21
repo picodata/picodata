@@ -1,0 +1,129 @@
+# git-cliff ~ configuration file
+# NOTE: this must be built with git-pico-cliff - a picodata fork of git-cliff: https://git.picodata.io/core/git-pico-cliff
+# https://git-cliff.org/docs/configuration
+
+
+[changelog]
+# A Tera template to be rendered for each release in the changelog.
+# Headings: H1 (`# Changelog`) is the file title; each release is H2
+# (`## [VERSION] - DATE`); group sections are H3 (`### Features`, ...).
+# See https://keats.github.io/tera/docs/#introduction
+body = """
+{%- if version -%}
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{%- else -%}
+## [unreleased]
+{%- endif %}
+
+{%- macro commit(commit) -%}
+{%- if commit.scope %}* **({{ commit.scope }})** {{ commit.message }}
+{%- else %}* {{ commit.message }}
+{%- endif -%}
+{%- if commit.remote.pr_number %} in [!{{ commit.remote.pr_number }}]($REPO/-/merge_requests/{{ commit.remote.pr_number }}){% endif -%}
+{%- endmacro commit -%}
+
+{#- Breaking changes are hoisted into their own section above the type
+    groups. The per-commit `if not c.breaking` guard inside the group loop
+    keeps them from appearing twice. -#}
+{%- set breakings = commits | filter(attribute="breaking", value=true) -%}
+{%- if breakings | length > 0 %}
+
+### Breaking changes
+{% for c in breakings %}
+{{ self::commit(commit=c) }}
+{%- endfor %}
+{%- endif -%}
+
+{#- Group by type. We deliberately do NOT pre-filter by breaking=false
+    here: for non-conventional commits the `breaking` attribute is None
+    (not false), and Tera's `filter(value=false)` would silently drop
+    them. Instead, the inner loops skip individual breaking commits. -#}
+{%- for group, group_commits in commits | group_by(attribute="group") %}
+
+### {{ group | striptags | trim | upper_first }}
+{%- for c in group_commits | filter(attribute="scope") | sort(attribute="scope") -%}
+{%- if not c.breaking %}
+{{ self::commit(commit=c) }}
+{%- endif -%}
+{%- endfor -%}
+{%- for c in group_commits -%}
+{%- if not c.breaking and not c.scope %}
+{{ self::commit(commit=c) }}
+{%- endif -%}
+{%- endfor %}
+{%- endfor %}
+"""
+# Remove leading and trailing whitespaces from the changelog's body.
+trim = true
+# postprocessors
+postprocessors = [
+    # Replace the placeholder `$REPO` with a URL.
+    { pattern = '\$REPO', replace = "https://git.picodata.io/core/picodata" },
+]
+
+[git]
+# Parse commits according to the conventional commits specification.
+# See https://www.conventionalcommits.org
+#
+# We deliberately keep `require_conventional = false` because pre-tooling
+# history (master and older release branches) contains many non-CC commits.
+# `filter_unconventional = false` keeps them in the output; the catch-all
+# `.* -> Miscellaneous Tasks` parser below labels them. New commits are
+# gated by the `validate-commit-headers` CI job + the local commit-msg
+# hook, so the noise fades over time.
+conventional_commits = true
+filter_unconventional = false
+require_conventional = false
+split_commits = false
+commit_preprocessors = [
+    # Replace issue numbers with link templates to be updated in `changelog.postprocessors`.
+    #{ pattern = '\((\w+\s)?#([0-9]+)\)', replace = "([#${2}](<REPO>/issues/${2}))"},
+    # Check spelling of the commit message using https://github.com/crate-ci/typos.
+    # If the spelling is incorrect, it will be fixed automatically.
+    #{ pattern = '.*', replace_command = 'typos --write-changes -' },
+]
+# Prevent commits that are breaking from being excluded by commit parsers.
+protect_breaking_commits = false
+# Skip rules first, then categorising rules.
+commit_parsers = [
+    # Self-reference noise: the auto-update bot regenerates these files,
+    # we don't want to list its commits in their own output.
+    { message = "^chore.*CHANGELOG", skip = true },
+    { message = "^chore.*RELEASE_NOTES", skip = true },
+    { message = "^chore: prepare release", skip = true },
+    # Other release-cycle noise.
+    { message = "^chore: update authors", skip = true },
+    { message = "^chore: (update|bump) `?tarantool(-sys)?`?", skip = true },
+    { message = "^git: bump version", skip = true },
+    { message = "^empty: start", skip = true },
+    # ADR commits do not constitute changes to the product.
+    { message = "^adr", skip = true },
+
+    # 9 sections in the order requested.
+    { message = "^feat",              group = "<!-- 1 -->Features" },
+    { message = "^fix",               group = "<!-- 2 -->Bug fixes" },
+    { message = "^refactor",          group = "<!-- 3 -->Refactor" },
+    { message = "^docs?",             group = "<!-- 4 -->Documentation" },
+    { message = "^perf",              group = "<!-- 5 -->Performance" },
+    { message = "^test",              group = "<!-- 6 -->Testing" },
+    { message = "^(R|r)evert",        group = "<!-- 8 -->Revert" },
+    { message = "^(build|ci)",        group = "<!-- 9 -->Build" },
+    { message = "^(chore|style|git)", group = "<!-- 7 -->Miscellaneous Tasks" },
+
+    # Catch-all for untyped / legacy non-CC commits.
+    { message = ".*",                 group = "<!-- 7 -->Miscellaneous Tasks" },
+]
+
+filter_commits = false
+fail_on_unmatched_commit = false
+link_parsers = []
+use_branch_tags = false
+topo_order = false
+topo_order_commits = true
+sort_commits = "oldest"
+recurse_submodules = false
+
+[remote.gitlab]
+api_url = "https://git.picodata.io/api/v4"
+owner = "core"
+repo = "picodata"

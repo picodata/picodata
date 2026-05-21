@@ -1,0 +1,39 @@
+# Configuration for the `pre-commit` framework (https://pre-commit.com/).
+# Single source of truth for commit-subject validation, executed in two
+# places:
+#   * locally, via the `commit-msg` git hook installed by `make setup-hooks`
+#   * in CI, by the `validate-commit-headers` job in .gitlab-ci.yml
+#
+# Bypass for emergencies only (CI gate still enforces):
+#   git commit --no-verify
+
+default_install_hook_types: [commit-msg]
+default_stages: [commit-msg]
+
+repos:
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        # Picodata extends the upstream default type set with `adr`, `doc`,
+        # `empty`, `git` (entrenched in tooling and history).
+        # Keep `docs`/`doc` as one regex type because conventional-pre-commit
+        # v4.4 sorts types lexically; separate `doc` and `docs` entries make
+        # `docs:` parse as the shorter `doc` type first.
+        args:
+          - --strict
+          - build
+          - chore
+          - ci
+          - docs?
+          - feat
+          - fix
+          - perf
+          - refactor
+          - revert
+          - style
+          - test
+          - adr
+          - git
+          - empty

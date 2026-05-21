@@ -372,3 +372,19 @@ flaky-finder:
 .PHONY: collect-versions
 collect-required-rolling-versions:
 	poetry run pytest --collect-only --collect-required-rolling-versions
+
+.PHONY: setup-hooks
+setup-hooks:
+	@command -v poetry >/dev/null || { \
+		echo "error: poetry not found on PATH." >&2; exit 2; }
+	@poetry run python -c "import pre_commit" 2>/dev/null || { \
+		echo "error: pre-commit not installed in the project venv." >&2; \
+		echo "       run 'poetry install' first, then re-run 'make setup-hooks'." >&2; \
+		exit 2; }
+	poetry run pre-commit install --hook-type commit-msg
+	@echo "Installed: .git/hooks/commit-msg (config: .pre-commit-config.yaml)"
+
+.PHONY: prepare-release
+prepare-release:
+	@test -n "$(TAG)" || { echo 'usage: make prepare-release TAG=26.3.1' >&2; exit 2; }
+	python3 tools/release_changelog.py "$(TAG)"
