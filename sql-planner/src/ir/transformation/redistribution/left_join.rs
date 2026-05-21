@@ -57,6 +57,7 @@ impl Plan {
             // Check if there is already motion under outer child
             if child.is_subquery_or_cte() {
                 let sq_child = self.get_first_rel_child(outer_id)?;
+                // TODO: maybe we should check distribution instead of the presence of a motion
                 if self.get_relation_node(sq_child)?.is_motion() {
                     motion_child_id = Some(sq_child);
                 }

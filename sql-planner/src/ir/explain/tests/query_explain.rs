@@ -349,6 +349,13 @@ fn test_query_explain_11() {
     // This query contains Segment motion
     // we can't estimate buckets in this case
 
+    // Why Segment motion?
+    // Table t2 is sharded by (e, f)
+    // Table t1 is sharded by (a, b)
+    // The join has Segment {e, f} vs Segment {a, b}. They don't equal each other, so we need motion.
+    // We know e = f = 10. Also, we know that e = b. By transitivity, e = f = b. So we can make
+    // Segment motion with Segment {b, b}.
+
     let sql = r#"explain (logical, buckets) select a, count(b) from
     (select e, f from t2 where (e, f) = (10, 10))
     join
@@ -374,7 +381,7 @@ fn test_query_explain_11() {
                   projection (t2.e::int -> e, t2.f::int -> f)
                     selection (ROW(t2.e::int, t2.f::int) = ROW(10::int, 10::int))
                       scan t2
-                motion [policy: full, program: ReshardIfNeeded]
+                motion [policy: segment([ref(b), ref(b)]), program: ReshardIfNeeded]
                   scan unnamed_subquery_1
                     projection (t1.a::string -> a, t1.b::int -> b)
                       selection (ROW(t1.a::string, t1.b::int) = ROW('20'::string, 20::int))
@@ -384,7 +391,7 @@ fn test_query_explain_11() {
      # Buckets                                                            
     ──────────────────────────────────────────────────────────────────────
 
-    buckets <= [62,2132]
+    buckets = unknown
     ");
 }
 
@@ -393,8 +400,15 @@ fn test_query_explain_12() {
     // This query does not contain
     // segment motions and we can estimate it!
 
+    // Why Full motion?
+    // Table t2 is sharded by (e, f)
+    // Table t1 is sharded by (a, b)
+    // The join has Segment {e, f} vs Segment {a, b}. They don't equal each other, so we need motion.
+    // We know that e = b. That's not fulfilling t2's sharding key, we cannot make a new segment
+    // key, so we need full motion.
+
     let sql = r#"explain (logical, buckets) select a from
-    (select e, f from t2 where (e, f) = (10, 10))
+    (select e, f from t2 where (e, f) = (10, 12))
     join
     (select a, b from t1 where (a, b) = ('20', 20))
     on e = b
@@ -411,7 +425,7 @@ fn test_query_explain_12() {
       join on (unnamed_subquery.e::int = unnamed_subquery_1.b::int)
         scan unnamed_subquery
           projection (t2.e::int -> e, t2.f::int -> f)
-            selection (ROW(t2.e::int, t2.f::int) = ROW(10::int, 10::int))
+            selection (ROW(t2.e::int, t2.f::int) = ROW(10::int, 12::int))
               scan t2
         motion [policy: full, program: ReshardIfNeeded]
           scan unnamed_subquery_1
@@ -423,7 +437,7 @@ fn test_query_explain_12() {
      # Buckets                                                            
     ──────────────────────────────────────────────────────────────────────
 
-    buckets <= [62,2132]
+    buckets <= [62,6266]
     ");
 }
 

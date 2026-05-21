@@ -1,7 +1,7 @@
 use crate::ir::transformation::helpers::sql_to_optimized_ir;
 
 #[test]
-fn milti_join1() {
+fn multi_join1() {
     let input = r#"explain (logical) SELECT * FROM (
             SELECT "identification_number", "product_code" FROM "hash_testing"
         ) as t1
@@ -32,7 +32,7 @@ fn milti_join1() {
 }
 
 #[test]
-fn milti_join2() {
+fn multi_join2() {
     let input = r#"explain (logical) SELECT * FROM "t1_2" "t1" LEFT JOIN "t2" ON "t1"."a" = "t2"."e"
     LEFT JOIN "t4" ON true
 "#;
@@ -53,7 +53,7 @@ fn milti_join2() {
 }
 
 #[test]
-fn milti_join3() {
+fn multi_join3() {
     let input = r#"explain (logical) SELECT * FROM "t1_2" "t1" LEFT JOIN "t2" ON "t1"."a" = "t2"."e"
     JOIN "t3_2" "t3" ON "t1"."a" = "t3"."a" JOIN "t4" ON "t2"."f" = "t4"."c"::int
 "#;
@@ -78,7 +78,7 @@ fn milti_join3() {
 }
 
 #[test]
-fn milti_join4() {
+fn multi_join4() {
     let input = r#"explain (logical) SELECT "t1"."a" FROM "t1" JOIN "t1" as "t2" ON "t1"."a" = "t2"."a"
     JOIN "t3" ON "t1"."a" = "t3"."a"
 "#;

@@ -28,6 +28,8 @@ fn sql_to_optimized_ir_add_motions_err(query: &str) -> SbroadError {
         .unwrap()
         .set_dnf()
         .unwrap()
+        .analyze_equality_facts()
+        .unwrap()
         .derive_equalities()
         .unwrap()
         .merge_tuples()
@@ -3039,13 +3041,12 @@ fn front_sql_not_in() {
             values
               value ROW(1::int)
     subquery $0:
-      motion [policy: full, program: ReshardIfNeeded]
-        scan
-          projection (unnamed_subquery_1."COLUMN_1"::int -> "COLUMN_1")
-            scan unnamed_subquery_1
-              motion [policy: full, program: ReshardIfNeeded]
-                values
-                  value ROW(1::int)
+      scan
+        projection (unnamed_subquery_1."COLUMN_1"::int -> "COLUMN_1")
+          scan unnamed_subquery_1
+            motion [policy: full, program: ReshardIfNeeded]
+              values
+                value ROW(1::int)
     "#);
 }
 

@@ -1,5 +1,5 @@
 use super::*;
-use crate::ir::node::Window;
+use crate::ir::node::{ReferenceTarget, Window};
 use crate::ir::types::{DerivedType, UnrestrictedType as Type};
 use crate::ir::Plan;
 use pretty_assertions::assert_eq;

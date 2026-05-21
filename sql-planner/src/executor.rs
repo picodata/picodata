@@ -73,7 +73,8 @@ impl Plan {
     }
 
     pub fn optimize_subtree(self, top_id: NodeId) -> Result<Self, SbroadError> {
-        self.replace_in_operator_in_subtree(top_id)?
+        let mut plan = self
+            .replace_in_operator_in_subtree(top_id)?
             .push_down_not_in_subtree(top_id)?
             // In the case if the query was not fully parameterized
             // and contains some constants, lets apply constant folding.
@@ -81,12 +82,19 @@ impl Plan {
             .fold_boolean_tree()?
             .split_columns_in_subtree(top_id)?
             .set_dnf_in_subtree(top_id)?
+            .analyze_equality_facts_in_subtree(top_id)?
             .derive_equalities_in_subtree(top_id)?
             .merge_tuples_in_subtree(top_id)?
             .add_motions_to_subtree(top_id)?
             .update_substring()?
             // After all transformations we can finally determine what parameters are unique.
-            .mark_unique_parameters()
+            .mark_unique_parameters()?;
+
+        // Facts are only used during planning. Afterward they're dead state. Drop them
+        // so they don't bloat the plan clones made on the execution/dispatch path.
+        plan.facts = None;
+
+        Ok(plan)
     }
 
     pub fn optimize_block(self) -> Result<Self, SbroadError> {

@@ -3,7 +3,7 @@
 use ahash::{AHashMap, AHashSet, RandomState};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use smol_str::{format_smolstr, SmolStr};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
@@ -12,7 +12,6 @@ use twox_hash::XxHash3_64;
 
 use crate::errors::{Action, Entity, SbroadError};
 use crate::frontend::sql::ir::SubtreeCloner;
-use crate::ir::api::children::Children;
 use crate::ir::bucket::{Buckets, BucketsResolver};
 use crate::ir::distribution::{Distribution, Key, KeySet};
 use crate::ir::expression::ColumnPositionMap;
@@ -24,12 +23,11 @@ use tarantool::msgpack::{Context, Decode, DecodeError, Encode, EncodeError};
 
 use crate::ir::node::ReferenceTarget::Single;
 use crate::ir::node::{
-    BoolExpr, Constant, Except, GroupBy, Having, Intersect, Join, Limit, Motion, NodeId, OrderBy,
-    Projection, Reference, ReferenceTarget, Row, ScanCte, ScanRelation, ScanSubQuery,
-    SelectWithoutScan, Selection, SubQueryReference, UnaryExpr, Union, UnionAll, Update, Values,
-    ValuesRow, Window,
+    BoolExpr, Except, GroupBy, Having, Intersect, Join, Limit, Motion, NodeId, OrderBy, Projection,
+    Reference, Row, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection,
+    SubQueryReference, UnaryExpr, Union, UnionAll, Update, Values, ValuesRow, Window,
 };
-use crate::ir::transformation::redistribution::eq_cols::EqualityCols;
+use crate::ir::transformation::equality_facts::EqualityFacts;
 use crate::ir::tree::traversal::{
     LevelNode, PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY,
 };
@@ -37,7 +35,7 @@ use crate::ir::value::Value;
 use crate::ir::{Node, Plan};
 
 pub(crate) mod dml;
-pub(crate) mod eq_cols;
+pub(crate) mod facts_join;
 pub(crate) mod groupby;
 pub(crate) mod left_join;
 
@@ -340,53 +338,6 @@ impl Strategy {
     }
 }
 
-/// Choose a policy for the inner join child (a policy with the largest motion of data wins).
-fn join_policy_for_or(
-    left_policy: &MotionPolicy,
-    right_policy: &MotionPolicy,
-) -> Result<MotionPolicy, SbroadError> {
-    match (left_policy, right_policy) {
-        (MotionPolicy::LocalSegment(_) | MotionPolicy::Local, _)
-        | (_, MotionPolicy::LocalSegment(_) | MotionPolicy::Local) => Err(SbroadError::Invalid(
-            Entity::Motion,
-            Some("LocalSegment motion is not supported for joins".to_smolstr()),
-        )),
-        (MotionPolicy::Full, _) | (_, MotionPolicy::Full) => Ok(MotionPolicy::Full),
-        (MotionPolicy::None, _) => Ok(right_policy.clone()),
-        (_, MotionPolicy::None) => Ok(left_policy.clone()),
-        (MotionPolicy::Segment(key_left), MotionPolicy::Segment(key_right)) => {
-            if key_left == key_right {
-                Ok(left_policy.clone())
-            } else {
-                Ok(MotionPolicy::Full)
-            }
-        }
-    }
-}
-
-/// Choose a policy for the inner join child (a policy with the smallest motion of data wins).
-fn join_policy_for_and(
-    left_policy: &MotionPolicy,
-    right_policy: &MotionPolicy,
-) -> Result<MotionPolicy, SbroadError> {
-    match (left_policy, right_policy) {
-        (MotionPolicy::LocalSegment(_) | MotionPolicy::Local, _)
-        | (_, MotionPolicy::LocalSegment(_) | MotionPolicy::Local) => Err(SbroadError::Invalid(
-            Entity::Motion,
-            Some("LocalSegment motion is not supported for joins".to_smolstr()),
-        )),
-        (MotionPolicy::Full, _) => Ok(right_policy.clone()),
-        (_, MotionPolicy::Full) => Ok(left_policy.clone()),
-        (MotionPolicy::None, _) | (_, MotionPolicy::None) => Ok(MotionPolicy::None),
-        (MotionPolicy::Segment(key_left), MotionPolicy::Segment(key_right)) => {
-            if key_left == key_right {
-                Ok(left_policy.clone())
-            } else {
-                Ok(MotionPolicy::Full)
-            }
-        }
-    }
-}
 #[inline(always)]
 fn compare_window_dist(this: &Distribution, other: &Distribution) -> Distribution {
     match (this, other) {
@@ -772,43 +723,39 @@ impl Plan {
         if let Distribution::Global = inner_dist {
             return Ok(MotionPolicy::None);
         }
-        if Bool::Eq == *op || Bool::In == *op {
-            match outer_dist {
+        if !(Bool::Eq == *op || Bool::In == *op) {
+            return Ok(MotionPolicy::Full);
+        }
+
+        match (outer_dist, inner_dist) {
+            (
                 Distribution::Segment {
                     keys: ref keys_outer,
-                } => {
-                    // If the inner and outer tuples are segmented by the same key we don't need motions.
-                    if let Distribution::Segment {
-                        keys: ref keys_inner,
-                    } = inner_dist
-                    {
-                        if keys_outer.intersection(keys_inner).iter().next().is_some() {
-                            return Ok(MotionPolicy::None);
-                        }
-                    }
-                    // Redistribute the inner tuples using the first key from the outer tuple.
-                    return keys_outer.iter().next().map_or_else(
-                        || {
-                            Err(SbroadError::UnexpectedNumberOfValues(SmolStr::from(
-                                "Failed to get the first distribution key from the outer row.",
-                            )))
-                        },
-                        |key| Ok(MotionPolicy::Segment(key.into())),
-                    );
-                }
-                Distribution::Global => match inner_dist {
-                    Distribution::Single => {
-                        return Ok(MotionPolicy::None);
-                    }
-                    Distribution::Segment { .. } => {
-                        return Ok(MotionPolicy::Full);
-                    }
-                    _ => {}
                 },
-                _ => {}
+                Distribution::Segment {
+                    keys: ref keys_inner,
+                },
+            ) if keys_outer.intersection(keys_inner).iter().next().is_some() => {
+                // If the inner and outer tuples are segmented by the same key we don't need motions.
+                Ok(MotionPolicy::None)
             }
+            (
+                Distribution::Segment {
+                    keys: ref keys_outer,
+                },
+                _,
+            ) => keys_outer.iter().next().map_or_else(
+                || {
+                    Err(SbroadError::UnexpectedNumberOfValues(SmolStr::from(
+                        "Failed to get the first distribution key from the outer row.",
+                    )))
+                },
+                |key| Ok(MotionPolicy::Segment(key.into())),
+            ),
+            (Distribution::Global, Distribution::Single) => Ok(MotionPolicy::None),
+            (Distribution::Global, Distribution::Segment { .. }) => Ok(MotionPolicy::Full),
+            _ => Ok(MotionPolicy::Full),
         }
-        Ok(MotionPolicy::Full)
     }
 
     /// Create Motions from the strategy map.
@@ -934,44 +881,39 @@ impl Plan {
             return Ok(strategies);
         }
 
-        match left {
-            Some(left_sq) => {
-                match right {
-                    Some(right_sq) => {
-                        // Both sides are sub-queries and require a full copy.
-                        if !matches!(self.get_distribution(bool_op.left)?, Distribution::Global) {
-                            strategies.push((left_sq, MotionPolicy::Full));
-                        }
-                        if !matches!(self.get_distribution(bool_op.right)?, Distribution::Global) {
-                            strategies.push((right_sq, MotionPolicy::Full));
-                        }
-                    }
-                    None => {
-                        // Left side is sub-query, right is an outer tuple.
-                        strategies.push((
-                            left_sq,
-                            self.choose_strategy_for_bool_op_inner_sq(
-                                bool_op.right,
-                                self.get_relational_output(left_sq)?,
-                                &bool_op.op,
-                            )?,
-                        ));
-                    }
+        match (left, right) {
+            (Some(left_sq), Some(right_sq)) => {
+                // Both sides are sub-queries and require a full copy.
+                if !matches!(self.get_distribution(bool_op.left)?, Distribution::Global) {
+                    strategies.push((left_sq, MotionPolicy::Full));
+                }
+                if !matches!(self.get_distribution(bool_op.right)?, Distribution::Global) {
+                    strategies.push((right_sq, MotionPolicy::Full));
                 }
             }
-            None => {
-                if let Some(right_sq) = right {
-                    // Left side is an outer tuple, right is sub-query.
-                    strategies.push((
-                        right_sq,
-                        self.choose_strategy_for_bool_op_inner_sq(
-                            bool_op.left,
-                            self.get_relational_output(right_sq)?,
-                            &bool_op.op,
-                        )?,
-                    ));
-                }
+            (Some(left_sq), None) => {
+                // Left side is sub-query, right is an outer tuple.
+                strategies.push((
+                    left_sq,
+                    self.choose_strategy_for_bool_op_inner_sq(
+                        bool_op.right,
+                        self.get_relational_output(left_sq)?,
+                        &bool_op.op,
+                    )?,
+                ));
             }
+            (None, Some(right_sq)) => {
+                // Left side is an outer tuple, right is sub-query.
+                strategies.push((
+                    right_sq,
+                    self.choose_strategy_for_bool_op_inner_sq(
+                        bool_op.left,
+                        self.get_relational_output(right_sq)?,
+                        &bool_op.op,
+                    )?,
+                ));
+            }
+            (None, None) => {}
         }
         Ok(strategies)
     }
@@ -1225,9 +1167,13 @@ impl Plan {
         for LevelNode(_, bool_node) in &bool_nodes {
             let strategies = self.get_sq_node_strategies_for_bool_op(rel_id, *bool_node)?;
             for (id, policy) in strategies {
-                // In case NOT operator is covering expression with subquery like in
-                // `not (... in ...)` expression, we have to change motion policy to Full.
-                if not_nodes_children.contains(bool_node) {
+                // NOT-wrapped subquery predicates normally need Full (NULL-safety
+                // under three-valued logic). Exception: Global subqueries already
+                // hold the full result on every node, so the local non-existence
+                // check is exact and Full would only add a redundant motion.
+                let override_with_full = not_nodes_children.contains(bool_node)
+                    && !matches!(self.get_rel_distribution(id)?, Distribution::Global);
+                if override_with_full {
                     strategy.upsert_child(id, MotionPolicy::Full, Program::default());
                 } else {
                     strategy.upsert_child(id, policy, Program::default());
@@ -1270,319 +1216,6 @@ impl Plan {
         Ok(strategy)
     }
 
-    /// Get the children of a join node (outer, inner and sub-queries).
-    ///
-    /// # Errors
-    /// - If the node is not a join node.
-    /// - Join node has no children.
-    fn get_join_children(&self, join_id: NodeId) -> Result<Children<'_>, SbroadError> {
-        if let Ok(children) = self.get_relation_children(join_id) {
-            Ok(children)
-        } else {
-            Err(SbroadError::Invalid(
-                Entity::Relational,
-                Some("Join node is not an inner join.".into()),
-            ))
-        }
-    }
-
-    /// Detect join child from the position map corresponding to the distribution key.
-    fn get_join_child_by_key(
-        &self,
-        key: &Key,
-        row_map: &HashMap<usize, NodeId>,
-    ) -> Result<NodeId, SbroadError> {
-        let mut children_set: HashSet<NodeId> = HashSet::new();
-        for pos in &key.positions {
-            let column_id = *row_map.get(pos).ok_or_else(|| {
-                SbroadError::NotFound(
-                    Entity::Column,
-                    format_smolstr!("{pos} in row map {row_map:?}"),
-                )
-            })?;
-            let column_id = self.get_child_under_cast(column_id)?;
-            if let Expression::Reference(Reference { target, .. }) =
-                self.get_expression_node(column_id)?
-            {
-                for target in target.iter() {
-                    children_set.insert(*target);
-                }
-            } else {
-                return Err(SbroadError::Invalid(
-                    Entity::Expression,
-                    Some("Row column is not a reference.".into()),
-                ));
-            }
-        }
-        if children_set.len() > 1 {
-            return Err(SbroadError::UnexpectedNumberOfValues(
-                "Distribution key in the join condition has more than one child.".into(),
-            ));
-        }
-        children_set.iter().next().copied().ok_or_else(|| {
-            SbroadError::UnexpectedNumberOfValues(
-                "Distribution key in the join condition has no children.".into(),
-            )
-        })
-    }
-
-    /// Builds a row column map, where every column in the row is mapped by its position.
-    ///
-    /// # Errors
-    /// - If the node is not a row node.
-    fn build_row_map(&self, row_id: NodeId) -> Result<HashMap<usize, NodeId>, SbroadError> {
-        let columns: &[NodeId] = match self.get_expression_node(row_id)? {
-            Expression::Row(Row { list, .. }) => list,
-            Expression::Reference(..) => std::array::from_ref(&row_id),
-            _ => {
-                return Err(SbroadError::Invalid(
-                    Entity::Expression,
-                    Some("node is not a row or reference.".into()),
-                ));
-            }
-        };
-        let mut map: HashMap<usize, NodeId> = HashMap::new();
-        for (pos, col) in columns.iter().enumerate() {
-            map.insert(pos, *col);
-        }
-        Ok(map)
-    }
-
-    /// Split the distribution keys from the row of the join
-    /// condition into inner and outer keys.
-    /// Returns a tuple of (outer keys, inner keys).
-    ///
-    /// # Errors
-    /// - Join node does not have any children.
-    /// - Distribution keys do not refer to inner or outer children of the join.
-    fn split_join_keys_to_inner_and_outer(
-        &self,
-        join_id: NodeId,
-        keys: &[Key],
-        row_map: &HashMap<usize, NodeId>,
-    ) -> Result<(Vec<Key>, Vec<Key>), SbroadError> {
-        let mut outer_keys: Vec<Key> = Vec::new();
-        let mut inner_keys: Vec<Key> = Vec::new();
-
-        let children = self.get_join_children(join_id)?;
-        let outer_child = *children.get(0).ok_or_else(|| {
-            SbroadError::UnexpectedNumberOfValues("Join node has no children.".into())
-        })?;
-        let inner_child = *children.get(1).ok_or_else(|| {
-            SbroadError::NotFound(Entity::Node, "that is Join node inner child".into())
-        })?;
-
-        for key in keys {
-            let child = self.get_join_child_by_key(key, row_map)?;
-            if child == outer_child {
-                outer_keys.push(key.clone());
-            } else if child == inner_child {
-                inner_keys.push(key.clone());
-            } else {
-                // It can be only a sub-query, but we have already processed it.
-                return Err(SbroadError::Invalid(
-                    Entity::DistributionKey,
-                    Some(
-                        "distribution key doesn't correspond to inner or outer join children."
-                            .into(),
-                    ),
-                ));
-            }
-        }
-        Ok((outer_keys, inner_keys))
-    }
-
-    /// The join condition row can contain arbitrary expressions inside (constants,
-    /// arithmetic operations, references to inner and outer children, etc.).
-    /// This function extracts only the positions of the references to the inner child.
-    fn get_inner_positions_from_condition_row(
-        &self,
-        join_id: NodeId,
-        row_map: &HashMap<usize, NodeId>,
-    ) -> Result<AHashSet<usize>, SbroadError> {
-        // Inner child of the join node is always the second one.
-        let inner_child = self.get_rel_child(join_id, 1)?;
-        let mut inner_positions: AHashSet<usize> = AHashSet::with_capacity(row_map.len());
-        for (pos, col) in row_map {
-            let expression = self.get_expression_node(*col)?;
-            if let Expression::Reference(Reference { target, .. }) = expression {
-                if target == &Single(inner_child) {
-                    inner_positions.insert(*pos);
-                }
-            }
-        }
-        Ok(inner_positions)
-    }
-
-    /// Take the positions of the columns in the join condition row
-    /// and return the positions of the columns in the inner child row.
-    fn get_referred_inner_child_column_positions(
-        &self,
-        join_id: NodeId,
-        column_positions: &[usize],
-        condition_row_map: &HashMap<usize, NodeId>,
-    ) -> Result<Vec<usize>, SbroadError> {
-        // Inner child of the join node is always the second one.
-        let inner_child_id = self.get_rel_child(join_id, 1)?;
-        let mut referred_column_positions: Vec<usize> = Vec::with_capacity(column_positions.len());
-        for pos in column_positions {
-            let column_id = *condition_row_map.get(pos).ok_or_else(|| {
-                SbroadError::NotFound(
-                    Entity::Column,
-                    format_smolstr!("{pos} in row map {condition_row_map:?}"),
-                )
-            })?;
-            if let Expression::Reference(Reference {
-                target, position, ..
-            }) = self.get_expression_node(column_id)?
-            {
-                if &ReferenceTarget::Single(inner_child_id) == target {
-                    referred_column_positions.push(*position);
-                }
-            } else {
-                return Err(SbroadError::Invalid(
-                    Entity::Expression,
-                    Some("Row column is not a reference.".into()),
-                ));
-            }
-        }
-        Ok(referred_column_positions)
-    }
-
-    /// This is a helper function used to determine the policy of the inner child motion node in the join.
-    /// For this purpose we inspect the join equality condition expression. It has the left and the right
-    /// sides, both of which can either point to the inner and outer children of the join.
-    /// If one of the sides has a `Segment` distribution and its keys point to the outer join child, then
-    /// we try to calculate the possible motion policy of the inner child (it can be `Segment` or `Full`).
-    /// To deal with it we also need the inner row map that maps the positions of the columns in the condition
-    /// row to the `Reference` ids in that row. These references point to the inner child row.
-    fn get_inner_policy_by_outer_segment(
-        &self,
-        outer_keys: &[Key],
-        join_id: NodeId,
-        inner_row_map: &HashMap<usize, NodeId>,
-    ) -> Result<MotionPolicy, SbroadError> {
-        let inner_position_map =
-            self.get_inner_positions_from_condition_row(join_id, inner_row_map)?;
-        for outer_key in outer_keys {
-            if outer_key
-                .positions
-                .iter()
-                .all(|pos| inner_position_map.contains(pos))
-            {
-                let mut matched_inner_positions: Vec<usize> =
-                    Vec::with_capacity(outer_key.positions.len());
-                for pos in &outer_key.positions {
-                    let pos = match inner_position_map.get(pos) {
-                        Some(pos) => *pos,
-                        None => continue,
-                    };
-                    matched_inner_positions.push(pos);
-                }
-                let inner_child_positions = self.get_referred_inner_child_column_positions(
-                    join_id,
-                    &matched_inner_positions,
-                    inner_row_map,
-                )?;
-                let inner_key = Key::new(inner_child_positions);
-                return Ok(MotionPolicy::Segment(inner_key.into()));
-            }
-        }
-        Ok(MotionPolicy::Full)
-    }
-
-    /// Derive the motion policy in the boolean node with equality operator.
-    ///
-    /// # Errors
-    /// - Left or right row IDs are invalid.
-    /// - Failed to get row distribution.
-    /// - Failed to split distribution keys in the row to inner and outer keys.
-    fn join_policy_for_eq(
-        &self,
-        join_id: NodeId,
-        left_row_id: NodeId,
-        right_row_id: NodeId,
-    ) -> Result<MotionPolicy, SbroadError> {
-        if self.has_eq_on_bucket_id(left_row_id, right_row_id, &Bool::Eq)? {
-            return Ok(MotionPolicy::None);
-        }
-
-        let left_dist = self.get_distribution(left_row_id)?;
-        let right_dist = self.get_distribution(right_row_id)?;
-        let row_map_left = self.build_row_map(left_row_id)?;
-        let row_map_right = self.build_row_map(right_row_id)?;
-
-        match (left_dist, right_dist) {
-            (
-                Distribution::Segment {
-                    keys: keys_left_set,
-                },
-                Distribution::Segment {
-                    keys: keys_right_set,
-                },
-            ) => {
-                let keys_left = keys_left_set.iter().map(Clone::clone).collect::<Vec<_>>();
-                let keys_right = keys_right_set.iter().map(Clone::clone).collect::<Vec<_>>();
-                let (left_outer_keys, left_inner_keys) =
-                    self.split_join_keys_to_inner_and_outer(join_id, &keys_left, &row_map_left)?;
-                let (right_outer_keys, right_inner_keys) =
-                    self.split_join_keys_to_inner_and_outer(join_id, &keys_right, &row_map_right)?;
-
-                // Can we join locally?
-                let pairs = &[
-                    (&left_outer_keys, &right_inner_keys),
-                    (&right_outer_keys, &left_inner_keys),
-                ];
-                // We don't care about O(n^2) here, because the number of keys is usually small.
-                for (outer_keys, inner_keys) in pairs {
-                    for outer_key in *outer_keys {
-                        for inner_key in *inner_keys {
-                            if outer_key == inner_key {
-                                return Ok(MotionPolicy::None);
-                            }
-                        }
-                    }
-                }
-                // Example:
-                //
-                // t1 (a, b, c): key(c, b)
-                // t2 (d, e): key(d)
-                // select * from t1 join t2 on (t1.b, t1.c) = (t2.d, t2.e);
-                // (t1.b, t1.c): segment[1, 0]
-                // (t2.d, t2.e): segment[0]
-                //
-                // We take the first left outer key - (t1.b, t1.c) with positions 1 and 0 - and
-                // check if on the right side of equality operator we have references to the inner
-                // child at these positions. In our case, we have t2.e at positions 1 and t2.d at
-                // 0 that refers to the inner child t2. So, we should reshard the inner child t2 by
-                // (t2.e, t2.d). The motion node would have a distribution segment[0, 1] as t2.e is
-                // at position 0 and t2.d is at position 1 in the inner child t2.
-
-                if let MotionPolicy::Segment(inner_key) = self.get_inner_policy_by_outer_segment(
-                    &left_outer_keys,
-                    join_id,
-                    &row_map_right,
-                )? {
-                    return Ok(MotionPolicy::Segment(inner_key));
-                }
-                self.get_inner_policy_by_outer_segment(&right_outer_keys, join_id, &row_map_left)
-            }
-            (Distribution::Segment { keys: keys_set }, _) => {
-                let keys_left = keys_set.iter().map(Clone::clone).collect::<Vec<_>>();
-                let (left_outer_keys, _) =
-                    self.split_join_keys_to_inner_and_outer(join_id, &keys_left, &row_map_left)?;
-                self.get_inner_policy_by_outer_segment(&left_outer_keys, join_id, &row_map_right)
-            }
-            (_, Distribution::Segment { keys: keys_set }) => {
-                let keys_right = keys_set.iter().map(Clone::clone).collect::<Vec<_>>();
-                let (right_outer_keys, _) =
-                    self.split_join_keys_to_inner_and_outer(join_id, &keys_right, &row_map_right)?;
-                self.get_inner_policy_by_outer_segment(&right_outer_keys, join_id, &row_map_left)
-            }
-            _ => Ok(MotionPolicy::Full),
-        }
-    }
-
     fn set_rows_distributions_in_expr(
         &mut self,
         rel_id: NodeId,
@@ -1617,7 +1250,7 @@ impl Plan {
         // Rows in condition, because in case of Single it depends on join condition, and computing
         // distribution of Row in condition makes no sense, so we handle the single distribution separately
         if let Some(strategy) =
-            self.calculate_strategy_for_single_distribution(rel_id, cond_id, join_kind)?
+            self.calculate_strategy_for_single_distribution(rel_id, join_kind)?
         {
             self.insert_motion_nodes(strategy)?;
             self.set_rows_distributions_in_expr(rel_id, cond_id)?;
@@ -1634,147 +1267,35 @@ impl Plan {
             return Ok(());
         }
 
-        // Init the strategy (motion policy map) for all the join children except the outer child.
+        let mut strategy = self.resolve_sq_conflicts(rel_id, cond_id)?;
+
         let Relational::Join(Join {
-            left,
-            right,
-            subqueries,
+            left: outer,
+            right: inner,
             ..
         }) = self.get_relation_node(rel_id)?
         else {
             unreachable!("Relation should be Join")
         };
-        let mut strategy = Strategy::new(rel_id);
-        for child_id in subqueries.iter().chain([right]) {
-            if !matches!(self.get_rel_distribution(*child_id)?, Distribution::Global) {
-                strategy.upsert_child(*child_id, MotionPolicy::Full, Program::default());
-            }
+        let (outer, inner) = (*outer, *inner);
+
+        let facts_policy = self.motion_policy_for_inner_via_facts(rel_id)?;
+        strategy.upsert_child(inner, facts_policy, Program::default());
+
+        // If at least one child is Global, default subquery strategies set by
+        // `resolve_sq_conflicts` may be wrong for conditions with multiple
+        // and-chains containing Segment subqueries — fix them up here.
+        let outer_dist = self.get_rel_distribution(outer)?;
+        let inner_dist = self.get_rel_distribution(inner)?;
+        if matches!(
+            (outer_dist, inner_dist),
+            (Distribution::Global, _) | (_, Distribution::Global)
+        ) {
+            self.correct_sq_strategy_for_global_tbl(rel_id, cond_id, &mut strategy)?;
         }
 
-        // Let's improve the full motion policy for the join children (sub-queries and the inner child).
-        let outer_child = *left;
-        let inner_child = *right;
-
-        let mut policy_map: AHashMap<NodeId, MotionPolicy> = AHashMap::new();
-        let mut new_inner_policy = MotionPolicy::Full;
-        let expr_tree = PostOrderWithFilter::new(
-            |node| self.nodes.expr_iter(node, true),
-            |node| {
-                matches!(
-                    self.get_node(node),
-                    Ok(Node::Expression(Expression::Bool(_) | Expression::Unary(_)))
-                )
-            },
-            EXPR_CAPACITY,
-        );
-        for LevelNode(_, node_id) in expr_tree.traverse_into_iter(cond_id) {
-            let expr = self.get_expression_node(node_id)?;
-            if expr.is_unary() {
-                new_inner_policy = MotionPolicy::Full;
-                continue;
-            }
-
-            let Expression::Bool(BoolExpr { left, right, .. }) = expr else {
-                continue;
-            };
-            let bool_op = BoolOp::from_expr(self, node_id)?;
-
-            // Try to improve full motion policy in the sub-queries.
-            // We don't influence the inner child here, so the inner map is empty
-            // for the current node id.
-            // `get_sq_node_strategies_for_bool_op` will be triggered only in case `node_id` is a
-            // boolean operator with at least one `Row` child.
-            // Note, that we don't have to call `get_sq_node_strategy_for_unary_op` here, because
-            // the only strategy it can return is `Motion::Full` for its child and all subqueries
-            // are covered with `Motion::Full` by default.
-
-            let left_expr = self.get_expression_node(*left)?;
-            let right_expr = self.get_expression_node(*right)?;
-            if left_expr.is_row() || right_expr.is_row() {
-                let sq_strategies = self.get_sq_node_strategies_for_bool_op(rel_id, node_id)?;
-                let sq_strategies_len = sq_strategies.len();
-                for (id, policy) in sq_strategies {
-                    strategy.upsert_child(id, policy, Program::default());
-                }
-                if sq_strategies_len > 0 {
-                    continue;
-                }
-            }
-
-            // Ok, we don't have any sub-queries.
-            // Lets try to improve the motion policy for the inner join child.
-            new_inner_policy = match bool_op.op {
-                Bool::Eq | Bool::In => {
-                    let left_id = self.get_child_under_cast(bool_op.left)?;
-                    let right_id = self.get_child_under_cast(bool_op.right)?;
-                    let left_expr = self.get_expression_node(left_id)?;
-                    let right_expr = self.get_expression_node(right_id)?;
-
-                    if (left_expr.is_ref() || left_expr.is_row())
-                        && (right_expr.is_ref() || right_expr.is_row())
-                    {
-                        self.join_policy_for_eq(rel_id, left_id, right_id)?
-                    } else {
-                        let const_true = Expression::Constant(&Constant {
-                            value: Value::Boolean(true),
-                        });
-                        if left_expr == const_true {
-                            // `true = (t1.a = t2.b)` is equivalent to `t1.a = t2.b`.
-                            let right_policy = policy_map
-                                .get(&right_id)
-                                .cloned()
-                                .unwrap_or(MotionPolicy::Full);
-                            right_policy
-                        } else if right_expr == const_true {
-                            // `(t1.a = t2.b) = true` is equivalent to `t1.a = t2.b`.
-                            let left_policy = policy_map
-                                .get(&left_id)
-                                .cloned()
-                                .unwrap_or(MotionPolicy::Full);
-                            left_policy
-                        } else {
-                            MotionPolicy::Full
-                        }
-                    }
-                }
-                Bool::And => {
-                    let left_policy = policy_map.get(&bool_op.left).unwrap_or(&MotionPolicy::Full);
-                    let right_policy = policy_map
-                        .get(&bool_op.right)
-                        .unwrap_or(&MotionPolicy::Full);
-                    join_policy_for_and(left_policy, right_policy)?
-                }
-                Bool::Or => {
-                    let left_policy = policy_map.get(&bool_op.left).unwrap_or(&MotionPolicy::Full);
-                    let right_policy = policy_map
-                        .get(&bool_op.right)
-                        .unwrap_or(&MotionPolicy::Full);
-                    join_policy_for_or(left_policy, right_policy)?
-                }
-                _ => MotionPolicy::Full,
-            };
-            if new_inner_policy != MotionPolicy::Full {
-                policy_map.insert(node_id, new_inner_policy.clone());
-            }
-        }
-        strategy.upsert_child(inner_child, new_inner_policy, Program::default());
-
-        {
-            let (outer_dist, inner_dist) = (
-                self.get_rel_distribution(outer_child)?,
-                self.get_rel_distribution(inner_child)?,
-            );
-            if matches!(
-                (outer_dist, inner_dist),
-                (Distribution::Global, _) | (_, Distribution::Global)
-            ) {
-                // If at least one child is global, the join can be done without any motions.
-                strategy.upsert_child(inner_child, MotionPolicy::None, Program::default());
-                strategy.upsert_child(outer_child, MotionPolicy::None, Program::default());
-                self.correct_sq_strategy_for_global_tbl(rel_id, cond_id, &mut strategy)?;
-            }
-        }
         self.insert_motion_nodes(strategy)?;
+
         Ok(())
     }
 
@@ -1871,64 +1392,44 @@ impl Plan {
     /// Helper function to compute motion policies for outer and inner children of join
     /// when one child has Segment distribution, and the other one has Single distribution
     fn compute_policies_for_segment_vs_single(
-        condition_eq_cols: Option<&EqualityCols>,
+        facts: &EqualityFacts,
+        join_id: NodeId,
+        single_node_id: NodeId,
+        shared_node_id: NodeId,
         keys: &KeySet,
         segmented_child: &JoinChild,
         join_kind: &JoinKind,
     ) -> (MotionPolicy, MotionPolicy) {
-        let (mut outer_policy, mut inner_policy) = match segmented_child {
-            JoinChild::Outer => (MotionPolicy::None, MotionPolicy::Full),
-            JoinChild::Inner => (MotionPolicy::Full, MotionPolicy::None),
-        };
-        let mut policy_to_update = None;
-        if let Some(eq_cols) = condition_eq_cols {
-            for key in keys.iter() {
-                if key.positions.len() == eq_cols.len()
-                    && key.positions.iter().all(|pos| -> bool {
-                        eq_cols.iter().any(|(i, o)| {
-                            *pos == match segmented_child {
-                                JoinChild::Outer => *o,
-                                JoinChild::Inner => *i,
-                            }
-                        })
-                    })
-                {
-                    let policy = match segmented_child {
-                        JoinChild::Outer => &mut inner_policy,
-                        JoinChild::Inner => &mut outer_policy,
-                    };
-                    *policy = MotionPolicy::Segment(MotionKey {
-                        targets: eq_cols
-                            .iter()
-                            .map(|(i_col, o_col)| -> Target {
-                                let pos = match segmented_child {
-                                    JoinChild::Outer => *i_col,
-                                    JoinChild::Inner => *o_col,
-                                };
-                                Target::Reference(pos)
-                            })
-                            .collect::<Vec<Target>>(),
-                    });
-
-                    policy_to_update = Some(policy);
-
-                    break;
-                }
-            }
+        let mut updated_policy = None;
+        for key in keys.iter() {
+            if let Some(inner_positions) = facts_join::derive_inner_positions_via_facts(
+                join_id,
+                shared_node_id,
+                key,
+                single_node_id,
+                facts,
+            ) {
+                updated_policy = Some(MotionPolicy::Segment(Key::new(inner_positions).into()));
+                break;
+            };
         }
 
-        if matches!(join_kind, JoinKind::LeftOuter) && policy_to_update.is_none() {
+        if matches!(join_kind, JoinKind::LeftOuter) && updated_policy.is_none() {
             // if we can't perform repartition join (no equality columns),
             // and left join is performed, we can't broadcast left (outer) table.
             // in this case we broadcast the inner table and rehash outer table
-            outer_policy = MotionPolicy::Segment(MotionKey {
+            let outer_policy = MotionPolicy::Segment(MotionKey {
                 // we can choose any distribution columns here
                 targets: vec![Target::Reference(0)],
             });
-            inner_policy = MotionPolicy::Full;
+            return (outer_policy, MotionPolicy::Full);
         }
 
-        (outer_policy, inner_policy)
+        let updated_policy = updated_policy.unwrap_or(MotionPolicy::Full);
+        match segmented_child {
+            JoinChild::Outer => (MotionPolicy::None, updated_policy),
+            JoinChild::Inner => (updated_policy, MotionPolicy::None),
+        }
     }
 
     /// Create strategy if at least one of the join children
@@ -1966,7 +1467,6 @@ impl Plan {
     fn calculate_strategy_for_single_distribution(
         &mut self,
         join_id: NodeId,
-        condition_id: NodeId,
         join_kind: &JoinKind,
     ) -> Result<Option<Strategy>, SbroadError> {
         let Relational::Join(Join {
@@ -2010,22 +1510,33 @@ impl Plan {
             return Ok(Some(strategy));
         }
 
-        let eq_cols = EqualityCols::from_join_condition(self, join_id, inner_id, condition_id)?;
         let (outer_policy, inner_policy) = match (outer_dist, inner_dist) {
             (Distribution::Single, Distribution::Single) => {
                 (MotionPolicy::None, MotionPolicy::None)
             }
             (Distribution::Single, Distribution::Segment { keys }) => {
+                let Some(facts) = self.facts.as_ref() else {
+                    unreachable!("Facts should be set")
+                };
                 Self::compute_policies_for_segment_vs_single(
-                    eq_cols.as_ref(),
+                    facts,
+                    join_id,
+                    outer_id,
+                    inner_id,
                     keys,
                     &JoinChild::Inner,
                     join_kind,
                 )
             }
             (Distribution::Segment { keys }, Distribution::Single) => {
+                let Some(facts) = self.facts.as_ref() else {
+                    unreachable!("Facts should be set")
+                };
                 Self::compute_policies_for_segment_vs_single(
-                    eq_cols.as_ref(),
+                    facts,
+                    join_id,
+                    inner_id,
+                    outer_id,
                     keys,
                     &JoinChild::Outer,
                     join_kind,
@@ -2456,9 +1967,9 @@ impl Plan {
             ) => (MotionPolicy::None, MotionPolicy::None),
             (Distribution::Segment { keys }, _) => {
                 let key = keys.iter().next().ok_or_else(|| SbroadError::Invalid(
-                                Entity::Distribution,
-                                Some("left child's segment distribution is invalid: no keys found in the set".into()),
-                            ))?;
+                    Entity::Distribution,
+                    Some("left child's segment distribution is invalid: no keys found in the set".into()),
+                ))?;
                 (MotionPolicy::None, MotionPolicy::Segment(key.into()))
             }
             (Distribution::Single, Distribution::Single) => {
