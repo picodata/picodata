@@ -265,7 +265,7 @@ where
     }
 }
 
-#[derive(Eq, PartialEq, Hash, Clone, Copy)]
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
 struct DomainId(usize);
 
 impl DomainId {
@@ -318,28 +318,239 @@ enum EqualityFactAtom {
     Constant(DomainId, Value),
 }
 
-#[derive(Eq, PartialEq, Clone, Copy, Debug, Hash)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Copy, Debug, Hash)]
 struct ClassId(u32);
+
+/// Materialized equivalence class.
+///
+/// First-class object built at [`EqualityFactsBuilder::freeze`] time, one
+/// per UF root.  Stores everything the planner needs to reason about the
+/// class without walking the union-find:
+///
+/// - `members` — every slot that ended up in this class, sorted by
+///   `(arena_type, offset, pos)` for deterministic iteration;
+/// - `constant` — value pinned to the class, if any.  `None` either when
+///   no constant atom was ever unioned in, or when `contradictory == true`
+///   (the class lost its single-value invariant);
+/// - `contradictory` — PostgreSQL's `ec_broken`: two non-equal constants
+///   were merged into the same class (typically via slot-eq facts from
+///   different expressions).  Semantically the class is unsatisfiable, so
+///   any row matching it cannot exist — consumers may short-circuit to
+///   an empty result.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EquivalenceClass {
+    members: Box<[Slot]>,
+    constant: Option<Value>,
+    contradictory: bool,
+}
+
+/// Identifier of an output slot used by the public API.
+///
+/// A slot is a column at a fixed position in the output row of a relational
+/// node.  The public motion-planning queries (`are_equal`, `pinned_constant`,
+/// `find_equal_position`) operate on slots; class identity and union-find
+/// internals stay inside the module.
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub struct Slot {
+    pub rel_id: NodeId,
+    pub pos: usize,
+}
+
+impl Slot {
+    #[must_use]
+    pub fn new(rel_id: NodeId, pos: usize) -> Self {
+        Self { rel_id, pos }
+    }
+}
+
+impl PartialOrd for Slot {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Slot {
+    /// Canonical ordering: `(arena_type, offset, pos)`.  Members of an
+    /// [`EquivalenceClass`] are sorted by this for deterministic iteration
+    /// and so that slots from the same relation form a contiguous run
+    /// (`find_equal_position` relies on this).  Mirrors [`SlotKey::cmp`]
+    /// minus the domain tag, which is internal-only.
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.rel_id
+            .arena_type
+            .cmp(&other.rel_id.arena_type)
+            .then_with(|| self.rel_id.offset.cmp(&other.rel_id.offset))
+            .then_with(|| self.pos.cmp(&other.pos))
+    }
+}
 
 // Callers do not need to track which domain a node belongs to.  Domain
 // separation is enforced internally: domain_id is baked into every atom
 // (SlotKey, Constant, Param), so classes from different scopes never merge
 // accidentally.  A direct child of an inner join is always analyzed in the
 // same domain as the join itself (see analyze()), so looking up
-// class_of_slot / const_of_slot for join children is always safe without an
+// classes for join children is always safe without an
 // explicit domain guard.
-#[allow(dead_code)]
-struct EqualityFacts {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EqualityFacts {
     slot_classes: HashMap<NodeId, Box<[Option<ClassId>]>>,
-    class_const: Box<[Option<Value>]>,
+    /// Materialized equivalence classes indexed by [`ClassId`].
+    classes: Box<[EquivalenceClass]>,
     domains: HashMap<NodeId, DomainId>,
+    /// Per-`LEFT JOIN` scope, resolved once at freeze time from the raw
+    /// cross-side ON equalities.
+    ///
+    /// Keyed by the LEFT JOIN's `rel_id`.  Equalities here are NOT merged
+    /// into the global classes because they don't hold for null-extended
+    /// rows, but they're correct *inside* the join's local scope (matched
+    /// rows) and let motion planning detect co-located outer joins.
+    scopes: HashMap<NodeId, ResolvedScope>,
+}
+
+/// Raw cross-side equalities collected for a LEFT JOIN during `analyze`.
+/// Intermediate state only — consumed at freeze time to produce
+/// [`ResolvedScope`].  Slots are identified by `(rel_id, output_idx)`
+/// pairs; the analyzer's domain tagging is intentionally dropped here —
+/// scope reasoning looks up classes via [`EqualityFacts::class_of_slot`],
+/// which is domain-agnostic for external callers.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct ScopedFacts {
+    extra_slot_eq: Vec<((NodeId, usize), (NodeId, usize))>,
+    extra_slot_const: Vec<((NodeId, usize), Value)>,
+}
+
+/// Frozen per-LEFT-JOIN scope
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct ResolvedScope {
+    /// `class -> representative class of its scope-group`.  Classes that
+    /// the scope's cross-side equalities never touched are absent
+    /// (implicit singleton groups — those collapse to "not scope-merged").
+    class_alias: HashMap<ClassId, usize>,
+    /// `representative -> info about the group it represents`.  The
+    /// representative is the smallest [`ClassId`] in the group, picked for
+    /// deterministic iteration.
+    repr_info: Vec<ReprInfo>,
+}
+
+/// Per-group payload inside a [`ResolvedScope`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ReprInfo {
+    /// Constant pinned for the whole group in this scope, if any.
+    /// Resolved at freeze time with priority:
+    /// 1. scope-only `Const` value unioned with the group;
+    /// 2. global `EquivalenceClass::constant` of any group member;
+    /// 3. `None`.
+    constant: Option<Value>,
+    /// Every class in this scope-group, including the representative,
+    /// sorted by [`ClassId`].  Used by `find_equal_position` to enumerate
+    /// scope-equivalent inner-side positions.
+    members: Box<[ClassId]>,
+}
+
+impl ResolvedScope {
+    /// Build a [`ResolvedScope`] from one LEFT JOIN's raw cross-side
+    /// equalities.  Collapses them through a tiny union-find, then groups
+    /// by root to produce the flat `class_alias` / `repr_info` lookup
+    /// tables.  Singleton groups without a scope-only constant are
+    /// dropped — they don't merge anything.
+    fn from_raw(
+        scoped: ScopedFacts,
+        slot_classes: &HashMap<NodeId, Vec<Option<ClassId>>>,
+        classes: &[EquivalenceClass],
+    ) -> Self {
+        let class_of_slot = |rel_id: NodeId, pos: usize| -> Option<ClassId> {
+            slot_classes
+                .get(&rel_id)
+                .and_then(|cs| cs.get(pos))
+                .and_then(|c| *c)
+        };
+
+        let mut uf: UnionFind<ScopedNode> = UnionFind::new();
+        for ((r1, p1), (r2, p2)) in &scoped.extra_slot_eq {
+            let (Some(c1), Some(c2)) = (class_of_slot(*r1, *p1), class_of_slot(*r2, *p2)) else {
+                continue;
+            };
+            let n1 = uf.add(ScopedNode::Class(c1));
+            let n2 = uf.add(ScopedNode::Class(c2));
+            uf.union_groups(n1, n2);
+        }
+        for ((r, p), v) in &scoped.extra_slot_const {
+            let Some(c) = class_of_slot(*r, *p) else {
+                continue;
+            };
+            let nc = uf.add(ScopedNode::Class(c));
+            let nv = uf.add(ScopedNode::Const(v.clone()));
+            uf.union_groups(nc, nv);
+        }
+
+        let mut root_to_classes: HashMap<usize, Vec<ClassId>> = HashMap::new();
+        let mut root_to_const: HashMap<usize, Value> = HashMap::new();
+        for (node, root) in uf.into_groups() {
+            let root_idx = root.index();
+            match node {
+                ScopedNode::Class(c) => root_to_classes.entry(root_idx).or_default().push(c),
+                ScopedNode::Const(v) => {
+                    // Multiple constants in one scope-group is a scope-only
+                    // contradiction; keep the first to stay deterministic.
+                    // Real conflict pruning is the global-class job
+                    // (`contradictory` flag on [`EquivalenceClass`]).
+                    // TODO: surface this scope-only contradiction too, so the
+                    // LEFT JOIN's matched-row side can be pruned to empty.
+                    root_to_const.entry(root_idx).or_insert(v);
+                }
+            }
+        }
+
+        let total_members: usize = root_to_classes.values().map(Vec::len).sum();
+        let mut class_alias: HashMap<ClassId, usize> = HashMap::with_capacity(total_members);
+        let mut repr_info: Vec<ReprInfo> = Vec::with_capacity(root_to_classes.len());
+
+        for (root, mut group_classes) in root_to_classes {
+            // Singletons (group of one) are pointless — they don't merge
+            // anything across the scope and only inflate the lookup maps.
+            // Drop them unless they carry a scope-only constant.
+            let has_scope_const = root_to_const.contains_key(&root);
+            if group_classes.len() < 2 && !has_scope_const {
+                continue;
+            }
+            group_classes.sort();
+            let repr = repr_info.len();
+            for &c in &group_classes {
+                class_alias.insert(c, repr);
+            }
+            // Pinned-constant resolution: prefer the scope-only `Const`
+            // value; fall back to any group member's global constant.
+            let constant = root_to_const.remove(&root).or_else(|| {
+                group_classes
+                    .iter()
+                    .find_map(|c| classes[c.0 as usize].constant.clone())
+            });
+            repr_info.push(ReprInfo {
+                constant,
+                members: group_classes.into_boxed_slice(),
+            });
+        }
+
+        ResolvedScope {
+            class_alias,
+            repr_info,
+        }
+    }
+
+    /// True when the scope produced no useful merges — empty `ScopedFacts`
+    /// (e.g. a LEFT JOIN whose ON has no `=` operands) and scopes whose
+    /// groups were all singletons-without-const collapse to this.  Such
+    /// scopes are dropped from [`EqualityFacts::scopes`] to avoid forcing
+    /// callers into defensive `is_empty()` checks.
+    fn is_empty(&self) -> bool {
+        self.class_alias.is_empty() && self.repr_info.is_empty()
+    }
 }
 
 impl EqualityFacts {
     /// Returns the equivalence class of a relational output slot.
     #[must_use]
-    #[allow(dead_code)]
-    pub fn class_of_slot(&self, rel_id: NodeId, pos: usize) -> Option<ClassId> {
+    fn class_of_slot(&self, rel_id: NodeId, pos: usize) -> Option<ClassId> {
         self.slot_classes
             .get(&rel_id)
             .and_then(|classes| classes.get(pos))
@@ -348,32 +559,178 @@ impl EqualityFacts {
 
     /// Returns the constant unified with a class, if the class is fixed.
     #[must_use]
-    #[allow(dead_code)]
-    pub fn const_of_class(&self, class_id: ClassId) -> Option<&Value> {
-        self.class_const
+    fn const_of_class(&self, class_id: ClassId) -> Option<&Value> {
+        self.class(class_id)?.constant.as_ref()
+    }
+
+    fn class(&self, class_id: ClassId) -> Option<&EquivalenceClass> {
+        self.classes
             .get(usize::try_from(class_id.0).expect("class id should fit usize"))
-            .and_then(Option::as_ref)
+    }
+
+    /// Look up the [`ReprInfo`] payload for `class` in the scope active at
+    /// `at_rel`.  Returns `None` when `at_rel` has no scope entry, or when
+    /// `class` isn't part of any scope-group there (i.e. it survives the
+    /// scope as a singleton).
+    fn scope_info_for_class(&self, at_rel: NodeId, class: ClassId) -> Option<&ReprInfo> {
+        let scope = self.scopes.get(&at_rel)?;
+        let repr = *scope.class_alias.get(&class)?;
+        scope.repr_info.get(repr)
+    }
+
+    /// Is the class for this slot marked contradictory (PostgreSQL's
+    /// `ec_broken`)?  A contradictory class merged two non-equal constants,
+    /// so no row can satisfy it; callers may prune the surrounding plan
+    /// slice to an empty result.  Returns `false` if the slot has no class
+    /// (unanalyzed node or out-of-range position).
+    #[must_use]
+    pub fn is_contradictory(&self, slot: Slot) -> bool {
+        let Some(class_id) = self.class_of_slot(slot.rel_id, slot.pos) else {
+            return false;
+        };
+        self.class(class_id)
+            .map(|c| c.contradictory)
+            .unwrap_or(false)
     }
 
     /// Convenience lookup for a slot fixed to a constant in its class.
     #[must_use]
     #[allow(dead_code)]
-    pub fn const_of_slot(&self, rel_id: NodeId, pos: usize) -> Option<&Value> {
+    fn const_of_slot(&self, rel_id: NodeId, pos: usize) -> Option<&Value> {
         let class_id = self.class_of_slot(rel_id, pos)?;
         self.const_of_class(class_id)
     }
 
-    /// Returns the join domain assigned to a relational node.
+    /// Number of output slots tracked for a relational node, if the analyzer
+    /// visited it. Returns `0` for nodes outside the analyzed subtree.
     #[must_use]
-    #[allow(dead_code)]
-    pub fn domain_of_rel(&self, rel_id: NodeId) -> Option<DomainId> {
-        self.domains.get(&rel_id).copied()
+    pub fn slot_count(&self, rel_id: NodeId) -> usize {
+        self.slot_classes
+            .get(&rel_id)
+            .map(|slots| slots.len())
+            .unwrap_or(0)
     }
+
+    /// Are two output slots provably equal when reasoning is performed from
+    /// the standpoint of `at_rel`?
+    ///
+    /// `at_rel` selects which [`ResolvedScope`] (per-`LEFT JOIN` cross-side
+    /// equalities) is visible.  For inner joins and other relational nodes
+    /// without a scope entry the answer collapses to "same global class".
+    /// Returns `false` if either slot has no class assigned at all.
+    #[must_use]
+    pub fn are_equal(&self, at_rel: NodeId, a: Slot, b: Slot) -> bool {
+        let (Some(ca), Some(cb)) = (
+            self.class_of_slot(a.rel_id, a.pos),
+            self.class_of_slot(b.rel_id, b.pos),
+        ) else {
+            return false;
+        };
+        if ca == cb {
+            return true;
+        }
+        let Some(scope) = self.scopes.get(&at_rel) else {
+            return false;
+        };
+        let ra = scope.class_alias.get(&ca);
+        let rb = scope.class_alias.get(&cb);
+        ra.is_some() && rb.is_some() && ra == rb
+    }
+
+    /// Is `slot` pinned to a known constant when reasoning is performed from
+    /// the standpoint of `at_rel`?  Honors the same scope as `are_equal`.
+    ///
+    /// Returns an owned `Value` because a [`ResolvedScope`] may surface a
+    /// constant that has no entry in the global class' `constant` field.
+    #[must_use]
+    pub fn pinned_constant(&self, at_rel: NodeId, slot: Slot) -> Option<Value> {
+        let class = self.class_of_slot(slot.rel_id, slot.pos)?;
+        // Scope-aware path: if the class is part of a scope-group at
+        // `at_rel`, the group's pre-resolved constant overrides the
+        // global one (scope-only constants live only here).
+        if let Some(info) = self.scope_info_for_class(at_rel, class) {
+            if let Some(v) = info.constant.as_ref() {
+                return Some(v.clone());
+            }
+        }
+        self.const_of_class(class).cloned()
+    }
+
+    /// Find an output position on `inner_rel` that is provably equal to
+    /// `outer_slot` from the standpoint of `at_rel`.
+    ///
+    /// Returns the lowest matching position for deterministic test output.
+    /// When several outer positions of a composite key share an
+    /// equivalence class (so they're all class-equal to the same inner
+    /// position), each call returns that single inner position — the
+    /// resulting repeated key (e.g. `Key([q, q])`) is semantically
+    /// correct, because hash equality follows from class equality.
+    ///
+    /// `EquivalenceClass::members` is sorted by `(arena_type, offset,
+    /// pos)`, so all members with the same `rel_id` form a contiguous
+    /// run and the linear scan is tight.  Loop bounds:
+    /// `candidate_classes` is 1 plus (scope-group-size - 1) — typically
+    /// 1-3 entries.  Inner loops over class members are also bounded by
+    /// the number of base columns that ever appear in `=` facts together;
+    /// small constants in practice.
+    #[must_use]
+    pub fn find_equal_position(
+        &self,
+        at_rel: NodeId,
+        outer_slot: Slot,
+        inner_rel: NodeId,
+    ) -> Option<usize> {
+        let outer_class = self.class_of_slot(outer_slot.rel_id, outer_slot.pos)?;
+
+        // Collect every global class that is scope-equivalent to
+        // outer_class.  Pre-resolved in [`ResolvedScope::repr_info`].
+        let mut candidate_classes: Vec<ClassId> = vec![outer_class];
+        if let Some(info) = self.scope_info_for_class(at_rel, outer_class) {
+            for &c in info.members.iter() {
+                if c != outer_class {
+                    candidate_classes.push(c);
+                }
+            }
+        }
+
+        let mut best: Option<usize> = None;
+        for class in candidate_classes {
+            let Some(eclass) = self.class(class) else {
+                continue;
+            };
+            for member in eclass.members.iter() {
+                if member.rel_id != inner_rel {
+                    continue;
+                }
+                best = Some(match best {
+                    Some(cur) if cur <= member.pos => cur,
+                    _ => member.pos,
+                });
+            }
+        }
+        best
+    }
+}
+
+/// Internal UF node used during scope resolution at freeze time.
+/// Carries either an already-built global [`ClassId`] or a literal value
+/// from a scope-only constant fact.
+///
+/// Constants are deliberately *not* domain-tagged: the whole point of
+/// scope resolution is to bridge domains (left side vs. right side of an
+/// outer join) via the ON condition.  Two scope facts `(slot_a, 1)` and
+/// `(slot_b, 1)` must unify slot_a's class with slot_b's class even when
+/// the slots live in different global domains.
+#[derive(Clone, Eq, PartialEq, Hash)]
+enum ScopedNode {
+    Class(ClassId),
+    Const(Value),
 }
 
 struct EqualityFactsBuilder {
     members: UnionFind<EqualityFactAtom>,
     domains: HashMap<NodeId, DomainId>,
+    scoped: HashMap<NodeId, ScopedFacts>,
 }
 
 impl EqualityFactsBuilder {
@@ -381,7 +738,12 @@ impl EqualityFactsBuilder {
         Self {
             members: UnionFind::with_capacity(0),
             domains: HashMap::new(),
+            scoped: HashMap::new(),
         }
+    }
+
+    fn scoped_entry(&mut self, join_id: NodeId) -> &mut ScopedFacts {
+        self.scoped.entry(join_id).or_default()
     }
 
     fn add_slot(&mut self, key: SlotKey) -> UnionFindGroup {
@@ -417,8 +779,12 @@ impl EqualityFactsBuilder {
         let groups = self.members.groups_number();
 
         let mut root_to_class: HashMap<UnionFindGroup, ClassId> = HashMap::with_capacity(groups);
+        // Parallel arrays indexed by ClassId.0 — grown lazily as new groups
+        // are encountered.  Final EquivalenceClass objects are built once
+        // the walk is complete.
         let mut class_const: Vec<Option<Value>> = Vec::with_capacity(groups);
-        let mut const_conflict: Vec<bool> = vec![false; groups];
+        let mut const_conflict: Vec<bool> = Vec::with_capacity(groups);
+        let mut class_members: Vec<Vec<Slot>> = Vec::with_capacity(groups);
         let mut slot_classes: HashMap<NodeId, Vec<Option<ClassId>>> =
             HashMap::with_capacity(self.domains.len());
 
@@ -426,27 +792,29 @@ impl EqualityFactsBuilder {
             let class_id = *root_to_class.entry(group).or_insert_with(|| {
                 let id = ClassId(class_const.len() as u32);
                 class_const.push(None);
+                const_conflict.push(false);
+                class_members.push(Vec::new());
                 id
             });
 
             match atom {
                 EqualityFactAtom::Constant(_, value) => {
-                    // If multiple constants land in the same group (e.g. a = 1 AND a = 2),
-                    // we should merge them. If they are trivalent, we keep the first one, otherwise
-                    // we set constant to None, because we can have more than 2 constants and this
-                    // would indicate previous conflict.
-                    // TODO: when conflicting constants bridge here from different
-                    // chains (as opposed to within one chain, where `LocalFacts`
-                    // already kills the chain), the class is semantically
-                    // unsatisfiable — the whole plan slice is infeasible.
-                    // PostgreSQL marks such classes as contradictory and uses
-                    // that to prove the query returns no rows.  We only drop
-                    // the constant and keep the (now unreachable) slot
-                    // membership, which is conservative but loses a pruning
-                    // opportunity.
+                    // Multiple constants in the same UF group can happen
+                    // either inside one DNF chain (already killed by
+                    // `LocalFacts::into_facts` as `ChainOutcome::Dead`) or
+                    // across different expressions: e.g. `WHERE a = 1`
+                    // upstream and `WHERE a = 2` downstream both emit
+                    // `SlotConst(a, …)`, both get globally unioned, and
+                    // both constants land in `a`'s class.
+                    //
+                    // The class is semantically unsatisfiable in that
+                    // case — analogous to PostgreSQL's `ec_broken`.  We
+                    // drop the constant (so consumers don't pin slots to
+                    // a value that contradicts the other constraint) and
+                    // mark the class contradictory so callers that care
+                    // can prune the plan slice to empty.
                     let i = class_id.0 as usize;
                     if const_conflict[i] {
-                        // we already meet conflict, ignore this constant
                         continue;
                     }
 
@@ -468,17 +836,48 @@ impl EqualityFactsBuilder {
                         classes.resize(output_idx + 1, None);
                     }
                     classes[output_idx] = Some(class_id);
+                    class_members[class_id.0 as usize].push(Slot::new(rel_id, output_idx));
                 }
             }
         }
+
+        // Materialize the class objects.  Members are sorted by
+        // `(arena_type, offset, pos)` for deterministic iteration
+        let classes: Box<[EquivalenceClass]> = class_const
+            .into_iter()
+            .zip(const_conflict)
+            .zip(class_members)
+            .map(|((constant, contradictory), mut members)| {
+                members.sort();
+                EquivalenceClass {
+                    members: members.into_boxed_slice(),
+                    constant,
+                    contradictory,
+                }
+            })
+            .collect();
+
+        // Resolve every per-LEFT-JOIN scope once, using the just-built
+        // class index.  After this point `ScopedFacts` is discarded —
+        // adapter queries only see [`ResolvedScope`].  Empty scopes are
+        // filtered out: see [`ResolvedScope::is_empty`].
+        let scopes: HashMap<NodeId, ResolvedScope> = self
+            .scoped
+            .into_iter()
+            .filter_map(|(join_id, raw)| {
+                let resolved = ResolvedScope::from_raw(raw, &slot_classes, &classes);
+                (!resolved.is_empty()).then_some((join_id, resolved))
+            })
+            .collect();
 
         EqualityFacts {
             slot_classes: slot_classes
                 .into_iter()
                 .map(|(rel_id, v)| (rel_id, v.into_boxed_slice()))
                 .collect(),
-            class_const: class_const.into_boxed_slice(),
+            classes,
             domains: self.domains,
+            scopes,
         }
     }
 }
@@ -725,13 +1124,39 @@ impl<'p> EqualityAnalysis<'p> {
                     let right_domain = self.fresh_domain();
                     self.analyze(*right, right_domain)?;
                     self.union_join_output(rel_id, *left, *right, domain_id, false)?;
-                    // TODO: we drop the ON condition entirely, but PostgreSQL
-                    // uses it to infer facts about the non-nullable (left)
-                    // side: `LEFT JOIN r ON l.a = 1 AND ...` implies l.a = 1
-                    // for every surviving row.  Splitting the condition into
-                    // left-only / right-only / cross predicates and applying
-                    // the left-only part in `domain_id` would recover those
-                    // facts without breaking outer-join semantics.
+                    // The ON condition is unsafe to apply globally because
+                    // unmatched rows null-extend the right side.  Inside the
+                    // join's local scope it is safe, however, and motion
+                    // planning needs cross-side equalities (`outer.dk =
+                    // inner.dk`) to detect co-located outer joins.  Stash the
+                    // derived facts in a per-join scope.
+                    //
+                    // A fresh domain is used for the chain analysis so that
+                    // any future change to `LocalFacts` (e.g. seeding it from
+                    // the global UF) cannot accidentally bridge scoped
+                    // collection back into global state — the domain choice
+                    // is internal to one chain pass and stripped before
+                    // storage.
+                    //
+                    // TODO: as an IR-level optimization (not part of the
+                    // eclass module), split ON into left-only / right-only
+                    // / cross predicates and push the right-only part as
+                    // a filter into the right subtree before the LJ.
+                    // Safe rewrite: a b-row can only match if it satisfies
+                    // the right-only predicate, so pre-filtering b doesn't
+                    // change which rows null-extend.  After the push, the
+                    // right subtree's eclass sees those facts globally in
+                    // its own (fresh) domain.
+                    //
+                    // Cross-side and left-only predicates stay scoped to
+                    // the LJ — neither holds globally above the join:
+                    // - left-only: null-extended rows can have any value,
+                    //   so the predicate isn't true for all output rows;
+                    // - cross-side: null-extension on the right breaks
+                    //   the equality on unmatched rows.
+                    // Both are correctly captured by `ScopedFacts` already.
+                    let scope_domain = self.fresh_domain();
+                    self.collect_scoped_facts(*condition, scope_domain, rel_id)?;
                 }
             },
 
@@ -905,6 +1330,29 @@ impl<'p> EqualityAnalysis<'p> {
     // bound the number of chains returned by get_dnf_chains() or fall back to
     // analyzing only the top-level AND chain when the DNF expansion is too large.
     fn apply_expr_facts(&mut self, expr_id: NodeId, domain: DomainId) -> Result<(), SbroadError> {
+        let Some(facts) = self.derive_expr_facts(expr_id, domain)? else {
+            return Ok(());
+        };
+        for fact in facts {
+            match fact {
+                DerivedFact::SlotEq(left, right) => self.builder.union_slot_and_slot(left, right),
+                DerivedFact::SlotConst(slot, value) => {
+                    self.builder.union_slot_and_const(slot, value)
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Derives the always-true equality facts from a boolean expression without
+    /// merging them into the global builder.  Same DNF-chain intersection logic
+    /// as [`Self::apply_expr_facts`], factored out for reuse by scoped-facts
+    /// collection on `LEFT JOIN` ON conditions.
+    fn derive_expr_facts(
+        &self,
+        expr_id: NodeId,
+        domain: DomainId,
+    ) -> Result<Option<HashSet<DerivedFact>>, SbroadError> {
         let chains = self.plan.get_dnf_chains(expr_id)?;
         let mut intersection: Option<HashSet<DerivedFact>> = None;
         for chain in chains {
@@ -919,14 +1367,34 @@ impl<'p> EqualityAnalysis<'p> {
                 None => facts,
             });
         }
-        let Some(facts) = intersection else {
+        Ok(intersection)
+    }
+
+    /// Collects facts derived from a `LEFT JOIN` ON condition into a scope
+    /// keyed by the join node.  These facts are NOT propagated globally
+    /// because the nullable side breaks them for unmatched rows.  Motion
+    /// planning consults the scoped facts by passing the join's `NodeId` as
+    /// `at_rel` to the adapter API (e.g. [`EqualityFacts::are_equal`]) to detect
+    /// co-location inside the join scope only.
+    fn collect_scoped_facts(
+        &mut self,
+        expr_id: NodeId,
+        domain: DomainId,
+        join_id: NodeId,
+    ) -> Result<(), SbroadError> {
+        let Some(facts) = self.derive_expr_facts(expr_id, domain)? else {
             return Ok(());
         };
+        let scoped = self.builder.scoped_entry(join_id);
         for fact in facts {
             match fact {
-                DerivedFact::SlotEq(left, right) => self.builder.union_slot_and_slot(left, right),
-                DerivedFact::SlotConst(slot, value) => {
-                    self.builder.union_slot_and_const(slot, value)
+                DerivedFact::SlotEq(l, r) => {
+                    scoped
+                        .extra_slot_eq
+                        .push(((l.rel_id, l.output_idx), (r.rel_id, r.output_idx)));
+                }
+                DerivedFact::SlotConst(s, v) => {
+                    scoped.extra_slot_const.push(((s.rel_id, s.output_idx), v));
                 }
             }
         }
@@ -1159,6 +1627,18 @@ struct FactTerm {
 ///
 /// `LocalFacts` reduces a conjunction of `=` predicates to these canonical
 /// statements before the global builder merges them into final classes.
+///
+/// TODO: add a third variant `SlotParam(SlotKey, u16)` so parameters can
+/// bridge slots **across** expressions / DNF chains.  Today parameters
+/// are local to one `LocalFacts` (one chain), which means:
+///   - `WHERE a = $1` upstream + `WHERE b = $1` downstream don't merge a/b;
+///   - `LEFT JOIN ... ON a.x = $1` + `WHERE a.y = $1` don't bridge a.x/a.y;
+///   - within one chain, `a = $1 AND b = $1` still works fine.
+///
+/// PG handles this through a single eclass per query; we'd need to make
+/// `Param` a first-class atom in `EqualityFactsBuilder` (union via
+/// `union_slot_and_param`).  `DomainId` already isolates params between
+/// scopes, so the atom-level extension is mechanical.
 #[derive(PartialEq, Eq, Hash, Clone)]
 enum DerivedFact {
     SlotEq(SlotKey, SlotKey),
@@ -1225,6 +1705,15 @@ impl LocalFacts {
                         }
                     }
                 },
+                // TODO: parameters die here — we only flag the root as
+                // param-tainted (to suppress unsound SlotConst emission)
+                // and forget the parameter index.  As a result, the same
+                // `$N` appearing in two different chains / expressions
+                // can't bridge their slots into one global class.
+                // Fix: emit a `DerivedFact::SlotParam(slot, param_index)`
+                // for each slot in a param-tainted root and let the
+                // global builder union slots that share a parameter.
+                // See the doc on [`DerivedFact`].
                 FactAtom::Param { .. } => param_roots[i] = true,
                 FactAtom::Other => {
                     unreachable!("FactAtom::Other should not be in LocalFacts");
@@ -1257,11 +1746,11 @@ impl LocalFacts {
 }
 
 impl Plan {
-    pub fn analyze_equality_facts_in_subtree(self, top_id: NodeId) -> Result<Self, SbroadError> {
-        // TODO: wire this up in a follow-up MR. For now the result is
-        // dropped on purpose: how the facts are stored on the plan and
-        // how consumers access them is still to be decided.
-        let _ = EqualityAnalysis::get_equality_facts(&self, top_id)?;
+    pub fn analyze_equality_facts_in_subtree(
+        mut self,
+        top_id: NodeId,
+    ) -> Result<Self, SbroadError> {
+        self.facts = EqualityAnalysis::get_equality_facts(&self, top_id).map(Some)?;
         Ok(self)
     }
 

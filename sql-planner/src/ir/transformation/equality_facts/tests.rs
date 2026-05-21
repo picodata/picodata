@@ -1,4 +1,5 @@
-use crate::ir::transformation::equality_facts::{EqualityAnalysis, EqualityFacts};
+use crate::ir::node::NodeId;
+use crate::ir::transformation::equality_facts::{EqualityAnalysis, EqualityFacts, Slot};
 use crate::ir::transformation::helpers::sql_to_ir_without_bind;
 use crate::ir::value::Value;
 use crate::ir::Plan;
@@ -21,7 +22,10 @@ fn equality_facts_1() {
     // 1) "a" = 1 AND "b" = 2 AND "c" = 1
     // 2) "d" = 1"
     // They don't have intersection, so we have no facts about constant values.
-    assert!(equalities_facts.class_const.iter().all(|v| v.is_none()));
+    assert!(equalities_facts
+        .classes
+        .iter()
+        .all(|c| c.constant.is_none()));
 }
 
 #[test]
@@ -39,7 +43,10 @@ fn equality_facts_2() {
     let b = equalities_facts.class_of_slot(top_id, 1).unwrap();
     assert_ne!(a, b);
 
-    assert!(equalities_facts.class_const.iter().all(|v| v.is_none()));
+    assert!(equalities_facts
+        .classes
+        .iter()
+        .all(|c| c.constant.is_none()));
 }
 
 #[test]
@@ -52,7 +59,10 @@ fn equality_facts_3() {
     // conjunct is UNKNOWN, so the whole AND is UNKNOWN and no row matches).
     // Even though `"a" = 1` alone would bind a to 1, the surrounding clause
     // is unsatisfiable, so no equality facts are derived.
-    assert!(equalities_facts.class_const.iter().all(|v| v.is_none()));
+    assert!(equalities_facts
+        .classes
+        .iter()
+        .all(|c| c.constant.is_none()));
 }
 
 #[test]
@@ -143,7 +153,10 @@ fn equality_facts_7() {
     assert_ne!(a_0, a_1);
     assert_ne!(b_0, b_1);
 
-    assert!(equalities_facts.class_const.iter().all(|v| v.is_none()));
+    assert!(equalities_facts
+        .classes
+        .iter()
+        .all(|c| c.constant.is_none()));
 }
 
 #[test]
@@ -281,7 +294,10 @@ fn equality_facts_all_or_branches_dead() {
     WHERE ("a" = 1 AND "a" = 2) OR ("b" = 1 AND "b" = 2)"#;
     let (_, equalities_facts) = equalities_facts(input, vec![]);
 
-    assert!(equalities_facts.class_const.iter().all(|v| v.is_none()));
+    assert!(equalities_facts
+        .classes
+        .iter()
+        .all(|c| c.constant.is_none()));
 }
 
 #[test]
@@ -513,7 +529,10 @@ fn equality_facts_non_eq_predicate_generates_no_fact() {
     let input = r#"SELECT "a" FROM "t" WHERE "a" > 1"#;
     let (_, equalities_facts) = equalities_facts(input, vec![]);
 
-    assert!(equalities_facts.class_const.iter().all(|v| v.is_none()));
+    assert!(equalities_facts
+        .classes
+        .iter()
+        .all(|c| c.constant.is_none()));
 }
 
 // --- Projection column remapping ---
@@ -929,13 +948,31 @@ fn equality_facts_conflicting_consts_across_selections() {
     // The inner subquery says a = 1; the outer WHERE says a = 2.  Both
     // facts apply to the same column, so the equivalence class for "a"
     // sees two contradictory constants.  The class cannot carry either
-    // value — no constant is reported.  (Note: this query never returns
-    // rows, but equality-facts analysis only reasons about class membership.)
+    // value — no constant is reported, and the class is marked
+    // contradictory (ec_broken) so consumers can prune to empty.
     let input = r#"SELECT "a" FROM (SELECT "a" FROM "t" WHERE "a" = 1) WHERE "a" = 2"#;
     let (plan, equalities_facts) = equalities_facts(input, vec![]);
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
+    assert!(equalities_facts.is_contradictory(Slot::new(top_id, 0)));
+}
+
+#[test]
+fn equality_facts_non_conflicting_consts_are_not_contradictory() {
+    // Sanity check for `is_contradictory`: a class with a single, consistent
+    // constant must not be marked contradictory.  The conflict flag is
+    // strictly for the `ec_broken` case (two non-equal constants merged).
+    let input = r#"SELECT "a", "b" FROM "t" WHERE "a" = 1 AND "b" = 1"#;
+    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+
+    let top_id = plan.top.unwrap();
+    assert_eq!(
+        equalities_facts.const_of_slot(top_id, 0).unwrap(),
+        &Value::from(1)
+    );
+    assert!(!equalities_facts.is_contradictory(Slot::new(top_id, 0)));
+    assert!(!equalities_facts.is_contradictory(Slot::new(top_id, 1)));
 }
 
 // --- Window function: breaks fact propagation ---
@@ -1120,6 +1157,7 @@ fn equality_facts_three_way_const_conflict() {
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
+    assert!(equalities_facts.is_contradictory(Slot::new(top_id, 0)));
 }
 
 // --- BETWEEN with a subquery as the scrutinee ---
@@ -1159,5 +1197,173 @@ fn equality_facts_subquery_between_literals_with_sibling_eq() {
     assert_eq!(
         equalities_facts.const_of_slot(top_id, 1).unwrap(),
         &Value::from(7)
+    );
+}
+
+// =================================================================
+// ResolvedScope: freeze-time resolution and public-adapter behavior
+// =================================================================
+//
+// The block below targets the LEFT JOIN scope mechanism: that
+// cross-side ON-equalities materialize into `ResolvedScope.class_alias`
+// + `ResolvedScope.repr_info` once at freeze, and that the public
+// adapter API (`are_equal`, `pinned_constant`) observes them at the LJ
+// NodeId and *not* at relational nodes above the LJ.
+
+/// Walks down from the plan top through Projection/Selection layers and
+/// returns the first LEFT JOIN found, plus its left and right children.
+/// Test helper — panics on unexpected plan shape.
+fn find_left_join(plan: &Plan) -> (NodeId, NodeId, NodeId) {
+    use crate::ir::node::relational::Relational;
+    use crate::ir::node::{Join, Projection, Selection};
+    use crate::ir::operator::JoinKind;
+    let mut current = plan.top.unwrap();
+    loop {
+        match plan.get_relation_node(current).unwrap() {
+            Relational::Join(Join {
+                left,
+                right,
+                kind: JoinKind::LeftOuter,
+                ..
+            }) => {
+                return (current, *left, *right);
+            }
+            Relational::Projection(Projection { child, .. }) => {
+                current = child.expect("Projection should have child");
+            }
+            Relational::Selection(Selection { child, .. }) => {
+                current = *child;
+            }
+            other => panic!(
+                "find_left_join: expected to walk down to a LEFT JOIN, hit {:?}",
+                other
+            ),
+        }
+    }
+}
+
+#[test]
+fn equality_facts_lj_scope_built_for_cross_side_eq() {
+    // Direct field check: ON `t.a = t1.a` produces a single ResolvedScope
+    // keyed by the LEFT JOIN's NodeId, with a non-empty alias map and
+    // exactly one scope-group (two classes merged into one).  Singleton
+    // groups (single class, no scope-only constant) are dropped at
+    // resolution; only real merges survive.
+    let input = r#"
+        SELECT "t"."a", "t1"."a"
+        FROM "t" LEFT JOIN "t1_2" AS "t1" ON "t"."a" = "t1"."a"
+    "#;
+    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    assert_eq!(
+        equalities_facts.scopes.len(),
+        1,
+        "exactly one LEFT JOIN -> exactly one ResolvedScope entry"
+    );
+    let scope = equalities_facts.scopes.values().next().unwrap();
+    assert_eq!(
+        scope.class_alias.len(),
+        2,
+        "two classes (t.a + t1.a) both alias to the same representative"
+    );
+    assert_eq!(scope.repr_info.len(), 1, "one merged scope-group");
+    let info = scope.repr_info.iter().next().unwrap();
+    assert_eq!(info.members.len(), 2);
+    // No global or scope-only constant — alias only.
+    assert!(info.constant.is_none());
+
+    let (lj_id, left_id, right_id) = find_left_join(&plan);
+    let top_id = plan.top.unwrap();
+
+    let t_a = Slot::new(left_id, 0); // t.a
+    let t1_a = Slot::new(right_id, 0); // t1.a
+
+    assert!(
+        equalities_facts.are_equal(lj_id, t_a, t1_a),
+        "scope alias should merge t.a's class with t1.a's class at LJ"
+    );
+    assert!(
+        !equalities_facts.are_equal(top_id, t_a, t1_a),
+        "above the LEFT JOIN no scope is visible, classes stay separate"
+    );
+}
+
+#[test]
+fn equality_facts_lj_scope_promotes_global_const_to_group() {
+    // ON merges t.a's class with t1.a's class in scope; WHERE pins t.a's
+    // global class to 5.  `ResolvedScope` resolves the group's pinned
+    // constant: scope-only `Const` would win, but here there isn't one,
+    // so the global constant of any group member ('5' on t.a's class)
+    // propagates to `repr_info.constant`.
+    let input = r#"
+        SELECT "t"."a", "t1"."a"
+        FROM "t" LEFT JOIN "t1_2" AS "t1" ON "t"."a" = "t1"."a"
+        WHERE "t"."a" = 5
+    "#;
+    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let scope = equalities_facts.scopes.values().next().unwrap();
+    let info = scope.repr_info.iter().next().unwrap();
+    assert_eq!(info.constant.as_ref(), Some(&Value::from(5)));
+
+    let (lj_id, _, right_id) = find_left_join(&plan);
+    let top_id = plan.top.unwrap();
+
+    let t1_a = Slot::new(right_id, 0);
+    assert_eq!(
+        equalities_facts.pinned_constant(lj_id, t1_a),
+        Some(Value::from(5)),
+        "scope alias group carries t.a's global const for t1.a inside the LJ"
+    );
+    assert_eq!(
+        equalities_facts.pinned_constant(top_id, t1_a),
+        None,
+        "above the LJ scope is not consulted; t1.a has no global pin"
+    );
+}
+
+#[test]
+fn equality_facts_lj_scope_only_constant_in_on() {
+    // `ON t1.a = 5` is a scope-only constant: it appears only inside the
+    // LJ's cross-side derivation, never in the global UF (because the
+    // null-extension would otherwise lift it to an unsound fact about the
+    // outer output).  `repr_info.constant` should carry it inside the
+    // scope, even though no global class for `t1.a` ever pins to 5.
+    let input = r#"
+        SELECT "t1"."a"
+        FROM "t" LEFT JOIN "t1_2" AS "t1" ON "t1"."a" = 5
+    "#;
+    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let scope = equalities_facts.scopes.values().next().unwrap();
+    let info = scope.repr_info.iter().next().unwrap();
+    assert_eq!(info.constant.as_ref(), Some(&Value::from(5)));
+
+    let (lj_id, _, right_id) = find_left_join(&plan);
+    let top_id = plan.top.unwrap();
+
+    let t1_a = Slot::new(right_id, 0);
+    assert_eq!(
+        equalities_facts.pinned_constant(lj_id, t1_a),
+        Some(Value::from(5)),
+        "scope-only constant should surface at the LJ NodeId"
+    );
+    assert_eq!(
+        equalities_facts.pinned_constant(top_id, t1_a),
+        None,
+        "scope-only constants are invisible above the LJ"
+    );
+}
+
+#[test]
+fn equality_facts_lj_scope_absent_when_on_has_no_eq() {
+    // `ON t.a > t1.a` produces no equality facts.  No raw `ScopedFacts`
+    // entry gets created → no `ResolvedScope` entry exists for the LJ.
+    // Verifies that the resolver doesn't manufacture empty scopes.
+    let input = r#"
+        SELECT "t"."a", "t1"."a"
+        FROM "t" LEFT JOIN "t1_2" AS "t1" ON "t"."a" > "t1"."a"
+    "#;
+    let (_, equalities_facts) = equalities_facts(input, vec![]);
+    assert!(
+        equalities_facts.scopes.is_empty(),
+        "no eq facts in ON => no scope entry"
     );
 }

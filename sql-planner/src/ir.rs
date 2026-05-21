@@ -40,6 +40,7 @@ use crate::ir::node::{
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity};
 use crate::ir::relation::Column;
+use crate::ir::transformation::equality_facts::EqualityFacts;
 use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
 use crate::ir::undo::TransformationLog;
 use crate::ir::value::Value;
@@ -727,6 +728,9 @@ pub struct Plan {
     /// Populated lazily on first call to `block_pattern_key`.
     #[serde(skip)]
     pub(crate) block_pattern_hash: BlockPatternHashCache,
+    /// Equality facts
+    #[serde(skip)]
+    pub facts: Option<EqualityFacts>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -950,6 +954,7 @@ impl Plan {
             tier: None,
             subtree_hash_cache: SubtreeHashCache::default(),
             block_pattern_hash: BlockPatternHashCache::default(),
+            facts: None,
         }
     }
 
