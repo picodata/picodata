@@ -381,7 +381,10 @@ pub enum PluginAsyncEvent {
         new_raw: Vec<u8>,
     },
     /// Plugin removed at instance.
-    PluginDisabled { name: SmolStr },
+    PluginDisabled {
+        name: SmolStr,
+    },
+    RaftLeaderChanged,
 }
 
 /// Unique plugin identifier in the system.

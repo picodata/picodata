@@ -3047,6 +3047,8 @@ impl NodeImpl {
 
         let mut ready: raft::Ready = self.raw_node.ready();
 
+        let old_is_leader = self.status.get().raft_state.is_leader();
+
         // Apply soft state changes before anything else, so that this info is
         // available for other fibers as soon as main loop yields.
         if let Some(ss) = ready.ss() {
@@ -3061,6 +3063,8 @@ impl NodeImpl {
 
             self.try_notify_startup_complete();
         }
+
+        let new_is_leader = self.status.get().raft_state.is_leader();
 
         // These messages are only available on leader. Send them out ASAP.
         self.handle_messages(ready.take_messages());
@@ -3318,6 +3322,11 @@ impl NodeImpl {
 
         if let Some(e) = res {
             return Err(e.into());
+        }
+
+        if self.startup_complete.get() && old_is_leader != new_is_leader {
+            self.plugin_manager
+                .add_async_event_to_queue(PluginAsyncEvent::RaftLeaderChanged)?;
         }
 
         self.main_loop_status("idle");

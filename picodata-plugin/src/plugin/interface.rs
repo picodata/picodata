@@ -19,6 +19,7 @@ use tarantool::error::{BoxError, IntoBoxError};
 #[derive(StableAbi, Debug)]
 pub struct PicoContext {
     is_master: bool,
+    is_raft_leader: bool,
     pub plugin_name: FfiSafeStr,
     pub service_name: FfiSafeStr,
     pub plugin_version: FfiSafeStr,
@@ -29,6 +30,17 @@ impl PicoContext {
     pub fn new(is_master: bool) -> PicoContext {
         Self {
             is_master,
+            is_raft_leader: false,
+            plugin_name: "<unset>".into(),
+            service_name: "<unset>".into(),
+            plugin_version: "<unset>".into(),
+        }
+    }
+
+    pub fn with_is_raft_leader(is_master: bool, is_raft_leader: bool) -> PicoContext {
+        Self {
+            is_master,
+            is_raft_leader,
             plugin_name: "<unset>".into(),
             service_name: "<unset>".into(),
             plugin_version: "<unset>".into(),
@@ -43,6 +55,7 @@ impl PicoContext {
     pub unsafe fn clone(&self) -> Self {
         Self {
             is_master: self.is_master,
+            is_raft_leader: self.is_raft_leader,
             plugin_name: self.plugin_name,
             service_name: self.service_name,
             plugin_version: self.plugin_version,
@@ -53,6 +66,12 @@ impl PicoContext {
     #[inline]
     pub fn is_master(&self) -> bool {
         self.is_master
+    }
+
+    /// Return true if the current instance is a raft leader.
+    #[inline]
+    pub fn is_raft_leader(&self) -> bool {
+        self.is_raft_leader
     }
 
     #[inline(always)]
@@ -251,7 +270,7 @@ pub trait Service {
     /// but will mark instance as unavailable for rpc messaging.
     ///
     /// Instance can be "healed"
-    /// if any of `on_leader_change` or `on_config_change`
+    /// if any of `on_leader_change`, `on_config_change` or `on_raft_leader_change`
     /// callbacks in the future return `Ok`.
     ///
     /// # Arguments
@@ -323,13 +342,39 @@ pub trait Service {
     /// but will mark instance as unavailable for rpc messaging.
     ///
     /// Instance can be "healed"
-    /// if any of `on_leader_change` or `on_config_change`
+    /// if any of `on_leader_change`, `on_config_change` or `on_raft_leader_change`
     /// callbacks in the future return `Ok`.
     ///
     /// # Arguments
     ///
     /// * `context`: instance context
     fn on_leader_change(&mut self, context: &PicoContext) -> CallbackResult<()> {
+        _ = context;
+        Ok(())
+    }
+
+    /// Called when raft leader is changed.
+    /// This callback will be called exactly on two instances - the old raft leader and the new one.
+    ///
+    /// # Idempotency
+    ///
+    /// **WARNING** This callback may be called several times in a row.
+    /// It is the responsibility of the plugin author to make this function idempotent.
+    ///
+    /// # Poison
+    ///
+    /// Return an error here to poison current instance.
+    /// This will not cancel reconfiguration process,
+    /// but will mark instance as unavailable for rpc messaging.
+    ///
+    /// Instance can be "healed"
+    /// if any of `on_leader_change`, `on_config_change` or `on_raft_leader_change`
+    /// callbacks in the future return `Ok`.
+    ///
+    /// # Arguments
+    ///
+    /// * `context`: instance context
+    fn on_raft_leader_change(&mut self, context: &PicoContext) -> CallbackResult<()> {
         _ = context;
         Ok(())
     }
@@ -359,6 +404,7 @@ pub trait ServiceStable {
     fn on_start(&mut self, context: &PicoContext, configuration: RSlice<u8>) -> RResult<(), ()>;
     fn on_stop(&mut self, context: &PicoContext) -> RResult<(), ()>;
     fn on_leader_change(&mut self, context: &PicoContext) -> RResult<(), ()>;
+    fn on_raft_leader_change(&mut self, context: &PicoContext) -> RResult<(), ()>;
     fn on_config_change(
         &mut self,
         ctx: &PicoContext,
@@ -423,6 +469,13 @@ impl<C: DeserializeOwned> ServiceStable for ServiceProxy<C> {
 
     fn on_leader_change(&mut self, context: &PicoContext) -> RResult<(), ()> {
         match self.service.on_leader_change(context) {
+            Ok(_) => ROk(()),
+            Err(e) => error_into_tt_error(e),
+        }
+    }
+
+    fn on_raft_leader_change(&mut self, context: &PicoContext) -> RResult<(), ()> {
+        match self.service.on_raft_leader_change(context) {
             Ok(_) => ROk(()),
             Err(e) => error_into_tt_error(e),
         }

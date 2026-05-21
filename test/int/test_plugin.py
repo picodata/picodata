@@ -43,6 +43,8 @@ _PLUGIN_WITH_MIGRATION_2 = "testplug_w_migration_2"
 _PLUGIN_W_SDK = "testplug_sdk"
 _PLUGIN_W_SDK_SERVICES = ["testservice_3"]
 SERVICE_W_RPC = "service_with_rpc_tests"
+_PLUGIN_ON_RAFT_LEADER_CHANGE = "testplug_on_raft_leader_change"
+_SERVICE_ON_RAFT_LEADER_CHANGE = "on_raft_leader_change_service"
 
 REQUEST_ID = 1
 PLUGIN_NAME = 2
@@ -3793,3 +3795,217 @@ def test_plugin_vinyl_tx_access_denial_crash_gl_2914(cluster: Cluster):
 
     # if the fix doesn't work, the instance should crash
     i1.wait_online()
+
+
+def test_plugin_on_raft_leader_change_ok(cluster: Cluster):
+    plugin = _PLUGIN_ON_RAFT_LEADER_CHANGE
+    version = "0.1.0"
+    service = _SERVICE_ON_RAFT_LEADER_CHANGE
+
+    # wait for the first instance to be the raft leader
+    i1 = cluster.add_instance(wait_online=True)
+    i2 = cluster.add_instance()
+    i3 = cluster.add_instance()
+
+    assert i1.raft_leader_id() == 1
+
+    # create the plugin and enable it
+    i1.sql(f"CREATE PLUGIN {plugin} {version}")
+    i1.sql(f"ALTER PLUGIN {plugin} {version} ADD SERVICE {service} TO TIER default")
+    i1.sql(f"ALTER PLUGIN {plugin} {version} ENABLE")
+
+    i1.raft_transfer_leadership(i2.raft_id)
+
+    def check_on_raft_leader_change():
+        assert i1.eval("return _G['on_raft_leader_change_got_raft_leader']") is False
+        assert i2.eval("return _G['on_raft_leader_change_got_raft_leader']") is True
+
+    Retriable().call(check_on_raft_leader_change)
+
+    assert i1.raft_leader_id() == 2
+
+    # make i1 leader again
+    i2.raft_transfer_leadership(i1.raft_id)
+    assert i1.raft_leader_id() == 1
+
+    # switch the leader involuntarily
+    i1.kill()
+
+    # advance the raft clock on the surviving instances to trigger an immediate election.
+    for i in [i2, i3]:
+        i.call("pico.raft_tick", 100)
+    # propose leadership without waiting
+    i2.call(".proc_raft_promote")
+
+    def check_exactly_one_leader():
+        val2 = i2.eval("return _G['on_raft_leader_change_got_raft_leader']")
+        val3 = i3.eval("return _G['on_raft_leader_change_got_raft_leader']")
+        assert (val2 is True) ^ (val3 is True)
+
+    try:
+        Retriable().call(check_exactly_one_leader)
+    except Exception as e:
+        i2.check_process_alive()
+        i3.check_process_alive()
+        raise e from e
+
+    assert i2.raft_leader_id() in [2, 3]
+
+
+def test_plugin_on_raft_leader_change_err(cluster: Cluster):
+    plugin = _PLUGIN_ON_RAFT_LEADER_CHANGE
+    version = "0.1.0"
+    service = _SERVICE_ON_RAFT_LEADER_CHANGE
+
+    # wait for the first instance to be the raft leader
+    i1 = cluster.add_instance(wait_online=True)
+    i2 = cluster.add_instance()
+    i3 = cluster.add_instance()
+
+    assert i1.raft_leader_id() == 1
+
+    i1.sql(f"CREATE PLUGIN {plugin} {version}")
+    i1.sql(f"ALTER PLUGIN {plugin} {version} SET {service}.on_raft_leader_change_should_return_error='true'")
+    i1.sql(f"ALTER PLUGIN {plugin} {version} ADD SERVICE {service} TO TIER default")
+    i1.sql(f"ALTER PLUGIN {plugin} {version} ENABLE")
+
+    lc2 = log_crawler(
+        i2,
+        f"service poisoned, {plugin}.{service}:v{version}.on_raft_leader_change error:.*the error that should happen in on_raft_leader_change",
+        use_regex=True,
+    )
+
+    # poison the service routes by returning Err from .on_raft_leader_change
+    i1.raft_transfer_leadership(i2.raft_id)
+
+    def check_on_raft_leader_change():
+        assert i1.eval("return _G['on_raft_leader_change_got_raft_leader']") is False
+        assert i2.eval("return _G['on_raft_leader_change_got_raft_leader']") is True
+
+    Retriable().call(check_on_raft_leader_change)
+    lc2.wait_matched()
+
+    assert i1.raft_leader_id() == 2
+
+    # check that the service routes became poisoned
+    [[poisoned]] = i2.sql("SELECT COUNT(*) FROM _pico_service_route WHERE poison = true")
+    assert poisoned == 2
+
+    # cure the routes by running .on_config_change
+    i1.sql(f"ALTER PLUGIN {plugin} {version} SET {service}.on_raft_leader_change_should_return_error='true'")
+
+    [[poisoned]] = i2.sql("SELECT COUNT(*) FROM _pico_service_route WHERE poison = true")
+    assert poisoned == 0
+
+    # make i1 leader again
+    i2.raft_transfer_leadership(i1.raft_id)
+    assert i1.raft_leader_id() == 1
+
+    # switch the leader involuntarily
+    i1.kill()
+
+    lc2 = log_crawler(
+        i2,
+        f"service poisoned, {plugin}.{service}:v{version}.on_raft_leader_change error:.*the error that should happen in on_raft_leader_change",
+        use_regex=True,
+    )
+    lc3 = log_crawler(
+        i3,
+        f"service poisoned, {plugin}.{service}:v{version}.on_raft_leader_change error:.*the error that should happen in on_raft_leader_change",
+        use_regex=True,
+    )
+
+    # advance the raft clock on the surviving instances to trigger an immediate election
+    for i in [i2, i3]:
+        i.call("pico.raft_tick", 100)
+    # propose leadership without waiting
+    i2.call(".proc_raft_promote")
+
+    def wait_matched_on_single_instance():
+        assert lc2.matched ^ lc3.matched
+
+    try:
+        Retriable().call(wait_matched_on_single_instance)
+    except Exception as e:
+        i2.check_process_alive()
+        i3.check_process_alive()
+        raise e from e
+
+    assert i2.raft_leader_id() in [2, 3]
+
+    [[poisoned]] = i2.sql("SELECT COUNT(*) FROM _pico_service_route WHERE poison = true")
+    assert poisoned == 2
+
+
+def test_plugin_on_raft_leader_change_all_callbacks(cluster: Cluster):
+    plugin = _PLUGIN_ON_RAFT_LEADER_CHANGE
+    version = "0.1.0"
+    service = _SERVICE_ON_RAFT_LEADER_CHANGE
+
+    # wait for the first instance to be the raft leader
+    i1 = cluster.add_instance(wait_online=True, init_replication_factor=3)
+    i2 = cluster.add_instance(wait_online=True)
+    i3 = cluster.add_instance(wait_online=True)
+
+    assert i1.raft_leader_id() == 1
+
+    i1.sql(f"CREATE PLUGIN {plugin} {version}")
+    i1.sql(f"ALTER PLUGIN {plugin} {version} ADD SERVICE {service} TO TIER default")
+    i1.sql(f"ALTER PLUGIN {plugin} {version} ENABLE")
+
+    def check_on_start():
+        assert i1.eval("return _G['on_start_got_raft_leader']") is True
+        assert i2.eval("return _G['on_start_got_raft_leader']") is False
+        assert i3.eval("return _G['on_start_got_raft_leader']") is False
+
+    Retriable().call(check_on_start)
+
+    # TODO(v.klimenko): uncomment this when on_health_check callback is implemented
+    # def check_on_healthcheck():
+    #     assert i1.eval("return _G['on_healthcheck_got_raft_leader']") is True
+    #     assert i2.eval("return _G['on_healthcheck_got_raft_leader']") is False
+    #     assert i3.eval("return _G['on_healthcheck_got_raft_leader']") is False
+    #
+    # Retriable().call(check_on_healthcheck)
+
+    i1.sql(f"ALTER PLUGIN {plugin} {version} SET {service}.dummy_value_to_change ='67'")
+
+    def check_on_config_change():
+        assert i1.eval("return _G['on_config_change_got_raft_leader']") is True
+        assert i2.eval("return _G['on_config_change_got_raft_leader']") is False
+        assert i3.eval("return _G['on_config_change_got_raft_leader']") is False
+
+    Retriable().call(check_on_config_change)
+
+    i1.raft_transfer_leadership(i2.raft_id)
+
+    def check_on_raft_leader_change():
+        assert i1.eval("return _G['on_raft_leader_change_got_raft_leader']") is False
+        assert i2.eval("return _G['on_raft_leader_change_got_raft_leader']") is True
+
+    Retriable().call(check_on_raft_leader_change)
+
+    # switch the master to i3
+    index, _ = cluster.cas(
+        "update",
+        "_pico_replicaset",
+        key=["default_1"],
+        ops=[("=", "target_master_name", i3.name)],
+    )
+    cluster.raft_wait_index(index)
+    i2.wait_governor_status("idle")
+    assert i2.replicaset_master_name() == i3.name
+
+    def check_on_leader_change():
+        assert i1.eval("return _G['on_leader_change_got_raft_leader']") is False
+        assert i3.eval("return _G['on_leader_change_got_raft_leader']") is False
+
+    Retriable().call(check_on_leader_change)
+
+    i2.sql(f"ALTER PLUGIN {plugin} {version} DISABLE")
+
+    def check_on_stop():
+        assert i2.eval("return _G['on_stop_got_raft_leader']") is True
+        assert i3.eval("return _G['on_stop_got_raft_leader']") is False
+
+    Retriable().call(check_on_stop)

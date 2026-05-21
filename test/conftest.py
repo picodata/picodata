@@ -3378,7 +3378,6 @@ class log_crawler:
         # Basically this is just last N lines of output we've seen.
         self.current_window: List[bytes] = []
 
-        self.instance = instance
         self.instance.on_output_line(self._cb)
 
     def _cb(self, line: bytes):

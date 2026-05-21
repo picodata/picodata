@@ -42,7 +42,7 @@ use tarantool::session;
 use tarantool::util::IntoClones;
 
 fn context_from_node(node: &Node) -> PicoContext {
-    PicoContext::new(!node.is_readonly())
+    PicoContext::with_is_raft_leader(!node.is_readonly(), node.status().raft_state.is_leader())
 }
 
 fn context_set_service_info(context: &mut PicoContext, service: &ServiceState) {
@@ -474,6 +474,12 @@ impl PluginManager {
                     tlog!(Error, "plugin {name} remove error: {e}");
                 }
             }
+            PluginAsyncEvent::RaftLeaderChanged => {
+                let res = self.handle_raft_leader_change();
+                if let Err(e) = res {
+                    tlog!(Error, "plugins on_raft_leader_change callback error: {e}");
+                }
+            }
         }
 
         Ok(())
@@ -691,6 +697,93 @@ impl PluginManager {
         let _su =
             session::su(ADMIN_ID).expect("cant fail because admin should always have session");
         reenterable_plugin_cas_request(node, check_and_make_op, deadline)?;
+
+        Ok(())
+    }
+
+    // TODO(v.klimenko): move common parts of this function and handle_rs_leader_change to functions
+    /// Call `on_raft_leader_change` on services. Poison services if error at callbacks happens.
+    pub(crate) fn handle_raft_leader_change(&self) -> traft::Result<()> {
+        let node = node::global()?;
+
+        let deadline = fiber::clock().saturating_add(Duration::from_secs(10));
+        let check_and_make_op = || {
+            let mut ctx = context_from_node(node);
+            let storage = &node.storage;
+            let instance_name = node.topology_cache.my_instance_name();
+            let mut routes_to_replace = vec![];
+
+            for (plugin_name, plugin_state) in self.plugins.lock().iter() {
+                let plugin_defs = node.storage.plugins.get_all_versions(plugin_name)?;
+                let mut enabled_plugins: Vec<_> =
+                    plugin_defs.into_iter().filter(|p| p.enabled).collect();
+                let plugin_def = match enabled_plugins.len() {
+                    0 => continue,
+                    1 => enabled_plugins.pop().expect("infallible"),
+                    _ => {
+                        warn_or_panic!("only one plugin should be enabled at a single moment");
+                        enabled_plugins.pop().expect("infallible")
+                    }
+                };
+                let plugin_identity = plugin_def.into_identifier();
+
+                for service in plugin_state.services.iter() {
+                    let id = &service.id;
+                    context_set_service_info(&mut ctx, service);
+
+                    #[rustfmt::skip]
+                    tlog!(Debug, "calling {id}.on_raft_leader_change");
+
+                    let mut guard = service.volatile_state.lock();
+                    let result = guard.inner.on_raft_leader_change(&ctx);
+                    // Release the lock
+                    drop(guard);
+
+                    match result {
+                        RResult::ROk(_) => {
+                            let current_instance_poisoned = storage
+                                .service_route_table
+                                .get(&ServiceRouteKey::new(instance_name, id))?
+                                .map(|route| route.poison);
+
+                            if current_instance_poisoned == Some(true) {
+                                // now the route is healthy
+                                routes_to_replace.push(ServiceRouteItem::new_healthy(
+                                    instance_name.into(),
+                                    &plugin_identity,
+                                    id.service.clone(),
+                                ));
+                            }
+                        }
+                        RErr(_) => {
+                            let error = BoxError::last();
+                            tlog!(
+                                Warning,
+                                "service poisoned, {id}.on_raft_leader_change error: {error}"
+                            );
+                            // now the route is poison
+                            routes_to_replace.push(ServiceRouteItem::new_poison(
+                                instance_name.into(),
+                                &plugin_identity,
+                                id.service.clone(),
+                            ));
+                        }
+                    }
+                }
+            }
+
+            if routes_to_replace.is_empty() {
+                return Ok(PreconditionCheckResult::AlreadyApplied);
+            }
+            Ok(PreconditionCheckResult::DoOp((
+                build_service_routes_replace_dml(&routes_to_replace),
+                vec![],
+            )))
+        };
+        let _su =
+            session::su(ADMIN_ID).expect("cant fail because admin should always have session");
+        reenterable_plugin_cas_request(node, check_and_make_op, deadline)
+            .map_err(|traft_err| PluginError::RemoteError(traft_err.to_string()))?;
 
         Ok(())
     }

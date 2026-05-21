@@ -15,4 +15,3 @@ services:
     description: testservice_2 descr
     default_configuration:
       foo: 0
-

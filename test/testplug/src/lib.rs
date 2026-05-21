@@ -1164,6 +1164,102 @@ impl Service for VinylTxDenialService {
     }
 }
 
+/// Test `on_raft_leader_change` callback
+struct OnRaftLeaderChangeService {
+    on_raft_leader_change_should_return_error: bool,
+}
+
+impl OnRaftLeaderChangeService {
+    fn new() -> Self {
+        OnRaftLeaderChangeService {
+            on_raft_leader_change_should_return_error: false,
+        }
+    }
+}
+
+#[allow(unused)]
+#[derive(Deserialize)]
+struct OnRaftLeaderChangeServiceConfig {
+    on_raft_leader_change_should_return_error: bool,
+    dummy_value_to_change: i64,
+}
+
+impl Service for OnRaftLeaderChangeService {
+    type Config = OnRaftLeaderChangeServiceConfig;
+
+    fn on_start(&mut self, ctx: &PicoContext, config: Self::Config) -> CallbackResult<()> {
+        let lua = tarantool::lua_state();
+        let code = format!("_G['on_start_got_raft_leader'] = {}", ctx.is_raft_leader());
+        lua.exec(&code).unwrap();
+
+        self.on_raft_leader_change_should_return_error =
+            config.on_raft_leader_change_should_return_error;
+        Ok(())
+    }
+
+    fn on_raft_leader_change(&mut self, ctx: &PicoContext) -> CallbackResult<()> {
+        let lua = tarantool::lua_state();
+        let code = format!(
+            "_G['on_raft_leader_change_got_raft_leader'] = {}",
+            ctx.is_raft_leader()
+        );
+        lua.exec(&code).unwrap();
+
+        if self.on_raft_leader_change_should_return_error {
+            return Err("the error that should happen in on_raft_leader_change".into());
+        }
+        Ok(())
+    }
+
+    fn on_config_change(
+        &mut self,
+        ctx: &PicoContext,
+        new_config: Self::Config,
+        _old_config: Self::Config,
+    ) -> CallbackResult<()> {
+        let lua = tarantool::lua_state();
+        let code = format!(
+            "_G['on_config_change_got_raft_leader'] = {}",
+            ctx.is_raft_leader()
+        );
+        lua.exec(&code).unwrap();
+
+        self.on_raft_leader_change_should_return_error =
+            new_config.on_raft_leader_change_should_return_error;
+        Ok(())
+    }
+
+    fn on_leader_change(&mut self, ctx: &PicoContext) -> CallbackResult<()> {
+        let lua = tarantool::lua_state();
+        let code = format!(
+            "_G['on_leader_change_got_raft_leader'] = {}",
+            ctx.is_raft_leader()
+        );
+        lua.exec(&code).unwrap();
+
+        Ok(())
+    }
+
+    fn on_health_check(&self, ctx: &PicoContext) -> CallbackResult<()> {
+        let lua = tarantool::lua_state();
+        let code = format!(
+            "_G['on_health_check_got_raft_leader'] = {}",
+            ctx.is_raft_leader()
+        );
+        lua.exec(&code).unwrap();
+
+        Ok(())
+    }
+
+    fn on_stop(&mut self, ctx: &PicoContext) -> CallbackResult<()> {
+        let lua = tarantool::lua_state();
+        let code = format!("_G['on_stop_got_raft_leader'] = {}", ctx.is_raft_leader());
+        lua.exec(&code).unwrap();
+
+        Ok(())
+    }
+}
+
 // Ensures that macros usage at least compiles.
 #[tarantool::proc]
 fn example_stored_proc() {}
@@ -1214,4 +1310,10 @@ pub fn service_registrar(reg: &mut ServiceRegistry) {
     reg.add("customlistenerservice", "0.1.0", || CustomListenerService);
 
     reg.add("vinyl_tx_denial_service", "0.1.0", || VinylTxDenialService);
+
+    reg.add(
+        "on_raft_leader_change_service",
+        "0.1.0",
+        OnRaftLeaderChangeService::new,
+    );
 }
