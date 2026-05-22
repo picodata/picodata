@@ -136,10 +136,16 @@ variables:
   paths:
     - .cargo/
     - .sccache/
-    - tarantool-sys/.cmake-downloads/
   key: "base_cache-${TARGET}-$CI_COMMIT_REF_SLUG"
   fallback_keys:
     - base_cache-${TARGET}-$MAIN_BRANCH_SLUG
+
+.cmake_downloads_cache: &cmake_downloads_cache
+  paths:
+    - tarantool-sys/.cmake-downloads/
+  key: cmake_downloads-${TARGET}-$CI_COMMIT_REF_SLUG
+  fallback_keys:
+    - cmake_downloads-${TARGET}-$MAIN_BRANCH_SLUG
 
 .base_node: &base_node
   paths:
@@ -378,6 +384,8 @@ build-linux:
       policy: pull
     - <<: *base_cache
       policy: $CACHE_POLICY
+    - <<: *cmake_downloads_cache
+      policy: pull-push
     - <<: *base_node
       policy: $CACHE_POLICY
   script:
@@ -438,8 +446,8 @@ test-rs-linux:
   cache:
     - <<: *cache_git
       policy: pull
-    - <<: *py_cache
-      policy: pull
+    - <<: *cmake_downloads_cache
+      policy: pull-push
     - <<: *base_cache
       policy: pull
     - key: target-testrs-$BUILD_PROFILE-$CI_PIPELINE_ID
@@ -873,8 +881,8 @@ test-patch-tarantool:
       policy: pull
     - <<: *base_cache
       policy: pull
-    - <<: *base_node
-      policy: pull
+    - <<: *cmake_downloads_cache
+      policy: pull-push
   script:
     - ./tools/prepare_source_tree_for_stat_analysis.py apply
     - pushd tarantool-sys/ && make -f .test.mk test-release;
