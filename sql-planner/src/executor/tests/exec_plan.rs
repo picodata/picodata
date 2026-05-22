@@ -139,6 +139,23 @@ fn dql_subtree_generates_same_sql_as_execution_plan() {
 }
 
 #[test]
+fn execution_plan_clone_shares_ir_until_mutation() {
+    let mut plan = ExecutionPlan::new(Plan::default());
+    let cloned = plan.clone();
+
+    assert!(Rc::ptr_eq(&plan.plan, &cloned.plan));
+
+    plan.get_mut_ir_plan().tier = Some(SmolStr::from("test_tier"));
+
+    assert!(!Rc::ptr_eq(&plan.plan, &cloned.plan));
+    assert_eq!(
+        Some(&SmolStr::from("test_tier")),
+        plan.get_ir_plan().tier.as_ref()
+    );
+    assert_eq!(None, cloned.get_ir_plan().tier.as_ref());
+}
+
+#[test]
 fn update_delete_tuple_len_overlay_keeps_ir_intact() {
     let plan = sql_to_optimized_ir(r#"explain (logical) update "t" set "a" = 1"#, vec![]);
     let mut exec_plan = ExecutionPlan::new(plan);

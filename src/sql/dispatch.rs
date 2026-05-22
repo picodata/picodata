@@ -22,7 +22,7 @@ use rmp::decode::{read_array_len, read_bool, read_int};
 use rmp::encode::write_uint;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql::errors::{Action, Entity, SbroadError};
-use sql::executor::engine::helpers::vshard::prepare_rs_to_ir_map;
+use sql::executor::engine::helpers::vshard::{prepare_rs_to_ir_map, prepare_single_rs_ir_plan};
 use sql::executor::engine::helpers::{
     init_delete_tuple_builder, init_insert_tuple_builder, init_local_update_tuple_builder,
     init_sharded_update_tuple_builder, try_get_metadata_from_plan_for_top, vtable_columns,
@@ -523,15 +523,8 @@ pub(crate) fn custom_plan_dispatch<'p>(
                 &rs_buckets,
                 &read_preference,
             )? {
-                let local_plan = extract_single_rs_plan(rs_buckets, &ex_plan, top_id)?;
-                execute_dql_locally(
-                    port,
-                    Rc::new(local_plan),
-                    top_id,
-                    buckets,
-                    timeout,
-                    &read_preference,
-                )?;
+                let local_plan = extract_single_rs_plan(rs_buckets, ex_plan, top_id)?;
+                execute_dql_locally(port, local_plan, top_id, buckets, timeout, &read_preference)?;
                 return Ok(());
             }
 
@@ -558,8 +551,8 @@ pub(crate) fn custom_plan_dispatch<'p>(
         }
         QueryType::DML => {
             if should_single_rs_buckets_dispatch_locally(buckets, tier, &rs_buckets, "leader")? {
-                let local_plan = extract_single_rs_plan(rs_buckets, &ex_plan, top_id)?;
-                execute_dml_locally(port, Rc::new(local_plan), top_id, timeout)?;
+                let local_plan = extract_single_rs_plan(rs_buckets, ex_plan, top_id)?;
+                execute_dml_locally(port, local_plan, top_id, timeout)?;
                 return Ok(());
             }
 
@@ -1110,16 +1103,28 @@ fn decode_local_dml_row_count(mp: &[u8]) -> SqlResult<u64> {
 
 fn extract_single_rs_plan(
     rs_buckets: Vec<(String, Vec<u64>)>,
-    ex_plan: &ExecutionPlan,
+    ex_plan: Rc<ExecutionPlan>,
     top_id: NodeId,
-) -> SqlResult<ExecutionPlan> {
-    let (mut rs_plan, _) = prepare_rs_to_ir_map(&rs_buckets, ex_plan.clone(), top_id)?;
-    let Some((_, ex_plan)) = rs_plan.drain().next() else {
-        return Err(SbroadError::DispatchError(
-            "expected a single replicaset execution plan".into(),
-        ));
+) -> SqlResult<Rc<ExecutionPlan>> {
+    if rs_buckets.len() != 1 {
+        return Err(SbroadError::DispatchError(format_smolstr!(
+            "expected a single replicaset execution plan, got {}",
+            rs_buckets.len()
+        )));
+    }
+    let (_, bucket_ids) = rs_buckets
+        .into_iter()
+        .next()
+        .expect("single replicaset bucket set must be present");
+    let ex_plan = match Rc::try_unwrap(ex_plan) {
+        Ok(ex_plan) => ex_plan,
+        Err(ex_plan) => ex_plan.as_ref().clone(),
     };
-    Ok(ex_plan)
+    Ok(Rc::new(prepare_single_rs_ir_plan(
+        ex_plan,
+        &bucket_ids,
+        top_id,
+    )?))
 }
 
 fn query_type_for_top(ex_plan: &ExecutionPlan, top_id: NodeId) -> SqlResult<QueryType> {

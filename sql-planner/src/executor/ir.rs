@@ -77,7 +77,7 @@ impl SerializeAsEmptyState {
 pub struct ExecutionPlan {
     request_id: String,
     /// IR plan contains motions.
-    pub(crate) plan: Plan,
+    pub(crate) plan: Rc<Plan>,
     /// Virtual tables for `Motion` nodes.
     /// Map of { `Motion` node_id -> it's corresponding data }
     vtables: VirtualTableMap,
@@ -707,7 +707,7 @@ impl ExecutionPlan {
     pub fn new(plan: Plan) -> Self {
         ExecutionPlan {
             request_id: uuid::Uuid::new_v4().to_string(),
-            plan,
+            plan: Rc::new(plan),
             vtables: VirtualTableMap::new(),
             plan_id: None,
             plan_id_cache: AHashMap::new(),
@@ -1154,7 +1154,7 @@ impl ExecutionPlan {
 
     #[must_use]
     pub fn get_ir_plan(&self) -> &Plan {
-        &self.plan
+        self.plan.as_ref()
     }
 
     #[must_use]
@@ -1165,7 +1165,7 @@ impl ExecutionPlan {
     #[allow(dead_code)]
     pub fn get_mut_ir_plan(&mut self) -> &mut Plan {
         self.subtree_view_cache.clear();
-        &mut self.plan
+        Rc::make_mut(&mut self.plan)
     }
 
     #[must_use]

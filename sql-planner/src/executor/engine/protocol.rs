@@ -790,9 +790,10 @@ impl TryFrom<&ExecutionData> for ExecutionCacheMissData {
                 .generate_sql(&a, plan_id, table_name, Some(value.constant_ids.as_slice()))?
         };
 
+        let plan = value.plan.get_ir_plan();
         let schema_info = PlanVersion {
-            table_version_map: value.plan.plan.table_version_map.clone(),
-            index_version_map: value.plan.plan.index_version_map.clone(),
+            table_version_map: plan.table_version_map.clone(),
+            index_version_map: plan.index_version_map.clone(),
         };
         Ok(Self {
             schema_info,
@@ -825,21 +826,6 @@ impl TryFrom<&DqlProtocol> for ExecutionCacheMissData {
             vtables_meta: vtables_metadata(value.get_plan_id(), value.plan.get_vtables()),
             sql,
         })
-    }
-}
-
-impl TryFrom<ExecutionData> for ExecutionCacheMissData {
-    type Error = SbroadError;
-
-    fn try_from(mut value: ExecutionData) -> Result<Self, Self::Error> {
-        // Take version maps before borrowing to avoid unnecessary cloning.
-        let schema_info = PlanVersion {
-            table_version_map: std::mem::take(&mut value.plan.plan.table_version_map),
-            index_version_map: std::mem::take(&mut value.plan.plan.index_version_map),
-        };
-        let mut result = Self::try_from(&value)?;
-        result.schema_info = schema_info;
-        Ok(result)
     }
 }
 

@@ -144,7 +144,7 @@ impl Plan {
 /// - Failed to filter vtable
 pub fn prepare_rs_to_ir_map(
     rs_bucket_vec: &[(String, Vec<u64>)],
-    mut sub_plan: ExecutionPlan,
+    sub_plan: ExecutionPlan,
     top_id: NodeId,
 ) -> Result<(HashMap<String, ExecutionPlan>, Option<u64>), SbroadError> {
     let mut rs_ir = HashMap::new();
@@ -175,20 +175,45 @@ pub fn prepare_rs_to_ir_map(
             rs_ir.insert(rs.clone(), other_plan);
         }
 
-        if let Some(ref info) = sae_info {
-            let disabled_motions =
-                serialize_as_empty_motions_to_disable(sub_plan.get_ir_plan(), info)?;
-            sub_plan.disable_serialize_as_empty_for_motions(disabled_motions);
-        }
         let (rs, bucket_ids) = last;
-        filter_vtable(&mut sub_plan, bucket_ids)?;
-        if sae_info.is_some() {
-            sub_plan.set_plan_id(top_id)?;
-        }
+        let sub_plan = prepare_single_rs_ir_plan_with_serialize_as_empty_info(
+            sub_plan, bucket_ids, top_id, sae_info,
+        )?;
         rs_ir.insert(rs.clone(), sub_plan);
     }
 
     Ok((rs_ir, extra_plan_id))
+}
+
+/// Prepares an execution plan for a single replicaset.
+///
+/// # Errors
+/// - Failed to apply customization opcodes.
+/// - Failed to filter vtable.
+pub fn prepare_single_rs_ir_plan(
+    sub_plan: ExecutionPlan,
+    bucket_ids: &[u64],
+    top_id: NodeId,
+) -> Result<ExecutionPlan, SbroadError> {
+    let sae_info = sub_plan.get_ir_plan().serialize_as_empty_info(top_id)?;
+    prepare_single_rs_ir_plan_with_serialize_as_empty_info(sub_plan, bucket_ids, top_id, sae_info)
+}
+
+fn prepare_single_rs_ir_plan_with_serialize_as_empty_info(
+    mut sub_plan: ExecutionPlan,
+    bucket_ids: &[u64],
+    top_id: NodeId,
+    sae_info: Option<SerializeAsEmptyInfo>,
+) -> Result<ExecutionPlan, SbroadError> {
+    if let Some(ref info) = sae_info {
+        let disabled_motions = serialize_as_empty_motions_to_disable(sub_plan.get_ir_plan(), info)?;
+        sub_plan.disable_serialize_as_empty_for_motions(disabled_motions);
+    }
+    filter_vtable(&mut sub_plan, bucket_ids)?;
+    if sae_info.is_some() {
+        sub_plan.set_plan_id(top_id)?;
+    }
+    Ok(sub_plan)
 }
 
 fn trim_serialize_as_empty_vtables(
