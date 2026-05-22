@@ -388,7 +388,11 @@ build-linux:
 
     - |
       ci-log-section start "build" Build
-      make coverage-build-$BUILD_PROFILE CARGO_FLAGS_EXTRA="--timings"
+      if [ "$BUILD_PROFILE" = "dev" ]; then
+        make coverage-build-$BUILD_PROFILE CARGO_FLAGS_EXTRA="--timings"
+      else
+        make build-$BUILD_PROFILE CARGO_FLAGS_EXTRA="--timings"
+      fi
       ci-log-section end "build"
 
     # Show sccache statistics
@@ -397,14 +401,26 @@ build-linux:
       sccache --show-stats
       ci-log-section end "sccache-stats"
 
-      du -hc --max-depth=1 target
-      make coverage-merge
-      make coverage-trim-target
-      du -hc --max-depth=1 target
+    - |
+      if [ "$BUILD_PROFILE" = "dev" ]; then
+        ci-log-section start "coverage-data" prepare coverage data ...
+        du -hc --max-depth=1 target
+        make coverage-merge
+        make coverage-trim-target
+        du -hc --max-depth=1 target
+        ci-log-section end "coverage-data"
+      else
+        # we need only couple files from target directory for non coverage build
+        tar cf bckp.tar target/$TARGET/picodata target/$TARGET/libtestplug.so
+        rm -rf target/$TARGET
+        tar xf bckp.tar
+        rm bckp.tar
+      fi
 
   artifacts:
     paths:
       - target
+      - test/plug_wrong_version/target/debug/libplug_wrong_version.so
       - test/plug_wrong_version/target/cov/x86_64-unknown-linux-gnu/debug/libplug_wrong_version.so
     expire_in: 3 days
 
@@ -443,8 +459,13 @@ test-rs-linux:
 
     - |
       ci-log-section start "test" Test
-      make coverage-test-rs \
-        CARGO_FLAGS_EXTRA="--profile=$BUILD_PROFILE"
+      if [ "$BUILD_PROFILE" = "dev" ]; then
+        make coverage-test-rs \
+          CARGO_FLAGS_EXTRA="--profile=$BUILD_PROFILE"
+      else
+        make test-rs \
+          CARGO_FLAGS_EXTRA="--profile=$BUILD_PROFILE"
+      fi
       ci-log-section end "test"
 
     # Show sccache statistics
@@ -453,10 +474,17 @@ test-rs-linux:
       sccache --show-stats
       ci-log-section end "sccache-stats"
 
-      du -hc --max-depth=1 target
-      make coverage-merge
-      make coverage-trim-target
-      du -hc --max-depth=1 target
+    - |
+      if [ "$BUILD_PROFILE" = "dev" ]; then
+        ci-log-section start "coverage-data" prepare coverage data ...
+        du -hc --max-depth=1 target
+        make coverage-merge
+        make coverage-trim-target
+        du -hc --max-depth=1 target
+        ci-log-section end "coverage-data"
+      else
+        make clean
+      fi
 
   artifacts:
     when: always
@@ -504,14 +532,25 @@ test-py-sql-linux:
     - *poetry-install
     - |
       ci-log-section start "test" Test
-      make coverage-test-py \
-        PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k '(sql or pgproto)'"
+      if [ "$BUILD_PROFILE" = "dev" ]; then
+        make coverage-test-py \
+          PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k '(sql or pgproto)'"
+      else
+        make test-py \
+          PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k '(sql or pgproto)'"
+      fi
       ci-log-section end "test"
-
-      du -hc --max-depth=1 target
-      make coverage-merge
-      make coverage-trim-target
-      du -hc --max-depth=1 target
+    - |
+      if [ "$BUILD_PROFILE" = "dev" ]; then
+        ci-log-section start "coverage-data" prepare coverage data ...
+        du -hc --max-depth=1 target
+        make coverage-merge
+        make coverage-trim-target
+        du -hc --max-depth=1 target
+        ci-log-section end "coverage-data"
+      else
+        rm -rf target
+      fi
   after_script:
     - ./tools/upload-flake-tracker-report.sh
 
@@ -576,14 +615,25 @@ test-py-not-sql-linux:
     - *poetry-install
     - |
       ci-log-section start "test" Test
-      make coverage-test-py \
-        PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k 'not (sql or pgproto)'"
+      if [ "$BUILD_PROFILE" = "dev" ]; then
+        make coverage-test-py \
+          PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k 'not (sql or pgproto)'"
+      else
+        make test-py \
+          PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k 'not (sql or pgproto)'"
+      fi
       ci-log-section end "test"
-
-      du -hc --max-depth=1 target
-      make coverage-merge
-      make coverage-trim-target
-      du -hc --max-depth=1 target
+    - |
+      if [ "$BUILD_PROFILE" = "dev" ]; then
+        ci-log-section start "coverage-data" prepare coverage data ...
+        du -hc --max-depth=1 target
+        make coverage-merge
+        make coverage-trim-target
+        du -hc --max-depth=1 target
+        ci-log-section end "coverage-data"
+      else
+        rm -rf target
+      fi
   after_script:
     - ./tools/upload-flake-tracker-report.sh
 
@@ -1048,6 +1098,8 @@ clear-sccache:
 deploy-coverage:
   stage: deploy
   rules:
+    - if: $CI_COMMIT_BRANCH =~ /^docs/
+      when: never
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
@@ -1072,7 +1124,6 @@ deploy-coverage:
   dependencies: []
   script:
     - make coverage-report
-    - find target -ls
     - ZIP_FILENAME=picodata_${CI_COMMIT_REF_SLUG}_${CI_COMMIT_SHORT_SHA}
     - cd target/cov/coverage/report
     - zip -r --quiet ../$ZIP_FILENAME .
