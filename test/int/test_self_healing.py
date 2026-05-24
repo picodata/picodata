@@ -531,6 +531,8 @@ cluster:
 
     leader.sql("INSERT INTO foo VALUES (1337, 'v2')")
 
+    auto_online_failure = "SENTINEL_CONNECTION_POOL_CALL_FAILURE"
+    storage_1_1.env[f"PICODATA_ERROR_INJECTION_{auto_online_failure}"] = "1"
     storage_1_1.start()
     # Governor is stuck waiting until instance synchronizes with replicaset,
     # which will never happen
@@ -552,14 +554,9 @@ cluster:
     # Also make sure `Instance.wait_online` is also correctly detecting replication errors
     with pytest.raises(Exception) as e:
         storage_1_1.wait_online()
-    # NOTE: it's possible that we're going to see 2 different reason strings
-    # because we're checking at different times and currently it is possible
-    # that when instance see's it's target_state = Offline it will try setting
-    # it to Online as self-healing. This is not a problem in general, because
-    # instance will only retry every 10 minutes (see `SENTINEL_REPLICATION_BROKEN_WAIT`
-    # in `src/sentinel.rs`), but the first retry happens quickly and may cause
-    # flakiness in tests. For that reason we normalize the reason string by
-    # removing the volatile information from it.
+    # Self auto-online is disabled above via error injection so the reason doesn't get overwritten
+    # with `auto-online` before `wait_online` observes the replication error.
+    # Still, the duration inside the reason is volatile.
     assert normalize_durations(reason) in normalize_durations(e.value.args[0])
 
     # Just a sanity check, that restarting the instance doens't change anything
@@ -585,6 +582,7 @@ cluster:
     # Now let's restart the instance so it tries becoming online again and now
     # succeeds
     storage_1_1.terminate()
+    storage_1_1.env.pop(f"PICODATA_ERROR_INJECTION_{auto_online_failure}", None)
     storage_1_1.start()
     storage_1_1.wait_online()
     leader.wait_governor_status("idle")
