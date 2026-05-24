@@ -1,6 +1,14 @@
 import pytest
 
-from conftest import Instance, Connection, MalformedAPI, TarantoolError, Cluster, log_crawler
+from conftest import (
+    Instance,
+    Connection,
+    MalformedAPI,
+    TarantoolError,
+    Cluster,
+    Retriable,
+    log_crawler,
+)
 
 
 USER_NAME = "kelthuzad"
@@ -160,8 +168,12 @@ def test_cross_cluster_isolation(cluster: Cluster):
     i3.peers = [i1.iproto_listen, i2.iproto_listen]
     i3.start()
 
-    lc_cu = log_crawler(i3, "cluster UUID mismatch")
+    lc_cu = log_crawler(
+        i3,
+        r"failed to activate myself:.*cluster UUID mismatch.*shutting down",
+        use_regex=True,
+    )
     lc_cu.wait_matched()
 
     # the cluster UUID mismatch should result in a fatal error during instance startup
-    i3.assert_process_dead()
+    Retriable().call(i3.assert_process_dead)
