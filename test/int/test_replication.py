@@ -343,8 +343,8 @@ def test_expel_blocked_by_replicaset_master_switchover_to_offline_replica(
     i1.wait_governor_status("idle")
 
     # Only now the instance gets expelled and shuts down
-    i4.assert_process_dead()
     cluster.wait_has_states(i4, "Expelled", "Expelled")
+    Retriable().call(i4.assert_process_dead)
 
     # i5 is the master
     assert i5.eval("return box.info.ro") is False
