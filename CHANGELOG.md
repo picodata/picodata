@@ -73,6 +73,19 @@ with the `YY.MINOR.MICRO` scheme.
   through read-only views, allowing `take_subtree` and its subtree copies to be
   removed.
 
+### WebUI
+- Added new instance filters: `isVoter` and `isRaftLeader`. Both support
+  the standard `Is` / `IsOneOf` / `IsNotOneOf` expressions with a Yes/No
+  value set.
+- Extended the generic `Filter` component to accept boolean-valued tag
+  options in addition to strings. The filter visual style is unchanged.
+- The replicaset card now renders placeholders for missing instances
+  (instances expected by the replicaset configuration but not currently
+  reported by the cluster).
+- Added `isRaftLeader` and `isVoter` flags to the instance model. Tier
+  and replicaset cards now show indicators when they contain the raft
+  leader or a voter instance.
+
 ### Fixes
 
 - Fixed crash when disabling a plugin with slow background jobs. Previously,
