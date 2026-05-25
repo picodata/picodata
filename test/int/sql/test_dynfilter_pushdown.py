@@ -37,10 +37,7 @@ def test_dynfilter_inner_join_result_unchanged(cluster: Cluster):
     i1 = cluster.instances[0]
     _setup_join_tables(i1)
 
-    query = (
-        "SELECT big.v, small.w FROM big JOIN small ON big.k = small.k "
-        "ORDER BY big.v"
-    )
+    query = "SELECT big.v, small.w FROM big JOIN small ON big.k = small.k ORDER BY big.v"
     expected = [["b10", "s10"], ["b15", "s15"], ["b5", "s5"]]
 
     i1.sql("ALTER SYSTEM SET sql_dynamic_filter_pushdown = true")
@@ -57,10 +54,7 @@ def test_dynfilter_left_join_result_unchanged(cluster: Cluster):
     i1 = cluster.instances[0]
     _setup_join_tables(i1)
 
-    query = (
-        "SELECT small.w, big.v FROM small LEFT JOIN big ON small.k = big.k "
-        "ORDER BY small.k"
-    )
+    query = "SELECT small.w, big.v FROM small LEFT JOIN big ON small.k = big.k ORDER BY small.k"
     expected = [["s5", "b5"], ["s10", "b10"], ["s15", "b15"]]
 
     i1.sql("ALTER SYSTEM SET sql_dynamic_filter_pushdown = true")
