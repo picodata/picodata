@@ -368,4 +368,107 @@ mod tests {
         ));
         assert!(plan.dynamic_filters.is_empty());
     }
+
+    #[test]
+    fn explain_renders_dynamic_filter_footer() {
+        // EXPLAIN must surface a "dynamic filter [...]" footer line for
+        // each recorded spec so operators can see at-a-glance that the
+        // pass fired. The sidecar list is the only source of truth — no
+        // IR walk is needed.
+        let (mut plan, join, _, _) = make_two_motion_inner_join();
+        plan.insert_dynamic_filters_for_inner_joins(join).unwrap();
+
+        let explain = crate::ir::explain::LogicalExplain::new(&plan, join)
+            .unwrap()
+            .to_string();
+        assert!(
+            explain.contains("dynamic filter [id = 0,"),
+            "expected footer with id=0, got:\n{explain}"
+        );
+        assert!(
+            explain.contains("build_keys = 1") && explain.contains("probe_keys = 1"),
+            "expected single-column footer, got:\n{explain}"
+        );
+    }
+
+    #[test]
+    fn multi_eq_and_chain_records_composite_filter() {
+        // §5.6: an AND-chain of equalities is a pure conjunction and
+        // must collapse into a composite (multi-column) DynamicFilterSpec.
+        // Condition: `t1.a = t2.d AND t1.b = t2.c`.
+        let mut plan = Plan::default();
+
+        let t1 = Table::new_sharded(
+            random(),
+            "t1",
+            vec![
+                column_user_non_null(SmolStr::from("a"), UnrestrictedType::Integer),
+                column_user_non_null(SmolStr::from("b"), UnrestrictedType::Integer),
+                sharding_column(),
+            ],
+            &["a"],
+            &["a"],
+            SpaceEngine::Memtx,
+        )
+        .unwrap();
+        plan.add_rel(t1);
+        let scan_t1 = plan.add_scan("t1", None).unwrap();
+
+        let t2 = Table::new_sharded(
+            random(),
+            "t2",
+            vec![
+                column_user_non_null(SmolStr::from("c"), UnrestrictedType::Integer),
+                column_user_non_null(SmolStr::from("d"), UnrestrictedType::Integer),
+                sharding_column(),
+            ],
+            &["d"],
+            &["d"],
+            SpaceEngine::Memtx,
+        )
+        .unwrap();
+        plan.add_rel(t2);
+        let scan_t2 = plan.add_scan("t2", None).unwrap();
+
+        let motion_t1 = plan
+            .add_motion(scan_t1, &MotionPolicy::Full, Program::default())
+            .unwrap();
+        let motion_t2 = plan
+            .add_motion(scan_t2, &MotionPolicy::Full, Program::default())
+            .unwrap();
+
+        let a_ref = plan
+            .add_ref_from_left_branch(motion_t1, motion_t2, ColumnWithScan::new("a", None))
+            .unwrap();
+        let d_ref = plan
+            .add_ref_from_right_branch(motion_t1, motion_t2, ColumnWithScan::new("d", None))
+            .unwrap();
+        let b_ref = plan
+            .add_ref_from_left_branch(motion_t1, motion_t2, ColumnWithScan::new("b", None))
+            .unwrap();
+        let c_ref = plan
+            .add_ref_from_right_branch(motion_t1, motion_t2, ColumnWithScan::new("c", None))
+            .unwrap();
+        let eq_ad = plan.nodes.add_bool(a_ref, Bool::Eq, d_ref).unwrap();
+        let eq_bc = plan.nodes.add_bool(b_ref, Bool::Eq, c_ref).unwrap();
+        let and = plan.nodes.add_bool(eq_ad, Bool::And, eq_bc).unwrap();
+        let join = plan
+            .add_join(motion_t1, motion_t2, and, JoinKind::Inner)
+            .unwrap();
+        plan.top = Some(join);
+
+        plan.insert_dynamic_filters_for_inner_joins(join).unwrap();
+
+        assert_eq!(plan.dynamic_filters.len(), 1);
+        let spec = &plan.dynamic_filters[0];
+
+        // The spec must reference both columns on each side. We compare
+        // as sets because EqualityCols deduplicates and may reorder.
+        let probe: std::collections::BTreeSet<usize> = spec.probe_columns.iter().copied().collect();
+        let build: std::collections::BTreeSet<usize> = spec.build_columns.iter().copied().collect();
+        assert_eq!(probe, [0usize, 1].into_iter().collect());
+        assert_eq!(build, [0usize, 1].into_iter().collect());
+        assert_eq!(spec.probe_columns.len(), 2);
+        assert_eq!(spec.build_columns.len(), 2);
+    }
 }
