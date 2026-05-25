@@ -621,7 +621,7 @@ fn start_http_server(
 
     // Wire sql-planner's dynamic-filter probe sink to the Prometheus
     // counters declared in `metrics`. Idempotent: a second call is a no-op.
-    let _ = sql::executor::dynfilter::set_filter_metrics_sink(std::sync::Arc::new(
+    let _ = ::sql::executor::dynfilter::set_filter_metrics_sink(std::sync::Arc::new(
         metrics::PrometheusFilterSink,
     ));
 
