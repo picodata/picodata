@@ -164,8 +164,8 @@ pub fn build_filters_for_motion(
             )
         })?;
 
-        let apply_spec = collect_apply_spec_by_filter_id(exec_plan, filter_id)?
-            .ok_or_else(|| {
+        let apply_spec =
+            collect_apply_spec_by_filter_id(exec_plan, filter_id)?.ok_or_else(|| {
                 SbroadError::Invalid(
                     Entity::Plan,
                     Some(smol_str::format_smolstr!(
@@ -389,7 +389,6 @@ mod tests {
     use super::*;
     use crate::executor::ir::ExecutionPlan;
     use crate::executor::vtable::VirtualTable;
-    use crate::ir::Plan;
     use crate::ir::expression::ColumnWithScan;
     use crate::ir::node::Join;
     use crate::ir::operator::{Bool, JoinKind};
@@ -398,6 +397,7 @@ mod tests {
     use crate::ir::transformation::redistribution::{MotionPolicy, Program};
     use crate::ir::types::UnrestrictedType;
     use crate::ir::value::double::Double;
+    use crate::ir::Plan;
     use rand::random;
     use smol_str::SmolStr;
     use sql_dynfilter::DynamicFilter;
@@ -984,7 +984,10 @@ mod tests {
         // (false-positive misses), comfortably above XOR8's theoretical
         // ~0.4% FPR.
         let survived = probe_vt.get_tuples().len();
-        assert!(survived >= expected_hits, "lost true hits: {survived} < {expected_hits}");
+        assert!(
+            survived >= expected_hits,
+            "lost true hits: {survived} < {expected_hits}"
+        );
         let fpr_allowance = expected_hits + (n as usize / 20).max(1);
         assert!(
             survived <= fpr_allowance,
@@ -999,7 +1002,11 @@ mod tests {
         // integer 1 even though their canonical body bytes overlap.
         let (plan, _join, probe_motion, _build_motion, filter_id) = prepare_resolved_plan();
         let mut exec_plan = ExecutionPlan::new(plan);
-        let apply_pos = match exec_plan.get_ir_plan().get_relation_node(probe_motion).unwrap() {
+        let apply_pos = match exec_plan
+            .get_ir_plan()
+            .get_relation_node(probe_motion)
+            .unwrap()
+        {
             Relational::Motion(Motion { child: Some(c), .. }) => {
                 let child_node = exec_plan.get_ir_plan().get_relation_node(*c).unwrap();
                 let Relational::ApplyFilter(ApplyFilter { keys, .. }) = child_node else {
@@ -1061,7 +1068,8 @@ mod tests {
             let ir = &plan;
             let mut pos = None;
             for node in ir.nodes.iter64() {
-                if let crate::ir::node::Node64::BuildFilter(BuildFilter { child, keys, .. }) = node {
+                if let crate::ir::node::Node64::BuildFilter(BuildFilter { child, keys, .. }) = node
+                {
                     if *child != build_motion {
                         continue;
                     }

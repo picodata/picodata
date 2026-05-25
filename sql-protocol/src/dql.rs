@@ -7,7 +7,9 @@ use crate::message_type::write_request_header;
 use crate::message_type::MessageType::DQL;
 use crate::msgpack::{skip_value, ByteCounter};
 use rmp::decode::{read_array_len, read_bin_len, read_int, read_map_len, read_pfix, read_str_len};
-use rmp::encode::{write_array_len, write_bin_len, write_map_len, write_pfix, write_str, write_uint};
+use rmp::encode::{
+    write_array_len, write_bin_len, write_map_len, write_pfix, write_str, write_uint,
+};
 use sql_dynfilter::{DynamicFilter, NullPolicy};
 use std::fmt;
 use std::fmt::Formatter;
@@ -463,8 +465,8 @@ pub(crate) fn get_filters<'a>(
     };
 
     let value_decoder = |r: &mut Cursor<&'a [u8]>| -> Result<WireDynamicFilter<'a>, ProtocolError> {
-        let arr_len = read_array_len(r)
-            .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+        let arr_len =
+            read_array_len(r).map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
         if arr_len != 3 {
             return Err(ProtocolError::DecodeError(format!(
                 "DynamicFilter entry: expected array<3>, got array<{arr_len}>"
@@ -476,17 +478,15 @@ pub(crate) fn get_filters<'a>(
         r.set_position(bytes_end as u64);
         let bytes = &r.get_ref()[bytes_start..bytes_end];
 
-        let pos_len = read_array_len(r)
-            .map_err(|err| ProtocolError::DecodeError(err.to_string()))? as usize;
+        let pos_len =
+            read_array_len(r).map_err(|err| ProtocolError::DecodeError(err.to_string()))? as usize;
         let mut key_positions = Vec::with_capacity(pos_len);
         for _ in 0..pos_len {
             key_positions.push(
-                read_int::<u32, _>(r)
-                    .map_err(|err| ProtocolError::DecodeError(err.to_string()))?,
+                read_int::<u32, _>(r).map_err(|err| ProtocolError::DecodeError(err.to_string()))?,
             );
         }
-        let np_tag = read_pfix(r)
-            .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+        let np_tag = read_pfix(r).map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
         let null_policy = NullPolicy::try_from(np_tag)
             .map_err(|_| ProtocolError::DecodeError(format!("invalid NullPolicy tag {np_tag}")))?;
         Ok(WireDynamicFilter {
@@ -935,9 +935,8 @@ mod tests {
             }
             fn get_vtables(
                 &self,
-            ) -> impl ExactSizeIterator<
-                Item = (&str, impl ExactSizeIterator<Item = impl MsgpackEncode>),
-            > {
+            ) -> impl ExactSizeIterator<Item = (&str, impl ExactSizeIterator<Item = impl MsgpackEncode>)>
+            {
                 self.inner.get_vtables()
             }
             fn get_options(&self) -> DQLOptions {

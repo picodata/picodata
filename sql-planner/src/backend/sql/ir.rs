@@ -748,11 +748,8 @@ fn normalize_plan_id_relational(
             for key in &mut af.keys {
                 *key = to_subtree_node_id(*key, node_positions)?;
             }
-            af.filter_source = to_subtree_reference_node_id(
-                ir_plan,
-                af.filter_source,
-                node_positions,
-            )?;
+            af.filter_source =
+                to_subtree_reference_node_id(ir_plan, af.filter_source, node_positions)?;
         }
         RelOwned::ScanCte(_)
         | RelOwned::Except(_)

@@ -259,7 +259,11 @@ fn fingerprint(seed: u64, hash: u128) -> u8 {
         .wrapping_add(seed.rotate_right(7));
     f ^= f >> 33;
     let byte = (f & 0xFF) as u8;
-    if byte == 0 { 1 } else { byte }
+    if byte == 0 {
+        1
+    } else {
+        byte
+    }
 }
 
 /// One peeling attempt. Returns None if the random hypergraph is not
@@ -292,7 +296,9 @@ fn try_build(seed: u64, array_length: u32, keys: &[u128]) -> Option<Box<[u8]>> {
     }
 
     // Peeling queue: positions with degree exactly 1.
-    let mut queue: Vec<u32> = (0..array_length).filter(|&p| deg[p as usize] == 1).collect();
+    let mut queue: Vec<u32> = (0..array_length)
+        .filter(|&p| deg[p as usize] == 1)
+        .collect();
     let mut peel_order: Vec<(u32, u64)> = Vec::with_capacity(n);
     // `removed[i] = true` iff edge i has been peeled.
     let mut removed: Vec<bool> = vec![false; n];

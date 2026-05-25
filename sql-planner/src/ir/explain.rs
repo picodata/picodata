@@ -1436,10 +1436,16 @@ impl Display for ExplainNode {
             ExplainNode::Except => write!(f, "except")?,
 
             ExplainNode::BuildFilter(filter_id, key_arity) => {
-                write!(f, "build dynamic filter [id = {filter_id}, keys = {key_arity}]")?;
+                write!(
+                    f,
+                    "build dynamic filter [id = {filter_id}, keys = {key_arity}]"
+                )?;
             }
             ExplainNode::ApplyFilter(filter_id, key_arity) => {
-                write!(f, "apply dynamic filter [id = {filter_id}, keys = {key_arity}]")?;
+                write!(
+                    f,
+                    "apply dynamic filter [id = {filter_id}, keys = {key_arity}]"
+                )?;
             }
         };
 
@@ -1928,7 +1934,10 @@ impl LogicalExplain {
                             "BuildFilter node must have exactly one child".into(),
                         )
                     })?;
-                    (ExplainNode::BuildFilter(*filter_id, keys.len()), vec![child])
+                    (
+                        ExplainNode::BuildFilter(*filter_id, keys.len()),
+                        vec![child],
+                    )
                 }
                 Relational::ApplyFilter(node::ApplyFilter {
                     filter_id, keys, ..
@@ -1938,7 +1947,10 @@ impl LogicalExplain {
                             "ApplyFilter node must have exactly one child".into(),
                         )
                     })?;
-                    (ExplainNode::ApplyFilter(*filter_id, keys.len()), vec![child])
+                    (
+                        ExplainNode::ApplyFilter(*filter_id, keys.len()),
+                        vec![child],
+                    )
                 }
             };
 

@@ -317,12 +317,8 @@ impl Nodes {
                     Node64::ValuesRow(values_row) => {
                         MutNode::Relational(MutRelational::ValuesRow(values_row))
                     }
-                    Node64::BuildFilter(bf) => {
-                        MutNode::Relational(MutRelational::BuildFilter(bf))
-                    }
-                    Node64::ApplyFilter(af) => {
-                        MutNode::Relational(MutRelational::ApplyFilter(af))
-                    }
+                    Node64::BuildFilter(bf) => MutNode::Relational(MutRelational::BuildFilter(bf)),
+                    Node64::ApplyFilter(af) => MutNode::Relational(MutRelational::ApplyFilter(af)),
                 }),
             ArenaType::Arena96 => self
                 .arena96

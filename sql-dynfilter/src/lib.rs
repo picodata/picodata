@@ -386,11 +386,7 @@ mod tests {
             f.finalize().unwrap();
             let mut buf = vec![];
             f.encode_into(&mut buf).unwrap();
-            assert_eq!(
-                buf.len(),
-                f.encoded_len(),
-                "encoded_len mismatch for n={n}"
-            );
+            assert_eq!(buf.len(), f.encoded_len(), "encoded_len mismatch for n={n}");
         }
     }
 

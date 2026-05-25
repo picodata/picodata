@@ -105,7 +105,10 @@ mod tests {
 
     #[test]
     fn determinism() {
-        assert_eq!(hash_cols(&[b"hello", b"world"]), hash_cols(&[b"hello", b"world"]));
+        assert_eq!(
+            hash_cols(&[b"hello", b"world"]),
+            hash_cols(&[b"hello", b"world"])
+        );
     }
 
     #[test]

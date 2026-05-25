@@ -13,6 +13,7 @@ use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
 use rmp::encode::write_array_len;
 use smol_str::{format_smolstr, SmolStr};
+use sql_dynfilter::DynamicFilter;
 use sql_protocol::dml::delete::{
     CoreDeleteDataSource, DeleteFilteredDataSource, DeleteFullDataSource,
 };
@@ -24,7 +25,6 @@ use sql_protocol::dml::update::UpdateType;
 use sql_protocol::dml::update::{
     CoreUpdateDataSource, UpdateDataSource, UpdateSharedKeyDataSource,
 };
-use sql_dynfilter::DynamicFilter;
 use sql_protocol::dql_encoder::{
     ApplySpec, ColumnType, DQLCacheMissDataSource, DQLDataSource, DQLOptions, MsgpackEncode,
 };

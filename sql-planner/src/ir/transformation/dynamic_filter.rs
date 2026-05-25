@@ -145,11 +145,7 @@ impl Plan {
 
     /// Mutation phase: build the BuildFilter/ApplyFilter pair for one
     /// candidate and splice them into the IR.
-    fn splice_filter_pair(
-        &mut self,
-        cand: &Candidate,
-        filter_id: u32,
-    ) -> Result<(), SbroadError> {
+    fn splice_filter_pair(&mut self, cand: &Candidate, filter_id: u32) -> Result<(), SbroadError> {
         let build_keys = self.make_key_refs(cand.build_motion, cand.pairs.iter().map(|p| p.0))?;
         let apply_keys = self.make_key_refs(cand.probe_subroot, cand.pairs.iter().map(|p| p.1))?;
 
@@ -197,11 +193,7 @@ impl Plan {
         // Rewire probe_motion.child: probe_subroot -> ApplyFilter, and
         // patch probe_motion's output references the same way.
         self.change_child(cand.probe_motion, cand.probe_subroot, apply_filter_id)?;
-        self.replace_target_in_relational(
-            cand.probe_motion,
-            cand.probe_subroot,
-            apply_filter_id,
-        )?;
+        self.replace_target_in_relational(cand.probe_motion, cand.probe_subroot, apply_filter_id)?;
 
         Ok(())
     }
@@ -506,8 +498,9 @@ mod tests {
     fn outer_join_is_skipped() {
         let (mut plan, join, _, _) = make_two_motion_inner_join();
         // Flip to LeftOuter — resolver must skip the candidate.
-        if let crate::ir::node::MutNode::Relational(crate::ir::node::relational::MutRelational::Join(j)) =
-            plan.get_mut_node(join).unwrap()
+        if let crate::ir::node::MutNode::Relational(
+            crate::ir::node::relational::MutRelational::Join(j),
+        ) = plan.get_mut_node(join).unwrap()
         {
             j.kind = JoinKind::LeftOuter;
         } else {
