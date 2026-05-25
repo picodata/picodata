@@ -970,11 +970,11 @@ mod tests {
 
         // Build two small finalized filters to encode.
         let mut f1 = DynamicFilter::new(2);
-        f1.insert(0x1111_2222_3333_4444u128);
-        f1.insert(0x5555_6666_7777_8888u128);
+        f1.insert(0x1111_2222_3333_4444u64);
+        f1.insert(0x5555_6666_7777_8888u64);
         f1.finalize().unwrap();
         let mut f2 = DynamicFilter::new(1);
-        f2.insert(0xCAFEBABE_DEADBEEFu128);
+        f2.insert(0xCAFEBABE_DEADBEEFu64);
         f2.finalize().unwrap();
         let spec1 = ApplySpec::new(vec![2u32, 5u32], NullPolicy::Skip);
         let spec2 = ApplySpec::new(vec![0u32], NullPolicy::Insert);
@@ -1004,12 +1004,12 @@ mod tests {
                     // The bytes field must decode as a FilterView.
                     let view = sql_dynfilter::FilterView::decode(wire.bytes).unwrap();
                     if id == 7 {
-                        assert!(view.contains(0x1111_2222_3333_4444u128));
-                        assert!(view.contains(0x5555_6666_7777_8888u128));
+                        assert!(view.contains(0x1111_2222_3333_4444u64));
+                        assert!(view.contains(0x5555_6666_7777_8888u64));
                         assert_eq!(wire.key_positions, vec![2u32, 5u32]);
                         assert_eq!(wire.null_policy, NullPolicy::Skip);
                     } else if id == 42 {
-                        assert!(view.contains(0xCAFEBABE_DEADBEEFu128));
+                        assert!(view.contains(0xCAFEBABE_DEADBEEFu64));
                         assert_eq!(wire.key_positions, vec![0u32]);
                         assert_eq!(wire.null_policy, NullPolicy::Insert);
                     } else {

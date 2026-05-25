@@ -2,9 +2,9 @@
 //!
 //! Two variants share a single wire format (outer type tag + body):
 //! * `SmallSet` — sorted exact set, used when n is below `FUSE_THRESHOLD`
-//! * `FuseFilter` — XOR8/Fuse-family approximate filter for larger sets
+//! * `FuseFilter` — thin wrapper over `xorf::BinaryFuse8` for larger sets
 //!
-//! The build side hashes its JOIN keys into u128 via `TupleHasher`,
+//! The build side hashes its JOIN keys into u64 via `TupleHasher`,
 //! inserts them into a `DynamicFilter`, and serializes the result with
 //! `encode_into` directly into the DQL wire buffer. The probe side
 //! decodes it zero-copy via `FilterView::decode` and tests rows with
@@ -45,7 +45,7 @@ impl DynamicFilter {
         }
     }
 
-    pub fn insert(&mut self, hash: u128) {
+    pub fn insert(&mut self, hash: u64) {
         match self {
             Self::SmallSet(s) => s.insert(hash),
             Self::Fuse(f) => f.insert(hash),
@@ -75,10 +75,10 @@ impl DynamicFilter {
         }
     }
 
-    /// Finalize the filter: SmallSet sorts/dedups, Fuse runs peeling.
-    /// Must be called once after the last `insert` and before any
-    /// `encoded_len` / `encode_into` call. Fails for Fuse only if
-    /// peeling does not converge after the seed-retry budget.
+    /// Finalize the filter: SmallSet sorts/dedups, Fuse builds the
+    /// `BinaryFuse8`. Must be called once after the last `insert` and
+    /// before any `encoded_len` / `encode_into` / `contains` call.
+    /// Fails for Fuse only if `BinaryFuse8::try_from` rejects the keys.
     pub fn finalize(&mut self) -> Result<(), FilterBuildError> {
         match self {
             Self::SmallSet(s) => {
@@ -104,7 +104,7 @@ impl DynamicFilter {
     /// through `encode_into` / `FilterView::decode` — needed by the
     /// §5.4 apply phase when retain runs on the coordinator side.
     /// `finalize` must have been called.
-    pub fn contains(&self, hash: u128) -> bool {
+    pub fn contains(&self, hash: u64) -> bool {
         match self {
             Self::SmallSet(s) => s.contains(hash),
             Self::Fuse(f) => f.contains(hash),
@@ -114,7 +114,7 @@ impl DynamicFilter {
 
 /// Zero-copy view into an encoded filter (type tag + body) borrowed
 /// from the DQL wire buffer.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum FilterView<'a> {
     Fuse(FuseView<'a>),
     SmallSet(SmallSetView<'a>),
@@ -134,7 +134,7 @@ impl<'a> FilterView<'a> {
         }
     }
 
-    pub fn contains(&self, hash: u128) -> bool {
+    pub fn contains(&self, hash: u64) -> bool {
         match self {
             Self::SmallSet(s) => s.contains(hash),
             Self::Fuse(f) => f.contains(hash),
@@ -146,12 +146,14 @@ impl<'a> FilterView<'a> {
 mod tests {
     use super::*;
 
-    fn keys_n(n: usize) -> Vec<u128> {
+    fn keys_n(n: usize) -> Vec<u64> {
         (0..n as u64)
             .map(|i| {
-                let lo = i.wrapping_mul(0xBF58476D1CE4E5B9).wrapping_add(0x12345);
-                let hi = i.wrapping_mul(0x94D049BB133111EB) ^ 0xDEADBEEF;
-                ((hi as u128) << 64) | lo as u128
+                let mut x = i.wrapping_mul(0xBF58476D1CE4E5B9).wrapping_add(0x12345);
+                x ^= x >> 30;
+                x = x.wrapping_mul(0x94D049BB133111EB);
+                x ^= 0xDEADBEEF;
+                x
             })
             .collect()
     }
@@ -232,9 +234,6 @@ mod tests {
 
     #[test]
     fn smallset_tag_only_buffer_rejected() {
-        // Outer type tag present (0x01 = SmallSet), but the body is
-        // missing — decoder must report a truncation error rather than
-        // try to read past the buffer.
         let buf = [0x01u8];
         assert!(matches!(
             FilterView::decode(&buf).unwrap_err(),
@@ -253,11 +252,11 @@ mod tests {
 
     #[test]
     fn smallset_header_says_more_than_payload_has() {
-        // SmallSet body: u32 LE length, then len * 16 bytes. Claim 3
-        // entries (48 bytes) but ship only 16 bytes — decoder must reject.
-        let mut buf = vec![0x01u8]; // tag
-        buf.extend_from_slice(&3u32.to_le_bytes()); // claimed length
-        buf.extend_from_slice(&[0u8; 16]); // only one u128 follows
+        // SmallSet body: u32 LE length, then len * 8 bytes. Claim 3
+        // entries (24 bytes) but ship only 8 bytes — decoder must reject.
+        let mut buf = vec![0x01u8];
+        buf.extend_from_slice(&3u32.to_le_bytes());
+        buf.extend_from_slice(&[0u8; 8]);
         assert!(matches!(
             FilterView::decode(&buf).unwrap_err(),
             FilterDecodeError::Truncated { .. }
@@ -266,25 +265,28 @@ mod tests {
 
     #[test]
     fn fuse_header_says_more_than_payload_has() {
-        // Fuse body: u64 seed + u32 array_length + array_length bytes.
-        // Claim 1024 fps bytes but ship none — decoder must reject.
-        let mut buf = vec![0x02u8];
-        buf.extend_from_slice(&0u64.to_le_bytes());
-        buf.extend_from_slice(&1024u32.to_le_bytes());
-        // no fps bytes
+        // Produce a valid Fuse-encoded buffer, then drop the trailing
+        // fingerprint bytes so the declared fp_len exceeds what remains
+        // in the slice. Decoder must report Truncated rather than read
+        // past the buffer.
+        let mut f = DynamicFilter::new(FUSE_THRESHOLD);
+        for i in 0..FUSE_THRESHOLD as u64 {
+            f.insert(i.wrapping_mul(0x9E3779B97F4A7C15));
+        }
+        f.finalize().unwrap();
+        let mut full = vec![];
+        f.encode_into(&mut full).unwrap();
+        // Chop one byte off the end — the fp_len field still claims the
+        // original count, so the decoder's bound check must fail.
+        full.truncate(full.len() - 1);
         assert!(matches!(
-            FilterView::decode(&buf).unwrap_err(),
+            FilterView::decode(&full).unwrap_err(),
             FilterDecodeError::Truncated { .. }
         ));
     }
 
     #[test]
     fn view_contains_matches_builder_contains_small() {
-        // Build → finalize. Live-side `contains` (the just-added
-        // delegating method on `DynamicFilter`) must agree bit-for-bit
-        // with the zero-copy `FilterView::contains`. Otherwise the
-        // §5.4 coordinator apply and the future §5.4.3 storage apply
-        // would silently diverge.
         let mut f = DynamicFilter::new(8);
         let keys = keys_n(8);
         for &k in &keys {
@@ -297,9 +299,7 @@ mod tests {
         for &k in &keys {
             assert_eq!(f.contains(k), view.contains(k));
         }
-        // Negative probes — must also agree (true negatives, since
-        // SmallSet has no false positives).
-        for i in 1000u128..1064u128 {
+        for i in 1000u64..1064u64 {
             assert!(!f.contains(i));
             assert!(!view.contains(i));
         }
@@ -321,11 +321,8 @@ mod tests {
             assert!(f.contains(k));
             assert!(view.contains(k));
         }
-        // Probes outside the build set must agree (true or false —
-        // a Fuse false positive must register identically on both
-        // sides because they share seed, array_length, and fps).
-        for i in 0u128..1000u128 {
-            let probe = i << 96; // disjoint from keys_n outputs
+        for i in 0u64..1000u64 {
+            let probe = i.wrapping_mul(0xFEEDFACE) ^ 0xA5A5_A5A5_A5A5_A5A5;
             assert_eq!(
                 f.contains(probe),
                 view.contains(probe),
@@ -336,25 +333,19 @@ mod tests {
 
     #[test]
     fn dynamic_filter_contains_on_empty_returns_false() {
-        // No inserts, finalize, then contains must yield false for any
-        // input — important so the coordinator-side apply phase does
-        // not silently keep all rows when nothing was built.
         let mut f = DynamicFilter::new(0);
         f.finalize().unwrap();
         assert!(!f.contains(0));
-        assert!(!f.contains(u128::MAX));
+        assert!(!f.contains(u64::MAX));
         let mut buf = vec![];
         f.encode_into(&mut buf).unwrap();
         let view = FilterView::decode(&buf).unwrap();
         assert!(!view.contains(0));
-        assert!(!view.contains(u128::MAX));
+        assert!(!view.contains(u64::MAX));
     }
 
     #[test]
     fn fuse_large_build_then_decode_roundtrip() {
-        // Stress the Fuse path with enough keys to exceed the threshold
-        // by a wide margin and exercise the multi-seed peeling
-        // convergence. Each key must survive encode → decode.
         let n = 50_000;
         let mut f = DynamicFilter::new(n);
         let keys = keys_n(n);
@@ -366,7 +357,6 @@ mod tests {
         let mut buf = vec![];
         f.encode_into(&mut buf).unwrap();
         let view = FilterView::decode(&buf).unwrap();
-        // No false negatives.
         for &k in &keys {
             assert!(view.contains(k), "view missing key {k} after roundtrip");
         }
@@ -374,10 +364,6 @@ mod tests {
 
     #[test]
     fn encoded_len_matches_actual_encode_length() {
-        // Pre-allocation contract: after `finalize`, `encoded_len()` must
-        // equal the exact number of bytes written by `encode_into`.
-        // Violating this would corrupt msgpack `bin` framing in the DQL
-        // packet (the encoder writes `bin_len = encoded_len` first).
         for &n in &[0usize, 1, 8, FUSE_THRESHOLD - 1, FUSE_THRESHOLD, 4096] {
             let mut f = DynamicFilter::new(n);
             for &k in &keys_n(n) {
@@ -392,8 +378,6 @@ mod tests {
 
     #[test]
     fn fresh_seed_unknown_tag_rejection_does_not_panic() {
-        // Fuzz the tag byte: every value other than 0x01 / 0x02 must
-        // produce `UnknownTag`, never a panic or false-accept.
         for tag in 0u8..=255 {
             if tag == 0x01 || tag == 0x02 {
                 continue;
@@ -401,12 +385,7 @@ mod tests {
             let buf = [tag, 0, 0, 0, 0];
             match FilterView::decode(&buf) {
                 Err(FilterDecodeError::UnknownTag(t)) => assert_eq!(t, tag),
-                Err(FilterDecodeError::Truncated { .. }) => {
-                    // Acceptable for tags that happen to be valid first
-                    // bytes of some other framing — but since we never
-                    // assign such tags, this branch should not fire in
-                    // practice. Keep tolerant though.
-                }
+                Err(FilterDecodeError::Truncated { .. }) => {}
                 Ok(_) => panic!("unknown tag {tag:#x} accepted"),
                 Err(e) => panic!("unexpected error for tag {tag:#x}: {e:?}"),
             }

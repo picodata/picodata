@@ -15,8 +15,8 @@ use std::hash::{Hash, Hasher};
 use std::ops::Bound::Included;
 
 use super::node::{
-    ApplyFilter, Bound, BoundType, BuildFilter, GroupBy, Having, Join, Like, OrderBy, Over,
-    ReferenceTarget, Selection, Window,
+    Bound, BoundType, GroupBy, Having, Join, Like, OrderBy, Over, ReferenceTarget, Selection,
+    Window,
 };
 use super::operator::OrderByEntity;
 use super::types::DerivedType;
@@ -1837,13 +1837,6 @@ impl Plan {
                 let oldest = self.undo.get_oldest(&filter);
                 if *oldest != filter {
                     self.replace_target_in_subtree(*oldest, from, to)?;
-                }
-            }
-            Relational::BuildFilter(BuildFilter { keys, .. })
-            | Relational::ApplyFilter(ApplyFilter { keys, .. }) => {
-                let refs = keys.clone();
-                for ref_node in refs {
-                    self.replace_target_in_subtree(ref_node, from, to)?;
                 }
             }
             Relational::ScanCte(_) => {}

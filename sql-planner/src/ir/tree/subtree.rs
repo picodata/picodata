@@ -4,9 +4,9 @@ use super::{PlanTreeIterator, Snapshot, TreeIterator};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    ApplyFilter, BuildFilter, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit,
-    Motion, NodeId, OrderBy, Projection, Row, ScalarFunction, ScanCte, ScanRelation, ScanSubQuery,
-    SelectWithoutScan, Selection, SubQueryReference, Union, UnionAll, Update, Values, ValuesRow,
+    Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion, NodeId, OrderBy,
+    Projection, Row, ScalarFunction, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan,
+    Selection, SubQueryReference, Union, UnionAll, Update, Values, ValuesRow,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::{Node, Nodes, Plan};
@@ -639,57 +639,6 @@ fn subtree_next<'plan>(
                         if step == 0 {
                             return Some(*output);
                         }
-                    }
-                    None
-                }
-                Relational::BuildFilter(BuildFilter {
-                    child,
-                    keys,
-                    output,
-                    ..
-                }) => {
-                    let step = *iter.get_child().borrow();
-                    if step == 0 {
-                        *iter.get_child().borrow_mut() += 1;
-                        return Some(*child);
-                    }
-                    let col_idx = step - 1;
-                    if col_idx < keys.len() {
-                        *iter.get_child().borrow_mut() += 1;
-                        return keys.get(col_idx).copied();
-                    }
-                    if iter.need_output() && col_idx == keys.len() {
-                        *iter.get_child().borrow_mut() += 1;
-                        return Some(*output);
-                    }
-                    None
-                }
-                Relational::ApplyFilter(ApplyFilter {
-                    child,
-                    keys,
-                    filter_source,
-                    output,
-                    ..
-                }) => {
-                    let step = *iter.get_child().borrow();
-                    *iter.get_child().borrow_mut() += 1;
-                    if step == 0 {
-                        return Some(*child);
-                    }
-                    let after_child = step - 1;
-                    if after_child < keys.len() {
-                        return keys.get(after_child).copied();
-                    }
-                    let after_keys = after_child - keys.len();
-                    if iter.need_subquery() {
-                        if after_keys == 0 {
-                            return Some(*filter_source);
-                        }
-                        if iter.need_output() && after_keys == 1 {
-                            return Some(*output);
-                        }
-                    } else if iter.need_output() && after_keys == 0 {
-                        return Some(*output);
                     }
                     None
                 }

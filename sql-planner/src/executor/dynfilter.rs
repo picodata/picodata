@@ -1,29 +1,30 @@
 //! Coordinator-side build phase for dynamic filter pushdown.
 //!
 //! Drives §5.4 of the plan: right after `materialize_motion` fills the
-//! build-side virtual table, this module walks the IR to discover any
-//! `BuildFilter` parent of that motion, canonically hashes each
+//! build-side virtual table, this module consults `plan.dynamic_filters`
+//! for any spec whose `build_motion_id` matches, canonically hashes each
 //! materialized row's JOIN-key columns, and stores the finalized
-//! `DynamicFilter` in `ExecutionPlan.filter_state` under its
-//! `filter_id`. The matching `ApplyFilter` on the probe side reads the
-//! filter back through the DQL packet (§5.3).
+//! `DynamicFilter` in `ExecutionPlan.filter_state` under the spec's
+//! `filter_id`. The probe side reads the filter back through the DQL
+//! packet (§5.3) by matching the same sidecar `filter_id`.
 //!
 //! Canonical hashing must be bit-for-bit identical between the
 //! coordinator (this module) and the storage (`canonical_bytes_into`
 //! re-used from the local executor). Per-type byte forms are
 //! type-tagged so values across types cannot collide:
-//!   * `Integer`:  tag 0x01 + 8 bytes (i64 LE).
-//!   * `Double`:   tag 0x02 + 8 bytes (f64 LE) with NaN → canonical
-//!                 quiet-NaN bit pattern and `-0.0` → `+0.0`.
-//!   * `Decimal`:  tag 0x03 + trimmed string bytes — mirrors the
-//!                 existing `ToHashString` rule so `1.0` ≡ `1.000`.
-//!   * `Boolean`:  tag 0x04 + 1 byte.
-//!   * `String`:   tag 0x05 + UTF-8 bytes.
-//!   * `Uuid`:     tag 0x06 + 16 bytes.
-//!   * `Datetime`: tag 0x07 + Display bytes (mirrors `ToHashString`).
-//!   * `Tuple`:    tag 0x08 + recursive canonical bytes with separators.
-//!   * `Null`:     handled before the hasher when `NullPolicy::Skip`;
-//!                 otherwise `TupleHasher::add_null()`.
+//! * `Integer`:  tag 0x01 + 8 bytes (i64 LE).
+//! * `Double`:   tag 0x02 + 8 bytes (f64 LE) with NaN → canonical
+//!   quiet-NaN bit pattern and `-0.0` → `+0.0`.
+//! * `Decimal`:  tag 0x03 + trimmed string bytes — mirrors the existing
+//!   `ToHashString` rule so `1.0` ≡ `1.000`.
+//! * `Boolean`:  tag 0x04 + 1 byte.
+//! * `String`:   tag 0x05 + UTF-8 bytes.
+//! * `Uuid`:     tag 0x06 + 16 bytes.
+//! * `Datetime`: tag 0x07 + Display bytes (mirrors `ToHashString`).
+//! * `Tuple`:    tag 0x08 + recursive canonical bytes with separators.
+//! * `Null`:     handled before the hasher when `NullPolicy::Skip`;
+//!   otherwise `TupleHasher::add_null()`.
+//!
 //! Between columns the caller writes `TupleHasher::add_separator()` so
 //! `("ab", "")` and `("a", "b")` cannot collide.
 
@@ -33,10 +34,36 @@ use sql_protocol::dql_encoder::ApplySpec;
 use crate::errors::{Entity, SbroadError};
 use crate::executor::ir::{ExecutionPlan, FilterState};
 use crate::executor::vtable::VirtualTable;
-use crate::ir::node::expression::Expression;
-use crate::ir::node::relational::Relational;
-use crate::ir::node::{ApplyFilter, BuildFilter, Motion, NodeId, NullPolicy, Reference};
+use crate::ir::node::{NodeId, NullPolicy};
 use crate::ir::value::Value;
+
+/// Trait the picodata layer implements to feed filter probe outcomes
+/// into Prometheus counters. Registered once at startup via
+/// `set_filter_metrics_sink`; unit tests leave it `None`.
+pub trait FilterMetricsSink: std::fmt::Debug + Send + Sync {
+    /// Called once per probed row. `hit == true` ⇒ the row passed the
+    /// filter (kept); `hit == false` ⇒ the row was filtered out
+    /// (dropped). Selectivity = filtered / (passed + filtered).
+    fn record_probe(&self, hit: bool);
+}
+
+static FILTER_METRICS_SINK: std::sync::OnceLock<std::sync::Arc<dyn FilterMetricsSink>> =
+    std::sync::OnceLock::new();
+
+/// Install the global sink that `apply_filters_to_vtable` reports probe
+/// outcomes to. Idempotent: a second call is a no-op (returns `Err`).
+pub fn set_filter_metrics_sink(
+    sink: std::sync::Arc<dyn FilterMetricsSink>,
+) -> Result<(), std::sync::Arc<dyn FilterMetricsSink>> {
+    FILTER_METRICS_SINK.set(sink)
+}
+
+#[inline]
+fn report_probe(hit: bool) {
+    if let Some(sink) = FILTER_METRICS_SINK.get() {
+        sink.record_probe(hit);
+    }
+}
 
 const TAG_INTEGER: u8 = 0x01;
 const TAG_DOUBLE: u8 = 0x02;
@@ -106,8 +133,8 @@ pub enum KeyHash {
     /// The row should be dropped before filter insertion / lookup —
     /// happens under `NullPolicy::Skip` when any key column is `Null`.
     Drop,
-    /// Canonical u128 hash of the row's key columns.
-    Value(u128),
+    /// Canonical u64 hash of the row's key columns.
+    Value(u64),
 }
 
 /// Hash one row's key columns according to `null_policy`. The order of
@@ -169,7 +196,7 @@ pub fn build_filters_for_motion(
                 SbroadError::Invalid(
                     Entity::Plan,
                     Some(smol_str::format_smolstr!(
-                        "BuildFilter with filter_id {filter_id} has no matching ApplyFilter"
+                        "DynamicFilterSpec with filter_id {filter_id} has no matching probe spec"
                     )),
                 )
             })?;
@@ -186,93 +213,49 @@ pub fn build_filters_for_motion(
     Ok(())
 }
 
-/// Locate the `ApplyFilter` whose `filter_id` matches and build the
-/// `ApplySpec` from its `keys` and `null_policy`. Returns `None` only if
-/// no `ApplyFilter` references this id — which the caller treats as an
-/// IR-shape error.
+/// Build the `ApplySpec` from the sidecar spec keyed by `filter_id`.
+/// Returns `None` only if no spec carries this id — which the caller
+/// treats as an IR-shape error.
 fn collect_apply_spec_by_filter_id(
     exec_plan: &ExecutionPlan,
     target_filter_id: u32,
 ) -> Result<Option<ApplySpec>, SbroadError> {
     let plan = exec_plan.get_ir_plan();
-    for node in plan.nodes.iter64() {
-        if let crate::ir::node::Node64::ApplyFilter(ApplyFilter {
-            keys,
-            filter_id,
-            null_policy,
-            ..
-        }) = node
-        {
-            if *filter_id != target_filter_id {
-                continue;
-            }
-            let mut key_positions = Vec::with_capacity(keys.len());
-            for &key_id in keys {
-                let expr = plan.get_expression_node(key_id)?;
-                let Expression::Reference(Reference { position, .. }) = expr else {
-                    return Err(SbroadError::Invalid(
-                        Entity::Plan,
-                        Some(smol_str::format_smolstr!(
-                            "ApplyFilter key is not a Reference: {expr:?}"
-                        )),
-                    ));
-                };
-                key_positions.push(u32::try_from(*position).map_err(|_| {
-                    SbroadError::Invalid(
-                        Entity::Plan,
-                        Some(smol_str::format_smolstr!(
-                            "ApplyFilter key position {position} exceeds u32::MAX"
-                        )),
-                    )
-                })?);
-            }
-            return Ok(Some(ApplySpec::new(key_positions, (*null_policy).into())));
-        }
+    let Some(spec) = plan
+        .dynamic_filters
+        .iter()
+        .find(|s| s.filter_id == target_filter_id)
+    else {
+        return Ok(None);
+    };
+    let mut key_positions = Vec::with_capacity(spec.probe_columns.len());
+    for &pos in &spec.probe_columns {
+        key_positions.push(u32::try_from(pos).map_err(|_| {
+            SbroadError::Invalid(
+                Entity::Plan,
+                Some(smol_str::format_smolstr!(
+                    "Probe key position {pos} exceeds u32::MAX"
+                )),
+            )
+        })?);
     }
-    Ok(None)
+    Ok(Some(ApplySpec::new(key_positions, spec.null_policy.into())))
 }
 
-/// Discover every `BuildFilter` whose `child` is `motion_id`, returning
-/// `(filter_id, vtable_column_positions, null_policy)` for each.
-///
-/// Each `BuildFilter.keys[i]` is a `Reference` expression whose
-/// `position` indexes into the build motion's output tuple, which by
-/// construction aligns with the materialized vtable rows column-for-
-/// column.
+/// Discover every dynamic-filter spec whose `build_motion_id` is
+/// `motion_id`, returning `(filter_id, build_columns, null_policy)`
+/// for each. Reads from the sidecar, never walks the IR.
 fn collect_build_filters_above_motion(
     exec_plan: &ExecutionPlan,
     motion_id: NodeId,
 ) -> Result<Vec<(u32, Vec<usize>, NullPolicy)>, SbroadError> {
     let plan = exec_plan.get_ir_plan();
-    let mut out = Vec::new();
-    for node in plan.nodes.iter64() {
-        if let crate::ir::node::Node64::BuildFilter(BuildFilter {
-            child,
-            keys,
-            filter_id,
-            null_policy,
-            ..
-        }) = node
-        {
-            if *child != motion_id {
-                continue;
-            }
-            let mut positions = Vec::with_capacity(keys.len());
-            for &key_id in keys {
-                let expr = plan.get_expression_node(key_id)?;
-                let Expression::Reference(Reference { position, .. }) = expr else {
-                    return Err(SbroadError::Invalid(
-                        Entity::Plan,
-                        Some(smol_str::format_smolstr!(
-                            "BuildFilter key is not a Reference: {expr:?}"
-                        )),
-                    ));
-                };
-                positions.push(*position);
-            }
-            out.push((*filter_id, positions, *null_policy));
-        }
-    }
+    let out = plan
+        .dynamic_filters
+        .iter()
+        .filter(|s| s.build_motion_id == motion_id)
+        .map(|s| (s.filter_id, s.build_columns.clone(), s.null_policy))
+        .collect();
     Ok(out)
 }
 
@@ -314,7 +297,7 @@ pub fn apply_filters_to_vtable(
         SbroadError::Invalid(
             Entity::Plan,
             Some(smol_str::format_smolstr!(
-                "ApplyFilter references filter_id {filter_id} not built by any prior slice"
+                "Probe spec references filter_id {filter_id} not built by any prior slice"
             )),
         )
     })?;
@@ -323,7 +306,7 @@ pub fn apply_filters_to_vtable(
         return Err(SbroadError::Invalid(
             Entity::Plan,
             Some(smol_str::format_smolstr!(
-                "ApplyFilter key arity {} != BuildFilter arity {}",
+                "Probe key arity {} != build key arity {}",
                 key_positions.len(),
                 state.key_arity
             )),
@@ -334,53 +317,39 @@ pub fn apply_filters_to_vtable(
     vtable
         .get_mut_tuples()
         .retain(|row| match hash_row(row, &key_positions, null_policy) {
-            KeyHash::Drop => false,
-            KeyHash::Value(h) => filter.contains(h),
+            KeyHash::Drop => {
+                report_probe(false);
+                false
+            }
+            KeyHash::Value(h) => {
+                let hit = filter.contains(h);
+                report_probe(hit);
+                hit
+            }
         });
 
     Ok(())
 }
 
-/// Returns `(filter_id, vtable_column_positions, null_policy)` if
-/// `motion_id` is a Motion whose direct IR child is an `ApplyFilter`,
-/// or `None` otherwise.
+/// Returns `(filter_id, probe_columns, null_policy)` if `motion_id`
+/// is the probe motion for any sidecar spec, or `None` otherwise.
 fn collect_apply_filter_under_motion(
     exec_plan: &ExecutionPlan,
     motion_id: NodeId,
 ) -> Result<Option<(u32, Vec<usize>, NullPolicy)>, SbroadError> {
     let plan = exec_plan.get_ir_plan();
-    let Relational::Motion(Motion { child, .. }) = plan.get_relation_node(motion_id)? else {
-        return Ok(None);
-    };
-    let Some(child_id) = child else {
-        return Ok(None);
-    };
-
-    let child_node = plan.get_relation_node(*child_id)?;
-    let Relational::ApplyFilter(ApplyFilter {
-        keys,
-        filter_id,
-        null_policy,
-        ..
-    }) = child_node
+    let Some(spec) = plan
+        .dynamic_filters
+        .iter()
+        .find(|s| s.probe_motion_id == motion_id)
     else {
         return Ok(None);
     };
-
-    let mut positions = Vec::with_capacity(keys.len());
-    for &key_id in keys {
-        let expr = plan.get_expression_node(key_id)?;
-        let Expression::Reference(Reference { position, .. }) = expr else {
-            return Err(SbroadError::Invalid(
-                Entity::Plan,
-                Some(smol_str::format_smolstr!(
-                    "ApplyFilter key is not a Reference: {expr:?}"
-                )),
-            ));
-        };
-        positions.push(*position);
-    }
-    Ok(Some((*filter_id, positions, *null_policy)))
+    Ok(Some((
+        spec.filter_id,
+        spec.probe_columns.clone(),
+        spec.null_policy,
+    )))
 }
 
 #[cfg(feature = "mock")]
@@ -390,7 +359,6 @@ mod tests {
     use crate::executor::ir::ExecutionPlan;
     use crate::executor::vtable::VirtualTable;
     use crate::ir::expression::ColumnWithScan;
-    use crate::ir::node::Join;
     use crate::ir::operator::{Bool, JoinKind};
     use crate::ir::relation::{SpaceEngine, Table};
     use crate::ir::tests::{column_user_non_null, sharding_column};
@@ -404,7 +372,7 @@ mod tests {
     use std::str::FromStr;
     use tarantool::decimal::Decimal as TDecimal;
 
-    fn hash_one(v: &Value) -> u128 {
+    fn hash_one(v: &Value) -> u64 {
         let mut h = TupleHasher::new();
         canonical_bytes_into(v, &mut h);
         h.add_separator();
@@ -533,45 +501,39 @@ mod tests {
         (plan, join, motion_t1, motion_t2)
     }
 
-    /// Run the §5.9 resolver on a two-motion inner join and return the IR
-    /// in the shape that the §5.4 build/apply phases consume: probe Motion
-    /// has an `ApplyFilter` child; the `Join.right` is a `BuildFilter`
-    /// over the build Motion. The returned tuple also surfaces the
-    /// `filter_id` that links them and the resolver-chosen key positions.
+    /// Run the §5.9 resolver on a two-motion inner join and return the
+    /// resolved plan together with the recorded sidecar `filter_id`.
+    /// The IR shape is unchanged from `make_two_motion_inner_join`; all
+    /// filter metadata lives in `plan.dynamic_filters`.
     fn prepare_resolved_plan() -> (Plan, NodeId, NodeId, NodeId, u32) {
         let (mut plan, join, probe_motion, build_motion) = make_two_motion_inner_join();
-        let probe_subroot = match plan.get_relation_node(probe_motion).unwrap() {
-            Relational::Motion(Motion { child: Some(c), .. }) => *c,
-            _ => unreachable!(),
-        };
-        let build_subroot = match plan.get_relation_node(build_motion).unwrap() {
-            Relational::Motion(Motion { child: Some(c), .. }) => *c,
-            _ => unreachable!(),
-        };
-        let probe_scan = match plan.get_relation_node(probe_subroot).unwrap() {
-            Relational::Projection(p) => p.child.unwrap(),
-            _ => unreachable!(),
-        };
-        let build_scan = match plan.get_relation_node(build_subroot).unwrap() {
-            Relational::Projection(p) => p.child.unwrap(),
-            _ => unreachable!(),
-        };
-        plan.set_rel_output_distribution(probe_scan).unwrap();
-        plan.set_rel_output_distribution(build_scan).unwrap();
-        plan.set_rel_output_distribution(probe_subroot).unwrap();
-        plan.set_rel_output_distribution(build_subroot).unwrap();
-
         plan.insert_dynamic_filters_for_inner_joins(join).unwrap();
-
-        let build_filter_id = match plan.get_relation_node(join).unwrap() {
-            Relational::Join(Join { right, .. }) => *right,
-            _ => unreachable!(),
-        };
-        let filter_id = match plan.get_relation_node(build_filter_id).unwrap() {
-            Relational::BuildFilter(bf) => bf.filter_id,
-            _ => unreachable!(),
-        };
+        let filter_id = plan
+            .dynamic_filters
+            .first()
+            .expect("resolver should record one spec")
+            .filter_id;
         (plan, join, probe_motion, build_motion, filter_id)
+    }
+
+    /// Look up the build-side column position for the given filter from
+    /// the sidecar. Tests call this where they previously walked the
+    /// `BuildFilter` IR node's `Reference` keys.
+    fn build_pos_for(plan: &Plan, filter_id: u32) -> usize {
+        plan.dynamic_filters
+            .iter()
+            .find(|s| s.filter_id == filter_id)
+            .expect("spec for filter_id")
+            .build_columns[0]
+    }
+
+    /// Look up the probe-side column position for the given filter.
+    fn apply_pos_for(plan: &Plan, filter_id: u32) -> usize {
+        plan.dynamic_filters
+            .iter()
+            .find(|s| s.filter_id == filter_id)
+            .expect("spec for filter_id")
+            .probe_columns[0]
     }
 
     /// Build a finalized `DynamicFilter` containing exactly the hashes
@@ -803,7 +765,7 @@ mod tests {
     #[test]
     fn hash_row_arity_two_position_swap_changes_hash() {
         // Multi-column key paths feed the hasher in `positions` order.
-        // Swapping the column ordering must produce a different u128,
+        // Swapping the column ordering must produce a different u64,
         // mirroring the build/apply pair's invariant that the resolver
         // hand the same ordering to both sides.
         let row = vec![Value::String("a".into()), Value::String("b".into())];
@@ -841,28 +803,8 @@ mod tests {
         // `filter_state` with a finalized filter whose `contains` agrees
         // with a manually computed hash for each input row.
         let (plan, _join, _probe_motion, build_motion, filter_id) = prepare_resolved_plan();
+        let build_pos = build_pos_for(&plan, filter_id);
         let mut exec_plan = ExecutionPlan::new(plan);
-
-        // Read the build-key position the resolver picked.
-        let build_pos = {
-            let ir = exec_plan.get_ir_plan();
-            let mut pos = None;
-            for node in ir.nodes.iter64() {
-                if let crate::ir::node::Node64::BuildFilter(BuildFilter { child, keys, .. }) = node
-                {
-                    if *child != build_motion {
-                        continue;
-                    }
-                    let kid = keys[0];
-                    if let Expression::Reference(Reference { position, .. }) =
-                        ir.get_expression_node(kid).unwrap()
-                    {
-                        pos = Some(*position);
-                    }
-                }
-            }
-            pos.expect("BuildFilter above build_motion")
-        };
 
         let keys: Vec<i64> = vec![10, 20, 30];
         let row_width = build_pos + 1;
@@ -913,40 +855,9 @@ mod tests {
         // dropped (modulo the bounded Fuse FPR). Catches drift between
         // the build-side `canonical_bytes_into` and any future
         // storage-side reimplementation.
-        let (plan, _join, probe_motion, build_motion, _filter_id) = prepare_resolved_plan();
-        let build_pos = {
-            let ir = &plan;
-            let mut pos = None;
-            for node in ir.nodes.iter64() {
-                if let crate::ir::node::Node64::BuildFilter(BuildFilter { child, keys, .. }) = node
-                {
-                    if *child != build_motion {
-                        continue;
-                    }
-                    let kid = keys[0];
-                    if let Expression::Reference(Reference { position, .. }) =
-                        ir.get_expression_node(kid).unwrap()
-                    {
-                        pos = Some(*position);
-                    }
-                }
-            }
-            pos.expect("BuildFilter above build_motion")
-        };
-        let apply_pos = match plan.get_relation_node(probe_motion).unwrap() {
-            Relational::Motion(Motion { child: Some(c), .. }) => {
-                let child_node = plan.get_relation_node(*c).unwrap();
-                let Relational::ApplyFilter(ApplyFilter { keys, .. }) = child_node else {
-                    panic!("expected ApplyFilter under probe motion");
-                };
-                let kid = keys[0];
-                match plan.get_expression_node(kid).unwrap() {
-                    Expression::Reference(Reference { position, .. }) => *position,
-                    _ => panic!("expected Reference"),
-                }
-            }
-            _ => panic!("expected Motion at probe"),
-        };
+        let (plan, _join, probe_motion, build_motion, filter_id) = prepare_resolved_plan();
+        let build_pos = build_pos_for(&plan, filter_id);
+        let apply_pos = apply_pos_for(&plan, filter_id);
         let row_width = build_pos.max(apply_pos) + 1;
 
         let mut exec_plan = ExecutionPlan::new(plan);
@@ -1001,25 +912,8 @@ mod tests {
         // integers, so a filter built on `'1'` must NOT match the
         // integer 1 even though their canonical body bytes overlap.
         let (plan, _join, probe_motion, _build_motion, filter_id) = prepare_resolved_plan();
+        let apply_pos = apply_pos_for(&plan, filter_id);
         let mut exec_plan = ExecutionPlan::new(plan);
-        let apply_pos = match exec_plan
-            .get_ir_plan()
-            .get_relation_node(probe_motion)
-            .unwrap()
-        {
-            Relational::Motion(Motion { child: Some(c), .. }) => {
-                let child_node = exec_plan.get_ir_plan().get_relation_node(*c).unwrap();
-                let Relational::ApplyFilter(ApplyFilter { keys, .. }) = child_node else {
-                    panic!();
-                };
-                let kid = keys[0];
-                match exec_plan.get_ir_plan().get_expression_node(kid).unwrap() {
-                    Expression::Reference(Reference { position, .. }) => *position,
-                    _ => panic!(),
-                }
-            }
-            _ => panic!(),
-        };
 
         // Build a filter that contains only the canonical-hash of '1'
         // (String). The integer 1 must be dropped.
@@ -1060,44 +954,9 @@ mod tests {
         // key matches must survive; rows whose key does not must be
         // dropped. Proves canonical hashing is bit-identical across the
         // two phases.
-        let (plan, _join, probe_motion, build_motion, _filter_id) = prepare_resolved_plan();
-
-        // Read resolver-chosen key positions for both sides so the test
-        // doesn't depend on internal column ordering choices.
-        let build_pos = {
-            let ir = &plan;
-            let mut pos = None;
-            for node in ir.nodes.iter64() {
-                if let crate::ir::node::Node64::BuildFilter(BuildFilter { child, keys, .. }) = node
-                {
-                    if *child != build_motion {
-                        continue;
-                    }
-                    let kid = keys[0];
-                    if let Expression::Reference(Reference { position, .. }) =
-                        ir.get_expression_node(kid).unwrap()
-                    {
-                        pos = Some(*position);
-                    }
-                }
-            }
-            pos.expect("BuildFilter above build_motion")
-        };
-        let apply_pos = match plan.get_relation_node(probe_motion).unwrap() {
-            Relational::Motion(Motion { child: Some(c), .. }) => {
-                let child_node = plan.get_relation_node(*c).unwrap();
-                let Relational::ApplyFilter(ApplyFilter { keys, .. }) = child_node else {
-                    panic!("expected ApplyFilter under probe motion");
-                };
-                let kid = keys[0];
-                match plan.get_expression_node(kid).unwrap() {
-                    Expression::Reference(Reference { position, .. }) => *position,
-                    _ => panic!("expected Reference key"),
-                }
-            }
-            _ => panic!("expected Motion at probe_motion"),
-        };
-
+        let (plan, _join, probe_motion, build_motion, filter_id) = prepare_resolved_plan();
+        let build_pos = build_pos_for(&plan, filter_id);
+        let apply_pos = apply_pos_for(&plan, filter_id);
         let mut exec_plan = ExecutionPlan::new(plan);
 
         // Build vtable: only the build-key column matters. Fill it with

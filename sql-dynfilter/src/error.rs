@@ -17,6 +17,10 @@ pub enum FilterDecodeError {
 
 #[derive(Debug, Error)]
 pub enum FilterBuildError {
-    #[error("XOR-filter construction did not converge after {0} attempts")]
-    NotConverged(u32),
+    /// `xorf::BinaryFuse8` reported a construction failure — usually
+    /// duplicate keys (which we dedup before calling) but in rare cases
+    /// the random hypergraph fails to peel. The xorf message is kept
+    /// verbatim so a future caller can surface it.
+    #[error("BinaryFuse8 construction failed: {0}")]
+    FuseBuildFailed(String),
 }

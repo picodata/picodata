@@ -1,7 +1,7 @@
-//! Exact small set: sorted `Box<[u128]>` with binary-search lookup.
+//! Exact small set: sorted `Box<[u64]>` with binary-search lookup.
 //!
 //! Used when `n < FUSE_THRESHOLD` — for small build sides the fixed
-//! overhead of a Fuse-style filter (header, fingerprints, seed) makes
+//! overhead of a Fuse-style filter (descriptor, fingerprints) makes
 //! a sorted exact set both smaller and faster.
 
 use std::io::{self, Write};
@@ -12,7 +12,7 @@ pub(crate) const TYPE_TAG: u8 = 0x01;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SmallSet {
-    entries: Vec<u128>,
+    entries: Vec<u64>,
     finalized: bool,
 }
 
@@ -24,7 +24,7 @@ impl SmallSet {
         }
     }
 
-    pub fn insert(&mut self, hash: u128) {
+    pub fn insert(&mut self, hash: u64) {
         debug_assert!(!self.finalized, "insert after finalization");
         self.entries.push(hash);
     }
@@ -45,11 +45,11 @@ impl SmallSet {
         }
     }
 
-    /// Header: type tag (1) + u32 LE length + N * u128 LE.
+    /// Header: type tag (1) + u32 LE length + N * u64 LE.
     /// Header itself does not include outer msgpack `bin` framing —
     /// that is added by the protocol layer.
     pub fn encoded_len(&self) -> usize {
-        1 + 4 + self.entries.len() * 16
+        1 + 4 + self.entries.len() * 8
     }
 
     pub fn encode_into<W: Write>(&self, w: &mut W) -> io::Result<()> {
@@ -62,7 +62,7 @@ impl SmallSet {
         Ok(())
     }
 
-    pub fn contains(&self, hash: u128) -> bool {
+    pub fn contains(&self, hash: u64) -> bool {
         debug_assert!(self.finalized, "contains before finalization");
         self.entries.binary_search(&hash).is_ok()
     }
@@ -87,7 +87,7 @@ impl<'a> SmallSetView<'a> {
             });
         }
         let len = u32::from_le_bytes([body[0], body[1], body[2], body[3]]);
-        let need = 4 + len as usize * 16;
+        let need = 4 + len as usize * 8;
         if body.len() < need {
             return Err(FilterDecodeError::Truncated {
                 need,
@@ -95,10 +95,10 @@ impl<'a> SmallSetView<'a> {
             });
         }
         let raw = &body[4..need];
-        if raw.len() != len as usize * 16 {
+        if raw.len() != len as usize * 8 {
             return Err(FilterDecodeError::ArrayLengthMismatch {
                 header: len,
-                payload: raw.len() / 16,
+                payload: raw.len() / 8,
             });
         }
         Ok(Self { raw, len })
@@ -112,16 +112,16 @@ impl<'a> SmallSetView<'a> {
         self.len == 0
     }
 
-    fn read(&self, idx: usize) -> u128 {
-        let off = idx * 16;
-        let mut buf = [0u8; 16];
-        buf.copy_from_slice(&self.raw[off..off + 16]);
-        u128::from_le_bytes(buf)
+    fn read(&self, idx: usize) -> u64 {
+        let off = idx * 8;
+        let mut buf = [0u8; 8];
+        buf.copy_from_slice(&self.raw[off..off + 8]);
+        u64::from_le_bytes(buf)
     }
 
-    pub fn contains(&self, hash: u128) -> bool {
+    pub fn contains(&self, hash: u64) -> bool {
         let n = self.len as usize;
-        // Binary search on packed u128 LE slice.
+        // Binary search on packed u64 LE slice.
         let mut lo = 0usize;
         let mut hi = n;
         while lo < hi {
@@ -155,14 +155,14 @@ mod tests {
     #[test]
     fn roundtrip_no_false_negatives() {
         let mut s = SmallSet::with_capacity(8);
-        for i in 0..8u128 {
+        for i in 0..8u64 {
             s.insert(i * 17 + 1);
         }
         s.finalize();
         let mut buf = vec![];
         s.encode_into(&mut buf).unwrap();
         let v = SmallSetView::decode(&buf[1..]).unwrap();
-        for i in 0..8u128 {
+        for i in 0..8u64 {
             assert!(v.contains(i * 17 + 1), "missing {}", i);
         }
         assert!(!v.contains(0));

@@ -6,7 +6,7 @@ use block::{Block, BlockOwned, MutBlock};
 use ddl::{Ddl, DdlOwned, MutDdl};
 use deallocate::Deallocate;
 use expression::{ExprOwned, Expression, MutExpression};
-pub use filter::{ApplyFilter, BuildFilter, NullPolicy};
+pub use filter::NullPolicy;
 use relational::{MutRelational, RelOwned, Relational};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -781,18 +781,6 @@ pub struct Selection {
 impl From<Selection> for NodeAligned {
     fn from(value: Selection) -> Self {
         Self::Node64(Node64::Selection(value))
-    }
-}
-
-impl From<BuildFilter> for NodeAligned {
-    fn from(value: BuildFilter) -> Self {
-        Self::Node64(Node64::BuildFilter(value))
-    }
-}
-
-impl From<ApplyFilter> for NodeAligned {
-    fn from(value: ApplyFilter) -> Self {
-        Self::Node64(Node64::ApplyFilter(value))
     }
 }
 
@@ -1580,8 +1568,6 @@ pub enum Node64 {
     Invalid(Invalid),
     Over(Over),
     TruncateTable(TruncateTable),
-    BuildFilter(BuildFilter),
-    ApplyFilter(ApplyFilter),
 }
 
 impl Node64 {
@@ -1589,8 +1575,6 @@ impl Node64 {
     pub fn into_owned(self) -> NodeOwned {
         match self {
             Node64::AnonymousBlock(block) => NodeOwned::Block(BlockOwned::Anonymous(block)),
-            Node64::BuildFilter(bf) => NodeOwned::Relational(RelOwned::BuildFilter(bf)),
-            Node64::ApplyFilter(af) => NodeOwned::Relational(RelOwned::ApplyFilter(af)),
             Node64::Over(over) => NodeOwned::Expression(ExprOwned::Over(over)),
             Node64::Case(case) => NodeOwned::Expression(ExprOwned::Case(case)),
             Node64::Invalid(invalid) => NodeOwned::Invalid(invalid),

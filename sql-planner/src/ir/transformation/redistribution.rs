@@ -2779,13 +2779,6 @@ impl Plan {
                     // i.e. to the plan without any motion nodes.
                     panic!("IR mustn't contain Motion nodes at the stage of redistribution.")
                 }
-                RelOwned::BuildFilter(_) | RelOwned::ApplyFilter(_) => {
-                    // Dynamic-filter resolver runs after motion insertion,
-                    // so these nodes cannot appear during redistribution.
-                    panic!(
-                        "IR mustn't contain dynamic-filter nodes at the stage of redistribution."
-                    )
-                }
                 RelOwned::Limit(Limit { output, limit, .. }) => {
                     let rel_child_id = self.get_first_rel_child(id)?;
                     let child_dist = self.get_rel_distribution(rel_child_id)?.clone();
@@ -3155,6 +3148,31 @@ impl Plan {
 
             stack.push(max_motions_in_path);
         }
+
+        // §5.5: enforce dynamic-filter slice ordering from the sidecar.
+        // For every `(build_motion, probe_motion)` spec, the probe
+        // motion's slice must be strictly later than the build's so the
+        // probe slice can consult the freshly-built filter. The natural
+        // post-order assignment treats the two motions as independent
+        // siblings under their Join, so we fix it up here.
+        for spec in &self.dynamic_filters {
+            let build_slice = slices
+                .iter()
+                .position(|s| s.contains(&spec.build_motion_id));
+            let probe_slice = slices
+                .iter()
+                .position(|s| s.contains(&spec.probe_motion_id));
+            if let (Some(b), Some(p)) = (build_slice, probe_slice) {
+                if p <= b {
+                    slices[p].retain(|&id| id != spec.probe_motion_id);
+                    while slices.len() <= b + 1 {
+                        slices.push(Vec::new());
+                    }
+                    slices[b + 1].push(spec.probe_motion_id);
+                }
+            }
+        }
+        slices.retain(|s| !s.is_empty());
         Ok(slices)
     }
 }

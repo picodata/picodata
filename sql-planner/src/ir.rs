@@ -33,10 +33,10 @@ use crate::ir::index::Indexes;
 use crate::ir::node::plugin::{MutPlugin, Plugin};
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
-    Alias, ApplyFilter, ArenaType, ArithmeticExpr, BoolExpr, BuildFilter, Case, Cast, Concat,
-    Constant, GroupBy, Having, IndexExpr, Insert, Limit, Motion, MutNode, Node, Node136, Node232,
-    Node32, Node64, Node96, NodeId, NodeOwned, OrderBy, Projection, Reference, ReferenceTarget,
-    Row, ScalarFunction, ScanRelation, Selection, SubQueryReference, Trim, UnaryExpr,
+    Alias, ArenaType, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, GroupBy, Having,
+    IndexExpr, Insert, Limit, Motion, MutNode, Node, Node136, Node232, Node32, Node64, Node96,
+    NodeId, NodeOwned, OrderBy, Projection, Reference, ReferenceTarget, Row, ScalarFunction,
+    ScanRelation, Selection, SubQueryReference, Trim, UnaryExpr,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity};
 use crate::ir::relation::Column;
@@ -54,6 +54,7 @@ pub mod block;
 pub mod bucket;
 pub mod ddl;
 pub mod distribution;
+pub mod dynamic_filter_spec;
 pub mod expression;
 pub mod function;
 pub mod helpers;
@@ -153,8 +154,6 @@ impl Nodes {
                 Node64::ValuesRow(values_row) => {
                     Node::Relational(Relational::ValuesRow(values_row))
                 }
-                Node64::BuildFilter(bf) => Node::Relational(Relational::BuildFilter(bf)),
-                Node64::ApplyFilter(af) => Node::Relational(Relational::ApplyFilter(af)),
             }),
             ArenaType::Arena96 => self.arena96.get(id.offset as usize).map(|node| match node {
                 Node96::Projection(proj) => Node::Relational(Relational::Projection(proj)),
@@ -317,8 +316,6 @@ impl Nodes {
                     Node64::ValuesRow(values_row) => {
                         MutNode::Relational(MutRelational::ValuesRow(values_row))
                     }
-                    Node64::BuildFilter(bf) => MutNode::Relational(MutRelational::BuildFilter(bf)),
-                    Node64::ApplyFilter(af) => MutNode::Relational(MutRelational::ApplyFilter(af)),
                 }),
             ArenaType::Arena96 => self
                 .arena96
@@ -721,6 +718,12 @@ pub struct Plan {
     /// Derived cache for reusable structural subtree hashes.
     #[serde(skip)]
     pub(crate) subtree_hash_cache: SubtreeHashCache,
+    /// Dynamic-filter sidecar. Populated by the §5.9 resolver after
+    /// motion insertion; consumed by the §5.4 executor build/apply
+    /// pass. Empty when `sql_dynamic_filter_pushdown` is off (the
+    /// default) or no eligible INNER JOIN was found.
+    #[serde(default)]
+    pub dynamic_filters: Vec<crate::ir::dynamic_filter_spec::DynamicFilterSpec>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -938,6 +941,7 @@ impl Plan {
             context: Some(RefCell::new(BuildContext::default())),
             tier: None,
             subtree_hash_cache: SubtreeHashCache::default(),
+            dynamic_filters: Vec::new(),
         }
     }
 
@@ -1055,9 +1059,7 @@ impl Plan {
             | Relational::Having(Having { output, .. })
             | Relational::OrderBy(OrderBy { output, .. })
             | Relational::GroupBy(GroupBy { output, .. })
-            | Relational::Limit(Limit { output, .. })
-            | Relational::BuildFilter(BuildFilter { output, .. })
-            | Relational::ApplyFilter(ApplyFilter { output, .. }) => {
+            | Relational::Limit(Limit { output, .. }) => {
                 let source_output_list = self.get_row_list(*output)?;
                 let source_ref_id = source_output_list[*position];
                 self.get_reference_source_relation(source_ref_id)
@@ -2018,9 +2020,7 @@ impl Plan {
             | Relational::Values { .. }
             | Relational::Having { .. }
             | Relational::ValuesRow { .. }
-            | Relational::Limit { .. }
-            | Relational::BuildFilter { .. }
-            | Relational::ApplyFilter { .. } => Ok(*top_id),
+            | Relational::Limit { .. } => Ok(*top_id),
             Relational::Motion { .. } | Relational::Insert { .. } | Relational::Delete { .. } => {
                 Err(SbroadError::Invalid(
                     Entity::Relational,
@@ -3004,9 +3004,7 @@ impl Plan {
                 | Relational::Update(_)
                 | Relational::Insert(_)
                 | Relational::Limit(_)
-                | Relational::Delete(_)
-                | Relational::BuildFilter(_)
-                | Relational::ApplyFilter(_) => {
+                | Relational::Delete(_) => {
                     // Do not push down if nodes above met before motion.
                     break;
                 }

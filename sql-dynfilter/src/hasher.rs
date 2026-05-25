@@ -1,4 +1,6 @@
-use twox_hash::XxHash3_128;
+use std::hash::Hasher;
+
+use twox_hash::XxHash3_64;
 
 /// How an apply phase should hash rows whose JOIN-key columns include
 /// NULL.
@@ -32,7 +34,7 @@ impl TryFrom<u8> for NullPolicy {
 
 /// Streaming hasher for a multi-column JOIN key.
 ///
-/// Produces a single `u128` per (canonical bytes for col 1, separator,
+/// Produces a single `u64` per (canonical bytes for col 1, separator,
 /// canonical bytes for col 2, separator, ...) sequence. The coordinator
 /// and the storage MUST feed identical bytes in identical order, or the
 /// filter is silently wrong.
@@ -44,7 +46,7 @@ impl TryFrom<u8> for NullPolicy {
 /// add_bytes; with `NullPolicy::Skip` the row is dropped before the
 /// hasher is touched at all.
 pub struct TupleHasher {
-    state: XxHash3_128,
+    state: XxHash3_64,
 }
 
 const SEPARATOR_TAG: u8 = 0xFE;
@@ -53,13 +55,13 @@ const NULL_TAG: u8 = 0xFF;
 impl TupleHasher {
     pub fn new() -> Self {
         Self {
-            state: XxHash3_128::new(),
+            state: XxHash3_64::new(),
         }
     }
 
     pub fn with_seed(seed: u64) -> Self {
         Self {
-            state: XxHash3_128::with_seed(seed),
+            state: XxHash3_64::with_seed(seed),
         }
     }
 
@@ -79,8 +81,8 @@ impl TupleHasher {
         self.state.write(&[NULL_TAG]);
     }
 
-    pub fn finish(self) -> u128 {
-        self.state.finish_128()
+    pub fn finish(self) -> u64 {
+        self.state.finish()
     }
 }
 
@@ -94,7 +96,7 @@ impl Default for TupleHasher {
 mod tests {
     use super::*;
 
-    fn hash_cols(cols: &[&[u8]]) -> u128 {
+    fn hash_cols(cols: &[&[u8]]) -> u64 {
         let mut h = TupleHasher::new();
         for c in cols {
             h.add_bytes(c);

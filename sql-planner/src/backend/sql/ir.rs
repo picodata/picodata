@@ -739,18 +739,6 @@ fn normalize_plan_id_relational(
         RelOwned::ValuesRow(values_row) => {
             values_row.data = to_subtree_node_id(values_row.data, node_positions)?;
         }
-        RelOwned::BuildFilter(bf) => {
-            for key in &mut bf.keys {
-                *key = to_subtree_node_id(*key, node_positions)?;
-            }
-        }
-        RelOwned::ApplyFilter(af) => {
-            for key in &mut af.keys {
-                *key = to_subtree_node_id(*key, node_positions)?;
-            }
-            af.filter_source =
-                to_subtree_reference_node_id(ir_plan, af.filter_source, node_positions)?;
-        }
         RelOwned::ScanCte(_)
         | RelOwned::Except(_)
         | RelOwned::Delete(_)
@@ -1347,9 +1335,7 @@ where
                         | Relational::ScanCte { .. }
                         | Relational::Motion { .. }
                         | Relational::ValuesRow { .. }
-                        | Relational::Limit { .. }
-                        | Relational::BuildFilter { .. }
-                        | Relational::ApplyFilter { .. } => {}
+                        | Relational::Limit { .. } => {}
                         Relational::Selection { .. } => {
                             sql.push_str("WHERE");
                             sql_append_bucket_filter(

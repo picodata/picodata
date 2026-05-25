@@ -5,9 +5,9 @@ use smol_str::{SmolStr, ToSmolStr};
 use crate::backend::sql::tree::{SyntaxData, SyntaxPlan};
 use crate::errors::{Action, Entity, SbroadError};
 use crate::ir::node::{
-    Alias, ApplyFilter, BoolExpr, BuildFilter, Case, Constant, Delete, GroupBy, Having, Join,
-    Motion, NodeId, OrderBy, Reference, Row, ScanCte, ScanRelation, ScanSubQuery, Selection,
-    SubQueryReference, TimeParameters, Trim, UnaryExpr, Update, ValuesRow,
+    Alias, BoolExpr, Case, Constant, Delete, GroupBy, Having, Join, Motion, NodeId, OrderBy,
+    Reference, Row, ScanCte, ScanRelation, ScanSubQuery, Selection, SubQueryReference,
+    TimeParameters, Trim, UnaryExpr, Update, ValuesRow,
 };
 use crate::ir::operator::OrderByEntity;
 use crate::ir::tree::traversal::{PostOrder, EXPR_CAPACITY};
@@ -505,27 +505,6 @@ impl Plan {
                     Relational::Intersect(_) => writeln!(buf, "Intersect")?,
                     Relational::Except(_) => writeln!(buf, "Except")?,
                     Relational::Limit(Limit { limit, .. }) => writeln!(buf, "Limit {limit}")?,
-                    Relational::BuildFilter(BuildFilter {
-                        filter_id,
-                        null_policy,
-                        keys,
-                        ..
-                    }) => writeln!(
-                        buf,
-                        "BuildFilter [filter_id = {filter_id}, null_policy = {null_policy:?}, keys = {} expr(s)]",
-                        keys.len()
-                    )?,
-                    Relational::ApplyFilter(ApplyFilter {
-                        filter_id,
-                        null_policy,
-                        keys,
-                        filter_source,
-                        ..
-                    }) => writeln!(
-                        buf,
-                        "ApplyFilter [filter_id = {filter_id}, null_policy = {null_policy:?}, keys = {} expr(s), source = {filter_source}]",
-                        keys.len()
-                    )?,
                 }
                 // Print children.
                 match relation {
@@ -547,9 +526,7 @@ impl Plan {
                     | Relational::Update(_)
                     | Relational::Having(_)
                     | Relational::GroupBy(_)
-                    | Relational::ValuesRow(_)
-                    | Relational::BuildFilter(_)
-                    | Relational::ApplyFilter(_) => {
+                    | Relational::ValuesRow(_) => {
                         writeln_with_tabulation(buf, tabulation_number + 1, "Children:")?;
                         for child in &relation.children() {
                             writeln_with_tabulation(

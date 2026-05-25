@@ -739,14 +739,6 @@ impl<'p> EqualityAnalysis<'p> {
                 unreachable!("Unexpected motion node, we don't support analyze of them");
             }
 
-            // BuildFilter/ApplyFilter are introduced by the resolver pass that
-            // runs after `insert_motion_nodes`, while equality-fact analysis
-            // runs before motion insertion, so they should never be reachable
-            // here.
-            Relational::BuildFilter(_) | Relational::ApplyFilter(_) => {
-                unreachable!("equality_facts runs before dynamic-filter resolver");
-            }
-
             Relational::ScanSubQuery(ScanSubQuery { child, .. }) => {
                 if self.is_safe_subtree(*child)? {
                     self.analyze(*child, domain_id)?;
@@ -857,9 +849,6 @@ impl<'p> EqualityAnalysis<'p> {
             Relational::Motion(_) => false,
             // DML nodes are not SELECT queries.
             Relational::Insert(_) | Relational::Update(_) | Relational::Delete(_) => false,
-            // Dynamic-filter nodes are inserted by the resolver pass that
-            // runs after motion insertion, well past equality-fact analysis.
-            Relational::BuildFilter(_) | Relational::ApplyFilter(_) => false,
         };
         Ok(is_safe)
     }

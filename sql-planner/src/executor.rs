@@ -279,8 +279,6 @@ impl Plan {
             Relational::GroupBy(_) => "GROUP BY",
             Relational::OrderBy(_) => "ORDER BY",
             Relational::Motion(_) => "<MOTION>",
-            Relational::BuildFilter(_) => "<BUILD FILTER>",
-            Relational::ApplyFilter(_) => "<APPLY FILTER>",
         }
     }
 }
@@ -488,11 +486,12 @@ where
                     }
                 }
 
-                // §5.4 apply phase: if this motion's IR child is an
-                // ApplyFilter, retain only the rows whose JOIN-key hash
-                // is present in the matching DynamicFilter built by an
-                // earlier slice. Runs **before** `set_motion_vtable` so
-                // the in-place mutation predates the `Rc` wrap.
+                // §5.4 apply phase: if this motion is a probe target in
+                // any `DynamicFilterSpec`, retain only the rows whose
+                // JOIN-key hash is present in the matching DynamicFilter
+                // built by an earlier slice. Runs **before**
+                // `set_motion_vtable` so the in-place mutation predates
+                // the `Rc` wrap.
                 dynfilter::apply_filters_to_vtable(
                     &self.exec_plan,
                     *motion_id,
@@ -502,11 +501,12 @@ where
                 self.exec_plan
                     .set_motion_vtable(motion_id, virtual_table, &vshard)?;
 
-                // §5.4 build phase: if a BuildFilter parents this motion,
-                // hash its just-materialized rows into a DynamicFilter
-                // and stash it under `filter_id` for the probe slice's
-                // dispatch. Each motion is materialized at most once per
-                // execution, so this also runs at most once per filter.
+                // §5.4 build phase: if this motion is a build source in
+                // any `DynamicFilterSpec`, hash its just-materialized
+                // rows into a DynamicFilter and stash it under
+                // `filter_id` for the probe slice's dispatch. Each
+                // motion is materialized at most once per execution, so
+                // this also runs at most once per filter.
                 dynfilter::build_filters_for_motion(&mut self.exec_plan, *motion_id)?;
             }
         }

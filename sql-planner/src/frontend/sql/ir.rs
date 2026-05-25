@@ -11,10 +11,9 @@ use crate::frontend::sql::parse_trimmed_unsigned_from_str;
 use crate::ir::node::expression::{ExprOwned, Expression};
 use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
-    ApplyFilter, BuildFilter, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit,
-    Motion, Node, NodeAligned, NodeId, OrderBy, Projection, Reference, ReferenceTarget, ScanCte,
-    ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, Union, UnionAll, Update, Values,
-    ValuesRow,
+    Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion, Node, NodeAligned,
+    NodeId, OrderBy, Projection, Reference, ReferenceTarget, ScanCte, ScanRelation, ScanSubQuery,
+    SelectWithoutScan, Selection, Union, UnionAll, Update, Values, ValuesRow,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::transformation::redistribution::MotionOpcode;
@@ -341,26 +340,6 @@ impl SubtreeCloner {
                 subqueries: _,
             }) => {
                 *data = self.get_new_id(*data)?;
-            }
-            RelOwned::BuildFilter(BuildFilter {
-                child: _,
-                keys,
-                filter_id: _,
-                null_policy: _,
-                output: _,
-            }) => {
-                *keys = self.copy_list(keys)?;
-            }
-            RelOwned::ApplyFilter(ApplyFilter {
-                child: _,
-                keys,
-                filter_id: _,
-                null_policy: _,
-                filter_source,
-                output: _,
-            }) => {
-                *keys = self.copy_list(keys)?;
-                *filter_source = self.get_new_id(*filter_source)?;
             }
         }
 

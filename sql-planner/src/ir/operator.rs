@@ -9,10 +9,9 @@ use crate::frontend::sql::ir::SubtreeCloner;
 use crate::ir::api::children::Children;
 use crate::ir::expression::PlanExpr;
 use crate::ir::node::{
-    Alias, ApplyFilter, BuildFilter, Delete, Except, GroupBy, Having, Insert, Intersect, Join,
-    Motion, MutNode, NodeId, OrderBy, Projection, Reference, ReferenceTarget, Row, ScanCte,
-    ScanRelation, ScanSubQuery, Selection, SubQueryReference, Union, UnionAll, Update, Values,
-    ValuesRow,
+    Alias, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Motion, MutNode, NodeId,
+    OrderBy, Projection, Reference, ReferenceTarget, Row, ScanCte, ScanRelation, ScanSubQuery,
+    Selection, SubQueryReference, Union, UnionAll, Update, Values, ValuesRow,
 };
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
 use crate::ir::Plan;
@@ -2061,8 +2060,6 @@ impl Plan {
             | Relational::Having { .. }
             | Relational::Selection { .. }
             | Relational::Update { .. }
-            | Relational::BuildFilter { .. }
-            | Relational::ApplyFilter { .. }
             | Relational::Join { .. } => {
                 let output_row = self.get_expression_node(node.output())?;
                 let list = output_row.get_row_list()?;
@@ -2149,9 +2146,7 @@ impl Plan {
             | Relational::Having(Having { child, .. })
             | Relational::Selection(Selection { child, .. })
             | Relational::GroupBy(GroupBy { child, .. })
-            | Relational::OrderBy(OrderBy { child, .. })
-            | Relational::BuildFilter(BuildFilter { child, .. })
-            | Relational::ApplyFilter(ApplyFilter { child, .. }) => Children::Single(child),
+            | Relational::OrderBy(OrderBy { child, .. }) => Children::Single(child),
             Relational::Except(Except { left, right, .. })
             | Relational::Intersect(Intersect { left, right, .. })
             | Relational::UnionAll(UnionAll { left, right, .. })

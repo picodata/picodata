@@ -1013,11 +1013,6 @@ impl<'p> SyntaxPlan<'p> {
                 Relational::ValuesRow { .. } => self.add_values_row(id),
                 Relational::Values { .. } => self.add_values(id),
                 Relational::Limit { .. } => self.add_limit(id),
-                // BuildFilter/ApplyFilter are runtime-only nodes that do not
-                // contribute SQL syntax — their child subtree is rendered
-                // verbatim, and the executor wraps it with the filter logic
-                // in a separate phase (see §5.4).
-                Relational::BuildFilter { .. } | Relational::ApplyFilter { .. } => (),
             },
             Node::Expression(expr) => match expr {
                 Expression::Window { .. } => self.add_window(id),

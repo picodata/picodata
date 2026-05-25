@@ -1371,10 +1371,6 @@ enum ExplainNode {
     UnionAll,
     Intersect,
     Except,
-
-    // Dynamic filter pushdown (§5.2).
-    BuildFilter(u32, usize),
-    ApplyFilter(u32, usize),
 }
 
 impl Display for ExplainNode {
@@ -1434,19 +1430,6 @@ impl Display for ExplainNode {
             ExplainNode::UnionAll => write!(f, "union all")?,
             ExplainNode::Intersect => write!(f, "intersect")?,
             ExplainNode::Except => write!(f, "except")?,
-
-            ExplainNode::BuildFilter(filter_id, key_arity) => {
-                write!(
-                    f,
-                    "build dynamic filter [id = {filter_id}, keys = {key_arity}]"
-                )?;
-            }
-            ExplainNode::ApplyFilter(filter_id, key_arity) => {
-                write!(
-                    f,
-                    "apply dynamic filter [id = {filter_id}, keys = {key_arity}]"
-                )?;
-            }
         };
 
         Ok(())
@@ -1519,10 +1502,18 @@ fn buckets_repr(buckets: &Buckets, bucket_count: u64) -> String {
     }
 }
 
+/// Sidecar entry rendered in EXPLAIN as a "dynamic filter" footer line.
+struct DynamicFilterExplain {
+    filter_id: u32,
+    build_keys: usize,
+    probe_keys: usize,
+}
+
 pub struct LogicalExplain {
     main_query: ExplainTreePart,
     subqueries: OrderedMap<NodeId, ExplainTreePart, RepeatableState>,
     windows: Vec<ExplainTreePart>,
+    dynamic_filters: Vec<DynamicFilterExplain>,
 }
 
 impl Display for LogicalExplain {
@@ -1537,6 +1528,16 @@ impl Display for LogicalExplain {
             writeln!(f)?;
             writeln!(f, "window ${pos}:")?;
             write!(f, "{window}")?;
+        }
+        for df in &self.dynamic_filters {
+            writeln!(f)?;
+            write!(
+                f,
+                "dynamic filter [id = {id}, build_keys = {bk}, probe_keys = {pk}]",
+                id = df.filter_id,
+                bk = df.build_keys,
+                pk = df.probe_keys,
+            )?;
         }
 
         Ok(())
@@ -1926,32 +1927,6 @@ impl LogicalExplain {
 
                     (ExplainNode::Limit(*limit), vec![child])
                 }
-                Relational::BuildFilter(node::BuildFilter {
-                    filter_id, keys, ..
-                }) => {
-                    let child = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "BuildFilter node must have exactly one child".into(),
-                        )
-                    })?;
-                    (
-                        ExplainNode::BuildFilter(*filter_id, keys.len()),
-                        vec![child],
-                    )
-                }
-                Relational::ApplyFilter(node::ApplyFilter {
-                    filter_id, keys, ..
-                }) => {
-                    let child = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "ApplyFilter node must have exactly one child".into(),
-                        )
-                    })?;
-                    (
-                        ExplainNode::ApplyFilter(*filter_id, keys.len()),
-                        vec![child],
-                    )
-                }
             };
 
             stack.push(ExplainTreePart { current, children });
@@ -1961,10 +1936,21 @@ impl LogicalExplain {
             .pop()
             .ok_or_else(|| SbroadError::NotFound(Entity::Node, "that is explain top".into()))?;
 
+        let dynamic_filters = ir
+            .dynamic_filters
+            .iter()
+            .map(|spec| DynamicFilterExplain {
+                filter_id: spec.filter_id,
+                build_keys: spec.build_columns.len(),
+                probe_keys: spec.probe_columns.len(),
+            })
+            .collect();
+
         let result = Self {
             main_query,
             subqueries: known_subqueries,
             windows: Vec::new(),
+            dynamic_filters,
         };
 
         Ok(result)

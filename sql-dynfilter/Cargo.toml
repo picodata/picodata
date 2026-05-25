@@ -9,6 +9,12 @@ edition.workspace = true
 [dependencies]
 thiserror = { workspace = true }
 twox-hash = "2.1"
+xorf = { version = "0.12", default-features = false, features = ["binary-fuse"] }
 
 [dev-dependencies]
+criterion = "0.5"
 proptest = "1.4"
+
+[[bench]]
+name = "dynfilter"
+harness = false

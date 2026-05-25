@@ -119,6 +119,38 @@ static SQL_TEMP_TABLE_LOCK_WAITS_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| 
     .expect("Failed to create pico_sql_temp_table_lock_waits_total counter")
 });
 
+/// Sink that forwards dynamic-filter probe outcomes to the two
+/// process-wide counters below. Registered in `lib.rs` so the
+/// `sql-planner` crate doesn't have to depend on `prometheus`.
+#[derive(Debug)]
+pub struct PrometheusFilterSink;
+
+impl sql::executor::dynfilter::FilterMetricsSink for PrometheusFilterSink {
+    fn record_probe(&self, hit: bool) {
+        if hit {
+            DYNFILTER_KEYS_PASSED.inc();
+        } else {
+            DYNFILTER_KEYS_FILTERED.inc();
+        }
+    }
+}
+
+pub static DYNFILTER_KEYS_PASSED: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(Opts::new(
+        "pico_sql_dynfilter_keys_passed_total",
+        "Total number of probe rows that passed a dynamic filter (kept).",
+    ))
+    .expect("Failed to create pico_sql_dynfilter_keys_passed_total counter")
+});
+
+pub static DYNFILTER_KEYS_FILTERED: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(Opts::new(
+        "pico_sql_dynfilter_keys_filtered_total",
+        "Total number of probe rows rejected by a dynamic filter (dropped).",
+    ))
+    .expect("Failed to create pico_sql_dynfilter_keys_filtered_total counter")
+});
+
 static SQL_GLOBAL_DML_QUERY_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
     IntCounter::with_opts(Opts::new(
         "pico_sql_global_dml_query_total",
@@ -685,6 +717,8 @@ pub fn register_metrics(registry: &prometheus::Registry) -> prometheus::Result<(
     registry.register(Box::new(STORAGE_CACHE_MISSES_TOTAL.clone()))?;
     registry.register(Box::new(SQL_TEMP_TABLE_LEASES_TOTAL.clone()))?;
     registry.register(Box::new(SQL_TEMP_TABLE_LOCK_WAITS_TOTAL.clone()))?;
+    registry.register(Box::new(DYNFILTER_KEYS_PASSED.clone()))?;
+    registry.register(Box::new(DYNFILTER_KEYS_FILTERED.clone()))?;
 
     Ok(())
 }

@@ -281,9 +281,7 @@ impl TryFrom<&Node<'_>> for CommandTag {
                 | Relational::Values { .. }
                 | Relational::ValuesRow { .. }
                 | Relational::SelectWithoutScan { .. }
-                | Relational::Limit { .. }
-                | Relational::BuildFilter { .. }
-                | Relational::ApplyFilter { .. } => Ok(CommandTag::Select),
+                | Relational::Limit { .. } => Ok(CommandTag::Select),
             },
             Node::Invalid(_) | Node::Expression(_) => Err(SbroadError::Invalid(
                 Entity::Node,

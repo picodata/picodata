@@ -619,6 +619,12 @@ fn start_http_server(
     };
     register_metrics().expect("failed to register metrics");
 
+    // Wire sql-planner's dynamic-filter probe sink to the Prometheus
+    // counters declared in `metrics`. Idempotent: a second call is a no-op.
+    let _ = sql::executor::dynfilter::set_filter_metrics_sink(std::sync::Arc::new(
+        metrics::PrometheusFilterSink,
+    ));
+
     lua.exec_with(
         r#"
         local user_metrics, picodata_metrics = ...

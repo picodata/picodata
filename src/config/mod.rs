@@ -2441,10 +2441,10 @@ pub struct AlterSystemParameters {
     pub sql_motion_row_max: u64,
 
     /// Enables dynamic filter pushdown for INNER JOINs across single-bucket
-    /// (Single, Single) sides. When `true`, the planner inserts BuildFilter
-    /// /ApplyFilter nodes and the DQL wire packet carries an extra map of
-    /// encoded filters. Default is `false` so behavior is bit-identical to
-    /// pre-feature releases.
+    /// (Single, Single) sides. When `true`, the planner records a sidecar
+    /// `DynamicFilterSpec` per join pair and the DQL wire packet carries an
+    /// extra map of encoded filters. Default is `false` so behavior is
+    /// bit-identical to pre-feature releases.
     ///
     /// IMPORTANT: enable only after every node in the cluster has been
     /// upgraded — older storages will reject the 8-field DQL packet.
