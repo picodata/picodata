@@ -658,6 +658,7 @@ def test_read_from_system_tables(cluster: Cluster):
         "read_preference",
         "shredding",
         "sql_ddl_timeout",
+        "sql_dynamic_filter_pushdown",
         "sql_log",
         "sql_motion_row_max",
         "sql_preemption",
