@@ -8,4 +8,5 @@ license-file.workspace = true
 [dependencies]
 rmp = { workspace = true }
 rmp-serde.workspace = true
+sql-dynfilter = { workspace = true }
 thiserror = { workspace = true }

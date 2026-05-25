@@ -1371,6 +1371,10 @@ enum ExplainNode {
     UnionAll,
     Intersect,
     Except,
+
+    // Dynamic filter pushdown (§5.2).
+    BuildFilter(u32, usize),
+    ApplyFilter(u32, usize),
 }
 
 impl Display for ExplainNode {
@@ -1430,6 +1434,13 @@ impl Display for ExplainNode {
             ExplainNode::UnionAll => write!(f, "union all")?,
             ExplainNode::Intersect => write!(f, "intersect")?,
             ExplainNode::Except => write!(f, "except")?,
+
+            ExplainNode::BuildFilter(filter_id, key_arity) => {
+                write!(f, "build dynamic filter [id = {filter_id}, keys = {key_arity}]")?;
+            }
+            ExplainNode::ApplyFilter(filter_id, key_arity) => {
+                write!(f, "apply dynamic filter [id = {filter_id}, keys = {key_arity}]")?;
+            }
         };
 
         Ok(())
@@ -1908,6 +1919,26 @@ impl LogicalExplain {
                     })?;
 
                     (ExplainNode::Limit(*limit), vec![child])
+                }
+                Relational::BuildFilter(node::BuildFilter {
+                    filter_id, keys, ..
+                }) => {
+                    let child = stack.pop().ok_or_else(|| {
+                        SbroadError::UnexpectedNumberOfValues(
+                            "BuildFilter node must have exactly one child".into(),
+                        )
+                    })?;
+                    (ExplainNode::BuildFilter(*filter_id, keys.len()), vec![child])
+                }
+                Relational::ApplyFilter(node::ApplyFilter {
+                    filter_id, keys, ..
+                }) => {
+                    let child = stack.pop().ok_or_else(|| {
+                        SbroadError::UnexpectedNumberOfValues(
+                            "ApplyFilter node must have exactly one child".into(),
+                        )
+                    })?;
+                    (ExplainNode::ApplyFilter(*filter_id, keys.len()), vec![child])
                 }
             };
 

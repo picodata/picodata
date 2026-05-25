@@ -6,6 +6,9 @@ use ahash::{AHashMap, AHashSet};
 use itertools::Itertools;
 use smol_str::{format_smolstr, SmolStr};
 
+use sql_dynfilter::DynamicFilter;
+use sql_protocol::dql_encoder::ApplySpec;
+
 use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::engine::Vshard;
 use crate::executor::vtable::{VirtualTable, VirtualTableMap};
@@ -109,6 +112,28 @@ pub struct ExecutionPlan {
     unlinked_motions: HashSet<NodeId>,
     /// Derived cache for effective subtree metadata during this execution.
     subtree_view_cache: SubtreeViewCache,
+    /// Dynamic-filter map keyed by `filter_id`.
+    ///
+    /// Each entry holds the build-side `DynamicFilter` produced by the §5.4
+    /// executor pass and the expected `keys.len()` from the matching
+    /// `ApplyFilter` (used to validate the wire-decoded filter on the probe
+    /// side). The map lives only for the duration of an execution and is
+    /// intentionally NOT part of the plan-cache identity.
+    pub filter_state: AHashMap<u32, FilterState>,
+}
+
+/// Build-side state for a single dynamic filter (`filter_id`).
+///
+/// `apply_spec` is captured at build time from the matching `ApplyFilter`
+/// IR node so the DQL packet encoder can ship it to the storage without
+/// re-walking the IR. Positions inside `apply_spec` are storage-row
+/// indices (per `ApplyFilter.keys[i].position`, which references the
+/// storage subtree's output schema).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilterState {
+    pub filter: DynamicFilter,
+    pub key_arity: usize,
+    pub apply_spec: ApplySpec,
 }
 
 /// Read-only execution plan borrow.
@@ -718,6 +743,7 @@ impl ExecutionPlan {
             serialize_as_empty_disabled_motions: HashSet::new(),
             unlinked_motions: HashSet::new(),
             subtree_view_cache: SubtreeViewCache::default(),
+            filter_state: AHashMap::new(),
         }
     }
 

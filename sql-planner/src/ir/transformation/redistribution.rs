@@ -2779,6 +2779,13 @@ impl Plan {
                     // i.e. to the plan without any motion nodes.
                     panic!("IR mustn't contain Motion nodes at the stage of redistribution.")
                 }
+                RelOwned::BuildFilter(_) | RelOwned::ApplyFilter(_) => {
+                    // Dynamic-filter resolver runs after motion insertion,
+                    // so these nodes cannot appear during redistribution.
+                    panic!(
+                        "IR mustn't contain dynamic-filter nodes at the stage of redistribution."
+                    )
+                }
                 RelOwned::Limit(Limit { output, limit, .. }) => {
                     let rel_child_id = self.get_first_rel_child(id)?;
                     let child_dist = self.get_rel_distribution(rel_child_id)?.clone();
@@ -3086,6 +3093,10 @@ impl Plan {
             );
             top_id = *old_new.values().next().unwrap();
             self.set_top(top_id)?;
+        }
+
+        if self.effective_options.sql_dynamic_filter_pushdown {
+            self.insert_dynamic_filters_for_inner_joins(top_id)?;
         }
 
         let slices = self.calculate_slices(top_id)?;

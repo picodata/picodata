@@ -1,6 +1,37 @@
+use sql_dynfilter::{DynamicFilter, NullPolicy};
+
 /// Adapter trait for encoding data into msgpack format
 pub trait MsgpackEncode {
     fn encode_into(&self, w: &mut impl std::io::Write) -> std::io::Result<()>;
+}
+
+/// Storage-side directive for one dynamic filter — tells the executor
+/// which columns to extract from each probe row, and how to handle
+/// NULLs, before consulting `FilterView::contains`.
+///
+/// The coordinator builds and ships one `ApplySpec` per filter inside
+/// the DQL packet; the storage-side executor uses it to locate the
+/// JOIN-key columns by position in the row's msgpack `array` and feed
+/// them — in the same byte order the build side used — into a
+/// `TupleHasher`.
+///
+/// Positions are column indices into the storage's pre-projection row
+/// layout (matches the SQL stmt's output schema). The null policy must
+/// match the paired `BuildFilter::null_policy` exactly or the filter
+/// is silently wrong.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplySpec {
+    pub key_positions: Vec<u32>,
+    pub null_policy: NullPolicy,
+}
+
+impl ApplySpec {
+    pub fn new(key_positions: Vec<u32>, null_policy: NullPolicy) -> Self {
+        Self {
+            key_positions,
+            null_policy,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,6 +97,31 @@ pub trait DQLDataSource {
     fn get_options(&self) -> DQLOptions;
 
     fn get_params(&self) -> impl MsgpackEncode;
+
+    /// Whether the coordinator is sending dynamic filters with this packet.
+    /// Gated by the `sql_dynamic_filter_pushdown` alter-system parameter.
+    /// When `false`, `write_dql_packet_data` emits the 7-field layout
+    /// (backward-compatible with older storages); when `true`, it emits
+    /// 8 fields with the filters map as the trailing field.
+    fn dynamic_filters_enabled(&self) -> bool {
+        false
+    }
+
+    /// Dynamic filters keyed by stable `filter_id` (matches
+    /// `BuildFilter::filter_id` / `ApplyFilter::filter_id` in the IR).
+    /// Returned by reference so the encoder can call `encode_into`
+    /// directly into the wire buffer — no intermediate `Vec<u8>`.
+    ///
+    /// The `ApplySpec` rides alongside the filter bytes so the storage
+    /// can apply the filter without re-deriving column positions from
+    /// the IR: storage executes a cached `SqlStmt` that does not
+    /// contain `ApplyFilter` (which is a runtime-only node), so the
+    /// wire packet is its only source for those positions.
+    fn get_dynamic_filters(
+        &self,
+    ) -> impl ExactSizeIterator<Item = (u32, &DynamicFilter, &ApplySpec)> {
+        std::iter::empty()
+    }
 }
 
 pub trait DQLCacheMissDataSource {

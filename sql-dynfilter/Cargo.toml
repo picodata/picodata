@@ -1,0 +1,14 @@
+[package]
+name = "sql-dynfilter"
+version = "0.1.0"
+rust-version.workspace = true
+authors = ["Picodata"]
+license-file.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+twox-hash = "2.1"
+
+[dev-dependencies]
+proptest = "1.4"

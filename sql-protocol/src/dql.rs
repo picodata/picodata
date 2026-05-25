@@ -1,13 +1,14 @@
 use crate::dql_encoder::{
-    ColumnType, DQLCacheMissDataSource, DQLDataSource, DQLOptions, MsgpackEncode,
+    ApplySpec, ColumnType, DQLCacheMissDataSource, DQLDataSource, DQLOptions, MsgpackEncode,
 };
 use crate::error::ProtocolError;
 use crate::iterators::{MsgpackMapIterator, TupleIterator};
 use crate::message_type::write_request_header;
 use crate::message_type::MessageType::DQL;
 use crate::msgpack::{skip_value, ByteCounter};
-use rmp::decode::{read_array_len, read_int, read_map_len, read_str_len};
-use rmp::encode::{write_array_len, write_map_len, write_str, write_uint};
+use rmp::decode::{read_array_len, read_bin_len, read_int, read_map_len, read_pfix, read_str_len};
+use rmp::encode::{write_array_len, write_bin_len, write_map_len, write_pfix, write_str, write_uint};
+use sql_dynfilter::{DynamicFilter, NullPolicy};
 use std::fmt;
 use std::fmt::Formatter;
 use std::io::{Cursor, Write};
@@ -28,7 +29,13 @@ pub(crate) fn write_dql_packet_data(
     w: &mut impl Write,
     data: &impl DQLDataSource,
 ) -> Result<(), std::io::Error> {
-    write_array_len(w, DQL_PACKET_FIELD_COUNT as u32)?;
+    let with_filters = data.dynamic_filters_enabled();
+    let field_count = if with_filters {
+        DQL_PACKET_FIELD_COUNT_WITH_FILTERS
+    } else {
+        DQL_PACKET_FIELD_COUNT
+    };
+    write_array_len(w, field_count as u32)?;
 
     write_schema_info(w, data.get_table_schema_info())?;
     write_index_schema_info(w, data.get_index_schema_info())?;
@@ -45,6 +52,35 @@ pub(crate) fn write_dql_packet_data(
     let params = data.get_params();
     write_params(w, params)?;
 
+    if with_filters {
+        write_dynamic_filters(w, data.get_dynamic_filters())?;
+    }
+
+    Ok(())
+}
+
+/// Wire layout for the 8th DQL field: `map<u32 filter_id, array<3>{ bin
+/// filter_bytes, array<u32> key_positions, u8 null_policy }>`. The
+/// `ApplySpec` (positions + null_policy) rides alongside filter bytes
+/// because the storage executes a cached `SqlStmt` that does not carry
+/// the runtime-only `ApplyFilter` IR node — the wire packet is the
+/// storage's only source for those positions.
+pub(crate) fn write_dynamic_filters<'a>(
+    w: &mut impl Write,
+    filters: impl ExactSizeIterator<Item = (u32, &'a DynamicFilter, &'a ApplySpec)>,
+) -> Result<(), std::io::Error> {
+    write_map_len(w, filters.len() as u32)?;
+    for (id, filter, spec) in filters {
+        write_uint(w, id as u64)?;
+        write_array_len(w, 3)?;
+        write_bin_len(w, filter.encoded_len() as u32)?;
+        filter.encode_into(w)?;
+        write_array_len(w, spec.key_positions.len() as u32)?;
+        for pos in &spec.key_positions {
+            write_uint(w, *pos as u64)?;
+        }
+        write_pfix(w, spec.null_policy as u8)?;
+    }
     Ok(())
 }
 
@@ -139,6 +175,7 @@ enum DQLState {
     Vtables,
     Options,
     Params,
+    Filters,
     End,
 }
 
@@ -150,6 +187,11 @@ pub enum DQLResult<'a> {
     Vtables(MsgpackMapIterator<'a, &'a str, TupleIterator<'a>>),
     Options(DQLOptions),
     Params(&'a [u8]),
+    /// Map of `filter_id (u32) -> encoded filter bytes`. Yielded only
+    /// when the packet has the 8-field layout. Each `&[u8]` borrows
+    /// directly from the wire buffer; the consumer feeds it to
+    /// `sql_dynfilter::FilterView::decode`.
+    DynamicFilters(MsgpackMapIterator<'a, u32, WireDynamicFilter<'a>>),
 }
 
 impl fmt::Display for DQLResult<'_> {
@@ -162,14 +204,17 @@ impl fmt::Display for DQLResult<'_> {
             DQLResult::Vtables(_) => f.write_str("Vtables"),
             DQLResult::Options(_) => f.write_str("Options"),
             DQLResult::Params(_) => f.write_str("Params"),
+            DQLResult::DynamicFilters(_) => f.write_str("DynamicFilters"),
         }
     }
 }
 
 const DQL_PACKET_FIELD_COUNT: usize = 7;
+const DQL_PACKET_FIELD_COUNT_WITH_FILTERS: usize = 8;
 pub struct DQLPacketPayloadIterator<'a> {
     raw_payload: Cursor<&'a [u8]>,
     state: DQLState,
+    has_filters: bool,
 }
 
 impl<'a> DQLPacketPayloadIterator<'a> {
@@ -177,15 +222,20 @@ impl<'a> DQLPacketPayloadIterator<'a> {
         let mut cursor = Cursor::new(raw_payload);
 
         let l = read_array_len(&mut cursor)?;
-        if l != DQL_PACKET_FIELD_COUNT as u32 {
-            return Err(ProtocolError::DecodeError(format!(
-                "DQL package is invalid: expected to have package array length {DQL_PACKET_FIELD_COUNT}, got {l}"
-            )));
-        }
+        let has_filters = match l as usize {
+            DQL_PACKET_FIELD_COUNT => false,
+            DQL_PACKET_FIELD_COUNT_WITH_FILTERS => true,
+            _ => {
+                return Err(ProtocolError::DecodeError(format!(
+                    "DQL package is invalid: expected package array length {DQL_PACKET_FIELD_COUNT} or {DQL_PACKET_FIELD_COUNT_WITH_FILTERS}, got {l}"
+                )));
+            }
+        };
 
         Ok(Self {
             raw_payload: cursor,
             state: DQLState::TableSchemaInfo,
+            has_filters,
         })
     }
 
@@ -240,8 +290,21 @@ impl<'a> DQLPacketPayloadIterator<'a> {
     fn get_params(&mut self) -> Result<&'a [u8], ProtocolError> {
         debug_assert_eq!(self.state, DQLState::Params);
         let params = get_params(&mut self.raw_payload)?;
-        self.state = DQLState::End;
+        self.state = if self.has_filters {
+            DQLState::Filters
+        } else {
+            DQLState::End
+        };
         Ok(params)
+    }
+
+    fn get_filters(
+        &mut self,
+    ) -> Result<MsgpackMapIterator<'a, u32, WireDynamicFilter<'a>>, ProtocolError> {
+        debug_assert_eq!(self.state, DQLState::Filters);
+        let filters = get_filters(&mut self.raw_payload)?;
+        self.state = DQLState::End;
+        Ok(filters)
     }
 }
 
@@ -369,9 +432,76 @@ pub(crate) fn get_options(raw_payload: &mut Cursor<&[u8]>) -> Result<DQLOptions,
 pub(crate) fn get_params<'a>(
     raw_payload: &mut Cursor<&'a [u8]>,
 ) -> Result<&'a [u8], ProtocolError> {
-    let l = raw_payload.position() as usize;
-    let params = &raw_payload.get_ref()[l..];
-    Ok(params)
+    let start = raw_payload.position() as usize;
+    skip_value(raw_payload).map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+    let end = raw_payload.position() as usize;
+    Ok(&raw_payload.get_ref()[start..end])
+}
+
+/// Decoded payload of one dynamic-filter map entry. Borrowed against the
+/// wire buffer — `bytes` feeds `sql_dynfilter::FilterView::decode`, the
+/// rest goes into `key_hash` on the storage side.
+#[derive(Debug, Clone)]
+pub struct WireDynamicFilter<'a> {
+    pub bytes: &'a [u8],
+    pub key_positions: Vec<u32>,
+    pub null_policy: NullPolicy,
+}
+
+pub(crate) fn get_filters<'a>(
+    raw_payload: &mut Cursor<&'a [u8]>,
+) -> Result<MsgpackMapIterator<'a, u32, WireDynamicFilter<'a>>, ProtocolError> {
+    let l = read_map_len(raw_payload)?;
+    let start = raw_payload.position() as usize;
+    for _ in 0..l * 2 {
+        skip_value(raw_payload).map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+    }
+    let end = raw_payload.position() as usize;
+
+    let key_decoder = |r: &mut Cursor<&'a [u8]>| -> Result<u32, ProtocolError> {
+        read_int::<u32, _>(r).map_err(|err| ProtocolError::DecodeError(err.to_string()))
+    };
+
+    let value_decoder = |r: &mut Cursor<&'a [u8]>| -> Result<WireDynamicFilter<'a>, ProtocolError> {
+        let arr_len = read_array_len(r)
+            .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+        if arr_len != 3 {
+            return Err(ProtocolError::DecodeError(format!(
+                "DynamicFilter entry: expected array<3>, got array<{arr_len}>"
+            )));
+        }
+        let bin_len = read_bin_len(r)? as usize;
+        let bytes_start = r.position() as usize;
+        let bytes_end = bytes_start + bin_len;
+        r.set_position(bytes_end as u64);
+        let bytes = &r.get_ref()[bytes_start..bytes_end];
+
+        let pos_len = read_array_len(r)
+            .map_err(|err| ProtocolError::DecodeError(err.to_string()))? as usize;
+        let mut key_positions = Vec::with_capacity(pos_len);
+        for _ in 0..pos_len {
+            key_positions.push(
+                read_int::<u32, _>(r)
+                    .map_err(|err| ProtocolError::DecodeError(err.to_string()))?,
+            );
+        }
+        let np_tag = read_pfix(r)
+            .map_err(|err| ProtocolError::DecodeError(err.to_string()))?;
+        let null_policy = NullPolicy::try_from(np_tag)
+            .map_err(|_| ProtocolError::DecodeError(format!("invalid NullPolicy tag {np_tag}")))?;
+        Ok(WireDynamicFilter {
+            bytes,
+            key_positions,
+            null_policy,
+        })
+    };
+
+    Ok(MsgpackMapIterator::new(
+        &raw_payload.get_ref()[start..end],
+        l,
+        key_decoder,
+        value_decoder,
+    ))
 }
 
 impl<'a> Iterator for DQLPacketPayloadIterator<'a> {
@@ -390,12 +520,18 @@ impl<'a> Iterator for DQLPacketPayloadIterator<'a> {
             DQLState::Vtables => Some(self.get_vtables().map(DQLResult::Vtables)),
             DQLState::Options => Some(self.get_options().map(DQLResult::Options)),
             DQLState::Params => Some(self.get_params().map(DQLResult::Params)),
+            DQLState::Filters => Some(self.get_filters().map(DQLResult::DynamicFilters)),
             DQLState::End => None,
         }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let size = DQL_PACKET_FIELD_COUNT.saturating_sub(self.state as usize);
+        let total = if self.has_filters {
+            DQL_PACKET_FIELD_COUNT_WITH_FILTERS
+        } else {
+            DQL_PACKET_FIELD_COUNT
+        };
+        let size = total.saturating_sub(self.state as usize);
         (size, Some(size))
     }
 }
@@ -701,6 +837,9 @@ mod tests {
                     let expected = vec![147, 204, 138, 123, 205, 1, 176];
                     assert_eq!(params, expected.as_slice());
                 }
+                DQLResult::DynamicFilters(_) => {
+                    unreachable!("legacy 7-field packet has no DynamicFilters")
+                }
             }
         }
     }
@@ -763,5 +902,140 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// 8-field DQL packet round-trip. Confirms that a packet emitted
+    /// with non-empty filters decodes back into the same filter map and
+    /// that the surrounding fields still parse correctly.
+    #[test]
+    fn test_dql_packet_with_filters_roundtrip() {
+        use crate::dql_encoder::test::TestDQLDataSource;
+        use crate::dql_encoder::ApplySpec;
+        use sql_dynfilter::{DynamicFilter, NullPolicy};
+
+        struct FilteredDQL {
+            inner: TestDQLDataSource,
+            filters: Vec<(u32, DynamicFilter, ApplySpec)>,
+        }
+        impl DQLDataSource for FilteredDQL {
+            fn get_table_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
+                DQLDataSource::get_table_schema_info(&self.inner)
+            }
+            fn get_index_schema_info(&self) -> impl ExactSizeIterator<Item = ([u32; 2], u64)> {
+                DQLDataSource::get_index_schema_info(&self.inner)
+            }
+            fn get_plan_id(&self) -> u64 {
+                self.inner.get_plan_id()
+            }
+            fn get_sender_id(&self) -> u64 {
+                self.inner.get_sender_id()
+            }
+            fn get_request_id(&self) -> &str {
+                self.inner.get_request_id()
+            }
+            fn get_vtables(
+                &self,
+            ) -> impl ExactSizeIterator<
+                Item = (&str, impl ExactSizeIterator<Item = impl MsgpackEncode>),
+            > {
+                self.inner.get_vtables()
+            }
+            fn get_options(&self) -> DQLOptions {
+                self.inner.get_options()
+            }
+            fn get_params(&self) -> impl MsgpackEncode {
+                self.inner.get_params()
+            }
+            fn dynamic_filters_enabled(&self) -> bool {
+                true
+            }
+            fn get_dynamic_filters(
+                &self,
+            ) -> impl ExactSizeIterator<Item = (u32, &DynamicFilter, &ApplySpec)> {
+                self.filters.iter().map(|(id, f, spec)| (*id, f, spec))
+            }
+        }
+
+        let inner = TestDQLEncoderBuilder::new()
+            .set_plan_id(42)
+            .set_request_id("rid-1".to_string())
+            .set_schema_info((HashMap::new(), HashMap::new()))
+            .set_sender_id(7)
+            .set_vtables(HashMap::new())
+            .set_options(DQLOptions {
+                sql_motion_row_max: 1,
+                sql_vdbe_opcode_max: 2,
+            })
+            .set_params(vec![])
+            .build();
+
+        // Build two small finalized filters to encode.
+        let mut f1 = DynamicFilter::new(2);
+        f1.insert(0x1111_2222_3333_4444u128);
+        f1.insert(0x5555_6666_7777_8888u128);
+        f1.finalize().unwrap();
+        let mut f2 = DynamicFilter::new(1);
+        f2.insert(0xCAFEBABE_DEADBEEFu128);
+        f2.finalize().unwrap();
+        let spec1 = ApplySpec::new(vec![2u32, 5u32], NullPolicy::Skip);
+        let spec2 = ApplySpec::new(vec![0u32], NullPolicy::Insert);
+        let filters = vec![(7u32, f1, spec1.clone()), (42u32, f2, spec2.clone())];
+
+        let data = FilteredDQL { inner, filters };
+
+        let mut buf = Vec::new();
+        write_dql_packet(&mut buf, &data).unwrap();
+
+        // Skip the request header (array_len=3, request_id str, type byte).
+        let mut cursor: &[u8] = &buf;
+        let l = read_array_len(&mut cursor).unwrap();
+        assert_eq!(l, 3);
+        let rid_len = read_str_len(&mut cursor).unwrap();
+        cursor = &cursor[rid_len as usize..];
+        let _msg_type = rmp::decode::read_pfix(&mut cursor).unwrap();
+
+        let pkg = DQLPacketPayloadIterator::new(cursor).unwrap();
+        let mut saw_filters = false;
+        for elem in pkg {
+            if let DQLResult::DynamicFilters(map) = elem.unwrap() {
+                saw_filters = true;
+                let mut ids: Vec<u32> = Vec::new();
+                for entry in map {
+                    let (id, wire) = entry.unwrap();
+                    // The bytes field must decode as a FilterView.
+                    let view = sql_dynfilter::FilterView::decode(wire.bytes).unwrap();
+                    if id == 7 {
+                        assert!(view.contains(0x1111_2222_3333_4444u128));
+                        assert!(view.contains(0x5555_6666_7777_8888u128));
+                        assert_eq!(wire.key_positions, vec![2u32, 5u32]);
+                        assert_eq!(wire.null_policy, NullPolicy::Skip);
+                    } else if id == 42 {
+                        assert!(view.contains(0xCAFEBABE_DEADBEEFu128));
+                        assert_eq!(wire.key_positions, vec![0u32]);
+                        assert_eq!(wire.null_policy, NullPolicy::Insert);
+                    } else {
+                        panic!("unexpected filter id {id}");
+                    }
+                    ids.push(id);
+                }
+                ids.sort();
+                assert_eq!(ids, vec![7u32, 42u32]);
+            }
+        }
+        assert!(saw_filters, "iterator did not yield DynamicFilters");
+    }
+
+    /// New decoder must still accept a 7-field packet (forward
+    /// tolerance for storages that have not been upgraded yet).
+    #[test]
+    fn test_dql_packet_legacy_7_fields_still_decodes() {
+        let data: &[u8] = b"\x97\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw\x2a\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
+        let pkg = DQLPacketPayloadIterator::new(data).unwrap();
+        let mut count = 0;
+        for elem in pkg {
+            elem.unwrap();
+            count += 1;
+        }
+        assert_eq!(count, 7);
     }
 }

@@ -24,8 +24,9 @@ use sql_protocol::dml::update::UpdateType;
 use sql_protocol::dml::update::{
     CoreUpdateDataSource, UpdateDataSource, UpdateSharedKeyDataSource,
 };
+use sql_dynfilter::DynamicFilter;
 use sql_protocol::dql_encoder::{
-    ColumnType, DQLCacheMissDataSource, DQLDataSource, DQLOptions, MsgpackEncode,
+    ApplySpec, ColumnType, DQLCacheMissDataSource, DQLDataSource, DQLOptions, MsgpackEncode,
 };
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
@@ -192,6 +193,27 @@ impl DQLDataSource for ExecutionData {
     fn get_params(&self) -> impl MsgpackEncode {
         ArrayMsgpackEncoder::new(self.params.as_slice())
     }
+
+    /// Gate dynamic-filter emission on the alter-system parameter rather
+    /// than on `filter_state` content: an enabled-but-empty packet is
+    /// still 8-field — the trailing field is just an empty map. This
+    /// keeps wire shape derivable from a single observable and avoids
+    /// rare runtime drift on the storage side.
+    fn dynamic_filters_enabled(&self) -> bool {
+        self.plan
+            .get_ir_plan()
+            .effective_options
+            .sql_dynamic_filter_pushdown
+    }
+
+    fn get_dynamic_filters(
+        &self,
+    ) -> impl ExactSizeIterator<Item = (u32, &DynamicFilter, &ApplySpec)> {
+        self.plan
+            .filter_state
+            .iter()
+            .map(|(id, state)| (*id, &state.filter, &state.apply_spec))
+    }
 }
 
 impl DQLDataSource for DqlProtocol {
@@ -248,6 +270,22 @@ impl DQLDataSource for DqlProtocol {
 
     fn get_params(&self) -> impl MsgpackEncode {
         ArrayMsgpackEncoder::new(self.params.as_slice())
+    }
+
+    fn dynamic_filters_enabled(&self) -> bool {
+        self.plan
+            .get_ir_plan()
+            .effective_options
+            .sql_dynamic_filter_pushdown
+    }
+
+    fn get_dynamic_filters(
+        &self,
+    ) -> impl ExactSizeIterator<Item = (u32, &DynamicFilter, &ApplySpec)> {
+        self.plan
+            .filter_state
+            .iter()
+            .map(|(id, state)| (*id, &state.filter, &state.apply_spec))
     }
 }
 

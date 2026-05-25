@@ -700,6 +700,9 @@ mod tests {
                             DQLResult::Params(params) => {
                                 assert_eq!(params, vec![147, 204, 138, 123, 205, 1, 176]);
                             }
+                            DQLResult::DynamicFilters(_) => {
+                                unreachable!("legacy DML packet has no DynamicFilters")
+                            }
                         }
                     }
                 }

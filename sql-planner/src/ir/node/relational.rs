@@ -2,8 +2,8 @@ use serde::Serialize;
 use smol_str::SmolStr;
 
 use super::{
-    ArenaType, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion,
-    NodeAligned, NodeId, OrderBy, Projection, ScanCte, ScanRelation, ScanSubQuery,
+    ApplyFilter, ArenaType, BuildFilter, Delete, Except, GroupBy, Having, Insert, Intersect, Join,
+    Limit, Motion, NodeAligned, NodeId, OrderBy, Projection, ScanCte, ScanRelation, ScanSubQuery,
     SelectWithoutScan, Selection, Union, UnionAll, Update, Values, ValuesRow,
 };
 use crate::{
@@ -35,12 +35,16 @@ pub enum RelOwned {
     Union(Union),
     Values(Values),
     ValuesRow(ValuesRow),
+    BuildFilter(BuildFilter),
+    ApplyFilter(ApplyFilter),
 }
 
 impl From<RelOwned> for NodeAligned {
     fn from(value: RelOwned) -> Self {
         match value {
             RelOwned::ScanCte(scan_cte) => scan_cte.into(),
+            RelOwned::BuildFilter(bf) => bf.into(),
+            RelOwned::ApplyFilter(af) => af.into(),
             RelOwned::Delete(delete) => delete.into(),
             RelOwned::Except(except) => except.into(),
             RelOwned::GroupBy(group_by) => group_by.into(),
@@ -87,7 +91,9 @@ impl RelOwned {
             | RelOwned::Join(_)
             | RelOwned::Delete(_)
             | RelOwned::ScanSubQuery(_)
-            | RelOwned::GroupBy(_) => ArenaType::Arena64,
+            | RelOwned::GroupBy(_)
+            | RelOwned::BuildFilter(_)
+            | RelOwned::ApplyFilter(_) => ArenaType::Arena64,
             RelOwned::Insert(_) | RelOwned::Projection(_) | RelOwned::ScanRelation(_) => {
                 ArenaType::Arena96
             }
@@ -134,7 +140,9 @@ impl RelOwned {
             | RelOwned::Selection(Selection { ref mut child, .. })
             | RelOwned::Having(Having { ref mut child, .. })
             | RelOwned::GroupBy(GroupBy { ref mut child, .. })
-            | RelOwned::OrderBy(OrderBy { ref mut child, .. }) => {
+            | RelOwned::OrderBy(OrderBy { ref mut child, .. })
+            | RelOwned::BuildFilter(BuildFilter { ref mut child, .. })
+            | RelOwned::ApplyFilter(ApplyFilter { ref mut child, .. }) => {
                 if children.len() != 1 {
                     unreachable!("{self:?} may have only a single relational child");
                 }
@@ -182,7 +190,9 @@ impl RelOwned {
             | RelOwned::Having(Having { child, .. })
             | RelOwned::Selection(Selection { child, .. })
             | RelOwned::GroupBy(GroupBy { child, .. })
-            | RelOwned::OrderBy(OrderBy { child, .. }) => Children::Single(child),
+            | RelOwned::OrderBy(OrderBy { child, .. })
+            | RelOwned::BuildFilter(BuildFilter { child, .. })
+            | RelOwned::ApplyFilter(ApplyFilter { child, .. }) => Children::Single(child),
             RelOwned::Except(Except { left, right, .. })
             | RelOwned::Intersect(Intersect { left, right, .. })
             | RelOwned::UnionAll(UnionAll { left, right, .. })
@@ -231,7 +241,11 @@ impl RelOwned {
             | RelOwned::Having(Having { ref mut child, .. })
             | RelOwned::Selection(Selection { ref mut child, .. })
             | RelOwned::GroupBy(GroupBy { ref mut child, .. })
-            | RelOwned::OrderBy(OrderBy { ref mut child, .. }) => MutChildren::Single(child),
+            | RelOwned::OrderBy(OrderBy { ref mut child, .. })
+            | RelOwned::BuildFilter(BuildFilter { ref mut child, .. })
+            | RelOwned::ApplyFilter(ApplyFilter { ref mut child, .. }) => {
+                MutChildren::Single(child)
+            }
             RelOwned::Except(Except {
                 ref mut left,
                 ref mut right,
@@ -339,7 +353,9 @@ impl RelOwned {
             | RelOwned::Union(Union { output, .. })
             | RelOwned::UnionAll(UnionAll { output, .. })
             | RelOwned::Values(Values { output, .. })
-            | RelOwned::ValuesRow(ValuesRow { output, .. }) => output,
+            | RelOwned::ValuesRow(ValuesRow { output, .. })
+            | RelOwned::BuildFilter(BuildFilter { output, .. })
+            | RelOwned::ApplyFilter(ApplyFilter { output, .. }) => output,
         }
     }
 }
@@ -372,6 +388,8 @@ pub enum Relational<'a> {
     Union(&'a Union),
     Values(&'a Values),
     ValuesRow(&'a ValuesRow),
+    BuildFilter(&'a BuildFilter),
+    ApplyFilter(&'a ApplyFilter),
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -398,6 +416,8 @@ pub enum MutRelational<'a> {
     Union(&'a mut Union),
     Values(&'a mut Values),
     ValuesRow(&'a mut ValuesRow),
+    BuildFilter(&'a mut BuildFilter),
+    ApplyFilter(&'a mut ApplyFilter),
 }
 
 impl MutRelational<'_> {
@@ -427,7 +447,9 @@ impl MutRelational<'_> {
             | MutRelational::Union(Union { output, .. })
             | MutRelational::UnionAll(UnionAll { output, .. })
             | MutRelational::Values(Values { output, .. })
-            | MutRelational::ValuesRow(ValuesRow { output, .. }) => output,
+            | MutRelational::ValuesRow(ValuesRow { output, .. })
+            | MutRelational::BuildFilter(BuildFilter { output, .. })
+            | MutRelational::ApplyFilter(ApplyFilter { output, .. }) => output,
         }
     }
 
@@ -450,7 +472,9 @@ impl MutRelational<'_> {
             | MutRelational::Selection(Selection { child, .. })
             | MutRelational::Having(Having { child, .. })
             | MutRelational::GroupBy(GroupBy { child, .. })
-            | MutRelational::OrderBy(OrderBy { child, .. }) => MutChildren::Single(child),
+            | MutRelational::OrderBy(OrderBy { child, .. })
+            | MutRelational::BuildFilter(BuildFilter { child, .. })
+            | MutRelational::ApplyFilter(ApplyFilter { child, .. }) => MutChildren::Single(child),
             MutRelational::Except(Except { left, right, .. })
             | MutRelational::Intersect(Intersect { left, right, .. })
             | MutRelational::UnionAll(UnionAll { left, right, .. })
@@ -512,7 +536,9 @@ impl MutRelational<'_> {
             | MutRelational::Having(Having { child, .. })
             | MutRelational::Selection(Selection { child, .. })
             | MutRelational::GroupBy(GroupBy { child, .. })
-            | MutRelational::OrderBy(OrderBy { child, .. }) => {
+            | MutRelational::OrderBy(OrderBy { child, .. })
+            | MutRelational::BuildFilter(BuildFilter { child, .. })
+            | MutRelational::ApplyFilter(ApplyFilter { child, .. }) => {
                 *child = children[0];
             }
             MutRelational::Delete(Delete { child, .. })
@@ -658,7 +684,9 @@ impl Relational<'_> {
             | Relational::Union(Union { output, .. })
             | Relational::UnionAll(UnionAll { output, .. })
             | Relational::Values(Values { output, .. })
-            | Relational::ValuesRow(ValuesRow { output, .. }) => *output,
+            | Relational::ValuesRow(ValuesRow { output, .. })
+            | Relational::BuildFilter(BuildFilter { output, .. })
+            | Relational::ApplyFilter(ApplyFilter { output, .. }) => *output,
         }
     }
 
@@ -680,7 +708,9 @@ impl Relational<'_> {
             | Relational::Having(Having { child, .. })
             | Relational::Selection(Selection { child, .. })
             | Relational::GroupBy(GroupBy { child, .. })
-            | Relational::OrderBy(OrderBy { child, .. }) => Children::Single(child),
+            | Relational::OrderBy(OrderBy { child, .. })
+            | Relational::BuildFilter(BuildFilter { child, .. })
+            | Relational::ApplyFilter(ApplyFilter { child, .. }) => Children::Single(child),
             Relational::Except(Except { left, right, .. })
             | Relational::Intersect(Intersect { left, right, .. })
             | Relational::UnionAll(UnionAll { left, right, .. })
@@ -719,6 +749,9 @@ impl Relational<'_> {
             | Relational::GroupBy(GroupBy { subqueries, .. })
             | Relational::OrderBy(OrderBy { subqueries, .. })
             | Relational::Projection(Projection { subqueries, .. }) => Children::Many(subqueries),
+            Relational::ApplyFilter(ApplyFilter { filter_source, .. }) => {
+                Children::Single(filter_source)
+            }
             _ => Children::None,
         }
     }
@@ -819,6 +852,8 @@ impl Relational<'_> {
             Relational::UnionAll { .. } => "UnionAll",
             Relational::Values { .. } => "Values",
             Relational::ValuesRow { .. } => "ValuesRow",
+            Relational::BuildFilter { .. } => "BuildFilter",
+            Relational::ApplyFilter { .. } => "ApplyFilter",
         }
     }
 
@@ -846,6 +881,8 @@ impl Relational<'_> {
             Relational::Update(upd) => RelOwned::Update((*upd).clone()),
             Relational::Values(values) => RelOwned::Values((*values).clone()),
             Relational::ValuesRow(values_row) => RelOwned::ValuesRow((*values_row).clone()),
+            Relational::BuildFilter(bf) => RelOwned::BuildFilter((*bf).clone()),
+            Relational::ApplyFilter(af) => RelOwned::ApplyFilter((*af).clone()),
         }
     }
 }

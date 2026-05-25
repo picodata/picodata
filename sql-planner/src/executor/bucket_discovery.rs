@@ -12,9 +12,9 @@ use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    Constant, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion, Node,
-    NodeId, OrderBy, Projection, Row, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan,
-    Selection, Union, UnionAll, Update, Values, ValuesRow,
+    ApplyFilter, BuildFilter, Constant, Delete, Except, GroupBy, Having, Insert, Intersect, Join,
+    Limit, Motion, Node, NodeId, OrderBy, Projection, Row, ScanCte, ScanRelation, ScanSubQuery,
+    SelectWithoutScan, Selection, Union, UnionAll, Update, Values, ValuesRow,
 };
 use crate::ir::operator::JoinKind;
 use crate::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target};
@@ -377,7 +377,9 @@ where
                 | Relational::OrderBy(OrderBy { output, .. })
                 | Relational::ScanCte(ScanCte { output, .. })
                 | Relational::ScanSubQuery(ScanSubQuery { output, .. })
-                | Relational::Limit(Limit { output, .. }) => {
+                | Relational::Limit(Limit { output, .. })
+                | Relational::BuildFilter(BuildFilter { output, .. })
+                | Relational::ApplyFilter(ApplyFilter { output, .. }) => {
                     let child_id = ir_plan.get_first_rel_child(node_id)?;
                     let child_rel = ir_plan.get_relation_node(child_id)?;
                     let child_buckets = self

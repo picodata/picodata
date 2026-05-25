@@ -2440,6 +2440,18 @@ pub struct AlterSystemParameters {
     #[introspection(config_default = 5000)]
     pub sql_motion_row_max: u64,
 
+    /// Enables dynamic filter pushdown for INNER JOINs across single-bucket
+    /// (Single, Single) sides. When `true`, the planner inserts BuildFilter
+    /// /ApplyFilter nodes and the DQL wire packet carries an extra map of
+    /// encoded filters. Default is `false` so behavior is bit-identical to
+    /// pre-feature releases.
+    ///
+    /// IMPORTANT: enable only after every node in the cluster has been
+    /// upgraded — older storages will reject the 8-field DQL packet.
+    #[introspection(sbroad_type = SbroadType::Boolean)]
+    #[introspection(config_default = false)]
+    pub sql_dynamic_filter_pushdown: bool,
+
     /// DQL replicaset data reading strategy.
     /// Allowed values: "leader", "replica", "any".
     /// Default value: "leader".
@@ -2753,6 +2765,7 @@ pub struct DynamicConfigProviders {
     pub sql_log: AtomicObserverProvider<bool>,
     pub sql_ddl_timeout_us: AtomicObserverProvider<u64>,
     pub forward: AtomicObserverProvider<u8>,
+    pub sql_dynamic_filter_pushdown: AtomicObserverProvider<bool>,
 }
 
 impl DynamicConfigProviders {
@@ -2770,6 +2783,7 @@ impl DynamicConfigProviders {
             sql_log: AtomicObserverProvider::new(),
             sql_ddl_timeout_us: AtomicObserverProvider::new(),
             forward: AtomicObserverProvider::new(),
+            sql_dynamic_filter_pushdown: AtomicObserverProvider::new(),
         }
     }
 
@@ -2793,6 +2807,10 @@ impl DynamicConfigProviders {
                 .try_current_value()
                 .map(|raw| options::Forward::try_from(raw).expect("invalid forward value"))
                 .unwrap_or_default(),
+            sql_dynamic_filter_pushdown: self
+                .sql_dynamic_filter_pushdown
+                .try_current_value()
+                .unwrap_or(false),
         })
     }
 }
@@ -3167,6 +3185,10 @@ pub fn apply_parameter(
         let value = value as i64;
         // Cache the value.
         DYNAMIC_CONFIG.sql_motion_row_max.update(value);
+    } else if name == system_parameter_name!(sql_dynamic_filter_pushdown) {
+        let value = v.as_bool().expect("type is already checked");
+        // Cache the value.
+        DYNAMIC_CONFIG.sql_dynamic_filter_pushdown.update(value);
     } else if name == system_parameter_name!(read_preference) {
         let value = v.as_str().expect("type is already checked");
         let value = options::ReadPreference::from_str(value).expect("value is already checked");

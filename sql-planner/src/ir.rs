@@ -33,10 +33,10 @@ use crate::ir::index::Indexes;
 use crate::ir::node::plugin::{MutPlugin, Plugin};
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
-    Alias, ArenaType, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, GroupBy, Having,
-    IndexExpr, Insert, Limit, Motion, MutNode, Node, Node136, Node232, Node32, Node64, Node96,
-    NodeId, NodeOwned, OrderBy, Projection, Reference, ReferenceTarget, Row, ScalarFunction,
-    ScanRelation, Selection, SubQueryReference, Trim, UnaryExpr,
+    Alias, ApplyFilter, ArenaType, ArithmeticExpr, BoolExpr, BuildFilter, Case, Cast, Concat,
+    Constant, GroupBy, Having, IndexExpr, Insert, Limit, Motion, MutNode, Node, Node136, Node232,
+    Node32, Node64, Node96, NodeId, NodeOwned, OrderBy, Projection, Reference, ReferenceTarget,
+    Row, ScalarFunction, ScanRelation, Selection, SubQueryReference, Trim, UnaryExpr,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity};
 use crate::ir::relation::Column;
@@ -153,6 +153,8 @@ impl Nodes {
                 Node64::ValuesRow(values_row) => {
                     Node::Relational(Relational::ValuesRow(values_row))
                 }
+                Node64::BuildFilter(bf) => Node::Relational(Relational::BuildFilter(bf)),
+                Node64::ApplyFilter(af) => Node::Relational(Relational::ApplyFilter(af)),
             }),
             ArenaType::Arena96 => self.arena96.get(id.offset as usize).map(|node| match node {
                 Node96::Projection(proj) => Node::Relational(Relational::Projection(proj)),
@@ -314,6 +316,12 @@ impl Nodes {
                     }
                     Node64::ValuesRow(values_row) => {
                         MutNode::Relational(MutRelational::ValuesRow(values_row))
+                    }
+                    Node64::BuildFilter(bf) => {
+                        MutNode::Relational(MutRelational::BuildFilter(bf))
+                    }
+                    Node64::ApplyFilter(af) => {
+                        MutNode::Relational(MutRelational::ApplyFilter(af))
                     }
                 }),
             ArenaType::Arena96 => self
@@ -1051,7 +1059,9 @@ impl Plan {
             | Relational::Having(Having { output, .. })
             | Relational::OrderBy(OrderBy { output, .. })
             | Relational::GroupBy(GroupBy { output, .. })
-            | Relational::Limit(Limit { output, .. }) => {
+            | Relational::Limit(Limit { output, .. })
+            | Relational::BuildFilter(BuildFilter { output, .. })
+            | Relational::ApplyFilter(ApplyFilter { output, .. }) => {
                 let source_output_list = self.get_row_list(*output)?;
                 let source_ref_id = source_output_list[*position];
                 self.get_reference_source_relation(source_ref_id)
@@ -2012,7 +2022,9 @@ impl Plan {
             | Relational::Values { .. }
             | Relational::Having { .. }
             | Relational::ValuesRow { .. }
-            | Relational::Limit { .. } => Ok(*top_id),
+            | Relational::Limit { .. }
+            | Relational::BuildFilter { .. }
+            | Relational::ApplyFilter { .. } => Ok(*top_id),
             Relational::Motion { .. } | Relational::Insert { .. } | Relational::Delete { .. } => {
                 Err(SbroadError::Invalid(
                     Entity::Relational,
@@ -2996,7 +3008,9 @@ impl Plan {
                 | Relational::Update(_)
                 | Relational::Insert(_)
                 | Relational::Limit(_)
-                | Relational::Delete(_) => {
+                | Relational::Delete(_)
+                | Relational::BuildFilter(_)
+                | Relational::ApplyFilter(_) => {
                     // Do not push down if nodes above met before motion.
                     break;
                 }

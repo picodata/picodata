@@ -6,6 +6,7 @@ mod bool_in;
 mod cast_constants;
 mod constant_folding;
 mod dnf;
+mod dynamic_filter;
 mod equality_facts;
 mod equality_propagation;
 mod merge_tuples;

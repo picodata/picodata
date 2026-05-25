@@ -3384,6 +3384,13 @@ impl DbConfig {
     }
 
     #[inline]
+    pub fn sql_dynamic_filter_pushdown(&self) -> bool {
+        config::DYNAMIC_CONFIG
+            .sql_dynamic_filter_pushdown
+            .current_value()
+    }
+
+    #[inline]
     pub fn read_preference(&self) -> ReadPreference {
         let raw = config::DYNAMIC_CONFIG.read_preference.current_value();
         ReadPreference::try_from(raw).expect("invalid read_preference value")
@@ -3402,11 +3409,13 @@ impl DbConfig {
         let sql_motion_row_max = self.sql_motion_row_max();
         let read_preference = self.read_preference();
         let forward = self.forward();
+        let sql_dynamic_filter_pushdown = self.sql_dynamic_filter_pushdown();
         sql::ir::options::Options {
             sql_motion_row_max,
             sql_vdbe_opcode_max,
             read_preference,
             forward,
+            sql_dynamic_filter_pushdown,
             ..Default::default()
         }
     }

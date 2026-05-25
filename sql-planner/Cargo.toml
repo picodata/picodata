@@ -30,6 +30,7 @@ rmp-serde = { workspace = true }
 rmpv = { workspace = true }
 serde = { workspace = true, features = ["derive", "rc"] }
 sql-protocol = { workspace = true }
+sql-dynfilter = { workspace = true }
 serde_bytes = { workspace = true }
 smol_str = { workspace = true }
 twox-hash = "2.1"

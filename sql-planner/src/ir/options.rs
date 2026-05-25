@@ -193,6 +193,10 @@ pub struct Options {
     ///   to the leader that owns the buckets. An error is
     ///   raised otherwise.
     pub forward: Forward,
+    /// Whether the resolver should insert BuildFilter/ApplyFilter pairs
+    /// for INNER JOIN dynamic filter pushdown. Driven by the
+    /// `sql_dynamic_filter_pushdown` alter-system parameter.
+    pub sql_dynamic_filter_pushdown: bool,
 }
 
 /// Default DDL/ACL timeout: 24 hours in microseconds.
@@ -206,6 +210,7 @@ impl Default for Options {
             read_preference: ReadPreference::default(),
             sql_ddl_timeout_us: DEFAULT_SQL_DDL_TIMEOUT_US,
             forward: Forward::default(),
+            sql_dynamic_filter_pushdown: false,
         }
     }
 }
@@ -250,6 +255,7 @@ pub struct PartialOptions {
     pub sql_vdbe_opcode_max: Option<i64>,
     pub read_preference: Option<ReadPreference>,
     pub forward: Option<Forward>,
+    pub sql_dynamic_filter_pushdown: Option<bool>,
 }
 
 impl PartialOptions {
@@ -268,6 +274,9 @@ impl PartialOptions {
             read_preference: self.read_preference.unwrap_or(defaults.read_preference),
             sql_ddl_timeout_us: defaults.sql_ddl_timeout_us,
             forward: self.forward.unwrap_or(defaults.forward),
+            sql_dynamic_filter_pushdown: self
+                .sql_dynamic_filter_pushdown
+                .unwrap_or(defaults.sql_dynamic_filter_pushdown),
         }
     }
 }
@@ -390,6 +399,7 @@ impl LoweredOptions {
             read_preference: self.read_preference.unwrap(default.read_preference),
             sql_ddl_timeout_us: default.sql_ddl_timeout_us,
             forward: self.forward.unwrap(default.forward),
+            sql_dynamic_filter_pushdown: default.sql_dynamic_filter_pushdown,
         }
     }
 }
