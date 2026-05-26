@@ -2253,6 +2253,13 @@ impl<'p> SyntaxPlan<'p> {
             return self.process_asterisk_logic(&name, asterisk_id, asterisk_handler);
         }
 
+        // Special case for a single shard query when a Motion node is removed.
+        if relation_name.is_some()
+            && !matches!(ir_plan.scan_name(ref_source_node_id, position), Ok(Some(_)))
+        {
+            return self.handle_non_asterisk_reference(sn_id, need_comma, asterisk_handler);
+        }
+
         self.process_asterisk_logic(relation_name, asterisk_id, asterisk_handler)
     }
 

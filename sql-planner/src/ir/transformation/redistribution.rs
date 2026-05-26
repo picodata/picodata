@@ -299,6 +299,8 @@ type DataTransformation = (MotionPolicy, Program);
 struct Strategy {
     parent_id: NodeId,
     children_policy: HashMap<ChildId, DataTransformation>,
+    /// Alias hint for motions to be created in `insert_motion_nodes`.
+    children_alias_hints: HashMap<ChildId, SmolStr>,
 }
 
 impl Strategy {
@@ -306,6 +308,7 @@ impl Strategy {
         Self {
             parent_id,
             children_policy: HashMap::new(),
+            children_alias_hints: HashMap::new(),
         }
     }
 
@@ -315,8 +318,13 @@ impl Strategy {
         self.children_policy.insert(child_id, (policy, program));
     }
 
+    fn upsert_alias_hint(&mut self, child_id: NodeId, alias: SmolStr) {
+        self.children_alias_hints.insert(child_id, alias);
+    }
+
     fn remove_child(&mut self, child_id: NodeId) {
         self.children_policy.remove(&child_id);
+        self.children_alias_hints.remove(&child_id);
     }
 
     fn get_rel_ids(&self) -> AHashSet<NodeId> {
@@ -845,6 +853,15 @@ impl Plan {
 
             let program = std::mem::take(program);
             let motion_id = self.add_motion(*child, policy, program)?;
+            if let Some(alias_hint) = strategy.children_alias_hints.get(child) {
+                if let MutRelational::Motion(Motion {
+                    alias: motion_alias,
+                    ..
+                }) = self.get_mut_relation_node(motion_id)?
+                {
+                    *motion_alias = Some(alias_hint.clone());
+                }
+            }
             self.replace_target_in_relational(parent_id, *child, motion_id)?;
             *child = motion_id;
         }
@@ -1118,6 +1135,18 @@ impl Plan {
                 .expect("Entry in strategy map is missing.");
             match policy {
                 MotionPolicy::Full | MotionPolicy::Segment(_) => {
+                    // Capture the alias of the wrapped child before mutating the plan.
+                    let wrapped_alias = match self.get_relation_node(child_id)? {
+                        Relational::ScanCte(ScanCte { alias, .. }) => Some(alias.clone()),
+                        Relational::ScanSubQuery(ScanSubQuery { alias: Some(a), .. }) => {
+                            Some(a.clone())
+                        }
+                        Relational::ScanRelation(ScanRelation {
+                            alias, relation, ..
+                        }) => alias.clone().or_else(|| Some(relation.clone())),
+                        _ => None,
+                    };
+
                     let (proj_id, col_pos_transforms) =
                         self.add_proj_with_col_reduction(parent_id, child_id, false, true)?;
 
@@ -1149,6 +1178,9 @@ impl Plan {
                     }
 
                     strategy.upsert_child(proj_id, proj_policy, proj_program);
+                    if let Some(alias) = wrapped_alias {
+                        strategy.upsert_alias_hint(proj_id, alias);
+                    }
                     strategy.remove_child(child_id);
                 }
                 _ => {}

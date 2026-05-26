@@ -882,7 +882,7 @@ impl Plan {
             Relational::ScanSubQuery(ScanSubQuery { alias, .. }) => alias.clone(),
             Relational::ScanRelation(ScanRelation {
                 alias, relation, ..
-            }) => alias.clone().or(Some(relation.clone())),
+            }) => alias.clone().or_else(|| Some(relation.clone())),
             Relational::ScanCte(ScanCte { alias, .. }) => Some(alias.clone()),
             Relational::Join(Join { .. }) => Some(self.context_mut().get_unnamed_join_name()),
             _ => None,
@@ -2051,7 +2051,7 @@ impl Plan {
             | Relational::Delete(Delete { relation, .. }) => Ok(Some(relation.as_str())),
             Relational::ScanRelation(ScanRelation {
                 alias, relation, ..
-            }) => Ok(alias.as_deref().or(Some(relation.as_str()))),
+            }) => Ok(alias.as_deref().or_else(|| Some(relation.as_str()))),
             Relational::Projection { .. }
             | Relational::SelectWithoutScan { .. }
             | Relational::GroupBy { .. }

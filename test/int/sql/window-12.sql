@@ -130,7 +130,7 @@ WINDOW
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (avg(x::int::int) over (partition by (x::int + ROW($0)) ) -> col_1, sum(x::int::int) over (order by (y::int + 2::int * ROW($2) + ROW($1)) ) -> col_2)
+projection (avg(t6.x::int::int) over (partition by (t6.x::int + ROW($0)) ) -> col_1, sum(t6.x::int::int) over (order by (t6.y::int + 2::int * ROW($2) + ROW($1)) ) -> col_2)
   motion [policy: full, program: ReshardIfNeeded]
     projection (t6.x::int -> x, t6.y::int -> y)
       scan t6
@@ -173,7 +173,7 @@ WINDOW
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (row_number() over (partition by (x::int + ROW($1)) ) -> col_1, sum(y::int::int) over (partition by (x::int + ROW($1)) ) -> col_2, max(x::int::int) over (order by (x::int + ROW($0)::int) ) -> col_3)
+projection (row_number() over (partition by (t6.x::int + ROW($1)) ) -> col_1, sum(t6.y::int::int) over (partition by (t6.x::int + ROW($1)) ) -> col_2, max(t6.x::int::int) over (order by (t6.x::int + ROW($0)::int) ) -> col_3)
   motion [policy: full, program: ReshardIfNeeded]
     projection (t6.x::int -> x, t6.y::int -> y)
       scan t6
