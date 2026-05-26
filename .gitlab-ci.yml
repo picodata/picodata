@@ -436,10 +436,6 @@ test-rs-linux:
       policy: pull
     - <<: *base_cache
       policy: pull
-    - key: target-testrs-$BUILD_PROFILE-$CI_PIPELINE_ID
-      paths:
-        - target
-      policy: push
   script:
     - tools/ensure_checkout.sh
 
@@ -481,9 +477,11 @@ test-rs-linux:
         make coverage-merge
         make coverage-trim-target
         du -hc --max-depth=1 target
+        tar czf - target | curl --insecure --silent  --upload-file - --fail \
+          --show-error --max-time 1200 --user "$GITCACHE_FS_CRED" \
+          "https://picofs.picodata.int/gitlab_cache/target-testrs-${BUILD_PROFILE}-${CI_PIPELINE_ID}.tar.gz"
+        echo "coverage data uploaded"
         ci-log-section end "coverage-data"
-      else
-        make clean
       fi
 
   artifacts:
@@ -524,10 +522,6 @@ test-py-sql-linux:
       policy: pull
     - <<: *rolling_binaries_cache
       policy: pull
-    - key: target-testpysql-$BUILD_PROFILE-$CI_PIPELINE_ID
-      paths:
-        - target
-      policy: push
   script:
     - *poetry-install
     - |
@@ -547,9 +541,11 @@ test-py-sql-linux:
         make coverage-merge
         make coverage-trim-target
         du -hc --max-depth=1 target
+        tar czf - target | curl --insecure --silent  --upload-file - --fail \
+          --show-error --max-time 1200 --user "$GITCACHE_FS_CRED" \
+          "https://picofs.picodata.int/gitlab_cache/target-testpysql-${BUILD_PROFILE}-${CI_PIPELINE_ID}.tar.gz"
+        echo "coverage data uploaded"
         ci-log-section end "coverage-data"
-      else
-        rm -rf target
       fi
   after_script:
     - ./tools/upload-flake-tracker-report.sh
@@ -607,10 +603,6 @@ test-py-not-sql-linux:
       policy: pull
     - <<: *rolling_binaries_cache
       policy: pull
-    - key: target-testpynotsql-$BUILD_PROFILE-$CI_PIPELINE_ID
-      paths:
-        - target
-      policy: push
   script:
     - *poetry-install
     - |
@@ -630,9 +622,11 @@ test-py-not-sql-linux:
         make coverage-merge
         make coverage-trim-target
         du -hc --max-depth=1 target
+        tar czf - target | curl --insecure --silent  --upload-file - --fail \
+          --show-error --max-time 1200 --user "$GITCACHE_FS_CRED" \
+          "https://picofs.picodata.int/gitlab_cache/target-testpynotsql-${BUILD_PROFILE}-${CI_PIPELINE_ID}.tar.gz"
+        echo "coverage data uploaded"
         ci-log-section end "coverage-data"
-      else
-        rm -rf target
       fi
   after_script:
     - ./tools/upload-flake-tracker-report.sh
@@ -1109,22 +1103,22 @@ deploy-coverage:
   cache:
     - <<: *cache_git
       policy: pull
-    - key: target-testrs-dev-$CI_PIPELINE_ID
-      paths:
-        - target
-      policy: pull
-    - key: target-testpysql-dev-$CI_PIPELINE_ID
-      paths:
-        - target
-      policy: pull
-    - key: target-testpynotsql-dev-$CI_PIPELINE_ID
-      paths:
-        - target
-      policy: pull
   dependencies: []
   script:
+    - "set -o pipefail"
+    - |
+      curl --insecure --silent --fail --show-error --max-time 1200 \
+       --user "$GITCACHE_FS_CRED" "https://picofs.picodata.int/gitlab_cache/target-testpynotsql-dev-${CI_PIPELINE_ID}.tar.gz" | tar xzf -
+    - |
+      curl --insecure --silent --fail --show-error --max-time 1200 \
+       --user "$GITCACHE_FS_CRED" "https://picofs.picodata.int/gitlab_cache/target-testpysql-dev-${CI_PIPELINE_ID}.tar.gz" | tar xzf -
+    - |
+      curl --insecure --silent --fail --show-error --max-time 1200 \
+       --user "$GITCACHE_FS_CRED" "https://picofs.picodata.int/gitlab_cache/target-testrs-dev-${CI_PIPELINE_ID}.tar.gz" | tar xzf -
     - make coverage-report
     - ZIP_FILENAME=picodata_${CI_COMMIT_REF_SLUG}_${CI_COMMIT_SHORT_SHA}
     - cd target/cov/coverage/report
     - zip -r --quiet ../$ZIP_FILENAME .
-    - 'curl --fail --show-error --retry 3  --max-time 300 -s -H "Authorization: ApiKey ${REPORTFILER_UPLOAD_TOKEN}" -F "zipfile=@../${ZIP_FILENAME}.zip" https://fs.picodata.io/reportfiler/reportupload'
+    - |
+      curl --fail --show-error --retry 3  --max-time 300 -s -H "Authorization: ApiKey ${REPORTFILER_UPLOAD_TOKEN}" \
+        -F "zipfile=@../${ZIP_FILENAME}.zip" https://fs.picodata.io/reportfiler/reportupload
