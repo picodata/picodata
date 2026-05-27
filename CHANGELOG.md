@@ -8,6 +8,12 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [26.1.4] - Unreleased
+
+### Fixes
+
+- [picodata#2926] Reduced log verbosity in vshard for routine replicaset events.
+
 ## [26.1.3] - 2026-05-21
 
 ### Breaking changes
