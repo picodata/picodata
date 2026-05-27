@@ -183,57 +183,85 @@ fn parameterized_anonymous_blocks() {
 
 #[test]
 fn block_query_has_motions_errors() {
-    // Some kind of a list of queries that cannot be executed in a block as they have motions.
+    let tail = "cannot run in a transactional block because it requires \
+                cross-shard data movement; restrict by the sharding key, \
+                or move it outside the block";
+
     let test_cases = [
         (
             "DO $$ BEGIN RETURN QUERY SELECT (SELECT a FROM t1) FROM t1; END $$",
-            "SELECT",
+            "statement 1 (RETURN QUERY)",
         ),
         (
             "DO $$ BEGIN RETURN QUERY VALUES ((SELECT a FROM t1)); END $$",
-            "VALUES",
+            "statement 1 (RETURN QUERY)",
         ),
         (
             "DO $$ BEGIN RETURN QUERY SELECT * FROM t1 ORDER BY 1; END $$",
-            "SELECT",
+            "statement 1 (RETURN QUERY)",
         ),
         (
             "DO $$ BEGIN RETURN QUERY SELECT * FROM t1 GROUP BY a, b; END $$",
-            "SELECT",
+            "statement 1 (RETURN QUERY)",
         ),
         (
             "DO $$ BEGIN RETURN QUERY SELECT * FROM t1 LIMIT 1; END $$",
-            "LIMIT",
+            "statement 1 (RETURN QUERY)",
         ),
         (
             "DO $$ BEGIN RETURN QUERY SELECT * FROM t1 GROUP BY a, b ORDER BY a; END $$",
-            "SELECT",
+            "statement 1 (RETURN QUERY)",
         ),
         (
             "DO $$ BEGIN RETURN QUERY SELECT * FROM t1 GROUP BY b, a ORDER BY b LIMIT 1; END $$",
-            "LIMIT",
+            "statement 1 (RETURN QUERY)",
         ),
         (
             "DO $$ BEGIN RETURN QUERY SELECT * FROM t1 UNION SELECT * FROM t1; END $$",
-            "UNION",
+            "statement 1 (RETURN QUERY)",
         ),
         (
             "DO $$ BEGIN RETURN QUERY SELECT * FROM t1 JOIN t2 ON true; END $$",
-            "SELECT",
+            "statement 1 (RETURN QUERY)",
         ),
         (
             "DO $$ BEGIN INSERT INTO t1 SELECT a, b FROM t1; END $$",
-            "INSERT",
+            "statement 1 (DML)",
+        ),
+        (
+            "DO $$ BEGIN \
+                IF (SELECT b FROM t1) > 0 THEN UPDATE t2 SET e = f; END IF; \
+            END $$",
+            "statement 1 (IF condition)",
+        ),
+        (
+            "DO $$ BEGIN \
+                IF true THEN INSERT INTO t1 SELECT a, b FROM t1; END IF; \
+            END $$",
+            "statement 1 (IF body, query 1)",
+        ),
+        (
+            "DO $$ BEGIN \
+                RETURN QUERY SELECT 1; \
+                RETURN QUERY SELECT b FROM t1 ORDER BY 1; \
+            END $$",
+            "statement 2 (RETURN QUERY)",
+        ),
+        (
+            "DO $$ BEGIN \
+                IF true THEN \
+                    DELETE FROM t2 WHERE e = 1; \
+                    INSERT INTO t1 SELECT a, b FROM t1; \
+                END IF; \
+            END $$",
+            "statement 1 (IF body, query 2)",
         ),
     ];
 
-    for (block, keyword) in test_cases {
+    for (block, locator) in test_cases {
         let plan = sql_to_ir_without_bind(block, &[]);
         let error = plan.optimize_block().unwrap_err();
-        assert_eq!(
-            error.to_string(),
-            format!("{keyword} query has motions which are not allowed in transactions")
-        );
+        assert_eq!(error.to_string(), format!("{locator}: {tail}"));
     }
 }
 

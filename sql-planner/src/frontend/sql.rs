@@ -8,7 +8,7 @@ use crate::ir::node::ddl::DdlOwned;
 use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
-    Alias, AlterColumn, AlterTable, AlterTableOp, AnonymousBlock, Backup, BlockQueries,
+    Alias, AlterColumn, AlterTable, AlterTableOp, AnonymousBlock, Backup, BlockEntries,
     BlockStatement, Bound, BoundType, Frame, FrameType, GroupBy, LetVarRef, Node32, Over,
     Parameter, Reference, ReferenceAsteriskSource, ReferenceTarget, RenameIndex, Row,
     ScalarFunction, SubQueryReference, TimeParameters, Timestamp, TruncateTable, Values, ValuesRow,
@@ -2274,8 +2274,8 @@ fn parse_anonymous_block<M: Metadata>(
     }
 
     // Ensure we don't write to global tables.
-    for query_id in BlockQueries::new(&statements) {
-        let relation: &str = match plan.get_relation_node(*query_id)? {
+    for entry in BlockEntries::new(&statements) {
+        let relation: &str = match plan.get_relation_node(*entry.query)? {
             Relational::Delete(d) => &d.relation,
             Relational::Insert(i) => &i.relation,
             Relational::Update(u) => &u.relation,
@@ -2296,13 +2296,14 @@ fn parse_anonymous_block<M: Metadata>(
     }
 
     // Ensure `generate_pattern_with_params_for_block` can handle queries.
-    for node_id in BlockQueries::new(&statements) {
-        match plan.get_relation_node(*node_id)? {
+    for entry in BlockEntries::new(&statements) {
+        let node_id = *entry.query;
+        match plan.get_relation_node(node_id)? {
             Relational::Update(_) => {
-                ensure_can_generate_local_sql_for_dml("UPDATE", *node_id, plan)?
+                ensure_can_generate_local_sql_for_dml("UPDATE", node_id, plan)?
             }
             Relational::Delete(_) => {
-                ensure_can_generate_local_sql_for_dml("DELETE", *node_id, plan)?
+                ensure_can_generate_local_sql_for_dml("DELETE", node_id, plan)?
             }
             _ => {}
         }

@@ -33,8 +33,8 @@ use crate::ir::node::block::{BlockOwned, MutBlock};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
-    AnonymousBlock, BlockQueries, BlockQueriesMut, BlockStatement, Insert, Motion, NodeId, Values,
-    ValuesRow,
+    AnonymousBlock, BlockEntries, BlockEntriesMut, BlockStatement, Insert, Motion, NodeId,
+    StatementLocation, Values, ValuesRow,
 };
 use crate::ir::options::OptionKind;
 use crate::ir::transformation::redistribution::{MotionPolicy, Target};
@@ -89,7 +89,7 @@ impl Plan {
             .mark_unique_parameters()
     }
 
-    pub fn optimize_block(mut self) -> Result<Self, SbroadError> {
+    pub fn optimize_block(self) -> Result<Self, SbroadError> {
         // Eliminate motions from the plan so it can be executed locally within a block.
         fn eliminate_motions_in_subtree(
             plan: &mut Plan,
@@ -212,40 +212,40 @@ impl Plan {
             panic!("can't opmitize {block:?} as block");
         };
 
-        // Optimize subtrees and eliminate motions.
-        for query_id_slot in BlockQueriesMut::new(&mut statements) {
-            // Remember keyword for the top node before motions are added.
-            let keyword = self.as_keyword(*query_id_slot);
-
-            // Set top so `optimize_subtree()` can update it when subtree's top changes.
-            self.set_top(*query_id_slot)
-                .expect("top node can't be missed");
-            self = self.optimize_subtree(*query_id_slot)?;
-            eliminate_motions_in_subtree(&mut self, *query_id_slot)?;
-            let new_top = self.get_top().expect("just set");
-            *query_id_slot = new_top;
-
-            // Ensure no motions.
-            if self.subtree_has_motions(new_top)? {
+        fn optimize_block_subtree(mut plan: Plan, query: &mut NodeId) -> Result<Plan, SbroadError> {
+            plan.set_top(*query).expect("top node can't be missed");
+            plan = plan.optimize_subtree(*query)?;
+            eliminate_motions_in_subtree(&mut plan, *query)?;
+            let new_top = plan.get_top().expect("just set");
+            *query = new_top;
+            if plan.subtree_has_motions(new_top)? {
                 return Err(SbroadError::Other(format_smolstr!(
-                    "{keyword} query has motions which are not allowed in transactions"
+                    "cannot run in a transactional block because it requires \
+                     cross-shard data movement; restrict by the sharding key, \
+                     or move it outside the block"
                 )));
             }
+            Ok(plan)
+        }
+
+        let mut plan = self;
+        for entry in BlockEntriesMut::new(&mut statements) {
+            plan = entry.with_state(plan, optimize_block_subtree)?;
         }
 
         // Set block as the top node back.
-        self.set_top(block_id).expect("block node can't be missed");
+        plan.set_top(block_id).expect("block node can't be missed");
 
         // Update statements since as a result of optimizations each subtree can have a new top.
         if let MutBlock::Anonymous(AnonymousBlock {
             statements: ref mut plan_statements,
             ..
-        }) = self.get_mut_block_node(block_id)?
+        }) = plan.get_mut_block_node(block_id)?
         {
             *plan_statements = statements;
         }
 
-        Ok(self)
+        Ok(plan)
     }
 
     fn subtree_has_motions(&self, top_id: NodeId) -> Result<bool, SbroadError> {
@@ -256,33 +256,6 @@ impl Plan {
             }
         }
         Ok(false)
-    }
-
-    fn as_keyword(&self, top_id: NodeId) -> &'static str {
-        let Ok(top) = self.get_relation_node(top_id) else {
-            return "";
-        };
-
-        match top {
-            Relational::Values(_) | Relational::ValuesRow(_) => "VALUES",
-            Relational::Projection(_) | Relational::SelectWithoutScan(_) => "SELECT",
-            Relational::ScanCte(_) | Relational::ScanSubQuery(_) => "FROM",
-            Relational::ScanRelation(_) => "FROM",
-            Relational::Selection(_) => "WHERE",
-            Relational::UnionAll(_) => "UNION ALL",
-            Relational::Union(_) => "UNION",
-            Relational::Except(_) => "EXCEPT",
-            Relational::Limit(_) => "LIMIT",
-            Relational::Join(_) => "JOIN",
-            Relational::Intersect(_) => "INTERSECT",
-            Relational::Update(_) => "UPDATE",
-            Relational::Delete(_) => "DELETE",
-            Relational::Insert(_) => "INSERT",
-            Relational::Having(_) => "HAVING",
-            Relational::GroupBy(_) => "GROUP BY",
-            Relational::OrderBy(_) => "ORDER BY",
-            Relational::Motion(_) => "<MOTION>",
-        }
     }
 }
 
@@ -534,43 +507,47 @@ where
                 unreachable!("plan.is_block() returned true, but top is {block:?}")
             };
 
-            let mut block_buckets = None;
-            for query_id in BlockQueries::new(&block.statements) {
-                let buckets = self.bucket_discovery(*query_id)?;
-                match buckets {
-                    Buckets::All => {
-                        return Err(SbroadError::Other(format_smolstr!(
-                            "transaction cannot be executed on all buckets"
-                        )))
-                    }
-                    Buckets::Filtered(BucketSet::Exact(ref filtered)) => {
-                        if filtered.len() != 1 {
+            let mut block_buckets: Option<(StatementLocation, Buckets)> = None;
+            for entry in BlockEntries::new(&block.statements) {
+                let buckets = entry.with(|query_id| {
+                    let buckets = self.bucket_discovery(*query_id)?;
+                    match &buckets {
+                        Buckets::All => {
+                            return Err(SbroadError::Other(
+                                "transaction cannot be executed on all buckets".into(),
+                            ))
+                        }
+                        Buckets::Filtered(BucketSet::Exact(filtered)) if filtered.len() != 1 => {
                             return Err(SbroadError::Other(format_smolstr!(
                                 "transaction can only be executed on a single bucket, got {buckets}"
                             )));
                         }
-
-                        if let Some(block_buckets) = &block_buckets {
-                            if block_buckets != &buckets {
-                                return Err(SbroadError::Other(format_smolstr!(
-                                    "transaction queries have different buckets: {block_buckets} and {buckets}"
-                                )));
-                            }
-                        } else {
-                            block_buckets = Some(buckets);
+                        Buckets::Filtered(BucketSet::Exact(_)) | Buckets::Any => {}
+                        Buckets::Filtered(BucketSet::Unknown(_, _)) => {
+                            panic!("buckets must already be determined")
                         }
                     }
-                    Buckets::Filtered(_) => {
-                        return Err(SbroadError::Invalid(
-                            Entity::Buckets,
-                            Some("buckets are not discovered".into()),
-                        ))
+                    Ok(buckets)
+                })?;
+
+                // Cross-statement check carries two locations, so it lives outside the closure.
+                if matches!(buckets, Buckets::Filtered(_)) {
+                    if let Some((prev_location, prev_buckets)) = &block_buckets {
+                        if prev_buckets != &buckets {
+                            return Err(prev_location.wrap_error_with(
+                                &entry.location,
+                                SbroadError::Other(format_smolstr!(
+                                    "different buckets: {prev_buckets} and {buckets}"
+                                )),
+                            ));
+                        }
+                    } else {
+                        block_buckets = Some((entry.location, buckets));
                     }
-                    Buckets::Any => (),
                 }
             }
 
-            let buckets = block_buckets.unwrap_or(Buckets::Any);
+            let buckets = block_buckets.map(|(_, b)| b).unwrap_or(Buckets::Any);
             self.enforce_forward_option(&buckets)?;
 
             return self

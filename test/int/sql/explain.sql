@@ -1276,7 +1276,7 @@ BEGIN
   UPDATE t SET a = a * 2 WHERE pk = 2;
 END $$;
 -- ERROR:
-transaction queries have different buckets: \[1934\] and \[1410\]
+statement 1 \(DML\) and statement 2 \(DML\): different buckets: \[1934\] and \[1410\]
 
 -- TEST: explain-insert-with-buckets-setup
 -- SQL:

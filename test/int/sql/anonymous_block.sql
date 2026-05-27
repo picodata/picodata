@@ -71,7 +71,7 @@ BEGIN
   RETURN QUERY SELECT b FROM t WHERE pk = 2;
 END $$;
 -- ERROR:
-transaction queries have different buckets: \[1934\] and \[1410\]
+statement 1 \(RETURN QUERY\) and statement 2 \(RETURN QUERY\): different buckets: \[1934\] and \[1410\]
 
 -- TEST: updates-1
 -- SQL:
@@ -408,7 +408,7 @@ BEGIN
   INSERT INTO t VALUES (2, 1, 1) ON CONFLICT DO REPLACE;
 END $$;
 -- ERROR:
-transaction queries have different buckets
+statement 1 \(RETURN QUERY\) and statement 2 \(DML\): different buckets: \[1934\] and \[1410\]
 
 -- TEST: insert-non-constant-sharding-key-error
 -- SQL:
@@ -501,7 +501,7 @@ BEGIN
   INSERT INTO t SELECT pk + 100, a, b FROM t WHERE pk = 1;
 END $$;
 -- ERROR:
-INSERT query has motions which are not allowed in transactions
+statement 1 \(DML\): cannot run in a transactional block because it requires cross-shard data movement; restrict by the sharding key, or move it outside the block
 
 -- TEST: dollar-in-string-literals-is-not-replaced-with-colon
 -- SQL:
@@ -1168,4 +1168,4 @@ BEGIN
   END IF;
 END $$;
 -- ERROR:
-transaction queries have different buckets
+statement 1 \(IF body, query 1\) and statement 1 \(IF body, query 2\): different buckets: \[1934\] and \[1410\]
