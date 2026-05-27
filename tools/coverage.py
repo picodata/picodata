@@ -67,7 +67,7 @@ def intersperse(sep: Any, iterable: Iterable[Any]) -> Iterator[Any]:
 
 
 def find_demangler(demangler: Optional[Path] = None) -> Path:
-    known_tools = ["c++filt", "rustfilt", "llvm-cxxfilt"]
+    known_tools = ["llvm-cxxfilt", "rustfilt", "c++filt"]
 
     if demangler:
         # Explicit argument has precedence over `known_tools`
