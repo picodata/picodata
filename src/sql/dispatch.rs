@@ -572,7 +572,7 @@ pub(crate) fn block_dispatch<'p>(
     tier: Option<&str>,
 ) -> Result<(), SbroadError> {
     if block.explain_options.contains(ExplainOptions::Raw) {
-        return explain_execute_block(block, buckets.determine_exec_location(), port);
+        return explain_execute_block(block, buckets, port);
     }
 
     let deadline = Instant::now_fiber().saturating_add(timeout);

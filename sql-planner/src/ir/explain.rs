@@ -1464,7 +1464,7 @@ impl Display for ExplainTreePart {
     }
 }
 
-fn buckets_repr(buckets: &Buckets, bucket_count: u64) -> String {
+pub fn buckets_repr(buckets: &Buckets, bucket_count: u64) -> String {
     match buckets {
         Buckets::All => format!("[1-{bucket_count}]"),
         Buckets::Filtered(BucketSet::Exact(buckets_set)) => 'f: {

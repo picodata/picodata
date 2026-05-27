@@ -3,8 +3,12 @@
 DROP TABLE IF EXISTS t;
 DROP TABLE IF EXISTS tt;
 DROP TABLE IF EXISTS g;
+DROP TABLE IF EXISTS b;
+DROP TABLE IF EXISTS c;
 CREATE TABLE t (a INT, b DOUBLE, c TEXT, PRIMARY KEY (c, a));
 CREATE TABLE tt (d INT PRIMARY KEY);
+CREATE TABLE b (id INT PRIMARY KEY, val INT);
+CREATE TABLE c (id INT PRIMARY KEY, val INT);
 CREATE TABLE g (a INT PRIMARY KEY, b DOUBLE, c TEXT) DISTRIBUTED GLOBALLY;
 
 -- TEST: raw-buckets-select
@@ -23,6 +27,8 @@ SELECT * FROM "_pico_table"
 ''
 plan:
     [0] SCAN TABLE _pico_table (~1048576 rows)
+''
+buckets = any
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -47,6 +53,8 @@ SELECT "t"."a", "t"."b", "t"."c", "t"."bucket_id" FROM "t"
 plan:
     [0] SCAN TABLE t (~1048576 rows)
 ''
+buckets = [1-3000]
+''
 ╭────────────────────╮
 │ 2. Query (STORAGE) │
 ╰────────────────────╯
@@ -59,6 +67,8 @@ plan:
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
+buckets = [1-3000]
+''
 ╭───────────────────╮
 │ 3. Query (ROUTER) │
 ╰───────────────────╯
@@ -69,6 +79,8 @@ plan:
     [0] SCAN TABLE TMP_12303710340300335502_1136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
+''
+buckets = any
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -102,6 +114,8 @@ GROUP BY
 plan:
     [0] SCAN TABLE t (~1048576 rows)
 ''
+buckets = [1-3000]
+''
 ╭───────────────────╮
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
@@ -127,6 +141,8 @@ GROUP BY
 plan:
     [0] SCAN TABLE TMP_10708443887562185739_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
+''
+buckets = any
 ''
 ╭────────────────────╮
 │ 3. Query (STORAGE) │
@@ -164,6 +180,8 @@ plan:
     [0] SCAN SUBQUERY 1 (~1 row)
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
+buckets = [1-3000]
+''
 ╭───────────────────╮
 │ 4. Query (ROUTER) │
 ╰───────────────────╯
@@ -191,6 +209,8 @@ LIMIT
 plan:
     [0] SCAN TABLE TMP_10014680312475178822_2136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR ORDER BY
+''
+buckets = any
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -222,6 +242,8 @@ WHERE
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
 ''
+buckets = [442]
+''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -252,6 +274,8 @@ WHERE
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
+''
+buckets = [2873]
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -303,6 +327,8 @@ WHERE
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
 ''
+buckets = [2873]
+''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -348,6 +374,8 @@ WHERE
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
 ''
+buckets = [442]
+''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
@@ -379,6 +407,8 @@ VALUES ( CAST(2 AS int), CAST(2 AS int), CAST('2' AS string) )
 ''
 plan:
     [0] TRIVIAL
+''
+buckets = any
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -423,6 +453,8 @@ plan:
     [0] SCAN TABLE t (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
+buckets = [1-3000]
+''
 ╭───────────────────╮
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
@@ -432,6 +464,8 @@ SELECT "a" FROM ( SELECT "COL_0" as "a" FROM ( SELECT "COL_0" FROM "TMP_67509252
 plan:
     [0] SCAN TABLE TMP_6750925285242178588_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
+''
+buckets = any
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -578,6 +612,8 @@ plan:
     [0] SCAN TABLE t (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
+buckets = [1-3000]
+''
 ╭───────────────────╮
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
@@ -587,6 +623,8 @@ SELECT "COL_0" as "b" FROM ( SELECT "COL_0" FROM "TMP_6336902104418448325_0136" 
 plan:
     [0] SCAN TABLE TMP_6336902104418448325_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
+''
+buckets = any
 ''
 ╭────────────────────╮
 │ 3. Query (STORAGE) │
@@ -601,6 +639,8 @@ plan:
     [2] USE TEMP B-TREE FOR ORDER BY
     [0] COMPOUND SUBQUERIES 1 AND 2 (UNION ALL)
 ''
+buckets = [1-3000]
+''
 ╭───────────────────╮
 │ 4. Query (ROUTER) │
 ╰───────────────────╯
@@ -610,6 +650,8 @@ SELECT "COL_0" as "a" FROM ( SELECT "COL_0" FROM "TMP_2686742979206912190_2136" 
 plan:
     [0] SCAN TABLE TMP_2686742979206912190_2136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR ORDER BY
+''
+buckets = any
 ''
 ──────────────────────────────────────────────────────────────────────
  # Forward                                                            
@@ -671,6 +713,8 @@ SELECT "t"."b" FROM "t"
 plan:
     [0] SCAN TABLE t (~1048576 rows)
 ''
+buckets = [1-3000]
+''
 ╭────────────────────╮
 │ 2. Query (STORAGE) │
 ╰────────────────────╯
@@ -702,6 +746,8 @@ plan:
         [0] SCAN TABLE TMP_11220547791858563238_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
+buckets = [1-3000]
+''
 ╭───────────────────╮
 │ 3. Query (ROUTER) │
 ╰───────────────────╯
@@ -730,6 +776,8 @@ LIMIT
 plan:
     [0] SCAN TABLE TMP_5693774806165816034_1136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
+''
+buckets = any
 ''
 ──────────────────────────────────────────────────────────────────────
  # Forward                                                            
@@ -1422,3 +1470,266 @@ INSERT INTO "t" ("a", "b", "c", "bucket_id") VALUES ( CAST(42 AS int), CAST(2.5 
 ''
 plan:
     [0] TRIVIAL
+
+-- TEST: raw-buckets-select
+-- SQL:
+explain (raw, buckets) select * from t order by 1 limit 1000;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
+''
+SELECT "a", "b", "c" FROM ( SELECT "t"."a", "t"."b", "t"."c" FROM "t" ) ORDER BY 1 LIMIT 1000
+''
+plan:
+    [0] SCAN TABLE t (~1048576 rows)
+    [0] USE TEMP B-TREE FOR ORDER BY
+''
+buckets = [1-3000]
+''
+╭───────────────────╮
+│ 2. Query (ROUTER) │
+╰───────────────────╯
+''
+SELECT "COL_0" as "a", "COL_1" as "b", "COL_2" as "c" FROM ( SELECT "COL_0", "COL_1", "COL_2" FROM "TMP_2758788183884433110_0136" ) ORDER BY 1 LIMIT 1000
+''
+plan:
+    [0] SCAN TABLE TMP_2758788183884433110_0136 (~1048576 rows)
+    [0] USE TEMP B-TREE FOR ORDER BY
+''
+buckets = any
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1-3000]
+
+-- TEST: raw-buckets-select-join
+-- SQL:
+explain (raw, buckets) select * from t join g on t.a = g.a and g.c = 'lol';
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
+''
+SELECT "t"."a", "t"."b", "t"."c", "g".* FROM "t" INNER JOIN "g" ON "t"."a" = "g"."a" and "g"."c" = CAST('lol' AS string)
+''
+plan:
+    [0] SCAN TABLE t (~1048576 rows)
+        [0] SEARCH TABLE g USING PRIMARY KEY (a=?) (~1 row)
+''
+buckets = [1-3000]
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1-3000]
+
+-- TEST: raw-buckets-fmt-select-join
+-- SQL:
+explain (raw, buckets, fmt) select * from t join g on t.a = g.a and g.c = 'lol' group by 1, 2, 3, 4, 5, 6 order by 4 limit 10;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭────────────────────╮
+│ 1. Query (STORAGE) │
+╰────────────────────╯
+''
+SELECT
+  "gr_expr_1",
+  "gr_expr_2",
+  "gr_expr_3",
+  "gr_expr_4",
+  "gr_expr_5",
+  "gr_expr_6"
+FROM
+  (
+    SELECT
+      "t"."a" as "gr_expr_1",
+      "t"."b" as "gr_expr_2",
+      "t"."c" as "gr_expr_3",
+      "g"."a" as "gr_expr_4",
+      "g"."b" as "gr_expr_5",
+      "g"."c" as "gr_expr_6"
+    FROM
+      "t"
+      INNER JOIN "g" ON "t"."a" = "g"."a"
+      and "g"."c" = CAST('lol' AS string)
+    GROUP BY
+      "t"."a",
+      "t"."b",
+      "t"."c",
+      "g"."a",
+      "g"."b",
+      "g"."c"
+  )
+ORDER BY
+'  4'
+LIMIT
+'  10'
+''
+plan:
+    [0] SCAN TABLE t (~1048576 rows)
+        [0] SEARCH TABLE g USING PRIMARY KEY (a=?) (~1 row)
+    [0] USE TEMP B-TREE FOR ORDER BY
+''
+buckets = [1-3000]
+''
+╭───────────────────╮
+│ 2. Query (ROUTER) │
+╰───────────────────╯
+''
+SELECT
+  "a",
+  "b",
+  "c",
+  "a",
+  "b",
+  "c"
+FROM
+  (
+    SELECT
+      "COL_0" as "a",
+      "COL_1" as "b",
+      "COL_2" as "c",
+      "COL_3" as "a",
+      "COL_4" as "b",
+      "COL_5" as "c"
+    FROM
+      (
+        SELECT
+          "COL_0",
+          "COL_1",
+          "COL_2",
+          "COL_3",
+          "COL_4",
+          "COL_5"
+        FROM
+          "TMP_7812755374194076184_0136"
+      )
+    GROUP BY
+      "COL_0",
+      "COL_1",
+      "COL_2",
+      "COL_3",
+      "COL_4",
+      "COL_5"
+  )
+ORDER BY
+'  4'
+LIMIT
+'  10'
+''
+plan:
+    [0] SCAN TABLE TMP_7812755374194076184_0136 (~1048576 rows)
+    [0] USE TEMP B-TREE FOR GROUP BY
+    [0] USE TEMP B-TREE FOR ORDER BY
+''
+buckets = any
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1-3000]
+
+-- TEST: raw-buckets-logical-select-subquery
+-- SQL:
+explain (raw, buckets, logical) SELECT * FROM b WHERE b.id IN (SELECT val FROM c where id = 5);
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (b.id::int -> id, b.val::int -> val)
+  selection (b.id::int in ROW($0))
+    scan b
+subquery $0:
+  motion [policy: segment([ref(val)]), program: ReshardIfNeeded]
+    scan
+      projection (c.val::int -> val)
+        selection (c.id::int = 5::int)
+          scan c
+''
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭─────────────────────────────╮
+│ 1. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
+''
+SELECT "c"."val" FROM "c" WHERE "c"."id" = CAST(5 AS int)
+''
+plan:
+    [0] SEARCH TABLE c USING PRIMARY KEY (id=?) (~1 row)
+''
+buckets = [219]
+''
+╭────────────────────╮
+│ 2. Query (STORAGE) │
+╰────────────────────╯
+''
+SELECT "b"."id", "b"."val" FROM "b" WHERE "b"."id" in ( SELECT "COL_0" FROM "TMP_11862588026286075466_0136" )
+''
+plan:
+    [0] SEARCH TABLE b USING PRIMARY KEY (id=?) (~24 rows)
+    [0] EXECUTE LIST SUBQUERY 1
+    [1] SCAN TABLE TMP_11862588026286075466_0136 (~1048576 rows)
+''
+buckets = [1-3000]
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = unknown
+
+-- TEST: buckets-does-not-intersperse-with-raw-for-transactions
+-- SQL:
+explain (raw, buckets)
+do $$ begin
+    if true then
+        update b set val = id where id = 1;
+    end if;
+end $$;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭───────────────────────────────╮
+│ 1. If cond (FILTERED STORAGE) │
+╰───────────────────────────────╯
+''
+SELECT CAST(true AS bool) as "cond"
+''
+plan:
+    [0] TRIVIAL
+''
+╭───────────────────────────────╮
+│ 2. If body (FILTERED STORAGE) │
+╰───────────────────────────────╯
+''
+UPDATE "b" SET "val" = "b"."id" WHERE "b"."id" = CAST(1 AS int)
+''
+plan:
+    [0] SEARCH TABLE b USING PRIMARY KEY (id=?) (~1 row)
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1934]

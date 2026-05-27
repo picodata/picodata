@@ -474,6 +474,7 @@ pub struct BlockExecData {
     pub vdbe_max_steps: u64,
     pub returns_rows: bool,
     pub explain_options: ExplainOptions,
+    pub bucket_count: u64,
 }
 
 /// Key for the storage-side cache of assembled block VDBEs.

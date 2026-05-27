@@ -674,13 +674,12 @@ impl Vshard for StorageRuntime {
                 sql: local_sql,
             };
 
-            let location = buckets.determine_exec_location();
             explain_execute(
                 self,
                 miss_info,
                 sql_params.params(),
                 sql_vdbe_opcode_max,
-                location,
+                buckets,
                 port,
             )?;
 
@@ -887,14 +886,23 @@ impl StorageRuntime {
 
 pub fn explain_execute_block<'p>(
     block: BlockExecData,
-    location: &str,
+    buckets: &Buckets,
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError> {
     let vdbe_max_steps = block.vdbe_max_steps;
+    let bucket_count = block.bucket_count;
     let params = &mut block.params.into_iter();
     let mut explain_one =
         |sql: String, params: Vec<Value>, kind: &str| -> Result<(), SbroadError> {
-            explain_execute_guarded(&sql, &params, vdbe_max_steps, kind, location, port)
+            explain_execute_guarded(
+                &sql,
+                &params,
+                vdbe_max_steps,
+                kind,
+                buckets,
+                bucket_count,
+                port,
+            )
         };
 
     let next_params = |params: &mut IntoIter<_>| params.next().expect("not enough params");

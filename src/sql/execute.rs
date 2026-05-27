@@ -7,6 +7,7 @@ use crate::sql::port::PicoPortOwned;
 use crate::sql::router::{get_index_version_by_pk, get_table_version_by_id, VersionMap};
 use crate::sql::storage::{
     ExpandedLocalExecutionInfo, ExpandedPlanInfo, FullDeleteInfo, LocalExecutionInfo, PlanInfo,
+    StorageRuntime,
 };
 use crate::sql::{proc_query_metadata, PicoPortC};
 use crate::tlog;
@@ -30,6 +31,8 @@ use sql::executor::vtable::{
     vtable_indexed_column_name, VTableTuple, VirtualTable, VirtualTableTupleEncoder,
 };
 use sql::executor::{Port, PortType};
+use sql::ir::bucket::Buckets;
+use sql::ir::explain::buckets_repr;
 use sql::ir::helpers::RepeatableState;
 use sql::ir::options::Options;
 use sql::ir::relation::SpaceEngine;
@@ -689,14 +692,20 @@ pub fn explain_execute_guarded<'p>(
     params: &[Value],
     sql_vdbe_opcode_max: u64,
     query: &str,
-    location: &str,
+    buckets: &Buckets,
+    bucket_count: u64,
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError> {
     let mp_header = encode(&[query]);
     port.add_mp(&mp_header);
 
+    let location = buckets.determine_exec_location();
     let mp_location = encode(&[location]);
     port.add_mp(&mp_location);
+
+    let buckets_repr = buckets_repr(buckets, bucket_count);
+    let mp_buckets_repr = encode(&[buckets_repr]);
+    port.add_mp(&mp_buckets_repr);
 
     let mp_query = encode(&[explain]);
     port.add_mp(&mp_query);
@@ -780,17 +789,14 @@ impl Drop for TempTablesCleanupGuard {
     }
 }
 
-pub fn explain_execute<'p, R: QueryCache>(
-    runtime: &R,
+pub fn explain_execute<'p>(
+    runtime: &StorageRuntime,
     miss_info: impl ExpandedPlanInfo,
     params: &[Value],
     sql_vdbe_opcode_max: u64,
-    location: &str,
+    buckets: &Buckets,
     port: &mut impl Port<'p>,
-) -> Result<(), SbroadError>
-where
-    R::Cache: StorageCache<LockRef = TempTableLockRef>,
-{
+) -> Result<(), SbroadError> {
     let _plan_guard = acquire_plan_guard(runtime, miss_info.plan_id())?;
     let metadata = miss_info.vtable_metadata();
     let mut tables = TempTablesCleanupGuard::with_capacity(metadata.len());
@@ -801,12 +807,14 @@ where
         tables.push(table_name.to_smolstr());
     }
 
+    let bucket_count = runtime.bucket_count();
     explain_execute_guarded(
         miss_info.sql(),
         params,
         sql_vdbe_opcode_max,
         "Query",
-        location,
+        buckets,
+        bucket_count,
         port,
     )
 }

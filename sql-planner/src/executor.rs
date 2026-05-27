@@ -835,15 +835,13 @@ where
     }
 
     pub fn explain_raw<'p>(&mut self, port: &mut impl Port<'p>) -> Result<String, SbroadError> {
-        let should_fmt = self
-            .get_exec_plan()
-            .get_ir_plan()
-            .explain_options
-            .contains(ExplainOptions::Fmt);
-
-        let raw_explain = RawExplain::from_port(port, should_fmt)?;
-        let mut buf = String::new();
         let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
+        let should_fmt = explain_options.contains(ExplainOptions::Fmt);
+        let is_block = self.get_exec_plan().get_ir_plan().is_block()?;
+        let show_buckets = explain_options.contains(ExplainOptions::Buckets);
+
+        let raw_explain = RawExplain::from_port(port, should_fmt, show_buckets && !is_block)?;
+        let mut buf = String::new();
         if !explain_options.has_single_facet() {
             write_explain_header1!(&mut buf, "# Raw plan").unwrap();
             writeln!(&mut buf).unwrap();
@@ -934,6 +932,7 @@ impl RawExplainTuple {
 struct RawExplainEntry {
     query: String,
     location: String,
+    buckets: String,
     sql: String,
     params: Vec<Value>,
     tuples: Result<Vec<RawExplainTuple>, String>,
@@ -1001,6 +1000,7 @@ fn write_raw_explain_entry(
     entry: &RawExplainEntry,
     idx: usize,
     should_fmt: bool,
+    show_buckets: bool,
 ) -> fmt::Result {
     let sql = format_sql(&entry.sql, &entry.params, should_fmt);
     let plan = match &entry.tuples {
@@ -1014,12 +1014,17 @@ fn write_raw_explain_entry(
     write!(f, "\n{sql}\n\n")?;
     write!(f, "plan:\n{plan}")?;
 
+    if show_buckets {
+        write!(f, "\n\nbuckets = {}", entry.buckets)?;
+    }
+
     Ok(())
 }
 
 #[derive(Debug)]
 struct RawExplain {
     entries: Vec<RawExplainEntry>,
+    show_buckets: bool,
     should_fmt: bool,
 }
 
@@ -1027,7 +1032,7 @@ impl fmt::Display for RawExplain {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut entries = self.entries.iter().enumerate().peekable();
         while let Some((idx, entry)) = entries.next() {
-            write_raw_explain_entry(f, entry, idx + 1, self.should_fmt)?;
+            write_raw_explain_entry(f, entry, idx + 1, self.should_fmt, self.show_buckets)?;
 
             // Since raw explain entries don't include a trailing newline,
             // the first writeln! terminates the previous entry's last line,
@@ -1046,9 +1051,11 @@ impl RawExplain {
     pub fn from_port<'p>(
         port: &mut impl Port<'p>,
         should_fmt: bool,
+        show_buckets: bool,
     ) -> Result<RawExplain, SbroadError> {
         // vec![string] - query
         // vec![string] - location
+        // vec![string] - buckets_repr
         // vec![string] - sql
         // vec![params] - params
         // vec![int] - num of raw lines
@@ -1066,6 +1073,12 @@ impl RawExplain {
                 SbroadError::Other(format_smolstr!("unable to decode location: {err}"))
             })?;
             let location = location_wrapped[0].clone();
+
+            let buckets_mp = port_iter.next().expect("buckets must be in port");
+            let buckets_wrapped: Vec<String> = msgpack::decode(buckets_mp).map_err(|err| {
+                SbroadError::Other(format_smolstr!("unable to decode buckets: {err}"))
+            })?;
+            let buckets = buckets_wrapped[0].clone();
 
             let sql_mp = port_iter.next().expect("sql query must be in port");
             let sql_wrapped: Vec<String> = msgpack::decode(sql_mp).map_err(|err| {
@@ -1107,6 +1120,7 @@ impl RawExplain {
             entries.push(RawExplainEntry {
                 query,
                 location,
+                buckets,
                 sql,
                 params,
                 tuples,
@@ -1116,6 +1130,7 @@ impl RawExplain {
         Ok(Self {
             entries,
             should_fmt,
+            show_buckets,
         })
     }
 }

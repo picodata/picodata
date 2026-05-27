@@ -1200,6 +1200,7 @@ pub fn dispatch_impl<'p>(
             vdbe_max_steps,
             returns_rows: !block.return_columns.is_empty(),
             explain_options: plan.get_ir_plan().explain_options,
+            bucket_count: tier_runtime.bucket_count(),
         };
         return tier_runtime.exec_block_on_buckets(
             metadata,
