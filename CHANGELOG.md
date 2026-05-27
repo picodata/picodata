@@ -74,6 +74,8 @@ with the `YY.MINOR.MICRO` scheme.
   removed.
 - Extended constant folding: AND/OR identities, identity rules for equality with
   true and inequality with false.
+- Provide a way to match vdbe opcode or motion row limit error to specific
+  storage query in EXPLAIN (RAW).
 
 ### WebUI
 - Added new instance filters: `isVoter` and `isRaftLeader`. Both support

@@ -360,9 +360,12 @@ pub enum SbroadError {
     UseOfBothParamsStyles,
     GlobalDml(SmolStr),
     DispatchError(SmolStr),
+    ExecutionError(SmolStr),
     ProtocolError(ProtocolError),
     // Can't use vdbe::SqlError because it doesn't implement PartialEq :(
     VdbeError(SmolStr),
+    // Contains the number of query in EXPLAIN (RAW) output which leads to error.
+    TaggedExecutionError(usize, SmolStr),
     Other(SmolStr),
 }
 
@@ -413,8 +416,12 @@ impl fmt::Display for SbroadError {
             SbroadError::ProtocolError(err) => {
                 format_smolstr!("{err}")
             }
-            SbroadError::DispatchError(s) | SbroadError::Other(s) | SbroadError::VdbeError(s) => {
-                s.clone()
+            SbroadError::ExecutionError(s)
+            | SbroadError::DispatchError(s)
+            | SbroadError::Other(s)
+            | SbroadError::VdbeError(s) => s.clone(),
+            SbroadError::TaggedExecutionError(idx, err) => {
+                format_smolstr!("Query {idx} from EXPLAIN (RAW): {err}")
             }
         };
 

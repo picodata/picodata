@@ -57,7 +57,7 @@ def test_repeated_sql_options(instance: Instance):
                  )""")
     with pytest.raises(
         TarantoolError,
-        match=r"unexpected number of values: Exceeded maximum number of rows \(1\) in virtual table: 2",
+        match=r"Query 1 from EXPLAIN \(RAW\): Exceeded maximum number of rows \(1\) in virtual table: 2",
     ):
         instance.sql("""
                      SELECT * FROM (VALUES (1), (2)) OPTION (
@@ -72,7 +72,7 @@ def test_repeated_sql_options(instance: Instance):
                  )""")
     with pytest.raises(
         TarantoolError,
-        match=r"Reached a limit on max executed vdbe opcodes. Limit: 1",
+        match=r"Query 1 from EXPLAIN \(RAW\): Reached a limit on max executed vdbe opcodes. Limit: 1",
     ):
         instance.sql("""
                      SELECT * FROM (VALUES (1), (2)) OPTION (
@@ -91,12 +91,12 @@ def test_parametrized_sql_options(instance: Instance):
 
     with pytest.raises(
         TarantoolError,
-        match=r"Exceeded maximum number of rows \(1\) in virtual table: 2",
+        match=r"Query 1 from EXPLAIN \(RAW\): Exceeded maximum number of rows \(1\) in virtual table: 2",
     ):
         instance.sql(q1, 1, 200)
     with pytest.raises(
         TarantoolError,
-        match=r"Reached a limit on max executed vdbe opcodes. Limit: 1",
+        match=r"Query 1 from EXPLAIN \(RAW\): Reached a limit on max executed vdbe opcodes. Limit: 1",
     ):
         instance.sql(q1, 200, 1)
 
@@ -109,7 +109,7 @@ def test_parametrized_sql_options(instance: Instance):
     # using a parametrized option does limit the number of rows on insertion
     with pytest.raises(
         TarantoolError,
-        match=r"sbroad: unexpected number of values: Exceeded maximum number of rows \(1\) in virtual table: 3",
+        match=r"Query 1 from EXPLAIN \(RAW\): Exceeded maximum number of rows \(1\) in virtual table: 3",
     ):
         instance.sql(q2, 1)
     # and it can also pass

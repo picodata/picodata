@@ -1,5 +1,4 @@
 use crate::errors::{Entity, SbroadError};
-use crate::ir::node::relational::Relational;
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use serde::{Deserialize, Serialize};
@@ -463,28 +462,6 @@ pub(super) fn lower_options(
 }
 
 impl Plan {
-    fn get_inserted_values_count(&self) -> Result<Option<usize>, SbroadError> {
-        let id = self.get_top()?;
-        if let Ok(Relational::Insert(_)) = self.get_relation_node(id) {
-            // if it's an insert - try to determine number of values we are trying to insert.
-            // for unoptimized queries we can look at the first child to find the Values node,
-            // optimized queries have motions, however, and we have to support this too
-            let child_id = self.get_first_rel_child(id)?;
-            match self.get_relation_node(child_id)? {
-                Relational::Motion(_) => {
-                    let child2_id = self.get_first_rel_child(child_id)?;
-                    if let Relational::Values(values) = self.get_relation_node(child2_id)? {
-                        return Ok(Some(values.children.len()));
-                    }
-                }
-                Relational::Values(values) => return Ok(Some(values.children.len())),
-                _ => {}
-            }
-        }
-
-        Ok(None)
-    }
-
     /// Validate options usage.
     ///
     /// # Errors
@@ -521,62 +498,6 @@ impl Plan {
             ));
         }
 
-        // We need to check if the plan has a top node and if it is an Insert with Values.
-        // If it is, we can determine the number of values in the Values node and use it
-        // to make an early decision about the maximum number of rows we can handle.
-        let values_count = self.get_inserted_values_count()?;
-
-        // NB: this will not perform validation if a default value for `sql_motion_row_max` is used
-        // FIXME: use let_chains once we are on new enough rust version
-        if let (Some(values_count), Some(limit)) =
-            (values_count, lowered.sql_motion_row_max.try_get_value())
-        {
-            if limit > 0 && limit < values_count as i64 {
-                return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                    "Exceeded maximum number of rows ({}) in virtual table: {}",
-                    limit,
-                    values_count,
-                )));
-            }
-        }
-
         Ok(())
-    }
-}
-
-#[cfg(all(test, feature = "mock"))]
-mod test {
-    use crate::ir::transformation::helpers::{sql_to_ir, sql_to_optimized_ir};
-
-    #[test]
-    fn test_inserted_values_count() {
-        let q = "insert into t values (-1, 1, 42, 42), (-2, 2, 42, 42), (-3, 3, 42, 42)";
-
-        assert_eq!(
-            sql_to_ir(q, Vec::new())
-                .get_inserted_values_count()
-                .unwrap(),
-            Some(3)
-        );
-        assert_eq!(
-            sql_to_optimized_ir(q, Vec::new())
-                .get_inserted_values_count()
-                .unwrap(),
-            Some(3)
-        );
-        let q = "select 1";
-
-        assert_eq!(
-            sql_to_ir(q, Vec::new())
-                .get_inserted_values_count()
-                .unwrap(),
-            None
-        );
-        assert_eq!(
-            sql_to_optimized_ir(q, Vec::new())
-                .get_inserted_values_count()
-                .unwrap(),
-            None
-        );
     }
 }

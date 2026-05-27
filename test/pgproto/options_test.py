@@ -163,7 +163,7 @@ def test_invalid_sql_options(postgres: Postgres):
                  )""")
     with pytest.raises(
         psycopg.InternalError,
-        match=r"unexpected number of values: Exceeded maximum number of rows \(1\) in virtual table: 2",
+        match=r"Query 1 from EXPLAIN \(RAW\): Exceeded maximum number of rows \(1\) in virtual table: 2",
     ):
         conn.execute("""
                      SELECT * FROM (VALUES (1), (2)) OPTION (
@@ -178,7 +178,7 @@ def test_invalid_sql_options(postgres: Postgres):
                  )""")
     with pytest.raises(
         psycopg.InternalError,
-        match=r"Reached a limit on max executed vdbe opcodes. Limit: 1",
+        match=r"Query 1 from EXPLAIN \(RAW\): Reached a limit on max executed vdbe opcodes. Limit: 1",
     ):
         conn.execute("""
                      SELECT * FROM (VALUES (1), (2)) OPTION (

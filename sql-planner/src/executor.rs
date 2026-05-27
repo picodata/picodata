@@ -321,10 +321,9 @@ pub trait Port<'p>: io::Write {
 
 /// The purpose of that structure is to persist data
 /// across query execution process.
-/// Currently, it contains only target replicaset uuid
-/// to validate `ro_to_rw` forward option.
 #[derive(Debug, Default)]
 struct ExecutionContext {
+    /// Target replicaset uuid to validate `ro_to_rw` forward option.
     target_replicaset: Option<String>,
 }
 
@@ -396,14 +395,16 @@ where
         self.coordinator
     }
 
-    pub fn materialize_subtree<'p>(
+    fn materilize_subtree_impl<'p>(
         &mut self,
         slices: Slices,
         mut port: Option<&mut impl Port<'p>>,
+        vtab_count: &mut usize,
     ) -> Result<(), SbroadError> {
         let tier = self.exec_plan.get_ir_plan().tier.as_ref();
+        let coordinator = self.coordinator;
         // all tables from one tier, so we can use corresponding vshard object
-        let vshard = self.coordinator.get_vshard_object_by_tier(tier)?;
+        let vshard = coordinator.get_vshard_object_by_tier(tier)?;
 
         for slice in slices.slices() {
             // TODO: make it work in parallel
@@ -411,6 +412,9 @@ where
                 if self.exec_plan.get_vtables().contains_key(motion_id) {
                     continue;
                 }
+
+                *vtab_count += 1;
+
                 let motion = self.exec_plan.get_ir_plan().get_relation_node(*motion_id)?;
                 if let Relational::Motion(Motion { policy, .. }) = motion {
                     match policy {
@@ -421,19 +425,13 @@ where
                         {
                             // If child is values, then we can materialize it
                             // on the router.
-                            let motion_child_id = self
-                                .get_exec_plan()
-                                .get_ir_plan()
-                                .get_motion_child(*motion_id)?;
-                            let motion_child = self
-                                .get_exec_plan()
-                                .get_ir_plan()
-                                .get_relation_node(motion_child_id)?;
+                            let plan = self.get_exec_plan().get_ir_plan();
+                            let motion_child_id = plan.get_motion_child(*motion_id)?;
+                            let motion_child = plan.get_relation_node(motion_child_id)?;
 
                             if matches!(motion_child, Relational::Values { .. }) {
-                                let virtual_table = self
-                                    .coordinator
-                                    .materialize_values(&mut self.exec_plan, motion_child_id)?;
+                                let virtual_table = coordinator.materialize_values(&mut self.exec_plan, motion_child_id)?;
+
                                 self.exec_plan.set_motion_vtable(
                                     motion_id,
                                     virtual_table,
@@ -467,11 +465,8 @@ where
                 let buckets = self.bucket_discovery(top_id)?;
                 self.enforce_forward_option(&buckets)?;
 
-                let mut virtual_table = self.coordinator.materialize_motion(
-                    &mut self.exec_plan,
-                    motion_id,
-                    &buckets,
-                )?;
+                let mut virtual_table =
+                    coordinator.materialize_motion(&mut self.exec_plan, motion_id, &buckets)?;
 
                 if self.exec_plan.get_ir_plan().is_raw_explain() {
                     // Take the tuples from the virtual table and encode them into
@@ -491,6 +486,21 @@ where
         }
 
         Ok(())
+    }
+
+    pub fn materialize_subtree<'p>(
+        &mut self,
+        slices: Slices,
+        port: Option<&mut impl Port<'p>>,
+    ) -> Result<(), SbroadError> {
+        let mut vtab_count = 0;
+        self.materilize_subtree_impl(slices, port, &mut vtab_count)
+            .map_err(|err| match err {
+                SbroadError::ExecutionError(err) | SbroadError::VdbeError(err) => {
+                    SbroadError::TaggedExecutionError(vtab_count, err)
+                }
+                _ => err,
+            })
     }
 
     /// Dispatch a distributed query from coordinator to the segments.
@@ -585,8 +595,15 @@ where
         let buckets = self.bucket_discovery(top_id)?;
         self.enforce_forward_option(&buckets)?;
 
+        let query_num = self.exec_plan.get_vtables().len();
         self.coordinator
-            .dispatch(&mut self.exec_plan, top_id, &buckets, port)?;
+            .dispatch(&mut self.exec_plan, top_id, &buckets, port)
+            .map_err(|err| match err {
+                SbroadError::ExecutionError(err) | SbroadError::VdbeError(err) => {
+                    SbroadError::TaggedExecutionError(query_num + 1, err)
+                }
+                _ => err,
+            })?;
 
         Ok(())
     }

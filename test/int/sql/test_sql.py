@@ -6940,8 +6940,7 @@ buckets = [1-3000]\
     # still used
     # TODO: rewrite with explain like above
     new_sql_motion_row_max = 1
-    error_message = """sbroad: unexpected number of values: \
-Exceeded maximum number of rows (1) in virtual table: 2"""
+    error_message = """Query 1 from EXPLAIN (RAW): Exceeded maximum number of rows (1) in virtual table: 2"""
 
     error_message = re.escape(error_message)
 
