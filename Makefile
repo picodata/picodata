@@ -76,7 +76,7 @@ build-$(1): build
 build-$(1): build-plug-wrong-version
 
 .PHONY: coverage-build-$(1)
-coverage-build-$(1): export CARGO_TARGET_DIR=$$(TARGET_DIR_COV)
+coverage-build-$(1): export CARGO_TARGET_DIR = $$(TARGET_DIR_COV)
 coverage-build-$(1):
 	@# For code coverage we'd like to build everything in advance.
 	@# XXX: we can't use `--lib --bins --tests` simultaneously due to feature unification.
@@ -140,7 +140,7 @@ test: test-rs test-py
 
 override define TEST_TEMPLATE
 .PHONY: coverage-test-$(1)
-coverage-test-$(1): export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-test-$(1): export CARGO_TARGET_DIR = $(TARGET_DIR_COV)
 coverage-test-$(1):
 	tools/coverage.py run $(MAKE) test-$(1)
 endef
@@ -149,7 +149,7 @@ override TEST_PARTS := rs py
 $(foreach PART,$(TEST_PARTS),$(eval $(call TEST_TEMPLATE,$(PART))))
 
 .PHONY: coverage-report
-coverage-report: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-report: export CARGO_TARGET_DIR = $(TARGET_DIR_COV)
 coverage-report:
 	tools/find-executables.sh $(CARGO_TARGET_DIR) > $(CARGO_TARGET_DIR)/binaries.list
 	tools/coverage.py report \
@@ -157,45 +157,46 @@ coverage-report:
 	  $(COV_REPORT_FLAGS)
 
 .PHONY: coverage-data-merge
-coverage-data-merge: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-data-merge: export CARGO_TARGET_DIR = $(TARGET_DIR_COV)
 coverage-data-merge:
 	tools/coverage.py merge
 
 .PHONY: coverage-data-list
-coverage-data-list: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-data-list: export CARGO_TARGET_DIR = $(TARGET_DIR_COV)
 coverage-data-list:
 	tools/coverage.py list
 
 .PHONY: coverage-data-clean
-coverage-data-clean: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-data-clean: export CARGO_TARGET_DIR = $(TARGET_DIR_COV)
 coverage-data-clean:
 	tools/coverage.py clean
 
 .PHONY: coverage-clean
-coverage-clean: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-clean: export CARGO_TARGET_DIR = $(TARGET_DIR_COV)
 coverage-clean:
 	rm -rf $(CARGO_TARGET_DIR)
 
 .PHONY: asan-build-dev
-asan-build-dev: export CARGO_TARGET_DIR=$(TARGET_DIR_ASAN)
+asan-build-dev: export CARGO_TARGET_DIR = $(TARGET_DIR_ASAN)
 asan-build-dev:
 	tools/sanitizer.py run $(MAKE) build-dev \
 	  WORKSPACE= CARGO_FLAGS_EXTRA="-p picodata -p testplug"
 
 .PHONY: asan-test-rs
-asan-test-rs: export CARGO_TARGET_DIR=$(TARGET_DIR_ASAN)
+asan-test-rs: export CARGO_TARGET_DIR = $(TARGET_DIR_ASAN)
 asan-test-rs:
 	tools/sanitizer.py run $(MAKE) test-rs CARGO_TEST_FLAGS="-p picodata"
 
 .PHONY: asan-test-py
-asan-test-py: export CARGO_TARGET_DIR=$(TARGET_DIR_ASAN)
+asan-test-py: export CARGO_TARGET_DIR = $(TARGET_DIR_ASAN)
 asan-test-py:
 	tools/sanitizer.py run $(MAKE) test-py \
 	  PYTEST_FLAGS="--skip-asan --with-webui --ignore=test/perf --ignore=test/int/test_rolling.py $(PYTEST_FLAGS)"
 
 # XXX: this target is for debug purposes (do not use in CI).
 .PHONY: coverage-demo
-coverage-demo: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-demo: export CARGO_TARGET_DIR = $(TARGET_DIR_COV)
+coverage-demo: override COV_REPORT_FLAGS += --open
 coverage-demo:
 	$(MAKE) coverage-build-dev
 
@@ -208,7 +209,20 @@ coverage-demo:
 	$(MAKE) coverage-test-rs || true
 	$(MAKE) coverage-test-py || true
 
-	$(MAKE) coverage-report COV_REPORT_FLAGS=--open
+	$(MAKE) coverage-report COV_REPORT_FLAGS="$(COV_REPORT_FLAGS)"
+
+.PHONY: coverage-demo-diff
+coverage-demo-diff: PYTEST_FLAGS = $(shell git diff --name-only --merge-base master | grep 'test/.*py' | xargs)
+coverage-demo-diff: override COV_REPORT_FLAGS += --open $(shell git diff --name-only --merge-base master | xargs)
+coverage-demo-diff:
+	$(MAKE) coverage-build-dev
+
+	@# Drop any possible coverage data for `build.rs`.
+	$(MAKE) coverage-data-clean
+
+	$(MAKE) coverage-test-py PYTEST_FLAGS="$(PYTEST_FLAGS)" || true
+
+	$(MAKE) coverage-report COV_REPORT_FLAGS="$(COV_REPORT_FLAGS)"
 
 .PHONY: generate-snapshot
 generate-snapshot:
@@ -266,7 +280,7 @@ audit:
 	cargo deny --workspace check
 
 .PHONY: coverage-trim-target
-coverage-trim-target: export CARGO_TARGET_DIR=$(TARGET_DIR_COV)
+coverage-trim-target: export CARGO_TARGET_DIR = $(TARGET_DIR_COV)
 coverage-trim-target:
 	tools/coverage.py run $(MAKE) trim-target
 
