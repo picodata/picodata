@@ -155,6 +155,7 @@ with the `YY.MINOR.MICRO` scheme.
   log with different primary keys but the same secondary unique key, causing
   replicas to fail applying the later entry and preventing raft from advancing.
   Such requests are now rejected with a retriable `CasConflictFound` error.
+- [picodata#2926] Reduced log verbosity in vshard for routine replicaset events.
 
 ### Breaking changes
 
