@@ -25,6 +25,153 @@ impl<E> Display for UnknownEnumVariant<E> {
 
 impl<E: Debug> std::error::Error for UnknownEnumVariant<E> {}
 
+/// Emit trait impls for an enum that cannot be generated using
+/// `define_str_enum` but which uses its shape.
+///
+/// The target enum **must** provide:
+/// * `fn as_str(&self) -> &'static str`
+/// * `fn values() -> &'static [&'static str]`
+/// * `impl FromStr`
+#[macro_export]
+macro_rules! define_str_enum_traits {
+    ($enum:ident) => {
+        #[allow(dead_code)]
+        impl ::std::convert::AsRef<str> for $enum {
+            #[inline(always)]
+            fn as_ref(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl ::std::ops::Deref for $enum {
+            type Target = str;
+            #[inline(always)]
+            fn deref(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl ::std::convert::From<$enum> for ::std::string::String {
+            #[inline(always)]
+            fn from(e: $enum) -> Self {
+                e.as_str().into()
+            }
+        }
+
+        impl ::std::convert::From<$enum> for &'static str {
+            #[inline(always)]
+            fn from(e: $enum) -> Self {
+                e.as_str()
+            }
+        }
+
+        impl ::std::fmt::Display for $enum {
+            #[inline(always)]
+            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                f.write_str(self.as_str())
+            }
+        }
+
+        impl serde::Serialize for $enum {
+            #[inline(always)]
+            fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                serializer.serialize_str(self.as_str())
+            }
+        }
+
+        impl<'de> serde::Deserialize<'de> for $enum {
+            #[inline]
+            fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                use ::std::result::Result::Ok;
+                use serde::de::Error;
+                let tmp = deserializer
+                    .deserialize_str($crate::define_str_enum::FromStrVisitor::<$enum>::default())?;
+                let res = tmp
+                    .parse()
+                    .map_err(|_| Error::unknown_variant(&tmp, Self::values()))?;
+                Ok(res)
+            }
+        }
+
+        impl<L: $crate::tlua::AsLua> $crate::tlua::Push<L> for $enum {
+            type Err = $crate::tlua::Void;
+            #[inline(always)]
+            fn push_to_lua(&self, lua: L) -> $crate::tlua::PushResult<L, Self> {
+                $crate::tlua::PushInto::push_into_lua(self.as_str(), lua)
+            }
+        }
+        impl<L: $crate::tlua::AsLua> $crate::tlua::PushOne<L> for $enum {}
+
+        impl<L: $crate::tlua::AsLua> $crate::tlua::PushInto<L> for $enum {
+            type Err = $crate::tlua::Void;
+            #[inline(always)]
+            fn push_into_lua(self, lua: L) -> $crate::tlua::PushIntoResult<L, Self> {
+                $crate::tlua::PushInto::push_into_lua(self.as_str(), lua)
+            }
+        }
+        impl<L: $crate::tlua::AsLua> $crate::tlua::PushOneInto<L> for $enum {}
+
+        impl $crate::msgpack::Encode for $enum {
+            fn encode(
+                &self,
+                w: &mut impl std::io::Write,
+                context: &$crate::msgpack::Context,
+            ) -> std::result::Result<(), $crate::msgpack::EncodeError> {
+                <&str as $crate::msgpack::Encode>::encode(&self.as_str(), w, context)
+            }
+        }
+
+        impl<'de> $crate::msgpack::Decode<'de> for $enum {
+            fn decode(
+                r: &mut &'de [u8],
+                _context: &$crate::msgpack::Context,
+            ) -> std::result::Result<Self, $crate::msgpack::DecodeError> {
+                use $crate::msgpack::rmp;
+
+                let len = rmp::decode::read_str_len(r)
+                    .map_err(|err| $crate::msgpack::DecodeError::new::<Self>(err))?;
+                let decoded_variant = r
+                    .get(0..(len as usize))
+                    .ok_or_else(|| $crate::msgpack::DecodeError::new::<Self>("not enough data"))?;
+                let decoded_variant_str = std::str::from_utf8(decoded_variant)
+                    .map_err(|err| $crate::msgpack::DecodeError::new::<Self>(err))?;
+                *r = &r[len as usize..];
+                decoded_variant_str.parse().map_err(|_| {
+                    $crate::msgpack::DecodeError::new::<Self>(format!(
+                        "unknown enum variant `{decoded_variant_str}`, expected one of {:?}",
+                        Self::values()
+                    ))
+                })
+            }
+        }
+
+        impl<L: $crate::tlua::AsLua> $crate::tlua::LuaRead<L> for $enum {
+            #[inline]
+            fn lua_read_at_position(
+                lua: L,
+                index: ::std::num::NonZeroI32,
+            ) -> $crate::tlua::ReadResult<Self, L> {
+                let s = $crate::tlua::StringInLua::lua_read_at_position(lua, index)?;
+                match s.parse() {
+                    Ok(v) => Ok(v),
+                    Err(_) => {
+                        let e = $crate::tlua::WrongType::info("reading string enum")
+                            .expected(format!("one of {:?}", Self::values()))
+                            .actual(format!("string '{}'", &*s));
+                        Err((s.into_inner(), e))
+                    }
+                }
+            }
+        }
+    };
+}
+
 #[macro_export]
 /// Auto-generate enum that maps to a string.
 ///
@@ -168,35 +315,6 @@ macro_rules! define_str_enum {
             }
         }
 
-        impl ::std::convert::AsRef<str> for $enum {
-            #[inline(always)]
-            fn as_ref(&self) -> &str {
-                self.as_str()
-            }
-        }
-
-        impl ::std::ops::Deref for $enum {
-            type Target = str;
-            #[inline(always)]
-            fn deref(&self) -> &str {
-                self.as_str()
-            }
-        }
-
-        impl ::std::convert::From<$enum> for ::std::string::String {
-            #[inline(always)]
-            fn from(e: $enum) -> Self {
-                e.as_str().into()
-            }
-        }
-
-        impl ::std::convert::From<$enum> for &'static str {
-            #[inline(always)]
-            fn from(e: $enum) -> Self {
-                e.as_str()
-            }
-        }
-
         impl ::std::str::FromStr for $enum {
             type Err = $crate::define_str_enum::UnknownEnumVariant<$enum>;
 
@@ -224,111 +342,7 @@ macro_rules! define_str_enum {
             }
         }
 
-        impl ::std::fmt::Display for $enum {
-            #[inline(always)]
-            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                f.write_str(self.as_str())
-            }
-        }
-
-        impl serde::Serialize for $enum {
-            #[inline(always)]
-            fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
-            where
-                S: serde::Serializer,
-            {
-                serializer.serialize_str(self.as_str())
-            }
-        }
-
-        impl<'de> serde::Deserialize<'de> for $enum {
-            #[inline]
-            fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-            where
-                D: serde::Deserializer<'de>,
-            {
-                use ::std::result::Result::Ok;
-                use serde::de::Error;
-                let tmp = deserializer.deserialize_str($crate::define_str_enum::FromStrVisitor::<$enum>::default())?;
-                let res = tmp.parse().map_err(|_| {
-                    Error::unknown_variant(&tmp, Self::values())
-                })?;
-                Ok(res)
-            }
-        }
-
-        impl<L: $crate::tlua::AsLua> $crate::tlua::Push<L> for $enum {
-            type Err = $crate::tlua::Void;
-            #[inline(always)]
-            fn push_to_lua(&self, lua: L) -> $crate::tlua::PushResult<L, Self> {
-                $crate::tlua::PushInto::push_into_lua(self.as_str(), lua)
-            }
-        }
-        impl<L: $crate::tlua::AsLua> $crate::tlua::PushOne<L> for $enum {}
-
-        impl<L: $crate::tlua::AsLua> $crate::tlua::PushInto<L> for $enum {
-            type Err = $crate::tlua::Void;
-            #[inline(always)]
-            fn push_into_lua(self, lua: L) -> $crate::tlua::PushIntoResult<L, Self> {
-                $crate::tlua::PushInto::push_into_lua(self.as_str(), lua)
-            }
-        }
-        impl<L: $crate::tlua::AsLua> $crate::tlua::PushOneInto<L> for $enum {}
-
-        impl<L: $crate::tlua::AsLua> $crate::tlua::LuaRead<L> for $enum {
-            #[inline]
-            fn lua_read_at_position(
-                lua: L,
-                index: ::std::num::NonZeroI32
-            ) -> $crate::tlua::ReadResult<Self, L> {
-                let s = $crate::tlua::StringInLua::lua_read_at_position(lua, index)?;
-                match s.parse() {
-                    Ok(v) => Ok(v),
-                    Err(_) => {
-                        let e = $crate::tlua::WrongType::info("reading string enum")
-                            .expected(format!("one of {:?}", Self::values()))
-                            .actual(format!("string '{}'", &*s));
-                        Err((s.into_inner(), e))
-                    }
-                }
-            }
-        }
-
-        impl $crate::msgpack::Encode for $enum {
-            fn encode(
-                &self,
-                w: &mut impl std::io::Write,
-                context: &$crate::msgpack::Context,
-            ) -> std::result::Result<(), $crate::msgpack::EncodeError> {
-                <&str as $crate::msgpack::Encode>::encode(&self.as_str(), w, context)
-            }
-        }
-
-        impl<'de> $crate::msgpack::Decode<'de> for $enum {
-            fn decode(r: &mut &'de [u8], _context: &$crate::msgpack::Context) -> std::result::Result<Self, $crate::msgpack::DecodeError> {
-                use $crate::msgpack::rmp;
-
-                let len = rmp::decode::read_str_len(r)
-                    .map_err(|err| $crate::msgpack::DecodeError::new::<Self>(err))?;
-                let decoded_variant = r.get(0..(len as usize))
-                    .ok_or_else(|| $crate::msgpack::DecodeError::new::<Self>("not enough data"))?;
-                let decoded_variant_str = std::str::from_utf8(decoded_variant)
-                    .map_err(|err| $crate::msgpack::DecodeError::new::<Self>(err))?;
-                let res = match decoded_variant_str {
-                    $(
-                        $display => Ok(Self::$variant),
-                    )+
-                    v => Err({
-                        $crate::msgpack::DecodeError::new::<$enum>(
-                            format!("unknown enum variant `{}`, expected on of {:?}", v, Self::values())
-                        )
-                    }),
-                };
-                // consume string, so that further decoding continues after it
-                *r = &r[len as usize..];
-                res
-            }
-        }
+        $crate::define_str_enum_traits!{ $enum }
 
         $crate::define_str_enum_extra!{ $vis $enum }
     };

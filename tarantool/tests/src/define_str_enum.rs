@@ -70,7 +70,7 @@ pub fn basic() {
         msgpack::decode::<Color>(&green_mp)
             .unwrap_err()
             .to_string(),
-        "failed decoding tarantool_module_test_runner::define_str_enum::basic::Color: unknown enum variant `#00FF00`, expected on of [\"#000000\", \"#FFFFFF\"]"           .to_string(),
+        "failed decoding tarantool_module_test_runner::define_str_enum::basic::Color: unknown enum variant `#00FF00`, expected one of [\"#000000\", \"#FFFFFF\"]"           .to_string(),
     );
 
     // Lua-related traits
