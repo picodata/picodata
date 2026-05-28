@@ -87,6 +87,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Added `isRaftLeader` and `isVoter` flags to the instance model. Tier
   and replicaset cards now show indicators when they contain the raft
   leader or a voter instance.
+- The replicaset cards now display indicators if they have the not ready status.
 
 ### Fixes
 

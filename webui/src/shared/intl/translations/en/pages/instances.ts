@@ -103,6 +103,9 @@ export const instances = {
       state: {
         label: "State",
       },
+      replicasetStateNotReady: {
+        label: "Not ready",
+      },
     },
     instanceCard: {
       leader: {

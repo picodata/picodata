@@ -14,8 +14,10 @@ import {
   ContentFlexCenteredCell,
   RaftLeaderNameCell,
   StyledVoterIcon,
+  CellCenter,
 } from "../common";
 import { ReplicasetNodeType } from "../../../../../shared/entity/replicaset";
+import { ErrorBlock } from "../common/ErrorBlock";
 
 import {
   chevronIconIsOpenStyle,
@@ -88,7 +90,13 @@ export const ReplicasetCardAlt = memo(
 
             <ContentFlexCenteredCell></ContentFlexCenteredCell>
 
-            <ContentFlexCenteredCell></ContentFlexCenteredCell>
+            <CellCenter>
+              {replicaset.replicasetState === "not-ready" ? (
+                <ErrorBlock>
+                  {replicasetTranslations.replicasetStateNotReady.label}
+                </ErrorBlock>
+              ) : null}
+            </CellCenter>
 
             <ContentFlexCenteredCell>
               <CellLabel>{replicasetTranslations.instances.label}</CellLabel>

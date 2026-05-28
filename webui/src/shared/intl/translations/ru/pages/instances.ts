@@ -105,6 +105,9 @@ export const instances: TPages["instances"] = {
       state: {
         label: "Состояние лидера",
       },
+      replicasetStateNotReady: {
+        label: "Не готов",
+      },
     },
     instanceCard: {
       leader: {
