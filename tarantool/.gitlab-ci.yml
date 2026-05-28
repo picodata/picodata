@@ -59,7 +59,7 @@ variables:
         - tarantool-sys
 
   - &if-build-base-changes-on-dev-branch
-    if: ($CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH) && ($PARENT_CI_PIPELINE_SOURCE != "pipeline")
+    if: $PARENT_CI_PIPELINE_SOURCE == "merge_request_event"
     changes:
       compare_to: master
       paths: *build-base-changes-paths

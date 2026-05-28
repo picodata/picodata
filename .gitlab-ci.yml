@@ -97,7 +97,7 @@ variables:
         - .gitlab-ci.yml
 
   - &if-build-base-changes-on-dev-branch
-    if: ($CI_COMMIT_BRANCH != $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
+    if: $CI_PIPELINE_SOURCE == "merge_request_event"
     changes:
       paths:
         - docker-build-base/**
@@ -123,7 +123,7 @@ variables:
       BASE_IMAGE_TAG: ${PARENT_CI_COMMIT_SHA}
 
   - &if-no-docs
-    if: ($CI_PIPELINE_SOURCE != "schedule") && ($CI_COMMIT_BRANCH != $MAIN_BRANCH) && ($CI_COMMIT_BRANCH !~ /^docs/)
+    if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME !~ /^docs/
 
 .cache_git: &cache_git
   paths:
@@ -215,7 +215,7 @@ tarantool-module-trigger:
   rules:
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
-    - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         compare_to: *main-branch
         paths:
@@ -592,7 +592,7 @@ install-rolling-binaries:
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
       variables:
         CACHE_POLICY: pull
-    - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         compare_to: *main-branch
         paths:
@@ -941,7 +941,7 @@ test-mac-m1:
   stage: test
   needs: []
   rules:
-    - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         compare_to: *main-branch
         paths:
@@ -983,7 +983,7 @@ asan:
   rules:
     - if: $CI_COMMIT_TAG
     - if: $WITH_ASAN == "1"
-    - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
           - docker-build-base/**
@@ -1155,7 +1155,7 @@ clear-sccache:
 deploy-coverage:
   stage: deploy
   rules:
-    - if: $CI_COMMIT_BRANCH =~ /^docs/
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME =~ /^docs/
       when: never
     - <<: *if-build-base-changes-on-dev-branch
       variables:
