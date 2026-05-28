@@ -10,7 +10,7 @@ use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use twox_hash::XxHash3_64;
 
-use crate::errors::{Entity, SbroadError};
+use crate::errors::{Action, Entity, SbroadError};
 use crate::frontend::sql::ir::SubtreeCloner;
 use crate::ir::api::children::Children;
 use crate::ir::bucket::{Buckets, BucketsResolver};
@@ -823,7 +823,11 @@ impl Plan {
             .iter()
             .all(|(node, _)| children_set.contains(node))
         {
-            panic!("Trying to add motions for non-existing children in relational node");
+            return Err(SbroadError::FailedTo(
+                Action::Add,
+                Some(Entity::Motion),
+                "for non-existing children in relation node".into(),
+            ));
         }
 
         // Add motions.
@@ -1132,9 +1136,13 @@ impl Plan {
                         if let MotionPolicy::Segment(motion_key) = &mut proj_policy {
                             for target in motion_key.targets.iter_mut() {
                                 if let Target::Reference(position) = target {
-                                    *position = *col_pos_transforms
-                                        .get(position)
-                                        .expect("motion key position must exist in mapping");
+                                    *position =
+                                        *col_pos_transforms.get(position).ok_or_else(|| {
+                                            SbroadError::NotFound(
+                                                Entity::Motion,
+                                                "key position must exist in mapping".into(),
+                                            )
+                                        })?;
                                 }
                             }
                         }
