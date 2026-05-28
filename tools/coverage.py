@@ -312,6 +312,7 @@ class LLVM:
         extras = [
             f"-format={kind}",
             f"-show-instantiations={str(show_instantiations).lower()}",
+            "-show-branch-summary=false",  # currently not supported by rustc
         ]
         if output_dir:
             extras.append(f"-output-dir={output_dir}")
