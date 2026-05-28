@@ -13,6 +13,7 @@ with the `YY.MINOR.MICRO` scheme.
 ### Fixes
 
 - [picodata#2926] Reduced log verbosity in vshard for routine replicaset events.
+- Vinyl: fix page index min-key corruption in LCP groups
 
 ## [26.1.3] - 2026-05-21
 
