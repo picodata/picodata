@@ -1168,6 +1168,13 @@ deploy-coverage:
     - |
       curl --fail --show-error --retry 3  --max-time 300 -s -H "Authorization: ApiKey ${REPORTFILER_UPLOAD_TOKEN}" \
         -F "zipfile=@../${ZIP_FILENAME}.zip" https://fs.picodata.io/reportfiler/reportupload
+    - REPORT_URL=https://fs.picodata.io/reportfiler/$ZIP_FILENAME/
+    - |
+      curl --verbose --fail --show-error --retry 3 --max-time 60 \
+        --request POST \
+        --header "PRIVATE-TOKEN: $CODECOVERAGE_BOT_TOKEN" \
+        --form "note=Code coverage report: <${REPORT_URL}>" \
+        --url "$CI_API_V4_URL/projects/$CI_PROJECT_ID/repository/commits/$CI_COMMIT_SHA/comments"
 
 validate-commit-headers:
   stage: test
