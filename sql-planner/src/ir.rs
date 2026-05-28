@@ -666,7 +666,7 @@ impl ExplainOptions {
 }
 
 /// Logical plan tree structure.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Plan {
     /// Append only arena for the plan nodes.
     pub(crate) nodes: Nodes,
@@ -748,16 +748,6 @@ impl SubtreeHashCache {
         self.inner.borrow_mut().insert(key, hash);
     }
 }
-
-impl PartialEq for SubtreeHashCache {
-    fn eq(&self, _other: &Self) -> bool {
-        // The cache stores derived subtree hashes. Warm and cold caches must
-        // compare equally so `Plan` equality reflects only semantic IR state.
-        true
-    }
-}
-
-impl Eq for SubtreeHashCache {}
 
 /// Helper structures used to build the plan
 /// on the router.

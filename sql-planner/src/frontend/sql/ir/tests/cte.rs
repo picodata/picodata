@@ -593,11 +593,11 @@ fn cte_name_conflict() {
     let metadata = &RouterConfigurationMock::new();
     let plan_error = AbstractSyntaxTree::transform_into_plan(sql, &[], metadata);
     assert_eq!(
-        plan_error,
-        Err(SbroadError::Invalid(
+        plan_error.unwrap_err(),
+        SbroadError::Invalid(
             Entity::Cte,
             Some(r#"CTE with name "cte" is already defined"#.into())
-        ))
+        )
     );
 }
 
@@ -610,10 +610,8 @@ fn cte_column_mismatch() {
     let metadata = &RouterConfigurationMock::new();
     let plan_error = AbstractSyntaxTree::transform_into_plan(sql, &[], metadata);
     assert_eq!(
-        plan_error,
-        Err(SbroadError::UnexpectedNumberOfValues(
-            "expected 2 columns in CTE, got 1".into()
-        ))
+        plan_error.unwrap_err(),
+        SbroadError::UnexpectedNumberOfValues("expected 2 columns in CTE, got 1".into())
     );
 }
 

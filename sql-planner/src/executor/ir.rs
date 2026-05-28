@@ -73,7 +73,7 @@ impl SerializeAsEmptyState {
 }
 
 /// Wrapper over `Plan` containing `vtables` map.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone)]
 pub struct ExecutionPlan {
     request_id: String,
     /// IR plan contains motions.
