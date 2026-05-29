@@ -673,7 +673,7 @@ impl ExplainOptions {
 }
 
 /// Logical plan tree structure.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 pub struct Plan {
     /// Append only arena for the plan nodes.
     pub(crate) nodes: Nodes,
@@ -715,21 +715,16 @@ pub struct Plan {
     /// in the plan for convenience: otherwise we'd
     /// have to explictly pass context to every method
     /// of the pipeline.
-    #[serde(skip)]
     pub context: Option<RefCell<BuildContext>>,
     /// Any sharded table must belongs to a single tier,
     /// global tables use `None`.
-    #[serde(skip)]
     pub tier: Option<SmolStr>,
     /// Derived cache for reusable structural subtree hashes.
-    #[serde(skip)]
     pub(crate) subtree_hash_cache: SubtreeHashCache,
     /// Memoized hash identifying the SQL pattern of a transactional block.
     /// Populated lazily on first call to `block_pattern_key`.
-    #[serde(skip)]
     pub(crate) block_pattern_hash: BlockPatternHashCache,
     /// Equality facts
-    #[serde(skip)]
     pub facts: Option<EqualityFacts>,
 }
 
