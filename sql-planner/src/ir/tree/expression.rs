@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use super::TreeIterator;
 use crate::ir::node::expression::Expression;
-use crate::ir::node::{NodeId, Row, ScalarFunction};
+use crate::ir::node::{ArrayLiteral, NodeId, Row, ScalarFunction};
 use crate::ir::{Node, Nodes};
 
 trait ExpressionTreeIterator<'nodes>: TreeIterator<'nodes> {
@@ -115,8 +115,8 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
                         | Expression::Unary { .. } => iter.handle_single_child(expr),
                         Expression::Bool { .. }
                         | Expression::Arithmetic { .. }
-                        | Expression::Concat { .. }
-                        | Expression::Index { .. } => iter.handle_left_right_children(expr),
+                        | Expression::Concat { .. } => iter.handle_left_right_children(expr),
+                        Expression::Index { .. } => iter.handle_index_iter(expr),
                         Expression::Row(Row { list, .. }) => {
                             let child_step = *iter.get_child().borrow();
                             let mut is_leaf = false;
@@ -162,6 +162,13 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
                                     Some(*child)
                                 }
                             }
+                        }
+                        Expression::ArrayLiteral(ArrayLiteral { list, .. }) => {
+                            let child_step = *iter.get_child().borrow();
+                            list.get(child_step).map(|child| {
+                                *iter.get_child().borrow_mut() += 1;
+                                *child
+                            })
                         }
                         Expression::Trim { .. } => iter.handle_trim(expr),
                         Expression::Like { .. } => iter.handle_like(expr),

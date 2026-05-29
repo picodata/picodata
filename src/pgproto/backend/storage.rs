@@ -21,7 +21,7 @@ use prometheus::IntCounter;
 use serde::Serialize;
 use smol_str::{format_smolstr, SmolStr};
 use sql::executor::Port;
-use sql::ir::types::{DerivedType, UnrestrictedType as SbroadType};
+use sql::ir::types::{DerivedType, NestedType, UnrestrictedType as SbroadType};
 use sql_protocol::iterators::ExplainIter;
 use std::{
     cell::RefCell,
@@ -377,8 +377,24 @@ pub(super) fn sbroad_type_to_pg(ty: &SbroadType) -> postgres_types::Type {
         SbroadType::Integer => PgType::INT8,
         SbroadType::String => PgType::TEXT,
         SbroadType::Uuid => PgType::UUID,
-        SbroadType::Map | SbroadType::Array | SbroadType::Any => PgType::JSON,
+        SbroadType::Map | SbroadType::Any => PgType::JSON,
+        SbroadType::Array(elem) => nested_type_to_pg_array(*elem),
         SbroadType::Datetime => PgType::TIMESTAMPTZ,
+    }
+}
+
+fn nested_type_to_pg_array(elem: NestedType) -> postgres_types::Type {
+    match elem {
+        NestedType::Boolean => PgType::BOOL_ARRAY,
+        NestedType::Datetime => PgType::TIMESTAMPTZ_ARRAY,
+        NestedType::Numeric => PgType::NUMERIC_ARRAY,
+        NestedType::Double => PgType::FLOAT8_ARRAY,
+        NestedType::Integer => PgType::INT8_ARRAY,
+        NestedType::Text => PgType::TEXT_ARRAY,
+        NestedType::Uuid => PgType::UUID_ARRAY,
+        NestedType::Map => PgType::JSON,
+        // Untyped array: keep the historical JSON OID.
+        NestedType::Any => PgType::JSON,
     }
 }
 
@@ -391,6 +407,18 @@ pub(super) fn pg_type_to_sbroad(ty: &PgType) -> Option<SbroadType> {
         &PgType::TEXT | &PgType::VARCHAR => Some(SbroadType::String),
         &PgType::UUID => Some(SbroadType::Uuid),
         &PgType::TIMESTAMPTZ => Some(SbroadType::Datetime),
+        &PgType::BOOL_ARRAY => Some(SbroadType::Array(NestedType::Boolean)),
+        &PgType::INT8_ARRAY | &PgType::INT4_ARRAY | &PgType::INT2_ARRAY => {
+            Some(SbroadType::Array(NestedType::Integer))
+        }
+        &PgType::FLOAT8_ARRAY | &PgType::FLOAT4_ARRAY => {
+            Some(SbroadType::Array(NestedType::Double))
+        }
+        &PgType::NUMERIC_ARRAY => Some(SbroadType::Array(NestedType::Numeric)),
+        &PgType::TEXT_ARRAY | &PgType::VARCHAR_ARRAY => Some(SbroadType::Array(NestedType::Text)),
+        &PgType::UUID_ARRAY => Some(SbroadType::Array(NestedType::Uuid)),
+        &PgType::TIMESTAMPTZ_ARRAY => Some(SbroadType::Array(NestedType::Datetime)),
+        &PgType::JSON_ARRAY | &PgType::JSONB_ARRAY => Some(SbroadType::Array(NestedType::Map)),
         _unsupported_type => None,
     }
 }
@@ -801,22 +829,36 @@ impl Return for UserPortalNames {
 mod test {
     use super::{pg_type_to_sbroad, sbroad_type_to_pg};
     use postgres_types::Type as PgType;
+    use sql::ir::types::NestedType;
     use sql::ir::types::UnrestrictedType as SbroadType;
 
     #[test]
     fn test_sbroad_type_to_pg() {
-        for (sbroad, expected_pg) in vec![
-            (SbroadType::Array, PgType::JSON),
+        for (sbroad, expected_pg) in [
+            (SbroadType::Boolean, PgType::BOOL),
+            (SbroadType::Datetime, PgType::TIMESTAMPTZ),
             (SbroadType::Decimal, PgType::NUMERIC),
             (SbroadType::Double, PgType::FLOAT8),
             (SbroadType::Integer, PgType::INT8),
             (SbroadType::String, PgType::TEXT),
             (SbroadType::Uuid, PgType::UUID),
             (SbroadType::Any, PgType::JSON),
-            (SbroadType::Array, PgType::JSON),
             (SbroadType::Map, PgType::JSON),
+            (SbroadType::Array(NestedType::Any), PgType::JSON),
         ] {
-            assert!(sbroad_type_to_pg(&sbroad) == expected_pg)
+            assert_eq!(sbroad_type_to_pg(&sbroad), expected_pg)
+        }
+        for (nested, expected_pg) in [
+            (NestedType::Boolean, PgType::BOOL_ARRAY),
+            (NestedType::Datetime, PgType::TIMESTAMPTZ_ARRAY),
+            (NestedType::Numeric, PgType::NUMERIC_ARRAY),
+            (NestedType::Double, PgType::FLOAT8_ARRAY),
+            (NestedType::Integer, PgType::INT8_ARRAY),
+            (NestedType::Text, PgType::TEXT_ARRAY),
+            (NestedType::Uuid, PgType::UUID_ARRAY),
+            (NestedType::Map, PgType::JSON),
+        ] {
+            assert_eq!(sbroad_type_to_pg(&SbroadType::Array(nested)), expected_pg)
         }
     }
 
@@ -831,6 +873,21 @@ mod test {
             (PgType::INT2, SbroadType::Integer),
             (PgType::TEXT, SbroadType::String),
             (PgType::UUID, SbroadType::Uuid),
+            (PgType::BOOL_ARRAY, SbroadType::Array(NestedType::Boolean)),
+            (PgType::INT8_ARRAY, SbroadType::Array(NestedType::Integer)),
+            (PgType::INT4_ARRAY, SbroadType::Array(NestedType::Integer)),
+            (PgType::FLOAT8_ARRAY, SbroadType::Array(NestedType::Double)),
+            (
+                PgType::NUMERIC_ARRAY,
+                SbroadType::Array(NestedType::Numeric),
+            ),
+            (PgType::TEXT_ARRAY, SbroadType::Array(NestedType::Text)),
+            (PgType::UUID_ARRAY, SbroadType::Array(NestedType::Uuid)),
+            (
+                PgType::TIMESTAMPTZ_ARRAY,
+                SbroadType::Array(NestedType::Datetime),
+            ),
+            (PgType::JSON_ARRAY, SbroadType::Array(NestedType::Map)),
         ] {
             assert!(pg_type_to_sbroad(&pg).unwrap() == expected_sbroad)
         }

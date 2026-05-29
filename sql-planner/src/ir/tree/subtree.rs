@@ -4,9 +4,9 @@ use super::{PlanTreeIterator, Snapshot, TreeIterator};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion, NodeId, OrderBy,
-    Projection, Row, ScalarFunction, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan,
-    Selection, SubQueryReference, Union, UnionAll, Update, Values, ValuesRow,
+    ArrayLiteral, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion, NodeId,
+    OrderBy, Projection, Row, ScalarFunction, ScanCte, ScanRelation, ScanSubQuery,
+    SelectWithoutScan, Selection, SubQueryReference, Union, UnionAll, Update, Values, ValuesRow,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::{Node, Nodes, Plan};
@@ -295,11 +295,12 @@ fn subtree_next<'plan>(
                 Expression::Case { .. } => iter.handle_case_iter(expr),
                 Expression::Bool { .. }
                 | Expression::Arithmetic { .. }
-                | Expression::Concat { .. }
-                | Expression::Index { .. } => iter.handle_left_right_children(expr),
+                | Expression::Concat { .. } => iter.handle_left_right_children(expr),
+                Expression::Index { .. } => iter.handle_index_iter(expr),
                 Expression::Trim { .. } => iter.handle_trim(expr),
                 Expression::Like { .. } => iter.handle_like(expr),
                 Expression::Row(Row { list, .. })
+                | Expression::ArrayLiteral(ArrayLiteral { list, .. })
                 | Expression::ScalarFunction(ScalarFunction { children: list, .. }) => {
                     let child_step = *iter.get_child().borrow();
                     return match list.get(child_step) {

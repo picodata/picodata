@@ -15,7 +15,7 @@ use crate::ir::node::{
     BlockStatement, Bound, BoundType, Frame, FrameType, Reference, ReferenceAsteriskSource,
     RenameIndex, Row, SubQueryReference, TruncateTable, Values, ValuesRow, Window,
 };
-use crate::ir::types::{DerivedType, UnrestrictedType};
+use crate::ir::types::{DerivedType, NestedType, UnrestrictedType};
 use ::core::panic;
 use itertools::Itertools;
 use pest::iterators::{Pair, Pairs};
@@ -44,7 +44,7 @@ use crate::ir::operator::{ConflictStrategy, OrderByElement, OrderByEntity, Order
 use crate::ir::options::{OptionKind, OptionParamValue};
 use crate::ir::relation::{ColumnRole, TableKind};
 use crate::ir::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
-use crate::ir::types::DomainType;
+use crate::ir::types::{ColumnDefType, DomainType};
 use crate::ir::value::Value;
 use crate::ir::{node::plugin, Plan};
 use crate::warn;
@@ -952,7 +952,7 @@ impl AstCore {
                 )),
                 Node::Expression(expr) => {
                     if let Expression::Reference(Reference {col_type, ..}) = expr {
-                        if matches!(col_type.get(), Some(UnrestrictedType::Array)) {
+                        if matches!(col_type.get(), Some(UnrestrictedType::Array(_))) {
                             return Err(SbroadError::Invalid(
                                 Entity::Expression,
                                 Some(format_smolstr!("Array is not supported as a sort type for ORDER BY"))
@@ -980,7 +980,7 @@ impl AstCore {
                             let alias_node = plan.get_expression_node(*alias_node_id)?;
                             if let Expression::Alias(Alias { child, .. }) = alias_node {
                                 if let Expression::Reference(Reference { col_type, .. }) = plan.get_expression_node(*child)? {
-                                    if matches!(col_type.get(), Some(UnrestrictedType::Array)) {
+                                    if matches!(col_type.get(), Some(UnrestrictedType::Array(_))) {
                                         return Err(SbroadError::Invalid(
                                             Entity::Expression,
                                             Some(format_smolstr!("Array is not supported as a sort type for ORDER BY"))
@@ -2335,13 +2335,12 @@ pub(in crate::frontend::sql) fn parse_proc_params(
             .first()
             .expect("Expected specific type under ColumnDefType node");
         let type_node = ast.nodes.get_node(*type_node_inner_id)?;
-        let data_type = if let Some(suffix_id) = column_def_type_node.children.get(1) {
-            let suffix = ast.nodes.get_node(*suffix_id)?;
-            assert_eq!(suffix.rule, Rule::ArraySuffix);
-            UnrestrictedType::Array
-        } else {
-            UnrestrictedType::try_from(type_node.rule)?
-        };
+        // TODO: support proc(int array).
+        debug_assert!(
+            column_def_type_node.children.get(1).is_none(),
+            "ProcParamsTypes is not expected to carry an ArraySuffix"
+        );
+        let data_type = UnrestrictedType::try_from(type_node.rule)?;
         params.push(ParamDef { data_type });
     }
     Ok(params)
@@ -2844,7 +2843,7 @@ pub(in crate::frontend::sql) fn parse_rename_index(
     })
 }
 
-pub(in crate::frontend::sql) fn parse_column_def_type(
+pub(in crate::frontend::sql) fn parse_domain_type(
     node: &ParseNode,
     ast: &AstCore,
 ) -> Result<DomainType, SbroadError> {
@@ -2882,6 +2881,22 @@ pub(in crate::frontend::sql) fn parse_column_def_type(
         }
     };
     Ok(data_type)
+}
+
+pub(in crate::frontend::sql) fn parse_column_def_type(
+    node: &ParseNode,
+    ast: &AstCore,
+) -> Result<ColumnDefType, SbroadError> {
+    debug_assert_eq!(node.rule, Rule::ColumnDefType);
+    let data_type_node = ast.nodes.get_node(node.first_child())?;
+    let data_type = if node.children.get(1).is_some() {
+        let base_rule_node = ast.nodes.get_node(data_type_node.first_child())?;
+        let elem = NestedType::try_from(base_rule_node.rule)?;
+        DomainType::Array(elem)
+    } else {
+        parse_domain_type(data_type_node, ast)?
+    };
+    data_type.try_into()
 }
 
 #[allow(clippy::too_many_lines)]
@@ -2946,16 +2961,7 @@ pub(in crate::frontend::sql) fn parse_create_table(
                         .get(1)
                         .expect("ColumnDef should have a type child node");
                     let column_ty_node = ast.nodes.get_node(*column_ty_node_id)?;
-                    let ty_node_id = column_ty_node
-                        .children
-                        .first()
-                        .expect("ColumnDef must have a type child");
-                    let ty_node = ast.nodes.get_node(*ty_node_id)?;
-                    let data_type = if column_ty_node.children.get(1).is_some() {
-                        DomainType::Array
-                    } else {
-                        parse_column_def_type(ty_node, ast)?
-                    };
+                    let data_type = parse_column_def_type(column_ty_node, ast)?;
                     let mut is_nullable = true;
 
                     for def_child_id in column_def_children.iter().skip(2) {
@@ -3348,14 +3354,7 @@ pub(in crate::frontend::sql) fn parse_alter_table(
 
                                         let column_ty_node = ast.nodes.get_node(node.child_n(1))?;
                                         debug_assert_eq!(column_ty_node.rule, Rule::ColumnDefType);
-                                        let data_type_node =
-                                            ast.nodes.get_node(column_ty_node.first_child())?;
-                                        let data_type = if column_ty_node.children.get(1).is_some()
-                                        {
-                                            DomainType::Array
-                                        } else {
-                                            parse_column_def_type(data_type_node, ast)?
-                                        };
+                                        let data_type = parse_column_def_type(column_ty_node, ast)?;
 
                                         let is_nullable = if let Some(id) = node.children.get(2) {
                                             let node = ast.nodes.get_node(*id)?;

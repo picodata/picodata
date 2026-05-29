@@ -705,7 +705,7 @@ pub fn check_tuple_matches_format(tuple: &[u8], format: &[Field], what_to_fix: &
 
     for i in 0..fields.len() {
         let field = &fields[i];
-        let field_type = format[i].field_type;
+        let field_type = &format[i].field_type;
         let field_name = &format[i].name;
         let ok = match field_type {
             FieldType::Any => true,
@@ -718,7 +718,7 @@ pub fn check_tuple_matches_format(tuple: &[u8], format: &[Field], what_to_fix: &
             FieldType::Decimal | FieldType::Uuid | FieldType::Datetime | FieldType::Interval => {
                 field.is_ext()
             }
-            FieldType::Array => field.is_array(),
+            FieldType::Array(_) => field.is_array(),
             FieldType::Map => field.is_map(),
             FieldType::Number | FieldType::Scalar => unreachable!(),
         };
@@ -799,7 +799,7 @@ pub fn check_msgpack_matches_type(
         // This is very bad. You should always implement Display for error types and format them using Display, not Debug!
         Error::other(format!("{e:?}")))?;
     let ok = match expected_type {
-        SbroadType::Array => is_array(marker),
+        SbroadType::Array(_) => is_array(marker),
         SbroadType::Any => true,
         SbroadType::Boolean => matches!(marker, Marker::True | Marker::False),
         SbroadType::Integer => is_int(marker),

@@ -11,9 +11,9 @@ use crate::{
 };
 
 use super::{
-    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, CountAsterisk, LetVarRef, Like,
-    NodeAligned, NodeId, Over, Parameter, Reference, Row, ScalarFunction, SubQueryReference,
-    Timestamp, Trim, UnaryExpr, Window,
+    Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Case, Cast, Concat, Constant, CountAsterisk,
+    LetVarRef, Like, NodeAligned, NodeId, Over, Parameter, Reference, Row, ScalarFunction,
+    SubQueryReference, Timestamp, Trim, UnaryExpr, Window,
 };
 
 pub const EXPECTED_CHILDREN_CNT: usize = 4;
@@ -153,10 +153,14 @@ impl ExprChildren for Concat {
 
 impl ExprChildren for IndexExpr {
     fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
-        smallvec![self.child, self.which]
+        std::iter::once(self.child)
+            .chain(self.indexes.iter().copied())
+            .collect()
     }
     fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
-        smallvec![&mut self.child, &mut self.which]
+        std::iter::once(&mut self.child)
+            .chain(self.indexes.iter_mut())
+            .collect()
     }
 }
 
@@ -215,6 +219,15 @@ impl ExprChildren for Over {
 // ── Variadic ────────────────────────────────────────────────────────
 
 impl ExprChildren for Row {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        self.list.iter().copied().collect()
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        self.list.iter_mut().collect()
+    }
+}
+
+impl ExprChildren for ArrayLiteral {
     fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
         self.list.iter().copied().collect()
     }
@@ -353,6 +366,7 @@ pub enum ExprOwned {
     Reference(Reference),
     SubQueryReference(SubQueryReference),
     Row(Row),
+    ArrayLiteral(ArrayLiteral),
     ScalarFunction(ScalarFunction),
     Trim(Trim),
     Unary(UnaryExpr),
@@ -383,6 +397,7 @@ impl From<ExprOwned> for NodeAligned {
             ExprOwned::Reference(reference) => reference.into(),
             ExprOwned::SubQueryReference(sq_reference) => sq_reference.into(),
             ExprOwned::Row(row) => row.into(),
+            ExprOwned::ArrayLiteral(arr) => arr.into(),
             ExprOwned::ScalarFunction(stable_func) => stable_func.into(),
             ExprOwned::Trim(trim) => trim.into(),
             ExprOwned::Unary(unary) => unary.into(),
@@ -418,6 +433,7 @@ pub enum Expression<'a> {
     Reference(&'a Reference),
     SubQueryReference(&'a SubQueryReference),
     Row(&'a Row),
+    ArrayLiteral(&'a ArrayLiteral),
     ScalarFunction(&'a ScalarFunction),
     Trim(&'a Trim),
     Unary(&'a UnaryExpr),
@@ -444,6 +460,7 @@ pub enum MutExpression<'a> {
     Reference(&'a mut Reference),
     SubQueryReference(&'a mut SubQueryReference),
     Row(&'a mut Row),
+    ArrayLiteral(&'a mut ArrayLiteral),
     ScalarFunction(&'a mut ScalarFunction),
     Trim(&'a mut Trim),
     Unary(&'a mut UnaryExpr),
@@ -549,6 +566,8 @@ impl Expression<'_> {
             | Expression::Reference(_)
             // `ROW(...)`
             | Expression::Row(_)
+            // `ARRAY[...]`
+            | Expression::ArrayLiteral(_)
             // `function_name(arg1, arg2, ...)`
             | Expression::ScalarFunction(_)
             // -- doesn't have its own repesentation
@@ -608,6 +627,7 @@ impl Expression<'_> {
             | Expression::LetVarRef(_)
             | Expression::Reference(_)
             | Expression::Row(_)
+            | Expression::ArrayLiteral(_)
             | Expression::ScalarFunction(_)
             | Expression::SubQueryReference(_)
             | Expression::Timestamp(_)
@@ -671,6 +691,7 @@ impl Expression<'_> {
             Expression::Reference(n) => n.expr_children(),
             Expression::SubQueryReference(n) => n.expr_children(),
             Expression::Row(n) => n.expr_children(),
+            Expression::ArrayLiteral(n) => n.expr_children(),
             Expression::ScalarFunction(n) => n.expr_children(),
             Expression::Trim(n) => n.expr_children(),
             Expression::Unary(n) => n.expr_children(),
@@ -719,6 +740,7 @@ impl Expression<'_> {
                 ExprOwned::SubQueryReference((*sq_reference).clone())
             }
             Expression::Row(row) => ExprOwned::Row((*row).clone()),
+            Expression::ArrayLiteral(arr) => ExprOwned::ArrayLiteral((*arr).clone()),
             Expression::ScalarFunction(sfunc) => ExprOwned::ScalarFunction((*sfunc).clone()),
             Expression::Trim(trim) => ExprOwned::Trim((*trim).clone()),
             Expression::Unary(unary) => ExprOwned::Unary((*unary).clone()),
@@ -744,6 +766,7 @@ impl MutExpression<'_> {
             MutExpression::Reference(n) => n.expr_children_mut(),
             MutExpression::SubQueryReference(n) => n.expr_children_mut(),
             MutExpression::Row(n) => n.expr_children_mut(),
+            MutExpression::ArrayLiteral(n) => n.expr_children_mut(),
             MutExpression::ScalarFunction(n) => n.expr_children_mut(),
             MutExpression::Trim(n) => n.expr_children_mut(),
             MutExpression::Unary(n) => n.expr_children_mut(),
@@ -790,6 +813,7 @@ impl ExprOwned {
             ExprOwned::Reference(n) => n.expr_children_mut(),
             ExprOwned::SubQueryReference(n) => n.expr_children_mut(),
             ExprOwned::Row(n) => n.expr_children_mut(),
+            ExprOwned::ArrayLiteral(n) => n.expr_children_mut(),
             ExprOwned::ScalarFunction(n) => n.expr_children_mut(),
             ExprOwned::Trim(n) => n.expr_children_mut(),
             ExprOwned::Unary(n) => n.expr_children_mut(),

@@ -5,16 +5,17 @@ use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::Delete;
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Except, FrameType,
-    GroupBy, Having, IndexExpr, Intersect, Join, Like, Limit, Motion, Node, NodeId, OrderBy, Over,
-    Parameter, Projection, Reference, ReferenceAsteriskSource, Row, ScalarFunction, ScanCte,
-    ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, SubQueryReference, Trim, UnaryExpr,
-    Union, UnionAll, Values, ValuesRow, Window,
+    Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Bound, BoundType, Case, Cast, Concat, Except,
+    FrameType, GroupBy, Having, IndexExpr, Intersect, Join, Like, Limit, Motion, Node, NodeId,
+    OrderBy, Over, Parameter, Projection, Reference, ReferenceAsteriskSource, Row, ScalarFunction,
+    ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, SubQueryReference, Trim,
+    UnaryExpr, Union, UnionAll, Values, ValuesRow, Window,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, OrderByType, Unary};
 use crate::ir::transformation::redistribution::MotionPolicy;
 use crate::ir::tree::traversal::{LevelNode, PostOrder};
 use crate::ir::tree::Snapshot;
+use crate::ir::types::CastType;
 use crate::ir::Plan;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
@@ -1061,6 +1062,7 @@ impl<'p> SyntaxPlan<'p> {
                 }
                 Expression::Alias { .. } => self.add_alias(id),
                 Expression::Row { .. } => self.add_row(id),
+                Expression::ArrayLiteral { .. } => self.add_array_literal(id),
                 Expression::Bool { .. } | Expression::Arithmetic { .. } => self.add_binary_op(id),
                 Expression::Unary { .. } => self.add_unary_op(id),
                 Expression::ScalarFunction { .. } => self.add_stable_func(id),
@@ -1899,21 +1901,51 @@ impl<'p> SyntaxPlan<'p> {
 
     fn add_index(&mut self, id: NodeId) {
         let (_, expr) = self.prologue_expr(id);
-        let Expression::Index(IndexExpr { child, which }) = expr else {
+        let Expression::Index(IndexExpr {
+            child,
+            indexes,
+            cast_to,
+        }) = expr
+        else {
             panic!("Expected INDEX node");
         };
-        let (child, which) = (*child, *which);
-        let which_sn_id = self.pop_expr_from_stack(which, id);
+        let child = *child;
+        let indexes = indexes.clone();
+        // We must wrap an index expression with an explicit cast, since Tarantool arrays store any.
+        let cast_type = (*cast_to.get())
+            .as_ref()
+            .and_then(|ty| CastType::try_from(ty).ok());
+
+        let mut index_sn_ids = Vec::with_capacity(indexes.len());
+        for which in indexes.iter().rev() {
+            index_sn_ids.push(self.pop_expr_from_stack(*which, id));
+        }
+        index_sn_ids.reverse();
         let child_sn_id = self.pop_expr_from_stack(child, id);
 
-        let children = vec![
-            child_sn_id,
-            self.nodes.push_sn_non_plan(SyntaxNode::new_lbracket()),
-            which_sn_id,
-            self.nodes.push_sn_non_plan(SyntaxNode::new_rbracket()),
-        ];
-        let sn = SyntaxNode::new_pointer(id, None, children);
-        self.nodes.push_sn_plan(sn);
+        let arena = &mut self.nodes;
+        // Render the whole chain `child[idx0][idx1]...` wrapped once in the cast.
+        let mut index_children = Vec::with_capacity(index_sn_ids.len() * 3 + 1);
+        index_children.push(child_sn_id);
+        for idx_sn_id in index_sn_ids {
+            index_children.push(arena.push_sn_non_plan(SyntaxNode::new_lbracket()));
+            index_children.push(idx_sn_id);
+            index_children.push(arena.push_sn_non_plan(SyntaxNode::new_rbracket()));
+        }
+        let sn = match cast_type {
+            Some(to) => {
+                let to_alias = to.to_smolstr();
+                let mut children = Vec::with_capacity(index_children.len() + 3);
+                children.push(arena.push_sn_non_plan(SyntaxNode::new_lparen()));
+                children.extend(index_children);
+                children.push(arena.push_sn_non_plan(SyntaxNode::new_cast_type(to_alias)));
+                children.push(arena.push_sn_non_plan(SyntaxNode::new_rparen()));
+                let cast_sn_id = arena.push_sn_non_plan(SyntaxNode::new_cast());
+                SyntaxNode::new_pointer(id, Some(cast_sn_id), children)
+            }
+            None => SyntaxNode::new_pointer(id, None, index_children),
+        };
+        arena.push_sn_plan(sn);
     }
 
     fn add_cast(&mut self, id: NodeId) {
@@ -1921,11 +1953,30 @@ impl<'p> SyntaxPlan<'p> {
         let Expression::Cast(Cast { child, to }) = expr else {
             panic!("Expected CAST node");
         };
-        let to_alias = to.to_smolstr();
+        let to = *to;
         let child_plan_id = *child;
 
         let child_sn_id = self.pop_expr_from_stack(child_plan_id, id);
         let arena = &mut self.nodes;
+
+        // An array cast has no Tarantool `CAST(x AS int[])` form, so emit the eager
+        // `_pico_array_cast(child, 'marker')` builtin function instead.
+        if let CastType::Array(nested) = to {
+            let name_sn_id = arena.push_sn_non_plan(SyntaxNode::new_inline("\"_pico_array_cast\""));
+            let marker = format_smolstr!("'{}'", nested.as_marker());
+            let children = vec![
+                arena.push_sn_non_plan(SyntaxNode::new_lparen()),
+                child_sn_id,
+                arena.push_sn_non_plan(SyntaxNode::new_comma()),
+                arena.push_sn_non_plan(SyntaxNode::new_inline(marker.as_str())),
+                arena.push_sn_non_plan(SyntaxNode::new_rparen()),
+            ];
+            let sn = SyntaxNode::new_pointer(id, Some(name_sn_id), children);
+            arena.push_sn_plan(sn);
+            return;
+        }
+
+        let to_alias = to.to_smolstr();
         let children = vec![
             arena.push_sn_non_plan(SyntaxNode::new_lparen()),
             child_sn_id,
@@ -1977,6 +2028,38 @@ impl<'p> SyntaxPlan<'p> {
             self.nodes.push_sn_non_plan(SyntaxNode::new_escape()),
             escape_sn_id,
         ];
+
+        let sn = SyntaxNode::new_pointer(id, None, children);
+        self.nodes.push_sn_plan(sn);
+    }
+
+    fn add_array_literal(&mut self, id: NodeId) {
+        let plan = self.plan.get_ir_plan();
+        let expr = plan
+            .get_expression_node(id)
+            .expect("node {id} must exist in the plan");
+        let Expression::ArrayLiteral(ArrayLiteral { list, .. }) = expr else {
+            panic!("Expected ARRAY literal node");
+        };
+
+        // Vec of array's sn children nodes.
+        let mut list_sn_ids = Vec::with_capacity(list.len());
+        for list_id in list.iter().rev() {
+            list_sn_ids.push(self.pop_expr_from_stack(*list_id, id));
+        }
+        list_sn_ids.reverse();
+
+        // Tarantool's SQL syntax for array literals is `[expr, ...]`.
+        let mut children = Vec::with_capacity(list_sn_ids.len() * 2 + 1);
+        children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_lbracket()));
+        if let Some((last, others)) = list_sn_ids.split_last() {
+            for sn_id in others {
+                children.push(*sn_id);
+                children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_comma()));
+            }
+            children.push(*last);
+        }
+        children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_rbracket()));
 
         let sn = SyntaxNode::new_pointer(id, None, children);
         self.nodes.push_sn_plan(sn);

@@ -62,11 +62,7 @@ trait TreeIterator<'nodes> {
     fn handle_left_right_children(&mut self, expr: Expression) -> Option<NodeId> {
         let (Expression::Bool(BoolExpr { left, right, .. })
         | Expression::Arithmetic(ArithmeticExpr { left, right, .. })
-        | Expression::Concat(Concat { left, right, .. })
-        | Expression::Index(IndexExpr {
-            child: left,
-            which: right,
-        })) = expr
+        | Expression::Concat(Concat { left, right, .. })) = expr
         else {
             panic!("Expected expression with left and right children")
         };
@@ -79,6 +75,23 @@ trait TreeIterator<'nodes> {
             return Some(*right);
         }
         None
+    }
+
+    /// Iterate the children of an index-chain node.
+    fn handle_index_iter(&mut self, expr: Expression) -> Option<NodeId> {
+        let Expression::Index(IndexExpr { child, indexes, .. }) = expr else {
+            panic!("Index expression expected")
+        };
+        let child_step = *self.get_child().borrow();
+        let res = if child_step == 0 {
+            Some(*child)
+        } else {
+            indexes.get(child_step - 1).copied()
+        };
+        if res.is_some() {
+            *self.get_child().borrow_mut() += 1;
+        }
+        res
     }
 
     fn handle_single_child(&mut self, expr: Expression) -> Option<NodeId> {

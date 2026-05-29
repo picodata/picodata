@@ -92,8 +92,16 @@ pub enum Error {
     #[error("unexpected expression of type any, explicit cast to the actual type is required")]
     UnexpectedExpressionOfTypeAny,
 
+    #[error(
+        "unexpected expression of type array(any), explicit cast to the typed array is required"
+    )]
+    UnexpectedExpressionOfTypeArrayAny,
+
     #[error("cannot index expression of type {0}")]
     CannotIndexExpressionOfType(Type),
+
+    #[error("nested arrays are not supported")]
+    NestedArraysAreNotSupported,
 
     #[error("{0}")]
     Other(String),

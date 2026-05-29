@@ -84,7 +84,8 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
         .map(|f| {
             IntoIterator::into_iter([
                 ("name".into(), Value::Str(f.name.as_str().into())),
-                ("type".into(), Value::Str(f.field_type.as_str().into())),
+                // box API only accepts "array".
+                ("type".into(), Value::Str(f.field_type.as_box_str().into())),
                 ("is_nullable".into(), Value::Bool(f.is_nullable)),
             ])
             .collect()

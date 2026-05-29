@@ -9,12 +9,12 @@ use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr};
 
 use super::node::ddl::{Ddl, MutDdl};
-use super::types::DomainType;
+use super::types::ColumnDefType;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ColumnDef {
     pub name: SmolStr,
-    pub data_type: DomainType,
+    pub data_type: ColumnDefType,
     pub is_nullable: bool,
 }
 

@@ -1,11 +1,12 @@
-from conftest import Postgres, PgClient
-import psycopg
-from psycopg.types.json import Jsonb, Json
+import datetime
 from decimal import Decimal
 from uuid import UUID
+
 import pg8000.native as pg8000  # type: ignore
+import psycopg
 import pytest
-import datetime
+from conftest import PgClient, Postgres
+from psycopg.types.json import Json, Jsonb
 
 
 def test_decimal(postgres: Postgres):
@@ -267,8 +268,11 @@ def test_arrays(postgres: Postgres):
     port = postgres.port
 
     postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
+    postgres.instance.sql("CREATE TABLE t1 (a INT PRIMARY KEY, b INT ARRAY, c DOUBLE[], d TEXT[][], e BOOL[5])")
 
     postgres.instance.sql(f'GRANT READ ON TABLE "_pico_user" TO "{user}"', sudo=True)
+    postgres.instance.sql(f'GRANT READ ON TABLE "t1" TO "{user}"', sudo=True)
+    postgres.instance.sql(f'GRANT WRITE ON TABLE "t1" TO "{user}"', sudo=True)
 
     conn = psycopg.connect(f"user = {user} password={password} host={host} port={port} sslmode=disable")
     conn.autocommit = True
@@ -280,20 +284,6 @@ def test_arrays(postgres: Postgres):
     # test binary encoding
     cur = conn.execute(""" SELECT \"auth\" FROM \"_pico_user\" WHERE \"id\" = 0; """, binary=True)
     assert cur.fetchall() == [(["md5", "md5084e0343a0486ff05530df6c705c8bb4"],)]
-
-    # text array parameters should throw an error
-    with pytest.raises(
-        psycopg.errors.FeatureNotSupported,
-        match="feature is not supported: _int2 parameters",  # _int2 -> array of integers
-    ):
-        cur = conn.execute(""" SELECT \"auth\" FROM \"_pico_user\" WHERE \"auth\" = %t; """, ([1, 2],))
-
-    # binary array parameters should throw an error
-    with pytest.raises(
-        psycopg.errors.FeatureNotSupported,
-        match="feature is not supported: _int2 parameters",  # _int2 -> array of integers
-    ):
-        cur = conn.execute(""" SELECT \"auth\" FROM \"_pico_user\" WHERE \"auth\" = %b; """, ([1, 2],))
 
     # test empty strings representation in arrays
     # * in text repr empty strings in arrays are sent as quotes ""
@@ -312,6 +302,342 @@ def test_arrays(postgres: Postgres):
         binary=True,
     )
     assert cur.fetchall() == [(["md5", ""],)]
+
+    conn.execute(
+        """ INSERT INTO t1 VALUES
+            (1, NULL, NULL, NULL, NULL),
+            (2, ARRAY[], ARRAY[], ARRAY[], ARRAY[]),
+            (3, ARRAY[1, 2, 3], ARRAY[1::double, 2, 3], ARRAY['amogus'], ARRAY[false]),
+            (4, ARRAY[NULL], ARRAY[NULL], ARRAY[NULL], ARRAY[NULL]),
+            (5, ARRAY[1, NULL, '2'], ARRAY[1, NULL, '2'], ARRAY['1', '', NULL], ARRAY[true, NULL, true]);
+        """,
+    )
+    exp = [
+        (1, None, None, None, None),
+        (2, [], [], [], []),
+        (3, [1, 2, 3], [1.0, 2.0, 3.0], ["amogus"], [False]),
+        (4, [None], [None], [None], [None]),
+        (5, [1, None, 2], [1.0, None, 2.0], ["1", "", None], [True, None, True]),
+    ]
+
+    cur = conn.execute(""" SELECT * FROM t1; """, binary=False)
+    assert cur.fetchall() == exp
+
+    cur = conn.execute(""" SELECT * FROM t1; """, binary=True)
+    assert cur.fetchall() == exp
+
+    cur = conn.execute(""" SELECT ARRAY[1.4, 2.5, -1.5]::int[]; """, binary=False)
+    assert cur.fetchall() == [([1, 2, -1],)]
+
+    cur = conn.execute(""" SELECT ARRAY[1.4, 2.5, -1.5]::int[]; """, binary=True)
+    assert cur.fetchall() == [([1, 2, -1],)]
+
+    cur = conn.execute(""" SELECT %t::int[][1]; """, ([1.4, 2.5, -1.5],), binary=False)
+    assert cur.fetchall() == [(1,)]
+
+    cur = conn.execute(""" SELECT %b::int[][1]; """, ([1.4, 2.5, -1.5],), binary=True)
+    assert cur.fetchall() == [(1,)]
+
+    cur = conn.execute(""" SELECT \"a\", \"b\"::int[] FROM t1 WHERE \"a\" = 3; """, binary=False)
+    assert cur.fetchall() == [(3, [1, 2, 3])]
+
+    cur = conn.execute(""" SELECT \"a\", \"b\"::int[] FROM t1 WHERE \"a\" = 3; """, binary=True)
+    assert cur.fetchall() == [(3, [1, 2, 3])]
+
+
+def _array_table(postgres: Postgres, columns: str):
+    """Create table `t` with the given column definition (as admin), grant the
+    fresh `postgres` user access to it and return an autocommit connection."""
+    user = "postgres"
+    password = "P@ssw0rd"
+    host = postgres.host
+    port = postgres.port
+
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
+    postgres.instance.sql(f"CREATE TABLE t ({columns})")
+    postgres.instance.sql(f'GRANT READ ON TABLE "t" TO "{user}"', sudo=True)
+    postgres.instance.sql(f'GRANT WRITE ON TABLE "t" TO "{user}"', sudo=True)
+
+    conn = psycopg.connect(f"user = {user} password={password} host={host} port={port} sslmode=disable")
+    conn.autocommit = True
+    return conn
+
+
+def _assert_array_roundtrip(conn, exp):
+    # text encoding
+    cur = conn.execute(""" SELECT * FROM t ORDER BY a; """, binary=False)
+    assert cur.fetchall() == exp
+
+    # binary encoding
+    cur = conn.execute(""" SELECT * FROM t ORDER BY a; """, binary=True)
+    assert cur.fetchall() == exp
+
+
+def test_array_int(postgres: Postgres):
+    conn = _array_table(postgres, "a INT PRIMARY KEY, b INT ARRAY")
+    conn.execute(
+        """ INSERT INTO t VALUES
+            (1, NULL),
+            (2, ARRAY[]),
+            (3, ARRAY[1, 2, 3]),
+            (4, ARRAY[NULL]),
+            (5, ARRAY[-100, 0, 9223372036854775807]),
+            (6, ARRAY[10, NULL, 30]);
+        """
+    )
+    exp = [
+        (1, None),
+        (2, []),
+        (3, [1, 2, 3]),
+        (4, [None]),
+        (5, [-100, 0, 9223372036854775807]),
+        (6, [10, None, 30]),
+    ]
+    _assert_array_roundtrip(conn, exp)
+
+
+def test_array_double(postgres: Postgres):
+    conn = _array_table(postgres, "a INT PRIMARY KEY, b DOUBLE ARRAY")
+    conn.execute(
+        """ INSERT INTO t VALUES
+            (1, NULL),
+            (2, ARRAY[]),
+            (3, ARRAY[1, 2.5, 3]),
+            (4, ARRAY[NULL]),
+            (5, ARRAY[-1.5, 0, 100.25]),
+            (6, ARRAY[2.5, NULL, 3.5]);
+        """
+    )
+    exp = [
+        (1, None),
+        (2, []),
+        (3, [1.0, 2.5, 3.0]),
+        (4, [None]),
+        (5, [-1.5, 0.0, 100.25]),
+        (6, [2.5, None, 3.5]),
+    ]
+    _assert_array_roundtrip(conn, exp)
+
+
+def test_array_decimal(postgres: Postgres):
+    conn = _array_table(postgres, "a INT PRIMARY KEY, b DECIMAL ARRAY")
+    conn.execute(
+        """ INSERT INTO t VALUES
+            (1, NULL),
+            (2, ARRAY[]),
+            (3, ARRAY[1, 2, 3]),
+            (4, ARRAY[NULL]),
+            (5, ARRAY[1.5, 2.25, -3.125]),
+            (6, ARRAY[10, NULL, 20]);
+        """
+    )
+    exp = [
+        (1, None),
+        (2, []),
+        (3, [Decimal("1"), Decimal("2"), Decimal("3")]),
+        (4, [None]),
+        (5, [Decimal("1.5"), Decimal("2.25"), Decimal("-3.125")]),
+        (6, [Decimal("10"), None, Decimal("20")]),
+    ]
+    _assert_array_roundtrip(conn, exp)
+
+
+def test_array_text(postgres: Postgres):
+    conn = _array_table(postgres, "a INT PRIMARY KEY, b TEXT ARRAY")
+    conn.execute(
+        r""" INSERT INTO t VALUES
+            (1, NULL),
+            (2, ARRAY[]),
+            (3, ARRAY['hello', 'world']),
+            (4, ARRAY[NULL]),
+            (5, ARRAY['', ' sp ', 'a,b', 'q"q', 'back\slash', '{braces}', 'it''s']),
+            (6, ARRAY['NULL', 'null', 'plain', NULL]);
+        """
+    )
+    exp = [
+        (1, None),
+        (2, []),
+        (3, ["hello", "world"]),
+        (4, [None]),
+        (5, ["", " sp ", "a,b", 'q"q', "back\\slash", "{braces}", "it's"]),
+        (6, ["NULL", "null", "plain", None]),
+    ]
+    _assert_array_roundtrip(conn, exp)
+
+
+def test_array_bool(postgres: Postgres):
+    conn = _array_table(postgres, "a INT PRIMARY KEY, b BOOL ARRAY")
+    conn.execute(
+        """ INSERT INTO t VALUES
+            (1, NULL),
+            (2, ARRAY[]),
+            (3, ARRAY[true, false, true]),
+            (4, ARRAY[NULL]),
+            (5, ARRAY[false, NULL, true]);
+        """
+    )
+    exp = [
+        (1, None),
+        (2, []),
+        (3, [True, False, True]),
+        (4, [None]),
+        (5, [False, None, True]),
+    ]
+    _assert_array_roundtrip(conn, exp)
+
+
+def test_array_datetime(postgres: Postgres):
+    conn = _array_table(postgres, "a INT PRIMARY KEY, b DATETIME ARRAY")
+    conn.execute(
+        """ INSERT INTO t VALUES
+            (1, NULL),
+            (2, ARRAY[]),
+            (3, ARRAY['2025-05-27T00:00:00Z', '1999-12-31T23:59:59Z']),
+            (4, ARRAY[NULL]),
+            (5, ARRAY['2025-05-27T00:00:00Z', NULL]);
+        """
+    )
+    d1 = datetime.datetime(2025, 5, 27, 0, 0, 0, tzinfo=datetime.timezone.utc)
+    d2 = datetime.datetime(1999, 12, 31, 23, 59, 59, tzinfo=datetime.timezone.utc)
+    exp = [
+        (1, None),
+        (2, []),
+        (3, [d1, d2]),
+        (4, [None]),
+        (5, [d1, None]),
+    ]
+    _assert_array_roundtrip(conn, exp)
+
+
+def test_array_uuid(postgres: Postgres):
+    conn = _array_table(postgres, "a INT PRIMARY KEY, b UUID ARRAY")
+    conn.execute(
+        """ INSERT INTO t VALUES
+            (1, NULL),
+            (2, ARRAY[]),
+            (3, ARRAY['6f2ba4c4-0a4c-4d79-86ae-43d4f84b70e1',
+                      'e4166fc5-e113-46c5-8ae9-970882ca8842']),
+            (4, ARRAY[NULL]),
+            (5, ARRAY['11111111-1111-1111-1111-111111111111', NULL]);
+        """
+    )
+    u1 = UUID("6f2ba4c4-0a4c-4d79-86ae-43d4f84b70e1")
+    u2 = UUID("e4166fc5-e113-46c5-8ae9-970882ca8842")
+    u3 = UUID("11111111-1111-1111-1111-111111111111")
+    exp = [
+        (1, None),
+        (2, []),
+        (3, [u1, u2]),
+        (4, [None]),
+        (5, [u3, None]),
+    ]
+    _assert_array_roundtrip(conn, exp)
+
+
+def _insert_array_params(conn, rows, *, binary: bool):
+    """Insert ``(a, array)`` rows, binding each array as a query parameter."""
+    fmt = "%b" if binary else "%t"
+    for a, arr in rows:
+        conn.execute(f"INSERT INTO t VALUES ({a}, {fmt})", (arr,))
+
+
+def test_array_param_int(postgres: Postgres):
+    conn = _array_table(postgres, "a INT PRIMARY KEY, b INT ARRAY")
+    rows = [
+        (1, [1, 2, 3]),
+        (2, [-100, 0, 9223372036854775807]),
+        (3, [10, None, 30]),
+    ]
+    _insert_array_params(conn, rows, binary=False)
+    _insert_array_params(conn, [(a + 3, arr) for a, arr in rows], binary=True)
+    exp = rows + [(a + 3, arr) for a, arr in rows]
+    _assert_array_roundtrip(conn, exp)
+
+
+def test_array_param_double(postgres: Postgres):
+    conn = _array_table(postgres, "a INT PRIMARY KEY, b DOUBLE ARRAY")
+    rows = [
+        (1, [1.0, 2.5, 3.0]),
+        (2, [-1.5, 0.0, 100.25]),
+        (3, [2.5, None, 3.5]),
+    ]
+    _insert_array_params(conn, rows, binary=False)
+    _insert_array_params(conn, [(a + 3, arr) for a, arr in rows], binary=True)
+    exp = rows + [(a + 3, arr) for a, arr in rows]
+    _assert_array_roundtrip(conn, exp)
+
+
+def test_array_param_decimal(postgres: Postgres):
+    conn = _array_table(postgres, "a INT PRIMARY KEY, b DECIMAL ARRAY")
+    rows = [
+        (1, [Decimal("1"), Decimal("2"), Decimal("3")]),
+        (2, [Decimal("1.5"), Decimal("2.25"), Decimal("-3.125")]),
+        (3, [Decimal("10"), None, Decimal("20")]),
+    ]
+    _insert_array_params(conn, rows, binary=False)
+    _insert_array_params(conn, [(a + 3, arr) for a, arr in rows], binary=True)
+    exp = rows + [(a + 3, arr) for a, arr in rows]
+    _assert_array_roundtrip(conn, exp)
+
+
+def test_array_param_text(postgres: Postgres):
+    conn = _array_table(postgres, "a INT PRIMARY KEY, b TEXT ARRAY")
+    rows = [
+        (1, ["hello", "world"]),
+        (2, ["", " sp ", "a,b", 'q"q', "back\\slash", "{braces}", "it's"]),
+        (3, ["NULL", "null", "plain", None]),
+    ]
+    _insert_array_params(conn, rows, binary=False)
+    _insert_array_params(conn, [(a + 3, arr) for a, arr in rows], binary=True)
+    # pgwire behaviour
+    text_rows = [
+        (1, ["hello", "world"]),
+        (2, [None, " sp ", "a,b", 'q"q', "back\\slash", "{braces}", "it's"]),
+        (3, [None, None, "plain", None]),
+    ]
+    binary_rows = [(a + 3, arr) for a, arr in rows]
+    _assert_array_roundtrip(conn, text_rows + binary_rows)
+
+
+def test_array_param_bool(postgres: Postgres):
+    conn = _array_table(postgres, "a INT PRIMARY KEY, b BOOL ARRAY")
+    rows = [
+        (1, [True, False, True]),
+        (2, [False, None, True]),
+    ]
+    _insert_array_params(conn, rows, binary=False)
+    _insert_array_params(conn, [(a + 2, arr) for a, arr in rows], binary=True)
+    exp = rows + [(a + 2, arr) for a, arr in rows]
+    _assert_array_roundtrip(conn, exp)
+
+
+def test_array_param_datetime(postgres: Postgres):
+    conn = _array_table(postgres, "a INT PRIMARY KEY, b DATETIME ARRAY")
+    d1 = datetime.datetime(2025, 5, 27, 0, 0, 0, tzinfo=datetime.timezone.utc)
+    d2 = datetime.datetime(1999, 12, 31, 23, 59, 59, tzinfo=datetime.timezone.utc)
+    rows = [
+        (1, [d1, d2]),
+        (2, [d1, None]),
+    ]
+    _insert_array_params(conn, rows, binary=False)
+    _insert_array_params(conn, [(a + 2, arr) for a, arr in rows], binary=True)
+    exp = rows + [(a + 2, arr) for a, arr in rows]
+    _assert_array_roundtrip(conn, exp)
+
+
+def test_array_param_uuid(postgres: Postgres):
+    conn = _array_table(postgres, "a INT PRIMARY KEY, b UUID ARRAY")
+    u1 = UUID("6f2ba4c4-0a4c-4d79-86ae-43d4f84b70e1")
+    u2 = UUID("e4166fc5-e113-46c5-8ae9-970882ca8842")
+    u3 = UUID("11111111-1111-1111-1111-111111111111")
+    rows = [
+        (1, [u1, u2]),
+        (2, [u3, None]),
+    ]
+    _insert_array_params(conn, rows, binary=False)
+    _insert_array_params(conn, [(a + 2, arr) for a, arr in rows], binary=True)
+    exp = rows + [(a + 2, arr) for a, arr in rows]
+    _assert_array_roundtrip(conn, exp)
 
 
 def test_map(postgres: Postgres):

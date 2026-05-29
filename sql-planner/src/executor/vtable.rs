@@ -714,7 +714,7 @@ pub fn calculate_unified_types(
         match ty {
             UnrestrictedType::Any
             | UnrestrictedType::Map
-            | UnrestrictedType::Array
+            | UnrestrictedType::Array(_)
             | UnrestrictedType::Boolean
             | UnrestrictedType::String
             | UnrestrictedType::Integer

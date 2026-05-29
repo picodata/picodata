@@ -912,7 +912,7 @@ impl Metadata for RouterMetadata {
         for column_meta in &table.format {
             let col_name = &column_meta.name;
             let is_nullable = column_meta.is_nullable;
-            let col_type = UnrestrictedType::new(column_meta.field_type.as_str())?;
+            let col_type = UnrestrictedType::try_from(column_meta.field_type)?;
             let role = if is_sharded && col_name == DEFAULT_BUCKET_ID_COLUMN_NAME {
                 ColumnRole::Sharding
             } else {

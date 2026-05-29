@@ -1395,6 +1395,7 @@ where
                         | Expression::Concat { .. }
                         | Expression::Like { .. }
                         | Expression::Row { .. }
+                        | Expression::ArrayLiteral { .. }
                         | Expression::Trim { .. }
                         | Expression::Unary { .. }
                         | Expression::Timestamp { .. }

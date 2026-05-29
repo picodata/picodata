@@ -11,7 +11,7 @@ use crate::ffi::tarantool as ffi;
 use crate::index::{Index, IndexIterator, IteratorType};
 use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::util::Value;
-use crate::{msgpack, tuple_from_box_api};
+use crate::{define_str_enum, msgpack, tuple_from_box_api};
 use crate::{set_error, unwrap_or};
 use serde::{Deserialize, Serialize};
 use serde_json::Map;
@@ -21,6 +21,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::os::raw::c_char;
+use std::str::FromStr;
 
 /// End of the reserved range of system spaces.
 pub const SYSTEM_ID_MAX: SpaceId = 511;
@@ -270,7 +271,7 @@ where
 }
 
 macro_rules! define_constructors {
-    ($($constructor:ident ($type:path))+) => {
+    ($($constructor:ident ($type:expr))+) => {
         $(
             #[doc = ::std::concat!(
                 "Create a new field format specifier with the given `name` and ",
@@ -329,7 +330,7 @@ impl Field {
         uuid(FieldType::Uuid)
         datetime(FieldType::Datetime)
         interval(FieldType::Interval)
-        array(FieldType::Array)
+        array(FieldType::Array(TypedArray::Any))
         map(FieldType::Map)
     }
 }
@@ -341,25 +342,275 @@ impl Field {
 #[deprecated = "use space::FieldType instead"]
 pub type SpaceFieldType = FieldType;
 
-crate::define_str_enum! {
-    #![coerce_from_str]
-    /// Type of a field in the space format definition.
-    pub enum FieldType {
-        Any       = "any",
-        Unsigned  = "unsigned",
-        String    = "string",
-        Number    = "number",
-        Double    = "double",
-        Integer   = "integer",
-        Boolean   = "boolean",
-        Varbinary = "varbinary",
-        Scalar    = "scalar",
-        Decimal   = "decimal",
-        Uuid      = "uuid",
-        Datetime  = "datetime",
-        Interval  = "interval",
-        Array     = "array",
-        Map       = "map",
+define_str_enum! {
+    pub enum TypedArray {
+        Boolean = "boolean[]",
+        Datetime = "datetime[]",
+        Decimal = "decimal[]",
+        Double = "double[]",
+        Integer = "integer[]",
+        String = "text[]",
+        Uuid = "uuid[]",
+        Map = "map[]",
+        /// Element type of an untyped array (the bare `array`).
+        Any = "array",
+    }
+}
+
+/// Extented tarantool field string representation:
+/// - `Array(TypedArray::Any)` is `"array"`;
+/// - `Array(T)` is `"<T>[]"`;
+/// - other variants match tarantool.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum FieldType {
+    Any,
+    Unsigned,
+    String,
+    Number,
+    Double,
+    Integer,
+    Boolean,
+    Varbinary,
+    Scalar,
+    Decimal,
+    Uuid,
+    Datetime,
+    Interval,
+    /// `Array(TypedArray::Any)` is encoded as `"array"`.
+    Array(TypedArray),
+    Map,
+}
+
+crate::define_str_enum_traits! {FieldType}
+
+impl FieldType {
+    /// NOTE: use [`Self::as_box_str`] for tarantool box API.
+    #[inline]
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FieldType::Any => "any",
+            FieldType::Unsigned => "unsigned",
+            FieldType::String => "string",
+            FieldType::Number => "number",
+            FieldType::Double => "double",
+            FieldType::Integer => "integer",
+            FieldType::Boolean => "boolean",
+            FieldType::Varbinary => "varbinary",
+            FieldType::Scalar => "scalar",
+            FieldType::Decimal => "decimal",
+            FieldType::Uuid => "uuid",
+            FieldType::Datetime => "datetime",
+            FieldType::Interval => "interval",
+            FieldType::Array(elem) => elem.as_str(),
+            FieldType::Map => "map",
+        }
+    }
+
+    /// Tarantool box-API string representation.
+    #[inline]
+    pub fn as_box_str(&self) -> &'static str {
+        match self {
+            FieldType::Array(_) => "array",
+            other => other.as_str(),
+        }
+    }
+
+    pub const fn values() -> &'static [&'static str] {
+        &[
+            "any",
+            "unsigned",
+            "string",
+            "number",
+            "double",
+            "integer",
+            "boolean",
+            "varbinary",
+            "scalar",
+            "decimal",
+            "uuid",
+            "datetime",
+            "interval",
+            "array",
+            "map",
+        ]
+    }
+
+    /// Returns `None` on unknown strings.
+    fn from_canonical_str(s: &str) -> Option<Self> {
+        Some(match s {
+            "any" => FieldType::Any,
+            "unsigned" => FieldType::Unsigned,
+            "string" => FieldType::String,
+            "number" => FieldType::Number,
+            "double" => FieldType::Double,
+            "integer" => FieldType::Integer,
+            "boolean" => FieldType::Boolean,
+            "varbinary" => FieldType::Varbinary,
+            "scalar" => FieldType::Scalar,
+            "decimal" => FieldType::Decimal,
+            "uuid" => FieldType::Uuid,
+            "datetime" => FieldType::Datetime,
+            "interval" => FieldType::Interval,
+            "array" => FieldType::Array(TypedArray::Any),
+            "map" => FieldType::Map,
+            other => return TypedArray::from_str(other).ok().map(FieldType::Array),
+        })
+    }
+}
+
+impl ::std::str::FromStr for FieldType {
+    type Err = crate::define_str_enum::UnknownEnumVariant<FieldType>;
+
+    fn from_str(s: &str) -> ::std::result::Result<Self, Self::Err> {
+        let lowered = s.trim().to_lowercase();
+        Self::from_canonical_str(&lowered).ok_or_else(|| {
+            crate::define_str_enum::UnknownEnumVariant {
+                raw_value: lowered,
+                type_container: ::std::marker::PhantomData,
+                variants: Self::values(),
+            }
+        })
+    }
+}
+
+#[cfg(test)]
+mod field_type_tests {
+    use super::*;
+    use crate::msgpack::{decode as mp_decode, encode as mp_encode};
+
+    #[test]
+    fn as_str_uses_extended_form_for_arrays() {
+        assert_eq!(FieldType::Array(TypedArray::Any).as_str(), "array");
+        assert_eq!(FieldType::Array(TypedArray::Integer).as_str(), "integer[]",);
+
+        assert_eq!(FieldType::Array(TypedArray::String).as_str(), "text[]");
+        assert_eq!(FieldType::Integer.as_str(), "integer");
+    }
+
+    #[test]
+    fn as_box_str_collapses_arrays() {
+        assert_eq!(FieldType::Array(TypedArray::Any).as_box_str(), "array");
+        assert_eq!(FieldType::Array(TypedArray::Integer).as_box_str(), "array",);
+        assert_eq!(FieldType::Integer.as_box_str(), "integer");
+    }
+
+    #[test]
+    fn array_type_str_round_trips_through_canonical_str() {
+        for elem in [
+            TypedArray::Boolean,
+            TypedArray::Datetime,
+            TypedArray::Decimal,
+            TypedArray::Double,
+            TypedArray::Integer,
+            TypedArray::String,
+            TypedArray::Uuid,
+            TypedArray::Map,
+        ] {
+            let label = elem.as_str();
+            assert!(label.ends_with("[]"), "{label} should end with []");
+            assert_eq!(
+                FieldType::from_canonical_str(label),
+                Some(FieldType::Array(elem)),
+                "{label} should round-trip to Array({elem:?})",
+            );
+        }
+        assert_eq!(
+            TypedArray::String.as_str(),
+            "text[]",
+            "String must render as text[], not string[]",
+        );
+    }
+
+    #[test]
+    fn msgpack_roundtrip_scalar_and_arrays() {
+        for ty in [
+            FieldType::Integer,
+            FieldType::String,
+            FieldType::Map,
+            FieldType::Array(TypedArray::Any),
+            FieldType::Array(TypedArray::Integer),
+            FieldType::Array(TypedArray::Decimal),
+            FieldType::Array(TypedArray::String),
+        ] {
+            let buf = mp_encode(&ty);
+            let decoded: FieldType = mp_decode(&buf[..]).unwrap();
+            assert_eq!(decoded, ty);
+        }
+    }
+
+    #[test]
+    fn msgpack_decodes_legacy_bare_array() {
+        // Tuples written before the typed-array branch used the bare string "array".
+        // They must decode to Array(Any) so old _pico_table rows survive an upgrade.
+        let buf = mp_encode(&"array");
+        let decoded: FieldType = mp_decode(&buf[..]).unwrap();
+        assert_eq!(decoded, FieldType::Array(TypedArray::Any));
+    }
+
+    #[test]
+    fn msgpack_encodes_extended_form_for_typed_array() {
+        // The on-disk shape carries the element label inside the type string.
+        let buf = mp_encode(&FieldType::Array(TypedArray::Integer));
+        let s: String = mp_decode(&buf[..]).unwrap();
+        assert_eq!(s, "integer[]");
+    }
+
+    #[test]
+    fn serde_roundtrip_via_json() {
+        for ty in [
+            FieldType::Boolean,
+            FieldType::Array(TypedArray::Any),
+            FieldType::Array(TypedArray::Uuid),
+        ] {
+            let json = serde_json::to_string(&ty).unwrap();
+            let back: FieldType = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, ty);
+        }
+        // Extended-form JSON shape is human-readable.
+        assert_eq!(
+            serde_json::to_string(&FieldType::Array(TypedArray::Integer)).unwrap(),
+            "\"integer[]\"",
+        );
+    }
+
+    #[test]
+    fn from_str_accepts_both_forms() {
+        use std::str::FromStr;
+        assert_eq!(
+            FieldType::from_str("array").unwrap(),
+            FieldType::Array(TypedArray::Any)
+        );
+        assert_eq!(
+            FieldType::from_str("INTEGER[]").unwrap(),
+            FieldType::Array(TypedArray::Integer),
+        );
+        assert_eq!(
+            FieldType::from_str("  integer  ").unwrap(),
+            FieldType::Integer
+        );
+        assert!(FieldType::from_str("definitely-not-a-type").is_err());
+        assert!(FieldType::from_str("[]").is_err());
+    }
+
+    #[test]
+    fn field_struct_roundtrip_three_keys() {
+        // The Field struct should encode as a 3-key map (name, field_type, is_nullable).
+        // No `element_type` key — the element label lives inside the type string.
+        let field = Field {
+            name: "a".into(),
+            field_type: FieldType::Array(TypedArray::Integer),
+            is_nullable: false,
+        };
+        let buf = mp_encode(&field);
+
+        // Decode as untyped to inspect map shape.
+        let value: rmpv::Value = rmpv::decode::read_value(&mut &buf[..]).unwrap();
+        let map = value.as_map().expect("map");
+        assert_eq!(map.len(), 3, "expected 3 keys, got {map:?}");
+
+        // Round-trip preserves the element label.
+        let back: Field = mp_decode(&buf[..]).unwrap();
+        assert_eq!(back, field);
     }
 }
 

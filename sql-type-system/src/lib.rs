@@ -85,7 +85,7 @@ pub use type_system::{Function, TypeReport, TypeSystem};
 mod tests {
     use crate::{
         error::Error,
-        expr::{Expr as GenericExpr, ExprKind as GenericExprKind, Type},
+        expr::{Expr as GenericExpr, ExprKind as GenericExprKind, NestedType, Type},
         type_system::{Function, FunctionKind, TypeAnalyzer as GenericTypeAnalyzer, TypeSystem},
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -136,6 +136,17 @@ mod tests {
 
     fn between(exprs: Vec<Expr>) -> Expr {
         expr(ExprKind::Between(exprs))
+    }
+
+    fn array(exprs: Vec<Expr>) -> Expr {
+        expr(ExprKind::Array(exprs))
+    }
+
+    fn index_chain(source: Expr, indexes: Vec<Expr>) -> Expr {
+        expr(ExprKind::IndexChain {
+            source: source.into(),
+            indexes,
+        })
     }
 
     fn default_type_system() -> TypeSystem {
@@ -790,5 +801,237 @@ mod tests {
         //     $2::unsigned, desired = Double => $2::double (coerced to double, param type is unsigned)
         //
         //   return r[1] // r[1].returns = desired_type = Double
+    }
+
+    fn arr(n: NestedType) -> Type {
+        Type::Array(n)
+    }
+
+    #[test]
+    fn array_homogeneous_resolution() {
+        let type_system = default_type_system();
+        let cases = [
+            (
+                array(vec![lit(Integer), lit(Integer)]),
+                None,
+                arr(NestedType::Integer),
+            ),
+            (
+                array(vec![lit(Integer), lit(Numeric)]),
+                None,
+                arr(NestedType::Numeric),
+            ),
+            (
+                array(vec![lit(Integer), lit(Double)]),
+                None,
+                arr(NestedType::Double),
+            ),
+            // [int, numeric, double] resolves to Double (the "weakest" candidate that
+            // every element coerces to), matching how COALESCE handles the same mix.
+            (
+                array(vec![lit(Integer), lit(Numeric), lit(Double)]),
+                None,
+                arr(NestedType::Double),
+            ),
+            (
+                array(vec![lit(Text), lit(Text)]),
+                None,
+                arr(NestedType::Text),
+            ),
+            (
+                array(vec![lit(Boolean), lit(Boolean)]),
+                None,
+                arr(NestedType::Boolean),
+            ),
+        ];
+        for (e, desired, expected) in cases {
+            let mut analyzer = TypeAnalyzer::new(&type_system);
+            analyzer.analyze(&e, desired).unwrap();
+            assert_eq!(analyzer.get_report().get_type(&e.id), expected);
+        }
+    }
+
+    #[test]
+    fn array_string_literal_coerces_to_peer() {
+        let type_system = default_type_system();
+        let e = array(vec![lit(Integer), lit(Text)]);
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        analyzer.analyze(&e, None).unwrap();
+        let report = analyzer.get_report();
+        assert_eq!(report.get_type(&e.id), arr(NestedType::Integer));
+        if let ExprKind::Array(children) = e.kind {
+            assert_eq!(report.get_type(&children[0].id), Integer);
+            assert_eq!(report.get_type(&children[1].id), Integer);
+        }
+    }
+
+    #[test]
+    fn array_unmatchable_elements_are_an_error() {
+        let type_system = default_type_system();
+        let e = array(vec![lit(Integer), lit(Boolean)]);
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        let err = analyzer.analyze(&e, None).unwrap_err();
+        assert!(
+            matches!(err, Error::TypesCannotBeMatched { ref context, .. } if context.as_str() == "ARRAY"),
+            "unexpected error: {err:?}"
+        );
+    }
+
+    #[test]
+    fn array_strict_mode_with_column_type_coerces_text_literal() {
+        let type_system = default_type_system();
+        let e = array(vec![lit(Text), lit(Text)]);
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        analyzer
+            .analyze(&e, Some(arr(NestedType::Datetime)))
+            .unwrap();
+        let report = analyzer.get_report();
+        assert_eq!(report.get_type(&e.id), arr(NestedType::Datetime));
+    }
+
+    #[test]
+    fn array_with_parameter_inferred_from_siblings() {
+        let type_system = default_type_system();
+        let e = array(vec![param("$1"), lit(Integer)]);
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        analyzer.analyze(&e, None).unwrap();
+        assert_eq!(
+            analyzer.get_report().get_type(&e.id),
+            arr(NestedType::Integer)
+        );
+        assert_eq!(analyzer.get_parameter_types(), &[Some(Integer)]);
+    }
+
+    #[test]
+    fn array_with_parameter_inferred_from_column_type() {
+        let type_system = default_type_system();
+        let e = array(vec![param("$1"), param("$2")]);
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        analyzer
+            .analyze(&e, Some(arr(NestedType::Integer)))
+            .unwrap();
+        assert_eq!(
+            analyzer.get_report().get_type(&e.id),
+            arr(NestedType::Integer)
+        );
+        assert_eq!(
+            analyzer.get_parameter_types(),
+            &[Some(Integer), Some(Integer)]
+        );
+    }
+
+    #[test]
+    fn array_empty_picks_desired_or_text() {
+        let type_system = default_type_system();
+
+        // With no context the element type defaults to text.
+        let e = array(vec![]);
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        analyzer.analyze(&e, None).unwrap();
+        assert_eq!(analyzer.get_report().get_type(&e.id), arr(NestedType::Text));
+
+        let e = array(vec![]);
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        analyzer.analyze(&e, Some(arr(NestedType::Text))).unwrap();
+        assert_eq!(analyzer.get_report().get_type(&e.id), arr(NestedType::Text));
+    }
+
+    #[test]
+    fn array_desired_any_is_rejected() {
+        let type_system = default_type_system();
+
+        // Non-empty array literal.
+        let e = array(vec![lit(Integer)]);
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        let err = analyzer
+            .analyze(&e, Some(arr(NestedType::Any)))
+            .unwrap_err();
+        assert_eq!(err, Error::UnexpectedExpressionOfTypeArrayAny);
+
+        // Empty array literal.
+        let e = array(vec![]);
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        let err = analyzer
+            .analyze(&e, Some(arr(NestedType::Any)))
+            .unwrap_err();
+        assert_eq!(err, Error::UnexpectedExpressionOfTypeArrayAny);
+
+        // A plain literal is rejected the same way.
+        let e = lit(Integer);
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        let err = analyzer
+            .analyze(&e, Some(arr(NestedType::Any)))
+            .unwrap_err();
+        assert_eq!(err, Error::UnexpectedExpressionOfTypeArrayAny);
+    }
+
+    #[test]
+    fn array_nested_arrays_are_forbidden() {
+        let type_system = default_type_system();
+        let inner = array(vec![lit(Integer)]);
+        let outer = array(vec![inner]);
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        let err = analyzer.analyze(&outer, None).unwrap_err();
+        assert_eq!(err, Error::NestedArraysAreNotSupported);
+    }
+
+    #[test]
+    fn array_null_default() {
+        let type_system = default_type_system();
+        let e = array(vec![null(), lit(Integer)]);
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        analyzer.analyze(&e, None).unwrap();
+        assert_eq!(
+            analyzer.get_report().get_type(&e.id),
+            arr(NestedType::Integer)
+        );
+    }
+
+    #[test]
+    fn index_chain_empty_array_infers_element_from_arithmetic() {
+        let type_system = default_type_system();
+
+        let arr_expr = array(vec![]);
+        let arr_id = arr_expr.id;
+        let idx_expr = index_chain(arr_expr, vec![lit(Integer)]);
+        let idx_id = idx_expr.id;
+        let e = binary("+", idx_expr, lit(Integer));
+
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        analyzer.analyze(&e, None).unwrap();
+        let report = analyzer.get_report();
+        assert_eq!(report.get_type(&e.id), Integer);
+        assert_eq!(report.get_type(&idx_id), Integer);
+        assert_eq!(report.get_type(&arr_id), arr(NestedType::Integer));
+    }
+
+    #[test]
+    fn index_chain_empty_array_uses_desired_type() {
+        let type_system = default_type_system();
+
+        let arr_expr = array(vec![]);
+        let arr_id = arr_expr.id;
+        let e = index_chain(arr_expr, vec![lit(Integer)]);
+
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        analyzer.analyze(&e, Some(Double)).unwrap();
+        let report = analyzer.get_report();
+        assert_eq!(report.get_type(&e.id), Double);
+        assert_eq!(report.get_type(&arr_id), arr(NestedType::Double));
+    }
+
+    #[test]
+    fn index_chain_empty_array_defaults_to_text() {
+        let type_system = default_type_system();
+
+        let arr_expr = array(vec![]);
+        let arr_id = arr_expr.id;
+        let e = index_chain(arr_expr, vec![lit(Integer)]);
+
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        analyzer.analyze(&e, None).unwrap();
+        let report = analyzer.get_report();
+        assert_eq!(report.get_type(&e.id), Text);
+        assert_eq!(report.get_type(&arr_id), arr(NestedType::Text));
     }
 }

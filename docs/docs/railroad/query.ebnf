@@ -60,6 +60,7 @@ expression  ::= (('NOT'* (
                     | trim
                     | upper
                     | version
+                    | array_literal
                     | 'NOT'? 'EXISTS' '(' dql ')'
                     | '(' dql ')'
                     | '(' expression (',' expression)* ')'
@@ -132,6 +133,7 @@ substringSimilar ::= expression 'SIMILAR' expression 'ESCAPE' expression
 lower       ::= 'LOWER' '(' string ')'
 upper       ::= 'UPPER' '(' string ')'
 abs         ::= 'ABS' '(' ( decimal | double | integer ) ')'
+array_literal ::= 'ARRAY' '[' (expression (',' expression)*)? ']'
 values      ::= 'VALUES'
                 ('(' (expression(',' expression)*) ')')
                 (',' ('(' (expression(',' expression)*) ')'))*
@@ -346,6 +348,8 @@ alter_plugin  ::= 'ALTER' 'PLUGIN' plugin (
 audit_policy     ::= 'AUDIT' 'POLICY' policy ('BY' | 'EXCEPT') user
                      ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                      ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+
+column_def_type ::= (unrestricted_type (('[' unsigned? ']') | ('ARRAY' ('[' unsigned ']')?))?) | 'UNSIGNED'
 
 unrestricted_type ::= 'BOOL'
                     | 'BOOLEAN'

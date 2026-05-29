@@ -27,7 +27,7 @@ use crate::ir::node::NodeId;
 use crate::ir::options::Forward;
 use crate::ir::relation::{Column, ColumnRole, SpaceEngine, Table};
 use crate::ir::tree::Snapshot;
-use crate::ir::types::{DerivedType, UnrestrictedType};
+use crate::ir::types::{DerivedType, NestedType, UnrestrictedType};
 use crate::ir::value::Value;
 use crate::ir::ExplainOptions;
 use crate::ir::Plan;
@@ -604,6 +604,41 @@ impl RouterConfigurationMock {
             Table::new_sharded(
                 random(),
                 "t1",
+                columns,
+                sharding_key,
+                primary_key,
+                SpaceEngine::Memtx,
+            )
+            .unwrap(),
+        );
+
+        let columns = vec![
+            Column::new(
+                "a",
+                DerivedType::new(UnrestrictedType::Integer),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "bucket_id",
+                DerivedType::new(UnrestrictedType::Integer),
+                ColumnRole::Sharding,
+                true,
+            ),
+            Column::new(
+                "b",
+                DerivedType::new(UnrestrictedType::Array(NestedType::Integer)),
+                ColumnRole::User,
+                true,
+            ),
+        ];
+        let sharding_key: &[&str] = &["a"];
+        let primary_key: &[&str] = &["a"];
+        tables.insert(
+            "arr_t".to_smolstr(),
+            Table::new_sharded(
+                random(),
+                "arr_t",
                 columns,
                 sharding_key,
                 primary_key,

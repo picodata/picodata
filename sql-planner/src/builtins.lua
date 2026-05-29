@@ -118,6 +118,15 @@ builtins.PICO_INSTANCE_HEALTH_STATUS = function(instance_uuid)
     return box.func[".proc_instance_health_status"]:call({instance_uuid})
 end
 
+builtins.PICO_ARRAY_CAST = function(arr, elem)
+    -- Eager `::T[]` cast: returns a new array with every element cast to `elem`.
+    -- TODO: <https://git.picodata.io/core/tarantool/-/issues/119>
+    if arr == nil then
+        return nil
+    end
+    return box.func[".proc_array_cast"]:call({arr, elem})
+end
+
 
 local function init()
     if rawget(_G, module) == nil then
@@ -141,6 +150,18 @@ local function create_functions()
         param_list = { 'string' },
         exports = { 'SQL' },
         is_deterministic = false,
+        if_not_exists = true
+    })
+
+    body = string.format("function(...) return %s.builtins.PICO_ARRAY_CAST(...) end",
+        module)
+    box.schema.func.create("_pico_array_cast", {
+        language = 'LUA',
+        returns = 'ARRAY',
+        body = body,
+        param_list = { 'array', 'string' },
+        exports = { 'SQL' },
+        is_deterministic = true,
         if_not_exists = true
     })
 

@@ -343,7 +343,7 @@ CREATE UNIQUE INDEX unsigned ON int8 USING HASH (bigint, uuid);
 
 -- TEST: test-filter-keyword-7
 -- SQL:
-CREATE PROCEDURE array (string)
+CREATE PROCEDURE "array" (string)
 LANGUAGE SQL
 AS $$
     INSERT INTO int8 VALUES (10, 7, 'kek2')

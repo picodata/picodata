@@ -1,4 +1,5 @@
 use super::*;
+use insta::assert_yaml_snapshot;
 use pretty_assertions::assert_eq;
 use tarantool::decimal;
 
@@ -419,6 +420,223 @@ fn trivalent() {
         Value::from(Trivalent::False).eq(&Value::Null)
     );
     assert_eq!(Trivalent::Unknown, Value::Null.eq(&Value::Null));
+}
+
+#[test]
+fn array_tuple_cast_coerces_elements() {
+    let t = Tuple::from(vec![
+        Value::Integer(1),
+        Value::Integer(2),
+        Value::Integer(3),
+    ]);
+    let v = Value::Tuple(t.clone());
+
+    // `Any` element type carries avoids cloning.
+    let encoded = v
+        .cast_and_encode(&DerivedType::new(UnrestrictedType::Array(NestedType::Any)))
+        .unwrap();
+    if let EncodedValue::Owned(_) = encoded {
+        panic!("expected pass-through by reference");
+    }
+
+    // A typed array whose elements already match the element type needs no coercion.
+    let encoded = v
+        .cast_and_encode(&DerivedType::new(UnrestrictedType::Array(
+            NestedType::Integer,
+        )))
+        .unwrap();
+    if let EncodedValue::Owned(_) = encoded {
+        panic!("expected pass-through by reference");
+    }
+
+    // Integers stay integers when cast to an INT array.
+    let casted = v
+        .clone()
+        .cast(UnrestrictedType::Array(NestedType::Integer))
+        .unwrap();
+    assert_yaml_snapshot!(casted, @r"
+    Tuple:
+      - Integer: 1
+      - Integer: 2
+      - Integer: 3
+    ");
+
+    // An element that needs real conversion runs per-element coercion, which clones into an owned value.
+    let encoded = v
+        .cast_and_encode(&DerivedType::new(UnrestrictedType::Array(
+            NestedType::Double,
+        )))
+        .unwrap();
+    assert!(matches!(encoded, EncodedValue::Owned(_)));
+
+    // Decimal elements coerce to Double when cast to a DOUBLE array column type.
+    let dec = Value::Tuple(Tuple::from(vec![
+        Value::from(Decimal::from_str("1").unwrap()),
+        Value::from(Decimal::from_str("2.5").unwrap()),
+        Value::Null,
+    ]));
+    let casted = dec
+        .cast(UnrestrictedType::Array(NestedType::Double))
+        .unwrap();
+    assert_yaml_snapshot!(casted, @r#"
+    Tuple:
+      - Double: 1
+      - Double: 2.5
+      - "Null"
+    "#);
+
+    let err = Value::Integer(7)
+        .cast(UnrestrictedType::Array(NestedType::Any))
+        .unwrap_err();
+    assert!(matches!(err, SbroadError::Invalid(Entity::Value, _)));
+}
+
+#[test]
+fn cast_array_truncates_decimal_and_double_to_int() {
+    let decimals = Value::Tuple(Tuple::from(vec![
+        Value::from(Decimal::from_str("1.4").unwrap()),
+        Value::from(Decimal::from_str("2.5").unwrap()),
+        Value::from(Decimal::from_str("-1.5").unwrap()),
+    ]));
+    assert_yaml_snapshot!(decimals.cast_array(NestedType::Integer).unwrap(), @r"
+    Tuple:
+      - Integer: 1
+      - Integer: 2
+      - Integer: -1
+    ");
+
+    let doubles = Value::Tuple(Tuple::from(vec![
+        Value::Double(1.4_f64.into()),
+        Value::Double(2.5_f64.into()),
+        Value::Double((-1.5_f64).into()),
+    ]));
+    assert_yaml_snapshot!(doubles.cast_array(NestedType::Integer).unwrap(), @r"
+    Tuple:
+      - Integer: 1
+      - Integer: 2
+      - Integer: -1
+    ");
+}
+
+#[test]
+fn cast_scalar_decimal_and_double_truncate_to_int() {
+    fn decimal_cast(x: &str) -> Value {
+        let d = Decimal::from_str(x).unwrap();
+        Value::from(d).cast(UnrestrictedType::Integer).unwrap()
+    }
+
+    assert_yaml_snapshot!(decimal_cast("1.4"), @"Integer: 1");
+    assert_yaml_snapshot!(decimal_cast("2.5"), @"Integer: 2");
+    assert_yaml_snapshot!(decimal_cast("-1.5"), @"Integer: -1");
+    assert_yaml_snapshot!(decimal_cast("7"), @"Integer: 7");
+
+    fn double_cast(x: f64) -> Value {
+        let d = Value::Double(x.into());
+        d.cast(UnrestrictedType::Integer).unwrap()
+    }
+
+    assert_yaml_snapshot!(double_cast(1.4), @"Integer: 1");
+    assert_yaml_snapshot!(double_cast(2.5), @"Integer: 2");
+    assert_yaml_snapshot!(double_cast(-1.5), @"Integer: -1");
+    assert_yaml_snapshot!(double_cast(7.), @"Integer: 7");
+
+    assert_yaml_snapshot!(
+        Value::Integer(42).cast(UnrestrictedType::Integer).unwrap(),
+        @"Integer: 42"
+    );
+    assert_yaml_snapshot!(Value::Null.cast(UnrestrictedType::Integer).unwrap(), @r#""Null""#);
+}
+
+#[test]
+fn cast_array_nulls_empty_and_delegates() {
+    assert_yaml_snapshot!(
+        Value::Null.cast_array(NestedType::Integer).unwrap(),
+        @r#""Null""#
+    );
+
+    let with_null = Value::Tuple(Tuple::from(vec![Value::Integer(1), Value::Null]));
+    assert_yaml_snapshot!(
+        with_null.cast_array(NestedType::Integer).unwrap(),
+        @r#"
+    Tuple:
+      - Integer: 1
+      - "Null"
+    "#
+    );
+
+    assert_yaml_snapshot!(
+        Value::Tuple(Tuple::from(vec![]))
+            .cast_array(NestedType::Integer)
+            .unwrap(),
+        @"Tuple: []"
+    );
+
+    let to_double = Value::Tuple(Tuple::from(vec![Value::Integer(1), Value::Integer(2)]));
+    assert_yaml_snapshot!(
+        to_double.cast_array(NestedType::Double).unwrap(),
+        @r"
+    Tuple:
+      - Double: 1
+      - Double: 2
+    "
+    );
+
+    let err = Value::Integer(7)
+        .cast_array(NestedType::Integer)
+        .unwrap_err();
+    assert!(matches!(err, SbroadError::Invalid(Entity::Value, _)));
+}
+
+#[test]
+fn msgpack_value_tuple_serializes_as_bare_msgpack_array() {
+    let t = Tuple::from(vec![
+        Value::Integer(1),
+        Value::Null,
+        Value::String("hi".into()),
+    ]);
+    let v = Value::Tuple(t);
+    let encoded: EncodedValue<'_> = (&v).into();
+
+    let bytes = rmp_serde::to_vec(&encoded).expect("serialize");
+    let decoded: rmpv::Value =
+        rmpv::decode::read_value(&mut bytes.as_slice()).expect("rmpv decode");
+    let elements = match decoded {
+        rmpv::Value::Array(items) => items,
+        other => panic!("expected bare msgpack array, got {other:?}"),
+    };
+    assert_eq!(elements.len(), 3);
+    assert!(matches!(elements[0], rmpv::Value::Integer(_)));
+    assert!(matches!(elements[1], rmpv::Value::Nil));
+    assert!(matches!(elements[2], rmpv::Value::String(_)));
+}
+
+#[test]
+fn encode_trait_value_tuple_is_bare_array_and_round_trips() {
+    let v = Value::Tuple(Tuple::from(vec![
+        Value::Integer(1),
+        Value::Null,
+        Value::Integer(3),
+    ]));
+
+    // Encode through the same trait the motion materialization uses.
+    let mut bytes = Vec::new();
+    v.encode(&mut bytes, &Context::DEFAULT).expect("encode");
+
+    // It must be a bare 3-element array, never `[[1,null,3]]`.
+    let decoded_rmpv = rmpv::decode::read_value(&mut bytes.as_slice()).expect("rmpv decode");
+    match decoded_rmpv {
+        rmpv::Value::Array(items) => {
+            assert_eq!(items.len(), 3, "expected bare array, got nested: {items:?}");
+            assert!(matches!(items[0], rmpv::Value::Integer(_)));
+            assert!(matches!(items[1], rmpv::Value::Nil));
+            assert!(matches!(items[2], rmpv::Value::Integer(_)));
+        }
+        other => panic!("expected bare msgpack array, got {other:?}"),
+    }
+
+    // And encode/decode must be symmetric.
+    let round_tripped = Value::decode(&mut bytes.as_slice(), &Context::DEFAULT).expect("decode");
+    assert_eq!(round_tripped, v);
 }
 
 #[test]

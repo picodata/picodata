@@ -4,15 +4,15 @@ use crate::{
     errors::{Entity, SbroadError},
     executor::vtable::calculate_unified_types,
     ir::{
-        node::{LetVarRef, Over, Parameter, SubQueryReference},
+        node::{IndexExpr, LetVarRef, Over, Parameter, SubQueryReference},
         types::{DerivedType, UnrestrictedType},
         Plan,
     },
 };
 
 use super::{
-    Alias, ArithmeticExpr, Case, Cast, Constant, Expression, MutExpression, Node, NodeId,
-    Reference, ReferenceTarget, Row, ScalarFunction,
+    Alias, ArithmeticExpr, ArrayLiteral, Case, Cast, Constant, Expression, MutExpression, Node,
+    NodeId, Reference, ReferenceTarget, Row, ScalarFunction,
 };
 
 impl Plan {
@@ -127,7 +127,17 @@ impl Expression<'_> {
                 };
                 DerivedType::new(res)
             }
-            Expression::Index(_) => DerivedType::new(UnrestrictedType::Any),
+            Expression::Index(IndexExpr {
+                child,
+                indexes: _,
+                cast_to,
+            }) => match cast_to.get() {
+                Some(_) => *cast_to,
+                None => match plan.get_node_type(*child)?.get() {
+                    Some(UnrestrictedType::Array(nested)) => DerivedType::new((*nested).into()),
+                    _ => DerivedType::new(UnrestrictedType::Any),
+                },
+            },
             Expression::Cast(Cast { to, .. }) => DerivedType::new((*to).into()),
             Expression::Trim(_) | Expression::Concat(_) => {
                 DerivedType::new(UnrestrictedType::String)
@@ -140,9 +150,16 @@ impl Expression<'_> {
                     let expr = plan.get_expression_node(*expr_id)?;
                     expr.calculate_type(plan)?
                 } else {
-                    DerivedType::new(UnrestrictedType::Array)
+                    return Err(SbroadError::Invalid(
+                        Entity::Expression,
+                        Some(format_smolstr!(
+                            "row with {} values has no scalar type",
+                            list.len()
+                        )),
+                    ));
                 }
             }
+            Expression::ArrayLiteral(ArrayLiteral { col_type, .. }) => *col_type,
             Expression::ScalarFunction(ScalarFunction {
                 name,
                 func_type,

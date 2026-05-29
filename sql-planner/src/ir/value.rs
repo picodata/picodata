@@ -23,7 +23,7 @@ use crate::error;
 use crate::errors::{Entity, SbroadError};
 use crate::executor::hash::ToHashString;
 use crate::frontend::sql::{try_parse_bool, try_parse_datetime};
-use crate::ir::types::{DerivedType, UnrestrictedType};
+use crate::ir::types::{DerivedType, NestedType, UnrestrictedType};
 use crate::ir::value::double::Double;
 
 #[derive(
@@ -244,7 +244,7 @@ impl Encode for Value {
             Value::Integer(v) => v.encode(w, context),
             Value::Null => ().encode(w, context),
             Value::String(v) => v.encode(w, context),
-            Value::Tuple(v) => v.encode(w, context),
+            Value::Tuple(v) => v.0.encode(w, context),
             Value::Uuid(v) => v.encode(w, context),
         }
     }
@@ -850,7 +850,22 @@ impl Value {
 
         match column_type {
             UnrestrictedType::Any => Ok(self),
-            UnrestrictedType::Array | UnrestrictedType::Map => match self {
+            UnrestrictedType::Array(nested) => match self {
+                Value::Null => Ok(Value::Null),
+                Value::Tuple(t) => {
+                    let elem_type = UnrestrictedType::from(nested);
+                    if matches!(elem_type, UnrestrictedType::Any) {
+                        return Ok(Value::Tuple(t));
+                    }
+                    let casted =
+                        t.0.into_iter()
+                            .map(|v| v.cast(elem_type))
+                            .collect::<Result<Vec<_>, _>>()?;
+                    Ok(Value::Tuple(Tuple(casted)))
+                }
+                _ => Err(cast_error(&self, column_type)),
+            },
+            UnrestrictedType::Map => match self {
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
             },
@@ -897,10 +912,15 @@ impl Value {
             UnrestrictedType::Integer => match self {
                 Value::Integer(_) => Ok(self),
                 Value::Decimal(ref v) => {
-                    let int = v.to_i64().ok_or_else(|| cast_error(&self, column_type))?;
+                    let int = v
+                        .floor()
+                        .to_i64()
+                        .ok_or_else(|| cast_error(&self, column_type))?;
                     Ok(Value::Integer(int))
                 }
                 Value::Double(ref v) => v
+                    .value
+                    .trunc()
                     .to_string()
                     .parse::<i64>()
                     .map(Value::Integer)
@@ -928,6 +948,28 @@ impl Value {
         }
     }
 
+    /// Cast an array value element-wise to the array whose element type is `nested`.
+    pub fn cast_array(self, nested: NestedType) -> Result<Self, SbroadError> {
+        let elem_type = UnrestrictedType::from(nested);
+        match self {
+            Value::Null => Ok(Value::Null),
+            Value::Tuple(t) => {
+                if matches!(elem_type, UnrestrictedType::Any) {
+                    return Ok(Value::Tuple(t));
+                }
+                let casted =
+                    t.0.into_iter()
+                        .map(|v| v.cast(elem_type))
+                        .collect::<Result<Vec<_>, _>>()?;
+                Ok(Value::Tuple(Tuple(casted)))
+            }
+            other => Err(SbroadError::Invalid(
+                Entity::Value,
+                Some(format_smolstr!("Failed to cast {other} to {elem_type}[].")),
+            )),
+        }
+    }
+
     /// Cast a value to a different type and wrap into encoded value.
     /// If the target type is the same as the current type, the value
     /// is returned by reference. Otherwise, the value is cloned.
@@ -943,6 +985,22 @@ impl Value {
             return Ok(self.into());
         };
 
+        /// Returns `true` when casting every element of `t` to `nested` is a no-op.
+        fn tuple_matches_nested(t: &Tuple, nested: NestedType) -> bool {
+            t.0.iter().all(|v| match v {
+                Value::Null => true,
+                Value::Boolean(_) => nested == NestedType::Boolean,
+                Value::Datetime(_) => nested == NestedType::Datetime,
+                Value::Decimal(_) => nested == NestedType::Numeric,
+                Value::Double(_) => nested == NestedType::Double,
+                Value::Integer(_) => nested == NestedType::Integer,
+                Value::String(_) => nested == NestedType::Text,
+                Value::Uuid(_) => nested == NestedType::Uuid,
+                // Nested arrays are not supported.
+                Value::Tuple(_) => false,
+            })
+        }
+
         // First, try variants returning EncodedValue::Ref to avoid cloning.
         match (column_type, self) {
             (UnrestrictedType::Any, value) => return Ok(value.into()),
@@ -953,6 +1011,11 @@ impl Value {
             (UnrestrictedType::Integer, Value::Integer(_)) => return Ok(self.into()),
             (UnrestrictedType::String, Value::String(_)) => return Ok(self.into()),
             (UnrestrictedType::Uuid, Value::Uuid(_)) => return Ok(self.into()),
+            (UnrestrictedType::Array(nested), Value::Tuple(t))
+                if *nested == NestedType::Any || tuple_matches_nested(t, *nested) =>
+            {
+                return Ok(self.into())
+            }
             _ => (),
         }
 
@@ -969,7 +1032,7 @@ impl Value {
             Value::Double(_) => UnrestrictedType::Double,
             Value::Boolean(_) => UnrestrictedType::Boolean,
             Value::String(_) => UnrestrictedType::String,
-            Value::Tuple(_) => UnrestrictedType::Array,
+            Value::Tuple(_) => UnrestrictedType::Array(NestedType::Any),
             Value::Uuid(_) => UnrestrictedType::Uuid,
             Value::Null => return DerivedType::unknown(),
         };
@@ -1000,30 +1063,19 @@ impl ToHashString for Value {
 
 /// A helper enum to encode values into `MessagePack`.
 #[allow(clippy::module_name_repetitions)]
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
 pub enum EncodedValue<'v> {
     Ref(MsgPackValue<'v>),
+    #[serde(serialize_with = "serialize_owned_as_msgpack")]
     Owned(Value),
 }
 
-impl Serialize for EncodedValue<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match self {
-            EncodedValue::Ref(v) => v.serialize(serializer),
-            EncodedValue::Owned(Value::Boolean(v)) => v.serialize(serializer),
-            EncodedValue::Owned(Value::Decimal(v)) => v.serialize(serializer),
-            EncodedValue::Owned(Value::Double(v)) => v.serialize(serializer),
-            EncodedValue::Owned(Value::Datetime(v)) => v.serialize(serializer),
-            EncodedValue::Owned(Value::Integer(v)) => v.serialize(serializer),
-            EncodedValue::Owned(Value::Null) => ().serialize(serializer),
-            EncodedValue::Owned(Value::String(v)) => v.serialize(serializer),
-            EncodedValue::Owned(Value::Tuple(v)) => v.serialize(serializer),
-            EncodedValue::Owned(Value::Uuid(v)) => v.serialize(serializer),
-        }
-    }
+fn serialize_owned_as_msgpack<S>(value: &Value, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    MsgPackValue::from(value).serialize(serializer)
 }
 
 impl Encode for EncodedValue<'_> {
@@ -1081,7 +1133,7 @@ impl From<Value> for EncodedValue<'_> {
 }
 
 #[allow(clippy::module_name_repetitions)]
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub enum MsgPackValue<'v> {
     Boolean(&'v bool),
@@ -1090,9 +1142,22 @@ pub enum MsgPackValue<'v> {
     Double(&'v f64),
     Integer(&'v i64),
     String(&'v String),
+    #[serde(serialize_with = "serialize_tuple_as_msgpack")]
     Tuple(&'v Tuple),
     Uuid(&'v Uuid),
     Null(()),
+}
+
+fn serialize_tuple_as_msgpack<S>(t: &&Tuple, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    use serde::ser::SerializeSeq;
+    let mut seq = serializer.serialize_seq(Some(t.0.len()))?;
+    for elem in t.0.iter() {
+        seq.serialize_element(&MsgPackValue::from(elem))?;
+    }
+    seq.end()
 }
 
 impl<'v> From<&'v Value> for MsgPackValue<'v> {

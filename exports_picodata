@@ -17,6 +17,7 @@ pico_ffi_wait_index
 pico_internal_initialize_dummy
 proc_apply_backup
 proc_apply_schema_change
+proc_array_cast
 proc_backup_abort_clear
 proc_before_online
 proc_cas

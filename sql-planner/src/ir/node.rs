@@ -180,13 +180,15 @@ impl From<Cast> for NodeAligned {
 pub struct IndexExpr {
     /// Target expression we're going to take an element of.
     pub child: NodeId,
-    /// Expression pointing to an element of the target expression.
-    pub which: NodeId,
+    /// Chain of selectors applied to `child`, left-to-right.
+    pub indexes: Vec<NodeId>,
+    /// Type to cast the indexed element to in generated SQL.
+    pub cast_to: DerivedType,
 }
 
 impl From<IndexExpr> for NodeAligned {
     fn from(value: IndexExpr) -> Self {
-        Self::Node32(Node32::Index(value))
+        Self::Node64(Node64::Index(value))
     }
 }
 
@@ -403,6 +405,24 @@ pub struct Row {
 impl From<Row> for NodeAligned {
     fn from(value: Row) -> Self {
         Self::Node64(Node64::Row(value))
+    }
+}
+
+/// Array literal expression.
+///
+/// Represents `ARRAY[expr, expr, ...]` in SQL.
+/// Element types are derived by the type system; nested arrays are rejected.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct ArrayLiteral {
+    /// Element expressions in declaration order.
+    pub list: Vec<NodeId>,
+    /// Array type as inferred by the type system.
+    pub col_type: DerivedType,
+}
+
+impl From<ArrayLiteral> for NodeAligned {
+    fn from(value: ArrayLiteral) -> Self {
+        Self::Node32(Node32::ArrayLiteral(value))
     }
 }
 
@@ -1766,7 +1786,6 @@ pub enum Node32 {
     Limit(Limit),
     Arithmetic(ArithmeticExpr),
     Trim(Trim),
-    Index(IndexExpr),
     Cast(Cast),
     Alias(Alias),
     Except(Except),
@@ -1781,6 +1800,7 @@ pub enum Node32 {
     SubQueryReference(SubQueryReference),
     Backup(Backup),
     LetVarRef(LetVarRef),
+    ArrayLiteral(ArrayLiteral),
     // begin the section to allow in-place swapping with Constant using the replace32()
     Parameter(Parameter),
     Constant(Constant),
@@ -1796,7 +1816,6 @@ impl Node32 {
             Node32::Arithmetic(arithm) => NodeOwned::Expression(ExprOwned::Arithmetic(arithm)),
             Node32::Bool(bool) => NodeOwned::Expression(ExprOwned::Bool(bool)),
             Node32::Limit(limit) => NodeOwned::Relational(RelOwned::Limit(limit)),
-            Node32::Index(index) => NodeOwned::Expression(ExprOwned::Index(index)),
             Node32::Cast(cast) => NodeOwned::Expression(ExprOwned::Cast(cast)),
             Node32::Concat(concat) => NodeOwned::Expression(ExprOwned::Concat(concat)),
             Node32::CountAsterisk(count) => NodeOwned::Expression(ExprOwned::CountAsterisk(count)),
@@ -1830,6 +1849,7 @@ impl Node32 {
                 NodeOwned::Expression(ExprOwned::LetVarRef(let_var_ref))
             }
             Node32::Timestamp(lt) => NodeOwned::Expression(ExprOwned::Timestamp(lt)),
+            Node32::ArrayLiteral(arr) => NodeOwned::Expression(ExprOwned::ArrayLiteral(arr)),
         }
     }
 }
@@ -1859,6 +1879,7 @@ pub enum Node64 {
     Invalid(Invalid),
     Over(Over),
     TruncateTable(TruncateTable),
+    Index(IndexExpr),
 }
 
 impl Node64 {
@@ -1866,6 +1887,7 @@ impl Node64 {
     pub fn into_owned(self) -> NodeOwned {
         match self {
             Node64::Over(over) => NodeOwned::Expression(ExprOwned::Over(over)),
+            Node64::Index(index) => NodeOwned::Expression(ExprOwned::Index(index)),
             Node64::Case(case) => NodeOwned::Expression(ExprOwned::Case(case)),
             Node64::Invalid(invalid) => NodeOwned::Invalid(invalid),
             Node64::CreateRole(create_role) => NodeOwned::Acl(AclOwned::CreateRole(create_role)),

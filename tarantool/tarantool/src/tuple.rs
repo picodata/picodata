@@ -2044,7 +2044,7 @@ mod test {
     fn key_def_extract_key() {
         let space = Space::builder(&crate::temp_space_name!())
             .field(("id", space::FieldType::Unsigned))
-            .field(("not-key", space::FieldType::Array))
+            .field(("not-key", space::FieldType::Array(space::TypedArray::Any)))
             .field(("s", space::FieldType::String))
             .field(("nested", space::FieldType::Any))
             .create()

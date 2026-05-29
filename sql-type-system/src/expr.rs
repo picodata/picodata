@@ -1,6 +1,78 @@
 use std::fmt::Display;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub enum NestedType {
+    Integer,
+    Double,
+    Numeric,
+    Text,
+    Boolean,
+    Datetime,
+    Uuid,
+    /// Element type for `json[]`.
+    Map,
+    /// Forbidden for user tables.
+    Any,
+}
+
+impl From<NestedType> for Type {
+    fn from(value: NestedType) -> Self {
+        match value {
+            NestedType::Integer => Type::Integer,
+            NestedType::Double => Type::Double,
+            NestedType::Numeric => Type::Numeric,
+            NestedType::Text => Type::Text,
+            NestedType::Boolean => Type::Boolean,
+            NestedType::Datetime => Type::Datetime,
+            NestedType::Uuid => Type::Uuid,
+            NestedType::Map => Type::Map,
+            NestedType::Any => Type::Any,
+        }
+    }
+}
+
+impl TryFrom<Type> for NestedType {
+    type Error = Type;
+
+    fn try_from(value: Type) -> Result<Self, Self::Error> {
+        Ok(match value {
+            Type::Integer => NestedType::Integer,
+            Type::Double => NestedType::Double,
+            Type::Numeric => NestedType::Numeric,
+            Type::Text => NestedType::Text,
+            Type::Boolean => NestedType::Boolean,
+            Type::Datetime => NestedType::Datetime,
+            Type::Uuid => NestedType::Uuid,
+            Type::Map => NestedType::Map,
+            Type::Any => NestedType::Any,
+            Type::Array(_) => return Err(value),
+        })
+    }
+}
+
+impl NestedType {
+    pub fn as_array_str(&self) -> &'static str {
+        match self {
+            NestedType::Integer => "int[]",
+            NestedType::Double => "double[]",
+            NestedType::Numeric => "numeric[]",
+            NestedType::Text => "text[]",
+            NestedType::Boolean => "boolean[]",
+            NestedType::Datetime => "datetime[]",
+            NestedType::Uuid => "uuid[]",
+            NestedType::Map => "map[]",
+            NestedType::Any => "array",
+        }
+    }
+}
+
+impl Display for NestedType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Type::from(*self).fmt(f)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum Type {
     Integer,
     Double,
@@ -9,7 +81,7 @@ pub enum Type {
     Boolean,
     Datetime,
     Uuid,
-    Array,
+    Array(NestedType),
     Map,
     // Any is a compound type that can be basically any other type.
     // Because the actual type is unknown, overload resolution is likely to fail. Only the user may
@@ -25,6 +97,8 @@ pub enum Type {
     // When assigning to any, the desired type should not be any, because any cannot be a desired
     // type. The correct approach is to pass a default desired type, as any does not impose any
     // restrictions.
+    //
+    // The same reasoning applies to the compound `Array(Any)` (a generic, untyped `array`).
     Any,
 }
 
@@ -38,7 +112,7 @@ impl Type {
             Type::Boolean => "bool",
             Type::Datetime => "datetime",
             Type::Uuid => "uuid",
-            Type::Array => "array",
+            Type::Array(elem) => elem.as_array_str(),
             Type::Map => "map",
             Type::Any => "any",
         }
@@ -192,6 +266,9 @@ pub enum ExprKind<Id> {
     /// Json extract expression.
     /// Examples: `json_extract_path(field, 'key', 'subkey')`.
     JsonExtractPath(Vec<Expr<Id>>),
+    /// Array literal with `NestedType` expressions.
+    /// Examples: `array[1, 2., 67, NULL]`, `array[]`, `array[1, 'hello']`.
+    Array(Vec<Expr<Id>>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

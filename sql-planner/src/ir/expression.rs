@@ -21,9 +21,9 @@ use super::node::{
 use super::operator::OrderByEntity;
 use super::types::{CastType, DerivedType};
 use super::{
-    distribution, operator, Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant,
-    Expression, LevelNode, MutExpression, MutNode, Node, NodeId, Reference, Row, ScalarFunction,
-    Trim, UnaryExpr, Value,
+    distribution, operator, Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Case, Cast, Concat,
+    Constant, Expression, LevelNode, MutExpression, MutNode, Node, NodeId, Reference, Row,
+    ScalarFunction, Trim, UnaryExpr, Value,
 };
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::to_user;
@@ -186,6 +186,17 @@ impl Nodes {
     /// Adds row node.
     pub fn add_row(&mut self, list: Vec<NodeId>, distribution: Option<Distribution>) -> NodeId {
         self.push(Row { list, distribution }.into())
+    }
+
+    /// Actual `col_type` will be filled during type system analysis.
+    pub fn add_array_literal(&mut self, list: Vec<NodeId>) -> NodeId {
+        self.push(
+            ArrayLiteral {
+                list,
+                col_type: DerivedType::unknown(),
+            }
+            .into(),
+        )
     }
 
     /// Adds unary boolean node.
@@ -528,15 +539,22 @@ impl<'plan> Comparator<'plan> {
                     }
                     Expression::Index(IndexExpr {
                         child: child_left,
-                        which: which_left,
+                        indexes: indexes_left,
+                        ..
                     }) => {
                         if let Expression::Index(IndexExpr {
                             child: child_right,
-                            which: which_right,
+                            indexes: indexes_right,
+                            ..
                         }) = right
                         {
+                            if indexes_left.len() != indexes_right.len() {
+                                return Ok(false);
+                            }
                             return Ok(self.are_subtrees_equal(*child_left, *child_right)?
-                                && self.are_subtrees_equal(*which_left, *which_right)?);
+                                && indexes_left.iter().zip(indexes_right.iter()).all(|(l, r)| {
+                                    self.are_subtrees_equal(*l, *r).unwrap_or(false)
+                                }));
                         }
                     }
                     Expression::Cast(Cast {
@@ -661,6 +679,22 @@ impl<'plan> Comparator<'plan> {
                         list: list_left, ..
                     }) => {
                         if let Expression::Row(Row {
+                            list: list_right, ..
+                        }) = right
+                        {
+                            if list_left.len() != list_right.len() {
+                                return Ok(false);
+                            }
+                            return Ok(list_left
+                                .iter()
+                                .zip(list_right.iter())
+                                .all(|(l, r)| self.are_subtrees_equal(*l, *r).unwrap_or(false)));
+                        }
+                    }
+                    Expression::ArrayLiteral(ArrayLiteral {
+                        list: list_left, ..
+                    }) => {
+                        if let Expression::ArrayLiteral(ArrayLiteral {
                             list: list_right, ..
                         }) = right
                         {
@@ -861,9 +895,11 @@ impl<'plan> Comparator<'plan> {
                 self.hash_for_child_expr(*left, depth);
                 self.hash_for_child_expr(*right, depth);
             }
-            Expression::Index(IndexExpr { child, which }) => {
+            Expression::Index(IndexExpr { child, indexes, .. }) => {
                 self.hash_for_child_expr(*child, depth);
-                self.hash_for_child_expr(*which, depth);
+                for which in indexes {
+                    self.hash_for_child_expr(*which, depth);
+                }
             }
             Expression::Cast(Cast { child, to }) => {
                 to.hash(state);
@@ -914,6 +950,12 @@ impl<'plan> Comparator<'plan> {
                 col_type.hash(state);
             }
             Expression::Row(Row { list, .. }) => {
+                for child in list {
+                    self.hash_for_child_expr(*child, depth);
+                }
+            }
+            Expression::ArrayLiteral(ArrayLiteral { list, .. }) => {
+                "ArrayLiteral".hash(state); // avoid collision with Row
                 for child in list {
                     self.hash_for_child_expr(*child, depth);
                 }

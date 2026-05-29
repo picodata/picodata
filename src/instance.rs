@@ -102,15 +102,15 @@ impl Instance {
     /// Format of the _pico_instance global table.
     #[inline(always)]
     pub fn format() -> Vec<tarantool::space::Field> {
-        use tarantool::space::{Field, FieldType};
+        use tarantool::space::{Field, FieldType, TypedArray};
         vec![
             Field::from(("name", FieldType::String)),
             Field::from(("uuid", FieldType::String)),
             Field::from(("raft_id", FieldType::Unsigned)),
             Field::from(("replicaset_name", FieldType::String)),
             Field::from(("replicaset_uuid", FieldType::String)),
-            Field::from(("current_state", FieldType::Array)),
-            Field::from(("target_state", FieldType::Array)),
+            Field::from(("current_state", FieldType::Array(TypedArray::Any))),
+            Field::from(("target_state", FieldType::Array(TypedArray::Any))),
             Field::from(("failure_domain", FieldType::Map)),
             Field::from(("tier", FieldType::String)),
             Field::from(("picodata_version", FieldType::String)),

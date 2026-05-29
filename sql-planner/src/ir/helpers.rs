@@ -5,8 +5,8 @@ use smol_str::{SmolStr, ToSmolStr};
 use crate::backend::sql::tree::{SyntaxData, SyntaxPlan};
 use crate::errors::{Action, Entity, SbroadError};
 use crate::ir::node::{
-    Alias, BoolExpr, Case, Constant, Delete, GroupBy, Having, Join, Motion, NodeId, OrderBy,
-    Reference, Row, ScanCte, ScanRelation, ScanSubQuery, Selection, SubQueryReference,
+    Alias, ArrayLiteral, BoolExpr, Case, Constant, Delete, GroupBy, Having, Join, Motion, NodeId,
+    OrderBy, Reference, Row, ScanCte, ScanRelation, ScanSubQuery, Selection, SubQueryReference,
     TimeParameters, Trim, UnaryExpr, Update, ValuesRow,
 };
 use crate::ir::operator::OrderByEntity;
@@ -281,6 +281,13 @@ impl Plan {
                     } else {
                         writeln!(buf)?;
                     }
+                    writeln_with_tabulation(buf, tabulation_number + 1, "List:")?;
+                    for value in list {
+                        self.formatted_arena_node(buf, tabulation_number + 1, *value)?;
+                    }
+                }
+                Expression::ArrayLiteral(ArrayLiteral { list, .. }) => {
+                    writeln!(buf, "ArrayLiteral")?;
                     writeln_with_tabulation(buf, tabulation_number + 1, "List:")?;
                     for value in list {
                         self.formatted_arena_node(buf, tabulation_number + 1, *value)?;

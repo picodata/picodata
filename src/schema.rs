@@ -41,7 +41,7 @@ use tarantool::index::{
 use tarantool::msgpack;
 use tarantool::session::{with_su, UserId};
 use tarantool::space::SpaceId;
-use tarantool::space::{FieldType, SpaceCreateOptions, SpaceEngineType};
+use tarantool::space::{FieldType, SpaceCreateOptions, SpaceEngineType, TypedArray};
 use tarantool::space::{Metadata as SpaceMetadata, Space, SpaceType, SystemSpace};
 use tarantool::time::Instant;
 use tarantool::tlua;
@@ -129,13 +129,13 @@ impl TableDef {
             Field::from(("id", FieldType::Unsigned)).is_nullable(false),
             Field::from(("name", FieldType::String)).is_nullable(false),
             Field::from(("distribution", FieldType::Map)).is_nullable(false),
-            Field::from(("format", FieldType::Array)).is_nullable(false),
+            Field::from(("format", FieldType::Array(TypedArray::Any))).is_nullable(false),
             Field::from(("schema_version", FieldType::Unsigned)).is_nullable(false),
             Field::from(("operable", FieldType::Boolean)).is_nullable(false),
             Field::from(("engine", FieldType::String)).is_nullable(false),
             Field::from(("owner", FieldType::Unsigned)).is_nullable(false),
             Field::from(("description", FieldType::String)).is_nullable(false),
-            Field::from(("opts", FieldType::Array)).is_nullable(true),
+            Field::from(("opts", FieldType::Array(TypedArray::Any))).is_nullable(true),
         ]
     }
 
@@ -269,7 +269,11 @@ pub fn fields_to_format(
     for field in fields {
         let mut field_map = BTreeMap::new();
         field_map.insert("name".into(), Value::Str(field.name.as_str().into()));
-        field_map.insert("type".into(), Value::Str(field.field_type.as_str().into()));
+        // box API only accepts "array".
+        field_map.insert(
+            "type".into(),
+            Value::Str(field.field_type.as_box_str().into()),
+        );
         field_map.insert("is_nullable".into(), Value::Bool(field.is_nullable));
         result.push(field_map);
     }
@@ -482,8 +486,8 @@ impl IndexDef {
             Field::from(("id", FieldType::Unsigned)).is_nullable(false),
             Field::from(("name", FieldType::String)).is_nullable(false),
             Field::from(("type", FieldType::String)).is_nullable(false),
-            Field::from(("opts", FieldType::Array)).is_nullable(false),
-            Field::from(("parts", FieldType::Array)).is_nullable(false),
+            Field::from(("opts", FieldType::Array(TypedArray::Any))).is_nullable(false),
+            Field::from(("parts", FieldType::Array(TypedArray::Any))).is_nullable(false),
             Field::from(("operable", FieldType::Boolean)).is_nullable(false),
             Field::from(("schema_version", FieldType::Unsigned)).is_nullable(false),
         ]
@@ -632,10 +636,10 @@ impl PluginDef {
         vec![
             Field::from(("name", FieldType::String)).is_nullable(false),
             Field::from(("enabled", FieldType::Boolean)).is_nullable(false),
-            Field::from(("services", FieldType::Array)).is_nullable(false),
+            Field::from(("services", FieldType::Array(TypedArray::Any))).is_nullable(false),
             Field::from(("version", FieldType::String)).is_nullable(false),
             Field::from(("description", FieldType::String)).is_nullable(false),
-            Field::from(("migration_list", FieldType::Array)).is_nullable(false),
+            Field::from(("migration_list", FieldType::Array(TypedArray::Any))).is_nullable(false),
         ]
     }
 
@@ -697,7 +701,7 @@ impl ServiceDef {
             Field::from(("plugin_name", FieldType::String)).is_nullable(false),
             Field::from(("name", FieldType::String)).is_nullable(false),
             Field::from(("version", FieldType::String)).is_nullable(false),
-            Field::from(("tiers", FieldType::Array)).is_nullable(false),
+            Field::from(("tiers", FieldType::Array(TypedArray::Any))).is_nullable(false),
             Field::from(("description", FieldType::String)).is_nullable(false),
         ]
     }
@@ -1024,7 +1028,7 @@ impl UserDef {
             Field::from(("id", FieldType::Unsigned)).is_nullable(false),
             Field::from(("name", FieldType::String)).is_nullable(false),
             Field::from(("schema_version", FieldType::Unsigned)).is_nullable(false),
-            Field::from(("auth", FieldType::Array)).is_nullable(true),
+            Field::from(("auth", FieldType::Array(TypedArray::Any))).is_nullable(true),
             Field::from(("owner", FieldType::Unsigned)).is_nullable(false),
             Field::from(("type", FieldType::String)).is_nullable(false),
         ]
@@ -1794,8 +1798,8 @@ impl RoutineDef {
             Field::from(("id", FieldType::Unsigned)).is_nullable(false),
             Field::from(("name", FieldType::String)).is_nullable(false),
             Field::from(("kind", FieldType::String)).is_nullable(false),
-            Field::from(("params", FieldType::Array)).is_nullable(false),
-            Field::from(("returns", FieldType::Array)).is_nullable(false),
+            Field::from(("params", FieldType::Array(TypedArray::Any))).is_nullable(false),
+            Field::from(("returns", FieldType::Array(TypedArray::Any))).is_nullable(false),
             Field::from(("language", FieldType::String)).is_nullable(false),
             Field::from(("body", FieldType::String)).is_nullable(false),
             Field::from(("security", FieldType::String)).is_nullable(false),
@@ -1855,7 +1859,7 @@ pub fn try_space_field_type_to_index_field_type(
         SFT::Decimal => Some(IFT::Decimal),
         SFT::Uuid => Some(IFT::Uuid),
         SFT::Datetime => Some(IFT::Datetime),
-        SFT::Array => Some(IFT::Array),
+        SFT::Array(_) => Some(IFT::Array),
         _ => None,
     };
     res

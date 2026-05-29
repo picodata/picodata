@@ -7,10 +7,10 @@
 
 ![Create table](../../images/ebnf/create_table.svg)
 
-### Тип {: #domain_type }
+### Тип колонки {: #column_def_type }
 
 ??? note "Диаграмма"
-    ![Type](../../images/ebnf/domain_type.svg)
+    ![Column type](../../images/ebnf/column_def_type.svg)
 
 ## Параметры {: #params }
 
@@ -129,3 +129,14 @@ USING memtx DISTRIBUTED BY (id)
 IN TIER "default"
 OPTION (TIMEOUT = 3.0);
 ```
+
+```sql title="Создание таблицы с колонками-массивами"
+CREATE TABLE measurements (
+    id INTEGER PRIMARY KEY,
+    samples DOUBLE ARRAY,
+    tags TEXT[]);
+```
+!!! note "Примечание"
+    Тип колонки-[массива](../sql_types.md#array) поддерживает следующие эквивалентные формы записи:
+    `T ARRAY`, `T ARRAY[N]`, `T[]`, `T[N]`, `T[][]`, `T[N][M]`. Длина массива и размерность
+    игнорируются и используются только для документирования.

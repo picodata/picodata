@@ -100,7 +100,7 @@ pub(in crate::frontend::sql) fn parse_param<M: Metadata>(
         )));
     }
 
-    let ty = param_types.get((index - 1) as usize);
+    let ty = param_types.get(index - 1);
     let ty = ty.cloned().unwrap_or(DerivedType::unknown());
     Ok(plan.add_param(index.try_into().expect("invalid parameter idnex"), ty))
 }

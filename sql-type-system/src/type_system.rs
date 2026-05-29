@@ -1,5 +1,5 @@
 use crate::error::Error;
-use crate::expr::{ComparisonOperator, Expr, ExprKind, Type, UnaryOperator};
+use crate::expr::{ComparisonOperator, Expr, ExprKind, NestedType, Type, UnaryOperator};
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -293,9 +293,12 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         expr: &Expr<Id>,
         desired_type: Type,
     ) -> Result<TypeReport<Id>, Error> {
-        // Any as a desired type is prohibit, see the comment to `Type::Any` for more details.
-        if desired_type == Type::Any {
-            return Err(Error::UnexpectedExpressionOfTypeAny);
+        // Any and Array(Any) as a desired type are prohibit, see the comment to `Type::Any`
+        // for more details.
+        match desired_type {
+            Type::Any => return Err(Error::UnexpectedExpressionOfTypeAny),
+            Type::Array(NestedType::Any) => return Err(Error::UnexpectedExpressionOfTypeArrayAny),
+            _ => {}
         }
 
         if let Some(report) = self.try_get_cached(expr, desired_type) {
@@ -475,12 +478,16 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 ref source,
                 ref indexes,
             } => {
-                let mut report = self.analyze(source, Type::Map)?;
+                // We choose an array by default because the desired type can determine its type,
+                // whereas `map[key]` is always of type `any`.
+                let source_desired =
+                    NestedType::try_from(desired_type).map_or(Type::Map, Type::Array);
+                let mut report = self.analyze(source, source_desired)?;
 
                 // Ensure source is a map or an array and determine type for the first index.
                 let first_idx_type = match report.get_type(&source.id) {
                     Type::Map => Type::Text,
-                    Type::Array => Type::Integer,
+                    Type::Array(_) => Type::Integer,
                     other => return Err(Error::CannotIndexExpressionOfType(other)),
                 };
 
@@ -517,8 +524,11 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                     ));
                 }
 
-                // Arrays and maps in tarantool can contain values of any type.
-                report.report(&expr.id, Type::Any);
+                let result_type = match report.get_type(&source.id) {
+                    Type::Array(nested) => Type::from(nested),
+                    _ => Type::Any,
+                };
+                report.report(&expr.id, result_type);
                 Ok(report)
             }
             ExprKind::Coalesce(ref args) => {
@@ -622,7 +632,38 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 // See comparison operations for an example of how rows values are handled.
                 Err(Error::RowValueMisused)
             }
+            ExprKind::Array(args) => self.analyze_array_literal(&expr.id, args, desired_type),
         }
+    }
+
+    /// Infer the type of an array literal using `analyze_homogeneous_exprs`.
+    fn analyze_array_literal(
+        &mut self,
+        expr_id: &Id,
+        args: &[Expr<Id>],
+        desired_type: Type,
+    ) -> Result<TypeReport<Id>, Error> {
+        // Extract the desired element type from the context.
+        let desired_nested = match desired_type {
+            Type::Array(n) => n,
+            _ => NestedType::Text,
+        };
+
+        if args.is_empty() {
+            let mut report = TypeReport::new();
+            report.report(expr_id, Type::Array(desired_nested));
+            return Ok(report);
+        }
+
+        let homo_target = desired_nested.into();
+        let (elem_ty, mut report) = self.analyze_homogeneous_exprs("ARRAY", args, homo_target)?;
+
+        let nested = match elem_ty {
+            Type::Array(_) => return Err(Error::NestedArraysAreNotSupported),
+            other => NestedType::try_from(other).expect("non-array types are valid nested types"),
+        };
+        report.report(expr_id, Type::Array(nested));
+        Ok(report)
     }
 
     /// Resolve operator overload.

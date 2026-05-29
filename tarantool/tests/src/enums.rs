@@ -88,11 +88,28 @@ pub fn space_field_type() {
     assert_eq!(from_str::<T>("interval").unwrap(), T::Interval);
     assert_eq!(from_str::<T>("duration").ok(), None);
 
-    assert_eq!(to_string(&T::Array).unwrap(), "array");
-    assert_eq!(from_str::<T>("array").unwrap(), T::Array);
-    assert_eq!(from_str::<T>("Array  ").unwrap(), T::Array);
-    assert_eq!(from_str::<T>(" ARRAY ").unwrap(), T::Array);
+    use space::TypedArray as Elem;
+    assert_eq!(to_string(&T::Array(Elem::Any)).unwrap(), "array");
+    assert_eq!(from_str::<T>("array").unwrap(), T::Array(Elem::Any));
+    assert_eq!(from_str::<T>("Array  ").unwrap(), T::Array(Elem::Any));
+    assert_eq!(from_str::<T>(" ARRAY ").unwrap(), T::Array(Elem::Any));
     assert_eq!(from_str::<T>("arr").ok(), None);
+
+    assert_eq!(
+        to_string(&T::Array(Elem::Integer)).unwrap(),
+        "integer[]"
+    );
+    assert_eq!(
+        from_str::<T>("integer[]").unwrap(),
+        T::Array(Elem::Integer)
+    );
+    assert_eq!(
+        from_str::<T>(" INTEGER[] ").unwrap(),
+        T::Array(Elem::Integer)
+    );
+    assert_eq!(to_string(&T::Array(Elem::String)).unwrap(), "text[]");
+    assert_eq!(from_str::<T>("text[]").unwrap(), T::Array(Elem::String));
+    assert_eq!(from_str::<T>("string[]").ok(), None);
 
     assert_eq!(to_string(&T::Scalar).unwrap(), "scalar");
     assert_eq!(from_str::<T>("scalar").unwrap(), T::Scalar);

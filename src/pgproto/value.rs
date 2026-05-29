@@ -1,16 +1,15 @@
 use super::error::DynError;
 use crate::pgproto::error::{DecodingError, EncodingError, PgError, PgResult};
 use bytes::{BufMut, BytesMut};
-use pgwire::types::{format::FormatOptions, ToSqlText};
-use postgres_types::{FromSql, IsNull, Oid, ToSql, Type};
+use pgwire::types::{format::FormatOptions, FromSqlText, ToSqlText};
+use postgres_types::{to_sql_checked, FromSql, IsNull, Kind, Oid, ToSql, Type};
 use smol_str::{format_smolstr, ToSmolStr};
 use sql::{
     frontend::sql::{try_parse_bool, try_parse_datetime},
     ir::value::Value as SbroadValue,
 };
 use std::{
-    fmt::Debug,
-    fmt::Write,
+    fmt::{Debug, Write},
     str::{self, FromStr},
 };
 use time::macros::format_description;
@@ -295,6 +294,8 @@ pub enum PgValue {
     Json(Json),
     Uuid(Uuid),
     Numeric(Decimal),
+    /// Homogeneous list of typed values.
+    Array(Vec<PgValue>),
     Null,
 }
 
@@ -311,13 +312,108 @@ impl TryFrom<PgValue> for SbroadValue {
             PgValue::Uuid(v) => Ok(SbroadValue::from(v.0)),
             PgValue::Timestamptz(v) => Ok(SbroadValue::from(v.0)),
             PgValue::Null => Ok(SbroadValue::Null),
+            PgValue::Array(items) => items
+                .into_iter()
+                .map(SbroadValue::try_from)
+                .collect::<Result<Vec<_>, _>>()
+                .map(SbroadValue::from),
             PgValue::Json(_) => {
-                // Anyhow, currently Sbroad cannot work with these types.
+                // Currently sbroad cannot represent json.
                 Err(PgError::FeatureNotSupported(format_smolstr!(
                     "cannot represent json in sbroad",
                 )))
             }
         }
+    }
+}
+
+/// Binary format decoder.
+impl<'a> FromSql<'a> for PgValue {
+    fn from_sql(ty: &Type, raw: &'a [u8]) -> Result<Self, Box<DynError>> {
+        if matches!(ty.kind(), Kind::Array(_)) {
+            return Vec::<PgValue>::from_sql(ty, raw).map(PgValue::Array);
+        }
+        let value = match *ty {
+            Type::INT8 => PgValue::Integer(i64::from_sql(ty, raw)?),
+            Type::INT4 => PgValue::Integer(i32::from_sql(ty, raw)?.into()),
+            Type::INT2 => PgValue::Integer(i16::from_sql(ty, raw)?.into()),
+            Type::FLOAT8 => PgValue::Float(f64::from_sql(ty, raw)?),
+            Type::FLOAT4 => PgValue::Float(f32::from_sql(ty, raw)?.into()),
+            Type::BOOL => PgValue::Boolean(Bool::from_sql(ty, raw)?),
+            Type::NUMERIC => PgValue::Numeric(Decimal::from_sql(ty, raw)?),
+            Type::UUID => PgValue::Uuid(Uuid::from_sql(ty, raw)?),
+            Type::TIMESTAMPTZ => PgValue::Timestamptz(Timestamptz::from_sql(ty, raw)?),
+            Type::JSON | Type::JSONB => PgValue::Json(Json::from_sql(ty, raw)?),
+            Type::TEXT | Type::VARCHAR => PgValue::Text(String::from_sql(ty, raw)?),
+            ref other => return Err(format!("unsupported type {other}").into()),
+        };
+        Ok(value)
+    }
+
+    fn from_sql_null(_: &Type) -> Result<Self, Box<DynError>> {
+        Ok(PgValue::Null)
+    }
+
+    /// We do not need static type checks because `from_sql` itself is a single
+    /// point of type validation.
+    fn accepts(_: &Type) -> bool {
+        true
+    }
+}
+
+impl ToSql for PgValue {
+    fn to_sql(&self, ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<DynError>> {
+        match self {
+            PgValue::Null => Ok(IsNull::Yes),
+            PgValue::Integer(v) => v.to_sql(ty, out),
+            PgValue::Float(v) => v.to_sql(ty, out),
+            PgValue::Boolean(v) => v.to_sql(ty, out),
+            PgValue::Numeric(v) => v.to_sql(ty, out),
+            PgValue::Uuid(v) => v.to_sql(ty, out),
+            PgValue::Timestamptz(v) => v.to_sql(ty, out),
+            PgValue::Json(v) => v.to_sql(ty, out),
+            PgValue::Text(v) => v.to_sql(ty, out),
+            PgValue::Array(v) => v.as_slice().to_sql(ty, out),
+        }
+    }
+
+    /// We do not need static type checks because `to_sql` itself is a single
+    /// point of type validation.
+    fn accepts(_: &Type) -> bool {
+        true
+    }
+    to_sql_checked!();
+}
+
+impl ToSqlText for PgValue {
+    fn to_sql_text(
+        &self,
+        ty: &Type,
+        out: &mut BytesMut,
+        opts: &FormatOptions,
+    ) -> Result<IsNull, Box<DynError>> {
+        match self {
+            PgValue::Null => Ok(IsNull::Yes),
+            PgValue::Integer(v) => v.to_sql_text(ty, out, opts),
+            PgValue::Float(v) => v.to_sql_text(ty, out, opts),
+            PgValue::Boolean(v) => v.to_sql_text(ty, out, opts),
+            PgValue::Numeric(v) => v.to_sql_text(ty, out, opts),
+            PgValue::Uuid(v) => v.to_sql_text(ty, out, opts),
+            PgValue::Timestamptz(v) => v.to_sql_text(ty, out, opts),
+            PgValue::Json(v) => v.to_sql_text(ty, out, opts),
+            PgValue::Text(v) => v.to_sql_text(ty, out, opts),
+            PgValue::Array(v) => v.as_slice().to_sql_text(ty, out, opts),
+        }
+    }
+}
+
+impl<'a> FromSqlText<'a> for PgValue {
+    fn from_sql_text(
+        ty: &Type,
+        input: &'a [u8],
+        _opts: &FormatOptions,
+    ) -> Result<Self, Box<DynError>> {
+        Self::decode_text(input, ty.clone()).map_err(Into::into)
     }
 }
 
@@ -327,12 +423,23 @@ impl TryFrom<PgValue> for SbroadValue {
 impl PgValue {
     pub fn try_from_rmpv(value: rmpv::Value, ty: &Type) -> PgResult<Self> {
         use rmpv::Value;
-        match (value, ty.clone()) {
+
+        if let Kind::Array(elem) = ty.kind() {
+            if let Value::Array(items) = value {
+                return items
+                    .into_iter()
+                    .map(|it| PgValue::try_from_rmpv(it, elem))
+                    .collect::<PgResult<Vec<_>>>()
+                    .map(PgValue::Array);
+            }
+        }
+
+        match (value, ty) {
             (Value::Nil, _) => Ok(PgValue::Null),
-            (Value::Boolean(v), Type::BOOL) => Ok(PgValue::Boolean(Bool(v))),
-            (Value::F32(v), Type::FLOAT8) => Ok(PgValue::Float(v as _)),
-            (Value::F64(v), Type::FLOAT8) => Ok(PgValue::Float(v)),
-            (Value::Integer(v), Type::INT8) => {
+            (Value::Boolean(v), &Type::BOOL) => Ok(PgValue::Boolean(Bool(v))),
+            (Value::F32(v), &Type::FLOAT8) => Ok(PgValue::Float(v as _)),
+            (Value::F64(v), &Type::FLOAT8) => Ok(PgValue::Float(v)),
+            (Value::Integer(v), &Type::INT8) => {
                 // Note: PgValue::Integer is sent as INT8, so only INT8 is allowed here. Otherwise,
                 // we can send 8 bytes integer while the client is expecting 2 or 4 bytes.
                 Ok(PgValue::Integer({
@@ -348,22 +455,22 @@ impl PgValue {
                     }
                 }))
             }
-            (Value::Integer(v), Type::FLOAT8) => {
+            (Value::Integer(v), &Type::FLOAT8) => {
                 // Convert NUMBER value represented as integer to float.
                 let v = v.as_f64().ok_or_else(|| {
                     EncodingError::new(format!("couldn't encode NUMBER value {v:?} as FLOAT8"))
                 })?;
                 Ok(PgValue::Float(v))
             }
-            (Value::Array(v), Type::JSON | Type::JSONB) => {
+            (Value::Array(v), &Type::JSON | &Type::JSONB) => {
                 // Any array-like structure will be encoded as json.
                 Ok(PgValue::Json(Json(Value::Array(v))))
             }
-            (Value::Map(v), Type::JSON | Type::JSONB) => {
+            (Value::Map(v), &Type::JSON | &Type::JSONB) => {
                 // Any map-like structure will be encoded as json.
                 Ok(PgValue::Json(Json(Value::Map(v))))
             }
-            (Value::String(v), Type::TEXT | Type::VARCHAR) => {
+            (Value::String(v), &Type::TEXT | &Type::VARCHAR) => {
                 if !v.is_str() {
                     return Err(EncodingError::new(format!("couldn't encode string: {v:?}")).into());
                 }
@@ -373,38 +480,38 @@ impl PgValue {
                     .to_string();
                 Ok(PgValue::Text(s))
             }
-            (Value::Ext(1, v), Type::NUMERIC) => {
+            (Value::Ext(1, v), &Type::NUMERIC) => {
                 let decimal =
                     rmpv::ext::from_value(Value::Ext(1, v)).map_err(EncodingError::new)?;
                 Ok(PgValue::Numeric(decimal))
             }
-            (Value::Integer(v), Type::NUMERIC) => {
+            (Value::Integer(v), &Type::NUMERIC) => {
                 // Decimal values can be represented as integers in msgpack.
                 let v = v.as_i64().ok_or_else(|| {
                     EncodingError::new(format!("couldn't encode DECIMAL value {v:?} as NUMERIC"))
                 })?;
                 Ok(PgValue::Numeric(Decimal(v.into())))
             }
-            (Value::F32(v), Type::NUMERIC) => {
+            (Value::F32(v), &Type::NUMERIC) => {
                 let decimal =
                     tarantool::decimal::Decimal::try_from(v).map_err(EncodingError::new)?;
                 Ok(PgValue::Numeric(Decimal(decimal)))
             }
-            (Value::F64(v), Type::NUMERIC) => {
+            (Value::F64(v), &Type::NUMERIC) => {
                 let decimal =
                     tarantool::decimal::Decimal::try_from(v).map_err(EncodingError::new)?;
                 Ok(PgValue::Numeric(Decimal(decimal)))
             }
-            (Value::Ext(2, v), Type::UUID) => {
+            (Value::Ext(2, v), &Type::UUID) => {
                 let uuid = rmpv::ext::from_value(Value::Ext(2, v)).map_err(EncodingError::new)?;
                 Ok(PgValue::Uuid(uuid))
             }
-            (Value::Ext(4, v), Type::TIMESTAMPTZ) => {
+            (Value::Ext(4, v), &Type::TIMESTAMPTZ) => {
                 let datetime =
                     rmpv::ext::from_value(Value::Ext(4, v)).map_err(EncodingError::new)?;
                 Ok(PgValue::Timestamptz(datetime))
             }
-            (any, Type::JSON | Type::JSONB) => Ok(PgValue::Json(Json(any))),
+            (any, &Type::JSON | &Type::JSONB) => Ok(PgValue::Json(Json(any))),
 
             (value, ty) => Err(PgError::FeatureNotSupported(format_smolstr!(
                 "{value:?} cannot be represented as a value of type {ty:?}"
@@ -413,49 +520,46 @@ impl PgValue {
     }
 
     fn decode_text(bytes: &[u8], ty: Type) -> Result<Self, DecodingError> {
-        // TODO: rewrite this once rust supports generic closures
-        fn do_parse<T: FromStr>(ty: Type, s: &str) -> Result<T, DecodingError>
+        // TODO: rewrite this once rust supports generic closures.
+        fn do_parse<T: FromStr>(ty: &Type, s: &str) -> Result<T, DecodingError>
         where
             T::Err: Into<Box<DynError>>,
         {
-            // We deliberately ignore type's own parsing error; std types tend to have
-            // not very helpful errors like `invalid digit found in string`.
+            // We deliberately ignore the type's own parsing error; std types tend to
+            // have unhelpful errors like `invalid digit found in string`.
             T::from_str(s).map_err(|_| DecodingError::bad_lit_of_type(s, ty))
         }
 
         let s = str::from_utf8(bytes).map_err(DecodingError::bad_utf8)?;
+
+        if let Kind::Array(elem) = ty.kind() {
+            let items =
+                Vec::<Option<PgValue>>::from_sql_text(elem, bytes, &FormatOptions::default())
+                    .map_err(|_| DecodingError::bad_lit_of_type(s, &ty))?;
+            return Ok(PgValue::Array(
+                items
+                    .into_iter()
+                    .map(|item| item.unwrap_or(PgValue::Null))
+                    .collect(),
+            ));
+        }
+
         Ok(match ty {
-            Type::INT8 | Type::INT4 | Type::INT2 => PgValue::Integer(do_parse(ty, s)?),
-            Type::FLOAT8 | Type::FLOAT4 => PgValue::Float(do_parse(ty, s)?),
+            Type::INT8 | Type::INT4 | Type::INT2 => PgValue::Integer(do_parse(&ty, s)?),
+            Type::FLOAT8 | Type::FLOAT4 => PgValue::Float(do_parse(&ty, s)?),
+            // Wire text format transmits TEXT verbatim, so decode it as-is.
             Type::TEXT | Type::VARCHAR => PgValue::Text(s.to_owned()),
-            Type::BOOL => PgValue::Boolean(do_parse(ty, s)?),
-            Type::NUMERIC => PgValue::Numeric(do_parse(ty, s)?),
-            Type::UUID => PgValue::Uuid(do_parse(ty, s)?),
-            Type::JSON | Type::JSONB => PgValue::Json(do_parse(ty, s)?),
-            Type::TIMESTAMPTZ => PgValue::Timestamptz(do_parse(ty, s)?),
+            Type::BOOL => PgValue::Boolean(do_parse(&ty, s)?),
+            Type::NUMERIC => PgValue::Numeric(do_parse(&ty, s)?),
+            Type::UUID => PgValue::Uuid(do_parse(&ty, s)?),
+            Type::JSON | Type::JSONB => PgValue::Json(do_parse(&ty, s)?),
+            Type::TIMESTAMPTZ => PgValue::Timestamptz(do_parse(&ty, s)?),
             _ => return Err(DecodingError::unsupported_type(ty)),
         })
     }
 
     fn decode_binary(bytes: &[u8], ty: Type) -> Result<Self, DecodingError> {
-        fn do_decode<'a, T: FromSql<'a>>(ty: Type, raw: &'a [u8]) -> Result<T, DecodingError> {
-            T::from_sql(&ty, raw).map_err(|_| DecodingError::bad_bin_of_type(ty))
-        }
-
-        Ok(match ty {
-            Type::INT8 => PgValue::Integer(do_decode::<i64>(ty, bytes)?),
-            Type::INT4 => PgValue::Integer(do_decode::<i32>(ty, bytes)?.into()),
-            Type::INT2 => PgValue::Integer(do_decode::<i16>(ty, bytes)?.into()),
-            Type::FLOAT8 => PgValue::Float(do_decode::<f64>(ty, bytes)?),
-            Type::FLOAT4 => PgValue::Float(do_decode::<f32>(ty, bytes)?.into()),
-            Type::TEXT | Type::VARCHAR => PgValue::Text(do_decode(ty, bytes)?),
-            Type::BOOL => PgValue::Boolean(do_decode(ty, bytes)?),
-            Type::NUMERIC => PgValue::Numeric(do_decode(ty, bytes)?),
-            Type::UUID => PgValue::Uuid(do_decode(ty, bytes)?),
-            Type::JSON | Type::JSONB => PgValue::Json(do_decode(ty, bytes)?),
-            Type::TIMESTAMPTZ => PgValue::Timestamptz(do_decode(ty, bytes)?),
-            _ => return Err(DecodingError::unsupported_type(ty)),
-        })
+        PgValue::from_sql(&ty, bytes).map_err(|_| DecodingError::bad_bin_of_type(ty))
     }
 
     pub fn decode(
@@ -472,6 +576,152 @@ impl PgValue {
         match format {
             FieldFormat::Binary => Self::decode_binary(bytes, ty),
             FieldFormat::Text => Self::decode_text(bytes, ty),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rmpv::Value as MpValue;
+
+    fn as_int_array(pg: PgValue) -> Vec<Option<i64>> {
+        let PgValue::Array(items) = pg else {
+            panic!("expected PgValue::Array, got {pg:?}");
+        };
+        items
+            .into_iter()
+            .map(|e| match e {
+                PgValue::Null => None,
+                PgValue::Integer(v) => Some(v),
+                other => panic!("expected Integer/Null, got {other:?}"),
+            })
+            .collect()
+    }
+
+    fn as_text_array(pg: PgValue) -> Vec<Option<String>> {
+        let PgValue::Array(items) = pg else {
+            panic!("expected PgValue::Array, got {pg:?}");
+        };
+        items
+            .into_iter()
+            .map(|e| match e {
+                PgValue::Null => None,
+                PgValue::Text(v) => Some(v),
+                other => panic!("expected Text/Null, got {other:?}"),
+            })
+            .collect()
+    }
+
+    fn as_bool_array(pg: PgValue) -> Vec<Option<bool>> {
+        let PgValue::Array(items) = pg else {
+            panic!("expected PgValue::Array, got {pg:?}");
+        };
+        items
+            .into_iter()
+            .map(|e| match e {
+                PgValue::Null => None,
+                PgValue::Boolean(Bool(b)) => Some(b),
+                other => panic!("expected Boolean/Null, got {other:?}"),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn rmpv_int_array_round_trip() {
+        let mp = MpValue::Array(vec![
+            MpValue::Integer(1.into()),
+            MpValue::Nil,
+            MpValue::Integer(2.into()),
+        ]);
+        let pg = PgValue::try_from_rmpv(mp, &Type::INT8_ARRAY).unwrap();
+        assert_eq!(as_int_array(pg), vec![Some(1), None, Some(2)]);
+    }
+
+    #[test]
+    fn rmpv_text_array_round_trip() {
+        let mp = MpValue::Array(vec![
+            MpValue::String("hi".into()),
+            MpValue::Nil,
+            MpValue::String("there".into()),
+        ]);
+        let pg = PgValue::try_from_rmpv(mp, &Type::TEXT_ARRAY).unwrap();
+        assert_eq!(
+            as_text_array(pg),
+            vec![Some("hi".into()), None, Some("there".into())]
+        );
+    }
+
+    #[test]
+    fn rmpv_bool_array_round_trip() {
+        let mp = MpValue::Array(vec![
+            MpValue::Boolean(true),
+            MpValue::Boolean(false),
+            MpValue::Nil,
+        ]);
+        let pg = PgValue::try_from_rmpv(mp, &Type::BOOL_ARRAY).unwrap();
+        assert_eq!(as_bool_array(pg), vec![Some(true), Some(false), None]);
+    }
+
+    #[test]
+    fn decode_text_int_array_with_null() {
+        let pg = PgValue::decode_text(b"{1,2,NULL,3}", Type::INT8_ARRAY).unwrap();
+        assert_eq!(as_int_array(pg), vec![Some(1), Some(2), None, Some(3)]);
+    }
+
+    #[test]
+    fn decode_text_empty_array() {
+        let pg = PgValue::decode_text(b"{}", Type::INT8_ARRAY).unwrap();
+        assert!(as_int_array(pg).is_empty());
+    }
+
+    #[test]
+    fn decode_text_quoted_text_array() {
+        // Quoted strings, including one with embedded comma and escaped backslash.
+        let pg = PgValue::decode_text(b"{\"a\",\"b,c\",\"d\\\\e\"}", Type::TEXT_ARRAY).unwrap();
+        assert_eq!(
+            as_text_array(pg),
+            vec![Some("a".into()), Some("b,c".into()), Some("d\\e".into())]
+        );
+    }
+
+    #[test]
+    fn decode_text_array_missing_braces() {
+        assert!(PgValue::decode_text(b"1,2,3", Type::INT8_ARRAY).is_err());
+    }
+
+    #[test]
+    fn decode_text_array_trailing_comma_is_lenient() {
+        // pgwire behaviour
+        let pg = PgValue::decode_text(b"{1,}", Type::INT8_ARRAY).unwrap();
+        assert_eq!(as_int_array(pg), vec![Some(1)]);
+    }
+
+    #[test]
+    fn decode_text_array_leading_comma_yields_null() {
+        // pgwire behaviour
+        let pg = PgValue::decode_text(b"{,1}", Type::INT8_ARRAY).unwrap();
+        assert_eq!(as_int_array(pg), vec![None, Some(1)]);
+    }
+
+    #[test]
+    fn decode_text_text_array_quoted_null_and_empty_are_null() {
+        // pgwire behaviour
+        let pg = PgValue::decode_text(b"{\"NULL\",\"\",NULL}", Type::TEXT_ARRAY).unwrap();
+        assert_eq!(as_text_array(pg), vec![None, None, None]);
+    }
+
+    #[test]
+    fn pg_array_to_sbroad_tuple() {
+        let pg = PgValue::Array(vec![
+            PgValue::Integer(7),
+            PgValue::Null,
+            PgValue::Integer(9),
+        ]);
+        let sb: SbroadValue = pg.try_into().unwrap();
+        match sb {
+            SbroadValue::Tuple(t) => assert_eq!(format!("{t}"), "[7,NULL,9]"),
+            other => panic!("expected SbroadValue::Tuple, got {other:?}"),
         }
     }
 }

@@ -22,7 +22,7 @@ use serde::ser::{Serialize as SerSerialize, SerializeMap, Serializer};
 use serde::{Deserialize, Deserializer, Serialize};
 
 use super::distribution::Key;
-use super::types::{DerivedType, UnrestrictedType};
+use super::types::{DerivedType, NestedType, UnrestrictedType};
 
 const DEFAULT_VALUE: Value = Value::Null;
 
@@ -72,7 +72,7 @@ impl From<Column> for Field {
                 UnrestrictedType::Integer => Field::integer(column.name),
                 UnrestrictedType::String => Field::string(column.name),
                 UnrestrictedType::Uuid => Field::uuid(column.name),
-                UnrestrictedType::Array => Field::array(column.name),
+                UnrestrictedType::Array(_) => Field::array(column.name),
                 UnrestrictedType::Any => Field::any(column.name),
                 UnrestrictedType::Map => Field::map(column.name),
             }
@@ -118,7 +118,10 @@ impl SerSerialize for Column {
                 UnrestrictedType::Integer => "integer",
                 UnrestrictedType::String => "string",
                 UnrestrictedType::Uuid => "uuid",
-                UnrestrictedType::Array => "array",
+                UnrestrictedType::Array(NestedType::Any) => "array",
+                UnrestrictedType::Array(elem) => {
+                    &format_smolstr!("{}[]", UnrestrictedType::from(*elem))
+                }
                 UnrestrictedType::Any => "any",
                 UnrestrictedType::Map => "map",
             },
@@ -172,20 +175,19 @@ impl<'de> Visitor<'de> for ColumnVisitor {
 
         let is_nullable = matches!(column_is_nullable.as_str(), "true");
 
-        let ty = match column_type.as_str() {
-            "any" => DerivedType::new(UnrestrictedType::Any),
-            "boolean" => DerivedType::new(UnrestrictedType::Boolean),
-            "datetime" => DerivedType::new(UnrestrictedType::Datetime),
-            "decimal" | "numeric" => DerivedType::new(UnrestrictedType::Decimal),
-            "double" => DerivedType::new(UnrestrictedType::Double),
-            "integer" | "unsigned" => DerivedType::new(UnrestrictedType::Integer),
-            "string" | "text" | "varchar" => DerivedType::new(UnrestrictedType::String),
-            "array" => DerivedType::new(UnrestrictedType::Array),
-            "uuid" => DerivedType::new(UnrestrictedType::Uuid),
-            "map" => DerivedType::new(UnrestrictedType::Map),
-            "unknown" => DerivedType::unknown(),
-            s => return Err(Error::custom(format!("unsupported column type: {s}"))),
+        let parse_column_type = || -> Result<_, SbroadError> {
+            if column_type == "unknown" {
+                return Ok(DerivedType::unknown());
+            }
+            if let Some(arr_ty) = column_type.strip_suffix("[]") {
+                let arr_ty = NestedType::try_from(UnrestrictedType::new(arr_ty)?)?;
+                Ok(DerivedType::new(UnrestrictedType::Array(arr_ty)))
+            } else {
+                Ok(DerivedType::new(UnrestrictedType::new(&column_type)?))
+            }
         };
+
+        let ty = parse_column_type().map_err(Error::custom)?;
         Ok(Column::new(&column_name, ty, role, is_nullable))
     }
 }

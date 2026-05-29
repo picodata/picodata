@@ -1,7 +1,8 @@
+use crate::errors::SbroadError;
 use crate::ir::node::expression::MutExpression;
 use crate::ir::node::Cast;
+use crate::ir::types::CastType;
 use crate::ir::Plan;
-use crate::{errors::SbroadError, ir::types::CastType};
 
 use super::{MutNode, NodeId};
 

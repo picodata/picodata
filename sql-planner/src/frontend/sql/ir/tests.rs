@@ -3627,6 +3627,7 @@ fn syntax_error(query: &str) -> impl '_ + FnOnce(SbroadError) {
 }
 
 mod anonymous_block;
+mod array_literal;
 mod coalesce;
 mod cte;
 mod ddl;

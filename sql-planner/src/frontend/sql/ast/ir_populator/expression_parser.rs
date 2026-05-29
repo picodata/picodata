@@ -17,7 +17,7 @@ use crate::ir::node::{
     TimeParameters, Timestamp, Window,
 };
 use crate::ir::operator::{Arithmetic, Bool, OrderByElement, OrderByEntity, OrderByType, Unary};
-use crate::ir::types::{CastType, DerivedType};
+use crate::ir::types::{CastType, DerivedType, NestedType};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 
@@ -122,11 +122,22 @@ lazy_static::lazy_static! {
     };
 }
 
-fn cast_type_from_pair(type_pair: Pair<Rule>) -> Result<CastType, SbroadError> {
+fn cast_type_from_pair(cast_target_pair: Pair<Rule>) -> Result<CastType, SbroadError> {
+    debug_assert_eq!(cast_target_pair.as_rule(), Rule::CastTarget);
+    let mut cast_target_pairs = cast_target_pair.into_inner();
+    let type_pair = cast_target_pairs
+        .next()
+        .expect("Type expected under CastTarget");
+    let has_array_suffix = cast_target_pairs.next().is_some();
+
     let mut column_def_type_pairs = type_pair.into_inner();
     let column_def_type = column_def_type_pairs
         .next()
         .expect("concrete type expected under Type");
+    if has_array_suffix {
+        let elem = NestedType::try_from(column_def_type.as_rule())?;
+        return Ok(CastType::Array(elem));
+    }
     if column_def_type.as_rule() != Rule::TypeVarchar {
         return CastType::try_from(&column_def_type.as_rule());
     }
@@ -998,6 +1009,21 @@ where
                     }
                     ParseExpression::Row { children }
                 }
+                Rule::ArrayLiteral => {
+                    let mut children = Vec::new();
+                    for expr_pair in primary.into_inner() {
+                        let child_parse_expr = parse_expr_pratt(
+                            expr_pair.into_inner(),
+                            param_types,
+                            referred_relation_ids,
+                            worker,
+                            plan,
+                            safe_for_volatile_function,
+                        )?;
+                        children.push(child_parse_expr);
+                    }
+                    ParseExpression::ArrayLiteral { children }
+                }
                 Rule::Decimal
                 | Rule::Double
                 | Rule::Unsigned
@@ -1293,11 +1319,21 @@ where
                         plan,
                         true
                     )?;
-                    Ok(ParseExpression::Index { child: Box::new(child), which: Box::new(which) })
+                    // Fold consecutive subscripts into a single index-chain node.
+                    match child {
+                        ParseExpression::Index { child, mut indexes } => {
+                            indexes.push(which);
+                            Ok(ParseExpression::Index { child, indexes })
+                        }
+                        other => Ok(ParseExpression::Index {
+                            child: Box::new(other),
+                            indexes: vec![which],
+                        }),
+                    }
                 }
                 Rule::CastPostfix => {
                     let ty_pair = op.into_inner().next()
-                        .expect("Expected Type under CastPostfix.");
+                        .expect("Expected CastTarget under CastPostfix.");
                     let cast_type = cast_type_from_pair(ty_pair)?;
                     Ok(ParseExpression::Cast { child: Box::new(child), cast_type })
                 }

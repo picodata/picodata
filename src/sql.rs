@@ -41,7 +41,7 @@ use ::tarantool::schema::function::func_next_reserved_id;
 use ::tarantool::session::{with_su, UserId};
 use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace, UpdateOps};
 use ::tarantool::time::Instant;
-use ::tarantool::tuple::{Decode, FunctionArgs, FunctionCtx, ToTupleBuffer, Tuple};
+use ::tarantool::tuple::{Decode, FunctionArgs, FunctionCtx, RawByteBuf, ToTupleBuffer, Tuple};
 use ::tarantool::{msgpack, session, set_error};
 use chrono::Utc;
 use picodata_plugin::error_code::ErrorCode;
@@ -80,7 +80,7 @@ use sql::ir::node::{
 };
 use sql::ir::node::{NodeId, TruncateTable};
 use sql::ir::operator::ConflictStrategy;
-use sql::ir::types::UnrestrictedType;
+use sql::ir::types::{NestedType, UnrestrictedType};
 use sql::ir::value::Value;
 use sql::ir::Plan as IrPlan;
 use sql_protocol::decode::{
@@ -2944,6 +2944,31 @@ pub fn proc_query_metadata(req: QueryMetaRequest) -> Result<Tuple, Error> {
     let args = req.args;
     let tuple = build_cache_miss_dql_packet(args.request_id, args.plan_id)?;
     Ok(tuple)
+}
+
+/// Synced with [`NestedType::as_marker`].
+struct ArrayCastArgs {
+    array: Value,
+    element_type: String,
+}
+
+impl<'de> Decode<'de> for ArrayCastArgs {
+    fn decode(data: &'de [u8]) -> tarantool::Result<Self> {
+        let (array, element_type): (Value, String) = msgpack::decode(data)?;
+        Ok(ArrayCastArgs {
+            array,
+            element_type,
+        })
+    }
+}
+
+/// Cast every element of an array to a target element type, returning the resulting
+/// array as raw MessagePack.
+#[tarantool::proc(packed_args)]
+pub fn proc_array_cast(args: ArrayCastArgs) -> Result<RawByteBuf, Error> {
+    let nested = NestedType::from_marker(&args.element_type)?;
+    let casted = args.array.cast_array(nested)?;
+    Ok(RawByteBuf::from(msgpack::encode(&casted)))
 }
 
 // Each DML request on global tables has the following plan:

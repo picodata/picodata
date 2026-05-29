@@ -18,6 +18,11 @@
 ??? note "Диаграмма"
     ![Literal](../../images/ebnf/literal.svg)
 
+### Литерал массива {: #array_literal }
+
+??? note "Диаграмма"
+    ![Array literal](../../images/ebnf/array_literal.svg)
+
 ## Параметры {: #params }
 
 * **TABLE** — имя таблицы. Соответствует правилам имен для всех
@@ -47,6 +52,12 @@ INSERT INTO warehouse (id, item, type) VALUES (1, 'bricks', 'heavy');
 
 ```sql
 INSERT INTO warehouse VALUES (1, 'bricks', 'heavy');
+```
+
+Со значениями типа [ARRAY](../sql_types.md#array):
+
+```sql
+INSERT INTO measurements VALUES (1, ARRAY[0.5, '1.5', 2, NULL]);
 ```
 
 ## Обработка конфликтов {: #conflicts }

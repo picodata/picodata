@@ -11,10 +11,10 @@ use crate::errors::{Entity, SbroadError};
 use crate::ir::bucket::{BucketSet, Buckets};
 use crate::ir::expression::TrimKind;
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Constant, Delete, Having, IndexExpr, Insert, Join,
-    Motion as MotionRel, NodeId, Reference, Row as RowExpr, ScalarFunction, ScanCte, ScanRelation,
-    ScanSubQuery, Selection, SubQueryReference, Timestamp, Trim, UnaryExpr, Update as UpdateRel,
-    Values, ValuesRow,
+    Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Case, Cast, Constant, Delete, Having, IndexExpr,
+    Insert, Join, Motion as MotionRel, NodeId, Reference, Row as RowExpr, ScalarFunction, ScanCte,
+    ScanRelation, ScanSubQuery, Selection, SubQueryReference, Timestamp, Trim, UnaryExpr,
+    Update as UpdateRel, Values, ValuesRow,
 };
 use crate::ir::operator::{
     Bool, ConflictStrategy, JoinKind, OrderByElement, OrderByEntity, OrderByType,
@@ -256,6 +256,7 @@ enum ColExpr {
 
     // This one is hard to explain...
     Row(Row),
+    Array(Vec<ColExpr>),
 
     // Column-ish things.
     Alias(Box<ColExpr>, SmolStr),
@@ -273,7 +274,7 @@ enum ColExpr {
 
     // Unusual or complex operators & functions.
     Cast(Box<ColExpr>, CastType),
-    Index(Box<ColExpr>, Box<ColExpr>),
+    Index(Box<ColExpr>, Vec<ColExpr>),
     Trim(Option<TrimKind>, Option<Box<ColExpr>>, Box<ColExpr>),
     Like(Box<ColExpr>, Box<ColExpr>, Option<Box<ColExpr>>),
     Case(
@@ -304,6 +305,16 @@ impl Display for ColExpr {
                 write!(f, "{}", FmtSmartParens(expr, *should_fmt))?
             }
             ColExpr::Row(row) => write!(f, "{row}")?,
+            ColExpr::Array(items) => {
+                write!(f, "ARRAY[")?;
+                if let Some((last, others)) = items.split_last() {
+                    for item in others {
+                        write!(f, "{item}, ")?;
+                    }
+                    write!(f, "{last}")?;
+                }
+                write!(f, "]")?;
+            }
 
             // Column-ish things.
             ColExpr::Alias(expr, alias_name) => match expr.as_ref() {
@@ -348,8 +359,18 @@ impl Display for ColExpr {
             }
 
             // Unusal or complex operators.
-            ColExpr::Index(v, i) => write!(f, "{v}[{i}]")?,
-            ColExpr::Cast(v, t) => write!(f, "{v}::{t}")?,
+            ColExpr::Index(v, indexes) => {
+                write!(f, "{v}")?;
+                for i in indexes {
+                    write!(f, "[{i}]")?;
+                }
+            }
+            ColExpr::Cast(v, t) => match t {
+                CastType::Array(nested) => {
+                    write!(f, "\"_pico_array_cast\"({v}, '{}')", nested.as_marker())?
+                }
+                _ => write!(f, "{v}::{t}")?,
+            },
             ColExpr::Trim(kind, pattern, target) => match (kind, pattern) {
                 (Some(k), Some(p)) => write!(f, "TRIM({} {p} from {target})", k.as_str())?,
                 (Some(k), None) => write!(f, "TRIM({} from {target})", k.as_str())?,
@@ -573,10 +594,13 @@ impl ColExpr {
                     let expr = ColExpr::Over(stable_func, filter, window, should_fmt);
                     stack.push((expr, id));
                 }
-                Expression::Index(IndexExpr { .. }) => {
-                    let which_expr = stack.pop_expr(Some(id)).into();
+                Expression::Index(IndexExpr { indexes, .. }) => {
+                    let count = indexes.len();
+                    let mut index_exprs: Vec<_> =
+                        (0..count).map(|_| stack.pop_expr(Some(id))).collect();
+                    index_exprs.reverse();
                     let child_expr = stack.pop_expr(Some(id)).into();
-                    let expr = ColExpr::Index(child_expr, which_expr);
+                    let expr = ColExpr::Index(child_expr, index_exprs);
                     stack.push((expr, id));
                 }
                 Expression::Cast(Cast { to, .. }) => {
@@ -673,6 +697,14 @@ impl ColExpr {
                     let row = Row::from_col_expr_stack(plan, row, sq_ref_map, should_fmt)?;
                     let row_expr = ColExpr::Row(row);
                     stack.push((row_expr, id));
+                }
+                Expression::ArrayLiteral(ArrayLiteral { list, .. }) => {
+                    let mut items = Vec::with_capacity(list.len());
+                    for _ in list {
+                        items.push(stack.pop_expr(Some(id)));
+                    }
+                    items.reverse();
+                    stack.push((ColExpr::Array(items), id));
                 }
                 Expression::Alias(Alias { name, .. }) => {
                     let expr = stack.pop_expr(Some(id)).into();

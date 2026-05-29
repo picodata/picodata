@@ -2,9 +2,7 @@ use crate::pgproto::{backend::describe::CommandTag, error::EncodingError, value:
 use pgwire::{
     api::results::{DataRowEncoder, FieldInfo},
     messages::data::{DataRow, RowDescription},
-    types::ToSqlText,
 };
-use postgres_types::ToSql;
 use std::{sync::Arc, vec::IntoIter};
 
 pub struct Rows {
@@ -29,25 +27,10 @@ impl Rows {
             return Ok(None);
         };
 
-        fn encode_value<V>(encoder: &mut DataRowEncoder, value: &V) -> Result<(), EncodingError>
-        where
-            V: ToSql + ToSqlText + Sized,
-        {
-            encoder.encode_field(value).map_err(EncodingError::new)
-        }
-
         for value in &values {
-            match value {
-                PgValue::Float(v) => encode_value(&mut self.encoder, v)?,
-                PgValue::Integer(v) => encode_value(&mut self.encoder, v)?,
-                PgValue::Boolean(v) => encode_value(&mut self.encoder, v)?,
-                PgValue::Text(v) => encode_value(&mut self.encoder, v)?,
-                PgValue::Timestamptz(v) => encode_value(&mut self.encoder, v)?,
-                PgValue::Json(v) => encode_value(&mut self.encoder, v)?,
-                PgValue::Uuid(v) => encode_value(&mut self.encoder, v)?,
-                PgValue::Numeric(v) => encode_value(&mut self.encoder, v)?,
-                PgValue::Null => encode_value(&mut self.encoder, &None::<i64>)?,
-            }
+            self.encoder
+                .encode_field(value)
+                .map_err(EncodingError::new)?;
         }
 
         Ok(Some(self.encoder.take_row()))

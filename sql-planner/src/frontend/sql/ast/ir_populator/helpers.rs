@@ -5,7 +5,7 @@ use crate::errors::{Entity, SbroadError};
 use crate::frontend::sql::ast::{ParseNode, Rule};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::{Alias, NodeId};
-use crate::ir::types::{DerivedType, UnrestrictedType};
+use crate::ir::types::{DerivedType, NestedType, UnrestrictedType};
 use crate::ir::Plan;
 
 /// Check if an expression of type `src` can be assigned to a column of type `dst`.
@@ -20,7 +20,10 @@ pub(in crate::frontend::sql) fn can_assign(src: DerivedType, dst: UnrestrictedTy
         return true;
     };
 
-    src == dst
+    match (src, dst) {
+        (UnrestrictedType::Array(a), UnrestrictedType::Array(b)) => b == NestedType::Any || a == b,
+        _ => src == dst,
+    }
 }
 
 /// Get column types that dql query returns.

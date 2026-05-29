@@ -17,7 +17,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::slice::{Iter, IterMut};
 use tree::traversal::LevelNode;
-use types::UnrestrictedType;
+use types::{DerivedType, UnrestrictedType};
 
 use ahash::AHashMap;
 
@@ -33,10 +33,10 @@ use crate::ir::index::Indexes;
 use crate::ir::node::plugin::{MutPlugin, Plugin};
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
-    Alias, ArenaType, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, GroupBy, Having,
-    IndexExpr, Insert, Limit, Motion, MutNode, Node, Node136, Node232, Node32, Node64, Node96,
-    NodeId, NodeOwned, OrderBy, Projection, Reference, ReferenceTarget, Row, ScalarFunction,
-    ScanRelation, Selection, SubQueryReference, Trim, UnaryExpr,
+    Alias, ArenaType, ArithmeticExpr, ArrayLiteral, BoolExpr, Case, Cast, Concat, Constant,
+    GroupBy, Having, IndexExpr, Insert, Limit, Motion, MutNode, Node, Node136, Node232, Node32,
+    Node64, Node96, NodeId, NodeOwned, OrderBy, Projection, Reference, ReferenceTarget, Row,
+    ScalarFunction, ScanRelation, Selection, SubQueryReference, Trim, UnaryExpr,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity};
 use crate::ir::relation::Column;
@@ -93,7 +93,6 @@ impl Nodes {
                 Node32::Arithmetic(arithm) => Node::Expression(Expression::Arithmetic(arithm)),
                 Node32::Bool(bool) => Node::Expression(Expression::Bool(bool)),
                 Node32::Concat(concat) => Node::Expression(Expression::Concat(concat)),
-                Node32::Index(index) => Node::Expression(Expression::Index(index)),
                 Node32::Cast(cast) => Node::Expression(Expression::Cast(cast)),
                 Node32::CountAsterisk(count) => Node::Expression(Expression::CountAsterisk(count)),
                 Node32::Like(like) => Node::Expression(Expression::Like(like)),
@@ -127,9 +126,11 @@ impl Nodes {
                 }
                 Node32::Timestamp(lt) => Node::Expression(Expression::Timestamp(lt)),
                 Node32::Backup(backup) => Node::Ddl(Ddl::Backup(backup)),
+                Node32::ArrayLiteral(arr) => Node::Expression(Expression::ArrayLiteral(arr)),
             }),
             ArenaType::Arena64 => self.arena64.get(id.offset as usize).map(|node| match node {
                 Node64::Over(over) => Node::Expression(Expression::Over(over)),
+                Node64::Index(index) => Node::Expression(Expression::Index(index)),
                 Node64::Case(case) => Node::Expression(Expression::Case(case)),
                 Node64::Invalid(invalid) => Node::Invalid(invalid),
                 Node64::CreateRole(create_role) => Node::Acl(Acl::CreateRole(create_role)),
@@ -236,7 +237,6 @@ impl Nodes {
                     Node32::Bool(bool) => MutNode::Expression(MutExpression::Bool(bool)),
                     Node32::Limit(limit) => MutNode::Relational(MutRelational::Limit(limit)),
                     Node32::Concat(concat) => MutNode::Expression(MutExpression::Concat(concat)),
-                    Node32::Index(index) => MutNode::Expression(MutExpression::Index(index)),
                     Node32::Cast(cast) => MutNode::Expression(MutExpression::Cast(cast)),
                     Node32::CountAsterisk(count) => {
                         MutNode::Expression(MutExpression::CountAsterisk(count))
@@ -279,12 +279,16 @@ impl Nodes {
                     }
                     Node32::Timestamp(lt) => MutNode::Expression(MutExpression::Timestamp(lt)),
                     Node32::Backup(backup) => MutNode::Ddl(MutDdl::Backup(backup)),
+                    Node32::ArrayLiteral(arr) => {
+                        MutNode::Expression(MutExpression::ArrayLiteral(arr))
+                    }
                 }),
             ArenaType::Arena64 => self
                 .arena64
                 .get_mut(id.offset as usize)
                 .map(|node| match node {
                     Node64::Over(over) => MutNode::Expression(MutExpression::Over(over)),
+                    Node64::Index(index) => MutNode::Expression(MutExpression::Index(index)),
                     Node64::Case(case) => MutNode::Expression(MutExpression::Case(case)),
                     Node64::Invalid(invalid) => MutNode::Invalid(invalid),
                     Node64::CreateRole(create_role) => {
@@ -1316,20 +1320,33 @@ impl Plan {
         Ok(self.nodes.push(node.into()))
     }
 
-    pub fn add_index(&mut self, child: NodeId, which: NodeId) -> Result<NodeId, SbroadError> {
+    pub fn add_index(
+        &mut self,
+        child: NodeId,
+        indexes: Vec<NodeId>,
+    ) -> Result<NodeId, SbroadError> {
         self.nodes.get(child).ok_or_else(|| {
             SbroadError::NotFound(
                 Entity::Node,
-                format_smolstr!("(left child of Index node) from arena with index {child:?}"),
+                format_smolstr!("(child of Index node) from arena with index {child:?}"),
             )
         })?;
-        self.nodes.get(which).ok_or_else(|| {
-            SbroadError::NotFound(
-                Entity::Node,
-                format_smolstr!("(right child of Index node) from arena with index {which:?}"),
-            )
-        })?;
-        Ok(self.nodes.push(IndexExpr { child, which }.into()))
+        for which in indexes.iter() {
+            self.nodes.get(*which).ok_or_else(|| {
+                SbroadError::NotFound(
+                    Entity::Node,
+                    format_smolstr!("(selector of Index node) from arena with index {which:?}"),
+                )
+            })?;
+        }
+        Ok(self.nodes.push(
+            IndexExpr {
+                child,
+                indexes,
+                cast_to: DerivedType::unknown(),
+            }
+            .into(),
+        ))
     }
 
     /// Add arithmetic node to the plan.
@@ -2205,15 +2222,17 @@ impl Plan {
             (
                 Expression::Index(IndexExpr {
                     child: lhs_child,
-                    which: lhs_which,
+                    indexes: lhs_indexes,
+                    ..
                 }),
                 Expression::Index(IndexExpr {
                     child: rhs_child,
-                    which: rhs_which,
+                    indexes: rhs_indexes,
+                    ..
                 }),
             ) => Ok(
                 self.are_order_by_exprs_equal(*lhs_child, *rhs_child, position_mapping)?
-                    && self.are_order_by_exprs_equal(*lhs_which, *rhs_which, position_mapping)?,
+                    && cmp_expr_vec(lhs_indexes, rhs_indexes)?,
             ),
             (
                 Expression::Cast(Cast {

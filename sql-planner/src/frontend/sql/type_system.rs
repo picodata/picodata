@@ -3,9 +3,9 @@ use crate::frontend::sql::get_real_function_name;
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant, Frame,
-    FrameType, IndexExpr, LetVarRef, Like, NodeId, Over, Parameter, Reference, Row, ScalarFunction,
-    SubQueryReference, Trim, UnaryExpr, ValuesRow, Window,
+    Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant,
+    Frame, FrameType, IndexExpr, LetVarRef, Like, NodeId, Over, Parameter, Reference, Row,
+    ScalarFunction, SubQueryReference, Trim, UnaryExpr, ValuesRow, Window,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, Unary};
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter};
@@ -44,7 +44,7 @@ impl From<SbroadType> for Type {
             SbroadType::Datetime => Type::Datetime,
             SbroadType::Any => Type::Any,
             SbroadType::Uuid => Type::Uuid,
-            SbroadType::Array => Type::Array,
+            SbroadType::Array(elem) => Type::Array(elem.into()),
             SbroadType::Map => Type::Map,
         }
     }
@@ -60,7 +60,7 @@ impl From<Type> for DerivedType {
             Type::Boolean => DerivedType::new(SbroadType::Boolean),
             Type::Datetime => DerivedType::new(SbroadType::Datetime),
             Type::Uuid => DerivedType::new(SbroadType::Uuid),
-            Type::Array => DerivedType::new(SbroadType::Array),
+            Type::Array(elem) => DerivedType::new(SbroadType::Array(elem.into())),
             Type::Map => DerivedType::new(SbroadType::Map),
             Type::Any => DerivedType::new(SbroadType::Any),
         }
@@ -89,6 +89,7 @@ impl From<CastType> for Type {
             CastType::Datetime => Type::Datetime,
             CastType::Uuid => Type::Uuid,
             CastType::Json => Type::Map,
+            CastType::Array(n) => Type::Array(n.into()),
         }
     }
 }
@@ -206,20 +207,10 @@ pub fn to_type_expr(
             let kind = TypeExprKind::Reference(ty);
             Ok(TypeExpr::new(node_id, kind))
         }
-        Expression::Index(IndexExpr { child, which }) => {
-            let mut index_ids = vec![which];
-            let mut source_id = *child;
-            while let Expression::Index(IndexExpr { child, which }) =
-                plan.get_expression_node(source_id)?
-            {
-                source_id = *child;
-                index_ids.push(which)
-            }
-
-            index_ids.reverse();
-            let source = Box::new(to_type_expr(source_id, plan, subquery_map)?);
-            let indexes = index_ids
-                .into_iter()
+        Expression::Index(IndexExpr { child, indexes, .. }) => {
+            let source = Box::new(to_type_expr(*child, plan, subquery_map)?);
+            let indexes = indexes
+                .iter()
                 .map(|idx| to_type_expr(*idx, plan, subquery_map))
                 .collect::<Result<Vec<_>, SbroadError>>()?;
             let kind = TypeExprKind::IndexChain { source, indexes };
@@ -296,6 +287,11 @@ pub fn to_type_expr(
 
             let exprs = to_type_expr_many(list, plan, subquery_map)?;
             let kind = TypeExprKind::Row(exprs);
+            Ok(TypeExpr::new(node_id, kind))
+        }
+        Expression::ArrayLiteral(ArrayLiteral { list, .. }) => {
+            let exprs = to_type_expr_many(list, plan, subquery_map)?;
+            let kind = TypeExprKind::Array(exprs);
             Ok(TypeExpr::new(node_id, kind))
         }
         Expression::ScalarFunction(ScalarFunction {
@@ -444,6 +440,7 @@ pub fn to_type_expr(
 static TYPE_SYSTEM: LazyLock<TypeSystem> = LazyLock::new(default_type_system);
 
 fn default_type_system() -> TypeSystem {
+    use sql_type_system::expr::NestedType;
     use sql_type_system::expr::Type::*;
 
     let functions = vec![
@@ -524,7 +521,7 @@ fn default_type_system() -> TypeSystem {
             Text,
         ),
         Function::new_scalar("pico_instance_health_status", [Text], Map),
-        Function::new_scalar("_pico_bucket", [Text], Array),
+        Function::new_scalar("_pico_bucket", [Text], Array(NestedType::Map)),
         Function::new_scalar("like", [Text, Text, Text], Boolean),
         Function::new_scalar("trim", [Text], Text),
         Function::new_scalar("trim", [Text, Text], Text),
@@ -653,7 +650,9 @@ pub fn analyze_and_coerce_scalar_expr(
     subquery_map: &AHashMap<NodeId, NodeId>,
 ) -> Result<(), SbroadError> {
     analyze_scalar_expr(type_analyzer, expr_id, desired_type, plan, subquery_map)?;
-    coerce_scalar_expr(type_analyzer.get_report(), expr_id, plan)
+    let report = type_analyzer.get_report();
+    coerce_scalar_expr(report, expr_id, plan)?;
+    annotate_composite_types(report, expr_id, plan)
 }
 
 /// Coerce expression types in accordance with the type report.
@@ -732,6 +731,41 @@ fn coerce_scalar_expr(
                 .clone()
                 .cast(new_type)
                 .map_err(|_| cannot_parse_error(value, report_type))?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Write inferred result types onto composite expressions.
+fn annotate_composite_types(
+    report: &TypeReport,
+    expr_id: NodeId,
+    plan: &mut Plan,
+) -> Result<(), SbroadError> {
+    let is_target = |id| {
+        let Ok(expr) = plan.get_expression_node(id) else {
+            return false;
+        };
+        matches!(expr, Expression::ArrayLiteral(_) | Expression::Index(_))
+    };
+
+    let post_order = PostOrderWithFilter::new(|node| plan.subtree_iter(node, false), is_target, 0);
+    let targets: Vec<_> = post_order
+        .traverse_into_vec(expr_id)
+        .into_iter()
+        .map(|LevelNode(_, id)| id)
+        .collect();
+
+    for id in targets {
+        match plan.get_mut_expression_node(id)? {
+            MutExpression::ArrayLiteral(ArrayLiteral { col_type, .. }) => {
+                *col_type = DerivedType::from(report.get_type(&id));
+            }
+            MutExpression::Index(IndexExpr { cast_to, .. }) => {
+                *cast_to = DerivedType::from(report.get_type(&id));
+            }
+            _ => unreachable!("filter restricts node kinds"),
         }
     }
 
@@ -833,6 +867,7 @@ pub fn analyze_values_rows(
 
         for child in &new_list {
             coerce_scalar_expr(report, *child, plan)?;
+            annotate_composite_types(report, *child, plan)?;
         }
 
         if let MutExpression::Row(Row { list, .. }) = plan.get_mut_expression_node(data)? {

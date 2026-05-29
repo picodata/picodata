@@ -224,7 +224,7 @@ fn table_seg_compound_type_in_key() {
                     ColumnRole::Sharding,
                     false
                 ),
-                column_user_non_null(SmolStr::from("a"), UnrestrictedType::Array),
+                column_user_non_null(SmolStr::from("a"), UnrestrictedType::Array(NestedType::Any)),
             ],
             &["a"],
             &["a"],

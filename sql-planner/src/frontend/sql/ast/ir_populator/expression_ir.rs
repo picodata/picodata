@@ -91,6 +91,9 @@ pub(in crate::frontend::sql) enum ParseExpression {
     Row {
         children: Vec<ParseExpression>,
     },
+    ArrayLiteral {
+        children: Vec<ParseExpression>,
+    },
     Prefix {
         op: Unary,
         child: Box<ParseExpression>,
@@ -106,7 +109,7 @@ pub(in crate::frontend::sql) enum ParseExpression {
     },
     Index {
         child: Box<ParseExpression>,
-        which: Box<ParseExpression>,
+        indexes: Vec<ParseExpression>,
     },
     Cast {
         cast_type: CastType,
@@ -165,10 +168,13 @@ impl ParseExpression {
             ParseExpression::SubQueryPlanId { plan_id } => {
                 plan.add_replaced_subquery(*plan_id, worker)?
             }
-            ParseExpression::Index { child, which } => {
+            ParseExpression::Index { child, indexes } => {
                 let child_plan_id = child.populate_plan(plan, worker)?;
-                let which_plan_id = which.populate_plan(plan, worker)?;
-                plan.add_index(child_plan_id, which_plan_id)?
+                let index_plan_ids = indexes
+                    .iter()
+                    .map(|idx| idx.populate_plan(plan, worker))
+                    .collect::<Result<Vec<_>, _>>()?;
+                plan.add_index(child_plan_id, index_plan_ids)?
             }
             ParseExpression::Cast { cast_type, child } => {
                 let child_plan_id = child.populate_plan(plan, worker)?;
@@ -423,6 +429,13 @@ impl ParseExpression {
                     plan_children_ids.push(plan_child_id);
                 }
                 plan.nodes.add_row(plan_children_ids, None)
+            }
+            ParseExpression::ArrayLiteral { children } => {
+                let mut plan_children_ids = Vec::with_capacity(children.len());
+                for child in children {
+                    plan_children_ids.push(child.populate_plan(plan, worker)?);
+                }
+                plan.nodes.add_array_literal(plan_children_ids)
             }
             ParseExpression::Exists { is_not, child } => {
                 let ParseExpression::SubQueryPlanId { plan_id } = &**child else {

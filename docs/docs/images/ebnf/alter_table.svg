@@ -390,7 +390,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
        id="text33">column</text>
   </a>
   <a
-     xlink:href="#domain_type"
+     xlink:href="#column_def_type"
      xlink:title="column_def_type"
      id="a35">
     <rect

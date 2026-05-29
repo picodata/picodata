@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, ToSmolStr};
 
 use crate::ir::node::NodeId;
-use crate::ir::types::DerivedType;
+use crate::ir::types::{DerivedType, NestedType};
 use crate::utils::MutexLike;
 use crate::{
     frontend::sql::get_real_function_name, ir::helpers::RepeatableState, ir::node::BlockStatement,
@@ -152,7 +152,7 @@ pub fn get_builtin_functions() -> &'static [Function] {
             // volatile functions
             Function::new_volatile(
                 "_pico_bucket".into(),
-                DerivedType::new(UnrestrictedType::Array),
+                DerivedType::new(UnrestrictedType::Array(NestedType::Map)),
                 false,
             ),
             Function::new_volatile(

@@ -1,4 +1,5 @@
 use crate::pgproto::{
+    backend::storage::sbroad_type_to_pg,
     error::PgResult,
     value::{FieldFormat, RawFormat},
 };
@@ -18,7 +19,7 @@ use sql::{
             relational::Relational, tcl::Tcl, Alias, AnonymousBlock, GrantPrivilege, Node,
             RevokePrivilege,
         },
-        types::{DerivedType, UnrestrictedType as SbroadType},
+        types::DerivedType,
         Plan,
     },
 };
@@ -316,20 +317,10 @@ impl MetadataColumn {
 }
 
 fn pg_type_from_sbroad(sbroad: &DerivedType) -> Type {
-    if let Some(sbroad) = sbroad.get() {
-        match sbroad {
-            SbroadType::Integer => Type::INT8,
-            SbroadType::Map | SbroadType::Array | SbroadType::Any => Type::JSON,
-            SbroadType::String => Type::TEXT,
-            SbroadType::Boolean => Type::BOOL,
-            SbroadType::Double => Type::FLOAT8,
-            SbroadType::Decimal => Type::NUMERIC,
-            SbroadType::Uuid => Type::UUID,
-            SbroadType::Datetime => Type::TIMESTAMPTZ,
-        }
-    } else {
-        Type::UNKNOWN
-    }
+    sbroad
+        .get()
+        .as_ref()
+        .map_or(Type::UNKNOWN, sbroad_type_to_pg)
 }
 
 /// Get an output format from the dql query plan.

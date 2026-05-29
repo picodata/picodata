@@ -1,14 +1,14 @@
-import pytest
-from conftest import Postgres
 from decimal import Decimal
 from uuid import UUID
-
-# We use psycopg when we want the client to send parameters types explicitly.
-import psycopg
 
 # We use pg8000 when we want to prepare statements explicitly or when we don't want the client
 # to send parameters types, which is useful when we test parameter types inference.
 import pg8000.native as pg  # type: ignore
+
+# We use psycopg when we want the client to send parameters types explicitly.
+import psycopg
+import pytest
+from conftest import Postgres
 from pg8000.exceptions import DatabaseError  # type: ignore
 
 
@@ -364,7 +364,7 @@ def test_params_inference_errors(postgres: Postgres):
     with pytest.raises(DatabaseError, match=r"row value misused"):
         conn.run("SELECT (:p,:p)", p=1)
 
-    with pytest.raises(DatabaseError, match=r"row value misused"):
+    with pytest.raises(DatabaseError, match=r"row with 2 values has no scalar type"):
         conn.run("SELECT max((:p,:p))", p=1)
 
     with pytest.raises(DatabaseError, match=r"row value misused"):

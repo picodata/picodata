@@ -407,7 +407,7 @@ Identifier = @{ DelimitedIdentifier | RegularIdentifier  }
             // Note: In case two keywords with the same prefix are met, shorter ones must go after longest.
             //       E.g. ^"in" must go after ^"insert" because keywords traversal stops on the first match.
             //       Please, try to keep the list in alphabetical order.
-            Keyword = {  ^"all" | ^"and" | ^"asc" | ^"as"
+            Keyword = {  ^"all" | ^"and" | ^"array" | ^"asc" | ^"as"
                         | ^"begin" | ^"between" | ^"by"
                         | ^"case" | ^"cast" | ^"current_date" | ^"current_time" | ^"current_timestamp"
                         | ^"desc" | ^"distinct"
@@ -463,14 +463,14 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
             Lt    = { "<" }
             LtEq  = { "<=" }
             NotEq = { "<>" | "!=" }
-    ExprAtomValue = _{ (UnaryNot ~ W)* ~ AtomicExpr ~ IndexPostfix* ~ CastPostfix* ~ (W ~ IsPostfix)* }
+    ExprAtomValue = _{ (UnaryNot ~ W)* ~ AtomicExpr ~ (IndexPostfix | CastPostfix)* ~ (W ~ IsPostfix)* }
         UnaryNot   = { NotFlag }
         IndexPostfix = { WO ~ "[" ~ WO ~ Expr ~ WO ~ "]" }
-        CastPostfix = { WO ~ "::" ~ WO ~ Type }
+        CastPostfix = { WO ~ "::" ~ WO ~ CastTarget }
         IsPostfix = ${ ^"is" ~ W ~ (NotFlag ~ W)? ~ (True | False | Unknown | Null) }
             Unknown = { ^"unknown" }
         AtomicExpr = _{ Literal | Parameter | Over | CastOp | Trim | Substring | CurrentDate | CurrentTimestamp | CurrentTime | LocalTimestamp | LocalTime
-                    | IdentifierWithOptionalContinuation | ExpressionInParentheses | UnaryOperator | Case | SubQuery | Row }
+                    | IdentifierWithOptionalContinuation | ExpressionInParentheses | UnaryOperator | Case | SubQuery | ArrayLiteral | Row }
             Literal = { True | False | Null | Double | Decimal | Unsigned | Integer | SingleQuotedString }
                 True     = { ^"true" }
                 False    = { ^"false" }
@@ -545,7 +545,11 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
             }
                 CaseWhenBlock = ${ ^"when" ~ W ~ Expr ~ W ~ ^"then" ~ W ~ Expr }
                 CaseElseBlock = ${ ^"else" ~ W ~ Expr }
-            CastOp = ${ ^"cast" ~ WO ~ "(" ~ WO ~ Expr ~ W ~ ^"as" ~ W ~ Type ~ WO ~ ")" }
+            CastOp = ${ ^"cast" ~ WO ~ "(" ~ WO ~ Expr ~ W ~ ^"as" ~ W ~ CastTarget ~ WO ~ ")" }
+                // Multidimensional bracket typing (`T[][]`, `T[N][M]`) is a DDL-only feature.
+                CastTarget = { Type ~ CastArraySuffix? }
+                    CastArraySuffix = { (WO ~ EmptyBracket) | (W ~ ArrayKeywordSuffix) }
+                        EmptyBracket = { "[" ~ WO ~ "]" }
 
                 ColumnDefType = { (DomainType | Type) ~ ArraySuffix? }
                     // Accepted: T[], T[N], T[][], T[N][M], T[][N], T ARRAY, T ARRAY[N]
@@ -576,6 +580,7 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
             UnaryOperator = _{ Exists }
                 Exists = ${ (NotFlag ~ W)? ~ ^"exists" ~ W ~ SubQuery }
             Row = !{ "(" ~ Expr ~ ("," ~ Expr)* ~ ")" }
+            ArrayLiteral = !{ ^"array" ~ "[" ~ (Expr ~ ("," ~ Expr)*)? ~ "]" }
 
 Distinct = { ^"distinct" }
 NotFlag = { ^"not" }
