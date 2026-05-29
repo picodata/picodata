@@ -375,12 +375,6 @@ make-py-cache:
       - BUILD_PROFILE: dev
         TARGET: debug
 
-.install-rolling-binaries: &install-rolling-binaries |
-  ci-log-section start "install-rolling-binaries" Installing Picodata binaries needed for rolling upgrade tests ...
-  make collect-required-rolling-versions
-  poetry run tools/install_rolling_binaries.py
-  ci-log-section end "install-rolling-binaries"
-
 build-linux:
   stage: test
   extends:
@@ -520,10 +514,6 @@ test-rs-linux:
   needs:
     - job: build-linux
       artifacts: true
-    - job: install-rolling-binaries
-      artifacts: true
-  before_script:
-    - export PATH="${ROLLING_BINARIES_DIR}:$PATH"
   artifacts:
     when: always
     paths:
@@ -540,8 +530,6 @@ test-py-sql-linux:
     - <<: *cache_git
       policy: pull
     - <<: *py_cache
-      policy: pull
-    - <<: *rolling_binaries_cache
       policy: pull
   script:
     - *poetry-install
@@ -608,7 +596,11 @@ install-rolling-binaries:
   script:
     - tools/ensure_checkout.sh
     - *poetry-install
-    - *install-rolling-binaries
+    - |
+      ci-log-section start "install-rolling-binaries" Installing Picodata binaries needed for rolling upgrade tests ...
+      make collect-required-rolling-versions
+      poetry run tools/install_rolling_binaries.py
+      ci-log-section end "install-rolling-binaries"
   artifacts:
     paths:
       - .rolling_binaries/
@@ -617,6 +609,13 @@ test-py-not-sql-linux:
   stage: test
   extends:
     - .test-py-linux_base
+  needs:
+    - job: build-linux
+      artifacts: true
+    - job: install-rolling-binaries
+      artifacts: true
+  before_script:
+    - export PATH="${ROLLING_BINARIES_DIR}:$PATH"
   cache:
     - <<: *cache_git
       policy: pull
