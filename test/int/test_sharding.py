@@ -438,11 +438,11 @@ def test_bucket_count_custom_and_default(cluster: Cluster):
         yaml="""
 cluster:
     name: test
-    default_bucket_count: 6000
+    default_bucket_count: 15
     tier:
         radix:
             replication_factor: 1
-            bucket_count: 16384
+            bucket_count: 20
         storage:
             replication_factor: 1
 """
@@ -454,8 +454,8 @@ cluster:
     i5 = cluster.add_instance(tier="radix", wait_online=False)
     cluster.wait_online()
 
-    assert_tier_bucket_count(cluster, "storage", 6000, i1, i2, i3)
-    assert_tier_bucket_count(cluster, "radix", 16384, i4, i5)
+    assert_tier_bucket_count(cluster, "storage", 15, i1, i2, i3)
+    assert_tier_bucket_count(cluster, "radix", 20, i4, i5)
 
 
 def test_backoff_proc_sharding(cluster: Cluster):
