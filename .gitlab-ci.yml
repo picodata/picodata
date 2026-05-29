@@ -1005,6 +1005,7 @@ asan:
       - TARANTOOL_VERSION
       - BASE_IMAGE
       - BASE_IMAGE_TAG
+      - BASE_IMAGE_LATEST
 
 pack-on-tag:
   stage: pack
