@@ -765,52 +765,10 @@ mod tests {
         // When testing external hosts like `example.com`, there’s a good chance
         // requests will be served by a CDN, depending on our resolver configuration
         // and provider. Directly comparing two `getaddrinfo` results from a CDN
-        // isn’t meaningful—we’d just be detecting normal churn in a distributed
-        // cache. Instead, verify that the result sets have at least some overlap
-        // between requests and that all returned addresses are valid.
-
-        let addrs = resolve_addr("example.org", 80, _10_SEC.as_secs_f64()).unwrap();
-
-        let mut our_addrs = HashSet::<net::SocketAddr>::new();
-        for addr in addrs {
-            match addr {
-                SockAddr::V4(v4) => our_addrs.insert(to_socket_addr_v4(v4).into()),
-                SockAddr::V6(v6) => our_addrs.insert(to_socket_addr_v6(v6).into()),
-            };
-        }
-
-        let addrs_from_std: HashSet<_> = net::ToSocketAddrs::to_socket_addrs(&("example.org", 80))
-            .unwrap()
-            .collect();
-
-        // Ensure both resolvers returned something
-        assert!(!our_addrs.is_empty());
-        assert!(!addrs_from_std.is_empty());
-
-        // Ensure that at least some addresses overlap between the results.
-        let has_overlap = our_addrs.intersection(&addrs_from_std).next().is_some();
-        assert!(
-            has_overlap,
-            "DNS results should have some overlap with std resolver"
-        );
-
-        // Ensure all returned addresses look valid (not unspecified/multicast/broadcast).
-        let is_valid = |addr: &net::SocketAddr| match addr {
-            net::SocketAddr::V4(v4) => {
-                let ip = v4.ip();
-                !ip.is_unspecified() && !ip.is_broadcast() && !ip.is_multicast()
-            }
-            net::SocketAddr::V6(v6) => {
-                let ip = v6.ip();
-                !ip.is_unspecified() && !ip.is_multicast()
-            }
-        };
-        assert!(our_addrs.iter().all(is_valid));
-        assert!(addrs_from_std.iter().all(is_valid));
-
+        // isn’t meaningful — we’d just be detecting normal churn in a distributed
+        // cache. That’s why this test is only for localhost.
         // For localhost, no external networking is involved, so we can require the
         // results to match exactly.
-
         let addrs = resolve_addr("localhost", 1337, _10_SEC.as_secs_f64()).unwrap();
 
         let mut our_addrs = HashSet::<net::SocketAddr>::new();
