@@ -1,6 +1,6 @@
 use crate::{
-    executor::engine::mock::RouterConfigurationMock, frontend::sql::ast::AbstractSyntaxTree,
-    frontend::sql::Ast, ir::transformation::helpers::sql_to_optimized_ir,
+    executor::engine::mock::RouterConfigurationMock, frontend::sql::transform_into_plan,
+    ir::transformation::helpers::sql_to_optimized_ir,
 };
 use pretty_assertions::assert_eq;
 
@@ -31,7 +31,7 @@ fn like_invalid1() {
     let input = r#"select a like a escape 'a' escape 'a' from t1"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let err = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap_err();
+    let err = transform_into_plan(input, &[], metadata).unwrap_err();
 
     assert_eq!(
         "invalid expression: escape specified twice: expr1 LIKE/SIMILAR expr2 ESCAPE expr 3 ESCAPE expr4",
@@ -44,7 +44,7 @@ fn like_invalid2() {
     let input = r#"select a escape 'b' from t1"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let err = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap_err();
+    let err = transform_into_plan(input, &[], metadata).unwrap_err();
 
     assert_eq!(
         "invalid expression: ESCAPE can go only after LIKE or SIMILAR expressions, got: PlanId { plan_id: NodeId { offset: 4, arena_type: Arena96 } }",

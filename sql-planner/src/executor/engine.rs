@@ -335,7 +335,6 @@ pub fn query_id(pattern: &str, params: &[DerivedType]) -> SmolStr {
 
 /// A router trait.
 pub trait Router: QueryCache {
-    type ParseTree;
     type MetadataProvider: Metadata;
     type VshardImplementor: Vshard;
 

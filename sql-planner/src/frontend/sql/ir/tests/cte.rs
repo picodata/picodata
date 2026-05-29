@@ -1,7 +1,6 @@
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::mock::RouterConfigurationMock;
-use crate::frontend::sql::ast::AbstractSyntaxTree;
-use crate::frontend::Ast;
+use crate::frontend::sql::transform_into_plan;
 use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use pretty_assertions::assert_eq;
 
@@ -591,7 +590,7 @@ fn cte_name_conflict() {
         SELECT * FROM cte
     "#;
     let metadata = &RouterConfigurationMock::new();
-    let plan_error = AbstractSyntaxTree::transform_into_plan(sql, &[], metadata);
+    let plan_error = transform_into_plan(sql, &[], metadata);
     assert_eq!(
         plan_error.unwrap_err(),
         SbroadError::Invalid(
@@ -608,7 +607,7 @@ fn cte_column_mismatch() {
         SELECT * FROM cte
     "#;
     let metadata = &RouterConfigurationMock::new();
-    let plan_error = AbstractSyntaxTree::transform_into_plan(sql, &[], metadata);
+    let plan_error = transform_into_plan(sql, &[], metadata);
     assert_eq!(
         plan_error.unwrap_err(),
         SbroadError::UnexpectedNumberOfValues("expected 2 columns in CTE, got 1".into())

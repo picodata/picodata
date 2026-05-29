@@ -26,7 +26,8 @@ use tarantool::tuple::Encode;
 /// The first bucket_id
 pub const BUCKET_ID_MIN: u64 = 1;
 /// Column name in which sharded tables store the bucket_id by default.
-pub const DEFAULT_BUCKET_ID_COLUMN_NAME: &str = sql::frontend::sql::DEFAULT_BUCKET_ID_COLUMN_NAME;
+pub const DEFAULT_BUCKET_ID_COLUMN_NAME: &str =
+    sql::frontend::sql::ast::DEFAULT_BUCKET_ID_COLUMN_NAME;
 
 pub type BucketIdRange = std::ops::RangeInclusive<u64>;
 

@@ -4,9 +4,9 @@ extern crate pest_derive;
 extern crate core;
 
 use crate::errors::SbroadError;
-use crate::executor::engine::{query_id, Metadata, Router, VersionMap};
+use crate::executor::engine::{query_id, Router, VersionMap};
 use crate::executor::lru::Cache;
-use crate::frontend::Ast;
+
 use crate::ir::helpers::RepeatableState;
 use crate::ir::options::Options;
 use crate::ir::types::{DerivedType, UnrestrictedType};
@@ -49,9 +49,7 @@ impl PreparedStatement {
     ) -> Result<PreparedStatement, SbroadError>
     where
         R: Router,
-        R::MetadataProvider: Metadata,
         R::Cache: Cache<SmolStr, Rc<Plan>>,
-        R::ParseTree: Ast,
     {
         let mut cache = router.cache().lock();
 
@@ -78,7 +76,9 @@ impl PreparedStatement {
 
         let new_plan = router.with_admin_su(|| -> Result<Plan, SbroadError> {
             let metadata = router.metadata().lock();
-            let mut plan = R::ParseTree::transform_into_plan(query_text, param_types, &*metadata)?;
+
+            let mut plan = frontend::sql::transform_into_plan(query_text, param_types, &*metadata)?;
+
             if router.provides_versions() {
                 let mut table_version_map = VersionMap::with_capacity_and_hasher(
                     plan.relations.tables.len(),
@@ -223,9 +223,7 @@ impl BoundStatement {
     ) -> Result<Self, SbroadError>
     where
         R: Router,
-        R::MetadataProvider: Metadata,
         R::Cache: Cache<SmolStr, Rc<Plan>>,
-        R::ParseTree: Ast,
     {
         let param_types: Vec<_> = params.iter().map(|v| v.get_type()).collect();
 

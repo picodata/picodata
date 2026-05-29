@@ -410,7 +410,7 @@ impl fmt::Display for UnrestrictedType {
     }
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Default)]
 pub struct DerivedType(Option<UnrestrictedType>);
 
 impl DerivedType {

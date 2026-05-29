@@ -1,6 +1,5 @@
 use crate::frontend::sql::ir::tests::RouterConfigurationMock;
-use crate::frontend::sql::AbstractSyntaxTree;
-use crate::frontend::Ast;
+use crate::frontend::sql::transform_into_plan;
 use crate::ir::transformation::helpers::sql_to_optimized_ir;
 
 #[test]
@@ -487,7 +486,7 @@ fn no_limit_pushdown_with_volatile_funcs() {
         SELECT b FROM t GROUP BY b ORDER BY pico_instance_uuid() LIMIT 5;
     "#;
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(sql, &vec![], metadata);
+    let plan = transform_into_plan(sql, &vec![], metadata);
 
     assert!(matches!(plan, Err(_)));
 

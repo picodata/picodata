@@ -1,6 +1,5 @@
 use crate::executor::engine::mock::RouterConfigurationMock;
-use crate::frontend::sql::ast::AbstractSyntaxTree;
-use crate::frontend::Ast;
+use crate::frontend::sql::transform_into_plan;
 use crate::ir::transformation::helpers::check_transformation;
 use crate::ir::value::Value;
 use crate::ir::Plan;
@@ -42,7 +41,7 @@ fn split_columns3() {
     let query = r#"SELECT "a" FROM "t" WHERE ("a", 2, "b") = (1, "b")"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let err = AbstractSyntaxTree::transform_into_plan(query, &[], metadata).unwrap_err();
+    let err = transform_into_plan(query, &[], metadata).unwrap_err();
     assert_eq!(
         "unequal number of entries in row expression: 3 and 2",
         err.to_string()

@@ -6,8 +6,7 @@ use crate::errors::SbroadError;
 use crate::executor::engine::helpers::table_name;
 use crate::executor::engine::mock::RouterConfigurationMock;
 use crate::executor::ir::ExecutionPlan;
-use crate::frontend::sql::ast::AbstractSyntaxTree;
-use crate::frontend::Ast;
+use crate::frontend::sql::transform_into_plan;
 use crate::ir::options::Options;
 use crate::ir::tree::Snapshot;
 use crate::ir::types::DerivedType;
@@ -47,13 +46,13 @@ pub fn sql_to_ir(query: &str, params: Vec<Value>) -> Plan {
 #[track_caller]
 pub fn sql_to_ir_without_bind(query: &str, params_types: &[DerivedType]) -> Plan {
     let metadata = &RouterConfigurationMock::new();
-    AbstractSyntaxTree::transform_into_plan(query, params_types, metadata).unwrap()
+    transform_into_plan(query, params_types, metadata).unwrap()
 }
 
 #[track_caller]
 pub fn expect_sql_to_ir_error(query: &str, params_types: &[DerivedType]) -> SbroadError {
     let metadata = &RouterConfigurationMock::new();
-    AbstractSyntaxTree::transform_into_plan(query, params_types, metadata).unwrap_err()
+    transform_into_plan(query, params_types, metadata).unwrap_err()
 }
 
 /// Compiles and transforms an SQL query to a new parameterized SQL.

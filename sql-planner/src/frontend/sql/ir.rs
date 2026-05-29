@@ -6,8 +6,8 @@ use smol_str::format_smolstr;
 use tarantool::decimal::Decimal;
 
 use crate::errors::{Entity, SbroadError};
+use crate::frontend::sql::ast::ir_populator::parse_trimmed_unsigned_from_str;
 use crate::frontend::sql::ast::Rule;
-use crate::frontend::sql::parse_trimmed_unsigned_from_str;
 use crate::ir::node::expression::{ExprOwned, Expression};
 use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
@@ -22,7 +22,7 @@ use crate::ir::value::double::Double;
 use crate::ir::value::Value;
 use crate::ir::Plan;
 
-use super::escape_single_quotes;
+use crate::frontend::sql::ast::escape_single_quotes;
 
 impl Value {
     /// Creates `Value` from pest pair.

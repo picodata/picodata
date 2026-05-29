@@ -1,13 +1,11 @@
 use crate::{
-    errors::SbroadError,
-    executor::engine::mock::RouterConfigurationMock,
-    frontend::{sql::ast::AbstractSyntaxTree, Ast},
-    ir::Plan,
+    errors::SbroadError, executor::engine::mock::RouterConfigurationMock,
+    frontend::sql::transform_into_plan, ir::Plan,
 };
 
 fn parse(query: &str) -> Result<Plan, SbroadError> {
     let metadata = &RouterConfigurationMock::new();
-    AbstractSyntaxTree::transform_into_plan(query, &[], metadata)
+    transform_into_plan(query, &[], metadata)
 }
 
 #[track_caller]

@@ -283,8 +283,7 @@ mod test {
         ServiceSettings, SettingsPair,
     };
     use crate::executor::engine::mock::RouterConfigurationMock;
-    use crate::frontend::sql::ast::AbstractSyntaxTree;
-    use crate::frontend::Ast;
+    use crate::frontend::sql::transform_into_plan;
     use crate::ir::node::{ArenaType, NodeId};
     use crate::ir::options::Timeout;
     use crate::ir::Plan;
@@ -530,8 +529,7 @@ mod test {
 
         for tc in test_cases {
             let metadata = &RouterConfigurationMock::new();
-            let plan: Plan =
-                AbstractSyntaxTree::transform_into_plan(tc.sql, &[], metadata).unwrap();
+            let plan: Plan = transform_into_plan(tc.sql, &[], metadata).unwrap();
             let node = plan
                 .get_plugin_node(NodeId {
                     offset: 0,

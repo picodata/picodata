@@ -4,7 +4,7 @@
 
 use crate::executor::engine::helpers::to_user;
 use crate::executor::vtable::calculate_unified_types;
-use crate::frontend::sql::get_unnamed_column_alias;
+use crate::frontend::sql::ast::get_unnamed_column_alias;
 use crate::frontend::sql::ir::SubtreeCloner;
 use crate::ir::api::children::Children;
 use crate::ir::expression::PlanExpr;

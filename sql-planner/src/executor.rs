@@ -364,7 +364,6 @@ where
     ) -> Result<Self, SbroadError>
     where
         C::Cache: lru::Cache<SmolStr, Rc<Plan>>,
-        C::ParseTree: crate::frontend::Ast,
     {
         let bound_statement = BoundStatement::parse_and_bind(
             coordinator,

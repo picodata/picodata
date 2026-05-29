@@ -14,7 +14,6 @@ use sql::executor::ir::ExecutionPlan;
 use sql::executor::lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY};
 use sql::executor::preemption::SchedulerOptions;
 use sql::executor::vtable::VirtualTable;
-use sql::frontend::sql::ast::AbstractSyntaxTree;
 use sql::ir::bucket::{BucketSet, Buckets};
 use sql::ir::helpers::RepeatableState;
 use sql::ir::node::NodeId;
@@ -408,7 +407,6 @@ impl QueryCache for RouterRuntime {
 }
 
 impl Router for RouterRuntime {
-    type ParseTree = AbstractSyntaxTree;
     type MetadataProvider = RouterMetadata;
     type VshardImplementor = Tier;
 

@@ -20,7 +20,6 @@ use crate::executor::preemption::{SchedulerMetrics, SchedulerOptions};
 use crate::executor::vtable::VirtualTable;
 use crate::executor::ExecutingQuery;
 use crate::executor::{Port, PortType};
-use crate::frontend::sql::ast::AbstractSyntaxTree;
 use crate::ir::bucket::{BucketSet, Buckets};
 use crate::ir::explain::LogicalExplain;
 use crate::ir::function::Function;
@@ -1950,7 +1949,6 @@ impl RouterRuntimeMock {
 }
 
 impl Router for RouterRuntimeMock {
-    type ParseTree = AbstractSyntaxTree;
     type MetadataProvider = RouterConfigurationMock;
     type VshardImplementor = Self;
 

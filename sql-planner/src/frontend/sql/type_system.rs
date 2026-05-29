@@ -247,7 +247,10 @@ pub fn to_type_expr(
             Bool::Between => {
                 // Note: lhs: `A >= B`, rhs: `A <= C`.
                 let ((_, lhs), (_, rhs)) =
-                    super::try_deconstruct_between_expr(plan, expr).expect("malformed BETWEEN");
+                    crate::frontend::sql::ast::ir_populator::try_deconstruct_between_expr(
+                        plan, expr,
+                    )
+                    .expect("malformed BETWEEN");
                 // Unify types of A, B, C.
                 let kind = TypeExprKind::Between(vec![
                     to_type_expr(lhs.left, plan, subquery_map)?,
