@@ -40,6 +40,12 @@ prometheus-client = "^0.22.1"
 pre-commit = "^4.0"
 inline-snapshot = "^0.32.5"
 
+# The official pypi.org repository is being blocked.
+[[tool.poetry.source]]
+name = "picodata"
+url = "https://binary.picodata.io/repository/PyPi/simple/"
+priority = "primary"
+
 [tool.ruff]
 line-length = 120
 

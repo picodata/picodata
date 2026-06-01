@@ -7,6 +7,9 @@ WORKDIR $IMAGE_DIR
 
 COPY . $WORKDIR
 
+# The official pypi.org repository is being blocked.
+ENV PIP_INDEX_URL=https://binary.picodata.io/repository/PyPi/simple/
+ENV PIPENV_PYPI_MIRROR=https://binary.picodata.io/repository/PyPi/simple/
 RUN pip install pipenv
 RUN pipenv sync -d
 
