@@ -13,6 +13,7 @@ use crate::traft::op::{Dml, Op};
 use crate::util::Lexer;
 use crate::util::QuoteEscapingStyle;
 use crate::{sql, tlog, traft};
+use md5::Md5;
 use smol_str::SmolStr;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -99,15 +100,21 @@ where
 
 /// Sends a task to a separate thread to calculate the checksum of the migrations file
 /// and blocks the current fiber until the result is ready.
-pub fn calculate_migration_hash_async(migration: &MigrationInfo) -> traft::Result<md5::Digest> {
+pub fn calculate_migration_hash_async(
+    migration: &MigrationInfo,
+) -> traft::Result<digest::Output<Md5>> {
     let shortname = &migration.filename_from_manifest;
     let fullpath = migration.full_filepath.clone();
 
-    fn calculate_migration_hash_from_file(filename: &str) -> Result<md5::Digest, io::Error> {
+    fn calculate_migration_hash_from_file(
+        filename: &str,
+    ) -> Result<digest::Output<Md5>, io::Error> {
+        use digest::Digest as _;
+
         const BUF_SIZE: usize = 4096;
 
         let mut f = File::open(filename)?;
-        let mut context = md5::Context::new();
+        let mut context = Md5::new();
         let mut buffer = [0; BUF_SIZE];
 
         loop {
@@ -116,7 +123,7 @@ pub fn calculate_migration_hash_async(migration: &MigrationInfo) -> traft::Resul
                 break;
             }
 
-            context.consume(&buffer[..n]);
+            context.update(&buffer[..n]);
         }
 
         let digest = context.finalize();

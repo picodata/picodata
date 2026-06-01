@@ -1,3 +1,5 @@
+pub mod box_region;
+
 use crate::config::{BootstrapStrategy, ByteSize, ElectionMode, PicodataConfig};
 use crate::config::{TlsSettings, WalMode};
 use crate::instance::Instance;

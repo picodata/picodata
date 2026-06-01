@@ -26,6 +26,7 @@ chrono = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 comfy-table = { workspace = true }
 diff = "0.1"
+digest = "0.10.7"
 either = "1.13"
 file_shred = "1.2"
 flate2 = "1.1"
@@ -37,7 +38,11 @@ itoa = "1.0"
 jwt-compact = { version = "0.9.0-beta.1", default-features = false, features = ["std", "clock"] }
 libc = "0.2"
 libloading = "0.8"
-md5 = "0.8"
+# NB:
+# md-5 is a crate by RustCrypto
+# md5 is a standaloine crate that is not a part of the ecosystem
+# See: https://github.com/RustCrypto/hashes/tree/bb10c3af9a8152c4c5e557f4d5b980361f5185a8#crate-names
+md-5 = "0.10.6"
 nix = { version = "0.29", features = [
   "fs",
   "term",

@@ -847,12 +847,13 @@ impl PluginMigrationRecord {
 
     #[cfg(test)]
     pub fn for_tests() -> Self {
+        use digest::Digest as _;
         use smol_str::format_smolstr;
 
         Self {
             plugin_name: SmolStr::new_static("plugin"),
             migration_file: SmolStr::new_static("migration_1.db"),
-            hash: format_smolstr!("{:x}", md5::compute("test")),
+            hash: format_smolstr!("{:x}", md5::Md5::digest("test")),
         }
     }
 }

@@ -163,6 +163,43 @@ impl std::fmt::Display for ServerSecret {
     }
 }
 
+impl serde::Serialize for ServerSecret {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let secret = format!("{self}");
+        serializer.serialize_str(&secret)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ServerSecret {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct Visitor;
+
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = ServerSecret;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a string")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                ServerSecret::parse(v)
+                    .ok_or_else(|| E::custom("failed to parse scram server secret"))
+            }
+        }
+
+        deserializer.deserialize_str(Visitor)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
