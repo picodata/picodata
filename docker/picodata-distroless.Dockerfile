@@ -1,50 +1,24 @@
-FROM debian:13 AS builder
+ARG REPO_URL=https://download.picodata.io
+ARG PICODATA_VERSION
 
-RUN set -e; \
-    apt update -y && \
-    apt install -y \
-        autoconf \
-        build-essential \
-        cmake \
-        curl \
-        git \
-        libcurl4-openssl-dev \
-        libicu-dev \
-        libldap2-dev \
-        libreadline-dev \
-        libsasl2-dev \
-        libssl-dev \
-        libtool \
-        libunwind-dev \
-        libyaml-dev \
-        libzstd-dev \
-        make \
-        ncurses-dev \
-        pkg-config \
-        libclang-dev
-
-ARG RUST_VERSION
-RUN set -e; \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-    sh -s -- -y --profile default --default-toolchain ${RUST_VERSION}
-ENV PATH=/root/.cargo/bin:${PATH}
-
-RUN curl -SLO https://deb.nodesource.com/nsolid_setup_deb.sh && \
-    chmod 755 nsolid_setup_deb.sh && \
-    ./nsolid_setup_deb.sh 22 && \
-    apt install -y nodejs && \
-    corepack enable
-
-WORKDIR /build/picodata
-COPY . .
-RUN cargo build --locked --release --features webui
-RUN mkdir -p /usr/share/picodata
+FROM debian:13 AS installer
+ARG REPO_URL
+ARG PICODATA_VERSION
+RUN apt-get update && apt-get install -y --no-install-recommends curl gpg
+RUN curl -s ${REPO_URL}/tarantool-picodata/picodata.gpg.key | \
+    gpg --no-default-keyring \
+        --keyring gnupg-ring:/etc/apt/trusted.gpg.d/picodata.gpg --import && \
+    chmod 644 /etc/apt/trusted.gpg.d/picodata.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture)] ${REPO_URL}/tarantool-picodata/debian/ trixie main" \
+    > /etc/apt/sources.list.d/picodata.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends picodata${PICODATA_VERSION:+=${PICODATA_VERSION}}
 
 
 FROM docker-public.binary.picodata.io/distroless/cc-debian13
 
-COPY --from=builder /build/picodata/target/release/picodata /usr/bin/picodata
-COPY --from=builder /usr/share/picodata /usr/share/picodata
+COPY --from=installer /usr/bin/picodata /usr/bin/picodata
+COPY --from=installer /usr/share/picodata /usr/share/picodata
 
 ENV PICODATA_PG_LISTEN 0.0.0.0:4327
 WORKDIR /var/lib/picodata
