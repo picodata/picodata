@@ -102,11 +102,6 @@ fn anonymous_blocks_parsing_errors() {
             "DO LANGUAGE SQL $$ BEGIN CREATE USER u WITH PASSWORD 'Passw0rd'; END $$",
             "rule parsing error",
         ),
-        // Unused LET is rejected.
-        (
-            "DO LANGUAGE SQL $$ BEGIN LET v = (SELECT 1);  END $$",
-            "LET variable \"v\" is declared but never used",
-        ),
         // LET rhs must be SELECT or UPDATE queries
         (
             "DO LANGUAGE SQL $$ BEGIN LET v = (UPDATE t2 SET e = f);  END $$",
@@ -375,7 +370,7 @@ fn let_resolution_ok() {
 }
 
 /// Tests for LET resolution errors: ambiguity, use-before-declare,
-/// multi-column RHS, type mismatch on redeclaration, unused LET.
+/// multi-column RHS, type mismatch on redeclaration.
 #[test]
 fn let_resolution_errors() {
     let cases = [
@@ -415,24 +410,6 @@ fn let_resolution_errors() {
                 UPDATE t2 SET e = v; \
             END $$",
             "cannot be redeclared with a different type",
-        ),
-        // Unused LET.
-        (
-            "DO $$ BEGIN LET v = (SELECT 1); RETURN QUERY SELECT 1; END $$",
-            "LET variable \"v\" is declared but never used",
-        ),
-        // A redeclaration creates a fresh binding; the new binding still
-        // has to be used for the unused-LET check to pass. Here both
-        // declarations of `v` exist but the second is never referenced
-        // before the block ends.
-        (
-            "DO $$ BEGIN \
-                LET v = (SELECT 1); \
-                RETURN QUERY SELECT v; \
-                LET v = (SELECT 2); \
-                RETURN QUERY SELECT 3; \
-            END $$",
-            "LET variable \"v\" is declared but never used",
         ),
     ];
 

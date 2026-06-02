@@ -1289,3 +1289,136 @@ buckets = [739]
 ''
 sql_vdbe_opcode_max = 45000
 sql_motion_row_max = 5000
+
+-- TEST: raw-logical--block-unused-let
+-- SQL:
+EXPLAIN (raw, logical)
+DO $$ BEGIN
+    LET var = (SELECT 1);
+    LET var = (SELECT a FROM t WHERE a = 42 and c = 'lol');
+    RETURN QUERY SELECT var;
+
+    UPDATE t SET b = 2.0 WHERE a = 42 and c = 'lol';
+    DELETE FROM t WHERE a = 42 and c = 'lol';
+    INSERT INTO t VALUES (42, 2.5, 'lol');
+END $$;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+╭────────────────────────────────────────────╮
+│ 1. **Unused** let "var" (FILTERED STORAGE) │
+╰────────────────────────────────────────────╯
+''
+SELECT CAST(1 AS int) as "col_1"
+''
+projection (1::int -> col_1)
+''
+╭─────────────────────────────────╮
+│ 2. Let "var" (FILTERED STORAGE) │
+╰─────────────────────────────────╯
+''
+SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('lol' AS string)
+''
+projection (t.a::int -> a)
+  selection ((t.a::int = 42::int and t.c::string = 'lol'::string))
+    scan t
+''
+╭────────────────────────────────────╮
+│ 3. Return query (FILTERED STORAGE) │
+╰────────────────────────────────────╯
+''
+SELECT CAST(:var AS int) as "col_1"
+''
+projection (:var::int -> col_1)
+''
+╭─────────────────────────────╮
+│ 4. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
+''
+UPDATE "t" SET "b" = CAST(2.0 AS decimal) WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('lol' AS string)
+''
+update t (b = col_0)
+  projection (2.0::decimal -> col_0, t.c::string -> col_1, t.a::int -> col_2)
+    selection ((t.a::int = 42::int and t.c::string = 'lol'::string))
+      scan t
+''
+╭─────────────────────────────╮
+│ 5. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
+''
+DELETE FROM "t" WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('lol' AS string)
+''
+delete from t
+  projection (t.c::string -> pk_col_0, t.a::int -> pk_col_1)
+    selection ((t.a::int = 42::int and t.c::string = 'lol'::string))
+      scan t
+''
+╭─────────────────────────────╮
+│ 6. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
+''
+INSERT INTO "t" ("a", "b", "c", "bucket_id") VALUES ( CAST(42 AS int), CAST(2.5 AS decimal), CAST('lol' AS string), 739 )
+''
+insert into t on conflict: fail
+  values
+    value ROW(42::int, 2.5::decimal, 'lol'::string)
+''
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭────────────────────────────────────────────╮
+│ 1. **Unused** let "var" (FILTERED STORAGE) │
+╰────────────────────────────────────────────╯
+''
+SELECT CAST(1 AS int) as "col_1"
+''
+plan:
+    [0] TRIVIAL
+''
+╭─────────────────────────────────╮
+│ 2. Let "var" (FILTERED STORAGE) │
+╰─────────────────────────────────╯
+''
+SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('lol' AS string)
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
+''
+╭────────────────────────────────────╮
+│ 3. Return query (FILTERED STORAGE) │
+╰────────────────────────────────────╯
+''
+SELECT CAST(:var AS int) as "col_1"
+''
+plan:
+    [0] TRIVIAL
+''
+╭─────────────────────────────╮
+│ 4. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
+''
+UPDATE "t" SET "b" = CAST(2.0 AS decimal) WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('lol' AS string)
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
+''
+╭─────────────────────────────╮
+│ 5. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
+''
+DELETE FROM "t" WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('lol' AS string)
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
+''
+╭─────────────────────────────╮
+│ 6. Query (FILTERED STORAGE) │
+╰─────────────────────────────╯
+''
+INSERT INTO "t" ("a", "b", "c", "bucket_id") VALUES ( CAST(42 AS int), CAST(2.5 AS decimal), CAST('lol' AS string), 739 )
+''
+plan:
+    [0] TRIVIAL

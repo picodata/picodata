@@ -2155,6 +2155,7 @@ fn parse_anonymous_block<M: Metadata>(
                 let query_id = plan
                     .get_rel_child(sub_query_id, 0)
                     .expect("subquery cannot miss a child");
+
                 let var = worker.let_var_names.get(child_id).cloned().ok_or_else(|| {
                     SbroadError::other("LET variable name was not recorded during parsing")
                 })?;
@@ -2309,19 +2310,17 @@ fn parse_anonymous_block<M: Metadata>(
         }
     }
 
-    // Reject unused LET declarations.
-    for decl in &worker.let_scope.decls {
-        if !decl.used {
-            return Err(SbroadError::Other(format_smolstr!(
-                "LET variable \"{}\" is declared but never used",
-                decl.name
-            )));
+    let mut unused_lets = HashSet::new();
+    for var_decl in &worker.let_scope.decls {
+        if !var_decl.used {
+            unused_lets.insert(var_decl.query_id);
         }
     }
 
     Ok(AnonymousBlock {
         statements,
         return_columns,
+        unused_lets,
     })
 }
 
@@ -2963,12 +2962,11 @@ fn try_deconstruct_between_expr<'a>(
 /// One LET declaration tracked by the parser's block scope.
 ///
 /// Stored in execution order by [`LetVarScope`]. `used` flips to `true` the
-/// first time a downstream block statement resolves to this declaration; an
-/// unused LET is rejected after the block is fully parsed.
+/// first time a downstream block statement resolves to this declaration;
 #[derive(Debug, Clone)]
 struct LetVarDecl {
-    /// Variable name, normalized through `normalize_name_from_sql`.
-    name: SmolStr,
+    /// Id of the RHS query.
+    query_id: NodeId,
     /// Type derived from the LET RHS (may be `Unknown` when the RHS is e.g.
     /// a plain `SELECT $1` with an unconstrained parameter).
     // FIXME: Infer the type using type system so there will be no variables of unknown type.
@@ -2988,9 +2986,6 @@ struct LetVarDecl {
 ///
 /// Shadowing is allowed only when the new RHS type matches the previously
 /// recorded type; otherwise the parser rejects the redeclaration.
-/// A successful redeclaration resets the `used` flag — the *new* binding has
-/// to be referenced afterward to be considered used, or the unused-LET check
-/// fires for it.
 #[derive(Debug, Default, Clone)]
 struct LetVarScope {
     /// All declarations in source order. We keep the full history (rather
@@ -3018,7 +3013,7 @@ impl LetVarScope {
     /// with the same name has a different type — same-type redeclaration is
     /// allowed and shares the runtime aVar slot (see `build_var_slots` in
     /// `src/vdbe/txn.rs`).
-    fn declare(&mut self, name: SmolStr, ty: DerivedType) -> Result<(), SbroadError> {
+    fn declare(&mut self, id: NodeId, name: SmolStr, ty: DerivedType) -> Result<(), SbroadError> {
         if let Some(prev) = self.lookup(&name) {
             // Compare only when both sides have a known type. An unknown
             // type matches anything.
@@ -3033,7 +3028,7 @@ impl LetVarScope {
         }
         let idx = self.decls.len();
         self.decls.push(LetVarDecl {
-            name: name.clone(),
+            query_id: id,
             ty,
             used: false,
         });
@@ -7301,6 +7296,7 @@ impl AbstractSyntaxTree {
                         .get(1)
                         .expect("BlockLetStatement must have a SubQuery child");
                     let subquery_plan_id = map.get(*subquery_ast_id)?;
+                    let rhs = plan.get_rel_child(subquery_plan_id, 0)?;
 
                     // The SubQuery wraps a SELECT-like relational tree. Its
                     // output row carries the columns; LET requires a single
@@ -7315,7 +7311,7 @@ impl AbstractSyntaxTree {
                     }
                     let var_type = columns[0].1;
 
-                    worker.let_scope.declare(var_name.clone(), var_type)?;
+                    worker.let_scope.declare(rhs, var_name.clone(), var_type)?;
                     worker.let_var_names.insert(id, var_name);
                     map.add(id, subquery_plan_id);
                 }

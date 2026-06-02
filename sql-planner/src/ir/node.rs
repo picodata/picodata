@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Display};
 use std::iter::Enumerate;
 use std::slice::{Iter, IterMut};
@@ -1683,11 +1683,28 @@ pub struct AnonymousBlock {
     /// Vector of column names and types returned via RETURN QUERY statement(s).
     /// This vector is empty if there is no RETURN QUERY statements.
     pub return_columns: Vec<(String, DerivedType)>,
+    pub unused_lets: HashSet<NodeId>,
+}
+
+impl AnonymousBlock {
+    pub fn get_unused_lets(&self) -> HashSet<usize> {
+        let mut unused_lets = HashSet::with_capacity(self.unused_lets.len());
+        for (idx, stmt) in self.statements.iter().enumerate() {
+            match stmt {
+                BlockStatement::Let { query, .. } if self.unused_lets.contains(query) => {
+                    unused_lets.insert(idx);
+                }
+                _ => continue,
+            }
+        }
+
+        unused_lets
+    }
 }
 
 impl From<AnonymousBlock> for NodeAligned {
     fn from(value: AnonymousBlock) -> Self {
-        Self::Node64(Node64::AnonymousBlock(value))
+        Self::Node96(Node96::AnonymousBlock(value))
     }
 }
 
@@ -1791,7 +1808,6 @@ impl Node32 {
 #[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum Node64 {
-    AnonymousBlock(AnonymousBlock),
     ScanCte(ScanCte),
     Case(Case),
     Selection(Selection),
@@ -1820,7 +1836,6 @@ impl Node64 {
     #[must_use]
     pub fn into_owned(self) -> NodeOwned {
         match self {
-            Node64::AnonymousBlock(block) => NodeOwned::Block(BlockOwned::Anonymous(block)),
             Node64::Over(over) => NodeOwned::Expression(ExprOwned::Over(over)),
             Node64::Case(case) => NodeOwned::Expression(ExprOwned::Case(case)),
             Node64::Invalid(invalid) => NodeOwned::Invalid(invalid),
@@ -1856,6 +1871,7 @@ impl Node64 {
 #[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum Node96 {
+    AnonymousBlock(AnonymousBlock),
     Projection(Projection),
     Reference(Reference),
     Invalid(Invalid),
@@ -1875,6 +1891,7 @@ impl Node96 {
     #[must_use]
     pub fn into_owned(self) -> NodeOwned {
         match self {
+            Node96::AnonymousBlock(block) => NodeOwned::Block(BlockOwned::Anonymous(block)),
             Node96::Projection(reference) => NodeOwned::Relational(RelOwned::Projection(reference)),
             Node96::Reference(reference) => NodeOwned::Expression(ExprOwned::Reference(reference)),
             Node96::DropProc(drop_proc) => NodeOwned::Ddl(DdlOwned::DropProc(drop_proc)),

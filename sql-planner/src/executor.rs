@@ -330,6 +330,14 @@ pub struct ExecutingQuery<'a, C> {
     exec_ctx: ExecutionContext,
 }
 
+pub fn format_let_entry(is_unused: bool, var_name: &str) -> String {
+    if is_unused {
+        format!("**Unused** let \"{var_name}\"")
+    } else {
+        format!("Let \"{var_name}\"")
+    }
+}
+
 impl<'a, C> ExecutingQuery<'a, C>
 where
     C: Router,
@@ -505,7 +513,7 @@ where
                 unreachable!("plan.is_block() returned true, but top is {block:?}")
             };
 
-            let buckets = self.get_block_buckets(&block)?;
+            let buckets = self.calculate_block_buckets(&block)?;
             self.enforce_forward_option(&buckets)?;
 
             return self
@@ -641,12 +649,12 @@ where
         Ok(explain)
     }
 
-    fn get_block_statements(
+    fn generate_block_patterns(
         &self,
         block: AnonymousBlock,
         buckets: &Buckets,
     ) -> Result<Vec<BlockStatement<PatternWithParams>>, SbroadError> {
-        let block_bucket_id = match buckets {
+        let block_bucket = match buckets {
             Buckets::Filtered(crate::ir::bucket::BucketSet::Exact(set)) => {
                 assert!(set.len() == 1);
                 set.iter().copied().next()
@@ -660,7 +668,7 @@ where
                 generate_pattern_with_params_for_block(
                     self.get_exec_plan(),
                     id,
-                    block_bucket_id,
+                    block_bucket,
                     false,
                 )
             })?);
@@ -669,7 +677,10 @@ where
         Ok(statements)
     }
 
-    pub fn get_block_buckets(&mut self, block: &AnonymousBlock) -> Result<Buckets, SbroadError> {
+    pub fn calculate_block_buckets(
+        &mut self,
+        block: &AnonymousBlock,
+    ) -> Result<Buckets, SbroadError> {
         let mut block_buckets: Option<(StatementLocation, Buckets)> = None;
         for entry in BlockEntries::new(&block.statements) {
             let buckets = entry.with(|query_id| {
@@ -732,16 +743,17 @@ where
             };
 
             let logical_explains = self.get_block_logical(&block)?;
+            let unused_lets = block.get_unused_lets();
 
-            let buckets = self.get_block_buckets(&block)?;
-            let block_statements = self.get_block_statements(block, &buckets)?;
+            let buckets = self.calculate_block_buckets(&block)?;
+            let block_statements = self.generate_block_patterns(block, &buckets)?;
 
             let explain_options = self.exec_plan.get_ir_plan().explain_options;
             let should_fmt = explain_options.contains(ExplainOptions::Fmt);
 
             let mut stmt_idx = 0;
-            let mut statements = block_statements.iter().peekable();
-            while let Some(stmt) = statements.next() {
+            let mut statements = block_statements.iter().enumerate().peekable();
+            while let Some((idx, stmt)) = statements.next() {
                 let mut explain_one = |buf: &mut String, sql: &PatternWithParams, kind: &str| {
                     let source = buckets.determine_exec_location();
                     write_explain_header2!(buf, "{}. {} ({source})", stmt_idx + 1, kind).unwrap();
@@ -763,7 +775,7 @@ where
                     BlockStatement::Query(query) => explain_one(&mut buf, query, "Query"),
                     BlockStatement::Let { query, var } => {
                         let var = var.strip_prefix(':').unwrap_or(var);
-                        let kind = format!("Let \"{var}\"");
+                        let kind = format_let_entry(unused_lets.contains(&idx), var);
                         explain_one(&mut buf, query, &kind)
                     }
                     BlockStatement::If { cond, body } => {

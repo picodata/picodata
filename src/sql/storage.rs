@@ -18,7 +18,7 @@ use sql::executor::engine::{CachedStmt, CachedStmtRef, QueryCache, StorageCache,
 use sql::executor::ir::ExecutionPlan;
 use sql::executor::lru::{Cache, EvictFn, LRUCache};
 use sql::executor::protocol::SchemaInfo;
-use sql::executor::{Port, PortType};
+use sql::executor::{format_let_entry, Port, PortType};
 use sql::ir::bucket::Buckets;
 use sql::ir::helpers::RepeatableState;
 use sql::ir::node::BlockStatement;
@@ -861,13 +861,13 @@ pub fn explain_execute_block<'p>(
         explain_execute_guarded(&sql, &params, block.vdbe_max_steps, kind, location, port)
     };
 
-    for stmt in block.statements.into_iter() {
+    for (idx, stmt) in block.statements.into_iter().enumerate() {
         match stmt {
             BlockStatement::ReturnQuery(p) => explain_one(p, "Return query")?,
             BlockStatement::Query(p) => explain_one(p, "Query")?,
             BlockStatement::Let { query, var } => {
                 let var = var.strip_prefix(':').unwrap_or(&var);
-                let kind = format!("Let \"{var}\"");
+                let kind = format_let_entry(block.unused_lets.contains(&idx), var);
                 explain_one(query, &kind)?
             }
             BlockStatement::If { cond, body } => {

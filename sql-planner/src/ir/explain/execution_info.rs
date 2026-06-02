@@ -91,7 +91,7 @@ impl BucketsInfo {
             let BlockOwned::Anonymous(block) = block else {
                 unreachable!("plan.is_block() returned true, but top is {block:?}")
             };
-            let buckets = query.get_block_buckets(&block)?;
+            let buckets = query.calculate_block_buckets(&block)?;
             return Ok(BucketsInfo::new_calculated(buckets, true, bucket_count));
         }
 

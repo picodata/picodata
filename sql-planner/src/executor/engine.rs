@@ -12,7 +12,7 @@ use crate::utils::MutexLike;
 use crate::{
     frontend::sql::get_real_function_name, ir::helpers::RepeatableState, ir::node::BlockStatement,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -467,6 +467,7 @@ pub trait Router: QueryCache {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BlockExecData {
     pub statements: Vec<BlockStatement<PatternWithParams>>,
+    pub unused_lets: HashSet<usize>,
     pub table_versions: VersionMap,
     pub index_versions: HashMap<[u32; 2], u64, RepeatableState>,
     pub vdbe_max_steps: u64,

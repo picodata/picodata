@@ -289,3 +289,94 @@ SELECT "g"."a" FROM "g"
 ''
 projection (g.a::int -> a)
   scan g
+
+-- TEST: block-unused-let
+-- SQL:
+EXPLAIN (logical)
+DO $$ BEGIN
+    LET a = (SELECT d FROM tt WHERE d = 2 ORDER BY 1 LIMIT 1);
+    LET a = (SELECT 1);
+
+    IF a = 5 THEN
+        INSERT INTO tt VALUES (2);
+    END IF;
+END $$;
+-- EXPECTED:
+╭──────────────────────────────────────────╮
+│ 1. **Unused** let "a" (FILTERED STORAGE) │
+╰──────────────────────────────────────────╯
+''
+SELECT "d" FROM ( SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = CAST(2 AS int) ) ORDER BY 1 LIMIT 1
+''
+limit 1
+  projection (d::int)
+    order by (1)
+      scan
+        projection (tt.d::int -> d)
+          selection (tt.d::int = 2::int)
+            scan tt
+''
+╭───────────────────────────────╮
+│ 2. Let "a" (FILTERED STORAGE) │
+╰───────────────────────────────╯
+''
+SELECT CAST(1 AS int) as "col_1"
+''
+projection (1::int -> col_1)
+''
+╭───────────────────────────────╮
+│ 3. If cond (FILTERED STORAGE) │
+╰───────────────────────────────╯
+''
+SELECT CAST(:a AS int) = CAST(5 AS int) as "cond"
+''
+projection (:a::int = 5::int -> cond)
+''
+╭───────────────────────────────╮
+│ 4. If body (FILTERED STORAGE) │
+╰───────────────────────────────╯
+''
+INSERT INTO "tt" ("d", "bucket_id") VALUES (CAST(2 AS int), 1410)
+''
+insert into tt on conflict: fail
+  values
+    value ROW(2::int)
+
+-- TEST: block-unused-let-return
+-- SQL:
+EXPLAIN (logical)
+DO $$ BEGIN
+    LET a = (SELECT d FROM tt WHERE d = 2 ORDER BY 1 LIMIT 1);
+    LET a = (SELECT 1);
+    RETURN QUERY SELECT a;
+END $$;
+-- EXPECTED:
+╭──────────────────────────────────────────╮
+│ 1. **Unused** let "a" (FILTERED STORAGE) │
+╰──────────────────────────────────────────╯
+''
+SELECT "d" FROM ( SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = CAST(2 AS int) ) ORDER BY 1 LIMIT 1
+''
+limit 1
+  projection (d::int)
+    order by (1)
+      scan
+        projection (tt.d::int -> d)
+          selection (tt.d::int = 2::int)
+            scan tt
+''
+╭───────────────────────────────╮
+│ 2. Let "a" (FILTERED STORAGE) │
+╰───────────────────────────────╯
+''
+SELECT CAST(1 AS int) as "col_1"
+''
+projection (1::int -> col_1)
+''
+╭────────────────────────────────────╮
+│ 3. Return query (FILTERED STORAGE) │
+╰────────────────────────────────────╯
+''
+SELECT CAST(:a AS int) as "col_1"
+''
+projection (:a::int -> col_1)

@@ -127,7 +127,6 @@ impl Nodes {
                 Node32::Backup(backup) => Node::Ddl(Ddl::Backup(backup)),
             }),
             ArenaType::Arena64 => self.arena64.get(id.offset as usize).map(|node| match node {
-                Node64::AnonymousBlock(block) => Node::Block(Block::Anonymous(block)),
                 Node64::Over(over) => Node::Expression(Expression::Over(over)),
                 Node64::Case(case) => Node::Expression(Expression::Case(case)),
                 Node64::Invalid(invalid) => Node::Invalid(invalid),
@@ -158,6 +157,7 @@ impl Nodes {
                 }
             }),
             ArenaType::Arena96 => self.arena96.get(id.offset as usize).map(|node| match node {
+                Node96::AnonymousBlock(block) => Node::Block(Block::Anonymous(block)),
                 Node96::Projection(proj) => Node::Relational(Relational::Projection(proj)),
                 Node96::Reference(reference) => Node::Expression(Expression::Reference(reference)),
                 Node96::DropProc(drop_proc) => Node::Ddl(Ddl::DropProc(drop_proc)),
@@ -282,7 +282,6 @@ impl Nodes {
                 .arena64
                 .get_mut(id.offset as usize)
                 .map(|node| match node {
-                    Node64::AnonymousBlock(block) => MutNode::Block(MutBlock::Anonymous(block)),
                     Node64::Over(over) => MutNode::Expression(MutExpression::Over(over)),
                     Node64::Case(case) => MutNode::Expression(MutExpression::Case(case)),
                     Node64::Invalid(invalid) => MutNode::Invalid(invalid),
@@ -326,6 +325,7 @@ impl Nodes {
                 .arena96
                 .get_mut(id.offset as usize)
                 .map(|node| match node {
+                    Node96::AnonymousBlock(block) => MutNode::Block(MutBlock::Anonymous(block)),
                     Node96::Projection(proj) => {
                         MutNode::Relational(MutRelational::Projection(proj))
                     }

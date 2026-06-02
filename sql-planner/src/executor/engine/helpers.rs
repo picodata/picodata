@@ -1074,6 +1074,8 @@ pub fn dispatch_impl<'p>(
             _ => None,
         };
 
+        let unused_lets = block.get_unused_lets();
+
         let use_colon_params = !plan.get_ir_plan().is_raw_explain();
         let mut statements = Vec::with_capacity(block.statements.len());
         for stmt in block.statements {
@@ -1088,6 +1090,7 @@ pub fn dispatch_impl<'p>(
         let tier_runtime = coordinator.get_vshard_object_by_tier(tier.as_ref())?;
         let exec_block = BlockExecData {
             statements,
+            unused_lets,
             table_versions,
             index_versions,
             vdbe_max_steps,

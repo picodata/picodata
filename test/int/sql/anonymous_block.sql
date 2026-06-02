@@ -791,17 +791,17 @@ END $$;
 -- ERROR:
 LET RHS must be a single-column query
 
--- TEST: let-unused-rejected
+-- TEST: let-unused-accepted
 -- SQL:
 DO $$
 BEGIN
   LET v = (SELECT a FROM t1 WHERE pk = 1);
   RETURN QUERY SELECT 1;
 END $$;
--- ERROR:
-LET variable "v" is declared but never used
+-- EXPECTED:
+1
 
--- TEST: let-unused-redefined-rejected
+-- TEST: let-unused-redefined-accepted
 -- SQL:
 DO $$
 BEGIN
@@ -809,8 +809,8 @@ BEGIN
   LET v = (SELECT a FROM t2 WHERE pk = 1);
   RETURN QUERY SELECT 1;
 END $$;
--- ERROR:
-LET variable "v" is declared but never used
+-- EXPECTED:
+1
 
 -- TEST: let-redeclared-different-type-rejected-1
 -- SQL:
