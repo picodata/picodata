@@ -200,7 +200,9 @@ fn get_replicaset_to_configure<'t>(
 
             targets.push((instance_name.clone(), instance.raft_id));
 
-            if instance.replication_sync_needed() {
+            if instance.replication_sync_needed()
+                && Some(instance_name) != replicaset.effective_master_name()
+            {
                 // Don't add the waking up instance to other replica
                 // box.cfg.replication configs, until it synchronizes. This
                 // helps us isolate the healthy portion of the replicaset from

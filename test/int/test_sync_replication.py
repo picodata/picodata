@@ -12,6 +12,7 @@ from conftest import (
     Cluster,
     Instance,
     Retriable,
+    log_crawler,
 )
 
 
@@ -1469,3 +1470,103 @@ cluster:
     assert master.sql("SELECT id FROM t ORDER BY id") == [[i] for i in range(1, 19) if i != 17]
     assert master.eval("return box.space.t:count()") == 9
     assert i3.eval("return box.space.t:count()") == 8
+
+
+@pytest.mark.skip_asan(
+    "relies on the replica syncing within the master's bootstrap stall window, unreliable under ASan overhead"
+)
+def test_sync_replication_master_online_last_on_bootstrap(cluster: Cluster):
+    """
+    Regression test for the governor `configure replication` step: the
+    replicaset master must always be present in `box.cfg.replication` of its
+    replicas, even while the master itself still needs a replication sync.
+
+    Reproduces the race:
+
+      1. The master (first instance of the replicaset, so it becomes the
+         replicaset master on join) is held in its initial Offline(0) bootstrap
+         state right before it would announce itself Online
+         (STALL_BEFORE_UPDATE_OUR_STATE_TO_ONLINE).
+      2. The replica joins, goes online and finishes its replication sync while
+         the master is still bootstrapping. Because the master is in the initial
+         Offline(0) state no master switchover happens (see
+         `master_is_bootstrapping`), so the master stays the replicaset master.
+      3. The master finally goes online. It still "needs sync" (its
+         sync_incarnation lags its target incarnation). The buggy governor
+         excluded such a waking-up instance from the replication config it sent
+         to everyone -- including when that instance was the master itself. The
+         replica thus never subscribed to the master, and for this *sync*
+         replicaset (still NotReady, so `proc_replication` keeps is_master=true)
+         the master's `box_promote()` could never gather a quorum -> the whole
+         replicaset deadlocked: the master never became writable and the
+         governor got stuck on "configure replication".
+
+    With the fix the master is always kept in the replication config, the
+    replica subscribes to it, `box_promote()` reaches quorum and the replicaset
+    comes up normally.
+    """
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            replication_factor: 1
+            can_vote: true
+            bucket_count: 0
+        sync_tier:
+            replication_factor: 2
+            can_vote: false
+            replication_mode: sync
+            bucket_count: 30
+"""
+    )
+
+    cluster.deploy(instance_count=3, tier="arbiter")
+    leader = cluster.leader()
+
+    master = cluster.add_instance(name="m1", wait_online=False, tier="sync_tier", replicaset_name="r1")
+    replica = cluster.add_instance(name="m2", wait_online=False, tier="sync_tier", replicaset_name="r1")
+
+    # Hold the master in its initial Offline(0) bootstrap state: it joins (and
+    # thus becomes r1's master) but stalls right before announcing itself Online.
+    injection = "STALL_BEFORE_UPDATE_OUR_STATE_TO_ONLINE"
+    stall_started = log_crawler(master, injection)
+    master.env[f"PICODATA_ERROR_INJECTION_{injection}"] = "1"
+    master.start()
+    # Wait until the master has joined and is now stalling before going online.
+    stall_started.wait_matched()
+
+    # Sanity: the master is the replicaset master and is still Offline.
+    def master_is_offline_master():
+        [[current_master]] = leader.sql("SELECT current_master_name FROM _pico_replicaset WHERE name = 'r1'")
+        assert current_master == master.name
+        [[[state, _incarnation]]] = leader.sql("SELECT current_state FROM _pico_instance WHERE name = ?", master.name)
+        assert state == "Offline"
+
+    Retriable().call(master_is_offline_master)
+
+    # Bring the replica online while the master is still stalled. By the time
+    # wait_online returns the replica has already finished its replication sync,
+    # because the governor only brings instances Online after the sync step.
+    replica.start()
+    replica.wait_online()
+
+    # Now let the master proceed (the stall lasts a few seconds). With the bug it
+    # gets excluded from the replication config, its box_promote() hangs and it
+    # never becomes Online. With the fix it comes up normally.
+    master.wait_online()
+    leader.wait_governor_status("idle")
+
+    # The master is writable, owns the synchro queue, and synchronous writes
+    # replicate to the replica.
+    assert not master.eval("return box.info.ro")
+    master_id = master.eval("return box.info.id")
+    assert master.eval("return box.info.synchro.queue.owner") == master_id
+
+    leader.sql('CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"')
+    master.sql("INSERT INTO t VALUES (1, 'hello')")
+    for i in [master, replica]:
+        assert i.eval("return box.space.t:select()") == [[1, 14, "hello"]]
+        assert i.eval("return box.info.synchro.queue.owner") == master_id
+        assert i.eval("return box.info.synchro.queue.len") == 0
