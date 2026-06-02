@@ -98,21 +98,21 @@ impl<S: io::Read + io::Write> PgStream<S> {
         // For parsing Startup and Ssl messages we call corresponding decode methods that ignore
         // context, so there is no need for a separate context for them.
         //
-        // We don't use pgwire's context because there is no reasonable value for awaiting_startup.
+        // We don't use pgwire's context because there is no reasonable value for awaiting_frontend_startup.
         // Consider server with disabled ssl, there are 2 possible values for this flag:
         //
-        // 1) awaiting_ssl = true: Pgwire tries to parse the first message only as `SslRequest`.
+        // 1) awaiting_frontend_ssl = true: Pgwire tries to parse the first message only as `SslRequest`.
         //    If a client connects with `sslmode=disabled`, it sends `Startup` message
         //    first resulting in "Invalid ssl request message" error.
         //
-        // 2) awaiting_ssl = false: Pgwire tries to parse the first message only as `Startup`.
+        // 2) awaiting_frontend_ssl = false: Pgwire tries to parse the first message only as `Startup`.
         //    If a client connects with `sslmode=prefer`, it sends `SslRequest` message first,
         //    resulting in "Invalid Startup message" error, which shouldn't be an error, as the
         //    server can send `SslRefuse` message and the client will accept to continue
         //    initialization without securing the connection.
         let mut context = DecodeContext::default();
-        context.awaiting_ssl = false;
-        context.awaiting_startup = false;
+        context.awaiting_frontend_ssl = false;
+        context.awaiting_frontend_startup = false;
 
         if self.startup_processed {
             return FeMessage::decode(&mut self.ibuf, &context).map_err(io::Error::other);

@@ -2349,10 +2349,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "pg_interval_2"
-version = "0.5.2"
+name = "pg_interval"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a055f44628dcf9c4e68f931535dabd3544a239655fdde25a3b0e95d4b36e9260"
+checksum = "c386dd54fce258fc04e668126ae68589a0d92e03a90ea67881d1300f70fd6170"
 dependencies = [
  "bytes",
  "chrono",
@@ -2361,9 +2361,9 @@ dependencies = [
 
 [[package]]
 name = "pgwire"
-version = "0.37.3"
+version = "0.40.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fcd410bc6990bd8d20b3fe3cd879a3c3ec250bdb1cb12537b528818823b02c9"
+checksum = "c764131468c2049ee0d9324e1f465d45f9b16d54797cb75d401a60a39429dfa9"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2372,9 +2372,9 @@ dependencies = [
  "hex",
  "lazy-regex",
  "md5",
- "pg_interval_2",
+ "pg_interval",
  "postgres-types",
- "rand 0.9.4",
+ "rand 0.10.1",
  "ryu",
  "serde_json",
  "smol_str",
