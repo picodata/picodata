@@ -1,7 +1,7 @@
 import { OverridableComponent } from "@mui/material/OverridableComponent";
 import { SvgIconTypeMap } from "@mui/material";
 
-type Value = string | number | boolean;
+export type Value = string | number | boolean;
 
 export enum EditableValueStatusEnum {
   Done = "Done",

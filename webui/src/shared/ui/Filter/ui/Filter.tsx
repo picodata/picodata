@@ -9,6 +9,8 @@ import {
   EditableFilterValue,
   EditableValueStatusEnum,
   ExpressionEnum,
+  Value,
+  Expression,
 } from "../model";
 import {
   getEditableFilterValue,
@@ -56,23 +58,30 @@ export const Filter = (props: FilterProps) => {
   }, [value]);
 
   const changeHandler = (tag: Tag | null) => {
+    let expression: Expression | undefined = undefined;
+    let innerValue: Value | Value[] | undefined = undefined;
+
     if (tag?.key === SEARCH_TEXT_KEY) {
-      onChange(
-        getFilterValueByEditableFilterValue([
-          ...valueState,
-          {
-            id: uuidv4(),
-            tagKey: tag?.key,
-            status: EditableValueStatusEnum.Done,
-            expression: {
-              type: ExpressionEnum.Is,
-              label: "is",
-              description: "==",
+      expression = {
+        type: ExpressionEnum.Is,
+        label: "is",
+        description: "==",
+      };
+      innerValue = inputValue || "";
+      if (innerValue) {
+        onChange(
+          getFilterValueByEditableFilterValue([
+            ...valueState,
+            {
+              id: uuidv4(),
+              tagKey: tag?.key,
+              status: EditableValueStatusEnum.Done,
+              expression,
+              value: innerValue,
             },
-            value: inputValue,
-          },
-        ])
-      );
+          ])
+        );
+      }
     }
     if (tag) {
       setValueState((_valueState) => [
@@ -81,8 +90,8 @@ export const Filter = (props: FilterProps) => {
           id: uuidv4(),
           tagKey: tag?.key,
           status: EditableValueStatusEnum.Expression,
-          expression: undefined,
-          value: undefined,
+          expression,
+          value: innerValue,
         },
       ]);
     }
@@ -130,9 +139,6 @@ export const Filter = (props: FilterProps) => {
       </Box>
       <Box>
         <Autocomplete
-          getOptionDisabled={(option) =>
-            option.key === SEARCH_TEXT_KEY && !inputValue
-          }
           inputValue={inputValue}
           onInputChange={(_, _value) => {
             setInputValue(_value);

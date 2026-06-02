@@ -94,6 +94,7 @@ with the `YY.MINOR.MICRO` scheme.
   and replicaset cards now show indicators when they contain the raft
   leader or a voter instance.
 - The replicaset cards now display indicators if they have the not ready status.
+- The filter now has the option to select a text search tag without first entering text.
 
 ### Fixes
 
