@@ -32,7 +32,7 @@ serde = { workspace = true, features = ["derive", "rc"] }
 sql-protocol = { workspace = true }
 serde_bytes = { workspace = true }
 smol_str = { workspace = true }
-twox-hash = "2.1"
+twox-hash = { version = "2.1", default-features = false, features = ["xxhash3_64", "std"] }
 sqlformat = "0.4"
 sql-type-system = { path = "../sql-type-system" }
 tarantool = { workspace = true, features = ["extra_impls"] }

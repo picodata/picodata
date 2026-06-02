@@ -61,7 +61,7 @@ replace_with = "0.1.8"
 rmp = { workspace = true }
 rmp-serde = { workspace = true }
 rmpv = { workspace = true, features = ["with-serde"] }
-rust_decimal = { version = "1.40", features = ["db-postgres"] }
+rust_decimal = { version = "1.42", default-features = false, features = ["db-postgres"] }
 rustyline = "14.0"
 rustyline-derive = "0.10"
 scopeguard = "1.2"
@@ -126,6 +126,7 @@ tarantool = { path = "tarantool/tarantool" }
 tarantool-proc = { path = "tarantool/tarantool-proc" }
 tlua = { path = "tarantool/tlua" }
 tlua-derive = { path = "tarantool/tlua-derive" }
+file_shred = { git = "https://git.picodata.io/core/file_shred", branch = "rand-0.10" }
 
 [workspace.dependencies]
 ahash = "0.8"
