@@ -1012,6 +1012,24 @@ pub fn box_ro_reason() -> Option<&'static str> {
     Some(res)
 }
 
+#[inline(always)]
+pub fn box_promote() -> Result<(), ::tarantool::error::Error> {
+    mod ffi {
+        extern "C" {
+            pub fn box_promote() -> i32;
+        }
+    }
+
+    // SAFETY: always safe
+    let rc = unsafe { ffi::box_promote() };
+    if rc != 0 {
+        return Err(::tarantool::error::Error::Tarantool(
+            ::tarantool::error::BoxError::last(),
+        ));
+    }
+    Ok(())
+}
+
 /// Return codes for IPROTO request handlers.
 #[derive(Debug)]
 #[repr(C)]
