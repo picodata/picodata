@@ -215,6 +215,8 @@ DEAD_LIST = [
     "tarantool-sys/third_party/nghttp2/tests/testdata/cacert.pem",
     "tarantool-sys/third_party/nghttp2/tests/testdata/index.html",
     "tarantool-sys/third_party/nghttp2/tests/testdata/privkey.pem",
+    "tarantool-sys/third_party/nghttp2/go.mod",
+    "tarantool-sys/third_party/nghttp2/go.sum",
     "tarantool-sys/third_party/tz/theory.html",
     "tarantool-sys/third_party/tz/tz-art.html",
     "tarantool-sys/third_party/tz/tz-how-to.html",
