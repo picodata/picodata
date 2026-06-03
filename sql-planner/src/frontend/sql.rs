@@ -2159,7 +2159,7 @@ fn parse_anonymous_block<M: Metadata>(
                     SbroadError::other("LET variable name was not recorded during parsing")
                 })?;
                 statements.push(BlockStatement::Let {
-                    var: format!(":{var}"),
+                    var: format_smolstr!(":{var}"),
                     query: query_id,
                 });
             }

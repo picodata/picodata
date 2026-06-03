@@ -1405,8 +1405,7 @@ pub enum BlockStatement<T> {
     /// Assign the scalar result of `query` to variable `var`.
     ///
     /// Example: `LET :x = (SELECT a FROM t WHERE pk = 1);`
-    /// TODO: var: SmolStr
-    Let { var: String, query: T },
+    Let { var: SmolStr, query: T },
 
     /// Conditional block: execute `body` statements only when `cond` is true.
     ///

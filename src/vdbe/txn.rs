@@ -4,6 +4,7 @@ use ::sql::backend::sql::ir::PatternWithParams;
 use ::sql::executor::vdbe::SqlStmt;
 use ::sql::ir::node::BlockStatement;
 use ::sql::ir::value::Value;
+use smol_str::SmolStr;
 use std::collections::HashMap;
 use tarantool::ffi::sql::PortC;
 
@@ -142,8 +143,8 @@ impl CompiledSubprogram {
     fn patch_variable_slots(
         &mut self,
         query_param_offset: i32,
-        all_let_vars: &HashMap<String, i32>,
-        defined_let_vars: &HashMap<String, i32>,
+        all_let_vars: &HashMap<SmolStr, i32>,
+        defined_let_vars: &HashMap<SmolStr, i32>,
     ) -> Result<i32, String> {
         let ops = unsafe {
             std::slice::from_raw_parts_mut(self.subprogram.aOp, self.subprogram.nOp as usize)
@@ -215,8 +216,8 @@ impl CompiledSubprogram {
 fn build_var_slots<S>(
     stmts: &[BlockStatement<S>],
     base_slot: i32,
-) -> (HashMap<String, i32>, Vec<i32>, i32) {
-    let mut let_vars: HashMap<String, i32> = HashMap::new();
+) -> (HashMap<SmolStr, i32>, Vec<i32>, i32) {
+    let mut let_vars: HashMap<SmolStr, i32> = HashMap::new();
     let mut if_cond_slots: Vec<i32> = Vec::new();
     let mut next = base_slot + 1;
 
@@ -427,7 +428,7 @@ fn compile_and_assemble(
     // Patch OP_Variable slots in execution order, tracking defined LET vars
     // to catch forward references and unknown variable names.
     let mut cumulative_offset = 0i32;
-    let mut defined_let_vars: HashMap<String, i32> = HashMap::new();
+    let mut defined_let_vars: HashMap<SmolStr, i32> = HashMap::new();
     for cs in &mut compiled {
         match cs {
             BlockStatement::Let { var, query: sp } => {
