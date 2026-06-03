@@ -1,0 +1,4 @@
+.venv
+report.html
+results.csv
+*.csv
