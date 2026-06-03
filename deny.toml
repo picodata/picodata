@@ -145,7 +145,10 @@ unknown-git = "deny"
 # if not specified. If it is specified but empty, no registries are allowed.
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # List of URLs for allowed Git repositories
-allow-git = ["https://git.picodata.io/core/raft-rs"]
+allow-git = [
+    "https://git.picodata.io/core/file_shred",
+    "https://git.picodata.io/core/raft-rs",
+]
 
 [sources.allow-org]
 github = []
