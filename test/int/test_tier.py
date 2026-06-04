@@ -1,6 +1,5 @@
 import pytest
-
-from conftest import Cluster, Instance, TarantoolError, Retriable
+from conftest import Cluster, Instance, Retriable, TarantoolError
 
 
 def test_single_tier_query(cluster: Cluster):
@@ -479,8 +478,7 @@ cluster:
     replicaset_2_i1 = cluster.add_instance(tier="storage")
     replicaset_2_i2 = cluster.add_instance(tier="storage")
 
-    cluster.wait_until_instance_has_this_many_active_buckets(replicaset_1_i1, 1500)
-    cluster.wait_until_instance_has_this_many_active_buckets(replicaset_2_i1, 1500)
+    cluster.wait_until_buckets_balanced()
 
     # create table sharded in `uninitialized` tier is ok
     ddl = router_instance.sql(

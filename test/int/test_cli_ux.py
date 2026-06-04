@@ -1430,8 +1430,7 @@ def test_picodata_status_doesnt_show_expelled_instances(cluster: Cluster):
     cluster.wait_online()
     i1, i2, i3, i4 = sorted(cluster.instances, key=lambda i: i.name or "")
 
-    cluster.wait_until_instance_has_this_many_active_buckets(i2, 1000)
-    cluster.wait_until_instance_has_this_many_active_buckets(i3, 1000)
+    cluster.wait_until_buckets_balanced()
 
     info = i1.instance_info()
     cluster_uuid = info["cluster_uuid"]

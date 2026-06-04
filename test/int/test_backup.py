@@ -362,7 +362,7 @@ def test_backup_enables_read_only_on_prepare_global(cluster: Cluster):
 
     i1, *_ = cluster.wait_online()
 
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
+    cluster.wait_until_buckets_balanced()
 
     global_table_name = "gt"
     ddl = i1.sql(f"create table {global_table_name}(a int primary key) distributed globally")
@@ -552,8 +552,7 @@ def test_backup_aborts_on_instance_restart(cluster: Cluster):
     for i in [i1, i2, i3]:
         i.wait_online()
 
-    for i in [i1, i2]:
-        cluster.wait_until_instance_has_this_many_active_buckets(i, SMALL_BUCKETS_COUNT // 2)
+    cluster.wait_until_buckets_balanced()
 
     # prevent backup from progressing
     error_injection = "ERROR_AFTER_DATA_IS_BACKUPED"
@@ -594,7 +593,7 @@ def _test_backup_makes_replica_read_only_on_master_down(cluster: Cluster):
     for i in [i1, i2]:
         i.wait_online()
 
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
+    cluster.wait_until_buckets_balanced()
 
     sharded_table_name = "t"
     ddl = i1.sql(f"create table {sharded_table_name}(a int primary key)")
@@ -635,7 +634,7 @@ def test_backup_is_using_hardlinks(cluster: Cluster):
     cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
     i1, *_ = cluster.wait_online()
 
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql("BACKUP", timeout=40)
     new_backup_folder_name = ddl[0][0]
@@ -743,7 +742,7 @@ def test_backup_does_not_fail_when_backup_retries(cluster: Cluster):
 
     i1, i2 = cluster.wait_online()
 
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
+    cluster.wait_until_buckets_balanced()
 
     # Pause BACKUP application on replica.
     # It's stopped right after data files (like .snap files are moved).
@@ -854,7 +853,7 @@ def test_backup_consecutive_ddls_are_not_broken_after_restore(cluster: Cluster):
 
     i1, *_ = cluster.wait_online()
 
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
+    cluster.wait_until_buckets_balanced()
 
     # Execute backup.
     ddl = i1.sql("BACKUP", timeout=40)
@@ -880,7 +879,7 @@ def test_backup_does_not_break_new_replicaset_ddl_catching_up_with_restore(clust
 
     i1, *_ = cluster.wait_online()
 
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
+    cluster.wait_until_buckets_balanced()
 
     # Tinker raft log options so that DDL operations are not compacted.
     i1.sql("ALTER SYSTEM SET raft_wal_size_max  = 200000000")
@@ -922,8 +921,7 @@ def test_backup_does_not_break_new_replicaset_ddl_catching_up_with_restore(clust
     Retriable().call(check_no_pending_schema_change, i3)
     Retriable().call(check_no_pending_schema_change, i4)
 
-    for i in [i1, i3]:
-        cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
+    cluster.wait_until_buckets_balanced()
 
     # Check select from tables works.
     for data in data_to_insert:
@@ -945,7 +943,7 @@ def test_backup_does_not_break_new_replicaset_ddl_catching_up_no_restore(cluster
 
     i1, *_ = cluster.wait_online()
 
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
+    cluster.wait_until_buckets_balanced()
 
     # Tinker raft log options so that DDL operations are not compacted.
     i1.sql("ALTER SYSTEM SET raft_wal_size_max  = 200000000")
@@ -983,8 +981,7 @@ def test_backup_does_not_break_new_replicaset_ddl_catching_up_no_restore(cluster
     assert i4.call("box.space._space.index.name:get", "t1") is not None
 
     # Wait for rebalance
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1500)
-    cluster.wait_until_instance_has_this_many_active_buckets(i3, 1500)
+    cluster.wait_until_buckets_balanced()
 
     # Check select from tables works.
     for data in data_to_insert:
@@ -1011,8 +1008,7 @@ def test_backup_manual_abort(cluster: Cluster):
     for i in [i1, i2, i3]:
         i.wait_online()
 
-    for i in [i1, i2]:
-        cluster.wait_until_instance_has_this_many_active_buckets(i, SMALL_BUCKETS_COUNT // 2)
+    cluster.wait_until_buckets_balanced()
 
     cluster.wait_leader_elected()
 
@@ -1080,8 +1076,7 @@ def test_backup_aborts_with_offline_nodes(cluster: Cluster):
     for i in [i1, i2, i3]:
         i.wait_online()
 
-    for i in [i1, i2]:
-        cluster.wait_until_instance_has_this_many_active_buckets(i, SMALL_BUCKETS_COUNT // 2)
+    cluster.wait_until_buckets_balanced()
 
     cluster.wait_leader_elected()
 
@@ -1207,7 +1202,7 @@ def test_restore_is_failing_after_new_instance_is_added(cluster: Cluster):
     cluster.set_unique_configs_for_instances(init_replication_factor=1, share_dir_path=shared_dir)
     i1, *_ = cluster.wait_online()
 
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
+    cluster.wait_until_buckets_balanced()
 
     # Create backup.
     ddl = i1.sql("BACKUP", timeout=40)
@@ -1244,7 +1239,7 @@ cluster:
     cluster.deploy(instance_count=1, wait_online=False)
     i1, *_ = cluster.wait_online()
 
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql("BACKUP", timeout=40)
     new_backup_folder_name = ddl[0][0]

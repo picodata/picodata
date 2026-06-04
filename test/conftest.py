@@ -2866,7 +2866,6 @@ class Cluster:
 
     def wait_until_buckets_balanced(
         self,
-        max_retries: int = 10,
         exclude: list[Instance] | None = None,
     ):
         """
