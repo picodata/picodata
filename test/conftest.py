@@ -2670,7 +2670,7 @@ class Cluster:
     def terminate(self):
         log.info("Cluster.terminate()")
         errors = []
-        for instance in self.instances:
+        for instance in reversed(self.instances):
             try:
                 instance.terminate()
             except Exception as e:
