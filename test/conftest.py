@@ -2265,6 +2265,7 @@ class Cluster:
         *,
         init_replication_factor: int | None = None,
         share_dir_path: Path | None = None,
+        default_bucket_count: int | None = None,
     ):
         """Set instance config based on unique instance fields.
 
@@ -2281,6 +2282,11 @@ class Cluster:
 
         for i in self.instances:
             config_yaml_obj_i = config_yaml_obj
+
+            if default_bucket_count is not None:
+                config_yaml_obj_i["cluster"]["default_bucket_count"] = default_bucket_count
+                for tier_cfg in config_yaml_obj_i["cluster"]["tier"].values():
+                    tier_cfg["bucket_count"] = default_bucket_count
 
             if share_dir_path:
                 config_yaml_obj_i["instance"]["share_dir"] = str(share_dir_path)
